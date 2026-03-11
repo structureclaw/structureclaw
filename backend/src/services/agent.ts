@@ -12,6 +12,9 @@ export type AgentToolName = 'text-to-model-draft' | 'convert' | 'validate' | 'an
 export type AgentRunMode = 'chat' | 'execute' | 'auto';
 export type AgentReportFormat = 'json' | 'markdown' | 'both';
 export type AgentReportOutput = 'inline' | 'file';
+export type AgentUserDecision = 'provide_values' | 'confirm_all' | 'allow_auto_decide' | 'revise';
+export type AgentInteractionState = 'collecting' | 'confirming' | 'ready' | 'executing' | 'completed' | 'blocked';
+export type AgentInteractionStage = 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';
 
 type InferredModelType = 'beam' | 'truss' | 'portal-frame' | 'double-span-beam' | 'unknown';
 
@@ -40,6 +43,51 @@ interface DraftResult {
   stateToPersist?: DraftState;
 }
 
+interface InteractionSession {
+  draft: DraftState;
+  userApprovedAutoDecide?: boolean;
+  resolved?: {
+    analysisType?: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+    designCode?: string;
+    autoCodeCheck?: boolean;
+    includeReport?: boolean;
+    reportFormat?: AgentReportFormat;
+    reportOutput?: AgentReportOutput;
+  };
+  updatedAt: number;
+}
+
+interface InteractionQuestion {
+  paramKey: string;
+  label: string;
+  question: string;
+  unit?: string;
+  required: boolean;
+  critical: boolean;
+  suggestedValue?: unknown;
+}
+
+interface InteractionPending {
+  criticalMissing: string[];
+  nonCriticalMissing: string[];
+}
+
+interface InteractionDefaultProposal {
+  paramKey: string;
+  value: unknown;
+  reason: string;
+}
+
+export interface AgentInteraction {
+  state: AgentInteractionState;
+  stage: AgentInteractionStage;
+  turnId: string;
+  questions?: InteractionQuestion[];
+  pending?: InteractionPending;
+  proposedDefaults?: InteractionDefaultProposal[];
+  nextActions?: AgentUserDecision[];
+}
+
 export interface AgentRunParams {
   message: string;
   mode?: AgentRunMode;
@@ -57,6 +105,8 @@ export interface AgentRunParams {
     includeReport?: boolean;
     reportFormat?: AgentReportFormat;
     reportOutput?: AgentReportOutput;
+    userDecision?: AgentUserDecision;
+    providedValues?: Record<string, unknown>;
   };
 }
 
@@ -120,6 +170,7 @@ export interface AgentRunResult {
     maxToolDurationMs: number;
     toolDurationMsByName: Record<string, number>;
   };
+  interaction?: AgentInteraction;
   clarification?: {
     missingFields: string[];
     question: string;
@@ -128,7 +179,7 @@ export interface AgentRunResult {
 }
 
 export interface AgentStreamChunk {
-  type: 'start' | 'result' | 'done' | 'error';
+  type: 'start' | 'interaction_update' | 'result' | 'done' | 'error';
   content?: unknown;
   error?: string;
 }
@@ -147,6 +198,19 @@ export class AgentService {
     this.llm = createChatModel(0.1);
   }
 
+  shouldRouteToExecute(message: string): boolean {
+    const text = message.toLowerCase();
+    return text.includes('分析')
+      || text.includes('验算')
+      || text.includes('校核')
+      || text.includes('设计')
+      || text.includes('建模')
+      || text.includes('seismic')
+      || text.includes('dynamic')
+      || text.includes('nonlinear')
+      || text.includes('code-check');
+  }
+
   static getProtocol(): AgentProtocol {
     const commonErrorCodes = [
       'UNSUPPORTED_SOURCE_FORMAT',
@@ -158,7 +222,7 @@ export class AgentService {
     ];
 
     return {
-      version: '1.3.0',
+      version: '2.0.0',
       runRequestSchema: {
         type: 'object',
         required: ['message'],
@@ -181,6 +245,8 @@ export class AgentService {
               includeReport: { type: 'boolean' },
               reportFormat: { enum: ['json', 'markdown', 'both'] },
               reportOutput: { enum: ['inline', 'file'] },
+              userDecision: { enum: ['provide_values', 'confirm_all', 'allow_auto_decide', 'revise'] },
+              providedValues: { type: 'object' },
             },
           },
         },
@@ -224,6 +290,18 @@ export class AgentService {
               },
             },
           },
+          interaction: {
+            type: 'object',
+            properties: {
+              state: { enum: ['collecting', 'confirming', 'ready', 'executing', 'completed', 'blocked'] },
+              stage: { enum: ['intent', 'model', 'loads', 'analysis', 'code_check', 'report'] },
+              turnId: { type: 'string' },
+              questions: { type: 'array', items: { type: 'object' } },
+              pending: { type: 'object' },
+              proposedDefaults: { type: 'array', items: { type: 'object' } },
+              nextActions: { type: 'array', items: { type: 'string' } },
+            },
+          },
           response: { type: 'string' },
         },
       },
@@ -244,6 +322,14 @@ export class AgentService {
               },
             },
             required: ['type'],
+          },
+          {
+            type: 'object',
+            properties: {
+              type: { const: 'interaction_update' },
+              content: { type: 'object' },
+            },
+            required: ['type', 'content'],
           },
           {
             type: 'object',
@@ -426,6 +512,12 @@ export class AgentService {
       };
 
       const result = await this.runInternal({ ...params, traceId }, traceId);
+      if (result.interaction && result.interaction.state !== 'completed') {
+        yield {
+          type: 'interaction_update',
+          content: result.interaction,
+        };
+      }
       yield {
         type: 'result',
         content: result,
@@ -464,20 +556,30 @@ export class AgentService {
     const modelInput = params.context?.model;
     const sourceFormat = params.context?.modelFormat || 'structuremodel-v1';
     const autoAnalyze = params.context?.autoAnalyze ?? true;
-    const autoCodeCheck = params.context?.autoCodeCheck ?? this.inferCodeCheckIntent(params.message);
-    const designCode = params.context?.designCode || 'GB50017';
-    const includeReport = params.context?.includeReport ?? true;
-    const reportFormat = params.context?.reportFormat || 'both';
-    const reportOutput = params.context?.reportOutput || 'inline';
-    const analysisType = params.context?.analysisType || this.inferAnalysisType(params.message);
     const analysisParameters = params.context?.parameters || {};
+    const userDecision = params.context?.userDecision;
+    const providedValues = params.context?.providedValues || {};
 
     const plan: string[] = [];
     const toolCalls: AgentToolCall[] = [];
     const mode: 'rule-based' | 'llm-assisted' = this.llm ? 'llm-assisted' : 'rule-based';
 
     const sessionKey = params.conversationId?.trim();
-    const existingState = await this.getDraftState(sessionKey);
+    const session = await this.getInteractionSession(sessionKey);
+    const existingState = session?.draft;
+    let workingSession: InteractionSession = session || {
+      draft: { inferredType: 'unknown', updatedAt: Date.now() },
+      updatedAt: Date.now(),
+      resolved: {},
+    };
+
+    this.applyResolvedConfigFromContext(workingSession, params.context);
+    this.applyProvidedValuesToSession(workingSession, providedValues);
+    if (userDecision === 'allow_auto_decide' || userDecision === 'confirm_all') {
+      workingSession.userApprovedAutoDecide = true;
+    } else if (userDecision === 'revise') {
+      workingSession.userApprovedAutoDecide = false;
+    }
 
     let normalizedModel = modelInput;
     if (!normalizedModel) {
@@ -486,6 +588,12 @@ export class AgentService {
       toolCalls.push(draftCall);
 
       const draft = await this.textToModelDraft(params.message, existingState);
+      if (draft.stateToPersist) {
+        workingSession.draft = draft.stateToPersist;
+      }
+      workingSession.updatedAt = Date.now();
+      this.applyInferredNonCriticalFromMessage(workingSession, params.message);
+
       this.completeToolCallSuccess(draftCall, {
         inferredType: draft.inferredType,
         missingFields: draft.missingFields,
@@ -493,12 +601,29 @@ export class AgentService {
         modelGenerated: Boolean(draft.model),
       });
 
-      if (!draft.model) {
-        if (sessionKey && draft.stateToPersist) {
-          await this.setDraftState(sessionKey, draft.stateToPersist);
+      if (workingSession.userApprovedAutoDecide) {
+        for (let i = 0; i < 3; i += 1) {
+          const assessment = this.assessInteractionNeeds(workingSession);
+          if (assessment.nonCriticalMissing.length === 0) {
+            break;
+          }
+          this.applyNonCriticalDefaults(workingSession, assessment.defaultProposals);
+        }
+      }
+
+      const finalAssessment = this.assessInteractionNeeds(workingSession);
+      if (finalAssessment.criticalMissing.length > 0 || finalAssessment.nonCriticalMissing.length > 0 || !draft.model) {
+        if (sessionKey) {
+          await this.setInteractionSession(sessionKey, workingSession);
         }
 
-        const question = this.buildClarificationQuestion(draft.missingFields);
+        const interaction = this.buildInteractionPayload(
+          finalAssessment,
+          workingSession,
+          finalAssessment.criticalMissing.length > 0 ? 'confirming' : 'collecting',
+        );
+        const missingFields = this.mapMissingFieldLabels(finalAssessment.criticalMissing);
+        const question = this.buildInteractionQuestion(interaction);
         const result: AgentRunResult = {
           traceId,
           startedAt,
@@ -506,26 +631,31 @@ export class AgentService {
           durationMs: Date.now() - startedAtMs,
           success: false,
           mode,
-          needsModelInput: true,
+          needsModelInput: finalAssessment.criticalMissing.length > 0,
           plan,
           toolCalls,
           metrics: this.buildMetrics(toolCalls),
+          interaction,
           clarification: {
-            missingFields: draft.missingFields,
+            missingFields,
             question,
           },
-          response: `无法从文本直接生成可计算模型，缺少：${draft.missingFields.join('、')}。`,
+          response: question,
         };
 
         this.logRunResult(traceId, sessionKey, result);
         return result;
       }
 
-      if (sessionKey) {
-        await this.clearDraftState(sessionKey);
-      }
       normalizedModel = draft.model;
     }
+
+    const resolvedAnalysisType = workingSession.resolved?.analysisType || params.context?.analysisType || this.inferAnalysisType(params.message);
+    const resolvedDesignCode = workingSession.resolved?.designCode || params.context?.designCode || 'GB50017';
+    const resolvedAutoCodeCheck = workingSession.resolved?.autoCodeCheck ?? params.context?.autoCodeCheck ?? this.inferCodeCheckIntent(params.message);
+    const resolvedIncludeReport = workingSession.resolved?.includeReport ?? params.context?.includeReport ?? true;
+    const resolvedReportFormat = workingSession.resolved?.reportFormat || params.context?.reportFormat || 'both';
+    const resolvedReportOutput = workingSession.resolved?.reportOutput || params.context?.reportOutput || 'inline';
 
     if (sourceFormat !== 'structuremodel-v1') {
       plan.push(`将输入模型从 ${sourceFormat} 转为 structuremodel-v1`);
@@ -555,8 +685,9 @@ export class AgentService {
           plan,
           toolCalls,
           metrics: this.buildMetrics(toolCalls),
-          response: `模型格式转换失败：${convertCall.error}`,
-        };
+            interaction: this.buildExecutionInteraction('blocked'),
+            response: `模型格式转换失败：${convertCall.error}`,
+          };
         this.logRunResult(traceId, sessionKey, result);
         return result;
       }
@@ -586,6 +717,7 @@ export class AgentService {
           toolCalls,
           model: normalizedModel,
           metrics: this.buildMetrics(toolCalls),
+          interaction: this.buildExecutionInteraction('blocked'),
           response: `模型校验失败：${validateCall.error}`,
         };
         this.logRunResult(traceId, sessionKey, result);
@@ -605,6 +737,7 @@ export class AgentService {
         toolCalls,
         model: normalizedModel,
         metrics: this.buildMetrics(toolCalls),
+        interaction: this.buildExecutionInteraction('blocked'),
         response: `模型校验失败：${validateCall.error}`,
       };
       this.logRunResult(traceId, sessionKey, result);
@@ -628,15 +761,19 @@ export class AgentService {
         toolCalls,
         model: normalizedModel,
         metrics: this.buildMetrics(toolCalls),
+        interaction: this.buildExecutionInteraction('completed'),
         response,
       };
+      if (sessionKey) {
+        await this.clearInteractionSession(sessionKey);
+      }
       this.logRunResult(traceId, sessionKey, result);
       return result;
     }
 
-    plan.push(`执行 ${analysisType} 分析并返回摘要`);
+    plan.push(`执行 ${resolvedAnalysisType} 分析并返回摘要`);
     const analyzeInput = {
-      type: analysisType,
+      type: resolvedAnalysisType,
       model: normalizedModel,
       parameters: analysisParameters,
     };
@@ -649,14 +786,14 @@ export class AgentService {
       const analysisSuccess = Boolean(analyzed.data?.success);
       let codeCheckResult: unknown;
 
-      if (analysisSuccess && autoCodeCheck) {
-        plan.push(`执行 ${designCode} 规范校核`);
+      if (analysisSuccess && resolvedAutoCodeCheck) {
+        plan.push(`执行 ${resolvedDesignCode} 规范校核`);
         const codeCheckElements = params.context?.codeCheckElements?.length
           ? params.context?.codeCheckElements
           : this.extractElementIds(normalizedModel);
         const codeCheckInput = {
           modelId: traceId,
-          code: designCode,
+          code: resolvedDesignCode,
           elements: codeCheckElements,
           context: {
             analysisSummary: this.extractAnalysisSummary(analyzed.data),
@@ -690,6 +827,7 @@ export class AgentService {
             model: normalizedModel,
             analysis: analyzed.data,
             metrics: this.buildMetrics(toolCalls),
+            interaction: this.buildExecutionInteraction('blocked'),
             response: `规范校核失败：${codeCheckCall.error}`,
           };
           this.logRunResult(traceId, sessionKey, result);
@@ -699,32 +837,32 @@ export class AgentService {
 
       let report: AgentRunResult['report'];
       let artifacts: AgentRunResult['artifacts'];
-      if (analysisSuccess && includeReport) {
+      if (analysisSuccess && resolvedIncludeReport) {
         plan.push('生成可读计算与校核报告');
         const reportCall = this.startToolCall('report', {
           message: params.message,
           analysis: analyzed.data,
           codeCheck: codeCheckResult,
-          format: reportFormat,
+          format: resolvedReportFormat,
         });
         toolCalls.push(reportCall);
         report = this.generateReport({
           message: params.message,
-          analysisType,
+          analysisType: resolvedAnalysisType,
           analysis: analyzed.data,
           codeCheck: codeCheckResult,
-          format: reportFormat,
+          format: resolvedReportFormat,
         });
-        if (report && reportOutput === 'file') {
-          artifacts = await this.persistReportArtifacts(traceId, report, reportFormat);
+        if (report && resolvedReportOutput === 'file') {
+          artifacts = await this.persistReportArtifacts(traceId, report, resolvedReportFormat);
         }
         this.completeToolCallSuccess(reportCall, report);
       }
 
       const response = await this.renderSummary(
         params.message,
-        `分析完成。analysis_type=${analysisType}, success=${String(analyzed.data?.success ?? false)}`
-          + (autoCodeCheck ? `, code_check=${String(Boolean(codeCheckResult))}` : ''),
+        `分析完成。analysis_type=${resolvedAnalysisType}, success=${String(analyzed.data?.success ?? false)}`
+          + (resolvedAutoCodeCheck ? `, code_check=${String(Boolean(codeCheckResult))}` : ''),
       );
 
       const result: AgentRunResult = {
@@ -743,8 +881,12 @@ export class AgentService {
         report,
         artifacts,
         metrics: this.buildMetrics(toolCalls),
+        interaction: this.buildExecutionInteraction('completed'),
         response,
       };
+      if (sessionKey) {
+        await this.clearInteractionSession(sessionKey);
+      }
       this.logRunResult(traceId, sessionKey, result);
       return result;
     } catch (error: any) {
@@ -761,6 +903,7 @@ export class AgentService {
         toolCalls,
         model: normalizedModel,
         metrics: this.buildMetrics(toolCalls),
+        interaction: this.buildExecutionInteraction('blocked'),
         response: `分析执行失败：${analyzeCall.error}`,
       };
       this.logRunResult(traceId, sessionKey, result);
@@ -788,6 +931,365 @@ export class AgentService {
       || text.includes('规范')
       || text.includes('code-check')
       || text.includes('验算');
+  }
+
+  private inferDesignCode(message: string): string | undefined {
+    const match = message.toUpperCase().match(/GB\s*([0-9]{5})/);
+    if (!match?.[1]) {
+      return undefined;
+    }
+    return `GB${match[1]}`;
+  }
+
+  private inferReportIntent(message: string): boolean | undefined {
+    const text = message.toLowerCase();
+    if (text.includes('报告') || text.includes('report')) {
+      return true;
+    }
+    return undefined;
+  }
+
+  private assessInteractionNeeds(session: InteractionSession): {
+    criticalMissing: string[];
+    nonCriticalMissing: string[];
+    defaultProposals: InteractionDefaultProposal[];
+  } {
+    const criticalMissing = this.computeMissingCriticalKeys(session.draft);
+    const nonCriticalMissing: string[] = [];
+    const resolved = session.resolved || {};
+
+    if (!resolved.analysisType) {
+      nonCriticalMissing.push('analysisType');
+    }
+    if (resolved.autoCodeCheck === undefined) {
+      nonCriticalMissing.push('autoCodeCheck');
+    }
+    if (resolved.autoCodeCheck === true && !resolved.designCode) {
+      nonCriticalMissing.push('designCode');
+    }
+    if (resolved.includeReport === undefined) {
+      nonCriticalMissing.push('includeReport');
+    }
+    if (resolved.includeReport === true && !resolved.reportFormat) {
+      nonCriticalMissing.push('reportFormat');
+    }
+    if (resolved.includeReport === true && !resolved.reportOutput) {
+      nonCriticalMissing.push('reportOutput');
+    }
+
+    return {
+      criticalMissing,
+      nonCriticalMissing,
+      defaultProposals: this.buildDefaultProposals(nonCriticalMissing),
+    };
+  }
+
+  private buildDefaultProposals(nonCriticalMissing: string[]): InteractionDefaultProposal[] {
+    return nonCriticalMissing.map((key) => {
+      switch (key) {
+        case 'analysisType':
+          return { paramKey: key, value: 'static', reason: '默认采用静力分析，属于最保守且最常用起步工况。' };
+        case 'autoCodeCheck':
+          return { paramKey: key, value: true, reason: '默认开启规范校核以保证验算完整性。' };
+        case 'designCode':
+          return { paramKey: key, value: 'GB50017', reason: '默认采用钢结构设计标准 GB50017 进行保守校核。' };
+        case 'includeReport':
+          return { paramKey: key, value: true, reason: '默认生成报告，便于复核输入与结果。' };
+        case 'reportFormat':
+          return { paramKey: key, value: 'both', reason: '默认同时输出 json/markdown，兼顾机器和人工阅读。' };
+        case 'reportOutput':
+          return { paramKey: key, value: 'inline', reason: '默认内联返回，减少文件写入依赖。' };
+        default:
+          return { paramKey: key, value: null, reason: '默认保守值。' };
+      }
+    });
+  }
+
+  private applyNonCriticalDefaults(session: InteractionSession, defaults: InteractionDefaultProposal[]): void {
+    session.resolved = session.resolved || {};
+    for (const proposal of defaults) {
+      switch (proposal.paramKey) {
+        case 'analysisType':
+          session.resolved.analysisType = proposal.value as NonNullable<InteractionSession['resolved']>['analysisType'];
+          break;
+        case 'autoCodeCheck':
+          session.resolved.autoCodeCheck = Boolean(proposal.value);
+          break;
+        case 'designCode':
+          session.resolved.designCode = String(proposal.value);
+          break;
+        case 'includeReport':
+          session.resolved.includeReport = Boolean(proposal.value);
+          break;
+        case 'reportFormat':
+          session.resolved.reportFormat = proposal.value as AgentReportFormat;
+          break;
+        case 'reportOutput':
+          session.resolved.reportOutput = proposal.value as AgentReportOutput;
+          break;
+        default:
+          break;
+      }
+    }
+    session.updatedAt = Date.now();
+  }
+
+  private applyResolvedConfigFromContext(session: InteractionSession, context: AgentRunParams['context'] | undefined): void {
+    if (!context) {
+      return;
+    }
+    session.resolved = session.resolved || {};
+    if (context.analysisType) {
+      session.resolved.analysisType = context.analysisType;
+    }
+    if (context.designCode) {
+      session.resolved.designCode = context.designCode;
+    }
+    if (context.autoCodeCheck !== undefined) {
+      session.resolved.autoCodeCheck = context.autoCodeCheck;
+    }
+    if (context.includeReport !== undefined) {
+      session.resolved.includeReport = context.includeReport;
+    }
+    if (context.reportFormat) {
+      session.resolved.reportFormat = context.reportFormat;
+    }
+    if (context.reportOutput) {
+      session.resolved.reportOutput = context.reportOutput;
+    }
+  }
+
+  private applyInferredNonCriticalFromMessage(session: InteractionSession, message: string): void {
+    session.resolved = session.resolved || {};
+    if (!session.resolved.analysisType) {
+      session.resolved.analysisType = this.inferAnalysisType(message);
+    }
+    const inferredCode = this.inferDesignCode(message);
+    if (inferredCode && !session.resolved.designCode) {
+      session.resolved.designCode = inferredCode;
+    }
+    if (session.resolved.autoCodeCheck === undefined && this.inferCodeCheckIntent(message)) {
+      session.resolved.autoCodeCheck = true;
+    }
+    if (session.resolved.includeReport === undefined) {
+      const reportIntent = this.inferReportIntent(message);
+      if (reportIntent !== undefined) {
+        session.resolved.includeReport = reportIntent;
+      }
+    }
+  }
+
+  private applyProvidedValuesToSession(session: InteractionSession, values: Record<string, unknown>): void {
+    if (!values || typeof values !== 'object') {
+      return;
+    }
+    const nextDraft: DraftExtraction = {
+      inferredType: this.normalizeInferredType(values.inferredType),
+      lengthM: this.normalizeNumber(values.lengthM),
+      spanLengthM: this.normalizeNumber(values.spanLengthM),
+      heightM: this.normalizeNumber(values.heightM),
+      loadKN: this.normalizeNumber(values.loadKN),
+    };
+    session.draft = this.mergeDraftState(session.draft, nextDraft);
+    session.resolved = session.resolved || {};
+    if (typeof values.analysisType === 'string') {
+      session.resolved.analysisType = this.normalizeAnalysisType(values.analysisType);
+    }
+    if (typeof values.designCode === 'string' && values.designCode.trim()) {
+      session.resolved.designCode = values.designCode.trim().toUpperCase();
+    }
+    if (typeof values.autoCodeCheck === 'boolean') {
+      session.resolved.autoCodeCheck = values.autoCodeCheck;
+    }
+    if (typeof values.includeReport === 'boolean') {
+      session.resolved.includeReport = values.includeReport;
+    }
+    if (typeof values.reportFormat === 'string') {
+      session.resolved.reportFormat = this.normalizeReportFormat(values.reportFormat);
+    }
+    if (typeof values.reportOutput === 'string') {
+      session.resolved.reportOutput = this.normalizeReportOutput(values.reportOutput);
+    }
+    session.updatedAt = Date.now();
+  }
+
+  private normalizeAnalysisType(value: string): NonNullable<InteractionSession['resolved']>['analysisType'] {
+    if (value === 'static' || value === 'dynamic' || value === 'seismic' || value === 'nonlinear') {
+      return value;
+    }
+    return 'static';
+  }
+
+  private normalizeReportFormat(value: string): AgentReportFormat {
+    if (value === 'json' || value === 'markdown' || value === 'both') {
+      return value;
+    }
+    return 'both';
+  }
+
+  private normalizeReportOutput(value: string): AgentReportOutput {
+    if (value === 'inline' || value === 'file') {
+      return value;
+    }
+    return 'inline';
+  }
+
+  private computeMissingCriticalKeys(state: DraftState): string[] {
+    const missing: string[] = [];
+    if (state.inferredType === 'unknown') {
+      missing.push('inferredType');
+      return missing;
+    }
+
+    if (state.inferredType === 'portal-frame') {
+      if (state.spanLengthM === undefined) {
+        missing.push('spanLengthM');
+      }
+      if (state.heightM === undefined) {
+        missing.push('heightM');
+      }
+      if (state.loadKN === undefined) {
+        missing.push('loadKN');
+      }
+      return missing;
+    }
+
+    if (state.inferredType === 'double-span-beam') {
+      if (state.spanLengthM === undefined) {
+        missing.push('spanLengthM');
+      }
+      if (state.loadKN === undefined) {
+        missing.push('loadKN');
+      }
+      return missing;
+    }
+
+    if (state.lengthM === undefined) {
+      missing.push('lengthM');
+    }
+    if (state.loadKN === undefined) {
+      missing.push('loadKN');
+    }
+    return missing;
+  }
+
+  private mapMissingFieldLabels(missing: string[]): string[] {
+    return missing.map((key) => {
+      switch (key) {
+        case 'inferredType':
+          return '结构类型（门式刚架/双跨梁/梁/平面桁架）';
+        case 'lengthM':
+          return '跨度/长度（m）';
+        case 'spanLengthM':
+          return '门式刚架或双跨每跨跨度（m）';
+        case 'heightM':
+          return '门式刚架柱高（m）';
+        case 'loadKN':
+          return '荷载大小（kN）';
+        case 'analysisType':
+          return '分析类型（static/dynamic/seismic/nonlinear）';
+        case 'designCode':
+          return '规范编号（如 GB50017）';
+        case 'autoCodeCheck':
+          return '是否自动规范校核';
+        case 'includeReport':
+          return '是否生成报告';
+        case 'reportFormat':
+          return '报告格式（json/markdown/both）';
+        case 'reportOutput':
+          return '报告输出位置（inline/file）';
+        default:
+          return key;
+      }
+    });
+  }
+
+  private buildInteractionPayload(
+    assessment: { criticalMissing: string[]; nonCriticalMissing: string[]; defaultProposals: InteractionDefaultProposal[] },
+    session: InteractionSession,
+    state: AgentInteractionState,
+  ): AgentInteraction {
+    const missingKeys = [...assessment.criticalMissing, ...assessment.nonCriticalMissing];
+    const questions = this.buildInteractionQuestions(missingKeys, assessment.criticalMissing);
+    return {
+      state,
+      stage: this.resolveInteractionStage(missingKeys),
+      turnId: randomUUID(),
+      questions,
+      pending: {
+        criticalMissing: this.mapMissingFieldLabels(assessment.criticalMissing),
+        nonCriticalMissing: this.mapMissingFieldLabels(assessment.nonCriticalMissing),
+      },
+      proposedDefaults: assessment.defaultProposals,
+      nextActions: assessment.criticalMissing.length > 0
+        ? ['provide_values', 'revise']
+        : ['provide_values', 'allow_auto_decide', 'confirm_all', 'revise'],
+    };
+  }
+
+  private buildInteractionQuestions(missingKeys: string[], criticalMissing: string[]): InteractionQuestion[] {
+    return missingKeys.map((paramKey) => {
+      const critical = criticalMissing.includes(paramKey);
+      switch (paramKey) {
+        case 'inferredType':
+          return { paramKey, label: '结构类型', question: '请确认结构类型（门式刚架/双跨梁/梁/平面桁架）。', required: true, critical };
+        case 'lengthM':
+          return { paramKey, label: '跨度/长度', question: '请确认跨度或长度。', unit: 'm', required: true, critical };
+        case 'spanLengthM':
+          return { paramKey, label: '每跨跨度', question: '请确认门式刚架或双跨梁每跨跨度。', unit: 'm', required: true, critical };
+        case 'heightM':
+          return { paramKey, label: '柱高', question: '请确认门式刚架柱高。', unit: 'm', required: true, critical };
+        case 'loadKN':
+          return { paramKey, label: '荷载', question: '请确认控制荷载大小。', unit: 'kN', required: true, critical };
+        case 'analysisType':
+          return { paramKey, label: '分析类型', question: '请选择分析类型。', required: true, critical, suggestedValue: 'static' };
+        case 'autoCodeCheck':
+          return { paramKey, label: '自动校核', question: '是否自动执行规范校核？', required: true, critical, suggestedValue: true };
+        case 'designCode':
+          return { paramKey, label: '规范编号', question: '请确认规范编号（例如 GB50017）。', required: true, critical, suggestedValue: 'GB50017' };
+        case 'includeReport':
+          return { paramKey, label: '报告开关', question: '是否生成计算与校核报告？', required: true, critical, suggestedValue: true };
+        case 'reportFormat':
+          return { paramKey, label: '报告格式', question: '请确认报告格式。', required: true, critical, suggestedValue: 'both' };
+        case 'reportOutput':
+          return { paramKey, label: '报告输出', question: '请确认报告输出位置。', required: true, critical, suggestedValue: 'inline' };
+        default:
+          return { paramKey, label: paramKey, question: `请确认参数 ${paramKey}。`, required: true, critical };
+      }
+    });
+  }
+
+  private resolveInteractionStage(missingKeys: string[]): AgentInteractionStage {
+    if (missingKeys.includes('inferredType')) {
+      return 'intent';
+    }
+    if (missingKeys.some((key) => key === 'lengthM' || key === 'spanLengthM' || key === 'heightM')) {
+      return 'model';
+    }
+    if (missingKeys.includes('loadKN')) {
+      return 'loads';
+    }
+    if (missingKeys.includes('analysisType')) {
+      return 'analysis';
+    }
+    if (missingKeys.includes('autoCodeCheck') || missingKeys.includes('designCode')) {
+      return 'code_check';
+    }
+    return 'report';
+  }
+
+  private buildInteractionQuestion(interaction: AgentInteraction): string {
+    const questionSummary = interaction.questions?.map((item) => item.label).join('、') || '必要参数';
+    return `请先确认以下参数：${questionSummary}。若希望我按保守值自动决策，请回复“你决定”并触发 allow_auto_decide。`;
+  }
+
+  private buildExecutionInteraction(state: 'completed' | 'blocked'): AgentInteraction {
+    return {
+      state,
+      stage: 'report',
+      turnId: randomUUID(),
+      nextActions: state === 'completed' ? [] : ['revise'],
+    };
   }
 
   private extractElementIds(model: Record<string, unknown> | undefined): string[] {
@@ -1103,6 +1605,7 @@ export class AgentService {
       missingFields: [],
       extractionMode,
       model: this.buildModel(mergedState),
+      stateToPersist: mergedState,
     };
   }
 
@@ -1536,47 +2039,64 @@ export class AgentService {
     };
   }
 
-  private buildDraftStateKey(conversationId: string): string {
+  private buildInteractionSessionKey(conversationId: string): string {
+    return `agent:interaction-session:${conversationId}`;
+  }
+
+  private buildLegacyDraftStateKey(conversationId: string): string {
     return `agent:draft-state:${conversationId}`;
   }
 
-  private async getDraftState(conversationId: string | undefined): Promise<DraftState | undefined> {
+  private async getInteractionSession(conversationId: string | undefined): Promise<InteractionSession | undefined> {
     if (!conversationId) {
       return undefined;
     }
 
     try {
-      const raw = await redis.get(this.buildDraftStateKey(conversationId));
-      if (!raw) {
+      const raw = await redis.get(this.buildInteractionSessionKey(conversationId));
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object' && parsed.draft) {
+          return parsed as InteractionSession;
+        }
+      }
+
+      const legacyRaw = await redis.get(this.buildLegacyDraftStateKey(conversationId));
+      if (!legacyRaw) {
         return undefined;
       }
-      const parsed = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object') {
+      const legacyParsed = JSON.parse(legacyRaw);
+      if (!legacyParsed || typeof legacyParsed !== 'object') {
         return undefined;
       }
-      return parsed as DraftState;
+      return {
+        draft: legacyParsed as DraftState,
+        resolved: {},
+        updatedAt: Date.now(),
+      };
     } catch {
       return undefined;
     }
   }
 
-  private async setDraftState(conversationId: string, state: DraftState): Promise<void> {
+  private async setInteractionSession(conversationId: string, session: InteractionSession): Promise<void> {
     try {
       await redis.setex(
-        this.buildDraftStateKey(conversationId),
+        this.buildInteractionSessionKey(conversationId),
         AgentService.draftStateTtlSeconds,
-        JSON.stringify(state),
+        JSON.stringify(session),
       );
     } catch {
-      // Keep non-blocking behavior for draft persistence.
+      // Keep non-blocking behavior for session persistence.
     }
   }
 
-  private async clearDraftState(conversationId: string): Promise<void> {
+  private async clearInteractionSession(conversationId: string): Promise<void> {
     try {
-      await redis.del(this.buildDraftStateKey(conversationId));
+      await redis.del(this.buildInteractionSessionKey(conversationId));
+      await redis.del(this.buildLegacyDraftStateKey(conversationId));
     } catch {
-      // Keep non-blocking behavior for draft cleanup.
+      // Keep non-blocking behavior for session cleanup.
     }
   }
 
