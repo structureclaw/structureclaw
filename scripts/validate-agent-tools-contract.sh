@@ -29,7 +29,7 @@ const run = async () => {
   assert(resp.statusCode === 200, 'agent/tools should return 200');
 
   const payload = resp.json();
-  assert(payload.version === '1.3.0', 'protocol version should be 1.3.0');
+  assert(payload.version === '2.0.0', 'protocol version should be 2.0.0');
   assert(Array.isArray(payload.tools), 'tools should be array');
 
   const toolNames = payload.tools.map((t) => t.name);

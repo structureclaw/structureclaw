@@ -38,6 +38,8 @@ const sendMessageSchema = z.object({
     includeReport: z.boolean().optional(),
     reportFormat: z.enum(['json', 'markdown', 'both']).optional(),
     reportOutput: z.enum(['inline', 'file']).optional(),
+    userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
+    providedValues: z.record(z.any()).optional(),
   }).optional(),
 });
 
@@ -62,6 +64,8 @@ const executeSchema = z.object({
     includeReport: z.boolean().optional(),
     reportFormat: z.enum(['json', 'markdown', 'both']).optional(),
     reportOutput: z.enum(['inline', 'file']).optional(),
+    userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
+    providedValues: z.record(z.any()).optional(),
   }).optional(),
 });
 
@@ -83,6 +87,8 @@ const streamMessageSchema = z.object({
     includeReport: z.boolean().optional(),
     reportFormat: z.enum(['json', 'markdown', 'both']).optional(),
     reportOutput: z.enum(['inline', 'file']).optional(),
+    userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
+    providedValues: z.record(z.any()).optional(),
   }).optional(),
 });
 
@@ -110,7 +116,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const mode = body.mode || 'auto';
 
       const shouldExecute = mode === 'execute'
-        || (mode === 'auto' && Boolean(body.context?.model));
+        || (mode === 'auto' && (Boolean(body.context?.model) || agentService.shouldRouteToExecute(body.message)));
 
       if (shouldExecute) {
         const result = await agentService.run({
@@ -130,6 +136,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
             includeReport: body.context?.includeReport,
             reportFormat: body.context?.reportFormat,
             reportOutput: body.context?.reportOutput,
+            userDecision: body.context?.userDecision,
+            providedValues: body.context?.providedValues,
           },
         });
         return reply.send({
@@ -227,7 +235,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     reply.raw.setHeader('Connection', 'keep-alive');
 
     const shouldExecute = mode === 'execute'
-      || (mode === 'auto' && Boolean(body.context?.model));
+      || (mode === 'auto' && (Boolean(body.context?.model) || agentService.shouldRouteToExecute(body.message)));
 
     if (shouldExecute) {
       const stream = agentService.runStream({
@@ -247,6 +255,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
           includeReport: body.context?.includeReport,
           reportFormat: body.context?.reportFormat,
           reportOutput: body.context?.reportOutput,
+          userDecision: body.context?.userDecision,
+          providedValues: body.context?.providedValues,
         },
       });
 

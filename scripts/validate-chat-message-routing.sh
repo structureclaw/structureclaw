@@ -84,6 +84,19 @@ const run = async () => {
   assert(autoExecPayload.mode === 'execute', 'auto with model should route to execute');
   assert(autoExecPayload.result?.traceId === 'trace-route-001', 'execute result should be returned');
 
+  const autoIntentExecResp = await app.inject({
+    method: 'POST',
+    url: '/api/v1/chat/message',
+    payload: {
+      message: '请帮我做结构设计验算',
+      mode: 'auto',
+      traceId: 'trace-route-auto-intent-1',
+    },
+  });
+  assert(autoIntentExecResp.statusCode === 200, 'auto intent execute response should be 200');
+  const autoIntentExecPayload = autoIntentExecResp.json();
+  assert(autoIntentExecPayload.mode === 'execute', 'auto with design/check intent should route to execute');
+
   const forceExecResp = await app.inject({
     method: 'POST',
     url: '/api/v1/chat/message',
@@ -97,8 +110,9 @@ const run = async () => {
   const forceExecPayload = forceExecResp.json();
   assert(forceExecPayload.mode === 'execute', 'mode=execute should route to execute');
 
-  assert(agentRunCount === 2, 'agent run should be called twice');
+  assert(agentRunCount === 3, 'agent run should be called three times');
   assert(capturedTraceIds.includes('trace-route-auto-1'), 'auto execute should pass traceId');
+  assert(capturedTraceIds.includes('trace-route-auto-intent-1'), 'auto intent execute should pass traceId');
   assert(capturedTraceIds.includes('trace-route-exec-1'), 'forced execute should pass traceId');
   assert(chatSendCount === 1, 'chat send should be called once');
 

@@ -24,7 +24,7 @@ const run = async () => {
   // 0) protocol metadata
   {
     const protocol = AgentService.getProtocol();
-    assert(protocol.version === '1.3.0', 'protocol version should be 1.3.0');
+    assert(protocol.version === '2.0.0', 'protocol version should be 2.0.0');
     assert(Array.isArray(protocol.tools) && protocol.tools.length >= 3, 'protocol tools should be present');
     assert(protocol.runRequestSchema?.type === 'object', 'runRequestSchema should be json schema object');
     assert(protocol.runResultSchema?.type === 'object', 'runResultSchema should be json schema object');
@@ -191,6 +191,11 @@ const run = async () => {
     const result = await svc.run({
       message: '请按一个3m悬臂梁，端部10kN竖向荷载做静力分析',
       mode: 'execute',
+      context: {
+        userDecision: 'allow_auto_decide',
+        autoCodeCheck: false,
+        includeReport: false,
+      },
     });
 
     assert(result.success === true, 'text draft orchestration should succeed');
@@ -235,6 +240,11 @@ const run = async () => {
       conversationId: 'conv-clarify-1',
       message: '跨度6m，柱高4m，竖向荷载20kN，做静力分析',
       mode: 'execute',
+      context: {
+        userDecision: 'allow_auto_decide',
+        autoCodeCheck: false,
+        includeReport: false,
+      },
     });
     assert(second.success === true, 'second turn should complete using persisted draft state');
     assert(second.toolCalls.some((c) => c.tool === 'text-to-model-draft'), 'second turn should still draft model');
@@ -267,6 +277,11 @@ const run = async () => {
     const beam = await svc.run({
       message: '按双跨梁建模，每跨4m，中跨节点施加12kN竖向荷载做静力分析',
       mode: 'execute',
+      context: {
+        userDecision: 'allow_auto_decide',
+        autoCodeCheck: false,
+        includeReport: false,
+      },
     });
     assert(beam.success === true, 'double-span beam draft should succeed');
     assert(Array.isArray(beam.model?.elements) && beam.model.elements.length === 2, 'double-span beam should have 2 elements');
@@ -274,6 +289,11 @@ const run = async () => {
     const truss = await svc.run({
       message: '建立一个平面桁架，长度5m，10kN轴向荷载并计算',
       mode: 'execute',
+      context: {
+        userDecision: 'allow_auto_decide',
+        autoCodeCheck: false,
+        includeReport: false,
+      },
     });
     assert(truss.success === true, 'planar truss draft should succeed');
     assert(Array.isArray(truss.model?.elements) && truss.model.elements[0]?.type === 'truss', 'truss draft should produce truss element');

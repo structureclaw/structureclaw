@@ -32,6 +32,8 @@ const agentRunSchema = z.object({
     includeReport: z.boolean().optional(),
     reportFormat: z.enum(['json', 'markdown', 'both']).optional(),
     reportOutput: z.enum(['inline', 'file']).optional(),
+    userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
+    providedValues: z.record(z.any()).optional(),
   }).optional(),
 });
 
