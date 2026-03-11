@@ -1,6 +1,6 @@
 # Agent Stream Protocol
 
-最后更新：2026-03-09
+最后更新：2026-03-11
 
 ## 1. 目标
 
@@ -75,13 +75,33 @@
 }
 ```
 
-### 3.3 `done`
+### 3.3 `interaction_update`
+
+在执行链路进入参数确认阶段时，服务端可先推送交互状态，再推送 `result`：
+
+```json
+{
+  "type": "interaction_update",
+  "content": {
+    "state": "confirming",
+    "stage": "model",
+    "turnId": "turn-001",
+    "questions": [],
+    "pending": {
+      "criticalMissing": ["跨度/长度（m）"],
+      "nonCriticalMissing": ["分析类型（static/dynamic/seismic/nonlinear）"]
+    }
+  }
+}
+```
+
+### 3.4 `done`
 
 ```json
 { "type": "done" }
 ```
 
-### 3.4 `error`
+### 3.5 `error`
 
 ```json
 { "type": "error", "error": "..." }
