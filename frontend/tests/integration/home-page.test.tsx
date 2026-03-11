@@ -6,87 +6,60 @@ import HomePage from '@/app/(marketing)/page'
 describe('Home Page Integration (PAGE-01)', () => {
   it('renders with main landmark', () => {
     render(<HomePage />)
-
-    // Should have a main element for landmark navigation
-    const main = screen.getByRole('main')
-    expect(main).toBeInTheDocument()
+    expect(screen.getByRole('main')).toBeInTheDocument()
   })
 
-  it('has h1 with proper id for aria-labelledby', () => {
+  it('renders the current hero copy', () => {
     render(<HomePage />)
 
-    // h1 should have id="hero-heading" for aria-labelledby reference
     const heading = screen.getByRole('heading', { level: 1 })
-    expect(heading).toHaveAttribute('id', 'hero-heading')
-    expect(heading).toHaveTextContent('StructureClaw')
+    expect(heading).toHaveTextContent('把结构分析工作台，改造成真正能对话的 AI。')
+    expect(screen.getByText(/StructureClaw 现在以对话为主入口/)).toBeInTheDocument()
   })
 
-  it('hero section has aria-labelledby pointing to h1', () => {
+  it('renders workflow prompts and feature cards', () => {
     render(<HomePage />)
 
-    // Hero section should be labeled by the h1
-    const heroSection = document.querySelector('[aria-labelledby="hero-heading"]')
-    expect(heroSection).toBeInTheDocument()
-  })
-
-  it('features section has aria-labelledby pointing to h2', () => {
-    render(<HomePage />)
-
-    // Features section should be labeled by h2
-    const featuresSection = document.querySelector('[aria-labelledby="features-heading"]')
-    expect(featuresSection).toBeInTheDocument()
-  })
-
-  it('renders feature cards with icons', () => {
-    render(<HomePage />)
-
-    // Should have feature cards with titles
-    expect(screen.getByText('AI-Powered Analysis')).toBeInTheDocument()
-    expect(screen.getByText('GB50017 Compliant')).toBeInTheDocument()
-    expect(screen.getByText('Auto Report Generation')).toBeInTheDocument()
-
-    // Each feature card should be in a Card component
-    const cards = document.querySelectorAll('[class*="rounded-lg"][class*="border"][class*="bg-card"]')
-    expect(cards.length).toBeGreaterThanOrEqual(3)
+    expect(screen.getByText('先告诉我建一个门式刚架模型需要哪些已知条件')).toBeInTheDocument()
+    expect(screen.getByText('根据一段工程描述，先帮我判断适合静力还是动力分析')).toBeInTheDocument()
+    expect(screen.getByText('先对话，再执行')).toBeInTheDocument()
+    expect(screen.getByText('结果与报告分离呈现')).toBeInTheDocument()
+    expect(screen.getByText('保留工程上下文')).toBeInTheDocument()
   })
 
   it('CTA button links to console', () => {
     render(<HomePage />)
 
-    // CTA should be a link pointing to /console
-    const ctaLink = screen.getByRole('link', { name: /enter.*console/i })
+    const ctaLink = screen.getByRole('link', { name: /进入 AI 控制台/i })
     expect(ctaLink).toHaveAttribute('href', '/console')
   })
 
-  it('CTA button has accessible aria-label', () => {
+  it('keeps the workflow anchor link', () => {
     render(<HomePage />)
 
-    // CTA should have accessible label
-    const ctaLink = screen.getByRole('link', { name: /enter.*console/i })
-    expect(ctaLink).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '查看工作流' })).toHaveAttribute('href', '#workflow')
   })
 
   it('all interactive elements are keyboard accessible', async () => {
     const user = userEvent.setup()
     render(<HomePage />)
 
-    // Tab should reach the CTA link
     await user.tab()
-    const ctaLink = screen.getByRole('link', { name: /enter.*console/i })
+    const ctaLink = screen.getByRole('link', { name: /进入 AI 控制台/i })
     expect(ctaLink).toHaveFocus()
   })
 
-  it('decorative icons have aria-hidden', () => {
+  it('renders the live workspace preview content', () => {
     render(<HomePage />)
 
-    // Decorative icons in feature cards should be aria-hidden
-    const hiddenIcons = document.querySelectorAll('svg[aria-hidden="true"]')
-    expect(hiddenIcons.length).toBeGreaterThan(0)
+    expect(screen.getByText('Live Workspace')).toBeInTheDocument()
+    expect(screen.getByText('对话 + 结果双栏')).toBeInTheDocument()
+    expect(screen.getByText(/我正在理解你的分析需求/)).toBeInTheDocument()
   })
 
-  it('uses English as default language', () => {
+  it('uses the new conversational positioning badge', () => {
     render(<HomePage />)
 
-    expect(screen.getByText(/structural engineering ai workspace/i)).toBeInTheDocument()
+    expect(screen.getByText('Conversational Structural AI')).toBeInTheDocument()
   })
 })

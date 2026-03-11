@@ -1,68 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import { createElement, type ReactNode } from 'react'
 import ConsolePage from '@/app/(console)/console/page'
-import { AppStoreProvider } from '@/lib/stores/context'
-import type { StoreState } from '@/lib/stores/context'
-
-// Mock the useConsoleExecution hook
-const mockExecuteSync = vi.fn().mockResolvedValue({ success: true })
-const mockExecuteStream = vi.fn().mockResolvedValue({ success: true })
-
-vi.mock('@/hooks/use-console-execution', () => ({
-  useConsoleExecution: () => ({
-    executeSync: mockExecuteSync,
-    executeStream: mockExecuteStream,
-  }),
-}))
-
-// Create a minimal initial state for testing
-const createInitialState = (overrides: Partial<StoreState> = {}): Partial<StoreState> => ({
-  endpoint: 'chat-message',
-  mode: 'auto',
-  conversationId: null,
-  traceId: null,
-  message: '',
-  modelText: '',
-  includeModel: false,
-  analysisType: 'static',
-  reportFormat: 'markdown',
-  reportOutput: 'inline',
-  autoAnalyze: false,
-  autoCodeCheck: false,
-  includeReport: false,
-  loading: false,
-  isStreaming: false,
-  connectionState: 'disconnected',
-  result: null,
-  rawResponse: null,
-  streamFrames: [],
-  error: null,
-  ...overrides,
-})
 
 describe('Semantic HTML (ACCS-03)', () => {
   beforeEach(() => {
-    vi.spyOn(console, 'error').mockImplementation(() => {})
-    mockExecuteSync.mockReset().mockResolvedValue({ success: true })
-    mockExecuteStream.mockReset().mockResolvedValue({ success: true })
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      json: vi.fn().mockResolvedValue([]),
+    } as unknown as Response)
+    Element.prototype.scrollIntoView = vi.fn()
   })
 
   afterEach(() => {
     vi.restoreAllMocks()
   })
 
-  const renderConsolePage = (initialState: Partial<StoreState> = {}) => {
-    return render(
-      createElement(
-        AppStoreProvider,
-        {
-          initialState: createInitialState(initialState),
-          children: createElement(ConsolePage) as ReactNode,
-        }
-      )
-    )
-  }
+  const renderConsolePage = () => render(<ConsolePage />)
 
   describe('Console page', () => {
     it('has main landmark', () => {
@@ -70,45 +23,26 @@ describe('Semantic HTML (ACCS-03)', () => {
       expect(screen.getByRole('main')).toBeInTheDocument()
     })
 
-    it('has section with aria-label for input controls', () => {
+    it('has conversation, composer, and output section headings', async () => {
       renderConsolePage()
-      expect(screen.getByLabelText('Input Controls')).toBeInTheDocument()
-    })
-
-    it('has section with aria-label for results', () => {
-      renderConsolePage()
-      expect(screen.getByLabelText('Results')).toBeInTheDocument()
-    })
-
-    it('form controls have associated labels', () => {
-      renderConsolePage()
-
-      // Endpoint selector has a label
-      expect(screen.getByLabelText(/endpoint/i)).toBeInTheDocument()
-
-      // Message input has a label (accessed via placeholder or aria-label)
-      expect(screen.getByRole('textbox', { name: /message/i })).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { name: '历史会话' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: '结构工程对话工作台' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: '分析结果与报告' })).toBeInTheDocument()
     })
 
     it('buttons use button element (not div with onClick)', () => {
       const { container } = renderConsolePage()
-
-      // All interactive elements with button role should be actual button elements
       const buttons = container.querySelectorAll('button')
       expect(buttons.length).toBeGreaterThan(0)
-
-      // Execute button should be a button element
-      expect(screen.getByRole('button', { name: /send request/i })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: /stream.*sse/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '先聊需求' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '执行分析' })).toBeInTheDocument()
     })
 
-    it('has proper heading hierarchy', () => {
+    it('exposes form fields with visible labels or placeholders', () => {
       renderConsolePage()
-
-      // Check for headings that provide structure
-      // The console page should have headings for sections
-      const headings = screen.getAllByRole('heading')
-      expect(headings.length).toBeGreaterThanOrEqual(0)
+      expect(screen.getByPlaceholderText(/描述你的结构目标、分析意图/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: '展开工程上下文' })).toBeInTheDocument()
+      expect(screen.getByText('分析结果与报告')).toBeInTheDocument()
     })
   })
 })

@@ -42,7 +42,7 @@ Object.defineProperties(HTMLElement.prototype, {
   },
 })
 
-// Mock ResizeObserver for react-resizable-panels
+// Mock ResizeObserver for jsdom-only layout calculations
 class MockResizeObserver {
   observe() {}
   unobserve() {}
@@ -50,8 +50,6 @@ class MockResizeObserver {
 }
 global.ResizeObserver = MockResizeObserver as unknown as typeof ResizeObserver
 
-// Mock EventSource for SSE hook testing
-// Track all instances for testing purposes
 const eventSourceInstances: MockEventSource[] = []
 
 class MockEventSource {

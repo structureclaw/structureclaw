@@ -26,10 +26,8 @@ describe('Route Groups (LAYT-03)', () => {
           <div>Content</div>
         </MarketingLayout>
       )
-      // Should have header element
       expect(screen.getByRole('banner')).toBeInTheDocument()
-      // Should have navigation to console
-      expect(screen.getByRole('link', { name: /console/i })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: '打开控制台' })).toBeInTheDocument()
     })
   })
 
@@ -39,22 +37,22 @@ describe('Route Groups (LAYT-03)', () => {
       expect(existsSync(layoutPath)).toBe(true)
     })
 
-    it('console layout includes SidebarProvider', () => {
+    it('console layout links back to home', () => {
       const layoutPath = path.join(process.cwd(), 'src/app/(console)/layout.tsx')
       const content = readFileSync(layoutPath, 'utf-8')
-      expect(content).toContain('SidebarProvider')
+      expect(content).toContain('返回首页')
     })
 
-    it('console layout includes AppSidebar component', () => {
+    it('console layout includes language toggle', () => {
       const layoutPath = path.join(process.cwd(), 'src/app/(console)/layout.tsx')
       const content = readFileSync(layoutPath, 'utf-8')
-      expect(content).toContain('AppSidebar')
+      expect(content).toContain('LanguageToggle')
     })
 
-    it('console layout includes Header component', () => {
+    it('console layout includes theme toggle', () => {
       const layoutPath = path.join(process.cwd(), 'src/app/(console)/layout.tsx')
       const content = readFileSync(layoutPath, 'utf-8')
-      expect(content).toContain('Header')
+      expect(content).toContain('ThemeToggle')
     })
   })
 

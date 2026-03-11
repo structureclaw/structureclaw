@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { AppStoreProvider, useStore, createAppStore, initStore } from '@/lib/stores/context'
-import type { StoreState } from '@/lib/stores/context'
-import { createElement, useState } from 'react'
 
 describe('Store Context (STAT-01)', () => {
   beforeEach(() => {
@@ -23,10 +21,9 @@ describe('Store Context (STAT-01)', () => {
   })
 
   it('useStore throws error when used outside AppStoreProvider', () => {
-    // Component that uses useStore outside provider
     function TestComponent() {
       try {
-        useStore((state) => state.endpoint)
+        useStore((state) => state.locale)
         return <div>No Error</div>
       } catch (e) {
         return <div>Error: {(e as Error).message}</div>
@@ -40,8 +37,8 @@ describe('Store Context (STAT-01)', () => {
 
   it('useStore returns selected state from store', () => {
     function TestComponent() {
-      const endpoint = useStore((state) => state.endpoint)
-      return <div data-testid="endpoint">{endpoint}</div>
+      const locale = useStore((state) => state.locale)
+      return <div data-testid="locale">{locale}</div>
     }
 
     render(
@@ -50,18 +47,18 @@ describe('Store Context (STAT-01)', () => {
       </AppStoreProvider>
     )
 
-    expect(screen.getByTestId('endpoint')).toHaveTextContent('chat-message')
+    expect(screen.getByTestId('locale')).toHaveTextContent('en')
   })
 
   it('Multiple components share same store instance within provider', () => {
     function ComponentA() {
-      const mode = useStore((state) => state.mode)
-      return <div data-testid="mode-a">{mode}</div>
+      const locale = useStore((state) => state.locale)
+      return <div data-testid="locale-a">{locale}</div>
     }
 
     function ComponentB() {
-      const mode = useStore((state) => state.mode)
-      return <div data-testid="mode-b">{mode}</div>
+      const locale = useStore((state) => state.locale)
+      return <div data-testid="locale-b">{locale}</div>
     }
 
     render(
@@ -71,27 +68,26 @@ describe('Store Context (STAT-01)', () => {
       </AppStoreProvider>
     )
 
-    // Both components should show the same initial value
-    expect(screen.getByTestId('mode-a')).toHaveTextContent('auto')
-    expect(screen.getByTestId('mode-b')).toHaveTextContent('auto')
+    expect(screen.getByTestId('locale-a')).toHaveTextContent('en')
+    expect(screen.getByTestId('locale-b')).toHaveTextContent('en')
   })
 
   it('Store state updates propagate to all consumers', async () => {
     function SetterComponent() {
-      const { mode, setMode } = useStore((state) => ({
-        mode: state.mode,
-        setMode: state.setMode,
+      const { locale, setLocale } = useStore((state) => ({
+        locale: state.locale,
+        setLocale: state.setLocale,
       }))
       return (
-        <button onClick={() => setMode('chat')} data-testid="setter">
-          Set Mode: {mode}
+        <button onClick={() => setLocale('zh')} data-testid="setter">
+          Set Locale: {locale}
         </button>
       )
     }
 
     function ReaderComponent() {
-      const mode = useStore((state) => state.mode)
-      return <div data-testid="reader">{mode}</div>
+      const locale = useStore((state) => state.locale)
+      return <div data-testid="reader">{locale}</div>
     }
 
     render(
@@ -101,17 +97,13 @@ describe('Store Context (STAT-01)', () => {
       </AppStoreProvider>
     )
 
-    // Initial state
-    expect(screen.getByTestId('setter')).toHaveTextContent('Set Mode: auto')
-    expect(screen.getByTestId('reader')).toHaveTextContent('auto')
-
-    // Click to update
+    expect(screen.getByTestId('setter')).toHaveTextContent('Set Locale: en')
+    expect(screen.getByTestId('reader')).toHaveTextContent('en')
     fireEvent.click(screen.getByTestId('setter'))
 
-    // Both components should reflect the change
     await waitFor(() => {
-      expect(screen.getByTestId('setter')).toHaveTextContent('Set Mode: chat')
-      expect(screen.getByTestId('reader')).toHaveTextContent('chat')
+      expect(screen.getByTestId('setter')).toHaveTextContent('Set Locale: zh')
+      expect(screen.getByTestId('reader')).toHaveTextContent('zh')
     })
   })
 })
@@ -119,42 +111,26 @@ describe('Store Context (STAT-01)', () => {
 describe('createAppStore and initStore', () => {
   it('initStore returns correct initial state', () => {
     const state = initStore()
-    expect(state.endpoint).toBe('chat-message')
-    expect(state.mode).toBe('auto')
-    expect(state.conversationId).toBeNull()
-    expect(state.traceId).toBeNull()
+    expect(state.locale).toBe('en')
   })
 
   it('createAppStore creates a store with initial state', () => {
     const store = createAppStore()
     const state = store.getState()
-    expect(state.endpoint).toBe('chat-message')
-    expect(state.mode).toBe('auto')
+    expect(state.locale).toBe('en')
   })
 
   it('createAppStore accepts custom initial state', () => {
-    const customState = initStore()
-    customState.endpoint = 'agent-run'
-    customState.mode = 'execute'
-
-    const store = createAppStore(customState)
+    const store = createAppStore({ locale: 'zh' })
     const state = store.getState()
 
-    expect(state.endpoint).toBe('agent-run')
-    expect(state.mode).toBe('execute')
+    expect(state.locale).toBe('zh')
   })
 
   it('store actions work correctly', () => {
     const store = createAppStore()
 
-    store.getState().setEndpoint('chat-execute')
-    expect(store.getState().endpoint).toBe('chat-execute')
-
-    store.getState().setConversationId('test-conv-123')
-    expect(store.getState().conversationId).toBe('test-conv-123')
-
-    store.getState().resetConsole()
-    expect(store.getState().endpoint).toBe('chat-message')
-    expect(store.getState().conversationId).toBeNull()
+    store.getState().setLocale('zh')
+    expect(store.getState().locale).toBe('zh')
   })
 })
