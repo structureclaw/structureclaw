@@ -1,6 +1,6 @@
 # StructureClaw 使用说明书（当前版本）
 
-最后更新：2026-03-09
+最后更新：2026-03-11
 适用版本：仓库主干当前代码（`0.1.0` 代）
 
 ## 1. 文档目标
@@ -30,21 +30,22 @@
 推荐环境：
 
 - Node.js >= 18
-- `uv`（推荐，用于创建 Python 3.11 虚拟环境）
-- Python >= 3.10
+- `curl` 或 `wget`（用于首次自动安装 `uv`）
 - PostgreSQL >= 14
 - Redis >= 7（可选）
 
 关键环境变量：
 
-- 根目录 `.env`：Docker/全局运行参数
-- `backend/.env`：
-  - `DATABASE_URL`
-  - `REDIS_URL`（可设 `disabled`）
-  - `ANALYSIS_ENGINE_URL`（默认 `http://localhost:8001`）
-  - `LLM_PROVIDER`、`LLM_API_KEY`、`ZAI_API_KEY`、`OPENAI_API_KEY`
-- `frontend/.env.local`：
-  - `NEXT_PUBLIC_API_URL=http://localhost:8000`
+- 根目录 `.env`：前端、后端、本地脚本、Docker 共用
+- `PORT`：后端端口
+- `FRONTEND_PORT`：前端本地开发端口
+- `CORE_PORT`：分析引擎端口
+- `NEXT_PUBLIC_API_URL`：前端请求后端地址
+- `ANALYSIS_ENGINE_URL`：后端访问分析引擎地址；留空时自动按 `CORE_PORT` 推导
+- `DATABASE_URL`
+- `REDIS_URL`（可设 `disabled`）
+- `LLM_PROVIDER`、`LLM_API_KEY`、`ZAI_API_KEY`、`OPENAI_API_KEY`
+- `CORS_ORIGINS`：留空时自动按 `FRONTEND_PORT` 和 `PORT` 推导
 
 ## 4. 启动方式
 
@@ -56,12 +57,24 @@ make start
 make status
 ```
 
+说明：
+
+- `make doctor` 会自动安装 `uv`（若缺失），并使用 `uv` 创建 `core/.venv`
+- 不再要求宿主机预装 Python
+
 常用管理命令：
 
 ```bash
 make stop
 make logs
 ```
+
+默认访问地址由根目录 `.env` 控制：
+
+- Web：`http://localhost:<FRONTEND_PORT>`
+- API：`http://localhost:<PORT>`
+- API Docs：`http://localhost:<PORT>/docs`
+- Analysis Engine：`http://localhost:<CORE_PORT>`
 
 ### 4.2 CLI 方式（与 openclaw 风格接近）
 
@@ -85,8 +98,9 @@ sclaw version
 
 ```bash
 make install
+make ensure-uv
 make db-init
-make setup-core-lite-uv
+make setup-core-lite
 make dev-backend
 make dev-frontend
 make dev-core-lite
@@ -197,13 +211,13 @@ make dev-core-lite
 ### 6.1 查询 Agent 工具协议
 
 ```bash
-curl -s http://localhost:8000/api/v1/agent/tools | jq .
+curl -s http://localhost:<PORT>/api/v1/agent/tools | jq .
 ```
 
 ### 6.2 触发 Agent 执行闭环
 
 ```bash
-curl -s -X POST http://localhost:8000/api/v1/agent/run \
+curl -s -X POST http://localhost:<PORT>/api/v1/agent/run \
   -H 'Content-Type: application/json' \
   -d '{
     "message": "请对模型做静力分析并按GB50017校核，生成报告",
@@ -238,13 +252,13 @@ curl -s -X POST http://localhost:8000/api/v1/agent/run \
 - 带 `context.model`：自动走执行链路
 
 ```bash
-curl -s -X POST http://localhost:8000/api/v1/chat/message \
+curl -s -X POST http://localhost:<PORT>/api/v1/chat/message \
   -H 'Content-Type: application/json' \
   -d '{"message":"帮我分析","mode":"auto"}' | jq .
 ```
 
 ```bash
-curl -s -X POST http://localhost:8000/api/v1/chat/message \
+curl -s -X POST http://localhost:<PORT>/api/v1/chat/message \
   -H 'Content-Type: application/json' \
   -d '{
     "message":"帮我分析",
@@ -256,7 +270,7 @@ curl -s -X POST http://localhost:8000/api/v1/chat/message \
 ### 6.4 Core 模型校验示例
 
 ```bash
-curl -s -X POST http://localhost:8001/validate \
+curl -s -X POST http://localhost:<CORE_PORT>/validate \
   -H 'Content-Type: application/json' \
   -d '{"model":{"schema_version":"1.0.0","nodes":[],"elements":[],"materials":[],"sections":[],"load_cases":[],"load_combinations":[]}}' | jq .
 ```
@@ -321,6 +335,7 @@ make logs
 说明：
 - `make logs`/`sclaw logs` 默认优先显示各服务“最近一次启动会话”日志，减少旧错误干扰。
 - 后端 `GET /` 返回 404 属于预期（请使用 `/health` 验证健康状态）。
+- 文档中的 `<PORT>/<FRONTEND_PORT>/<CORE_PORT>` 请替换为你根目录 `.env` 中的实际值。
 
 ### 8.1 常见前端排障
 

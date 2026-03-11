@@ -92,8 +92,7 @@ structureclaw/
 本地源码开发（非 Docker）时需要：
 
 - Node.js >= 18
-- `uv`（推荐，用于自动创建 Python 3.11 环境）
-- Python >= 3.10（未使用 `uv` 时）
+- `curl` 或 `wget`（用于首次自动安装 `uv`）
 - PostgreSQL >= 14（必须）
 - Redis >= 7（可选，不启用时自动降级内存缓存）
 
@@ -111,8 +110,8 @@ make status
 
 补充：
 
-- `make doctor`: 启动前自检（不拉起完整服务）
-- `make start`: 新手默认启动（lite 分析依赖 + uv 管理 Python 3.11）
+- `make doctor`: 启动前自检（会自动安装 `uv` 并补齐 `core/.venv`，不拉起完整服务）
+- `make start`: 新手默认启动（会自动安装 `uv`，再创建并使用 uv 管理的 Python 3.11）
 - `make status`: 查看进程和健康状态
 - `make stop`: 停止本地服务和基础设施
 - `make logs`: 查看日志（默认 frontend/backend/core）
@@ -174,8 +173,9 @@ make up
 
 ```bash
 make install
+make ensure-uv
 make db-init
-make setup-core-lite-uv
+make setup-core-lite
 make dev-backend
 make dev-frontend
 make dev-core-lite
@@ -205,10 +205,10 @@ make core-regression
 
 启动后访问：
 
-- Web: `http://localhost:3000`
-- API: `http://localhost:8000`
-- API Docs: `http://localhost:8000/docs`
-- Analysis Engine: `http://localhost:8001`
+- Web: `http://localhost:<FRONTEND_PORT>`
+- API: `http://localhost:<PORT>`
+- API Docs: `http://localhost:<PORT>/docs`
+- Analysis Engine: `http://localhost:<CORE_PORT>`
 
 ## 开发文档
 
@@ -226,36 +226,39 @@ make core-regression
 
 ### 根目录 `.env`
 
-用于 `docker compose`：
+前端、后端、本地启动脚本、`docker compose` 统一使用根目录 `.env`：
 
 ```bash
+NODE_ENV=development
+HOST=0.0.0.0
+PORT=8000
+FRONTEND_PORT=3000
+CORE_PORT=8001
+NEXT_PUBLIC_API_URL=http://localhost:<PORT>
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/structureclaw
+REDIS_URL=disabled
+JWT_SECRET=your-super-secret-jwt-key-change-in-production
+JWT_EXPIRES_IN=7d
 LLM_PROVIDER=openai
 LLM_API_KEY=
 LLM_MODEL=
 LLM_BASE_URL=
+ANALYSIS_ENGINE_URL=
+CORS_ORIGINS=
 OPENAI_API_KEY=
 ZAI_API_KEY=
 ```
-
-### `backend/.env`
-
-复制自 `backend/.env.example`，主要字段：
-
-- `DATABASE_URL`
-- `REDIS_URL`
-- `JWT_SECRET`
-- `ANALYSIS_ENGINE_URL`
-- `LLM_PROVIDER`（`openai | zhipu | openai-compatible`）
-- `LLM_API_KEY`
-- `LLM_MODEL`
-- `LLM_BASE_URL`
-- `ZAI_API_KEY`（智谱）
-- `OPENAI_API_KEY`（兼容保留）
 
 说明：
 
 - 未配置可用 LLM Key 时（`LLM_API_KEY/OPENAI_API_KEY/ZAI_API_KEY`），聊天接口自动降级提示
 - `REDIS_URL=disabled` 表示禁用 Redis，后端自动降级为内存缓存
+- `PORT` 控制后端端口
+- `FRONTEND_PORT` 控制前端本地 dev 端口
+- `CORE_PORT` 控制分析引擎本地端口
+- `NEXT_PUBLIC_API_URL` 控制前端请求后端地址
+- `ANALYSIS_ENGINE_URL` 留空时，自动按 `CORE_PORT` 推导为 `http://localhost:<CORE_PORT>`
+- `CORS_ORIGINS` 留空时，自动按 `FRONTEND_PORT` 和 `PORT` 推导
 - 智谱示例（兼容 OpenAI 接口）：
 ```bash
 LLM_PROVIDER=zhipu
@@ -280,14 +283,6 @@ npm run db:validate --prefix backend
 npm run db:deploy --prefix backend
 npm run db:seed --prefix backend
 npm run db:init --prefix backend
-```
-
-### `frontend/.env.local`
-
-可参考 `frontend/.env.example`：
-
-```bash
-NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
 ## 已验证的运行状态
