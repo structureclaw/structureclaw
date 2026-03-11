@@ -4,18 +4,12 @@ import { createContext, useContext, useRef, type ReactNode } from 'react'
 import { type StoreApi, useStore as useZustandStore } from 'zustand'
 import { createStore } from 'zustand/vanilla'
 import {
-  createConsoleSlice,
-  type ConsoleSlice,
-  initialConsoleState,
-} from './slices/console'
-import {
   createPreferencesSlice,
   type PreferencesSlice,
   initialPreferencesState,
 } from './slices/preferences'
 
-// Combine all slice types here
-export type StoreState = ConsoleSlice & PreferencesSlice
+export type StoreState = PreferencesSlice
 
 /**
  * Initialize the store with default state values.
@@ -24,7 +18,6 @@ export type StoreState = ConsoleSlice & PreferencesSlice
  */
 export const initStore = (): Partial<StoreState> => {
   return {
-    ...initialConsoleState,
     ...initialPreferencesState,
   }
 }
@@ -36,9 +29,7 @@ export const initStore = (): Partial<StoreState> => {
  */
 export const createAppStore = (initState?: Partial<StoreState>) => {
   return createStore<StoreState>()((set, get, store) => ({
-    ...createConsoleSlice(set, get, store),
     ...createPreferencesSlice(set, get, store),
-    // Override with any provided initial state values
     ...(initState || {}),
   }))
 }
