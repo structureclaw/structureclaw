@@ -80,6 +80,41 @@ describe('useConsoleExecution hook', () => {
       expect(payload).not.toHaveProperty('traceId')
     })
 
+    it('should send model and execution options inside context for agent-run', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({ response: 'ok' }),
+      })
+
+      const { result } = renderHook(() => {
+        const execution = useConsoleExecution()
+        const setEndpoint = useStore((state) => state.setEndpoint)
+        const setIncludeModel = useStore((state) => state.setIncludeModel)
+        const setModelText = useStore((state) => state.setModelText)
+        const setReportFormat = useStore((state) => state.setReportFormat)
+        return { execution, setEndpoint, setIncludeModel, setModelText, setReportFormat }
+      }, { wrapper })
+
+      act(() => {
+        result.current.setEndpoint('agent-run')
+        result.current.setIncludeModel(true)
+        result.current.setModelText('{"nodes":[]}')
+        result.current.setReportFormat('both')
+      })
+
+      await act(async () => {
+        await result.current.execution.executeSync()
+      })
+
+      const [, options] = mockFetch.mock.calls[0]
+      const payload = JSON.parse(options.body)
+      expect(payload.context.model).toEqual({ nodes: [] })
+      expect(payload.context.modelFormat).toBe('structuremodel-v1')
+      expect(payload.context.analysisType).toBe('static')
+      expect(payload.context.reportFormat).toBe('both')
+      expect(payload).not.toHaveProperty('analysisType')
+    })
+
     it('should validate model JSON before sending when includeModel is true', async () => {
       const { result } = renderHook(() => {
         const store = useStore((state) => ({
@@ -100,7 +135,7 @@ describe('useConsoleExecution hook', () => {
             conversationId: null,
             traceId: null,
             message: 'validate model',
-            analysisType: 'none',
+            analysisType: 'static',
             reportFormat: 'markdown',
             reportOutput: 'inline',
             autoAnalyze: false,
@@ -230,7 +265,7 @@ describe('useConsoleExecution hook', () => {
         read: vi.fn()
           .mockResolvedValueOnce({
             done: false,
-            value: new TextEncoder().encode('data: {"type":"text","content":"Hello"}\n\n'),
+            value: new TextEncoder().encode('data: {"type":"token","content":"Hello"}\n\n'),
           })
           .mockResolvedValueOnce({ done: true, value: undefined }),
       }
@@ -254,8 +289,8 @@ describe('useConsoleExecution hook', () => {
 
     it('should parse stream frames', async () => {
       const frames = [
-        { type: 'text', content: 'Hello' },
-        { type: 'text', content: ' World' },
+        { type: 'token', content: 'Hello' },
+        { type: 'token', content: ' World' },
       ]
 
       const mockReader = {
@@ -286,8 +321,7 @@ describe('useConsoleExecution hook', () => {
         await result.current.execution.executeStream()
       })
 
-      // Stream frames should have been collected
-      expect(result.current.streamFrames.length).toBeGreaterThanOrEqual(0)
+      expect(result.current.streamFrames).toEqual(frames)
     })
 
     it('should update connection state during streaming', async () => {
@@ -295,7 +329,7 @@ describe('useConsoleExecution hook', () => {
         read: vi.fn()
           .mockResolvedValueOnce({
             done: false,
-            value: new TextEncoder().encode('data: {"type":"text","content":"test"}\n\n'),
+            value: new TextEncoder().encode('data: {"type":"token","content":"test"}\n\n'),
           })
           .mockResolvedValueOnce({ done: true, value: undefined }),
       }

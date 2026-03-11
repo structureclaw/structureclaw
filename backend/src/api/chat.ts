@@ -230,60 +230,73 @@ export async function chatRoutes(fastify: FastifyInstance) {
     const userId = request.user?.id;
     const mode = body.mode || 'auto';
 
+    reply.hijack();
     reply.raw.setHeader('Content-Type', 'text/event-stream');
     reply.raw.setHeader('Cache-Control', 'no-cache');
     reply.raw.setHeader('Connection', 'keep-alive');
+    reply.raw.setHeader('X-Accel-Buffering', 'no');
+    reply.raw.flushHeaders?.();
 
     const shouldExecute = mode === 'execute'
       || (mode === 'auto' && (Boolean(body.context?.model) || agentService.shouldRouteToExecute(body.message)));
 
-    if (shouldExecute) {
-      const stream = agentService.runStream({
+    try {
+      if (shouldExecute) {
+        const stream = agentService.runStream({
+          message: body.message,
+          mode: 'execute',
+          conversationId: body.conversationId,
+          traceId: body.traceId,
+          context: {
+            model: body.context?.model,
+            modelFormat: body.context?.modelFormat,
+            analysisType: body.context?.analysisType,
+            parameters: body.context?.parameters,
+            autoAnalyze: body.context?.autoAnalyze,
+            autoCodeCheck: body.context?.autoCodeCheck,
+            designCode: body.context?.designCode,
+            codeCheckElements: body.context?.codeCheckElements,
+            includeReport: body.context?.includeReport,
+            reportFormat: body.context?.reportFormat,
+            reportOutput: body.context?.reportOutput,
+            userDecision: body.context?.userDecision,
+            providedValues: body.context?.providedValues,
+          },
+        });
+
+        for await (const chunk of stream) {
+          reply.raw.write(`data: ${JSON.stringify(normalizeStreamChunkError(chunk))}\n\n`);
+        }
+        reply.raw.write('data: [DONE]\n\n');
+        reply.raw.end();
+        return;
+      }
+
+      const stream = await chatService.streamMessage({
         message: body.message,
-        mode: 'execute',
         conversationId: body.conversationId,
-        traceId: body.traceId,
+        userId,
         context: {
-          model: body.context?.model,
-          modelFormat: body.context?.modelFormat,
+          projectId: body.context?.projectId,
           analysisType: body.context?.analysisType,
-          parameters: body.context?.parameters,
-          autoAnalyze: body.context?.autoAnalyze,
-          autoCodeCheck: body.context?.autoCodeCheck,
-          designCode: body.context?.designCode,
-          codeCheckElements: body.context?.codeCheckElements,
-          includeReport: body.context?.includeReport,
-          reportFormat: body.context?.reportFormat,
-          reportOutput: body.context?.reportOutput,
-          userDecision: body.context?.userDecision,
-          providedValues: body.context?.providedValues,
         },
       });
 
       for await (const chunk of stream) {
         reply.raw.write(`data: ${JSON.stringify(normalizeStreamChunkError(chunk))}\n\n`);
       }
+
       reply.raw.write('data: [DONE]\n\n');
       reply.raw.end();
-      return;
+    } catch (error) {
+      request.log.error({ err: error }, 'Unexpected error in /api/v1/chat/stream');
+      reply.raw.write(`data: ${JSON.stringify({
+        type: 'error',
+        error: error instanceof Error ? error.message : 'stream failed',
+      })}\n\n`);
+      reply.raw.write('data: [DONE]\n\n');
+      reply.raw.end();
     }
-
-    const stream = await chatService.streamMessage({
-      message: body.message,
-      conversationId: body.conversationId,
-      userId,
-      context: {
-        projectId: body.context?.projectId,
-        analysisType: body.context?.analysisType,
-      },
-    });
-
-    for await (const chunk of stream) {
-      reply.raw.write(`data: ${JSON.stringify(normalizeStreamChunkError(chunk))}\n\n`);
-    }
-
-    reply.raw.write('data: [DONE]\n\n');
-    reply.raw.end();
   });
 
   // 执行模式：复用 Agent 工具编排链路

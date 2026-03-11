@@ -60,6 +60,30 @@ const pruneEmptyValues = <T,>(value: T): T => {
   return value
 }
 
+const parseModel = (value: string): Record<string, unknown> | undefined => {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return undefined
+  }
+
+  const parsed = JSON.parse(trimmed)
+  return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+    ? parsed as Record<string, unknown>
+    : undefined
+}
+
+const normalizeResult = (data: unknown): AgentResult => {
+  const payload = data && typeof data === 'object' && 'result' in data
+    ? (data as { result?: unknown }).result
+    : data
+
+  if (!payload || typeof payload !== 'object') {
+    return {}
+  }
+
+  return payload as AgentResult
+}
+
 /**
  * useConsoleExecution - Hook for console execution operations
  *
@@ -119,18 +143,23 @@ export function useConsoleExecution() {
    * Build request payload based on endpoint type
    */
   const buildPayload = useCallback(() => {
-    const context = includeModel
-      ? {
-          modelText,
-          includeModel,
-        }
-      : undefined
+    const parsedModel = includeModel ? parseModel(modelText) : undefined
+    const context = pruneEmptyValues({
+      model: parsedModel,
+      modelFormat: parsedModel ? 'structuremodel-v1' : undefined,
+      analysisType,
+      autoAnalyze,
+      autoCodeCheck,
+      includeReport,
+      reportFormat,
+      reportOutput,
+    })
 
     const basePayload = {
       message: message.trim(),
       conversationId: normalizeOptionalString(conversationId),
       traceId: normalizeOptionalString(traceId),
-      context: pruneEmptyValues(context),
+      context,
     }
 
     switch (endpoint) {
@@ -138,21 +167,12 @@ export function useConsoleExecution() {
         return basePayload as ChatMessageRequest
 
       case 'chat-execute':
-        return pruneEmptyValues({
-          ...basePayload,
-          mode,
-        }) as ChatExecuteRequest
+        return pruneEmptyValues(basePayload) as ChatExecuteRequest
 
       case 'agent-run':
         return pruneEmptyValues({
           ...basePayload,
           mode,
-          analysisType,
-          reportFormat,
-          reportOutput,
-          autoAnalyze,
-          autoCodeCheck,
-          includeReport,
         }) as AgentRunRequest
 
       default:
@@ -221,14 +241,7 @@ export function useConsoleExecution() {
 
       const data = await response.json()
       setRawResponse(data)
-
-      // Parse as AgentResult
-      const result: AgentResult = {
-        response: data.response || data.message || '',
-        conversationId: data.conversationId,
-        traceId: data.traceId,
-        data: data.data,
-      }
+      const result = normalizeResult(data)
 
       setResult(result)
       setConnectionState('connected')
@@ -321,33 +334,38 @@ export function useConsoleExecution() {
 
         buffer += decoder.decode(value, { stream: true })
 
-        // Parse SSE frames (data: prefix)
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || '' // Keep incomplete line in buffer
+        const chunks = buffer.split('\n\n')
+        buffer = chunks.pop() || ''
 
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            const data = line.slice(6)
-            try {
-              const frame = JSON.parse(data) as StreamFrame
-              frames.push(frame)
+        for (const chunk of chunks) {
+          const line = chunk
+            .split('\n')
+            .map((item) => item.trim())
+            .find((item) => item.startsWith('data:'))
 
-              // If this is a complete frame, parse the final result
-              if (frame.type === 'complete') {
-                const resultData = typeof frame.content === 'string'
-                  ? JSON.parse(frame.content)
-                  : frame.content
+          if (!line) {
+            continue
+          }
 
-                setResult({
-                  response: resultData.response || '',
-                  conversationId: resultData.conversationId,
-                  traceId: resultData.traceId,
-                  data: resultData.data,
-                })
-              }
-            } catch {
-              // Skip unparseable frames
+          const data = line.slice(5).trim()
+          if (!data || data === '[DONE]') {
+            continue
+          }
+
+          try {
+            const frame = JSON.parse(data) as StreamFrame
+            frames.push(frame)
+
+            if (frame.type === 'result' && frame.content && typeof frame.content === 'object') {
+              setResult(frame.content as AgentResult)
+              setRawResponse(frame.content as Record<string, unknown>)
             }
+
+            if (frame.type === 'error') {
+              setError({ message: frame.error || 'Unknown error occurred' })
+            }
+          } catch {
+            // Skip unparseable frames
           }
         }
       }

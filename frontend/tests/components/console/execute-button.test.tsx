@@ -55,7 +55,7 @@ describe('ExecuteButton (CONS-07)', () => {
         message: 'hello',
         modelText: '',
         includeModel: false,
-        analysisType: 'none',
+        analysisType: 'static',
         reportFormat: 'markdown',
         reportOutput: 'inline',
         autoAnalyze: false,

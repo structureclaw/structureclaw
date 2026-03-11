@@ -36,7 +36,7 @@ const createInitialState = (): Partial<StoreState> => ({
   message: 'Keyboard test message',
   modelText: '',
   includeModel: false,
-  analysisType: 'none',
+  analysisType: 'static',
   reportFormat: 'markdown',
   reportOutput: 'inline',
   autoAnalyze: false,

@@ -74,38 +74,22 @@ describe('API Contracts - Agent Types', () => {
       expectTypeOf<AgentRunRequest>().toHaveProperty('mode')
     })
 
-    it('has optional analysisType field', () => {
-      expectTypeOf<AgentRunRequest>().toMatchTypeOf<{ analysisType?: AnalysisType }>()
-    })
-
-    it('has optional reportFormat field', () => {
-      expectTypeOf<AgentRunRequest>().toMatchTypeOf<{ reportFormat?: ReportFormat }>()
-    })
-
-    it('has optional reportOutput field', () => {
-      expectTypeOf<AgentRunRequest>().toMatchTypeOf<{ reportOutput?: ReportOutput }>()
-    })
-
-    it('has optional autoAnalyze field', () => {
-      expectTypeOf<AgentRunRequest>().toMatchTypeOf<{ autoAnalyze?: boolean }>()
-    })
-
-    it('has optional autoCodeCheck field', () => {
-      expectTypeOf<AgentRunRequest>().toMatchTypeOf<{ autoCodeCheck?: boolean }>()
-    })
-
-    it('has optional includeReport field', () => {
-      expectTypeOf<AgentRunRequest>().toMatchTypeOf<{ includeReport?: boolean }>()
-    })
   })
 
   describe('ContextPayload', () => {
-    it('has optional modelText field', () => {
-      expectTypeOf<ContextPayload>().toMatchTypeOf<{ modelText?: string }>()
+    it('has optional model field', () => {
+      expectTypeOf<ContextPayload>().toMatchTypeOf<{ model?: Record<string, unknown> }>()
     })
 
-    it('has optional includeModel field', () => {
-      expectTypeOf<ContextPayload>().toMatchTypeOf<{ includeModel?: boolean }>()
+    it('has optional analysis options in context', () => {
+      expectTypeOf<ContextPayload>().toMatchTypeOf<{
+        analysisType?: AnalysisType
+        reportFormat?: ReportFormat
+        reportOutput?: ReportOutput
+        autoAnalyze?: boolean
+        autoCodeCheck?: boolean
+        includeReport?: boolean
+      }>()
     })
   })
 

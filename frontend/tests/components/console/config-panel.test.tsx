@@ -46,10 +46,10 @@ describe('ConfigPanel (CONS-05, CONS-06)', () => {
     fireEvent.click(trigger)
 
     // Check options exist
-    expect(screen.getByRole('option', { name: /none/i })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: /structural/i })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: /code/i })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: /comprehensive/i })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /static/i })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /dynamic/i })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /seismic/i })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /nonlinear/i })).toBeInTheDocument()
   })
 
   it('reportFormat select has correct options', async () => {
@@ -60,9 +60,9 @@ describe('ConfigPanel (CONS-05, CONS-06)', () => {
     fireEvent.click(trigger)
 
     // Check options exist
-    expect(screen.getByRole('option', { name: /markdown/i })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: /html/i })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: /json/i })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /markdown/i })).toBeInTheDocument()
+    expect(screen.getByRole('option', { name: /both/i })).toBeInTheDocument()
   })
 
   it('reportOutput select has correct options', async () => {
@@ -75,7 +75,6 @@ describe('ConfigPanel (CONS-05, CONS-06)', () => {
     // Check options exist
     expect(screen.getByRole('option', { name: /inline/i })).toBeInTheDocument()
     expect(screen.getByRole('option', { name: /file/i })).toBeInTheDocument()
-    expect(screen.getByRole('option', { name: /both/i })).toBeInTheDocument()
   })
 
   it('renders three execution checkboxes', () => {
@@ -93,8 +92,8 @@ describe('ConfigPanel (CONS-05, CONS-06)', () => {
     const trigger = screen.getByRole('combobox', { name: /analysis type/i })
     fireEvent.click(trigger)
 
-    // Select structural
-    const option = screen.getByRole('option', { name: /structural/i })
+    // Select static
+    const option = screen.getByRole('option', { name: /static/i })
     fireEvent.click(option)
 
     // Verify store updated - use a test component to read store
@@ -109,8 +108,7 @@ describe('ConfigPanel (CONS-05, CONS-06)', () => {
       </AppStoreProvider>
     )
 
-    // The default should be 'none'
-    expect(screen.getByTestId('store-analysis-type')).toHaveTextContent('none')
+    expect(screen.getByTestId('store-analysis-type')).toHaveTextContent('static')
   })
 
   it('toggling checkbox updates store', async () => {

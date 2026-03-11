@@ -51,10 +51,10 @@ export function ConfigPanel() {
               <SelectValue placeholder="Select analysis type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="none">none</SelectItem>
-              <SelectItem value="structural">structural</SelectItem>
-              <SelectItem value="code">code</SelectItem>
-              <SelectItem value="comprehensive">comprehensive</SelectItem>
+              <SelectItem value="static">static</SelectItem>
+              <SelectItem value="dynamic">dynamic</SelectItem>
+              <SelectItem value="seismic">seismic</SelectItem>
+              <SelectItem value="nonlinear">nonlinear</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -72,9 +72,9 @@ export function ConfigPanel() {
               <SelectValue placeholder="Select report format" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="markdown">markdown</SelectItem>
-              <SelectItem value="html">html</SelectItem>
               <SelectItem value="json">json</SelectItem>
+              <SelectItem value="markdown">markdown</SelectItem>
+              <SelectItem value="both">both</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -94,7 +94,6 @@ export function ConfigPanel() {
             <SelectContent>
               <SelectItem value="inline">inline</SelectItem>
               <SelectItem value="file">file</SelectItem>
-              <SelectItem value="both">both</SelectItem>
             </SelectContent>
           </Select>
         </div>

@@ -25,7 +25,7 @@ const createInitialState = (overrides: Partial<StoreState> = {}): Partial<StoreS
   message: '',
   modelText: '',
   includeModel: false,
-  analysisType: 'none',
+  analysisType: 'static',
   reportFormat: 'markdown',
   reportOutput: 'inline',
   autoAnalyze: false,

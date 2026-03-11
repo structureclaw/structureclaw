@@ -1,91 +1,9 @@
-'use client'
+import { AIConsole } from '@/components/chat'
 
-import { useStore } from '@/lib/stores/context'
-import { useI18n } from '@/lib/i18n'
-import { SplitPanel } from '@/components/layout/split-panel'
-import {
-  EndpointSelector,
-  MessageInput,
-  ModelJsonPanel,
-  ConfigPanel,
-  ExecuteButton,
-  ResultDisplay,
-  ArtifactsList,
-  DebugOutput,
-  StatusIndicator,
-  ErrorDisplay,
-  ClarificationPrompt,
-} from '@/components/console'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-
-/**
- * Console Page - Complete console composition with split panel layout
- *
- * Composes all console components into a cohesive experience:
- * - Left panel: Input controls (endpoint, message, model, config)
- * - Right panel: Results and debug output
- *
- * Accessibility features:
- * - Main landmark with aria-label for screen reader navigation
- * - Sections with aria-labels for semantic structure
- * - aria-live region for dynamic content announcements
- */
 export default function ConsolePage() {
-  const result = useStore((state) => state.result)
-  const connectionState = useStore((state) => state.connectionState)
-  const error = useStore((state) => state.error)
-  const { t } = useI18n()
-  const hasResultContent = Boolean(result || error)
-
   return (
-    <main className="h-[calc(100vh-8rem)]" aria-label={t('agentConsole')}>
-      <SplitPanel
-        defaultLayout={[40, 60]}
-        direction="horizontal"
-        className="h-full"
-        left={
-          <section aria-label={t('inputControls')} className="p-4 space-y-4 overflow-auto h-full">
-            <EndpointSelector />
-            <MessageInput />
-            <ModelJsonPanel />
-            <ConfigPanel />
-            <div className="flex items-center justify-between pt-2">
-              <StatusIndicator state={connectionState} />
-              <ExecuteButton />
-            </div>
-          </section>
-        }
-        right={
-          <section aria-label={t('results')} aria-live="polite" className="p-4 space-y-4 overflow-auto h-full">
-            {/* Error display */}
-            <ErrorDisplay error={error} />
-
-            {/* Clarification prompt */}
-            {result?.clarification && <ClarificationPrompt clarification={result.clarification} />}
-
-            {/* Result display */}
-            {result && <ResultDisplay result={result} />}
-
-            {!hasResultContent && (
-              <Card>
-                <CardHeader>
-                  <CardTitle>{t('noResultsYet')}</CardTitle>
-                  <CardDescription>{t('noResultsHint')}</CardDescription>
-                </CardHeader>
-                <CardContent className="text-sm text-muted-foreground">
-                  {t('executeHint')}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Artifacts list */}
-            {result?.artifacts && <ArtifactsList artifacts={result.artifacts} />}
-
-            {/* Debug output */}
-            <DebugOutput />
-          </section>
-        }
-      />
+    <main>
+      <AIConsole />
     </main>
   )
 }

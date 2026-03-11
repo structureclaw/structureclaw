@@ -67,8 +67,6 @@ describe('Console Execution Integration (CONS-05, CONS-06, CONS-07, CONS-12)', (
     expect(screen.getByRole('combobox', { name: /analysis type/i })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: /report format/i })).toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: /report output/i })).toBeInTheDocument()
-    expect(screen.getByRole('checkbox', { name: /include model/i })).toBeInTheDocument()
-
     // Execute buttons
     expect(screen.getByRole('button', { name: /send request/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /stream.*sse/i })).toBeInTheDocument()
@@ -141,9 +139,9 @@ describe('Console Execution Integration (CONS-05, CONS-06, CONS-07, CONS-12)', (
     const analysisTrigger = screen.getByRole('combobox', { name: /analysis type/i })
     fireEvent.click(analysisTrigger)
 
-    // Select structural
-    const structuralOption = screen.getByRole('option', { name: /structural/i })
-    fireEvent.click(structuralOption)
+    // Select dynamic
+    const dynamicOption = screen.getByRole('option', { name: /dynamic/i })
+    fireEvent.click(dynamicOption)
 
     // Toggle a checkbox
     const autoAnalyzeCheckbox = screen.getByRole('checkbox', { name: /auto analyze/i })
@@ -165,6 +163,9 @@ describe('Console Execution Integration (CONS-05, CONS-06, CONS-07, CONS-12)', (
 
     // Initially not loading
     expect(screen.getByTestId('loading').textContent).toBe('false')
+
+    const messageTextarea = screen.getByLabelText(/message/i)
+    fireEvent.change(messageTextarea, { target: { value: 'Test message' } })
 
     // Click execute
     const sendButton = screen.getByRole('button', { name: /send request/i })
@@ -195,7 +196,7 @@ describe('Console Execution Integration (CONS-05, CONS-06, CONS-07, CONS-12)', (
       read: vi.fn()
         .mockResolvedValueOnce({
           done: false,
-          value: new TextEncoder().encode('data: {"type":"text","content":"Stream test"}\n\n'),
+          value: new TextEncoder().encode('data: {"type":"token","content":"Stream test"}\n\n'),
         })
         .mockResolvedValueOnce({ done: true, value: undefined }),
     }
@@ -206,6 +207,9 @@ describe('Console Execution Integration (CONS-05, CONS-06, CONS-07, CONS-12)', (
     })
 
     renderConsole()
+
+    const messageTextarea = screen.getByLabelText(/message/i)
+    fireEvent.change(messageTextarea, { target: { value: 'Test message' } })
 
     // Click stream button
     const streamButton = screen.getByRole('button', { name: /stream.*sse/i })

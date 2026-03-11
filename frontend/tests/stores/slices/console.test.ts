@@ -107,7 +107,7 @@ describe('Console Slice Extended State (CONS-01, CONS-02, CONS-03, CONS-04)', ()
 
     it('has analysisType field in initial state', () => {
       const store = createTestStore()
-      expect(store.getState().analysisType).toBe('none')
+      expect(store.getState().analysisType).toBe('static')
     })
 
     it('has reportFormat field in initial state', () => {
@@ -194,14 +194,14 @@ describe('Console Slice Extended State (CONS-01, CONS-02, CONS-03, CONS-04)', ()
 
     it('setAnalysisType updates analysisType field', () => {
       const store = createTestStore()
-      store.getState().setAnalysisType('structural')
-      expect(store.getState().analysisType).toBe('structural')
+      store.getState().setAnalysisType('dynamic')
+      expect(store.getState().analysisType).toBe('dynamic')
     })
 
     it('setReportFormat updates reportFormat field', () => {
       const store = createTestStore()
-      store.getState().setReportFormat('html')
-      expect(store.getState().reportFormat).toBe('html')
+      store.getState().setReportFormat('both')
+      expect(store.getState().reportFormat).toBe('both')
     })
 
     it('setReportOutput updates reportOutput field', () => {
@@ -261,7 +261,7 @@ describe('Console Slice Extended State (CONS-01, CONS-02, CONS-03, CONS-04)', ()
 
     it('setStreamFrames updates streamFrames field', () => {
       const store = createTestStore()
-      const frames: StreamFrame[] = [{ type: 'text', content: 'hello' }]
+      const frames: StreamFrame[] = [{ type: 'token', content: 'hello' }]
       store.getState().setStreamFrames(frames)
       expect(store.getState().streamFrames).toEqual(frames)
     })
@@ -282,8 +282,8 @@ describe('Console Slice Extended State (CONS-01, CONS-02, CONS-03, CONS-04)', ()
       store.getState().setMessage('test message')
       store.getState().setModelText('{"test": true}')
       store.getState().setIncludeModel(true)
-      store.getState().setAnalysisType('structural')
-      store.getState().setReportFormat('html')
+      store.getState().setAnalysisType('dynamic')
+      store.getState().setReportFormat('both')
       store.getState().setReportOutput('file')
       store.getState().setAutoAnalyze(true)
       store.getState().setAutoCodeCheck(true)
@@ -292,7 +292,7 @@ describe('Console Slice Extended State (CONS-01, CONS-02, CONS-03, CONS-04)', ()
       store.getState().setConnectionState('connected')
       store.getState().setResult({ response: 'test' })
       store.getState().setRawResponse({ raw: 'data' })
-      store.getState().setStreamFrames([{ type: 'text' }])
+      store.getState().setStreamFrames([{ type: 'token' }])
       store.getState().setError({ message: 'error' })
 
       // Reset
@@ -302,7 +302,7 @@ describe('Console Slice Extended State (CONS-01, CONS-02, CONS-03, CONS-04)', ()
       expect(store.getState().message).toBe('')
       expect(store.getState().modelText).toBe('')
       expect(store.getState().includeModel).toBe(false)
-      expect(store.getState().analysisType).toBe('none')
+      expect(store.getState().analysisType).toBe('static')
       expect(store.getState().reportFormat).toBe('markdown')
       expect(store.getState().reportOutput).toBe('inline')
       expect(store.getState().autoAnalyze).toBe(false)

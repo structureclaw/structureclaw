@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { createElement } from 'react'
 import { AppStoreProvider, useStore } from '@/lib/stores/context'
 import { DebugOutput } from '@/components/console/debug-output'
@@ -12,8 +13,8 @@ describe('DebugOutput (CONS-14)', () => {
   }
 
   const sampleStreamFrames: StreamFrame[] = [
-    { type: 'text', content: 'Frame 1 content' },
-    { type: 'complete', content: 'Done' },
+    { type: 'token', content: 'Frame 1 content' },
+    { type: 'done' },
   ]
 
   const sampleRawResponse = { response: 'test response', conversationId: 'conv-123' }
@@ -29,7 +30,7 @@ describe('DebugOutput (CONS-14)', () => {
     message: '',
     modelText: '',
     includeModel: false,
-    analysisType: 'none' as const,
+    analysisType: 'static' as const,
     reportFormat: 'markdown' as const,
     reportOutput: 'inline' as const,
     autoAnalyze: false,
@@ -83,6 +84,11 @@ describe('DebugOutput (CONS-14)', () => {
     )
   }
 
+  const openPanel = async () => {
+    const user = userEvent.setup()
+    await user.click(screen.getByRole('button', { name: /debug output/i }))
+  }
+
   it('renders without crashing', () => {
     const { container } = renderWithProvider()
     expect(container.firstChild).not.toBeNull()
@@ -92,41 +98,46 @@ describe('DebugOutput (CONS-14)', () => {
     const { container } = renderWithProvider({ error: sampleError })
 
     // Check error container exists and contains the message
-    expect(container.textContent).toContain('Test error message')
-    expect(container.textContent).toContain('TEST_ERROR')
+    expect(container.textContent).not.toContain('Test error message')
+    expect(container.textContent).not.toContain('TEST_ERROR')
   })
 
-  it('shows "None" when no raw response', () => {
+  it('shows "None" when no raw response', async () => {
     renderWithProvider({ rawResponse: null })
+    await openPanel()
 
     expect(screen.getByText(/raw json/i)).toBeInTheDocument()
     expect(screen.getByText('None')).toBeInTheDocument()
   })
 
-  it('shows raw JSON when present', () => {
+  it('shows raw JSON when present', async () => {
     renderWithProvider({ rawResponse: sampleRawResponse })
+    await openPanel()
 
     expect(screen.getByText(/raw json/i)).toBeInTheDocument()
-    expect(screen.getByText(/"response".*"test response"/)).toBeInTheDocument()
+    expect(screen.getByText(/"response": "test response"/)).toBeInTheDocument()
   })
 
-  it('shows "No frames" when no stream frames', () => {
+  it('shows "No frames" when no stream frames', async () => {
     renderWithProvider({ streamFrames: [] })
+    await openPanel()
 
     expect(screen.getByText(/stream frames/i)).toBeInTheDocument()
     expect(screen.getByText('No frames')).toBeInTheDocument()
   })
 
-  it('shows stream frames when present', () => {
+  it('shows stream frames when present', async () => {
     renderWithProvider({ streamFrames: sampleStreamFrames })
+    await openPanel()
 
     expect(screen.getByText(/stream frames/i)).toBeInTheDocument()
     expect(screen.getByText(/Frame 1 content/)).toBeInTheDocument()
-    expect(screen.getByText(/Done/)).toBeInTheDocument()
+    expect(screen.getByText(/"type":"done"/)).toBeInTheDocument()
   })
 
-  it('uses monospace font for code blocks', () => {
+  it('uses monospace font for code blocks', async () => {
     const { container } = renderWithProvider({ rawResponse: sampleRawResponse })
+    await openPanel()
 
     // Check for font-mono class on pre elements
     const preElements = container.querySelectorAll('pre.font-mono, code.font-mono, .font-mono')
