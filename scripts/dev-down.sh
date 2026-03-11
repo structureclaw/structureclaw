@@ -4,6 +4,16 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PID_DIR="$ROOT_DIR/.runtime/pids"
+ROOT_ENV_FILE="$ROOT_DIR/.env"
+CORE_PORT=8001
+
+if [[ -f "$ROOT_ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ROOT_ENV_FILE"
+  set +a
+  CORE_PORT="${CORE_PORT:-8001}"
+fi
 
 list_descendants() {
   local pid="$1"
@@ -94,7 +104,7 @@ stop_service "core"
 
 stop_orphan_matches "frontend" "$ROOT_DIR/frontend/node_modules/.bin/next dev"
 stop_orphan_matches "backend" "$ROOT_DIR/backend/node_modules/.bin/tsx watch src/index.ts"
-stop_orphan_matches "core" "$ROOT_DIR/core/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload --app-dir core"
+stop_orphan_matches "core" "$ROOT_DIR/core/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port $CORE_PORT --reload --app-dir core"
 
 echo "Stopping local infrastructure..."
 docker compose -f "$ROOT_DIR/docker-compose.yml" stop postgres redis >/dev/null 2>&1 || true

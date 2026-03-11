@@ -6,15 +6,19 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RUNTIME_DIR="$ROOT_DIR/.runtime"
 LOG_DIR="$RUNTIME_DIR/logs"
 PID_DIR="$RUNTIME_DIR/pids"
-BACKEND_ENV_FILE="$ROOT_DIR/backend/.env"
+ROOT_ENV_FILE="$ROOT_DIR/.env"
+FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+BACKEND_PORT="${PORT:-8000}"
+CORE_PORT="${CORE_PORT:-8001}"
 CORE_PROFILE="lite"
-CORE_ENV_MANAGER="auto"
+CORE_ENV_MANAGER="uv"
 SKIP_INFRA=0
 SKIP_DB_INIT=0
+UV_LOCAL_BIN="${UV_INSTALL_DIR:-$HOME/.local/bin}"
 
 print_usage() {
   cat <<'EOF'
-Usage: ./scripts/dev-up.sh [lite|full] [--skip-infra] [--skip-db-init]
+Usage: ./scripts/dev-up.sh [lite|full] [--uv] [--skip-infra] [--skip-db-init]
 
 Options:
   lite            Start core with lightweight Python dependencies (default)
@@ -62,6 +66,18 @@ ensure_file() {
   fi
 }
 
+load_root_env() {
+  if [[ -f "$ROOT_ENV_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ROOT_ENV_FILE"
+    set +a
+    FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+    BACKEND_PORT="${PORT:-8000}"
+    CORE_PORT="${CORE_PORT:-8001}"
+  fi
+}
+
 is_pid_running() {
   local pid_file="$1"
   if [[ -f "$pid_file" ]]; then
@@ -104,6 +120,12 @@ require_command() {
 
 has_command() {
   command -v "$1" >/dev/null 2>&1
+}
+
+ensure_uv() {
+  "$ROOT_DIR/scripts/ensure-uv.sh"
+  export PATH="$UV_LOCAL_BIN:$PATH"
+  require_command "uv" "uv bootstrap finished but the command is still unavailable."
 }
 
 ensure_npm_dependencies() {
@@ -177,24 +199,24 @@ reset_frontend_cache_if_needed() {
 
 is_redis_enabled() {
   local redis_url=""
+  local raw_line=""
+  local line=""
+  local value=""
 
-  if [[ -f "$BACKEND_ENV_FILE" ]]; then
-    redis_url="$(python - "$BACKEND_ENV_FILE" <<'PY'
-import sys
-from pathlib import Path
+  if [[ -f "$ROOT_ENV_FILE" ]]; then
+    while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
+      line="${raw_line#"${raw_line%%[![:space:]]*}"}"
+      [[ -z "$line" || "${line:0:1}" == "#" || "$line" != *=* ]] && continue
 
-env_path = Path(sys.argv[1])
-
-for raw_line in env_path.read_text().splitlines():
-    line = raw_line.strip()
-    if not line or line.startswith("#") or "=" not in line:
-        continue
-    key, value = line.split("=", 1)
-    if key.strip() == "REDIS_URL":
-        print(value.strip().strip('"').strip("'"))
-        break
-PY
-)"
+      if [[ "${line%%=*}" == "REDIS_URL" ]]; then
+        value="${line#*=}"
+        value="${value%\"}"
+        value="${value#\"}"
+        value="${value%\'}"
+        value="${value#\'}"
+        redis_url="$value"
+      fi
+    done <"$ROOT_ENV_FILE"
   fi
 
   [[ -n "$redis_url" && "${redis_url,,}" != "disabled" ]]
@@ -219,16 +241,11 @@ wait_for_postgres() {
 }
 
 ensure_file "$ROOT_DIR/.env" "$ROOT_DIR/.env.example"
-ensure_file "$ROOT_DIR/backend/.env" "$ROOT_DIR/backend/.env.example"
-ensure_file "$ROOT_DIR/frontend/.env.local" "$ROOT_DIR/frontend/.env.example"
+load_root_env
 
 require_command "node" "Install Node.js 18+ and retry."
 require_command "npm" "Install npm and retry."
-require_command "python" "Install Python 3.10+ and retry."
-
-if [[ "$CORE_ENV_MANAGER" == "uv" ]]; then
-  require_command "uv" "Install uv and retry, or rerun without --uv."
-fi
+ensure_uv
 
 ensure_npm_dependencies "$ROOT_DIR/backend" "backend"
 ensure_npm_dependencies "$ROOT_DIR/frontend" "frontend"
@@ -254,19 +271,11 @@ if [[ ! -x "$ROOT_DIR/core/.venv/bin/python" ]] || ! core_module_available "uvic
       make -C "$ROOT_DIR" setup-core-lite-uv
     fi
   else
-    if has_command "uv"; then
-      echo "uv detected; using Python 3.11 managed by uv."
-      if [[ "$CORE_PROFILE" == "full" ]]; then
-        make -C "$ROOT_DIR" setup-core-full-uv
-      else
-        make -C "$ROOT_DIR" setup-core-lite-uv
-      fi
+    echo "Using Python 3.11 managed by uv."
+    if [[ "$CORE_PROFILE" == "full" ]]; then
+      make -C "$ROOT_DIR" setup-core-full-uv
     else
-      if [[ "$CORE_PROFILE" == "full" ]]; then
-        make -C "$ROOT_DIR" setup-core-full
-      else
-        make -C "$ROOT_DIR" setup-core-lite
-      fi
+      make -C "$ROOT_DIR" setup-core-lite-uv
     fi
   fi
 fi
@@ -285,7 +294,7 @@ if [[ "$SKIP_INFRA" -eq 0 ]]; then
   if is_redis_enabled; then
     compose_services+=(redis)
   else
-    echo "Redis is disabled in backend/.env; skipping redis container startup."
+    echo "Redis is disabled in .env; skipping redis container startup."
   fi
   docker compose -f "$ROOT_DIR/docker-compose.yml" up -d "${compose_services[@]}"
   wait_for_postgres
@@ -302,13 +311,13 @@ fi
 
 start_service "backend" "npm run dev --prefix backend"
 reset_frontend_cache_if_needed
-start_service "frontend" "npm run dev --prefix frontend"
-start_service "core" "core/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload --app-dir core"
+start_service "frontend" "npm run dev --prefix frontend -- --port $FRONTEND_PORT"
+start_service "core" "core/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port $CORE_PORT --reload --app-dir core"
 
 echo
 echo "Local stack started."
 echo "Logs: $LOG_DIR"
-echo "Frontend: http://localhost:3000"
-echo "Backend:  http://localhost:8000 (GET / returns 404 by design; use /health)"
-echo "Core:     http://localhost:8001"
+echo "Frontend: http://localhost:$FRONTEND_PORT"
+echo "Backend:  http://localhost:$BACKEND_PORT (GET / returns 404 by design; use /health)"
+echo "Core:     http://localhost:$CORE_PORT"
 echo "Use ./scripts/dev-status.sh to inspect services."

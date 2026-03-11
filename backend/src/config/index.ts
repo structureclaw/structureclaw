@@ -1,6 +1,12 @@
 import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-dotenv.config();
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rootEnvPath = path.resolve(__dirname, '../../../.env');
+
+dotenv.config({ path: rootEnvPath });
 
 const redisUrlRaw = process.env.REDIS_URL;
 const redisEnabled = redisUrlRaw && redisUrlRaw.toLowerCase() !== 'disabled';
@@ -16,6 +22,21 @@ const llmModel = process.env.LLM_MODEL
   || (isZhipu ? 'glm-4-plus' : (process.env.OPENAI_MODEL || 'gpt-4-turbo-preview'));
 const llmBaseUrl = process.env.LLM_BASE_URL
   || (isZhipu ? 'https://open.bigmodel.cn/api/paas/v4/' : (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'));
+const frontendPort = process.env.FRONTEND_PORT || '3000';
+const backendPort = process.env.PORT || '8000';
+const corePort = process.env.CORE_PORT || '8001';
+
+const defaultCorsOrigins = [
+  `http://localhost:${frontendPort}`,
+  `http://127.0.0.1:${frontendPort}`,
+  `http://localhost:${backendPort}`,
+  `http://127.0.0.1:${backendPort}`,
+];
+
+const corsOrigins = (process.env.CORS_ORIGINS || defaultCorsOrigins.join(','))
+  .split(',')
+  .map((origin) => origin.trim())
+  .filter(Boolean);
 
 export const config = {
   // 服务配置
@@ -47,10 +68,10 @@ export const config = {
   openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
 
   // 分析引擎配置
-  analysisEngineUrl: process.env.ANALYSIS_ENGINE_URL || 'http://localhost:8001',
+  analysisEngineUrl: process.env.ANALYSIS_ENGINE_URL || `http://localhost:${corePort}`,
 
   // CORS
-  corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:3000').split(','),
+  corsOrigins,
 
   // 文件存储
   uploadDir: process.env.UPLOAD_DIR || './uploads',

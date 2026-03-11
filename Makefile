@@ -3,13 +3,14 @@ UV_CACHE_DIR ?= /tmp/uv-cache
 UV_PYTHON_INSTALL_DIR ?= /tmp/uv-python
 CORE_PYTHON_VERSION ?= 3.11
 
-.PHONY: help install setup-core-lite setup-core-full setup-core-lite-uv setup-core-full-uv dev-backend dev-frontend dev-core-lite dev-core-full build db-up db-down db-init docker-up docker-down local-up local-up-full local-up-uv local-up-full-uv local-up-noinfra local-down local-status health check-startup backend-regression core-regression doctor start start-full stop status logs sclaw-install up
+.PHONY: help ensure-uv install setup-core-lite setup-core-full setup-core-lite-uv setup-core-full-uv dev-backend dev-frontend dev-core-lite dev-core-full build db-up db-down db-init docker-up docker-down local-up local-up-full local-up-uv local-up-full-uv local-up-noinfra local-down local-status health check-startup backend-regression core-regression doctor start start-full stop status logs sclaw-install up
 
 help:
 	@echo "Available targets:"
+	@echo "  ensure-uv      Bootstrap uv into ~/.local/bin when missing"
 	@echo "  install         Install frontend and backend npm dependencies"
-	@echo "  setup-core-lite Create core .venv with lightweight dependencies"
-	@echo "  setup-core-full Create core .venv with full dependencies"
+	@echo "  setup-core-lite Create core .venv with lightweight dependencies via uv"
+	@echo "  setup-core-full Create core .venv with full dependencies via uv"
 	@echo "  setup-core-lite-uv Create core .venv with uv + Python $(CORE_PYTHON_VERSION) (lite deps)"
 	@echo "  setup-core-full-uv Create core .venv with uv + Python $(CORE_PYTHON_VERSION) (full deps)"
 	@echo "  dev-backend     Start backend in watch mode"
@@ -42,37 +43,40 @@ help:
 	@echo "  sclaw-install   Install global sclaw command to ~/.local/bin"
 	@echo "  up              Alias of docker-up"
 
+ensure-uv:
+	./scripts/ensure-uv.sh
+
 install:
 	npm install --prefix backend
 	npm install --prefix frontend
 
-setup-core-lite:
-	python -m venv core/.venv
-	core/.venv/bin/pip install -r core/requirements-lite.txt
+setup-core-lite: ensure-uv
+	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv venv --python $(CORE_PYTHON_VERSION) core/.venv
+	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv pip install --python core/.venv/bin/python --link-mode=copy -r core/requirements-lite.txt
 
-setup-core-full:
-	python -m venv core/.venv
-	core/.venv/bin/pip install -r core/requirements.txt
+setup-core-full: ensure-uv
+	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv venv --python $(CORE_PYTHON_VERSION) core/.venv
+	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv pip install --python core/.venv/bin/python --link-mode=copy -r core/requirements.txt
 
-setup-core-lite-uv:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) uv venv --python $(CORE_PYTHON_VERSION) core/.venv
-	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) uv pip install --python core/.venv/bin/python --link-mode=copy -r core/requirements-lite.txt
+setup-core-lite-uv: ensure-uv
+	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv venv --python $(CORE_PYTHON_VERSION) core/.venv
+	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv pip install --python core/.venv/bin/python --link-mode=copy -r core/requirements-lite.txt
 
-setup-core-full-uv:
-	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) uv venv --python $(CORE_PYTHON_VERSION) core/.venv
-	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) uv pip install --python core/.venv/bin/python --link-mode=copy -r core/requirements.txt
+setup-core-full-uv: ensure-uv
+	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv venv --python $(CORE_PYTHON_VERSION) core/.venv
+	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv pip install --python core/.venv/bin/python --link-mode=copy -r core/requirements.txt
 
 dev-backend:
 	npm run dev --prefix backend
 
 dev-frontend:
-	npm run dev --prefix frontend
+	FRONTEND_PORT=$${FRONTEND_PORT:-3000} npm run dev --prefix frontend -- --port $$FRONTEND_PORT
 
 dev-core-lite:
-	core/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload --app-dir core
+	CORE_PORT=$${CORE_PORT:-8001} core/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port $$CORE_PORT --reload --app-dir core
 
 dev-core-full:
-	core/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload --app-dir core
+	CORE_PORT=$${CORE_PORT:-8001} core/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port $$CORE_PORT --reload --app-dir core
 
 build:
 	npm run build --prefix backend
@@ -115,9 +119,9 @@ local-status:
 	./scripts/dev-status.sh
 
 health:
-	curl http://localhost:8000/health
-	curl http://localhost:8001/health
-	curl -I http://localhost:3000
+	curl http://localhost:$${PORT:-8000}/health
+	curl http://localhost:$${CORE_PORT:-8001}/health
+	curl -I http://localhost:$${FRONTEND_PORT:-3000}
 
 check-startup:
 	./scripts/check-startup.sh

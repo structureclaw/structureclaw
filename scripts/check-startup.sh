@@ -7,6 +7,11 @@ cd "$ROOT_DIR"
 
 EXIT_CODE=0
 
+ensure_uv() {
+  "$ROOT_DIR/scripts/ensure-uv.sh"
+  export PATH="${UV_INSTALL_DIR:-$HOME/.local/bin}:$PATH"
+}
+
 run_check() {
   local name="$1"
   local command="$2"
@@ -37,12 +42,25 @@ run_optional_check() {
 echo "StructureClaw startup checks"
 echo "Workspace: $ROOT_DIR"
 
+ensure_uv
+
 run_check "Backend regression" "./scripts/check-backend-regression.sh"
 run_check "Startup self-healing guards" "./scripts/validate-dev-startup-guards.sh"
 run_check "Frontend type-check" "npm run type-check --prefix frontend"
 run_check "Frontend lint" "npm run lint --prefix frontend"
 run_check "Frontend style pipeline guard" "npm run test:run --prefix frontend -- tests/postcss-config.test.ts"
 run_optional_check "Frontend build (optional)" "npm run build --prefix frontend"
+
+if [[ ! -x core/.venv/bin/python ]]; then
+  echo
+  echo "==> Core environment bootstrap"
+  if make setup-core-lite; then
+    echo "[ok] Core environment bootstrap"
+  else
+    echo "[fail] Core environment bootstrap"
+    EXIT_CODE=1
+  fi
+fi
 
 if [[ -x core/.venv-uv-lite/bin/python ]]; then
   CORE_PYTHON="core/.venv-uv-lite/bin/python"
