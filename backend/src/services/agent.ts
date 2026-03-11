@@ -567,7 +567,7 @@ export class AgentService {
     const sessionKey = params.conversationId?.trim();
     const session = await this.getInteractionSession(sessionKey);
     const existingState = session?.draft;
-    let workingSession: InteractionSession = session || {
+    const workingSession: InteractionSession = session || {
       draft: { inferredType: 'unknown', updatedAt: Date.now() },
       updatedAt: Date.now(),
       resolved: {},
