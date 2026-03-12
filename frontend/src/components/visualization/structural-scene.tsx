@@ -361,6 +361,33 @@ function SceneContent({
 }
 
 export function StructuralScene(props: StructuralSceneProps) {
+  const webglAvailable = useMemo(() => {
+    if (typeof document === 'undefined') {
+      return false
+    }
+    if (process.env.NODE_ENV === 'test') {
+      return false
+    }
+    try {
+      const canvas = document.createElement('canvas')
+      return Boolean(canvas.getContext('webgl') || canvas.getContext('experimental-webgl'))
+    } catch {
+      return false
+    }
+  }, [])
+
+  if (!webglAvailable) {
+    return (
+      <div className="flex h-full items-center justify-center px-6 py-10 text-center" data-testid="visualization-scene-fallback">
+        <div className="max-w-lg rounded-[28px] border border-dashed border-cyan-300/35 bg-cyan-300/8 p-8">
+          <div className="text-sm uppercase tracking-[0.24em] text-cyan-700 dark:text-cyan-200">{props.t('visualizationTitle')}</div>
+          <div className="mt-3 text-2xl font-semibold text-foreground">{props.t('visualizationLoadingScene')}</div>
+          <div className="mt-3 text-sm leading-6 text-muted-foreground">{props.t('visualizationWebglFallback')}</div>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="h-full w-full bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_24%),linear-gradient(180deg,rgba(148,163,184,0.08),transparent_30%)]">
       <Canvas dpr={[1, 1.75]} frameloop="demand">

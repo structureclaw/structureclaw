@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import ConsolePage from '@/app/(console)/console/page'
+import type { VisualizationSnapshot } from '@/components/visualization'
 
 const mockSkills = [
   {
@@ -16,6 +17,103 @@ const mockSkills = [
     autoLoadByDefault: true,
   },
 ] as const
+
+const sampleModelJson = JSON.stringify({
+  schema_version: '1.0.0',
+  nodes: [
+    { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
+    { id: '2', x: 6, y: 0, z: 0 },
+  ],
+  elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: 'M1', section: 'S1' }],
+  materials: [{ id: 'M1', name: 'Steel', E: 200000, nu: 0.3, rho: 7850 }],
+  sections: [{ id: 'S1', area: 1 }],
+  load_cases: [{ id: 'D', type: 'dead', loads: [{ node: '2', fy: -10 }] }],
+})
+
+const sampleAnalysisResult = {
+  response: 'Analysis finished.',
+  success: true,
+  analysis: {
+    success: true,
+    meta: {
+      analysisType: 'static',
+      engineName: 'StructureClaw Analysis Engine',
+      engineVersion: '0.1.0',
+      selectionMode: 'auto',
+    },
+    data: {
+      summary: {
+        nodeCount: 2,
+        elementCount: 1,
+      },
+      displacements: {
+        '1': { ux: 0, uy: 0, uz: 0 },
+        '2': { ux: 0.012, uy: 0, uz: -0.032 },
+      },
+      reactions: {
+        '1': { fx: 0, fy: 10, fz: 0 },
+      },
+      forces: {
+        E1: { axial: 0, n1: { M: 20, V: 10 }, n2: { M: 0, V: 10 } },
+      },
+      caseResults: {
+        D: {
+          displacements: {
+            '2': { ux: 0.012, uz: -0.032 },
+          },
+          reactions: {
+            '1': { fy: 10 },
+          },
+          forces: {
+            E1: { axial: 0, n1: { M: 20, V: 10 }, n2: { M: 0, V: 10 } },
+          },
+          envelope: {
+            controlNodeDisplacement: '2',
+          },
+        },
+      },
+      envelopeTables: {
+        nodeDisplacement: {
+          '2': { maxAbsDisplacement: 0.032, controlCase: 'D' },
+        },
+        elementForce: {
+          E1: { maxAbsMoment: 20, controlCaseMoment: 'D' },
+        },
+      },
+    },
+  },
+}
+
+const archivedVisualizationSnapshot: VisualizationSnapshot = {
+  version: 1,
+  title: 'Archived Beam',
+  dimension: 2,
+  plane: 'xz',
+  availableViews: ['model', 'deformed', 'forces', 'reactions'],
+  defaultCaseId: 'result',
+  nodes: [
+    { id: '1', position: { x: 0, y: 0, z: 0 }, restraints: [true, true, true, true, true, true] },
+    { id: '2', position: { x: 6, y: 0, z: 0 } },
+  ],
+  elements: [
+    { id: 'E1', type: 'beam', nodeIds: ['1', '2'], material: 'M1', section: 'S1' },
+  ],
+  loads: [{ nodeId: '2', caseId: 'D', vector: { x: 0, y: -10, z: 0 } }],
+  unsupportedElementTypes: [],
+  cases: [
+    {
+      id: 'result',
+      label: 'Result',
+      kind: 'result',
+      nodeResults: {
+        '2': { displacement: { ux: 0.012, uz: -0.032 } },
+      },
+      elementResults: {
+        E1: { moment: 20, shear: 10 },
+      },
+    },
+  ],
+}
 
 function createSseResponse(events: unknown[]) {
   const encoder = new TextEncoder()
@@ -705,5 +803,210 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByText('对话引导')).toBeInTheDocument()
     expect(screen.getByText('桥梁')).toBeInTheDocument()
     expect(screen.getByText('先补齐结构类型。')).toBeInTheDocument()
+  })
+
+  it('opens the structural visualization modal after a successful execute run with model JSON', async () => {
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-visual',
+            title: 'Visualization run',
+            type: 'analysis',
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/execute')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(sampleAnalysisResult),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    fireEvent.change(screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/), {
+      target: { value: sampleModelJson },
+    })
+    fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
+      target: { value: 'Analyze and visualize this beam' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Run Analysis|执行分析/ }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Open Visualization|打开可视化/ })).toBeEnabled()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Open Visualization|打开可视化/ }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+    const dialog = screen.getByRole('dialog')
+    expect(within(dialog).getAllByText(/Structural Visualization|结构可视化/).length).toBeGreaterThan(0)
+    expect(
+      within(dialog).queryByTestId('visualization-modal-scene') || within(dialog).queryByTestId('visualization-scene-fallback')
+    ).toBeInTheDocument()
+
+    fireEvent.keyDown(window, { key: 'Escape' })
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    })
+  })
+
+  it('disables the visualization action when a restored result has no model snapshot', async () => {
+    window.localStorage.setItem(
+      'structureclaw.console.conversations',
+      JSON.stringify({
+        'conv-no-snapshot': {
+          id: 'conv-no-snapshot',
+          title: 'No Snapshot',
+          type: 'analysis',
+          createdAt: '2026-03-12T08:00:00.000Z',
+          updatedAt: '2026-03-12T08:00:00.000Z',
+          messages: [{ id: 'assistant-1', role: 'assistant', content: 'done', status: 'done', timestamp: '2026-03-12T08:00:00.000Z' }],
+          latestResult: sampleAnalysisResult,
+          visualizationSnapshot: null,
+        },
+      })
+    )
+
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([{ id: 'conv-no-snapshot', title: 'No Snapshot', updatedAt: '2026-03-12T08:00:00.000Z' }]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation/conv-no-snapshot')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ messages: [] }),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+    fireEvent.click(await screen.findByText('No Snapshot'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Open Visualization|打开可视化/ })).toBeDisabled()
+    })
+    expect(screen.getByText(/The current result is missing a model snapshot.|当前结果缺少模型快照。/)).toBeInTheDocument()
+  })
+
+  it('restores a persisted visualization snapshot from conversation archive', async () => {
+    window.localStorage.setItem(
+      'structureclaw.console.conversations',
+      JSON.stringify({
+        'conv-archived-visual': {
+          id: 'conv-archived-visual',
+          title: 'Archived Visual',
+          type: 'analysis',
+          createdAt: '2026-03-12T08:00:00.000Z',
+          updatedAt: '2026-03-12T08:00:00.000Z',
+          messages: [{ id: 'assistant-1', role: 'assistant', content: 'done', status: 'done', timestamp: '2026-03-12T08:00:00.000Z' }],
+          latestResult: sampleAnalysisResult,
+          visualizationSnapshot: archivedVisualizationSnapshot,
+        },
+      })
+    )
+
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([{ id: 'conv-archived-visual', title: 'Archived Visual', updatedAt: '2026-03-12T08:00:00.000Z' }]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation/conv-archived-visual')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ messages: [] }),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+    fireEvent.click(await screen.findByText('Archived Visual'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Open Visualization|打开可视化/ })).toBeEnabled()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Open Visualization|打开可视化/ }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Archived Beam')).toBeInTheDocument()
   })
 })

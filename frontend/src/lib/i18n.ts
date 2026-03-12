@@ -199,6 +199,7 @@ export const messages = {
     visualizationUndeformedOverlay: 'Undeformed Overlay',
     visualizationLegend: 'Legend',
     visualizationForceMetricHint: 'Force colors reflect the current metric.',
+    visualizationWebglFallback: 'WebGL is unavailable in the current environment, so a lightweight fallback view is shown instead.',
   },
   zh: {
     appName: 'StructureClaw',
@@ -390,6 +391,7 @@ export const messages = {
     visualizationUndeformedOverlay: '显示未变形',
     visualizationLegend: '图例',
     visualizationForceMetricHint: '颜色映射反映当前内力指标。',
+    visualizationWebglFallback: '当前环境不可用 WebGL，因此这里展示轻量降级视图。',
   },
 } as const
 
