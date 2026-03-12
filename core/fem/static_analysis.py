@@ -53,11 +53,11 @@ class StaticAnalyzer:
                 # 尝试使用 OpenSeesPy
                 import openseespy.opensees as ops  # noqa: F401
                 result = self._run_with_opensees(parameters)
-            except ImportError:
+            except Exception as error:
                 if self.engine_mode == "opensees":
-                    raise RuntimeError("OpenSeesPy is not available for the requested engine")
+                    raise RuntimeError("OpenSeesPy is not available for the requested engine") from error
                 # 降级到简化计算
-                logger.warning("OpenSeesPy not available, using simplified analysis")
+                logger.warning("OpenSeesPy runtime unavailable, using simplified analysis: %s", error)
                 result = self._run_simplified(parameters)
 
         return result
@@ -1319,7 +1319,7 @@ class StaticAnalyzer:
                 }
             import openseespy.opensees as ops
             return self._run_nonlinear_opensees(parameters)
-        except ImportError:
+        except Exception:
             return {
                 'status': 'error',
                 'message': 'Nonlinear analysis requires OpenSeesPy'

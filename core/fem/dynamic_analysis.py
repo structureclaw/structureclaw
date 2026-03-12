@@ -57,7 +57,7 @@ class DynamicAnalyzer:
         try:
             import openseespy.opensees as ops
             return self._modal_opensees(num_modes, ops)
-        except ImportError:
+        except Exception:
             if self.engine_mode == 'opensees':
                 return {
                     'status': 'error',
@@ -194,7 +194,7 @@ class DynamicAnalyzer:
             return self._time_history_opensees(
                 time_step, duration, damping_ratio, ground_motion, ops
             )
-        except ImportError:
+        except Exception:
             return {
                 'status': 'error',
                 'message': 'Time history analysis requires OpenSeesPy'

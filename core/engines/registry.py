@@ -318,7 +318,8 @@ class AnalysisEngineRegistry:
         try:
             import openseespy.opensees as _ops  # noqa: F401
             return True
-        except ImportError:
+        except Exception as error:
+            logger.warning("OpenSeesPy runtime is unavailable: %s", error)
             return False
 
     def _builtin_manifests(self) -> List[Dict[str, Any]]:

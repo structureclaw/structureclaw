@@ -2,7 +2,9 @@
 # Finite Element Analysis & Structural Design
 
 # FEA Libraries
-openseespy==3.5.1.12
+# The lightweight openseespy wheel is a wrapper; Linux CI needs the platform runtime package explicitly.
+openseespy==3.7.1.2
+openseespylinux==3.7.1.2; sys_platform == "linux"
 numpy==1.26.4
 
 # Web Framework

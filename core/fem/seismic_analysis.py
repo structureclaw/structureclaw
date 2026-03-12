@@ -64,7 +64,7 @@ class SeismicAnalyzer:
             try:
                 import openseespy.opensees as ops
                 modes = self._get_modes_opensees(ops)
-            except ImportError:
+            except Exception:
                 if self.engine_mode == 'opensees':
                     return {
                         'status': 'error',
@@ -127,7 +127,7 @@ class SeismicAnalyzer:
         try:
             import openseespy.opensees as ops
             return self._pushover_opensees(target_displacement, control_node, ops)
-        except ImportError:
+        except Exception:
             if self.engine_mode == 'opensees':
                 return {
                     'status': 'error',
