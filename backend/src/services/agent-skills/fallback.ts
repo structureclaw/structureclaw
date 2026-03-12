@@ -592,9 +592,9 @@ export function getScenarioLabel(key: ScenarioTemplateKey, locale: AppLocale, bu
 }
 
 function buildBeamNodes(length: number, supportType: DraftSupportType) {
-  const fixedRestraint = [true, false, true, false, true, false] as const;
-  const pinnedRestraint = [true, false, true, false, false, false] as const;
-  const rollerRestraint = [false, false, true, false, false, false] as const;
+  const fixedRestraint = [true, true, true, true, true, true] as const;
+  const pinnedRestraint = [true, true, true, false, false, false] as const;
+  const rollerRestraint = [false, true, true, false, false, false] as const;
   let leftRestraint: boolean[] = [...fixedRestraint];
   let rightRestraint: boolean[] | undefined;
 
@@ -633,16 +633,16 @@ function buildBeamLoads(
 ) {
   if (loadType === 'distributed' || loadPosition === 'full-span') {
     return [
-      { type: 'distributed', element: '1', wz: -loadKN },
-      { type: 'distributed', element: '2', wz: -loadKN },
+      { type: 'distributed', element: '1', wy: -loadKN, wz: 0 },
+      { type: 'distributed', element: '2', wy: -loadKN, wz: 0 },
     ];
   }
 
   if (loadPosition === 'midspan') {
-    return [{ node: middleNodeId, fy: -loadKN }];
+    return [{ type: 'nodal', node: middleNodeId, forces: [0, -loadKN, 0, 0, 0, 0] }];
   }
 
-  return [{ node: endNodeId, fy: -loadKN }];
+  return [{ type: 'nodal', node: endNodeId, forces: [0, -loadKN, 0, 0, 0, 0] }];
 }
 
 export function buildModel(state: DraftState): Record<string, unknown> {
@@ -695,7 +695,7 @@ export function buildModel(state: DraftState): Record<string, unknown> {
         { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
       ],
       sections: [
-        { id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } },
+        { id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001, Iz: 0.0001, J: 0.0001, G: 79000 } },
       ],
       load_cases: [
         { id: 'LC1', type: 'other', loads: [{ node: '2', fy: -load }] },
@@ -726,10 +726,13 @@ export function buildModel(state: DraftState): Record<string, unknown> {
         { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
       ],
       sections: [
-        { id: '1', name: 'PF1', type: 'beam', properties: { A: 0.02, Iy: 0.0002 } },
+        { id: '1', name: 'PF1', type: 'beam', properties: { A: 0.02, Iy: 0.0002, Iz: 0.0002, J: 0.0002, G: 79000 } },
       ],
       load_cases: [
-        { id: 'LC1', type: 'other', loads: [{ node: '3', fy: -load / 2 }, { node: '4', fy: -load / 2 }] },
+        { id: 'LC1', type: 'other', loads: [
+          { type: 'nodal', node: '3', forces: [0, -load / 2, 0, 0, 0, 0] },
+          { type: 'nodal', node: '4', forces: [0, -load / 2, 0, 0, 0, 0] },
+        ] },
       ],
       load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
       metadata,
@@ -749,7 +752,7 @@ export function buildModel(state: DraftState): Record<string, unknown> {
       { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
     ],
     sections: [
-      { id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } },
+      { id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001, Iz: 0.0001, J: 0.0001, G: 79000 } },
     ],
     load_cases: [
       { id: 'LC1', type: 'other', loads: beamLoads },

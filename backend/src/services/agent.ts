@@ -850,7 +850,7 @@ export class AgentService {
       type: resolvedAnalysisType,
       engineId: params.context?.engineId,
       model: normalizedModel,
-      parameters: analysisParameters,
+      parameters: this.buildAnalysisParameters(analysisParameters, normalizedModel),
     };
     const analyzeCall = this.startToolCall('analyze', analyzeInput);
     toolCalls.push(analyzeCall);
@@ -2061,23 +2061,23 @@ export class AgentService {
     const load = state.loadKN!;
     const supportType = state.supportType || 'cantilever';
     const leftRestraint = supportType === 'simply-supported'
-      ? [true, false, true, false, false, false]
-      : [true, false, true, false, true, false];
+      ? [true, true, true, false, false, false]
+      : [true, true, true, true, true, true];
     const rightRestraint = supportType === 'simply-supported'
-      ? [false, false, true, false, false, false]
+      ? [false, true, true, false, false, false]
       : supportType === 'fixed-fixed'
-        ? [true, false, true, false, true, false]
+        ? [true, true, true, true, true, true]
         : supportType === 'fixed-pinned'
-          ? [true, false, true, false, false, false]
+          ? [true, true, true, false, false, false]
           : undefined;
     const loads = state.loadType === 'distributed' || state.loadPosition === 'full-span'
       ? [
-          { type: 'distributed', element: '1', wz: -load },
-          { type: 'distributed', element: '2', wz: -load },
+          { type: 'distributed', element: '1', wy: -load, wz: 0 },
+          { type: 'distributed', element: '2', wy: -load, wz: 0 },
         ]
       : state.loadPosition === 'midspan'
-        ? [{ node: '2', fy: -load }]
-        : [{ node: '3', fy: -load }];
+        ? [{ type: 'nodal', node: '2', forces: [0, -load, 0, 0, 0, 0] }]
+        : [{ type: 'nodal', node: '3', forces: [0, -load, 0, 0, 0, 0] }];
     return {
       schema_version: '1.0.0',
       unit_system: 'SI',
@@ -2096,7 +2096,7 @@ export class AgentService {
         { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
       ],
       sections: [
-        { id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } },
+        { id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001, Iz: 0.0001, J: 0.0001, G: 79000 } },
       ],
       load_cases: [
         { id: 'LC1', type: 'other', loads },
@@ -2104,6 +2104,97 @@ export class AgentService {
       load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
       metadata: { ...metadata, supportType },
     };
+  }
+
+  private buildAnalysisParameters(
+    baseParameters: Record<string, unknown>,
+    model: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const next = { ...baseParameters };
+    const modelLoadCases = this.normalizeModelLoadCases(model);
+    const modelCombinations = this.normalizeModelCombinations(model);
+
+    if (next.loadCases === undefined && modelLoadCases.length > 0) {
+      next.loadCases = modelLoadCases;
+    }
+    if (next.combinations === undefined && modelCombinations.length > 0) {
+      next.combinations = modelCombinations;
+    }
+
+    return next;
+  }
+
+  private normalizeModelLoadCases(model: Record<string, unknown>): Array<Record<string, unknown>> {
+    const loadCases = Array.isArray(model.load_cases) ? model.load_cases : [];
+    return loadCases
+      .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+      .map((item, index) => ({
+        name: typeof item.id === 'string' ? item.id : `LC${index + 1}`,
+        type: typeof item.type === 'string' ? item.type : 'other',
+        loads: this.normalizeModelLoads(item.loads),
+      }))
+      .filter((item) => Array.isArray(item.loads) && item.loads.length > 0);
+  }
+
+  private normalizeModelCombinations(model: Record<string, unknown>): Array<Record<string, unknown>> {
+    const combinations = Array.isArray(model.load_combinations) ? model.load_combinations : [];
+    return combinations.filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null);
+  }
+
+  private normalizeModelLoads(value: unknown): Array<Record<string, unknown>> {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value
+      .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+      .map((item) => {
+        if (item.type === 'distributed' || item.element !== undefined) {
+          const magnitude = this.asNumber(item.wy ?? item.fy ?? item.wz ?? item.fz, 0);
+          return {
+            type: 'distributed',
+            element: String(item.element ?? ''),
+            wy: magnitude,
+            wz: 0,
+          };
+        }
+
+        const forces = Array.isArray(item.forces)
+          ? item.forces.slice(0, 6).map((entry) => this.asNumber(entry, 0))
+          : [
+              this.asNumber(item.fx, 0),
+              this.asNumber(item.fy ?? item.wy, 0),
+              this.asNumber(item.fz ?? item.wz, 0),
+              this.asNumber(item.mx, 0),
+              this.asNumber(item.my, 0),
+              this.asNumber(item.mz, 0),
+            ];
+
+        return {
+          type: 'nodal',
+          node: String(item.node ?? ''),
+          forces: forces.length === 6 ? forces : [0, 0, 0, 0, 0, 0],
+        };
+      })
+      .filter((item) => {
+        if (item.type === 'distributed') {
+          return typeof item.element === 'string' && item.element.length > 0;
+        }
+        return typeof item.node === 'string' && item.node.length > 0;
+      });
+  }
+
+  private asNumber(value: unknown, fallback = 0): number {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = Number.parseFloat(value);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+    return fallback;
   }
 
   private async tryLlmExtract(message: string, existingState?: DraftState, locale: AppLocale = 'en'): Promise<DraftExtraction | null> {
