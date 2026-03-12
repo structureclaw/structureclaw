@@ -22,11 +22,9 @@ export type {
 
 export class AgentSkillRuntime {
   private readonly registry: AgentSkillRegistry;
-  private readonly executor: AgentSkillExecutor;
 
-  constructor(llm: ChatOpenAI | null) {
+  constructor() {
     this.registry = new AgentSkillRegistry();
-    this.executor = new AgentSkillExecutor(llm);
   }
 
   listSkills() {
@@ -41,9 +39,16 @@ export class AgentSkillRuntime {
     return this.registry.getScenarioLabel(key, locale, skillIds);
   }
 
-  async textToModelDraft(message: string, existingState: DraftState | undefined, locale: AppLocale, skillIds?: string[]): Promise<DraftResult> {
+  async textToModelDraft(
+    llm: ChatOpenAI | null,
+    message: string,
+    existingState: DraftState | undefined,
+    locale: AppLocale,
+    skillIds?: string[]
+  ): Promise<DraftResult> {
     const enabledSkills = this.registry.resolveEnabledSkills(skillIds);
-    const execution = await this.executor.execute({
+    const executor = new AgentSkillExecutor(llm);
+    const execution = await executor.execute({
       message,
       locale,
       existingState,

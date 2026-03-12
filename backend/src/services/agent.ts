@@ -184,7 +184,7 @@ export interface AgentStreamChunk {
 
 export class AgentService {
   private readonly engineClient: AxiosInstance;
-  private readonly llm: ChatOpenAI | null;
+  public llm: ChatOpenAI | null;
   private readonly skillRuntime: AgentSkillRuntime;
   private static readonly draftStateTtlSeconds = 30 * 60;
 
@@ -196,7 +196,7 @@ export class AgentService {
     });
 
     this.llm = createChatModel(0.1);
-    this.skillRuntime = new AgentSkillRuntime(this.llm);
+    this.skillRuntime = new AgentSkillRuntime();
   }
 
   private isZh(locale: AppLocale): boolean {
@@ -1862,7 +1862,7 @@ export class AgentService {
   }
 
   private async textToModelDraft(message: string, existingState?: DraftState, locale: AppLocale = 'en', skillIds?: string[]): Promise<DraftResult> {
-    return this.skillRuntime.textToModelDraft(message, existingState, locale, skillIds);
+    return this.skillRuntime.textToModelDraft(this.llm, message, existingState, locale, skillIds);
   }
 
   private mergeDraftState(existing: DraftState | undefined, patch: DraftExtraction): DraftState {
