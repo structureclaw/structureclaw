@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import ConsolePage from '@/app/(console)/console/page'
 
 describe('ConsolePage Integration (CONS-13)', () => {
@@ -64,5 +64,77 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(container.querySelector('[data-testid="console-history-scroll"].overflow-auto')).not.toBeNull()
     expect(container.querySelector('[data-testid="console-chat-scroll"].overflow-auto')).not.toBeNull()
     expect(container.querySelector('[data-testid="console-output-scroll"].overflow-auto')).not.toBeNull()
+  })
+
+  it('renders Chinese console copy when locale is set to zh', async () => {
+    window.localStorage.setItem('structureclaw.locale', 'zh')
+
+    render(<ConsolePage />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: '结构工程对话工作台' })).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('历史会话')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '执行分析' })).toBeInTheDocument()
+  })
+
+  it('sends the active locale with execute requests', async () => {
+    window.localStorage.setItem('structureclaw.locale', 'zh')
+
+    let executePayload: Record<string, unknown> | null = null
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-zh',
+            title: '新会话',
+            type: 'analysis',
+            createdAt: '2026-03-12T08:00:00.000Z',
+            updatedAt: '2026-03-12T08:00:00.000Z',
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/execute')) {
+        executePayload = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            response: '已完成',
+            success: true,
+            report: {
+              summary: '摘要',
+              markdown: '# 报告',
+            },
+          }),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+
+    fireEvent.change(screen.getByPlaceholderText(/描述你的结构目标/i), {
+      target: { value: '请分析这个模型' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '执行分析' }))
+
+    await waitFor(() => {
+      expect(executePayload).not.toBeNull()
+    })
+
+    expect((executePayload?.context as Record<string, unknown>)?.locale).toBe('zh')
   })
 })
