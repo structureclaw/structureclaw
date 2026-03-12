@@ -25,24 +25,24 @@ describe('Semantic HTML (ACCS-03)', () => {
 
     it('has conversation, composer, and output section headings', async () => {
       renderConsolePage()
-      expect(await screen.findByRole('heading', { name: '历史会话' })).toBeInTheDocument()
-      expect(screen.getByRole('heading', { name: '结构工程对话工作台' })).toBeInTheDocument()
-      expect(screen.getByRole('heading', { name: '分析结果与报告' })).toBeInTheDocument()
+      expect(await screen.findByRole('heading', { name: 'History' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Structural Engineering Conversation Workspace' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'Analysis Results & Report' })).toBeInTheDocument()
     })
 
     it('buttons use button element (not div with onClick)', () => {
       const { container } = renderConsolePage()
       const buttons = container.querySelectorAll('button')
       expect(buttons.length).toBeGreaterThan(0)
-      expect(screen.getByRole('button', { name: '先聊需求' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: '执行分析' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Discuss First' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Run Analysis' })).toBeInTheDocument()
     })
 
     it('exposes form fields with visible labels or placeholders', () => {
       renderConsolePage()
-      expect(screen.getByPlaceholderText(/描述你的结构目标、分析意图/)).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: '展开工程上下文' })).toBeInTheDocument()
-      expect(screen.getByText('分析结果与报告')).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/Describe your structural goal/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Expand Engineering Context' })).toBeInTheDocument()
+      expect(screen.getByText('Analysis Results & Report')).toBeInTheDocument()
     })
   })
 })

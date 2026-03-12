@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from 'fs'
 import path from 'path'
 import { render, screen } from '@testing-library/react'
 import MarketingLayout from '@/app/(marketing)/layout'
+import ConsoleLayout from '@/app/(console)/layout'
 
 describe('Route Groups (LAYT-03)', () => {
   describe('Marketing Layout', () => {
@@ -27,7 +28,7 @@ describe('Route Groups (LAYT-03)', () => {
         </MarketingLayout>
       )
       expect(screen.getByRole('banner')).toBeInTheDocument()
-      expect(screen.getByRole('link', { name: '打开控制台' })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: 'Open Console' })).toBeInTheDocument()
     })
   })
 
@@ -38,9 +39,12 @@ describe('Route Groups (LAYT-03)', () => {
     })
 
     it('console layout links back to home', () => {
-      const layoutPath = path.join(process.cwd(), 'src/app/(console)/layout.tsx')
-      const content = readFileSync(layoutPath, 'utf-8')
-      expect(content).toContain('返回首页')
+      render(
+        <ConsoleLayout>
+          <div>Console Content</div>
+        </ConsoleLayout>
+      )
+      expect(screen.getByRole('link', { name: 'Back Home' })).toHaveAttribute('href', '/')
     })
 
     it('console layout includes language toggle', () => {

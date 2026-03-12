@@ -21,18 +21,18 @@ describe('ConsolePage Integration (CONS-13)', () => {
   it('renders the active AI console shell', async () => {
     renderConsolePage()
 
-    expect(await screen.findByRole('heading', { name: '结构工程对话工作台' })).toBeInTheDocument()
-    expect(screen.getByText('历史会话')).toBeInTheDocument()
-    expect(screen.getByText('分析结果与报告')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'Structural Engineering Conversation Workspace' })).toBeInTheDocument()
+    expect(screen.getByText('History')).toBeInTheDocument()
+    expect(screen.getByText('Analysis Results & Report')).toBeInTheDocument()
   })
 
   it('shows the conversational composer controls', () => {
     renderConsolePage()
 
-    expect(screen.getByPlaceholderText(/描述你的结构目标、分析意图/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '展开工程上下文' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '先聊需求' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '执行分析' })).toBeInTheDocument()
+    expect(screen.getByPlaceholderText(/Describe your structural goal/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Expand Engineering Context' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Discuss First' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Run Analysis' })).toBeInTheDocument()
   })
 
   it('loads conversation history from the backend', async () => {
