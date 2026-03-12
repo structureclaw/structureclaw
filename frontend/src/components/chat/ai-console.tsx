@@ -1221,6 +1221,50 @@ export function AIConsole() {
               )}
 
               <div className="rounded-[28px] border border-border/70 bg-background/70 p-3 dark:border-white/10 dark:bg-black/20">
+                <div className="mb-3 rounded-[22px] border border-border/70 bg-card/60 px-4 py-3 dark:border-white/10 dark:bg-white/5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{t('skillSelectionLabel')}</p>
+                      <p className="text-xs leading-5 text-muted-foreground">{t('skillSelectionHelp')}</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="rounded-full border border-border bg-background/70 px-3 py-1.5 text-sm text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
+                      onClick={() => setContextOpen(true)}
+                    >
+                      {t('expandContext')}
+                    </button>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {availableSkills.map((skill) => {
+                      const label = locale === 'zh' ? (skill.name.zh || skill.id) : (skill.name.en || skill.id)
+                      const selected = selectedSkillIds.includes(skill.id)
+                      return (
+                        <button
+                          key={skill.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedSkillIds((current) => (
+                              current.includes(skill.id)
+                                ? current.filter((item) => item !== skill.id)
+                                : [...current, skill.id]
+                            ))
+                          }}
+                          className={cn(
+                            'rounded-full border px-3 py-1.5 text-sm transition',
+                            selected
+                              ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
+                              : 'border-border/70 bg-background/70 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
+                          )}
+                        >
+                          {label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
                 <Textarea
                   className="min-h-[120px] resize-none border-0 bg-transparent px-3 py-3 text-base text-foreground placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0"
                   placeholder={t('composerPlaceholder')}
