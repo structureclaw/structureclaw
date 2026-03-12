@@ -261,4 +261,64 @@ describe('AgentService orchestration', () => {
     expect(result.report?.markdown).toContain('# StructureClaw Calculation Report');
     expect(result.report?.markdown).toContain('## Executive Summary');
   });
+
+  test('should return structured chat guidance for broad fallback scenarios', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const result = await svc.run({
+      message: 'Help me size a steel frame for static analysis',
+      mode: 'chat',
+      context: {
+        locale: 'en',
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.interaction?.detectedScenario).toBe('steel-frame');
+    expect(result.interaction?.detectedScenarioLabel).toBe('Steel Frame');
+    expect(result.interaction?.conversationStage).toBe('Intent');
+    expect(result.interaction?.fallbackSupportNote).toContain('portal-frame template');
+    expect(result.interaction?.recommendedNextStep).toContain('Structure type');
+    expect(result.response).toContain('Detected scenario: Steel Frame');
+  });
+
+  test('should block unsupported scenarios from silently falling back to beam extraction', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const result = await svc.run({
+      message: '请帮我分析一个桥梁模型，跨度 30m',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.interaction?.detectedScenario).toBe('bridge');
+    expect(result.interaction?.fallbackSupportNote).toContain('桥梁');
+    expect(result.interaction?.missingCritical).toContain('结构类型（门式刚架/双跨梁/梁/平面桁架）');
+    expect(result.response).toContain('识别场景：桥梁');
+  });
+
+  test('should advance chat guidance to load stage once portal geometry is known', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const result = await svc.run({
+      message: 'Portal frame, each span 6 m and column height 4 m',
+      mode: 'chat',
+      context: {
+        locale: 'en',
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.interaction?.detectedScenario).toBe('portal-frame');
+    expect(result.interaction?.stage).toBe('loads');
+    expect(result.interaction?.conversationStage).toBe('Loads');
+    expect(result.interaction?.missingCritical).toContain('Load magnitude (kN)');
+    expect(result.interaction?.recommendedNextStep).toContain('Load');
+  });
 });

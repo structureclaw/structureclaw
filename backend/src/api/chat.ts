@@ -169,6 +169,35 @@ export async function chatRoutes(fastify: FastifyInstance) {
         });
       }
 
+      if (mode === 'chat') {
+        const result = await agentService.run({
+          message: body.message,
+          mode: 'chat',
+          conversationId: body.conversationId,
+          traceId: body.traceId,
+          context: {
+            locale: body.context?.locale,
+            model: body.context?.model,
+            modelFormat: body.context?.modelFormat,
+            analysisType: body.context?.analysisType,
+            parameters: body.context?.parameters,
+            autoAnalyze: body.context?.autoAnalyze,
+            autoCodeCheck: body.context?.autoCodeCheck,
+            designCode: body.context?.designCode,
+            codeCheckElements: body.context?.codeCheckElements,
+            includeReport: body.context?.includeReport,
+            reportFormat: body.context?.reportFormat,
+            reportOutput: body.context?.reportOutput,
+            userDecision: body.context?.userDecision,
+            providedValues: body.context?.providedValues,
+          },
+        });
+        return reply.send({
+          mode: 'chat',
+          result,
+        });
+      }
+
       const result = await chatService.sendMessage({
         message: body.message,
         conversationId: body.conversationId,
@@ -293,6 +322,39 @@ export async function chatRoutes(fastify: FastifyInstance) {
         for await (const chunk of stream) {
           reply.raw.write(`data: ${JSON.stringify(normalizeStreamChunkError(chunk))}\n\n`);
         }
+        reply.raw.write('data: [DONE]\n\n');
+        reply.raw.end();
+        return;
+      }
+
+      if (mode === 'chat') {
+        const stream = agentService.runStream({
+          message: body.message,
+          mode: 'chat',
+          conversationId: body.conversationId,
+          traceId: body.traceId,
+          context: {
+            locale: body.context?.locale,
+            model: body.context?.model,
+            modelFormat: body.context?.modelFormat,
+            analysisType: body.context?.analysisType,
+            parameters: body.context?.parameters,
+            autoAnalyze: body.context?.autoAnalyze,
+            autoCodeCheck: body.context?.autoCodeCheck,
+            designCode: body.context?.designCode,
+            codeCheckElements: body.context?.codeCheckElements,
+            includeReport: body.context?.includeReport,
+            reportFormat: body.context?.reportFormat,
+            reportOutput: body.context?.reportOutput,
+            userDecision: body.context?.userDecision,
+            providedValues: body.context?.providedValues,
+          },
+        });
+
+        for await (const chunk of stream) {
+          reply.raw.write(`data: ${JSON.stringify(normalizeStreamChunkError(chunk))}\n\n`);
+        }
+
         reply.raw.write('data: [DONE]\n\n');
         reply.raw.end();
         return;
