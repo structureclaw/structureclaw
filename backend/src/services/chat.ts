@@ -7,9 +7,11 @@ import { createChatModel } from '../utils/llm.js';
 import { isLlmTimeoutError, toLlmApiError } from '../utils/llm-error.js';
 import { prisma } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
+import { resolveLocale, type AppLocale } from './locale.js';
 
-// 结构工程专用提示词
-const STRUCTURAL_ENGINEER_SYSTEM_PROMPT = `你是一位专业的建筑结构工程师和顾问，专注于结构分析、设计和规范解读。
+function getStructuralEngineerSystemPrompt(locale: AppLocale): string {
+  if (locale === 'zh') {
+    return `你是一位专业的建筑结构工程师和顾问，专注于结构分析、设计和规范解读。
 
 你的专业领域包括：
 1. 结构分析方法：静力分析、动力分析、非线性分析、稳定性分析
@@ -32,12 +34,63 @@ const STRUCTURAL_ENGINEER_SYSTEM_PROMPT = `你是一位专业的建筑结构工�
 用户问题：{input}
 
 请提供专业、准确、实用的回答：`;
+  }
+
+  return `You are a professional structural engineering consultant focused on structural analysis, design, and code interpretation.
+
+Your areas of expertise include:
+1. Structural analysis methods: static, dynamic, nonlinear, and stability analysis
+2. Structural design: concrete, steel, composite, and masonry systems
+3. Code interpretation: Chinese GB series and international standards
+4. Earthquake engineering: seismic design, time-history analysis, and pushover analysis
+5. Load assessment: dead, live, wind, and seismic loads
+6. Finite element modeling: modeling strategy, mesh quality, and boundary conditions
+
+When responding:
+- Use precise structural engineering terminology
+- Provide formulas, methods, or checks where relevant
+- Cite applicable code concepts or clauses when possible
+- Give practical recommendations and caveats
+- Ask for more information proactively when needed
+
+Conversation context:
+{chat_history}
+
+User question: {input}
+
+Provide a professional, accurate, and practical answer:`;
+}
+
+function getMissingConversationError(locale: AppLocale): string {
+  return locale === 'zh' ? '会话不存在' : 'Conversation not found';
+}
+
+function getChatFallbackResponse(locale: AppLocale): string {
+  return locale === 'zh'
+    ? 'AI 聊天功能未配置 LLM API Key（支持 OPENAI_API_KEY/LLM_API_KEY/ZAI_API_KEY），其余 API 服务可正常使用。'
+    : 'AI chat is unavailable because no LLM API key is configured (OPENAI_API_KEY/LLM_API_KEY/ZAI_API_KEY are supported). Other API features remain available.';
+}
+
+function getDefaultConversationTitle(locale: AppLocale): string {
+  return locale === 'zh' ? '新对话' : 'New Conversation';
+}
+
+function buildChatInput(message: string, projectContext: string, locale: AppLocale): string {
+  if (!projectContext) {
+    return message;
+  }
+
+  return locale === 'zh'
+    ? `[项目上下文]\n${projectContext}\n\n[用户问题]\n${message}`
+    : `[Project Context]\n${projectContext}\n\n[User Question]\n${message}`;
+}
 
 export interface SendMessageParams {
   message: string;
   conversationId?: string;
   userId?: string;
   context?: {
+    locale?: AppLocale;
     projectId?: string;
     analysisType?: string;
   };
@@ -62,6 +115,7 @@ export class ChatService {
 
   async sendMessage(params: SendMessageParams) {
     const { message, conversationId, userId, context } = params;
+    const locale = resolveLocale(context?.locale);
 
     // 获取或创建会话
     let conversation;
@@ -82,7 +136,7 @@ export class ChatService {
     }
 
     if (!conversation) {
-      throw new Error('会话不存在');
+      throw new Error(getMissingConversationError(locale));
     }
 
     // 获取记忆
@@ -90,11 +144,11 @@ export class ChatService {
 
     // 构建上下文
     const projectContext = context?.projectId
-      ? await this.getProjectContext(context.projectId)
+      ? await this.getProjectContext(context.projectId, locale)
       : '';
 
     if (!this.llm) {
-      const fallbackResponse = 'AI 聊天功能未配置 LLM API Key（支持 OPENAI_API_KEY/LLM_API_KEY/ZAI_API_KEY），其余 API 服务可正常使用。';
+      const fallbackResponse = getChatFallbackResponse(locale);
 
       await prisma.message.createMany({
         data: [
@@ -118,7 +172,7 @@ export class ChatService {
     }
 
     // 创建对话链
-    const prompt = PromptTemplate.fromTemplate(STRUCTURAL_ENGINEER_SYSTEM_PROMPT);
+    const prompt = PromptTemplate.fromTemplate(getStructuralEngineerSystemPrompt(locale));
     const chain = new ConversationChain({
       llm: this.llm,
       memory,
@@ -127,7 +181,7 @@ export class ChatService {
 
     // 发送消息并获取响应
     const response = await chain.invoke({
-      input: projectContext ? `[项目上下文]\n${projectContext}\n\n[用户问题]\n${message}` : message,
+      input: buildChatInput(message, projectContext, locale),
     });
 
     // 保存消息
@@ -153,7 +207,8 @@ export class ChatService {
   }
 
   async *streamMessage(params: SendMessageParams): AsyncGenerator<StreamChunk> {
-    const { message, conversationId, userId } = params;
+    const { message, conversationId, userId, context } = params;
+    const locale = resolveLocale(context?.locale);
 
     try {
       // 获取或创建会话
@@ -173,11 +228,11 @@ export class ChatService {
       }
 
       if (!conversation) {
-        throw new Error('会话不存在');
+        throw new Error(getMissingConversationError(locale));
       }
 
       if (!this.llm) {
-        const fallbackResponse = 'AI 聊天功能未配置 LLM API Key（支持 OPENAI_API_KEY/LLM_API_KEY/ZAI_API_KEY），其余 API 服务可正常使用。';
+        const fallbackResponse = getChatFallbackResponse(locale);
 
         await prisma.message.createMany({
           data: [
@@ -200,7 +255,10 @@ export class ChatService {
       }
 
       // 使用流式 API
-      const stream = await this.llm.stream(message);
+      const projectContext = context?.projectId
+        ? await this.getProjectContext(context.projectId, locale)
+        : '';
+      const stream = await this.llm.stream(buildChatInput(message, projectContext, locale));
       let fullResponse = '';
 
       for await (const chunk of stream) {
@@ -250,10 +308,11 @@ export class ChatService {
     }
   }
 
-  async createConversation(params: { title?: string; type: string; userId?: string }) {
+  async createConversation(params: { title?: string; type: string; userId?: string; locale?: AppLocale }) {
+    const locale = resolveLocale(params.locale);
     return prisma.conversation.create({
       data: {
-        title: params.title || '新对话',
+        title: params.title || getDefaultConversationTitle(locale),
         type: params.type,
         userId: params.userId,
       },
@@ -292,7 +351,7 @@ export class ChatService {
     return this.memories.get(conversationId)!;
   }
 
-  private async getProjectContext(projectId: string): Promise<string> {
+  private async getProjectContext(projectId: string, locale: AppLocale): Promise<string> {
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       include: {
@@ -315,12 +374,22 @@ export class ChatService {
 
     const projectSettings = (project.settings || {}) as { designCode?: string };
 
-    return `
+    if (locale === 'zh') {
+      return `
 项目名称: ${project.name}
 项目类型: ${project.type}
 设计规范: ${projectSettings.designCode || '未指定'}
 模型数量: ${project.models?.length || 0}
 分析任务: ${analysisCount}
+      `.trim();
+    }
+
+    return `
+Project Name: ${project.name}
+Project Type: ${project.type}
+Design Code: ${projectSettings.designCode || 'Not specified'}
+Model Count: ${project.models?.length || 0}
+Analysis Runs: ${analysisCount}
     `.trim();
   }
 }

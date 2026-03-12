@@ -1,18 +1,23 @@
 import { type ClassValue, clsx } from "clsx"
 import { twMerge } from "tailwind-merge"
 import { cva, type VariantProps } from "class-variance-authority"
+import type { AppLocale } from "@/lib/stores/slices/preferences"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
 
-export function formatNumber(num: number): string {
-  return new Intl.NumberFormat('zh-CN').format(num)
+function toIntlLocale(locale: AppLocale): string {
+  return locale === 'zh' ? 'zh-CN' : 'en-US'
 }
 
-export function formatDate(date: Date | string): string {
+export function formatNumber(num: number, locale: AppLocale = 'en'): string {
+  return new Intl.NumberFormat(toIntlLocale(locale)).format(num)
+}
+
+export function formatDate(date: Date | string, locale: AppLocale = 'en'): string {
   const d = typeof date === 'string' ? new Date(date) : date
-  return new Intl.DateTimeFormat('zh-CN', {
+  return new Intl.DateTimeFormat(toIntlLocale(locale), {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',

@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { useI18n, type MessageKey } from '@/lib/i18n'
+import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
 
 type AnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear'
@@ -117,7 +118,8 @@ function parseModelJson(modelText: string, t: (key: MessageKey) => string): { mo
 
 function buildInteractionMessage(
   payload: Extract<StreamPayload, { type: 'interaction_update' }>,
-  t: (key: MessageKey) => string
+  t: (key: MessageKey) => string,
+  locale: AppLocale
 ) {
   const questions = payload.content?.questions || []
   const criticalMissing = payload.content?.pending?.criticalMissing || []
@@ -130,7 +132,7 @@ function buildInteractionMessage(
   }
 
   if (criticalMissing.length > 0) {
-    return `${t('interactionMissingInfo')}: ${criticalMissing.join('、')}`
+    return `${t('interactionMissingInfo')}: ${criticalMissing.join(locale === 'zh' ? '、' : ', ')}`
   }
 
   return t('interactionNeedMoreParams')
@@ -147,7 +149,11 @@ function extractAnalysis(result: AgentResult | null) {
   return null
 }
 
-function extractSummaryStats(analysis: Record<string, unknown> | null, t: (key: MessageKey) => string) {
+function extractSummaryStats(
+  analysis: Record<string, unknown> | null,
+  t: (key: MessageKey) => string,
+  locale: AppLocale
+) {
   if (!analysis) return []
   const data = typeof analysis.data === 'object' && analysis.data ? (analysis.data as Record<string, unknown>) : analysis
   const meta = typeof analysis.meta === 'object' && analysis.meta ? (analysis.meta as Record<string, unknown>) : null
@@ -164,7 +170,7 @@ function extractSummaryStats(analysis: Record<string, unknown> | null, t: (key: 
 
   candidatePairs.forEach(([label, value]) => {
     if (typeof value === 'number') {
-      stats.push({ label, value: formatNumber(value) })
+      stats.push({ label, value: formatNumber(value, locale) })
     }
   })
 
@@ -176,14 +182,16 @@ function AnalysisPanel({
   activeTab,
   onTabChange,
   t,
+  locale,
 }: {
   result: AgentResult | null
   activeTab: PanelTab
   onTabChange: (tab: PanelTab) => void
   t: (key: MessageKey) => string
+  locale: AppLocale
 }) {
   const analysis = extractAnalysis(result)
-  const stats = extractSummaryStats(analysis, t)
+  const stats = extractSummaryStats(analysis, t, locale)
   const reportMarkdown = result?.report?.markdown?.trim()
   const reportSummary = result?.report?.summary?.trim()
 
@@ -378,7 +386,7 @@ function AnalysisPanel({
 }
 
 export function AIConsole() {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const initialAssistantMessage = useMemo<Message>(() => ({
     id: 'welcome',
     role: 'assistant',
@@ -575,6 +583,7 @@ export function AIConsole() {
       body: JSON.stringify({
         title: seedMessage.slice(0, 48),
         type: 'analysis',
+        locale,
       }),
     })
 
@@ -716,6 +725,7 @@ export function AIConsole() {
       const contextPayload =
         action === 'execute'
           ? {
+              locale,
               model: parsedModel.model,
               modelFormat: parsedModel.model ? 'structuremodel-v1' : undefined,
               analysisType,
@@ -726,7 +736,7 @@ export function AIConsole() {
               reportFormat: 'both',
               reportOutput: 'inline',
             }
-          : undefined
+          : { locale }
 
       if (action === 'execute') {
         const response = await fetch(`${API_BASE}/api/v1/chat/execute`, {
@@ -818,7 +828,7 @@ export function AIConsole() {
           }
 
           if (payload.type === 'interaction_update') {
-            const interactionMessage = buildInteractionMessage(payload, t)
+            const interactionMessage = buildInteractionMessage(payload, t, locale)
             assistantContent = interactionMessage
             replaceMessage(assistantMessageId, (message) => ({
               ...message,
@@ -948,7 +958,7 @@ export function AIConsole() {
                   </div>
                   <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
                     <Clock3 className="h-3.5 w-3.5" />
-                    <span>{formatDate(conversation.updatedAt || conversation.createdAt || new Date().toISOString())}</span>
+                    <span>{formatDate(conversation.updatedAt || conversation.createdAt || new Date().toISOString(), locale)}</span>
                   </div>
                   {preview?.content && (
                     <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
@@ -1032,7 +1042,7 @@ export function AIConsole() {
                     <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
                       {message.role === 'user' ? <User className="h-3.5 w-3.5" /> : <BrainCircuit className="h-3.5 w-3.5" />}
                       <span>{message.role === 'user' ? t('you') : t('structureClawAi')}</span>
-                      <span className="text-slate-500">{formatDate(message.timestamp)}</span>
+                      <span className="text-slate-500">{formatDate(message.timestamp, locale)}</span>
                     </div>
                     <div className="whitespace-pre-wrap text-sm leading-7">
                       {message.content}
@@ -1165,7 +1175,7 @@ export function AIConsole() {
         </div>
       </section>
 
-      <AnalysisPanel result={latestResult} activeTab={activePanel} onTabChange={setActivePanel} t={t} />
+      <AnalysisPanel result={latestResult} activeTab={activePanel} onTabChange={setActivePanel} t={t} locale={locale} />
     </div>
   )
 }

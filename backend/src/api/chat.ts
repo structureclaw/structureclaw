@@ -19,6 +19,8 @@ const optionalIdSchema = z.preprocess((value) => {
   return value;
 }, z.string().optional());
 
+const localeSchema = z.enum(['en', 'zh']).optional();
+
 // 请求验证
 const sendMessageSchema = z.object({
   message: z.string().min(1).max(10000),
@@ -26,6 +28,7 @@ const sendMessageSchema = z.object({
   conversationId: optionalIdSchema,
   traceId: optionalIdSchema,
   context: z.object({
+    locale: localeSchema,
     projectId: z.string().optional(),
     model: z.record(z.any()).optional(),
     modelFormat: z.string().optional(),
@@ -46,6 +49,7 @@ const sendMessageSchema = z.object({
 const createConversationSchema = z.object({
   title: z.string().optional(),
   type: z.enum(['general', 'analysis', 'design', 'code-check']),
+  locale: localeSchema,
 });
 
 const executeSchema = z.object({
@@ -53,6 +57,7 @@ const executeSchema = z.object({
   conversationId: optionalIdSchema,
   traceId: optionalIdSchema,
   context: z.object({
+    locale: localeSchema,
     model: z.record(z.any()).optional(),
     modelFormat: z.string().optional(),
     analysisType: z.enum(['static', 'dynamic', 'seismic', 'nonlinear']).optional(),
@@ -75,6 +80,7 @@ const streamMessageSchema = z.object({
   conversationId: optionalIdSchema,
   traceId: optionalIdSchema,
   context: z.object({
+    locale: localeSchema,
     projectId: z.string().optional(),
     model: z.record(z.any()).optional(),
     modelFormat: z.string().optional(),
@@ -141,6 +147,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
           conversationId: body.conversationId,
           traceId: body.traceId,
           context: {
+            locale: body.context?.locale,
             model: body.context?.model,
             modelFormat: body.context?.modelFormat,
             analysisType: body.context?.analysisType,
@@ -204,6 +211,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       title: body.title,
       type: body.type,
       userId,
+      locale: body.locale,
     });
 
     return reply.send(conversation);
@@ -265,6 +273,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
           conversationId: body.conversationId,
           traceId: body.traceId,
           context: {
+            locale: body.context?.locale,
             model: body.context?.model,
             modelFormat: body.context?.modelFormat,
             analysisType: body.context?.analysisType,
@@ -294,6 +303,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         conversationId: body.conversationId,
         userId,
         context: {
+          locale: body.context?.locale,
           projectId: body.context?.projectId,
           analysisType: body.context?.analysisType,
         },

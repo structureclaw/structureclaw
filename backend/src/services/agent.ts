@@ -7,6 +7,7 @@ import { config } from '../config/index.js';
 import { createChatModel } from '../utils/llm.js';
 import { logger } from '../utils/logger.js';
 import { redis } from '../utils/redis.js';
+import { resolveLocale, type AppLocale } from './locale.js';
 
 export type AgentToolName = 'text-to-model-draft' | 'convert' | 'validate' | 'analyze' | 'code-check' | 'report';
 export type AgentRunMode = 'chat' | 'execute' | 'auto';
@@ -94,6 +95,7 @@ export interface AgentRunParams {
   conversationId?: string;
   traceId?: string;
   context?: {
+    locale?: AppLocale;
     model?: Record<string, unknown>;
     modelFormat?: string;
     analysisType?: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
@@ -196,6 +198,14 @@ export class AgentService {
     });
 
     this.llm = createChatModel(0.1);
+  }
+
+  private isZh(locale: AppLocale): boolean {
+    return locale === 'zh';
+  }
+
+  private localize(locale: AppLocale, zh: string, en: string): string {
+    return this.isZh(locale) ? zh : en;
   }
 
   shouldRouteToExecute(message: string): boolean {
@@ -534,10 +544,19 @@ export class AgentService {
   private async runInternal(params: AgentRunParams, traceId: string): Promise<AgentRunResult> {
     const startedAtMs = Date.now();
     const startedAt = new Date(startedAtMs).toISOString();
+    const locale = resolveLocale(params.context?.locale);
 
     const runMode: AgentRunMode = params.mode || 'auto';
     if (runMode === 'chat') {
-      const response = await this.renderSummary(params.message, '已收到你的问题。当前为纯聊天模式，未触发结构工具调用。');
+      const response = await this.renderSummary(
+        params.message,
+        this.localize(
+          locale,
+          '已收到你的问题。当前为纯聊天模式，未触发结构工具调用。',
+          'I received your request. The current turn stayed in chat mode and did not trigger structural tools.'
+        ),
+        locale,
+      );
       return {
         traceId,
         startedAt,
@@ -546,7 +565,7 @@ export class AgentService {
         success: true,
         mode: this.llm ? 'llm-assisted' : 'rule-based',
         needsModelInput: false,
-        plan: ['纯聊天模式：不调用结构工具'],
+        plan: [this.localize(locale, '纯聊天模式：不调用结构工具', 'Chat mode only: no structural tools invoked')],
         toolCalls: [],
         metrics: this.buildMetrics([]),
         response,
@@ -583,7 +602,7 @@ export class AgentService {
 
     let normalizedModel = modelInput;
     if (!normalizedModel) {
-      plan.push('从自然语言生成结构模型草案（支持会话级补数）');
+      plan.push(this.localize(locale, '从自然语言生成结构模型草案（支持会话级补数）', 'Generate a structural model draft from natural language with session carry-over'));
       const draftCall = this.startToolCall('text-to-model-draft', { message: params.message, conversationId: sessionKey });
       toolCalls.push(draftCall);
 
@@ -603,7 +622,7 @@ export class AgentService {
 
       if (workingSession.userApprovedAutoDecide) {
         for (let i = 0; i < 3; i += 1) {
-          const assessment = this.assessInteractionNeeds(workingSession);
+          const assessment = this.assessInteractionNeeds(workingSession, locale);
           if (assessment.nonCriticalMissing.length === 0) {
             break;
           }
@@ -611,7 +630,7 @@ export class AgentService {
         }
       }
 
-      const finalAssessment = this.assessInteractionNeeds(workingSession);
+      const finalAssessment = this.assessInteractionNeeds(workingSession, locale);
       if (finalAssessment.criticalMissing.length > 0 || finalAssessment.nonCriticalMissing.length > 0 || !draft.model) {
         if (sessionKey) {
           await this.setInteractionSession(sessionKey, workingSession);
@@ -621,9 +640,10 @@ export class AgentService {
           finalAssessment,
           workingSession,
           finalAssessment.criticalMissing.length > 0 ? 'confirming' : 'collecting',
+          locale,
         );
-        const missingFields = this.mapMissingFieldLabels(finalAssessment.criticalMissing);
-        const question = this.buildInteractionQuestion(interaction);
+        const missingFields = this.mapMissingFieldLabels(finalAssessment.criticalMissing, locale);
+        const question = this.buildInteractionQuestion(interaction, locale);
         const result: AgentRunResult = {
           traceId,
           startedAt,
@@ -658,7 +678,7 @@ export class AgentService {
     const resolvedReportOutput = workingSession.resolved?.reportOutput || params.context?.reportOutput || 'inline';
 
     if (sourceFormat !== 'structuremodel-v1') {
-      plan.push(`将输入模型从 ${sourceFormat} 转为 structuremodel-v1`);
+      plan.push(this.localize(locale, `将输入模型从 ${sourceFormat} 转为 structuremodel-v1`, `Convert the input model from ${sourceFormat} to structuremodel-v1`));
       const convertInput = {
         model: modelInput,
         source_format: sourceFormat,
@@ -686,14 +706,14 @@ export class AgentService {
           toolCalls,
           metrics: this.buildMetrics(toolCalls),
             interaction: this.buildExecutionInteraction('blocked'),
-            response: `模型格式转换失败：${convertCall.error}`,
+            response: this.localize(locale, `模型格式转换失败：${convertCall.error}`, `Model conversion failed: ${convertCall.error}`),
           };
         this.logRunResult(traceId, sessionKey, result);
         return result;
       }
     }
 
-    plan.push('校验模型字段与引用完整性');
+    plan.push(this.localize(locale, '校验模型字段与引用完整性', 'Validate model fields and references'));
     const validateInput = { model: normalizedModel };
     const validateCall = this.startToolCall('validate', validateInput);
     toolCalls.push(validateCall);
@@ -704,7 +724,7 @@ export class AgentService {
       if (validated.data?.valid === false) {
         validateCall.status = 'error';
         validateCall.errorCode = validated.data?.errorCode || 'INVALID_STRUCTURE_MODEL';
-        validateCall.error = validated.data?.message || '模型校验失败';
+        validateCall.error = validated.data?.message || this.localize(locale, '模型校验失败', 'Model validation failed');
         const result: AgentRunResult = {
           traceId,
           startedAt,
@@ -718,7 +738,7 @@ export class AgentService {
           model: normalizedModel,
           metrics: this.buildMetrics(toolCalls),
           interaction: this.buildExecutionInteraction('blocked'),
-          response: `模型校验失败：${validateCall.error}`,
+          response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
         };
         this.logRunResult(traceId, sessionKey, result);
         return result;
@@ -738,7 +758,7 @@ export class AgentService {
         model: normalizedModel,
         metrics: this.buildMetrics(toolCalls),
         interaction: this.buildExecutionInteraction('blocked'),
-        response: `模型校验失败：${validateCall.error}`,
+        response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
       };
       this.logRunResult(traceId, sessionKey, result);
       return result;
@@ -747,7 +767,8 @@ export class AgentService {
     if (!autoAnalyze) {
       const response = await this.renderSummary(
         params.message,
-        '模型已通过校验。根据配置未自动执行 analyze。',
+        this.localize(locale, '模型已通过校验。根据配置未自动执行 analyze。', 'The model passed validation. Analyze was not executed automatically under the current configuration.'),
+        locale,
       );
       const result: AgentRunResult = {
         traceId,
@@ -771,7 +792,7 @@ export class AgentService {
       return result;
     }
 
-    plan.push(`执行 ${resolvedAnalysisType} 分析并返回摘要`);
+    plan.push(this.localize(locale, `执行 ${resolvedAnalysisType} 分析并返回摘要`, `Run ${resolvedAnalysisType} analysis and return a summary`));
     const analyzeInput = {
       type: resolvedAnalysisType,
       model: normalizedModel,
@@ -787,7 +808,7 @@ export class AgentService {
       let codeCheckResult: unknown;
 
       if (analysisSuccess && resolvedAutoCodeCheck) {
-        plan.push(`执行 ${resolvedDesignCode} 规范校核`);
+        plan.push(this.localize(locale, `执行 ${resolvedDesignCode} 规范校核`, `Run ${resolvedDesignCode} code checks`));
         const codeCheckElements = params.context?.codeCheckElements?.length
           ? params.context?.codeCheckElements
           : this.extractElementIds(normalizedModel);
@@ -828,7 +849,7 @@ export class AgentService {
             analysis: analyzed.data,
             metrics: this.buildMetrics(toolCalls),
             interaction: this.buildExecutionInteraction('blocked'),
-            response: `规范校核失败：${codeCheckCall.error}`,
+            response: this.localize(locale, `规范校核失败：${codeCheckCall.error}`, `Code check failed: ${codeCheckCall.error}`),
           };
           this.logRunResult(traceId, sessionKey, result);
           return result;
@@ -838,7 +859,7 @@ export class AgentService {
       let report: AgentRunResult['report'];
       let artifacts: AgentRunResult['artifacts'];
       if (analysisSuccess && resolvedIncludeReport) {
-        plan.push('生成可读计算与校核报告');
+        plan.push(this.localize(locale, '生成可读计算与校核报告', 'Generate a readable analysis and code-check report'));
         const reportCall = this.startToolCall('report', {
           message: params.message,
           analysis: analyzed.data,
@@ -852,6 +873,7 @@ export class AgentService {
           analysis: analyzed.data,
           codeCheck: codeCheckResult,
           format: resolvedReportFormat,
+          locale,
         });
         if (report && resolvedReportOutput === 'file') {
           artifacts = await this.persistReportArtifacts(traceId, report, resolvedReportFormat);
@@ -861,8 +883,14 @@ export class AgentService {
 
       const response = await this.renderSummary(
         params.message,
-        `分析完成。analysis_type=${resolvedAnalysisType}, success=${String(analyzed.data?.success ?? false)}`
-          + (resolvedAutoCodeCheck ? `, code_check=${String(Boolean(codeCheckResult))}` : ''),
+        this.localize(
+          locale,
+          `分析完成。analysis_type=${resolvedAnalysisType}, success=${String(analyzed.data?.success ?? false)}`
+            + (resolvedAutoCodeCheck ? `, code_check=${String(Boolean(codeCheckResult))}` : ''),
+          `Analysis finished. analysis_type=${resolvedAnalysisType}, success=${String(analyzed.data?.success ?? false)}`
+            + (resolvedAutoCodeCheck ? `, code_check=${String(Boolean(codeCheckResult))}` : '')
+        ),
+        locale,
       );
 
       const result: AgentRunResult = {
@@ -904,7 +932,7 @@ export class AgentService {
         model: normalizedModel,
         metrics: this.buildMetrics(toolCalls),
         interaction: this.buildExecutionInteraction('blocked'),
-        response: `分析执行失败：${analyzeCall.error}`,
+        response: this.localize(locale, `分析执行失败：${analyzeCall.error}`, `Analysis execution failed: ${analyzeCall.error}`),
       };
       this.logRunResult(traceId, sessionKey, result);
       return result;
@@ -949,7 +977,7 @@ export class AgentService {
     return undefined;
   }
 
-  private assessInteractionNeeds(session: InteractionSession): {
+  private assessInteractionNeeds(session: InteractionSession, locale: AppLocale): {
     criticalMissing: string[];
     nonCriticalMissing: string[];
     defaultProposals: InteractionDefaultProposal[];
@@ -980,27 +1008,27 @@ export class AgentService {
     return {
       criticalMissing,
       nonCriticalMissing,
-      defaultProposals: this.buildDefaultProposals(nonCriticalMissing),
+      defaultProposals: this.buildDefaultProposals(nonCriticalMissing, locale),
     };
   }
 
-  private buildDefaultProposals(nonCriticalMissing: string[]): InteractionDefaultProposal[] {
+  private buildDefaultProposals(nonCriticalMissing: string[], locale: AppLocale): InteractionDefaultProposal[] {
     return nonCriticalMissing.map((key) => {
       switch (key) {
         case 'analysisType':
-          return { paramKey: key, value: 'static', reason: '默认采用静力分析，属于最保守且最常用起步工况。' };
+          return { paramKey: key, value: 'static', reason: this.localize(locale, '默认采用静力分析，属于最保守且最常用起步工况。', 'Default to static analysis as the most conservative and common starting case.') };
         case 'autoCodeCheck':
-          return { paramKey: key, value: true, reason: '默认开启规范校核以保证验算完整性。' };
+          return { paramKey: key, value: true, reason: this.localize(locale, '默认开启规范校核以保证验算完整性。', 'Enable code checks by default to keep the verification flow complete.') };
         case 'designCode':
-          return { paramKey: key, value: 'GB50017', reason: '默认采用钢结构设计标准 GB50017 进行保守校核。' };
+          return { paramKey: key, value: 'GB50017', reason: this.localize(locale, '默认采用钢结构设计标准 GB50017 进行保守校核。', 'Use GB50017 by default for a conservative steel-design check.') };
         case 'includeReport':
-          return { paramKey: key, value: true, reason: '默认生成报告，便于复核输入与结果。' };
+          return { paramKey: key, value: true, reason: this.localize(locale, '默认生成报告，便于复核输入与结果。', 'Generate a report by default so inputs and results can be reviewed.') };
         case 'reportFormat':
-          return { paramKey: key, value: 'both', reason: '默认同时输出 json/markdown，兼顾机器和人工阅读。' };
+          return { paramKey: key, value: 'both', reason: this.localize(locale, '默认同时输出 json/markdown，兼顾机器和人工阅读。', 'Return both JSON and Markdown by default for machine and human consumption.') };
         case 'reportOutput':
-          return { paramKey: key, value: 'inline', reason: '默认内联返回，减少文件写入依赖。' };
+          return { paramKey: key, value: 'inline', reason: this.localize(locale, '默认内联返回，减少文件写入依赖。', 'Return results inline by default to avoid file-output dependencies.') };
         default:
-          return { paramKey: key, value: null, reason: '默认保守值。' };
+          return { paramKey: key, value: null, reason: this.localize(locale, '默认保守值。', 'Apply a conservative default.') };
       }
     });
   }
@@ -1173,31 +1201,31 @@ export class AgentService {
     return missing;
   }
 
-  private mapMissingFieldLabels(missing: string[]): string[] {
+  private mapMissingFieldLabels(missing: string[], locale: AppLocale): string[] {
     return missing.map((key) => {
       switch (key) {
         case 'inferredType':
-          return '结构类型（门式刚架/双跨梁/梁/平面桁架）';
+          return this.localize(locale, '结构类型（门式刚架/双跨梁/梁/平面桁架）', 'Structure type (portal frame / double-span beam / beam / truss)');
         case 'lengthM':
-          return '跨度/长度（m）';
+          return this.localize(locale, '跨度/长度（m）', 'Span / length (m)');
         case 'spanLengthM':
-          return '门式刚架或双跨每跨跨度（m）';
+          return this.localize(locale, '门式刚架或双跨每跨跨度（m）', 'Span length per bay for the portal frame or double-span beam (m)');
         case 'heightM':
-          return '门式刚架柱高（m）';
+          return this.localize(locale, '门式刚架柱高（m）', 'Portal-frame column height (m)');
         case 'loadKN':
-          return '荷载大小（kN）';
+          return this.localize(locale, '荷载大小（kN）', 'Load magnitude (kN)');
         case 'analysisType':
-          return '分析类型（static/dynamic/seismic/nonlinear）';
+          return this.localize(locale, '分析类型（static/dynamic/seismic/nonlinear）', 'Analysis type (static/dynamic/seismic/nonlinear)');
         case 'designCode':
-          return '规范编号（如 GB50017）';
+          return this.localize(locale, '规范编号（如 GB50017）', 'Design code (for example GB50017)');
         case 'autoCodeCheck':
-          return '是否自动规范校核';
+          return this.localize(locale, '是否自动规范校核', 'Whether to run code checks automatically');
         case 'includeReport':
-          return '是否生成报告';
+          return this.localize(locale, '是否生成报告', 'Whether to generate a report');
         case 'reportFormat':
-          return '报告格式（json/markdown/both）';
+          return this.localize(locale, '报告格式（json/markdown/both）', 'Report format (json/markdown/both)');
         case 'reportOutput':
-          return '报告输出位置（inline/file）';
+          return this.localize(locale, '报告输出位置（inline/file）', 'Report output location (inline/file)');
         default:
           return key;
       }
@@ -1208,17 +1236,18 @@ export class AgentService {
     assessment: { criticalMissing: string[]; nonCriticalMissing: string[]; defaultProposals: InteractionDefaultProposal[] },
     session: InteractionSession,
     state: AgentInteractionState,
+    locale: AppLocale,
   ): AgentInteraction {
     const missingKeys = [...assessment.criticalMissing, ...assessment.nonCriticalMissing];
-    const questions = this.buildInteractionQuestions(missingKeys, assessment.criticalMissing);
+    const questions = this.buildInteractionQuestions(missingKeys, assessment.criticalMissing, locale);
     return {
       state,
       stage: this.resolveInteractionStage(missingKeys),
       turnId: randomUUID(),
       questions,
       pending: {
-        criticalMissing: this.mapMissingFieldLabels(assessment.criticalMissing),
-        nonCriticalMissing: this.mapMissingFieldLabels(assessment.nonCriticalMissing),
+        criticalMissing: this.mapMissingFieldLabels(assessment.criticalMissing, locale),
+        nonCriticalMissing: this.mapMissingFieldLabels(assessment.nonCriticalMissing, locale),
       },
       proposedDefaults: assessment.defaultProposals,
       nextActions: assessment.criticalMissing.length > 0
@@ -1227,34 +1256,34 @@ export class AgentService {
     };
   }
 
-  private buildInteractionQuestions(missingKeys: string[], criticalMissing: string[]): InteractionQuestion[] {
+  private buildInteractionQuestions(missingKeys: string[], criticalMissing: string[], locale: AppLocale): InteractionQuestion[] {
     return missingKeys.map((paramKey) => {
       const critical = criticalMissing.includes(paramKey);
       switch (paramKey) {
         case 'inferredType':
-          return { paramKey, label: '结构类型', question: '请确认结构类型（门式刚架/双跨梁/梁/平面桁架）。', required: true, critical };
+          return { paramKey, label: this.localize(locale, '结构类型', 'Structure type'), question: this.localize(locale, '请确认结构类型（门式刚架/双跨梁/梁/平面桁架）。', 'Please confirm the structure type (portal frame / double-span beam / beam / truss).'), required: true, critical };
         case 'lengthM':
-          return { paramKey, label: '跨度/长度', question: '请确认跨度或长度。', unit: 'm', required: true, critical };
+          return { paramKey, label: this.localize(locale, '跨度/长度', 'Span / length'), question: this.localize(locale, '请确认跨度或长度。', 'Please confirm the span or length.'), unit: 'm', required: true, critical };
         case 'spanLengthM':
-          return { paramKey, label: '每跨跨度', question: '请确认门式刚架或双跨梁每跨跨度。', unit: 'm', required: true, critical };
+          return { paramKey, label: this.localize(locale, '每跨跨度', 'Span per bay'), question: this.localize(locale, '请确认门式刚架或双跨梁每跨跨度。', 'Please confirm the span length for each bay of the portal frame or double-span beam.'), unit: 'm', required: true, critical };
         case 'heightM':
-          return { paramKey, label: '柱高', question: '请确认门式刚架柱高。', unit: 'm', required: true, critical };
+          return { paramKey, label: this.localize(locale, '柱高', 'Column height'), question: this.localize(locale, '请确认门式刚架柱高。', 'Please confirm the portal-frame column height.'), unit: 'm', required: true, critical };
         case 'loadKN':
-          return { paramKey, label: '荷载', question: '请确认控制荷载大小。', unit: 'kN', required: true, critical };
+          return { paramKey, label: this.localize(locale, '荷载', 'Load'), question: this.localize(locale, '请确认控制荷载大小。', 'Please confirm the controlling load magnitude.'), unit: 'kN', required: true, critical };
         case 'analysisType':
-          return { paramKey, label: '分析类型', question: '请选择分析类型。', required: true, critical, suggestedValue: 'static' };
+          return { paramKey, label: this.localize(locale, '分析类型', 'Analysis type'), question: this.localize(locale, '请选择分析类型。', 'Please choose the analysis type.'), required: true, critical, suggestedValue: 'static' };
         case 'autoCodeCheck':
-          return { paramKey, label: '自动校核', question: '是否自动执行规范校核？', required: true, critical, suggestedValue: true };
+          return { paramKey, label: this.localize(locale, '自动校核', 'Auto code check'), question: this.localize(locale, '是否自动执行规范校核？', 'Should code checks run automatically?'), required: true, critical, suggestedValue: true };
         case 'designCode':
-          return { paramKey, label: '规范编号', question: '请确认规范编号（例如 GB50017）。', required: true, critical, suggestedValue: 'GB50017' };
+          return { paramKey, label: this.localize(locale, '规范编号', 'Design code'), question: this.localize(locale, '请确认规范编号（例如 GB50017）。', 'Please confirm the design code (for example GB50017).'), required: true, critical, suggestedValue: 'GB50017' };
         case 'includeReport':
-          return { paramKey, label: '报告开关', question: '是否生成计算与校核报告？', required: true, critical, suggestedValue: true };
+          return { paramKey, label: this.localize(locale, '报告开关', 'Report toggle'), question: this.localize(locale, '是否生成计算与校核报告？', 'Should an analysis and code-check report be generated?'), required: true, critical, suggestedValue: true };
         case 'reportFormat':
-          return { paramKey, label: '报告格式', question: '请确认报告格式。', required: true, critical, suggestedValue: 'both' };
+          return { paramKey, label: this.localize(locale, '报告格式', 'Report format'), question: this.localize(locale, '请确认报告格式。', 'Please confirm the report format.'), required: true, critical, suggestedValue: 'both' };
         case 'reportOutput':
-          return { paramKey, label: '报告输出', question: '请确认报告输出位置。', required: true, critical, suggestedValue: 'inline' };
+          return { paramKey, label: this.localize(locale, '报告输出', 'Report output'), question: this.localize(locale, '请确认报告输出位置。', 'Please confirm where the report should be returned.'), required: true, critical, suggestedValue: 'inline' };
         default:
-          return { paramKey, label: paramKey, question: `请确认参数 ${paramKey}。`, required: true, critical };
+          return { paramKey, label: paramKey, question: this.localize(locale, `请确认参数 ${paramKey}。`, `Please confirm parameter ${paramKey}.`), required: true, critical };
       }
     });
   }
@@ -1278,9 +1307,14 @@ export class AgentService {
     return 'report';
   }
 
-  private buildInteractionQuestion(interaction: AgentInteraction): string {
-    const questionSummary = interaction.questions?.map((item) => item.label).join('、') || '必要参数';
-    return `请先确认以下参数：${questionSummary}。若希望我按保守值自动决策，请回复“你决定”并触发 allow_auto_decide。`;
+  private buildInteractionQuestion(interaction: AgentInteraction, locale: AppLocale): string {
+    const questionSummary = interaction.questions?.map((item) => item.label).join(locale === 'zh' ? '、' : ', ')
+      || this.localize(locale, '必要参数', 'required parameters');
+    return this.localize(
+      locale,
+      `请先确认以下参数：${questionSummary}。若希望我按保守值自动决策，请回复“你决定”并触发 allow_auto_decide。`,
+      `Please confirm the following parameters first: ${questionSummary}. If you want me to choose conservative defaults automatically, reply with "you decide" and trigger allow_auto_decide.`
+    );
   }
 
   private buildExecutionInteraction(state: 'completed' | 'blocked'): AgentInteraction {
@@ -1311,13 +1345,18 @@ export class AgentService {
     analysis: unknown;
     codeCheck?: unknown;
     format: AgentReportFormat;
+    locale: AppLocale;
   }): AgentRunResult['report'] {
     const analysisSuccess = Boolean((params.analysis as any)?.success);
     const codeCheckSummary = (params.codeCheck as any)?.summary;
     const codeCheckText = codeCheckSummary
-      ? `校核通过 ${String(codeCheckSummary.passed ?? 0)} / ${String(codeCheckSummary.total ?? 0)}`
-      : '未执行规范校核';
-    const summary = `分析类型 ${params.analysisType}，分析${analysisSuccess ? '成功' : '失败'}，${codeCheckText}。`;
+      ? this.localize(params.locale, `校核通过 ${String(codeCheckSummary.passed ?? 0)} / ${String(codeCheckSummary.total ?? 0)}`, `Code checks passed ${String(codeCheckSummary.passed ?? 0)} / ${String(codeCheckSummary.total ?? 0)}`)
+      : this.localize(params.locale, '未执行规范校核', 'No code checks were executed');
+    const summary = this.localize(
+      params.locale,
+      `分析类型 ${params.analysisType}，分析${analysisSuccess ? '成功' : '失败'}，${codeCheckText}。`,
+      `Analysis type ${params.analysisType}; analysis ${analysisSuccess ? 'succeeded' : 'failed'}; ${codeCheckText}.`
+    );
     const keyMetrics = this.extractKeyMetrics(params.analysis, params.codeCheck);
     const clauseTraceability = this.extractClauseTraceability(params.codeCheck);
     const controllingCases = this.extractControllingCases(params.analysis);
@@ -1342,35 +1381,35 @@ export class AgentService {
     }
 
     const markdown = [
-      '# StructureClaw 计算报告',
+      this.localize(params.locale, '# StructureClaw 计算报告', '# StructureClaw Calculation Report'),
       '',
-      '## 目录',
-      '1. 执行摘要',
-      '2. 关键指标',
-      '3. 条文追溯',
-      '4. 控制工况',
+      this.localize(params.locale, '## 目录', '## Contents'),
+      this.localize(params.locale, '1. 执行摘要', '1. Executive Summary'),
+      this.localize(params.locale, '2. 关键指标', '2. Key Metrics'),
+      this.localize(params.locale, '3. 条文追溯', '3. Clause Traceability'),
+      this.localize(params.locale, '4. 控制工况', '4. Governing Cases'),
       '',
-      '## 执行摘要',
-      `- 用户意图：${params.message}`,
-      `- 分析类型：${params.analysisType}`,
-      `- 分析结果：${analysisSuccess ? '成功' : '失败'}`,
-      `- 规范校核：${codeCheckText}`,
+      this.localize(params.locale, '## 执行摘要', '## Executive Summary'),
+      this.localize(params.locale, `- 用户意图：${params.message}`, `- User intent: ${params.message}`),
+      this.localize(params.locale, `- 分析类型：${params.analysisType}`, `- Analysis type: ${params.analysisType}`),
+      this.localize(params.locale, `- 分析结果：${analysisSuccess ? '成功' : '失败'}`, `- Analysis result: ${analysisSuccess ? 'Success' : 'Failure'}`),
+      this.localize(params.locale, `- 规范校核：${codeCheckText}`, `- Code checks: ${codeCheckText}`),
       '',
       summary,
       '',
-      '## 关键指标',
-      `- 最大位移: ${String((keyMetrics as Record<string, unknown>).maxAbsDisplacement ?? 'N/A')}`,
-      `- 最大轴力: ${String((keyMetrics as Record<string, unknown>).maxAbsAxialForce ?? 'N/A')}`,
-      `- 最大剪力: ${String((keyMetrics as Record<string, unknown>).maxAbsShearForce ?? 'N/A')}`,
-      `- 最大弯矩: ${String((keyMetrics as Record<string, unknown>).maxAbsMoment ?? 'N/A')}`,
-      `- 最大反力: ${String((keyMetrics as Record<string, unknown>).maxAbsReaction ?? 'N/A')}`,
-      `- 校核通过率: ${String((keyMetrics as Record<string, unknown>).codeCheckPassRate ?? 'N/A')}`,
+      this.localize(params.locale, '## 关键指标', '## Key Metrics'),
+      this.localize(params.locale, `- 最大位移: ${String((keyMetrics as Record<string, unknown>).maxAbsDisplacement ?? 'N/A')}`, `- Max displacement: ${String((keyMetrics as Record<string, unknown>).maxAbsDisplacement ?? 'N/A')}`),
+      this.localize(params.locale, `- 最大轴力: ${String((keyMetrics as Record<string, unknown>).maxAbsAxialForce ?? 'N/A')}`, `- Max axial force: ${String((keyMetrics as Record<string, unknown>).maxAbsAxialForce ?? 'N/A')}`),
+      this.localize(params.locale, `- 最大剪力: ${String((keyMetrics as Record<string, unknown>).maxAbsShearForce ?? 'N/A')}`, `- Max shear force: ${String((keyMetrics as Record<string, unknown>).maxAbsShearForce ?? 'N/A')}`),
+      this.localize(params.locale, `- 最大弯矩: ${String((keyMetrics as Record<string, unknown>).maxAbsMoment ?? 'N/A')}`, `- Max moment: ${String((keyMetrics as Record<string, unknown>).maxAbsMoment ?? 'N/A')}`),
+      this.localize(params.locale, `- 最大反力: ${String((keyMetrics as Record<string, unknown>).maxAbsReaction ?? 'N/A')}`, `- Max reaction: ${String((keyMetrics as Record<string, unknown>).maxAbsReaction ?? 'N/A')}`),
+      this.localize(params.locale, `- 校核通过率: ${String((keyMetrics as Record<string, unknown>).codeCheckPassRate ?? 'N/A')}`, `- Code-check pass rate: ${String((keyMetrics as Record<string, unknown>).codeCheckPassRate ?? 'N/A')}`),
       '',
-      '## 条文追溯',
-      ...this.renderClauseTraceabilityMarkdown(clauseTraceability),
+      this.localize(params.locale, '## 条文追溯', '## Clause Traceability'),
+      ...this.renderClauseTraceabilityMarkdown(clauseTraceability, params.locale),
       '',
-      '## 控制工况',
-      ...this.renderControllingCasesMarkdown(controllingCases),
+      this.localize(params.locale, '## 控制工况', '## Governing Cases'),
+      ...this.renderControllingCasesMarkdown(controllingCases, params.locale),
     ].join('\n');
 
     return {
@@ -1474,9 +1513,9 @@ export class AgentService {
     };
   }
 
-  private renderClauseTraceabilityMarkdown(traceability: Array<Record<string, unknown>>): string[] {
+  private renderClauseTraceabilityMarkdown(traceability: Array<Record<string, unknown>>, locale: AppLocale): string[] {
     if (traceability.length === 0) {
-      return ['- 无条文追溯数据'];
+      return [this.localize(locale, '- 无条文追溯数据', '- No clause traceability data')];
     }
     return traceability.slice(0, 8).map((row) => {
       const elementId = row['elementId'] ?? 'unknown';
@@ -1484,26 +1523,30 @@ export class AgentService {
       const clause = row['clause'] ?? '';
       const utilization = row['utilization'] ?? 'N/A';
       const status = row['status'] ?? 'unknown';
-      return `- 构件 ${String(elementId)} / ${String(check)} / ${String(clause)} / 利用率 ${String(utilization)} / ${String(status)}`;
+      return this.localize(
+        locale,
+        `- 构件 ${String(elementId)} / ${String(check)} / ${String(clause)} / 利用率 ${String(utilization)} / ${String(status)}`,
+        `- Element ${String(elementId)} / ${String(check)} / ${String(clause)} / utilization ${String(utilization)} / ${String(status)}`
+      );
     });
   }
 
-  private renderControllingCasesMarkdown(controllingCases: Record<string, unknown>): string[] {
+  private renderControllingCasesMarkdown(controllingCases: Record<string, unknown>, locale: AppLocale): string[] {
     const batchControlCaseRaw = controllingCases['batchControlCase'];
     const batchControlCase = batchControlCaseRaw && typeof batchControlCaseRaw === 'object'
       ? batchControlCaseRaw as Record<string, unknown>
       : {};
     const lines = [
-      `- 批量位移控制工况: ${String(batchControlCase['displacement'] ?? 'N/A')}`,
-      `- 批量轴力控制工况: ${String(batchControlCase['axialForce'] ?? 'N/A')}`,
-      `- 批量剪力控制工况: ${String(batchControlCase['shearForce'] ?? 'N/A')}`,
-      `- 批量弯矩控制工况: ${String(batchControlCase['moment'] ?? 'N/A')}`,
-      `- 批量反力控制工况: ${String(batchControlCase['reaction'] ?? 'N/A')}`,
-      `- 位移控制节点: ${String(controllingCases['controlNodeDisplacement'] ?? 'N/A')}`,
-      `- 轴力控制单元: ${String(controllingCases['controlElementAxialForce'] ?? 'N/A')}`,
-      `- 剪力控制单元: ${String(controllingCases['controlElementShearForce'] ?? 'N/A')}`,
-      `- 弯矩控制单元: ${String(controllingCases['controlElementMoment'] ?? 'N/A')}`,
-      `- 反力控制节点: ${String(controllingCases['controlNodeReaction'] ?? 'N/A')}`,
+      this.localize(locale, `- 批量位移控制工况: ${String(batchControlCase['displacement'] ?? 'N/A')}`, `- Governing displacement case: ${String(batchControlCase['displacement'] ?? 'N/A')}`),
+      this.localize(locale, `- 批量轴力控制工况: ${String(batchControlCase['axialForce'] ?? 'N/A')}`, `- Governing axial-force case: ${String(batchControlCase['axialForce'] ?? 'N/A')}`),
+      this.localize(locale, `- 批量剪力控制工况: ${String(batchControlCase['shearForce'] ?? 'N/A')}`, `- Governing shear-force case: ${String(batchControlCase['shearForce'] ?? 'N/A')}`),
+      this.localize(locale, `- 批量弯矩控制工况: ${String(batchControlCase['moment'] ?? 'N/A')}`, `- Governing moment case: ${String(batchControlCase['moment'] ?? 'N/A')}`),
+      this.localize(locale, `- 批量反力控制工况: ${String(batchControlCase['reaction'] ?? 'N/A')}`, `- Governing reaction case: ${String(batchControlCase['reaction'] ?? 'N/A')}`),
+      this.localize(locale, `- 位移控制节点: ${String(controllingCases['controlNodeDisplacement'] ?? 'N/A')}`, `- Control displacement node: ${String(controllingCases['controlNodeDisplacement'] ?? 'N/A')}`),
+      this.localize(locale, `- 轴力控制单元: ${String(controllingCases['controlElementAxialForce'] ?? 'N/A')}`, `- Control axial-force element: ${String(controllingCases['controlElementAxialForce'] ?? 'N/A')}`),
+      this.localize(locale, `- 剪力控制单元: ${String(controllingCases['controlElementShearForce'] ?? 'N/A')}`, `- Control shear-force element: ${String(controllingCases['controlElementShearForce'] ?? 'N/A')}`),
+      this.localize(locale, `- 弯矩控制单元: ${String(controllingCases['controlElementMoment'] ?? 'N/A')}`, `- Control moment element: ${String(controllingCases['controlElementMoment'] ?? 'N/A')}`),
+      this.localize(locale, `- 反力控制节点: ${String(controllingCases['controlNodeReaction'] ?? 'N/A')}`, `- Control reaction node: ${String(controllingCases['controlNodeReaction'] ?? 'N/A')}`),
     ];
     return lines;
   }
@@ -1559,17 +1602,17 @@ export class AgentService {
     return artifacts;
   }
 
-  private async renderSummary(message: string, fallback: string): Promise<string> {
+  private async renderSummary(message: string, fallback: string, locale: AppLocale): Promise<string> {
     if (!this.llm) {
       return fallback;
     }
 
     try {
       const prompt = [
-        '你是结构工程 Agent 的结果解释器。',
-        '请用中文在 80 字以内给出结论，不要杜撰未出现的数据。',
-        `用户意图：${message}`,
-        `系统结果：${fallback}`,
+        this.localize(locale, '你是结构工程 Agent 的结果解释器。', 'You explain results produced by the structural engineering agent.'),
+        this.localize(locale, '请用中文在 80 字以内给出结论，不要杜撰未出现的数据。', 'Respond in English within 80 words and do not invent data that was not provided.'),
+        this.localize(locale, `用户意图：${message}`, `User intent: ${message}`),
+        this.localize(locale, `系统结果：${fallback}`, `System result: ${fallback}`),
       ].join('\n');
       const aiMessage = await this.llm.invoke(prompt);
       const content = typeof aiMessage.content === 'string'
