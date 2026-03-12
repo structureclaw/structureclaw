@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0.0",
+  "unit_system": "SI",
+  "nodes": [
+    {"id": "1", "x": 0, "y": 0, "z": 0, "restraints": [true, false, true, false, false, false]},
+    {"id": "2", "x": 3, "y": 0, "z": 0},
+    {"id": "3", "x": 6, "y": 0, "z": 0, "restraints": [false, false, true, false, false, false]}
+  ],
+  "elements": [
+    {"id": "1", "type": "beam", "nodes": ["1", "2"], "material": "1", "section": "1"},
+    {"id": "2", "type": "beam", "nodes": ["2", "3"], "material": "1", "section": "1"}
+  ],
+  "materials": [
+    {"id": "1", "name": "steel", "E": 205000, "nu": 0.3, "rho": 7850}
+  ],
+  "sections": [
+    {"id": "1", "name": "ssb", "type": "I", "properties": {"A": 0.01, "Iy": 0.0001}}
+  ],
+  "load_cases": [
+    {"id": "MID", "type": "other", "loads": [{"node": "2", "fy": -20}]}
+  ],
+  "load_combinations": [
+    {"id": "MID1", "factors": {"MID": 1.0}}
+  ],
+  "metadata": {"name": "simply_supported_beam"}
+}

@@ -219,10 +219,8 @@ describe('AgentService orchestration', () => {
 
     expect(result.interaction?.detectedScenario).toBe('beam');
     expect(result.interaction?.missingCritical).not.toContain('跨度/长度（m）');
-    expect(result.interaction?.missingCritical).toContain('荷载大小（kN）');
-    expect(result.interaction?.missingCritical).toContain('荷载形式（点荷载/均布荷载）');
-    expect(result.interaction?.missingCritical).toContain('荷载位置（按当前结构模板）');
-    expect(result.interaction?.conversationStage).toBe('荷载条件');
+    expect(result.interaction?.missingCritical).toContain('支座/边界条件（悬臂/简支/两端固结/固铰）');
+    expect(result.interaction?.conversationStage).toBe('几何建模');
   });
 
   test('should not repeat beam span after a follow-up value in chat mode', async () => {
@@ -251,10 +249,8 @@ describe('AgentService orchestration', () => {
 
     expect(second.interaction?.detectedScenario).toBe('beam');
     expect(second.interaction?.missingCritical).not.toContain('跨度/长度（m）');
-    expect(second.interaction?.missingCritical).toContain('荷载大小（kN）');
-    expect(second.interaction?.missingCritical).toContain('荷载形式（点荷载/均布荷载）');
-    expect(second.interaction?.missingCritical).toContain('荷载位置（按当前结构模板）');
-    expect(second.interaction?.conversationStage).toBe('荷载条件');
+    expect(second.interaction?.missingCritical).toContain('支座/边界条件（悬臂/简支/两端固结/固铰）');
+    expect(second.interaction?.conversationStage).toBe('几何建模');
   });
 
   test('should not ask for the same span again after a follow-up value in chat mode', async () => {
@@ -327,7 +323,7 @@ describe('AgentService orchestration', () => {
 
     const first = await svc.run({
       conversationId: 'conv-chat-load-detail-zh',
-      message: '我想设计一个梁，跨度10m',
+      message: '我想设计一个简支梁，跨度10m',
       mode: 'chat',
       context: {
         locale: 'zh',
@@ -352,6 +348,57 @@ describe('AgentService orchestration', () => {
     expect(second.interaction?.missingCritical).not.toContain('荷载形式（点荷载/均布荷载）');
     expect(second.interaction?.missingCritical).not.toContain('荷载位置（按当前结构模板）');
     expect(Array.isArray(second.interaction?.missingOptional)).toBe(true);
+  });
+
+  test('should ask for support condition before assuming a beam template', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const result = await svc.run({
+      conversationId: 'conv-chat-beam-support-en',
+      message: 'Beam span 10 m',
+      mode: 'chat',
+      context: {
+        locale: 'en',
+      },
+    });
+
+    expect(result.interaction?.detectedScenario).toBe('beam');
+    expect(result.interaction?.missingCritical).toContain('Support condition (cantilever / simply supported / fixed-fixed / fixed-pinned)');
+    expect(result.interaction?.missingCritical).not.toContain('Load type (point / distributed)');
+    expect(result.interaction?.conversationStage).toBe('Geometry');
+  });
+
+  test('should build a simply supported beam model when the support condition is explicit', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft('简支梁，跨度6m，20kN跨中点荷载', undefined, 'zh');
+    const nodes = draft.model?.nodes;
+
+    expect(draft.missingFields).toEqual([]);
+    expect(Array.isArray(nodes)).toBe(true);
+    expect(nodes).toEqual([
+      { id: '1', x: 0, y: 0, z: 0, restraints: [true, false, true, false, false, false] },
+      { id: '2', x: 3, y: 0, z: 0 },
+      { id: '3', x: 6, y: 0, z: 0, restraints: [false, false, true, false, false, false] },
+    ]);
+    expect(draft.model?.load_cases?.[0]?.loads).toEqual([{ node: '2', fy: -20 }]);
+    expect(draft.stateToPersist?.supportType).toBe('simply-supported');
+  });
+
+  test('should preserve cantilever beam generation when the support condition is explicit', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft('悬臂梁，跨度6m，20kN端部点荷载', undefined, 'zh');
+    const nodes = draft.model?.nodes;
+
+    expect(draft.missingFields).toEqual([]);
+    expect(nodes?.[0]?.restraints).toEqual([true, false, true, false, true, false]);
+    expect(nodes?.[2]?.restraints).toBeUndefined();
+    expect(draft.model?.load_cases?.[0]?.loads).toEqual([{ node: '3', fy: -20 }]);
+    expect(draft.stateToPersist?.supportType).toBe('cantilever');
   });
 
   test('should generate English summaries and markdown when locale=en', async () => {
