@@ -2,6 +2,22 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import ConsolePage from '@/app/(console)/console/page'
 
+function createSseResponse(events: unknown[]) {
+  const encoder = new TextEncoder()
+  const chunks = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).concat('data: [DONE]\n\n')
+  const stream = new ReadableStream({
+    start(controller) {
+      chunks.forEach((chunk) => controller.enqueue(encoder.encode(chunk)))
+      controller.close()
+    },
+  })
+
+  return {
+    ok: true,
+    body: stream,
+  } as unknown as Response
+}
+
 describe('ConsolePage Integration (CONS-13)', () => {
   beforeEach(() => {
     vi.spyOn(globalThis, 'fetch').mockResolvedValue({
@@ -136,5 +152,136 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
 
     expect((executePayload?.context as Record<string, unknown>)?.locale).toBe('zh')
+  })
+
+  it('renders guided discuss-first state in English', async () => {
+    window.localStorage.setItem('structureclaw.locale', 'en')
+    let streamPayload: Record<string, unknown> | null = null
+    const interaction = {
+      detectedScenario: 'steel-frame',
+      detectedScenarioLabel: 'Steel Frame',
+      conversationStage: 'Intent',
+      missingCritical: ['Structure type (portal frame / double-span beam / beam / truss)'],
+      missingOptional: ['Whether to generate a report'],
+      fallbackSupportNote: '“Steel frame” has been narrowed to the portal-frame template for now.',
+      recommendedNextStep: 'Fill in Structure type first.',
+      questions: [{ question: 'Please confirm the structure type (portal frame / double-span beam / beam / truss).' }],
+      pending: {
+        criticalMissing: ['Structure type (portal frame / double-span beam / beam / truss)'],
+        nonCriticalMissing: ['Whether to generate a report'],
+      },
+    }
+
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-guidance',
+            title: 'Guided conversation',
+            type: 'analysis',
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/stream')) {
+        streamPayload = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>
+        return createSseResponse([
+          { type: 'interaction_update', content: interaction },
+          { type: 'result', content: { response: 'Detected scenario: Steel Frame', success: true, interaction } },
+        ])
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: 'Help me size a steel frame' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Discuss First' }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('console-guidance-panel')).toBeInTheDocument()
+    })
+
+    expect((streamPayload?.context as Record<string, unknown>)?.locale).toBe('en')
+    expect(screen.getByText('Conversation Guidance')).toBeInTheDocument()
+    expect(screen.getByText('Steel Frame')).toBeInTheDocument()
+    expect(screen.getByText('Fill in Structure type first.')).toBeInTheDocument()
+  })
+
+  it('renders guided discuss-first state in Chinese', async () => {
+    window.localStorage.setItem('structureclaw.locale', 'zh')
+    const interaction = {
+      detectedScenario: 'bridge',
+      detectedScenarioLabel: '桥梁',
+      conversationStage: '需求识别',
+      missingCritical: ['结构类型（门式刚架/双跨梁/梁/平面桁架）'],
+      missingOptional: ['是否生成报告'],
+      fallbackSupportNote: '当前补参链路还不直接支持桥梁专用模板；若你只想先讨论单梁主梁近似，可收敛到梁模板。',
+      recommendedNextStep: '先补齐结构类型。',
+      questions: [{ question: '请确认结构类型（门式刚架/双跨梁/梁/平面桁架）。' }],
+      pending: {
+        criticalMissing: ['结构类型（门式刚架/双跨梁/梁/平面桁架）'],
+        nonCriticalMissing: ['是否生成报告'],
+      },
+    }
+
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-guidance-zh',
+            title: '引导对话',
+            type: 'analysis',
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/stream')) {
+        return createSseResponse([
+          { type: 'interaction_update', content: interaction },
+          { type: 'result', content: { response: '识别场景：桥梁', success: true, interaction } },
+        ])
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+
+    fireEvent.change(screen.getByRole('textbox'), {
+      target: { value: '请帮我梳理桥梁参数' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: '先聊需求' }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('console-guidance-panel')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('对话引导')).toBeInTheDocument()
+    expect(screen.getByText('桥梁')).toBeInTheDocument()
+    expect(screen.getByText('先补齐结构类型。')).toBeInTheDocument()
   })
 })
