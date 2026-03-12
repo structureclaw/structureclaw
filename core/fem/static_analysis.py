@@ -50,15 +50,21 @@ class StaticAnalyzer:
             result = self._run_simplified(parameters)
         else:
             try:
-                # 尝试使用 OpenSeesPy
                 import openseespy.opensees as ops  # noqa: F401
-                result = self._run_with_opensees(parameters)
             except Exception as error:
                 if self.engine_mode == "opensees":
                     raise RuntimeError("OpenSeesPy is not available for the requested engine") from error
                 # 降级到简化计算
                 logger.warning("OpenSeesPy runtime unavailable, using simplified analysis: %s", error)
                 result = self._run_simplified(parameters)
+            else:
+                try:
+                    result = self._run_with_opensees(parameters)
+                except Exception as error:
+                    if self.engine_mode == "opensees":
+                        raise RuntimeError(f"OpenSees analysis failed: {error}") from error
+                    logger.warning("OpenSees analysis failed, using simplified analysis: %s", error)
+                    result = self._run_simplified(parameters)
 
         return result
 
@@ -1375,22 +1381,44 @@ class StaticAnalyzer:
 
     def _define_beam_element(self, elem, ops):
         """定义梁单元"""
-        # 简化的梁单元定义
         section = self.sections.get(elem.section)
-        if section:
-            # 使用弹性梁柱单元
-            ops.element(
-                'elasticBeamColumn',
-                int(elem.id),
-                int(elem.nodes[0]),
-                int(elem.nodes[1]),
-                section.properties.get('A', 0.01),
-                section.properties.get('E', 200000),
-                section.properties.get('Iz', 0.0001),
-                section.properties.get('Iy', 0.0001),
-                section.properties.get('G', 79000),
-                section.properties.get('J', 0.0001)
-            )
+        material = self.materials.get(elem.material)
+        if not section:
+            raise ValueError(f"Section '{elem.section}' was not found for beam element '{elem.id}'")
+
+        transform_tag = int(elem.id)
+        reference_vector = self._get_beam_reference_vector(elem)
+        ops.geomTransf('Linear', transform_tag, *reference_vector)
+        ops.element(
+            'elasticBeamColumn',
+            int(elem.id),
+            int(elem.nodes[0]),
+            int(elem.nodes[1]),
+            section.properties.get('A', 0.01),
+            (material.E * 1000) if material else section.properties.get('E', 200000000),
+            section.properties.get('G', 79000000),
+            section.properties.get('J', 0.0001),
+            section.properties.get('Iy', 0.0001),
+            section.properties.get('Iz', 0.0001),
+            transform_tag
+        )
+
+    def _get_beam_reference_vector(self, elem) -> List[float]:
+        start = self.nodes.get(elem.nodes[0])
+        end = self.nodes.get(elem.nodes[1])
+        if start is None or end is None:
+            raise ValueError(f"Beam element '{elem.id}' references unknown nodes")
+
+        axis = np.array([end.x - start.x, end.y - start.y, end.z - start.z], dtype=float)
+        length = np.linalg.norm(axis)
+        if length == 0:
+            raise ValueError(f"Beam element '{elem.id}' has zero length")
+
+        axis /= length
+        reference = np.array([0.0, 0.0, 1.0], dtype=float)
+        if abs(float(np.dot(axis, reference))) > 0.9:
+            reference = np.array([0.0, 1.0, 0.0], dtype=float)
+        return reference.tolist()
 
     def _define_truss_element(self, elem, ops):
         """定义桁架单元"""
