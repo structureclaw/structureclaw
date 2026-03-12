@@ -747,6 +747,8 @@ export class AgentService {
       }
     }
 
+    let validationWarning: string | undefined;
+
     plan.push(this.localize(locale, '校验模型字段与引用完整性', 'Validate model fields and references'));
     const validateInput = { model: normalizedModel };
     const validateCall = this.startToolCall('validate', validateInput);
@@ -779,23 +781,33 @@ export class AgentService {
       }
     } catch (error: any) {
       this.completeToolCallError(validateCall, error);
-      const result: AgentRunResult = {
-        traceId,
-        startedAt,
-        completedAt: new Date().toISOString(),
-        durationMs: Date.now() - startedAtMs,
-        success: false,
-        mode,
-        needsModelInput: false,
-        plan,
-        toolCalls,
-        model: normalizedModel,
-        metrics: this.buildMetrics(toolCalls),
-        interaction: this.buildExecutionInteraction('blocked'),
-        response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
-      };
-      this.logRunResult(traceId, sessionKey, result);
-      return result;
+      if (autoAnalyze && this.shouldBypassValidateFailure(error)) {
+        validationWarning = this.localize(
+          locale,
+          `模型校验服务暂时不可用，已跳过校验并继续分析：${validateCall.error}`,
+          `The model validation service is temporarily unavailable. Validation was skipped and analysis will continue: ${validateCall.error}`,
+        );
+        plan.push(this.localize(locale, '校验服务不可用，跳过校验并继续分析', 'Validation service unavailable; skip validation and continue to analysis'));
+        logger.warn({ traceId, validationError: validateCall.error }, 'Validate call failed with upstream error; continuing to analyze');
+      } else {
+        const result: AgentRunResult = {
+          traceId,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          durationMs: Date.now() - startedAtMs,
+          success: false,
+          mode,
+          needsModelInput: false,
+          plan,
+          toolCalls,
+          model: normalizedModel,
+          metrics: this.buildMetrics(toolCalls),
+          interaction: this.buildExecutionInteraction('blocked'),
+          response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
+        };
+        this.logRunResult(traceId, sessionKey, result);
+        return result;
+      }
     }
 
     if (!autoAnalyze) {
@@ -920,9 +932,11 @@ export class AgentService {
         this.localize(
           locale,
           `分析完成。analysis_type=${resolvedAnalysisType}, success=${String(analyzed.data?.success ?? false)}`
-            + (resolvedAutoCodeCheck ? `, code_check=${String(Boolean(codeCheckResult))}` : ''),
+            + (resolvedAutoCodeCheck ? `, code_check=${String(Boolean(codeCheckResult))}` : '')
+            + (validationWarning ? `, validation_warning=true` : ''),
           `Analysis finished. analysis_type=${resolvedAnalysisType}, success=${String(analyzed.data?.success ?? false)}`
             + (resolvedAutoCodeCheck ? `, code_check=${String(Boolean(codeCheckResult))}` : '')
+            + (validationWarning ? `, validation_warning=true` : '')
         ),
         locale,
       );
@@ -944,7 +958,7 @@ export class AgentService {
         artifacts,
         metrics: this.buildMetrics(toolCalls),
         interaction: this.buildExecutionInteraction('completed'),
-        response,
+        response: validationWarning ? `${validationWarning}\n\n${response}` : response,
       };
       if (sessionKey) {
         await this.clearInteractionSession(sessionKey);
@@ -2159,6 +2173,7 @@ export class AgentService {
       /(height|column height)\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*m/i,
     ], [2]);
     const loadKN = this.extractNumber(text, [
+      /(\d+(?:\.\d+)?)\s*(?:kn|千牛)\s*\/\s*(?:m|米)/i,
       /(\d+(?:\.\d+)?)\s*(?:kn|千牛)(?!\s*\/\s*m)/i,
       /(load)\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
     ]);
@@ -2373,13 +2388,32 @@ export class AgentService {
 
   private stringifyError(error: unknown): string {
     const unknownError = error as any;
+    const status = this.extractHttpStatus(error);
     if (unknownError?.response?.data) {
-      return JSON.stringify(unknownError.response.data);
+      const payload = typeof unknownError.response.data === 'string'
+        ? unknownError.response.data
+        : JSON.stringify(unknownError.response.data);
+      return status ? `HTTP ${status}: ${payload}` : payload;
     }
     if (unknownError?.message) {
-      return String(unknownError.message);
+      return status ? `HTTP ${status}: ${String(unknownError.message)}` : String(unknownError.message);
     }
     return 'Unknown error';
+  }
+
+  private extractHttpStatus(error: unknown): number | undefined {
+    const status = (error as any)?.response?.status;
+    return typeof status === 'number' ? status : undefined;
+  }
+
+  private shouldBypassValidateFailure(error: unknown): boolean {
+    const status = this.extractHttpStatus(error);
+    if (typeof status === 'number') {
+      return status >= 500;
+    }
+
+    const code = (error as any)?.code;
+    return code === 'ECONNABORTED' || code === 'ECONNREFUSED' || code === 'ECONNRESET' || code === 'ETIMEDOUT';
   }
 
   private extractErrorCode(error: unknown): string | undefined {

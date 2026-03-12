@@ -231,6 +231,7 @@ export function extractDraftByRules(message: string): DraftExtraction {
     /(height|column height)\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*m/i,
   ], [2]);
   const loadKN = extractNumber(text, [
+    /(\d+(?:\.\d+)?)\s*(?:kn|千牛)\s*\/\s*(?:m|米)/i,
     /(\d+(?:\.\d+)?)\s*(?:kn|千牛)(?!\s*\/\s*m)/i,
     /(load)\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
   ]);

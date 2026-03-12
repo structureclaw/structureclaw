@@ -401,6 +401,93 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.supportType).toBe('cantilever');
   });
 
+  test('should build a fixed-fixed beam model when the support condition is explicit', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft('两端固结梁，跨度10m，10kN/m均布荷载', undefined, 'zh');
+    const nodes = draft.model?.nodes;
+
+    expect(draft.missingFields).toEqual([]);
+    expect(nodes).toEqual([
+      { id: '1', x: 0, y: 0, z: 0, restraints: [true, false, true, false, true, false] },
+      { id: '2', x: 5, y: 0, z: 0 },
+      { id: '3', x: 10, y: 0, z: 0, restraints: [true, false, true, false, true, false] },
+    ]);
+    expect(draft.model?.metadata?.supportType).toBe('fixed-fixed');
+    expect(draft.stateToPersist?.supportType).toBe('fixed-fixed');
+  });
+
+  test('should continue to analyze when validate returns an upstream 502', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+    svc.engineClient.post = async (path, payload) => {
+      if (path === '/validate') {
+        const error = new Error('Request failed with status code 502');
+        error.response = { status: 502, data: { message: 'bad gateway' } };
+        throw error;
+      }
+      if (path === '/analyze') {
+        return {
+          data: {
+            schema_version: '1.0.0',
+            analysis_type: payload.type,
+            success: true,
+            error_code: null,
+            message: 'ok',
+            data: {},
+            meta: {},
+          },
+        };
+      }
+      if (path === '/code-check') {
+        return {
+          data: {
+            code: payload.code,
+            status: 'success',
+            summary: { total: payload.elements.length, passed: payload.elements.length, failed: 0, warnings: 0 },
+            details: [],
+          },
+        };
+      }
+      throw new Error(`unexpected path ${path}`);
+    };
+
+    const result = await svc.run({
+      message: '请自动校核并生成报告',
+      mode: 'execute',
+      context: {
+        locale: 'zh',
+        model: {
+          schema_version: '1.0.0',
+          nodes: [
+            { id: '1', x: 0, y: 0, z: 0, restraints: [true, false, true, false, true, false] },
+            { id: '2', x: 5, y: 0, z: 0 },
+            { id: '3', x: 10, y: 0, z: 0, restraints: [true, false, true, false, true, false] },
+          ],
+          elements: [
+            { id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' },
+            { id: '2', type: 'beam', nodes: ['2', '3'], material: '1', section: '1' },
+          ],
+          materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
+          sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } }],
+          load_cases: [{ id: 'LC1', type: 'other', loads: [{ type: 'distributed', element: '1', wz: -10 }] }],
+          load_combinations: [{ id: 'ULS', factors: { LC1: 1 } }],
+        },
+        autoAnalyze: true,
+        autoCodeCheck: true,
+        designCode: 'GB50017',
+        includeReport: true,
+        reportFormat: 'both',
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls.find((call) => call.tool === 'validate')?.status).toBe('error');
+    expect(result.toolCalls.find((call) => call.tool === 'analyze')?.status).toBe('success');
+    expect(result.response).toContain('模型校验服务暂时不可用');
+  });
+
   test('should generate English summaries and markdown when locale=en', async () => {
     const svc = new AgentService();
     svc.llm = null;
