@@ -11,6 +11,9 @@
 ## Working Rules
 - Preserve module boundaries. New API surface belongs in `backend/src/api`; coordination logic belongs in `backend/src/services`; shared helpers belong in `backend/src/utils`.
 - Keep frontend changes localized. Route/layout concerns belong in `frontend/src/app`, reusable components in `frontend/src/components`, and cross-cutting client logic in `frontend/src/lib`.
+- Bilingual support is mandatory for every new user-visible feature. New UI copy, empty states, errors, prompts, templates, guidance text, and report-facing labels must ship in both `en` and `zh`.
+- Do not add new single-language user-facing flows. If a feature produces user-visible text from backend chat, agent, or report paths, the implementation must include locale propagation and locale-aware backend templates in the same change.
+- Treat the frontend locale as the single source of truth for new interactions. Once a user selects a language, all newly generated user-visible text in that interaction must follow that locale without mixing languages.
 - Keep core changes deterministic. Structural examples, regression fixtures, and converters should remain scriptable and reproducible.
 - Do not treat `.planning/` as disposable. Update planning artifacts intentionally when work changes roadmap, state, or codebase guidance.
 - Commit discipline is mandatory: make small, logical commits as you go, and do it promptly.
@@ -58,12 +61,15 @@
 - Frontend specifics:
   - preserve the existing Next.js app-router structure
   - reuse the current i18n/theme/store infrastructure instead of adding parallel mechanisms
+  - route all new user-visible copy through the existing i18n system; do not hardcode single-language strings in components, layouts, or client flows
+  - make locale-sensitive formatting follow the active locale for dates, numbers, summaries, and generated display text
   - prefer design-token and theme-aware styling over fixed light/dark hardcoding
 
 ## Testing Expectations
 - Prefer repository scripts when a script already captures the intended regression.
 - For backend and contract work, cover success, failure, and missing-input scenarios.
 - For frontend work, run targeted Vitest checks plus `type-check`; run `build` when layout, routing, or provider behavior changes.
+- For new user-visible frontend features, verify both `en` and `zh` paths. Cover the key rendered copy or interaction behavior in tests instead of validating only one locale.
 - For core work, keep regression fixtures deterministic and avoid changing expected outputs casually.
 - If a change affects chat, agent orchestration, report output, converters, or schema migration, extend or run the matching validation script in `scripts/`.
 
