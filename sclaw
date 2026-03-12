@@ -14,7 +14,7 @@ StructureClaw CLI
 Usage:
   sclaw doctor
   sclaw start
-  sclaw start-full
+  sclaw restart
   sclaw stop
   sclaw status
   sclaw logs [frontend|backend|core|all] [--follow]
@@ -24,8 +24,8 @@ Usage:
 
 Commands:
   doctor      Run startup checks without starting the full stack
-  start       Start local stack (lite profile + uv)
-  start-full  Start local stack with full core dependencies
+  start       Start local stack (full profile + uv)
+  restart     Restart local stack with the default startup profile
   stop        Stop local stack and local infra
   status      Show process + health status
   logs        Show .runtime/logs output
@@ -88,7 +88,7 @@ install_cli() {
 
 cmd="${1:-help}"
 case "$cmd" in
-  doctor|start|start-full|stop|status)
+  doctor|start|restart|stop|status)
     ensure_hub_script
     exec "$HUB_SCRIPT" "$cmd"
     ;;
