@@ -25,12 +25,25 @@ type Message = {
   timestamp: string
 }
 
+type AgentInteraction = {
+  detectedScenario?: string
+  detectedScenarioLabel?: string
+  conversationStage?: string
+  missingCritical?: string[]
+  missingOptional?: string[]
+  fallbackSupportNote?: string
+  recommendedNextStep?: string
+  questions?: Array<{ question?: string; label?: string }>
+  pending?: { criticalMissing?: string[]; nonCriticalMissing?: string[] }
+}
+
 type AgentResult = {
   response?: string
   traceId?: string
   success?: boolean
   needsModelInput?: boolean
   plan?: string[]
+  interaction?: AgentInteraction
   analysis?: Record<string, unknown>
   report?: {
     summary?: string
@@ -49,7 +62,7 @@ type AgentResult = {
 type StreamPayload =
   | { type: 'start'; content?: { traceId?: string; conversationId?: string; startedAt?: string } }
   | { type: 'token'; content?: string }
-  | { type: 'interaction_update'; content?: { questions?: Array<{ question?: string; label?: string }>; pending?: { criticalMissing?: string[]; nonCriticalMissing?: string[] } } }
+  | { type: 'interaction_update'; content?: AgentInteraction }
   | { type: 'result'; content?: AgentResult }
   | { type: 'done' }
   | { type: 'error'; error?: string }
@@ -122,20 +135,39 @@ function buildInteractionMessage(
   locale: AppLocale
 ) {
   const questions = payload.content?.questions || []
+  const detectedScenario = payload.content?.detectedScenarioLabel
+  const conversationStage = payload.content?.conversationStage
+  const fallbackSupportNote = payload.content?.fallbackSupportNote
+  const recommendedNextStep = payload.content?.recommendedNextStep
   const criticalMissing = payload.content?.pending?.criticalMissing || []
+  const lines: string[] = []
+
+  if (detectedScenario) {
+    lines.push(`${t('guidanceDetectedScenario')}: ${detectedScenario}`)
+  }
+  if (conversationStage) {
+    lines.push(`${t('guidanceCurrentStage')}: ${conversationStage}`)
+  }
+  if (fallbackSupportNote) {
+    lines.push(fallbackSupportNote)
+  }
 
   if (questions.length > 0) {
-    return questions
+    lines.push(...questions
       .map((item) => item.question || item.label)
-      .filter(Boolean)
-      .join('\n')
+      .filter((value): value is string => typeof value === 'string' && value.length > 0)
+    )
   }
 
   if (criticalMissing.length > 0) {
-    return `${t('interactionMissingInfo')}: ${criticalMissing.join(locale === 'zh' ? '、' : ', ')}`
+    lines.push(`${t('interactionMissingInfo')}: ${criticalMissing.join(locale === 'zh' ? '、' : ', ')}`)
   }
 
-  return t('interactionNeedMoreParams')
+  if (recommendedNextStep) {
+    lines.push(`${t('guidanceRecommendedNextStep')}: ${recommendedNextStep}`)
+  }
+
+  return lines.length > 0 ? lines.join('\n') : t('interactionNeedMoreParams')
 }
 
 function extractAnalysis(result: AgentResult | null) {
@@ -194,6 +226,7 @@ function AnalysisPanel({
   const stats = extractSummaryStats(analysis, t, locale)
   const reportMarkdown = result?.report?.markdown?.trim()
   const reportSummary = result?.report?.summary?.trim()
+  const guidance = result?.interaction
 
   return (
     <div
@@ -322,6 +355,76 @@ function AnalysisPanel({
                     ))}
                   </CardContent>
                 ) : null}
+              </Card>
+            )}
+
+            {guidance && (
+              <Card
+                data-testid="console-guidance-panel"
+                className="border-border/70 bg-card/85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/50"
+              >
+                <CardHeader>
+                  <CardTitle className="text-lg">{t('guidancePanelTitle')}</CardTitle>
+                  <CardDescription className="text-muted-foreground">
+                    {result.response || t('guidancePanelBody')}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {guidance.detectedScenarioLabel && (
+                      <div className="rounded-2xl border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
+                        <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('guidanceDetectedScenario')}</div>
+                        <div className="mt-2 text-base font-semibold text-foreground">{guidance.detectedScenarioLabel}</div>
+                      </div>
+                    )}
+                    {guidance.conversationStage && (
+                      <div className="rounded-2xl border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
+                        <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('guidanceCurrentStage')}</div>
+                        <div className="mt-2 text-base font-semibold text-foreground">{guidance.conversationStage}</div>
+                      </div>
+                    )}
+                  </div>
+
+                  {guidance.fallbackSupportNote && (
+                    <div className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 p-4 text-sm leading-6 text-foreground">
+                      <div className="mb-2 text-xs uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-200">{t('guidanceSupportNote')}</div>
+                      <div>{guidance.fallbackSupportNote}</div>
+                    </div>
+                  )}
+
+                  {guidance.missingCritical?.length ? (
+                    <div>
+                      <div className="mb-3 text-sm font-medium text-foreground">{t('guidanceMissingCritical')}</div>
+                      <div className="flex flex-wrap gap-2">
+                        {guidance.missingCritical.map((field) => (
+                          <Badge key={field} className="border-amber-300/40 bg-amber-100/80 text-amber-950 dark:border-amber-200/20 dark:bg-amber-300/10 dark:text-amber-50" variant="outline">
+                            {field}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {guidance.missingOptional?.length ? (
+                    <div>
+                      <div className="mb-3 text-sm font-medium text-foreground">{t('guidanceMissingOptional')}</div>
+                      <div className="flex flex-wrap gap-2">
+                        {guidance.missingOptional.map((field) => (
+                          <Badge key={field} className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
+                            {field}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {guidance.recommendedNextStep && (
+                    <div className="rounded-2xl border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
+                      <div className="mb-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('guidanceRecommendedNextStep')}</div>
+                      <div className="text-sm leading-6 text-foreground">{guidance.recommendedNextStep}</div>
+                    </div>
+                  )}
+                </CardContent>
               </Card>
             )}
 
