@@ -328,6 +328,84 @@ function getEngineSelectionIssue(
   return ''
 }
 
+function renderEngineOption(
+  engine: AnalysisEngineSummary,
+  selected: boolean,
+  analysisType: AnalysisType,
+  currentModelFamily: string,
+  t: (key: MessageKey) => string,
+  onSelect: (engineId: string) => void
+) {
+  const issue = getEngineSelectionIssue(engine, analysisType, currentModelFamily, t)
+  const selectable = issue.length === 0
+
+  return (
+    <button
+      key={engine.id}
+      type="button"
+      onClick={() => {
+        if (selectable) {
+          onSelect(engine.id)
+        }
+      }}
+      disabled={!selectable}
+      className={cn(
+        'rounded-2xl border px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-60',
+        selected
+          ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
+          : 'border-border/70 bg-card/80 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
+      )}
+    >
+      <div className="font-medium text-foreground">
+        {engine.name || engine.id}
+        {engine.version ? ` v${engine.version}` : ''}
+      </div>
+      <div className="mt-1 text-xs leading-5 text-muted-foreground">
+        {(engine.kind || 'python')} · {getEngineStatusLabel(engine, t)}
+      </div>
+      <div className="mt-1 text-xs leading-5 text-muted-foreground">
+        {t('analysisTypeLabel')}: {(engine.supportedAnalysisTypes || []).join(', ') || 'all'}
+      </div>
+      <div className="mt-1 text-xs leading-5 text-muted-foreground">
+        {t('engineModelFamiliesLabel')}: {(engine.supportedModelFamilies || []).join(', ') || 'generic'}
+      </div>
+      {issue ? (
+        <div className="mt-1 text-xs leading-5 text-amber-600 dark:text-amber-300">{issue}</div>
+      ) : null}
+    </button>
+  )
+}
+
+function renderEngineSummary(
+  engine: AnalysisEngineSummary,
+  analysisType: AnalysisType,
+  currentModelFamily: string,
+  t: (key: MessageKey) => string
+) {
+  const issue = getEngineSelectionIssue(engine, analysisType, currentModelFamily, t)
+
+  return (
+    <div className="rounded-2xl border border-border/70 bg-card/80 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950/40">
+      <div className="font-medium text-foreground">
+        {engine.name || engine.id}
+        {engine.version ? ` v${engine.version}` : ''}
+      </div>
+      <div className="mt-1 text-xs leading-5 text-muted-foreground">
+        {(engine.kind || 'python')} · {getEngineStatusLabel(engine, t)}
+      </div>
+      <div className="mt-1 text-xs leading-5 text-muted-foreground">
+        {t('analysisTypeLabel')}: {(engine.supportedAnalysisTypes || []).join(', ') || 'all'}
+      </div>
+      <div className="mt-1 text-xs leading-5 text-muted-foreground">
+        {t('engineModelFamiliesLabel')}: {(engine.supportedModelFamilies || []).join(', ') || 'generic'}
+      </div>
+      {issue ? (
+        <div className="mt-1 text-xs leading-5 text-amber-600 dark:text-amber-300">{issue}</div>
+      ) : null}
+    </div>
+  )
+}
+
 function AnalysisPanel({
   result,
   activeTab,
@@ -668,6 +746,9 @@ export function AIConsole() {
   const [errorMessage, setErrorMessage] = useState('')
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [contextOpen, setContextOpen] = useState(false)
+  const [analysisSettingsOpen, setAnalysisSettingsOpen] = useState(true)
+  const [engineSettingsOpen, setEngineSettingsOpen] = useState(false)
+  const [enginePickerOpen, setEnginePickerOpen] = useState(false)
   const [modelText, setModelText] = useState('')
   const [designCode, setDesignCode] = useState('GB50017')
   const [analysisType, setAnalysisType] = useState<AnalysisType>('static')
@@ -879,6 +960,24 @@ export function AIConsole() {
     () => enabledEngines.find((engine) => engine.id === selectedEngineId) || null,
     [enabledEngines, selectedEngineId]
   )
+  const currentEngineSummary = useMemo(
+    () => enabledEngines.find((engine) => engine.id === selectedEngineId) || null,
+    [enabledEngines, selectedEngineId]
+  )
+  const candidateEngines = useMemo(
+    () => enabledEngines.filter((engine) => engine.id !== selectedEngineId),
+    [enabledEngines, selectedEngineId]
+  )
+
+  useEffect(() => {
+    if (contextOpen) {
+      setAnalysisSettingsOpen(true)
+    } else {
+      setAnalysisSettingsOpen(true)
+      setEngineSettingsOpen(false)
+    }
+    setEnginePickerOpen(false)
+  }, [contextOpen])
 
   useEffect(() => {
     if (!conversationId) {
@@ -1525,118 +1624,158 @@ export function AIConsole() {
                       </div>
                       <label className="text-sm font-medium text-foreground">{t('modelJsonLabel')}</label>
                       <Textarea
-                        className="min-h-[220px] resize-y border-border/70 bg-card/80 text-sm text-foreground placeholder:text-muted-foreground dark:border-white/10 dark:bg-slate-950/70"
+                        className="min-h-[160px] resize-y border-border/70 bg-card/80 text-sm text-foreground placeholder:text-muted-foreground dark:border-white/10 dark:bg-slate-950/70"
                         placeholder={t('modelJsonPlaceholder')}
                         value={modelText}
                         onChange={(event) => setModelText(event.target.value)}
                       />
                     </div>
 
-                    <div className="space-y-4">
-                      <div className="space-y-2">
-                        <div>
-                          <div className="text-sm font-semibold text-foreground">{t('contextSectionAnalysis')}</div>
-                          <div className="text-xs leading-5 text-muted-foreground">{t('contextSectionAnalysisHelp')}</div>
-                        </div>
-                        <label className="text-sm font-medium text-foreground">{t('analysisTypeLabel')}</label>
-                        <div className="grid grid-cols-2 gap-2">
-                          {analysisTypeOptions.map((option) => (
-                            <button
-                              key={option.value}
-                              type="button"
-                              onClick={() => setAnalysisType(option.value)}
-                              className={cn(
-                                'rounded-2xl border px-3 py-2 text-sm transition',
-                                analysisType === option.value
-                                  ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
-                                  : 'border-border/70 bg-card/80 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
-                              )}
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className="space-y-2">
-                        <div>
-                          <div className="text-sm font-semibold text-foreground">{t('contextSectionEngine')}</div>
-                          <div className="text-xs leading-5 text-muted-foreground">{t('contextSectionEngineHelp')}</div>
-                        </div>
-                        <label className="text-sm font-medium text-foreground">{t('analysisEngineSelectorLabel')}</label>
-                        <div className="grid gap-2">
+                    <div className="space-y-3">
+                      <div className="rounded-2xl border border-border/70 bg-card/70 p-3 dark:border-white/10 dark:bg-slate-950/40">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">{t('analysisSettingsSectionTitle')}</div>
+                            <div className="text-xs leading-5 text-muted-foreground">{t('contextSectionAnalysisHelp')}</div>
+                          </div>
                           <button
                             type="button"
-                            onClick={() => setSelectedEngineId('auto')}
-                            className={cn(
-                              'rounded-2xl border px-3 py-2 text-left text-sm transition',
-                              selectedEngineId === 'auto'
-                                ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
-                                : 'border-border/70 bg-card/80 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
-                            )}
+                            onClick={() => setAnalysisSettingsOpen((current) => !current)}
+                            className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground transition hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
                           >
-                            <div className="font-medium">{t('analysisEngineAutoOption')}</div>
-                            <div className="mt-1 text-xs leading-5 text-muted-foreground">{t('analysisEngineAutoHelp')}</div>
+                            {analysisSettingsOpen ? t('analysisSettingsCollapse') : t('analysisSettingsExpand')}
                           </button>
-                          {enabledEngines
-                            .map((engine) => {
-                              const issue = getEngineSelectionIssue(engine, analysisType, currentModelFamily, t)
-                              const selectable = issue.length === 0
-                              return (
-                              <button
-                                key={engine.id}
-                                type="button"
-                                onClick={() => {
-                                  if (selectable) {
-                                    setSelectedEngineId(engine.id)
-                                  }
-                                }}
-                                disabled={!selectable}
-                                className={cn(
-                                  'rounded-2xl border px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-60',
-                                  selectedEngineId === engine.id
-                                    ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
-                                    : 'border-border/70 bg-card/80 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
-                                )}
-                              >
-                                <div className="font-medium text-foreground">
-                                  {engine.name || engine.id}
-                                  {engine.version ? ` v${engine.version}` : ''}
-                                </div>
-                                <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                                  {(engine.kind || 'python')} · {getEngineStatusLabel(engine, t)}
-                                </div>
-                                <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                                  {t('analysisTypeLabel')}: {(engine.supportedAnalysisTypes || []).join(', ') || 'all'}
-                                </div>
-                                <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                                  {t('engineModelFamiliesLabel')}: {(engine.supportedModelFamilies || []).join(', ') || 'generic'}
-                                </div>
-                                {issue ? (
-                                  <div className="mt-1 text-xs leading-5 text-amber-600 dark:text-amber-300">{issue}</div>
-                                ) : null}
-                              </button>
-                            )})}
                         </div>
-                        <p className="text-xs leading-5 text-muted-foreground">
-                          {t('analysisEngineSelectorHelp')}
-                        </p>
+                        {analysisSettingsOpen ? (
+                          <div className="mt-3 space-y-3">
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium text-foreground">{t('analysisTypeLabel')}</label>
+                              <div className="grid grid-cols-2 gap-2">
+                                {analysisTypeOptions.map((option) => (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => setAnalysisType(option.value)}
+                                    className={cn(
+                                      'rounded-2xl border px-3 py-2 text-sm transition',
+                                      analysisType === option.value
+                                        ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
+                                        : 'border-border/70 bg-card/80 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
+                                    )}
+                                  >
+                                    {option.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <label className="text-sm font-medium text-foreground">{t('designCodeLabel')}</label>
+                              <Input
+                                className="border-border/70 bg-card/80 text-foreground placeholder:text-muted-foreground dark:border-white/10 dark:bg-slate-950/70"
+                                value={designCode}
+                                onChange={(event) => setDesignCode(event.target.value)}
+                                placeholder={t('designCodePlaceholder')}
+                              />
+                              <p className="text-xs leading-5 text-muted-foreground">
+                                {t('designCodeHelp')}
+                              </p>
+                            </div>
+                            <p className="text-xs leading-5 text-muted-foreground">
+                              {t('composerHelp')}
+                            </p>
+                          </div>
+                        ) : null}
                       </div>
 
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-foreground">{t('designCodeLabel')}</label>
-                        <Input
-                          className="border-border/70 bg-card/80 text-foreground placeholder:text-muted-foreground dark:border-white/10 dark:bg-slate-950/70"
-                          value={designCode}
-                          onChange={(event) => setDesignCode(event.target.value)}
-                          placeholder={t('designCodePlaceholder')}
-                        />
-                        <p className="text-xs leading-5 text-muted-foreground">
-                          {t('designCodeHelp')}
-                        </p>
-                        <p className="text-xs leading-5 text-muted-foreground">
-                          {t('composerHelp')}
-                        </p>
+                      <div className="rounded-2xl border border-border/70 bg-card/70 p-3 dark:border-white/10 dark:bg-slate-950/40">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">{t('engineSettingsSectionTitle')}</div>
+                            <div className="text-xs leading-5 text-muted-foreground">{t('contextSectionEngineHelp')}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEngineSettingsOpen((current) => {
+                                const next = !current
+                                if (!next) {
+                                  setEnginePickerOpen(false)
+                                }
+                                return next
+                              })
+                            }}
+                            className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground transition hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
+                          >
+                            {engineSettingsOpen ? t('engineSettingsCollapse') : t('engineSettingsExpand')}
+                          </button>
+                        </div>
+
+                        <div className="mt-3 space-y-2">
+                          <div className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                            {t('analysisEngineCurrentGroup')}
+                          </div>
+                          {selectedEngineId === 'auto' ? (
+                            <div className="rounded-2xl border border-border/70 bg-card/80 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950/40">
+                              <div className="font-medium text-foreground">{t('analysisEngineAutoOption')}</div>
+                              <div className="mt-1 text-xs leading-5 text-muted-foreground">{t('analysisEngineAutoHelp')}</div>
+                            </div>
+                          ) : currentEngineSummary ? (
+                            renderEngineSummary(currentEngineSummary, analysisType, currentModelFamily, t)
+                          ) : (
+                            <div className="rounded-2xl border border-border/70 bg-card/80 px-3 py-2 text-sm text-muted-foreground dark:border-white/10 dark:bg-slate-950/40">
+                              {selectedEngineId}
+                            </div>
+                          )}
+                        </div>
+
+                        {engineSettingsOpen ? (
+                          <div className="mt-3 space-y-2">
+                            <label className="text-sm font-medium text-foreground">{t('analysisEngineSelectorLabel')}</label>
+                            <button
+                              type="button"
+                              onClick={() => setEnginePickerOpen((current) => !current)}
+                              className="w-full rounded-2xl border border-dashed border-border/70 bg-background/50 px-3 py-2 text-left text-sm text-muted-foreground transition hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
+                            >
+                              {enginePickerOpen ? t('analysisEngineCollapseList') : t('analysisEngineChangeAction')}
+                            </button>
+                            {enginePickerOpen ? (
+                              <div
+                                data-testid="engine-candidate-list"
+                                className="max-h-56 space-y-2 overflow-y-auto rounded-2xl border border-border/70 bg-background/40 p-2 pr-1 dark:border-white/10 dark:bg-white/5"
+                              >
+                                <div className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                  {t('analysisEngineCandidatesGroup')}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedEngineId('auto')}
+                                  className={cn(
+                                    'w-full rounded-2xl border px-3 py-2 text-left text-sm transition',
+                                    selectedEngineId === 'auto'
+                                      ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
+                                      : 'border-border/70 bg-card/80 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
+                                  )}
+                                >
+                                  <div className="font-medium">{t('analysisEngineAutoOption')}</div>
+                                  <div className="mt-1 text-xs leading-5 text-muted-foreground">{t('analysisEngineAutoHelp')}</div>
+                                </button>
+                                {candidateEngines.map((engine) =>
+                                  renderEngineOption(
+                                    engine,
+                                    selectedEngineId === engine.id,
+                                    analysisType,
+                                    currentModelFamily,
+                                    t,
+                                    setSelectedEngineId
+                                  )
+                                )}
+                              </div>
+                            ) : null}
+                            <p className="text-xs leading-5 text-muted-foreground">
+                              {t('analysisEngineSelectorHelp')}
+                            </p>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </div>

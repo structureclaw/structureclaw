@@ -159,8 +159,9 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
 
     expect(screen.getAllByText(/^Model$|^模型$/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/^Analysis$|^分析$/).length).toBeGreaterThan(1)
-    expect(screen.getAllByText(/^Engine$|^引擎$/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/^Analysis Settings$|^分析设置$/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/^Execution Engine$|^执行引擎$/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/^Design Code$|^设计规范$/).length).toBeGreaterThan(0)
   })
 
   it('loads conversation history from the backend', async () => {
@@ -372,6 +373,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engine Settings|展开引擎设置/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Change Engine|更换引擎/ }))
     fireEvent.click(screen.getByRole('button', { name: /OpenSees Builtin v0\.1\.0/ }))
     fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
       target: { value: 'Analyze beam with OpenSees' },
@@ -387,6 +390,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engine Settings|展开引擎设置/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Change Engine|更换引擎/ }))
 
     const unavailableButton = screen.getByRole('button', { name: /OpenSees Builtin v0\.1\.0/i })
     expect(unavailableButton).toBeDisabled()
@@ -478,6 +483,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engine Settings|展开引擎设置/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Change Engine|更换引擎/ }))
     fireEvent.click(screen.getByRole('button', { name: /OpenSees Builtin v0\.1\.0/i }))
     fireEvent.change(screen.getAllByRole('textbox')[0], {
       target: { value: 'Analyze this model' },
@@ -497,6 +504,62 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     expect(screen.queryByRole('button', { name: /Manage Engines|管理引擎/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps extra engines collapsed by default and reveals them on demand', async () => {
+    const { container } = await renderConsolePage()
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+
+    expect(screen.getByRole('button', { name: /Collapse Analysis Settings|收起分析设置/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Expand Engine Settings|展开引擎设置/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /OpenSees Builtin v0\.1\.0/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Simplified Builtin v0\.1\.0/i })).not.toBeInTheDocument()
+    expect(screen.getByText(/Design Code|设计规范/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engine Settings|展开引擎设置/ }))
+    expect(screen.getByRole('button', { name: /Change Engine|更换引擎/ })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Change Engine|更换引擎/ }))
+
+    expect(screen.getByRole('button', { name: /Collapse Engine List|收起引擎列表/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /OpenSees Builtin v0\.1\.0/i })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Simplified Builtin v0\.1\.0/i })).toBeInTheDocument()
+    expect(container.querySelector('[data-testid="engine-candidate-list"].max-h-56.overflow-y-auto')).not.toBeNull()
+  })
+
+  it('keeps the selected manual engine visible after collapsing more engines', async () => {
+    await renderConsolePage()
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engine Settings|展开引擎设置/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Change Engine|更换引擎/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Simplified Builtin v0\.1\.0/i }))
+
+    expect(screen.getByText(/Current engine|当前引擎/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Collapse Engine List|收起引擎列表/ })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Collapse Engine List|收起引擎列表/ }))
+
+    expect(screen.getByText(/Simplified Builtin v0\.1\.0/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /OpenSees Builtin v0\.1\.0/i })).not.toBeInTheDocument()
+  })
+
+  it('renders the more-engines controls in Chinese', async () => {
+    window.localStorage.setItem('structureclaw.locale', 'zh')
+
+    await renderConsolePage()
+
+    fireEvent.click(screen.getByRole('button', { name: '展开工程上下文' }))
+    expect(screen.getByRole('button', { name: '展开引擎设置' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '展开引擎设置' }))
+    expect(screen.getByRole('button', { name: '更换引擎' })).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: '更换引擎' }))
+
+    expect(screen.getByRole('button', { name: '收起引擎列表' })).toBeInTheDocument()
+    expect(screen.getByText('可选引擎')).toBeInTheDocument()
   })
 
   it('renders guided discuss-first state in English', async () => {
