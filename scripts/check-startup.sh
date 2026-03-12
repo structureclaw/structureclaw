@@ -54,7 +54,7 @@ run_optional_check "Frontend build (optional)" "npm run build --prefix frontend"
 if [[ ! -x core/.venv/bin/python ]]; then
   echo
   echo "==> Core environment bootstrap"
-  if make setup-core-lite; then
+  if make setup-core-full; then
     echo "[ok] Core environment bootstrap"
   else
     echo "[fail] Core environment bootstrap"

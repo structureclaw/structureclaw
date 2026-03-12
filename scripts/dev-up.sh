@@ -10,7 +10,7 @@ ROOT_ENV_FILE="$ROOT_DIR/.env"
 FRONTEND_PORT="${FRONTEND_PORT:-30000}"
 BACKEND_PORT="${PORT:-8000}"
 CORE_PORT="${CORE_PORT:-8001}"
-CORE_PROFILE="lite"
+CORE_PROFILE="full"
 CORE_ENV_MANAGER="uv"
 SKIP_INFRA=0
 SKIP_DB_INIT=0
@@ -18,11 +18,10 @@ UV_LOCAL_BIN="${UV_INSTALL_DIR:-$HOME/.local/bin}"
 
 print_usage() {
   cat <<'EOF'
-Usage: ./scripts/dev-up.sh [lite|full] [--uv] [--skip-infra] [--skip-db-init]
+Usage: ./scripts/dev-up.sh [full] [--uv] [--skip-infra] [--skip-db-init]
 
 Options:
-  lite            Start core with lightweight Python dependencies (default)
-  full            Start core with full Python dependencies
+  full            Start core with full Python dependencies (default)
   --uv            Create core/.venv with uv-managed Python 3.11
   --skip-infra    Do not start postgres/redis via docker compose
   --skip-db-init  Skip Prisma migrate+seed
@@ -54,6 +53,11 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+if [[ "$CORE_PROFILE" == "lite" ]]; then
+  echo "The lite core profile has been retired; using full dependencies instead."
+  CORE_PROFILE="full"
+fi
 
 mkdir -p "$LOG_DIR" "$PID_DIR"
 
@@ -265,18 +269,10 @@ if [[ ! -x "$ROOT_DIR/core/.venv/bin/python" ]] || ! core_module_available "uvic
   fi
 
   if [[ "$CORE_ENV_MANAGER" == "uv" ]]; then
-    if [[ "$CORE_PROFILE" == "full" ]]; then
-      make -C "$ROOT_DIR" setup-core-full-uv
-    else
-      make -C "$ROOT_DIR" setup-core-lite-uv
-    fi
+    make -C "$ROOT_DIR" setup-core-full-uv
   else
     echo "Using Python 3.11 managed by uv."
-    if [[ "$CORE_PROFILE" == "full" ]]; then
-      make -C "$ROOT_DIR" setup-core-full-uv
-    else
-      make -C "$ROOT_DIR" setup-core-lite-uv
-    fi
+    make -C "$ROOT_DIR" setup-core-full-uv
   fi
 fi
 

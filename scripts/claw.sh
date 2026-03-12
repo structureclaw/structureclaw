@@ -12,15 +12,15 @@ StructureClaw command hub
 Usage:
   ./scripts/claw.sh doctor
   ./scripts/claw.sh start
-  ./scripts/claw.sh start-full
+  ./scripts/claw.sh restart
   ./scripts/claw.sh stop
   ./scripts/claw.sh status
   ./scripts/claw.sh logs [frontend|backend|core|all] [--follow]
 
 Commands:
   doctor      Run startup checks (without starting full stack)
-  start       Recommended for beginners (lite profile + uv)
-  start-full  Start with full core dependencies + uv
+  start       Recommended for beginners (full core deps + uv)
+  restart     Restart local services with the default startup profile (full + uv)
   stop        Stop local services and local infra
   status      Show service runtime + health checks
   logs        Show runtime logs from .runtime/logs
@@ -107,9 +107,10 @@ case "$command_name" in
     "$ROOT_DIR/scripts/check-startup.sh"
     ;;
   start)
-    "$ROOT_DIR/scripts/dev-up.sh" lite --uv
+    "$ROOT_DIR/scripts/dev-up.sh" full --uv
     ;;
-  start-full)
+  restart)
+    "$ROOT_DIR/scripts/dev-down.sh"
     "$ROOT_DIR/scripts/dev-up.sh" full --uv
     ;;
   stop)

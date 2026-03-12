@@ -149,17 +149,17 @@ sclaw start
 
 ### 进阶场景
 
-1. 完整分析依赖（非 lite）：
+1. 本地启动：
 
 ```bash
-make start-full
+make start   # 使用完整 core 依赖启动
+make restart # 重启本地栈
 ```
 
-2. 继续使用兼容保留的旧命令：
+2. 使用 uv 管理 Python 环境启动：
 
 ```bash
 make local-up-uv
-make local-up-full-uv
 make local-down
 make local-status
 ```
@@ -177,10 +177,10 @@ make up
 make install
 make ensure-uv
 make db-init
-make setup-core-lite
+make setup-core-full
 make dev-backend
 make dev-frontend
-make dev-core-lite
+make dev-core-full
 ```
 
 ## 最常用命令
@@ -188,6 +188,7 @@ make dev-core-lite
 ```bash
 make doctor
 make start
+make restart
 make status
 make stop
 make logs
@@ -372,8 +373,7 @@ npm run db:init --prefix backend
 
 - 当前部分后端业务实现属于“最小可运行版本”，用于确保启动链路、数据流和接口结构可用
 - 如果未配置 Redis，后端会使用内存缓存降级模式
-- `core/requirements.txt` 包含较重的工程分析依赖，首次安装可能较慢
-- `core/requirements-lite.txt` 适合本地快速起服务，但不代表具备完整分析能力
+- `core/requirements.txt` 包含完整工程分析依赖，首次安装可能稍慢
 - 对新手来说，最省事的路径是先 `make doctor`，再 `make start`
 
 ### StructureModel 节点约束约定

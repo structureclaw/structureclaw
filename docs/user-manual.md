@@ -100,10 +100,10 @@ sclaw version
 make install
 make ensure-uv
 make db-init
-make setup-core-lite
+make setup-core-full
 make dev-backend
 make dev-frontend
-make dev-core-lite
+make dev-core-full
 ```
 
 ## 5. 功能总览（当前已实现）

@@ -26,7 +26,7 @@
   - `make start`
   - `make core-regression`
 - Useful lifecycle commands:
-  - `make start`, `make start-full`
+  - `make start`, `make restart`
   - `make stop`
   - `make status`
   - `make logs`
