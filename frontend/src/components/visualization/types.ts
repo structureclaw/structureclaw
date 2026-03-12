@@ -9,7 +9,7 @@ export type VisualizationVector3 = {
 export type VisualizationNodeResults = {
   displacement?: Partial<Record<'ux' | 'uy' | 'uz' | 'rx' | 'ry' | 'rz', number>>
   reaction?: Partial<Record<'fx' | 'fy' | 'fz' | 'mx' | 'my' | 'mz', number>>
-  envelope?: Partial<Record<'maxAbsDisplacement' | 'maxAbsReaction', number | string>>
+  envelope?: Partial<Record<'maxAbsDisplacement' | 'maxAbsReaction' | 'controlCase' | 'controlCaseReaction', number | string>>
 }
 
 export type VisualizationElementResults = {

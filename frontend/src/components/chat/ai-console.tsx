@@ -10,6 +10,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
+import { buildVisualizationSnapshot } from '@/components/visualization/adapter'
 import type { VisualizationSnapshot } from '@/components/visualization'
 import { useI18n, type MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
@@ -213,6 +214,13 @@ function extractAnalysis(result: AgentResult | null) {
     return result.data
   }
   return null
+}
+
+function buildVisualizationTitle(result: AgentResult | null, conversationTitle: string) {
+  const analysis = extractAnalysis(result)
+  const meta = analysis && typeof analysis.meta === 'object' && analysis.meta ? (analysis.meta as Record<string, unknown>) : null
+  const analysisType = typeof meta?.analysisType === 'string' ? meta.analysisType : typeof analysis?.analysis_type === 'string' ? analysis.analysis_type : ''
+  return analysisType ? `${conversationTitle} · ${analysisType}` : conversationTitle
 }
 
 function extractSummaryStats(
@@ -1244,9 +1252,15 @@ export function AIConsole() {
           ...(payload as AgentResult),
           requestedEngineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
         }
+        const visualizationSnapshot = buildVisualizationSnapshot({
+          title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
+          model: parsedModel.model ?? null,
+          analysis: extractAnalysis(result),
+        })
         receivedResult = true
         assistantContent = result.response || result.clarification?.question || t('returnedResult')
         setLatestResult(result)
+        setLatestVisualizationSnapshot(visualizationSnapshot)
         setActivePanel(result.report?.markdown ? 'report' : 'analysis')
         replaceMessage(assistantMessageId, (message) => ({
           ...message,
@@ -1327,8 +1341,14 @@ export function AIConsole() {
               ...(payload.content as AgentResult),
               requestedEngineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
             }
+            const visualizationSnapshot = buildVisualizationSnapshot({
+              title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
+              model: parsedModel.model ?? null,
+              analysis: extractAnalysis(result),
+            })
             receivedResult = true
             setLatestResult(result)
+            setLatestVisualizationSnapshot(visualizationSnapshot)
             setActivePanel(result.report?.markdown ? 'report' : 'analysis')
             assistantContent = result.response || result.clarification?.question || t('returnedResult')
             replaceMessage(assistantMessageId, (message) => ({
