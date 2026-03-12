@@ -2,6 +2,7 @@ import { prisma } from '../utils/database.js';
 import { redis } from '../utils/redis.js';
 import axios from 'axios';
 import { config } from '../config/index.js';
+import { buildProxyConfig } from '../utils/http.js';
 import { ensureProjectId } from '../utils/demo-data.js';
 
 export interface CreateModelParams {
@@ -24,9 +25,11 @@ export interface CreateAnalysisParams {
 
 export class AnalysisService {
   private engineUrl: string;
+  private engineProxyConfig: { proxy?: false };
 
   constructor() {
     this.engineUrl = config.analysisEngineUrl;
+    this.engineProxyConfig = buildProxyConfig(this.engineUrl);
   }
 
   // 创建结构模型
@@ -125,6 +128,7 @@ export class AnalysisService {
         parameters: analysis.parameters,
       }, {
         timeout: 300000, // 5分钟超时
+        ...this.engineProxyConfig,
       });
 
       const results = response.data;
@@ -190,7 +194,7 @@ export class AnalysisService {
       code: params.code,
       elements: params.elements,
       context: params.context || {},
-    });
+    }, this.engineProxyConfig);
     return response.data;
   }
 }

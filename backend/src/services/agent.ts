@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 import { config } from '../config/index.js';
+import { buildProxyConfig } from '../utils/http.js';
 import { createChatModel } from '../utils/llm.js';
 import { logger } from '../utils/logger.js';
 import { redis } from '../utils/redis.js';
@@ -190,6 +191,7 @@ export class AgentService {
     this.engineClient = axios.create({
       baseURL: config.analysisEngineUrl,
       timeout: 300000,
+      ...buildProxyConfig(config.analysisEngineUrl),
     });
 
     this.llm = createChatModel(0.1);
@@ -848,7 +850,11 @@ export class AgentService {
     toolCalls.push(analyzeCall);
 
     try {
-      const analyzed = await this.engineClient.post('/analyze', analyzeInput);
+      const analyzed = await this.postToEngineWithRetry('/analyze', analyzeInput, {
+        retries: 2,
+        traceId,
+        tool: 'analyze',
+      });
       this.completeToolCallSuccess(analyzeCall, analyzed.data);
       const analysisSuccess = Boolean(analyzed.data?.success);
       let codeCheckResult: unknown;
@@ -967,6 +973,7 @@ export class AgentService {
       return result;
     } catch (error: any) {
       this.completeToolCallError(analyzeCall, error);
+      const transientUpstreamFailure = this.shouldRetryEngineCall(error);
       const result: AgentRunResult = {
         traceId,
         startedAt,
@@ -980,7 +987,13 @@ export class AgentService {
         model: normalizedModel,
         metrics: this.buildMetrics(toolCalls),
         interaction: this.buildExecutionInteraction('blocked'),
-        response: this.localize(locale, `分析执行失败：${analyzeCall.error}`, `Analysis execution failed: ${analyzeCall.error}`),
+        response: transientUpstreamFailure
+          ? this.localize(
+            locale,
+            `分析引擎服务暂时不可用，重试后仍失败：${analyzeCall.error}`,
+            `The analysis engine is temporarily unavailable and still failed after retry: ${analyzeCall.error}`,
+          )
+          : this.localize(locale, `分析执行失败：${analyzeCall.error}`, `Analysis execution failed: ${analyzeCall.error}`),
       };
       this.logRunResult(traceId, sessionKey, result);
       return result;
@@ -2407,6 +2420,10 @@ export class AgentService {
   }
 
   private shouldBypassValidateFailure(error: unknown): boolean {
+    return this.shouldRetryEngineCall(error);
+  }
+
+  private shouldRetryEngineCall(error: unknown): boolean {
     const status = this.extractHttpStatus(error);
     if (typeof status === 'number') {
       return status >= 500;
@@ -2414,6 +2431,40 @@ export class AgentService {
 
     const code = (error as any)?.code;
     return code === 'ECONNABORTED' || code === 'ECONNREFUSED' || code === 'ECONNRESET' || code === 'ETIMEDOUT';
+  }
+
+  private async postToEngineWithRetry(
+    path: string,
+    payload: Record<string, unknown>,
+    options: {
+      retries: number;
+      traceId: string;
+      tool: AgentToolName;
+    },
+  ) {
+    let attempt = 0;
+    let lastError: unknown;
+    while (attempt <= options.retries) {
+      try {
+        return await this.engineClient.post(path, payload);
+      } catch (error) {
+        lastError = error;
+        if (!this.shouldRetryEngineCall(error) || attempt === options.retries) {
+          throw error;
+        }
+        logger.warn(
+          {
+            traceId: options.traceId,
+            tool: options.tool,
+            attempt: attempt + 1,
+            error: this.stringifyError(error),
+          },
+          'Transient engine call failed; retrying',
+        );
+      }
+      attempt += 1;
+    }
+    throw lastError;
   }
 
   private extractErrorCode(error: unknown): string | undefined {

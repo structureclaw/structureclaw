@@ -488,6 +488,103 @@ describe('AgentService orchestration', () => {
     expect(result.response).toContain('模型校验服务暂时不可用');
   });
 
+  test('should retry analyze when the engine returns a transient 502', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+    let analyzeAttempts = 0;
+    svc.engineClient.post = async (path, payload) => {
+      if (path === '/validate') {
+        return { data: { valid: true, schemaVersion: '1.0.0' } };
+      }
+      if (path === '/analyze') {
+        analyzeAttempts += 1;
+        if (analyzeAttempts < 2) {
+          const error = new Error('Request failed with status code 502');
+          error.response = { status: 502, data: { message: 'bad gateway' } };
+          throw error;
+        }
+        return {
+          data: {
+            schema_version: '1.0.0',
+            analysis_type: payload.type,
+            success: true,
+            error_code: null,
+            message: 'ok',
+            data: {},
+            meta: {},
+          },
+        };
+      }
+      throw new Error(`unexpected path ${path}`);
+    };
+
+    const result = await svc.run({
+      message: '请做静力分析',
+      mode: 'execute',
+      context: {
+        locale: 'zh',
+        model: {
+          schema_version: '1.0.0',
+          nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
+          elements: [{ id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
+          materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
+          sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } }],
+          load_cases: [],
+          load_combinations: [],
+        },
+        autoAnalyze: true,
+        autoCodeCheck: false,
+        includeReport: false,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(analyzeAttempts).toBe(2);
+    expect(result.toolCalls.find((call) => call.tool === 'analyze')?.status).toBe('success');
+  });
+
+  test('should report engine unavailable when analyze keeps returning 502', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+    let analyzeAttempts = 0;
+    svc.engineClient.post = async (path) => {
+      if (path === '/validate') {
+        return { data: { valid: true, schemaVersion: '1.0.0' } };
+      }
+      if (path === '/analyze') {
+        analyzeAttempts += 1;
+        const error = new Error('Request failed with status code 502');
+        error.response = { status: 502, data: { message: 'bad gateway' } };
+        throw error;
+      }
+      throw new Error(`unexpected path ${path}`);
+    };
+
+    const result = await svc.run({
+      message: '请做静力分析',
+      mode: 'execute',
+      context: {
+        locale: 'zh',
+        model: {
+          schema_version: '1.0.0',
+          nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
+          elements: [{ id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
+          materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
+          sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } }],
+          load_cases: [],
+          load_combinations: [],
+        },
+        autoAnalyze: true,
+        autoCodeCheck: false,
+        includeReport: false,
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(analyzeAttempts).toBe(3);
+    expect(result.response).toContain('分析引擎服务暂时不可用');
+  });
+
   test('should generate English summaries and markdown when locale=en', async () => {
     const svc = new AgentService();
     svc.llm = null;
