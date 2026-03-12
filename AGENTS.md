@@ -13,7 +13,9 @@
 - Keep frontend changes localized. Route/layout concerns belong in `frontend/src/app`, reusable components in `frontend/src/components`, and cross-cutting client logic in `frontend/src/lib`.
 - Keep core changes deterministic. Structural examples, regression fixtures, and converters should remain scriptable and reproducible.
 - Do not treat `.planning/` as disposable. Update planning artifacts intentionally when work changes roadmap, state, or codebase guidance.
-- Make small, logical commits as you go. Do not batch unrelated edits into one late commit.
+- Commit discipline is mandatory: make small, logical commits as you go, and do it promptly.
+- Do not wait until the end of a long task to bundle unrelated work into one commit.
+- When a task naturally splits into implementation, tests, docs, or follow-up cleanup, prefer separate commits with clear boundaries.
 
 ## Build, Run, and Verify
 - Preferred local health flow:
@@ -70,9 +72,11 @@
   - `feat(frontend): add bilingual light and dark experience`
   - `fix(frontend): stop chat auto-scroll from locking wheel`
   - `docs: map existing codebase`
-- Commit in small batches with clean boundaries:
+- Commit in small batches with clean boundaries and do not postpone commits once a logical slice is complete.
+- Preferred sequence when applicable:
   - implementation changes first
-  - tests or follow-up docs in separate commits when that split improves reviewability
+  - tests in a separate commit when that improves reviewability
+  - docs or workflow-note follow-ups in their own commit
 - PRs should state:
   - what changed and why
   - impacted areas (`backend`, `core`, `frontend`, `scripts`, `docs`, `.planning`)
