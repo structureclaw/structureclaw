@@ -220,7 +220,9 @@ describe('AgentService orchestration', () => {
     expect(result.interaction?.detectedScenario).toBe('beam');
     expect(result.interaction?.missingCritical).not.toContain('跨度/长度（m）');
     expect(result.interaction?.missingCritical).toContain('荷载大小（kN）');
-    expect(result.response).not.toContain('跨度/长度');
+    expect(result.interaction?.missingCritical).toContain('荷载形式（点荷载/均布荷载）');
+    expect(result.interaction?.missingCritical).toContain('荷载位置（按当前结构模板）');
+    expect(result.interaction?.conversationStage).toBe('荷载条件');
   });
 
   test('should not repeat beam span after a follow-up value in chat mode', async () => {
@@ -250,7 +252,9 @@ describe('AgentService orchestration', () => {
     expect(second.interaction?.detectedScenario).toBe('beam');
     expect(second.interaction?.missingCritical).not.toContain('跨度/长度（m）');
     expect(second.interaction?.missingCritical).toContain('荷载大小（kN）');
-    expect(second.response).not.toContain('跨度/长度');
+    expect(second.interaction?.missingCritical).toContain('荷载形式（点荷载/均布荷载）');
+    expect(second.interaction?.missingCritical).toContain('荷载位置（按当前结构模板）');
+    expect(second.interaction?.conversationStage).toBe('荷载条件');
   });
 
   test('should not ask for the same span again after a follow-up value in chat mode', async () => {
@@ -312,7 +316,42 @@ describe('AgentService orchestration', () => {
     expect(second.interaction?.missingCritical).not.toContain('Span length per bay for the portal frame or double-span beam (m)');
     expect(second.interaction?.missingCritical).toContain('Portal-frame column height (m)');
     expect(second.interaction?.missingCritical).toContain('Load magnitude (kN)');
+    expect(second.interaction?.missingCritical).toContain('Load type (point / distributed)');
+    expect(second.interaction?.missingCritical).toContain('Load position (based on the current template)');
     expect(second.response).not.toContain('Span per bay');
+  });
+
+  test('should shrink beam load detail prompts after type and position are provided', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const first = await svc.run({
+      conversationId: 'conv-chat-load-detail-zh',
+      message: '我想设计一个梁，跨度10m',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+      },
+    });
+
+    expect(first.interaction?.missingCritical).toContain('荷载大小（kN）');
+    expect(first.interaction?.missingCritical).toContain('荷载形式（点荷载/均布荷载）');
+    expect(first.interaction?.missingCritical).toContain('荷载位置（按当前结构模板）');
+
+    const second = await svc.run({
+      conversationId: 'conv-chat-load-detail-zh',
+      message: '20kN均布荷载，全跨布置',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+      },
+    });
+
+    expect(second.interaction?.detectedScenario).toBe('beam');
+    expect(second.interaction?.missingCritical).not.toContain('荷载大小（kN）');
+    expect(second.interaction?.missingCritical).not.toContain('荷载形式（点荷载/均布荷载）');
+    expect(second.interaction?.missingCritical).not.toContain('荷载位置（按当前结构模板）');
+    expect(Array.isArray(second.interaction?.missingOptional)).toBe(true);
   });
 
   test('should generate English summaries and markdown when locale=en', async () => {

@@ -312,6 +312,14 @@ const run = async () => {
       second.interaction?.missingCritical?.includes('荷载大小（kN）'),
       'second beam chat turn should continue with load'
     );
+    assert(
+      second.interaction?.missingCritical?.includes('荷载形式（点荷载/均布荷载）'),
+      'second beam chat turn should require load type'
+    );
+    assert(
+      second.interaction?.missingCritical?.includes('荷载位置（按当前结构模板）'),
+      'second beam chat turn should require load position'
+    );
     console.log('[ok] beam chat clarification follow-up shrinkage');
   }
 
