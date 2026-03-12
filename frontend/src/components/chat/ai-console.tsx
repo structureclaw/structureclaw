@@ -1,14 +1,16 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
-import { ArrowUp, Bot, BrainCircuit, Clock3, FileText, Loader2, MessageSquarePlus, Orbit, Sparkles, User } from 'lucide-react'
+import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, MessageSquarePlus, Orbit, Sparkles, User } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
+import type { VisualizationSnapshot } from '@/components/visualization'
 import { useI18n, type MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
@@ -79,6 +81,7 @@ type ConversationSummary = {
 type PersistedConversation = ConversationSummary & {
   messages: Message[]
   latestResult?: AgentResult | null
+  visualizationSnapshot?: VisualizationSnapshot | null
 }
 
 type AgentSkillSummary = {
@@ -109,6 +112,10 @@ type AnalysisEngineSummary = {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const STORAGE_KEY = 'structureclaw.console.conversations'
+const StructuralVisualizationModal = dynamic(
+  () => import('@/components/visualization').then((module) => module.StructuralVisualizationModal),
+  { ssr: false }
+)
 
 function createId(prefix: string) {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -408,12 +415,16 @@ function renderEngineSummary(
 
 function AnalysisPanel({
   result,
+  visualizationSnapshot,
+  onOpenVisualization,
   activeTab,
   onTabChange,
   t,
   locale,
 }: {
   result: AgentResult | null
+  visualizationSnapshot: VisualizationSnapshot | null
+  onOpenVisualization: () => void
   activeTab: PanelTab
   onTabChange: (tab: PanelTab) => void
   t: (key: MessageKey) => string
@@ -437,6 +448,19 @@ function AnalysisPanel({
           <h2 className="mt-1 text-lg font-semibold text-foreground">{t('analysisAndReport')}</h2>
         </div>
         <div className="inline-flex rounded-full border border-border/70 bg-background/70 p-1 dark:border-white/10 dark:bg-white/5">
+          {result && (
+            <Button
+              className="mr-2 rounded-full border border-cyan-300/35 bg-cyan-300/10 text-cyan-800 hover:bg-cyan-300/20 dark:text-cyan-100"
+              disabled={!visualizationSnapshot}
+              onClick={onOpenVisualization}
+              title={!visualizationSnapshot ? t('visualizationMissingModel') : t('visualizationOpen')}
+              type="button"
+              variant="outline"
+            >
+              <Cuboid className="h-4 w-4" />
+              {t('visualizationOpen')}
+            </Button>
+          )}
           <button
             className={cn(
               'rounded-full px-4 py-2 text-sm transition',
@@ -487,6 +511,11 @@ function AnalysisPanel({
                   <Badge className="border-emerald-400/30 bg-emerald-400/15 text-emerald-200" variant="outline">
                     {result.success ? t('analysisDone') : result.needsModelInput ? t('needsMoreInfo') : t('returnedResult')}
                   </Badge>
+                  {!visualizationSnapshot && (
+                    <Badge className="border-amber-300/30 bg-amber-300/10 text-amber-800 dark:text-amber-200" variant="outline">
+                      {t('visualizationMissingModel')}
+                    </Badge>
+                  )}
                   {result.traceId && (
                     <Badge className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
                       Trace {result.traceId.slice(0, 8)}
@@ -757,6 +786,8 @@ export function AIConsole() {
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
   const [selectedEngineId, setSelectedEngineId] = useState('auto')
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
+  const [latestVisualizationSnapshot, setLatestVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
+  const [visualizationOpen, setVisualizationOpen] = useState(false)
   const [activePanel, setActivePanel] = useState<PanelTab>('analysis')
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
@@ -998,9 +1029,10 @@ export function AIConsole() {
         updatedAt: new Date().toISOString(),
         messages,
         latestResult,
+        visualizationSnapshot: current[conversationId]?.visualizationSnapshot ?? latestVisualizationSnapshot ?? null,
       },
     }))
-  }, [conversationId, latestResult, messages, serverConversations, t])
+  }, [conversationId, latestResult, latestVisualizationSnapshot, messages, serverConversations, t])
 
   async function ensureConversation(seedMessage: string) {
     if (conversationId) {
@@ -1064,6 +1096,7 @@ export function AIConsole() {
     }
 
     setErrorMessage('')
+    setVisualizationOpen(false)
     const archived = conversationArchive[nextConversationId]
 
     try {
@@ -1093,12 +1126,14 @@ export function AIConsole() {
       setConversationId(nextConversationId)
       setMessages(nextMessages)
       setLatestResult(archived?.latestResult || null)
+      setLatestVisualizationSnapshot(archived?.visualizationSnapshot || null)
       setActivePanel(archived?.latestResult?.report?.markdown ? 'report' : 'analysis')
     } catch (error) {
       if (archived) {
         setConversationId(nextConversationId)
         setMessages(archived.messages.length ? archived.messages : [initialAssistantMessage])
         setLatestResult(archived.latestResult || null)
+        setLatestVisualizationSnapshot(archived.visualizationSnapshot || null)
         setActivePanel(archived.latestResult?.report?.markdown ? 'report' : 'analysis')
         return
       }
@@ -1115,6 +1150,8 @@ export function AIConsole() {
     setConversationId('')
     setMessages([initialAssistantMessage])
     setLatestResult(null)
+    setLatestVisualizationSnapshot(null)
+    setVisualizationOpen(false)
     setErrorMessage('')
     setActivePanel('analysis')
   }
@@ -1155,6 +1192,7 @@ export function AIConsole() {
     })
     setInput('')
     setIsSending(true)
+    setVisualizationOpen(false)
     let receivedResult = false
     let assistantContent = assistantSeed
 
@@ -1786,7 +1824,22 @@ export function AIConsole() {
         </div>
       </section>
 
-      <AnalysisPanel result={latestResult} activeTab={activePanel} onTabChange={setActivePanel} t={t} locale={locale} />
+      <AnalysisPanel
+        activeTab={activePanel}
+        locale={locale}
+        onOpenVisualization={() => setVisualizationOpen(true)}
+        onTabChange={setActivePanel}
+        result={latestResult}
+        t={t}
+        visualizationSnapshot={latestVisualizationSnapshot}
+      />
+      <StructuralVisualizationModal
+        locale={locale}
+        onClose={() => setVisualizationOpen(false)}
+        open={visualizationOpen}
+        snapshot={latestVisualizationSnapshot}
+        t={t}
+      />
     </div>
   )
 }

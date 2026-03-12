@@ -14,6 +14,8 @@
   "dependencies": {
     "@radix-ui/react-separator": "^1.1.8",
     "@radix-ui/react-slot": "^1.2.4",
+    "@react-three/drei": "^9.122.0",
+    "@react-three/fiber": "^8.16.8",
     "@tanstack/react-query": "^5.28.4",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.0",
@@ -28,6 +30,7 @@
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.5.0",
     "tailwindcss": "^3.4.3",
+    "three": "^0.160.1",
     "zustand": "^4.5.2"
   },
   "devDependencies": {
