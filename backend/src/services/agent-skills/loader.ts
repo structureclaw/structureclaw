@@ -1,4 +1,5 @@
-import { readdirSync, readFileSync, statSync } from 'fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
+import { fileURLToPath } from 'url';
 import path from 'path';
 import type { AgentSkillBundle, AgentSkillFile, AgentSkillMetadata, SkillStage } from './types.js';
 
@@ -7,7 +8,24 @@ interface FrontmatterResult {
   body: string;
 }
 
-const SKILL_ROOT = path.resolve(process.cwd(), 'backend/src/agent-skills');
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+
+function resolveSkillRoot(): string {
+  const candidates = [
+    path.resolve(MODULE_DIR, '../../agent-skills'),
+    path.resolve(MODULE_DIR, '../../src/agent-skills'),
+    path.resolve(process.cwd(), 'src/agent-skills'),
+    path.resolve(process.cwd(), 'backend/src/agent-skills'),
+  ];
+
+  const matched = candidates.find((candidate) => existsSync(candidate));
+  if (!matched) {
+    throw new Error(`Agent skill directory not found. Tried: ${candidates.join(', ')}`);
+  }
+  return matched;
+}
+
+const SKILL_ROOT = resolveSkillRoot();
 
 function parseScalar(raw: string): unknown {
   const value = raw.trim();
