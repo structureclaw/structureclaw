@@ -7,7 +7,7 @@ import { config } from '../config/index.js';
 import { createChatModel } from '../utils/llm.js';
 import { logger } from '../utils/logger.js';
 import { redis } from '../utils/redis.js';
-import { resolveLocale, type AppLocale } from './locale.js';
+import { type AppLocale } from './locale.js';
 
 export type AgentToolName = 'text-to-model-draft' | 'convert' | 'validate' | 'analyze' | 'code-check' | 'report';
 export type AgentRunMode = 'chat' | 'execute' | 'auto';
@@ -237,6 +237,10 @@ export class AgentService {
 
   private localize(locale: AppLocale, zh: string, en: string): string {
     return this.isZh(locale) ? zh : en;
+  }
+
+  private resolveInteractionLocale(locale: AppLocale | undefined): AppLocale {
+    return locale === 'en' ? 'en' : 'zh';
   }
 
   private getStageLabel(stage: AgentInteractionStage, locale: AppLocale): string {
@@ -632,7 +636,7 @@ export class AgentService {
   private async runInternal(params: AgentRunParams, traceId: string): Promise<AgentRunResult> {
     const startedAtMs = Date.now();
     const startedAt = new Date(startedAtMs).toISOString();
-    const locale = resolveLocale(params.context?.locale);
+    const locale = this.resolveInteractionLocale(params.context?.locale);
     const runMode: AgentRunMode = params.mode || 'auto';
     const modelInput = params.context?.model;
     const sourceFormat = params.context?.modelFormat || 'structuremodel-v1';
