@@ -376,6 +376,16 @@ npm run db:init --prefix backend
 - `core/requirements-lite.txt` 适合本地快速起服务，但不代表具备完整分析能力
 - 对新手来说，最省事的路径是先 `make doctor`，再 `make start`
 
+### StructureModel 节点约束约定
+
+- `nodes[].restraints` 的顺序是 `[ux, uy, uz, rx, ry, rz]`
+- 当前 2D 梁/框架常用的是 `ux / uz / ry`
+- 常见梁支座可按以下方式建模：
+  - 悬臂固定端：`[true, false, true, false, true, false]`
+  - 简支左端铰支：`[true, false, true, false, false, false]`
+  - 简支右端滚支：`[false, false, true, false, false, false]`
+- 可参考示例 [core/schemas/examples/model_21_simply_supported_beam.json](/data1/openclaw/workspace/projects/10structureclaw/structureclaw/core/schemas/examples/model_21_simply_supported_beam.json)
+
 ## 后续建议
 
 适合下一步继续完善的方向：
