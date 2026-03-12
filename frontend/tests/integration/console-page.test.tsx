@@ -2,6 +2,21 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import ConsolePage from '@/app/(console)/console/page'
 
+const mockSkills = [
+  {
+    id: 'beam',
+    name: { en: 'Beam Helper', zh: '梁助手' },
+    description: { en: 'Beam workflow', zh: '梁工作流' },
+    autoLoadByDefault: true,
+  },
+  {
+    id: 'frame',
+    name: { en: 'Frame Checker', zh: '框架校核' },
+    description: { en: 'Frame workflow', zh: '框架工作流' },
+    autoLoadByDefault: true,
+  },
+] as const
+
 function createSseResponse(events: unknown[]) {
   const encoder = new TextEncoder()
   const chunks = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).concat('data: [DONE]\n\n')
@@ -20,10 +35,21 @@ function createSseResponse(events: unknown[]) {
 
 describe('ConsolePage Integration (CONS-13)', () => {
   beforeEach(() => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue([]),
-    } as unknown as Response)
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      return {
+        ok: true,
+        json: vi.fn().mockResolvedValue([]),
+      } as unknown as Response
+    })
     window.localStorage.clear()
     Element.prototype.scrollIntoView = vi.fn()
   })
@@ -52,16 +78,67 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     expect(screen.getByPlaceholderText(/Describe your structural goal/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Expand Skills' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Expand Engineering Context' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Discuss First' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run Analysis' })).toBeInTheDocument()
   })
 
+  it('keeps only one engineering context expand button on first load', async () => {
+    await renderConsolePage()
+
+    expect(screen.getAllByRole('button', { name: 'Expand Engineering Context' })).toHaveLength(1)
+  })
+
+  it('keeps loaded skills collapsed by default and toggles the list', async () => {
+    await renderConsolePage()
+
+    expect(screen.queryByText('Selected skills 2')).not.toBeInTheDocument()
+    expect(screen.queryByText('Beam Helper')).not.toBeInTheDocument()
+    expect(screen.queryByText('Frame Checker')).not.toBeInTheDocument()
+    expect(screen.queryByText('Choose which local Markdown skills the agent may use. Keep the default selection to preserve automatic routing.')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand Skills' }))
+
+    expect(screen.getByRole('button', { name: 'Collapse Skills' })).toBeInTheDocument()
+    expect(screen.getByText('Choose which local Markdown skills the agent may use. Keep the default selection to preserve automatic routing.')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse Skills' }))
+
+    expect(screen.getByRole('button', { name: 'Expand Skills' })).toBeInTheDocument()
+    expect(screen.queryByText('Choose which local Markdown skills the agent may use. Keep the default selection to preserve automatic routing.')).not.toBeInTheDocument()
+  })
+
+  it('hides composer help in the default collapsed state', async () => {
+    await renderConsolePage()
+
+    expect(screen.queryByText('The default path is to clarify through chat first. Before running analysis, it is recommended to provide model JSON or use chat to identify missing inputs.')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand Engineering Context' }))
+
+    expect(screen.getByText('The default path is to clarify through chat first. Before running analysis, it is recommended to provide model JSON or use chat to identify missing inputs.')).toBeInTheDocument()
+  })
+
   it('loads conversation history from the backend', async () => {
-    vi.mocked(fetch).mockResolvedValueOnce({
-      ok: true,
-      json: vi.fn().mockResolvedValue([{ id: 'conv-1', title: '历史会话标题', updatedAt: '2026-03-10T12:00:00.000Z' }]),
-    } as unknown as Response)
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([{ id: 'conv-1', title: '历史会话标题', updatedAt: '2026-03-10T12:00:00.000Z' }]),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
     await renderConsolePage()
     expect(await screen.findByText('历史会话标题')).toBeInTheDocument()
   })
@@ -93,6 +170,10 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     expect(screen.getByText('历史会话')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '执行分析' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '展开技能' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '展开工程上下文' })).toBeInTheDocument()
+    expect(screen.queryByText('已选择技能')).not.toBeInTheDocument()
+    expect(screen.queryByText('默认先聊天澄清需求。执行分析前建议补充模型 JSON，或先通过对话明确缺失条件。')).not.toBeInTheDocument()
   })
 
   it('sends the active locale with execute requests', async () => {

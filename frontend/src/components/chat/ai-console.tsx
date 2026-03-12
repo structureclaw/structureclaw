@@ -529,6 +529,7 @@ export function AIConsole() {
   const [historyError, setHistoryError] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
+  const [skillsOpen, setSkillsOpen] = useState(false)
   const [contextOpen, setContextOpen] = useState(false)
   const [modelText, setModelText] = useState('')
   const [designCode, setDesignCode] = useState('GB50017')
@@ -755,6 +756,14 @@ export function AIConsole() {
     })
     setConversationId(payload.id)
     return payload.id as string
+  }
+
+  function toggleSkill(skillId: string) {
+    setSelectedSkillIds((current) => (
+      current.includes(skillId)
+        ? current.filter((item) => item !== skillId)
+        : [...current, skillId]
+    ))
   }
 
   function appendMessage(message: Message) {
@@ -1212,82 +1221,105 @@ export function AIConsole() {
             </div>
           </div>
 
-          <div data-testid="console-composer" className="border-t border-border/70 p-5 dark:border-white/10">
-            <div className="mx-auto max-w-4xl space-y-4">
+          <div data-testid="console-composer" className="border-t border-border/70 px-4 py-3 dark:border-white/10">
+            <div className="mx-auto max-w-4xl space-y-3">
               {errorMessage && (
                 <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
                   {errorMessage}
                 </div>
               )}
 
-              <div className="rounded-[28px] border border-border/70 bg-background/70 p-3 dark:border-white/10 dark:bg-black/20">
-                <div className="mb-3 rounded-[22px] border border-border/70 bg-card/60 px-4 py-3 dark:border-white/10 dark:bg-white/5">
+              <div className="rounded-[24px] border border-border/70 bg-background/70 p-2.5 dark:border-white/10 dark:bg-black/20">
+                <div className="mb-2 rounded-[18px] border border-border/70 bg-card/60 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
+                    <div className="min-w-0">
                       <p className="text-sm font-medium text-foreground">{t('skillSelectionLabel')}</p>
-                      <p className="text-xs leading-5 text-muted-foreground">{t('skillSelectionHelp')}</p>
+                      {skillsOpen && (
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          {t('skillSelectionHelp')}
+                        </p>
+                      )}
                     </div>
                     <button
                       type="button"
                       className="rounded-full border border-border bg-background/70 px-3 py-1.5 text-sm text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
-                      onClick={() => setContextOpen(true)}
+                      onClick={() => setSkillsOpen((current) => !current)}
                     >
-                      {t('expandContext')}
+                      {skillsOpen ? t('collapseSkills') : t('expandSkills')}
                     </button>
                   </div>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {availableSkills.map((skill) => {
-                      const label = locale === 'zh' ? (skill.name.zh || skill.id) : (skill.name.en || skill.id)
-                      const selected = selectedSkillIds.includes(skill.id)
-                      return (
-                        <button
-                          key={skill.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedSkillIds((current) => (
-                              current.includes(skill.id)
-                                ? current.filter((item) => item !== skill.id)
-                                : [...current, skill.id]
-                            ))
-                          }}
-                          className={cn(
-                            'rounded-full border px-3 py-1.5 text-sm transition',
-                            selected
-                              ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
-                              : 'border-border/70 bg-background/70 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
-                          )}
-                        >
-                          {label}
-                        </button>
-                      )
-                    })}
-                  </div>
+                  {skillsOpen && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {availableSkills.map((skill) => {
+                        const label = locale === 'zh' ? (skill.name.zh || skill.id) : (skill.name.en || skill.id)
+                        const selected = selectedSkillIds.includes(skill.id)
+                        return (
+                          <button
+                            key={skill.id}
+                            type="button"
+                            onClick={() => toggleSkill(skill.id)}
+                            className={cn(
+                              'rounded-full border px-3 py-1.5 text-sm transition',
+                              selected
+                                ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
+                                : 'border-border/70 bg-background/70 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
+                            )}
+                          >
+                            {label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 <Textarea
-                  className="min-h-[120px] resize-none border-0 bg-transparent px-3 py-3 text-base text-foreground placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0"
+                  className="min-h-[96px] resize-none border-0 bg-transparent px-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0"
                   placeholder={t('composerPlaceholder')}
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
                 />
                 <Separator className="bg-border dark:bg-white/10" />
 
-                <div className="mt-3 flex flex-wrap items-center gap-2">
-                  <button
-                    type="button"
-                    className="rounded-full border border-border bg-background/70 px-3 py-1.5 text-sm text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
-                    onClick={() => setContextOpen((current) => !current)}
-                  >
-                    {contextOpen ? t('collapseContext') : t('expandContext')}
-                  </button>
-                  <Badge className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
-                    {t('conversationIdShort')} {conversationId ? conversationId.slice(0, 8) : t('notCreated')}
-                  </Badge>
+                <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      className="rounded-full border border-border bg-background/70 px-3 py-1.5 text-sm text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
+                      onClick={() => setContextOpen((current) => !current)}
+                    >
+                      {contextOpen ? t('collapseContext') : t('expandContext')}
+                    </button>
+                    <Badge className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
+                      {t('conversationIdShort')} {conversationId ? conversationId.slice(0, 8) : t('notCreated')}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-full border-border bg-background/70 text-foreground hover:bg-accent/10 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10"
+                      onClick={() => handleSubmit('chat')}
+                      disabled={isSending || !input.trim()}
+                    >
+                      {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
+                      {t('chatFirst')}
+                    </Button>
+                    <Button
+                      type="button"
+                      className="rounded-full bg-cyan-300 px-5 text-slate-950 hover:bg-cyan-200"
+                      onClick={() => handleSubmit('execute')}
+                      disabled={isSending || !input.trim()}
+                    >
+                      {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
+                      {t('runAnalysis')}
+                    </Button>
+                  </div>
                 </div>
 
                 {contextOpen && (
-                  <div className="mt-4 grid gap-4 rounded-[24px] border border-border/70 bg-background/70 p-4 lg:grid-cols-[1fr_300px] dark:border-white/10 dark:bg-white/5">
+                  <div className="mt-3 grid gap-4 rounded-[24px] border border-border/70 bg-background/70 p-4 lg:grid-cols-[1fr_300px] dark:border-white/10 dark:bg-white/5">
                     <div className="space-y-2">
                       <label className="text-sm font-medium text-foreground">{t('modelJsonLabel')}</label>
                       <Textarea
@@ -1331,71 +1363,13 @@ export function AIConsole() {
                         <p className="text-xs leading-5 text-muted-foreground">
                           {t('designCodeHelp')}
                         </p>
-                      </div>
-
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-foreground">{t('skillSelectionLabel')}</label>
-                        <div className="flex flex-wrap gap-2">
-                          {availableSkills.map((skill) => {
-                            const label = locale === 'zh' ? (skill.name.zh || skill.id) : (skill.name.en || skill.id)
-                            const selected = selectedSkillIds.includes(skill.id)
-                            return (
-                              <button
-                                key={skill.id}
-                                type="button"
-                                onClick={() => {
-                                  setSelectedSkillIds((current) => (
-                                    current.includes(skill.id)
-                                      ? current.filter((item) => item !== skill.id)
-                                      : [...current, skill.id]
-                                  ))
-                                }}
-                                className={cn(
-                                  'rounded-2xl border px-3 py-2 text-sm transition',
-                                  selected
-                                    ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
-                                    : 'border-border/70 bg-card/80 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
-                                )}
-                              >
-                                {label}
-                              </button>
-                            )
-                          })}
-                        </div>
                         <p className="text-xs leading-5 text-muted-foreground">
-                          {t('skillSelectionHelp')}
+                          {t('composerHelp')}
                         </p>
                       </div>
                     </div>
                   </div>
                 )}
-
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm text-muted-foreground">
-                    {t('composerHelp')}
-                  </p>
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="rounded-full border-border bg-background/70 text-foreground hover:bg-accent/10 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10"
-                      onClick={() => handleSubmit('chat')}
-                      disabled={isSending || !input.trim()}
-                    >
-                      {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
-                      {t('chatFirst')}
-                    </Button>
-                    <Button
-                      type="button"
-                      className="rounded-full bg-cyan-300 px-5 text-slate-950 hover:bg-cyan-200"
-                      onClick={() => handleSubmit('execute')}
-                      disabled={isSending || !input.trim()}
-                    >
-                      {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
-                      {t('runAnalysis')}
-                    </Button>
-                  </div>
-                </div>
               </div>
             </div>
           </div>
