@@ -22,7 +22,7 @@ const llmModel = process.env.LLM_MODEL
   || (isZhipu ? 'glm-4-plus' : (process.env.OPENAI_MODEL || 'gpt-4-turbo-preview'));
 const llmBaseUrl = process.env.LLM_BASE_URL
   || (isZhipu ? 'https://open.bigmodel.cn/api/paas/v4/' : (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'));
-const frontendPort = process.env.FRONTEND_PORT || '3000';
+const frontendPort = process.env.FRONTEND_PORT || '30000';
 const backendPort = process.env.PORT || '8000';
 const corePort = process.env.CORE_PORT || '8001';
 

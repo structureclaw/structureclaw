@@ -70,7 +70,7 @@ dev-backend:
 	npm run dev --prefix backend
 
 dev-frontend:
-	FRONTEND_PORT=$${FRONTEND_PORT:-3000} npm run dev --prefix frontend -- --port $$FRONTEND_PORT
+	FRONTEND_PORT=$${FRONTEND_PORT:-30000} npm run dev --prefix frontend -- --port $$FRONTEND_PORT
 
 dev-core-lite:
 	CORE_PORT=$${CORE_PORT:-8001} core/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port $$CORE_PORT --reload --app-dir core
@@ -121,7 +121,7 @@ local-status:
 health:
 	curl http://localhost:$${PORT:-8000}/health
 	curl http://localhost:$${CORE_PORT:-8001}/health
-	curl -I http://localhost:$${FRONTEND_PORT:-3000}
+	curl -I http://localhost:$${FRONTEND_PORT:-30000}
 
 check-startup:
 	./scripts/check-startup.sh

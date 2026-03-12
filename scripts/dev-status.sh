@@ -6,7 +6,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PID_DIR="$ROOT_DIR/.runtime/pids"
 LOG_DIR="$ROOT_DIR/.runtime/logs"
 ROOT_ENV_FILE="$ROOT_DIR/.env"
-FRONTEND_PORT=3000
+FRONTEND_PORT=30000
 BACKEND_PORT=8000
 CORE_PORT=8001
 
@@ -15,7 +15,7 @@ if [[ -f "$ROOT_ENV_FILE" ]]; then
   # shellcheck disable=SC1090
   source "$ROOT_ENV_FILE"
   set +a
-  FRONTEND_PORT="${FRONTEND_PORT:-3000}"
+  FRONTEND_PORT="${FRONTEND_PORT:-30000}"
   BACKEND_PORT="${PORT:-8000}"
   CORE_PORT="${CORE_PORT:-8001}"
 fi
