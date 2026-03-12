@@ -411,7 +411,9 @@ export function AIConsole() {
   const [analysisType, setAnalysisType] = useState<AnalysisType>('static')
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
   const [activePanel, setActivePanel] = useState<PanelTab>('analysis')
+  const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
+  const shouldStickToBottomRef = useRef(true)
 
   useEffect(() => {
     setMessages((current) => {
@@ -451,7 +453,44 @@ export function AIConsole() {
   }, [conversationArchive, serverConversations])
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    const chatScrollElement = chatScrollRef.current
+    if (!chatScrollElement) {
+      return
+    }
+
+    const handleScroll = () => {
+      const distanceFromBottom =
+        chatScrollElement.scrollHeight - chatScrollElement.scrollTop - chatScrollElement.clientHeight
+      shouldStickToBottomRef.current = distanceFromBottom < 48
+    }
+
+    handleScroll()
+    chatScrollElement.addEventListener('scroll', handleScroll, { passive: true })
+
+    return () => {
+      chatScrollElement.removeEventListener('scroll', handleScroll)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!shouldStickToBottomRef.current) {
+      return
+    }
+
+    const chatScrollElement = chatScrollRef.current
+    if (!chatScrollElement) {
+      return
+    }
+
+    if (typeof chatScrollElement.scrollTo === 'function') {
+      chatScrollElement.scrollTo({
+        top: chatScrollElement.scrollHeight,
+        behavior: isSending ? 'auto' : 'smooth',
+      })
+      return
+    }
+
+    chatScrollElement.scrollTop = chatScrollElement.scrollHeight
   }, [messages, isSending])
 
   useEffect(() => {
@@ -937,7 +976,7 @@ export function AIConsole() {
             </p>
           </div>
 
-          <div className="flex-1 overflow-auto px-5 py-5">
+          <div ref={chatScrollRef} className="flex-1 overflow-auto px-5 py-5">
             <div className="mx-auto flex max-w-4xl flex-col gap-4">
               {messages.length === 1 && (
                 <div className="grid gap-3 md:grid-cols-3">
