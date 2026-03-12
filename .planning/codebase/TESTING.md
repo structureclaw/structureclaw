@@ -1,310 +1,232 @@
-# Testing Patterns
+# Testing And Validation Map
 
-**Analysis Date:** 2026-03-09
+## Scope
 
-## Test Frameworks
+This repository uses three different quality layers:
 
-**Backend (Node.js/TypeScript):**
-- Jest 29.7.0
-- Config: `backend/jest.config.cjs`
-- Environment: Node
-- Test files: `.test.mjs` extension in `backend/tests/` directory
-- No transformation (runs native ES modules)
+- framework tests for `backend/`
+- framework tests for `frontend/`
+- script-driven contract and regression validation for `core/` and cross-service flows
 
-**Core (Python):**
-- pytest 8.1.1
-- Test discovery via pytest conventions
-- Regression test cases in `core/regression/` directory
+The most important quality signal is not a single test runner. It is the composition of Make targets and validation scripts in `scripts/`.
 
-**Frontend:**
-- No test framework currently configured
-- Type-checking only via `npm run type-check`
+## Primary Entry Points
 
-## Test Configuration
+- `make doctor` and `make check-startup` run the broadest local quality sweep through `scripts/check-startup.sh`.
+- `make backend-regression` runs backend build, lint, Jest, and contract scripts through `scripts/check-backend-regression.sh`.
+- `make core-regression` runs core contract and regression checks through `scripts/check-core-regression.sh`.
+- `npm test --prefix backend -- --runInBand` runs backend Jest suites.
+- `npm run test:run --prefix frontend` runs frontend Vitest suites once.
 
-**Backend Jest Config (`backend/jest.config.cjs`):**
-```javascript
-/** @type {import('jest').Config} */
-module.exports = {
-  testEnvironment: 'node',
-  testMatch: ['<rootDir>/tests/**/*.test.mjs'],
-  transform: {},
-};
-```
+## Backend Testing
 
-**Run Commands:**
-```bash
-npm run test --prefix backend        # Run backend tests
-npm run lint --prefix backend        # Lint check
-npm run type-check --prefix frontend # TypeScript check (frontend)
-make backend-regression              # Backend + agent/chat contract regressions
-make core-regression                 # Core analysis regression checks
-```
+### Framework And Config
 
-## Test File Organization
+- Framework: Jest 29 with ESM support enabled from `backend/package.json`.
+- Command: `NODE_OPTIONS=--experimental-vm-modules jest --passWithNoTests`.
+- Config file: `backend/jest.config.cjs`.
+- Environment: `node`.
+- Discovery pattern: `backend/tests/**/*.test.mjs`.
 
-**Backend:**
-- Location: `backend/tests/` directory (separate from source)
-- Naming: `*.test.mjs` pattern
-- Import compiled JS from `dist/`:
-  ```javascript
-  import { AgentService } from '../dist/services/agent.js';
-  ```
+### Suite Layout
 
-**Core (Python):**
-- Regression tests: `core/regression/static_2d/`, `core/regression/static_3d/`
-- Test case files: JSON fixtures named `case_XX_*.json`
-- No dedicated `test_*.py` files detected in core (uses pytest fixtures/regression)
+- Backend tests live outside source under `backend/tests/`.
+- Tests import compiled output from `backend/dist/`, not TypeScript source. Examples:
+  - `backend/tests/agent.service.test.mjs`
+  - `backend/tests/llm-error.test.mjs`
+- This means backend build health is a prerequisite for meaningful test execution and is explicitly run in `scripts/check-backend-regression.sh`.
 
-**Frontend:**
-- No test files currently present
+### Test Structure
 
-## Test Structure
+- Tests use `describe` and `test` from `@jest/globals`.
+- Assertions are behavior-oriented, not snapshot-based.
+- Common assertion targets:
+  - orchestration success or failure flags
+  - presence and status of `toolCalls`
+  - mapped error codes
+  - generated artifact files
 
-**Backend Test Pattern (from `agent.service.test.mjs`):**
-```javascript
-import { describe, expect, test } from '@jest/globals';
-import fs from 'node:fs';
-import { AgentService } from '../dist/services/agent.js';
+### Mocking Patterns
 
-describe('AgentService orchestration', () => {
-  test('should execute analyze -> code-check -> report closed loop', async () => {
-    const svc = new AgentService();
-    // Mock setup
-    svc.llm = null;
-    svc.engineClient.post = async (path, payload) => {
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
-      }
-      // ... more mock responses
-      throw new Error(`unexpected path ${path}`);
-    };
+- Instance-level mutation is the dominant unit-test seam:
+  - `svc.llm = null`
+  - `svc.engineClient.post = async (...) => ...`
+- Tests build fake HTTP failures by attaching `response.data.errorCode` to thrown `Error` objects, matching production Axios-style behavior in `backend/tests/agent.service.test.mjs`.
+- There is no heavy mocking framework layer. Mocks are plain objects, reassigned methods, or prototype overrides.
 
-    const result = await svc.run({
-      message: '...',
-      mode: 'execute',
-      context: { /* ... */ },
-    });
+### What Backend Tests Emphasize
 
-    expect(result.success).toBe(true);
-    expect(result.toolCalls.some((c) => c.tool === 'analyze')).toBe(true);
-  });
-});
-```
+- closed-loop orchestration in `backend/tests/agent.service.test.mjs`
+- error classification in `backend/tests/llm-error.test.mjs`
+- artifact side effects, including file cleanup after assertions
 
-**Patterns:**
-- Jest globals imported from `@jest/globals`
-- `describe`/`test` blocks for organization
-- Async tests with `async/await`
-- Mocking via direct property assignment on service instances
-- File system assertions for artifact generation
+## Frontend Testing
 
-## Mocking
+### Framework And Config
 
-**Backend Mocking Pattern:**
-- Direct property assignment on service instances:
-  ```javascript
-  const svc = new AgentService();
-  svc.llm = null;  // Disable LLM for unit testing
-  svc.engineClient.post = async (path, payload) => {
-    // Mock implementation returning fixture data
-    if (path === '/analyze') {
-      return { data: { success: true, ... } };
-    }
-  };
-  ```
+- Framework: Vitest 4 configured in `frontend/vitest.config.ts`.
+- Environment: `jsdom`.
+- Setup file: `frontend/tests/setup.ts`.
+- Discovery pattern: `frontend/tests/**/*.test.ts` and `frontend/tests/**/*.test.tsx`.
+- Supporting libraries:
+  - `@testing-library/react`
+  - `@testing-library/jest-dom`
+  - `@testing-library/user-event`
 
-**What to Mock:**
-- External HTTP clients (`engineClient.post`)
-- LLM/chat models (`svc.llm = null`)
-- Database connections (via dependency injection)
+### Suite Layout
 
-**What NOT to Mock:**
-- Internal business logic
-- Data transformations
-- Schema validation (test real behavior)
+- Tests are grouped by concern under `frontend/tests/`:
+  - component tests in `frontend/tests/components/`
+  - integration tests in `frontend/tests/integration/`
+  - accessibility tests in `frontend/tests/accessibility/`
+  - store tests in `frontend/tests/stores/`
+  - style/config guards at the top level such as `frontend/tests/postcss-config.test.ts`
 
-## Fixtures and Factories
+### What Frontend Tests Cover
 
-**Test Data:**
-- Inline JSON objects for model payloads:
-  ```javascript
-  const result = await svc.run({
-    message: '...',
-    context: {
-      model: {
-        schema_version: '1.0.0',
-        nodes: [{ id: '1', x: 0, y: 0, z: 0 }, ...],
-        elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], ... }],
-        // ...
-      },
-    },
-  });
-  ```
+- UI primitives and variant classes:
+  - `frontend/tests/components/button.test.tsx`
+  - `frontend/tests/components/input.test.tsx`
+  - `frontend/tests/components/card.test.tsx`
+- route-level rendering and shell composition:
+  - `frontend/tests/integration/home-page.test.tsx`
+  - `frontend/tests/integration/console-page.test.tsx`
+  - `frontend/tests/integration/route-groups.test.tsx`
+- semantics and accessibility basics:
+  - `frontend/tests/accessibility/semantic.test.tsx`
+- store/provider behavior:
+  - `frontend/tests/stores/context.test.tsx`
+  - `frontend/tests/stores/slices/preferences.test.ts`
+- design-system and build-pipeline guards:
+  - `frontend/tests/design-tokens.test.ts`
+  - `frontend/tests/tailwind-config.test.ts`
+  - `frontend/tests/postcss-config.test.ts`
+  - `frontend/tests/glassmorphism.test.ts`
 
-**Regression Test Fixtures (Core):**
-- Location: `core/regression/static_2d/`, `core/regression/static_3d/`
-- Named test cases: `case_01_sym_v_truss.json`, `case_02_single_bar_axial.json`, etc.
-- JSON format following StructureModel v1 schema
+### Mocking And Environment Setup
 
-**Core Regression Cases:**
-```
-case_01_sym_v_truss.json
-case_02_single_bar_axial.json
-case_03_frame_cantilever_tip_load.json
-case_04_frame_cantilever_udl.json
-case_05_truss_load_combination.json
-case_06_frame_two_element_cantilever_tip_load.json
-case_07_frame_cantilever_udl_long.json
-case_08_truss_batch_cases_envelope.json
-case_09_frame_batch_cases_controls.json
-case_10_batch_envelope_tables.json
-```
+- Shared DOM polyfills live in `frontend/tests/setup.ts` for Radix and jsdom gaps:
+  - pointer capture methods
+  - `scrollIntoView`
+  - `getBoundingClientRect`
+  - `clientWidth` and `clientHeight`
+  - `ResizeObserver`
+  - `EventSource`
+- Per-test mocking typically uses Vitest primitives:
+  - `vi.spyOn(globalThis, 'fetch')`
+  - `vi.mock('next-themes', ...)`
+  - `vi.restoreAllMocks()` in `afterEach`
+- Async UI behavior usually uses `findBy...`, `waitFor`, or `userEvent`.
+- Tests prefer accessible queries (`getByRole`, `findByRole`, `getByPlaceholderText`) over DOM selectors, except when verifying semantic button presence in `frontend/tests/accessibility/semantic.test.tsx`.
 
-## Coverage
+### Frontend Test Style
 
-**Requirements:** None explicitly enforced in configuration
+- Many suites include requirement IDs in titles, such as `(COMP-01)`, `(PAGE-01)`, `(CONS-13)`, or `(ACCS-03)`.
+- Assertions commonly check exact Tailwind classes, so UI refactors that only restyle components can break tests.
+- Several “integration” tests are really module/render integration tests rather than browser E2E tests; they render components directly in jsdom.
 
-**Coverage Commands:**
-- No coverage flags in current test commands
-- Jest supports `--coverage` flag if needed
+## Core Validation
 
-## Test Types
+### Testing Model
 
-**Unit Tests (Backend):**
-- Service method testing with mocked dependencies
-- Focus on business logic and orchestration
-- Example: `agent.service.test.mjs` tests AgentService.run() behavior
+- The Python core does not currently expose a first-class `pytest` suite in the repository tree even though `pytest` is listed in `core/requirements.txt`.
+- Quality is enforced mainly through executable validation scripts under `scripts/` plus JSON fixture sets in:
+  - `core/regression/static_2d/`
+  - `core/regression/static_3d/`
+  - `core/schemas/examples/`
 
-**Integration Tests:**
-- Regression scripts via Makefile targets:
-  - `make backend-regression` - Backend + agent/chat contract tests
-  - `make core-regression` - Core analysis engine contract tests
-- Contract testing for API endpoints
+### Contract Scripts
 
-**E2E Tests:**
-- Not currently configured
-- Frontend console page (`/console`) used for manual integration testing
+- `scripts/validate-analyze-contract.sh` imports `core/main.py` directly and asserts response envelope shape, error codes, and required nested fields.
+- `scripts/validate-code-check-traceability.sh` checks code-check traceability payloads.
+- `scripts/validate-converter-api-contract.sh` and `scripts/validate-schema-migration.sh` validate converter and schema compatibility behavior.
+- `scripts/validate-convert-roundtrip.sh`, `scripts/validate-convert-batch.sh`, and `scripts/validate-convert-passrate.sh` validate converter fidelity and reporting.
 
-## Common Patterns
+### Regression Fixture Scripts
 
-**Async Testing:**
-```javascript
-test('should execute closed loop', async () => {
-  const result = await svc.run({ ... });
-  expect(result.success).toBe(true);
-});
-```
+- `scripts/validate-static-regression.sh` iterates through every `case_*.json` in `core/regression/static_2d/`, validates `request`, runs `analyze`, and compares dotted result paths against expected values within tolerance.
+- `scripts/validate-static-3d-regression.sh` does the same for `core/regression/static_3d/`.
+- `scripts/validate-structure-examples.sh` validates every example model in `core/schemas/examples/` and enforces a minimum example count.
 
-**Error Testing:**
-```javascript
-test('should fail when code-check fails', async () => {
-  const svc = new AgentService();
-  svc.engineClient.post = async (path, payload) => {
-    if (path === '/code-check') {
-      const error = new Error('code check failed');
-      error.response = { data: { errorCode: 'CODE_CHECK_EXECUTION_FAILED' } };
-      throw error;
-    }
-  };
+### Execution Pattern
 
-  const result = await svc.run({ ... });
-  expect(result.success).toBe(false);
-  expect(codeCheckCall?.errorCode).toBe('CODE_CHECK_EXECUTION_FAILED');
-});
-```
+- Scripts choose `core/.venv-uv-lite/bin/python` first, then `core/.venv/bin/python`.
+- Inline Python uses `sys.path.insert(0, 'core')` so imports resolve against repository packages without an installed distribution.
+- Failures raise `SystemExit` with precise mismatch messages; there is no snapshot approval workflow.
 
-**File System Assertions:**
-```javascript
-test('should export report artifacts to files', async () => {
-  // ... setup and execution
+## Cross-Service Contract Validation
 
-  expect(Array.isArray(result.artifacts)).toBe(true);
-  for (const artifact of result.artifacts) {
-    expect(fs.existsSync(artifact.path)).toBe(true);
-    fs.unlinkSync(artifact.path);  // Cleanup
-  }
-});
-```
+These scripts matter as much as unit tests because they pin API and orchestration behavior:
 
-**Multiple Assertions per Test:**
-- Tests verify multiple aspects of results
-- Check success flag, tool call presence, specific field values
+- `scripts/validate-agent-orchestration.sh`
+- `scripts/validate-agent-tools-contract.sh`
+- `scripts/validate-agent-api-contract.sh`
+- `scripts/validate-chat-stream-contract.sh`
+- `scripts/validate-chat-message-routing.sh`
+- `scripts/validate-report-template-contract.sh`
+- `scripts/validate-agent-online-smoke.sh`
 
-## Running Tests
+Observed patterns:
 
-**Backend:**
-```bash
-cd backend
-npm test                              # Run all tests
-npm test -- --testNamePattern="..."   # Run specific tests
-NODE_OPTIONS=--experimental-vm-modules npm test  # Full command (from package.json)
-```
+- backend code is built first with `npm run build --prefix backend >/dev/null`
+- inline Node scripts import compiled modules from `backend/dist/`
+- Fastify apps are created in-process and exercised with `app.inject(...)`
+- service methods are often monkey-patched at the prototype level, for example:
+  - `AgentService.prototype.run = async function mockRun(...) { ... }`
+  - `AgentService.prototype.runStream = async function *mockRunStream(...) { ... }`
+  - `ChatService.prototype.sendMessage = async function mockSendMessage(...) { ... }`
+- assertions target payload shape, propagated trace IDs, CORS headers, SSE framing, and context pass-through
 
-**Core:**
-```bash
-make core-regression  # Run regression suite via script
-```
+## Orchestrator Scripts And Quality Gates
 
-**Full Suite:**
-```bash
-make backend-regression  # Backend contract tests
-make core-regression     # Core engine tests
-```
+### `scripts/check-backend-regression.sh`
 
-## Test Data Patterns
+Runs, in order:
 
-**Model Fixtures:**
-- Follow StructureModel v1 schema
-- Minimal viable model for test case:
-  ```javascript
-  {
-    schema_version: '1.0.0',
-    nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
-    elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
-    materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
-    sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } }],
-    load_cases: [],
-    load_combinations: [],
-  }
-  ```
+- backend build
+- backend lint
+- backend Jest
+- agent orchestration regression
+- agent tools protocol contract
+- agent API contract
+- chat stream contract
+- chat message routing contract
+- report template contract
+- Prisma schema validation
 
-**Response Fixtures:**
-- Mock API responses match real API schema:
-  ```javascript
-  {
-    data: {
-      schema_version: '1.0.0',
-      analysis_type: 'static',
-      success: true,
-      error_code: null,
-      message: 'ok',
-      data: {},
-      meta: {},
-    }
-  }
-  ```
+### `scripts/check-core-regression.sh`
 
-## Testing Best Practices (Observed)
+Runs, in order:
 
-1. **Test real behavior, not implementation details** - Mock external services, not internal logic
-2. **Use descriptive test names** - "should execute analyze -> code-check -> report closed loop"
-3. **Test both success and failure paths** - Happy path and error scenarios
-4. **Cleanup side effects** - Remove generated files after tests
-5. **Contract testing** - Regression tests verify API contracts remain stable
+- analyze response contract
+- code-check traceability
+- static 2D regression
+- static 3D regression
+- StructureModel example validation
+- convert round-trip
+- midas-text converter
+- converter API contract
+- schema migration
+- batch convert report
+- convert pass rate
 
-## Gaps and Recommendations
+### `scripts/check-startup.sh`
 
-**Missing Test Coverage:**
-- Frontend has no test framework configured
-- No unit tests for Python core modules (only regression fixtures)
-- No E2E testing infrastructure
+This is the broadest local gate. It composes:
 
-**Potential Additions:**
-- Vitest for frontend (aligned with Vite/Next.js)
-- pytest files for Python unit tests
-- Playwright or Cypress for E2E
+- backend regression
+- startup self-healing guard validation
+- frontend type-check
+- frontend lint
+- frontend style pipeline guard via `frontend/tests/postcss-config.test.ts`
+- optional frontend build
+- core import and simplified analysis smoke checks
+- the major core regression/contract scripts
 
----
+## Practical Testing Guidance
 
-*Testing analysis: 2026-03-09*
+- If you change backend runtime behavior, run `make backend-regression`; Jest alone is not enough because API and SSE contracts live in shell scripts.
+- If you change frontend markup, text, or utility classes, run `npm run test:run --prefix frontend`; many tests assert specific accessible text and Tailwind classes.
+- If you change core envelopes, schema fields, converters, or analysis outputs, run `make core-regression`; regression scripts inspect exact nested fields and tolerances.
+- If you change startup flows or local lifecycle behavior, run `make doctor` or at least `scripts/check-startup.sh`.
+- Keep new tests deterministic. The existing suite strongly prefers inline fixtures, direct method replacement, fixed timestamps, and local app injection over networked integration.

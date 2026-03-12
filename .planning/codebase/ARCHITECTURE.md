@@ -1,148 +1,283 @@
 # Architecture
 
-**Analysis Date:** 2026-03-09
+**Analysis Date:** 2026-03-12
 
-## Pattern Overview
+## System Shape
 
-**Overall:** Multi-tier microservices with LLM-driven agent orchestration
+StructureClaw is a polyglot three-application system with local orchestration around it:
 
-**Key Characteristics:**
-- Three-tier separation: Frontend (Next.js) -> Backend API (Fastify) -> Core Engine (FastAPI/Python)
-- Agent-based workflow orchestration with tool chain execution
-- Domain-driven structure within each service layer
-- Graceful degradation patterns (Redis -> memory cache, OpenSeesPy -> simplified analysis)
-- Polyglot architecture: TypeScript backend, Python analysis engine
+- `frontend/`: Next.js 14 App Router UI for the AI console and marketing shell.
+- `backend/`: Fastify API that owns HTTP contracts, persistence, LLM/chat behavior, and agent orchestration.
+- `core/`: FastAPI analysis engine that owns structural model validation, format conversion, analysis, and code-check/design logic.
+- `scripts/` and `Makefile`: developer workflow, process supervision, environment bootstrap, and regression entry points.
+- `docs/`: product and protocol documentation that mirrors the implemented contracts.
 
-## Layers
+The highest-value architectural boundary is:
 
-**Frontend Layer:**
-- Purpose: Web UI for structural engineering AI console
-- Location: `frontend/`
-- Contains: React components, pages, API client code
-- Depends on: Backend API via HTTP
-- Used by: End users through browser
+`frontend` -> HTTP/SSE -> `backend` -> HTTP -> `core`
 
-**Backend API Layer:**
-- Purpose: Business logic, authentication, agent orchestration, data persistence
-- Location: `backend/src/`
-- Contains: API routes, services, utilities, configuration
-- Depends on: PostgreSQL, Redis, Core Engine, LLM providers
-- Used by: Frontend, external clients
+The backend is not a passive proxy. It contains domain logic, routing decisions, persistence, and report generation. The Python core is a compute/validation service with a narrower contract surface.
 
-**Core Analysis Engine Layer:**
-- Purpose: Finite element analysis, code checking, structural design calculations
-- Location: `core/`
-- Contains: FEM analyzers, design modules, converters, schemas
-- Depends on: OpenSeesPy, NumPy, SciPy (optional, with fallbacks)
-- Used by: Backend via HTTP
+## Primary Entry Points
 
-**Infrastructure Layer:**
-- Purpose: Data persistence, caching, orchestration
-- Location: `docker/`, `docker-compose.yml`
-- Contains: PostgreSQL database, Redis cache, Nginx reverse proxy
-- Depends on: Docker runtime
-- Used by: All application services
+### Frontend
+
+- `frontend/src/app/layout.tsx`: root HTML shell, fonts, providers wiring.
+- `frontend/src/app/providers.tsx`: initializes React Query, Zustand provider, theme provider, and toast host.
+- `frontend/src/app/(console)/console/page.tsx`: console route that renders the AI console.
+- `frontend/src/app/(marketing)/page.tsx`: landing/marketing route group entry.
+
+### Backend
+
+- `backend/src/index.ts`: Fastify bootstrap, plugin registration, Swagger, `/health`, graceful shutdown.
+- `backend/src/api/routes.ts`: mounts all versioned route modules under `/api/v1`.
+
+### Core
+
+- `core/main.py`: FastAPI bootstrap and all published engine endpoints.
+
+### Operations
+
+- `Makefile`: top-level command hub used by contributors.
+- `scripts/claw.sh`: beginner-friendly command hub for `doctor/start/status/stop/logs`.
+- `scripts/dev-up.sh`: local process manager for frontend/backend/core plus optional infra bootstrap.
+- `scripts/check-startup.sh`: cross-stack verification and regression gate.
+
+## Runtime Layers
+
+### 1. Presentation Layer
+
+The UI is contained under `frontend/src/` and is currently centered on one main workflow: the AI console in `frontend/src/components/chat/ai-console.tsx`.
+
+Responsibilities:
+
+- Render the chat/execution console and result panels.
+- Maintain client-side archived conversations in `localStorage`.
+- Parse streamed backend events into UI state.
+- Collect optional model JSON and execution options before backend submission.
+
+State composition:
+
+- React local state handles console interaction and streamed message/result state.
+- React Query is provisioned globally in `frontend/src/app/providers.tsx`, but the current console logic is mostly manual fetch/state driven.
+- Zustand store in `frontend/src/lib/stores/context.tsx` and `frontend/src/lib/stores/slices/preferences.ts` is used for app preferences and SSR-safe shared state.
+
+### 2. API / Orchestration Layer
+
+The Fastify application in `backend/src/` owns the public product contract.
+
+Key route modules:
+
+- `backend/src/api/chat.ts`
+- `backend/src/api/agent.ts`
+- `backend/src/api/analysis.ts`
+- `backend/src/api/project.ts`
+- `backend/src/api/skill.ts`
+- `backend/src/api/user.ts`
+- `backend/src/api/community.ts`
+
+Key service modules:
+
+- `backend/src/services/chat.ts`: conversational LLM path with persisted messages and LangChain memory.
+- `backend/src/services/agent.ts`: execute-mode orchestration, missing-parameter interaction, tool-call telemetry, report assembly, artifact writing.
+- `backend/src/services/analysis.ts`: persisted model/analysis CRUD plus calls into the core engine.
+- `backend/src/services/project.ts`, `user.ts`, `skill.ts`, `community.ts`: CRUD/domain surfaces around the Prisma data model.
+
+Patterns in this layer:
+
+- Request validation is done in route modules with `zod`.
+- Business logic is kept in service classes instead of route handlers.
+- Infra access is centralized in utils/config modules:
+  - `backend/src/config/index.ts`
+  - `backend/src/utils/database.ts`
+  - `backend/src/utils/redis.ts`
+  - `backend/src/utils/llm.ts`
+  - `backend/src/utils/logger.ts`
+  - `backend/src/utils/llm-error.ts`
+
+### 3. Compute / Domain Engine Layer
+
+The Python service in `core/` is a contract-driven engine with these published responsibilities:
+
+- Schema validation via `POST /validate`
+- Format normalization and conversion via `POST /convert`
+- Analysis execution via `POST /analyze`
+- Code check via `POST /code-check`
+- Simple section design endpoints such as `POST /design/beam`
+- Contract introspection via `GET /schema/structure-model-v1` and `GET /schema/converters`
+
+Its internal modules are partitioned by concern:
+
+- `core/schemas/`: canonical data model and migration helpers.
+- `core/converters/`: format adapter layer and registry.
+- `core/fem/`: analyzers and fallback solvers.
+- `core/design/`: code-check and sizing/design helpers.
+- `core/regression/`: golden input cases used by shell-scripted regression checks.
+
+### 4. Persistence / Cache Layer
+
+Persistent and ephemeral state are split intentionally:
+
+- PostgreSQL via Prisma stores users, projects, structural models, analyses, conversations, messages, skills, and community entities.
+- Redis caches selected backend objects and execution state where available.
+- The backend explicitly supports degraded operation when Redis is disabled through `REDIS_URL=disabled`.
+
+Main schema source:
+
+- `backend/prisma/schema.prisma`
+
+Important persisted entities:
+
+- `Conversation` and `Message` support chat history.
+- `StructuralModel` and `Analysis` support saved engineering artifacts.
+- `Project`, `Skill`, `Post`, `Comment`, and related join tables support the broader platform surface.
 
 ## Data Flow
 
-**Agent Execution Flow:**
+### Chat Flow
 
-1. User sends message via Frontend console (`/console`)
-2. Frontend POSTs to Backend `/api/v1/agent/run` or `/api/v1/chat/execute`
-3. Backend AgentService determines execution mode (chat/execute/auto)
-4. If execute mode, AgentService runs tool chain: `text-to-model-draft -> convert -> validate -> analyze -> code-check -> report`
-5. Each tool calls Core Engine HTTP endpoints (`/validate`, `/analyze`, `/code-check`)
-6. Results aggregated with metrics (traceId, durationMs, toolCalls)
-7. Response returned to Frontend with structured result
+1. The user sends a message from `frontend/src/components/chat/ai-console.tsx`.
+2. The frontend calls `POST /api/v1/chat/message` or `POST /api/v1/chat/stream`.
+3. `backend/src/api/chat.ts` decides whether the request stays in chat mode or escalates to execute mode.
+4. For pure chat:
+   - `backend/src/services/chat.ts` loads or creates a `Conversation`.
+   - LangChain `ConversationChain` uses the configured model from `backend/src/utils/llm.ts`.
+   - User and assistant messages are persisted through Prisma.
+5. The frontend renders either the full response or streamed tokens/events.
 
-**Chat Flow:**
+### Execute / Agent Flow
 
-1. User sends message to `/api/v1/chat/message` or `/api/v1/chat/stream`
-2. ChatService uses LangChain with conversation memory
-3. LLM (OpenAI/Zhipu) generates response with structural engineering context
-4. Messages persisted to PostgreSQL via Prisma
-5. Response returned (streaming or complete)
+1. The frontend submits execute intent through `POST /api/v1/agent/run` or `POST /api/v1/chat/stream` with `mode=execute|auto`.
+2. `backend/src/services/agent.ts` determines whether enough model/parameter context exists.
+3. If information is missing, the agent returns structured `interaction` payloads instead of hard-failing.
+4. When ready, the backend runs a tool chain around these logical steps:
+   - `text-to-model-draft`
+   - `convert`
+   - `validate`
+   - `analyze`
+   - `code-check`
+   - `report`
+5. Conversion, validation, analysis, and code-check steps call `core/main.py` over HTTP using `axios`.
+6. The backend aggregates tool timing, outputs, summary response text, and optional report artifacts under `uploads/reports`.
+7. The frontend renders tool outcome, analysis summary, and markdown report panels.
 
-**State Management:**
-- Conversations: PostgreSQL `conversations` and `messages` tables
-- Draft states: In-memory Map in AgentService keyed by conversationId
-- Session memory: LangChain BufferMemory per conversation
-- Cache: Redis with fallback to in-memory Map
+### Saved Analysis Flow
 
-## Key Abstractions
+1. Backend model/analysis routes call `backend/src/services/analysis.ts`.
+2. Structural model JSON is saved in PostgreSQL as `Json` columns.
+3. Redis caches some model lookups.
+4. `runAnalysis()` posts a normalized structure payload to `POST /analyze` on the core service.
+5. Results are written back to the `Analysis` record.
 
-**StructureModelV1:**
-- Purpose: Canonical data model for structural analysis models
-- Examples: `core/schemas/structure_model_v1.py`
-- Pattern: Pydantic model with validation (nodes, elements, materials, sections, load cases)
+## Contract Boundaries
 
-**FormatConverter:**
-- Purpose: Transform between different structural model formats
-- Examples: `core/converters/base.py`, `core/converters/simple_v1_converter.py`
-- Pattern: Abstract base class with `to_v1()` and `from_v1()` methods
+### Frontend to Backend
 
-**AgentTool:**
-- Purpose: Encapsulate executable operations in the agent workflow
-- Examples: `backend/src/services/agent.ts` (text-to-model-draft, convert, validate, analyze, code-check, report)
-- Pattern: Sequential execution with metrics collection
+The backend is the sole browser-facing API surface. The frontend does not call the Python engine directly.
 
-**Service Classes:**
-- Purpose: Encapsulate business logic per domain
-- Examples: `backend/src/services/agent.ts`, `backend/src/services/chat.ts`, `backend/src/services/project.ts`
-- Pattern: Class-based services with injected dependencies (Prisma, Redis, LLM)
+Notable public contracts:
 
-## Entry Points
+- `/api/v1/chat/message`
+- `/api/v1/chat/stream`
+- `/api/v1/chat/execute`
+- `/api/v1/agent/run`
+- `/api/v1/agent/tools`
+- `/api/v1/analysis/*`
 
-**Backend API Server:**
-- Location: `backend/src/index.ts`
-- Triggers: `npm run dev` or `npm start`
-- Responsibilities: Fastify server initialization, plugin registration, route mounting, health checks, graceful shutdown
+The SSE behavior for execute-mode chat is documented in `docs/agent-stream-protocol.md` and implemented in `backend/src/api/chat.ts`.
 
-**Core Analysis Engine:**
-- Location: `core/main.py`
-- Triggers: `uvicorn main:app` or `make dev-core-lite`
-- Responsibilities: FastAPI app with endpoints for validate, convert, analyze, code-check, design
+### Backend to Core
 
-**Frontend Dev Server:**
-- Location: `frontend/src/app/layout.tsx` (root layout)
-- Triggers: `npm run dev` in frontend directory
-- Responsibilities: Next.js app rendering, React Query provider setup
+The backend treats the Python service as a domain engine with explicit, narrow endpoints:
 
-**CLI Entry:**
-- Location: `sclaw` (shell script at project root)
-- Triggers: `./sclaw <command>` or `sclaw <command>` after global install
-- Responsibilities: Orchestrates local development (start, stop, status, logs)
+- `/validate`
+- `/convert`
+- `/analyze`
+- `/code-check`
+- `/schema/structure-model-v1`
+- `/schema/converters`
 
-## Error Handling
+This keeps Python-specific implementation details out of the browser-facing contract and lets backend services enrich responses with persistence, interaction state, and report packaging.
 
-**Strategy:** Multi-layer with graceful degradation
+## Canonical Model and Format Strategy
 
-**Patterns:**
-- Backend: HTTP errors via Fastify with structured JSON responses (errorCode, message)
-- Core Engine: HTTPException with detailed validation errors, try/catch with AnalysisResponse containing success flag
-- LLM: Null-safe initialization with fallback messages when API key missing
-- Analysis: ImportError catch with simplified calculation fallback when OpenSeesPy unavailable
-- Redis: Connection failure silently falls back to in-memory Map cache
+The central data contract is `StructureModelV1` in `core/schemas/structure_model_v1.py`.
 
-## Cross-Cutting Concerns
+Important consequences:
 
-**Logging:**
-- Backend: Pino logger with configurable log level
-- Core: Python logging module with INFO level
+- The core validates cross-reference integrity between nodes, elements, materials, and sections.
+- Converters normalize foreign formats into V1 first, then export from V1 to target formats.
+- Backend agent execution assumes V1-compatible model exchange when talking to the core.
+- Migration helpers in `core/schemas/migrations.py` are the place to evolve schema versions without fragmenting downstream tools.
 
-**Validation:**
-- Backend: Zod for request schemas
-- Core: Pydantic models with model validators for cross-reference integrity
+This is the strongest architectural seam in the repository and the right extension point for future model-centric work.
 
-**Authentication:**
-- Approach: JWT-based (Fastify JWT plugin)
-- Configuration: JWT_SECRET from environment
+## Failure and Degradation Strategy
 
-**Configuration:**
-- Centralized config module: `backend/src/config/index.ts`
-- Environment-driven with sensible defaults
-- Supports multiple LLM providers (OpenAI, Zhipu, OpenAI-compatible)
+Several subsystems are designed to degrade instead of stop the entire stack:
 
----
+- Missing Redis: backend falls back away from Redis-backed behavior.
+- Missing LLM key: chat returns a deterministic fallback message rather than crashing the API.
+- Missing OpenSeesPy: `core/fem/static_analysis.py` falls back to simplified built-in solvers and finally a zero-result mode.
+- Invalid models or unknown formats: the core returns structured 4xx responses with error codes, not opaque failures.
+- Execute-mode missing parameters: agent returns clarification/interaction state instead of generic errors.
 
-*Architecture analysis: 2026-03-09*
+This is deliberate: the repo prioritizes operability and contract continuity over perfect feature availability in every environment.
+
+## Directory-Level Layering Rules
+
+### Backend
+
+- `backend/src/api/`: transport and request validation.
+- `backend/src/services/`: orchestration and domain behavior.
+- `backend/src/utils/`: infrastructure adapters and shared helpers.
+- `backend/src/config/`: environment-driven configuration.
+- `backend/prisma/`: database schema, migration history, and seed.
+
+Route files should not absorb business logic that belongs in services.
+
+### Core
+
+- `core/main.py`: HTTP boundary only.
+- `core/schemas/`: canonical types.
+- `core/converters/`: format adapters around canonical types.
+- `core/fem/`: analysis implementations.
+- `core/design/`: code and design checks.
+
+Domain logic should stay out of `core/main.py` beyond endpoint dispatch and response shaping.
+
+### Frontend
+
+- `frontend/src/app/`: route tree and layouts.
+- `frontend/src/components/`: reusable view components.
+- `frontend/src/lib/`: state, utilities, fonts, i18n helpers.
+
+The console UI currently concentrates a lot of feature logic in `frontend/src/components/chat/ai-console.tsx`; that file is effectively the frontend application shell for execution workflows.
+
+## Operational Architecture
+
+Local development assumes a script-managed, multi-process environment:
+
+- `scripts/dev-up.sh` installs dependencies, prepares Python envs, optionally starts Docker infra, runs Prisma init, and launches frontend/backend/core into `.runtime/`.
+- `scripts/dev-down.sh` and `scripts/dev-status.sh` manage local process lifecycle.
+- `scripts/check-startup.sh` composes backend, frontend, and core verification into one gate.
+- `scripts/check-backend-regression.sh` and `scripts/check-core-regression.sh` further divide stack-specific validation.
+
+The repo therefore has two parallel architectures:
+
+- product runtime architecture across frontend/backend/core
+- contributor workflow architecture across scripts/Make targets/regression suites
+
+Both matter when changing contracts or startup behavior.
+
+## Architectural Hotspots
+
+These files currently carry disproportionate system weight:
+
+- `backend/src/services/agent.ts`: agent protocol, orchestration policy, interaction model, reporting, and core integration.
+- `backend/src/api/chat.ts`: mode switching between conversational and execute paths plus SSE handling.
+- `core/main.py`: engine contract surface and endpoint dispatch.
+- `core/fem/static_analysis.py`: most mature analysis implementation plus fallback solver behavior.
+- `frontend/src/components/chat/ai-console.tsx`: primary end-user workflow composition.
+
+Changes in these files tend to have cross-cutting impact and should be paired with contract/regression updates.

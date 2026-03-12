@@ -1,172 +1,228 @@
 # External Integrations
 
-**Analysis Date:** 2026-03-09
+**Analysis Date:** 2026-03-12
+**Scope:** runtime integrations, cross-service contracts, external providers, operational dependencies
 
-## APIs & External Services
+## Integration Topology
 
-**LLM Providers (Multi-provider support):**
-- OpenAI - Primary LLM provider
-  - SDK: `openai` 4.33.0, `@langchain/openai`
-  - Auth: `OPENAI_API_KEY` or `LLM_API_KEY`
-  - Config: `LLM_PROVIDER=openai`
-  - Default model: `gpt-4-turbo-preview`
-  - Default base URL: `https://api.openai.com/v1`
+- `frontend/` talks to `backend/` over HTTP using `NEXT_PUBLIC_API_URL` from `frontend/next.config.js`.
+- `backend/` talks to:
+  - PostgreSQL through Prisma in `backend/src/utils/database.ts`
+  - Redis through `ioredis` in `backend/src/utils/redis.ts`
+  - the Python analysis engine over HTTP from `backend/src/services/agent.ts`
+  - external LLM providers through the LangChain OpenAI-compatible client in `backend/src/utils/llm.ts`
+- `core/` exposes engineering endpoints consumed by the backend agent and analysis routes.
+- `docker-compose.yml` wires the local default network and service hostnames.
 
-- Zhipu AI (GLM) - Chinese LLM provider
-  - SDK: `@langchain/openai` (OpenAI-compatible)
-  - Auth: `ZAI_API_KEY` or `LLM_API_KEY`
-  - Config: `LLM_PROVIDER=zhipu`
-  - Default model: `glm-4-plus`
-  - Base URL: `https://open.bigmodel.cn/api/paas/v4/`
+## Frontend -> Backend
 
-- OpenAI-Compatible - Custom endpoints
-  - SDK: `@langchain/openai`
-  - Auth: `LLM_API_KEY`
-  - Config: `LLM_PROVIDER=openai-compatible`
-  - Custom: `LLM_BASE_URL` and `LLM_MODEL` required
+### Base URL and transport
 
-**Implementation:**
-- Chat service: `backend/src/services/chat.ts`
-- Agent service: `backend/src/services/agent.ts`
-- LLM factory: `backend/src/utils/llm.ts`
-- Fallback behavior: Returns error message if no API key configured
+- The browser client resolves the API base from `NEXT_PUBLIC_API_URL`.
+- Default local value is `http://localhost:8000` in both `frontend/next.config.js` and `frontend/src/components/chat/ai-console.tsx`.
+- The frontend currently uses fetch/SSE patterns in the console rather than a generated client SDK.
 
-## Data Storage
+### Active user-facing integration points
 
-**Databases:**
-- PostgreSQL 15
-  - Connection: `DATABASE_URL` (e.g., `postgresql://postgres:postgres@localhost:5432/structureclaw`)
-  - ORM: Prisma 5.12.0
-  - Schema: `backend/prisma/schema.prisma`
-  - Client: `@prisma/client` via `backend/src/utils/database.ts`
+- Console page entrypoint: `frontend/src/app/(console)/console/page.tsx`
+- Main console component: `frontend/src/components/chat/ai-console.tsx`
+- Providers stack: `frontend/src/app/providers.tsx`
 
-**File Storage:**
-- Local filesystem
-  - Upload directory: `./uploads` (configurable via `UPLOAD_DIR`)
-  - Max file size: 100MB (configurable via `MAX_FILE_SIZE`)
-  - Mounted in Docker: `./uploads:/app/uploads`
+### Backend endpoints the UI is designed around
 
-**Caching:**
-- Redis 7
-  - Connection: `REDIS_URL` (can be set to `disabled` for fallback)
-  - Client: ioredis 5.3.2
-  - Implementation: `backend/src/utils/redis.ts`
-  - Fallback: In-memory Map cache when Redis unavailable
+- Chat flow:
+  - `POST /api/v1/chat/message`
+  - `POST /api/v1/chat/stream`
+  - `POST /api/v1/chat/conversation`
+  - `GET /api/v1/chat/conversation/:id`
+  - `GET /api/v1/chat/conversations`
+- Agent flow:
+  - `GET /api/v1/agent/tools`
+  - `POST /api/v1/agent/run`
+- Analysis/project/community routes are also registered from `backend/src/api/routes.ts`, but the current console refresh is centered on chat and agent execution.
 
-## Authentication & Identity
+### Streaming protocol
 
-**Auth Provider:**
-- Custom JWT-based authentication
-  - Library: `@fastify/jwt` 8.0.0
-  - Secret: `JWT_SECRET`
-  - Expiry: `JWT_EXPIRES_IN` (default: 7d)
-  - Password hashing: Stored as `passwordHash` in User model
+- Streaming transport is POST-based SSE from `backend/src/api/chat.ts`.
+- Reference contract is maintained in `docs/agent-stream-protocol.md`.
+- Event types currently documented and handled:
+  - `start`
+  - `interaction_update`
+  - `result`
+  - `done`
+  - `error`
+- The frontend parses incremental frames because native `EventSource` does not support POST.
 
-**User Model:**
-- Email/password authentication
-- Profile fields: name, avatar, organization, title, bio, expertise
-- Schema: `backend/prisma/schema.prisma` - `User` model
+## Backend -> Core Analysis Engine
 
-## Monitoring & Observability
+### Connection model
 
-**Error Tracking:**
-- Not detected - no external error tracking service configured
+- Client is an Axios instance in `backend/src/services/agent.ts`.
+- Base URL comes from `ANALYSIS_ENGINE_URL` in `backend/src/config/index.ts`.
+- Default local URL is `http://localhost:8001`.
+- Docker Compose points backend to `http://analysis-engine:8001`.
 
-**Logs:**
-- Pino logger (structured JSON logging)
-  - Implementation: `backend/src/utils/logger.ts`
-  - Level: Configurable via `LOG_LEVEL` (default: info)
-  - Pretty printing: `pino-pretty` in development
+### Core endpoints currently relied on
 
-**Health Checks:**
-- Backend: `GET /health` - checks database and Redis connectivity
-- Analysis Engine: `GET /health` - simple status check
-- Frontend: HTTP HEAD check on port 3000
+- `POST /validate`
+  - validates and summarizes a structural model
+- `POST /convert`
+  - normalizes supported formats into the repo’s schema path
+- `POST /analyze`
+  - executes `static`, `dynamic`, `seismic`, or `nonlinear` analysis
+- `POST /code-check`
+  - runs code compliance checks
+- `POST /design/beam`
+  - concrete beam sizing endpoint
+- `POST /design/column`
+  - concrete column sizing endpoint
+- `GET /schema/structure-model-v1`
+  - exposes JSON schema for the native model
+- `GET /schema/converters`
+  - exposes supported converter formats
 
-## CI/CD & Deployment
+### Contract sources
 
-**Hosting:**
-- Docker containers via docker-compose
-- Services: postgres, redis, backend, analysis-engine, frontend, nginx
+- Service implementation: `core/main.py`
+- Conversion registry: `core/converters/registry.py`
+- Schema definition: `core/schemas/structure_model_v1.py`
+- Validation scripts:
+  - `scripts/validate-analyze-contract.sh`
+  - `scripts/validate-converter-api-contract.sh`
+  - `scripts/validate-convert-roundtrip.sh`
+  - `scripts/validate-schema-migration.sh`
 
-**CI Pipeline:**
-- GitHub Actions
-  - `backend-regression.yml` - Backend contract tests on PR/push
-  - `core-regression.yml` - Python analysis engine tests on PR/push
-  - Triggers: Pull requests and pushes to master branch
-  - Node 20, Python 3.11
+### Behavior to remember
 
-**Deployment Commands:**
-- `make docker-up` - Full stack deployment
-- `make docker-down` - Stop all services
-- `make local-up` - Local development with hot reload
+- The backend agent composes multi-step runs around core tools such as `convert`, `validate`, `analyze`, `code-check`, and `report`.
+- Missing Redis does not block agent execution because session caching falls back to in-memory state in `backend/src/utils/redis.ts`.
+- Missing LLM credentials do not remove the agent endpoint, but they constrain the orchestration path to rule-based behavior or failure paths depending on the request.
 
-## Environment Configuration
+## Backend -> LLM Providers
 
-**Required env vars:**
-- `DATABASE_URL` - PostgreSQL connection string
-- `JWT_SECRET` - JWT signing secret
+### Supported provider modes
 
-**Optional env vars:**
-- `REDIS_URL` - Redis connection (or `disabled`)
-- `LLM_PROVIDER` - LLM provider selection (openai|zhipu|openai-compatible)
-- `LLM_API_KEY` - Primary LLM API key
-- `LLM_MODEL` - Model name
-- `LLM_BASE_URL` - API endpoint URL
-- `OPENAI_API_KEY` - OpenAI-specific key (fallback)
-- `ZAI_API_KEY` - Zhipu-specific key (fallback)
-- `ANALYSIS_ENGINE_URL` - Analysis engine URL (default: http://localhost:8001)
-- `CORS_ORIGINS` - Allowed CORS origins
-- `UPLOAD_DIR` - File upload directory
-- `MAX_FILE_SIZE` - Max upload size in bytes
-- `LOG_LEVEL` - Logging verbosity
+- `openai`
+- `zhipu`
+- `openai-compatible`
 
-**Secrets location:**
-- `.env` files (not committed, see `.env.example`)
-- Docker Compose environment variables
+Provider selection is normalized in `backend/src/config/index.ts`.
 
-## Internal Service Communication
+### Implementation details
 
-**Backend to Analysis Engine:**
-- Protocol: HTTP REST
-- Base URL: `ANALYSIS_ENGINE_URL` (default: http://localhost:8001)
-- Client: axios
-- Endpoints:
-  - `POST /validate` - Validate structure model
-  - `POST /convert` - Convert model formats
-  - `POST /analyze` - Run analysis (static, dynamic, seismic, nonlinear)
-  - `POST /code-check` - Code compliance check
-  - `POST /design/beam` - Beam design
-  - `POST /design/column` - Column design
+- Model factory: `backend/src/utils/llm.ts`
+- Downstream users:
+  - `backend/src/services/chat.ts`
+  - `backend/src/services/agent.ts`
+- The integration is intentionally OpenAI-compatible even for non-OpenAI providers because it runs through `@langchain/openai`.
 
-**Frontend to Backend:**
-- Protocol: HTTP REST
-- Base URL: `NEXT_PUBLIC_API_URL` (default: http://localhost:8000)
-- Client: axios
-- API prefix: `/api/v1`
-- Endpoints: `/users`, `/chat`, `/projects`, `/skills`, `/analysis`, `/agent`, `/community`
+### Credentials and defaults
 
-## Webhooks & Callbacks
+- Common fields:
+  - `LLM_PROVIDER`
+  - `LLM_API_KEY`
+  - `LLM_MODEL`
+  - `LLM_BASE_URL`
+  - `LLM_TIMEOUT_MS`
+  - `LLM_MAX_RETRIES`
+- OpenAI compatibility path:
+  - `OPENAI_API_KEY`
+  - `OPENAI_MODEL`
+  - `OPENAI_BASE_URL`
+- Zhipu compatibility path:
+  - `ZAI_API_KEY`
+  - default model `glm-4-plus`
+  - default base URL `https://open.bigmodel.cn/api/paas/v4/`
+- OpenAI default base URL is `https://api.openai.com/v1`.
 
-**Incoming:**
-- None detected
+### Why this matters
 
-**Outgoing:**
-- None detected
+- Recent backend changes made provider selection a first-class config path rather than a single-provider assumption.
+- The chat and agent APIs should therefore be treated as provider-agnostic at the HTTP contract level, while runtime behavior still depends on key availability and remote API latency.
 
-## Model Format Converters
+## Backend -> PostgreSQL
 
-**Supported Formats:**
-- `structuremodel-v1` - Native format (Pydantic schema)
-- `compact-v1` - Compact representation
-- `simple-v1` - Simplified model format
-- `midas-text-v1` - MIDAS Text format import
+- Prisma datasource is defined in `backend/prisma/schema.prisma`.
+- Connection string is `DATABASE_URL`.
+- Local Docker default from `docker-compose.yml` is `postgresql://postgres:postgres@postgres:5432/structureclaw`.
+- Local non-Docker default in config is `postgresql://postgres:postgres@localhost:5432/structureclaw`.
+- Migration and bootstrap commands:
+  - `npm run db:migrate --prefix backend`
+  - `npm run db:deploy --prefix backend`
+  - `npm run db:seed --prefix backend`
+  - `npm run db:init --prefix backend`
 
-**Implementation:**
-- Registry: `core/converters/registry.py`
-- Base class: `core/converters/base.py`
-- Converters: `core/converters/*_converter.py`
+## Backend -> Redis
 
----
+- Client wrapper: `backend/src/utils/redis.ts`
+- Primary use: lightweight cache/session state for agent interaction flow
+- Env key: `REDIS_URL`
+- Docker default: `redis://redis:6379`
+- Local disable mode: set `REDIS_URL=disabled`
+- Failure mode: graceful fallback to process-local `Map`, which keeps development usable but removes cross-process/session durability
 
-*Integration audit: 2026-03-09*
+## File System and Artifact Integrations
+
+- Upload/artifact root is controlled by `UPLOAD_DIR` in `backend/src/config/index.ts`.
+- Default path is `./uploads`.
+- Docker mounts `./uploads:/app/uploads` for persistence from the host.
+- Agent report generation in `backend/src/services/agent.ts` can emit inline results or file artifacts depending on `reportOutput`.
+
+## Container and Infra Integrations
+
+- `docker-compose.yml` provisions:
+  - `postgres:15-alpine`
+  - `redis:7-alpine`
+  - backend from `backend/Dockerfile`
+  - analysis engine from `core/Dockerfile`
+  - frontend from `frontend/Dockerfile`
+  - `nginx:alpine`
+- Nginx config is mounted from `docker/nginx/nginx.conf`.
+- Service discovery is container-name/network based inside the compose network `structureclaw-network`.
+
+## Scripted Verification and Operational Hooks
+
+- Startup and regression orchestration:
+  - `scripts/check-startup.sh`
+  - `scripts/check-backend-regression.sh`
+  - `scripts/check-core-regression.sh`
+- Agent/chat contract checks:
+  - `scripts/validate-agent-api-contract.sh`
+  - `scripts/validate-agent-tools-contract.sh`
+  - `scripts/validate-agent-orchestration.sh`
+  - `scripts/validate-chat-stream-contract.sh`
+  - `scripts/validate-chat-message-routing.sh`
+- Core conversion and regression checks:
+  - `scripts/validate-convert-batch.sh`
+  - `scripts/validate-convert-passrate.sh`
+  - `scripts/validate-midas-text-converter.sh`
+  - `scripts/validate-static-regression.sh`
+  - `scripts/validate-static-3d-regression.sh`
+
+These scripts are part of the integration story because they codify the expected contracts between services rather than only testing isolated functions.
+
+## Observability and Access Patterns
+
+- Backend health endpoint in `backend/src/index.ts` checks:
+  - database connectivity with Prisma raw SQL
+  - Redis reachability with `ping()`
+- Core health endpoint is `GET /health` in `core/main.py`.
+- Frontend health is probed operationally via HTTP checks in `scripts/dev-status.sh`.
+- API docs are exposed from the backend at `/docs` through Swagger UI.
+
+## Not Present
+
+- No third-party auth provider integration is wired yet despite JWT library presence.
+- No message queue, event bus, or webhook infrastructure is present.
+- No cloud object storage integration is configured; artifact persistence is local filesystem only.
+- No dedicated observability SaaS integration is visible for traces, metrics, or error capture.
+
+## Practical Integration Notes
+
+- The repo is still an internal-service monolith split across HTTP boundaries, not a distributed platform.
+- The highest-value integration surface today is the console-to-agent-to-core execution chain:
+  - `frontend/src/components/chat/ai-console.tsx`
+  - `backend/src/api/chat.ts`
+  - `backend/src/services/agent.ts`
+  - `core/main.py`
+- If that chain changes, the docs in `docs/agent-stream-protocol.md` and the shell contract checks in `scripts/validate-*.sh` need to be updated in lockstep.
