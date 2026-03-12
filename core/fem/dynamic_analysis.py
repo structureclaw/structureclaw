@@ -13,8 +13,9 @@ logger = logging.getLogger(__name__)
 class DynamicAnalyzer:
     """动力分析器"""
 
-    def __init__(self, model):
+    def __init__(self, model, engine_mode: str = "auto"):
         self.model = model
+        self.engine_mode = engine_mode
         self.nodes = {n.id: n for n in model.nodes}
         self.elements = {e.id: e for e in model.elements}
         self.materials = {m.id: m for m in model.materials}
@@ -51,10 +52,17 @@ class DynamicAnalyzer:
 
         logger.info(f"Running modal analysis for {num_modes} modes")
 
+        if self.engine_mode == 'simplified':
+            return self._modal_simplified(num_modes)
         try:
             import openseespy.opensees as ops
             return self._modal_opensees(num_modes, ops)
         except ImportError:
+            if self.engine_mode == 'opensees':
+                return {
+                    'status': 'error',
+                    'message': 'Modal analysis requires OpenSeesPy for the requested engine'
+                }
             return self._modal_simplified(num_modes)
 
     def _modal_opensees(self, num_modes: int, ops) -> Dict[str, Any]:
@@ -176,6 +184,11 @@ class DynamicAnalyzer:
 
         logger.info(f"Running time history analysis: duration={duration}s, dt={time_step}s")
 
+        if self.engine_mode == 'simplified':
+            return {
+                'status': 'error',
+                'message': 'Time history analysis is not supported by the simplified engine'
+            }
         try:
             import openseespy.opensees as ops
             return self._time_history_opensees(

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class StaticAnalyzer:
     """静力分析器"""
 
-    def __init__(self, model):
+    def __init__(self, model, engine_mode: str = "auto"):
         """
         初始化分析器
 
@@ -21,6 +21,7 @@ class StaticAnalyzer:
             model: 结构模型数据
         """
         self.model = model
+        self.engine_mode = engine_mode
         self.nodes = {n.id: n for n in model.nodes}
         self.elements = {e.id: e for e in model.elements}
         self.materials = {m.id: m for m in model.materials}
@@ -45,14 +46,19 @@ class StaticAnalyzer:
         """
         logger.info("Starting static analysis")
 
-        try:
-            # 尝试使用 OpenSeesPy
-            import openseespy.opensees as ops
-            result = self._run_with_opensees(parameters)
-        except ImportError:
-            # 降级到简化计算
-            logger.warning("OpenSeesPy not available, using simplified analysis")
+        if self.engine_mode == "simplified":
             result = self._run_simplified(parameters)
+        else:
+            try:
+                # 尝试使用 OpenSeesPy
+                import openseespy.opensees as ops  # noqa: F401
+                result = self._run_with_opensees(parameters)
+            except ImportError:
+                if self.engine_mode == "opensees":
+                    raise RuntimeError("OpenSeesPy is not available for the requested engine")
+                # 降级到简化计算
+                logger.warning("OpenSeesPy not available, using simplified analysis")
+                result = self._run_simplified(parameters)
 
         return result
 
@@ -1306,6 +1312,11 @@ class StaticAnalyzer:
         logger.info("Starting nonlinear static analysis")
 
         try:
+            if self.engine_mode == "simplified":
+                return {
+                    'status': 'error',
+                    'message': 'Nonlinear analysis requires OpenSeesPy'
+                }
             import openseespy.opensees as ops
             return self._run_nonlinear_opensees(parameters)
         except ImportError:

@@ -52,8 +52,10 @@ if ok_result['analysis_type'] != 'static':
     raise SystemExit(f"Expected analysis_type=static, got {ok_result['analysis_type']}")
 if ok_result['schema_version'] != '1.0.0':
     raise SystemExit(f"Expected schema_version=1.0.0, got {ok_result['schema_version']}")
-if 'engineVersion' not in ok_result['meta'] or 'timestamp' not in ok_result['meta']:
-    raise SystemExit('meta.engineVersion/meta.timestamp required')
+required_meta = {'engineId', 'engineName', 'engineVersion', 'engineKind', 'selectionMode', 'timestamp'}
+missing_meta = required_meta - set(ok_result['meta'].keys())
+if missing_meta:
+    raise SystemExit(f'meta fields required: {sorted(missing_meta)}')
 print('[ok] analyze success envelope contract')
 
 truss_3d_model = StructureModelV1(

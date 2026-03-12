@@ -13,8 +13,9 @@ logger = logging.getLogger(__name__)
 class SeismicAnalyzer:
     """地震分析器"""
 
-    def __init__(self, model):
+    def __init__(self, model, engine_mode: str = "auto"):
         self.model = model
+        self.engine_mode = engine_mode
         self.nodes = {n.id: n for n in model.nodes}
         self.elements = {e.id: e for e in model.elements}
         self.materials = {m.id: m for m in model.materials}
@@ -57,11 +58,19 @@ class SeismicAnalyzer:
         Tg = self._get_characteristic_period(seismic_zone, site_class)
 
         # 简化的模态分析获取周期
-        try:
-            import openseespy.opensees as ops
-            modes = self._get_modes_opensees(ops)
-        except ImportError:
+        if self.engine_mode == 'simplified':
             modes = self._get_modes_simplified()
+        else:
+            try:
+                import openseespy.opensees as ops
+                modes = self._get_modes_opensees(ops)
+            except ImportError:
+                if self.engine_mode == 'opensees':
+                    return {
+                        'status': 'error',
+                        'message': 'Response spectrum analysis requires OpenSeesPy for the requested engine'
+                    }
+                modes = self._get_modes_simplified()
 
         # 对每个模态计算地震作用
         modal_responses = []
@@ -113,10 +122,17 @@ class SeismicAnalyzer:
 
         logger.info(f"Running pushover analysis: target={target_displacement}m")
 
+        if self.engine_mode == 'simplified':
+            return self._pushover_simplified(target_displacement)
         try:
             import openseespy.opensees as ops
             return self._pushover_opensees(target_displacement, control_node, ops)
         except ImportError:
+            if self.engine_mode == 'opensees':
+                return {
+                    'status': 'error',
+                    'message': 'Pushover analysis requires OpenSeesPy for the requested engine'
+                }
             return self._pushover_simplified(target_displacement)
 
     def _pushover_opensees(self, target_disp: float, control_node: str, ops) -> Dict[str, Any]:

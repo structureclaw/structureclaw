@@ -6,18 +6,15 @@ StructureClaw Core - 结构分析引擎
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, ConfigDict, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from typing import List, Dict, Any, Optional
 import uvicorn
 import logging
 
-from fem.static_analysis import StaticAnalyzer
-from fem.dynamic_analysis import DynamicAnalyzer
-from fem.seismic_analysis import SeismicAnalyzer
 from design.concrete import ConcreteDesigner
-from design.steel import SteelDesigner
 from design.code_check import CodeChecker
 from converters import get_converter, supported_formats
+from engines import AnalysisEngineRegistry
 from schemas.structure_model_v1 import StructureModelV1
 from schemas.migrations import (
     is_supported_target_schema_version,
@@ -33,6 +30,8 @@ app = FastAPI(
     description="建筑结构有限元分析引擎",
     version="0.1.0"
 )
+
+engine_registry = AnalysisEngineRegistry(app.title, app.version)
 
 # CORS 配置
 app.add_middleware(
@@ -56,10 +55,12 @@ class AnalysisRequest(BaseModel):
     type: str  # static, dynamic, seismic, nonlinear
     model: StructureModelV1
     parameters: Dict[str, Any]
+    engine_id: Optional[str] = Field(default=None, alias="engineId")
 
 
 class ValidateRequest(BaseModel):
     model: Dict[str, Any]
+    engine_id: Optional[str] = Field(default=None, alias="engineId")
 
 
 class ConvertRequest(BaseModel):
@@ -86,6 +87,7 @@ class CodeCheckRequest(BaseModel):
     code: str  # GB50010, GB50017, etc.
     elements: List[str]
     context: Dict[str, Any] = {}
+    engine_id: Optional[str] = Field(default=None, alias="engineId")
 
 
 # ============ API 端点 ============
@@ -122,11 +124,20 @@ async def converter_schema():
     }
 
 
+@app.get("/engines")
+async def list_analysis_engines():
+    """返回可用分析引擎目录"""
+    return {
+        "engines": engine_registry.list_engines(),
+        "defaultSelectionMode": "auto",
+    }
+
+
 @app.post("/validate")
 async def validate_structure_model(request: ValidateRequest):
     """校验结构模型并返回标准化摘要"""
     try:
-        model = StructureModelV1.model_validate(request.model)
+        result = engine_registry.validate_model(request.model, request.engine_id)
     except ValidationError as e:
         raise HTTPException(
             status_code=422,
@@ -136,18 +147,7 @@ async def validate_structure_model(request: ValidateRequest):
             },
         )
 
-    return {
-        "valid": True,
-        "schemaVersion": model.schema_version,
-        "stats": {
-            "nodes": len(model.nodes),
-            "elements": len(model.elements),
-            "materials": len(model.materials),
-            "sections": len(model.sections),
-            "loadCases": len(model.load_cases),
-            "loadCombinations": len(model.load_combinations),
-        },
-    }
+    return result
 
 
 @app.post("/convert")
@@ -227,34 +227,11 @@ async def analyze(request: AnalysisRequest) -> AnalysisResponse:
     """
     try:
         logger.info(f"Starting {request.type} analysis")
-
-        if request.type == "static":
-            analyzer = StaticAnalyzer(request.model)
-            result = analyzer.run(request.parameters)
-
-        elif request.type == "dynamic":
-            analyzer = DynamicAnalyzer(request.model)
-            result = analyzer.run(request.parameters)
-
-        elif request.type == "seismic":
-            analyzer = SeismicAnalyzer(request.model)
-            result = analyzer.run(request.parameters)
-
-        elif request.type == "nonlinear":
-            analyzer = StaticAnalyzer(request.model)
-            result = analyzer.run_nonlinear(request.parameters)
-
-        else:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "errorCode": "INVALID_ANALYSIS_TYPE",
-                    "message": f"Unknown analysis type: {request.type}",
-                },
-            )
+        result = engine_registry.run_analysis(request.type, request.model, request.parameters, request.engine_id)
 
         logger.info(f"Analysis completed successfully")
         now = datetime.now(timezone.utc).isoformat()
+        meta = result.get("meta") if isinstance(result, dict) else {}
         return AnalysisResponse(
             schema_version=request.model.schema_version,
             analysis_type=request.type,
@@ -263,8 +240,7 @@ async def analyze(request: AnalysisRequest) -> AnalysisResponse:
             message="Analysis completed",
             data=result,
             meta={
-                "engineName": app.title,
-                "engineVersion": app.version,
+                **(meta if isinstance(meta, dict) else {}),
                 "timestamp": now,
             },
         )
@@ -283,8 +259,12 @@ async def analyze(request: AnalysisRequest) -> AnalysisResponse:
             message=str(e),
             data={},
             meta={
+                "engineId": request.engine_id or "auto",
                 "engineName": app.title,
                 "engineVersion": app.version,
+                "engineKind": "python",
+                "selectionMode": "manual" if request.engine_id else "auto",
+                "fallbackFrom": None,
                 "timestamp": now,
             },
         )
@@ -296,8 +276,13 @@ async def code_check(request: CodeCheckRequest):
     规范校核
     """
     try:
-        checker = CodeChecker(request.code)
-        result = checker.check(request.model_id, request.elements, request.context)
+        result = engine_registry.run_code_check(
+            request.model_id,
+            request.code,
+            request.elements,
+            request.context,
+            request.engine_id,
+        )
         return result
 
     except Exception as e:
