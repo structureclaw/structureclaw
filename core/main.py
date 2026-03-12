@@ -263,6 +263,7 @@ async def analyze(request: AnalysisRequest) -> AnalysisResponse:
             message="Analysis completed",
             data=result,
             meta={
+                "engineName": app.title,
                 "engineVersion": app.version,
                 "timestamp": now,
             },
@@ -282,6 +283,7 @@ async def analyze(request: AnalysisRequest) -> AnalysisResponse:
             message=str(e),
             data={},
             meta={
+                "engineName": app.title,
                 "engineVersion": app.version,
                 "timestamp": now,
             },

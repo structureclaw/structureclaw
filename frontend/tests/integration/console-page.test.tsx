@@ -235,6 +235,74 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect((executePayload?.context as Record<string, unknown>)?.locale).toBe('zh')
   })
 
+  it('shows the analysis engine used for execution results', async () => {
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-engine',
+            title: 'Engine visibility',
+            type: 'analysis',
+            createdAt: '2026-03-12T08:00:00.000Z',
+            updatedAt: '2026-03-12T08:00:00.000Z',
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/execute')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            response: 'Analysis finished.',
+            success: true,
+            analysis: {
+              success: true,
+              meta: {
+                engineName: 'StructureClaw Analysis Engine',
+                engineVersion: '0.1.0',
+              },
+              data: {
+                summary: {
+                  nodeCount: 2,
+                },
+              },
+            },
+          }),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+
+    fireEvent.change(screen.getAllByRole('textbox')[0], {
+      target: { value: 'Analyze this model' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Run Analysis|执行分析/ }))
+
+    await waitFor(() => {
+      expect(screen.getByText('StructureClaw Analysis Engine v0.1.0')).toBeInTheDocument()
+    })
+  })
+
   it('renders guided discuss-first state in English', async () => {
     window.localStorage.setItem('structureclaw.locale', 'en')
     let streamPayload: Record<string, unknown> | null = null

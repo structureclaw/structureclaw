@@ -219,6 +219,28 @@ function extractSummaryStats(
   return stats
 }
 
+function extractEngineLabel(
+  analysis: Record<string, unknown> | null,
+  t: (key: MessageKey) => string
+) {
+  if (!analysis) return null
+  const meta = typeof analysis.meta === 'object' && analysis.meta ? (analysis.meta as Record<string, unknown>) : null
+  if (!meta) return null
+
+  const engineName = typeof meta.engineName === 'string' ? meta.engineName.trim() : ''
+  const engineVersion = typeof meta.engineVersion === 'string' ? meta.engineVersion.trim() : ''
+
+  if (!engineName && !engineVersion) {
+    return null
+  }
+
+  const value = engineName && engineVersion ? `${engineName} v${engineVersion}` : engineName || engineVersion
+  return {
+    label: t('analysisEngineLabel'),
+    value,
+  }
+}
+
 function AnalysisPanel({
   result,
   activeTab,
@@ -234,6 +256,7 @@ function AnalysisPanel({
 }) {
   const analysis = extractAnalysis(result)
   const stats = extractSummaryStats(analysis, t, locale)
+  const engineInfo = extractEngineLabel(analysis, t)
   const reportMarkdown = result?.report?.markdown?.trim()
   const reportSummary = result?.report?.summary?.trim()
   const guidance = result?.interaction
@@ -319,6 +342,12 @@ function AnalysisPanel({
               </CardHeader>
               {(stats.length > 0 || result.plan?.length) && (
                 <CardContent className="space-y-4">
+                  {engineInfo && (
+                    <div className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 p-4 dark:border-cyan-200/20 dark:bg-cyan-300/5">
+                      <div className="text-xs uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-200">{engineInfo.label}</div>
+                      <div className="mt-2 text-base font-semibold text-foreground">{engineInfo.value}</div>
+                    </div>
+                  )}
                   {stats.length > 0 && (
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                       {stats.map((item) => (
