@@ -283,7 +283,7 @@ const run = async () => {
     console.log('[ok] chat clarification follow-up shrinkage');
   }
 
-  // 6.2) beam follow-up should shrink to load only after span is provided
+  // 6.2) beam follow-up should ask for support before load details after span is provided
   {
     const svc = new AgentService();
 
@@ -313,12 +313,39 @@ const run = async () => {
       'second beam chat turn should continue with load'
     );
     assert(
-      second.interaction?.missingCritical?.includes('荷载形式（点荷载/均布荷载）'),
-      'second beam chat turn should require load type'
+      second.interaction?.missingCritical?.includes('支座/边界条件（悬臂/简支/两端固结/固铰）'),
+      'second beam chat turn should require support type before load details'
     );
     assert(
-      second.interaction?.missingCritical?.includes('荷载位置（按当前结构模板）'),
-      'second beam chat turn should require load position'
+      !second.interaction?.missingCritical?.includes('荷载形式（点荷载/均布荷载）'),
+      'second beam chat turn should not require load type before support type is known'
+    );
+    assert(
+      !second.interaction?.missingCritical?.includes('荷载位置（按当前结构模板）'),
+      'second beam chat turn should not require load position before support type is known'
+    );
+
+    const third = await svc.run({
+      conversationId: 'conv-chat-followup-beam-1',
+      message: '简支',
+      mode: 'chat',
+    });
+    assert(third.success === true, 'third beam chat turn should still succeed');
+    assert(
+      !third.interaction?.missingCritical?.includes('支座/边界条件（悬臂/简支/两端固结/固铰）'),
+      'third beam chat turn should not ask for support type again'
+    );
+    assert(
+      third.interaction?.missingCritical?.includes('荷载大小（kN）'),
+      'third beam chat turn should still require load magnitude'
+    );
+    assert(
+      third.interaction?.missingCritical?.includes('荷载形式（点荷载/均布荷载）'),
+      'third beam chat turn should require load type after support type is known'
+    );
+    assert(
+      third.interaction?.missingCritical?.includes('荷载位置（按当前结构模板）'),
+      'third beam chat turn should require load position after support type is known'
     );
     console.log('[ok] beam chat clarification follow-up shrinkage');
   }
