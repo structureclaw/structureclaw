@@ -30,11 +30,11 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Prepare Core Virtualenv (lite)
+      - name: Prepare Core Virtualenv
         run: |
           python -m venv core/.venv
           core/.venv/bin/pip install --upgrade pip
-          core/.venv/bin/pip install -r core/requirements-lite.txt
+          core/.venv/bin/pip install -r core/requirements.txt
 
       - name: Run Core Regression
         run: make core-regression
