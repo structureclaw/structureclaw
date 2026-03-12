@@ -2060,15 +2060,18 @@ export class AgentService {
     const length = state.lengthM!;
     const load = state.loadKN!;
     const supportType = state.supportType || 'cantilever';
+    const fixedRestraint = [true, false, true, false, true, false];
+    const pinnedRestraint = [true, false, true, false, false, false];
+    const rollerRestraint = [false, false, true, false, false, false];
     const leftRestraint = supportType === 'simply-supported'
-      ? [true, true, true, false, false, false]
-      : [true, true, true, true, true, true];
+      ? pinnedRestraint
+      : fixedRestraint;
     const rightRestraint = supportType === 'simply-supported'
-      ? [false, true, true, false, false, false]
+      ? rollerRestraint
       : supportType === 'fixed-fixed'
-        ? [true, true, true, true, true, true]
+        ? fixedRestraint
         : supportType === 'fixed-pinned'
-          ? [true, true, true, false, false, false]
+          ? pinnedRestraint
           : undefined;
     const loads = state.loadType === 'distributed' || state.loadPosition === 'full-span'
       ? [
@@ -2076,8 +2079,8 @@ export class AgentService {
           { type: 'distributed', element: '2', wy: -load, wz: 0 },
         ]
       : state.loadPosition === 'midspan'
-        ? [{ type: 'nodal', node: '2', forces: [0, -load, 0, 0, 0, 0] }]
-        : [{ type: 'nodal', node: '3', forces: [0, -load, 0, 0, 0, 0] }];
+        ? [{ node: '2', fy: -load }]
+        : [{ node: '3', fy: -load }];
     return {
       schema_version: '1.0.0',
       unit_system: 'SI',
