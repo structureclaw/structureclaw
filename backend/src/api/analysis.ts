@@ -9,6 +9,7 @@ const createAnalysisSchema = z.object({
   name: z.string().min(1),
   type: z.enum(['static', 'dynamic', 'seismic', 'nonlinear', 'stability']),
   modelId: z.string(),
+  engineId: z.string().optional(),
   parameters: z.object({
     loadCases: z.array(z.any()),
     combinations: z.array(z.any()).optional(),

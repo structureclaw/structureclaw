@@ -25,6 +25,7 @@ const llmBaseUrl = process.env.LLM_BASE_URL
 const frontendPort = process.env.FRONTEND_PORT || '30000';
 const backendPort = process.env.PORT || '8000';
 const corePort = process.env.CORE_PORT || '8001';
+const analysisEngineManifestPath = process.env.ANALYSIS_ENGINE_MANIFEST_PATH || path.resolve(__dirname, '../../../.runtime/analysis-engines.json');
 
 const defaultCorsOrigins = [
   `http://localhost:${frontendPort}`,
@@ -69,6 +70,7 @@ export const config = {
 
   // 分析引擎配置
   analysisEngineUrl: process.env.ANALYSIS_ENGINE_URL || `http://localhost:${corePort}`,
+  analysisEngineManifestPath,
 
   // CORS
   corsOrigins,

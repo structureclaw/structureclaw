@@ -31,6 +31,7 @@ const sendMessageSchema = z.object({
     locale: localeSchema,
     projectId: z.string().optional(),
     skillIds: z.array(z.string()).optional(),
+    engineId: z.string().optional(),
     model: z.record(z.any()).optional(),
     modelFormat: z.string().optional(),
     analysisType: z.enum(['static', 'dynamic', 'seismic', 'nonlinear']).optional(),
@@ -60,6 +61,7 @@ const executeSchema = z.object({
   context: z.object({
     locale: localeSchema,
     skillIds: z.array(z.string()).optional(),
+    engineId: z.string().optional(),
     model: z.record(z.any()).optional(),
     modelFormat: z.string().optional(),
     analysisType: z.enum(['static', 'dynamic', 'seismic', 'nonlinear']).optional(),
@@ -85,6 +87,7 @@ const streamMessageSchema = z.object({
     locale: localeSchema,
     projectId: z.string().optional(),
     skillIds: z.array(z.string()).optional(),
+    engineId: z.string().optional(),
     model: z.record(z.any()).optional(),
     modelFormat: z.string().optional(),
     analysisType: z.enum(['static', 'dynamic', 'seismic', 'nonlinear']).optional(),
@@ -152,6 +155,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
           context: {
             locale: body.context?.locale,
             skillIds: body.context?.skillIds,
+            engineId: body.context?.engineId,
             model: body.context?.model,
             modelFormat: body.context?.modelFormat,
             analysisType: body.context?.analysisType,
@@ -182,6 +186,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
           context: {
             locale: body.context?.locale,
             skillIds: body.context?.skillIds,
+            engineId: body.context?.engineId,
             model: body.context?.model,
             modelFormat: body.context?.modelFormat,
             analysisType: body.context?.analysisType,
@@ -309,6 +314,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
           context: {
             locale: body.context?.locale,
             skillIds: body.context?.skillIds,
+            engineId: body.context?.engineId,
             model: body.context?.model,
             modelFormat: body.context?.modelFormat,
             analysisType: body.context?.analysisType,
@@ -342,6 +348,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
           context: {
             locale: body.context?.locale,
             skillIds: body.context?.skillIds,
+            engineId: body.context?.engineId,
             model: body.context?.model,
             modelFormat: body.context?.modelFormat,
             analysisType: body.context?.analysisType,

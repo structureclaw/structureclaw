@@ -20,6 +20,7 @@ export interface CreateAnalysisParams {
   type: string;
   modelId: string;
   parameters: any;
+  engineId?: string;
   createdBy?: string;
 }
 
@@ -90,7 +91,7 @@ export class AnalysisService {
         name: params.name,
         type: params.type,
         modelId: params.modelId,
-        parameters: params.parameters,
+        parameters: params.engineId ? { ...(params.parameters || {}), engineId: params.engineId } : params.parameters,
         status: 'pending',
         createdBy: params.createdBy,
       },
@@ -118,6 +119,7 @@ export class AnalysisService {
       // 调用 Python 分析引擎
       const response = await axios.post(`${this.engineUrl}/analyze`, {
         type: analysis.type,
+        engineId: (analysis.parameters as Record<string, unknown> | null)?.engineId,
         model: {
           schema_version: '1.0.0',
           nodes: analysis.model.nodes,
@@ -188,12 +190,14 @@ export class AnalysisService {
     code: string;
     elements: string[];
     context?: Record<string, unknown>;
+    engineId?: string;
   }) {
     const response = await axios.post(`${this.engineUrl}/code-check`, {
       model_id: params.modelId,
       code: params.code,
       elements: params.elements,
       context: params.context || {},
+      engineId: params.engineId,
     }, this.engineProxyConfig);
     return response.data;
   }

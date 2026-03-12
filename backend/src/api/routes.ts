@@ -6,6 +6,7 @@ import { userRoutes } from './user.js';
 import { analysisRoutes } from './analysis.js';
 import { communityRoutes } from './community.js';
 import { agentRoutes } from './agent.js';
+import { analysisEngineRoutes } from './analysis-engine.js';
 
 export async function registerRoutes(fastify: FastifyInstance) {
   // API 版本前缀
@@ -17,6 +18,7 @@ export async function registerRoutes(fastify: FastifyInstance) {
   await fastify.register(projectRoutes, { prefix: `${apiPrefix}/projects` });
   await fastify.register(skillRoutes, { prefix: `${apiPrefix}/skills` });
   await fastify.register(analysisRoutes, { prefix: `${apiPrefix}/analysis` });
+  await fastify.register(analysisEngineRoutes, { prefix: `${apiPrefix}/analysis-engines` });
   await fastify.register(agentRoutes, { prefix: `${apiPrefix}/agent` });
   await fastify.register(communityRoutes, { prefix: `${apiPrefix}/community` });
 
@@ -31,6 +33,7 @@ export async function registerRoutes(fastify: FastifyInstance) {
       projects: `${apiPrefix}/projects`,
       skills: `${apiPrefix}/skills`,
       analysis: `${apiPrefix}/analysis`,
+      analysisEngines: `${apiPrefix}/analysis-engines`,
       agent: `${apiPrefix}/agent`,
       community: `${apiPrefix}/community`,
     },

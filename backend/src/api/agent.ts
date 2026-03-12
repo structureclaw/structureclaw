@@ -22,6 +22,7 @@ const agentRunSchema = z.object({
   traceId: optionalIdSchema,
   context: z.object({
     skillIds: z.array(z.string()).optional(),
+    engineId: z.string().optional(),
     model: z.record(z.any()).optional(),
     modelFormat: z.string().optional(),
     analysisType: z.enum(['static', 'dynamic', 'seismic', 'nonlinear']).optional(),

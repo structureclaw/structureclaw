@@ -45,6 +45,34 @@ describe('ConsolePage Integration (CONS-13)', () => {
         } as unknown as Response
       }
 
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            engines: [
+              {
+                id: 'builtin-opensees',
+                name: 'OpenSees Builtin',
+                version: '0.1.0',
+                kind: 'python',
+                available: true,
+                enabled: true,
+                supportedAnalysisTypes: ['static', 'dynamic', 'seismic', 'nonlinear'],
+              },
+              {
+                id: 'builtin-simplified',
+                name: 'Simplified Builtin',
+                version: '0.1.0',
+                kind: 'python',
+                available: true,
+                enabled: true,
+                supportedAnalysisTypes: ['static', 'dynamic', 'seismic'],
+              },
+            ],
+          }),
+        } as unknown as Response
+      }
+
       return {
         ok: true,
         json: vi.fn().mockResolvedValue([]),
@@ -80,6 +108,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByPlaceholderText(/Describe your structural goal/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Expand Skills' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Expand Engineering Context' })).toBeInTheDocument()
+    expect(screen.getByText('Analysis Engine Auto')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Discuss First' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run Analysis' })).toBeInTheDocument()
   })
@@ -114,7 +143,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     expect(screen.queryByText('The default path is to clarify through chat first. Before running analysis, it is recommended to provide model JSON or use chat to identify missing inputs.')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Expand Engineering Context' }))
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
 
     expect(screen.getByText('The default path is to clarify through chat first. Before running analysis, it is recommended to provide model JSON or use chat to identify missing inputs.')).toBeInTheDocument()
   })
@@ -134,6 +163,13 @@ describe('ConsolePage Integration (CONS-13)', () => {
         return {
           ok: true,
           json: vi.fn().mockResolvedValue([{ id: 'conv-1', title: '历史会话标题', updatedAt: '2026-03-10T12:00:00.000Z' }]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
         } as unknown as Response
       }
 
@@ -172,6 +208,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByRole('button', { name: '执行分析' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '展开技能' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '展开工程上下文' })).toBeInTheDocument()
+    expect(screen.getByText('计算引擎 自动选择')).toBeInTheDocument()
     expect(screen.queryByText('已选择技能')).not.toBeInTheDocument()
     expect(screen.queryByText('默认先聊天澄清需求。执行分析前建议补充模型 JSON，或先通过对话明确缺失条件。')).not.toBeInTheDocument()
   })
@@ -182,6 +219,13 @@ describe('ConsolePage Integration (CONS-13)', () => {
     let executePayload: Record<string, unknown> | null = null
     vi.mocked(fetch).mockImplementation(async (input, init) => {
       const url = String(input)
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
 
       if (url.includes('/api/v1/chat/conversations')) {
         return {
@@ -233,6 +277,93 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
 
     expect((executePayload?.context as Record<string, unknown>)?.locale).toBe('zh')
+    expect((executePayload?.context as Record<string, unknown>)?.engineId).toBeUndefined()
+  })
+
+  it('allows selecting a manual engine for execution requests', async () => {
+    let executePayload: Record<string, unknown> | null = null
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            engines: [
+              {
+                id: 'builtin-opensees',
+                name: 'OpenSees Builtin',
+                version: '0.1.0',
+                kind: 'python',
+                available: true,
+                enabled: true,
+                supportedAnalysisTypes: ['static'],
+              },
+            ],
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-engine',
+            title: 'OpenSees selection',
+            type: 'analysis',
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/execute')) {
+        executePayload = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            response: 'done',
+            success: true,
+            analysis: {
+              success: true,
+              meta: {
+                engineName: 'OpenSees Builtin',
+                engineVersion: '0.1.0',
+                selectionMode: 'manual',
+              },
+              data: {},
+            },
+          }),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    fireEvent.click(screen.getByRole('button', { name: /OpenSees Builtin v0\.1\.0/ }))
+    fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
+      target: { value: 'Analyze beam with OpenSees' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Run Analysis|执行分析/ }))
+
+    await waitFor(() => {
+      expect((executePayload?.context as Record<string, unknown>)?.engineId).toBe('builtin-opensees')
+    })
   })
 
   it('shows the analysis engine used for execution results', async () => {
@@ -243,6 +374,24 @@ describe('ConsolePage Integration (CONS-13)', () => {
         return {
           ok: true,
           json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            engines: [
+              {
+                id: 'builtin-opensees',
+                name: 'OpenSees Builtin',
+                version: '0.1.0',
+                kind: 'python',
+                available: true,
+                enabled: true,
+              },
+            ],
+          }),
         } as unknown as Response
       }
 
@@ -275,8 +424,12 @@ describe('ConsolePage Integration (CONS-13)', () => {
             analysis: {
               success: true,
               meta: {
+                engineId: 'builtin-simplified',
                 engineName: 'StructureClaw Analysis Engine',
                 engineVersion: '0.1.0',
+                engineKind: 'python',
+                selectionMode: 'fallback',
+                fallbackFrom: 'builtin-opensees',
               },
               data: {
                 summary: {
@@ -301,6 +454,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await waitFor(() => {
       expect(screen.getByText('StructureClaw Analysis Engine v0.1.0')).toBeInTheDocument()
     })
+    expect(screen.getByText(/Fallback engine used|已使用降级引擎/)).toBeInTheDocument()
+    expect(screen.getByText(/Fallback from builtin-opensees|原优先引擎 builtin-opensees/)).toBeInTheDocument()
   })
 
   it('renders guided discuss-first state in English', async () => {
@@ -323,6 +478,13 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     vi.mocked(fetch).mockImplementation(async (input, init) => {
       const url = String(input)
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
 
       if (url.includes('/api/v1/chat/conversations')) {
         return {
@@ -389,6 +551,13 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     vi.mocked(fetch).mockImplementation(async (input, init) => {
       const url = String(input)
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
 
       if (url.includes('/api/v1/chat/conversations')) {
         return {

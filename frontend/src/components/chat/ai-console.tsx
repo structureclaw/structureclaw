@@ -90,6 +90,18 @@ type AgentSkillSummary = {
   autoLoadByDefault?: boolean
 }
 
+type AnalysisEngineSummary = {
+  id: string
+  name?: string
+  version?: string
+  kind?: string
+  capabilities?: string[]
+  supportedAnalysisTypes?: string[]
+  available?: boolean
+  enabled?: boolean
+  visibility?: string
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const STORAGE_KEY = 'structureclaw.console.conversations'
 
@@ -229,15 +241,25 @@ function extractEngineLabel(
 
   const engineName = typeof meta.engineName === 'string' ? meta.engineName.trim() : ''
   const engineVersion = typeof meta.engineVersion === 'string' ? meta.engineVersion.trim() : ''
+  const selectionMode = typeof meta.selectionMode === 'string' ? meta.selectionMode.trim() : ''
+  const fallbackFrom = typeof meta.fallbackFrom === 'string' ? meta.fallbackFrom.trim() : ''
 
   if (!engineName && !engineVersion) {
     return null
   }
 
   const value = engineName && engineVersion ? `${engineName} v${engineVersion}` : engineName || engineVersion
+  const modeLabel =
+    selectionMode === 'manual'
+      ? t('analysisEngineModeManual')
+      : selectionMode === 'fallback'
+        ? t('analysisEngineModeFallback')
+        : t('analysisEngineModeAuto')
   return {
     label: t('analysisEngineLabel'),
     value,
+    modeLabel,
+    fallbackFrom,
   }
 }
 
@@ -346,6 +368,12 @@ function AnalysisPanel({
                     <div className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 p-4 dark:border-cyan-200/20 dark:bg-cyan-300/5">
                       <div className="text-xs uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-200">{engineInfo.label}</div>
                       <div className="mt-2 text-base font-semibold text-foreground">{engineInfo.value}</div>
+                      <div className="mt-2 text-sm text-muted-foreground">{engineInfo.modeLabel}</div>
+                      {engineInfo.fallbackFrom ? (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {t('analysisEngineFallbackFrom')} {engineInfo.fallbackFrom}
+                        </div>
+                      ) : null}
                     </div>
                   )}
                   {stats.length > 0 && (
@@ -564,7 +592,9 @@ export function AIConsole() {
   const [designCode, setDesignCode] = useState('GB50017')
   const [analysisType, setAnalysisType] = useState<AnalysisType>('static')
   const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([])
+  const [availableEngines, setAvailableEngines] = useState<AnalysisEngineSummary[]>([])
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
+  const [selectedEngineId, setSelectedEngineId] = useState('auto')
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
   const [activePanel, setActivePanel] = useState<PanelTab>('analysis')
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
@@ -684,6 +714,35 @@ export function AIConsole() {
     }
 
     loadSkills()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadEngines() {
+      try {
+        const response = await fetch(`${API_BASE}/api/v1/analysis-engines`)
+        if (!response.ok) {
+          return
+        }
+        const payload = await response.json()
+        const engines = Array.isArray(payload?.engines) ? (payload.engines as AnalysisEngineSummary[]) : []
+        if (!active) {
+          return
+        }
+        setAvailableEngines(engines.filter((engine) => engine.enabled !== false))
+      } catch {
+        if (active) {
+          setAvailableEngines([])
+        }
+      }
+    }
+
+    loadEngines()
 
     return () => {
       active = false
@@ -910,6 +969,7 @@ export function AIConsole() {
           ? {
               locale,
               skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined,
+              engineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
               model: parsedModel.model,
               modelFormat: parsedModel.model ? 'structuremodel-v1' : undefined,
               analysisType,
@@ -923,6 +983,7 @@ export function AIConsole() {
           : {
               locale,
               skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined,
+              engineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
             }
 
       if (action === 'execute') {
@@ -1323,6 +1384,11 @@ export function AIConsole() {
                     <Badge className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
                       {t('conversationIdShort')} {conversationId ? conversationId.slice(0, 8) : t('notCreated')}
                     </Badge>
+                    <Badge className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
+                      {t('analysisEngineLabel')} {selectedEngineId === 'auto'
+                        ? t('analysisEngineAutoOption')
+                        : (availableEngines.find((engine) => engine.id === selectedEngineId)?.name || selectedEngineId)}
+                    </Badge>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
@@ -1379,6 +1445,51 @@ export function AIConsole() {
                             </button>
                           ))}
                         </div>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">{t('analysisEngineSelectorLabel')}</label>
+                        <div className="grid gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedEngineId('auto')}
+                            className={cn(
+                              'rounded-2xl border px-3 py-2 text-left text-sm transition',
+                              selectedEngineId === 'auto'
+                                ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
+                                : 'border-border/70 bg-card/80 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
+                            )}
+                          >
+                            <div className="font-medium">{t('analysisEngineAutoOption')}</div>
+                            <div className="mt-1 text-xs leading-5 text-muted-foreground">{t('analysisEngineAutoHelp')}</div>
+                          </button>
+                          {availableEngines
+                            .filter((engine) => engine.available !== false && (!engine.supportedAnalysisTypes?.length || engine.supportedAnalysisTypes.includes(analysisType)))
+                            .map((engine) => (
+                              <button
+                                key={engine.id}
+                                type="button"
+                                onClick={() => setSelectedEngineId(engine.id)}
+                                className={cn(
+                                  'rounded-2xl border px-3 py-2 text-left text-sm transition',
+                                  selectedEngineId === engine.id
+                                    ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
+                                    : 'border-border/70 bg-card/80 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
+                                )}
+                              >
+                                <div className="font-medium text-foreground">
+                                  {engine.name || engine.id}
+                                  {engine.version ? ` v${engine.version}` : ''}
+                                </div>
+                                <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                                  {engine.kind || 'python'}
+                                </div>
+                              </button>
+                            ))}
+                        </div>
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          {t('analysisEngineSelectorHelp')}
+                        </p>
                       </div>
 
                       <div className="space-y-2">

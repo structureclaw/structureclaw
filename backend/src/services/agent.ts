@@ -94,6 +94,7 @@ export interface AgentRunParams {
     model?: Record<string, unknown>;
     modelFormat?: string;
     analysisType?: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+    engineId?: string;
     parameters?: Record<string, unknown>;
     autoAnalyze?: boolean;
     autoCodeCheck?: boolean;
@@ -279,8 +280,9 @@ export class AgentService {
           context: {
             type: 'object',
             properties: {
-              skillIds: { type: 'array', items: { type: 'string' } },
-              model: { type: 'object' },
+            skillIds: { type: 'array', items: { type: 'string' } },
+            engineId: { type: 'string' },
+            model: { type: 'object' },
               modelFormat: { type: 'string' },
               analysisType: { enum: ['static', 'dynamic', 'seismic', 'nonlinear'] },
               parameters: { type: 'object' },
@@ -757,7 +759,10 @@ export class AgentService {
     toolCalls.push(validateCall);
 
     try {
-      const validated = await this.engineClient.post('/validate', validateInput);
+      const validated = await this.engineClient.post('/validate', {
+        ...validateInput,
+        engineId: params.context?.engineId,
+      });
       this.completeToolCallSuccess(validateCall, validated.data);
       if (validated.data?.valid === false) {
         validateCall.status = 'error';
@@ -843,6 +848,7 @@ export class AgentService {
     plan.push(this.localize(locale, `执行 ${resolvedAnalysisType} 分析并返回摘要`, `Run ${resolvedAnalysisType} analysis and return a summary`));
     const analyzeInput = {
       type: resolvedAnalysisType,
+      engineId: params.context?.engineId,
       model: normalizedModel,
       parameters: analysisParameters,
     };
@@ -882,6 +888,7 @@ export class AgentService {
             code: codeCheckInput.code,
             elements: codeCheckInput.elements,
             context: codeCheckInput.context,
+            engineId: params.context?.engineId,
           });
           this.completeToolCallSuccess(codeCheckCall, codeChecked.data);
           codeCheckResult = codeChecked.data;
