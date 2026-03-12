@@ -200,6 +200,59 @@ describe('AgentService orchestration', () => {
     expect(result.clarification?.missingFields).toContain('Portal-frame column height (m)');
   });
 
+  test('should merge rule-extracted numeric follow-up when llm extraction is partial', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+    svc.tryLlmExtract = async () => ({ inferredType: 'beam' });
+
+    const result = await svc.run({
+      conversationId: 'conv-rule-fallback-zh',
+      message: '跨度10m',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+        providedValues: {
+          inferredType: 'beam',
+        },
+      },
+    });
+
+    expect(result.interaction?.detectedScenario).toBe('beam');
+    expect(result.interaction?.missingCritical).not.toContain('跨度/长度（m）');
+    expect(result.interaction?.missingCritical).toContain('荷载大小（kN）');
+    expect(result.response).not.toContain('跨度/长度');
+  });
+
+  test('should not repeat beam span after a follow-up value in chat mode', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const first = await svc.run({
+      conversationId: 'conv-chat-beam-span-zh',
+      message: '我想设计一个梁',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+      },
+    });
+
+    expect(first.interaction?.missingCritical).toContain('跨度/长度（m）');
+
+    const second = await svc.run({
+      conversationId: 'conv-chat-beam-span-zh',
+      message: '跨度10m',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+      },
+    });
+
+    expect(second.interaction?.detectedScenario).toBe('beam');
+    expect(second.interaction?.missingCritical).not.toContain('跨度/长度（m）');
+    expect(second.interaction?.missingCritical).toContain('荷载大小（kN）');
+    expect(second.response).not.toContain('跨度/长度');
+  });
+
   test('should not ask for the same span again after a follow-up value in chat mode', async () => {
     const svc = new AgentService();
     svc.llm = null;

@@ -283,6 +283,38 @@ const run = async () => {
     console.log('[ok] chat clarification follow-up shrinkage');
   }
 
+  // 6.2) beam follow-up should shrink to load only after span is provided
+  {
+    const svc = new AgentService();
+
+    const first = await svc.run({
+      conversationId: 'conv-chat-followup-beam-1',
+      message: '我想设计一个梁',
+      mode: 'chat',
+    });
+    assert(
+      first.interaction?.missingCritical?.includes('跨度/长度（m）'),
+      'first beam chat turn should ask for span'
+    );
+
+    const second = await svc.run({
+      conversationId: 'conv-chat-followup-beam-1',
+      message: '跨度10m',
+      mode: 'chat',
+    });
+    assert(second.success === true, 'second beam chat turn should still succeed');
+    assert(second.interaction?.detectedScenario === 'beam', 'beam follow-up should keep beam scenario');
+    assert(
+      !second.interaction?.missingCritical?.includes('跨度/长度（m）'),
+      'second beam chat turn should not ask for span again'
+    );
+    assert(
+      second.interaction?.missingCritical?.includes('荷载大小（kN）'),
+      'second beam chat turn should continue with load'
+    );
+    console.log('[ok] beam chat clarification follow-up shrinkage');
+  }
+
   // 7) draft type coverage: double-span beam and planar truss
   {
     const svc = new AgentService();
