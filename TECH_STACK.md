@@ -52,11 +52,10 @@
 - Web 框架：FastAPI
 - 服务启动：Uvicorn
 - 数据建模：Pydantic v2
-- 数值计算：NumPy、SciPy
-- 结构分析相关库：OpenSeesPy、ananstruct
-- 数据与图形处理：Pandas、Matplotlib、Plotly
-- LLM 相关依赖：OpenAI、LangChain、tiktoken
-- 数据库相关依赖：SQLAlchemy、asyncpg
+- 数值计算：NumPy
+- 结构分析相关库：OpenSeesPy
+- HTTP 客户端：HTTPX
+- 引擎扩展形态：内置分析引擎注册表 + 受控 manifest 路由
 
 ## 5. 基础设施与运行层
 

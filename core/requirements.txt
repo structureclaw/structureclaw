@@ -4,38 +4,11 @@
 # FEA Libraries
 openseespy==3.5.1.12
 numpy==1.26.4
-scipy==1.12.0
-
-# Structural Engineering
-ananstruct==1.1.0
-
-# Data Processing
-pandas==2.2.1
-matplotlib==3.8.4
-plotly==5.20.0
-
-# AI/ML
-openai==1.16.2
-langchain==0.1.16
-langchain-openai==0.1.3
-tiktoken==0.6.0
 
 # Web Framework
 fastapi==0.110.1
 uvicorn==0.29.0
 pydantic==2.6.4
 
-# Database
-asyncpg==0.29.0
-sqlalchemy==2.0.29
-
 # Utilities
-python-dotenv==1.0.1
-pyyaml==6.0.1
 httpx==0.27.0
-redis==5.0.3
-
-# Development
-pytest==8.1.1
-black==24.3.0
-mypy==1.9.0
