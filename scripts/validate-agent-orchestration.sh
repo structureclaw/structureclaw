@@ -251,6 +251,38 @@ const run = async () => {
     console.log('[ok] conversation-level clarification carry-over');
   }
 
+  // 6.1) chat-mode follow-up should shrink missing fields instead of repeating span
+  {
+    const svc = new AgentService();
+
+    const first = await svc.run({
+      conversationId: 'conv-chat-followup-1',
+      message: '先聊需求，我要做一个门式刚架',
+      mode: 'chat',
+    });
+    assert(
+      first.interaction?.missingCritical?.includes('门式刚架或双跨每跨跨度（m）'),
+      'first chat turn should ask for portal-frame span'
+    );
+
+    const second = await svc.run({
+      conversationId: 'conv-chat-followup-1',
+      message: '跨度10m',
+      mode: 'chat',
+    });
+    assert(second.success === true, 'second chat turn should still succeed');
+    assert(second.interaction?.detectedScenario === 'portal-frame', 'chat follow-up should keep portal-frame scenario');
+    assert(
+      !second.interaction?.missingCritical?.includes('门式刚架或双跨每跨跨度（m）'),
+      'second chat turn should not ask for span again'
+    );
+    assert(
+      second.interaction?.missingCritical?.includes('门式刚架柱高（m）'),
+      'second chat turn should continue with height'
+    );
+    console.log('[ok] chat clarification follow-up shrinkage');
+  }
+
   // 7) draft type coverage: double-span beam and planar truss
   {
     const svc = new AgentService();

@@ -200,6 +200,68 @@ describe('AgentService orchestration', () => {
     expect(result.clarification?.missingFields).toContain('Portal-frame column height (m)');
   });
 
+  test('should not ask for the same span again after a follow-up value in chat mode', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const first = await svc.run({
+      conversationId: 'conv-chat-span-zh',
+      message: '先聊需求，我要做一个门式刚架',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+      },
+    });
+
+    expect(first.interaction?.missingCritical).toContain('门式刚架或双跨每跨跨度（m）');
+
+    const second = await svc.run({
+      conversationId: 'conv-chat-span-zh',
+      message: '跨度10m',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+      },
+    });
+
+    expect(second.interaction?.detectedScenario).toBe('portal-frame');
+    expect(second.interaction?.missingCritical).not.toContain('门式刚架或双跨每跨跨度（m）');
+    expect(second.interaction?.missingCritical).toContain('门式刚架柱高（m）');
+    expect(second.interaction?.missingCritical).toContain('荷载大小（kN）');
+    expect(second.response).not.toContain('每跨跨度');
+  });
+
+  test('should shrink English missing fields after a span-only follow-up', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const first = await svc.run({
+      conversationId: 'conv-chat-span-en',
+      message: 'Discuss a portal frame first',
+      mode: 'chat',
+      context: {
+        locale: 'en',
+      },
+    });
+
+    expect(first.interaction?.missingCritical).toContain('Span length per bay for the portal frame or double-span beam (m)');
+
+    const second = await svc.run({
+      conversationId: 'conv-chat-span-en',
+      message: 'span 10m',
+      mode: 'chat',
+      context: {
+        locale: 'en',
+      },
+    });
+
+    expect(second.interaction?.detectedScenario).toBe('portal-frame');
+    expect(second.interaction?.missingCritical).not.toContain('Span length per bay for the portal frame or double-span beam (m)');
+    expect(second.interaction?.missingCritical).toContain('Portal-frame column height (m)');
+    expect(second.interaction?.missingCritical).toContain('Load magnitude (kN)');
+    expect(second.response).not.toContain('Span per bay');
+  });
+
   test('should generate English summaries and markdown when locale=en', async () => {
     const svc = new AgentService();
     svc.llm = null;
@@ -277,9 +339,9 @@ describe('AgentService orchestration', () => {
     expect(result.success).toBe(true);
     expect(result.interaction?.detectedScenario).toBe('steel-frame');
     expect(result.interaction?.detectedScenarioLabel).toBe('Steel Frame');
-    expect(result.interaction?.conversationStage).toBe('Intent');
+    expect(result.interaction?.conversationStage).toBe('Geometry');
     expect(result.interaction?.fallbackSupportNote).toContain('portal-frame template');
-    expect(result.interaction?.recommendedNextStep).toContain('Structure type');
+    expect(result.interaction?.recommendedNextStep).toContain('Span per bay');
     expect(result.response).toContain('Detected scenario: Steel Frame');
   });
 
