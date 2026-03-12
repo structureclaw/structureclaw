@@ -21,7 +21,7 @@ export function LanguageToggle({ className }: { className?: string }) {
         variant={locale === 'en' ? 'default' : 'ghost'}
         className="h-7 px-2"
         onClick={() => setLocale('en')}
-        aria-label="Switch language to English"
+        aria-label={t('switchLanguageToEnglish')}
       >
         {t('english')}
       </Button>
@@ -30,7 +30,7 @@ export function LanguageToggle({ className }: { className?: string }) {
         variant={locale === 'zh' ? 'default' : 'ghost'}
         className="h-7 px-2"
         onClick={() => setLocale('zh')}
-        aria-label="切换语言为中文"
+        aria-label={t('switchLanguageToChinese')}
       >
         {t('chinese')}
       </Button>

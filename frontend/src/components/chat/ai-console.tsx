@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
+import { useI18n, type MessageKey } from '@/lib/i18n'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
 
 type AnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear'
@@ -68,28 +69,6 @@ type PersistedConversation = ConversationSummary & {
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const STORAGE_KEY = 'structureclaw.console.conversations'
 
-const quickPrompts = [
-  '帮我梳理一个单跨钢梁静力分析需要哪些已知条件',
-  '如果我要做两层钢框架分析，你会先向我确认哪些参数？',
-  '我准备上传结构模型，请先告诉我分析报告应该包含哪些核心结论',
-]
-
-const analysisTypeOptions: Array<{ value: AnalysisType; label: string }> = [
-  { value: 'static', label: '静力' },
-  { value: 'dynamic', label: '动力' },
-  { value: 'seismic', label: '抗震' },
-  { value: 'nonlinear', label: '非线性' },
-]
-
-const initialAssistantMessage: Message = {
-  id: 'welcome',
-  role: 'assistant',
-  content:
-    '我会先用对话帮你澄清建模意图、荷载和边界条件。准备好结构模型后，再点击“执行分析”，右侧会生成分析结果和报告。',
-  status: 'done',
-  timestamp: new Date().toISOString(),
-}
-
 function createId(prefix: string) {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return `${prefix}-${crypto.randomUUID()}`
@@ -117,7 +96,7 @@ function loadConversationArchive(): Record<string, PersistedConversation> {
   }
 }
 
-function parseModelJson(modelText: string): { model?: Record<string, unknown>; error?: string } {
+function parseModelJson(modelText: string, t: (key: MessageKey) => string): { model?: Record<string, unknown>; error?: string } {
   const trimmed = modelText.trim()
   if (!trimmed) {
     return {}
@@ -126,17 +105,20 @@ function parseModelJson(modelText: string): { model?: Record<string, unknown>; e
   try {
     const parsed = JSON.parse(trimmed)
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { error: '模型 JSON 必须是对象。' }
+      return { error: t('modelJsonMustBeObject') }
     }
     return { model: parsed as Record<string, unknown> }
   } catch (error) {
     return {
-      error: error instanceof Error ? `模型 JSON 解析失败：${error.message}` : '模型 JSON 解析失败。',
+      error: error instanceof Error ? `${t('modelJsonParseFailed')}: ${error.message}` : `${t('modelJsonParseFailed')}.`,
     }
   }
 }
 
-function buildInteractionMessage(payload: Extract<StreamPayload, { type: 'interaction_update' }>) {
+function buildInteractionMessage(
+  payload: Extract<StreamPayload, { type: 'interaction_update' }>,
+  t: (key: MessageKey) => string
+) {
   const questions = payload.content?.questions || []
   const criticalMissing = payload.content?.pending?.criticalMissing || []
 
@@ -148,10 +130,10 @@ function buildInteractionMessage(payload: Extract<StreamPayload, { type: 'intera
   }
 
   if (criticalMissing.length > 0) {
-    return `还需要你补充这些关键信息：${criticalMissing.join('、')}`
+    return `${t('interactionMissingInfo')}: ${criticalMissing.join('、')}`
   }
 
-  return '我还需要补充一些参数后才能继续执行。'
+  return t('interactionNeedMoreParams')
 }
 
 function extractAnalysis(result: AgentResult | null) {
@@ -165,7 +147,7 @@ function extractAnalysis(result: AgentResult | null) {
   return null
 }
 
-function extractSummaryStats(analysis: Record<string, unknown> | null) {
+function extractSummaryStats(analysis: Record<string, unknown> | null, t: (key: MessageKey) => string) {
   if (!analysis) return []
   const data = typeof analysis.data === 'object' && analysis.data ? (analysis.data as Record<string, unknown>) : analysis
   const meta = typeof analysis.meta === 'object' && analysis.meta ? (analysis.meta as Record<string, unknown>) : null
@@ -174,10 +156,10 @@ function extractSummaryStats(analysis: Record<string, unknown> | null) {
   const stats: Array<{ label: string; value: string }> = []
 
   const candidatePairs: Array<[string, unknown]> = [
-    ['节点数', summary?.nodeCount ?? meta?.nodeCount],
-    ['单元数', summary?.elementCount ?? meta?.elementCount],
-    ['工况数', summary?.loadCaseCount ?? meta?.loadCaseCount],
-    ['组合数', summary?.combinationCount ?? meta?.combinationCount],
+    [t('analysisOverviewCountsNodes'), summary?.nodeCount ?? meta?.nodeCount],
+    [t('analysisOverviewCountsElements'), summary?.elementCount ?? meta?.elementCount],
+    [t('analysisOverviewCountsLoadCases'), summary?.loadCaseCount ?? meta?.loadCaseCount],
+    [t('analysisOverviewCountsCombinations'), summary?.combinationCount ?? meta?.combinationCount],
   ]
 
   candidatePairs.forEach(([label, value]) => {
@@ -193,57 +175,63 @@ function AnalysisPanel({
   result,
   activeTab,
   onTabChange,
+  t,
 }: {
   result: AgentResult | null
   activeTab: PanelTab
   onTabChange: (tab: PanelTab) => void
+  t: (key: MessageKey) => string
 }) {
   const analysis = extractAnalysis(result)
-  const stats = extractSummaryStats(analysis)
+  const stats = extractSummaryStats(analysis, t)
   const reportMarkdown = result?.report?.markdown?.trim()
   const reportSummary = result?.report?.summary?.trim()
 
   return (
-    <div className="flex h-full flex-col rounded-[28px] border border-white/10 bg-white/5 backdrop-blur-xl">
-      <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
+    <div className="flex h-full flex-col rounded-[28px] border border-border/70 bg-card/80 backdrop-blur-xl dark:border-white/10 dark:bg-white/5">
+      <div className="flex items-center justify-between border-b border-border/70 px-5 py-4 dark:border-white/10">
         <div>
-          <p className="text-xs uppercase tracking-[0.24em] text-cyan-200/70">Workspace Output</p>
-          <h2 className="mt-1 text-lg font-semibold text-white">分析结果与报告</h2>
+          <p className="text-xs uppercase tracking-[0.24em] text-cyan-700/80 dark:text-cyan-200/70">{t('workspaceOutput')}</p>
+          <h2 className="mt-1 text-lg font-semibold text-foreground">{t('analysisAndReport')}</h2>
         </div>
-        <div className="inline-flex rounded-full border border-white/10 bg-white/5 p-1">
+        <div className="inline-flex rounded-full border border-border/70 bg-background/70 p-1 dark:border-white/10 dark:bg-white/5">
           <button
             className={cn(
               'rounded-full px-4 py-2 text-sm transition',
-              activeTab === 'analysis' ? 'bg-white text-slate-950' : 'text-slate-300 hover:text-white'
+              activeTab === 'analysis'
+                ? 'bg-foreground text-background'
+                : 'text-muted-foreground hover:text-foreground'
             )}
             onClick={() => onTabChange('analysis')}
             type="button"
           >
-            分析结果
+            {t('analysisTab')}
           </button>
           <button
             className={cn(
               'rounded-full px-4 py-2 text-sm transition',
-              activeTab === 'report' ? 'bg-white text-slate-950' : 'text-slate-300 hover:text-white'
+              activeTab === 'report'
+                ? 'bg-foreground text-background'
+                : 'text-muted-foreground hover:text-foreground'
             )}
             onClick={() => onTabChange('report')}
             type="button"
           >
-            报告
+            {t('reportTab')}
           </button>
         </div>
       </div>
 
       <div className="flex-1 overflow-auto p-5">
         {!result && (
-          <Card className="border-white/10 bg-slate-950/40 text-slate-100 shadow-none">
+          <Card className="border-border/70 bg-card/85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/40">
             <CardHeader>
               <CardTitle className="flex items-center gap-3 text-xl">
-                <Orbit className="h-5 w-5 text-cyan-300" />
-                结果面板待命中
+                <Orbit className="h-5 w-5 text-cyan-500 dark:text-cyan-300" />
+                {t('analysisPanelIdleTitle')}
               </CardTitle>
-              <CardDescription className="text-slate-400">
-                对话阶段不会生成工程输出。准备好模型后点击“执行分析”，结果和报告会出现在这里。
+              <CardDescription className="text-muted-foreground">
+                {t('analysisPanelIdleBody')}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -251,14 +239,14 @@ function AnalysisPanel({
 
         {result && activeTab === 'analysis' && (
           <div className="space-y-4">
-            <Card className="border-white/10 bg-slate-950/50 text-slate-100 shadow-none">
+            <Card className="border-border/70 bg-card/85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/50">
               <CardHeader className="space-y-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <Badge className="border-emerald-400/30 bg-emerald-400/15 text-emerald-200" variant="outline">
-                    {result.success ? '分析完成' : result.needsModelInput ? '待补充信息' : '返回结果'}
+                    {result.success ? t('analysisDone') : result.needsModelInput ? t('needsMoreInfo') : t('returnedResult')}
                   </Badge>
                   {result.traceId && (
-                    <Badge className="border-white/10 bg-white/5 text-slate-300" variant="outline">
+                    <Badge className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
                       Trace {result.traceId.slice(0, 8)}
                     </Badge>
                   )}
@@ -269,9 +257,9 @@ function AnalysisPanel({
                   )}
                 </div>
                 <div>
-                  <CardTitle className="text-xl text-white">执行概览</CardTitle>
-                  <CardDescription className="text-slate-400">
-                    {result.response || '当前返回未包含自然语言总结。'}
+                  <CardTitle className="text-xl text-foreground">{t('executionSummary')}</CardTitle>
+                  <CardDescription className="text-muted-foreground">
+                    {result.response || t('noNaturalLanguageSummary')}
                   </CardDescription>
                 </div>
               </CardHeader>
@@ -280,20 +268,20 @@ function AnalysisPanel({
                   {stats.length > 0 && (
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                       {stats.map((item) => (
-                        <div key={item.label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                          <div className="text-xs uppercase tracking-[0.18em] text-slate-400">{item.label}</div>
-                          <div className="mt-2 text-2xl font-semibold text-white">{item.value}</div>
+                        <div key={item.label} className="rounded-2xl border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
+                          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{item.label}</div>
+                          <div className="mt-2 text-2xl font-semibold text-foreground">{item.value}</div>
                         </div>
                       ))}
                     </div>
                   )}
                   {result.plan?.length ? (
-                    <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <div className="mb-3 text-sm font-medium text-white">执行路径</div>
-                      <ol className="space-y-2 text-sm text-slate-300">
+                    <div className="rounded-2xl border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
+                      <div className="mb-3 text-sm font-medium text-foreground">{t('executionPath')}</div>
+                      <ol className="space-y-2 text-sm text-muted-foreground">
                         {result.plan.map((step, index) => (
                           <li key={`${index}-${step}`} className="flex gap-3">
-                            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-cyan-400/15 text-[11px] text-cyan-200">
+                            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-cyan-400/15 text-[11px] text-cyan-700 dark:text-cyan-200">
                               {index + 1}
                             </span>
                             <span>{step}</span>
@@ -307,17 +295,17 @@ function AnalysisPanel({
             </Card>
 
             {result.clarification?.question && (
-              <Card className="border-amber-300/20 bg-amber-300/10 text-amber-50 shadow-none">
+              <Card className="border-amber-300/30 bg-amber-100/70 text-amber-950 shadow-none dark:bg-amber-300/10 dark:text-amber-50">
                 <CardHeader>
-                  <CardTitle className="text-lg">需要补充的信息</CardTitle>
-                  <CardDescription className="text-amber-100/80">
+                  <CardTitle className="text-lg">{t('clarificationTitle')}</CardTitle>
+                  <CardDescription className="text-amber-900/80 dark:text-amber-100/80">
                     {result.clarification.question}
                   </CardDescription>
                 </CardHeader>
                 {result.clarification.missingFields?.length ? (
                   <CardContent className="flex flex-wrap gap-2">
                     {result.clarification.missingFields.map((field) => (
-                      <Badge key={field} className="border-amber-200/20 bg-black/10 text-amber-50" variant="outline">
+                      <Badge key={field} className="border-amber-300/40 bg-amber-50/80 text-amber-950 dark:border-amber-200/20 dark:bg-black/10 dark:text-amber-50" variant="outline">
                         {field}
                       </Badge>
                     ))}
@@ -327,15 +315,15 @@ function AnalysisPanel({
             )}
 
             {analysis && (
-              <Card className="border-white/10 bg-slate-950/50 text-slate-100 shadow-none">
+              <Card className="border-border/70 bg-card/85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/50">
                 <CardHeader>
-                  <CardTitle className="text-lg">结构化结果</CardTitle>
-                  <CardDescription className="text-slate-400">
-                    当前后端返回的原始分析对象，便于工程人员查看关键字段。
+                  <CardTitle className="text-lg">{t('structuredResult')}</CardTitle>
+                  <CardDescription className="text-muted-foreground">
+                    {t('structuredResultDesc')}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <pre className="overflow-x-auto rounded-2xl border border-white/10 bg-black/30 p-4 text-xs leading-6 text-cyan-100">
+                  <pre className="overflow-x-auto rounded-2xl border border-border/70 bg-muted/60 p-4 text-xs leading-6 text-cyan-900 dark:border-white/10 dark:bg-black/30 dark:text-cyan-100">
                     {JSON.stringify(analysis, null, 2)}
                   </pre>
                 </CardContent>
@@ -347,34 +335,34 @@ function AnalysisPanel({
         {result && activeTab === 'report' && (
           <div className="space-y-4">
             {reportSummary && (
-              <Card className="border-white/10 bg-slate-950/50 text-slate-100 shadow-none">
+              <Card className="border-border/70 bg-card/85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/50">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-lg">
-                    <FileText className="h-5 w-5 text-cyan-300" />
-                    报告摘要
+                    <FileText className="h-5 w-5 text-cyan-500 dark:text-cyan-300" />
+                    {t('reportSummary')}
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm leading-7 text-slate-300">
+                <CardContent className="text-sm leading-7 text-muted-foreground">
                   {reportSummary}
                 </CardContent>
               </Card>
             )}
 
-            <Card className="border-white/10 bg-slate-950/50 text-slate-100 shadow-none">
+            <Card className="border-border/70 bg-card/85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/50">
               <CardHeader>
-                <CardTitle className="text-lg">Markdown 报告</CardTitle>
-                <CardDescription className="text-slate-400">
-                  这里展示后端返回的报告正文。如果当前运行只做了澄清，对应内容会为空。
+                <CardTitle className="text-lg">{t('markdownReport')}</CardTitle>
+                <CardDescription className="text-muted-foreground">
+                  {t('markdownReportDesc')}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 {reportMarkdown ? (
-                  <article className="prose prose-invert prose-sm max-w-none prose-headings:text-white prose-p:text-slate-300 prose-strong:text-white prose-code:text-cyan-200">
+                  <article className="prose prose-sm max-w-none dark:prose-invert prose-headings:text-foreground prose-p:text-muted-foreground prose-strong:text-foreground prose-code:text-cyan-700 dark:prose-code:text-cyan-200">
                     <ReactMarkdown>{reportMarkdown}</ReactMarkdown>
                   </article>
                 ) : (
-                  <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 p-6 text-sm text-slate-400">
-                    当前还没有报告正文。请先执行一次分析，或在消息中明确要求生成报告。
+                  <div className="rounded-2xl border border-dashed border-border/70 bg-background/70 p-6 text-sm text-muted-foreground dark:border-white/10 dark:bg-white/5">
+                    {t('noReportBody')}
                   </div>
                 )}
               </CardContent>
@@ -387,6 +375,27 @@ function AnalysisPanel({
 }
 
 export function AIConsole() {
+  const { t } = useI18n()
+  const initialAssistantMessage = useMemo<Message>(() => ({
+    id: 'welcome',
+    role: 'assistant',
+    content: t('welcomeMessage'),
+    status: 'done',
+    timestamp: new Date().toISOString(),
+  }), [t])
+  const quickPrompts = useMemo(
+    () => [t('quickPrompt1'), t('quickPrompt2'), t('quickPrompt3')],
+    [t]
+  )
+  const analysisTypeOptions = useMemo<Array<{ value: AnalysisType; label: string }>>(
+    () => [
+      { value: 'static', label: t('analysisTypeStatic') },
+      { value: 'dynamic', label: t('analysisTypeDynamic') },
+      { value: 'seismic', label: t('analysisTypeSeismic') },
+      { value: 'nonlinear', label: t('analysisTypeNonlinear') },
+    ],
+    [t]
+  )
   const [messages, setMessages] = useState<Message[]>([initialAssistantMessage])
   const [input, setInput] = useState('')
   const [conversationId, setConversationId] = useState('')
@@ -403,6 +412,15 @@ export function AIConsole() {
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
   const [activePanel, setActivePanel] = useState<PanelTab>('analysis')
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
+
+  useEffect(() => {
+    setMessages((current) => {
+      if (current.length !== 1 || current[0]?.id !== 'welcome') {
+        return current
+      }
+      return [initialAssistantMessage]
+    })
+  }, [initialAssistantMessage])
 
   const mergedConversations = useMemo(() => {
     const map = new Map<string, ConversationSummary>()
@@ -457,7 +475,7 @@ export function AIConsole() {
       try {
         const response = await fetch(`${API_BASE}/api/v1/chat/conversations`)
         if (!response.ok) {
-          throw new Error(`加载会话失败: HTTP ${response.status}`)
+          throw new Error(`${t('loadConversationFailed')}: HTTP ${response.status}`)
         }
         const payload = await response.json()
         if (!cancelled) {
@@ -465,7 +483,7 @@ export function AIConsole() {
         }
       } catch (error) {
         if (!cancelled) {
-          setHistoryError(error instanceof Error ? error.message : '加载会话失败。')
+          setHistoryError(error instanceof Error ? error.message : `${t('loadConversationFailed')}.`)
         }
       } finally {
         if (!cancelled) {
@@ -479,7 +497,7 @@ export function AIConsole() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     if (!conversationId) {
@@ -494,7 +512,7 @@ export function AIConsole() {
           current[conversationId]?.title
           || serverConversations.find((conversation) => conversation.id === conversationId)?.title
           || messages.find((message) => message.role === 'user')?.content.slice(0, 48)
-          || '新对话',
+          || t('untitledConversation'),
         type: 'analysis',
         createdAt: current[conversationId]?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -502,7 +520,7 @@ export function AIConsole() {
         latestResult,
       },
     }))
-  }, [conversationId, latestResult, messages, serverConversations])
+  }, [conversationId, latestResult, messages, serverConversations, t])
 
   async function ensureConversation(seedMessage: string) {
     if (conversationId) {
@@ -519,12 +537,12 @@ export function AIConsole() {
     })
 
     if (!response.ok) {
-      throw new Error(`创建会话失败: HTTP ${response.status}`)
+      throw new Error(`${t('createConversationFailed')}: HTTP ${response.status}`)
     }
 
     const payload = await response.json()
     if (!payload?.id) {
-      throw new Error('创建会话失败：未返回会话 ID。')
+      throw new Error(t('missingConversationId'))
     }
 
     const nextConversation: ConversationSummary = {
@@ -562,7 +580,7 @@ export function AIConsole() {
     try {
       const response = await fetch(`${API_BASE}/api/v1/chat/conversation/${nextConversationId}`)
       if (!response.ok) {
-        throw new Error(`加载会话失败: HTTP ${response.status}`)
+        throw new Error(`${t('loadConversationFailed')}: HTTP ${response.status}`)
       }
 
       const payload = await response.json()
@@ -596,7 +614,7 @@ export function AIConsole() {
         return
       }
 
-      setErrorMessage(error instanceof Error ? error.message : '加载会话失败。')
+      setErrorMessage(error instanceof Error ? error.message : `${t('loadConversationFailed')}.`)
     }
   }
 
@@ -618,7 +636,7 @@ export function AIConsole() {
       return
     }
 
-    const parsedModel = parseModelJson(modelText)
+    const parsedModel = parseModelJson(modelText, t)
     if (parsedModel.error) {
       setErrorMessage(parsedModel.error)
       setContextOpen(true)
@@ -635,7 +653,7 @@ export function AIConsole() {
 
     const assistantMessageId = createId('assistant')
     const assistantSeed =
-      action === 'chat' ? '我在整理你的需求，请稍等。' : '我在根据当前对话整理输入，并尝试执行分析。'
+      action === 'chat' ? t('assistantSeedChat') : t('assistantSeedExecute')
 
     setErrorMessage('')
     appendMessage(userMessage)
@@ -680,17 +698,17 @@ export function AIConsole() {
         })
 
         if (!response.ok) {
-          throw new Error(`请求失败: HTTP ${response.status}`)
+          throw new Error(`${t('requestFailedHttp')}: HTTP ${response.status}`)
         }
 
         const payload = await response.json()
         if (!payload || typeof payload !== 'object') {
-          throw new Error('请求失败：返回数据无效。')
+          throw new Error(t('invalidResponse'))
         }
 
         const result = payload as AgentResult
         receivedResult = true
-        assistantContent = result.response || result.clarification?.question || '已完成当前请求。'
+        assistantContent = result.response || result.clarification?.question || t('returnedResult')
         setLatestResult(result)
         setActivePanel(result.report?.markdown ? 'report' : 'analysis')
         replaceMessage(assistantMessageId, (message) => ({
@@ -713,7 +731,7 @@ export function AIConsole() {
       })
 
       if (!response.ok || !response.body) {
-        throw new Error(`请求失败: HTTP ${response.status}`)
+        throw new Error(`${t('requestFailedHttp')}: HTTP ${response.status}`)
       }
 
       const reader = response.body.getReader()
@@ -758,7 +776,7 @@ export function AIConsole() {
           }
 
           if (payload.type === 'interaction_update') {
-            const interactionMessage = buildInteractionMessage(payload)
+            const interactionMessage = buildInteractionMessage(payload, t)
             assistantContent = interactionMessage
             replaceMessage(assistantMessageId, (message) => ({
               ...message,
@@ -772,7 +790,7 @@ export function AIConsole() {
             receivedResult = true
             setLatestResult(result)
             setActivePanel(result.report?.markdown ? 'report' : 'analysis')
-            assistantContent = result.response || result.clarification?.question || '已完成当前请求。'
+            assistantContent = result.response || result.clarification?.question || t('returnedResult')
             replaceMessage(assistantMessageId, (message) => ({
               ...message,
               content: assistantContent,
@@ -781,7 +799,7 @@ export function AIConsole() {
           }
 
           if (payload.type === 'error') {
-            const nextError = typeof payload.error === 'string' ? payload.error : '请求失败。'
+            const nextError = typeof payload.error === 'string' ? payload.error : t('requestFailed')
             assistantContent = nextError
             setErrorMessage(nextError)
             replaceMessage(assistantMessageId, (message) => ({
@@ -799,7 +817,7 @@ export function AIConsole() {
         status: message.status === 'error' ? 'error' : 'done',
       }))
     } catch (error) {
-      const nextError = error instanceof Error ? error.message : '请求失败。'
+      const nextError = error instanceof Error ? error.message : t('requestFailed')
 
       if ((receivedResult || assistantContent !== assistantSeed) && nextError === 'Failed to fetch') {
         replaceMessage(assistantMessageId, (message) => ({
@@ -821,12 +839,12 @@ export function AIConsole() {
 
   return (
     <div className="grid min-h-[calc(100vh-5.5rem)] gap-4 xl:grid-cols-[280px_minmax(0,1.3fr)_420px]">
-      <aside className="flex h-full flex-col rounded-[28px] border border-white/10 bg-white/5 backdrop-blur-xl">
-        <div className="border-b border-white/10 px-5 py-4">
-          <p className="text-xs uppercase tracking-[0.24em] text-cyan-200/70">Conversation Memory</p>
-          <h2 className="mt-1 text-lg font-semibold text-white">历史会话</h2>
-          <p className="mt-2 text-sm leading-6 text-slate-400">
-            聊天记录从后端读取，执行分析结果会优先从当前浏览器本地缓存恢复。
+      <aside className="flex h-full flex-col rounded-[28px] border border-border/70 bg-card/80 backdrop-blur-xl dark:border-white/10 dark:bg-white/5">
+        <div className="border-b border-border/70 px-5 py-4 dark:border-white/10">
+          <p className="text-xs uppercase tracking-[0.24em] text-cyan-700/80 dark:text-cyan-200/70">{t('conversationMemory')}</p>
+          <h2 className="mt-1 text-lg font-semibold text-foreground">{t('conversationHistory')}</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {t('conversationHistoryDesc')}
           </p>
           <Button
             type="button"
@@ -835,14 +853,14 @@ export function AIConsole() {
             disabled={isSending}
           >
             <MessageSquarePlus className="h-4 w-4" />
-            新建对话
+            {t('newConversation')}
           </Button>
         </div>
 
         <div className="flex-1 overflow-auto p-3">
           {historyLoading && (
-            <div className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm text-slate-400">
-              正在加载会话列表…
+            <div className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3 text-sm text-muted-foreground dark:border-white/10 dark:bg-white/5">
+              {t('loadingConversations')}
             </div>
           )}
 
@@ -853,8 +871,8 @@ export function AIConsole() {
           )}
 
           {!historyLoading && mergedConversations.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-white/10 bg-white/5 px-4 py-6 text-sm text-slate-400">
-              还没有历史会话。发送第一条消息后，这里会出现可切换的会话列表。
+            <div className="rounded-2xl border border-dashed border-border/70 bg-background/70 px-4 py-6 text-sm text-muted-foreground dark:border-white/10 dark:bg-white/5">
+              {t('noConversationHistory')}
             </div>
           )}
 
@@ -873,19 +891,19 @@ export function AIConsole() {
                   className={cn(
                     'w-full rounded-[22px] border px-4 py-3 text-left transition',
                     isActive
-                      ? 'border-cyan-300/40 bg-cyan-300/12 text-white'
-                      : 'border-white/10 bg-white/5 text-slate-300 hover:border-white/20 hover:bg-white/10'
+                      ? 'border-cyan-300/40 bg-cyan-300/12 text-foreground dark:text-white'
+                      : 'border-border/70 bg-background/70 text-muted-foreground hover:border-cyan-300/30 hover:bg-accent/10 dark:border-white/10 dark:bg-white/5'
                   )}
                 >
                   <div className="line-clamp-2 text-sm font-medium leading-6">
-                    {conversation.title || '未命名会话'}
+                    {conversation.title || t('untitledConversation')}
                   </div>
                   <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
                     <Clock3 className="h-3.5 w-3.5" />
                     <span>{formatDate(conversation.updatedAt || conversation.createdAt || new Date().toISOString())}</span>
                   </div>
                   {preview?.content && (
-                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-400">
+                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
                       {preview.content}
                     </p>
                   )}
@@ -896,26 +914,26 @@ export function AIConsole() {
         </div>
       </aside>
 
-      <section className="relative overflow-hidden rounded-[32px] border border-white/10 bg-slate-950/70 shadow-[0_40px_120px_-50px_rgba(34,211,238,0.45)] backdrop-blur-xl">
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.22),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.18),transparent_30%)]" />
+      <section className="relative overflow-hidden rounded-[32px] border border-border/70 bg-card/85 shadow-[0_40px_120px_-50px_rgba(34,211,238,0.2)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/70 dark:shadow-[0_40px_120px_-50px_rgba(34,211,238,0.45)]">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.12),transparent_30%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.22),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.18),transparent_30%)]" />
         <div className="relative flex h-full flex-col">
-          <div className="border-b border-white/10 px-5 py-4">
+          <div className="border-b border-border/70 px-5 py-4 dark:border-white/10">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.28em] text-cyan-200/70">AI Console</p>
-                <h1 className="mt-1 text-2xl font-semibold text-white">结构工程对话工作台</h1>
+                <p className="text-xs uppercase tracking-[0.28em] text-cyan-700/80 dark:text-cyan-200/70">{t('aiConsoleEyebrow')}</p>
+                <h1 className="mt-1 text-2xl font-semibold text-foreground">{t('aiConsoleTitle')}</h1>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Badge className="border-cyan-400/20 bg-cyan-400/10 text-cyan-100" variant="outline">
-                  默认先理解需求
+                <Badge className="border-cyan-400/20 bg-cyan-400/10 text-cyan-700 dark:text-cyan-100" variant="outline">
+                  {t('aiConsoleBadgePrimary')}
                 </Badge>
-                <Badge className="border-white/10 bg-white/5 text-slate-300" variant="outline">
-                  会话式分析助手
+                <Badge className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
+                  {t('aiConsoleBadgeSecondary')}
                 </Badge>
               </div>
             </div>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-400">
-              先像和工程顾问对话一样描述目标、荷载和边界条件。准备好模型后，再切换到执行分析，右侧会持续展示最新分析结果与报告。
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
+              {t('aiConsoleIntro')}
             </p>
           </div>
 
@@ -928,9 +946,9 @@ export function AIConsole() {
                       key={prompt}
                       type="button"
                       onClick={() => setInput(prompt)}
-                      className="rounded-3xl border border-white/10 bg-white/5 p-4 text-left text-sm text-slate-300 transition hover:border-cyan-300/40 hover:bg-cyan-300/10 hover:text-white"
+                      className="rounded-3xl border border-border/70 bg-background/70 p-4 text-left text-sm text-muted-foreground transition hover:border-cyan-300/40 hover:bg-cyan-300/10 hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
                     >
-                      <Sparkles className="mb-3 h-4 w-4 text-cyan-300" />
+                      <Sparkles className="mb-3 h-4 w-4 text-cyan-500 dark:text-cyan-300" />
                       {prompt}
                     </button>
                   ))}
@@ -943,7 +961,7 @@ export function AIConsole() {
                   className={cn('flex gap-3', message.role === 'user' ? 'justify-end' : 'justify-start')}
                 >
                   {message.role === 'assistant' && (
-                    <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-200">
+                    <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-700 dark:text-cyan-200">
                       <Bot className="h-5 w-5" />
                     </div>
                   )}
@@ -952,13 +970,13 @@ export function AIConsole() {
                     className={cn(
                       'max-w-[82%] rounded-[26px] border px-5 py-4 shadow-lg',
                       message.role === 'user'
-                        ? 'border-cyan-400/30 bg-cyan-400/15 text-white'
-                        : 'border-white/10 bg-white/5 text-slate-100'
+                        ? 'border-cyan-400/30 bg-cyan-400/15 text-foreground dark:text-white'
+                        : 'border-border/70 bg-background/70 text-foreground dark:border-white/10 dark:bg-white/5'
                     )}
                   >
-                    <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-slate-400">
+                    <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
                       {message.role === 'user' ? <User className="h-3.5 w-3.5" /> : <BrainCircuit className="h-3.5 w-3.5" />}
-                      <span>{message.role === 'user' ? '你' : 'StructureClaw AI'}</span>
+                      <span>{message.role === 'user' ? t('you') : t('structureClawAi')}</span>
                       <span className="text-slate-500">{formatDate(message.timestamp)}</span>
                     </div>
                     <div className="whitespace-pre-wrap text-sm leading-7">
@@ -970,7 +988,7 @@ export function AIConsole() {
                   </div>
 
                   {message.role === 'user' && (
-                    <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-slate-200">
+                    <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-muted/70 text-muted-foreground dark:bg-white/10 dark:text-slate-200">
                       <User className="h-5 w-5" />
                     </div>
                   )}
@@ -980,7 +998,7 @@ export function AIConsole() {
             </div>
           </div>
 
-          <div className="border-t border-white/10 p-5">
+          <div className="border-t border-border/70 p-5 dark:border-white/10">
             <div className="mx-auto max-w-4xl space-y-4">
               {errorMessage && (
                 <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
@@ -988,35 +1006,35 @@ export function AIConsole() {
                 </div>
               )}
 
-              <div className="rounded-[28px] border border-white/10 bg-black/20 p-3">
+              <div className="rounded-[28px] border border-border/70 bg-background/70 p-3 dark:border-white/10 dark:bg-black/20">
                 <Textarea
-                  className="min-h-[120px] resize-none border-0 bg-transparent px-3 py-3 text-base text-slate-100 placeholder:text-slate-500 focus-visible:ring-0 focus-visible:ring-offset-0"
-                  placeholder="描述你的结构目标、分析意图、荷载条件或希望 AI 先帮你澄清的问题。"
+                  className="min-h-[120px] resize-none border-0 bg-transparent px-3 py-3 text-base text-foreground placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0"
+                  placeholder={t('composerPlaceholder')}
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
                 />
-                <Separator className="bg-white/10" />
+                <Separator className="bg-border dark:bg-white/10" />
 
                 <div className="mt-3 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    className="rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-slate-300 transition hover:border-cyan-300/30 hover:text-white"
+                    className="rounded-full border border-border bg-background/70 px-3 py-1.5 text-sm text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
                     onClick={() => setContextOpen((current) => !current)}
                   >
-                    {contextOpen ? '收起工程上下文' : '展开工程上下文'}
+                    {contextOpen ? t('collapseContext') : t('expandContext')}
                   </button>
-                  <Badge className="border-white/10 bg-white/5 text-slate-400" variant="outline">
-                    会话 ID {conversationId ? conversationId.slice(0, 8) : '未创建'}
+                  <Badge className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
+                    {t('conversationIdShort')} {conversationId ? conversationId.slice(0, 8) : t('notCreated')}
                   </Badge>
                 </div>
 
                 {contextOpen && (
-                  <div className="mt-4 grid gap-4 rounded-[24px] border border-white/10 bg-white/5 p-4 lg:grid-cols-[1fr_300px]">
+                  <div className="mt-4 grid gap-4 rounded-[24px] border border-border/70 bg-background/70 p-4 lg:grid-cols-[1fr_300px] dark:border-white/10 dark:bg-white/5">
                     <div className="space-y-2">
-                      <label className="text-sm font-medium text-slate-200">结构模型 JSON</label>
+                      <label className="text-sm font-medium text-foreground">{t('modelJsonLabel')}</label>
                       <Textarea
-                        className="min-h-[220px] resize-y border-white/10 bg-slate-950/70 text-sm text-slate-200 placeholder:text-slate-500"
-                        placeholder="将 StructureModel v1 JSON 粘贴到这里。留空时，AI 会先通过对话继续澄清建模条件。"
+                        className="min-h-[220px] resize-y border-border/70 bg-card/80 text-sm text-foreground placeholder:text-muted-foreground dark:border-white/10 dark:bg-slate-950/70"
+                        placeholder={t('modelJsonPlaceholder')}
                         value={modelText}
                         onChange={(event) => setModelText(event.target.value)}
                       />
@@ -1024,7 +1042,7 @@ export function AIConsole() {
 
                     <div className="space-y-4">
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-200">分析类型</label>
+                        <label className="text-sm font-medium text-foreground">{t('analysisTypeLabel')}</label>
                         <div className="grid grid-cols-2 gap-2">
                           {analysisTypeOptions.map((option) => (
                             <button
@@ -1034,8 +1052,8 @@ export function AIConsole() {
                               className={cn(
                                 'rounded-2xl border px-3 py-2 text-sm transition',
                                 analysisType === option.value
-                                  ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-100'
-                                  : 'border-white/10 bg-slate-950/40 text-slate-300 hover:text-white'
+                                  ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
+                                  : 'border-border/70 bg-card/80 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
                               )}
                             >
                               {option.label}
@@ -1045,15 +1063,15 @@ export function AIConsole() {
                       </div>
 
                       <div className="space-y-2">
-                        <label className="text-sm font-medium text-slate-200">设计规范</label>
+                        <label className="text-sm font-medium text-foreground">{t('designCodeLabel')}</label>
                         <Input
-                          className="border-white/10 bg-slate-950/70 text-slate-100 placeholder:text-slate-500"
+                          className="border-border/70 bg-card/80 text-foreground placeholder:text-muted-foreground dark:border-white/10 dark:bg-slate-950/70"
                           value={designCode}
                           onChange={(event) => setDesignCode(event.target.value)}
-                          placeholder="例如 GB50017"
+                          placeholder={t('designCodePlaceholder')}
                         />
-                        <p className="text-xs leading-5 text-slate-500">
-                          保留该字段时，执行分析会顺带请求生成更完整的工程报告。
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          {t('designCodeHelp')}
                         </p>
                       </div>
                     </div>
@@ -1061,19 +1079,19 @@ export function AIConsole() {
                 )}
 
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-                  <p className="text-sm text-slate-500">
-                    默认先聊天澄清需求。执行分析前建议补充模型 JSON，或先通过对话明确缺失条件。
+                  <p className="text-sm text-muted-foreground">
+                    {t('composerHelp')}
                   </p>
                   <div className="flex flex-wrap items-center gap-3">
                     <Button
                       type="button"
                       variant="outline"
-                      className="rounded-full border-white/10 bg-white/5 text-slate-100 hover:bg-white/10"
+                      className="rounded-full border-border bg-background/70 text-foreground hover:bg-accent/10 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10"
                       onClick={() => handleSubmit('chat')}
                       disabled={isSending || !input.trim()}
                     >
                       {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
-                      先聊需求
+                      {t('chatFirst')}
                     </Button>
                     <Button
                       type="button"
@@ -1082,7 +1100,7 @@ export function AIConsole() {
                       disabled={isSending || !input.trim()}
                     >
                       {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
-                      执行分析
+                      {t('runAnalysis')}
                     </Button>
                   </div>
                 </div>
@@ -1092,7 +1110,7 @@ export function AIConsole() {
         </div>
       </section>
 
-      <AnalysisPanel result={latestResult} activeTab={activePanel} onTabChange={setActivePanel} />
+      <AnalysisPanel result={latestResult} activeTab={activePanel} onTabChange={setActivePanel} t={t} />
     </div>
   )
 }
