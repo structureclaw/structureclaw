@@ -7,7 +7,6 @@ numpy==1.26.4
 scipy==1.12.0
 
 # Structural Engineering
-pynite==0.0.84
 ananstruct==1.1.0
 
 # Data Processing

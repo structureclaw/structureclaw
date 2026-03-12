@@ -53,7 +53,7 @@
 - 服务启动：Uvicorn
 - 数据建模：Pydantic v2
 - 数值计算：NumPy、SciPy
-- 结构分析相关库：OpenSeesPy、PyNite、ananstruct
+- 结构分析相关库：OpenSeesPy、ananstruct
 - 数据与图形处理：Pandas、Matplotlib、Plotly
 - LLM 相关依赖：OpenAI、LangChain、tiktoken
 - 数据库相关依赖：SQLAlchemy、asyncpg
