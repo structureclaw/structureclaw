@@ -234,7 +234,7 @@ make core-regression
 NODE_ENV=development
 HOST=0.0.0.0
 PORT=8000
-FRONTEND_PORT=3000
+FRONTEND_PORT=30000
 CORE_PORT=8001
 NEXT_PUBLIC_API_URL=http://localhost:<PORT>
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/structureclaw
