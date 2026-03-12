@@ -56,6 +56,9 @@ const run = async () => {
   const resp = await app.inject({
     method: 'POST',
     url: '/api/v1/chat/stream',
+    headers: {
+      origin: 'http://localhost:30000',
+    },
     payload: {
       message: 'stream contract test',
       mode: 'execute',
@@ -67,6 +70,18 @@ const run = async () => {
   });
 
   assert(resp.statusCode === 200, 'chat/stream should return 200');
+  assert(
+    resp.headers['access-control-allow-origin'] === 'http://localhost:30000',
+    'chat/stream should include access-control-allow-origin for allowed origin'
+  );
+  assert(
+    resp.headers['access-control-allow-credentials'] === 'true',
+    'chat/stream should include access-control-allow-credentials for allowed origin'
+  );
+  assert(
+    String(resp.headers.vary || '').includes('Origin'),
+    'chat/stream should include Vary: Origin for allowed origin'
+  );
   const events = parseSseEvents(resp.body);
   assert(events.length >= 4, 'stream should include events and done marker');
   assert(events[events.length - 1] === '[DONE]', 'stream should end with [DONE]');
@@ -83,6 +98,27 @@ const run = async () => {
   const resultTrace = chunks.find((c) => c.type === 'result')?.content?.traceId;
   assert(startTrace && resultTrace && startTrace === resultTrace, 'traceId should match between start and result');
   assert(typeof chunks.find((c) => c.type === 'start')?.content?.startedAt === 'string', 'start event should include startedAt');
+
+  const disallowedResp = await app.inject({
+    method: 'POST',
+    url: '/api/v1/chat/stream',
+    headers: {
+      origin: 'http://evil.example.com',
+    },
+    payload: {
+      message: 'stream contract test',
+      mode: 'execute',
+      traceId: 'trace-stream-request-2',
+      context: {
+        model: { schema_version: '1.0.0' },
+      },
+    },
+  });
+
+  assert(
+    disallowedResp.headers['access-control-allow-origin'] === undefined,
+    'chat/stream should omit access-control-allow-origin for disallowed origin'
+  );
 
   await app.close();
   console.log('[ok] chat stream contract regression');

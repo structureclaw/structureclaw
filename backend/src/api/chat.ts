@@ -92,6 +92,22 @@ const streamMessageSchema = z.object({
   }).optional(),
 });
 
+function setSseCorsHeaders(request: FastifyRequest, reply: FastifyReply) {
+  const origin = request.headers.origin;
+
+  if (!origin) {
+    return;
+  }
+
+  if (!config.corsOrigins.includes(origin)) {
+    return;
+  }
+
+  reply.raw.setHeader('Access-Control-Allow-Origin', origin);
+  reply.raw.setHeader('Access-Control-Allow-Credentials', 'true');
+  reply.raw.setHeader('Vary', 'Origin');
+}
+
 export async function chatRoutes(fastify: FastifyInstance) {
   // 发送消息
   fastify.post('/message', {
@@ -231,6 +247,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     const mode = body.mode || 'auto';
 
     reply.hijack();
+    setSseCorsHeaders(request, reply);
     reply.raw.setHeader('Content-Type', 'text/event-stream');
     reply.raw.setHeader('Cache-Control', 'no-cache');
     reply.raw.setHeader('Connection', 'keep-alive');
