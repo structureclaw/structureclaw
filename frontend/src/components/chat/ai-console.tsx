@@ -188,7 +188,10 @@ function AnalysisPanel({
   const reportSummary = result?.report?.summary?.trim()
 
   return (
-    <div className="flex h-full flex-col rounded-[28px] border border-border/70 bg-card/80 backdrop-blur-xl dark:border-white/10 dark:bg-white/5">
+    <div
+      data-testid="console-output-panel"
+      className="flex h-full min-h-[320px] flex-col rounded-[28px] border border-border/70 bg-card/80 backdrop-blur-xl xl:min-h-0 dark:border-white/10 dark:bg-white/5"
+    >
       <div className="flex items-center justify-between border-b border-border/70 px-5 py-4 dark:border-white/10">
         <div>
           <p className="text-xs uppercase tracking-[0.24em] text-cyan-700/80 dark:text-cyan-200/70">{t('workspaceOutput')}</p>
@@ -222,7 +225,7 @@ function AnalysisPanel({
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto p-5">
+      <div data-testid="console-output-scroll" className="flex-1 overflow-auto p-5 xl:min-h-0">
         {!result && (
           <Card className="border-border/70 bg-card/85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/40">
             <CardHeader>
@@ -877,8 +880,14 @@ export function AIConsole() {
   }
 
   return (
-    <div className="grid min-h-[calc(100vh-5.5rem)] gap-4 xl:grid-cols-[280px_minmax(0,1.3fr)_420px]">
-      <aside className="flex h-full flex-col rounded-[28px] border border-border/70 bg-card/80 backdrop-blur-xl dark:border-white/10 dark:bg-white/5">
+    <div
+      data-testid="console-layout-grid"
+      className="grid min-h-[calc(100vh-5.5rem)] gap-4 xl:h-[calc(100vh-5.5rem)] xl:min-h-0 xl:grid-cols-[280px_minmax(0,1.3fr)_420px] xl:overflow-hidden"
+    >
+      <aside
+        data-testid="console-history-panel"
+        className="flex h-full min-h-[320px] flex-col rounded-[28px] border border-border/70 bg-card/80 backdrop-blur-xl xl:min-h-0 dark:border-white/10 dark:bg-white/5"
+      >
         <div className="border-b border-border/70 px-5 py-4 dark:border-white/10">
           <p className="text-xs uppercase tracking-[0.24em] text-cyan-700/80 dark:text-cyan-200/70">{t('conversationMemory')}</p>
           <h2 className="mt-1 text-lg font-semibold text-foreground">{t('conversationHistory')}</h2>
@@ -896,7 +905,7 @@ export function AIConsole() {
           </Button>
         </div>
 
-        <div className="flex-1 overflow-auto p-3">
+        <div data-testid="console-history-scroll" className="flex-1 overflow-auto p-3 xl:min-h-0">
           {historyLoading && (
             <div className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3 text-sm text-muted-foreground dark:border-white/10 dark:bg-white/5">
               {t('loadingConversations')}
@@ -953,9 +962,12 @@ export function AIConsole() {
         </div>
       </aside>
 
-      <section className="relative overflow-hidden rounded-[32px] border border-border/70 bg-card/85 shadow-[0_40px_120px_-50px_rgba(34,211,238,0.2)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/70 dark:shadow-[0_40px_120px_-50px_rgba(34,211,238,0.45)]">
+      <section
+        data-testid="console-chat-panel"
+        className="relative overflow-hidden rounded-[32px] border border-border/70 bg-card/85 shadow-[0_40px_120px_-50px_rgba(34,211,238,0.2)] backdrop-blur-xl xl:min-h-0 dark:border-white/10 dark:bg-slate-950/70 dark:shadow-[0_40px_120px_-50px_rgba(34,211,238,0.45)]"
+      >
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.12),transparent_30%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.22),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.18),transparent_30%)]" />
-        <div className="relative flex h-full flex-col">
+        <div className="relative flex h-full min-h-[320px] flex-col xl:min-h-0">
           <div className="border-b border-border/70 px-5 py-4 dark:border-white/10">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
@@ -976,7 +988,11 @@ export function AIConsole() {
             </p>
           </div>
 
-          <div ref={chatScrollRef} className="flex-1 overflow-auto px-5 py-5">
+          <div
+            ref={chatScrollRef}
+            data-testid="console-chat-scroll"
+            className="flex-1 overflow-auto px-5 py-5 xl:min-h-0"
+          >
             <div className="mx-auto flex max-w-4xl flex-col gap-4">
               {messages.length === 1 && (
                 <div className="grid gap-3 md:grid-cols-3">
@@ -1037,7 +1053,7 @@ export function AIConsole() {
             </div>
           </div>
 
-          <div className="border-t border-border/70 p-5 dark:border-white/10">
+          <div data-testid="console-composer" className="border-t border-border/70 p-5 dark:border-white/10">
             <div className="mx-auto max-w-4xl space-y-4">
               {errorMessage && (
                 <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
