@@ -56,6 +56,11 @@ class StaticAnalyzer:
 
         return result
 
+    def _raise_unstable_structure(self) -> None:
+        raise ValueError(
+            "Structure is unstable or insufficiently restrained; please check node restraints / boundary conditions."
+        )
+
     def _run_with_opensees(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
         使用 OpenSeesPy 执行分析
@@ -492,7 +497,13 @@ class StaticAnalyzer:
 
         Kff = K[np.ix_(free_dofs, free_dofs)]
         Ff = F[free_dofs]
-        Uf = np.linalg.solve(Kff, Ff)
+        try:
+            Uf = np.linalg.solve(Kff, Ff)
+        except np.linalg.LinAlgError as exc:
+            try:
+                self._raise_unstable_structure()
+            except ValueError as unstable_error:
+                raise unstable_error from exc
 
         U = np.zeros(dof_count, dtype=float)
         U[free_dofs] = Uf
@@ -632,7 +643,13 @@ class StaticAnalyzer:
 
         Kff = K[np.ix_(free_dofs, free_dofs)]
         Ff = F[free_dofs]
-        Uf = np.linalg.solve(Kff, Ff)
+        try:
+            Uf = np.linalg.solve(Kff, Ff)
+        except np.linalg.LinAlgError as exc:
+            try:
+                self._raise_unstable_structure()
+            except ValueError as unstable_error:
+                raise unstable_error from exc
 
         U = np.zeros(dof_count, dtype=float)
         U[free_dofs] = Uf
@@ -822,7 +839,13 @@ class StaticAnalyzer:
 
         Kff = K[np.ix_(free_dofs, free_dofs)]
         Ff = F[free_dofs]
-        Uf = np.linalg.solve(Kff, Ff)
+        try:
+            Uf = np.linalg.solve(Kff, Ff)
+        except np.linalg.LinAlgError as exc:
+            try:
+                self._raise_unstable_structure()
+            except ValueError as unstable_error:
+                raise unstable_error from exc
 
         U = np.zeros(dof_count, dtype=float)
         U[free_dofs] = Uf
@@ -966,7 +989,13 @@ class StaticAnalyzer:
 
         Kff = K[np.ix_(free_dofs, free_dofs)]
         Ff = F[free_dofs]
-        Uf = np.linalg.solve(Kff, Ff)
+        try:
+            Uf = np.linalg.solve(Kff, Ff)
+        except np.linalg.LinAlgError as exc:
+            try:
+                self._raise_unstable_structure()
+            except ValueError as unstable_error:
+                raise unstable_error from exc
 
         U = np.zeros(dof_count, dtype=float)
         U[free_dofs] = Uf

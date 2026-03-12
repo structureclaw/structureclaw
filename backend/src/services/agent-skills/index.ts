@@ -12,6 +12,7 @@ export type {
   DraftLoadType,
   DraftResult,
   DraftState,
+  DraftSupportType,
   InferredModelType,
   InteractionQuestion,
   ScenarioMatch,

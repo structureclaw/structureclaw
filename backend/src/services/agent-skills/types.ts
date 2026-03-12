@@ -3,6 +3,7 @@ import type { AppLocale } from '../locale.js';
 export type InferredModelType = 'beam' | 'truss' | 'portal-frame' | 'double-span-beam' | 'unknown';
 export type DraftLoadType = 'point' | 'distributed';
 export type DraftLoadPosition = 'end' | 'midspan' | 'full-span' | 'top-nodes' | 'middle-joint' | 'free-joint';
+export type DraftSupportType = 'cantilever' | 'simply-supported' | 'fixed-fixed' | 'fixed-pinned';
 export type ScenarioTemplateKey =
   | 'beam'
   | 'truss'
@@ -33,6 +34,7 @@ export interface DraftState {
   lengthM?: number;
   spanLengthM?: number;
   heightM?: number;
+  supportType?: DraftSupportType;
   loadKN?: number;
   loadType?: DraftLoadType;
   loadPosition?: DraftLoadPosition;
@@ -44,6 +46,7 @@ export interface DraftExtraction {
   lengthM?: number;
   spanLengthM?: number;
   heightM?: number;
+  supportType?: DraftSupportType;
   loadKN?: number;
   loadType?: DraftLoadType;
   loadPosition?: DraftLoadPosition;

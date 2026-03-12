@@ -1,6 +1,6 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { skillExecutionSchema, type SkillExecutionPayload } from './schema.js';
-import { normalizeInferredType, normalizeLoadPosition, normalizeLoadType, normalizeNumber } from './fallback.js';
+import { normalizeInferredType, normalizeLoadPosition, normalizeLoadType, normalizeNumber, normalizeSupportType } from './fallback.js';
 import type { AgentSkillBundle, AgentSkillExecutorInput, DraftExtraction } from './types.js';
 
 function buildSkillPrompt(skills: AgentSkillBundle[]): string {
@@ -27,6 +27,7 @@ function normalizeDraftPatch(patch: SkillExecutionPayload['draftPatch']): DraftE
     lengthM: normalizeNumber(patch.lengthM),
     spanLengthM: normalizeNumber(patch.spanLengthM),
     heightM: normalizeNumber(patch.heightM),
+    supportType: normalizeSupportType(patch.supportType),
     loadKN: normalizeNumber(patch.loadKN),
     loadType: normalizeLoadType(patch.loadType),
     loadPosition: normalizeLoadPosition(patch.loadPosition),

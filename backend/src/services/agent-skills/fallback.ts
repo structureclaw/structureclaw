@@ -6,6 +6,7 @@ import type {
   DraftLoadType,
   DraftResult,
   DraftState,
+  DraftSupportType,
   InferredModelType,
   InteractionQuestion,
   ScenarioMatch,
@@ -35,6 +36,12 @@ function extractNumber(text: string, patterns: RegExp[], groups: number[] = [1])
 
 export function normalizeLoadType(value: unknown): DraftLoadType | undefined {
   return value === 'point' || value === 'distributed' ? value : undefined;
+}
+
+export function normalizeSupportType(value: unknown): DraftSupportType | undefined {
+  return value === 'cantilever' || value === 'simply-supported' || value === 'fixed-fixed' || value === 'fixed-pinned'
+    ? value
+    : undefined;
 }
 
 export function normalizeLoadPosition(value: unknown): DraftLoadPosition | undefined {
@@ -227,6 +234,7 @@ export function extractDraftByRules(message: string): DraftExtraction {
     /(\d+(?:\.\d+)?)\s*(?:kn|千牛)(?!\s*\/\s*m)/i,
     /(load)\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
   ]);
+  const supportType = extractSupportType(text);
   const loadType = extractLoadType(text);
   const loadPosition = extractLoadPosition(text, inferredType, loadType);
 
@@ -235,6 +243,7 @@ export function extractDraftByRules(message: string): DraftExtraction {
     lengthM: lengthM ?? undefined,
     spanLengthM: spanLengthM ?? undefined,
     heightM: heightM ?? undefined,
+    supportType,
     loadKN: loadKN ?? undefined,
     loadType,
     loadPosition,
@@ -266,6 +275,36 @@ export function extractLoadType(text: string): DraftLoadType | undefined {
   }
   if (text.includes('端部') || text.includes('跨中') || text.includes('midspan') || text.includes('tip')) {
     return 'point';
+  }
+  return undefined;
+}
+
+export function extractSupportType(text: string): DraftSupportType | undefined {
+  if (
+    text.includes('fixed-pinned')
+    || text.includes('fixed pinned')
+    || text.includes('固铰')
+    || text.includes('一端固结一端铰支')
+  ) {
+    return 'fixed-pinned';
+  }
+  if (
+    text.includes('fixed-fixed')
+    || text.includes('fixed fixed')
+    || text.includes('两端固结')
+    || text.includes('双固结')
+  ) {
+    return 'fixed-fixed';
+  }
+  if (
+    text.includes('simply supported')
+    || text.includes('simple support')
+    || text.includes('简支')
+  ) {
+    return 'simply-supported';
+  }
+  if (text.includes('cantilever') || text.includes('悬臂')) {
+    return 'cantilever';
   }
   return undefined;
 }
@@ -307,6 +346,7 @@ export function mergeDraftExtraction(preferred: DraftExtraction | null, fallback
     lengthM: preferred?.lengthM ?? fallback.lengthM,
     spanLengthM: preferred?.spanLengthM ?? fallback.spanLengthM,
     heightM: preferred?.heightM ?? fallback.heightM,
+    supportType: preferred?.supportType ?? fallback.supportType,
     loadKN: preferred?.loadKN ?? fallback.loadKN,
     loadType: preferred?.loadType ?? fallback.loadType,
     loadPosition: preferred?.loadPosition ?? fallback.loadPosition,
@@ -324,6 +364,7 @@ export function mergeDraftState(existing: DraftState | undefined, patch: DraftEx
     lengthM: mergedLength,
     spanLengthM,
     heightM: patch.heightM ?? existing?.heightM,
+    supportType: patch.supportType ?? existing?.supportType,
     loadKN: patch.loadKN ?? existing?.loadKN,
     loadType: patch.loadType ?? existing?.loadType,
     loadPosition: patch.loadPosition ?? existing?.loadPosition,
@@ -361,6 +402,9 @@ export function computeMissingFields(state: DraftState): string[] {
   if (state.lengthM === undefined) {
     missing.push('跨度/长度（m）');
   }
+  if (state.inferredType === 'beam' && state.supportType === undefined) {
+    missing.push('支座/边界条件（悬臂/简支/两端固结/固铰）');
+  }
   if (state.loadKN === undefined) {
     missing.push('荷载大小（kN）');
   }
@@ -397,6 +441,9 @@ export function computeMissingCriticalKeys(state: DraftState): string[] {
   if (state.lengthM === undefined) {
     missing.push('lengthM');
   }
+  if (state.inferredType === 'beam' && state.supportType === undefined) {
+    missing.push('supportType');
+  }
   if (state.loadKN === undefined) {
     missing.push('loadKN');
   }
@@ -405,6 +452,9 @@ export function computeMissingCriticalKeys(state: DraftState): string[] {
 
 export function computeMissingLoadDetailKeys(state: DraftState): string[] {
   if (state.inferredType === 'unknown') {
+    return [];
+  }
+  if (state.inferredType === 'beam' && state.supportType === undefined) {
     return [];
   }
   const missing: string[] = [];
@@ -428,6 +478,8 @@ export function mapMissingFieldLabels(missing: string[], locale: AppLocale): str
         return localize(locale, '门式刚架或双跨每跨跨度（m）', 'Span length per bay for the portal frame or double-span beam (m)');
       case 'heightM':
         return localize(locale, '门式刚架柱高（m）', 'Portal-frame column height (m)');
+      case 'supportType':
+        return localize(locale, '支座/边界条件（悬臂/简支/两端固结/固铰）', 'Support condition (cantilever / simply supported / fixed-fixed / fixed-pinned)');
       case 'loadKN':
         return localize(locale, '荷载大小（kN）', 'Load magnitude (kN)');
       case 'loadType':
@@ -438,6 +490,14 @@ export function mapMissingFieldLabels(missing: string[], locale: AppLocale): str
         return key;
     }
   });
+}
+
+export function buildSupportTypeQuestion(locale: AppLocale): string {
+  return localize(
+    locale,
+    '请确认支座/边界条件（悬臂、简支、两端固结或固铰）。',
+    'Please confirm the support condition (cantilever, simply supported, fixed-fixed, or fixed-pinned).'
+  );
 }
 
 export function buildLoadTypeQuestion(type: InferredModelType, locale: AppLocale): string {
@@ -487,6 +547,8 @@ export function buildInteractionQuestions(
         return { paramKey, label: localize(locale, '每跨跨度', 'Span per bay'), question: localize(locale, '请确认门式刚架或双跨梁每跨跨度。', 'Please confirm the span length for each bay of the portal frame or double-span beam.'), unit: 'm', required: true, critical };
       case 'heightM':
         return { paramKey, label: localize(locale, '柱高', 'Column height'), question: localize(locale, '请确认门式刚架柱高。', 'Please confirm the portal-frame column height.'), unit: 'm', required: true, critical };
+      case 'supportType':
+        return { paramKey, label: localize(locale, '支座条件', 'Support condition'), question: buildSupportTypeQuestion(locale), required: true, critical, suggestedValue: 'simply-supported' };
       case 'loadKN':
         return { paramKey, label: localize(locale, '荷载', 'Load'), question: localize(locale, '请确认控制荷载大小。', 'Please confirm the controlling load magnitude.'), unit: 'kN', required: true, critical };
       case 'loadType':
@@ -526,6 +588,60 @@ export function getScenarioLabel(key: ScenarioTemplateKey, locale: AppLocale, bu
     default:
       return localize(locale, '未识别', 'Unclassified');
   }
+}
+
+function buildBeamNodes(length: number, supportType: DraftSupportType) {
+  const fixedRestraint = [true, false, true, false, true, false] as const;
+  const pinnedRestraint = [true, false, true, false, false, false] as const;
+  const rollerRestraint = [false, false, true, false, false, false] as const;
+  let leftRestraint: boolean[] = [...fixedRestraint];
+  let rightRestraint: boolean[] | undefined;
+
+  if (supportType === 'simply-supported') {
+    leftRestraint = [...pinnedRestraint];
+    rightRestraint = [...rollerRestraint];
+  } else if (supportType === 'fixed-fixed') {
+    rightRestraint = [...fixedRestraint];
+  } else if (supportType === 'fixed-pinned') {
+    rightRestraint = [...pinnedRestraint];
+  }
+
+  return {
+    nodes: [
+      { id: '1', x: 0, y: 0, z: 0, restraints: leftRestraint },
+      { id: '2', x: length / 2, y: 0, z: 0 },
+      rightRestraint
+        ? { id: '3', x: length, y: 0, z: 0, restraints: rightRestraint }
+        : { id: '3', x: length, y: 0, z: 0 },
+    ],
+    elements: [
+      { id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' },
+      { id: '2', type: 'beam', nodes: ['2', '3'], material: '1', section: '1' },
+    ],
+    middleNodeId: '2',
+    endNodeId: '3',
+  };
+}
+
+function buildBeamLoads(
+  loadKN: number,
+  loadType: DraftLoadType | undefined,
+  loadPosition: DraftLoadPosition | undefined,
+  middleNodeId: string,
+  endNodeId: string,
+) {
+  if (loadType === 'distributed' || loadPosition === 'full-span') {
+    return [
+      { type: 'distributed', element: '1', wz: -loadKN },
+      { type: 'distributed', element: '2', wz: -loadKN },
+    ];
+  }
+
+  if (loadPosition === 'midspan') {
+    return [{ node: middleNodeId, fy: -loadKN }];
+  }
+
+  return [{ node: endNodeId, fy: -loadKN }];
 }
 
 export function buildModel(state: DraftState): Record<string, unknown> {
@@ -620,16 +736,14 @@ export function buildModel(state: DraftState): Record<string, unknown> {
   }
   const length = state.lengthM!;
   const load = state.loadKN!;
+  const supportType = state.supportType || 'cantilever';
+  const beamNodes = buildBeamNodes(length, supportType);
+  const beamLoads = buildBeamLoads(load, state.loadType, state.loadPosition, beamNodes.middleNodeId, beamNodes.endNodeId);
   return {
     schema_version: '1.0.0',
     unit_system: 'SI',
-    nodes: [
-      { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
-      { id: '2', x: length, y: 0, z: 0 },
-    ],
-    elements: [
-      { id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' },
-    ],
+    nodes: beamNodes.nodes,
+    elements: beamNodes.elements,
     materials: [
       { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
     ],
@@ -637,10 +751,10 @@ export function buildModel(state: DraftState): Record<string, unknown> {
       { id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } },
     ],
     load_cases: [
-      { id: 'LC1', type: 'other', loads: [{ node: '2', fy: -load }] },
+      { id: 'LC1', type: 'other', loads: beamLoads },
     ],
     load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
-    metadata,
+    metadata: { ...metadata, supportType },
   };
 }
 

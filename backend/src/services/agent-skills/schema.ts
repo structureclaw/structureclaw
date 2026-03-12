@@ -8,6 +8,7 @@ export const skillExecutionSchema = z.object({
     lengthM: z.number().finite().optional(),
     spanLengthM: z.number().finite().optional(),
     heightM: z.number().finite().optional(),
+    supportType: z.enum(['cantilever', 'simply-supported', 'fixed-fixed', 'fixed-pinned']).optional(),
     loadKN: z.number().finite().optional(),
     loadType: z.enum(['point', 'distributed']).optional(),
     loadPosition: z.enum(['end', 'midspan', 'full-span', 'top-nodes', 'middle-joint', 'free-joint']).optional(),

@@ -15,6 +15,7 @@ import {
   type DraftLoadType,
   type DraftResult,
   type DraftState,
+  type DraftSupportType,
   type InferredModelType,
   type ScenarioMatch,
   type ScenarioTemplateKey,
@@ -1299,6 +1300,7 @@ export class AgentService {
       lengthM: this.normalizeNumber(values.lengthM),
       spanLengthM: this.normalizeNumber(values.spanLengthM),
       heightM: this.normalizeNumber(values.heightM),
+      supportType: this.normalizeSupportType(values.supportType),
       loadKN: this.normalizeNumber(values.loadKN),
       loadType: this.normalizeLoadType(values.loadType),
       loadPosition: this.normalizeLoadPosition(values.loadPosition),
@@ -1354,6 +1356,13 @@ export class AgentService {
     return undefined;
   }
 
+  private normalizeSupportType(value: unknown): DraftSupportType | undefined {
+    if (value === 'cantilever' || value === 'simply-supported' || value === 'fixed-fixed' || value === 'fixed-pinned') {
+      return value;
+    }
+    return undefined;
+  }
+
   private normalizeLoadPosition(value: unknown): DraftLoadPosition | undefined {
     if (
       value === 'end'
@@ -1377,7 +1386,7 @@ export class AgentService {
   }
 
   private mapMissingFieldLabels(missing: string[], locale: AppLocale): string[] {
-    const structuralKeys = missing.filter((key) => ['inferredType', 'lengthM', 'spanLengthM', 'heightM', 'loadKN', 'loadType', 'loadPosition'].includes(key));
+    const structuralKeys = missing.filter((key) => ['inferredType', 'lengthM', 'spanLengthM', 'heightM', 'supportType', 'loadKN', 'loadType', 'loadPosition'].includes(key));
     const structuralLabels = new Map(
       structuralKeys.map((key) => [key, this.skillRuntime.mapMissingFieldLabels([key], locale)[0] || key])
     );
@@ -1443,7 +1452,7 @@ export class AgentService {
     session: InteractionSession,
     locale: AppLocale,
   ): InteractionQuestion[] {
-    const structuralKeys = missingKeys.filter((key) => ['inferredType', 'lengthM', 'spanLengthM', 'heightM', 'loadKN', 'loadType', 'loadPosition'].includes(key));
+    const structuralKeys = missingKeys.filter((key) => ['inferredType', 'lengthM', 'spanLengthM', 'heightM', 'supportType', 'loadKN', 'loadType', 'loadPosition'].includes(key));
     const structuralQuestions = new Map(
       this.skillRuntime.buildInteractionQuestions(structuralKeys, criticalMissing, session.draft, locale).map((question) => [question.paramKey, question])
     );
@@ -1476,7 +1485,7 @@ export class AgentService {
     if (missingKeys.includes('inferredType')) {
       return 'intent';
     }
-    if (missingKeys.some((key) => key === 'lengthM' || key === 'spanLengthM' || key === 'heightM')) {
+    if (missingKeys.some((key) => key === 'lengthM' || key === 'spanLengthM' || key === 'heightM' || key === 'supportType')) {
       return 'model';
     }
     if (missingKeys.includes('loadKN') || missingKeys.includes('loadType') || missingKeys.includes('loadPosition')) {
@@ -1839,6 +1848,7 @@ export class AgentService {
       lengthM: mergedLength,
       spanLengthM,
       heightM: patch.heightM ?? existing?.heightM,
+      supportType: patch.supportType ?? existing?.supportType,
       loadKN: patch.loadKN ?? existing?.loadKN,
       loadType: patch.loadType ?? existing?.loadType,
       loadPosition: patch.loadPosition ?? existing?.loadPosition,
@@ -1852,6 +1862,7 @@ export class AgentService {
       lengthM: next.lengthM,
       spanLengthM: next.spanLengthM,
       heightM: next.heightM,
+      supportType: next.supportType,
       loadKN: next.loadKN,
       loadType: next.loadType,
       loadPosition: next.loadPosition,
@@ -1869,6 +1880,7 @@ export class AgentService {
       lengthM: preferred?.lengthM ?? fallback.lengthM,
       spanLengthM: preferred?.spanLengthM ?? fallback.spanLengthM,
       heightM: preferred?.heightM ?? fallback.heightM,
+      supportType: preferred?.supportType ?? fallback.supportType,
       loadKN: preferred?.loadKN ?? fallback.loadKN,
       loadType: preferred?.loadType ?? fallback.loadType,
       loadPosition: preferred?.loadPosition ?? fallback.loadPosition,
@@ -1907,6 +1919,9 @@ export class AgentService {
 
     if (state.lengthM === undefined) {
       missing.push('跨度/长度（m）');
+    }
+    if (state.inferredType === 'beam' && state.supportType === undefined) {
+      missing.push('支座/边界条件（悬臂/简支/两端固结/固铰）');
     }
     if (state.loadKN === undefined) {
       missing.push('荷载大小（kN）');
@@ -2010,15 +2025,38 @@ export class AgentService {
 
     const length = state.lengthM!;
     const load = state.loadKN!;
+    const supportType = state.supportType || 'cantilever';
+    const leftRestraint = supportType === 'simply-supported'
+      ? [true, false, true, false, false, false]
+      : [true, false, true, false, true, false];
+    const rightRestraint = supportType === 'simply-supported'
+      ? [false, false, true, false, false, false]
+      : supportType === 'fixed-fixed'
+        ? [true, false, true, false, true, false]
+        : supportType === 'fixed-pinned'
+          ? [true, false, true, false, false, false]
+          : undefined;
+    const loads = state.loadType === 'distributed' || state.loadPosition === 'full-span'
+      ? [
+          { type: 'distributed', element: '1', wz: -load },
+          { type: 'distributed', element: '2', wz: -load },
+        ]
+      : state.loadPosition === 'midspan'
+        ? [{ node: '2', fy: -load }]
+        : [{ node: '3', fy: -load }];
     return {
       schema_version: '1.0.0',
       unit_system: 'SI',
       nodes: [
-        { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
-        { id: '2', x: length, y: 0, z: 0 },
+        { id: '1', x: 0, y: 0, z: 0, restraints: leftRestraint },
+        { id: '2', x: length / 2, y: 0, z: 0 },
+        rightRestraint
+          ? { id: '3', x: length, y: 0, z: 0, restraints: rightRestraint }
+          : { id: '3', x: length, y: 0, z: 0 },
       ],
       elements: [
         { id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' },
+        { id: '2', type: 'beam', nodes: ['2', '3'], material: '1', section: '1' },
       ],
       materials: [
         { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
@@ -2027,10 +2065,10 @@ export class AgentService {
         { id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } },
       ],
       load_cases: [
-        { id: 'LC1', type: 'other', loads: [{ node: '2', fy: -load }] },
+        { id: 'LC1', type: 'other', loads },
       ],
       load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
-      metadata,
+      metadata: { ...metadata, supportType },
     };
   }
 
@@ -2045,6 +2083,7 @@ export class AgentService {
           lengthM: existingState.lengthM,
           spanLengthM: existingState.spanLengthM,
           heightM: existingState.heightM,
+          supportType: existingState.supportType,
           loadKN: existingState.loadKN,
           loadType: existingState.loadType,
           loadPosition: existingState.loadPosition,
@@ -2059,18 +2098,20 @@ export class AgentService {
           '数值统一单位：m, kN。不存在的字段不要输出。',
           `已有参数：${prior}`,
           `用户输入：${message}`,
+          '若已说明梁的支座/边界条件，请提取 supportType（cantilever/simply-supported/fixed-fixed/fixed-pinned）。',
           '若已给出荷载，请同时提取 loadType（point/distributed）与 loadPosition。',
-          '输出示例：{"inferredType":"portal-frame","spanLengthM":6,"heightM":4,"loadKN":20,"loadType":"point","loadPosition":"top-nodes"}',
+          '输出示例：{"inferredType":"beam","lengthM":6,"supportType":"simply-supported","loadKN":20,"loadType":"point","loadPosition":"midspan"}',
         ].join('\n')
       : [
           'You extract structural model draft parameters.',
           'Read the user request and return JSON only, without markdown.',
           'Allowed inferredType values: beam | truss | portal-frame | double-span-beam | unknown.',
           'Use m and kN as units. Omit fields that are not present.',
+          'When beam support or boundary conditions are mentioned, also extract supportType (cantilever/simply-supported/fixed-fixed/fixed-pinned).',
           'When loads are mentioned, also extract loadType (point/distributed) and loadPosition.',
           `Known parameters: ${prior}`,
           `User input: ${message}`,
-          'Example output: {"inferredType":"portal-frame","spanLengthM":6,"heightM":4,"loadKN":20,"loadType":"point","loadPosition":"top-nodes"}',
+          'Example output: {"inferredType":"beam","lengthM":6,"supportType":"simply-supported","loadKN":20,"loadType":"point","loadPosition":"midspan"}',
         ].join('\n');
 
     try {
@@ -2088,6 +2129,7 @@ export class AgentService {
         lengthM: this.normalizeNumber(parsed.lengthM),
         spanLengthM: this.normalizeNumber(parsed.spanLengthM),
         heightM: this.normalizeNumber(parsed.heightM),
+        supportType: this.normalizeSupportType(parsed.supportType),
         loadKN: this.normalizeNumber(parsed.loadKN),
         loadType: this.normalizeLoadType(parsed.loadType),
         loadPosition: this.normalizeLoadPosition(parsed.loadPosition),
@@ -2128,6 +2170,7 @@ export class AgentService {
       lengthM: lengthM ?? undefined,
       spanLengthM: spanLengthM ?? undefined,
       heightM: heightM ?? undefined,
+      supportType: this.extractSupportType(text) ?? undefined,
       loadKN: loadKN ?? undefined,
       loadType,
       loadPosition,
@@ -2159,6 +2202,32 @@ export class AgentService {
     }
     if (text.includes('端部') || text.includes('跨中') || text.includes('midspan') || text.includes('tip')) {
       return 'point';
+    }
+    return undefined;
+  }
+
+  private extractSupportType(text: string): DraftSupportType | undefined {
+    if (
+      text.includes('fixed-pinned')
+      || text.includes('fixed pinned')
+      || text.includes('固铰')
+      || text.includes('一端固结一端铰支')
+    ) {
+      return 'fixed-pinned';
+    }
+    if (
+      text.includes('fixed-fixed')
+      || text.includes('fixed fixed')
+      || text.includes('两端固结')
+      || text.includes('双固结')
+    ) {
+      return 'fixed-fixed';
+    }
+    if (text.includes('simply supported') || text.includes('simple support') || text.includes('简支')) {
+      return 'simply-supported';
+    }
+    if (text.includes('cantilever') || text.includes('悬臂')) {
+      return 'cantilever';
     }
     return undefined;
   }
