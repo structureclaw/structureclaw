@@ -18,6 +18,8 @@ export type AgentInteractionState = 'collecting' | 'confirming' | 'ready' | 'exe
 export type AgentInteractionStage = 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';
 
 type InferredModelType = 'beam' | 'truss' | 'portal-frame' | 'double-span-beam' | 'unknown';
+type DraftLoadType = 'point' | 'distributed';
+type DraftLoadPosition = 'end' | 'midspan' | 'full-span' | 'top-nodes' | 'middle-joint' | 'free-joint';
 type ScenarioTemplateKey =
   | 'beam'
   | 'truss'
@@ -48,6 +50,8 @@ interface DraftState {
   spanLengthM?: number;
   heightM?: number;
   loadKN?: number;
+  loadType?: DraftLoadType;
+  loadPosition?: DraftLoadPosition;
   updatedAt: number;
 }
 
@@ -57,6 +61,8 @@ interface DraftExtraction {
   spanLengthM?: number;
   heightM?: number;
   loadKN?: number;
+  loadType?: DraftLoadType;
+  loadPosition?: DraftLoadPosition;
 }
 
 interface DraftResult {
@@ -1263,7 +1269,7 @@ export class AgentService {
       modelGenerated: Boolean(draft.model),
     });
 
-    const assessment = this.assessInteractionNeeds(workingSession, locale);
+    const assessment = this.assessInteractionNeeds(workingSession, locale, 'chat');
     const state: AgentInteractionState = assessment.criticalMissing.length > 0
       ? 'confirming'
       : assessment.nonCriticalMissing.length > 0
@@ -1339,12 +1345,15 @@ export class AgentService {
     return undefined;
   }
 
-  private assessInteractionNeeds(session: InteractionSession, locale: AppLocale): {
+  private assessInteractionNeeds(session: InteractionSession, locale: AppLocale, mode: AgentRunMode = 'execute'): {
     criticalMissing: string[];
     nonCriticalMissing: string[];
     defaultProposals: InteractionDefaultProposal[];
   } {
     const criticalMissing = this.computeMissingCriticalKeys(session.draft);
+    if (mode === 'chat') {
+      criticalMissing.push(...this.computeMissingLoadDetailKeys(session.draft));
+    }
     const nonCriticalMissing: string[] = [];
     const resolved = session.resolved || {};
 
@@ -1479,6 +1488,8 @@ export class AgentService {
       spanLengthM: this.normalizeNumber(values.spanLengthM),
       heightM: this.normalizeNumber(values.heightM),
       loadKN: this.normalizeNumber(values.loadKN),
+      loadType: this.normalizeLoadType(values.loadType),
+      loadPosition: this.normalizeLoadPosition(values.loadPosition),
     };
     session.draft = this.mergeDraftState(session.draft, nextDraft);
     session.resolved = session.resolved || {};
@@ -1524,6 +1535,27 @@ export class AgentService {
     return 'inline';
   }
 
+  private normalizeLoadType(value: unknown): DraftLoadType | undefined {
+    if (value === 'point' || value === 'distributed') {
+      return value;
+    }
+    return undefined;
+  }
+
+  private normalizeLoadPosition(value: unknown): DraftLoadPosition | undefined {
+    if (
+      value === 'end'
+      || value === 'midspan'
+      || value === 'full-span'
+      || value === 'top-nodes'
+      || value === 'middle-joint'
+      || value === 'free-joint'
+    ) {
+      return value;
+    }
+    return undefined;
+  }
+
   private computeMissingCriticalKeys(state: DraftState): string[] {
     const missing: string[] = [];
     if (state.inferredType === 'unknown') {
@@ -1563,6 +1595,21 @@ export class AgentService {
     return missing;
   }
 
+  private computeMissingLoadDetailKeys(state: DraftState): string[] {
+    if (state.inferredType === 'unknown') {
+      return [];
+    }
+
+    const missing: string[] = [];
+    if (state.loadType === undefined) {
+      missing.push('loadType');
+    }
+    if (state.loadPosition === undefined) {
+      missing.push('loadPosition');
+    }
+    return missing;
+  }
+
   private mapMissingFieldLabels(missing: string[], locale: AppLocale): string[] {
     return missing.map((key) => {
       switch (key) {
@@ -1576,6 +1623,10 @@ export class AgentService {
           return this.localize(locale, '门式刚架柱高（m）', 'Portal-frame column height (m)');
         case 'loadKN':
           return this.localize(locale, '荷载大小（kN）', 'Load magnitude (kN)');
+        case 'loadType':
+          return this.localize(locale, '荷载形式（点荷载/均布荷载）', 'Load type (point / distributed)');
+        case 'loadPosition':
+          return this.localize(locale, '荷载位置（按当前结构模板）', 'Load position (based on the current template)');
         case 'analysisType':
           return this.localize(locale, '分析类型（static/dynamic/seismic/nonlinear）', 'Analysis type (static/dynamic/seismic/nonlinear)');
         case 'designCode':
@@ -1601,7 +1652,7 @@ export class AgentService {
     locale: AppLocale,
   ): AgentInteraction {
     const missingKeys = [...assessment.criticalMissing, ...assessment.nonCriticalMissing];
-    const questions = this.buildInteractionQuestions(missingKeys, assessment.criticalMissing, locale);
+    const questions = this.buildInteractionQuestions(missingKeys, assessment.criticalMissing, session, locale);
     const stage = this.resolveInteractionStage(missingKeys);
     const missingCritical = this.mapMissingFieldLabels(assessment.criticalMissing, locale);
     const missingOptional = this.mapMissingFieldLabels(assessment.nonCriticalMissing, locale);
@@ -1627,7 +1678,12 @@ export class AgentService {
     };
   }
 
-  private buildInteractionQuestions(missingKeys: string[], criticalMissing: string[], locale: AppLocale): InteractionQuestion[] {
+  private buildInteractionQuestions(
+    missingKeys: string[],
+    criticalMissing: string[],
+    session: InteractionSession,
+    locale: AppLocale,
+  ): InteractionQuestion[] {
     return missingKeys.map((paramKey) => {
       const critical = criticalMissing.includes(paramKey);
       switch (paramKey) {
@@ -1641,6 +1697,23 @@ export class AgentService {
           return { paramKey, label: this.localize(locale, '柱高', 'Column height'), question: this.localize(locale, '请确认门式刚架柱高。', 'Please confirm the portal-frame column height.'), unit: 'm', required: true, critical };
         case 'loadKN':
           return { paramKey, label: this.localize(locale, '荷载', 'Load'), question: this.localize(locale, '请确认控制荷载大小。', 'Please confirm the controlling load magnitude.'), unit: 'kN', required: true, critical };
+        case 'loadType':
+          return {
+            paramKey,
+            label: this.localize(locale, '荷载形式', 'Load type'),
+            question: this.buildLoadTypeQuestion(session.draft.inferredType, locale),
+            required: true,
+            critical,
+            suggestedValue: 'point',
+          };
+        case 'loadPosition':
+          return {
+            paramKey,
+            label: this.localize(locale, '荷载位置', 'Load position'),
+            question: this.buildLoadPositionQuestion(session.draft.inferredType, locale),
+            required: true,
+            critical,
+          };
         case 'analysisType':
           return { paramKey, label: this.localize(locale, '分析类型', 'Analysis type'), question: this.localize(locale, '请选择分析类型。', 'Please choose the analysis type.'), required: true, critical, suggestedValue: 'static' };
         case 'autoCodeCheck':
@@ -1666,7 +1739,7 @@ export class AgentService {
     if (missingKeys.some((key) => key === 'lengthM' || key === 'spanLengthM' || key === 'heightM')) {
       return 'model';
     }
-    if (missingKeys.includes('loadKN')) {
+    if (missingKeys.includes('loadKN') || missingKeys.includes('loadType') || missingKeys.includes('loadPosition')) {
       return 'loads';
     }
     if (missingKeys.includes('analysisType')) {
@@ -1686,6 +1759,36 @@ export class AgentService {
       `请先确认以下参数：${questionSummary}。若希望我按保守值自动决策，请回复“你决定”并触发 allow_auto_decide。`,
       `Please confirm the following parameters first: ${questionSummary}. If you want me to choose conservative defaults automatically, reply with "you decide" and trigger allow_auto_decide.`
     );
+  }
+
+  private buildLoadTypeQuestion(type: InferredModelType, locale: AppLocale): string {
+    switch (type) {
+      case 'beam':
+        return this.localize(locale, '请确认荷载形式（点荷载或均布荷载）。', 'Please confirm the load type (point or distributed).');
+      case 'portal-frame':
+        return this.localize(locale, '请确认门式刚架荷载形式（柱顶节点点荷载或檐梁均布荷载）。', 'Please confirm the portal-frame load type (top-node point load or distributed load on the rafter).');
+      case 'double-span-beam':
+        return this.localize(locale, '请确认双跨梁荷载形式（中间节点点荷载或两跨均布荷载）。', 'Please confirm the double-span load type (middle-joint point load or distributed load over both spans).');
+      case 'truss':
+        return this.localize(locale, '请确认桁架荷载形式（当前建议使用节点点荷载）。', 'Please confirm the truss load type (node point load is currently recommended).');
+      default:
+        return this.localize(locale, '请确认荷载形式（点荷载或均布荷载）。', 'Please confirm the load type (point or distributed).');
+    }
+  }
+
+  private buildLoadPositionQuestion(type: InferredModelType, locale: AppLocale): string {
+    switch (type) {
+      case 'beam':
+        return this.localize(locale, '请确认荷载位置（端部/跨中/全跨）。', 'Please confirm the load position (end / midspan / full span).');
+      case 'portal-frame':
+        return this.localize(locale, '请确认荷载位置（柱顶节点/檐梁全跨）。', 'Please confirm the load position (top nodes / full rafter span).');
+      case 'double-span-beam':
+        return this.localize(locale, '请确认荷载位置（中间节点/两跨全跨）。', 'Please confirm the load position (middle joint / full span over both bays).');
+      case 'truss':
+        return this.localize(locale, '请确认荷载位置（受力节点）。', 'Please confirm the loaded joint.');
+      default:
+        return this.localize(locale, '请确认荷载位置。', 'Please confirm the load position.');
+    }
   }
 
   private buildExecutionInteraction(state: 'completed' | 'blocked'): AgentInteraction {
@@ -2043,6 +2146,8 @@ export class AgentService {
       spanLengthM,
       heightM: patch.heightM ?? existing?.heightM,
       loadKN: patch.loadKN ?? existing?.loadKN,
+      loadType: patch.loadType ?? existing?.loadType,
+      loadPosition: patch.loadPosition ?? existing?.loadPosition,
       updatedAt: Date.now(),
     };
   }
@@ -2054,6 +2159,8 @@ export class AgentService {
       spanLengthM: next.spanLengthM,
       heightM: next.heightM,
       loadKN: next.loadKN,
+      loadType: next.loadType,
+      loadPosition: next.loadPosition,
     });
   }
 
@@ -2069,6 +2176,8 @@ export class AgentService {
       spanLengthM: preferred?.spanLengthM ?? fallback.spanLengthM,
       heightM: preferred?.heightM ?? fallback.heightM,
       loadKN: preferred?.loadKN ?? fallback.loadKN,
+      loadType: preferred?.loadType ?? fallback.loadType,
+      loadPosition: preferred?.loadPosition ?? fallback.loadPosition,
     };
   }
 
@@ -2243,6 +2352,8 @@ export class AgentService {
           spanLengthM: existingState.spanLengthM,
           heightM: existingState.heightM,
           loadKN: existingState.loadKN,
+          loadType: existingState.loadType,
+          loadPosition: existingState.loadPosition,
         })
       : '{}';
 
@@ -2254,16 +2365,18 @@ export class AgentService {
           '数值统一单位：m, kN。不存在的字段不要输出。',
           `已有参数：${prior}`,
           `用户输入：${message}`,
-          '输出示例：{"inferredType":"portal-frame","spanLengthM":6,"heightM":4,"loadKN":20}',
+          '若已给出荷载，请同时提取 loadType（point/distributed）与 loadPosition。',
+          '输出示例：{"inferredType":"portal-frame","spanLengthM":6,"heightM":4,"loadKN":20,"loadType":"point","loadPosition":"top-nodes"}',
         ].join('\n')
       : [
           'You extract structural model draft parameters.',
           'Read the user request and return JSON only, without markdown.',
           'Allowed inferredType values: beam | truss | portal-frame | double-span-beam | unknown.',
           'Use m and kN as units. Omit fields that are not present.',
+          'When loads are mentioned, also extract loadType (point/distributed) and loadPosition.',
           `Known parameters: ${prior}`,
           `User input: ${message}`,
-          'Example output: {"inferredType":"portal-frame","spanLengthM":6,"heightM":4,"loadKN":20}',
+          'Example output: {"inferredType":"portal-frame","spanLengthM":6,"heightM":4,"loadKN":20,"loadType":"point","loadPosition":"top-nodes"}',
         ].join('\n');
 
     try {
@@ -2282,6 +2395,8 @@ export class AgentService {
         spanLengthM: this.normalizeNumber(parsed.spanLengthM),
         heightM: this.normalizeNumber(parsed.heightM),
         loadKN: this.normalizeNumber(parsed.loadKN),
+        loadType: this.normalizeLoadType(parsed.loadType),
+        loadPosition: this.normalizeLoadPosition(parsed.loadPosition),
       };
     } catch {
       return null;
@@ -2311,6 +2426,8 @@ export class AgentService {
       /(\d+(?:\.\d+)?)\s*(?:kn|千牛)(?!\s*\/\s*m)/i,
       /(load)\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
     ]);
+    const loadType = this.extractLoadType(text);
+    const loadPosition = this.extractLoadPosition(text, inferredType, loadType);
 
     return {
       inferredType,
@@ -2318,6 +2435,8 @@ export class AgentService {
       spanLengthM: spanLengthM ?? undefined,
       heightM: heightM ?? undefined,
       loadKN: loadKN ?? undefined,
+      loadType,
+      loadPosition,
     };
   }
 
@@ -2335,6 +2454,50 @@ export class AgentService {
       return 'beam';
     }
     return 'unknown';
+  }
+
+  private extractLoadType(text: string): DraftLoadType | undefined {
+    if (text.includes('均布') || text.includes('distributed') || text.includes('uniform') || text.includes('udl')) {
+      return 'distributed';
+    }
+    if (text.includes('点荷载') || text.includes('集中荷载') || text.includes('point load') || text.includes('concentrated')) {
+      return 'point';
+    }
+    if (text.includes('端部') || text.includes('跨中') || text.includes('midspan') || text.includes('tip')) {
+      return 'point';
+    }
+    return undefined;
+  }
+
+  private extractLoadPosition(
+    text: string,
+    inferredType: InferredModelType,
+    loadType: DraftLoadType | undefined,
+  ): DraftLoadPosition | undefined {
+    if (text.includes('柱顶') || text.includes('顶节点') || text.includes('top nodes')) {
+      return 'top-nodes';
+    }
+    if (text.includes('中跨节点') || text.includes('中间节点') || text.includes('middle joint') || text.includes('center joint')) {
+      return 'middle-joint';
+    }
+    if (text.includes('跨中') || text.includes('midspan') || text.includes('mid span')) {
+      return 'midspan';
+    }
+    if (text.includes('全跨') || text.includes('整跨') || text.includes('满跨') || text.includes('full span') || text.includes('entire span')) {
+      return 'full-span';
+    }
+    if (text.includes('端部') || text.includes('端点') || text.includes('tip') || text.includes('free end') || text.includes('at end')) {
+      return 'end';
+    }
+    if (text.includes('节点') || text.includes('joint') || text.includes('node')) {
+      return inferredType === 'double-span-beam' ? 'middle-joint' : 'free-joint';
+    }
+    if (loadType === 'distributed') {
+      return inferredType === 'portal-frame' || inferredType === 'double-span-beam' || inferredType === 'beam'
+        ? 'full-span'
+        : undefined;
+    }
+    return undefined;
   }
 
   private normalizeInferredType(value: unknown): InferredModelType | undefined {
