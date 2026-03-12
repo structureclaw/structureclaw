@@ -124,7 +124,13 @@ class StaticAnalyzer:
         ops.analysis('Static')
 
         # 执行分析
-        ops.analyze(1)
+        analysis_status = ops.analyze(1)
+        if analysis_status != 0:
+            ops.wipe()
+            raise RuntimeError(
+                f"OpenSees static analysis failed with code {analysis_status}. "
+                "The model may be unstable or insufficiently restrained."
+            )
 
         # 提取结果
         displacements = {}
@@ -145,7 +151,7 @@ class StaticAnalyzer:
             try:
                 force = ops.eleForce(int(elem.id))
                 forces[elem.id] = force
-            except:
+            except Exception:
                 pass
 
         # 清理
