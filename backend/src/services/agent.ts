@@ -651,7 +651,6 @@ export class AgentService {
 
     const sessionKey = params.conversationId?.trim();
     const session = await this.getInteractionSession(sessionKey);
-    const existingState = session?.draft;
     const workingSession: InteractionSession = session || {
       draft: { inferredType: 'unknown', updatedAt: Date.now() },
       updatedAt: Date.now(),
@@ -681,7 +680,6 @@ export class AgentService {
         plan,
         sessionKey,
         workingSession,
-        existingState,
       });
     }
 
@@ -691,9 +689,9 @@ export class AgentService {
       const draftCall = this.startToolCall('text-to-model-draft', { message: params.message, conversationId: sessionKey });
       toolCalls.push(draftCall);
 
-      const draft = await this.textToModelDraft(params.message, existingState, locale);
+      const draft = await this.textToModelDraft(params.message, workingSession.draft, locale);
       if (draft.stateToPersist) {
-        workingSession.draft = draft.stateToPersist;
+        workingSession.draft = this.mergePersistedDraftState(workingSession.draft, draft.stateToPersist);
       }
       this.enforceScenarioSupportBoundary(workingSession);
       workingSession.updatedAt = Date.now();
@@ -1242,9 +1240,8 @@ export class AgentService {
     plan: string[];
     sessionKey?: string;
     workingSession: InteractionSession;
-    existingState?: DraftState;
   }): Promise<AgentRunResult> {
-    const { params, traceId, startedAt, startedAtMs, locale, mode, toolCalls, plan, sessionKey, workingSession, existingState } = args;
+    const { params, traceId, startedAt, startedAtMs, locale, mode, toolCalls, plan, sessionKey, workingSession } = args;
 
     plan.push(this.localize(locale, '识别结构场景并匹配对话模板', 'Identify the structural scenario and select the matching dialogue template'));
     plan.push(this.localize(locale, '按当前阶段补齐关键工程参数', 'Collect the key engineering parameters for the current stage'));
@@ -1252,9 +1249,9 @@ export class AgentService {
     const draftCall = this.startToolCall('text-to-model-draft', { message: params.message, conversationId: sessionKey, mode: 'chat' });
     toolCalls.push(draftCall);
 
-    const draft = await this.textToModelDraft(params.message, existingState, locale);
+    const draft = await this.textToModelDraft(params.message, workingSession.draft, locale);
     if (draft.stateToPersist) {
-      workingSession.draft = draft.stateToPersist;
+      workingSession.draft = this.mergePersistedDraftState(workingSession.draft, draft.stateToPersist);
     }
     this.enforceScenarioSupportBoundary(workingSession);
     workingSession.updatedAt = Date.now();
@@ -2046,6 +2043,16 @@ export class AgentService {
       loadKN: patch.loadKN ?? existing?.loadKN,
       updatedAt: Date.now(),
     };
+  }
+
+  private mergePersistedDraftState(existing: DraftState | undefined, next: DraftState): DraftState {
+    return this.mergeDraftState(existing, {
+      inferredType: next.inferredType,
+      lengthM: next.lengthM,
+      spanLengthM: next.spanLengthM,
+      heightM: next.heightM,
+      loadKN: next.loadKN,
+    });
   }
 
   private computeMissingFields(state: DraftState): string[] {
