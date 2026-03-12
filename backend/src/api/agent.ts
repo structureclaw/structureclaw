@@ -21,6 +21,7 @@ const agentRunSchema = z.object({
   conversationId: optionalIdSchema,
   traceId: optionalIdSchema,
   context: z.object({
+    skillIds: z.array(z.string()).optional(),
     model: z.record(z.any()).optional(),
     modelFormat: z.string().optional(),
     analysisType: z.enum(['static', 'dynamic', 'seismic', 'nonlinear']).optional(),
@@ -45,6 +46,15 @@ export async function agentRoutes(fastify: FastifyInstance) {
     },
   }, async (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.send(AgentService.getProtocol());
+  });
+
+  fastify.get('/skills', {
+    schema: {
+      tags: ['Agent'],
+      summary: '查询本地 Markdown Agent Skills',
+    },
+  }, async (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.send(agentService.listSkills());
   });
 
   fastify.post('/run', {

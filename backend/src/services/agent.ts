@@ -8,6 +8,17 @@ import { createChatModel } from '../utils/llm.js';
 import { logger } from '../utils/logger.js';
 import { redis } from '../utils/redis.js';
 import { type AppLocale } from './locale.js';
+import {
+  AgentSkillRuntime,
+  type DraftExtraction,
+  type DraftLoadPosition,
+  type DraftLoadType,
+  type DraftResult,
+  type DraftState,
+  type InferredModelType,
+  type ScenarioMatch,
+  type ScenarioTemplateKey,
+} from './agent-skills/index.js';
 
 export type AgentToolName = 'text-to-model-draft' | 'convert' | 'validate' | 'analyze' | 'code-check' | 'report';
 export type AgentRunMode = 'chat' | 'execute' | 'auto';
@@ -16,62 +27,6 @@ export type AgentReportOutput = 'inline' | 'file';
 export type AgentUserDecision = 'provide_values' | 'confirm_all' | 'allow_auto_decide' | 'revise';
 export type AgentInteractionState = 'collecting' | 'confirming' | 'ready' | 'executing' | 'completed' | 'blocked';
 export type AgentInteractionStage = 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';
-
-type InferredModelType = 'beam' | 'truss' | 'portal-frame' | 'double-span-beam' | 'unknown';
-type DraftLoadType = 'point' | 'distributed';
-type DraftLoadPosition = 'end' | 'midspan' | 'full-span' | 'top-nodes' | 'middle-joint' | 'free-joint';
-type ScenarioTemplateKey =
-  | 'beam'
-  | 'truss'
-  | 'portal-frame'
-  | 'double-span-beam'
-  | 'frame'
-  | 'steel-frame'
-  | 'portal'
-  | 'girder'
-  | 'space-frame'
-  | 'plate-slab'
-  | 'shell'
-  | 'tower'
-  | 'bridge'
-  | 'unknown';
-type ScenarioSupportLevel = 'supported' | 'fallback' | 'unsupported';
-
-interface ScenarioMatch {
-  key: ScenarioTemplateKey;
-  mappedType: InferredModelType;
-  supportLevel: ScenarioSupportLevel;
-  supportNote?: string;
-}
-
-interface DraftState {
-  inferredType: InferredModelType;
-  lengthM?: number;
-  spanLengthM?: number;
-  heightM?: number;
-  loadKN?: number;
-  loadType?: DraftLoadType;
-  loadPosition?: DraftLoadPosition;
-  updatedAt: number;
-}
-
-interface DraftExtraction {
-  inferredType?: InferredModelType;
-  lengthM?: number;
-  spanLengthM?: number;
-  heightM?: number;
-  loadKN?: number;
-  loadType?: DraftLoadType;
-  loadPosition?: DraftLoadPosition;
-}
-
-interface DraftResult {
-  inferredType: InferredModelType;
-  missingFields: string[];
-  model?: Record<string, unknown>;
-  extractionMode: 'llm' | 'rule-based';
-  stateToPersist?: DraftState;
-}
 
 interface InteractionSession {
   draft: DraftState;
@@ -133,6 +88,7 @@ export interface AgentRunParams {
   traceId?: string;
   context?: {
     locale?: AppLocale;
+    skillIds?: string[];
     model?: Record<string, unknown>;
     modelFormat?: string;
     analysisType?: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
@@ -226,6 +182,7 @@ export interface AgentStreamChunk {
 export class AgentService {
   private readonly engineClient: AxiosInstance;
   private readonly llm: ChatOpenAI | null;
+  private readonly skillRuntime: AgentSkillRuntime;
   private static readonly draftStateTtlSeconds = 30 * 60;
 
   constructor() {
@@ -235,6 +192,7 @@ export class AgentService {
     });
 
     this.llm = createChatModel(0.1);
+    this.skillRuntime = new AgentSkillRuntime(this.llm);
   }
 
   private isZh(locale: AppLocale): boolean {
@@ -267,36 +225,7 @@ export class AgentService {
   }
 
   private getScenarioLabel(key: ScenarioTemplateKey, locale: AppLocale): string {
-    switch (key) {
-      case 'beam':
-        return this.localize(locale, '梁', 'Beam');
-      case 'truss':
-        return this.localize(locale, '桁架', 'Truss');
-      case 'portal-frame':
-        return this.localize(locale, '门式刚架', 'Portal Frame');
-      case 'double-span-beam':
-        return this.localize(locale, '双跨梁', 'Double-Span Beam');
-      case 'frame':
-        return this.localize(locale, '框架', 'Frame');
-      case 'steel-frame':
-        return this.localize(locale, '钢框架', 'Steel Frame');
-      case 'portal':
-        return this.localize(locale, '门架/刚架', 'Portal Structure');
-      case 'girder':
-        return this.localize(locale, '主梁/大梁', 'Girder');
-      case 'space-frame':
-        return this.localize(locale, '空间网架', 'Space Frame');
-      case 'plate-slab':
-        return this.localize(locale, '板/楼板', 'Plate or Slab');
-      case 'shell':
-        return this.localize(locale, '壳体', 'Shell');
-      case 'tower':
-        return this.localize(locale, '塔架', 'Tower');
-      case 'bridge':
-        return this.localize(locale, '桥梁', 'Bridge');
-      default:
-        return this.localize(locale, '未识别', 'Unclassified');
-    }
+    return this.skillRuntime.getScenarioLabel(key, locale);
   }
 
   shouldRouteToExecute(message: string): boolean {
@@ -310,6 +239,18 @@ export class AgentService {
       || text.includes('dynamic')
       || text.includes('nonlinear')
       || text.includes('code-check');
+  }
+
+  listSkills() {
+    return this.skillRuntime.listSkills().map((skill) => ({
+      id: skill.id,
+      name: skill.name,
+      description: skill.description,
+      structureType: skill.structureType,
+      stages: skill.stages,
+      triggers: skill.triggers,
+      autoLoadByDefault: skill.autoLoadByDefault,
+    }));
   }
 
   static getProtocol(): AgentProtocol {
@@ -335,6 +276,7 @@ export class AgentService {
           context: {
             type: 'object',
             properties: {
+              skillIds: { type: 'array', items: { type: 'string' } },
               model: { type: 'object' },
               modelFormat: { type: 'string' },
               analysisType: { enum: ['static', 'dynamic', 'seismic', 'nonlinear'] },
@@ -650,6 +592,7 @@ export class AgentService {
     const analysisParameters = params.context?.parameters || {};
     const userDecision = params.context?.userDecision;
     const providedValues = params.context?.providedValues || {};
+    const skillIds = params.context?.skillIds;
 
     const plan: string[] = [];
     const toolCalls: AgentToolCall[] = [];
@@ -671,7 +614,7 @@ export class AgentService {
       workingSession.userApprovedAutoDecide = false;
     }
 
-    const scenario = this.detectScenario(params.message, locale, workingSession.draft.inferredType);
+    const scenario = this.detectScenario(params.message, locale, workingSession.draft.inferredType, skillIds);
     this.applyScenarioMatch(workingSession, scenario);
 
     if (runMode === 'chat') {
@@ -695,7 +638,7 @@ export class AgentService {
       const draftCall = this.startToolCall('text-to-model-draft', { message: params.message, conversationId: sessionKey });
       toolCalls.push(draftCall);
 
-      const draft = await this.textToModelDraft(params.message, workingSession.draft, locale);
+      const draft = await this.textToModelDraft(params.message, workingSession.draft, locale, skillIds);
       if (draft.stateToPersist) {
         workingSession.draft = this.mergePersistedDraftState(workingSession.draft, draft.stateToPersist);
       }
@@ -1029,139 +972,8 @@ export class AgentService {
     }
   }
 
-  private detectScenario(message: string, locale: AppLocale, currentType?: InferredModelType): ScenarioMatch {
-    const text = message.toLowerCase();
-    const supportedFallback = (key: ScenarioTemplateKey, mappedType: InferredModelType, noteZh: string, noteEn: string): ScenarioMatch => ({
-      key,
-      mappedType,
-      supportLevel: 'fallback',
-      supportNote: this.localize(locale, noteZh, noteEn),
-    });
-
-    if (text.includes('space frame') || text.includes('网架')) {
-      return {
-        key: 'space-frame',
-        mappedType: 'unknown',
-        supportLevel: 'unsupported',
-        supportNote: this.localize(
-          locale,
-          '当前对话补参链路还不直接支持空间网架；如果你愿意，可先收敛成梁、桁架、门式刚架或双跨梁进行近似澄清。',
-          'The current guidance flow does not directly support space frames yet. If acceptable, we can first simplify the problem to a beam, truss, portal frame, or double-span beam.'
-        ),
-      };
-    }
-
-    if (text.includes('slab') || text.includes('plate') || text.includes('楼板') || text.includes('板')) {
-      return {
-        key: 'plate-slab',
-        mappedType: 'unknown',
-        supportLevel: 'unsupported',
-        supportNote: this.localize(
-          locale,
-          '当前补参链路还不直接支持板/楼板模型；请先确认是否可以简化为梁系、门式刚架或桁架问题。',
-          'The current guidance flow does not directly support plate or slab models. Please confirm whether the problem can be simplified into beams, portal frames, or trusses.'
-        ),
-      };
-    }
-
-    if (text.includes('shell') || text.includes('壳')) {
-      return {
-        key: 'shell',
-        mappedType: 'unknown',
-        supportLevel: 'unsupported',
-        supportNote: this.localize(
-          locale,
-          '当前补参链路还不直接支持壳体模型；请先说明是否可以收敛到梁、桁架或门式刚架的近似模型。',
-          'The current guidance flow does not directly support shell models. Please clarify whether the problem can be reduced to a beam, truss, or portal-frame approximation.'
-        ),
-      };
-    }
-
-    if (text.includes('tower') || text.includes('塔')) {
-      return {
-        key: 'tower',
-        mappedType: 'unknown',
-        supportLevel: 'unsupported',
-        supportNote: this.localize(
-          locale,
-          '当前补参链路还不直接支持塔架专用模板；如果只是杆系近似，可先按桁架继续澄清。',
-          'The current guidance flow does not directly support tower-specific templates. If a truss approximation is acceptable, we can continue with that.'
-        ),
-      };
-    }
-
-    if (text.includes('bridge') || text.includes('桥')) {
-      return {
-        key: 'bridge',
-        mappedType: 'unknown',
-        supportLevel: 'unsupported',
-        supportNote: this.localize(
-          locale,
-          '当前补参链路还不直接支持桥梁专用模板；若你只想先讨论单梁主梁近似，可收敛到梁模板。',
-          'The current guidance flow does not directly support bridge-specific templates. If you only want a girder-style approximation first, we can narrow the problem to a beam template.'
-        ),
-      };
-    }
-
-    if (text.includes('portal frame') || text.includes('门式刚架')) {
-      return { key: 'portal-frame', mappedType: 'portal-frame', supportLevel: 'supported' };
-    }
-    if (text.includes('double-span') || text.includes('双跨梁')) {
-      return { key: 'double-span-beam', mappedType: 'double-span-beam', supportLevel: 'supported' };
-    }
-    if (text.includes('truss') || text.includes('桁架')) {
-      return { key: 'truss', mappedType: 'truss', supportLevel: 'supported' };
-    }
-    if (text.includes('girder') || text.includes('主梁') || text.includes('大梁')) {
-      return supportedFallback(
-        'girder',
-        'beam',
-        '已将“主梁/大梁”先按梁模板处理；若实际是连续梁或更复杂体系，请继续说明。',
-        '“Girder” has been normalized to the beam template for now. If the actual system is continuous or more complex, please clarify further.'
-      );
-    }
-    if (text.includes('steel frame') || text.includes('钢框架')) {
-      return supportedFallback(
-        'steel-frame',
-        'portal-frame',
-        '已将“钢框架”先收敛到门式刚架模板继续补参；如果是多层多跨框架，请继续说明，我会先做近似澄清。',
-        '“Steel frame” has been narrowed to the portal-frame template for now. If the actual structure is multi-story or multi-bay, please say so and I will keep the guidance approximate.'
-      );
-    }
-    if (text.includes('frame') || text.includes('框架')) {
-      return supportedFallback(
-        'frame',
-        'portal-frame',
-        '已将“框架”先收敛到门式刚架模板继续补参；若不是单榀刚架，请继续补充结构特征。',
-        '“Frame” has been narrowed to the portal-frame template for now. If it is not a single-bay rigid frame, please add more structural detail.'
-      );
-    }
-    if (text.includes('portal') || text.includes('门架') || text.includes('刚架')) {
-      return supportedFallback(
-        'portal',
-        'portal-frame',
-        '已将“门架/刚架”先收敛到门式刚架模板继续补参。',
-        '“Portal structure” has been narrowed to the portal-frame template for continued guidance.'
-      );
-    }
-    if (text.includes('beam') || text.includes('梁') || text.includes('悬臂')) {
-      return { key: 'beam', mappedType: 'beam', supportLevel: 'supported' };
-    }
-
-    if (currentType && currentType !== 'unknown') {
-      return { key: currentType, mappedType: currentType, supportLevel: 'supported' };
-    }
-
-    return {
-      key: 'unknown',
-      mappedType: 'unknown',
-      supportLevel: 'unsupported',
-      supportNote: this.localize(
-        locale,
-        '我还没有从当前描述中稳定识别出可直接补参的结构场景。请先说明它更接近梁、桁架、门式刚架还是双跨梁。',
-        'I have not yet identified a stable structural scenario from the current description. Please tell me whether it is closer to a beam, truss, portal frame, or double-span beam.'
-      ),
-    };
+  private detectScenario(message: string, locale: AppLocale, currentType?: InferredModelType, skillIds?: string[]): ScenarioMatch {
+    return this.skillRuntime.detectScenario(message, locale, currentType, skillIds);
   }
 
   private applyScenarioMatch(session: InteractionSession, scenario: ScenarioMatch): void {
@@ -1255,7 +1067,7 @@ export class AgentService {
     const draftCall = this.startToolCall('text-to-model-draft', { message: params.message, conversationId: sessionKey, mode: 'chat' });
     toolCalls.push(draftCall);
 
-    const draft = await this.textToModelDraft(params.message, workingSession.draft, locale);
+    const draft = await this.textToModelDraft(params.message, workingSession.draft, locale, params.context?.skillIds);
     if (draft.stateToPersist) {
       workingSession.draft = this.mergePersistedDraftState(workingSession.draft, draft.stateToPersist);
     }
@@ -1557,76 +1369,23 @@ export class AgentService {
   }
 
   private computeMissingCriticalKeys(state: DraftState): string[] {
-    const missing: string[] = [];
-    if (state.inferredType === 'unknown') {
-      missing.push('inferredType');
-      return missing;
-    }
-
-    if (state.inferredType === 'portal-frame') {
-      if (state.spanLengthM === undefined) {
-        missing.push('spanLengthM');
-      }
-      if (state.heightM === undefined) {
-        missing.push('heightM');
-      }
-      if (state.loadKN === undefined) {
-        missing.push('loadKN');
-      }
-      return missing;
-    }
-
-    if (state.inferredType === 'double-span-beam') {
-      if (state.spanLengthM === undefined) {
-        missing.push('spanLengthM');
-      }
-      if (state.loadKN === undefined) {
-        missing.push('loadKN');
-      }
-      return missing;
-    }
-
-    if (state.lengthM === undefined) {
-      missing.push('lengthM');
-    }
-    if (state.loadKN === undefined) {
-      missing.push('loadKN');
-    }
-    return missing;
+    return this.skillRuntime.computeMissingCriticalKeys(state);
   }
 
   private computeMissingLoadDetailKeys(state: DraftState): string[] {
-    if (state.inferredType === 'unknown') {
-      return [];
-    }
-
-    const missing: string[] = [];
-    if (state.loadType === undefined) {
-      missing.push('loadType');
-    }
-    if (state.loadPosition === undefined) {
-      missing.push('loadPosition');
-    }
-    return missing;
+    return this.skillRuntime.computeMissingLoadDetailKeys(state);
   }
 
   private mapMissingFieldLabels(missing: string[], locale: AppLocale): string[] {
+    const structuralKeys = missing.filter((key) => ['inferredType', 'lengthM', 'spanLengthM', 'heightM', 'loadKN', 'loadType', 'loadPosition'].includes(key));
+    const structuralLabels = new Map(
+      structuralKeys.map((key) => [key, this.skillRuntime.mapMissingFieldLabels([key], locale)[0] || key])
+    );
     return missing.map((key) => {
+      if (structuralLabels.has(key)) {
+        return structuralLabels.get(key)!;
+      }
       switch (key) {
-        case 'inferredType':
-          return this.localize(locale, '结构类型（门式刚架/双跨梁/梁/平面桁架）', 'Structure type (portal frame / double-span beam / beam / truss)');
-        case 'lengthM':
-          return this.localize(locale, '跨度/长度（m）', 'Span / length (m)');
-        case 'spanLengthM':
-          return this.localize(locale, '门式刚架或双跨每跨跨度（m）', 'Span length per bay for the portal frame or double-span beam (m)');
-        case 'heightM':
-          return this.localize(locale, '门式刚架柱高（m）', 'Portal-frame column height (m)');
-        case 'loadKN':
-          return this.localize(locale, '荷载大小（kN）', 'Load magnitude (kN)');
-        case 'loadType':
-          return this.localize(locale, '荷载形式（点荷载/均布荷载）', 'Load type (point / distributed)');
-        case 'loadPosition':
-          return this.localize(locale, '荷载位置（按当前结构模板）', 'Load position (based on the current template)');
         case 'analysisType':
           return this.localize(locale, '分析类型（static/dynamic/seismic/nonlinear）', 'Analysis type (static/dynamic/seismic/nonlinear)');
         case 'designCode':
@@ -1684,36 +1443,17 @@ export class AgentService {
     session: InteractionSession,
     locale: AppLocale,
   ): InteractionQuestion[] {
+    const structuralKeys = missingKeys.filter((key) => ['inferredType', 'lengthM', 'spanLengthM', 'heightM', 'loadKN', 'loadType', 'loadPosition'].includes(key));
+    const structuralQuestions = new Map(
+      this.skillRuntime.buildInteractionQuestions(structuralKeys, criticalMissing, session.draft, locale).map((question) => [question.paramKey, question])
+    );
     return missingKeys.map((paramKey) => {
       const critical = criticalMissing.includes(paramKey);
+      const structuralQuestion = structuralQuestions.get(paramKey);
+      if (structuralQuestion) {
+        return structuralQuestion;
+      }
       switch (paramKey) {
-        case 'inferredType':
-          return { paramKey, label: this.localize(locale, '结构类型', 'Structure type'), question: this.localize(locale, '请确认结构类型（门式刚架/双跨梁/梁/平面桁架）。', 'Please confirm the structure type (portal frame / double-span beam / beam / truss).'), required: true, critical };
-        case 'lengthM':
-          return { paramKey, label: this.localize(locale, '跨度/长度', 'Span / length'), question: this.localize(locale, '请确认跨度或长度。', 'Please confirm the span or length.'), unit: 'm', required: true, critical };
-        case 'spanLengthM':
-          return { paramKey, label: this.localize(locale, '每跨跨度', 'Span per bay'), question: this.localize(locale, '请确认门式刚架或双跨梁每跨跨度。', 'Please confirm the span length for each bay of the portal frame or double-span beam.'), unit: 'm', required: true, critical };
-        case 'heightM':
-          return { paramKey, label: this.localize(locale, '柱高', 'Column height'), question: this.localize(locale, '请确认门式刚架柱高。', 'Please confirm the portal-frame column height.'), unit: 'm', required: true, critical };
-        case 'loadKN':
-          return { paramKey, label: this.localize(locale, '荷载', 'Load'), question: this.localize(locale, '请确认控制荷载大小。', 'Please confirm the controlling load magnitude.'), unit: 'kN', required: true, critical };
-        case 'loadType':
-          return {
-            paramKey,
-            label: this.localize(locale, '荷载形式', 'Load type'),
-            question: this.buildLoadTypeQuestion(session.draft.inferredType, locale),
-            required: true,
-            critical,
-            suggestedValue: 'point',
-          };
-        case 'loadPosition':
-          return {
-            paramKey,
-            label: this.localize(locale, '荷载位置', 'Load position'),
-            question: this.buildLoadPositionQuestion(session.draft.inferredType, locale),
-            required: true,
-            critical,
-          };
         case 'analysisType':
           return { paramKey, label: this.localize(locale, '分析类型', 'Analysis type'), question: this.localize(locale, '请选择分析类型。', 'Please choose the analysis type.'), required: true, critical, suggestedValue: 'static' };
         case 'autoCodeCheck':
@@ -1762,33 +1502,13 @@ export class AgentService {
   }
 
   private buildLoadTypeQuestion(type: InferredModelType, locale: AppLocale): string {
-    switch (type) {
-      case 'beam':
-        return this.localize(locale, '请确认荷载形式（点荷载或均布荷载）。', 'Please confirm the load type (point or distributed).');
-      case 'portal-frame':
-        return this.localize(locale, '请确认门式刚架荷载形式（柱顶节点点荷载或檐梁均布荷载）。', 'Please confirm the portal-frame load type (top-node point load or distributed load on the rafter).');
-      case 'double-span-beam':
-        return this.localize(locale, '请确认双跨梁荷载形式（中间节点点荷载或两跨均布荷载）。', 'Please confirm the double-span load type (middle-joint point load or distributed load over both spans).');
-      case 'truss':
-        return this.localize(locale, '请确认桁架荷载形式（当前建议使用节点点荷载）。', 'Please confirm the truss load type (node point load is currently recommended).');
-      default:
-        return this.localize(locale, '请确认荷载形式（点荷载或均布荷载）。', 'Please confirm the load type (point or distributed).');
-    }
+    return this.skillRuntime.buildInteractionQuestions(['loadType'], ['loadType'], { inferredType: type, updatedAt: Date.now() }, locale)[0]?.question
+      || this.localize(locale, '请确认荷载形式（点荷载或均布荷载）。', 'Please confirm the load type (point or distributed).');
   }
 
   private buildLoadPositionQuestion(type: InferredModelType, locale: AppLocale): string {
-    switch (type) {
-      case 'beam':
-        return this.localize(locale, '请确认荷载位置（端部/跨中/全跨）。', 'Please confirm the load position (end / midspan / full span).');
-      case 'portal-frame':
-        return this.localize(locale, '请确认荷载位置（柱顶节点/檐梁全跨）。', 'Please confirm the load position (top nodes / full rafter span).');
-      case 'double-span-beam':
-        return this.localize(locale, '请确认荷载位置（中间节点/两跨全跨）。', 'Please confirm the load position (middle joint / full span over both bays).');
-      case 'truss':
-        return this.localize(locale, '请确认荷载位置（受力节点）。', 'Please confirm the loaded joint.');
-      default:
-        return this.localize(locale, '请确认荷载位置。', 'Please confirm the load position.');
-    }
+    return this.skillRuntime.buildInteractionQuestions(['loadPosition'], ['loadPosition'], { inferredType: type, updatedAt: Date.now() }, locale)[0]?.question
+      || this.localize(locale, '请确认荷载位置。', 'Please confirm the load position.');
   }
 
   private buildExecutionInteraction(state: 'completed' | 'blocked'): AgentInteraction {
@@ -2098,34 +1818,8 @@ export class AgentService {
     }
   }
 
-  private async textToModelDraft(message: string, existingState?: DraftState, locale: AppLocale = 'en'): Promise<DraftResult> {
-    const llmExtraction = await this.tryLlmExtract(message, existingState, locale);
-    const ruleExtraction = this.extractDraftByRules(message);
-    const extractionMode: 'llm' | 'rule-based' = llmExtraction ? 'llm' : 'rule-based';
-    const mergedExtraction = this.mergeDraftExtraction(llmExtraction, ruleExtraction);
-
-    const mergedState = this.mergeDraftState(
-      existingState,
-      mergedExtraction,
-    );
-
-    const missingFields = this.computeMissingFields(mergedState);
-    if (missingFields.length > 0) {
-      return {
-        inferredType: mergedState.inferredType,
-        missingFields,
-        extractionMode,
-        stateToPersist: mergedState,
-      };
-    }
-
-    return {
-      inferredType: mergedState.inferredType,
-      missingFields: [],
-      extractionMode,
-      model: this.buildModel(mergedState),
-      stateToPersist: mergedState,
-    };
+  private async textToModelDraft(message: string, existingState?: DraftState, locale: AppLocale = 'en', skillIds?: string[]): Promise<DraftResult> {
+    return this.skillRuntime.textToModelDraft(message, existingState, locale, skillIds);
   }
 
   private mergeDraftState(existing: DraftState | undefined, patch: DraftExtraction): DraftState {
