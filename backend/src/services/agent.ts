@@ -1997,11 +1997,13 @@ export class AgentService {
 
   private async textToModelDraft(message: string, existingState?: DraftState, locale: AppLocale = 'en'): Promise<DraftResult> {
     const llmExtraction = await this.tryLlmExtract(message, existingState, locale);
+    const ruleExtraction = this.extractDraftByRules(message);
     const extractionMode: 'llm' | 'rule-based' = llmExtraction ? 'llm' : 'rule-based';
+    const mergedExtraction = this.mergeDraftExtraction(llmExtraction, ruleExtraction);
 
     const mergedState = this.mergeDraftState(
       existingState,
-      llmExtraction || this.extractDraftByRules(message),
+      mergedExtraction,
     );
 
     const missingFields = this.computeMissingFields(mergedState);
@@ -2053,6 +2055,21 @@ export class AgentService {
       heightM: next.heightM,
       loadKN: next.loadKN,
     });
+  }
+
+  private mergeDraftExtraction(
+    preferred: DraftExtraction | null,
+    fallback: DraftExtraction,
+  ): DraftExtraction {
+    return {
+      inferredType: preferred?.inferredType && preferred.inferredType !== 'unknown'
+        ? preferred.inferredType
+        : fallback.inferredType,
+      lengthM: preferred?.lengthM ?? fallback.lengthM,
+      spanLengthM: preferred?.spanLengthM ?? fallback.spanLengthM,
+      heightM: preferred?.heightM ?? fallback.heightM,
+      loadKN: preferred?.loadKN ?? fallback.loadKN,
+    };
   }
 
   private computeMissingFields(state: DraftState): string[] {
