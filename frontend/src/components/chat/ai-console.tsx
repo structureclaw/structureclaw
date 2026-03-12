@@ -80,6 +80,16 @@ type PersistedConversation = ConversationSummary & {
   latestResult?: AgentResult | null
 }
 
+type AgentSkillSummary = {
+  id: string
+  name: { zh?: string; en?: string }
+  description: { zh?: string; en?: string }
+  structureType?: string
+  stages?: string[]
+  triggers?: string[]
+  autoLoadByDefault?: boolean
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const STORAGE_KEY = 'structureclaw.console.conversations'
 
@@ -523,6 +533,8 @@ export function AIConsole() {
   const [modelText, setModelText] = useState('')
   const [designCode, setDesignCode] = useState('GB50017')
   const [analysisType, setAnalysisType] = useState<AnalysisType>('static')
+  const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([])
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
   const [activePanel, setActivePanel] = useState<PanelTab>('analysis')
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
@@ -617,6 +629,36 @@ export function AIConsole() {
     }
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(conversationArchive))
   }, [conversationArchive])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadSkills() {
+      try {
+        const response = await fetch(`${API_BASE}/api/v1/agent/skills`)
+        if (!response.ok) {
+          return
+        }
+        const payload = await response.json()
+        if (!active || !Array.isArray(payload)) {
+          return
+        }
+        const skills = payload as AgentSkillSummary[]
+        setAvailableSkills(skills)
+        setSelectedSkillIds(skills.filter((skill) => skill.autoLoadByDefault).map((skill) => skill.id))
+      } catch {
+        if (active) {
+          setAvailableSkills([])
+        }
+      }
+    }
+
+    loadSkills()
+
+    return () => {
+      active = false
+    }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -829,6 +871,7 @@ export function AIConsole() {
         action === 'execute'
           ? {
               locale,
+              skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined,
               model: parsedModel.model,
               modelFormat: parsedModel.model ? 'structuremodel-v1' : undefined,
               analysisType,
@@ -839,7 +882,10 @@ export function AIConsole() {
               reportFormat: 'both',
               reportOutput: 'inline',
             }
-          : { locale }
+          : {
+              locale,
+              skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined,
+            }
 
       if (action === 'execute') {
         const response = await fetch(`${API_BASE}/api/v1/chat/execute`, {
@@ -1240,6 +1286,40 @@ export function AIConsole() {
                         />
                         <p className="text-xs leading-5 text-muted-foreground">
                           {t('designCodeHelp')}
+                        </p>
+                      </div>
+
+                      <div className="space-y-2">
+                        <label className="text-sm font-medium text-foreground">{t('skillSelectionLabel')}</label>
+                        <div className="flex flex-wrap gap-2">
+                          {availableSkills.map((skill) => {
+                            const label = locale === 'zh' ? (skill.name.zh || skill.id) : (skill.name.en || skill.id)
+                            const selected = selectedSkillIds.includes(skill.id)
+                            return (
+                              <button
+                                key={skill.id}
+                                type="button"
+                                onClick={() => {
+                                  setSelectedSkillIds((current) => (
+                                    current.includes(skill.id)
+                                      ? current.filter((item) => item !== skill.id)
+                                      : [...current, skill.id]
+                                  ))
+                                }}
+                                className={cn(
+                                  'rounded-2xl border px-3 py-2 text-sm transition',
+                                  selected
+                                    ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
+                                    : 'border-border/70 bg-card/80 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
+                                )}
+                              >
+                                {label}
+                              </button>
+                            )
+                          })}
+                        </div>
+                        <p className="text-xs leading-5 text-muted-foreground">
+                          {t('skillSelectionHelp')}
                         </p>
                       </div>
                     </div>
