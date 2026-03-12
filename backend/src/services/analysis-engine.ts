@@ -21,6 +21,8 @@ export interface AnalysisEngineManifest {
   adapterKey?: string;
   constraints?: Record<string, unknown>;
   installedSource?: string;
+  healthcheckPath?: string;
+  checkMode?: 'ping' | 'analyze' | 'validate';
 }
 
 export class AnalysisEngineCatalogService {
@@ -43,6 +45,25 @@ export class AnalysisEngineCatalogService {
     const payload = await this.listEngines();
     const engines = Array.isArray(payload?.engines) ? payload.engines : [];
     return engines.find((engine: { id?: string }) => engine.id === id) || null;
+  }
+
+  async checkEngine(id: string) {
+    const response = await axios.post(`${this.engineUrl}/engines/${id}/check`, {}, this.engineProxyConfig);
+    return response.data;
+  }
+
+  getManifestSchema() {
+    return {
+      allowedKinds: ['python', 'http'],
+      allowedCapabilities: ['analyze', 'validate', 'code-check'],
+      allowedAnalysisTypes: ['static', 'dynamic', 'seismic', 'nonlinear'],
+      allowedModelFamilies: ['frame', 'truss', 'generic'],
+      allowedAdapterKeys: ['builtin-opensees', 'builtin-simplified'],
+      allowedCheckModes: ['ping', 'analyze', 'validate'],
+      requiredFields: ['id', 'name', 'version', 'kind', 'capabilities'],
+      httpRequiredFields: ['baseUrl', 'supportedAnalysisTypes', 'supportedModelFamilies'],
+      pythonRequiredFields: ['adapterKey'],
+    };
   }
 
   async installEngine(manifest: AnalysisEngineManifest) {
@@ -96,6 +117,12 @@ export class AnalysisEngineCatalogService {
 
     if (!manifest.baseUrl?.trim()) {
       throw new Error('HTTP engine manifests must include a baseUrl');
+    }
+    if (!Array.isArray(manifest.supportedAnalysisTypes) || manifest.supportedAnalysisTypes.length === 0) {
+      throw new Error('HTTP engine manifests must declare supportedAnalysisTypes');
+    }
+    if (!Array.isArray(manifest.supportedModelFamilies) || manifest.supportedModelFamilies.length === 0) {
+      throw new Error('HTTP engine manifests must declare supportedModelFamilies');
     }
   }
 }

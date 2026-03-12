@@ -38,15 +38,33 @@ class AnalysisEngineRegistry:
         builtin = self._builtin_manifests()
         installed = self._load_installed_manifests()
         all_manifests = builtin + installed
-        for manifest in all_manifests:
-            manifest["available"] = self._is_engine_available(manifest)
-        return all_manifests
+        return [self._annotate_engine_status(manifest) for manifest in all_manifests]
 
     def get_engine(self, engine_id: str) -> Optional[Dict[str, Any]]:
         for manifest in self.list_engines():
             if manifest["id"] == engine_id:
                 return manifest
         return None
+
+    def check_engine(self, engine_id: str) -> Dict[str, Any]:
+        manifest = self.get_engine(engine_id)
+        if manifest is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "errorCode": "ENGINE_NOT_FOUND",
+                    "message": f"Analysis engine '{engine_id}' was not found",
+                },
+            )
+        return {
+            "engine": manifest,
+            "check": {
+                "status": manifest["status"],
+                "available": manifest["available"],
+                "unavailableReason": manifest.get("unavailableReason"),
+                "checkedAt": manifest.get("checkedAt"),
+            },
+        }
 
     def validate_model(self, model_payload: Dict[str, Any], engine_id: Optional[str] = None) -> Dict[str, Any]:
         selection = self._select_engine_for("validate", None, model_payload, engine_id)
@@ -279,7 +297,7 @@ class AnalysisEngineRegistry:
             family = self._detect_model_family(model_payload)
             if family not in supported_families:
                 return False
-        if manifest.get("constraints", {}).get("requiresOpenSees") and not self._is_opensees_available():
+        if not manifest.get("available", self._is_engine_available(manifest)):
             return False
         return True
 
@@ -306,21 +324,47 @@ class AnalysisEngineRegistry:
         return "generic"
 
     def _is_engine_available(self, manifest: Dict[str, Any]) -> bool:
+        return self._get_engine_unavailable_reason(manifest) is None
+
+    def _get_engine_unavailable_reason(self, manifest: Dict[str, Any]) -> Optional[str]:
         if not manifest.get("enabled", True):
-            return False
+            return "Engine is disabled"
         if manifest["kind"] == "python" and manifest.get("constraints", {}).get("requiresOpenSees"):
-            return self._is_opensees_available()
+            return self._opensees_unavailable_reason()
         if manifest["kind"] == "http":
-            return isinstance(manifest.get("baseUrl"), str) and bool(manifest.get("baseUrl").strip())
-        return True
+            base_url = manifest.get("baseUrl")
+            if not isinstance(base_url, str) or not base_url.strip():
+                return "HTTP engine is missing baseUrl"
+        return None
+
+    def _annotate_engine_status(self, manifest: Dict[str, Any]) -> Dict[str, Any]:
+        normalized = dict(manifest)
+        unavailable_reason = self._get_engine_unavailable_reason(normalized)
+        normalized["available"] = unavailable_reason is None
+        normalized["status"] = (
+            "disabled"
+            if not normalized.get("enabled", True)
+            else ("available" if unavailable_reason is None else "unavailable")
+        )
+        normalized["unavailableReason"] = unavailable_reason
+        normalized["checkedAt"] = normalized.get("checkedAt") or self._current_timestamp()
+        return normalized
+
+    def _current_timestamp(self) -> str:
+        from datetime import datetime, timezone
+
+        return datetime.now(timezone.utc).isoformat()
 
     def _is_opensees_available(self) -> bool:
+        return self._opensees_unavailable_reason() is None
+
+    def _opensees_unavailable_reason(self) -> Optional[str]:
         try:
             import openseespy.opensees as _ops  # noqa: F401
-            return True
+            return None
         except Exception as error:
             logger.warning("OpenSeesPy runtime is unavailable: %s", error)
-            return False
+            return f"OpenSees runtime is unavailable: {error}"
 
     def _builtin_manifests(self) -> List[Dict[str, Any]]:
         return [

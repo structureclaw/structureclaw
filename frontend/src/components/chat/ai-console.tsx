@@ -57,6 +57,7 @@ type AgentResult = {
   startedAt?: string
   completedAt?: string
   durationMs?: number
+  requestedEngineId?: string
 }
 
 type StreamPayload =
@@ -97,9 +98,13 @@ type AnalysisEngineSummary = {
   kind?: string
   capabilities?: string[]
   supportedAnalysisTypes?: string[]
+  supportedModelFamilies?: string[]
   available?: boolean
   enabled?: boolean
   visibility?: string
+  status?: 'available' | 'unavailable' | 'disabled'
+  unavailableReason?: string
+  routingHints?: string[]
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -233,16 +238,20 @@ function extractSummaryStats(
 
 function extractEngineLabel(
   analysis: Record<string, unknown> | null,
+  result: AgentResult | null,
   t: (key: MessageKey) => string
 ) {
   if (!analysis) return null
   const meta = typeof analysis.meta === 'object' && analysis.meta ? (analysis.meta as Record<string, unknown>) : null
   if (!meta) return null
 
+  const requestedEngineId = typeof result?.requestedEngineId === 'string' ? result.requestedEngineId.trim() : ''
   const engineName = typeof meta.engineName === 'string' ? meta.engineName.trim() : ''
   const engineVersion = typeof meta.engineVersion === 'string' ? meta.engineVersion.trim() : ''
+  const engineId = typeof meta.engineId === 'string' ? meta.engineId.trim() : ''
   const selectionMode = typeof meta.selectionMode === 'string' ? meta.selectionMode.trim() : ''
   const fallbackFrom = typeof meta.fallbackFrom === 'string' ? meta.fallbackFrom.trim() : ''
+  const unavailableReason = typeof meta.unavailableReason === 'string' ? meta.unavailableReason.trim() : ''
 
   if (!engineName && !engineVersion) {
     return null
@@ -258,9 +267,65 @@ function extractEngineLabel(
   return {
     label: t('analysisEngineLabel'),
     value,
+    engineId,
+    requestedEngineId,
     modeLabel,
     fallbackFrom,
+    unavailableReason,
   }
+}
+
+function detectModelFamily(model?: Record<string, unknown>) {
+  const elements = Array.isArray(model?.elements) ? model.elements : []
+  if (!elements.length) {
+    return 'generic'
+  }
+  const types = new Set(
+    elements
+      .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+      .map((item) => String(item.type || ''))
+  )
+  if (types.size > 0 && Array.from(types).every((type) => type === 'truss')) {
+    return 'truss'
+  }
+  if (types.has('beam')) {
+    return 'frame'
+  }
+  return 'generic'
+}
+
+function getEngineStatusLabel(
+  engine: AnalysisEngineSummary,
+  t: (key: MessageKey) => string
+) {
+  if (engine.status === 'disabled' || engine.enabled === false) {
+    return t('engineStatusDisabled')
+  }
+  if (engine.available === false || engine.status === 'unavailable') {
+    return t('engineStatusUnavailable')
+  }
+  return t('engineStatusAvailable')
+}
+
+function getEngineSelectionIssue(
+  engine: AnalysisEngineSummary,
+  analysisType: AnalysisType,
+  modelFamily: string,
+  t: (key: MessageKey) => string
+) {
+  if (engine.status === 'disabled' || engine.enabled === false) {
+    return t('engineStatusDisabled')
+  }
+  if (engine.available === false || engine.status === 'unavailable') {
+    return engine.unavailableReason || t('engineUnavailableGeneric')
+  }
+  if (engine.supportedAnalysisTypes?.length && !engine.supportedAnalysisTypes.includes(analysisType)) {
+    return t('engineUnsupportedAnalysisType')
+  }
+  if (engine.supportedModelFamilies?.length && !engine.supportedModelFamilies.includes(modelFamily)) {
+    return t('engineUnsupportedModelFamily')
+  }
+  return ''
 }
 
 function AnalysisPanel({
@@ -278,7 +343,7 @@ function AnalysisPanel({
 }) {
   const analysis = extractAnalysis(result)
   const stats = extractSummaryStats(analysis, t, locale)
-  const engineInfo = extractEngineLabel(analysis, t)
+  const engineInfo = extractEngineLabel(analysis, result, t)
   const reportMarkdown = result?.report?.markdown?.trim()
   const reportSummary = result?.report?.summary?.trim()
   const guidance = result?.interaction
@@ -369,9 +434,24 @@ function AnalysisPanel({
                       <div className="text-xs uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-200">{engineInfo.label}</div>
                       <div className="mt-2 text-base font-semibold text-foreground">{engineInfo.value}</div>
                       <div className="mt-2 text-sm text-muted-foreground">{engineInfo.modeLabel}</div>
+                      {engineInfo.requestedEngineId ? (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {t('analysisEngineRequestedLabel')} {engineInfo.requestedEngineId}
+                        </div>
+                      ) : null}
+                      {engineInfo.engineId ? (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {t('analysisEngineActualLabel')} {engineInfo.engineId}
+                        </div>
+                      ) : null}
                       {engineInfo.fallbackFrom ? (
                         <div className="mt-1 text-xs text-muted-foreground">
                           {t('analysisEngineFallbackFrom')} {engineInfo.fallbackFrom}
+                        </div>
+                      ) : null}
+                      {engineInfo.unavailableReason ? (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {engineInfo.unavailableReason}
                         </div>
                       ) : null}
                     </div>
@@ -734,7 +814,7 @@ export function AIConsole() {
         if (!active) {
           return
         }
-        setAvailableEngines(engines.filter((engine) => engine.enabled !== false))
+        setAvailableEngines(engines)
       } catch {
         if (active) {
           setAvailableEngines([])
@@ -782,6 +862,23 @@ export function AIConsole() {
       cancelled = true
     }
   }, [t])
+
+  const parsedComposerModel = useMemo(() => {
+    const parsed = parseModelJson(modelText, t)
+    return parsed.model
+  }, [modelText, t])
+
+  const currentModelFamily = useMemo(() => detectModelFamily(parsedComposerModel), [parsedComposerModel])
+
+  const enabledEngines = useMemo(
+    () => availableEngines.filter((engine) => engine.enabled !== false),
+    [availableEngines]
+  )
+
+  const selectedEngineSummary = useMemo(
+    () => enabledEngines.find((engine) => engine.id === selectedEngineId) || null,
+    [enabledEngines, selectedEngineId]
+  )
 
   useEffect(() => {
     if (!conversationId) {
@@ -1006,7 +1103,10 @@ export function AIConsole() {
           throw new Error(t('invalidResponse'))
         }
 
-        const result = payload as AgentResult
+        const result = {
+          ...(payload as AgentResult),
+          requestedEngineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
+        }
         receivedResult = true
         assistantContent = result.response || result.clarification?.question || t('returnedResult')
         setLatestResult(result)
@@ -1086,7 +1186,10 @@ export function AIConsole() {
           }
 
           if (payload.type === 'result' && payload.content && typeof payload.content === 'object') {
-            const result = payload.content as AgentResult
+            const result = {
+              ...(payload.content as AgentResult),
+              requestedEngineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
+            }
             receivedResult = true
             setLatestResult(result)
             setActivePanel(result.report?.markdown ? 'report' : 'analysis')
@@ -1387,7 +1490,7 @@ export function AIConsole() {
                     <Badge className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
                       {t('analysisEngineLabel')} {selectedEngineId === 'auto'
                         ? t('analysisEngineAutoOption')
-                        : (availableEngines.find((engine) => engine.id === selectedEngineId)?.name || selectedEngineId)}
+                        : `${selectedEngineSummary?.name || selectedEngineId} · ${selectedEngineSummary ? getEngineStatusLabel(selectedEngineSummary, t) : t('engineStatusUnavailable')}`}
                     </Badge>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
@@ -1416,6 +1519,10 @@ export function AIConsole() {
                 {contextOpen && (
                   <div className="mt-3 grid gap-4 rounded-[24px] border border-border/70 bg-background/70 p-4 lg:grid-cols-[1fr_300px] dark:border-white/10 dark:bg-white/5">
                     <div className="space-y-2">
+                      <div>
+                        <div className="text-sm font-semibold text-foreground">{t('contextSectionModel')}</div>
+                        <div className="text-xs leading-5 text-muted-foreground">{t('contextSectionModelHelp')}</div>
+                      </div>
                       <label className="text-sm font-medium text-foreground">{t('modelJsonLabel')}</label>
                       <Textarea
                         className="min-h-[220px] resize-y border-border/70 bg-card/80 text-sm text-foreground placeholder:text-muted-foreground dark:border-white/10 dark:bg-slate-950/70"
@@ -1427,6 +1534,10 @@ export function AIConsole() {
 
                     <div className="space-y-4">
                       <div className="space-y-2">
+                        <div>
+                          <div className="text-sm font-semibold text-foreground">{t('contextSectionAnalysis')}</div>
+                          <div className="text-xs leading-5 text-muted-foreground">{t('contextSectionAnalysisHelp')}</div>
+                        </div>
                         <label className="text-sm font-medium text-foreground">{t('analysisTypeLabel')}</label>
                         <div className="grid grid-cols-2 gap-2">
                           {analysisTypeOptions.map((option) => (
@@ -1448,6 +1559,10 @@ export function AIConsole() {
                       </div>
 
                       <div className="space-y-2">
+                        <div>
+                          <div className="text-sm font-semibold text-foreground">{t('contextSectionEngine')}</div>
+                          <div className="text-xs leading-5 text-muted-foreground">{t('contextSectionEngineHelp')}</div>
+                        </div>
                         <label className="text-sm font-medium text-foreground">{t('analysisEngineSelectorLabel')}</label>
                         <div className="grid gap-2">
                           <button
@@ -1463,15 +1578,22 @@ export function AIConsole() {
                             <div className="font-medium">{t('analysisEngineAutoOption')}</div>
                             <div className="mt-1 text-xs leading-5 text-muted-foreground">{t('analysisEngineAutoHelp')}</div>
                           </button>
-                          {availableEngines
-                            .filter((engine) => engine.available !== false && (!engine.supportedAnalysisTypes?.length || engine.supportedAnalysisTypes.includes(analysisType)))
-                            .map((engine) => (
+                          {enabledEngines
+                            .map((engine) => {
+                              const issue = getEngineSelectionIssue(engine, analysisType, currentModelFamily, t)
+                              const selectable = issue.length === 0
+                              return (
                               <button
                                 key={engine.id}
                                 type="button"
-                                onClick={() => setSelectedEngineId(engine.id)}
+                                onClick={() => {
+                                  if (selectable) {
+                                    setSelectedEngineId(engine.id)
+                                  }
+                                }}
+                                disabled={!selectable}
                                 className={cn(
-                                  'rounded-2xl border px-3 py-2 text-left text-sm transition',
+                                  'rounded-2xl border px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-60',
                                   selectedEngineId === engine.id
                                     ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
                                     : 'border-border/70 bg-card/80 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
@@ -1482,10 +1604,19 @@ export function AIConsole() {
                                   {engine.version ? ` v${engine.version}` : ''}
                                 </div>
                                 <div className="mt-1 text-xs leading-5 text-muted-foreground">
-                                  {engine.kind || 'python'}
+                                  {(engine.kind || 'python')} · {getEngineStatusLabel(engine, t)}
                                 </div>
+                                <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                                  {t('analysisTypeLabel')}: {(engine.supportedAnalysisTypes || []).join(', ') || 'all'}
+                                </div>
+                                <div className="mt-1 text-xs leading-5 text-muted-foreground">
+                                  {t('engineModelFamiliesLabel')}: {(engine.supportedModelFamilies || []).join(', ') || 'generic'}
+                                </div>
+                                {issue ? (
+                                  <div className="mt-1 text-xs leading-5 text-amber-600 dark:text-amber-300">{issue}</div>
+                                ) : null}
                               </button>
-                            ))}
+                            )})}
                         </div>
                         <p className="text-xs leading-5 text-muted-foreground">
                           {t('analysisEngineSelectorHelp')}

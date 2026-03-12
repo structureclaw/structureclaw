@@ -133,6 +133,27 @@ async def list_analysis_engines():
     }
 
 
+@app.get("/engines/{engine_id}")
+async def get_analysis_engine(engine_id: str):
+    """返回单个分析引擎详情"""
+    engine = engine_registry.get_engine(engine_id)
+    if engine is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "errorCode": "ENGINE_NOT_FOUND",
+                "message": f"Analysis engine '{engine_id}' was not found",
+            },
+        )
+    return engine
+
+
+@app.post("/engines/{engine_id}/check")
+async def check_analysis_engine(engine_id: str):
+    """检查分析引擎可用性"""
+    return engine_registry.check_engine(engine_id)
+
+
 @app.post("/validate")
 async def validate_structure_model(request: ValidateRequest):
     """校验结构模型并返回标准化摘要"""

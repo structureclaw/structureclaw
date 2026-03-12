@@ -55,9 +55,12 @@ describe('ConsolePage Integration (CONS-13)', () => {
                 name: 'OpenSees Builtin',
                 version: '0.1.0',
                 kind: 'python',
-                available: true,
+                available: false,
                 enabled: true,
+                status: 'unavailable',
+                unavailableReason: 'OpenSees runtime is unavailable',
                 supportedAnalysisTypes: ['static', 'dynamic', 'seismic', 'nonlinear'],
+                supportedModelFamilies: ['frame', 'truss', 'generic'],
               },
               {
                 id: 'builtin-simplified',
@@ -66,7 +69,9 @@ describe('ConsolePage Integration (CONS-13)', () => {
                 kind: 'python',
                 available: true,
                 enabled: true,
+                status: 'available',
                 supportedAnalysisTypes: ['static', 'dynamic', 'seismic'],
+                supportedModelFamilies: ['frame', 'truss', 'generic'],
               },
             ],
           }),
@@ -146,6 +151,16 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
 
     expect(screen.getByText('The default path is to clarify through chat first. Before running analysis, it is recommended to provide model JSON or use chat to identify missing inputs.')).toBeInTheDocument()
+  })
+
+  it('groups model analysis and engine settings inside the single engineering context panel', async () => {
+    await renderConsolePage()
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+
+    expect(screen.getAllByText(/^Model$|^模型$/).length).toBeGreaterThan(0)
+    expect(screen.getAllByText(/^Analysis$|^分析$/).length).toBeGreaterThan(1)
+    expect(screen.getAllByText(/^Engine$|^引擎$/).length).toBeGreaterThan(0)
   })
 
   it('loads conversation history from the backend', async () => {
@@ -304,7 +319,9 @@ describe('ConsolePage Integration (CONS-13)', () => {
                 kind: 'python',
                 available: true,
                 enabled: true,
+                status: 'available',
                 supportedAnalysisTypes: ['static'],
+                supportedModelFamilies: ['frame', 'generic'],
               },
             ],
           }),
@@ -366,6 +383,17 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
   })
 
+  it('shows unavailable engines but disables them in the selector', async () => {
+    await renderConsolePage()
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+
+    const unavailableButton = screen.getByRole('button', { name: /OpenSees Builtin v0\.1\.0/i })
+    expect(unavailableButton).toBeDisabled()
+    expect(screen.getByText(/OpenSees runtime is unavailable|未检测到 OpenSees 运行时/)).toBeInTheDocument()
+    expect(screen.getByText(/Unavailable|不可用/)).toBeInTheDocument()
+  })
+
   it('shows the analysis engine used for execution results', async () => {
     vi.mocked(fetch).mockImplementation(async (input, init) => {
       const url = String(input)
@@ -389,6 +417,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
                 kind: 'python',
                 available: true,
                 enabled: true,
+                status: 'available',
+                supportedModelFamilies: ['frame', 'generic'],
               },
             ],
           }),
@@ -430,6 +460,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
                 engineKind: 'python',
                 selectionMode: 'fallback',
                 fallbackFrom: 'builtin-opensees',
+                unavailableReason: 'OpenSees runtime is unavailable',
               },
               data: {
                 summary: {
@@ -446,6 +477,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     await renderConsolePage()
 
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    fireEvent.click(screen.getByRole('button', { name: /OpenSees Builtin v0\.1\.0/i }))
     fireEvent.change(screen.getAllByRole('textbox')[0], {
       target: { value: 'Analyze this model' },
     })
@@ -456,6 +489,14 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
     expect(screen.getByText(/Fallback engine used|已使用降级引擎/)).toBeInTheDocument()
     expect(screen.getByText(/Fallback from builtin-opensees|原优先引擎 builtin-opensees/)).toBeInTheDocument()
+    expect(screen.getByText(/Requested engine builtin-opensees|请求引擎 builtin-opensees/)).toBeInTheDocument()
+    expect(screen.getByText(/Actual engine builtin-simplified|实际引擎 builtin-simplified/)).toBeInTheDocument()
+  })
+
+  it('does not show an engine manager action on the conversation page', async () => {
+    await renderConsolePage()
+
+    expect(screen.queryByRole('button', { name: /Manage Engines|管理引擎/ })).not.toBeInTheDocument()
   })
 
   it('renders guided discuss-first state in English', async () => {

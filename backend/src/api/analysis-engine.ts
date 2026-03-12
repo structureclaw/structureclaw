@@ -21,6 +21,20 @@ const installManifestSchema = z.object({
   adapterKey: z.string().optional(),
   constraints: z.record(z.any()).optional(),
   installedSource: z.string().optional(),
+  healthcheckPath: z.string().optional(),
+  checkMode: z.enum(['ping', 'analyze', 'validate']).optional(),
+}).superRefine((manifest, ctx) => {
+  if (manifest.kind === 'http') {
+    if (!manifest.baseUrl) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['baseUrl'], message: 'HTTP engines require baseUrl' });
+    }
+    if (!manifest.supportedAnalysisTypes?.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['supportedAnalysisTypes'], message: 'HTTP engines require supportedAnalysisTypes' });
+    }
+    if (!manifest.supportedModelFamilies?.length) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['supportedModelFamilies'], message: 'HTTP engines require supportedModelFamilies' });
+    }
+  }
 });
 
 export async function analysisEngineRoutes(fastify: FastifyInstance) {
@@ -31,6 +45,15 @@ export async function analysisEngineRoutes(fastify: FastifyInstance) {
     },
   }, async (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.send(await service.listEngines());
+  });
+
+  fastify.get('/schema/manifest', {
+    schema: {
+      tags: ['Analysis Engines'],
+      summary: '获取分析引擎 manifest 契约',
+    },
+  }, async (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.send(service.getManifestSchema());
   });
 
   fastify.get('/:id', {
@@ -72,5 +95,14 @@ export async function analysisEngineRoutes(fastify: FastifyInstance) {
     },
   }, async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     return reply.send(await service.setEngineEnabled(request.params.id, false));
+  });
+
+  fastify.post('/:id/check', {
+    schema: {
+      tags: ['Analysis Engines'],
+      summary: '检查分析引擎可用性',
+    },
+  }, async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    return reply.send(await service.checkEngine(request.params.id));
   });
 }
