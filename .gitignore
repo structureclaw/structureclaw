@@ -25,5 +25,3 @@ uploads/*
 !uploads/.gitkeep
 
 frontend/tsconfig.tsbuildinfo
-
-AGENTS.md
