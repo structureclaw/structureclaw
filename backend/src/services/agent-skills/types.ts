@@ -35,12 +35,18 @@ export type SkillStage = 'intent' | 'draft' | 'analysis' | 'design';
 export interface ScenarioMatch {
   key: ScenarioTemplateKey;
   mappedType: InferredModelType;
+  skillId?: string;
   supportLevel: ScenarioSupportLevel;
   supportNote?: string;
 }
 
 export interface DraftState {
   inferredType: InferredModelType;
+  skillId?: string;
+  scenarioKey?: ScenarioTemplateKey;
+  supportLevel?: ScenarioSupportLevel;
+  supportNote?: string;
+  skillState?: Record<string, unknown>;
   lengthM?: number;
   spanLengthM?: number;
   heightM?: number;
@@ -60,10 +66,16 @@ export interface DraftState {
   loadType?: DraftLoadType;
   loadPosition?: DraftLoadPosition;
   updatedAt: number;
+  [key: string]: unknown;
 }
 
 export interface DraftExtraction {
   inferredType?: InferredModelType;
+  skillId?: string;
+  scenarioKey?: ScenarioTemplateKey;
+  supportLevel?: ScenarioSupportLevel;
+  supportNote?: string;
+  skillState?: Record<string, unknown>;
   lengthM?: number;
   spanLengthM?: number;
   heightM?: number;
@@ -82,6 +94,7 @@ export interface DraftExtraction {
   loadKN?: number;
   loadType?: DraftLoadType;
   loadPosition?: DraftLoadPosition;
+  [key: string]: unknown;
 }
 
 export interface DraftResult {
@@ -90,6 +103,7 @@ export interface DraftResult {
   model?: Record<string, unknown>;
   extractionMode: 'llm' | 'rule-based';
   stateToPersist?: DraftState;
+  scenario?: ScenarioMatch;
 }
 
 export interface InteractionQuestion {
@@ -126,6 +140,47 @@ export interface AgentSkillBundle extends AgentSkillMetadata {
   markdownByStage: Partial<Record<SkillStage, string>>;
 }
 
+export interface SkillManifest extends AgentSkillMetadata {
+  scenarioKeys: ScenarioTemplateKey[];
+  priority: number;
+}
+
+export interface SkillDetectionInput {
+  message: string;
+  locale: AppLocale;
+  currentState?: DraftState;
+}
+
+export interface SkillDraftContext {
+  message: string;
+  locale: AppLocale;
+  currentState?: DraftState;
+  llmDraftPatch?: Record<string, unknown> | null;
+  scenario: ScenarioMatch;
+}
+
+export interface SkillMissingResult {
+  critical: string[];
+  optional: string[];
+}
+
+export interface SkillHandler {
+  detectScenario(input: SkillDetectionInput): ScenarioMatch | null;
+  parseProvidedValues(values: Record<string, unknown>): DraftExtraction;
+  extractDraft(input: SkillDraftContext): DraftExtraction;
+  mergeState(existing: DraftState | undefined, patch: DraftExtraction): DraftState;
+  computeMissing(state: DraftState, mode: 'chat' | 'execute'): SkillMissingResult;
+  mapLabels(keys: string[], locale: AppLocale): string[];
+  buildQuestions(keys: string[], criticalMissing: string[], state: DraftState, locale: AppLocale): InteractionQuestion[];
+  buildModel(state: DraftState): Record<string, unknown> | undefined;
+  resolveStage?(missingKeys: string[], state: DraftState): 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';
+}
+
+export interface AgentSkillPlugin extends AgentSkillBundle {
+  manifest: SkillManifest;
+  handler: SkillHandler;
+}
+
 export interface SkillExecutionResult {
   detectedScenario?: ScenarioTemplateKey;
   inferredType?: InferredModelType;
@@ -143,5 +198,5 @@ export interface AgentSkillExecutorInput {
   message: string;
   locale: AppLocale;
   existingState?: DraftState;
-  enabledSkills: AgentSkillBundle[];
+  selectedSkill: AgentSkillPlugin;
 }

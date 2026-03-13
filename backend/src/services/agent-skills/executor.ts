@@ -1,66 +1,26 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { skillExecutionSchema, type SkillExecutionPayload } from './schema.js';
-import {
-  normalizeFloorLoads,
-  normalizeFrameBaseSupportType,
-  normalizeFrameDimension,
-  normalizeInferredType,
-  normalizeLoadPosition,
-  normalizeLoadType,
-  normalizeNumber,
-  normalizeNumberArray,
-  normalizePositiveInteger,
-  normalizeSupportType,
-} from './fallback.js';
-import type { AgentSkillBundle, AgentSkillExecutorInput, DraftExtraction } from './types.js';
+import type { AgentSkillExecutorInput } from './types.js';
 
-function buildSkillPrompt(skills: AgentSkillBundle[]): string {
-  return skills.map((skill) => {
-    const sections = [
-      `# Skill: ${skill.id}`,
-      `Name(zh): ${skill.name.zh}`,
-      `Name(en): ${skill.name.en}`,
-      `Description(zh): ${skill.description.zh}`,
-      `Description(en): ${skill.description.en}`,
-      `Triggers: ${skill.triggers.join(', ')}`,
-      ...Object.entries(skill.markdownByStage).map(([stage, markdown]) => `## ${stage}\n${markdown}`),
-    ];
-    return sections.join('\n');
-  }).join('\n\n');
-}
-
-function normalizeDraftPatch(patch: SkillExecutionPayload['draftPatch']): DraftExtraction | null {
-  if (!patch) {
-    return null;
-  }
-  return {
-    inferredType: normalizeInferredType(patch.inferredType),
-    lengthM: normalizeNumber(patch.lengthM),
-    spanLengthM: normalizeNumber(patch.spanLengthM),
-    heightM: normalizeNumber(patch.heightM),
-    supportType: normalizeSupportType(patch.supportType),
-    frameDimension: normalizeFrameDimension(patch.frameDimension),
-    storyCount: normalizePositiveInteger(patch.storyCount),
-    bayCount: normalizePositiveInteger(patch.bayCount),
-    bayCountX: normalizePositiveInteger(patch.bayCountX),
-    bayCountY: normalizePositiveInteger(patch.bayCountY),
-    storyHeightsM: normalizeNumberArray(patch.storyHeightsM),
-    bayWidthsM: normalizeNumberArray(patch.bayWidthsM),
-    bayWidthsXM: normalizeNumberArray(patch.bayWidthsXM),
-    bayWidthsYM: normalizeNumberArray(patch.bayWidthsYM),
-    floorLoads: normalizeFloorLoads(patch.floorLoads),
-    frameBaseSupportType: normalizeFrameBaseSupportType(patch.frameBaseSupportType),
-    loadKN: normalizeNumber(patch.loadKN),
-    loadType: normalizeLoadType(patch.loadType),
-    loadPosition: normalizeLoadPosition(patch.loadPosition),
-  };
+function buildSkillPrompt(input: AgentSkillExecutorInput): string {
+  const skill = input.selectedSkill;
+  const sections = [
+    `# Skill: ${skill.id}`,
+    `Name(zh): ${skill.name.zh}`,
+    `Name(en): ${skill.name.en}`,
+    `Description(zh): ${skill.description.zh}`,
+    `Description(en): ${skill.description.en}`,
+    `Triggers: ${skill.triggers.join(', ')}`,
+    ...Object.entries(skill.markdownByStage).map(([stage, markdown]) => `## ${stage}\n${markdown}`),
+  ];
+  return sections.join('\n');
 }
 
 export class AgentSkillExecutor {
   constructor(private readonly llm: ChatOpenAI | null) {}
 
-  async execute(input: AgentSkillExecutorInput): Promise<{ parsed: SkillExecutionPayload | null; draftPatch: DraftExtraction | null }> {
-    if (!this.llm || input.enabledSkills.length === 0) {
+  async execute(input: AgentSkillExecutorInput): Promise<{ parsed: SkillExecutionPayload | null; draftPatch: Record<string, unknown> | null }> {
+    if (!this.llm) {
       return { parsed: null, draftPatch: null };
     }
 
@@ -76,8 +36,8 @@ export class AgentSkillExecutor {
         : 'Allowed JSON fields: detectedScenario, inferredType, draftPatch, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote.',
       `Known draft state: ${JSON.stringify(input.existingState || {})}`,
       `User message: ${input.message}`,
-      'Markdown skills:',
-      buildSkillPrompt(input.enabledSkills),
+      'Markdown skill:',
+      buildSkillPrompt(input),
     ].join('\n\n');
 
     try {
@@ -87,7 +47,7 @@ export class AgentSkillExecutor {
       const parsed = skillExecutionSchema.parse(parsedJson);
       return {
         parsed,
-        draftPatch: normalizeDraftPatch(parsed.draftPatch),
+        draftPatch: parsed.draftPatch ?? null,
       };
     } catch {
       return { parsed: null, draftPatch: null };

@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
-import { fileURLToPath } from 'url';
+import { fileURLToPath, pathToFileURL } from 'url';
 import path from 'path';
-import type { AgentSkillBundle, AgentSkillFile, AgentSkillMetadata, SkillStage } from './types.js';
+import type { AgentSkillBundle, AgentSkillFile, AgentSkillMetadata, AgentSkillPlugin, SkillManifest, SkillStage } from './types.js';
 
 interface FrontmatterResult {
   metadata: Record<string, unknown>;
@@ -10,22 +10,38 @@ interface FrontmatterResult {
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
-function resolveSkillRoot(): string {
-  const candidates = [
-    path.resolve(MODULE_DIR, '../../agent-skills'),
-    path.resolve(MODULE_DIR, '../../src/agent-skills'),
-    path.resolve(process.cwd(), 'src/agent-skills'),
-    path.resolve(process.cwd(), 'backend/src/agent-skills'),
-  ];
-
-  const matched = candidates.find((candidate) => existsSync(candidate));
+function resolveSkillRoot(candidates: string[], requiredExtensions?: string[]): string {
+  const matched = candidates.find((candidate) => {
+    if (!existsSync(candidate)) {
+      return false;
+    }
+    if (!requiredExtensions?.length) {
+      return true;
+    }
+    const entries = readdirSync(candidate, { withFileTypes: true });
+    return entries.some((entry) => entry.isDirectory() && requiredExtensions.some((requiredExtension) => existsSync(path.join(candidate, entry.name, requiredExtension))));
+  });
   if (!matched) {
     throw new Error(`Agent skill directory not found. Tried: ${candidates.join(', ')}`);
   }
   return matched;
 }
 
-const SKILL_ROOT = resolveSkillRoot();
+const MODULE_SKILL_ROOT = resolveSkillRoot([
+  path.resolve(MODULE_DIR, '../../agent-skills'),
+  path.resolve(MODULE_DIR, '../../src/agent-skills'),
+  path.resolve(process.cwd(), 'dist/agent-skills'),
+  path.resolve(process.cwd(), 'backend/dist/agent-skills'),
+  path.resolve(process.cwd(), 'src/agent-skills'),
+  path.resolve(process.cwd(), 'backend/src/agent-skills'),
+], ['handler.js', 'handler.ts']);
+
+const MARKDOWN_SKILL_ROOT = resolveSkillRoot([
+  path.resolve(process.cwd(), 'backend/src/agent-skills'),
+  path.resolve(process.cwd(), 'src/agent-skills'),
+  path.resolve(MODULE_DIR, '../../src/agent-skills'),
+  path.resolve(MODULE_DIR, '../../agent-skills'),
+], ['intent.md']);
 
 function parseScalar(raw: string): unknown {
   const value = raw.trim();
@@ -91,20 +107,21 @@ function assertStringArray(value: unknown): string[] {
 
 export class AgentSkillLoader {
   private cache: AgentSkillBundle[] | null = null;
+  private pluginCache: Promise<AgentSkillPlugin[]> | null = null;
 
   loadBundles(): AgentSkillBundle[] {
     if (this.cache) {
       return this.cache;
     }
 
-    const entries = readdirSync(SKILL_ROOT, { withFileTypes: true });
+    const entries = readdirSync(MARKDOWN_SKILL_ROOT, { withFileTypes: true });
     const files: AgentSkillFile[] = [];
 
     for (const entry of entries) {
       if (!entry.isDirectory()) {
         continue;
       }
-      const skillDir = path.join(SKILL_ROOT, entry.name);
+      const skillDir = path.join(MARKDOWN_SKILL_ROOT, entry.name);
       const skillStat = statSync(skillDir);
       if (!skillStat.isDirectory()) {
         continue;
@@ -165,5 +182,59 @@ export class AgentSkillLoader {
 
     this.cache = [...bundlesById.values()].sort((a, b) => a.id.localeCompare(b.id));
     return this.cache;
+  }
+
+  async loadPlugins(): Promise<AgentSkillPlugin[]> {
+    if (this.pluginCache) {
+      return this.pluginCache;
+    }
+
+    this.pluginCache = (async () => {
+      const bundles = this.loadBundles();
+      const bundleById = new Map(bundles.map((bundle) => [bundle.id, bundle]));
+      const entries = readdirSync(MODULE_SKILL_ROOT, { withFileTypes: true });
+      const plugins: AgentSkillPlugin[] = [];
+
+      for (const entry of entries) {
+        if (!entry.isDirectory()) {
+          continue;
+        }
+        const skillDir = path.join(MODULE_SKILL_ROOT, entry.name);
+        const bundle = bundleById.get(entry.name);
+        if (!bundle) {
+          continue;
+        }
+        const manifestModule = await this.importSkillModule(skillDir, 'manifest');
+        const handlerModule = await this.importSkillModule(skillDir, 'handler');
+        const manifest = (manifestModule?.manifest ?? manifestModule?.default) as SkillManifest | undefined;
+        const handler = (handlerModule?.handler ?? handlerModule?.default) as AgentSkillPlugin['handler'] | undefined;
+        if (!manifest || !handler) {
+          continue;
+        }
+        plugins.push({
+          ...bundle,
+          ...manifest,
+          markdownByStage: bundle.markdownByStage,
+          manifest,
+          handler,
+        });
+      }
+
+      return plugins.sort((a, b) => b.manifest.priority - a.manifest.priority || a.id.localeCompare(b.id));
+    })();
+
+    return this.pluginCache;
+  }
+
+  private async importSkillModule(skillDir: string, baseName: 'manifest' | 'handler'): Promise<Record<string, unknown> | null> {
+    const candidates = [
+      path.join(skillDir, `${baseName}.js`),
+      path.join(skillDir, `${baseName}.ts`),
+    ];
+    const matched = candidates.find((candidate) => existsSync(candidate));
+    if (!matched) {
+      return null;
+    }
+    return import(pathToFileURL(matched).href) as Promise<Record<string, unknown>>;
   }
 }
