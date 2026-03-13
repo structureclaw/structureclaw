@@ -7,6 +7,10 @@ cd "$ROOT_DIR"
 echo "Core regression checks"
 
 echo
+echo "==> OpenSees runtime and routing"
+./scripts/validate-opensees-runtime-and-routing.sh
+
+echo
 echo "==> Analyze response contract"
 ./scripts/validate-analyze-contract.sh
 

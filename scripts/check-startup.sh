@@ -62,16 +62,19 @@ if [[ ! -x core/.venv/bin/python ]]; then
   fi
 fi
 
-if [[ -x core/.venv-uv-lite/bin/python ]]; then
-  CORE_PYTHON="core/.venv-uv-lite/bin/python"
-elif [[ -x core/.venv/bin/python ]]; then
+if [[ -x core/.venv/bin/python ]]; then
   CORE_PYTHON="core/.venv/bin/python"
+elif [[ -x core/.venv-uv-lite/bin/python ]]; then
+  CORE_PYTHON="core/.venv-uv-lite/bin/python"
 else
   CORE_PYTHON=""
 fi
 
 if [[ -n "$CORE_PYTHON" ]]; then
   run_check "Core import" "$CORE_PYTHON -c \"import sys; sys.path.insert(0, 'core'); import main; print(main.app.title)\""
+  if [[ "$CORE_PYTHON" == "core/.venv/bin/python" ]]; then
+    run_check "OpenSees runtime smoke test" "PYTHONPATH=core $CORE_PYTHON -m engines.opensees_runtime --json"
+  fi
   run_check "Core simplified analysis" "$CORE_PYTHON -c \"import sys; sys.path.insert(0, 'core'); from main import AnalysisRequest, analyze; from schemas.structure_model_v1 import StructureModelV1, Node, Element, Material, Section; import asyncio; req=AnalysisRequest(type='static', model=StructureModelV1(nodes=[Node(id='1',x=0,y=0,z=0,restraints=[True,True,True,True,True,True]),Node(id='2',x=0,y=0,z=3)], elements=[Element(id='1',type='beam',nodes=['1','2'],material='1',section='1')], materials=[Material(id='1',name='steel',E=200000,nu=0.3,rho=7850,fy=345)], sections=[Section(id='1',name='W',type='beam',properties={'A':0.01,'E':200000,'Iz':0.0001,'Iy':0.0001,'G':79000,'J':0.0001})]), parameters={}); result=asyncio.run(analyze(req)); print(result.success)\""
   run_check "Core analyze response contract" "./scripts/validate-analyze-contract.sh"
   run_check "Core code-check traceability" "./scripts/validate-code-check-traceability.sh"

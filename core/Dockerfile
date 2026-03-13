@@ -17,6 +17,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source
 COPY . .
 
+# Verify OpenSees runtime during image build
+RUN python -m engines.opensees_runtime --json
+
 # Expose port
 EXPOSE 8001
 

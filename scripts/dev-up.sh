@@ -174,6 +174,14 @@ sys.exit(0 if importlib.util.find_spec(module) else 1)
 PY
 }
 
+core_opensees_runtime_available() {
+  if [[ ! -x "$ROOT_DIR/core/.venv/bin/python" ]]; then
+    return 1
+  fi
+
+  PYTHONPATH="$ROOT_DIR/core" "$ROOT_DIR/core/.venv/bin/python" -m engines.opensees_runtime --json >/dev/null 2>&1
+}
+
 should_reset_frontend_cache() {
   local log_file="$LOG_DIR/frontend.log"
 
@@ -274,6 +282,13 @@ if [[ ! -x "$ROOT_DIR/core/.venv/bin/python" ]] || ! core_module_available "uvic
     echo "Using Python 3.11 managed by uv."
     make -C "$ROOT_DIR" setup-core-full-uv
   fi
+fi
+
+if ! core_opensees_runtime_available; then
+  echo "OpenSees runtime check failed in core/.venv."
+  echo "Run: PYTHONPATH=core core/.venv/bin/python -m engines.opensees_runtime --json"
+  echo "The default startup profile requires a working OpenSees runtime for builtin-opensees."
+  exit 1
 fi
 
 if [[ "$SKIP_INFRA" -eq 0 ]]; then
