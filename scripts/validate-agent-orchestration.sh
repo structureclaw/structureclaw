@@ -251,27 +251,21 @@ const run = async () => {
     console.log('[ok] conversation-level clarification carry-over');
   }
 
-  // 6.0) chat-ready should return synchronized model, incomplete chat should not
+  // 6.0) chat with a complete structural model should return synchronized model, incomplete chat should not
   {
     const svc = new AgentService();
 
-    const ready = await svc.run({
-      conversationId: 'conv-chat-ready-model',
-      message: '3m悬臂梁，端部10kN点荷载，静力分析，按GB50017校核，生成报告',
+    const collecting = await svc.run({
+      conversationId: 'conv-chat-complete-model',
+      message: '3m悬臂梁，端部10kN点荷载',
       mode: 'chat',
       context: {
         locale: 'zh',
-        analysisType: 'static',
-        autoCodeCheck: true,
-        designCode: 'GB50017',
-        includeReport: true,
-        reportFormat: 'both',
-        reportOutput: 'inline',
       },
     });
-    assert(ready.success === true, 'chat-ready turn should succeed');
-    assert(ready.interaction?.state === 'ready', `expected ready state, got ${ready.interaction?.state}`);
-    assert(ready.model && Array.isArray(ready.model.nodes), 'chat-ready turn should return synchronized model');
+    assert(collecting.success === true, 'chat complete-model turn should succeed');
+    assert(collecting.interaction?.state === 'collecting', `expected collecting state, got ${collecting.interaction?.state}`);
+    assert(collecting.model && Array.isArray(collecting.model.nodes), 'chat complete-model turn should return synchronized model');
 
     const incomplete = await svc.run({
       conversationId: 'conv-chat-incomplete-model',
@@ -284,7 +278,7 @@ const run = async () => {
     assert(incomplete.success === true, 'incomplete chat turn should succeed');
     assert(incomplete.interaction?.state !== 'ready', 'incomplete chat turn should not be ready');
     assert(incomplete.model === undefined, 'incomplete chat turn should not return synchronized model');
-    console.log('[ok] chat ready model sync contract');
+    console.log('[ok] chat complete-model sync contract');
   }
 
   // 6.1) chat-mode follow-up should shrink missing fields instead of repeating span

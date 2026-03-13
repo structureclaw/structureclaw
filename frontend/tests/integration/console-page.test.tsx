@@ -766,7 +766,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByText('Fill in Structure type first.')).toBeInTheDocument()
   })
 
-  it('synchronizes model json from a ready chat result', async () => {
+  it('synchronizes model json from a collecting chat result once the structural model is complete', async () => {
     window.localStorage.setItem('structureclaw.locale', 'en')
     const synchronizedModel = {
       schema_version: '1.0.0',
@@ -817,7 +817,10 @@ describe('ConsolePage Integration (CONS-13)', () => {
               response: 'The draft model is ready.',
               success: true,
               model: synchronizedModel,
-              interaction: { state: 'ready', pending: { criticalMissing: [], nonCriticalMissing: [] } },
+              interaction: {
+                state: 'collecting',
+                pending: { criticalMissing: [], nonCriticalMissing: ['Analysis type'] },
+              },
             },
           },
         ])

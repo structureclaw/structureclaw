@@ -770,28 +770,24 @@ describe('AgentService orchestration', () => {
     expect(result.interaction?.recommendedNextStep).toContain('Load');
   });
 
-  test('should return synchronized model only when chat input is ready', async () => {
+  test('should return synchronized model once chat has a complete structural model', async () => {
     const svc = new AgentService();
     svc.llm = null;
 
-    const ready = await svc.run({
+    const collecting = await svc.run({
       message: '简支梁，跨度6m，20kN跨中点荷载',
       mode: 'chat',
       context: {
         locale: 'zh',
-        analysisType: 'static',
-        autoCodeCheck: true,
-        designCode: 'GB50017',
-        includeReport: true,
-        reportFormat: 'both',
-        reportOutput: 'inline',
       },
     });
 
-    expect(ready.success).toBe(true);
-    expect(ready.interaction?.state).toBe('ready');
-    expect(ready.model?.schema_version).toBe('1.0.0');
-    expect(Array.isArray(ready.model?.nodes)).toBe(true);
+    expect(collecting.success).toBe(true);
+    expect(collecting.interaction?.state).toBe('collecting');
+    expect(collecting.interaction?.missingOptional).toContain('是否自动规范校核');
+    expect(collecting.interaction?.missingOptional).toContain('是否生成报告');
+    expect(collecting.model?.schema_version).toBe('1.0.0');
+    expect(Array.isArray(collecting.model?.nodes)).toBe(true);
 
     const incomplete = await svc.run({
       message: '我想设计一个梁',
