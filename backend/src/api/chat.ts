@@ -295,6 +295,29 @@ export async function chatRoutes(fastify: FastifyInstance) {
     return reply.send(conversations);
   });
 
+  fastify.delete('/conversation/:id', {
+    schema: {
+      tags: ['Chat'],
+      summary: '删除会话',
+    },
+  }, async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    const { id } = request.params;
+    const userId = request.user?.id;
+
+    const deleted = await chatService.deleteConversation(id, userId);
+    if (!deleted) {
+      return reply.code(404).send({
+        error: 'Conversation not found',
+      });
+    }
+
+    await agentService.clearConversationSession(id);
+    return reply.send({
+      success: true,
+      id,
+    });
+  });
+
   // 流式响应 (SSE)
   fastify.post('/stream', {
     schema: {

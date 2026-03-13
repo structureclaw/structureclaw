@@ -338,6 +338,23 @@ export class ChatService {
     });
   }
 
+  async deleteConversation(id: string, userId?: string) {
+    const conversation = await prisma.conversation.findFirst({
+      where: { id, userId },
+      select: { id: true },
+    });
+
+    if (!conversation) {
+      return null;
+    }
+
+    await prisma.conversation.delete({
+      where: { id: conversation.id },
+    });
+
+    return conversation;
+  }
+
   private getMemory(conversationId: string): BufferMemory {
     if (!this.memories.has(conversationId)) {
       this.memories.set(

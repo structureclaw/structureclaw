@@ -10,6 +10,8 @@ describe('ChatService locale handling', () => {
       messages: [],
     });
     prisma.conversation.findUnique = async () => null;
+    prisma.conversation.findFirst = async () => null;
+    prisma.conversation.delete = async ({ where }) => ({ id: where.id });
     prisma.message.createMany = async () => ({ count: 2 });
     prisma.project.findUnique = async () => null;
   });
@@ -52,5 +54,23 @@ describe('ChatService locale handling', () => {
 
     expect(english.title).toBe('New Conversation');
     expect(chinese.title).toBe('新对话');
+  });
+
+  test('deletes an existing conversation', async () => {
+    prisma.conversation.findFirst = async () => ({ id: 'conv-delete' });
+    const svc = new ChatService();
+
+    const deleted = await svc.deleteConversation('conv-delete');
+
+    expect(deleted).toEqual({ id: 'conv-delete' });
+  });
+
+  test('returns null when deleting a missing conversation', async () => {
+    prisma.conversation.findFirst = async () => null;
+    const svc = new ChatService();
+
+    const deleted = await svc.deleteConversation('conv-missing');
+
+    expect(deleted).toBeNull();
   });
 });

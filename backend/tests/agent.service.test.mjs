@@ -2,6 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import fs from 'node:fs';
 import { AgentService } from '../dist/services/agent.js';
 import { prisma } from '../dist/utils/database.js';
+import { redis } from '../dist/utils/redis.js';
 
 describe('AgentService orchestration', () => {
   test('should execute analyze -> code-check -> report closed loop', async () => {
@@ -65,6 +66,22 @@ describe('AgentService orchestration', () => {
     expect(result.toolCalls.some((c) => c.tool === 'report')).toBe(true);
     expect(result.codeCheck?.code).toBe('GB50017');
     expect(typeof result.report?.markdown).toBe('string');
+  });
+
+  test('should clear stored conversation sessions', async () => {
+    const svc = new AgentService();
+    const deletedKeys = [];
+    redis.del = async (...keys) => {
+      deletedKeys.push(...keys);
+      return keys.length;
+    };
+
+    await svc.clearConversationSession('conv-cleanup');
+
+    expect(deletedKeys).toEqual([
+      'agent:interaction-session:conv-cleanup',
+      'agent:draft-state:conv-cleanup',
+    ]);
   });
 
   test('should pass engineId through validate analyze and code-check calls', async () => {

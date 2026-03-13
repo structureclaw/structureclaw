@@ -509,6 +509,178 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByText(/Analysis Engine Auto|计算引擎 自动选择/)).toBeInTheDocument()
   })
 
+  it('deletes a non-active conversation from history and local archive', async () => {
+    window.localStorage.setItem('structureclaw.console.conversations', JSON.stringify({
+      'conv-delete': {
+        id: 'conv-delete',
+        title: 'Delete me',
+        type: 'analysis',
+        createdAt: '2026-03-12T08:00:00.000Z',
+        updatedAt: '2026-03-12T09:00:00.000Z',
+        messages: [
+          { id: 'm1', role: 'assistant', content: 'saved assistant', status: 'done', timestamp: '2026-03-12T08:00:00.000Z' },
+        ],
+      },
+      'conv-keep': {
+        id: 'conv-keep',
+        title: 'Keep me',
+        type: 'analysis',
+        createdAt: '2026-03-12T08:00:00.000Z',
+        updatedAt: '2026-03-12T10:00:00.000Z',
+        messages: [
+          { id: 'm2', role: 'assistant', content: 'keep assistant', status: 'done', timestamp: '2026-03-12T10:00:00.000Z' },
+        ],
+      },
+    }))
+
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return { ok: true, json: vi.fn().mockResolvedValue(mockSkills) } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return { ok: true, json: vi.fn().mockResolvedValue({ engines: [] }) } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([
+            { id: 'conv-keep', title: 'Keep me', updatedAt: '2026-03-12T10:00:00.000Z' },
+            { id: 'conv-delete', title: 'Delete me', updatedAt: '2026-03-12T09:00:00.000Z' },
+          ]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation/conv-delete') && init?.method === 'DELETE') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ success: true, id: 'conv-delete' }),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Delete Conversation|删除会话/ })[1])
+    expect(screen.getByText(/Delete this conversation and its local workspace context|删除这个会话以及它的本地工作区上下文/)).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$|^确认删除$/ }))
+
+    await waitFor(() => {
+      expect(screen.queryByText('Delete me')).not.toBeInTheDocument()
+    })
+    expect(screen.getByText('Keep me')).toBeInTheDocument()
+
+    const stored = JSON.parse(window.localStorage.getItem('structureclaw.console.conversations') || '{}')
+    expect(stored['conv-delete']).toBeUndefined()
+    expect(stored['conv-keep']).toBeDefined()
+  })
+
+  it('deletes the active conversation and falls back to the newest remaining one', async () => {
+    window.localStorage.setItem('structureclaw.console.conversations', JSON.stringify({
+      'conv-active': {
+        id: 'conv-active',
+        title: 'Active conversation',
+        type: 'analysis',
+        createdAt: '2026-03-12T08:00:00.000Z',
+        updatedAt: '2026-03-12T10:00:00.000Z',
+        messages: [
+          { id: 'm1', role: 'assistant', content: 'active local', status: 'done', timestamp: '2026-03-12T10:00:00.000Z' },
+        ],
+      },
+      'conv-next': {
+        id: 'conv-next',
+        title: 'Next conversation',
+        type: 'analysis',
+        createdAt: '2026-03-12T08:00:00.000Z',
+        updatedAt: '2026-03-12T09:00:00.000Z',
+        messages: [
+          { id: 'm2', role: 'assistant', content: 'next local', status: 'done', timestamp: '2026-03-12T09:00:00.000Z' },
+        ],
+      },
+    }))
+
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return { ok: true, json: vi.fn().mockResolvedValue(mockSkills) } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return { ok: true, json: vi.fn().mockResolvedValue({ engines: [] }) } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([
+            { id: 'conv-active', title: 'Active conversation', updatedAt: '2026-03-12T10:00:00.000Z' },
+            { id: 'conv-next', title: 'Next conversation', updatedAt: '2026-03-12T09:00:00.000Z' },
+          ]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation/conv-active') && !init?.method) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-active',
+            title: 'Active conversation',
+            messages: [
+              { id: 'srv-1', role: 'assistant', content: 'active backend', createdAt: '2026-03-12T10:00:00.000Z' },
+            ],
+            session: null,
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation/conv-next') && !init?.method) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-next',
+            title: 'Next conversation',
+            messages: [
+              { id: 'srv-2', role: 'assistant', content: 'next backend', createdAt: '2026-03-12T09:00:00.000Z' },
+            ],
+            session: null,
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation/conv-active') && init?.method === 'DELETE') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ success: true, id: 'conv-active' }),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+    fireEvent.click(await screen.findByRole('button', { name: /Active conversation/ }))
+    await waitFor(() => {
+      expect(screen.getByText('active backend')).toBeInTheDocument()
+    })
+
+    const deleteButtons = screen.getAllByRole('button', { name: /Delete Conversation|删除会话/ })
+    fireEvent.click(deleteButtons[0])
+    fireEvent.click(screen.getByRole('button', { name: /^Delete$|^确认删除$/ }))
+
+    await waitFor(() => {
+      expect(screen.getByText('next backend')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('Active conversation')).not.toBeInTheDocument()
+    expect(screen.getByText('Next conversation')).toBeInTheDocument()
+  })
+
   it('keeps separate scroll containers for history, chat, and output', async () => {
     const { container } = await renderConsolePage()
 

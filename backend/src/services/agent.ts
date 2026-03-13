@@ -296,6 +296,13 @@ export class AgentService {
     }));
   }
 
+  async clearConversationSession(conversationId: string | undefined): Promise<void> {
+    if (!conversationId) {
+      return;
+    }
+    await this.clearInteractionSession(conversationId);
+  }
+
   static getProtocol(): AgentProtocol {
     const commonErrorCodes = [
       'UNSUPPORTED_SOURCE_FORMAT',

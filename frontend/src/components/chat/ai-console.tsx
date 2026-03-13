@@ -3,13 +3,14 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
-import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, Database, FileText, Loader2, MessageSquarePlus, Orbit, Sparkles, User } from 'lucide-react'
+import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, Database, FileText, Loader2, MessageSquarePlus, Orbit, Sparkles, Trash2, User } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
+import { toast } from '@/components/ui/toast'
 import { buildVisualizationSnapshot } from '@/components/visualization/adapter'
 import { StructuralVisualizationModal, type VisualizationSnapshot } from '@/components/visualization'
 import { useI18n, type MessageKey } from '@/lib/i18n'
@@ -847,6 +848,8 @@ export function AIConsole() {
   const [visualizationOpen, setVisualizationOpen] = useState(false)
   const [visualizationSource, setVisualizationSource] = useState<'model' | 'result'>('result')
   const [activePanel, setActivePanel] = useState<PanelTab>('analysis')
+  const [pendingDeleteConversationId, setPendingDeleteConversationId] = useState('')
+  const [deletingConversationId, setDeletingConversationId] = useState('')
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const shouldStickToBottomRef = useRef(true)
@@ -1299,11 +1302,7 @@ export function AIConsole() {
     }
   }
 
-  function handleNewConversation() {
-    if (isSending) {
-      return
-    }
-
+  function resetConsoleState() {
     setConversationId('')
     setMessages([initialAssistantMessage])
     setModelText('')
@@ -1319,6 +1318,60 @@ export function AIConsole() {
     setVisualizationSource('result')
     setErrorMessage('')
     setActivePanel('analysis')
+    setPendingDeleteConversationId('')
+  }
+
+  function handleNewConversation() {
+    if (isSending) {
+      return
+    }
+
+    resetConsoleState()
+  }
+
+  async function handleDeleteConversation(targetConversationId: string) {
+    if (isSending || deletingConversationId || !targetConversationId) {
+      return
+    }
+
+    setDeletingConversationId(targetConversationId)
+    setErrorMessage('')
+
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/chat/conversation/${targetConversationId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error(`${t('deleteConversationFailed')} HTTP ${response.status}`)
+      }
+
+      const remainingConversations = mergedConversations.filter((conversation) => conversation.id !== targetConversationId)
+      setServerConversations((current) => current.filter((conversation) => conversation.id !== targetConversationId))
+      setConversationArchive((current) => {
+        const next = { ...current }
+        delete next[targetConversationId]
+        return next
+      })
+      setPendingDeleteConversationId('')
+
+      if (targetConversationId === conversationId) {
+        const nextConversation = remainingConversations[0]
+        if (nextConversation) {
+          await handleSelectConversation(nextConversation.id)
+        } else {
+          resetConsoleState()
+        }
+      }
+
+      toast.success(t('deleteConversationSucceeded'))
+    } catch (error) {
+      const nextError = error instanceof Error ? error.message : t('deleteConversationFailed')
+      setErrorMessage(nextError)
+      toast.error(nextError)
+    } finally {
+      setDeletingConversationId('')
+    }
   }
 
   function openVisualization(preferredSource: 'model' | 'result') {
@@ -1633,35 +1686,84 @@ export function AIConsole() {
           <div className="space-y-2">
             {mergedConversations.map((conversation) => {
               const isActive = conversation.id === conversationId
+              const isPendingDelete = conversation.id === pendingDeleteConversationId
+              const isDeleting = conversation.id === deletingConversationId
               const archive = conversationArchive[conversation.id]
               const preview = archive?.messages.findLast((message) => message.role === 'assistant')
                 || archive?.messages.findLast((message) => message.role === 'user')
 
               return (
-                <button
+                <div
                   key={conversation.id}
-                  type="button"
-                  onClick={() => void handleSelectConversation(conversation.id)}
                   className={cn(
-                    'w-full rounded-[22px] border px-4 py-3 text-left transition',
+                    'rounded-[22px] border px-4 py-3 transition',
                     isActive
                       ? 'border-cyan-300/40 bg-cyan-300/12 text-foreground dark:text-white'
                       : 'border-border/70 bg-background/70 text-muted-foreground hover:border-cyan-300/30 hover:bg-accent/10 dark:border-white/10 dark:bg-white/5'
                   )}
                 >
-                  <div className="line-clamp-2 text-sm font-medium leading-6">
-                    {conversation.title || t('untitledConversation')}
-                  </div>
-                  <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                    <Clock3 className="h-3.5 w-3.5" />
-                    <span>{formatDate(conversation.updatedAt || conversation.createdAt || new Date().toISOString(), locale)}</span>
-                  </div>
-                  {preview?.content && (
-                    <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
-                      {preview.content}
-                    </p>
+                  {isPendingDelete ? (
+                    <div className="space-y-3">
+                      <div className="text-sm font-medium text-foreground">{t('deleteConversationConfirm')}</div>
+                      <div className="flex gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          className="rounded-full bg-rose-500 text-white hover:bg-rose-400"
+                          disabled={isDeleting}
+                          onClick={() => void handleDeleteConversation(conversation.id)}
+                        >
+                          {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                          {isDeleting ? t('deletingConversation') : t('confirmDeleteConversation')}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="rounded-full"
+                          disabled={isDeleting}
+                          onClick={() => setPendingDeleteConversationId('')}
+                        >
+                          {t('cancelDeleteConversation')}
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between gap-3">
+                        <button
+                          type="button"
+                          onClick={() => void handleSelectConversation(conversation.id)}
+                          className="min-w-0 flex-1 text-left"
+                        >
+                          <div className="line-clamp-2 text-sm font-medium leading-6">
+                            {conversation.title || t('untitledConversation')}
+                          </div>
+                          <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+                            <Clock3 className="h-3.5 w-3.5" />
+                            <span>{formatDate(conversation.updatedAt || conversation.createdAt || new Date().toISOString(), locale)}</span>
+                          </div>
+                          {preview?.content && (
+                            <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
+                              {preview.content}
+                            </p>
+                          )}
+                        </button>
+                        <Button
+                          type="button"
+                          size="icon"
+                          variant="ghost"
+                          className="h-9 w-9 shrink-0 rounded-full text-muted-foreground hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-300"
+                          aria-label={t('deleteConversation')}
+                          disabled={Boolean(deletingConversationId)}
+                          onClick={() => setPendingDeleteConversationId(conversation.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </>
                   )}
-                </button>
+                </div>
               )
             })}
           </div>
