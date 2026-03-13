@@ -206,6 +206,12 @@ Core 回归：
 make core-regression
 ```
 
+说明：
+
+- 如果当前环境存在可用的 OpenSeesPy runtime，`make core-regression` 会包含 OpenSees 实跑校验
+- 如果当前环境缺少可用的 OpenSeesPy runtime，回归会改为验证引擎不可用状态、自动降级路由，以及不依赖 OpenSees 的静力/转换回归
+- 少数明确标记为仅适用于 OpenSees 的 regression case 会在这种环境下跳过，不再把整套 CI 误报为失败
+
 启动后访问：
 
 - Web: `http://localhost:<FRONTEND_PORT>`
