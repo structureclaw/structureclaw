@@ -1,5 +1,6 @@
 {
   "name": "frame_cantilever_udl",
+  "requires_opensees": true,
   "abs_tolerance": 1e-6,
   "request": {
     "type": "static",

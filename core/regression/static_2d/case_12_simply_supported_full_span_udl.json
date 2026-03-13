@@ -1,5 +1,6 @@
 {
   "name": "simply_supported_full_span_udl",
+  "requires_opensees": true,
   "abs_tolerance": 1e-6,
   "request": {
     "type": "static",

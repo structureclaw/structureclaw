@@ -1,5 +1,6 @@
 {
   "name": "frame_cantilever_tip_load_3d",
+  "requires_opensees": true,
   "abs_tolerance": 1e-6,
   "request": {
     "type": "static",

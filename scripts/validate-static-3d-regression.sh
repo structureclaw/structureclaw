@@ -21,6 +21,7 @@ from pathlib import Path
 import sys
 
 sys.path.insert(0, 'core')
+from engines.opensees_runtime import get_opensees_runtime_issue
 from main import AnalysisRequest, analyze
 
 
@@ -39,8 +40,14 @@ cases = sorted(base.glob('case_*.json'))
 if not cases:
     raise SystemExit('No 3D regression case files found')
 
+opensees_issue = get_opensees_runtime_issue()
+
 for fp in cases:
     payload = json.loads(fp.read_text(encoding='utf-8'))
+    if payload.get('requires_opensees') and opensees_issue is not None:
+        print(f"[skip] {fp.name} (requires OpenSees runtime: {opensees_issue})")
+        continue
+
     req = AnalysisRequest.model_validate(payload['request'])
     result = asyncio.run(analyze(req)).model_dump(mode='json')
 

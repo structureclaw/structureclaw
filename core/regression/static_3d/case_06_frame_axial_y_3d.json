@@ -1,5 +1,6 @@
 {
   "name": "frame_axial_y_3d",
+  "requires_opensees": true,
   "abs_tolerance": 1e-7,
   "request": {
     "type": "static",
