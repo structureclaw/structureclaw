@@ -1,6 +1,7 @@
 'use client'
 
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import dynamic from 'next/dynamic'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, MessageSquarePlus, Orbit, Sparkles, User } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -112,7 +113,12 @@ type AnalysisEngineSummary = {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const STORAGE_KEY = 'structureclaw.console.conversations'
-const StructuralVisualizationModal = lazy(() => import('@/components/visualization/modal'))
+const StructuralVisualizationModal = dynamic(
+  () => import('@/components/visualization/modal').then((module) => module.StructuralVisualizationModal),
+  {
+    ssr: false,
+  }
+)
 
 function createId(prefix: string) {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -1849,15 +1855,13 @@ export function AIConsole() {
         t={t}
         visualizationSnapshot={latestVisualizationSnapshot}
       />
-      <Suspense fallback={null}>
-        <StructuralVisualizationModal
-          locale={locale}
-          onClose={() => setVisualizationOpen(false)}
-          open={visualizationOpen}
-          snapshot={latestVisualizationSnapshot}
-          t={t}
-        />
-      </Suspense>
+      <StructuralVisualizationModal
+        locale={locale}
+        onClose={() => setVisualizationOpen(false)}
+        open={visualizationOpen}
+        snapshot={latestVisualizationSnapshot}
+        t={t}
+      />
     </div>
   )
 }
