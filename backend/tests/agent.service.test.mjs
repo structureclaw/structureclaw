@@ -939,6 +939,27 @@ describe('AgentService orchestration', () => {
     expect(third.interaction?.state).toBe('collecting');
   });
 
+  test('should expose a conversation session snapshot for context restoration', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    await svc.run({
+      conversationId: 'conv-session-snapshot',
+      message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
+      mode: 'chat',
+      context: { locale: 'zh' },
+    });
+
+    const snapshot = await svc.getConversationSessionSnapshot('conv-session-snapshot', 'zh');
+
+    expect(snapshot).toBeDefined();
+    expect(snapshot?.draft?.inferredType).toBe('frame');
+    expect(snapshot?.resolved?.analysisType).toBe('static');
+    expect(snapshot?.interaction?.detectedScenario).toBe('frame');
+    expect(snapshot?.interaction?.conversationStage).toBe('荷载条件');
+    expect(snapshot?.model?.metadata?.inferredType).toBe('frame');
+  });
+
   test('should keep regular frame chat in model stage until frame geometry is complete', async () => {
     const svc = new AgentService();
     svc.llm = null;

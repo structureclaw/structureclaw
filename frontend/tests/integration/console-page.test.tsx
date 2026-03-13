@@ -116,6 +116,14 @@ const archivedVisualizationSnapshot: VisualizationSnapshot = {
   ],
 }
 
+const archivedResult = {
+  ...sampleAnalysisResult,
+  report: {
+    summary: 'Archived summary',
+    markdown: '# Archived report',
+  },
+}
+
 function createSseResponse(events: unknown[]) {
   const encoder = new TextEncoder()
   const chunks = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).concat('data: [DONE]\n\n')
@@ -319,6 +327,183 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
     await renderConsolePage()
     expect(await screen.findByText('历史会话标题')).toBeInTheDocument()
+  })
+
+  it('restores model context and local result snapshots when selecting a conversation', async () => {
+    window.localStorage.setItem('structureclaw.console.conversations', JSON.stringify({
+      'conv-ctx': {
+        id: 'conv-ctx',
+        title: 'Stored conversation',
+        type: 'analysis',
+        createdAt: '2026-03-12T08:00:00.000Z',
+        updatedAt: '2026-03-12T09:00:00.000Z',
+        messages: [
+          { id: 'm1', role: 'user', content: 'stored user', status: 'done', timestamp: '2026-03-12T08:00:00.000Z' },
+        ],
+        modelText: sampleModelJson,
+        analysisType: 'nonlinear',
+        designCode: 'GB50017',
+        selectedSkillIds: ['frame'],
+        selectedEngineId: 'builtin-simplified',
+        modelSyncMessage: 'Model JSON was synchronized from the conversation draft.',
+        activePanel: 'report',
+        latestResult: archivedResult,
+        modelVisualizationSnapshot: {
+          ...archivedVisualizationSnapshot,
+          source: 'model',
+          availableViews: ['model'],
+          defaultCaseId: 'model',
+          cases: [{ ...archivedVisualizationSnapshot.cases[0], id: 'model', kind: 'model', label: 'Model' }],
+        },
+        resultVisualizationSnapshot: archivedVisualizationSnapshot,
+      },
+    }))
+
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([{ id: 'conv-ctx', title: 'Stored conversation', updatedAt: '2026-03-12T09:00:00.000Z' }]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation/conv-ctx')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-ctx',
+            title: 'Stored conversation',
+            messages: [
+              { id: 'srv-1', role: 'user', content: 'backend user', createdAt: '2026-03-12T08:00:00.000Z' },
+              { id: 'srv-2', role: 'assistant', content: 'backend assistant', createdAt: '2026-03-12T08:01:00.000Z' },
+            ],
+            session: {
+              resolved: {
+                analysisType: 'nonlinear',
+                designCode: 'GB50017',
+              },
+              model: JSON.parse(sampleModelJson),
+            },
+          }),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+    fireEvent.click(await screen.findByRole('button', { name: /Stored conversation/ }))
+
+    await waitFor(() => {
+      expect(screen.getByText('backend assistant')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Expand Analysis Settings|展开分析设置/ }))
+
+    const modelInput = screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/) as HTMLTextAreaElement
+    expect(modelInput.value).toContain('"schema_version": "1.0.0"')
+    expect(screen.getByDisplayValue('GB50017')).toBeInTheDocument()
+    expect(screen.getByText('Archived summary')).toBeInTheDocument()
+  })
+
+  it('clears prior conversation context when starting a new conversation', async () => {
+    window.localStorage.setItem('structureclaw.console.conversations', JSON.stringify({
+      'conv-reset': {
+        id: 'conv-reset',
+        title: 'Reset conversation',
+        type: 'analysis',
+        createdAt: '2026-03-12T08:00:00.000Z',
+        updatedAt: '2026-03-12T09:00:00.000Z',
+        messages: [
+          { id: 'm1', role: 'assistant', content: 'saved assistant', status: 'done', timestamp: '2026-03-12T08:00:00.000Z' },
+        ],
+        modelText: sampleModelJson,
+        analysisType: 'nonlinear',
+        designCode: 'GB50017',
+        selectedSkillIds: ['frame'],
+        selectedEngineId: 'builtin-simplified',
+        activePanel: 'report',
+        latestResult: archivedResult,
+      },
+    }))
+
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([{ id: 'conv-reset', title: 'Reset conversation', updatedAt: '2026-03-12T09:00:00.000Z' }]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation/conv-reset')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-reset',
+            title: 'Reset conversation',
+            messages: [
+              { id: 'srv-1', role: 'assistant', content: 'saved assistant', createdAt: '2026-03-12T08:00:00.000Z' },
+            ],
+            session: {
+              resolved: {
+                analysisType: 'nonlinear',
+                designCode: 'GB50017',
+              },
+              model: JSON.parse(sampleModelJson),
+            },
+          }),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+    fireEvent.click(await screen.findByRole('button', { name: /Reset conversation/ }))
+    await waitFor(() => {
+      expect(screen.getByText('saved assistant')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /New Conversation|新建对话/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+
+    const modelInput = screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/) as HTMLTextAreaElement
+    expect(modelInput.value).toBe('')
+    expect(screen.queryByText('Archived summary')).not.toBeInTheDocument()
+    expect(screen.getByText(/Analysis Engine Auto|计算引擎 自动选择/)).toBeInTheDocument()
   })
 
   it('keeps separate scroll containers for history, chat, and output', async () => {
