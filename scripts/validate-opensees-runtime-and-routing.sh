@@ -124,6 +124,36 @@ if issue is None:
     roof_uy = float(portal_result['data']['displacements']['3']['uy'])
     assert_true(math.isfinite(roof_uy) and roof_uy < 0.0, f'Portal-frame roof displacement invalid: {roof_uy}')
     print('[ok] portal frame solves with builtin-opensees')
+
+    def fake_execute(self, selection, analysis_type, model, parameters, engine_id):
+        if selection.engine['id'] == 'builtin-opensees':
+            raise RuntimeError('simulated runtime failure')
+        return {
+            'status': 'success',
+            'analysisMode': 'linear_2d_frame',
+            'displacements': {},
+            'forces': {},
+            'reactions': {},
+            'envelope': {},
+            'summary': {},
+        }
+
+
+    registry._execute_analysis_selection = types.MethodType(fake_execute, registry)
+
+    auto_result = registry.run_analysis('static', model, {'loadCaseIds': ['LC1']}, None)
+    assert_true(auto_result['meta']['engineId'] == 'builtin-simplified', f"Expected fallback engine, got {auto_result['meta']['engineId']}")
+    assert_true(auto_result['meta']['selectionMode'] == 'fallback', f"Expected fallback selectionMode, got {auto_result['meta']['selectionMode']}")
+    assert_true(auto_result['meta']['fallbackFrom'] == 'builtin-opensees', f"Expected fallbackFrom builtin-opensees, got {auto_result['meta']['fallbackFrom']}")
+    print('[ok] auto engine falls back on runtime failure')
+
+    try:
+        registry.run_analysis('static', model, {'loadCaseIds': ['LC1']}, 'builtin-opensees')
+    except RuntimeError as error:
+        assert_true('simulated runtime failure' in str(error), f'Unexpected manual failure reason: {error}')
+        print('[ok] manual engine selection does not fall back')
+    else:
+        raise SystemExit('Manual builtin-opensees selection should not fall back')
 else:
     print(f'[skip] OpenSees runtime smoke test unavailable: {issue}')
     engines = {engine['id']: engine for engine in registry.list_engines()}
@@ -179,35 +209,4 @@ else:
         print('[ok] manual unsupported engine selection reports unsupported request')
     else:
         raise SystemExit('Manual builtin-simplified nonlinear selection should fail as unsupported')
-
-
-def fake_execute(self, selection, analysis_type, model, parameters, engine_id):
-    if selection.engine['id'] == 'builtin-opensees':
-        raise RuntimeError('simulated runtime failure')
-    return {
-        'status': 'success',
-        'analysisMode': 'linear_2d_frame',
-        'displacements': {},
-        'forces': {},
-        'reactions': {},
-        'envelope': {},
-        'summary': {},
-    }
-
-
-registry._execute_analysis_selection = types.MethodType(fake_execute, registry)
-
-auto_result = registry.run_analysis('static', model, {'loadCaseIds': ['LC1']}, None)
-assert_true(auto_result['meta']['engineId'] == 'builtin-simplified', f"Expected fallback engine, got {auto_result['meta']['engineId']}")
-assert_true(auto_result['meta']['selectionMode'] == 'fallback', f"Expected fallback selectionMode, got {auto_result['meta']['selectionMode']}")
-assert_true(auto_result['meta']['fallbackFrom'] == 'builtin-opensees', f"Expected fallbackFrom builtin-opensees, got {auto_result['meta']['fallbackFrom']}")
-print('[ok] auto engine falls back on runtime failure')
-
-try:
-    registry.run_analysis('static', model, {'loadCaseIds': ['LC1']}, 'builtin-opensees')
-except RuntimeError as error:
-    assert_true('simulated runtime failure' in str(error), f'Unexpected manual failure reason: {error}')
-    print('[ok] manual engine selection does not fall back')
-else:
-    raise SystemExit('Manual builtin-opensees selection should not fall back')
 PY
