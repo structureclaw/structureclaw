@@ -15,8 +15,8 @@ help:
 	@echo "  dev-frontend    Start frontend in dev mode"
 	@echo "  dev-core-full   Start analysis engine with full deps"
 	@echo "  build           Build frontend and backend"
-	@echo "  db-up           Start postgres and redis only"
-	@echo "  db-down         Stop postgres and redis"
+	@echo "  db-up           Start postgres, redis, and pgadmin only"
+	@echo "  db-down         Stop postgres, redis, and pgadmin"
 	@echo "  db-init         Run Prisma migrations and seed"
 	@echo "  docker-up       Start full docker compose stack"
 	@echo "  docker-down     Stop full docker compose stack"
@@ -67,10 +67,10 @@ build:
 	npm run build --prefix frontend
 
 db-up:
-	docker compose up -d postgres redis
+	docker compose up -d postgres redis pgadmin
 
 db-down:
-	docker compose stop postgres redis
+	docker compose stop postgres redis pgadmin
 
 db-init:
 	npm run db:init --prefix backend

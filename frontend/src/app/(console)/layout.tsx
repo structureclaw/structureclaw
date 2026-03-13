@@ -29,6 +29,12 @@ export default function ConsoleLayout({
           </div>
           <div className="flex items-center gap-2">
             <Link
+              href="/console/database"
+              className="rounded-full border border-cyan-300/35 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-800 transition hover:bg-cyan-300/20 dark:text-cyan-100"
+            >
+              {t('databaseAdminNav')}
+            </Link>
+            <Link
               href="/"
               className="rounded-full border border-border bg-background/70 px-4 py-2 text-sm text-foreground transition hover:bg-accent/10 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
             >

@@ -31,6 +31,24 @@ services:
       timeout: 5s
       retries: 5
 
+  # pgAdmin 数据库管理
+  pgadmin:
+    image: dpage/pgadmin4:8.14
+    container_name: structureclaw-pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@structureclaw.local}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-structureclaw}
+      PGADMIN_CONFIG_SERVER_MODE: "False"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./docker/pgadmin/servers.json:/pgadmin4/servers.json:ro
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+
   # 后端服务
   backend:
     build:
@@ -106,6 +124,7 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  pgadmin_data:
 
 networks:
   default:

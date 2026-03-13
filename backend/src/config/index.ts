@@ -25,6 +25,7 @@ const llmBaseUrl = process.env.LLM_BASE_URL
 const frontendPort = process.env.FRONTEND_PORT || '30000';
 const backendPort = process.env.PORT || '8000';
 const corePort = process.env.CORE_PORT || '8001';
+const pgAdminPort = process.env.PGADMIN_PORT || '5050';
 const analysisEngineManifestPath = process.env.ANALYSIS_ENGINE_MANIFEST_PATH || path.resolve(__dirname, '../../../.runtime/analysis-engines.json');
 
 const defaultCorsOrigins = [
@@ -71,6 +72,12 @@ export const config = {
   // 分析引擎配置
   analysisEngineUrl: process.env.ANALYSIS_ENGINE_URL || `http://localhost:${corePort}`,
   analysisEngineManifestPath,
+
+  // pgAdmin 配置
+  pgAdminEnabled: (process.env.PGADMIN_ENABLED || 'true').toLowerCase() !== 'false',
+  pgAdminPort: parseInt(pgAdminPort, 10),
+  pgAdminUrl: process.env.PGADMIN_PUBLIC_URL || `http://localhost:${pgAdminPort}`,
+  pgAdminDefaultEmail: process.env.PGADMIN_DEFAULT_EMAIL || 'admin@structureclaw.local',
 
   // CORS
   corsOrigins,

@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
-import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, MessageSquarePlus, Orbit, Sparkles, User } from 'lucide-react'
+import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, Database, FileText, Loader2, MessageSquarePlus, Orbit, Sparkles, User } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -1680,6 +1681,16 @@ export function AIConsole() {
                 <h1 className="mt-1 text-2xl font-semibold text-foreground">{t('aiConsoleTitle')}</h1>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  asChild
+                  variant="outline"
+                  className="rounded-full border-cyan-300/35 bg-cyan-300/10 text-cyan-800 hover:bg-cyan-300/20 dark:text-cyan-100"
+                >
+                  <Link href="/console/database">
+                    <Database className="h-4 w-4" />
+                    {t('databaseAdminConsoleLink')}
+                  </Link>
+                </Button>
                 <Badge className="border-cyan-400/20 bg-cyan-400/10 text-cyan-700 dark:text-cyan-100" variant="outline">
                   {t('aiConsoleBadgePrimary')}
                 </Badge>
@@ -1691,6 +1702,10 @@ export function AIConsole() {
             <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
               {t('aiConsoleIntro')}
             </p>
+            <div className="mt-4 max-w-3xl rounded-[22px] border border-border/70 bg-background/70 px-4 py-3 text-sm text-muted-foreground dark:border-white/10 dark:bg-white/5">
+              <div className="font-medium text-foreground">{t('databaseAdminConsoleCardTitle')}</div>
+              <div className="mt-1 leading-6">{t('databaseAdminConsoleCardBody')}</div>
+            </div>
           </div>
 
           <div

@@ -107,6 +107,6 @@ stop_orphan_matches "backend" "$ROOT_DIR/backend/node_modules/.bin/tsx watch src
 stop_orphan_matches "core" "$ROOT_DIR/core/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port $CORE_PORT --reload --app-dir core"
 
 echo "Stopping local infrastructure..."
-docker compose -f "$ROOT_DIR/docker-compose.yml" stop postgres redis >/dev/null 2>&1 || true
+docker compose -f "$ROOT_DIR/docker-compose.yml" stop postgres redis pgadmin >/dev/null 2>&1 || true
 
 echo "Local stack stopped."

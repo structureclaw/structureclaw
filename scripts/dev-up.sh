@@ -23,7 +23,7 @@ Usage: ./scripts/dev-up.sh [full] [--uv] [--skip-infra] [--skip-db-init]
 Options:
   full            Start core with full Python dependencies (default)
   --uv            Create core/.venv with uv-managed Python 3.11
-  --skip-infra    Do not start postgres/redis via docker compose
+  --skip-infra    Do not start postgres/redis/pgadmin via docker compose
   --skip-db-init  Skip Prisma migrate+seed
 EOF
 }
@@ -296,12 +296,12 @@ if [[ "$SKIP_INFRA" -eq 0 ]]; then
 
   if ! docker_ready; then
     echo "Docker daemon is not reachable."
-    echo "Start Docker Desktop/service, or rerun with --skip-infra if you already have PostgreSQL/Redis."
+    echo "Start Docker Desktop/service, or rerun with --skip-infra if you already have PostgreSQL/Redis/pgAdmin."
     exit 1
   fi
 
   echo "Starting local infrastructure..."
-  compose_services=(postgres)
+  compose_services=(postgres pgadmin)
   if is_redis_enabled; then
     compose_services+=(redis)
   else
@@ -310,7 +310,7 @@ if [[ "$SKIP_INFRA" -eq 0 ]]; then
   docker compose -f "$ROOT_DIR/docker-compose.yml" up -d "${compose_services[@]}"
   wait_for_postgres
 else
-  echo "Skipping local postgres/redis startup (--skip-infra)."
+  echo "Skipping local postgres/redis/pgadmin startup (--skip-infra)."
 fi
 
 if [[ "$SKIP_DB_INIT" -eq 0 ]]; then
@@ -331,4 +331,5 @@ echo "Logs: $LOG_DIR"
 echo "Frontend: http://localhost:$FRONTEND_PORT"
 echo "Backend:  http://localhost:$BACKEND_PORT (GET / returns 404 by design; use /health)"
 echo "Core:     http://localhost:$CORE_PORT"
+echo "pgAdmin:  http://localhost:${PGADMIN_PORT:-5050}"
 echo "Use ./scripts/dev-status.sh to inspect services."
