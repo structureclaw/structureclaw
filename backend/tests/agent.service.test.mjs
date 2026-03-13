@@ -823,6 +823,24 @@ describe('AgentService orchestration', () => {
     ]);
   });
 
+  test('should parse natural chinese frame geometry phrases in rule fallback mode', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft('我想设计一个三层框架，x方向4跨，间隔3m，y方向3跨间隔也是3m，每层3m', undefined, 'zh');
+
+    expect(draft.stateToPersist?.frameDimension).toBe('3d');
+    expect(draft.stateToPersist?.storyCount).toBe(3);
+    expect(draft.stateToPersist?.storyHeightsM).toEqual([3, 3, 3]);
+    expect(draft.stateToPersist?.bayCountX).toBe(4);
+    expect(draft.stateToPersist?.bayCountY).toBe(3);
+    expect(draft.stateToPersist?.bayWidthsXM).toEqual([3, 3, 3, 3]);
+    expect(draft.stateToPersist?.bayWidthsYM).toEqual([3, 3, 3]);
+    expect(draft.missingFields).toContain('floorLoads');
+    expect(draft.missingFields).not.toContain('storyCount');
+    expect(draft.missingFields).not.toContain('storyHeightsM');
+  });
+
   test('should upgrade a 2d frame chat session to 3d when llm extracts y-direction loads', async () => {
     const svc = new AgentService();
     svc.llm = {
@@ -883,6 +901,42 @@ describe('AgentService orchestration', () => {
     expect(second.interaction?.missingCritical).toContain('X向跨数');
     expect(second.interaction?.missingCritical).toContain('Y向跨数');
     expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+  });
+
+  test('should accumulate frame follow-up phrases for story heights and lateral loads', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const first = await svc.run({
+      conversationId: 'conv-frame-natural-followup',
+      message: '我想设计一个三层框架，x方向4跨，间隔3m，y方向3跨间隔也是3m',
+      mode: 'chat',
+      context: { locale: 'zh' },
+    });
+
+    expect(first.interaction?.missingCritical).toContain('各层层高（m）');
+    expect(first.interaction?.missingCritical).toContain('各层节点荷载（kN）');
+
+    const second = await svc.run({
+      conversationId: 'conv-frame-natural-followup',
+      message: '每层3m',
+      mode: 'chat',
+      context: { locale: 'zh' },
+    });
+
+    expect(second.interaction?.missingCritical).not.toContain('各层层高（m）');
+    expect(second.interaction?.missingCritical).toContain('各层节点荷载（kN）');
+
+    const third = await svc.run({
+      conversationId: 'conv-frame-natural-followup',
+      message: '各层竖向荷载都是1000kN，横向荷载都是500kN',
+      mode: 'chat',
+      context: { locale: 'zh' },
+    });
+
+    expect(third.interaction?.missingCritical).not.toContain('各层层高（m）');
+    expect(third.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+    expect(third.interaction?.state).toBe('collecting');
   });
 
   test('should keep regular frame chat in model stage until frame geometry is complete', async () => {

@@ -8,7 +8,7 @@ import {
   restrictLegacyDraftPatch,
 } from '../../services/agent-skills/legacy.js';
 import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../services/agent-skills/plugin-helpers.js';
-import { extractDraftByRules } from '../../services/agent-skills/fallback.js';
+import { extractDraftByRules, normalizeNumber, normalizePositiveInteger } from '../../services/agent-skills/fallback.js';
 import type { DraftExtraction, DraftFloorLoad, DraftState, SkillHandler } from '../../services/agent-skills/types.js';
 
 const ALLOWED_KEYS = [
@@ -27,6 +27,243 @@ const ALLOWED_KEYS = [
 
 function toFramePatch(patch: DraftExtraction): DraftExtraction {
   return restrictLegacyDraftPatch(patch, 'frame', [...ALLOWED_KEYS]);
+}
+
+const CHINESE_NUMERAL_MAP: Record<string, number> = {
+  '一': 1,
+  '二': 2,
+  '两': 2,
+  '三': 3,
+  '四': 4,
+  '五': 5,
+  '六': 6,
+  '七': 7,
+  '八': 8,
+  '九': 9,
+  '十': 10,
+};
+
+function parseLocalizedPositiveInt(raw: string | undefined): number | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  const trimmed = raw.trim();
+  const direct = normalizePositiveInteger(trimmed);
+  if (direct !== undefined) {
+    return direct;
+  }
+  if (trimmed === '十') {
+    return 10;
+  }
+  if (trimmed.length === 2 && trimmed.startsWith('十')) {
+    const ones = CHINESE_NUMERAL_MAP[trimmed[1]];
+    return ones ? 10 + ones : undefined;
+  }
+  if (trimmed.length === 2 && trimmed.endsWith('十')) {
+    const tens = CHINESE_NUMERAL_MAP[trimmed[0]];
+    return tens ? tens * 10 : undefined;
+  }
+  return CHINESE_NUMERAL_MAP[trimmed];
+}
+
+function extractPositiveInt(text: string, patterns: RegExp[]): number | undefined {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match?.[1]) {
+      continue;
+    }
+    const value = parseLocalizedPositiveInt(match[1]);
+    if (value !== undefined) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function extractScalar(text: string, patterns: RegExp[]): number | undefined {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match?.[1]) {
+      continue;
+    }
+    const value = normalizeNumber(match[1]);
+    if (value !== undefined && value > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function repeatScalar(count: number | undefined, value: number | undefined): number[] | undefined {
+  if (!count || !value) {
+    return undefined;
+  }
+  return Array.from({ length: count }, () => value);
+}
+
+function extractDirectionalSegment(text: string, axis: 'x' | 'y'): string {
+  const pattern = axis === 'x'
+    ? /x(?:方向|向)([\s\S]*?)(?=y(?:方向|向)|$)/i
+    : /y(?:方向|向)([\s\S]*?)$/i;
+  return text.match(pattern)?.[1] || '';
+}
+
+function buildUniformFloorLoads(
+  storyCount: number | undefined,
+  verticalKN: number | undefined,
+  lateralXKN: number | undefined,
+  lateralYKN: number | undefined,
+): DraftFloorLoad[] | undefined {
+  if (!storyCount) {
+    return undefined;
+  }
+  if (verticalKN === undefined && lateralXKN === undefined && lateralYKN === undefined) {
+    return undefined;
+  }
+  return Array.from({ length: storyCount }, (_, index) => ({
+    story: index + 1,
+    verticalKN,
+    lateralXKN,
+    lateralYKN,
+  }));
+}
+
+function normalizeFrameNaturalPatch(message: string, existingState: DraftState | undefined): DraftExtraction {
+  const text = message.toLowerCase();
+  const storyCount = extractPositiveInt(text, [
+    /([0-9]+|[一二两三四五六七八九十]+)\s*层/i,
+    /([0-9]+|[一二两三四五六七八九十]+)\s*stories?/i,
+  ]);
+  const genericBayCount = extractPositiveInt(text, [
+    /([0-9]+|[一二两三四五六七八九十]+)\s*跨/i,
+    /([0-9]+|[一二两三四五六七八九十]+)\s*bays?/i,
+  ]);
+  const xSegment = extractDirectionalSegment(text, 'x');
+  const ySegment = extractDirectionalSegment(text, 'y');
+  const bayCountX = extractPositiveInt(xSegment, [
+    /([0-9]+|[一二两三四五六七八九十]+)\s*跨/i,
+    /([0-9]+|[一二两三四五六七八九十]+)\s*bays?/i,
+  ]);
+  const bayCountY = extractPositiveInt(ySegment, [
+    /([0-9]+|[一二两三四五六七八九十]+)\s*跨/i,
+    /([0-9]+|[一二两三四五六七八九十]+)\s*bays?/i,
+  ]);
+  const storyHeightScalar = extractScalar(text, [
+    /每层(?:层高)?(?:都?是|统一为|为|高)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
+    /层高(?:都?是|统一为|为)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
+  ]);
+  const xBayScalar = extractScalar(xSegment, [
+    /(?:间隔|跨度|每跨)(?:也?是|都?是|为)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
+  ]);
+  const yBayScalar = extractScalar(ySegment, [
+    /(?:间隔|跨度|每跨)(?:也?是|都?是|为)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
+  ]);
+  const genericBayScalar = extractScalar(text, [
+    /每跨(?:都?是|为)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
+    /跨度(?:都?是|也是|为)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
+    /间隔(?:都?是|也是|为)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
+  ]);
+  const verticalLoadKN = extractScalar(text, [
+    /(?:每层|各层)(?:节点)?(?:竖向)?荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+  ]);
+  const dualLateralLoadKN = extractScalar(text, [
+    /x(?:、|\/|和|及)\s*y向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+  ]);
+  const lateralXLoadKN = dualLateralLoadKN ?? extractScalar(text, [
+    /x向(?:水平|横向|侧向)?荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:横向|侧向|水平)荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+  ]);
+  const lateralYLoadKN = dualLateralLoadKN ?? extractScalar(text, [
+    /y向(?:水平|横向|侧向)?荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+  ]);
+  const resolvedStoryCount = storyCount ?? existingState?.storyCount ?? existingState?.storyHeightsM?.length;
+  const resolvedBayCountX = bayCountX ?? existingState?.bayCountX;
+  const resolvedBayCountY = bayCountY ?? existingState?.bayCountY;
+  const inferred3d = text.includes('y方向')
+    || text.includes('y向')
+    || bayCountY !== undefined
+    || yBayScalar !== undefined
+    || lateralYLoadKN !== undefined;
+
+  return {
+    inferredType: 'frame',
+    frameDimension: inferred3d
+      ? '3d'
+      : (existingState?.frameDimension ?? (bayCountX !== undefined ? '3d' : undefined)),
+    storyCount,
+    bayCount: !inferred3d ? genericBayCount : undefined,
+    bayCountX,
+    bayCountY,
+    storyHeightsM: repeatScalar(resolvedStoryCount, storyHeightScalar),
+    bayWidthsM: !inferred3d ? repeatScalar(genericBayCount ?? existingState?.bayCount, genericBayScalar) : undefined,
+    bayWidthsXM: repeatScalar(resolvedBayCountX, xBayScalar ?? (inferred3d ? genericBayScalar : undefined)),
+    bayWidthsYM: repeatScalar(resolvedBayCountY, yBayScalar),
+    floorLoads: buildUniformFloorLoads(
+      resolvedStoryCount,
+      verticalLoadKN,
+      lateralXLoadKN,
+      inferred3d ? lateralYLoadKN : undefined,
+    ),
+  };
+}
+
+function extractLlmScalar(raw: Record<string, unknown> | null | undefined, keys: string[]): number | undefined {
+  if (!raw) {
+    return undefined;
+  }
+  for (const key of keys) {
+    const value = normalizeNumber(raw[key]);
+    if (value !== undefined && value > 0) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function buildFramePatchFromLlm(
+  rawPatch: Record<string, unknown> | null | undefined,
+  existingState: DraftState | undefined,
+): DraftExtraction {
+  const normalized = toFramePatch(normalizeLegacyDraftPatch(rawPatch));
+  const storyCount = normalized.storyCount ?? existingState?.storyCount ?? existingState?.storyHeightsM?.length;
+  const bayCount = normalized.bayCount ?? existingState?.bayCount;
+  const bayCountX = normalized.bayCountX ?? existingState?.bayCountX;
+  const bayCountY = normalized.bayCountY ?? existingState?.bayCountY;
+  const storyHeightScalar = extractLlmScalar(rawPatch, ['storyHeightScalar', 'storyHeightM', 'uniformStoryHeightM']);
+  const bayWidthScalar = extractLlmScalar(rawPatch, ['bayWidthScalar', 'bayWidthM', 'spacingM']);
+  const bayWidthXScalar = extractLlmScalar(rawPatch, ['bayWidthXScalar', 'bayWidthXM', 'spacingXM']);
+  const bayWidthYScalar = extractLlmScalar(rawPatch, ['bayWidthYScalar', 'bayWidthYM', 'spacingYM']);
+  const verticalLoadKN = extractLlmScalar(rawPatch, ['verticalLoadKN', 'uniformVerticalLoadKN']);
+  const lateralXKN = extractLlmScalar(rawPatch, ['lateralXKN', 'horizontalLoadKN', 'uniformLateralXKN']);
+  const lateralYKN = extractLlmScalar(rawPatch, ['lateralYKN', 'uniformLateralYKN']);
+  const frameDimension = normalized.frameDimension
+    ?? (normalized.bayCountY !== undefined || normalized.bayWidthsYM !== undefined || lateralYKN !== undefined ? '3d' : undefined);
+
+  return {
+    ...normalized,
+    frameDimension,
+    storyHeightsM: normalized.storyHeightsM ?? repeatScalar(storyCount, storyHeightScalar),
+    bayWidthsM: normalized.bayWidthsM ?? repeatScalar(bayCount, bayWidthScalar),
+    bayWidthsXM: normalized.bayWidthsXM ?? repeatScalar(bayCountX, bayWidthXScalar ?? bayWidthScalar),
+    bayWidthsYM: normalized.bayWidthsYM ?? repeatScalar(bayCountY, bayWidthYScalar ?? bayWidthScalar),
+    floorLoads: normalized.floorLoads ?? buildUniformFloorLoads(storyCount, verticalLoadKN, lateralXKN, frameDimension === '3d' ? lateralYKN : undefined),
+  };
+}
+
+function preferPatch(primary: DraftExtraction, fallback: DraftExtraction): DraftExtraction {
+  const nextPatch: DraftExtraction = { inferredType: 'frame' };
+  for (const key of ALLOWED_KEYS) {
+    const primaryValue = primary[key];
+    const fallbackValue = fallback[key];
+    if (primaryValue !== undefined) {
+      nextPatch[key as string] = primaryValue;
+      continue;
+    }
+    if (fallbackValue !== undefined) {
+      nextPatch[key as string] = fallbackValue;
+    }
+  }
+  return nextPatch;
 }
 
 function hasLateralYFloorLoad(floorLoads: DraftFloorLoad[] | undefined): boolean {
@@ -67,21 +304,13 @@ function buildFrameDraftPatch(
   llmDraftPatch: Record<string, unknown> | null | undefined,
   existingState: DraftState | undefined,
 ): DraftExtraction {
-  const normalizedLlmPatch = toFramePatch(normalizeLegacyDraftPatch(llmDraftPatch));
+  const normalizedLlmPatch = buildFramePatchFromLlm(llmDraftPatch, existingState);
+  const normalizedNaturalPatch = toFramePatch(normalizeFrameNaturalPatch(message, existingState));
   const normalizedRulePatch = toFramePatch(extractDraftByRules(message));
-  const nextPatch: DraftExtraction = {};
-
-  for (const key of ALLOWED_KEYS) {
-    const llmValue = normalizedLlmPatch[key];
-    const ruleValue = normalizedRulePatch[key];
-    if (llmValue !== undefined) {
-      nextPatch[key as string] = llmValue;
-      continue;
-    }
-    if (ruleValue !== undefined) {
-      nextPatch[key as string] = ruleValue;
-    }
-  }
+  const nextPatch = preferPatch(
+    normalizedLlmPatch,
+    preferPatch(normalizedNaturalPatch, normalizedRulePatch),
+  );
 
   return coerceFrameDimension(
     {
