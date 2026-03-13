@@ -1,6 +1,7 @@
 import { describe, expect, test } from '@jest/globals';
 import fs from 'node:fs';
 import { AgentService } from '../dist/services/agent.js';
+import { prisma } from '../dist/utils/database.js';
 
 describe('AgentService orchestration', () => {
   test('should execute analyze -> code-check -> report closed loop', async () => {
@@ -958,6 +959,37 @@ describe('AgentService orchestration', () => {
     expect(snapshot?.interaction?.detectedScenario).toBe('frame');
     expect(snapshot?.interaction?.conversationStage).toBe('荷载条件');
     expect(snapshot?.model?.metadata?.inferredType).toBe('frame');
+  });
+
+  test('should persist agent chat messages for conversation history restoration', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+    const originalCreateMany = prisma.message.createMany;
+    const originalFindUnique = prisma.conversation.findUnique;
+    const recorded = [];
+    prisma.conversation.findUnique = async () => ({ id: 'conv-persist-history' });
+    prisma.message.createMany = async ({ data }) => {
+      recorded.push(...data);
+      return { count: data.length };
+    };
+
+    try {
+      await svc.run({
+        conversationId: 'conv-persist-history',
+        message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
+        mode: 'chat',
+        context: { locale: 'zh' },
+      });
+    } finally {
+      prisma.conversation.findUnique = originalFindUnique;
+      prisma.message.createMany = originalCreateMany;
+    }
+
+    expect(recorded).toHaveLength(2);
+    expect(recorded[0]?.conversationId).toBe('conv-persist-history');
+    expect(recorded[0]?.role).toBe('user');
+    expect(recorded[1]?.role).toBe('assistant');
+    expect(recorded[1]?.content).toContain('识别场景');
   });
 
   test('should keep regular frame chat in model stage until frame geometry is complete', async () => {

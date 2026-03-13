@@ -338,7 +338,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
         createdAt: '2026-03-12T08:00:00.000Z',
         updatedAt: '2026-03-12T09:00:00.000Z',
         messages: [
-          { id: 'm1', role: 'user', content: 'stored user', status: 'done', timestamp: '2026-03-12T08:00:00.000Z' },
+          { id: 'welcome', role: 'assistant', content: 'welcome', status: 'done', timestamp: '2026-03-12T08:00:00.000Z' },
         ],
         modelText: sampleModelJson,
         analysisType: 'nonlinear',
@@ -413,6 +413,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await waitFor(() => {
       expect(screen.getByText('backend assistant')).toBeInTheDocument()
     })
+    expect(screen.queryByText('welcome')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
     fireEvent.click(screen.getByRole('button', { name: /Expand Analysis Settings|展开分析设置/ }))
