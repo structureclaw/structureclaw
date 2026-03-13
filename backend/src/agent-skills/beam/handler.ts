@@ -9,7 +9,7 @@ import {
   restrictLegacyDraftPatch,
 } from '../../services/agent-skills/legacy.js';
 import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../services/agent-skills/plugin-helpers.js';
-import type { DraftExtraction, DraftState, SkillHandler } from '../../services/agent-skills/types.js';
+import type { DraftExtraction, SkillHandler } from '../../services/agent-skills/types.js';
 
 const ALLOWED_KEYS = ['lengthM', 'supportType', 'loadKN', 'loadType', 'loadPosition'] as const;
 

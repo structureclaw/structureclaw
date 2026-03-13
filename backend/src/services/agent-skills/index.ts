@@ -5,7 +5,6 @@ import { AgentSkillExecutor } from './executor.js';
 import { localize, withScenarioState } from './plugin-helpers.js';
 import type {
   AgentSkillBundle,
-  DraftExtraction,
   DraftResult,
   DraftState,
   InteractionQuestion,

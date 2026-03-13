@@ -46,11 +46,6 @@ function extractInteger(text: string, patterns: RegExp[], groups: number[] = [1]
   return rounded > 0 ? rounded : undefined;
 }
 
-function toPositiveArray(values: Array<number | undefined>): number[] | undefined {
-  const normalized = values.filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0);
-  return normalized.length > 0 ? normalized : undefined;
-}
-
 function repeatValue(count: number | undefined, value: number | undefined): number[] | undefined {
   if (!count || !value || count <= 0 || value <= 0) {
     return undefined;
