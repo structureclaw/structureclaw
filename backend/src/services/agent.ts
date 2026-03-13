@@ -83,6 +83,14 @@ export interface AgentInteraction {
   nextActions?: AgentUserDecision[];
 }
 
+export interface AgentConversationSessionSnapshot {
+  draft: DraftState;
+  resolved?: InteractionSession['resolved'];
+  interaction: AgentInteraction;
+  model?: Record<string, unknown>;
+  updatedAt: number;
+}
+
 export interface AgentRunParams {
   message: string;
   mode?: AgentRunMode;
@@ -243,6 +251,36 @@ export class AgentService {
       || text.includes('dynamic')
       || text.includes('nonlinear')
       || text.includes('code-check');
+  }
+
+  async getConversationSessionSnapshot(
+    conversationId: string | undefined,
+    locale: AppLocale,
+    skillIds?: string[],
+  ): Promise<AgentConversationSessionSnapshot | undefined> {
+    const session = await this.getInteractionSession(conversationId);
+    if (!session) {
+      return undefined;
+    }
+
+    const assessment = await this.assessInteractionNeeds(session, locale, skillIds, 'chat');
+    const state = assessment.criticalMissing.length > 0
+      ? 'collecting'
+      : assessment.nonCriticalMissing.length > 0
+        ? 'confirming'
+        : 'ready';
+    const interaction = await this.buildInteractionPayload(assessment, session, state, locale, skillIds);
+    const model = assessment.criticalMissing.length === 0
+      ? await this.skillRuntime.buildModel(session.draft, skillIds)
+      : undefined;
+
+    return {
+      draft: session.draft,
+      resolved: session.resolved,
+      interaction,
+      model,
+      updatedAt: session.updatedAt,
+    };
   }
 
   listSkills() {

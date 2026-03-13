@@ -79,8 +79,35 @@ type ConversationSummary = {
   updatedAt?: string
 }
 
+type AgentSessionSnapshot = {
+  draft?: Record<string, unknown>
+  resolved?: {
+    analysisType?: AnalysisType
+    designCode?: string
+    autoCodeCheck?: boolean
+    includeReport?: boolean
+    reportFormat?: 'json' | 'markdown' | 'both'
+    reportOutput?: 'inline' | 'file'
+  }
+  interaction?: AgentInteraction
+  model?: Record<string, unknown>
+  updatedAt?: number
+}
+
+type ConversationDetail = ConversationSummary & {
+  messages?: Array<{ id: string; role: string; content: string; createdAt: string }>
+  session?: AgentSessionSnapshot | null
+}
+
 type PersistedConversation = ConversationSummary & {
   messages: Message[]
+  modelText?: string
+  analysisType?: AnalysisType
+  designCode?: string
+  selectedSkillIds?: string[]
+  selectedEngineId?: string
+  modelSyncMessage?: string
+  activePanel?: PanelTab
   latestResult?: AgentResult | null
   modelVisualizationSnapshot?: VisualizationSnapshot | null
   resultVisualizationSnapshot?: VisualizationSnapshot | null
@@ -115,11 +142,19 @@ type AnalysisEngineSummary = {
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const STORAGE_KEY = 'structureclaw.console.conversations'
+
 function createId(prefix: string) {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return `${prefix}-${crypto.randomUUID()}`
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+function toModelText(model?: Record<string, unknown> | null) {
+  if (!model || typeof model !== 'object' || Array.isArray(model)) {
+    return ''
+  }
+  return JSON.stringify(model, null, 2)
 }
 
 function loadConversationArchive(): Record<string, PersistedConversation> {
@@ -814,6 +849,10 @@ export function AIConsole() {
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const shouldStickToBottomRef = useRef(true)
+  const defaultSkillIds = useMemo(
+    () => availableSkills.filter((skill) => skill.autoLoadByDefault).map((skill) => skill.id),
+    [availableSkills]
+  )
 
   useEffect(() => {
     setMessages((current) => {
@@ -919,7 +958,7 @@ export function AIConsole() {
         }
         const skills = payload as AgentSkillSummary[]
         setAvailableSkills(skills)
-        setSelectedSkillIds(skills.filter((skill) => skill.autoLoadByDefault).map((skill) => skill.id))
+        setSelectedSkillIds((current) => (current.length > 0 ? current : skills.filter((skill) => skill.autoLoadByDefault).map((skill) => skill.id)))
       } catch {
         if (active) {
           setAvailableSkills([])
@@ -1091,6 +1130,13 @@ export function AIConsole() {
         createdAt: current[conversationId]?.createdAt || new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         messages,
+        modelText,
+        analysisType,
+        designCode,
+        selectedSkillIds,
+        selectedEngineId,
+        modelSyncMessage,
+        activePanel,
         latestResult,
         modelVisualizationSnapshot: latestModelVisualizationSnapshot ?? current[conversationId]?.modelVisualizationSnapshot ?? null,
         resultVisualizationSnapshot:
@@ -1100,7 +1146,22 @@ export function AIConsole() {
           ?? null,
       },
     }))
-  }, [conversationId, latestModelVisualizationSnapshot, latestResult, latestResultVisualizationSnapshot, messages, serverConversations, t])
+  }, [
+    activePanel,
+    analysisType,
+    conversationId,
+    designCode,
+    latestModelVisualizationSnapshot,
+    latestResult,
+    latestResultVisualizationSnapshot,
+    messages,
+    modelSyncMessage,
+    modelText,
+    selectedEngineId,
+    selectedSkillIds,
+    serverConversations,
+    t,
+  ])
 
   async function ensureConversation(seedMessage: string) {
     if (conversationId) {
@@ -1168,14 +1229,14 @@ export function AIConsole() {
     const archived = conversationArchive[nextConversationId]
 
     try {
-      const response = await fetch(`${API_BASE}/api/v1/chat/conversation/${nextConversationId}`)
+      const response = await fetch(`${API_BASE}/api/v1/chat/conversation/${nextConversationId}?locale=${encodeURIComponent(locale)}`)
       if (!response.ok) {
         throw new Error(`${t('loadConversationFailed')}: HTTP ${response.status}`)
       }
 
-      const payload = await response.json()
+      const payload = await response.json() as ConversationDetail | null
       const backendMessages = Array.isArray(payload?.messages)
-        ? (payload.messages as Array<{ id: string; role: string; content: string; createdAt: string }>).map((message) => ({
+        ? payload.messages.map((message) => ({
             id: message.id,
             role: (message.role === 'assistant' ? 'assistant' : 'user') as Message['role'],
             content: message.content,
@@ -1190,21 +1251,42 @@ export function AIConsole() {
           : backendMessages.length > 0
             ? backendMessages
             : [initialAssistantMessage]
+      const session = payload?.session
+      const nextModelText = toModelText(session?.model) || archived?.modelText || ''
+      const nextAnalysisType = session?.resolved?.analysisType || archived?.analysisType || 'static'
+      const nextDesignCode = session?.resolved?.designCode || archived?.designCode || 'GB50017'
+      const nextSelectedSkillIds = archived?.selectedSkillIds?.length ? archived.selectedSkillIds : defaultSkillIds
+      const nextSelectedEngineId = archived?.selectedEngineId || 'auto'
+      const nextLatestResult = archived?.latestResult || null
+      const nextActivePanel = archived?.activePanel || (nextLatestResult?.report?.markdown ? 'report' : 'analysis')
+      const nextModelSyncMessage = session?.model ? t('modelSyncFromChat') : (archived?.modelSyncMessage || '')
 
       setConversationId(nextConversationId)
       setMessages(nextMessages)
-      setLatestResult(archived?.latestResult || null)
+      setModelText(nextModelText)
+      setAnalysisType(nextAnalysisType)
+      setDesignCode(nextDesignCode)
+      setSelectedSkillIds(nextSelectedSkillIds)
+      setSelectedEngineId(nextSelectedEngineId)
+      setModelSyncMessage(nextModelSyncMessage)
+      setLatestResult(nextLatestResult)
       setLatestModelVisualizationSnapshot(archived?.modelVisualizationSnapshot || null)
       setLatestResultVisualizationSnapshot(archived?.resultVisualizationSnapshot || archived?.visualizationSnapshot || null)
-      setActivePanel(archived?.latestResult?.report?.markdown ? 'report' : 'analysis')
+      setActivePanel(nextActivePanel)
     } catch (error) {
       if (archived) {
         setConversationId(nextConversationId)
         setMessages(archived.messages.length ? archived.messages : [initialAssistantMessage])
+        setModelText(archived.modelText || '')
+        setAnalysisType(archived.analysisType || 'static')
+        setDesignCode(archived.designCode || 'GB50017')
+        setSelectedSkillIds(archived.selectedSkillIds?.length ? archived.selectedSkillIds : defaultSkillIds)
+        setSelectedEngineId(archived.selectedEngineId || 'auto')
+        setModelSyncMessage(archived.modelSyncMessage || '')
         setLatestResult(archived.latestResult || null)
         setLatestModelVisualizationSnapshot(archived.modelVisualizationSnapshot || null)
         setLatestResultVisualizationSnapshot(archived.resultVisualizationSnapshot || archived.visualizationSnapshot || null)
-        setActivePanel(archived.latestResult?.report?.markdown ? 'report' : 'analysis')
+        setActivePanel(archived.activePanel || (archived.latestResult?.report?.markdown ? 'report' : 'analysis'))
         return
       }
 
@@ -1219,6 +1301,12 @@ export function AIConsole() {
 
     setConversationId('')
     setMessages([initialAssistantMessage])
+    setModelText('')
+    setAnalysisType('static')
+    setDesignCode('GB50017')
+    setSelectedSkillIds(defaultSkillIds)
+    setSelectedEngineId('auto')
+    setModelSyncMessage('')
     setLatestResult(null)
     setLatestModelVisualizationSnapshot(null)
     setLatestResultVisualizationSnapshot(null)

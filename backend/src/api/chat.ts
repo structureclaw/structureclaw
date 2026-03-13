@@ -54,6 +54,10 @@ const createConversationSchema = z.object({
   locale: localeSchema,
 });
 
+const conversationDetailQuerySchema = z.object({
+  locale: localeSchema,
+});
+
 const executeSchema = z.object({
   message: z.string().min(1).max(10000),
   conversationId: optionalIdSchema,
@@ -262,12 +266,21 @@ export async function chatRoutes(fastify: FastifyInstance) {
       tags: ['Chat'],
       summary: '获取会话历史',
     },
-  }, async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Params: { id: string }; Querystring: z.infer<typeof conversationDetailQuerySchema> }>, reply: FastifyReply) => {
     const { id } = request.params;
+    const query = conversationDetailQuerySchema.parse(request.query);
     const userId = request.user?.id;
 
     const conversation = await chatService.getConversation(id, userId);
-    return reply.send(conversation);
+    if (!conversation) {
+      return reply.send(conversation);
+    }
+
+    const session = await agentService.getConversationSessionSnapshot(id, query.locale || 'en');
+    return reply.send({
+      ...conversation,
+      session,
+    });
   });
 
   // 获取用户所有会话

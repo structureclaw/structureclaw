@@ -206,4 +206,15 @@ export class AgentSkillRuntime {
     }
     return plugin.handler.resolveStage(missingKeys, draft);
   }
+
+  async buildModel(
+    state: DraftState,
+    skillIds?: string[],
+  ): Promise<Record<string, unknown> | undefined> {
+    const plugin = await this.registry.resolvePluginForState(state, skillIds);
+    if (!plugin) {
+      return undefined;
+    }
+    return plugin.handler.buildModel(state);
+  }
 }
