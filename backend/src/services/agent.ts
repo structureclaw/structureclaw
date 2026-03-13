@@ -228,7 +228,7 @@ export class AgentService {
     }
   }
 
-  private getScenarioLabel(key: ScenarioTemplateKey, locale: AppLocale): string {
+  private async getScenarioLabel(key: ScenarioTemplateKey, locale: AppLocale): Promise<string> {
     return this.skillRuntime.getScenarioLabel(key, locale);
   }
 
@@ -612,15 +612,12 @@ export class AgentService {
     };
 
     this.applyResolvedConfigFromContext(workingSession, params.context);
-    this.applyProvidedValuesToSession(workingSession, providedValues);
+    await this.applyProvidedValuesToSession(workingSession, providedValues, locale, skillIds);
     if (userDecision === 'allow_auto_decide' || userDecision === 'confirm_all') {
       workingSession.userApprovedAutoDecide = true;
     } else if (userDecision === 'revise') {
       workingSession.userApprovedAutoDecide = false;
     }
-
-    const scenario = this.detectScenario(params.message, locale, workingSession.draft.inferredType, skillIds);
-    this.applyScenarioMatch(workingSession, scenario);
 
     if (runMode === 'chat') {
       return this.handleChatMode({
@@ -645,9 +642,11 @@ export class AgentService {
 
       const draft = await this.textToModelDraft(params.message, workingSession.draft, locale, skillIds);
       if (draft.stateToPersist) {
-        workingSession.draft = this.mergePersistedDraftState(workingSession.draft, draft.stateToPersist);
+        workingSession.draft = draft.stateToPersist;
       }
-      this.enforceScenarioSupportBoundary(workingSession);
+      if (draft.scenario) {
+        workingSession.scenario = draft.scenario;
+      }
       workingSession.updatedAt = Date.now();
       this.applyInferredNonCriticalFromMessage(workingSession, params.message);
 
@@ -660,7 +659,7 @@ export class AgentService {
 
       if (workingSession.userApprovedAutoDecide) {
         for (let i = 0; i < 3; i += 1) {
-          const assessment = this.assessInteractionNeeds(workingSession, locale);
+          const assessment = await this.assessInteractionNeeds(workingSession, locale, skillIds);
           if (assessment.nonCriticalMissing.length === 0) {
             break;
           }
@@ -668,19 +667,20 @@ export class AgentService {
         }
       }
 
-      const finalAssessment = this.assessInteractionNeeds(workingSession, locale);
+      const finalAssessment = await this.assessInteractionNeeds(workingSession, locale, skillIds);
       if (finalAssessment.criticalMissing.length > 0 || finalAssessment.nonCriticalMissing.length > 0 || !draft.model) {
         if (sessionKey) {
           await this.setInteractionSession(sessionKey, workingSession);
         }
 
-        const interaction = this.buildInteractionPayload(
+        const interaction = await this.buildInteractionPayload(
           finalAssessment,
           workingSession,
           finalAssessment.criticalMissing.length > 0 ? 'confirming' : 'collecting',
           locale,
+          skillIds,
         );
-        const missingFields = this.mapMissingFieldLabels(finalAssessment.criticalMissing, locale);
+        const missingFields = await this.mapMissingFieldLabels(finalAssessment.criticalMissing, locale, workingSession.draft, skillIds);
         const question = this.buildInteractionQuestion(interaction, locale);
         const result: AgentRunResult = {
           traceId,
@@ -1007,24 +1007,6 @@ export class AgentService {
     }
   }
 
-  private detectScenario(message: string, locale: AppLocale, currentType?: InferredModelType, skillIds?: string[]): ScenarioMatch {
-    return this.skillRuntime.detectScenario(message, locale, currentType, skillIds);
-  }
-
-  private applyScenarioMatch(session: InteractionSession, scenario: ScenarioMatch): void {
-    session.scenario = scenario;
-    if (session.draft.inferredType === 'unknown' && scenario.mappedType !== 'unknown') {
-      session.draft.inferredType = scenario.mappedType;
-    }
-    session.updatedAt = Date.now();
-  }
-
-  private enforceScenarioSupportBoundary(session: InteractionSession): void {
-    if (session.scenario?.supportLevel === 'unsupported' && session.scenario.mappedType === 'unknown') {
-      session.draft.inferredType = 'unknown';
-    }
-  }
-
   private buildRecommendedNextStep(
     assessment: { criticalMissing: string[]; nonCriticalMissing: string[]; defaultProposals: InteractionDefaultProposal[] },
     interaction: AgentInteraction,
@@ -1104,9 +1086,11 @@ export class AgentService {
 
     const draft = await this.textToModelDraft(params.message, workingSession.draft, locale, params.context?.skillIds);
     if (draft.stateToPersist) {
-      workingSession.draft = this.mergePersistedDraftState(workingSession.draft, draft.stateToPersist);
+      workingSession.draft = draft.stateToPersist;
     }
-    this.enforceScenarioSupportBoundary(workingSession);
+    if (draft.scenario) {
+      workingSession.scenario = draft.scenario;
+    }
     workingSession.updatedAt = Date.now();
     this.applyInferredNonCriticalFromMessage(workingSession, params.message);
     this.completeToolCallSuccess(draftCall, {
@@ -1116,13 +1100,13 @@ export class AgentService {
       modelGenerated: Boolean(draft.model),
     });
 
-    const assessment = this.assessInteractionNeeds(workingSession, locale, 'chat');
+    const assessment = await this.assessInteractionNeeds(workingSession, locale, params.context?.skillIds, 'chat');
     const state: AgentInteractionState = assessment.criticalMissing.length > 0
       ? 'confirming'
       : assessment.nonCriticalMissing.length > 0
         ? 'collecting'
         : 'ready';
-    const interaction = this.buildInteractionPayload(assessment, workingSession, state, locale);
+    const interaction = await this.buildInteractionPayload(assessment, workingSession, state, locale, params.context?.skillIds);
     interaction.recommendedNextStep = this.buildRecommendedNextStep(assessment, interaction, locale);
 
     if (sessionKey) {
@@ -1194,16 +1178,24 @@ export class AgentService {
     return undefined;
   }
 
-  private assessInteractionNeeds(session: InteractionSession, locale: AppLocale, mode: AgentRunMode = 'execute'): {
+  private async assessInteractionNeeds(
+    session: InteractionSession,
+    locale: AppLocale,
+    skillIds?: string[],
+    mode: AgentRunMode = 'execute'
+  ): Promise<{
     criticalMissing: string[];
     nonCriticalMissing: string[];
     defaultProposals: InteractionDefaultProposal[];
-  } {
-    const criticalMissing = this.computeMissingCriticalKeys(session.draft);
-    if (mode === 'chat') {
-      criticalMissing.push(...this.computeMissingLoadDetailKeys(session.draft));
-    }
-    const nonCriticalMissing: string[] = [];
+  }> {
+    const structural = await this.skillRuntime.assessDraft(
+      session.draft,
+      locale,
+      mode === 'chat' ? 'chat' : 'execute',
+      skillIds,
+    );
+    const criticalMissing = [...structural.criticalMissing];
+    const nonCriticalMissing: string[] = [...structural.optionalMissing];
     const resolved = session.resolved || {};
 
     if (!resolved.analysisType) {
@@ -1327,32 +1319,25 @@ export class AgentService {
     }
   }
 
-  private applyProvidedValuesToSession(session: InteractionSession, values: Record<string, unknown>): void {
+  private async applyProvidedValuesToSession(
+    session: InteractionSession,
+    values: Record<string, unknown>,
+    locale: AppLocale,
+    skillIds?: string[],
+  ): Promise<void> {
     if (!values || typeof values !== 'object') {
       return;
     }
-    const nextDraft: DraftExtraction = {
-      inferredType: this.normalizeInferredType(values.inferredType),
-      lengthM: this.normalizeNumber(values.lengthM),
-      spanLengthM: this.normalizeNumber(values.spanLengthM),
-      heightM: this.normalizeNumber(values.heightM),
-      supportType: this.normalizeSupportType(values.supportType),
-      frameDimension: this.normalizeFrameDimension(values.frameDimension),
-      storyCount: this.normalizePositiveInteger(values.storyCount),
-      bayCount: this.normalizePositiveInteger(values.bayCount),
-      bayCountX: this.normalizePositiveInteger(values.bayCountX),
-      bayCountY: this.normalizePositiveInteger(values.bayCountY),
-      storyHeightsM: this.normalizeNumberArray(values.storyHeightsM),
-      bayWidthsM: this.normalizeNumberArray(values.bayWidthsM),
-      bayWidthsXM: this.normalizeNumberArray(values.bayWidthsXM),
-      bayWidthsYM: this.normalizeNumberArray(values.bayWidthsYM),
-      floorLoads: this.normalizeFloorLoads(values.floorLoads),
-      frameBaseSupportType: this.normalizeFrameBaseSupportType(values.frameBaseSupportType),
-      loadKN: this.normalizeNumber(values.loadKN),
-      loadType: this.normalizeLoadType(values.loadType),
-      loadPosition: this.normalizeLoadPosition(values.loadPosition),
-    };
-    session.draft = this.mergeDraftState(session.draft, nextDraft);
+    session.draft = await this.skillRuntime.applyProvidedValues(session.draft, values, locale, skillIds);
+    if (session.draft.scenarioKey) {
+      session.scenario = {
+        key: session.draft.scenarioKey,
+        mappedType: session.draft.inferredType,
+        skillId: session.draft.skillId,
+        supportLevel: session.draft.supportLevel || 'supported',
+        supportNote: session.draft.supportNote,
+      };
+    }
     session.resolved = session.resolved || {};
     if (typeof values.analysisType === 'string') {
       session.resolved.analysisType = this.normalizeAnalysisType(values.analysisType);
@@ -1424,42 +1409,9 @@ export class AgentService {
     return undefined;
   }
 
-  private computeMissingCriticalKeys(state: DraftState): string[] {
-    return this.skillRuntime.computeMissingCriticalKeys(state);
-  }
-
-  private computeMissingLoadDetailKeys(state: DraftState): string[] {
-    return this.skillRuntime.computeMissingLoadDetailKeys(state);
-  }
-
-  private mapMissingFieldLabels(missing: string[], locale: AppLocale): string[] {
-    const structuralKeys = missing.filter((key) => [
-      'inferredType',
-      'lengthM',
-      'spanLengthM',
-      'heightM',
-      'supportType',
-      'frameDimension',
-      'storyCount',
-      'bayCount',
-      'bayCountX',
-      'bayCountY',
-      'storyHeightsM',
-      'bayWidthsM',
-      'bayWidthsXM',
-      'bayWidthsYM',
-      'floorLoads',
-      'loadKN',
-      'loadType',
-      'loadPosition',
-    ].includes(key));
-    const structuralLabels = new Map(
-      structuralKeys.map((key) => [key, this.skillRuntime.mapMissingFieldLabels([key], locale)[0] || key])
-    );
-    return missing.map((key) => {
-      if (structuralLabels.has(key)) {
-        return structuralLabels.get(key)!;
-      }
+  private async mapMissingFieldLabels(missing: string[], locale: AppLocale, draft: DraftState, skillIds?: string[]): Promise<string[]> {
+    const labels = await this.skillRuntime.mapMissingFieldLabels(missing, locale, draft, skillIds);
+    return missing.map((key, index) => {
       switch (key) {
         case 'analysisType':
           return this.localize(locale, '分析类型（static/dynamic/seismic/nonlinear）', 'Analysis type (static/dynamic/seismic/nonlinear)');
@@ -1474,28 +1426,29 @@ export class AgentService {
         case 'reportOutput':
           return this.localize(locale, '报告输出位置（inline/file）', 'Report output location (inline/file)');
         default:
-          return key;
+          return labels[index] || key;
       }
     });
   }
 
-  private buildInteractionPayload(
+  private async buildInteractionPayload(
     assessment: { criticalMissing: string[]; nonCriticalMissing: string[]; defaultProposals: InteractionDefaultProposal[] },
     session: InteractionSession,
     state: AgentInteractionState,
     locale: AppLocale,
-  ): AgentInteraction {
+    skillIds?: string[],
+  ): Promise<AgentInteraction> {
     const missingKeys = [...assessment.criticalMissing, ...assessment.nonCriticalMissing];
-    const questions = this.buildInteractionQuestions(missingKeys, assessment.criticalMissing, session, locale);
-    const stage = this.resolveInteractionStage(missingKeys);
-    const missingCritical = this.mapMissingFieldLabels(assessment.criticalMissing, locale);
-    const missingOptional = this.mapMissingFieldLabels(assessment.nonCriticalMissing, locale);
+    const questions = await this.buildInteractionQuestions(missingKeys, assessment.criticalMissing, session, locale, skillIds);
+    const stage = await this.resolveInteractionStage(missingKeys, session.draft, skillIds);
+    const missingCritical = await this.mapMissingFieldLabels(assessment.criticalMissing, locale, session.draft, skillIds);
+    const missingOptional = await this.mapMissingFieldLabels(assessment.nonCriticalMissing, locale, session.draft, skillIds);
     return {
       state,
       stage,
       turnId: randomUUID(),
       detectedScenario: session.scenario?.key,
-      detectedScenarioLabel: session.scenario ? this.getScenarioLabel(session.scenario.key, locale) : undefined,
+      detectedScenarioLabel: session.scenario ? await this.getScenarioLabel(session.scenario.key, locale) : undefined,
       conversationStage: this.getStageLabel(stage, locale),
       missingCritical,
       missingOptional,
@@ -1512,34 +1465,16 @@ export class AgentService {
     };
   }
 
-  private buildInteractionQuestions(
+  private async buildInteractionQuestions(
     missingKeys: string[],
     criticalMissing: string[],
     session: InteractionSession,
     locale: AppLocale,
-  ): InteractionQuestion[] {
-    const structuralKeys = missingKeys.filter((key) => [
-      'inferredType',
-      'lengthM',
-      'spanLengthM',
-      'heightM',
-      'supportType',
-      'frameDimension',
-      'storyCount',
-      'bayCount',
-      'bayCountX',
-      'bayCountY',
-      'storyHeightsM',
-      'bayWidthsM',
-      'bayWidthsXM',
-      'bayWidthsYM',
-      'floorLoads',
-      'loadKN',
-      'loadType',
-      'loadPosition',
-    ].includes(key));
+    skillIds?: string[],
+  ): Promise<InteractionQuestion[]> {
     const structuralQuestions = new Map(
-      this.skillRuntime.buildInteractionQuestions(structuralKeys, criticalMissing, session.draft, locale).map((question) => [question.paramKey, question])
+      (await this.skillRuntime.buildInteractionQuestions(missingKeys, criticalMissing, session.draft, locale, skillIds))
+        .map((question) => [question.paramKey, question])
     );
     return missingKeys.map((paramKey) => {
       const critical = criticalMissing.includes(paramKey);
@@ -1566,29 +1501,10 @@ export class AgentService {
     });
   }
 
-  private resolveInteractionStage(missingKeys: string[]): AgentInteractionStage {
-    if (missingKeys.includes('inferredType')) {
-      return 'intent';
-    }
-    if (missingKeys.some((key) => [
-      'lengthM',
-      'spanLengthM',
-      'heightM',
-      'supportType',
-      'frameDimension',
-      'storyCount',
-      'bayCount',
-      'bayCountX',
-      'bayCountY',
-      'storyHeightsM',
-      'bayWidthsM',
-      'bayWidthsXM',
-      'bayWidthsYM',
-    ].includes(key))) {
-      return 'model';
-    }
-    if (missingKeys.includes('loadKN') || missingKeys.includes('loadType') || missingKeys.includes('loadPosition') || missingKeys.includes('floorLoads')) {
-      return 'loads';
+  private async resolveInteractionStage(missingKeys: string[], draft: DraftState, skillIds?: string[]): Promise<AgentInteractionStage> {
+    const structuralStage = await this.skillRuntime.resolveInteractionStage(missingKeys, draft, skillIds);
+    if (structuralStage === 'intent' || structuralStage === 'model' || structuralStage === 'loads') {
+      return structuralStage;
     }
     if (missingKeys.includes('analysisType')) {
       return 'analysis';
@@ -1607,16 +1523,6 @@ export class AgentService {
       `请先确认以下参数：${questionSummary}。若希望我按保守值自动决策，请回复“你决定”并触发 allow_auto_decide。`,
       `Please confirm the following parameters first: ${questionSummary}. If you want me to choose conservative defaults automatically, reply with "you decide" and trigger allow_auto_decide.`
     );
-  }
-
-  private buildLoadTypeQuestion(type: InferredModelType, locale: AppLocale): string {
-    return this.skillRuntime.buildInteractionQuestions(['loadType'], ['loadType'], { inferredType: type, updatedAt: Date.now() }, locale)[0]?.question
-      || this.localize(locale, '请确认荷载形式（点荷载或均布荷载）。', 'Please confirm the load type (point or distributed).');
-  }
-
-  private buildLoadPositionQuestion(type: InferredModelType, locale: AppLocale): string {
-    return this.skillRuntime.buildInteractionQuestions(['loadPosition'], ['loadPosition'], { inferredType: type, updatedAt: Date.now() }, locale)[0]?.question
-      || this.localize(locale, '请确认荷载位置。', 'Please confirm the load position.');
   }
 
   private buildExecutionInteraction(state: 'completed' | 'blocked'): AgentInteraction {
