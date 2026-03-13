@@ -176,7 +176,7 @@ class AnalysisEngineRegistry:
         fallback_engine = self.get_engine("builtin-simplified")
         if fallback_engine is None:
             return None
-        if not self._supports(fallback_engine, "analyze", analysis_type, model.model_dump(mode="json")):
+        if not self._supports_request(fallback_engine, "analyze", analysis_type, model.model_dump(mode="json")):
             return None
 
         return EngineSelection(
@@ -285,7 +285,6 @@ class AnalysisEngineRegistry:
                         "message": f"Unknown engineId: {engine_id}",
                     },
                 )
-            self._ensure_engine_supports(explicit, capability, analysis_type, model_payload)
             if not explicit["available"]:
                 raise HTTPException(
                     status_code=422,
@@ -294,9 +293,14 @@ class AnalysisEngineRegistry:
                         "message": f"Engine '{engine_id}' is currently unavailable",
                     },
                 )
+            self._ensure_engine_supports(explicit, capability, analysis_type, model_payload)
             return EngineSelection(engine=explicit, selection_mode="manual")
 
-        candidates = [item for item in manifests if self._supports(item, capability, analysis_type, model_payload) and item["available"]]
+        candidates = [
+            item
+            for item in manifests
+            if self._supports_request(item, capability, analysis_type, model_payload) and item["available"]
+        ]
         if not candidates:
             raise HTTPException(
                 status_code=503,
@@ -310,8 +314,12 @@ class AnalysisEngineRegistry:
         selected = candidates[0]
         fallback_from = None
         selection_mode = "auto"
-        preferred = next((item for item in manifests if item.get("priority", 0) > selected.get("priority", 0)
-                          and self._supports(item, capability, analysis_type, model_payload)), None)
+        preferred = next((
+            item
+            for item in manifests
+            if item.get("priority", 0) > selected.get("priority", 0)
+            and self._supports_request(item, capability, analysis_type, model_payload)
+        ), None)
         if preferred and not preferred.get("available"):
             selection_mode = "fallback"
             fallback_from = preferred["id"]
@@ -324,7 +332,7 @@ class AnalysisEngineRegistry:
         analysis_type: Optional[str],
         model_payload: Optional[Dict[str, Any]],
     ) -> None:
-        if not self._supports(manifest, capability, analysis_type, model_payload):
+        if not self._supports_request(manifest, capability, analysis_type, model_payload):
             raise HTTPException(
                 status_code=422,
                 detail={
@@ -333,7 +341,7 @@ class AnalysisEngineRegistry:
                 },
             )
 
-    def _supports(
+    def _supports_request(
         self,
         manifest: Dict[str, Any],
         capability: str,
@@ -352,8 +360,6 @@ class AnalysisEngineRegistry:
             family = self._detect_model_family(model_payload)
             if family not in supported_families:
                 return False
-        if not manifest.get("available", self._is_engine_available(manifest)):
-            return False
         return True
 
     def _build_engine_meta(self, selection: EngineSelection) -> Dict[str, Any]:

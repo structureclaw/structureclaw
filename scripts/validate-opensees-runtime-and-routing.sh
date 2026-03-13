@@ -161,6 +161,25 @@ else:
     else:
         raise SystemExit('Manual builtin-opensees selection should fail when runtime is unavailable')
 
+    unsupported_request = AnalysisRequest.model_validate(
+        {
+            'type': 'nonlinear',
+            'model': simply_supported,
+            'parameters': {'loadCaseIds': ['LC1']},
+            'engineId': 'builtin-simplified',
+        }
+    )
+    try:
+        asyncio.run(analyze(unsupported_request))
+    except Exception as error:
+        status_code = getattr(error, 'status_code', None)
+        detail = getattr(error, 'detail', {})
+        assert_true(status_code == 422, f'Expected unsupported engine request to raise 422, got {status_code}')
+        assert_true(isinstance(detail, dict) and detail.get('errorCode') == 'ENGINE_UNSUPPORTED', f'Unexpected unsupported engine detail: {detail}')
+        print('[ok] manual unsupported engine selection reports unsupported request')
+    else:
+        raise SystemExit('Manual builtin-simplified nonlinear selection should fail as unsupported')
+
 
 def fake_execute(self, selection, analysis_type, model, parameters, engine_id):
     if selection.engine['id'] == 'builtin-opensees':
