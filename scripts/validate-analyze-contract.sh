@@ -98,12 +98,12 @@ frame_3d_model = StructureModelV1(
     schema_version='1.0.0',
     nodes=[
         Node(id='1', x=0, y=0, z=0, restraints=[True, True, True, True, True, True]),
-        Node(id='2', x=0, y=3, z=0, restraints=[True, False, True, True, True, True]),
+        Node(id='2', x=0, y=3, z=2, restraints=[True, False, False, True, False, False]),
     ],
     elements=[Element(id='1', type='beam', nodes=['1', '2'], material='1', section='1')],
     materials=[Material(id='1', name='steel', E=200000, nu=0.3, rho=7850)],
     sections=[Section(id='1', name='B1', type='beam', properties={'A': 0.01, 'Iy': 0.0001, 'Iz': 0.0001, 'J': 0.00002, 'G': 79000})],
-    load_cases=[{'id': 'LC1', 'type': 'other', 'loads': [{'node': '2', 'fy': 6.0}]}],
+    load_cases=[{'id': 'LC1', 'type': 'other', 'loads': [{'node': '2', 'fy': 6.0, 'fz': 4.0}]}],
     load_combinations=[],
 )
 
@@ -114,6 +114,44 @@ if frame_3d_result['success'] is not True:
 if frame_3d_result.get('data', {}).get('analysisMode') != 'linear_3d_frame':
     raise SystemExit(f"Expected analysisMode=linear_3d_frame, got {frame_3d_result.get('data', {}).get('analysisMode')}")
 print('[ok] analyze 3d frame envelope contract')
+
+simplified_planar_beam_model = StructureModelV1(
+    schema_version='1.0.0',
+    nodes=[
+        Node(id='1', x=0, y=0, z=0, restraints=[True, True, True, True, True, True]),
+        Node(id='2', x=5, y=0, z=0),
+        Node(id='3', x=10, y=0, z=0),
+    ],
+    elements=[
+        Element(id='1', type='beam', nodes=['1', '2'], material='1', section='1'),
+        Element(id='2', type='beam', nodes=['2', '3'], material='1', section='1'),
+    ],
+    materials=[Material(id='1', name='steel', E=200000, nu=0.3, rho=7850)],
+    sections=[Section(id='1', name='B1', type='beam', properties={'A': 0.01, 'Iy': 0.0001, 'Iz': 0.0002, 'J': 0.00002, 'G': 79000})],
+    load_cases=[{'id': 'LC1', 'type': 'other', 'loads': [{'node': '3', 'fy': -10.0}]}],
+    load_combinations=[],
+)
+
+simplified_planar_request = AnalysisRequest(
+    type='static',
+    model=simplified_planar_beam_model,
+    parameters={'loadCaseIds': ['LC1']},
+    engineId='builtin-simplified',
+)
+simplified_planar_result = asyncio.run(analyze(simplified_planar_request)).model_dump()
+if simplified_planar_result['success'] is not True:
+    raise SystemExit('Expected success=true for simplified planar beam request')
+simplified_data = simplified_planar_result.get('data', {})
+if simplified_data.get('analysisMode') != 'linear_2d_frame':
+    raise SystemExit(f"Expected simplified planar beam analysisMode=linear_2d_frame, got {simplified_data.get('analysisMode')}")
+if simplified_data.get('plane') != 'xy':
+    raise SystemExit(f"Expected simplified planar beam plane=xy, got {simplified_data.get('plane')}")
+tip_disp = simplified_data.get('displacements', {}).get('3', {})
+if abs(float(tip_disp.get('uy', 0.0))) <= 0.0:
+    raise SystemExit(f"Expected non-zero simplified planar beam uy displacement, got {tip_disp}")
+if abs(float(tip_disp.get('uz', 0.0))) > 1e-9:
+    raise SystemExit(f"Expected near-zero simplified planar beam uz displacement, got {tip_disp}")
+print('[ok] analyze simplified planar beam routes to 2d xy frame')
 
 bad_request = AnalysisRequest(type='unknown', model=model, parameters={})
 try:

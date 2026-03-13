@@ -592,9 +592,9 @@ export function getScenarioLabel(key: ScenarioTemplateKey, locale: AppLocale, bu
 }
 
 function buildBeamNodes(length: number, supportType: DraftSupportType) {
-  const fixedRestraint = [true, false, true, false, true, false] as const;
-  const pinnedRestraint = [true, false, true, false, false, false] as const;
-  const rollerRestraint = [false, false, true, false, false, false] as const;
+  const fixedRestraint = [true, true, true, true, true, true] as const;
+  const pinnedRestraint = [true, true, true, true, true, false] as const;
+  const rollerRestraint = [false, true, true, true, true, false] as const;
   let leftRestraint: boolean[] = [...fixedRestraint];
   let rightRestraint: boolean[] | undefined;
 

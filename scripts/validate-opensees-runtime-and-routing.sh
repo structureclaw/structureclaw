@@ -47,7 +47,7 @@ print('[ok] OpenSees runtime smoke test')
 cantilever = {
     'schema_version': '1.0.0',
     'nodes': [
-        {'id': '1', 'x': 0.0, 'y': 0.0, 'z': 0.0, 'restraints': [True, False, True, False, True, False]},
+        {'id': '1', 'x': 0.0, 'y': 0.0, 'z': 0.0, 'restraints': [True, True, True, True, True, True]},
         {'id': '2', 'x': 5.0, 'y': 0.0, 'z': 0.0},
         {'id': '3', 'x': 10.0, 'y': 0.0, 'z': 0.0},
     ],
@@ -64,17 +64,18 @@ cantilever = {
 cantilever_result = run_request(cantilever)
 assert_true(cantilever_result['success'] is True, f"Cantilever OpenSees analysis failed: {cantilever_result['message']}")
 assert_true(cantilever_result['data']['analysisMode'] == 'opensees_2d_frame', f"Unexpected cantilever analysisMode: {cantilever_result['data']['analysisMode']}")
-tip_uz = float(cantilever_result['data']['displacements']['3']['uz'])
-assert_true(math.isfinite(tip_uz) and tip_uz < 0.0, f'Cantilever tip displacement invalid: {tip_uz}')
+assert_true(cantilever_result['data'].get('plane') == 'xy', f"Unexpected cantilever plane: {cantilever_result['data'].get('plane')}")
+tip_uy = float(cantilever_result['data']['displacements']['3']['uy'])
+assert_true(math.isfinite(tip_uy) and tip_uy < 0.0, f'Cantilever tip displacement invalid: {tip_uy}')
 assert_true('1' in cantilever_result['data']['reactions'], 'Cantilever reactions missing at fixed support')
 print('[ok] cantilever beam solves with builtin-opensees')
 
 simply_supported = {
     'schema_version': '1.0.0',
     'nodes': [
-        {'id': '1', 'x': 0.0, 'y': 0.0, 'z': 0.0, 'restraints': [True, False, True, False, False, False]},
+        {'id': '1', 'x': 0.0, 'y': 0.0, 'z': 0.0, 'restraints': [True, True, True, True, True, False]},
         {'id': '2', 'x': 3.0, 'y': 0.0, 'z': 0.0},
-        {'id': '3', 'x': 6.0, 'y': 0.0, 'z': 0.0, 'restraints': [False, False, True, False, False, False]},
+        {'id': '3', 'x': 6.0, 'y': 0.0, 'z': 0.0, 'restraints': [False, True, True, True, True, False]},
     ],
     'elements': [
         {'id': '1', 'type': 'beam', 'nodes': ['1', '2'], 'material': '1', 'section': '1'},
@@ -89,8 +90,9 @@ simply_supported = {
 simply_supported_result = run_request(simply_supported)
 assert_true(simply_supported_result['success'] is True, f"Simply-supported OpenSees analysis failed: {simply_supported_result['message']}")
 assert_true(simply_supported_result['data']['analysisMode'] == 'opensees_2d_frame', f"Unexpected simply-supported analysisMode: {simply_supported_result['data']['analysisMode']}")
-midspan_uz = float(simply_supported_result['data']['displacements']['2']['uz'])
-assert_true(math.isfinite(midspan_uz) and midspan_uz < 0.0, f'Simply-supported midspan displacement invalid: {midspan_uz}')
+assert_true(simply_supported_result['data'].get('plane') == 'xy', f"Unexpected simply-supported plane: {simply_supported_result['data'].get('plane')}")
+midspan_uy = float(simply_supported_result['data']['displacements']['2']['uy'])
+assert_true(math.isfinite(midspan_uy) and midspan_uy < 0.0, f'Simply-supported midspan displacement invalid: {midspan_uy}')
 print('[ok] simply-supported beam solves with builtin-opensees')
 
 portal_frame = {

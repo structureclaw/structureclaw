@@ -85,20 +85,7 @@ class StaticAnalyzer:
         return self._run_with_opensees_3d_frame(parameters, ops)
 
     def _select_opensees_planar_frame_mode(self, parameters: Dict[str, Any]) -> Optional[str]:
-        if not self.model.elements or not all(elem.type == 'beam' for elem in self.model.elements):
-            return None
-
-        x_range = self._axis_range('x')
-        y_range = self._axis_range('y')
-        z_range = self._axis_range('z')
-
-        if y_range > 1e-12 and z_range <= 1e-12:
-            return 'xy'
-        if z_range > 1e-12 and y_range <= 1e-12:
-            return 'xz'
-        if y_range <= 1e-12 and z_range <= 1e-12:
-            return 'xz'
-        return None
+        return self._select_planar_frame_mode(parameters)
 
     def _axis_range(self, axis: str) -> float:
         values = [float(getattr(node, axis)) for node in self.model.nodes]
@@ -186,6 +173,7 @@ class StaticAnalyzer:
         return {
             'status': 'success',
             'analysisMode': 'opensees_2d_frame',
+            'plane': plane,
             'displacements': displacements,
             'forces': forces,
             'reactions': reactions,
@@ -307,12 +295,16 @@ class StaticAnalyzer:
         简化分析（当 OpenSees 不可用时）
         """
         batch_cases = parameters.get('batchCases', [])
+        planar_frame_mode = self._select_planar_frame_mode(parameters)
 
-        if self._can_run_2d_frame_solver() and not self._requires_3d_frame_solver(parameters):
+        if self._can_run_2d_frame_solver() and planar_frame_mode is not None:
             try:
                 if batch_cases:
-                    return self._run_batch_cases(parameters, self._run_linear_2d_frame)
-                return self._run_linear_2d_frame(parameters)
+                    return self._run_batch_cases(
+                        parameters,
+                        lambda case_parameters: self._run_linear_2d_frame(case_parameters, planar_frame_mode),
+                    )
+                return self._run_linear_2d_frame(parameters, planar_frame_mode)
             except Exception as e:
                 logger.warning(f"2D frame solver failed, trying truss/zero fallback: {e}")
 
@@ -538,23 +530,62 @@ class StaticAnalyzer:
     def _requires_3d_frame_solver(self, parameters: Dict[str, Any]) -> bool:
         """
         判断 beam 模型是否需要 3D 求解路径。
-        几何判定：节点 y 坐标存在离散变化。
-        荷载判定：存在 fy / mx / mz 非零节点荷载。
+        如果无法安全映射到 x-y / x-z 平面 frame，则走 3D。
         """
-        ys = [float(node.y) for node in self.model.nodes]
-        if ys and (max(ys) - min(ys) > 1e-12):
-            return True
+        return self._select_planar_frame_mode(parameters) is None
 
+    def _select_planar_frame_mode(self, parameters: Dict[str, Any]) -> Optional[str]:
+        """
+        判断 beam 模型能否映射为 2D 平面 frame。
+        返回:
+          - 'xy': x-y 平面，弯曲绕 z 轴
+          - 'xz': x-z 平面，弯曲绕 y 轴
+          - None: 必须走 3D
+        """
+        if not self.model.elements or not all(elem.type == 'beam' for elem in self.model.elements):
+            return None
+
+        y_range = self._axis_range('y')
+        z_range = self._axis_range('z')
+        tolerance = 1e-12
+
+        if y_range > tolerance and z_range > tolerance:
+            return None
+        if y_range > tolerance:
+            return 'xy'
+        if z_range > tolerance:
+            return 'xz'
+
+        has_xy_load = False
+        has_xz_load = False
         for load in self._collect_nodal_loads(parameters):
             if str(load.get('type', '')) == 'distributed':
+                wy = self._to_float(load.get('wy', 0.0), 0.0)
+                wz = self._to_float(load.get('wz', 0.0), 0.0)
+                if abs(wy) > tolerance:
+                    has_xy_load = True
+                if abs(wz) > tolerance:
+                    has_xz_load = True
                 continue
-            if abs(float(load.get('fy', 0.0))) > 1e-12:
-                return True
-            if abs(float(load.get('mx', load.get('momentX', 0.0)))) > 1e-12:
-                return True
-            if abs(float(load.get('mz', load.get('momentZ', 0.0)))) > 1e-12:
-                return True
-        return False
+
+            fy = self._to_float(load.get('fy', 0.0), 0.0)
+            fz = self._to_float(load.get('fz', 0.0), 0.0)
+            mx = self._to_float(load.get('mx', load.get('momentX', 0.0)), 0.0)
+            my = self._to_float(load.get('my', load.get('momentY', 0.0)), 0.0)
+            mz = self._to_float(load.get('mz', load.get('momentZ', 0.0)), 0.0)
+
+            if abs(mx) > tolerance:
+                return None
+            if abs(fy) > tolerance or abs(mz) > tolerance:
+                has_xy_load = True
+            if abs(fz) > tolerance or abs(my) > tolerance:
+                has_xz_load = True
+
+        if has_xy_load and has_xz_load:
+            return None
+        if has_xy_load:
+            return 'xy'
+        return 'xz'
 
     def _can_run_3d_truss_solver(self) -> bool:
         """判断是否可用内置 3D truss 求解器。"""
@@ -868,10 +899,13 @@ class StaticAnalyzer:
             'summary': self._generate_summary(displacements, forces),
         }
 
-    def _run_linear_2d_frame(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
+    def _run_linear_2d_frame(self, parameters: Dict[str, Any], plane: Optional[str] = None) -> Dict[str, Any]:
         """
-        2D frame/beam 线弹性静力分析（x-z 平面，DOF: ux, uz, ry）
+        2D frame/beam 线弹性静力分析。
+        `xz` 平面: DOF = ux, uz, ry
+        `xy` 平面: DOF = ux, uy, rz
         """
+        plane = plane or self._select_planar_frame_mode(parameters) or 'xz'
         node_order = sorted(self.model.nodes, key=lambda n: n.id)
         node_index = {node.id: idx for idx, node in enumerate(node_order)}
         dof_count = len(node_order) * 3
@@ -887,7 +921,7 @@ class StaticAnalyzer:
                 if not elem_id:
                     continue
                 # 约定 q>0 沿局部 +v 方向；常见竖向向下可传负值
-                q = self._plane_distributed_load(load, 'xz')
+                q = self._plane_distributed_load(load, plane)
                 element_distributed_loads.setdefault(elem_id, []).append(q)
 
         element_meta: Dict[str, Dict[str, Any]] = {}
@@ -897,10 +931,10 @@ class StaticAnalyzer:
             mat = self.materials[elem.material]
             sec = self.sections[elem.section]
 
-            x1, z1 = n1.x, n1.z
-            x2, z2 = n2.x, n2.z
-            dx, dz = x2 - x1, z2 - z1
-            L = float(np.sqrt(dx * dx + dz * dz))
+            x1, t1 = self._get_2d_plane_coordinates(n1, plane)
+            x2, t2 = self._get_2d_plane_coordinates(n2, plane)
+            dx, dt = x2 - x1, t2 - t1
+            L = float(np.sqrt(dx * dx + dt * dt))
             if L <= 0.0:
                 raise ValueError(f"Element '{elem.id}' has zero length")
 
@@ -909,12 +943,14 @@ class StaticAnalyzer:
                 raise ValueError(f"Element '{elem.id}' requires section area A > 0")
 
             E = float(mat.E)
-            I = float(sec.properties.get('Iy', sec.properties.get('Iz', 0.0)))
+            inertia_key = 'Iz' if plane == 'xy' else 'Iy'
+            fallback_inertia_key = 'Iy' if plane == 'xy' else 'Iz'
+            I = float(sec.properties.get(inertia_key, sec.properties.get(fallback_inertia_key, 0.0)))
             if I <= 0.0:
-                raise ValueError(f"Element '{elem.id}' requires section inertia Iy/Iz > 0")
+                raise ValueError(f"Element '{elem.id}' requires section inertia {inertia_key}/{fallback_inertia_key} > 0")
 
             c = dx / L
-            s = dz / L
+            s = dt / L
 
             k_local = np.array(
                 [
@@ -973,19 +1009,27 @@ class StaticAnalyzer:
                 continue
             i = node_index[node_id] * 3
             F[i] += float(load.get('fx', 0.0))
-            F[i + 1] += self._plane_transverse_force(load, 'xz')
-            F[i + 2] += self._plane_bending_moment(load, 'xz')
+            F[i + 1] += self._plane_transverse_force(load, plane)
+            F[i + 2] += self._plane_bending_moment(load, plane)
 
         fixed_dofs = set()
         for node in node_order:
             idx = node_index[node.id] * 3
             restraints = node.restraints or [False] * 6
-            if restraints[0]:
-                fixed_dofs.add(idx)
-            if restraints[2]:
-                fixed_dofs.add(idx + 1)
-            if restraints[4]:
-                fixed_dofs.add(idx + 2)
+            if plane == 'xy':
+                if restraints[0]:
+                    fixed_dofs.add(idx)
+                if restraints[1]:
+                    fixed_dofs.add(idx + 1)
+                if restraints[5]:
+                    fixed_dofs.add(idx + 2)
+            else:
+                if restraints[0]:
+                    fixed_dofs.add(idx)
+                if restraints[2]:
+                    fixed_dofs.add(idx + 1)
+                if restraints[4]:
+                    fixed_dofs.add(idx + 2)
 
         free_dofs = [i for i in range(dof_count) if i not in fixed_dofs]
         if not free_dofs:
@@ -1008,14 +1052,24 @@ class StaticAnalyzer:
         displacements = {}
         for node in node_order:
             i = node_index[node.id] * 3
-            displacements[node.id] = {
-                'ux': float(U[i]),
-                'uy': 0.0,
-                'uz': float(U[i + 1]),
-                'rx': 0.0,
-                'ry': float(U[i + 2]),
-                'rz': 0.0,
-            }
+            if plane == 'xy':
+                displacements[node.id] = {
+                    'ux': float(U[i]),
+                    'uy': float(U[i + 1]),
+                    'uz': 0.0,
+                    'rx': 0.0,
+                    'ry': 0.0,
+                    'rz': float(U[i + 2]),
+                }
+            else:
+                displacements[node.id] = {
+                    'ux': float(U[i]),
+                    'uy': 0.0,
+                    'uz': float(U[i + 1]),
+                    'rx': 0.0,
+                    'ry': float(U[i + 2]),
+                    'rz': 0.0,
+                }
 
         forces = {}
         for elem in self.model.elements:
@@ -1036,15 +1090,23 @@ class StaticAnalyzer:
         for node in node_order:
             i = node_index[node.id] * 3
             if i in fixed_dofs or (i + 1) in fixed_dofs or (i + 2) in fixed_dofs:
-                reactions[node.id] = {
-                    'fx': float(R[i]),
-                    'fz': float(R[i + 1]),
-                    'my': float(R[i + 2]),
-                }
+                if plane == 'xy':
+                    reactions[node.id] = {
+                        'fx': float(R[i]),
+                        'fy': float(R[i + 1]),
+                        'mz': float(R[i + 2]),
+                    }
+                else:
+                    reactions[node.id] = {
+                        'fx': float(R[i]),
+                        'fz': float(R[i + 1]),
+                        'my': float(R[i + 2]),
+                    }
 
         return {
             'status': 'success',
             'analysisMode': 'linear_2d_frame',
+            'plane': plane,
             'displacements': displacements,
             'forces': forces,
             'reactions': reactions,

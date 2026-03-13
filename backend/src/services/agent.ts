@@ -2060,9 +2060,9 @@ export class AgentService {
     const length = state.lengthM!;
     const load = state.loadKN!;
     const supportType = state.supportType || 'cantilever';
-    const fixedRestraint = [true, false, true, false, true, false];
-    const pinnedRestraint = [true, false, true, false, false, false];
-    const rollerRestraint = [false, false, true, false, false, false];
+    const fixedRestraint = [true, true, true, true, true, true];
+    const pinnedRestraint = [true, true, true, true, true, false];
+    const rollerRestraint = [false, true, true, true, true, false];
     const leftRestraint = supportType === 'simply-supported'
       ? pinnedRestraint
       : fixedRestraint;
