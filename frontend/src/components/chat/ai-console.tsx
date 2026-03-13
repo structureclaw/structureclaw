@@ -850,6 +850,7 @@ export function AIConsole() {
   const [activePanel, setActivePanel] = useState<PanelTab>('analysis')
   const [pendingDeleteConversationId, setPendingDeleteConversationId] = useState('')
   const [deletingConversationId, setDeletingConversationId] = useState('')
+  const [conversationActivityAt, setConversationActivityAt] = useState<Record<string, string>>({})
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const shouldStickToBottomRef = useRef(true)
@@ -1131,8 +1132,17 @@ export function AIConsole() {
           || messages.find((message) => message.role === 'user')?.content.slice(0, 48)
           || t('untitledConversation'),
         type: 'analysis',
-        createdAt: current[conversationId]?.createdAt || new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt:
+          current[conversationId]?.createdAt
+          || serverConversations.find((conversation) => conversation.id === conversationId)?.createdAt
+          || new Date().toISOString(),
+        updatedAt:
+          conversationActivityAt[conversationId]
+          || current[conversationId]?.updatedAt
+          || serverConversations.find((conversation) => conversation.id === conversationId)?.updatedAt
+          || current[conversationId]?.createdAt
+          || serverConversations.find((conversation) => conversation.id === conversationId)?.createdAt
+          || new Date().toISOString(),
         messages,
         modelText,
         analysisType,
@@ -1163,6 +1173,7 @@ export function AIConsole() {
     modelText,
     selectedEngineId,
     selectedSkillIds,
+    conversationActivityAt,
     serverConversations,
     t,
   ])
@@ -1217,6 +1228,17 @@ export function AIConsole() {
 
   function appendMessage(message: Message) {
     setMessages((current) => [...current, message])
+  }
+
+  function markConversationActivity(targetConversationId: string | undefined) {
+    if (!targetConversationId) {
+      return
+    }
+
+    setConversationActivityAt((current) => ({
+      ...current,
+      [targetConversationId]: new Date().toISOString(),
+    }))
   }
 
   function replaceMessage(messageId: string, updater: (message: Message) => Message) {
@@ -1436,9 +1458,12 @@ export function AIConsole() {
     setModelSyncMessage('')
     let receivedResult = false
     let assistantContent = assistantSeed
+    let activeConversationId = conversationId
+    let shouldBumpConversationActivity = false
 
     try {
       const nextConversationId = await ensureConversation(trimmedInput)
+      activeConversationId = nextConversationId
       const contextPayload =
         action === 'execute'
           ? {
@@ -1504,6 +1529,7 @@ export function AIConsole() {
           content: assistantContent,
           status: 'done',
         }))
+        shouldBumpConversationActivity = true
         return
       }
 
@@ -1597,6 +1623,7 @@ export function AIConsole() {
               content: assistantContent,
               status: 'done',
             }))
+            shouldBumpConversationActivity = true
           }
 
           if (payload.type === 'error') {
@@ -1608,6 +1635,7 @@ export function AIConsole() {
               content: assistantContent,
               status: 'error',
             }))
+            shouldBumpConversationActivity = true
           }
         }
       }
@@ -1617,6 +1645,9 @@ export function AIConsole() {
         content: message.content || assistantSeed,
         status: message.status === 'error' ? 'error' : 'done',
       }))
+      if (assistantContent !== assistantSeed || receivedResult) {
+        shouldBumpConversationActivity = true
+      }
     } catch (error) {
       const nextError = error instanceof Error ? error.message : t('requestFailed')
 
@@ -1632,8 +1663,12 @@ export function AIConsole() {
           content: nextError,
           status: 'error',
         }))
+        shouldBumpConversationActivity = Boolean(activeConversationId)
       }
     } finally {
+      if (shouldBumpConversationActivity) {
+        markConversationActivity(activeConversationId)
+      }
       setIsSending(false)
     }
   }

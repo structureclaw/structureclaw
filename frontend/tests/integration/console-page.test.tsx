@@ -509,6 +509,229 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByText(/Analysis Engine Auto|计算引擎 自动选择/)).toBeInTheDocument()
   })
 
+  it('keeps conversation order stable when selecting a history item without a new round', async () => {
+    window.localStorage.setItem('structureclaw.console.conversations', JSON.stringify({
+      'conv-newer': {
+        id: 'conv-newer',
+        title: 'Newer conversation',
+        type: 'analysis',
+        createdAt: '2026-03-12T08:00:00.000Z',
+        updatedAt: '2026-03-12T10:00:00.000Z',
+        messages: [{ id: 'm1', role: 'assistant', content: 'newer local', status: 'done', timestamp: '2026-03-12T10:00:00.000Z' }],
+      },
+      'conv-older': {
+        id: 'conv-older',
+        title: 'Older conversation',
+        type: 'analysis',
+        createdAt: '2026-03-12T08:00:00.000Z',
+        updatedAt: '2026-03-12T09:00:00.000Z',
+        messages: [{ id: 'm2', role: 'assistant', content: 'older local', status: 'done', timestamp: '2026-03-12T09:00:00.000Z' }],
+      },
+    }))
+
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return { ok: true, json: vi.fn().mockResolvedValue(mockSkills) } as unknown as Response
+      }
+      if (url.includes('/api/v1/analysis-engines')) {
+        return { ok: true, json: vi.fn().mockResolvedValue({ engines: [] }) } as unknown as Response
+      }
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([
+            { id: 'conv-newer', title: 'Newer conversation', updatedAt: '2026-03-12T10:00:00.000Z' },
+            { id: 'conv-older', title: 'Older conversation', updatedAt: '2026-03-12T09:00:00.000Z' },
+          ]),
+        } as unknown as Response
+      }
+      if (url.includes('/api/v1/chat/conversation/conv-older') && !init?.method) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-older',
+            title: 'Older conversation',
+            messages: [{ id: 'srv-older', role: 'assistant', content: 'older backend', createdAt: '2026-03-12T09:00:00.000Z' }],
+            session: null,
+          }),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+
+    const titleButtonsBefore = screen.getAllByRole('button').filter((button) => (
+      button.textContent?.includes('Newer conversation') || button.textContent?.includes('Older conversation')
+    ))
+    expect(titleButtonsBefore[0]).toHaveTextContent('Newer conversation')
+    expect(titleButtonsBefore[1]).toHaveTextContent('Older conversation')
+
+    fireEvent.click(screen.getByRole('button', { name: /Older conversation/ }))
+    await waitFor(() => {
+      expect(screen.getByText('older backend')).toBeInTheDocument()
+    })
+
+    const titleButtonsAfter = screen.getAllByRole('button').filter((button) => (
+      button.textContent?.includes('Newer conversation') || button.textContent?.includes('Older conversation')
+    ))
+    expect(titleButtonsAfter[0]).toHaveTextContent('Newer conversation')
+    expect(titleButtonsAfter[1]).toHaveTextContent('Older conversation')
+  })
+
+  it('keeps conversation order stable when only context fields change', async () => {
+    window.localStorage.setItem('structureclaw.console.conversations', JSON.stringify({
+      'conv-context': {
+        id: 'conv-context',
+        title: 'Context conversation',
+        type: 'analysis',
+        createdAt: '2026-03-12T08:00:00.000Z',
+        updatedAt: '2026-03-12T09:00:00.000Z',
+        messages: [{ id: 'm1', role: 'assistant', content: 'context local', status: 'done', timestamp: '2026-03-12T09:00:00.000Z' }],
+      },
+      'conv-top': {
+        id: 'conv-top',
+        title: 'Top conversation',
+        type: 'analysis',
+        createdAt: '2026-03-12T08:00:00.000Z',
+        updatedAt: '2026-03-12T10:00:00.000Z',
+        messages: [{ id: 'm2', role: 'assistant', content: 'top local', status: 'done', timestamp: '2026-03-12T10:00:00.000Z' }],
+      },
+    }))
+
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return { ok: true, json: vi.fn().mockResolvedValue(mockSkills) } as unknown as Response
+      }
+      if (url.includes('/api/v1/analysis-engines')) {
+        return { ok: true, json: vi.fn().mockResolvedValue({ engines: [] }) } as unknown as Response
+      }
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([
+            { id: 'conv-top', title: 'Top conversation', updatedAt: '2026-03-12T10:00:00.000Z' },
+            { id: 'conv-context', title: 'Context conversation', updatedAt: '2026-03-12T09:00:00.000Z' },
+          ]),
+        } as unknown as Response
+      }
+      if (url.includes('/api/v1/chat/conversation/conv-context') && !init?.method) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-context',
+            title: 'Context conversation',
+            messages: [{ id: 'srv-context', role: 'assistant', content: 'context backend', createdAt: '2026-03-12T09:00:00.000Z' }],
+            session: null,
+          }),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+    fireEvent.click(screen.getByRole('button', { name: /Context conversation/ }))
+    await waitFor(() => {
+      expect(screen.getByText('context backend')).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    const modelInput = screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/) as HTMLTextAreaElement
+    fireEvent.change(modelInput, { target: { value: sampleModelJson } })
+
+    const titleButtons = screen.getAllByRole('button').filter((button) => (
+      button.textContent?.includes('Top conversation') || button.textContent?.includes('Context conversation')
+    ))
+    expect(titleButtons[0]).toHaveTextContent('Top conversation')
+    expect(titleButtons[1]).toHaveTextContent('Context conversation')
+  })
+
+  it('moves the active conversation to the top only after a completed new chat round', async () => {
+    window.localStorage.setItem('structureclaw.console.conversations', JSON.stringify({
+      'conv-active-round': {
+        id: 'conv-active-round',
+        title: 'Round conversation',
+        type: 'analysis',
+        createdAt: '2026-03-12T08:00:00.000Z',
+        updatedAt: '2026-03-12T09:00:00.000Z',
+        messages: [{ id: 'm1', role: 'assistant', content: 'round local', status: 'done', timestamp: '2026-03-12T09:00:00.000Z' }],
+      },
+      'conv-top-round': {
+        id: 'conv-top-round',
+        title: 'Top round conversation',
+        type: 'analysis',
+        createdAt: '2026-03-12T08:00:00.000Z',
+        updatedAt: '2026-03-12T10:00:00.000Z',
+        messages: [{ id: 'm2', role: 'assistant', content: 'top local', status: 'done', timestamp: '2026-03-12T10:00:00.000Z' }],
+      },
+    }))
+
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return { ok: true, json: vi.fn().mockResolvedValue(mockSkills) } as unknown as Response
+      }
+      if (url.includes('/api/v1/analysis-engines')) {
+        return { ok: true, json: vi.fn().mockResolvedValue({ engines: [] }) } as unknown as Response
+      }
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([
+            { id: 'conv-top-round', title: 'Top round conversation', updatedAt: '2026-03-12T10:00:00.000Z' },
+            { id: 'conv-active-round', title: 'Round conversation', updatedAt: '2026-03-12T09:00:00.000Z' },
+          ]),
+        } as unknown as Response
+      }
+      if (url.includes('/api/v1/chat/conversation/conv-active-round') && !init?.method) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-active-round',
+            title: 'Round conversation',
+            messages: [{ id: 'srv-round', role: 'assistant', content: 'round backend', createdAt: '2026-03-12T09:00:00.000Z' }],
+            session: null,
+          }),
+        } as unknown as Response
+      }
+      if (url.includes('/api/v1/chat/stream')) {
+        return createSseResponse([
+          { type: 'token', content: 'New reply' },
+          { type: 'done' },
+        ])
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+    fireEvent.click(screen.getByRole('button', { name: /Round conversation/ }))
+    await waitFor(() => {
+      expect(screen.getByText('round backend')).toBeInTheDocument()
+    })
+
+    const input = screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/) as HTMLTextAreaElement
+    fireEvent.change(input, { target: { value: 'New round message' } })
+    fireEvent.click(screen.getByRole('button', { name: /Discuss First|先聊需求/ }))
+
+    await waitFor(() => {
+      expect(screen.getByText('New reply')).toBeInTheDocument()
+    })
+
+    const titleButtons = screen.getAllByRole('button').filter((button) => (
+      button.textContent?.includes('Top round conversation') || button.textContent?.includes('Round conversation')
+    ))
+    expect(titleButtons[0]).toHaveTextContent('Round conversation')
+    expect(titleButtons[1]).toHaveTextContent('Top round conversation')
+  })
+
   it('deletes a non-active conversation from history and local archive', async () => {
     window.localStorage.setItem('structureclaw.console.conversations', JSON.stringify({
       'conv-delete': {
