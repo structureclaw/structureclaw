@@ -56,6 +56,7 @@ type AgentResult = {
     question?: string
     missingFields?: string[]
   }
+  model?: Record<string, unknown>
   data?: Record<string, unknown>
   startedAt?: string
   completedAt?: string
@@ -803,6 +804,7 @@ export function AIConsole() {
   const [engineSettingsOpen, setEngineSettingsOpen] = useState(false)
   const [enginePickerOpen, setEnginePickerOpen] = useState(false)
   const [modelText, setModelText] = useState('')
+  const [modelSyncMessage, setModelSyncMessage] = useState('')
   const [designCode, setDesignCode] = useState('GB50017')
   const [analysisType, setAnalysisType] = useState<AnalysisType>('static')
   const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([])
@@ -1241,6 +1243,18 @@ export function AIConsole() {
     setVisualizationOpen(Boolean(nextSource === 'result' ? (latestResultVisualizationSnapshot || latestModelVisualizationSnapshot) : latestModelVisualizationSnapshot))
   }
 
+  function applySynchronizedModel(nextModel: Record<string, unknown>, source: 'chat' | 'execute') {
+    const nextText = JSON.stringify(nextModel, null, 2)
+    if (nextText !== modelText) {
+      setModelText(nextText)
+    }
+    if (source === 'chat') {
+      setModelSyncMessage(t('modelSyncFromChat'))
+      setContextOpen(true)
+    }
+    setErrorMessage('')
+  }
+
   async function handleSubmit(action: ComposerAction) {
     const trimmedInput = input.trim()
     if (!trimmedInput || isSending) {
@@ -1248,7 +1262,7 @@ export function AIConsole() {
     }
 
     const parsedModel = parseModelJson(modelText, t)
-    if (parsedModel.error) {
+    if (parsedModel.error && action === 'execute') {
       setErrorMessage(parsedModel.error)
       setContextOpen(true)
       return
@@ -1279,6 +1293,7 @@ export function AIConsole() {
     setIsSending(true)
     setVisualizationOpen(false)
     setVisualizationSource('result')
+    setModelSyncMessage('')
     let receivedResult = false
     let assistantContent = assistantSeed
 
@@ -1330,9 +1345,12 @@ export function AIConsole() {
           ...(payload as AgentResult),
           requestedEngineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
         }
+        if (result.model && typeof result.model === 'object' && !Array.isArray(result.model)) {
+          applySynchronizedModel(result.model, 'execute')
+        }
         const visualizationSnapshot = buildVisualizationSnapshot({
           title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
-          model: parsedModel.model ?? null,
+          model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : parsedModel.model) ?? null,
           analysis: extractAnalysis(result),
           mode: 'analysis-result',
         })
@@ -1420,9 +1438,12 @@ export function AIConsole() {
               ...(payload.content as AgentResult),
               requestedEngineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
             }
+            if (result.model && typeof result.model === 'object' && !Array.isArray(result.model)) {
+              applySynchronizedModel(result.model, action === 'chat' ? 'chat' : 'execute')
+            }
             const visualizationSnapshot = buildVisualizationSnapshot({
               title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
-              model: parsedModel.model ?? null,
+              model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : parsedModel.model) ?? null,
               analysis: extractAnalysis(result),
               mode: 'analysis-result',
             })
@@ -1780,8 +1801,16 @@ export function AIConsole() {
                         className="min-h-[160px] resize-y border-border/70 bg-card/80 text-sm text-foreground placeholder:text-muted-foreground dark:border-white/10 dark:bg-slate-950/70"
                         placeholder={t('modelJsonPlaceholder')}
                         value={modelText}
-                        onChange={(event) => setModelText(event.target.value)}
+                        onChange={(event) => {
+                          setModelText(event.target.value)
+                          setModelSyncMessage('')
+                        }}
                       />
+                      {modelSyncMessage ? (
+                        <div className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-xs leading-5 text-cyan-900 dark:text-cyan-100">
+                          {modelSyncMessage}
+                        </div>
+                      ) : null}
                       {parsedComposerModelError ? (
                         <div className="rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs leading-5 text-amber-900 dark:text-amber-100">
                           {parsedComposerModelError}

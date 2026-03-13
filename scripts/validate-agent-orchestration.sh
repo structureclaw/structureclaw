@@ -251,6 +251,42 @@ const run = async () => {
     console.log('[ok] conversation-level clarification carry-over');
   }
 
+  // 6.0) chat-ready should return synchronized model, incomplete chat should not
+  {
+    const svc = new AgentService();
+
+    const ready = await svc.run({
+      conversationId: 'conv-chat-ready-model',
+      message: '3m悬臂梁，端部10kN点荷载，静力分析，按GB50017校核，生成报告',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+        analysisType: 'static',
+        autoCodeCheck: true,
+        designCode: 'GB50017',
+        includeReport: true,
+        reportFormat: 'both',
+        reportOutput: 'inline',
+      },
+    });
+    assert(ready.success === true, 'chat-ready turn should succeed');
+    assert(ready.interaction?.state === 'ready', `expected ready state, got ${ready.interaction?.state}`);
+    assert(ready.model && Array.isArray(ready.model.nodes), 'chat-ready turn should return synchronized model');
+
+    const incomplete = await svc.run({
+      conversationId: 'conv-chat-incomplete-model',
+      message: '帮我设计一个梁',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+      },
+    });
+    assert(incomplete.success === true, 'incomplete chat turn should succeed');
+    assert(incomplete.interaction?.state !== 'ready', 'incomplete chat turn should not be ready');
+    assert(incomplete.model === undefined, 'incomplete chat turn should not return synchronized model');
+    console.log('[ok] chat ready model sync contract');
+  }
+
   // 6.1) chat-mode follow-up should shrink missing fields instead of repeating span
   {
     const svc = new AgentService();

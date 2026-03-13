@@ -766,6 +766,86 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByText('Fill in Structure type first.')).toBeInTheDocument()
   })
 
+  it('synchronizes model json from a ready chat result', async () => {
+    window.localStorage.setItem('structureclaw.locale', 'en')
+    const synchronizedModel = {
+      schema_version: '1.0.0',
+      nodes: [
+        { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
+        { id: '2', x: 3, y: 0, z: 0 },
+      ],
+      elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
+      materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
+      sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001, Iz: 0.0001, J: 0.0001, G: 79000 } }],
+      load_cases: [{ id: 'LC1', type: 'other', loads: [{ node: '2', fy: -10 }] }],
+      load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
+    }
+
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-sync-model',
+            title: 'Sync model',
+            type: 'analysis',
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/stream')) {
+        return createSseResponse([
+          {
+            type: 'result',
+            content: {
+              response: 'The draft model is ready.',
+              success: true,
+              model: synchronizedModel,
+              interaction: { state: 'ready', pending: { criticalMissing: [], nonCriticalMissing: [] } },
+            },
+          },
+        ])
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    const modelInput = screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/)
+    fireEvent.change(modelInput, { target: { value: '{"schema_version":' } })
+    fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
+      target: { value: 'Please draft a beam model' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Discuss First' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Model JSON was synchronized from the conversation draft.')).toBeInTheDocument()
+    })
+
+    expect((modelInput as HTMLTextAreaElement).value).toContain('"schema_version": "1.0.0"')
+    expect((modelInput as HTMLTextAreaElement).value).toContain('"nodes"')
+    expect(screen.queryByText(/Model JSON parse failed|模型 JSON 解析失败/)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Preview Model|预览模型/ })).toBeEnabled()
+  })
+
   it('renders guided discuss-first state in Chinese', async () => {
     window.localStorage.setItem('structureclaw.locale', 'zh')
     const interaction = {

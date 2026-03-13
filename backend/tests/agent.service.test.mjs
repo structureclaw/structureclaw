@@ -442,9 +442,9 @@ describe('AgentService orchestration', () => {
     expect(draft.missingFields).toEqual([]);
     expect(Array.isArray(nodes)).toBe(true);
     expect(nodes).toEqual([
-      { id: '1', x: 0, y: 0, z: 0, restraints: [true, false, true, false, false, false] },
+      { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, false] },
       { id: '2', x: 3, y: 0, z: 0 },
-      { id: '3', x: 6, y: 0, z: 0, restraints: [false, false, true, false, false, false] },
+      { id: '3', x: 6, y: 0, z: 0, restraints: [false, true, true, true, true, false] },
     ]);
     expect(draft.model?.load_cases?.[0]?.loads).toEqual([{ node: '2', fy: -20 }]);
     expect(draft.stateToPersist?.supportType).toBe('simply-supported');
@@ -458,7 +458,7 @@ describe('AgentService orchestration', () => {
     const nodes = draft.model?.nodes;
 
     expect(draft.missingFields).toEqual([]);
-    expect(nodes?.[0]?.restraints).toEqual([true, false, true, false, true, false]);
+    expect(nodes?.[0]?.restraints).toEqual([true, true, true, true, true, true]);
     expect(nodes?.[2]?.restraints).toBeUndefined();
     expect(draft.model?.load_cases?.[0]?.loads).toEqual([{ node: '3', fy: -20 }]);
     expect(draft.stateToPersist?.supportType).toBe('cantilever');
@@ -473,9 +473,9 @@ describe('AgentService orchestration', () => {
 
     expect(draft.missingFields).toEqual([]);
     expect(nodes).toEqual([
-      { id: '1', x: 0, y: 0, z: 0, restraints: [true, false, true, false, true, false] },
+      { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
       { id: '2', x: 5, y: 0, z: 0 },
-      { id: '3', x: 10, y: 0, z: 0, restraints: [true, false, true, false, true, false] },
+      { id: '3', x: 10, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
     ]);
     expect(draft.model?.metadata?.supportType).toBe('fixed-fixed');
     expect(draft.stateToPersist?.supportType).toBe('fixed-fixed');
@@ -768,5 +768,41 @@ describe('AgentService orchestration', () => {
     expect(result.interaction?.conversationStage).toBe('Loads');
     expect(result.interaction?.missingCritical).toContain('Load magnitude (kN)');
     expect(result.interaction?.recommendedNextStep).toContain('Load');
+  });
+
+  test('should return synchronized model only when chat input is ready', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const ready = await svc.run({
+      message: '简支梁，跨度6m，20kN跨中点荷载',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+        analysisType: 'static',
+        autoCodeCheck: true,
+        designCode: 'GB50017',
+        includeReport: true,
+        reportFormat: 'both',
+        reportOutput: 'inline',
+      },
+    });
+
+    expect(ready.success).toBe(true);
+    expect(ready.interaction?.state).toBe('ready');
+    expect(ready.model?.schema_version).toBe('1.0.0');
+    expect(Array.isArray(ready.model?.nodes)).toBe(true);
+
+    const incomplete = await svc.run({
+      message: '我想设计一个梁',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+      },
+    });
+
+    expect(incomplete.success).toBe(true);
+    expect(incomplete.interaction?.state).toBe('confirming');
+    expect(incomplete.model).toBeUndefined();
   });
 });

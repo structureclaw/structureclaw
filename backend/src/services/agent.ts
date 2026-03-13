@@ -1130,6 +1130,7 @@ export class AgentService {
     }
 
     const response = this.buildChatModeResponse(interaction, locale);
+    const synchronizedModel = state === 'ready' && draft.model ? draft.model : undefined
     const result: AgentRunResult = {
       traceId,
       startedAt,
@@ -1141,6 +1142,7 @@ export class AgentService {
       plan,
       toolCalls,
       metrics: this.buildMetrics(toolCalls),
+      model: synchronizedModel,
       interaction,
       clarification: interaction.questions?.length
         ? {

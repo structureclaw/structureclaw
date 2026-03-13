@@ -219,6 +219,7 @@ export const messages = {
     visualizationSceneClickEmpty: 'Click empty space to clear the current selection.',
     visualizationSceneSelectionHelp: 'Use the scene or the lists to inspect nodes and elements.',
     visualizationStatusCurrentSource: 'Current Source',
+    modelSyncFromChat: 'Model JSON was synchronized from the conversation draft.',
   },
   zh: {
     appName: 'StructureClaw',
@@ -430,6 +431,7 @@ export const messages = {
     visualizationSceneClickEmpty: '点击空白区域可清除当前选择。',
     visualizationSceneSelectionHelp: '可通过场景或清单查看节点和单元。',
     visualizationStatusCurrentSource: '当前来源',
+    modelSyncFromChat: '结构模型 JSON 已根据对话草案自动同步。',
   },
 } as const
 
