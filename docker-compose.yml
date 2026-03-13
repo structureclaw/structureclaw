@@ -36,7 +36,7 @@ services:
     image: dpage/pgadmin4:8.14
     container_name: structureclaw-pgadmin
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@structureclaw.local}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-admin@structureclaw.dev}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-structureclaw}
       PGADMIN_CONFIG_SERVER_MODE: "False"
     volumes:

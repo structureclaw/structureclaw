@@ -77,7 +77,7 @@ export const config = {
   pgAdminEnabled: (process.env.PGADMIN_ENABLED || 'true').toLowerCase() !== 'false',
   pgAdminPort: parseInt(pgAdminPort, 10),
   pgAdminUrl: process.env.PGADMIN_PUBLIC_URL || `http://localhost:${pgAdminPort}`,
-  pgAdminDefaultEmail: process.env.PGADMIN_DEFAULT_EMAIL || 'admin@structureclaw.local',
+  pgAdminDefaultEmail: process.env.PGADMIN_DEFAULT_EMAIL || 'admin@structureclaw.dev',
 
   // CORS
   corsOrigins,
