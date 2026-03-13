@@ -138,8 +138,8 @@ else:
 
     auto_result = registry.run_analysis('static', model, {'loadCaseIds': ['LC1']}, None)
     assert_true(auto_result['meta']['engineId'] == 'builtin-simplified', f"Expected builtin-simplified auto selection, got {auto_result['meta']['engineId']}")
-    assert_true(auto_result['meta']['selectionMode'] == 'fallback', f"Expected fallback selectionMode, got {auto_result['meta']['selectionMode']}")
-    assert_true(auto_result['meta']['fallbackFrom'] == 'builtin-opensees', f"Expected fallbackFrom builtin-opensees, got {auto_result['meta']['fallbackFrom']}")
+    assert_true(auto_result['meta']['selectionMode'] == 'auto', f"Expected auto pre-routing selectionMode, got {auto_result['meta']['selectionMode']}")
+    assert_true(auto_result['meta']['fallbackFrom'] is None, f"Expected no fallbackFrom during pre-routing, got {auto_result['meta']['fallbackFrom']}")
     print('[ok] auto engine pre-routes away from unavailable OpenSees runtime')
 
     manual_request = AnalysisRequest.model_validate(
