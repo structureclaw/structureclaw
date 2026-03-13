@@ -1,6 +1,6 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useRef } from 'react'
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Bounds, Html, Line, OrbitControls, OrthographicCamera, PerspectiveCamera } from '@react-three/drei'
 import * as THREE from 'three'
@@ -24,6 +24,7 @@ type StructuralSceneProps = {
   view: VisualizationViewMode
   onSelectElement: (id: string | null) => void
   onSelectNode: (id: string | null) => void
+  onClearSelection: () => void
   t: (key: MessageKey) => string
 }
 
@@ -138,6 +139,10 @@ function ElementTube({
         <cylinderGeometry args={[selected ? 0.1 : 0.075, selected ? 0.1 : 0.075, Math.max(length, 0.001), 12]} />
         <meshStandardMaterial color={color} metalness={0.15} roughness={0.32} />
       </mesh>
+      <mesh onClick={onClick} onPointerOut={() => onHover(false)} onPointerOver={() => onHover(true)} visible={false}>
+        <cylinderGeometry args={[0.22, 0.22, Math.max(length, 0.001), 10]} />
+        <meshBasicMaterial transparent opacity={0} />
+      </mesh>
     </group>
   )
 }
@@ -195,8 +200,11 @@ function SceneContent({
   view,
   onSelectElement,
   onSelectNode,
+  onClearSelection,
   t,
 }: StructuralSceneProps) {
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
+  const [hoveredElementId, setHoveredElementId] = useState<string | null>(null)
   const nodeMap = useMemo(
     () =>
       new Map(
@@ -238,8 +246,7 @@ function SceneContent({
 
       <Bounds clip fit margin={1.2} observe>
         <group onDoubleClick={() => {
-          onSelectElement(null)
-          onSelectNode(null)
+          onClearSelection()
         }}>
           {snapshot.elements.map((element) => {
             const startData = nodeMap.get(element.nodeIds[0])
@@ -250,7 +257,13 @@ function SceneContent({
             const start = (view === 'deformed' && !showUndeformed) ? startData.displacedPosition : startData.position
             const end = (view === 'deformed' && !showUndeformed) ? endData.displacedPosition : endData.position
             const forceColor = createColorScale(getElementMetric(activeCase, element.id, forceMetric), maxElementMetric)
-            const color = view === 'forces' ? forceColor : selectedElementId === element.id ? '#fb923c' : '#38bdf8'
+            const color = view === 'forces'
+              ? forceColor
+              : selectedElementId === element.id
+                ? '#fb923c'
+                : hoveredElementId === element.id
+                  ? '#67e8f9'
+                  : '#38bdf8'
             const undeformedStart = snapshot.dimension === 2 ? projectPosition(startData.position, snapshot.plane) : startData.position
             const undeformedEnd = snapshot.dimension === 2 ? projectPosition(endData.position, snapshot.plane) : endData.position
             const currentStart = snapshot.dimension === 2 ? projectPosition(start, snapshot.plane) : start
@@ -268,7 +281,7 @@ function SceneContent({
                     onSelectElement(element.id)
                     onSelectNode(null)
                   }}
-                  onHover={() => undefined}
+                  onHover={(hovered) => setHoveredElementId(hovered ? element.id : null)}
                   selected={selectedElementId === element.id}
                   start={currentStart}
                 />
@@ -301,6 +314,8 @@ function SceneContent({
                   ? createColorScale(magnitude, maxDisplacement)
                   : selectedNodeId === entry.id
                     ? '#fb923c'
+                    : hoveredNodeId === entry.id
+                      ? '#67e8f9'
                     : '#f8fafc'
             const position = view === 'deformed' ? nodeData.displacedPosition : nodeData.position
             const finalPosition = snapshot.dimension === 2 ? projectPosition(position, snapshot.plane) : position
@@ -320,10 +335,25 @@ function SceneContent({
                     onSelectNode(entry.id)
                     onSelectElement(null)
                   }}
+                  onPointerOut={() => setHoveredNodeId(null)}
+                  onPointerOver={() => setHoveredNodeId(entry.id)}
                   position={finalPosition.toArray()}
                 >
-                  <sphereGeometry args={[selectedNodeId === entry.id ? 0.14 : 0.1, 16, 16]} />
+                  <sphereGeometry args={[selectedNodeId === entry.id ? 0.18 : 0.14, 20, 20]} />
                   <meshStandardMaterial color={color} emissive={selectedNodeId === entry.id ? '#f97316' : '#000000'} emissiveIntensity={selectedNodeId === entry.id ? 0.2 : 0} />
+                </mesh>
+                <mesh
+                  onClick={() => {
+                    onSelectNode(entry.id)
+                    onSelectElement(null)
+                  }}
+                  onPointerOut={() => setHoveredNodeId(null)}
+                  onPointerOver={() => setHoveredNodeId(entry.id)}
+                  position={finalPosition.toArray()}
+                  visible={false}
+                >
+                  <sphereGeometry args={[snapshot.dimension === 3 ? 0.36 : 0.3, 16, 16]} />
+                  <meshBasicMaterial transparent opacity={0} />
                 </mesh>
                 {showNodeLabels && (
                   <Html center position={finalPosition.clone().add(new THREE.Vector3(0, snapshot.dimension === 3 ? 0.24 : 0.18, 0)).toArray()}>
@@ -389,8 +419,8 @@ export function StructuralScene(props: StructuralSceneProps) {
   }
 
   return (
-    <div className="h-full w-full bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_24%),linear-gradient(180deg,rgba(148,163,184,0.08),transparent_30%)]">
-      <Canvas dpr={[1, 1.75]} frameloop="demand">
+      <div className="h-full w-full bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_24%),linear-gradient(180deg,rgba(148,163,184,0.08),transparent_30%)]">
+      <Canvas dpr={[1, 1.75]} frameloop="demand" onPointerMissed={props.onClearSelection}>
         <Suspense fallback={null}>
           <SceneContent {...props} />
         </Suspense>

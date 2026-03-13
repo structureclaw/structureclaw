@@ -126,9 +126,21 @@ export function VisualizationModalShell({
               <p className="text-xs uppercase tracking-[0.24em] text-cyan-700/80 dark:text-cyan-200/70">{t('visualizationTitle')}</p>
               <h2 className="mt-1 text-2xl font-semibold text-foreground">{title}</h2>
               {snapshot ? (
-                <p className="mt-2 text-sm text-muted-foreground">
-                  {snapshot.dimension}D · {snapshot.nodes.length} {t('analysisOverviewCountsNodes').toLowerCase()} · {snapshot.elements.length} {t('analysisOverviewCountsElements').toLowerCase()}
-                </p>
+                <div className="mt-2 space-y-2 text-sm text-muted-foreground">
+                  <p>
+                    {snapshot.dimension}D · {snapshot.nodes.length} {t('analysisOverviewCountsNodes').toLowerCase()} · {snapshot.elements.length} {t('analysisOverviewCountsElements').toLowerCase()}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-border/70 bg-background/70 px-2.5 py-1 text-xs dark:border-white/10 dark:bg-white/5">
+                      {t('visualizationStatusCurrentSource')}: {snapshot.source === 'model' ? t('visualizationSourceModel') : t('visualizationSourceResult')}
+                    </span>
+                    {snapshot.statusMessage ? (
+                      <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-2.5 py-1 text-xs text-amber-900 dark:text-amber-100">
+                        {snapshot.statusMessage}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
               ) : null}
             </div>
             <div className="flex items-center gap-2">

@@ -9,6 +9,13 @@ import { StructuralScene } from './structural-scene'
 import { VisualizationToolbar } from './toolbar'
 import type { VisualizationCase, VisualizationSnapshot, VisualizationViewMode } from './types'
 
+function getCaseLabel(caseId: string, fallbackLabel: string, t: (key: MessageKey) => string) {
+  if (caseId === 'model') return t('visualizationSourceModel')
+  if (caseId === 'result') return t('visualizationSourceResult')
+  if (caseId === 'envelope') return t('visualizationEnvelope')
+  return fallbackLabel
+}
+
 type StructuralVisualizationModalProps = {
   open: boolean
   snapshot: VisualizationSnapshot | null
@@ -35,6 +42,7 @@ export function StructuralVisualizationModal({
   const [showLegend, setShowLegend] = useState(true)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
+  const [selectedLoadIndex, setSelectedLoadIndex] = useState<number | null>(null)
 
   useEffect(() => {
     if (!open || !snapshot) {
@@ -44,6 +52,7 @@ export function StructuralVisualizationModal({
     setActiveCaseId(snapshot.defaultCaseId)
     setSelectedNodeId(null)
     setSelectedElementId(null)
+    setSelectedLoadIndex(null)
   }, [open, snapshot])
 
   const placeholderTitle = useMemo(
@@ -64,6 +73,9 @@ export function StructuralVisualizationModal({
   )
   const selectedNodeResults = activeCase && selectedNode ? activeCase.nodeResults[selectedNode.id] || null : null
   const selectedElementResults = activeCase && selectedElement ? activeCase.elementResults[selectedElement.id] || null : null
+  const selectedLoad = selectedLoadIndex !== null && snapshot?.loads ? snapshot.loads[selectedLoadIndex] || null : null
+  const selectedElementNodeIds = selectedElement?.nodeIds || []
+  const modelOnly = snapshot?.source === 'model'
 
   return (
     <VisualizationModalShell
@@ -80,9 +92,14 @@ export function StructuralVisualizationModal({
           <div className="rounded-2xl border border-border/70 bg-card/80 p-4 dark:border-white/10 dark:bg-slate-950/40">
             <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('visualizationCurrentCase')}</div>
             <div className="mt-2 text-base font-semibold text-foreground">
-              {activeCase?.label || t('visualizationUnavailable')}
+              {activeCase ? getCaseLabel(activeCase.id, activeCase.label, t) : t('visualizationUnavailable')}
             </div>
           </div>
+          {snapshot?.statusMessage ? (
+            <div className="rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm leading-6 text-amber-900 dark:text-amber-100">
+              {snapshot.statusMessage}
+            </div>
+          ) : null}
           {snapshot?.unsupportedElementTypes.length ? (
             <div className="rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm leading-6 text-amber-900 dark:text-amber-100">
               {t('visualizationUnsupportedElements')}: {snapshot.unsupportedElementTypes.join(', ')}
@@ -96,7 +113,10 @@ export function StructuralVisualizationModal({
                 <div>X: {formatNumber(selectedNode.position.x, locale)}</div>
                 <div>Y: {formatNumber(selectedNode.position.y, locale)}</div>
                 <div>Z: {formatNumber(selectedNode.position.z, locale)}</div>
-                {selectedNodeResults?.displacement && (
+                {selectedNode.restraints?.length ? (
+                  <div>{t('visualizationSupportRestraints')}: {selectedNode.restraints.map((value) => (value ? '1' : '0')).join(' ')}</div>
+                ) : null}
+                {!modelOnly && selectedNodeResults?.displacement && (
                   <div>
                     {t('visualizationViewDeformed')}: {formatNumber(
                       Math.sqrt(
@@ -108,7 +128,7 @@ export function StructuralVisualizationModal({
                     )}
                   </div>
                 )}
-                {selectedNodeResults?.reaction && (
+                {!modelOnly && selectedNodeResults?.reaction && (
                   <div>
                     {t('visualizationViewReactions')}: {formatNumber(
                       Math.sqrt(
@@ -120,7 +140,7 @@ export function StructuralVisualizationModal({
                     )}
                   </div>
                 )}
-                {selectedNodeResults?.envelope?.controlCase && (
+                {!modelOnly && selectedNodeResults?.envelope?.controlCase && (
                   <div>{t('visualizationControlCase')}: {String(selectedNodeResults.envelope.controlCase)}</div>
                 )}
               </div>
@@ -132,18 +152,113 @@ export function StructuralVisualizationModal({
               <div className="mt-2 text-lg font-semibold text-foreground">{selectedElement.id}</div>
               <div className="mt-1 text-sm text-muted-foreground">{selectedElement.type}</div>
               <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                {typeof selectedElementResults?.axial === 'number' && <div>{t('visualizationForceAxial')}: {formatNumber(selectedElementResults.axial, locale)}</div>}
-                {typeof selectedElementResults?.shear === 'number' && <div>{t('visualizationForceShear')}: {formatNumber(selectedElementResults.shear, locale)}</div>}
-                {typeof selectedElementResults?.moment === 'number' && <div>{t('visualizationForceMoment')}: {formatNumber(selectedElementResults.moment, locale)}</div>}
-                {selectedElementResults?.controlCases?.[forceMetric] && (
+                <div>{t('visualizationConnectedNodes')}: {selectedElementNodeIds.join(' - ')}</div>
+                {!modelOnly && typeof selectedElementResults?.axial === 'number' && <div>{t('visualizationForceAxial')}: {formatNumber(selectedElementResults.axial, locale)}</div>}
+                {!modelOnly && typeof selectedElementResults?.shear === 'number' && <div>{t('visualizationForceShear')}: {formatNumber(selectedElementResults.shear, locale)}</div>}
+                {!modelOnly && typeof selectedElementResults?.moment === 'number' && <div>{t('visualizationForceMoment')}: {formatNumber(selectedElementResults.moment, locale)}</div>}
+                {!modelOnly && selectedElementResults?.controlCases?.[forceMetric] && (
                   <div>{t('visualizationControlCase')}: {selectedElementResults.controlCases[forceMetric]}</div>
                 )}
               </div>
             </div>
           ) : null}
-          {!selectedNode && !selectedElement && (
+          {selectedLoad ? (
+            <div className="rounded-2xl border border-border/70 bg-card/80 p-4 dark:border-white/10 dark:bg-slate-950/40">
+              <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('visualizationSelectedLoad')}</div>
+              <div className="mt-2 text-sm text-muted-foreground">
+                {selectedLoad.kind === 'distributed'
+                  ? `${selectedLoad.elementId || '-'} · ${t('visualizationElementsList')}`
+                  : `${selectedLoad.nodeId} · ${t('visualizationNodesList')}`}
+              </div>
+              <div className="mt-3 space-y-2 text-sm text-muted-foreground">
+                <div>X: {formatNumber(selectedLoad.vector.x, locale)}</div>
+                <div>Y: {formatNumber(selectedLoad.vector.y, locale)}</div>
+                <div>Z: {formatNumber(selectedLoad.vector.z, locale)}</div>
+              </div>
+            </div>
+          ) : null}
+          {snapshot ? (
+            <div className="rounded-2xl border border-border/70 bg-card/80 p-4 dark:border-white/10 dark:bg-slate-950/40">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('visualizationObjectList')}</div>
+                <button
+                  className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground transition hover:text-foreground dark:border-white/10 dark:bg-white/5"
+                  onClick={() => {
+                    setSelectedNodeId(null)
+                    setSelectedElementId(null)
+                    setSelectedLoadIndex(null)
+                  }}
+                  type="button"
+                >
+                  {t('visualizationClearSelection')}
+                </button>
+              </div>
+              <div className="space-y-3">
+                <div>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t('visualizationNodesList')}</div>
+                  <div className="flex max-h-28 flex-wrap gap-2 overflow-auto">
+                    {snapshot.nodes.map((node) => (
+                      <button
+                        key={node.id}
+                        className={`rounded-full border px-3 py-1.5 text-xs transition ${selectedNodeId === node.id ? 'border-cyan-300/50 bg-cyan-300/14 text-foreground' : 'border-border/70 bg-background/70 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-white/5'}`}
+                        onClick={() => {
+                          setSelectedNodeId(node.id)
+                          setSelectedElementId(null)
+                          setSelectedLoadIndex(null)
+                        }}
+                        type="button"
+                      >
+                        {node.id}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t('visualizationElementsList')}</div>
+                  <div className="flex max-h-28 flex-wrap gap-2 overflow-auto">
+                    {snapshot.elements.map((element) => (
+                      <button
+                        key={element.id}
+                        className={`rounded-full border px-3 py-1.5 text-xs transition ${selectedElementId === element.id ? 'border-cyan-300/50 bg-cyan-300/14 text-foreground' : 'border-border/70 bg-background/70 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-white/5'}`}
+                        onClick={() => {
+                          setSelectedElementId(element.id)
+                          setSelectedNodeId(null)
+                          setSelectedLoadIndex(null)
+                        }}
+                        type="button"
+                      >
+                        {element.id}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {snapshot.loads.length > 0 ? (
+                  <div>
+                    <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t('visualizationLoadsList')}</div>
+                    <div className="flex max-h-28 flex-wrap gap-2 overflow-auto">
+                      {snapshot.loads.map((load, index) => (
+                        <button
+                          key={`${load.caseId || 'default'}-${load.nodeId || load.elementId || index}-${index}`}
+                          className={`rounded-full border px-3 py-1.5 text-xs transition ${selectedLoadIndex === index ? 'border-cyan-300/50 bg-cyan-300/14 text-foreground' : 'border-border/70 bg-background/70 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-white/5'}`}
+                          onClick={() => {
+                            setSelectedLoadIndex(index)
+                            setSelectedNodeId(null)
+                            setSelectedElementId(null)
+                          }}
+                          type="button"
+                        >
+                          {load.kind === 'distributed' ? `${load.elementId || '-'} · q` : `${load.nodeId} · P`}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
+          {!selectedNode && !selectedElement && !selectedLoad && (
             <div className="rounded-2xl border border-border/70 bg-card/80 p-4 text-sm leading-6 text-muted-foreground dark:border-white/10 dark:bg-slate-950/40">
-              {snapshot ? t('visualizationPickHint') : t('visualizationMissingModel')}
+              {snapshot ? `${t('visualizationSceneSelectionHelp')} ${t('visualizationSceneClickEmpty')}` : t('visualizationMissingModel')}
             </div>
           )}
         </div>
@@ -176,6 +291,11 @@ export function StructuralVisualizationModal({
               forceMetric={forceMetric}
               onSelectElement={setSelectedElementId}
               onSelectNode={setSelectedNodeId}
+              onClearSelection={() => {
+                setSelectedElementId(null)
+                setSelectedNodeId(null)
+                setSelectedLoadIndex(null)
+              }}
               resetToken={resetToken}
               selectedElementId={selectedElementId}
               selectedNodeId={selectedNodeId}

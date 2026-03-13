@@ -82,6 +82,8 @@ type ConversationSummary = {
 type PersistedConversation = ConversationSummary & {
   messages: Message[]
   latestResult?: AgentResult | null
+  modelVisualizationSnapshot?: VisualizationSnapshot | null
+  resultVisualizationSnapshot?: VisualizationSnapshot | null
   visualizationSnapshot?: VisualizationSnapshot | null
 }
 
@@ -223,6 +225,10 @@ function buildVisualizationTitle(result: AgentResult | null, conversationTitle: 
   const meta = analysis && typeof analysis.meta === 'object' && analysis.meta ? (analysis.meta as Record<string, unknown>) : null
   const analysisType = typeof meta?.analysisType === 'string' ? meta.analysisType : typeof analysis?.analysis_type === 'string' ? analysis.analysis_type : ''
   return analysisType ? `${conversationTitle} · ${analysisType}` : conversationTitle
+}
+
+function buildModelVisualizationTitle(baseTitle: string, t: (key: MessageKey) => string) {
+  return `${baseTitle} · ${t('visualizationSourceModel')}`
 }
 
 function extractSummaryStats(
@@ -425,6 +431,7 @@ function renderEngineSummary(
 
 function AnalysisPanel({
   result,
+  modelVisualizationSnapshot,
   visualizationSnapshot,
   onOpenVisualization,
   activeTab,
@@ -433,8 +440,9 @@ function AnalysisPanel({
   locale,
 }: {
   result: AgentResult | null
+  modelVisualizationSnapshot: VisualizationSnapshot | null
   visualizationSnapshot: VisualizationSnapshot | null
-  onOpenVisualization: () => void
+  onOpenVisualization: (source: 'result' | 'model') => void
   activeTab: PanelTab
   onTabChange: (tab: PanelTab) => void
   t: (key: MessageKey) => string
@@ -461,14 +469,20 @@ function AnalysisPanel({
           {result && (
             <Button
               className="mr-2 rounded-full border border-cyan-300/35 bg-cyan-300/10 text-cyan-800 hover:bg-cyan-300/20 dark:text-cyan-100"
-              disabled={!visualizationSnapshot}
-              onClick={onOpenVisualization}
-              title={!visualizationSnapshot ? t('visualizationMissingModel') : t('visualizationOpen')}
+              disabled={!visualizationSnapshot && !modelVisualizationSnapshot}
+              onClick={() => onOpenVisualization('result')}
+              title={
+                !visualizationSnapshot && !modelVisualizationSnapshot
+                  ? t('visualizationMissingModel')
+                  : !visualizationSnapshot && modelVisualizationSnapshot
+                    ? t('visualizationFallbackToModel')
+                    : t('visualizationOpen')
+              }
               type="button"
               variant="outline"
             >
               <Cuboid className="h-4 w-4" />
-              {t('visualizationOpen')}
+              {!visualizationSnapshot && modelVisualizationSnapshot ? t('visualizationPreviewModel') : t('visualizationOpen')}
             </Button>
           )}
           <button
@@ -523,7 +537,7 @@ function AnalysisPanel({
                   </Badge>
                   {!visualizationSnapshot && (
                     <Badge className="border-amber-300/30 bg-amber-300/10 text-amber-800 dark:text-amber-200" variant="outline">
-                      {t('visualizationMissingModel')}
+                      {modelVisualizationSnapshot ? t('visualizationFallbackToModel') : t('visualizationMissingModel')}
                     </Badge>
                   )}
                   {result.traceId && (
@@ -796,8 +810,10 @@ export function AIConsole() {
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
   const [selectedEngineId, setSelectedEngineId] = useState('auto')
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
-  const [latestVisualizationSnapshot, setLatestVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
+  const [latestModelVisualizationSnapshot, setLatestModelVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
+  const [latestResultVisualizationSnapshot, setLatestResultVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
   const [visualizationOpen, setVisualizationOpen] = useState(false)
+  const [visualizationSource, setVisualizationSource] = useState<'model' | 'result'>('result')
   const [activePanel, setActivePanel] = useState<PanelTab>('analysis')
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
@@ -985,12 +1001,53 @@ export function AIConsole() {
     }
   }, [t])
 
-  const parsedComposerModel = useMemo(() => {
-    const parsed = parseModelJson(modelText, t)
-    return parsed.model
-  }, [modelText, t])
+  const parsedComposerModelState = useMemo(() => parseModelJson(modelText, t), [modelText, t])
+  const parsedComposerModel = parsedComposerModelState.model
+  const parsedComposerModelError = parsedComposerModelState.error || ''
 
   const currentModelFamily = useMemo(() => detectModelFamily(parsedComposerModel), [parsedComposerModel])
+  const modelPreviewBaseTitle = useMemo(
+    () =>
+      messages.find((message) => message.role === 'user')?.content.slice(0, 48)
+      || mergedConversations.find((conversation) => conversation.id === conversationId)?.title
+      || t('untitledConversation'),
+    [conversationId, mergedConversations, messages, t]
+  )
+
+  useEffect(() => {
+    if (!parsedComposerModel) {
+      return
+    }
+
+    const snapshot = buildVisualizationSnapshot({
+      title: buildModelVisualizationTitle(modelPreviewBaseTitle, t),
+      model: parsedComposerModel,
+      mode: 'model-only',
+    })
+    setLatestModelVisualizationSnapshot(snapshot)
+  }, [modelPreviewBaseTitle, parsedComposerModel, t])
+
+  const activeVisualizationSnapshot = useMemo(() => {
+    if (visualizationSource === 'model') {
+      if (!latestModelVisualizationSnapshot) {
+        return null
+      }
+      return {
+        ...latestModelVisualizationSnapshot,
+        statusMessage: parsedComposerModelError ? t('visualizationUsingLastValidModel') : latestModelVisualizationSnapshot.statusMessage,
+      }
+    }
+    if (latestResultVisualizationSnapshot) {
+      return latestResultVisualizationSnapshot
+    }
+    if (!latestModelVisualizationSnapshot) {
+      return null
+    }
+    return {
+      ...latestModelVisualizationSnapshot,
+      statusMessage: t('visualizationFallbackToModel'),
+    }
+  }, [latestModelVisualizationSnapshot, latestResultVisualizationSnapshot, parsedComposerModelError, t, visualizationSource])
 
   const enabledEngines = useMemo(
     () => availableEngines.filter((engine) => engine.enabled !== false),
@@ -1039,10 +1096,15 @@ export function AIConsole() {
         updatedAt: new Date().toISOString(),
         messages,
         latestResult,
-        visualizationSnapshot: current[conversationId]?.visualizationSnapshot ?? latestVisualizationSnapshot ?? null,
+        modelVisualizationSnapshot: latestModelVisualizationSnapshot ?? current[conversationId]?.modelVisualizationSnapshot ?? null,
+        resultVisualizationSnapshot:
+          latestResultVisualizationSnapshot
+          ?? current[conversationId]?.resultVisualizationSnapshot
+          ?? current[conversationId]?.visualizationSnapshot
+          ?? null,
       },
     }))
-  }, [conversationId, latestResult, latestVisualizationSnapshot, messages, serverConversations, t])
+  }, [conversationId, latestModelVisualizationSnapshot, latestResult, latestResultVisualizationSnapshot, messages, serverConversations, t])
 
   async function ensureConversation(seedMessage: string) {
     if (conversationId) {
@@ -1136,14 +1198,16 @@ export function AIConsole() {
       setConversationId(nextConversationId)
       setMessages(nextMessages)
       setLatestResult(archived?.latestResult || null)
-      setLatestVisualizationSnapshot(archived?.visualizationSnapshot || null)
+      setLatestModelVisualizationSnapshot(archived?.modelVisualizationSnapshot || null)
+      setLatestResultVisualizationSnapshot(archived?.resultVisualizationSnapshot || archived?.visualizationSnapshot || null)
       setActivePanel(archived?.latestResult?.report?.markdown ? 'report' : 'analysis')
     } catch (error) {
       if (archived) {
         setConversationId(nextConversationId)
         setMessages(archived.messages.length ? archived.messages : [initialAssistantMessage])
         setLatestResult(archived.latestResult || null)
-        setLatestVisualizationSnapshot(archived.visualizationSnapshot || null)
+        setLatestModelVisualizationSnapshot(archived.modelVisualizationSnapshot || null)
+        setLatestResultVisualizationSnapshot(archived.resultVisualizationSnapshot || archived.visualizationSnapshot || null)
         setActivePanel(archived.latestResult?.report?.markdown ? 'report' : 'analysis')
         return
       }
@@ -1160,10 +1224,21 @@ export function AIConsole() {
     setConversationId('')
     setMessages([initialAssistantMessage])
     setLatestResult(null)
-    setLatestVisualizationSnapshot(null)
+    setLatestModelVisualizationSnapshot(null)
+    setLatestResultVisualizationSnapshot(null)
     setVisualizationOpen(false)
+    setVisualizationSource('result')
     setErrorMessage('')
     setActivePanel('analysis')
+  }
+
+  function openVisualization(preferredSource: 'model' | 'result') {
+    const nextSource =
+      preferredSource === 'result'
+        ? (latestResultVisualizationSnapshot ? 'result' : 'model')
+        : 'model'
+    setVisualizationSource(nextSource)
+    setVisualizationOpen(Boolean(nextSource === 'result' ? (latestResultVisualizationSnapshot || latestModelVisualizationSnapshot) : latestModelVisualizationSnapshot))
   }
 
   async function handleSubmit(action: ComposerAction) {
@@ -1203,6 +1278,7 @@ export function AIConsole() {
     setInput('')
     setIsSending(true)
     setVisualizationOpen(false)
+    setVisualizationSource('result')
     let receivedResult = false
     let assistantContent = assistantSeed
 
@@ -1258,11 +1334,12 @@ export function AIConsole() {
           title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
           model: parsedModel.model ?? null,
           analysis: extractAnalysis(result),
+          mode: 'analysis-result',
         })
         receivedResult = true
         assistantContent = result.response || result.clarification?.question || t('returnedResult')
         setLatestResult(result)
-        setLatestVisualizationSnapshot(visualizationSnapshot)
+        setLatestResultVisualizationSnapshot(visualizationSnapshot)
         setActivePanel(result.report?.markdown ? 'report' : 'analysis')
         replaceMessage(assistantMessageId, (message) => ({
           ...message,
@@ -1347,10 +1424,11 @@ export function AIConsole() {
               title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
               model: parsedModel.model ?? null,
               analysis: extractAnalysis(result),
+              mode: 'analysis-result',
             })
             receivedResult = true
             setLatestResult(result)
-            setLatestVisualizationSnapshot(visualizationSnapshot)
+            setLatestResultVisualizationSnapshot(visualizationSnapshot)
             setActivePanel(result.report?.markdown ? 'report' : 'analysis')
             assistantContent = result.response || result.clarification?.question || t('returnedResult')
             replaceMessage(assistantMessageId, (message) => ({
@@ -1679,8 +1757,23 @@ export function AIConsole() {
                   <div className="mt-3 grid gap-4 rounded-[24px] border border-border/70 bg-background/70 p-4 lg:grid-cols-[1fr_300px] dark:border-white/10 dark:bg-white/5">
                     <div className="space-y-2">
                       <div>
-                        <div className="text-sm font-semibold text-foreground">{t('contextSectionModel')}</div>
-                        <div className="text-xs leading-5 text-muted-foreground">{t('contextSectionModelHelp')}</div>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="text-sm font-semibold text-foreground">{t('contextSectionModel')}</div>
+                            <div className="text-xs leading-5 text-muted-foreground">{t('contextSectionModelHelp')}</div>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="rounded-full border-cyan-300/35 bg-cyan-300/10 text-cyan-800 hover:bg-cyan-300/20 dark:text-cyan-100"
+                            disabled={!latestModelVisualizationSnapshot}
+                            onClick={() => openVisualization('model')}
+                            title={!latestModelVisualizationSnapshot ? t('visualizationMissingModel') : t('visualizationModelPreviewHelp')}
+                          >
+                            <Cuboid className="h-4 w-4" />
+                            {t('visualizationPreviewModel')}
+                          </Button>
+                        </div>
                       </div>
                       <label className="text-sm font-medium text-foreground">{t('modelJsonLabel')}</label>
                       <Textarea
@@ -1689,6 +1782,16 @@ export function AIConsole() {
                         value={modelText}
                         onChange={(event) => setModelText(event.target.value)}
                       />
+                      {parsedComposerModelError ? (
+                        <div className="rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs leading-5 text-amber-900 dark:text-amber-100">
+                          {parsedComposerModelError}
+                          {latestModelVisualizationSnapshot ? ` ${t('visualizationModelInvalidKeepingLast')}` : ''}
+                        </div>
+                      ) : latestModelVisualizationSnapshot ? (
+                        <div className="text-xs leading-5 text-muted-foreground">
+                          {t('visualizationModelPreviewHelp')}
+                        </div>
+                      ) : null}
                     </div>
 
                     <div className="space-y-3">
@@ -1849,17 +1952,18 @@ export function AIConsole() {
       <AnalysisPanel
         activeTab={activePanel}
         locale={locale}
-        onOpenVisualization={() => setVisualizationOpen(true)}
+        modelVisualizationSnapshot={latestModelVisualizationSnapshot}
+        onOpenVisualization={openVisualization}
         onTabChange={setActivePanel}
         result={latestResult}
         t={t}
-        visualizationSnapshot={latestVisualizationSnapshot}
+        visualizationSnapshot={latestResultVisualizationSnapshot}
       />
       <StructuralVisualizationModal
         locale={locale}
         onClose={() => setVisualizationOpen(false)}
         open={visualizationOpen}
-        snapshot={latestVisualizationSnapshot}
+        snapshot={activeVisualizationSnapshot}
         t={t}
       />
     </div>

@@ -7,6 +7,7 @@ export type {
   VisualizationLoad,
   VisualizationNode,
   VisualizationNodeResults,
+  VisualizationSource,
   VisualizationSnapshot,
   VisualizationVector3,
   VisualizationViewMode,

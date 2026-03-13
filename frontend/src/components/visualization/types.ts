@@ -1,4 +1,5 @@
 export type VisualizationViewMode = 'model' | 'deformed' | 'forces' | 'reactions'
+export type VisualizationSource = 'model' | 'result'
 
 export type VisualizationVector3 = {
   x: number
@@ -40,6 +41,8 @@ export type VisualizationLoad = {
   nodeId: string
   vector: VisualizationVector3
   caseId?: string
+  elementId?: string
+  kind?: 'nodal' | 'distributed'
 }
 
 export type VisualizationCase = {
@@ -53,6 +56,7 @@ export type VisualizationCase = {
 export type VisualizationSnapshot = {
   version: 1
   title: string
+  source: VisualizationSource
   dimension: 2 | 3
   plane: 'xy' | 'xz'
   analysisType?: string
@@ -66,4 +70,5 @@ export type VisualizationSnapshot = {
   unsupportedElementTypes: string[]
   cases: VisualizationCase[]
   summary?: Record<string, unknown>
+  statusMessage?: string
 }

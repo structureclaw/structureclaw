@@ -5,8 +5,8 @@ import type {
   VisualizationLoad,
   VisualizationNode,
   VisualizationNodeResults,
+  VisualizationSource,
   VisualizationSnapshot,
-  VisualizationVector3,
   VisualizationViewMode,
 } from './types'
 
@@ -252,18 +252,35 @@ function getLoads(model: Record<string, unknown> | null): VisualizationLoad[] {
     const caseLoads = Array.isArray(loadCaseRecord?.loads) ? loadCaseRecord.loads : []
     caseLoads.forEach((entry) => {
       const load = asRecord(entry)
-      if (!load || typeof load.node !== 'string') {
+      if (!load) {
         return
       }
-      loads.push({
-        nodeId: load.node,
-        caseId,
-        vector: {
-          x: pickNumber(load, ['fx']) ?? 0,
-          y: pickNumber(load, ['fy']) ?? 0,
-          z: pickNumber(load, ['fz']) ?? 0,
-        },
-      })
+      if (typeof load.node === 'string') {
+        loads.push({
+          nodeId: load.node,
+          caseId,
+          kind: 'nodal',
+          vector: {
+            x: pickNumber(load, ['fx']) ?? 0,
+            y: pickNumber(load, ['fy']) ?? 0,
+            z: pickNumber(load, ['fz']) ?? 0,
+          },
+        })
+        return
+      }
+      if (typeof load.element === 'string') {
+        loads.push({
+          nodeId: '',
+          elementId: load.element,
+          caseId,
+          kind: 'distributed',
+          vector: {
+            x: 0,
+            y: pickNumber(load, ['wy']) ?? 0,
+            z: pickNumber(load, ['wz']) ?? 0,
+          },
+        })
+      }
     })
   })
 
@@ -283,15 +300,32 @@ function deriveDimension(nodes: VisualizationNode[], displacements: Record<strin
   return 2 as const
 }
 
-function derivePlane(nodes: VisualizationNode[], displacements: Record<string, unknown> | null) {
+function derivePlane(
+  nodes: VisualizationNode[],
+  displacements: Record<string, unknown> | null,
+  loads: VisualizationLoad[]
+) {
   const zSpread = new Set(nodes.map((node) => node.position.z.toFixed(6))).size
+  const ySpread = new Set(nodes.map((node) => node.position.y.toFixed(6))).size
   const displacementEntries = Object.values(displacements || {}).map((value) => asRecord(value))
   const hasUz = displacementEntries.some((entry) => entry && asNumber(entry.uz) !== null)
   const hasRy = displacementEntries.some((entry) => entry && asNumber(entry.ry) !== null)
-  return zSpread > 1 || hasUz || hasRy ? 'xz' : 'xy'
+  const hasUyLoad = loads.some((load) => Math.abs(load.vector.y) > 1e-12)
+  const hasUzLoad = loads.some((load) => Math.abs(load.vector.z) > 1e-12)
+
+  if (zSpread > 1 || hasUz || hasRy || hasUzLoad) {
+    return 'xz' as const
+  }
+  if (ySpread > 1 || hasUyLoad) {
+    return 'xy' as const
+  }
+  return 'xy' as const
 }
 
-function buildAvailableViews(cases: VisualizationCase[]): VisualizationViewMode[] {
+function buildAvailableViews(cases: VisualizationCase[], source: VisualizationSource): VisualizationViewMode[] {
+  if (source === 'model') {
+    return ['model']
+  }
   const hasDisplacements = cases.some((item) =>
     Object.values(item.nodeResults).some((result) => vectorMagnitude([result.displacement?.ux, result.displacement?.uy, result.displacement?.uz]) > 0)
   )
@@ -315,15 +349,17 @@ function buildAvailableViews(cases: VisualizationCase[]): VisualizationViewMode[
 export function buildVisualizationSnapshot(params: {
   title: string
   model: Record<string, unknown> | null
-  analysis: Record<string, unknown> | null
+  analysis?: Record<string, unknown> | null
+  mode?: 'model-only' | 'analysis-result'
+  statusMessage?: string
 }): VisualizationSnapshot | null {
   const model = params.model
-  const analysisRoot = params.analysis
-  if (!model || !analysisRoot) {
+  if (!model) {
     return null
   }
 
-  const analysis = asRecord(analysisRoot)
+  const source: VisualizationSource = params.mode === 'model-only' || !params.analysis ? 'model' : 'result'
+  const analysis = asRecord(params.analysis)
   const data = asRecord(analysis?.data) || analysis
   const nodesInput = Array.isArray(model.nodes) ? model.nodes : []
   const elementsInput = Array.isArray(model.elements) ? model.elements : []
@@ -361,57 +397,66 @@ export function buildVisualizationSnapshot(params: {
   }
 
   const baseDisplacements = asRecord(data?.displacements)
-  const baseReactions = asRecord(data?.reactions)
-  const baseForces = asRecord(data?.forces)
-  const baseEnvelope = asRecord(data?.envelope)
-  const baseCase = buildCase('result', 'Result', 'result', baseDisplacements, baseReactions, baseForces, baseEnvelope)
-  const cases: VisualizationCase[] = [baseCase]
+  const loads = getLoads(model)
+  const cases: VisualizationCase[] = source === 'result'
+    ? (() => {
+        const baseReactions = asRecord(data?.reactions)
+        const baseForces = asRecord(data?.forces)
+        const baseEnvelope = asRecord(data?.envelope)
+        const baseCase = buildCase('result', 'Result', 'result', baseDisplacements, baseReactions, baseForces, baseEnvelope)
+        const nextCases: VisualizationCase[] = [baseCase]
 
-  const caseResults = asRecord(data?.caseResults)
-  Object.entries(caseResults || {}).forEach(([caseId, value]) => {
-    const entry = asRecord(value)
-    if (!entry) {
-      return
-    }
-    cases.push(
-      buildCase(
-        caseId,
-        caseId,
-        'case',
-        asRecord(entry.displacements),
-        asRecord(entry.reactions),
-        asRecord(entry.forces),
-        asRecord(entry.envelope)
-      )
-    )
-  })
+        const caseResults = asRecord(data?.caseResults)
+        Object.entries(caseResults || {}).forEach(([caseId, value]) => {
+          const entry = asRecord(value)
+          if (!entry) {
+            return
+          }
+          nextCases.push(
+            buildCase(
+              caseId,
+              caseId,
+              'case',
+              asRecord(entry.displacements),
+              asRecord(entry.reactions),
+              asRecord(entry.forces),
+              asRecord(entry.envelope)
+            )
+          )
+        })
 
-  const envelopeTables = asRecord(data?.envelopeTables)
-  if (envelopeTables) {
-    const envelopeCase = buildCase('envelope', 'Envelope', 'envelope', null, null, null, null)
-    applyEnvelopeTables(envelopeCase, envelopeTables)
-    cases.push(envelopeCase)
-  }
+        const envelopeTables = asRecord(data?.envelopeTables)
+        if (envelopeTables) {
+          const envelopeCase = buildCase('envelope', 'Envelope', 'envelope', null, null, null, null)
+          applyEnvelopeTables(envelopeCase, envelopeTables)
+          nextCases.push(envelopeCase)
+        }
+
+        return nextCases
+      })()
+    : [buildCase('model', 'Model', 'result', null, null, null, null)]
 
   const unsupportedElementTypes = Array.from(
     new Set(elements.map((element) => element.type).filter((type) => !['beam', 'truss'].includes(type)))
   )
   const dimension = deriveDimension(nodes, baseDisplacements)
-  const plane = derivePlane(nodes, baseDisplacements)
+  const plane = derivePlane(nodes, baseDisplacements, loads)
 
   return {
     version: 1,
     title: params.title,
+    source,
     dimension,
     plane,
     analysisType: typeof analysis?.analysis_type === 'string' ? analysis.analysis_type : undefined,
-    availableViews: buildAvailableViews(cases),
-    defaultCaseId: cases.find((item) => item.kind === 'result')?.id || cases[0]?.id || 'result',
+    availableViews: buildAvailableViews(cases, source),
+    defaultCaseId: cases.find((item) => item.kind === 'result')?.id || cases[0]?.id || (source === 'model' ? 'model' : 'result'),
     nodes,
     elements,
-    loads: getLoads(model),
+    loads,
     unsupportedElementTypes,
     cases,
     summary: asRecord(data?.summary) || undefined,
+    statusMessage: params.statusMessage,
   }
 }

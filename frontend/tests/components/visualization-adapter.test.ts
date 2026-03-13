@@ -5,6 +5,7 @@ describe('visualization-adapter', () => {
   it('maps a 2D beam model and analysis payload into a visualization snapshot', () => {
     const snapshot = buildVisualizationSnapshot({
       title: '2D Beam',
+      mode: 'analysis-result',
       model: {
         schema_version: '1.0.0',
         nodes: [
@@ -38,6 +39,7 @@ describe('visualization-adapter', () => {
     })
 
     expect(snapshot).not.toBeNull()
+    expect(snapshot?.source).toBe('result')
     expect(snapshot?.dimension).toBe(2)
     expect(snapshot?.plane).toBe('xz')
     expect(snapshot?.elements[0]?.nodeIds).toEqual(['1', '2'])
@@ -48,6 +50,7 @@ describe('visualization-adapter', () => {
   it('detects a 3D truss/frame payload and keeps case results', () => {
     const snapshot = buildVisualizationSnapshot({
       title: '3D Space Frame',
+      mode: 'analysis-result',
       model: {
         schema_version: '1.0.0',
         nodes: [
@@ -96,5 +99,28 @@ describe('visualization-adapter', () => {
         analysis: { data: {} },
       })
     ).toBeNull()
+  })
+
+  it('builds a model-only snapshot without analysis data', () => {
+    const snapshot = buildVisualizationSnapshot({
+      title: 'Model Preview',
+      mode: 'model-only',
+      model: {
+        schema_version: '1.0.0',
+        nodes: [
+          { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
+          { id: '2', x: 6, y: 0, z: 0 },
+        ],
+        elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: 'M1', section: 'S1' }],
+        load_cases: [{ id: 'L1', loads: [{ node: '2', fy: -5 }] }],
+      },
+    })
+
+    expect(snapshot).not.toBeNull()
+    expect(snapshot?.source).toBe('model')
+    expect(snapshot?.availableViews).toEqual(['model'])
+    expect(snapshot?.defaultCaseId).toBe('model')
+    expect(snapshot?.plane).toBe('xy')
+    expect(snapshot?.loads[0]?.vector.y).toBe(-5)
   })
 })

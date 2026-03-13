@@ -87,6 +87,7 @@ const sampleAnalysisResult = {
 const archivedVisualizationSnapshot: VisualizationSnapshot = {
   version: 1,
   title: 'Archived Beam',
+  source: 'result',
   dimension: 2,
   plane: 'xz',
   availableViews: ['model', 'deformed', 'forces', 'reactions'],
@@ -214,6 +215,25 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByText('Analysis Engine Auto')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Discuss First' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run Analysis' })).toBeInTheDocument()
+  })
+
+  it('keeps the last valid model preview available when model json becomes invalid', async () => {
+    await renderConsolePage()
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+
+    const modelInput = screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/)
+    fireEvent.change(modelInput, { target: { value: sampleModelJson } })
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Preview Model|预览模型/ })).toBeEnabled()
+    })
+
+    fireEvent.change(modelInput, { target: { value: '{"schema_version":' } })
+
+    expect(screen.getByText(/Model JSON parse failed|模型 JSON 解析失败/)).toBeInTheDocument()
+    expect(screen.getByText(/Model JSON is invalid. The last valid preview is still available.|模型 JSON 无效，但仍可查看上一次有效预览。/)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Preview Model|预览模型/ })).toBeEnabled()
   })
 
   it('keeps only one engineering context expand button on first load', async () => {
@@ -968,7 +988,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
           updatedAt: '2026-03-12T08:00:00.000Z',
           messages: [{ id: 'assistant-1', role: 'assistant', content: 'done', status: 'done', timestamp: '2026-03-12T08:00:00.000Z' }],
           latestResult: sampleAnalysisResult,
-          visualizationSnapshot: archivedVisualizationSnapshot,
+          resultVisualizationSnapshot: archivedVisualizationSnapshot,
         },
       })
     )
