@@ -131,6 +131,7 @@ Notes:
 
 - `REDIS_URL=disabled` enables in-memory fallback mode in the backend.
 - `PGADMIN_PORT` controls the local pgAdmin entrypoint. By default, open `http://localhost:5050`.
+- `PGADMIN_ENABLED=false` skips pgAdmin startup during `make start` while keeping PostgreSQL startup intact.
 - pgAdmin is intended for local development and test environments only.
 - `ANALYSIS_ENGINE_URL` can be left blank and derived from `CORE_PORT`.
 - `CORS_ORIGINS` can be left blank and derived from `FRONTEND_PORT` and `PORT`.
@@ -157,6 +158,12 @@ Then open:
 - Console entry page: `/console/database`
 
 The default pgAdmin server list already includes the compose `postgres` service as `StructureClaw PostgreSQL`.
+
+If the Docker registry is slow or blocked in your environment, `make start` will now continue without pgAdmin and print a warning. You can retry later with:
+
+```bash
+docker compose up -d pgadmin
+```
 
 ## Main Endpoints
 

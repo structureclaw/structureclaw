@@ -266,6 +266,7 @@ ZAI_API_KEY=
 - 未配置可用 LLM Key 时（`LLM_API_KEY/OPENAI_API_KEY/ZAI_API_KEY`），聊天接口自动降级提示
 - `REDIS_URL=disabled` 表示禁用 Redis，后端自动降级为内存缓存
 - `PGADMIN_PORT` 控制本地 pgAdmin 入口端口，默认访问 `http://localhost:5050`
+- `PGADMIN_ENABLED=false` 可让 `make start` 跳过 pgAdmin，但仍正常启动 PostgreSQL
 - pgAdmin 仅建议用于本地开发和测试环境
 - `PORT` 控制后端端口
 - `FRONTEND_PORT` 控制前端本地 dev 端口
@@ -305,6 +306,12 @@ make start
 - 控制台入口页：`/console/database`
 
 pgAdmin 默认会预置一个名为 `StructureClaw PostgreSQL` 的连接，目标就是 compose 内的 `postgres` 服务。
+
+如果你所在环境访问 Docker Hub 较慢或暂时失败，`make start` 现在会给出警告并继续启动主栈，不会因为 pgAdmin 拉取失败直接中断。之后可单独重试：
+
+```bash
+docker compose up -d pgadmin
+```
 
 ### Prisma 初始化
 

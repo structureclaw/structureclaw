@@ -10,6 +10,7 @@ ROOT_ENV_FILE="$ROOT_DIR/.env"
 FRONTEND_PORT="${FRONTEND_PORT:-30000}"
 BACKEND_PORT="${PORT:-8000}"
 CORE_PORT="${CORE_PORT:-8001}"
+PGADMIN_ENABLED="${PGADMIN_ENABLED:-true}"
 CORE_PROFILE="full"
 CORE_ENV_MANAGER="uv"
 SKIP_INFRA=0
@@ -234,6 +235,10 @@ is_redis_enabled() {
   [[ -n "$redis_url" && "${redis_url,,}" != "disabled" ]]
 }
 
+is_pgadmin_enabled() {
+  [[ "${PGADMIN_ENABLED,,}" != "false" ]]
+}
+
 docker_ready() {
   docker info >/dev/null 2>&1
 }
@@ -301,7 +306,7 @@ if [[ "$SKIP_INFRA" -eq 0 ]]; then
   fi
 
   echo "Starting local infrastructure..."
-  compose_services=(postgres pgadmin)
+  compose_services=(postgres)
   if is_redis_enabled; then
     compose_services+=(redis)
   else
@@ -309,6 +314,17 @@ if [[ "$SKIP_INFRA" -eq 0 ]]; then
   fi
   docker compose -f "$ROOT_DIR/docker-compose.yml" up -d "${compose_services[@]}"
   wait_for_postgres
+
+  if is_pgadmin_enabled; then
+    echo "Starting pgAdmin..."
+    if ! docker compose -f "$ROOT_DIR/docker-compose.yml" up -d pgadmin; then
+      echo "WARNING: pgAdmin failed to start. The core local stack will continue without it."
+      echo "If this is a transient registry/network issue, rerun: docker compose up -d pgadmin"
+      echo "To skip pgAdmin entirely, set PGADMIN_ENABLED=false in .env"
+    fi
+  else
+    echo "pgAdmin is disabled in .env; skipping pgadmin container startup."
+  fi
 else
   echo "Skipping local postgres/redis/pgadmin startup (--skip-infra)."
 fi
