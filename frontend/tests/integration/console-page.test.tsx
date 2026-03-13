@@ -221,6 +221,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByRole('button', { name: 'Expand Skills' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Expand Engineering Context' })).toBeInTheDocument()
     expect(screen.getByText('Analysis Engine Auto')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Database Admin' })).toBeInTheDocument()
+    expect(screen.getByText('Database tools')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Discuss First' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run Analysis' })).toBeInTheDocument()
   })

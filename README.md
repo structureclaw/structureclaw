@@ -118,6 +118,9 @@ CORE_PORT=30011
 NEXT_PUBLIC_API_URL=http://localhost:30010
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/structureclaw
 REDIS_URL=disabled
+PGADMIN_DEFAULT_EMAIL=admin@structureclaw.local
+PGADMIN_DEFAULT_PASSWORD=structureclaw
+PGADMIN_PORT=5050
 LLM_PROVIDER=zhipu
 LLM_API_KEY=
 LLM_MODEL=glm-5
@@ -127,8 +130,33 @@ LLM_BASE_URL=https://open.bigmodel.cn/api/coding/paas/v4
 Notes:
 
 - `REDIS_URL=disabled` enables in-memory fallback mode in the backend.
+- `PGADMIN_PORT` controls the local pgAdmin entrypoint. By default, open `http://localhost:5050`.
+- pgAdmin is intended for local development and test environments only.
 - `ANALYSIS_ENGINE_URL` can be left blank and derived from `CORE_PORT`.
 - `CORS_ORIGINS` can be left blank and derived from `FRONTEND_PORT` and `PORT`.
+
+## Database Admin
+
+For local PostgreSQL inspection, the repository now includes pgAdmin in the Docker stack.
+
+Quick start:
+
+```bash
+docker compose up -d postgres pgadmin
+```
+
+Or use the standard local flow:
+
+```bash
+make start
+```
+
+Then open:
+
+- pgAdmin: `http://localhost:5050` (or the port configured through `PGADMIN_PORT`)
+- Console entry page: `/console/database`
+
+The default pgAdmin server list already includes the compose `postgres` service as `StructureClaw PostgreSQL`.
 
 ## Main Endpoints
 

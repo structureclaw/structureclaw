@@ -246,6 +246,9 @@ CORE_PORT=8001
 NEXT_PUBLIC_API_URL=http://localhost:<PORT>
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/structureclaw
 REDIS_URL=disabled
+PGADMIN_DEFAULT_EMAIL=admin@structureclaw.local
+PGADMIN_DEFAULT_PASSWORD=structureclaw
+PGADMIN_PORT=5050
 JWT_SECRET=your-super-secret-jwt-key-change-in-production
 JWT_EXPIRES_IN=7d
 LLM_PROVIDER=openai
@@ -262,6 +265,8 @@ ZAI_API_KEY=
 
 - 未配置可用 LLM Key 时（`LLM_API_KEY/OPENAI_API_KEY/ZAI_API_KEY`），聊天接口自动降级提示
 - `REDIS_URL=disabled` 表示禁用 Redis，后端自动降级为内存缓存
+- `PGADMIN_PORT` 控制本地 pgAdmin 入口端口，默认访问 `http://localhost:5050`
+- pgAdmin 仅建议用于本地开发和测试环境
 - `PORT` 控制后端端口
 - `FRONTEND_PORT` 控制前端本地 dev 端口
 - `CORE_PORT` 控制分析引擎本地端口
@@ -277,6 +282,29 @@ ZAI_API_KEY=your-zhipu-key
 # LLM_BASE_URL=https://open.bigmodel.cn/api/paas/v4/
 ```
 参考文档：`https://docs.bigmodel.cn/cn/guide/start/introduction`
+
+## 数据库可视化管理
+
+仓库现在已将 pgAdmin 纳入本地 Docker 栈，用于查看和管理 PostgreSQL。
+
+快速启动：
+
+```bash
+docker compose up -d postgres pgadmin
+```
+
+或者直接使用默认本地启动流程：
+
+```bash
+make start
+```
+
+启动后可访问：
+
+- pgAdmin：`http://localhost:5050`（或你在 `.env` 中配置的 `PGADMIN_PORT`）
+- 控制台入口页：`/console/database`
+
+pgAdmin 默认会预置一个名为 `StructureClaw PostgreSQL` 的连接，目标就是 compose 内的 `postgres` 服务。
 
 ### Prisma 初始化
 
