@@ -1337,6 +1337,17 @@ export class AgentService {
       spanLengthM: this.normalizeNumber(values.spanLengthM),
       heightM: this.normalizeNumber(values.heightM),
       supportType: this.normalizeSupportType(values.supportType),
+      frameDimension: this.normalizeFrameDimension(values.frameDimension),
+      storyCount: this.normalizePositiveInteger(values.storyCount),
+      bayCount: this.normalizePositiveInteger(values.bayCount),
+      bayCountX: this.normalizePositiveInteger(values.bayCountX),
+      bayCountY: this.normalizePositiveInteger(values.bayCountY),
+      storyHeightsM: this.normalizeNumberArray(values.storyHeightsM),
+      bayWidthsM: this.normalizeNumberArray(values.bayWidthsM),
+      bayWidthsXM: this.normalizeNumberArray(values.bayWidthsXM),
+      bayWidthsYM: this.normalizeNumberArray(values.bayWidthsYM),
+      floorLoads: this.normalizeFloorLoads(values.floorLoads),
+      frameBaseSupportType: this.normalizeFrameBaseSupportType(values.frameBaseSupportType),
       loadKN: this.normalizeNumber(values.loadKN),
       loadType: this.normalizeLoadType(values.loadType),
       loadPosition: this.normalizeLoadPosition(values.loadPosition),
@@ -1422,7 +1433,26 @@ export class AgentService {
   }
 
   private mapMissingFieldLabels(missing: string[], locale: AppLocale): string[] {
-    const structuralKeys = missing.filter((key) => ['inferredType', 'lengthM', 'spanLengthM', 'heightM', 'supportType', 'loadKN', 'loadType', 'loadPosition'].includes(key));
+    const structuralKeys = missing.filter((key) => [
+      'inferredType',
+      'lengthM',
+      'spanLengthM',
+      'heightM',
+      'supportType',
+      'frameDimension',
+      'storyCount',
+      'bayCount',
+      'bayCountX',
+      'bayCountY',
+      'storyHeightsM',
+      'bayWidthsM',
+      'bayWidthsXM',
+      'bayWidthsYM',
+      'floorLoads',
+      'loadKN',
+      'loadType',
+      'loadPosition',
+    ].includes(key));
     const structuralLabels = new Map(
       structuralKeys.map((key) => [key, this.skillRuntime.mapMissingFieldLabels([key], locale)[0] || key])
     );
@@ -1488,7 +1518,26 @@ export class AgentService {
     session: InteractionSession,
     locale: AppLocale,
   ): InteractionQuestion[] {
-    const structuralKeys = missingKeys.filter((key) => ['inferredType', 'lengthM', 'spanLengthM', 'heightM', 'supportType', 'loadKN', 'loadType', 'loadPosition'].includes(key));
+    const structuralKeys = missingKeys.filter((key) => [
+      'inferredType',
+      'lengthM',
+      'spanLengthM',
+      'heightM',
+      'supportType',
+      'frameDimension',
+      'storyCount',
+      'bayCount',
+      'bayCountX',
+      'bayCountY',
+      'storyHeightsM',
+      'bayWidthsM',
+      'bayWidthsXM',
+      'bayWidthsYM',
+      'floorLoads',
+      'loadKN',
+      'loadType',
+      'loadPosition',
+    ].includes(key));
     const structuralQuestions = new Map(
       this.skillRuntime.buildInteractionQuestions(structuralKeys, criticalMissing, session.draft, locale).map((question) => [question.paramKey, question])
     );
@@ -1521,10 +1570,24 @@ export class AgentService {
     if (missingKeys.includes('inferredType')) {
       return 'intent';
     }
-    if (missingKeys.some((key) => key === 'lengthM' || key === 'spanLengthM' || key === 'heightM' || key === 'supportType')) {
+    if (missingKeys.some((key) => [
+      'lengthM',
+      'spanLengthM',
+      'heightM',
+      'supportType',
+      'frameDimension',
+      'storyCount',
+      'bayCount',
+      'bayCountX',
+      'bayCountY',
+      'storyHeightsM',
+      'bayWidthsM',
+      'bayWidthsXM',
+      'bayWidthsYM',
+    ].includes(key))) {
       return 'model';
     }
-    if (missingKeys.includes('loadKN') || missingKeys.includes('loadType') || missingKeys.includes('loadPosition')) {
+    if (missingKeys.includes('loadKN') || missingKeys.includes('loadType') || missingKeys.includes('loadPosition') || missingKeys.includes('floorLoads')) {
       return 'loads';
     }
     if (missingKeys.includes('analysisType')) {
@@ -1878,6 +1941,10 @@ export class AgentService {
         ? mergedLength
         : undefined
     );
+    const storyCount = patch.storyCount ?? existing?.storyCount ?? patch.storyHeightsM?.length ?? existing?.storyHeightsM?.length;
+    const bayCount = patch.bayCount ?? existing?.bayCount ?? patch.bayWidthsM?.length ?? existing?.bayWidthsM?.length;
+    const bayCountX = patch.bayCountX ?? existing?.bayCountX ?? patch.bayWidthsXM?.length ?? existing?.bayWidthsXM?.length;
+    const bayCountY = patch.bayCountY ?? existing?.bayCountY ?? patch.bayWidthsYM?.length ?? existing?.bayWidthsYM?.length;
 
     return {
       inferredType: mergedType,
@@ -1885,6 +1952,17 @@ export class AgentService {
       spanLengthM,
       heightM: patch.heightM ?? existing?.heightM,
       supportType: patch.supportType ?? existing?.supportType,
+      frameDimension: patch.frameDimension ?? existing?.frameDimension,
+      storyCount,
+      bayCount,
+      bayCountX,
+      bayCountY,
+      storyHeightsM: patch.storyHeightsM ?? existing?.storyHeightsM,
+      bayWidthsM: patch.bayWidthsM ?? existing?.bayWidthsM,
+      bayWidthsXM: patch.bayWidthsXM ?? existing?.bayWidthsXM,
+      bayWidthsYM: patch.bayWidthsYM ?? existing?.bayWidthsYM,
+      floorLoads: patch.floorLoads ?? existing?.floorLoads,
+      frameBaseSupportType: patch.frameBaseSupportType ?? existing?.frameBaseSupportType,
       loadKN: patch.loadKN ?? existing?.loadKN,
       loadType: patch.loadType ?? existing?.loadType,
       loadPosition: patch.loadPosition ?? existing?.loadPosition,
@@ -1899,6 +1977,17 @@ export class AgentService {
       spanLengthM: next.spanLengthM,
       heightM: next.heightM,
       supportType: next.supportType,
+      frameDimension: next.frameDimension,
+      storyCount: next.storyCount,
+      bayCount: next.bayCount,
+      bayCountX: next.bayCountX,
+      bayCountY: next.bayCountY,
+      storyHeightsM: next.storyHeightsM,
+      bayWidthsM: next.bayWidthsM,
+      bayWidthsXM: next.bayWidthsXM,
+      bayWidthsYM: next.bayWidthsYM,
+      floorLoads: next.floorLoads,
+      frameBaseSupportType: next.frameBaseSupportType,
       loadKN: next.loadKN,
       loadType: next.loadType,
       loadPosition: next.loadPosition,
@@ -1917,6 +2006,17 @@ export class AgentService {
       spanLengthM: preferred?.spanLengthM ?? fallback.spanLengthM,
       heightM: preferred?.heightM ?? fallback.heightM,
       supportType: preferred?.supportType ?? fallback.supportType,
+      frameDimension: preferred?.frameDimension ?? fallback.frameDimension,
+      storyCount: preferred?.storyCount ?? fallback.storyCount,
+      bayCount: preferred?.bayCount ?? fallback.bayCount,
+      bayCountX: preferred?.bayCountX ?? fallback.bayCountX,
+      bayCountY: preferred?.bayCountY ?? fallback.bayCountY,
+      storyHeightsM: preferred?.storyHeightsM ?? fallback.storyHeightsM,
+      bayWidthsM: preferred?.bayWidthsM ?? fallback.bayWidthsM,
+      bayWidthsXM: preferred?.bayWidthsXM ?? fallback.bayWidthsXM,
+      bayWidthsYM: preferred?.bayWidthsYM ?? fallback.bayWidthsYM,
+      floorLoads: preferred?.floorLoads ?? fallback.floorLoads,
+      frameBaseSupportType: preferred?.frameBaseSupportType ?? fallback.frameBaseSupportType,
       loadKN: preferred?.loadKN ?? fallback.loadKN,
       loadType: preferred?.loadType ?? fallback.loadType,
       loadPosition: preferred?.loadPosition ?? fallback.loadPosition,
@@ -2214,6 +2314,17 @@ export class AgentService {
           spanLengthM: existingState.spanLengthM,
           heightM: existingState.heightM,
           supportType: existingState.supportType,
+          frameDimension: existingState.frameDimension,
+          storyCount: existingState.storyCount,
+          bayCount: existingState.bayCount,
+          bayCountX: existingState.bayCountX,
+          bayCountY: existingState.bayCountY,
+          storyHeightsM: existingState.storyHeightsM,
+          bayWidthsM: existingState.bayWidthsM,
+          bayWidthsXM: existingState.bayWidthsXM,
+          bayWidthsYM: existingState.bayWidthsYM,
+          floorLoads: existingState.floorLoads,
+          frameBaseSupportType: existingState.frameBaseSupportType,
           loadKN: existingState.loadKN,
           loadType: existingState.loadType,
           loadPosition: existingState.loadPosition,
@@ -2224,20 +2335,22 @@ export class AgentService {
       ? [
           '你是结构建模参数提取器。',
           '从用户输入里提取结构草模参数，仅返回 JSON，不要 markdown。',
-          '可选 inferredType: beam | truss | portal-frame | double-span-beam | unknown。',
+          '可选 inferredType: beam | truss | portal-frame | double-span-beam | frame | unknown。',
           '数值统一单位：m, kN。不存在的字段不要输出。',
           `已有参数：${prior}`,
           `用户输入：${message}`,
           '若已说明梁的支座/边界条件，请提取 supportType（cantilever/simply-supported/fixed-fixed/fixed-pinned）。',
+          '若已说明规则框架，请提取 frameDimension（2d/3d）、storyCount、bayCount/bayCountX/bayCountY、storyHeightsM、bayWidthsM/bayWidthsXM/bayWidthsYM、floorLoads。',
           '若已给出荷载，请同时提取 loadType（point/distributed）与 loadPosition。',
           '输出示例：{"inferredType":"beam","lengthM":6,"supportType":"simply-supported","loadKN":20,"loadType":"point","loadPosition":"midspan"}',
         ].join('\n')
       : [
           'You extract structural model draft parameters.',
           'Read the user request and return JSON only, without markdown.',
-          'Allowed inferredType values: beam | truss | portal-frame | double-span-beam | unknown.',
+          'Allowed inferredType values: beam | truss | portal-frame | double-span-beam | frame | unknown.',
           'Use m and kN as units. Omit fields that are not present.',
           'When beam support or boundary conditions are mentioned, also extract supportType (cantilever/simply-supported/fixed-fixed/fixed-pinned).',
+          'When a regular frame is described, also extract frameDimension (2d/3d), storyCount, bayCount/bayCountX/bayCountY, storyHeightsM, bayWidthsM/bayWidthsXM/bayWidthsYM, and floorLoads.',
           'When loads are mentioned, also extract loadType (point/distributed) and loadPosition.',
           `Known parameters: ${prior}`,
           `User input: ${message}`,
@@ -2260,6 +2373,17 @@ export class AgentService {
         spanLengthM: this.normalizeNumber(parsed.spanLengthM),
         heightM: this.normalizeNumber(parsed.heightM),
         supportType: this.normalizeSupportType(parsed.supportType),
+        frameDimension: this.normalizeFrameDimension(parsed.frameDimension),
+        storyCount: this.normalizePositiveInteger(parsed.storyCount),
+        bayCount: this.normalizePositiveInteger(parsed.bayCount),
+        bayCountX: this.normalizePositiveInteger(parsed.bayCountX),
+        bayCountY: this.normalizePositiveInteger(parsed.bayCountY),
+        storyHeightsM: this.normalizeNumberArray(parsed.storyHeightsM),
+        bayWidthsM: this.normalizeNumberArray(parsed.bayWidthsM),
+        bayWidthsXM: this.normalizeNumberArray(parsed.bayWidthsXM),
+        bayWidthsYM: this.normalizeNumberArray(parsed.bayWidthsYM),
+        floorLoads: this.normalizeFloorLoads(parsed.floorLoads),
+        frameBaseSupportType: this.normalizeFrameBaseSupportType(parsed.frameBaseSupportType),
         loadKN: this.normalizeNumber(parsed.loadKN),
         loadType: this.normalizeLoadType(parsed.loadType),
         loadPosition: this.normalizeLoadPosition(parsed.loadPosition),
@@ -2317,6 +2441,9 @@ export class AgentService {
     }
     if (text.includes('桁架') || text.includes('truss')) {
       return 'truss';
+    }
+    if (text.includes('钢框架') || text.includes('frame') || text.includes('框架')) {
+      return 'frame';
     }
     if (text.includes('梁') || text.includes('beam') || text.includes('悬臂')) {
       return 'beam';
@@ -2398,10 +2525,18 @@ export class AgentService {
     if (typeof value !== 'string') {
       return undefined;
     }
-    if (value === 'beam' || value === 'truss' || value === 'portal-frame' || value === 'double-span-beam' || value === 'unknown') {
+    if (value === 'beam' || value === 'truss' || value === 'portal-frame' || value === 'double-span-beam' || value === 'frame' || value === 'unknown') {
       return value;
     }
     return undefined;
+  }
+
+  private normalizeFrameDimension(value: unknown): DraftState['frameDimension'] | undefined {
+    return value === '2d' || value === '3d' ? value : undefined;
+  }
+
+  private normalizeFrameBaseSupportType(value: unknown): DraftState['frameBaseSupportType'] | undefined {
+    return value === 'fixed' || value === 'pinned' ? value : undefined;
   }
 
   private normalizeNumber(value: unknown): number | undefined {
@@ -2415,6 +2550,51 @@ export class AgentService {
       }
     }
     return undefined;
+  }
+
+  private normalizePositiveInteger(value: unknown): number | undefined {
+    const parsed = this.normalizeNumber(value);
+    if (parsed === undefined) {
+      return undefined;
+    }
+    const rounded = Math.round(parsed);
+    return rounded > 0 ? rounded : undefined;
+  }
+
+  private normalizeNumberArray(value: unknown): number[] | undefined {
+    if (!Array.isArray(value)) {
+      return undefined;
+    }
+    const normalized = value
+      .map((item) => this.normalizeNumber(item))
+      .filter((item): item is number => item !== undefined && item > 0);
+    return normalized.length > 0 ? normalized : undefined;
+  }
+
+  private normalizeFloorLoads(value: unknown): DraftState['floorLoads'] | undefined {
+    if (!Array.isArray(value)) {
+      return undefined;
+    }
+    const normalized = value
+      .map((item) => {
+        if (!item || typeof item !== 'object') {
+          return null;
+        }
+        const row = item as Record<string, unknown>;
+        const story = this.normalizePositiveInteger(row.story);
+        if (!story) {
+          return null;
+        }
+        const verticalKN = this.normalizeNumber(row.verticalKN);
+        const lateralXKN = this.normalizeNumber(row.lateralXKN);
+        const lateralYKN = this.normalizeNumber(row.lateralYKN);
+        if (verticalKN === undefined && lateralXKN === undefined && lateralYKN === undefined) {
+          return null;
+        }
+        return { story, verticalKN, lateralXKN, lateralYKN };
+      });
+    const filtered = normalized.filter((item) => item !== null) as NonNullable<DraftState['floorLoads']>;
+    return filtered.length > 0 ? filtered : undefined;
   }
 
   private parseJsonObject(content: string): Record<string, unknown> | null {

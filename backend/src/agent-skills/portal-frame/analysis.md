@@ -5,7 +5,7 @@ zhName: 门式刚架
 enName: Portal Frame
 zhDescription: 门式刚架分析阶段 skill。
 enDescription: Portal-frame analysis-stage skill.
-triggers: ["portal frame","门式刚架","框架","刚架"]
+triggers: ["portal frame","门式刚架","portal","门架","刚架"]
 stages: ["analysis"]
 autoLoadByDefault: true
 ---

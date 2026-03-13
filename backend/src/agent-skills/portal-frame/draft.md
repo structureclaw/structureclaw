@@ -5,7 +5,7 @@ zhName: 门式刚架
 enName: Portal Frame
 zhDescription: 门式刚架草模生成 skill。
 enDescription: Portal-frame draft generation skill.
-triggers: ["portal frame","门式刚架","框架","刚架"]
+triggers: ["portal frame","门式刚架","portal","门架","刚架"]
 stages: ["draft"]
 autoLoadByDefault: true
 ---

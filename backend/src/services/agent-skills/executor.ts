@@ -1,6 +1,17 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { skillExecutionSchema, type SkillExecutionPayload } from './schema.js';
-import { normalizeInferredType, normalizeLoadPosition, normalizeLoadType, normalizeNumber, normalizeSupportType } from './fallback.js';
+import {
+  normalizeFloorLoads,
+  normalizeFrameBaseSupportType,
+  normalizeFrameDimension,
+  normalizeInferredType,
+  normalizeLoadPosition,
+  normalizeLoadType,
+  normalizeNumber,
+  normalizeNumberArray,
+  normalizePositiveInteger,
+  normalizeSupportType,
+} from './fallback.js';
 import type { AgentSkillBundle, AgentSkillExecutorInput, DraftExtraction } from './types.js';
 
 function buildSkillPrompt(skills: AgentSkillBundle[]): string {
@@ -28,6 +39,17 @@ function normalizeDraftPatch(patch: SkillExecutionPayload['draftPatch']): DraftE
     spanLengthM: normalizeNumber(patch.spanLengthM),
     heightM: normalizeNumber(patch.heightM),
     supportType: normalizeSupportType(patch.supportType),
+    frameDimension: normalizeFrameDimension(patch.frameDimension),
+    storyCount: normalizePositiveInteger(patch.storyCount),
+    bayCount: normalizePositiveInteger(patch.bayCount),
+    bayCountX: normalizePositiveInteger(patch.bayCountX),
+    bayCountY: normalizePositiveInteger(patch.bayCountY),
+    storyHeightsM: normalizeNumberArray(patch.storyHeightsM),
+    bayWidthsM: normalizeNumberArray(patch.bayWidthsM),
+    bayWidthsXM: normalizeNumberArray(patch.bayWidthsXM),
+    bayWidthsYM: normalizeNumberArray(patch.bayWidthsYM),
+    floorLoads: normalizeFloorLoads(patch.floorLoads),
+    frameBaseSupportType: normalizeFrameBaseSupportType(patch.frameBaseSupportType),
     loadKN: normalizeNumber(patch.loadKN),
     loadType: normalizeLoadType(patch.loadType),
     loadPosition: normalizeLoadPosition(patch.loadPosition),

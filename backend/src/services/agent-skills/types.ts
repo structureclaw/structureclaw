@@ -1,9 +1,19 @@
 import type { AppLocale } from '../locale.js';
 
-export type InferredModelType = 'beam' | 'truss' | 'portal-frame' | 'double-span-beam' | 'unknown';
 export type DraftLoadType = 'point' | 'distributed';
 export type DraftLoadPosition = 'end' | 'midspan' | 'full-span' | 'top-nodes' | 'middle-joint' | 'free-joint';
 export type DraftSupportType = 'cantilever' | 'simply-supported' | 'fixed-fixed' | 'fixed-pinned';
+export type FrameDimension = '2d' | '3d';
+export type FrameBaseSupportType = 'fixed' | 'pinned';
+
+export interface DraftFloorLoad {
+  story: number;
+  verticalKN?: number;
+  lateralXKN?: number;
+  lateralYKN?: number;
+}
+
+export type InferredModelType = 'beam' | 'truss' | 'portal-frame' | 'double-span-beam' | 'frame' | 'unknown';
 export type ScenarioTemplateKey =
   | 'beam'
   | 'truss'
@@ -35,6 +45,17 @@ export interface DraftState {
   spanLengthM?: number;
   heightM?: number;
   supportType?: DraftSupportType;
+  frameDimension?: FrameDimension;
+  storyCount?: number;
+  bayCount?: number;
+  bayCountX?: number;
+  bayCountY?: number;
+  storyHeightsM?: number[];
+  bayWidthsM?: number[];
+  bayWidthsXM?: number[];
+  bayWidthsYM?: number[];
+  floorLoads?: DraftFloorLoad[];
+  frameBaseSupportType?: FrameBaseSupportType;
   loadKN?: number;
   loadType?: DraftLoadType;
   loadPosition?: DraftLoadPosition;
@@ -47,6 +68,17 @@ export interface DraftExtraction {
   spanLengthM?: number;
   heightM?: number;
   supportType?: DraftSupportType;
+  frameDimension?: FrameDimension;
+  storyCount?: number;
+  bayCount?: number;
+  bayCountX?: number;
+  bayCountY?: number;
+  storyHeightsM?: number[];
+  bayWidthsM?: number[];
+  bayWidthsXM?: number[];
+  bayWidthsYM?: number[];
+  floorLoads?: DraftFloorLoad[];
+  frameBaseSupportType?: FrameBaseSupportType;
   loadKN?: number;
   loadType?: DraftLoadType;
   loadPosition?: DraftLoadPosition;
