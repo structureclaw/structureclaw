@@ -786,6 +786,105 @@ describe('AgentService orchestration', () => {
     expect(draft.model?.load_cases?.[0]?.loads).toHaveLength(12);
   });
 
+  test('should prefer llm-extracted frame floor loads for natural combined load wording', async () => {
+    const svc = new AgentService();
+    svc.llm = {
+      invoke: async () => ({
+        content: JSON.stringify({
+          inferredType: 'frame',
+          draftPatch: {
+            inferredType: 'frame',
+            frameDimension: '3d',
+            storyCount: 3,
+            storyHeightsM: [3, 3, 3],
+            bayCountX: 3,
+            bayCountY: 1,
+            bayWidthsXM: [4, 4, 4],
+            bayWidthsYM: [4],
+            floorLoads: [
+              { story: 1, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
+              { story: 2, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
+              { story: 3, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
+            ],
+          },
+        }),
+      }),
+    };
+
+    const draft = await svc.textToModelDraft('3层框架，每层3m，3跨，跨度4m，每层节点荷载都是1000kN，x、y向水平荷载都是500kN', undefined, 'zh');
+
+    expect(draft.missingFields).toEqual([]);
+    expect(draft.extractionMode).toBe('llm');
+    expect(draft.stateToPersist?.frameDimension).toBe('3d');
+    expect(draft.stateToPersist?.floorLoads).toEqual([
+      { story: 1, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
+      { story: 2, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
+      { story: 3, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
+    ]);
+  });
+
+  test('should upgrade a 2d frame chat session to 3d when llm extracts y-direction loads', async () => {
+    const svc = new AgentService();
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('每层竖向荷载120kN，水平荷载30kN')) {
+          return {
+            content: JSON.stringify({
+              inferredType: 'frame',
+              draftPatch: {
+                inferredType: 'frame',
+                frameDimension: '2d',
+                storyCount: 2,
+                bayCount: 2,
+                storyHeightsM: [3, 3],
+                bayWidthsM: [6, 6],
+                floorLoads: [
+                  { story: 1, verticalKN: 120, lateralXKN: 30 },
+                  { story: 2, verticalKN: 120, lateralXKN: 30 },
+                ],
+              },
+            }),
+          };
+        }
+        return {
+          content: JSON.stringify({
+            inferredType: 'frame',
+            draftPatch: {
+              inferredType: 'frame',
+              floorLoads: [
+                { story: 1, verticalKN: 120, lateralXKN: 500, lateralYKN: 500 },
+                { story: 2, verticalKN: 120, lateralXKN: 500, lateralYKN: 500 },
+              ],
+            },
+          }),
+        };
+      },
+    };
+
+    const first = await svc.run({
+      conversationId: 'conv-frame-upgrade-3d',
+      message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
+      mode: 'chat',
+      context: { locale: 'zh' },
+    });
+
+    expect(first.interaction?.detectedScenario).toBe('frame');
+    expect(first.model?.metadata?.inferredType).toBe('frame');
+
+    const second = await svc.run({
+      conversationId: 'conv-frame-upgrade-3d',
+      message: '每层竖向荷载120kN，x、y向水平荷载都是500kN',
+      mode: 'chat',
+      context: { locale: 'zh' },
+    });
+
+    expect(second.interaction?.detectedScenario).toBe('frame');
+    expect(second.interaction?.missingCritical).toContain('X向跨数');
+    expect(second.interaction?.missingCritical).toContain('Y向跨数');
+    expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+  });
+
   test('should keep regular frame chat in model stage until frame geometry is complete', async () => {
     const svc = new AgentService();
     svc.llm = null;
