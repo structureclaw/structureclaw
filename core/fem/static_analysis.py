@@ -4,7 +4,7 @@
 """
 
 import numpy as np
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -79,52 +79,53 @@ class StaticAnalyzer:
         """
         import openseespy.opensees as ops
 
-        # 清除已有模型
         ops.wipe()
+        if self._select_opensees_planar_frame_mode(parameters):
+            return self._run_with_opensees_2d_frame(parameters, ops)
+        return self._run_with_opensees_3d_frame(parameters, ops)
 
-        # 创建模型
-        ops.model('basic', '-ndm', 3, '-ndf', 6)
+    def _select_opensees_planar_frame_mode(self, parameters: Dict[str, Any]) -> Optional[str]:
+        if not self.model.elements or not all(elem.type == 'beam' for elem in self.model.elements):
+            return None
 
-        # 定义节点
+        x_range = self._axis_range('x')
+        y_range = self._axis_range('y')
+        z_range = self._axis_range('z')
+
+        if y_range > 1e-12 and z_range <= 1e-12:
+            return 'xy'
+        if z_range > 1e-12 and y_range <= 1e-12:
+            return 'xz'
+        if y_range <= 1e-12 and z_range <= 1e-12:
+            return 'xz'
+        return None
+
+    def _axis_range(self, axis: str) -> float:
+        values = [float(getattr(node, axis)) for node in self.model.nodes]
+        if not values:
+            return 0.0
+        return max(values) - min(values)
+
+    def _run_with_opensees_2d_frame(self, parameters: Dict[str, Any], ops) -> Dict[str, Any]:
+        plane = self._select_opensees_planar_frame_mode(parameters) or 'xz'
+        loads = self._collect_nodal_loads(parameters)
+
+        ops.model('basic', '-ndm', 2, '-ndf', 3)
+
         for node in self.model.nodes:
-            ops.node(int(node.id), node.x, node.y, node.z)
+            x_coord, y_coord = self._get_2d_plane_coordinates(node, plane)
+            ops.node(int(node.id), x_coord, y_coord)
+            restraints = node.restraints or [False] * 6
+            if plane == 'xy':
+                ops.fix(int(node.id), int(bool(restraints[0])), int(bool(restraints[1])), int(bool(restraints[5])))
+            else:
+                ops.fix(int(node.id), int(bool(restraints[0])), int(bool(restraints[2])), int(bool(restraints[4])))
 
-            # 定义约束
-            if node.restraints:
-                constraints = [i for i, r in enumerate(node.restraints) if r]
-                if constraints:
-                    ops.fix(int(node.id), *node.restraints)
-
-        # 定义材料
-        for mat in self.model.materials:
-            ops.uniaxialMaterial(
-                'Elastic',
-                int(mat.id),
-                mat.E * 1000  # MPa to kPa
-            )
-
-        # 定义截面和单元
         for elem in self.model.elements:
-            if elem.type == 'beam':
-                self._define_beam_element(elem, ops)
-            elif elem.type == 'truss':
-                self._define_truss_element(elem, ops)
+            self._define_beam_element_2d(elem, ops)
 
-        # 施加荷载
-        load_cases = parameters.get('loadCases', [])
-        for lc in load_cases:
-            self._apply_loads(lc, ops)
-
-        # 分析设置
-        ops.system('BandSPD')
-        ops.numberer('Plain')
-        ops.constraints('Plain')
-        ops.integrator('LoadControl', 1.0)
-        ops.algorithm('Newton')
-        ops.analysis('Static')
-
-        # 执行分析
-        analysis_status = ops.analyze(1)
+        self._apply_standardized_loads_2d(loads, ops, plane)
+        analysis_status = self._run_opensees_static_analysis(ops)
         if analysis_status != 0:
             ops.wipe()
             raise RuntimeError(
@@ -132,39 +133,174 @@ class StaticAnalyzer:
                 "The model may be unstable or insufficiently restrained."
             )
 
-        # 提取结果
-        displacements = {}
+        ops.reactions()
+        displacements: Dict[str, Dict[str, float]] = {}
+        reactions: Dict[str, Dict[str, float]] = {}
         for node in self.model.nodes:
             disp = ops.nodeDisp(int(node.id))
-            displacements[node.id] = {
-                'ux': disp[0],
-                'uy': disp[1],
-                'uz': disp[2],
-                'rx': disp[3],
-                'ry': disp[4],
-                'rz': disp[5]
+            react = ops.nodeReaction(int(node.id))
+            if plane == 'xy':
+                displacements[node.id] = {
+                    'ux': float(disp[0]),
+                    'uy': float(disp[1]),
+                    'uz': 0.0,
+                    'rx': 0.0,
+                    'ry': 0.0,
+                    'rz': float(disp[2]),
+                }
+                if any(node.restraints or []):
+                    reactions[node.id] = {
+                        'fx': float(react[0]),
+                        'fy': float(react[1]),
+                        'mz': float(react[2]),
+                    }
+            else:
+                displacements[node.id] = {
+                    'ux': float(disp[0]),
+                    'uy': 0.0,
+                    'uz': float(disp[1]),
+                    'rx': 0.0,
+                    'ry': float(disp[2]),
+                    'rz': 0.0,
+                }
+                if any(node.restraints or []):
+                    reactions[node.id] = {
+                        'fx': float(react[0]),
+                        'fz': float(react[1]),
+                        'my': float(react[2]),
+                    }
+
+        forces: Dict[str, Dict[str, Any]] = {}
+        for elem in self.model.elements:
+            raw_force = ops.eleForce(int(elem.id))
+            axial_start, shear_start, moment_start, axial_end, shear_end, moment_end = [float(value) for value in raw_force[:6]]
+            area = float(self.sections[elem.section].properties.get('A', 0.0))
+            forces[elem.id] = {
+                'n1': {'N': axial_start, 'V': shear_start, 'M': moment_start},
+                'n2': {'N': axial_end, 'V': shear_end, 'M': moment_end},
+                'axial': axial_start,
+                'stress': float(axial_start / area) if area > 0.0 else 0.0,
             }
 
-        # 提取单元内力
+        ops.wipe()
+        return {
+            'status': 'success',
+            'analysisMode': 'opensees_2d_frame',
+            'displacements': displacements,
+            'forces': forces,
+            'reactions': reactions,
+            'envelope': self._build_envelope(displacements, forces, reactions),
+            'summary': self._generate_summary(displacements, forces),
+        }
+
+    def _run_with_opensees_3d_frame(self, parameters: Dict[str, Any], ops) -> Dict[str, Any]:
+        loads = self._collect_nodal_loads(parameters)
+
+        ops.model('basic', '-ndm', 3, '-ndf', 6)
+
+        for node in self.model.nodes:
+            ops.node(int(node.id), node.x, node.y, node.z)
+            if node.restraints:
+                ops.fix(int(node.id), *[int(bool(value)) for value in node.restraints])
+
+        for elem in self.model.elements:
+            if elem.type == 'beam':
+                self._define_beam_element(elem, ops)
+            elif elem.type == 'truss':
+                self._define_truss_element(elem, ops)
+
+        self._apply_standardized_loads_3d(loads, ops)
+        analysis_status = self._run_opensees_static_analysis(ops)
+        if analysis_status != 0:
+            ops.wipe()
+            raise RuntimeError(
+                f"OpenSees static analysis failed with code {analysis_status}. "
+                "The model may be unstable or insufficiently restrained."
+            )
+
+        ops.reactions()
+        displacements = {}
+        reactions = {}
+        for node in self.model.nodes:
+            disp = ops.nodeDisp(int(node.id))
+            react = ops.nodeReaction(int(node.id))
+            displacements[node.id] = {
+                'ux': float(disp[0]),
+                'uy': float(disp[1]),
+                'uz': float(disp[2]),
+                'rx': float(disp[3]),
+                'ry': float(disp[4]),
+                'rz': float(disp[5]),
+            }
+            if any(node.restraints or []):
+                reactions[node.id] = {
+                    'fx': float(react[0]),
+                    'fy': float(react[1]),
+                    'fz': float(react[2]),
+                    'mx': float(react[3]),
+                    'my': float(react[4]),
+                    'mz': float(react[5]),
+                }
+
         forces = {}
         for elem in self.model.elements:
             try:
                 force = ops.eleForce(int(elem.id))
-                forces[elem.id] = force
+                if elem.type == 'beam':
+                    area = float(self.sections[elem.section].properties.get('A', 0.0))
+                    forces[elem.id] = {
+                        'n1': {
+                            'N': float(force[0]),
+                            'V': float(np.sqrt(force[1] ** 2 + force[2] ** 2)),
+                            'M': float(np.sqrt(force[4] ** 2 + force[5] ** 2)),
+                            'V2': float(force[1]),
+                            'V3': float(force[2]),
+                            'T': float(force[3]),
+                            'M2': float(force[4]),
+                            'M3': float(force[5]),
+                        },
+                        'n2': {
+                            'N': float(force[6]),
+                            'V': float(np.sqrt(force[7] ** 2 + force[8] ** 2)),
+                            'M': float(np.sqrt(force[10] ** 2 + force[11] ** 2)),
+                            'V2': float(force[7]),
+                            'V3': float(force[8]),
+                            'T': float(force[9]),
+                            'M2': float(force[10]),
+                            'M3': float(force[11]),
+                        },
+                        'axial': float(force[0]),
+                        'stress': float(force[0] / area) if area > 0.0 else 0.0,
+                    }
+                else:
+                    forces[elem.id] = list(force)
             except Exception:
                 pass
 
-        # 清理
         ops.wipe()
-
         return {
             'status': 'success',
+            'analysisMode': 'opensees_3d_frame',
             'displacements': displacements,
             'forces': forces,
-            'reactions': {},
-            'envelope': self._build_envelope(displacements, forces, {}),
-            'summary': self._generate_summary(displacements, forces)
+            'reactions': reactions,
+            'envelope': self._build_envelope(displacements, forces, reactions),
+            'summary': self._generate_summary(displacements, forces),
         }
+
+    def _run_opensees_static_analysis(self, ops) -> int:
+        ops.system('BandGeneral')
+        ops.numberer('Plain')
+        ops.constraints('Plain')
+        ops.integrator('LoadControl', 1.0)
+        ops.algorithm('Newton')
+        ops.analysis('Static')
+        return int(ops.analyze(1))
+
+    def _get_2d_plane_coordinates(self, node, plane: str) -> tuple[float, float]:
+        if plane == 'xy':
+            return float(node.x), float(node.y)
+        return float(node.x), float(node.z)
 
     def _run_simplified(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -643,7 +779,7 @@ class StaticAnalyzer:
             i = node_index[node_id] * 2
             F[i] += float(load.get('fx', 0.0))
             # 兼容 fy/fz，统一映射到 x-z 平面的竖向 z
-            F[i + 1] += float(load.get('fz', load.get('fy', 0.0)))
+            F[i + 1] += self._plane_transverse_force(load, 'xz')
 
         fixed_dofs = set()
         for node in node_order:
@@ -751,7 +887,7 @@ class StaticAnalyzer:
                 if not elem_id:
                     continue
                 # 约定 q>0 沿局部 +v 方向；常见竖向向下可传负值
-                q = float(load.get('wz', load.get('fy', load.get('fz', 0.0))))
+                q = self._plane_distributed_load(load, 'xz')
                 element_distributed_loads.setdefault(elem_id, []).append(q)
 
         element_meta: Dict[str, Dict[str, Any]] = {}
@@ -837,8 +973,8 @@ class StaticAnalyzer:
                 continue
             i = node_index[node_id] * 3
             F[i] += float(load.get('fx', 0.0))
-            F[i + 1] += float(load.get('fz', load.get('fy', 0.0)))
-            F[i + 2] += float(load.get('my', load.get('momentY', 0.0)))
+            F[i + 1] += self._plane_transverse_force(load, 'xz')
+            F[i + 2] += self._plane_bending_moment(load, 'xz')
 
         fixed_dofs = set()
         for node in node_order:
@@ -1186,7 +1322,7 @@ class StaticAnalyzer:
         return k
 
     def _collect_nodal_loads(self, parameters: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """收集荷载（优先 request.parameters，其次模型中的 load_cases）。"""
+        """收集并标准化荷载（优先 request.parameters，其次模型中的 load_cases）。"""
         loads: List[Dict[str, Any]] = []
 
         load_combination_id = parameters.get('loadCombinationId')
@@ -1200,37 +1336,126 @@ class StaticAnalyzer:
                     if not lc:
                         continue
                     for load in lc.loads:
-                        if isinstance(load, dict):
-                            loads.append(self._scale_load(load, float(factor)))
+                        normalized = self._normalize_load(load)
+                        if normalized is not None:
+                            loads.append(self._scale_load(normalized, float(factor)))
                 return loads
 
         for lc in parameters.get('loadCases', []):
             for load in lc.get('loads', []):
-                if isinstance(load, dict):
-                    loads.append(load)
+                normalized = self._normalize_load(load)
+                if normalized is not None:
+                    loads.append(normalized)
 
         load_case_ids = parameters.get('loadCaseIds')
         if load_case_ids:
             allowed = set(str(i) for i in load_case_ids)
             for lc in self.model.load_cases:
                 if lc.id in allowed:
-                    loads.extend(lc.loads)
+                    for load in lc.loads:
+                        normalized = self._normalize_load(load)
+                        if normalized is not None:
+                            loads.append(normalized)
         elif not loads:
             for lc in self.model.load_cases:
-                loads.extend(lc.loads)
+                for load in lc.loads:
+                    normalized = self._normalize_load(load)
+                    if normalized is not None:
+                        loads.append(normalized)
 
         return loads
 
     def _scale_load(self, load: Dict[str, Any], factor: float) -> Dict[str, Any]:
         """按组合系数缩放荷载中的数值字段。"""
         scaled = dict(load)
-        numeric_keys = [
-            'fx', 'fy', 'fz', 'my', 'momentY', 'wy', 'wz',
-        ]
+        numeric_keys = ['fx', 'fy', 'fz', 'mx', 'my', 'mz', 'momentX', 'momentY', 'momentZ', 'wy', 'wz']
         for key in numeric_keys:
             if key in scaled:
                 scaled[key] = float(scaled[key]) * factor
+        if isinstance(scaled.get('forces'), list):
+            scaled['forces'] = [float(value) * factor for value in scaled['forces']]
         return scaled
+
+    def _normalize_load(self, load: Any) -> Optional[Dict[str, Any]]:
+        if not isinstance(load, dict):
+            return None
+
+        if load.get('type') == 'distributed' or load.get('element') is not None:
+            magnitude = self._to_float(load.get('wy', load.get('fy', load.get('wz', load.get('fz', 0.0)))), 0.0)
+            axial = self._to_float(load.get('wz', 0.0), 0.0) if 'wy' in load or 'wz' in load else 0.0
+            element_id = str(load.get('element', ''))
+            if not element_id:
+                return None
+            return {
+                'type': 'distributed',
+                'element': element_id,
+                'wy': magnitude,
+                'wz': axial,
+            }
+
+        node_id = str(load.get('node', ''))
+        if not node_id:
+            return None
+
+        if isinstance(load.get('forces'), list):
+            raw_forces = [self._to_float(value, 0.0) for value in list(load['forces'])[:6]]
+            while len(raw_forces) < 6:
+                raw_forces.append(0.0)
+            fx, fy, fz, mx, my, mz = raw_forces
+        else:
+            fx = self._to_float(load.get('fx', 0.0), 0.0)
+            fy = self._to_float(load.get('fy', load.get('wy', 0.0)), 0.0)
+            fz = self._to_float(load.get('fz', load.get('wz', 0.0)), 0.0)
+            mx = self._to_float(load.get('mx', load.get('momentX', 0.0)), 0.0)
+            my = self._to_float(load.get('my', load.get('momentY', 0.0)), 0.0)
+            mz = self._to_float(load.get('mz', load.get('momentZ', 0.0)), 0.0)
+
+        return {
+            'type': 'nodal',
+            'node': node_id,
+            'fx': fx,
+            'fy': fy,
+            'fz': fz,
+            'mx': mx,
+            'my': my,
+            'mz': mz,
+            'forces': [fx, fy, fz, mx, my, mz],
+        }
+
+    def _to_float(self, value: Any, fallback: float = 0.0) -> float:
+        if isinstance(value, (int, float, np.floating, np.integer)):
+            return float(value)
+        if isinstance(value, str):
+            try:
+                return float(value)
+            except ValueError:
+                return fallback
+        return fallback
+
+    def _plane_transverse_force(self, load: Dict[str, Any], plane: str) -> float:
+        primary_key = 'fy' if plane == 'xy' else 'fz'
+        secondary_key = 'fz' if plane == 'xy' else 'fy'
+        primary = self._to_float(load.get(primary_key, 0.0), 0.0)
+        secondary = self._to_float(load.get(secondary_key, 0.0), 0.0)
+        if abs(primary) > 1e-12 or secondary_key not in load:
+            return primary
+        return secondary
+
+    def _plane_bending_moment(self, load: Dict[str, Any], plane: str) -> float:
+        primary_key = 'mz' if plane == 'xy' else 'my'
+        secondary_key = 'my' if plane == 'xy' else 'mz'
+        primary = self._to_float(load.get(primary_key, 0.0), 0.0)
+        secondary = self._to_float(load.get(secondary_key, 0.0), 0.0)
+        if abs(primary) > 1e-12 or secondary_key not in load:
+            return primary
+        return secondary
+
+    def _plane_distributed_load(self, load: Dict[str, Any], plane: str) -> float:
+        primary = self._to_float(load.get('wy', 0.0), 0.0)
+        secondary = self._to_float(load.get('wz', 0.0), 0.0)
+        if plane == 'xy':
+            return primary if abs(primary) > 1e-12 or 'wz' not in load else secondary
+        return secondary if abs(secondary) > 1e-12 else primary
 
     def _build_envelope(self, displacements: Dict[str, Any], forces: Dict[str, Any], reactions: Dict[str, Any]) -> Dict[str, Any]:
         """构建结果包络：最大位移、内力与反力绝对值。"""
@@ -1409,6 +1634,26 @@ class StaticAnalyzer:
             transform_tag
         )
 
+    def _define_beam_element_2d(self, elem, ops):
+        section = self.sections.get(elem.section)
+        material = self.materials.get(elem.material)
+        if not section:
+            raise ValueError(f"Section '{elem.section}' was not found for beam element '{elem.id}'")
+
+        transform_tag = int(elem.id)
+        inertia = float(section.properties.get('Iy', section.properties.get('Iz', 0.0001)))
+        ops.geomTransf('Linear', transform_tag)
+        ops.element(
+            'elasticBeamColumn',
+            int(elem.id),
+            int(elem.nodes[0]),
+            int(elem.nodes[1]),
+            float(section.properties.get('A', 0.01)),
+            float((material.E * 1000) if material else section.properties.get('E', 200000000)),
+            inertia,
+            transform_tag,
+        )
+
     def _get_beam_reference_vector(self, elem) -> List[float]:
         start = self.nodes.get(elem.nodes[0])
         end = self.nodes.get(elem.nodes[1])
@@ -1439,25 +1684,60 @@ class StaticAnalyzer:
                 int(elem.material)
             )
 
-    def _apply_loads(self, load_case: Dict, ops):
-        """施加荷载"""
+    def _apply_standardized_loads_2d(self, loads: List[Dict[str, Any]], ops, plane: str):
+        if not loads:
+            return
         ops.timeSeries('Linear', 1)
         ops.pattern('Plain', 1, 1)
 
-        for load in load_case.get('loads', []):
-            if load['type'] == 'nodal':
+        for load in loads:
+            if load.get('type') == 'nodal':
+                transverse = self._plane_transverse_force(load, plane)
+                moment = self._plane_bending_moment(load, plane)
                 ops.load(
                     int(load['node']),
-                    *load['forces']
+                    float(load.get('fx', 0.0)),
+                    transverse,
+                    moment,
                 )
-            elif load['type'] == 'distributed':
+            elif load.get('type') == 'distributed':
                 ops.eleLoad(
                     '-ele',
                     int(load['element']),
                     '-type',
                     '-beamUniform',
-                    load['wy'],
-                    load['wz']
+                    self._plane_distributed_load(load, plane),
+                )
+
+    def _apply_standardized_loads_3d(self, loads: List[Dict[str, Any]], ops):
+        if not loads:
+            return
+        ops.timeSeries('Linear', 1)
+        ops.pattern('Plain', 1, 1)
+
+        for load in loads:
+            if load.get('type') == 'nodal':
+                forces = load.get('forces')
+                if isinstance(forces, list) and len(forces) >= 6:
+                    ops.load(int(load['node']), *[float(value) for value in forces[:6]])
+                else:
+                    ops.load(
+                        int(load['node']),
+                        float(load.get('fx', 0.0)),
+                        float(load.get('fy', 0.0)),
+                        float(load.get('fz', 0.0)),
+                        float(load.get('mx', 0.0)),
+                        float(load.get('my', 0.0)),
+                        float(load.get('mz', 0.0)),
+                    )
+            elif load.get('type') == 'distributed':
+                ops.eleLoad(
+                    '-ele',
+                    int(load['element']),
+                    '-type',
+                    '-beamUniform',
+                    float(load.get('wy', 0.0)),
+                    float(load.get('wz', 0.0)),
                 )
 
     def _generate_summary(self, displacements: Dict, forces: Dict) -> Dict:

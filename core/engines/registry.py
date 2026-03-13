@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -20,6 +22,7 @@ from schemas.structure_model_v1 import StructureModelV1
 logger = logging.getLogger(__name__)
 
 ENGINE_MANIFEST_ENV = "ANALYSIS_ENGINE_MANIFEST_PATH"
+_UNSET = object()
 
 
 @dataclass
@@ -33,6 +36,7 @@ class AnalysisEngineRegistry:
     def __init__(self, app_name: str, app_version: str):
         self.app_name = app_name
         self.app_version = app_version
+        self._opensees_runtime_reason: object = _UNSET
 
     def list_engines(self) -> List[Dict[str, Any]]:
         builtin = self._builtin_manifests()
@@ -410,12 +414,52 @@ class AnalysisEngineRegistry:
         return self._opensees_unavailable_reason() is None
 
     def _opensees_unavailable_reason(self) -> Optional[str]:
+        if self._opensees_runtime_reason is not _UNSET:
+            return self._opensees_runtime_reason if isinstance(self._opensees_runtime_reason, str) else None
+
+        core_root = Path(__file__).resolve().parents[1]
+        env = os.environ.copy()
+        existing_pythonpath = env.get("PYTHONPATH", "").strip()
+        env["PYTHONPATH"] = (
+            f"{core_root}{os.pathsep}{existing_pythonpath}"
+            if existing_pythonpath
+            else str(core_root)
+        )
+
         try:
-            import openseespy.opensees as _ops  # noqa: F401
-            return None
+            probe = subprocess.run(
+                [sys.executable, "-m", "engines.opensees_runtime", "--json"],
+                cwd=core_root,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=20,
+            )
         except Exception as error:
-            logger.warning("OpenSeesPy runtime is unavailable: %s", error)
-            return f"OpenSees runtime is unavailable: {error}"
+            reason = f"OpenSees runtime probe failed to execute: {error}"
+            logger.warning(reason)
+            self._opensees_runtime_reason = reason
+            return reason
+
+        payload_text = probe.stdout.strip()
+        try:
+            payload = json.loads(payload_text) if payload_text else {}
+        except json.JSONDecodeError:
+            payload = {}
+
+        if probe.returncode == 0 and payload.get("available") is True:
+            self._opensees_runtime_reason = None
+            return None
+
+        stderr_text = probe.stderr.strip()
+        reason = (
+            payload.get("reason")
+            or stderr_text
+            or f"OpenSees runtime probe exited with code {probe.returncode}"
+        )
+        logger.warning("OpenSeesPy runtime is unavailable: %s", reason)
+        self._opensees_runtime_reason = str(reason)
+        return self._opensees_runtime_reason
 
     def _builtin_manifests(self) -> List[Dict[str, Any]]:
         return [
