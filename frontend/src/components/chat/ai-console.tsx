@@ -461,15 +461,15 @@ function AnalysisPanel({
       data-testid="console-output-panel"
       className="flex h-full min-h-[320px] flex-col rounded-[28px] border border-border/70 bg-card/80 backdrop-blur-xl xl:min-h-0 dark:border-white/10 dark:bg-white/5"
     >
-      <div className="flex items-center justify-between border-b border-border/70 px-5 py-4 dark:border-white/10">
+      <div className="flex flex-col gap-4 border-b border-border/70 px-5 py-4 sm:flex-row sm:items-start sm:justify-between dark:border-white/10">
         <div>
           <p className="text-xs uppercase tracking-[0.24em] text-cyan-700/80 dark:text-cyan-200/70">{t('workspaceOutput')}</p>
           <h2 className="mt-1 text-lg font-semibold text-foreground">{t('analysisAndReport')}</h2>
         </div>
-        <div className="inline-flex rounded-full border border-border/70 bg-background/70 p-1 dark:border-white/10 dark:bg-white/5">
+        <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-[220px] sm:items-end">
           {result && (
             <Button
-              className="mr-2 rounded-full border border-cyan-300/35 bg-cyan-300/10 text-cyan-800 hover:bg-cyan-300/20 dark:text-cyan-100"
+              className="h-11 w-full justify-center rounded-2xl border border-cyan-300/35 bg-cyan-300/10 px-4 text-cyan-800 hover:bg-cyan-300/20 sm:w-auto dark:text-cyan-100"
               disabled={!visualizationSnapshot && !modelVisualizationSnapshot}
               onClick={() => onOpenVisualization('result')}
               title={
@@ -486,30 +486,32 @@ function AnalysisPanel({
               {!visualizationSnapshot && modelVisualizationSnapshot ? t('visualizationPreviewModel') : t('visualizationOpen')}
             </Button>
           )}
-          <button
-            className={cn(
-              'rounded-full px-4 py-2 text-sm transition',
-              activeTab === 'analysis'
-                ? 'bg-foreground text-background'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-            onClick={() => onTabChange('analysis')}
-            type="button"
-          >
-            {t('analysisTab')}
-          </button>
-          <button
-            className={cn(
-              'rounded-full px-4 py-2 text-sm transition',
-              activeTab === 'report'
-                ? 'bg-foreground text-background'
-                : 'text-muted-foreground hover:text-foreground'
-            )}
-            onClick={() => onTabChange('report')}
-            type="button"
-          >
-            {t('reportTab')}
-          </button>
+          <div className="grid w-full grid-cols-2 rounded-2xl border border-border/70 bg-background/70 p-1 sm:w-auto dark:border-white/10 dark:bg-white/5">
+            <button
+              className={cn(
+                'rounded-xl px-4 py-2.5 text-sm font-medium transition',
+                activeTab === 'analysis'
+                  ? 'bg-foreground text-background shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+              onClick={() => onTabChange('analysis')}
+              type="button"
+            >
+              {t('analysisTab')}
+            </button>
+            <button
+              className={cn(
+                'rounded-xl px-4 py-2.5 text-sm font-medium transition',
+                activeTab === 'report'
+                  ? 'bg-foreground text-background shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+              onClick={() => onTabChange('report')}
+              type="button"
+            >
+              {t('reportTab')}
+            </button>
+          </div>
         </div>
       </div>
 
