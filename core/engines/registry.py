@@ -106,20 +106,25 @@ class AnalysisEngineRegistry:
                 },
             )
         selection = self._select_engine_for("analyze", analysis_type, model.model_dump(mode="json"), engine_id)
-        manifest = selection.engine
-
-        if manifest["kind"] == "http":
-            payload: Dict[str, Any] = {
-                "type": analysis_type,
-                "model": model.model_dump(mode="json"),
-                "parameters": parameters,
-            }
-            if engine_id:
-                payload["engineId"] = engine_id
-            result = self._post_to_http_engine(manifest, "/analyze", payload)
-        else:
-            adapter_key = manifest.get("adapterKey")
-            result = self._run_python_analysis(adapter_key, analysis_type, model, parameters)
+        try:
+            result = self._execute_analysis_selection(selection, analysis_type, model, parameters, engine_id)
+        except Exception as error:
+            fallback_selection = self._select_runtime_fallback_for_analysis(
+                selection,
+                analysis_type,
+                model,
+                engine_id,
+            )
+            if fallback_selection is None:
+                raise
+            logger.warning(
+                "Analysis engine '%s' failed during auto selection; retrying with '%s': %s",
+                selection.engine["id"],
+                fallback_selection.engine["id"],
+                error,
+            )
+            selection = fallback_selection
+            result = self._execute_analysis_selection(selection, analysis_type, model, parameters, engine_id)
 
         meta = self._build_engine_meta(selection)
         existing_meta = result.get("meta") if isinstance(result, dict) else None
@@ -129,6 +134,52 @@ class AnalysisEngineRegistry:
             **result,
             "meta": meta,
         }
+
+    def _execute_analysis_selection(
+        self,
+        selection: EngineSelection,
+        analysis_type: str,
+        model: StructureModelV1,
+        parameters: Dict[str, Any],
+        engine_id: Optional[str],
+    ) -> Dict[str, Any]:
+        manifest = selection.engine
+        if manifest["kind"] == "http":
+            payload: Dict[str, Any] = {
+                "type": analysis_type,
+                "model": model.model_dump(mode="json"),
+                "parameters": parameters,
+            }
+            if engine_id:
+                payload["engineId"] = engine_id
+            return self._post_to_http_engine(manifest, "/analyze", payload)
+
+        adapter_key = manifest.get("adapterKey")
+        return self._run_python_analysis(adapter_key, analysis_type, model, parameters)
+
+    def _select_runtime_fallback_for_analysis(
+        self,
+        selection: EngineSelection,
+        analysis_type: str,
+        model: StructureModelV1,
+        engine_id: Optional[str],
+    ) -> Optional[EngineSelection]:
+        if engine_id is not None:
+            return None
+        if selection.engine.get("id") != "builtin-opensees":
+            return None
+
+        fallback_engine = self.get_engine("builtin-simplified")
+        if fallback_engine is None:
+            return None
+        if not self._supports(fallback_engine, "analyze", analysis_type, model.model_dump(mode="json")):
+            return None
+
+        return EngineSelection(
+            engine=fallback_engine,
+            selection_mode="fallback",
+            fallback_from=selection.engine["id"],
+        )
 
     def run_code_check(
         self,
