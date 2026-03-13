@@ -779,7 +779,7 @@ export function AIConsole() {
   const [errorMessage, setErrorMessage] = useState('')
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [contextOpen, setContextOpen] = useState(false)
-  const [analysisSettingsOpen, setAnalysisSettingsOpen] = useState(true)
+  const [analysisSettingsOpen, setAnalysisSettingsOpen] = useState(false)
   const [engineSettingsOpen, setEngineSettingsOpen] = useState(false)
   const [enginePickerOpen, setEnginePickerOpen] = useState(false)
   const [modelText, setModelText] = useState('')
@@ -1006,9 +1006,9 @@ export function AIConsole() {
 
   useEffect(() => {
     if (contextOpen) {
-      setAnalysisSettingsOpen(true)
+      setAnalysisSettingsOpen(false)
     } else {
-      setAnalysisSettingsOpen(true)
+      setAnalysisSettingsOpen(false)
       setEngineSettingsOpen(false)
     }
     setEnginePickerOpen(false)

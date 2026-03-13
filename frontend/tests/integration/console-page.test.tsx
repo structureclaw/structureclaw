@@ -248,6 +248,10 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
 
+    expect(screen.queryByText('The default path is to clarify through chat first. Before running analysis, it is recommended to provide model JSON or use chat to identify missing inputs.')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Analysis Settings|展开分析设置/ }))
+
     expect(screen.getByText('The default path is to clarify through chat first. Before running analysis, it is recommended to provide model JSON or use chat to identify missing inputs.')).toBeInTheDocument()
   })
 
@@ -259,6 +263,10 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getAllByText(/^Model$|^模型$/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/^Analysis Settings$|^分析设置$/).length).toBeGreaterThan(0)
     expect(screen.getAllByText(/^Execution Engine$|^执行引擎$/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/^Design Code$|^设计规范$/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Analysis Settings|展开分析设置/ }))
+
     expect(screen.getAllByText(/^Design Code$|^设计规范$/).length).toBeGreaterThan(0)
   })
 
@@ -609,10 +617,14 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
 
-    expect(screen.getByRole('button', { name: /Collapse Analysis Settings|收起分析设置/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Expand Analysis Settings|展开分析设置/ })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Expand Engine Settings|展开引擎设置/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /OpenSees Builtin v0\.1\.0/i })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Simplified Builtin v0\.1\.0/i })).not.toBeInTheDocument()
+    expect(screen.queryByText(/Design Code|设计规范/)).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Analysis Settings|展开分析设置/ }))
+    expect(screen.getByRole('button', { name: /Collapse Analysis Settings|收起分析设置/ })).toBeInTheDocument()
     expect(screen.getByText(/Design Code|设计规范/)).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engine Settings|展开引擎设置/ }))
