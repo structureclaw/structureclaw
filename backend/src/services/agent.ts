@@ -6,6 +6,7 @@ import path from 'path';
 import { config } from '../config/index.js';
 import { buildProxyConfig } from '../utils/http.js';
 import { createChatModel } from '../utils/llm.js';
+import { prisma } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
 import { redis } from '../utils/redis.js';
 import { type AppLocale } from './locale.js';
@@ -739,8 +740,7 @@ export class AgentService {
           response: question,
         };
 
-        this.logRunResult(traceId, sessionKey, result);
-        return result;
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result);
       }
 
       normalizedModel = draft.model;
@@ -784,8 +784,7 @@ export class AgentService {
             interaction: this.buildExecutionInteraction('blocked'),
             response: this.localize(locale, `模型格式转换失败：${convertCall.error}`, `Model conversion failed: ${convertCall.error}`),
           };
-        this.logRunResult(traceId, sessionKey, result);
-        return result;
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result);
       }
     }
 
@@ -821,8 +820,7 @@ export class AgentService {
           interaction: this.buildExecutionInteraction('blocked'),
           response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
         };
-        this.logRunResult(traceId, sessionKey, result);
-        return result;
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result);
       }
     } catch (error: any) {
       this.completeToolCallError(validateCall, error);
@@ -850,8 +848,7 @@ export class AgentService {
           interaction: this.buildExecutionInteraction('blocked'),
           response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
         };
-        this.logRunResult(traceId, sessionKey, result);
-        return result;
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result);
       }
     }
 
@@ -879,8 +876,7 @@ export class AgentService {
       if (sessionKey) {
         await this.clearInteractionSession(sessionKey);
       }
-      this.logRunResult(traceId, sessionKey, result);
-      return result;
+      return this.finalizeRunResult(traceId, sessionKey, params.message, result);
     }
 
     plan.push(this.localize(locale, `执行 ${resolvedAnalysisType} 分析并返回摘要`, `Run ${resolvedAnalysisType} analysis and return a summary`));
@@ -948,8 +944,7 @@ export class AgentService {
             interaction: this.buildExecutionInteraction('blocked'),
             response: this.localize(locale, `规范校核失败：${codeCheckCall.error}`, `Code check failed: ${codeCheckCall.error}`),
           };
-          this.logRunResult(traceId, sessionKey, result);
-          return result;
+          return this.finalizeRunResult(traceId, sessionKey, params.message, result);
         }
       }
 
@@ -1014,8 +1009,7 @@ export class AgentService {
       if (sessionKey) {
         await this.clearInteractionSession(sessionKey);
       }
-      this.logRunResult(traceId, sessionKey, result);
-      return result;
+      return this.finalizeRunResult(traceId, sessionKey, params.message, result);
     } catch (error: any) {
       this.completeToolCallError(analyzeCall, error);
       const transientUpstreamFailure = this.shouldRetryEngineCall(error);
@@ -1040,8 +1034,7 @@ export class AgentService {
           )
           : this.localize(locale, `分析执行失败：${analyzeCall.error}`, `Analysis execution failed: ${analyzeCall.error}`),
       };
-      this.logRunResult(traceId, sessionKey, result);
-      return result;
+      return this.finalizeRunResult(traceId, sessionKey, params.message, result);
     }
   }
 
@@ -1174,8 +1167,7 @@ export class AgentService {
         : undefined,
       response,
     };
-    this.logRunResult(traceId, sessionKey, result);
-    return result;
+    return this.finalizeRunResult(traceId, sessionKey, params.message, result);
   }
 
   private inferAnalysisType(message: string): 'static' | 'dynamic' | 'seismic' | 'nonlinear' {
@@ -2731,6 +2723,54 @@ export class AgentService {
       maxToolDurationMs,
       toolDurationMsByName,
     };
+  }
+
+  private async finalizeRunResult(
+    traceId: string,
+    conversationId: string | undefined,
+    userMessage: string,
+    result: AgentRunResult,
+  ): Promise<AgentRunResult> {
+    await this.persistConversationMessages(conversationId, userMessage, result.response);
+    this.logRunResult(traceId, conversationId, result);
+    return result;
+  }
+
+  private async persistConversationMessages(
+    conversationId: string | undefined,
+    userMessage: string,
+    assistantMessage: string | undefined,
+  ): Promise<void> {
+    if (!conversationId || !userMessage.trim() || !assistantMessage?.trim()) {
+      return;
+    }
+
+    try {
+      const conversation = await prisma.conversation.findUnique({
+        where: { id: conversationId },
+        select: { id: true },
+      });
+      if (!conversation) {
+        return;
+      }
+
+      await prisma.message.createMany({
+        data: [
+          {
+            conversationId,
+            role: 'user',
+            content: userMessage.trim(),
+          },
+          {
+            conversationId,
+            role: 'assistant',
+            content: assistantMessage.trim(),
+          },
+        ],
+      });
+    } catch {
+      // Keep message persistence non-blocking so agent flows still complete.
+    }
   }
 
   private buildInteractionSessionKey(conversationId: string): string {

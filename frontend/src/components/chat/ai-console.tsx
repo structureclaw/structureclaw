@@ -1244,12 +1244,16 @@ export function AIConsole() {
             timestamp: message.createdAt,
           }))
         : []
+      const archivedMessages = archived?.messages || []
+      const archiveHasOnlyWelcome =
+        archivedMessages.length > 0
+        && archivedMessages.every((message) => message.id === 'welcome')
 
       const nextMessages =
-        archived?.messages && archived.messages.length >= backendMessages.length
-          ? archived.messages
-          : backendMessages.length > 0
-            ? backendMessages
+        backendMessages.length > 0
+          ? backendMessages
+          : archivedMessages.length > 0 && !archiveHasOnlyWelcome
+            ? archivedMessages
             : [initialAssistantMessage]
       const session = payload?.session
       const nextModelText = toModelText(session?.model) || archived?.modelText || ''
