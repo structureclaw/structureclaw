@@ -710,7 +710,7 @@ describe('AgentService orchestration', () => {
     expect(result.report?.markdown).toContain('## Executive Summary');
   });
 
-  test('should return structured chat guidance for broad fallback scenarios', async () => {
+  test('should route steel frame requests to the dedicated frame scenario', async () => {
     const svc = new AgentService();
     svc.llm = null;
 
@@ -726,8 +726,8 @@ describe('AgentService orchestration', () => {
     expect(result.interaction?.detectedScenario).toBe('steel-frame');
     expect(result.interaction?.detectedScenarioLabel).toBe('Steel Frame');
     expect(result.interaction?.conversationStage).toBe('Geometry');
-    expect(result.interaction?.fallbackSupportNote).toContain('portal-frame template');
-    expect(result.interaction?.recommendedNextStep).toContain('Span per bay');
+    expect(result.interaction?.fallbackSupportNote).toBeUndefined();
+    expect(result.interaction?.missingCritical).toContain('Story count');
     expect(result.response).toContain('Detected scenario: Steel Frame');
   });
 
@@ -746,8 +746,63 @@ describe('AgentService orchestration', () => {
     expect(result.success).toBe(true);
     expect(result.interaction?.detectedScenario).toBe('bridge');
     expect(result.interaction?.fallbackSupportNote).toContain('桥梁');
-    expect(result.interaction?.missingCritical).toContain('结构类型（门式刚架/双跨梁/梁/平面桁架）');
+    expect(result.interaction?.missingCritical).toContain('结构类型（门式刚架/双跨梁/梁/平面桁架/规则框架）');
     expect(result.response).toContain('识别场景：桥梁');
+  });
+
+  test('should build a complete 2d frame model from regular frame parameters', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft('2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN', undefined, 'zh');
+
+    expect(draft.missingFields).toEqual([]);
+    expect(draft.stateToPersist?.inferredType).toBe('frame');
+    expect(draft.stateToPersist?.frameDimension).toBe('2d');
+    expect(draft.stateToPersist?.storyHeightsM).toEqual([3, 3]);
+    expect(draft.stateToPersist?.bayWidthsM).toEqual([6, 6]);
+    expect(draft.model?.metadata?.inferredType).toBe('frame');
+    expect(draft.model?.metadata?.storyCount).toBe(2);
+    expect(draft.model?.metadata?.bayCount).toBe(2);
+    expect(draft.model?.nodes).toHaveLength(9);
+    expect(draft.model?.elements).toHaveLength(10);
+    expect(draft.model?.load_cases?.[0]?.loads).toHaveLength(6);
+  });
+
+  test('should build a complete 3d frame model from regular grid parameters', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft('3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN，x向水平荷载18kN，y向水平荷载12kN', undefined, 'zh');
+
+    expect(draft.missingFields).toEqual([]);
+    expect(draft.stateToPersist?.frameDimension).toBe('3d');
+    expect(draft.stateToPersist?.bayWidthsXM).toEqual([6, 6]);
+    expect(draft.stateToPersist?.bayWidthsYM).toEqual([5]);
+    expect(draft.model?.metadata?.bayCountX).toBe(2);
+    expect(draft.model?.metadata?.bayCountY).toBe(1);
+    expect(draft.model?.nodes).toHaveLength(18);
+    expect(draft.model?.elements).toHaveLength(26);
+    expect(draft.model?.load_cases?.[0]?.loads).toHaveLength(12);
+  });
+
+  test('should keep regular frame chat in model stage until frame geometry is complete', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const result = await svc.run({
+      message: '请先聊一个框架',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.interaction?.detectedScenario).toBe('frame');
+    expect(result.interaction?.stage).toBe('model');
+    expect(result.interaction?.missingCritical).toContain('层数');
+    expect(result.interaction?.missingCritical).toContain('各层节点荷载（kN）');
   });
 
   test('should advance chat guidance to load stage once portal geometry is known', async () => {
@@ -800,5 +855,25 @@ describe('AgentService orchestration', () => {
     expect(incomplete.success).toBe(true);
     expect(incomplete.interaction?.state).toBe('confirming');
     expect(incomplete.model).toBeUndefined();
+  });
+
+  test('should return synchronized frame model before noncritical report preferences are ready', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const collecting = await svc.run({
+      message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+      },
+    });
+
+    expect(collecting.success).toBe(true);
+    expect(collecting.interaction?.detectedScenario).toBe('frame');
+    expect(collecting.interaction?.state).toBe('collecting');
+    expect(collecting.model?.schema_version).toBe('1.0.0');
+    expect(collecting.model?.metadata?.inferredType).toBe('frame');
+    expect(Array.isArray(collecting.model?.nodes)).toBe(true);
   });
 });
