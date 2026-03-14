@@ -10,7 +10,7 @@ import {
   restrictLegacyDraftPatch,
 } from '../../services/agent-skills/legacy.js';
 import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../services/agent-skills/plugin-helpers.js';
-import { extractDraftByRules, normalizeNumber, normalizePositiveInteger } from '../../services/agent-skills/fallback.js';
+import { normalizeNumber, normalizePositiveInteger } from '../../services/agent-skills/fallback.js';
 import type { DraftExtraction, DraftFloorLoad, DraftState, SkillHandler } from '../../services/agent-skills/types.js';
 
 const ALLOWED_KEYS = [
