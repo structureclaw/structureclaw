@@ -804,6 +804,27 @@ describe('AgentService orchestration', () => {
     expect(draft.model?.load_cases?.[0]?.loads).toHaveLength(12);
   });
 
+  test('should parse 3d frame lateral loads when horizontal-load wording precedes directional values', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft(
+      '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN，水平荷载分别取x向18kN、y向12kN',
+      undefined,
+      'zh',
+    );
+
+    expect(draft.missingFields).toEqual([]);
+    expect(draft.stateToPersist?.frameDimension).toBe('3d');
+    expect(draft.stateToPersist?.floorLoads).toEqual([
+      { story: 1, verticalKN: 90, lateralXKN: 18, lateralYKN: 12 },
+      { story: 2, verticalKN: 90, lateralXKN: 18, lateralYKN: 12 },
+    ]);
+    const loads = draft.model?.load_cases?.[0]?.loads ?? [];
+    expect(loads).toHaveLength(12);
+    expect(loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
+  });
+
   test('should prefer llm-extracted frame floor loads for natural combined load wording', async () => {
     const svc = new AgentService();
     svc.llm = {

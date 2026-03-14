@@ -46,6 +46,16 @@ function extractInteger(text: string, patterns: RegExp[], groups: number[] = [1]
   return rounded > 0 ? rounded : undefined;
 }
 
+function extractDirectionalLoadNumber(text: string, axis: 'x' | 'y'): number | undefined {
+  const axisToken = axis === 'x' ? 'x' : 'y';
+  return extractNumber(text, [
+    new RegExp(`${axisToken}向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?[^\\n]{0,24}?${axisToken}向\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`${axisToken}向\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`lateral\\s*(?:load\\s*)?(?:in\\s*)?${axisToken}\\s*(?:direction)?\\s*(?:is|=)?\\s*(\\d+(?:\\.\\d+)?)\\s*kn`, 'i'),
+  ]);
+}
+
 function repeatValue(count: number | undefined, value: number | undefined): number[] | undefined {
   if (!count || !value || count <= 0 || value <= 0) {
     return undefined;
@@ -626,15 +636,11 @@ export function extractDraftByRules(message: string): DraftExtraction {
     /vertical load\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
   ]);
   const lateralXLoadKN = extractNumber(text, [
-    /x向水平荷载\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
     /水平荷载\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
     /lateral x load\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
     /horizontal load\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
-  ]);
-  const lateralYLoadKN = extractNumber(text, [
-    /y向水平荷载\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
-    /lateral y load\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
-  ]);
+  ]) ?? extractDirectionalLoadNumber(text, 'x');
+  const lateralYLoadKN = extractDirectionalLoadNumber(text, 'y');
 
   const frameDimension = inferFrameDimension(text, inferredType);
   const normalizedStoryCount = storyCount;

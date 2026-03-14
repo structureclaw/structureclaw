@@ -94,6 +94,15 @@ function extractScalar(text: string, patterns: RegExp[]): number | undefined {
   return undefined;
 }
 
+function extractDirectionalLoadScalar(text: string, axis: 'x' | 'y'): number | undefined {
+  const axisToken = axis === 'x' ? 'x' : 'y';
+  return extractScalar(text, [
+    new RegExp(`${axisToken}向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?[^\\n]{0,24}?${axisToken}向\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`${axisToken}向\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
+  ]);
+}
+
 function repeatScalar(count: number | undefined, value: number | undefined): number[] | undefined {
   if (!count || !value) {
     return undefined;
@@ -170,12 +179,9 @@ function normalizeFrameNaturalPatch(message: string, existingState: DraftState |
     /x(?:、|\/|和|及)\s*y向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
   ]);
   const lateralXLoadKN = dualLateralLoadKN ?? extractScalar(text, [
-    /x向(?:水平|横向|侧向)?荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
     /(?:横向|侧向|水平)荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
-  ]);
-  const lateralYLoadKN = dualLateralLoadKN ?? extractScalar(text, [
-    /y向(?:水平|横向|侧向)?荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
-  ]);
+  ]) ?? extractDirectionalLoadScalar(text, 'x');
+  const lateralYLoadKN = dualLateralLoadKN ?? extractDirectionalLoadScalar(text, 'y');
   const resolvedStoryCount = storyCount ?? existingState?.storyCount ?? existingState?.storyHeightsM?.length;
   const resolvedBayCountX = bayCountX ?? existingState?.bayCountX;
   const resolvedBayCountY = bayCountY ?? existingState?.bayCountY;
