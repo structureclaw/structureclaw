@@ -56,6 +56,21 @@ function extractDirectionalLoadNumber(text: string, axis: 'x' | 'y'): number | u
   ]);
 }
 
+function shouldMirrorHorizontalLoadToBothAxes(
+  text: string,
+  frameDimension: FrameDimension | undefined,
+): boolean {
+  if (frameDimension !== '3d') {
+    return false;
+  }
+  return (
+    text.includes('水平方向荷载')
+    || text.includes('水平荷载都是')
+    || text.includes('水平荷载均为')
+    || text.includes('horizontal loads')
+  );
+}
+
 function repeatValue(count: number | undefined, value: number | undefined): number[] | undefined {
   if (!count || !value || count <= 0 || value <= 0) {
     return undefined;
@@ -635,14 +650,18 @@ export function extractDraftByRules(message: string): DraftExtraction {
     /每层竖向荷载\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
     /vertical load\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
   ]);
-  const lateralXLoadKN = extractNumber(text, [
+  const extractedLateralXLoadKN = extractNumber(text, [
+    /水平方向荷载(?:都?是|均为|为|是)?\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
     /水平荷载\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
     /lateral x load\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
     /horizontal load\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
   ]) ?? extractDirectionalLoadNumber(text, 'x');
-  const lateralYLoadKN = extractDirectionalLoadNumber(text, 'y');
+  const extractedLateralYLoadKN = extractDirectionalLoadNumber(text, 'y');
 
   const frameDimension = inferFrameDimension(text, inferredType);
+  const mirrorHorizontalLoad = shouldMirrorHorizontalLoadToBothAxes(text, frameDimension);
+  const lateralXLoadKN = extractedLateralXLoadKN;
+  const lateralYLoadKN = extractedLateralYLoadKN ?? (mirrorHorizontalLoad ? extractedLateralXLoadKN : undefined);
   const normalizedStoryCount = storyCount;
   const storyHeightsM = frameDimension
     ? repeatValue(normalizedStoryCount, scalarHeight)

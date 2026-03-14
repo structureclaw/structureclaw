@@ -103,6 +103,22 @@ function extractDirectionalLoadScalar(text: string, axis: 'x' | 'y'): number | u
   ]);
 }
 
+function shouldMirrorHorizontalLoadToBothAxes(
+  text: string,
+  existingState: DraftState | undefined,
+  inferred3d: boolean,
+): boolean {
+  if (!(inferred3d || existingState?.frameDimension === '3d')) {
+    return false;
+  }
+  return (
+    text.includes('水平方向荷载')
+    || text.includes('水平荷载都是')
+    || text.includes('水平荷载均为')
+    || text.includes('horizontal loads')
+  );
+}
+
 function repeatScalar(count: number | undefined, value: number | undefined): number[] | undefined {
   if (!count || !value) {
     return undefined;
@@ -178,10 +194,11 @@ function normalizeFrameNaturalPatch(message: string, existingState: DraftState |
   const dualLateralLoadKN = extractScalar(text, [
     /x(?:、|\/|和|及)\s*y向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
   ]);
-  const lateralXLoadKN = dualLateralLoadKN ?? extractScalar(text, [
+  const extractedLateralXLoadKN = dualLateralLoadKN ?? extractScalar(text, [
+    /水平方向荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
     /(?:横向|侧向|水平)荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
   ]) ?? extractDirectionalLoadScalar(text, 'x');
-  const lateralYLoadKN = dualLateralLoadKN ?? extractDirectionalLoadScalar(text, 'y');
+  const extractedLateralYLoadKN = dualLateralLoadKN ?? extractDirectionalLoadScalar(text, 'y');
   const resolvedStoryCount = storyCount ?? existingState?.storyCount ?? existingState?.storyHeightsM?.length;
   const resolvedBayCountX = bayCountX ?? existingState?.bayCountX;
   const resolvedBayCountY = bayCountY ?? existingState?.bayCountY;
@@ -189,26 +206,30 @@ function normalizeFrameNaturalPatch(message: string, existingState: DraftState |
     || text.includes('y向')
     || bayCountY !== undefined
     || yBayScalar !== undefined
-    || lateralYLoadKN !== undefined;
+    || extractedLateralYLoadKN !== undefined;
+  const resolvedFrameDimension = inferred3d
+    ? '3d'
+    : (existingState?.frameDimension ?? (bayCountX !== undefined ? '3d' : undefined));
+  const mirrorHorizontalLoad = shouldMirrorHorizontalLoadToBothAxes(text, existingState, inferred3d);
+  const lateralXLoadKN = extractedLateralXLoadKN;
+  const lateralYLoadKN = extractedLateralYLoadKN ?? (mirrorHorizontalLoad ? extractedLateralXLoadKN : undefined);
 
   return {
     inferredType: 'frame',
-    frameDimension: inferred3d
-      ? '3d'
-      : (existingState?.frameDimension ?? (bayCountX !== undefined ? '3d' : undefined)),
+    frameDimension: resolvedFrameDimension,
     storyCount,
-    bayCount: !inferred3d ? genericBayCount : undefined,
+    bayCount: resolvedFrameDimension !== '3d' ? genericBayCount : undefined,
     bayCountX,
     bayCountY,
     storyHeightsM: repeatScalar(resolvedStoryCount, storyHeightScalar),
-    bayWidthsM: !inferred3d ? repeatScalar(genericBayCount ?? existingState?.bayCount, genericBayScalar) : undefined,
-    bayWidthsXM: repeatScalar(resolvedBayCountX, xBayScalar ?? (inferred3d ? genericBayScalar : undefined)),
+    bayWidthsM: resolvedFrameDimension !== '3d' ? repeatScalar(genericBayCount ?? existingState?.bayCount, genericBayScalar) : undefined,
+    bayWidthsXM: repeatScalar(resolvedBayCountX, xBayScalar ?? (resolvedFrameDimension === '3d' ? genericBayScalar : undefined)),
     bayWidthsYM: repeatScalar(resolvedBayCountY, yBayScalar),
     floorLoads: buildUniformFloorLoads(
       resolvedStoryCount,
       verticalLoadKN,
       lateralXLoadKN,
-      inferred3d ? lateralYLoadKN : undefined,
+      resolvedFrameDimension === '3d' ? lateralYLoadKN : undefined,
     ),
   };
 }

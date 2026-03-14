@@ -825,6 +825,32 @@ describe('AgentService orchestration', () => {
     expect(loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
   });
 
+  test('should mirror generic horizontal-load wording to both axes in 3d frame follow-up context', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const first = await svc.run({
+      conversationId: 'conv-frame-generic-horizontal-3d',
+      message: '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN',
+      mode: 'chat',
+      context: { locale: 'zh' },
+    });
+
+    expect(first.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+
+    const second = await svc.run({
+      conversationId: 'conv-frame-generic-horizontal-3d',
+      message: '水平方向荷载都是18kN',
+      mode: 'chat',
+      context: { locale: 'zh' },
+    });
+
+    const loads = second.model?.load_cases?.[0]?.loads ?? [];
+    expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+    expect(loads).toHaveLength(12);
+    expect(loads.every((load) => typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
+  });
+
   test('should prefer llm-extracted frame floor loads for natural combined load wording', async () => {
     const svc = new AgentService();
     svc.llm = {
