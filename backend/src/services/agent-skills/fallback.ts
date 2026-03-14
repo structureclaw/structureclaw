@@ -73,6 +73,40 @@ function buildUniformFloorLoads(
   }));
 }
 
+function mergeFloorLoads(
+  existing: DraftFloorLoad[] | undefined,
+  incoming: DraftFloorLoad[] | undefined,
+): DraftFloorLoad[] | undefined {
+  if (!existing?.length) {
+    return incoming?.length ? [...incoming].sort((a, b) => a.story - b.story) : undefined;
+  }
+  if (!incoming?.length) {
+    return [...existing].sort((a, b) => a.story - b.story);
+  }
+
+  const merged = new Map<number, DraftFloorLoad>();
+
+  for (const load of existing) {
+    merged.set(load.story, { ...load });
+  }
+
+  for (const load of incoming) {
+    const current = merged.get(load.story);
+    merged.set(load.story, {
+      story: load.story,
+      verticalKN: load.verticalKN ?? current?.verticalKN,
+      lateralXKN: load.lateralXKN ?? current?.lateralXKN,
+      lateralYKN: load.lateralYKN ?? current?.lateralYKN,
+    });
+  }
+
+  const normalized = Array.from(merged.values())
+    .filter((load) => load.verticalKN !== undefined || load.lateralXKN !== undefined || load.lateralYKN !== undefined)
+    .sort((a, b) => a.story - b.story);
+
+  return normalized.length > 0 ? normalized : undefined;
+}
+
 function buildFixedRestraint(baseSupport: FrameBaseSupportType): boolean[] {
   if (baseSupport === 'pinned') {
     return [true, true, true, false, false, false];
@@ -804,7 +838,7 @@ export function mergeDraftState(existing: DraftState | undefined, patch: DraftEx
   const bayWidthsM = patch.bayWidthsM ?? existing?.bayWidthsM;
   const bayWidthsXM = patch.bayWidthsXM ?? existing?.bayWidthsXM;
   const bayWidthsYM = patch.bayWidthsYM ?? existing?.bayWidthsYM;
-  const floorLoads = patch.floorLoads ?? existing?.floorLoads;
+  const floorLoads = mergeFloorLoads(existing?.floorLoads, patch.floorLoads);
 
   return {
     inferredType: mergedType,

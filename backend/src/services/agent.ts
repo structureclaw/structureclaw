@@ -1873,6 +1873,37 @@ export class AgentService {
     return this.skillRuntime.textToModelDraft(this.llm, message, existingState, locale, skillIds);
   }
 
+  private mergeFloorLoads(existing: DraftState['floorLoads'], incoming: DraftState['floorLoads']): DraftState['floorLoads'] {
+    if (!existing?.length) {
+      return incoming?.length ? [...incoming].sort((a, b) => a.story - b.story) : undefined;
+    }
+    if (!incoming?.length) {
+      return [...existing].sort((a, b) => a.story - b.story);
+    }
+
+    const merged = new Map<number, NonNullable<DraftState['floorLoads']>[number]>();
+
+    for (const load of existing) {
+      merged.set(load.story, { ...load });
+    }
+
+    for (const load of incoming) {
+      const current = merged.get(load.story);
+      merged.set(load.story, {
+        story: load.story,
+        verticalKN: load.verticalKN ?? current?.verticalKN,
+        lateralXKN: load.lateralXKN ?? current?.lateralXKN,
+        lateralYKN: load.lateralYKN ?? current?.lateralYKN,
+      });
+    }
+
+    const normalized = Array.from(merged.values())
+      .filter((load) => load.verticalKN !== undefined || load.lateralXKN !== undefined || load.lateralYKN !== undefined)
+      .sort((a, b) => a.story - b.story);
+
+    return normalized.length > 0 ? normalized : undefined;
+  }
+
   private mergeDraftState(existing: DraftState | undefined, patch: DraftExtraction): DraftState {
     const mergedType = patch.inferredType && patch.inferredType !== 'unknown'
       ? patch.inferredType
@@ -1904,7 +1935,7 @@ export class AgentService {
       bayWidthsM: patch.bayWidthsM ?? existing?.bayWidthsM,
       bayWidthsXM: patch.bayWidthsXM ?? existing?.bayWidthsXM,
       bayWidthsYM: patch.bayWidthsYM ?? existing?.bayWidthsYM,
-      floorLoads: patch.floorLoads ?? existing?.floorLoads,
+      floorLoads: this.mergeFloorLoads(existing?.floorLoads, patch.floorLoads),
       frameBaseSupportType: patch.frameBaseSupportType ?? existing?.frameBaseSupportType,
       loadKN: patch.loadKN ?? existing?.loadKN,
       loadType: patch.loadType ?? existing?.loadType,

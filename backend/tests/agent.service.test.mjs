@@ -957,6 +957,65 @@ describe('AgentService orchestration', () => {
     expect(third.interaction?.state).toBe('collecting');
   });
 
+  test('should merge 2d frame vertical and lateral loads across chat turns', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const first = await svc.run({
+      conversationId: 'conv-frame-merge-2d-loads',
+      message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN',
+      mode: 'chat',
+      context: { locale: 'zh' },
+    });
+
+    expect(first.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+    expect(first.model?.load_cases?.[0]?.loads).toHaveLength(6);
+    expect(first.model?.load_cases?.[0]?.loads.every((load) => typeof load.fy === 'number' && load.fx === undefined)).toBe(true);
+
+    const second = await svc.run({
+      conversationId: 'conv-frame-merge-2d-loads',
+      message: '每层水平荷载30kN',
+      mode: 'chat',
+      context: { locale: 'zh' },
+    });
+
+    const loads = second.model?.load_cases?.[0]?.loads ?? [];
+    expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+    expect(loads).toHaveLength(6);
+    expect(loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number')).toBe(true);
+    expect(second.model?.metadata?.inferredType).toBe('frame');
+  });
+
+  test('should merge 3d frame y-direction lateral loads without dropping existing floor loads', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const first = await svc.run({
+      conversationId: 'conv-frame-merge-3d-loads',
+      message: '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN，x向水平荷载18kN',
+      mode: 'chat',
+      context: { locale: 'zh' },
+    });
+
+    expect(first.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+    expect(first.model?.load_cases?.[0]?.loads).toHaveLength(12);
+    expect(first.model?.load_cases?.[0]?.loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number' && load.fz === undefined)).toBe(true);
+
+    const second = await svc.run({
+      conversationId: 'conv-frame-merge-3d-loads',
+      message: 'y向水平荷载12kN',
+      mode: 'chat',
+      context: { locale: 'zh' },
+    });
+
+    const loads = second.model?.load_cases?.[0]?.loads ?? [];
+    expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+    expect(loads).toHaveLength(12);
+    expect(loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
+    expect(second.model?.metadata?.bayCountX).toBe(2);
+    expect(second.model?.metadata?.bayCountY).toBe(1);
+  });
+
   test('should expose a conversation session snapshot for context restoration', async () => {
     const svc = new AgentService();
     svc.llm = null;
