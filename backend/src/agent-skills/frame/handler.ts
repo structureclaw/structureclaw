@@ -115,6 +115,9 @@ function shouldMirrorHorizontalLoadToBothAxes(
     text.includes('水平方向荷载')
     || text.includes('水平荷载都是')
     || text.includes('水平荷载均为')
+    || text.includes('横向荷载两个方向')
+    || text.includes('侧向荷载两个方向')
+    || text.includes('两个方向都是')
     || text.includes('horizontal loads')
   );
 }
@@ -151,6 +154,34 @@ function buildUniformFloorLoads(
     lateralXKN,
     lateralYKN,
   }));
+}
+
+function mergeFloorLoads(
+  existing: DraftFloorLoad[] | undefined,
+  incoming: DraftFloorLoad[] | undefined,
+): DraftFloorLoad[] | undefined {
+  if (!existing?.length) {
+    return incoming;
+  }
+  if (!incoming?.length) {
+    return existing;
+  }
+
+  const merged = new Map<number, DraftFloorLoad>();
+  for (const load of existing) {
+    merged.set(load.story, { ...load });
+  }
+  for (const load of incoming) {
+    const current = merged.get(load.story);
+    merged.set(load.story, {
+      story: load.story,
+      verticalKN: load.verticalKN ?? current?.verticalKN,
+      lateralXKN: load.lateralXKN ?? current?.lateralXKN,
+      lateralYKN: load.lateralYKN ?? current?.lateralYKN,
+    });
+  }
+
+  return Array.from(merged.values()).sort((left, right) => left.story - right.story);
 }
 
 function normalizeFrameNaturalPatch(message: string, existingState: DraftState | undefined): DraftExtraction {
@@ -195,6 +226,7 @@ function normalizeFrameNaturalPatch(message: string, existingState: DraftState |
     /x(?:、|\/|和|及)\s*y向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
   ]);
   const extractedLateralXLoadKN = dualLateralLoadKN ?? extractScalar(text, [
+    /(?:横向|侧向|水平)(?:方向)?荷载(?:两个方向)?(?:都?是|均为|都为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
     /水平方向荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
     /(?:横向|侧向|水平)荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
   ]) ?? extractDirectionalLoadScalar(text, 'x');
@@ -282,6 +314,16 @@ function preferPatch(primary: DraftExtraction, fallback: DraftExtraction): Draft
   for (const key of ALLOWED_KEYS) {
     const primaryValue = primary[key];
     const fallbackValue = fallback[key];
+    if (key === 'floorLoads') {
+      const mergedFloorLoads = mergeFloorLoads(
+        fallbackValue as DraftFloorLoad[] | undefined,
+        primaryValue as DraftFloorLoad[] | undefined,
+      );
+      if (mergedFloorLoads !== undefined) {
+        nextPatch.floorLoads = mergedFloorLoads;
+      }
+      continue;
+    }
     if (primaryValue !== undefined) {
       nextPatch[key as string] = primaryValue;
       continue;

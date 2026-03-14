@@ -851,6 +851,28 @@ describe('AgentService orchestration', () => {
     expect(loads.every((load) => typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
   });
 
+  test('should parse chinese two-direction horizontal-load wording in a single 3d frame sentence', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft(
+      '我想设计一个三维框架结构，层数3层，各层层高3m，x向3跨，跨度为3m，y向2跨，跨度为3m，各层有竖向荷载1000kN，横向荷载两个方向都是500kN',
+      undefined,
+      'zh',
+    );
+
+    expect(draft.missingFields).toEqual([]);
+    expect(draft.stateToPersist?.frameDimension).toBe('3d');
+    expect(draft.stateToPersist?.floorLoads).toEqual([
+      { story: 1, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
+      { story: 2, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
+      { story: 3, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
+    ]);
+    const loads = draft.model?.load_cases?.[0]?.loads ?? [];
+    expect(loads.length).toBeGreaterThan(0);
+    expect(loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
+  });
+
   test('should prefer llm-extracted frame floor loads for natural combined load wording', async () => {
     const svc = new AgentService();
     svc.llm = {

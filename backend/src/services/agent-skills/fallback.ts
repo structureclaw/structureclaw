@@ -67,6 +67,9 @@ function shouldMirrorHorizontalLoadToBothAxes(
     text.includes('水平方向荷载')
     || text.includes('水平荷载都是')
     || text.includes('水平荷载均为')
+    || text.includes('横向荷载两个方向')
+    || text.includes('侧向荷载两个方向')
+    || text.includes('两个方向都是')
     || text.includes('horizontal loads')
   );
 }
@@ -651,6 +654,7 @@ export function extractDraftByRules(message: string): DraftExtraction {
     /vertical load\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
   ]);
   const extractedLateralXLoadKN = extractNumber(text, [
+    /(?:横向|侧向|水平)(?:方向)?荷载(?:两个方向)?(?:都?是|均为|都为|为|是)?\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
     /水平方向荷载(?:都?是|均为|为|是)?\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
     /水平荷载\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
     /lateral x load\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
