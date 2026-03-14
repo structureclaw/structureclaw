@@ -1,5 +1,5 @@
 import {
-  buildLegacyDraftPatch,
+  buildLegacyDraftPatchLlmFirst,
   buildLegacyLabels,
   buildLegacyModel,
   buildLegacyQuestions,
@@ -32,7 +32,7 @@ export const handler: SkillHandler = {
     return toDoubleSpanPatch(normalizeLegacyDraftPatch(values));
   },
   extractDraft({ message, llmDraftPatch }) {
-    return toDoubleSpanPatch(buildLegacyDraftPatch(message, llmDraftPatch));
+    return toDoubleSpanPatch(buildLegacyDraftPatchLlmFirst(message, llmDraftPatch));
   },
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toDoubleSpanPatch(patch), 'double-span-beam', 'double-span-beam');

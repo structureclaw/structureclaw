@@ -1,5 +1,5 @@
 import {
-  buildLegacyDraftPatch,
+  buildLegacyDraftPatchLlmFirst,
   buildLegacyLabels,
   buildLegacyModel,
   buildLegacyQuestions,
@@ -38,7 +38,7 @@ export const handler: SkillHandler = {
     return toPortalFramePatch(normalizeLegacyDraftPatch(values));
   },
   extractDraft({ message, llmDraftPatch }) {
-    return toPortalFramePatch(buildLegacyDraftPatch(message, llmDraftPatch));
+    return toPortalFramePatch(buildLegacyDraftPatchLlmFirst(message, llmDraftPatch));
   },
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toPortalFramePatch(patch), 'portal-frame', 'portal-frame');

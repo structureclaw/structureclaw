@@ -910,6 +910,105 @@ describe('AgentService orchestration', () => {
     ]);
   });
 
+  test('should keep llm beam load semantics when rules disagree', async () => {
+    const svc = new AgentService();
+    svc.llm = {
+      invoke: async () => ({
+        content: JSON.stringify({
+          inferredType: 'beam',
+          draftPatch: {
+            inferredType: 'beam',
+            lengthM: 6,
+            supportType: 'simply-supported',
+            loadKN: 20,
+            loadType: 'point',
+            loadPosition: 'midspan',
+          },
+        }),
+      }),
+    };
+
+    const draft = await svc.textToModelDraft('简支梁，跨度6m，20kN均布荷载', undefined, 'zh');
+
+    expect(draft.extractionMode).toBe('llm');
+    expect(draft.stateToPersist?.loadType).toBe('point');
+    expect(draft.stateToPersist?.loadPosition).toBe('midspan');
+  });
+
+  test('should keep llm portal-frame load semantics when rules disagree', async () => {
+    const svc = new AgentService();
+    svc.llm = {
+      invoke: async () => ({
+        content: JSON.stringify({
+          inferredType: 'portal-frame',
+          draftPatch: {
+            inferredType: 'portal-frame',
+            spanLengthM: 12,
+            heightM: 4,
+            loadKN: 30,
+            loadType: 'point',
+            loadPosition: 'top-nodes',
+          },
+        }),
+      }),
+    };
+
+    const draft = await svc.textToModelDraft('门式刚架，跨度12m，柱高4m，30kN檐梁均布荷载', undefined, 'zh');
+
+    expect(draft.extractionMode).toBe('llm');
+    expect(draft.stateToPersist?.loadType).toBe('point');
+    expect(draft.stateToPersist?.loadPosition).toBe('top-nodes');
+  });
+
+  test('should keep llm truss load semantics when rules disagree', async () => {
+    const svc = new AgentService();
+    svc.llm = {
+      invoke: async () => ({
+        content: JSON.stringify({
+          inferredType: 'truss',
+          draftPatch: {
+            inferredType: 'truss',
+            lengthM: 5,
+            loadKN: 10,
+            loadType: 'distributed',
+            loadPosition: 'free-joint',
+          },
+        }),
+      }),
+    };
+
+    const draft = await svc.textToModelDraft('平面桁架，长度5m，10kN节点点荷载', undefined, 'zh');
+
+    expect(draft.extractionMode).toBe('llm');
+    expect(draft.stateToPersist?.loadType).toBe('distributed');
+    expect(draft.stateToPersist?.loadPosition).toBe('free-joint');
+  });
+
+  test('should keep llm double-span values when rules disagree', async () => {
+    const svc = new AgentService();
+    svc.llm = {
+      invoke: async () => ({
+        content: JSON.stringify({
+          inferredType: 'double-span-beam',
+          draftPatch: {
+            inferredType: 'double-span-beam',
+            spanLengthM: 7,
+            loadKN: 25,
+            loadType: 'point',
+            loadPosition: 'middle-joint',
+          },
+        }),
+      }),
+    };
+
+    const draft = await svc.textToModelDraft('双跨梁，每跨6m，25kN均布荷载', undefined, 'zh');
+
+    expect(draft.extractionMode).toBe('llm');
+    expect(draft.stateToPersist?.spanLengthM).toBe(7);
+    expect(draft.stateToPersist?.loadType).toBe('point');
+    expect(draft.stateToPersist?.loadPosition).toBe('middle-joint');
+  });
+
   test('should parse natural chinese frame geometry phrases in rule fallback mode', async () => {
     const svc = new AgentService();
     svc.llm = null;

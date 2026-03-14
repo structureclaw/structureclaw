@@ -1,8 +1,10 @@
 import {
+  buildLegacyDraftPatchLlmFirst,
   buildLegacyLabels,
   buildLegacyModel,
   buildLegacyQuestions,
   computeLegacyMissing,
+  mergeLegacyDraftPatchLlmFirst,
   mergeLegacyState,
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
@@ -309,32 +311,6 @@ function buildFramePatchFromLlm(
   };
 }
 
-function preferPatch(primary: DraftExtraction, fallback: DraftExtraction): DraftExtraction {
-  const nextPatch: DraftExtraction = { inferredType: 'frame' };
-  for (const key of ALLOWED_KEYS) {
-    const primaryValue = primary[key];
-    const fallbackValue = fallback[key];
-    if (key === 'floorLoads') {
-      const mergedFloorLoads = mergeFloorLoads(
-        fallbackValue as DraftFloorLoad[] | undefined,
-        primaryValue as DraftFloorLoad[] | undefined,
-      );
-      if (mergedFloorLoads !== undefined) {
-        nextPatch.floorLoads = mergedFloorLoads;
-      }
-      continue;
-    }
-    if (primaryValue !== undefined) {
-      nextPatch[key as string] = primaryValue;
-      continue;
-    }
-    if (fallbackValue !== undefined) {
-      nextPatch[key as string] = fallbackValue;
-    }
-  }
-  return nextPatch;
-}
-
 function hasLateralYFloorLoad(floorLoads: DraftFloorLoad[] | undefined): boolean {
   return Boolean(floorLoads?.some((load) => load.lateralYKN !== undefined));
 }
@@ -354,6 +330,9 @@ function coerceFrameDimension(
     || text.includes('三维')
   );
   const nextPatch: DraftExtraction = { ...patch };
+  if (nextPatch.frameDimension !== undefined) {
+    return nextPatch;
+  }
   if (nextPatch.frameDimension === '3d' || hasLateralYFloorLoad(nextPatch.floorLoads)) {
     nextPatch.frameDimension = '3d';
     return nextPatch;
@@ -375,11 +354,17 @@ function buildFrameDraftPatch(
 ): DraftExtraction {
   const normalizedLlmPatch = buildFramePatchFromLlm(llmDraftPatch, existingState);
   const normalizedNaturalPatch = toFramePatch(normalizeFrameNaturalPatch(message, existingState));
-  const normalizedRulePatch = toFramePatch(extractDraftByRules(message));
-  const nextPatch = preferPatch(
-    normalizedLlmPatch,
-    preferPatch(normalizedNaturalPatch, normalizedRulePatch),
-  );
+  const normalizedRulePatch = toFramePatch(buildLegacyDraftPatchLlmFirst(message, null));
+  const mergedRulePatch = mergeFloorLoads(
+    normalizedRulePatch.floorLoads,
+    normalizedNaturalPatch.floorLoads,
+  )
+    ? {
+        ...mergeLegacyDraftPatchLlmFirst(normalizedNaturalPatch, normalizedRulePatch),
+        floorLoads: mergeFloorLoads(normalizedRulePatch.floorLoads, normalizedNaturalPatch.floorLoads),
+      }
+    : mergeLegacyDraftPatchLlmFirst(normalizedNaturalPatch, normalizedRulePatch);
+  const nextPatch = mergeLegacyDraftPatchLlmFirst(normalizedLlmPatch, mergedRulePatch);
 
   return coerceFrameDimension(
     {

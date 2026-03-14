@@ -5,7 +5,6 @@ import {
   computeMissingLoadDetailKeys,
   extractDraftByRules,
   mapMissingFieldLabels,
-  mergeDraftExtraction,
   mergeDraftState,
   normalizeFloorLoads,
   normalizeFrameBaseSupportType,
@@ -19,7 +18,7 @@ import {
   normalizeSupportType,
 } from './fallback.js';
 import type { AppLocale } from '../locale.js';
-import type { DraftExtraction, DraftState, InferredModelType, InteractionQuestion } from './types.js';
+import type { DraftExtraction, DraftFloorLoad, DraftState, InferredModelType, InteractionQuestion } from './types.js';
 
 export function normalizeLegacyDraftPatch(patch: Record<string, unknown> | null | undefined): DraftExtraction {
   if (!patch) {
@@ -49,11 +48,70 @@ export function normalizeLegacyDraftPatch(patch: Record<string, unknown> | null 
   };
 }
 
-export function buildLegacyDraftPatch(message: string, llmDraftPatch: Record<string, unknown> | null | undefined): DraftExtraction {
-  return mergeDraftExtraction(
-    normalizeLegacyDraftPatch(llmDraftPatch),
-    extractDraftByRules(message),
-  );
+function mergeFloorLoadsLlmFirst(
+  llmFloorLoads: DraftFloorLoad[] | undefined,
+  ruleFloorLoads: DraftFloorLoad[] | undefined,
+): DraftFloorLoad[] | undefined {
+  if (!llmFloorLoads?.length) {
+    return ruleFloorLoads?.length ? [...ruleFloorLoads].sort((left, right) => left.story - right.story) : undefined;
+  }
+  if (!ruleFloorLoads?.length) {
+    return [...llmFloorLoads].sort((left, right) => left.story - right.story);
+  }
+
+  const merged = new Map<number, DraftFloorLoad>();
+  for (const load of ruleFloorLoads) {
+    merged.set(load.story, { ...load });
+  }
+  for (const load of llmFloorLoads) {
+    const current = merged.get(load.story);
+    merged.set(load.story, {
+      story: load.story,
+      verticalKN: load.verticalKN ?? current?.verticalKN,
+      lateralXKN: load.lateralXKN ?? current?.lateralXKN,
+      lateralYKN: load.lateralYKN ?? current?.lateralYKN,
+    });
+  }
+
+  return Array.from(merged.values()).sort((left, right) => left.story - right.story);
+}
+
+export function mergeLegacyDraftPatchLlmFirst(
+  llmPatch: DraftExtraction,
+  rulePatch: DraftExtraction,
+): DraftExtraction {
+  const nextPatch: DraftExtraction = {};
+  const keys = new Set<string>([
+    ...Object.keys(rulePatch),
+    ...Object.keys(llmPatch),
+  ]);
+
+  for (const key of keys) {
+    if (key === 'floorLoads') {
+      nextPatch.floorLoads = mergeFloorLoadsLlmFirst(llmPatch.floorLoads, rulePatch.floorLoads);
+      continue;
+    }
+    const llmValue = llmPatch[key];
+    if (llmValue !== undefined) {
+      nextPatch[key] = llmValue;
+      continue;
+    }
+    const ruleValue = rulePatch[key];
+    if (ruleValue !== undefined) {
+      nextPatch[key] = ruleValue;
+    }
+  }
+
+  return nextPatch;
+}
+
+export function buildLegacyDraftPatchLlmFirst(
+  message: string,
+  llmDraftPatch: Record<string, unknown> | null | undefined,
+): DraftExtraction {
+  const normalizedLlmPatch = normalizeLegacyDraftPatch(llmDraftPatch);
+  const rulePatch = extractDraftByRules(message);
+  return mergeLegacyDraftPatchLlmFirst(normalizedLlmPatch, rulePatch);
 }
 
 export function restrictLegacyDraftPatch(

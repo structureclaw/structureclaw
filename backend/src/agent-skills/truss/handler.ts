@@ -1,5 +1,5 @@
 import {
-  buildLegacyDraftPatch,
+  buildLegacyDraftPatchLlmFirst,
   buildLegacyLabels,
   buildLegacyModel,
   buildLegacyQuestions,
@@ -29,7 +29,7 @@ export const handler: SkillHandler = {
     return toTrussPatch(normalizeLegacyDraftPatch(values));
   },
   extractDraft({ message, llmDraftPatch }) {
-    return toTrussPatch(buildLegacyDraftPatch(message, llmDraftPatch));
+    return toTrussPatch(buildLegacyDraftPatchLlmFirst(message, llmDraftPatch));
   },
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toTrussPatch(patch), 'truss', 'truss');

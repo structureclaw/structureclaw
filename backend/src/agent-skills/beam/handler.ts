@@ -1,5 +1,5 @@
 import {
-  buildLegacyDraftPatch,
+  buildLegacyDraftPatchLlmFirst,
   buildLegacyLabels,
   buildLegacyModel,
   buildLegacyQuestions,
@@ -38,7 +38,7 @@ export const handler: SkillHandler = {
     return toBeamPatch(normalizeLegacyDraftPatch(values));
   },
   extractDraft({ message, llmDraftPatch }) {
-    return toBeamPatch(buildLegacyDraftPatch(message, llmDraftPatch));
+    return toBeamPatch(buildLegacyDraftPatchLlmFirst(message, llmDraftPatch));
   },
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toBeamPatch(patch), 'beam', 'beam');
