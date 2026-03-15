@@ -1103,6 +1103,15 @@ export function AIConsole() {
     }
   }, [modelPreviewBaseTitle, parsedComposerModel, t])
 
+  // 监听引擎变化，自动清除旧结果
+  useEffect(() => {
+    if (selectedEngineId !== 'auto') {
+      setLatestResult(null)
+      setLatestResultVisualizationSnapshot(null)
+      setActivePanel('analysis')
+    }
+  }, [selectedEngineId])
+
   const activeVisualizationSnapshot = useMemo(() => {
     if (visualizationSource === 'model') {
       if (!latestModelVisualizationSnapshot) {
@@ -1681,12 +1690,12 @@ export function AIConsole() {
             receivedResult = true
             setLatestResult(result)
             setLatestResultVisualizationSnapshot(visualizationSnapshot)
-            // 保存结果快照到后端（使用状态值避免异步问题）
+            // 保存结果快照到后端
             if (visualizationSnapshot && conversationId) {
               saveConversationSnapshotToBackend(conversationId, {
                 modelSnapshot,
                 resultSnapshot: visualizationSnapshot,
-                latestResult: latestResult,
+                latestResult: result,
               })
             }
             setActivePanel(result.report?.markdown ? 'report' : 'analysis')
