@@ -99,6 +99,36 @@ type AgentSessionSnapshot = {
 type ConversationDetail = ConversationSummary & {
   messages?: Array<{ id: string; role: string; content: string; createdAt: string }>
   session?: AgentSessionSnapshot | null
+  snapshots?: {
+    modelSnapshot?: VisualizationSnapshot | null
+    resultSnapshot?: VisualizationSnapshot | null
+    latestResult?: AgentResult | null
+  } | null
+}
+
+async function saveConversationSnapshotToBackend(
+  conversationId: string,
+  params: {
+    modelSnapshot?: VisualizationSnapshot | null
+    resultSnapshot?: VisualizationSnapshot | null
+    latestResult?: AgentResult | null
+  }
+): Promise<void> {
+  if (!conversationId) return
+
+  try {
+    await fetch(`${API_BASE}/api/v1/chat/conversation/${conversationId}/snapshot`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        modelSnapshot: params.modelSnapshot,
+        resultSnapshot: params.resultSnapshot,
+        latestResult: params.latestResult,
+      }),
+    });
+  } catch (error) {
+    console.warn('Failed to save snapshot to backend:', error);
+  }
 }
 
 type PersistedConversation = ConversationSummary & {
@@ -1065,6 +1095,12 @@ export function AIConsole() {
       mode: 'model-only',
     })
     setLatestModelVisualizationSnapshot(snapshot)
+    // 保存模型快照到后端
+    if (snapshot && conversationId) {
+      saveConversationSnapshotToBackend(conversationId, {
+        modelSnapshot: snapshot,
+      })
+    }
   }, [modelPreviewBaseTitle, parsedComposerModel, t])
 
   const activeVisualizationSnapshot = useMemo(() => {
@@ -1282,14 +1318,17 @@ export function AIConsole() {
             ? archivedMessages
             : [initialAssistantMessage]
       const session = payload?.session
+      const backendSnapshots = payload?.snapshots
       const nextModelText = toModelText(session?.model) || archived?.modelText || ''
       const nextAnalysisType = session?.resolved?.analysisType || archived?.analysisType || 'static'
       const nextDesignCode = session?.resolved?.designCode || archived?.designCode || 'GB50017'
       const nextSelectedSkillIds = archived?.selectedSkillIds?.length ? archived.selectedSkillIds : defaultSkillIds
       const nextSelectedEngineId = archived?.selectedEngineId || 'auto'
-      const nextLatestResult = archived?.latestResult || null
+      const nextLatestResult = backendSnapshots?.latestResult ?? archived?.latestResult ?? null
       const nextActivePanel = archived?.activePanel || (nextLatestResult?.report?.markdown ? 'report' : 'analysis')
       const nextModelSyncMessage = session?.model ? t('modelSyncFromChat') : (archived?.modelSyncMessage || '')
+      const nextModelSnapshot = backendSnapshots?.modelSnapshot ?? archived?.modelVisualizationSnapshot ?? null
+      const nextResultSnapshot = backendSnapshots?.resultSnapshot ?? archived?.resultVisualizationSnapshot ?? archived?.visualizationSnapshot ?? null
 
       setConversationId(nextConversationId)
       setMessages(nextMessages)
@@ -1300,8 +1339,8 @@ export function AIConsole() {
       setSelectedEngineId(nextSelectedEngineId)
       setModelSyncMessage(nextModelSyncMessage)
       setLatestResult(nextLatestResult)
-      setLatestModelVisualizationSnapshot(archived?.modelVisualizationSnapshot || null)
-      setLatestResultVisualizationSnapshot(archived?.resultVisualizationSnapshot || archived?.visualizationSnapshot || null)
+      setLatestModelVisualizationSnapshot(nextModelSnapshot)
+      setLatestResultVisualizationSnapshot(nextResultSnapshot)
       setActivePanel(nextActivePanel)
     } catch (error) {
       if (archived) {
@@ -1524,6 +1563,13 @@ export function AIConsole() {
         setLatestResult(result)
         setLatestResultVisualizationSnapshot(visualizationSnapshot)
         setActivePanel(result.report?.markdown ? 'report' : 'analysis')
+        // 保存结果快照到后端
+        if (visualizationSnapshot && conversationId) {
+          saveConversationSnapshotToBackend(conversationId, {
+            resultSnapshot: visualizationSnapshot,
+            latestResult: result,
+          })
+        }
         replaceMessage(assistantMessageId, (message) => ({
           ...message,
           content: assistantContent,
@@ -1616,6 +1662,13 @@ export function AIConsole() {
             receivedResult = true
             setLatestResult(result)
             setLatestResultVisualizationSnapshot(visualizationSnapshot)
+            // 保存结果快照到后端
+            if (visualizationSnapshot && conversationId) {
+              saveConversationSnapshotToBackend(conversationId, {
+                resultSnapshot: visualizationSnapshot,
+                latestResult: result,
+              })
+            }
             setActivePanel(result.report?.markdown ? 'report' : 'analysis')
             assistantContent = result.response || result.clarification?.question || t('returnedResult')
             replaceMessage(assistantMessageId, (message) => ({
