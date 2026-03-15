@@ -4,6 +4,7 @@ import { ChatService } from '../services/chat.js';
 import { AgentService } from '../services/agent.js';
 import { config } from '../config/index.js';
 import { isLlmTimeoutError, toLlmApiError } from '../utils/llm-error.js';
+import { prisma } from '../utils/database.js';
 
 const chatService = new ChatService();
 const agentService = new AgentService();
@@ -277,9 +278,11 @@ export async function chatRoutes(fastify: FastifyInstance) {
     }
 
     const session = await agentService.getConversationSessionSnapshot(id, query.locale || 'en');
+    const snapshots = await chatService.getConversationSnapshot(id);
     return reply.send({
       ...conversation,
       session,
+      snapshots,
     });
   });
 
@@ -318,6 +321,40 @@ export async function chatRoutes(fastify: FastifyInstance) {
     });
   });
 
+  // 保存会话快照
+  const saveSnapshotSchema = z.object({
+    modelSnapshot: z.record(z.any()).nullable().optional(),
+    resultSnapshot: z.record(z.any()).nullable().optional(),
+    latestResult: z.record(z.any()).nullable().optional(),
+  });
+
+  fastify.post('/conversation/:id/snapshot', {
+    schema: {
+      tags: ['Chat'],
+      summary: '保存会话快照',
+    },
+  }, async (request: FastifyRequest<{ Params: { id: string }; Body: z.infer<typeof saveSnapshotSchema> }>, reply: FastifyReply) => {
+    const { id } = request.params;
+    const body = saveSnapshotSchema.parse(request.body);
+    const userId = request.user?.id;
+
+    const conversation = await prisma.conversation.findFirst({
+      where: { id, userId },
+    });
+
+    if (!conversation) {
+      return reply.code(404).send({ error: 'Conversation not found' });
+    }
+
+    await chatService.saveConversationSnapshot({
+      conversationId: id,
+      modelSnapshot: body.modelSnapshot,
+      resultSnapshot: body.resultSnapshot,
+      latestResult: body.latestResult,
+    });
+
+    return reply.send({ success: true });
+  });
   // 流式响应 (SSE)
   fastify.post('/stream', {
     schema: {
