@@ -6,6 +6,7 @@ import { config } from '../config/index.js';
 import { createChatModel } from '../utils/llm.js';
 import { isLlmTimeoutError, toLlmApiError } from '../utils/llm-error.js';
 import { prisma } from '../utils/database.js';
+import { Prisma } from '@prisma/client';
 import { logger } from '../utils/logger.js';
 import { resolveLocale, type AppLocale } from './locale.js';
 
@@ -353,6 +354,53 @@ export class ChatService {
     });
 
     return conversation;
+  }
+
+  async saveConversationSnapshot(params: {
+    conversationId: string;
+    modelSnapshot?: Record<string, unknown> | null;
+    resultSnapshot?: Record<string, unknown> | null;
+    latestResult?: Record<string, unknown> | null;
+  }): Promise<void> {
+    const updateData: any = { updatedAt: new Date() };
+
+    if (params.modelSnapshot !== undefined) {
+      updateData.modelSnapshot = params.modelSnapshot;
+    }
+    if (params.resultSnapshot !== undefined) {
+      updateData.resultSnapshot = params.resultSnapshot;
+    }
+    if (params.latestResult !== undefined) {
+      updateData.latestResult = params.latestResult;
+    }
+
+    await prisma.conversation.update({
+      where: { id: params.conversationId },
+      data: updateData,
+    });
+  }
+
+  async getConversationSnapshot(conversationId: string): Promise<{
+    modelSnapshot?: Prisma.JsonValue | null;
+    resultSnapshot?: Prisma.JsonValue | null;
+    latestResult?: Prisma.JsonValue | null;
+  } | null> {
+    const conversation = await prisma.conversation.findUnique({
+      where: { id: conversationId },
+      select: {
+        modelSnapshot: true,
+        resultSnapshot: true,
+        latestResult: true,
+      },
+    });
+
+    if (!conversation) return null;
+
+    return {
+      modelSnapshot: conversation.modelSnapshot,
+      resultSnapshot: conversation.resultSnapshot,
+      latestResult: conversation.latestResult,
+    };
   }
 
   private getMemory(conversationId: string): BufferMemory {
