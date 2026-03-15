@@ -1558,6 +1558,11 @@ export function AIConsole() {
           analysis: extractAnalysis(result),
           mode: 'analysis-result',
         })
+        const modelSnapshot = buildVisualizationSnapshot({
+          title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
+          model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : parsedModel.model) ?? null,
+          mode: 'model-only',
+        })
         receivedResult = true
         assistantContent = result.response || result.clarification?.question || t('returnedResult')
         setLatestResult(result)
@@ -1566,6 +1571,7 @@ export function AIConsole() {
         // 保存结果快照到后端
         if (visualizationSnapshot && conversationId) {
           saveConversationSnapshotToBackend(conversationId, {
+            modelSnapshot,
             resultSnapshot: visualizationSnapshot,
             latestResult: result,
           })
@@ -1667,12 +1673,18 @@ export function AIConsole() {
               analysis: extractAnalysis(result),
               mode: 'analysis-result',
             })
+            const modelSnapshot = buildVisualizationSnapshot({
+              title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
+              model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : parsedModel.model) ?? null,
+              mode: 'model-only',
+            })
             receivedResult = true
             setLatestResult(result)
             setLatestResultVisualizationSnapshot(visualizationSnapshot)
             // 保存结果快照到后端（使用状态值避免异步问题）
             if (visualizationSnapshot && conversationId) {
               saveConversationSnapshotToBackend(conversationId, {
+                modelSnapshot,
                 resultSnapshot: visualizationSnapshot,
                 latestResult: latestResult,
               })
