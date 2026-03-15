@@ -8,7 +8,8 @@
       "Bash(mkdir:*)",
       "Bash(git:*)",
       "WebSearch",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(docker compose:*)"
     ]
   }
 }

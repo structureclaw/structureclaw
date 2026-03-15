@@ -11,6 +11,8 @@ __pycache__/
 .mypy_cache/
 .runtime/
 
+node_modules/
+
 backend/node_modules/
 backend/dist/
 backend/.env

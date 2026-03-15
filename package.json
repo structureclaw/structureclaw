@@ -9,5 +9,8 @@
   "files": [
     "sclaw",
     "scripts/claw.sh"
-  ]
+  ],
+  "dependencies": {
+    "typescript": "^5.9.3"
+  }
 }
