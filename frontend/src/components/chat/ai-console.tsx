@@ -1675,11 +1675,11 @@ export function AIConsole() {
             receivedResult = true
             setLatestResult(result)
             setLatestResultVisualizationSnapshot(visualizationSnapshot)
-            // 保存结果快照到后端
+            // 保存结果快照到后端（使用状态值避免异步问题）
             if (visualizationSnapshot && conversationId) {
               saveConversationSnapshotToBackend(conversationId, {
                 resultSnapshot: visualizationSnapshot,
-                latestResult: result,
+                latestResult: latestResult,
               })
             }
             setActivePanel(result.report?.markdown ? 'report' : 'analysis')
