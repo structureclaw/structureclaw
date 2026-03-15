@@ -5,7 +5,7 @@ import { Canvas } from '@react-three/fiber'
 import { Bounds, Html, Line, OrbitControls, OrthographicCamera, PerspectiveCamera } from '@react-three/drei'
 import * as THREE from 'three'
 import type { MessageKey } from '@/lib/i18n'
-import type { VisualizationCase, VisualizationElement, VisualizationSnapshot, VisualizationViewMode } from './types'
+import type { VisualizationCase, VisualizationSnapshot, VisualizationViewMode } from './types'
 
 type ForceMetric = 'axial' | 'shear' | 'moment'
 
@@ -91,6 +91,47 @@ function createColorScale(value: number, maxValue: number) {
     0.92 - ratio * 0.55
   )
   return `#${color.getHexString()}`
+}
+
+function ColorBar({
+  maxValue,
+  unit,
+  label,
+  show,
+}: {
+  maxValue: number
+  unit?: string
+  label: string
+  show: boolean
+}) {
+  if (!show) return null
+
+  const formatValue = (val: number) => {
+    if (val >= 1000) return val.toFixed(0)
+    if (val >= 1) return val.toFixed(2)
+    return val.toExponential(1)
+  }
+
+  return (
+    <div className="pointer-events-none absolute right-4 top-4 z-10 flex flex-col items-end gap-1.5">
+      <div className="rounded-lg border border-border/70 bg-background/90 px-3 py-1.5 text-sm font-medium text-foreground shadow-lg dark:border-white/10 dark:bg-slate-950/85">
+        {label}{unit ? ` (${unit})` : ''}
+      </div>
+      <div className="flex items-end gap-2.5 rounded-lg border border-border/70 bg-background/90 p-2.5 shadow-lg dark:border-white/10 dark:bg-slate-950/85">
+        <div className="flex flex-col justify-between items-end text-xs text-muted-foreground" style={{ height: '128px' }}>
+          <span>{formatValue(maxValue)}</span>
+          <span>{formatValue(maxValue * 0.5)}</span>
+          <span>0</span>
+        </div>
+        <div
+          className="h-32 w-6 rounded-sm"
+          style={{
+            background: `linear-gradient(to bottom, ${createColorScale(maxValue, maxValue)}, ${createColorScale(0, maxValue)})`,
+          }}
+        />
+      </div>
+    </div>
+  )
 }
 
 function projectPosition(position: THREE.Vector3, plane: 'xy' | 'xz') {
@@ -193,7 +234,6 @@ function SceneContent({
   selectedElementId,
   selectedNodeId,
   showElementLabels,
-  showLegend,
   showNodeLabels,
   showUndeformed,
   snapshot,
@@ -201,8 +241,14 @@ function SceneContent({
   onSelectElement,
   onSelectNode,
   onClearSelection,
-  t,
-}: StructuralSceneProps) {
+  maxElementMetric,
+  maxReaction,
+  maxDisplacement,
+}: StructuralSceneProps & {
+  maxElementMetric: number
+  maxReaction: number
+  maxDisplacement: number
+}) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [hoveredElementId, setHoveredElementId] = useState<string | null>(null)
   const nodeMap = useMemo(
@@ -216,19 +262,6 @@ function SceneContent({
         })
       ),
     [activeCase, deformationScale, snapshot.nodes]
-  )
-
-  const maxElementMetric = useMemo(
-    () => Math.max(1, ...snapshot.elements.map((element) => Math.abs(getElementMetric(activeCase, element.id, forceMetric)))),
-    [activeCase, forceMetric, snapshot.elements]
-  )
-  const maxReaction = useMemo(
-    () => Math.max(1, ...snapshot.nodes.map((node) => getNodeReactionMagnitude(activeCase, node.id))),
-    [activeCase, snapshot.nodes]
-  )
-  const maxDisplacement = useMemo(
-    () => Math.max(1, ...snapshot.nodes.map((node) => getNodeDisplacementMagnitude(activeCase, node.id))),
-    [activeCase, snapshot.nodes]
   )
 
   return (
@@ -378,19 +411,13 @@ function SceneContent({
           })}
         </group>
       </Bounds>
-
-      {showLegend && (
-        <Html position={[0, 0, 0]} wrapperClass="pointer-events-none !absolute !left-4 !top-4">
-          <div className="rounded-2xl border border-border/70 bg-background/90 px-3 py-2 text-xs text-muted-foreground shadow-lg dark:border-white/10 dark:bg-slate-950/85">
-            {view === 'forces' ? `${t('visualizationLegend')}: ${t(view === 'forces' ? 'visualizationForceMetricHint' : 'visualizationLegend')}` : t('visualizationLegend')}
-          </div>
-        </Html>
-      )}
     </>
   )
 }
 
 export function StructuralScene(props: StructuralSceneProps) {
+  const { snapshot, activeCase, forceMetric, view, showLegend, t } = props
+
   const webglAvailable = useMemo(() => {
     if (typeof document === 'undefined') {
       return false
@@ -406,6 +433,33 @@ export function StructuralScene(props: StructuralSceneProps) {
     }
   }, [])
 
+  const maxElementMetric = useMemo(
+    () => Math.max(1, ...snapshot.elements.map((element) => Math.abs(getElementMetric(activeCase, element.id, forceMetric)))),
+    [activeCase, forceMetric, snapshot.elements]
+  )
+  const maxReaction = useMemo(
+    () => Math.max(1, ...snapshot.nodes.map((node) => getNodeReactionMagnitude(activeCase, node.id))),
+    [activeCase, snapshot.nodes]
+  )
+  const maxDisplacement = useMemo(
+    () => Math.max(1, ...snapshot.nodes.map((node) => getNodeDisplacementMagnitude(activeCase, node.id))),
+    [activeCase, snapshot.nodes]
+  )
+
+  const colorBarProps = useMemo(() => {
+    if (view === 'forces') {
+      const metricLabel = forceMetric === 'axial' ? t('visualizationForceAxial') : forceMetric === 'shear' ? t('visualizationForceShear') : t('visualizationForceMoment')
+      return { maxValue: maxElementMetric, label: metricLabel, unit: snapshot.resultUnit }
+    }
+    if (view === 'reactions') {
+      return { maxValue: maxReaction, label: t('visualizationReactions'), unit: snapshot.resultUnit }
+    }
+    if (view === 'deformed') {
+      return { maxValue: maxDisplacement, label: t('visualizationDisplacement'), unit: snapshot.nodeLabelUnit }
+    }
+    return null
+  }, [view, forceMetric, maxElementMetric, maxReaction, maxDisplacement, snapshot.resultUnit, snapshot.nodeLabelUnit, t])
+
   if (!webglAvailable) {
     return (
       <div className="flex h-full items-center justify-center px-6 py-10 text-center" data-testid="visualization-scene-fallback">
@@ -419,12 +473,15 @@ export function StructuralScene(props: StructuralSceneProps) {
   }
 
   return (
-      <div className="h-full w-full bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_24%),linear-gradient(180deg,rgba(148,163,184,0.08),transparent_30%)]">
+    <div className="relative h-full w-full bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_24%),linear-gradient(180deg,rgba(148,163,184,0.08),transparent_30%)]">
       <Canvas dpr={[1, 1.75]} frameloop="demand" onPointerMissed={props.onClearSelection}>
         <Suspense fallback={null}>
-          <SceneContent {...props} />
+          <SceneContent {...props} maxElementMetric={maxElementMetric} maxReaction={maxReaction} maxDisplacement={maxDisplacement} />
         </Suspense>
       </Canvas>
+      {showLegend && colorBarProps && (
+        <ColorBar {...colorBarProps} show={true} />
+      )}
     </div>
   )
 }
