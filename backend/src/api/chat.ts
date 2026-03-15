@@ -494,7 +494,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest<{ Body: z.infer<typeof executeSchema> }>, reply: FastifyReply) => {
     const body = executeSchema.parse(request.body);
     const result = await agentService.run(body);
-    return reply.send(result);
+    return reply.send({ ...result, conversationId: body.conversationId });
   });
 }
 
