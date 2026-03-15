@@ -119,6 +119,10 @@ model Conversation {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
+  modelSnapshot    Json?
+  resultSnapshot   Json?
+  latestResult    Json?
+
   userId    String?
   user      User?     @relation(fields: [userId], references: [id])
   messages  Message[]
