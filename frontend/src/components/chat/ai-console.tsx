@@ -1653,11 +1653,6 @@ export function AIConsole() {
             }
           }
 
-          // 处理 'conversation' 类型消息（包含 conversationId）
-          if (payload.type === 'conversation' && typeof payload.content === 'string') {
-            setConversationId(payload.content as string)
-          }
-
           if (payload.type === 'result' && payload.content && typeof payload.content === 'object') {
             const result = {
               ...(payload.content as AgentResult),
