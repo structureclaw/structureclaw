@@ -27,12 +27,35 @@ class StaticAnalyzer:
         self.materials = {m.id: m for m in model.materials}
         self.sections = {s.id: s for s in model.sections}
 
+        # OpenSees requires integer tags; keep external IDs untouched and map internally.
+        self._ops_node_tags = {str(node.id): index + 1 for index, node in enumerate(model.nodes)}
+        self._ops_element_tags = {str(elem.id): index + 1 for index, elem in enumerate(model.elements)}
+        self._ops_material_tags = {str(mat.id): index + 1 for index, mat in enumerate(model.materials)}
+
         # 位移结果
         self.displacements = {}
         # 内力结果
         self.forces = {}
         # 应力结果
         self.stresses = {}
+
+    def _ops_node_tag(self, node_id: Any) -> int:
+        key = str(node_id)
+        if key not in self._ops_node_tags:
+            raise ValueError(f"Unknown node id '{node_id}' in OpenSees mapping")
+        return self._ops_node_tags[key]
+
+    def _ops_element_tag(self, element_id: Any) -> int:
+        key = str(element_id)
+        if key not in self._ops_element_tags:
+            raise ValueError(f"Unknown element id '{element_id}' in OpenSees mapping")
+        return self._ops_element_tags[key]
+
+    def _ops_material_tag(self, material_id: Any) -> int:
+        key = str(material_id)
+        if key not in self._ops_material_tags:
+            raise ValueError(f"Unknown material id '{material_id}' in OpenSees mapping")
+        return self._ops_material_tags[key]
 
     def run(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -101,12 +124,13 @@ class StaticAnalyzer:
 
         for node in self.model.nodes:
             x_coord, y_coord = self._get_2d_plane_coordinates(node, plane)
-            ops.node(int(node.id), x_coord, y_coord)
+            node_tag = self._ops_node_tag(node.id)
+            ops.node(node_tag, x_coord, y_coord)
             restraints = node.restraints or [False] * 6
             if plane == 'xy':
-                ops.fix(int(node.id), int(bool(restraints[0])), int(bool(restraints[1])), int(bool(restraints[5])))
+                ops.fix(node_tag, int(bool(restraints[0])), int(bool(restraints[1])), int(bool(restraints[5])))
             else:
-                ops.fix(int(node.id), int(bool(restraints[0])), int(bool(restraints[2])), int(bool(restraints[4])))
+                ops.fix(node_tag, int(bool(restraints[0])), int(bool(restraints[2])), int(bool(restraints[4])))
 
         for elem in self.model.elements:
             self._define_beam_element_2d(elem, ops)
@@ -124,8 +148,9 @@ class StaticAnalyzer:
         displacements: Dict[str, Dict[str, float]] = {}
         reactions: Dict[str, Dict[str, float]] = {}
         for node in self.model.nodes:
-            disp = ops.nodeDisp(int(node.id))
-            react = ops.nodeReaction(int(node.id))
+            node_tag = self._ops_node_tag(node.id)
+            disp = ops.nodeDisp(node_tag)
+            react = ops.nodeReaction(node_tag)
             if plane == 'xy':
                 displacements[node.id] = {
                     'ux': float(disp[0]),
@@ -159,7 +184,7 @@ class StaticAnalyzer:
 
         forces: Dict[str, Dict[str, Any]] = {}
         for elem in self.model.elements:
-            raw_force = ops.eleForce(int(elem.id))
+            raw_force = ops.eleForce(self._ops_element_tag(elem.id))
             axial_start, shear_start, moment_start, axial_end, shear_end, moment_end = [float(value) for value in raw_force[:6]]
             area = float(self.sections[elem.section].properties.get('A', 0.0))
             forces[elem.id] = {
@@ -187,9 +212,10 @@ class StaticAnalyzer:
         ops.model('basic', '-ndm', 3, '-ndf', 6)
 
         for node in self.model.nodes:
-            ops.node(int(node.id), node.x, node.y, node.z)
+            node_tag = self._ops_node_tag(node.id)
+            ops.node(node_tag, node.x, node.y, node.z)
             if node.restraints:
-                ops.fix(int(node.id), *[int(bool(value)) for value in node.restraints])
+                ops.fix(node_tag, *[int(bool(value)) for value in node.restraints])
 
         for elem in self.model.elements:
             if elem.type == 'beam':
@@ -210,8 +236,9 @@ class StaticAnalyzer:
         displacements = {}
         reactions = {}
         for node in self.model.nodes:
-            disp = ops.nodeDisp(int(node.id))
-            react = ops.nodeReaction(int(node.id))
+            node_tag = self._ops_node_tag(node.id)
+            disp = ops.nodeDisp(node_tag)
+            react = ops.nodeReaction(node_tag)
             displacements[node.id] = {
                 'ux': float(disp[0]),
                 'uy': float(disp[1]),
@@ -233,7 +260,7 @@ class StaticAnalyzer:
         forces = {}
         for elem in self.model.elements:
             try:
-                force = ops.eleForce(int(elem.id))
+                force = ops.eleForce(self._ops_element_tag(elem.id))
                 if elem.type == 'beam':
                     area = float(self.sections[elem.section].properties.get('A', 0.0))
                     forces[elem.id] = {
@@ -1387,7 +1414,11 @@ class StaticAnalyzer:
         """收集并标准化荷载（优先 request.parameters，其次模型中的 load_cases）。"""
         loads: List[Dict[str, Any]] = []
 
-        load_combination_id = parameters.get('loadCombinationId')
+        load_combination_id = (
+            parameters.get('loadCombinationId')
+            or parameters.get('load_combination_id')
+            or parameters.get('combinationId')
+        )
         if load_combination_id:
             for combo in self.model.load_combinations:
                 if combo.id != str(load_combination_id):
@@ -1403,13 +1434,16 @@ class StaticAnalyzer:
                             loads.append(self._scale_load(normalized, float(factor)))
                 return loads
 
-        for lc in parameters.get('loadCases', []):
+        parameter_load_cases = parameters.get('loadCases') or parameters.get('load_cases') or []
+        for lc in parameter_load_cases:
+            if not isinstance(lc, dict):
+                continue
             for load in lc.get('loads', []):
                 normalized = self._normalize_load(load)
                 if normalized is not None:
                     loads.append(normalized)
 
-        load_case_ids = parameters.get('loadCaseIds')
+        load_case_ids = parameters.get('loadCaseIds') or parameters.get('load_case_ids')
         if load_case_ids:
             allowed = set(str(i) for i in load_case_ids)
             for lc in self.model.load_cases:
@@ -1442,20 +1476,37 @@ class StaticAnalyzer:
         if not isinstance(load, dict):
             return None
 
-        if load.get('type') == 'distributed' or load.get('element') is not None:
-            magnitude = self._to_float(load.get('wy', load.get('fy', load.get('wz', load.get('fz', 0.0)))), 0.0)
-            axial = self._to_float(load.get('wz', 0.0), 0.0) if 'wy' in load or 'wz' in load else 0.0
-            element_id = str(load.get('element', ''))
+        load_type = str(load.get('type', '')).lower()
+
+        if load_type == 'distributed' or load.get('element') is not None or load.get('elementId') is not None or load.get('element_id') is not None:
+            element_id = str(load.get('element') or load.get('elementId') or load.get('element_id') or '')
             if not element_id:
                 return None
+
+            direction = str(load.get('direction', load.get('axis', ''))).lower()
+            raw_magnitude = self._to_float(
+                load.get('wy', load.get('wz', load.get('q', load.get('w', load.get('value', 0.0))))),
+                0.0,
+            )
+
+            if direction in {'z', 'local-z', '2'}:
+                wy = 0.0
+                wz = raw_magnitude
+            elif direction in {'y', 'local-y', '1'}:
+                wy = raw_magnitude
+                wz = 0.0
+            else:
+                wy = self._to_float(load.get('wy', load.get('fy', raw_magnitude)), 0.0)
+                wz = self._to_float(load.get('wz', load.get('fz', 0.0)), 0.0)
+
             return {
                 'type': 'distributed',
                 'element': element_id,
-                'wy': magnitude,
-                'wz': axial,
+                'wy': wy,
+                'wz': wz,
             }
 
-        node_id = str(load.get('node', ''))
+        node_id = str(load.get('node') or load.get('nodeId') or load.get('node_id') or '')
         if not node_id:
             return None
 
@@ -1465,12 +1516,28 @@ class StaticAnalyzer:
                 raw_forces.append(0.0)
             fx, fy, fz, mx, my, mz = raw_forces
         else:
-            fx = self._to_float(load.get('fx', 0.0), 0.0)
-            fy = self._to_float(load.get('fy', load.get('wy', 0.0)), 0.0)
-            fz = self._to_float(load.get('fz', load.get('wz', 0.0)), 0.0)
-            mx = self._to_float(load.get('mx', load.get('momentX', 0.0)), 0.0)
-            my = self._to_float(load.get('my', load.get('momentY', 0.0)), 0.0)
-            mz = self._to_float(load.get('mz', load.get('momentZ', 0.0)), 0.0)
+            direction = str(load.get('direction', load.get('axis', ''))).lower()
+            directional_value = self._to_float(load.get('value', load.get('magnitude', 0.0)), 0.0)
+
+            fx = self._to_float(load.get('fx', load.get('Fx', 0.0)), 0.0)
+            fy = self._to_float(load.get('fy', load.get('Fy', load.get('wy', 0.0))), 0.0)
+            fz = self._to_float(load.get('fz', load.get('Fz', load.get('wz', 0.0))), 0.0)
+            mx = self._to_float(load.get('mx', load.get('Mx', load.get('momentX', 0.0))), 0.0)
+            my = self._to_float(load.get('my', load.get('My', load.get('momentY', 0.0))), 0.0)
+            mz = self._to_float(load.get('mz', load.get('Mz', load.get('momentZ', 0.0))), 0.0)
+
+            if direction in {'x', 'fx'}:
+                fx = directional_value
+            elif direction in {'y', 'fy'}:
+                fy = directional_value
+            elif direction in {'z', 'fz'}:
+                fz = directional_value
+            elif direction in {'mx', 'rx'}:
+                mx = directional_value
+            elif direction in {'my', 'ry'}:
+                my = directional_value
+            elif direction in {'mz', 'rz'}:
+                mz = directional_value
 
         return {
             'type': 'nodal',
@@ -1679,14 +1746,14 @@ class StaticAnalyzer:
         if not section:
             raise ValueError(f"Section '{elem.section}' was not found for beam element '{elem.id}'")
 
-        transform_tag = int(elem.id)
+        transform_tag = self._ops_element_tag(elem.id)
         reference_vector = self._get_beam_reference_vector(elem)
         ops.geomTransf('Linear', transform_tag, *reference_vector)
         ops.element(
             'elasticBeamColumn',
-            int(elem.id),
-            int(elem.nodes[0]),
-            int(elem.nodes[1]),
+            self._ops_element_tag(elem.id),
+            self._ops_node_tag(elem.nodes[0]),
+            self._ops_node_tag(elem.nodes[1]),
             section.properties.get('A', 0.01),
             (material.E * 1000) if material else section.properties.get('E', 200000000),
             section.properties.get('G', 79000000),
@@ -1702,14 +1769,14 @@ class StaticAnalyzer:
         if not section:
             raise ValueError(f"Section '{elem.section}' was not found for beam element '{elem.id}'")
 
-        transform_tag = int(elem.id)
+        transform_tag = self._ops_element_tag(elem.id)
         inertia = float(section.properties.get('Iy', section.properties.get('Iz', 0.0001)))
         ops.geomTransf('Linear', transform_tag)
         ops.element(
             'elasticBeamColumn',
-            int(elem.id),
-            int(elem.nodes[0]),
-            int(elem.nodes[1]),
+            self._ops_element_tag(elem.id),
+            self._ops_node_tag(elem.nodes[0]),
+            self._ops_node_tag(elem.nodes[1]),
             float(section.properties.get('A', 0.01)),
             float((material.E * 1000) if material else section.properties.get('E', 200000000)),
             inertia,
@@ -1739,11 +1806,11 @@ class StaticAnalyzer:
         if section:
             ops.element(
                 'truss',
-                int(elem.id),
-                int(elem.nodes[0]),
-                int(elem.nodes[1]),
+                self._ops_element_tag(elem.id),
+                self._ops_node_tag(elem.nodes[0]),
+                self._ops_node_tag(elem.nodes[1]),
                 section.properties.get('A', 0.01),
-                int(elem.material)
+                self._ops_material_tag(elem.material)
             )
 
     def _apply_standardized_loads_2d(self, loads: List[Dict[str, Any]], ops, plane: str):
@@ -1757,7 +1824,7 @@ class StaticAnalyzer:
                 transverse = self._plane_transverse_force(load, plane)
                 moment = self._plane_bending_moment(load, plane)
                 ops.load(
-                    int(load['node']),
+                    self._ops_node_tag(load['node']),
                     float(load.get('fx', 0.0)),
                     transverse,
                     moment,
@@ -1765,7 +1832,7 @@ class StaticAnalyzer:
             elif load.get('type') == 'distributed':
                 ops.eleLoad(
                     '-ele',
-                    int(load['element']),
+                    self._ops_element_tag(load['element']),
                     '-type',
                     '-beamUniform',
                     self._plane_distributed_load(load, plane),
@@ -1781,10 +1848,10 @@ class StaticAnalyzer:
             if load.get('type') == 'nodal':
                 forces = load.get('forces')
                 if isinstance(forces, list) and len(forces) >= 6:
-                    ops.load(int(load['node']), *[float(value) for value in forces[:6]])
+                    ops.load(self._ops_node_tag(load['node']), *[float(value) for value in forces[:6]])
                 else:
                     ops.load(
-                        int(load['node']),
+                        self._ops_node_tag(load['node']),
                         float(load.get('fx', 0.0)),
                         float(load.get('fy', 0.0)),
                         float(load.get('fz', 0.0)),
@@ -1795,7 +1862,7 @@ class StaticAnalyzer:
             elif load.get('type') == 'distributed':
                 ops.eleLoad(
                     '-ele',
-                    int(load['element']),
+                    self._ops_element_tag(load['element']),
                     '-type',
                     '-beamUniform',
                     float(load.get('wy', 0.0)),
