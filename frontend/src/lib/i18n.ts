@@ -250,8 +250,12 @@ export const messages = {
     visualizationNoSelection: 'Nothing is selected. Use the scene or the lists to inspect the model.',
     visualizationSceneClickEmpty: 'Click empty space to clear the current selection.',
     visualizationSceneSelectionHelp: 'Use the scene or the lists to inspect nodes and elements.',
+    visualizationElementReferenceMismatchTitle: 'Model references are inconsistent',
+    visualizationElementReferenceMismatchBody: 'All elements were skipped because their node references do not match the current node list. Check element nodes/nodeIds values and node id types.',
     visualizationStatusCurrentSource: 'Current Source',
     modelSyncFromChat: 'Model JSON was synchronized from the conversation draft.',
+    modelAutoLoaded: 'Auto-loaded model: {modelName}',
+    loadingModel: 'Loading model...',
   },
   zh: {
     appName: 'StructureClaw',
@@ -494,8 +498,12 @@ export const messages = {
     visualizationNoSelection: '当前未选中对象，可通过场景或清单查看模型。',
     visualizationSceneClickEmpty: '点击空白区域可清除当前选择。',
     visualizationSceneSelectionHelp: '可通过场景或清单查看节点和单元。',
+    visualizationElementReferenceMismatchTitle: '模型引用关系不一致',
+    visualizationElementReferenceMismatchBody: '所有单元都因节点引用与当前节点清单不匹配而被跳过。请检查 element 的 nodes/nodeIds 取值以及节点 id 类型。',
     visualizationStatusCurrentSource: '当前来源',
     modelSyncFromChat: '结构模型 JSON 已根据对话草案自动同步。',
+    modelAutoLoaded: '自动加载模型: {modelName}',
+    loadingModel: '加载模型中...',
   },
 } as const
 

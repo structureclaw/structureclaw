@@ -15,18 +15,84 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 function asNumber(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim())
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+function asStringId(value: unknown): string | null {
+  if (typeof value === 'string' && value.trim().length > 0) {
+    return value.trim()
+  }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value)
+  }
+  return null
+}
+
+function getByPath(source: Record<string, unknown> | null, path: string): unknown {
+  if (!source) {
+    return null
+  }
+  const segments = path.split('.')
+  let current: unknown = source
+  for (const segment of segments) {
+    const record = asRecord(current)
+    if (!record) {
+      return null
+    }
+    current = record[segment]
+  }
+  return current
 }
 
 function pickNumber(source: Record<string, unknown> | null, keys: string[]) {
   if (!source) return null
   for (const key of keys) {
-    const value = asNumber(source[key])
+    const value = asNumber(key.includes('.') ? getByPath(source, key) : source[key])
     if (value !== null) {
       return value
     }
   }
   return null
+}
+
+function pickNodeCoordinate(node: Record<string, unknown> | null, axis: 'x' | 'y' | 'z') {
+  const upper = axis.toUpperCase()
+  return pickNumber(node, [
+    axis,
+    upper,
+    `position.${axis}`,
+    `position.${upper}`,
+    `coord.${axis}`,
+    `coord.${upper}`,
+    `coords.${axis}`,
+    `coords.${upper}`,
+  ])
+}
+
+function pickElementNodeIds(element: Record<string, unknown> | null): string[] {
+  if (!element) {
+    return []
+  }
+  const candidates = [element.nodes, element.nodeIds, element.node_ids]
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) {
+      continue
+    }
+    const normalized = candidate
+      .map((value) => asStringId(value))
+      .filter((value): value is string => Boolean(value))
+    if (normalized.length > 0) {
+      return normalized
+    }
+  }
+  return []
 }
 
 function vectorMagnitude(values: Array<number | null | undefined>) {
@@ -255,9 +321,10 @@ function getLoads(model: Record<string, unknown> | null): VisualizationLoad[] {
       if (!load) {
         return
       }
-      if (typeof load.node === 'string') {
+      const nodeId = asStringId(load.node)
+      if (nodeId) {
         loads.push({
-          nodeId: load.node,
+          nodeId,
           caseId,
           kind: 'nodal',
           vector: {
@@ -268,10 +335,11 @@ function getLoads(model: Record<string, unknown> | null): VisualizationLoad[] {
         })
         return
       }
-      if (typeof load.element === 'string') {
+      const elementId = asStringId(load.element)
+      if (elementId) {
         loads.push({
           nodeId: '',
-          elementId: load.element,
+          elementId,
           caseId,
           kind: 'distributed',
           vector: {
@@ -363,36 +431,67 @@ export function buildVisualizationSnapshot(params: {
   const data = asRecord(analysis?.data) || analysis
   const nodesInput = Array.isArray(model.nodes) ? model.nodes : []
   const elementsInput = Array.isArray(model.elements) ? model.elements : []
+  const debugEnabled = process.env.NODE_ENV !== 'production'
   if (!nodesInput.length || !elementsInput.length) {
+    if (debugEnabled) {
+      console.warn('[Visualization] Snapshot skipped: model is missing nodes or elements array data.', {
+        source,
+        nodesInputCount: nodesInput.length,
+        elementsInputCount: elementsInput.length,
+      })
+    }
     return null
   }
 
   const nodes: VisualizationNode[] = nodesInput
     .map((item) => asRecord(item))
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item.id === 'string'))
+    .filter((item): item is Record<string, unknown> => Boolean(item && asStringId(item.id)))
     .map((node) => ({
-      id: String(node.id),
+      id: asStringId(node.id) as string,
       position: {
-        x: pickNumber(node, ['x']) ?? 0,
-        y: pickNumber(node, ['y']) ?? 0,
-        z: pickNumber(node, ['z']) ?? 0,
+        x: pickNodeCoordinate(node, 'x') ?? 0,
+        y: pickNodeCoordinate(node, 'y') ?? 0,
+        z: pickNodeCoordinate(node, 'z') ?? 0,
       },
       restraints: Array.isArray(node.restraints) ? node.restraints.filter((value): value is boolean => typeof value === 'boolean') : undefined,
     }))
 
   const elements: VisualizationElement[] = elementsInput
     .map((item) => asRecord(item))
-    .filter((item): item is Record<string, unknown> => Boolean(item && typeof item.id === 'string'))
+    .filter((item): item is Record<string, unknown> => Boolean(item && asStringId(item.id)))
     .map((element) => ({
-      id: String(element.id),
+      id: asStringId(element.id) as string,
       type: typeof element.type === 'string' ? element.type : 'beam',
-      nodeIds: Array.isArray(element.nodes) ? element.nodes.filter((value): value is string => typeof value === 'string') : [],
+      nodeIds: pickElementNodeIds(element),
       material: typeof element.material === 'string' ? element.material : undefined,
       section: typeof element.section === 'string' ? element.section : undefined,
     }))
     .filter((element) => element.nodeIds.length >= 2)
 
+  const nodeIdSet = new Set(nodes.map((node) => node.id))
+  const elementsWithInvalidNodeRefs = elements.filter(
+    (element) => !nodeIdSet.has(element.nodeIds[0]) || !nodeIdSet.has(element.nodeIds[1])
+  ).length
+
+  if (debugEnabled) {
+    console.info('[Visualization] Snapshot normalization summary:', {
+      source,
+      nodesInputCount: nodesInput.length,
+      nodesNormalizedCount: nodes.length,
+      elementsInputCount: elementsInput.length,
+      elementsNormalizedCount: elements.length,
+      elementsWithInvalidNodeRefs,
+    })
+  }
+
   if (!nodes.length || !elements.length) {
+    if (debugEnabled) {
+      console.warn('[Visualization] Snapshot skipped after normalization because no renderable nodes/elements remain.', {
+        source,
+        nodesNormalizedCount: nodes.length,
+        elementsNormalizedCount: elements.length,
+      })
+    }
     return null
   }
 

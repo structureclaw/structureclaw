@@ -15,6 +15,7 @@ import { buildVisualizationSnapshot } from '@/components/visualization/adapter'
 import { StructuralVisualizationModal, type VisualizationSnapshot } from '@/components/visualization'
 import { useI18n, type MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
+import { fetchLatestModel, type LatestModelResponse } from '@/lib/api'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
 
 type AnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear'
@@ -187,6 +188,58 @@ function toModelText(model?: Record<string, unknown> | null) {
     return ''
   }
   return JSON.stringify(model, null, 2)
+}
+
+function toModelFromVisualizationSnapshot(snapshot?: VisualizationSnapshot | null): Record<string, unknown> | null {
+  if (!snapshot) {
+    return null
+  }
+
+  const model: Record<string, unknown> = {
+    schema_version: '1.0.0',
+    nodes: snapshot.nodes.map((node) => ({
+      id: node.id,
+      x: node.position.x,
+      y: node.position.y,
+      z: node.position.z,
+      ...(Array.isArray(node.restraints) ? { restraints: node.restraints } : {}),
+    })),
+    elements: snapshot.elements.map((element) => ({
+      id: element.id,
+      type: element.type,
+      nodes: element.nodeIds,
+      ...(typeof element.material === 'string' ? { material: element.material } : {}),
+      ...(typeof element.section === 'string' ? { section: element.section } : {}),
+    })),
+  }
+
+  if (Array.isArray(snapshot.loads) && snapshot.loads.length > 0) {
+    const grouped = new Map<string, Array<Record<string, unknown>>>()
+    snapshot.loads.forEach((load) => {
+      const key = load.caseId || 'default'
+      const bucket = grouped.get(key) || []
+      if (load.kind === 'distributed' && load.elementId) {
+        bucket.push({ element: load.elementId, wy: load.vector.y, wz: load.vector.z })
+      } else if (load.nodeId) {
+        bucket.push({ node: load.nodeId, fx: load.vector.x, fy: load.vector.y, fz: load.vector.z })
+      }
+      grouped.set(key, bucket)
+    })
+
+    const loadCases = Array.from(grouped.entries())
+      .filter(([, loads]) => loads.length > 0)
+      .map(([id, loads]) => ({ id, loads }))
+
+    if (loadCases.length > 0) {
+      model.load_cases = loadCases
+    }
+  }
+
+  return model
+}
+
+function toModelTextFromSnapshot(snapshot?: VisualizationSnapshot | null) {
+  return toModelText(toModelFromVisualizationSnapshot(snapshot))
 }
 
 function loadConversationArchive(): Record<string, PersistedConversation> {
@@ -866,6 +919,7 @@ export function AIConsole() {
   const [enginePickerOpen, setEnginePickerOpen] = useState(false)
   const [modelText, setModelText] = useState('')
   const [modelSyncMessage, setModelSyncMessage] = useState('')
+  const [isAutoLoadingModel, setIsAutoLoadingModel] = useState(false)
   const [designCode, setDesignCode] = useState('GB50017')
   const [analysisType, setAnalysisType] = useState<AnalysisType>('static')
   const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([])
@@ -884,6 +938,23 @@ export function AIConsole() {
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const shouldStickToBottomRef = useRef(true)
+  // 追踪最后有效的结果用于持久化（不会被引擎切换清除）
+  const lastValidResultRef = useRef<AgentResult | null>(null)
+  const lastValidResultVisualizationRef = useRef<VisualizationSnapshot | null>(null)
+
+  // 保持 refs 与最新有效结果同步
+  useEffect(() => {
+    if (latestResult) {
+      lastValidResultRef.current = latestResult
+    }
+  }, [latestResult])
+
+  useEffect(() => {
+    if (latestResultVisualizationSnapshot) {
+      lastValidResultVisualizationRef.current = latestResultVisualizationSnapshot
+    }
+  }, [latestResultVisualizationSnapshot])
+
   const defaultSkillIds = useMemo(
     () => availableSkills.filter((skill) => skill.autoLoadByDefault).map((skill) => skill.id),
     [availableSkills]
@@ -1037,6 +1108,51 @@ export function AIConsole() {
     }
   }, [])
 
+  // Auto-load latest model from database when conversation changes and model is empty
+  useEffect(() => {
+    let active = true
+
+    async function loadLatestModel() {
+      // Keep existing conversations stable; auto-load is only for new empty drafts.
+      if (conversationId) {
+        return
+      }
+      // Only auto-load if current modelText is empty
+      if (modelText) return
+
+      setIsAutoLoadingModel(true)
+      try {
+        const result = await fetchLatestModel()
+        if (!active || !result?.model) {
+          setIsAutoLoadingModel(false)
+          return
+        }
+
+        const modelJson = result.model as Record<string, unknown>
+        const modelJsonText = JSON.stringify(modelJson, null, 2)
+
+        // Set the model text, then stop loading after a small delay
+        setModelText(modelJsonText)
+        setModelSyncMessage(t('modelAutoLoaded', { modelName: result.name }))
+
+        // Stop loading after model is set
+        setTimeout(() => {
+          if (!active) return
+          setIsAutoLoadingModel(false)
+        }, 100)
+      } catch (error) {
+        console.error('[AI Console] Failed to auto-load model:', error)
+        setIsAutoLoadingModel(false)
+      }
+    }
+
+    void loadLatestModel()
+
+    return () => {
+      active = false
+    }
+  }, [conversationId, modelText, t])
+
   useEffect(() => {
     let cancelled = false
 
@@ -1071,7 +1187,19 @@ export function AIConsole() {
     }
   }, [t])
 
-  const parsedComposerModelState = useMemo(() => parseModelJson(modelText, t), [modelText, t])
+  const parsedComposerModelState = useMemo(() => {
+    const result = parseModelJson(modelText, t)
+    // Debug logging for model parsing
+    if (modelText && result.model) {
+      console.log('[AI Console] Parsed model:', {
+        hasNodes: 'nodes' in result.model,
+        nodesCount: Array.isArray(result.model.nodes) ? result.model.nodes.length : 0,
+        hasElements: 'elements' in result.model,
+        elementsCount: Array.isArray(result.model.elements) ? result.model.elements.length : 0,
+      })
+    }
+    return result
+  }, [modelText, t])
   const parsedComposerModel = parsedComposerModelState.model
   const parsedComposerModelError = parsedComposerModelState.error || ''
 
@@ -1086,6 +1214,7 @@ export function AIConsole() {
 
   useEffect(() => {
     if (!parsedComposerModel) {
+      console.log('[AI Console] Visualization effect: No parsedComposerModel, skipping snapshot')
       return
     }
 
@@ -1094,6 +1223,7 @@ export function AIConsole() {
       model: parsedComposerModel,
       mode: 'model-only',
     })
+    console.log('[AI Console] Setting model visualization snapshot:', snapshot ? 'success' : 'null')
     setLatestModelVisualizationSnapshot(snapshot)
     // 保存模型快照到后端
     if (snapshot && conversationId) {
@@ -1102,15 +1232,6 @@ export function AIConsole() {
       })
     }
   }, [modelPreviewBaseTitle, parsedComposerModel, t])
-
-  // 监听引擎变化，自动清除旧结果
-  useEffect(() => {
-    if (selectedEngineId !== 'auto') {
-      setLatestResult(null)
-      setLatestResultVisualizationSnapshot(null)
-      setActivePanel('analysis')
-    }
-  }, [selectedEngineId])
 
   const activeVisualizationSnapshot = useMemo(() => {
     if (visualizationSource === 'model') {
@@ -1196,7 +1317,7 @@ export function AIConsole() {
         selectedEngineId,
         modelSyncMessage,
         activePanel,
-        latestResult,
+        latestResult: latestResult ?? current[conversationId]?.latestResult ?? null,
         modelVisualizationSnapshot: latestModelVisualizationSnapshot ?? current[conversationId]?.modelVisualizationSnapshot ?? null,
         resultVisualizationSnapshot:
           latestResultVisualizationSnapshot
@@ -1328,7 +1449,6 @@ export function AIConsole() {
             : [initialAssistantMessage]
       const session = payload?.session
       const backendSnapshots = payload?.snapshots
-      const nextModelText = toModelText(session?.model) || archived?.modelText || ''
       const nextAnalysisType = session?.resolved?.analysisType || archived?.analysisType || 'static'
       const nextDesignCode = session?.resolved?.designCode || archived?.designCode || 'GB50017'
       const nextSelectedSkillIds = archived?.selectedSkillIds?.length ? archived.selectedSkillIds : defaultSkillIds
@@ -1338,6 +1458,13 @@ export function AIConsole() {
       const nextModelSyncMessage = session?.model ? t('modelSyncFromChat') : (archived?.modelSyncMessage || '')
       const nextModelSnapshot = backendSnapshots?.modelSnapshot ?? archived?.modelVisualizationSnapshot ?? null
       const nextResultSnapshot = backendSnapshots?.resultSnapshot ?? archived?.resultVisualizationSnapshot ?? archived?.visualizationSnapshot ?? null
+      const nextModelText =
+        toModelText(session?.model)
+        || archived?.modelText
+        || toModelText(nextLatestResult?.model)
+        || toModelTextFromSnapshot(nextModelSnapshot)
+        || toModelTextFromSnapshot(nextResultSnapshot)
+        || ''
 
       setConversationId(nextConversationId)
       setMessages(nextMessages)
@@ -1355,7 +1482,13 @@ export function AIConsole() {
       if (archived) {
         setConversationId(nextConversationId)
         setMessages(archived.messages.length ? archived.messages : [initialAssistantMessage])
-        setModelText(archived.modelText || '')
+        setModelText(
+          archived.modelText
+          || toModelText(archived.latestResult?.model)
+          || toModelTextFromSnapshot(archived.modelVisualizationSnapshot)
+          || toModelTextFromSnapshot(archived.resultVisualizationSnapshot || archived.visualizationSnapshot)
+          || ''
+        )
         setAnalysisType(archived.analysisType || 'static')
         setDesignCode(archived.designCode || 'GB50017')
         setSelectedSkillIds(archived.selectedSkillIds?.length ? archived.selectedSkillIds : defaultSkillIds)
@@ -1856,10 +1989,12 @@ export function AIConsole() {
                           <div className="line-clamp-2 text-sm font-medium leading-6">
                             {conversation.title || t('untitledConversation')}
                           </div>
-                          <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
-                            <Clock3 className="h-3.5 w-3.5" />
-                            <span>{formatDate(conversation.updatedAt || conversation.createdAt || new Date().toISOString(), locale)}</span>
-                          </div>
+                          {(conversation.updatedAt || conversation.createdAt) && (
+                            <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+                              <Clock3 className="h-3.5 w-3.5" />
+                              <span>{formatDate(conversation.updatedAt || conversation.createdAt, locale)}</span>
+                            </div>
+                          )}
                           {preview?.content && (
                             <p className="mt-2 line-clamp-2 text-xs leading-5 text-muted-foreground">
                               {preview.content}
@@ -2126,7 +2261,12 @@ export function AIConsole() {
                           setModelSyncMessage('')
                         }}
                       />
-                      {modelSyncMessage ? (
+                      {isAutoLoadingModel ? (
+                        <div className="text-xs text-muted-foreground flex items-center gap-2">
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                          {t('loadingModel')}
+                        </div>
+                      ) : modelSyncMessage ? (
                         <div className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-xs leading-5 text-cyan-900 dark:text-cyan-100">
                           {modelSyncMessage}
                         </div>

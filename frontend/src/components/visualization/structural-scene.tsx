@@ -446,6 +446,25 @@ export function StructuralScene(props: StructuralSceneProps) {
     [activeCase, snapshot.nodes]
   )
 
+  const invalidElementReferenceCount = useMemo(() => {
+    const nodeIds = new Set(snapshot.nodes.map((node) => node.id))
+    return snapshot.elements.filter((element) => !nodeIds.has(element.nodeIds[0]) || !nodeIds.has(element.nodeIds[1])).length
+  }, [snapshot.elements, snapshot.nodes])
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'production') {
+      return
+    }
+    if (invalidElementReferenceCount <= 0) {
+      return
+    }
+    console.warn('[Visualization] Some elements cannot be rendered because their node references do not exist in the node map.', {
+      invalidElementReferenceCount,
+      totalElements: snapshot.elements.length,
+      totalNodes: snapshot.nodes.length,
+    })
+  }, [invalidElementReferenceCount, snapshot.elements.length, snapshot.nodes.length])
+
   const colorBarProps = useMemo(() => {
     if (view === 'forces') {
       const metricLabel = forceMetric === 'axial' ? t('visualizationForceAxial') : forceMetric === 'shear' ? t('visualizationForceShear') : t('visualizationForceMoment')
@@ -474,6 +493,12 @@ export function StructuralScene(props: StructuralSceneProps) {
 
   return (
     <div className="relative h-full w-full bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.08),transparent_24%),linear-gradient(180deg,rgba(148,163,184,0.08),transparent_30%)]">
+      {invalidElementReferenceCount > 0 && invalidElementReferenceCount === snapshot.elements.length && (
+        <div className="pointer-events-none absolute left-4 top-4 z-10 max-w-lg rounded-xl border border-amber-300/40 bg-amber-300/10 px-3 py-2 text-xs text-amber-900 shadow-lg dark:text-amber-100">
+          <div className="font-semibold">{t('visualizationElementReferenceMismatchTitle')}</div>
+          <div className="mt-1 leading-5">{t('visualizationElementReferenceMismatchBody')}</div>
+        </div>
+      )}
       <Canvas dpr={[1, 1.75]} frameloop="demand" onPointerMissed={props.onClearSelection}>
         <Suspense fallback={null}>
           <SceneContent {...props} maxElementMetric={maxElementMetric} maxReaction={maxReaction} maxDisplacement={maxDisplacement} />

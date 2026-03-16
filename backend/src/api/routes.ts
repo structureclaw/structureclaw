@@ -8,6 +8,7 @@ import { communityRoutes } from './community.js';
 import { agentRoutes } from './agent.js';
 import { analysisEngineRoutes } from './analysis-engine.js';
 import { adminDatabaseRoutes } from './admin-database.js';
+import { modelRoutes } from './models.js';
 
 export async function registerRoutes(fastify: FastifyInstance) {
   // API 版本前缀
@@ -23,6 +24,7 @@ export async function registerRoutes(fastify: FastifyInstance) {
   await fastify.register(agentRoutes, { prefix: `${apiPrefix}/agent` });
   await fastify.register(communityRoutes, { prefix: `${apiPrefix}/community` });
   await fastify.register(adminDatabaseRoutes, { prefix: `${apiPrefix}/admin/database` });
+  await fastify.register(modelRoutes, { prefix: `${apiPrefix}/models` });
 
   // API 信息
   fastify.get(`${apiPrefix}`, async () => ({
@@ -39,6 +41,7 @@ export async function registerRoutes(fastify: FastifyInstance) {
       agent: `${apiPrefix}/agent`,
       community: `${apiPrefix}/community`,
       adminDatabase: `${apiPrefix}/admin/database`,
+      models: `${apiPrefix}/models`,
     },
   }));
 }
