@@ -62,8 +62,12 @@ export type VisualizationSnapshot = {
   analysisType?: string
   availableViews: VisualizationViewMode[]
   defaultCaseId: string
+  unitSystem?: string
   nodeLabelUnit?: string
   resultUnit?: string
+  momentUnit?: string
+  nodalLoadUnit?: string
+  distributedLoadUnit?: string
   nodes: VisualizationNode[]
   elements: VisualizationElement[]
   loads: VisualizationLoad[]

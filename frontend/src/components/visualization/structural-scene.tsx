@@ -468,7 +468,8 @@ export function StructuralScene(props: StructuralSceneProps) {
   const colorBarProps = useMemo(() => {
     if (view === 'forces') {
       const metricLabel = forceMetric === 'axial' ? t('visualizationForceAxial') : forceMetric === 'shear' ? t('visualizationForceShear') : t('visualizationForceMoment')
-      return { maxValue: maxElementMetric, label: metricLabel, unit: snapshot.resultUnit }
+      const unit = forceMetric === 'moment' ? snapshot.momentUnit : snapshot.resultUnit
+      return { maxValue: maxElementMetric, label: metricLabel, unit }
     }
     if (view === 'reactions') {
       return { maxValue: maxReaction, label: t('visualizationReactions'), unit: snapshot.resultUnit }
@@ -477,7 +478,7 @@ export function StructuralScene(props: StructuralSceneProps) {
       return { maxValue: maxDisplacement, label: t('visualizationDisplacement'), unit: snapshot.nodeLabelUnit }
     }
     return null
-  }, [view, forceMetric, maxElementMetric, maxReaction, maxDisplacement, snapshot.resultUnit, snapshot.nodeLabelUnit, t])
+  }, [view, forceMetric, maxElementMetric, maxReaction, maxDisplacement, snapshot.resultUnit, snapshot.momentUnit, snapshot.nodeLabelUnit, t])
 
   if (!webglAvailable) {
     return (

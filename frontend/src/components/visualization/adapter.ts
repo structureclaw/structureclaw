@@ -14,6 +14,14 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
 }
 
+function asNonEmptyString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+  const trimmed = value.trim()
+  return trimmed.length ? trimmed : null
+}
+
 function asNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) {
     return value
@@ -414,6 +422,48 @@ function buildAvailableViews(cases: VisualizationCase[], source: VisualizationSo
   ]
 }
 
+function deriveUnits(model: Record<string, unknown> | null, analysis: Record<string, unknown> | null) {
+  const analysisMeta = asRecord(analysis?.meta)
+  const unitSystemRaw = asNonEmptyString(model?.unit_system)
+    || asNonEmptyString(model?.unitSystem)
+    || asNonEmptyString(model?.units)
+    || asNonEmptyString(analysisMeta?.unitSystem)
+    || asNonEmptyString(analysisMeta?.unit_system)
+    || 'SI'
+  const unitSystem = unitSystemRaw.toUpperCase()
+
+  if (unitSystem.includes('MM') || unitSystem.includes('NMM') || unitSystem.includes('MM-N')) {
+    return {
+      unitSystem,
+      displacementUnit: 'mm',
+      forceUnit: 'N',
+      momentUnit: 'N.mm',
+      nodalLoadUnit: 'N',
+      distributedLoadUnit: 'N/mm',
+    }
+  }
+
+  if (unitSystem.includes('KN') && unitSystem.includes('M')) {
+    return {
+      unitSystem,
+      displacementUnit: 'm',
+      forceUnit: 'kN',
+      momentUnit: 'kN.m',
+      nodalLoadUnit: 'kN',
+      distributedLoadUnit: 'kN/m',
+    }
+  }
+
+  return {
+    unitSystem,
+    displacementUnit: 'm',
+    forceUnit: 'N',
+    momentUnit: 'N.m',
+    nodalLoadUnit: 'N',
+    distributedLoadUnit: 'N/m',
+  }
+}
+
 export function buildVisualizationSnapshot(params: {
   title: string
   model: Record<string, unknown> | null
@@ -429,6 +479,7 @@ export function buildVisualizationSnapshot(params: {
   const source: VisualizationSource = params.mode === 'model-only' || !params.analysis ? 'model' : 'result'
   const analysis = asRecord(params.analysis)
   const data = asRecord(analysis?.data) || analysis
+  const units = deriveUnits(model, analysis)
   const nodesInput = Array.isArray(model.nodes) ? model.nodes : []
   const elementsInput = Array.isArray(model.elements) ? model.elements : []
   const debugEnabled = process.env.NODE_ENV !== 'production'
@@ -550,6 +601,12 @@ export function buildVisualizationSnapshot(params: {
     analysisType: typeof analysis?.analysis_type === 'string' ? analysis.analysis_type : undefined,
     availableViews: buildAvailableViews(cases, source),
     defaultCaseId: cases.find((item) => item.kind === 'result')?.id || cases[0]?.id || (source === 'model' ? 'model' : 'result'),
+    unitSystem: units.unitSystem,
+    nodeLabelUnit: units.displacementUnit,
+    resultUnit: units.forceUnit,
+    momentUnit: units.momentUnit,
+    nodalLoadUnit: units.nodalLoadUnit,
+    distributedLoadUnit: units.distributedLoadUnit,
     nodes,
     elements,
     loads,

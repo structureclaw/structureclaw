@@ -16,6 +16,10 @@ function getCaseLabel(caseId: string, fallbackLabel: string, t: (key: MessageKey
   return fallbackLabel
 }
 
+function withUnit(value: string, unit?: string) {
+  return unit ? `${value} ${unit}` : value
+}
+
 type StructuralVisualizationModalProps = {
   open: boolean
   snapshot: VisualizationSnapshot | null
@@ -105,39 +109,52 @@ export function StructuralVisualizationModal({
               {t('visualizationUnsupportedElements')}: {snapshot.unsupportedElementTypes.join(', ')}
             </div>
           ) : null}
+          {snapshot ? (
+            <div className="rounded-2xl border border-border/70 bg-card/80 p-4 dark:border-white/10 dark:bg-slate-950/40">
+              <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('visualizationUnits')}</div>
+              <div className="mt-2 space-y-1.5 text-sm text-muted-foreground">
+                <div>{t('visualizationUnitSystem')}: {snapshot.unitSystem || 'SI'}</div>
+                <div>{t('visualizationDisplacement')}: {snapshot.nodeLabelUnit || '-'}</div>
+                <div>{t('visualizationReactions')}: {snapshot.resultUnit || '-'}</div>
+                <div>{t('visualizationForceMoment')}: {snapshot.momentUnit || '-'}</div>
+                <div>{t('visualizationLoadsList')}: {snapshot.nodalLoadUnit || '-'}</div>
+                <div>q: {snapshot.distributedLoadUnit || '-'}</div>
+              </div>
+            </div>
+          ) : null}
           {selectedNode ? (
             <div className="rounded-2xl border border-border/70 bg-card/80 p-4 dark:border-white/10 dark:bg-slate-950/40">
               <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('visualizationSelectedNode')}</div>
               <div className="mt-2 text-lg font-semibold text-foreground">{selectedNode.id}</div>
               <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                <div>X: {formatNumber(selectedNode.position.x, locale)}</div>
-                <div>Y: {formatNumber(selectedNode.position.y, locale)}</div>
-                <div>Z: {formatNumber(selectedNode.position.z, locale)}</div>
+                <div>X: {withUnit(formatNumber(selectedNode.position.x, locale), snapshot?.nodeLabelUnit)}</div>
+                <div>Y: {withUnit(formatNumber(selectedNode.position.y, locale), snapshot?.nodeLabelUnit)}</div>
+                <div>Z: {withUnit(formatNumber(selectedNode.position.z, locale), snapshot?.nodeLabelUnit)}</div>
                 {selectedNode.restraints?.length ? (
                   <div>{t('visualizationSupportRestraints')}: {selectedNode.restraints.map((value) => (value ? '1' : '0')).join(' ')}</div>
                 ) : null}
                 {!modelOnly && selectedNodeResults?.displacement && (
                   <div>
-                    {t('visualizationViewDeformed')}: {formatNumber(
+                    {t('visualizationViewDeformed')}: {withUnit(formatNumber(
                       Math.sqrt(
                         (selectedNodeResults.displacement.ux || 0) ** 2 +
                         (selectedNodeResults.displacement.uy || 0) ** 2 +
                         (selectedNodeResults.displacement.uz || 0) ** 2
                       ),
                       locale
-                    )}
+                    ), snapshot?.nodeLabelUnit)}
                   </div>
                 )}
                 {!modelOnly && selectedNodeResults?.reaction && (
                   <div>
-                    {t('visualizationViewReactions')}: {formatNumber(
+                    {t('visualizationViewReactions')}: {withUnit(formatNumber(
                       Math.sqrt(
                         (selectedNodeResults.reaction.fx || 0) ** 2 +
                         (selectedNodeResults.reaction.fy || 0) ** 2 +
                         (selectedNodeResults.reaction.fz || 0) ** 2
                       ),
                       locale
-                    )}
+                    ), snapshot?.resultUnit)}
                   </div>
                 )}
                 {!modelOnly && selectedNodeResults?.envelope?.controlCase && (
@@ -153,9 +170,9 @@ export function StructuralVisualizationModal({
               <div className="mt-1 text-sm text-muted-foreground">{selectedElement.type}</div>
               <div className="mt-3 space-y-2 text-sm text-muted-foreground">
                 <div>{t('visualizationConnectedNodes')}: {selectedElementNodeIds.join(' - ')}</div>
-                {!modelOnly && typeof selectedElementResults?.axial === 'number' && <div>{t('visualizationForceAxial')}: {formatNumber(selectedElementResults.axial, locale)}</div>}
-                {!modelOnly && typeof selectedElementResults?.shear === 'number' && <div>{t('visualizationForceShear')}: {formatNumber(selectedElementResults.shear, locale)}</div>}
-                {!modelOnly && typeof selectedElementResults?.moment === 'number' && <div>{t('visualizationForceMoment')}: {formatNumber(selectedElementResults.moment, locale)}</div>}
+                {!modelOnly && typeof selectedElementResults?.axial === 'number' && <div>{t('visualizationForceAxial')}: {withUnit(formatNumber(selectedElementResults.axial, locale), snapshot?.resultUnit)}</div>}
+                {!modelOnly && typeof selectedElementResults?.shear === 'number' && <div>{t('visualizationForceShear')}: {withUnit(formatNumber(selectedElementResults.shear, locale), snapshot?.resultUnit)}</div>}
+                {!modelOnly && typeof selectedElementResults?.moment === 'number' && <div>{t('visualizationForceMoment')}: {withUnit(formatNumber(selectedElementResults.moment, locale), snapshot?.momentUnit)}</div>}
                 {!modelOnly && selectedElementResults?.controlCases?.[forceMetric] && (
                   <div>{t('visualizationControlCase')}: {selectedElementResults.controlCases[forceMetric]}</div>
                 )}
@@ -171,9 +188,9 @@ export function StructuralVisualizationModal({
                   : `${selectedLoad.nodeId} · ${t('visualizationNodesList')}`}
               </div>
               <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                <div>X: {formatNumber(selectedLoad.vector.x, locale)}</div>
-                <div>Y: {formatNumber(selectedLoad.vector.y, locale)}</div>
-                <div>Z: {formatNumber(selectedLoad.vector.z, locale)}</div>
+                <div>X: {withUnit(formatNumber(selectedLoad.vector.x, locale), selectedLoad.kind === 'distributed' ? snapshot?.distributedLoadUnit : snapshot?.nodalLoadUnit)}</div>
+                <div>Y: {withUnit(formatNumber(selectedLoad.vector.y, locale), selectedLoad.kind === 'distributed' ? snapshot?.distributedLoadUnit : snapshot?.nodalLoadUnit)}</div>
+                <div>Z: {withUnit(formatNumber(selectedLoad.vector.z, locale), selectedLoad.kind === 'distributed' ? snapshot?.distributedLoadUnit : snapshot?.nodalLoadUnit)}</div>
               </div>
             </div>
           ) : null}
