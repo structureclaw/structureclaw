@@ -1133,7 +1133,12 @@ export function AIConsole() {
 
         // Set the model text, then stop loading after a small delay
         setModelText(modelJsonText)
-        setModelSyncMessage(t('modelAutoLoaded', { modelName: result.name }))
+        const modelAutoLoadedLabel = t('modelAutoLoaded')
+        setModelSyncMessage(
+          modelAutoLoadedLabel.includes('{modelName}')
+            ? modelAutoLoadedLabel.split('{modelName}').join(result.name)
+            : `${modelAutoLoadedLabel} ${result.name}`
+        )
 
         // Stop loading after model is set
         setTimeout(() => {
@@ -1941,6 +1946,7 @@ export function AIConsole() {
               const archive = conversationArchive[conversation.id]
               const preview = archive?.messages.findLast((message) => message.role === 'assistant')
                 || archive?.messages.findLast((message) => message.role === 'user')
+              const conversationTimestamp = conversation.updatedAt ?? conversation.createdAt
 
               return (
                 <div
@@ -1989,10 +1995,10 @@ export function AIConsole() {
                           <div className="line-clamp-2 text-sm font-medium leading-6">
                             {conversation.title || t('untitledConversation')}
                           </div>
-                          {(conversation.updatedAt || conversation.createdAt) && (
+                          {conversationTimestamp && (
                             <div className="mt-2 flex items-center gap-2 text-xs text-slate-500">
                               <Clock3 className="h-3.5 w-3.5" />
-                              <span>{formatDate(conversation.updatedAt || conversation.createdAt, locale)}</span>
+                              <span>{formatDate(conversationTimestamp, locale)}</span>
                             </div>
                           )}
                           {preview?.content && (
