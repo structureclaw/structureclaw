@@ -1322,13 +1322,9 @@ export function AIConsole() {
         selectedEngineId,
         modelSyncMessage,
         activePanel,
-        latestResult: latestResult ?? current[conversationId]?.latestResult ?? null,
-        modelVisualizationSnapshot: latestModelVisualizationSnapshot ?? current[conversationId]?.modelVisualizationSnapshot ?? null,
-        resultVisualizationSnapshot:
-          latestResultVisualizationSnapshot
-          ?? current[conversationId]?.resultVisualizationSnapshot
-          ?? current[conversationId]?.visualizationSnapshot
-          ?? null,
+        latestResult,
+        modelVisualizationSnapshot: latestModelVisualizationSnapshot,
+        resultVisualizationSnapshot: latestResultVisualizationSnapshot,
       },
     }))
   }, [
@@ -1454,15 +1450,24 @@ export function AIConsole() {
             : [initialAssistantMessage]
       const session = payload?.session
       const backendSnapshots = payload?.snapshots
+      const backendUpdatedAt = payload?.updatedAt || payload?.createdAt || ''
+      const archivedUpdatedAt = archived?.updatedAt || archived?.createdAt || ''
+      const preferArchiveState = Boolean(archived && archivedUpdatedAt > backendUpdatedAt)
       const nextAnalysisType = session?.resolved?.analysisType || archived?.analysisType || 'static'
       const nextDesignCode = session?.resolved?.designCode || archived?.designCode || 'GB50017'
       const nextSelectedSkillIds = archived?.selectedSkillIds?.length ? archived.selectedSkillIds : defaultSkillIds
       const nextSelectedEngineId = archived?.selectedEngineId || 'auto'
-      const nextLatestResult = backendSnapshots?.latestResult ?? archived?.latestResult ?? null
+      const nextLatestResult = preferArchiveState
+        ? (archived?.latestResult ?? backendSnapshots?.latestResult ?? null)
+        : (backendSnapshots?.latestResult ?? archived?.latestResult ?? null)
       const nextActivePanel = archived?.activePanel || (nextLatestResult?.report?.markdown ? 'report' : 'analysis')
       const nextModelSyncMessage = session?.model ? t('modelSyncFromChat') : (archived?.modelSyncMessage || '')
-      const nextModelSnapshot = backendSnapshots?.modelSnapshot ?? archived?.modelVisualizationSnapshot ?? null
-      const nextResultSnapshot = backendSnapshots?.resultSnapshot ?? archived?.resultVisualizationSnapshot ?? archived?.visualizationSnapshot ?? null
+      const nextModelSnapshot = preferArchiveState
+        ? (archived?.modelVisualizationSnapshot ?? backendSnapshots?.modelSnapshot ?? null)
+        : (backendSnapshots?.modelSnapshot ?? archived?.modelVisualizationSnapshot ?? null)
+      const nextResultSnapshot = preferArchiveState
+        ? (archived?.resultVisualizationSnapshot ?? archived?.visualizationSnapshot ?? backendSnapshots?.resultSnapshot ?? null)
+        : (backendSnapshots?.resultSnapshot ?? archived?.resultVisualizationSnapshot ?? archived?.visualizationSnapshot ?? null)
       const nextModelText =
         toModelText(session?.model)
         || archived?.modelText
@@ -1642,6 +1647,12 @@ export function AIConsole() {
     setVisualizationOpen(false)
     setVisualizationSource('result')
     setModelSyncMessage('')
+    if (action === 'execute') {
+      // Avoid showing stale output from a previous run while a new execution is in flight.
+      setLatestResult(null)
+      setLatestResultVisualizationSnapshot(null)
+      setActivePanel('analysis')
+    }
     let receivedResult = false
     let assistantContent = assistantSeed
     let activeConversationId = conversationId
@@ -1716,13 +1727,11 @@ export function AIConsole() {
         setLatestResultVisualizationSnapshot(visualizationSnapshot)
         setActivePanel(result.report?.markdown ? 'report' : 'analysis')
         // 保存结果快照到后端
-        if (visualizationSnapshot && conversationId) {
-          saveConversationSnapshotToBackend(conversationId, {
-            modelSnapshot,
-            resultSnapshot: visualizationSnapshot,
-            latestResult: result,
-          })
-        }
+        await saveConversationSnapshotToBackend(nextConversationId, {
+          modelSnapshot,
+          resultSnapshot: visualizationSnapshot,
+          latestResult: result,
+        })
         replaceMessage(assistantMessageId, (message) => ({
           ...message,
           content: assistantContent,
@@ -1829,13 +1838,11 @@ export function AIConsole() {
             setLatestResult(result)
             setLatestResultVisualizationSnapshot(visualizationSnapshot)
             // 保存结果快照到后端
-            if (visualizationSnapshot && conversationId) {
-              saveConversationSnapshotToBackend(conversationId, {
-                modelSnapshot,
-                resultSnapshot: visualizationSnapshot,
-                latestResult: result,
-              })
-            }
+            await saveConversationSnapshotToBackend(activeConversationId, {
+              modelSnapshot,
+              resultSnapshot: visualizationSnapshot,
+              latestResult: result,
+            })
             setActivePanel(result.report?.markdown ? 'report' : 'analysis')
             assistantContent = result.response || result.clarification?.question || t('returnedResult')
             replaceMessage(assistantMessageId, (message) => ({

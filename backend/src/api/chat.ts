@@ -125,6 +125,36 @@ function setSseCorsHeaders(request: FastifyRequest, reply: FastifyReply) {
   reply.raw.setHeader('Vary', 'Origin');
 }
 
+async function persistLatestConversationResult(params: {
+  conversationId?: string;
+  userId?: string;
+  latestResult: unknown;
+}): Promise<void> {
+  const conversationId = params.conversationId?.trim();
+  if (!conversationId) {
+    return;
+  }
+
+  const conversation = await prisma.conversation.findFirst({
+    where: { id: conversationId, userId: params.userId },
+    select: { id: true },
+  });
+
+  if (!conversation) {
+    return;
+  }
+
+  const latestResult =
+    params.latestResult && typeof params.latestResult === 'object' && !Array.isArray(params.latestResult)
+      ? (params.latestResult as Record<string, unknown>)
+      : { response: String(params.latestResult ?? ''), success: false };
+
+  await chatService.saveConversationSnapshot({
+    conversationId: conversation.id,
+    latestResult,
+  });
+}
+
 export async function chatRoutes(fastify: FastifyInstance) {
   // 发送消息
   fastify.post('/message', {
@@ -176,6 +206,11 @@ export async function chatRoutes(fastify: FastifyInstance) {
             providedValues: body.context?.providedValues,
           },
         });
+        await persistLatestConversationResult({
+          conversationId: body.conversationId,
+          userId,
+          latestResult: result,
+        });
         return reply.send({
           mode: 'execute',
           result,
@@ -206,6 +241,11 @@ export async function chatRoutes(fastify: FastifyInstance) {
             userDecision: body.context?.userDecision,
             providedValues: body.context?.providedValues,
           },
+        });
+        await persistLatestConversationResult({
+          conversationId: body.conversationId,
+          userId,
+          latestResult: result,
         });
         return reply.send({
           mode: 'chat',
@@ -365,6 +405,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     const body = streamMessageSchema.parse(request.body);
     const userId = request.user?.id;
     const mode = body.mode || 'auto';
+    let streamConversationId = body.conversationId;
 
     reply.hijack();
     setSseCorsHeaders(request, reply);
@@ -405,6 +446,25 @@ export async function chatRoutes(fastify: FastifyInstance) {
         });
 
         for await (const chunk of stream) {
+          if (
+            chunk
+            && typeof chunk === 'object'
+            && (chunk as { type?: string }).type === 'start'
+            && (chunk as { content?: { conversationId?: string } }).content?.conversationId
+          ) {
+            streamConversationId = (chunk as { content: { conversationId: string } }).content.conversationId;
+          }
+          if (
+            chunk
+            && typeof chunk === 'object'
+            && (chunk as { type?: string }).type === 'result'
+          ) {
+            await persistLatestConversationResult({
+              conversationId: streamConversationId,
+              userId,
+              latestResult: (chunk as { content?: unknown }).content,
+            });
+          }
           reply.raw.write(`data: ${JSON.stringify(normalizeStreamChunkError(chunk))}\n\n`);
         }
         reply.raw.write('data: [DONE]\n\n');
@@ -439,6 +499,25 @@ export async function chatRoutes(fastify: FastifyInstance) {
         });
 
         for await (const chunk of stream) {
+          if (
+            chunk
+            && typeof chunk === 'object'
+            && (chunk as { type?: string }).type === 'start'
+            && (chunk as { content?: { conversationId?: string } }).content?.conversationId
+          ) {
+            streamConversationId = (chunk as { content: { conversationId: string } }).content.conversationId;
+          }
+          if (
+            chunk
+            && typeof chunk === 'object'
+            && (chunk as { type?: string }).type === 'result'
+          ) {
+            await persistLatestConversationResult({
+              conversationId: streamConversationId,
+              userId,
+              latestResult: (chunk as { content?: unknown }).content,
+            });
+          }
           reply.raw.write(`data: ${JSON.stringify(normalizeStreamChunkError(chunk))}\n\n`);
         }
 
@@ -493,7 +572,13 @@ export async function chatRoutes(fastify: FastifyInstance) {
     },
   }, async (request: FastifyRequest<{ Body: z.infer<typeof executeSchema> }>, reply: FastifyReply) => {
     const body = executeSchema.parse(request.body);
+    const userId = request.user?.id;
     const result = await agentService.run(body);
+    await persistLatestConversationResult({
+      conversationId: body.conversationId,
+      userId,
+      latestResult: result,
+    });
     return reply.send({ ...result, conversationId: body.conversationId });
   });
 }
