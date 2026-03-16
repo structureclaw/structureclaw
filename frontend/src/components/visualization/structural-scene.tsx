@@ -93,6 +93,67 @@ function createColorScale(value: number, maxValue: number) {
   return `#${color.getHexString()}`
 }
 
+function roundUpNice(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return 1
+  }
+  const exponent = Math.floor(Math.log10(value))
+  const base = 10 ** exponent
+  const normalized = value / base
+  const step = normalized <= 1 ? 1 : normalized <= 2 ? 2 : normalized <= 5 ? 5 : 10
+  return step * base
+}
+
+function getAdaptiveGridConfig(snapshot: VisualizationSnapshot) {
+  if (!snapshot.nodes.length) {
+    return {
+      size: 24,
+      divisions: 24,
+      position: [0, -0.001, 0] as [number, number, number],
+      rotation: snapshot.dimension === 3 ? [0, 0, 0] as [number, number, number] : [Math.PI / 2, 0, 0] as [number, number, number],
+    }
+  }
+
+  const xs = snapshot.nodes.map((node) => node.position.x)
+  const ys = snapshot.nodes.map((node) => node.position.y)
+  const zs = snapshot.nodes.map((node) => node.position.z)
+  const minX = Math.min(...xs)
+  const maxX = Math.max(...xs)
+  const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
+  const minZ = Math.min(...zs)
+  const maxZ = Math.max(...zs)
+
+  if (snapshot.dimension === 3) {
+    const spanX = Math.max(maxX - minX, 1)
+    const spanZ = Math.max(maxZ - minZ, 1)
+    const span = Math.max(spanX, spanZ)
+    const size = roundUpNice(span * 1.5)
+    const divisions = Math.min(120, Math.max(8, Math.round(size / Math.max(span / 18, 0.25))))
+    return {
+      size,
+      divisions,
+      position: [(minX + maxX) * 0.5, minY - Math.max(span * 0.01, 0.001), (minZ + maxZ) * 0.5] as [number, number, number],
+      rotation: [0, 0, 0] as [number, number, number],
+    }
+  }
+
+  const secondaryMin = snapshot.plane === 'xy' ? minY : minZ
+  const secondaryMax = snapshot.plane === 'xy' ? maxY : maxZ
+  const spanPrimary = Math.max(maxX - minX, 1)
+  const spanSecondary = Math.max(secondaryMax - secondaryMin, 1)
+  const span = Math.max(spanPrimary, spanSecondary)
+  const size = roundUpNice(span * 1.5)
+  const divisions = Math.min(120, Math.max(8, Math.round(size / Math.max(span / 18, 0.25))))
+
+  return {
+    size,
+    divisions,
+    position: [(minX + maxX) * 0.5, (secondaryMin + secondaryMax) * 0.5, -0.001] as [number, number, number],
+    rotation: [Math.PI / 2, 0, 0] as [number, number, number],
+  }
+}
+
 function ColorBar({
   maxValue,
   valueScale = 1,
@@ -253,6 +314,7 @@ function SceneContent({
 }) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [hoveredElementId, setHoveredElementId] = useState<string | null>(null)
+  const gridConfig = useMemo(() => getAdaptiveGridConfig(snapshot), [snapshot])
   const nodeMap = useMemo(
     () =>
       new Map(
@@ -277,7 +339,7 @@ function SceneContent({
       <directionalLight intensity={1.2} position={[10, 12, 8]} />
       <directionalLight intensity={0.45} position={[-8, -4, 10]} />
       <OrbitControls makeDefault />
-      <gridHelper args={[24, 24, '#1f9dc2', '#334155']} position={[0, -0.001, 0]} rotation={snapshot.dimension === 3 ? [0, 0, 0] : [Math.PI / 2, 0, 0]} />
+      <gridHelper args={[gridConfig.size, gridConfig.divisions, '#1f9dc2', '#334155']} position={gridConfig.position} rotation={gridConfig.rotation} />
 
       <Bounds clip fit margin={1.2} observe>
         <group onDoubleClick={() => {
