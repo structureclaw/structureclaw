@@ -506,7 +506,7 @@ export function StructuralScene(props: StructuralSceneProps) {
     [activeCase, snapshot.nodes]
   )
   const maxDisplacement = useMemo(
-    () => Math.max(1, ...snapshot.nodes.map((node) => getNodeDisplacementMagnitude(activeCase, node.id))),
+    () => Math.max(1e-12, ...snapshot.nodes.map((node) => getNodeDisplacementMagnitude(activeCase, node.id))),
     [activeCase, snapshot.nodes]
   )
 
