@@ -28,7 +28,7 @@
     }
   },
   "expected": {
-    "data.envelopeTables.nodeDisplacement.2.maxAbsDisplacement": 1.3333333333,
+    "data.envelopeTables.nodeDisplacement.2.maxAbsDisplacement": 0.0013333333,
     "data.envelopeTables.nodeDisplacement.2.controlCase": "V",
     "data.envelopeTables.elementForce.1.maxAbsAxialForce": 30.0,
     "data.envelopeTables.elementForce.1.controlCaseAxial": "H",

@@ -27,8 +27,8 @@
   },
   "expected": {
     "data.analysisMode": "linear_2d_frame",
-    "data.displacements.2.uz": -1.3333333333,
-    "data.displacements.2.ry": -1.0,
+    "data.displacements.2.uz": -0.0013333333,
+    "data.displacements.2.ry": -0.001,
     "data.reactions.1.fz": 10.0,
     "data.reactions.1.my": 20.0,
     "data.forces.1.n1.M": 20.0,

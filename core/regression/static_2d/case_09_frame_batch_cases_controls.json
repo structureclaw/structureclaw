@@ -29,7 +29,7 @@
   },
   "expected": {
     "data.batchCaseCount": 2,
-    "data.envelope.maxAbsDisplacement": 1.3333333333,
+    "data.envelope.maxAbsDisplacement": 0.0013333333,
     "data.envelope.maxAbsAxialForce": 30.0,
     "data.envelope.maxAbsMoment": 20.0,
     "data.envelope.maxAbsReaction": 30.0,

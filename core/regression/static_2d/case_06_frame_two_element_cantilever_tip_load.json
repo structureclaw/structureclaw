@@ -23,8 +23,8 @@
   },
   "expected": {
     "data.analysisMode": "linear_2d_frame",
-    "data.displacements.3.uz": -10.6666666667,
-    "data.displacements.3.ry": -4.0,
+    "data.displacements.3.uz": -0.0106666667,
+    "data.displacements.3.ry": -0.004,
     "data.reactions.1.fz": 10.0,
     "data.reactions.1.my": 40.0,
     "data.envelope.maxAbsMoment": 40.0,

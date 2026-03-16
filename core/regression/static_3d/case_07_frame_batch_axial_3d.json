@@ -33,9 +33,9 @@
   },
   "expected": {
     "data.batchCaseCount": 2,
-    "data.envelope.maxAbsDisplacement": 0.018,
+    "data.envelope.maxAbsDisplacement": 0.000018,
     "data.envelope.controlCase.displacement": "C2",
-    "data.envelopeTables.nodeDisplacement.2.maxAbsDisplacement": 0.018,
+    "data.envelopeTables.nodeDisplacement.2.maxAbsDisplacement": 0.000018,
     "data.envelopeTables.nodeDisplacement.2.controlCase": "C2",
     "data.envelopeTables.elementForce.1.maxAbsAxialForce": 12.0,
     "data.envelopeTables.elementForce.1.controlCaseAxial": "C2"

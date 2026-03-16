@@ -969,7 +969,7 @@ class StaticAnalyzer:
             if A <= 0.0:
                 raise ValueError(f"Element '{elem.id}' requires section area A > 0")
 
-            E = float(mat.E)
+            E = self._effective_elastic_modulus(mat)
             inertia_key = 'Iz' if plane == 'xy' else 'Iy'
             fallback_inertia_key = 'Iy' if plane == 'xy' else 'Iz'
             I = float(sec.properties.get(inertia_key, sec.properties.get(fallback_inertia_key, 0.0)))
@@ -1171,7 +1171,7 @@ class StaticAnalyzer:
             Iy = float(sec.properties.get('Iy', sec.properties.get('Iz', 0.0)))
             Iz = float(sec.properties.get('Iz', sec.properties.get('Iy', 0.0)))
             J = float(sec.properties.get('J', 0.0))
-            E = float(mat.E)
+            E = self._effective_elastic_modulus(mat)
             G = float(sec.properties.get('G', E / (2.0 * (1.0 + float(mat.nu)))))
 
             if A <= 0.0 or Iy <= 0.0 or Iz <= 0.0:
@@ -1496,8 +1496,19 @@ class StaticAnalyzer:
                 wy = raw_magnitude
                 wz = 0.0
             else:
-                wy = self._to_float(load.get('wy', load.get('fy', raw_magnitude)), 0.0)
-                wz = self._to_float(load.get('wz', load.get('fz', 0.0)), 0.0)
+                has_wy = ('wy' in load) or ('fy' in load)
+                has_wz = ('wz' in load) or ('fz' in load)
+                if has_wy:
+                    wy = self._to_float(load.get('wy', load.get('fy', 0.0)), 0.0)
+                else:
+                    wy = 0.0
+                if has_wz:
+                    wz = self._to_float(load.get('wz', load.get('fz', 0.0)), 0.0)
+                else:
+                    wz = 0.0
+                if (not has_wy) and (not has_wz):
+                    # Backward-compatible fallback for legacy q/w/value payloads.
+                    wz = raw_magnitude
 
             return {
                 'type': 'distributed',
@@ -1560,6 +1571,10 @@ class StaticAnalyzer:
             except ValueError:
                 return fallback
         return fallback
+
+    def _effective_elastic_modulus(self, material) -> float:
+        # Keep the simplified solver consistent with the OpenSees branch.
+        return float(material.E) * 1000.0
 
     def _plane_transverse_force(self, load: Dict[str, Any], plane: str) -> float:
         primary_key = 'fy' if plane == 'xy' else 'fz'
