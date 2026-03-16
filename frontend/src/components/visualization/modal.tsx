@@ -20,6 +20,41 @@ function withUnit(value: string, unit?: string) {
   return unit ? `${value} ${unit}` : value
 }
 
+function getCaseMaxDisplacementMagnitude(activeCase: VisualizationCase | null) {
+  if (!activeCase) {
+    return 0
+  }
+  return Object.values(activeCase.nodeResults).reduce((max, result) => {
+    const magnitude = activeCase.kind === 'envelope'
+      ? Number(result.envelope?.maxAbsDisplacement || 0)
+      : Math.sqrt((result.displacement?.ux || 0) ** 2 + (result.displacement?.uy || 0) ** 2 + (result.displacement?.uz || 0) ** 2)
+    return Math.max(max, magnitude)
+  }, 0)
+}
+
+function getModelSpan(snapshot: VisualizationSnapshot | null) {
+  if (!snapshot || snapshot.nodes.length < 2) {
+    return 0
+  }
+  const xs = snapshot.nodes.map((node) => node.position.x)
+  const ys = snapshot.nodes.map((node) => node.position.y)
+  const zs = snapshot.nodes.map((node) => node.position.z)
+  const dx = Math.max(...xs) - Math.min(...xs)
+  const dy = Math.max(...ys) - Math.min(...ys)
+  const dz = Math.max(...zs) - Math.min(...zs)
+  return Math.max(dx, dy, dz)
+}
+
+function roundStep(value: number) {
+  if (!Number.isFinite(value) || value <= 0) {
+    return 0.1
+  }
+  if (value >= 100) return 10
+  if (value >= 10) return 1
+  if (value >= 1) return 0.1
+  return 0.01
+}
+
 type StructuralVisualizationModalProps = {
   open: boolean
   snapshot: VisualizationSnapshot | null
@@ -80,6 +115,32 @@ export function StructuralVisualizationModal({
   const selectedLoad = selectedLoadIndex !== null && snapshot?.loads ? snapshot.loads[selectedLoadIndex] || null : null
   const selectedElementNodeIds = selectedElement?.nodeIds || []
   const modelOnly = snapshot?.source === 'model'
+  const displacementDisplayFactor = snapshot?.displacementDisplayFactor || 1
+  const deformationScaleRange = useMemo(() => {
+    const modelSpan = getModelSpan(snapshot)
+    const maxDisplacement = getCaseMaxDisplacementMagnitude(activeCase)
+    if (modelSpan <= 0 || maxDisplacement <= 0) {
+      return { min: 1, max: 40, step: 0.1, recommended: 12 }
+    }
+
+    const recommendedRaw = (modelSpan * 0.15) / maxDisplacement
+    const recommended = Math.min(200000, Math.max(1, recommendedRaw))
+    const min = Math.max(1, recommended / 20)
+    const max = Math.max(40, recommended * 20)
+    const step = roundStep((max - min) / 300)
+    return { min, max, step, recommended }
+  }, [snapshot, activeCase])
+
+  useEffect(() => {
+    if (!open || !snapshot) {
+      return
+    }
+    setDeformationScale(deformationScaleRange.recommended)
+  }, [open, snapshot, deformationScaleRange.recommended])
+
+  useEffect(() => {
+    setDeformationScale((current) => Math.min(deformationScaleRange.max, Math.max(deformationScaleRange.min, current)))
+  }, [deformationScaleRange.min, deformationScaleRange.max])
 
   return (
     <VisualizationModalShell
@@ -114,7 +175,7 @@ export function StructuralVisualizationModal({
               <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('visualizationUnits')}</div>
               <div className="mt-2 space-y-1.5 text-sm text-muted-foreground">
                 <div>{t('visualizationUnitSystem')}: {snapshot.unitSystem || 'SI'}</div>
-                <div>{t('visualizationDisplacement')}: {snapshot.nodeLabelUnit || '-'}</div>
+                <div>{t('visualizationDisplacement')}: {snapshot.displacementUnit || '-'}</div>
                 <div>{t('visualizationReactions')}: {snapshot.resultUnit || '-'}</div>
                 <div>{t('visualizationForceMoment')}: {snapshot.momentUnit || '-'}</div>
                 <div>{t('visualizationLoadsList')}: {snapshot.nodalLoadUnit || '-'}</div>
@@ -127,9 +188,9 @@ export function StructuralVisualizationModal({
               <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('visualizationSelectedNode')}</div>
               <div className="mt-2 text-lg font-semibold text-foreground">{selectedNode.id}</div>
               <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                <div>X: {withUnit(formatNumber(selectedNode.position.x, locale), snapshot?.nodeLabelUnit)}</div>
-                <div>Y: {withUnit(formatNumber(selectedNode.position.y, locale), snapshot?.nodeLabelUnit)}</div>
-                <div>Z: {withUnit(formatNumber(selectedNode.position.z, locale), snapshot?.nodeLabelUnit)}</div>
+                <div>X: {withUnit(formatNumber(selectedNode.position.x, locale), snapshot?.lengthUnit || snapshot?.nodeLabelUnit)}</div>
+                <div>Y: {withUnit(formatNumber(selectedNode.position.y, locale), snapshot?.lengthUnit || snapshot?.nodeLabelUnit)}</div>
+                <div>Z: {withUnit(formatNumber(selectedNode.position.z, locale), snapshot?.lengthUnit || snapshot?.nodeLabelUnit)}</div>
                 {selectedNode.restraints?.length ? (
                   <div>{t('visualizationSupportRestraints')}: {selectedNode.restraints.map((value) => (value ? '1' : '0')).join(' ')}</div>
                 ) : null}
@@ -140,9 +201,9 @@ export function StructuralVisualizationModal({
                         (selectedNodeResults.displacement.ux || 0) ** 2 +
                         (selectedNodeResults.displacement.uy || 0) ** 2 +
                         (selectedNodeResults.displacement.uz || 0) ** 2
-                      ),
+                      ) * displacementDisplayFactor,
                       locale
-                    ), snapshot?.nodeLabelUnit)}
+                    ), snapshot?.displacementUnit || snapshot?.nodeLabelUnit)}
                   </div>
                 )}
                 {!modelOnly && selectedNodeResults?.reaction && (
@@ -287,6 +348,9 @@ export function StructuralVisualizationModal({
             activeCaseId={activeCase.id}
             deformationScale={deformationScale}
             forceMetric={forceMetric}
+            deformationScaleMin={deformationScaleRange.min}
+            deformationScaleMax={deformationScaleRange.max}
+            deformationScaleStep={deformationScaleRange.step}
             onActiveCaseChange={setActiveCaseId}
             onDeformationScaleChange={setDeformationScale}
             onForceMetricChange={setForceMetric}

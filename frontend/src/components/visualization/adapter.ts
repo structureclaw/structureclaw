@@ -435,7 +435,9 @@ function deriveUnits(model: Record<string, unknown> | null, analysis: Record<str
   if (unitSystem.includes('MM') || unitSystem.includes('NMM') || unitSystem.includes('MM-N')) {
     return {
       unitSystem,
+      lengthUnit: 'mm',
       displacementUnit: 'mm',
+      displacementDisplayFactor: 1,
       forceUnit: 'N',
       momentUnit: 'N.mm',
       nodalLoadUnit: 'N',
@@ -446,7 +448,9 @@ function deriveUnits(model: Record<string, unknown> | null, analysis: Record<str
   if (unitSystem.includes('KN') && unitSystem.includes('M')) {
     return {
       unitSystem,
-      displacementUnit: 'm',
+      lengthUnit: 'm',
+      displacementUnit: 'mm',
+      displacementDisplayFactor: 1000,
       forceUnit: 'kN',
       momentUnit: 'kN.m',
       nodalLoadUnit: 'kN',
@@ -456,7 +460,9 @@ function deriveUnits(model: Record<string, unknown> | null, analysis: Record<str
 
   return {
     unitSystem,
-    displacementUnit: 'm',
+    lengthUnit: 'm',
+    displacementUnit: 'mm',
+    displacementDisplayFactor: 1000,
     forceUnit: 'N',
     momentUnit: 'N.m',
     nodalLoadUnit: 'N',
@@ -602,7 +608,10 @@ export function buildVisualizationSnapshot(params: {
     availableViews: buildAvailableViews(cases, source),
     defaultCaseId: cases.find((item) => item.kind === 'result')?.id || cases[0]?.id || (source === 'model' ? 'model' : 'result'),
     unitSystem: units.unitSystem,
-    nodeLabelUnit: units.displacementUnit,
+    lengthUnit: units.lengthUnit,
+    displacementUnit: units.displacementUnit,
+    displacementDisplayFactor: units.displacementDisplayFactor,
+    nodeLabelUnit: units.lengthUnit,
     resultUnit: units.forceUnit,
     momentUnit: units.momentUnit,
     nodalLoadUnit: units.nodalLoadUnit,

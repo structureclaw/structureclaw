@@ -63,6 +63,9 @@ export type VisualizationSnapshot = {
   availableViews: VisualizationViewMode[]
   defaultCaseId: string
   unitSystem?: string
+  lengthUnit?: string
+  displacementUnit?: string
+  displacementDisplayFactor?: number
   nodeLabelUnit?: string
   resultUnit?: string
   momentUnit?: string

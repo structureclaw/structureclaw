@@ -95,11 +95,13 @@ function createColorScale(value: number, maxValue: number) {
 
 function ColorBar({
   maxValue,
+  valueScale = 1,
   unit,
   label,
   show,
 }: {
   maxValue: number
+  valueScale?: number
   unit?: string
   label: string
   show: boolean
@@ -119,8 +121,8 @@ function ColorBar({
       </div>
       <div className="flex items-end gap-2.5 rounded-lg border border-border/70 bg-background/90 p-2.5 shadow-lg dark:border-white/10 dark:bg-slate-950/85">
         <div className="flex flex-col justify-between items-end text-xs text-muted-foreground" style={{ height: '128px' }}>
-          <span>{formatValue(maxValue)}</span>
-          <span>{formatValue(maxValue * 0.5)}</span>
+          <span>{formatValue(maxValue * valueScale)}</span>
+          <span>{formatValue(maxValue * 0.5 * valueScale)}</span>
           <span>0</span>
         </div>
         <div
@@ -475,10 +477,15 @@ export function StructuralScene(props: StructuralSceneProps) {
       return { maxValue: maxReaction, label: t('visualizationReactions'), unit: snapshot.resultUnit }
     }
     if (view === 'deformed') {
-      return { maxValue: maxDisplacement, label: t('visualizationDisplacement'), unit: snapshot.nodeLabelUnit }
+      return {
+        maxValue: maxDisplacement,
+        valueScale: snapshot.displacementDisplayFactor || 1,
+        label: t('visualizationDisplacement'),
+        unit: snapshot.displacementUnit || snapshot.nodeLabelUnit,
+      }
     }
     return null
-  }, [view, forceMetric, maxElementMetric, maxReaction, maxDisplacement, snapshot.resultUnit, snapshot.momentUnit, snapshot.nodeLabelUnit, t])
+  }, [view, forceMetric, maxElementMetric, maxReaction, maxDisplacement, snapshot.resultUnit, snapshot.momentUnit, snapshot.displacementDisplayFactor, snapshot.displacementUnit, snapshot.nodeLabelUnit, t])
 
   if (!webglAvailable) {
     return (

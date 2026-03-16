@@ -10,6 +10,9 @@ type VisualizationToolbarProps = {
   snapshot: VisualizationSnapshot
   activeCaseId: string
   deformationScale: number
+  deformationScaleMin: number
+  deformationScaleMax: number
+  deformationScaleStep: number
   forceMetric: ForceMetric
   showElementLabels: boolean
   showLegend: boolean
@@ -42,6 +45,9 @@ export function VisualizationToolbar({
   snapshot,
   activeCaseId,
   deformationScale,
+  deformationScaleMin,
+  deformationScaleMax,
+  deformationScaleStep,
   forceMetric,
   showElementLabels,
   showLegend,
@@ -105,12 +111,14 @@ export function VisualizationToolbar({
           <span>{t('visualizationScale')}</span>
           <input
             className="accent-cyan-500"
-            max={40}
-            min={1}
+            max={deformationScaleMax}
+            min={deformationScaleMin}
             onChange={(event) => onDeformationScaleChange(Number(event.target.value))}
+            step={deformationScaleStep}
             type="range"
             value={deformationScale}
           />
+          <span className="min-w-[52px] text-right">{deformationScale.toFixed(1)}x</span>
         </label>
       ) : null}
 
