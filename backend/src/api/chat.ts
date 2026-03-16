@@ -135,24 +135,28 @@ async function persistLatestConversationResult(params: {
     return;
   }
 
-  const conversation = await prisma.conversation.findFirst({
-    where: { id: conversationId, userId: params.userId },
-    select: { id: true },
-  });
+  try {
+    const conversation = await prisma.conversation.findFirst({
+      where: { id: conversationId, userId: params.userId },
+      select: { id: true },
+    });
 
-  if (!conversation) {
-    return;
+    if (!conversation) {
+      return;
+    }
+
+    const latestResult =
+      params.latestResult && typeof params.latestResult === 'object' && !Array.isArray(params.latestResult)
+        ? (params.latestResult as Record<string, unknown>)
+        : { response: String(params.latestResult ?? ''), success: false };
+
+    await chatService.saveConversationSnapshot({
+      conversationId: conversation.id,
+      latestResult,
+    });
+  } catch (error) {
+    console.warn('[chat] skip latestResult persistence:', error instanceof Error ? error.message : String(error));
   }
-
-  const latestResult =
-    params.latestResult && typeof params.latestResult === 'object' && !Array.isArray(params.latestResult)
-      ? (params.latestResult as Record<string, unknown>)
-      : { response: String(params.latestResult ?? ''), success: false };
-
-  await chatService.saveConversationSnapshot({
-    conversationId: conversation.id,
-    latestResult,
-  });
 }
 
 export async function chatRoutes(fastify: FastifyInstance) {
