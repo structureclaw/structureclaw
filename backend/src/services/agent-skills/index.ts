@@ -2,6 +2,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from '../locale.js';
 import { AgentSkillRegistry } from './registry.js';
 import { AgentSkillExecutor } from './executor.js';
+import { buildDefaultReportNarrative } from './report-template.js';
 import { localize, withScenarioState } from './plugin-helpers.js';
 import type {
   AgentSkillBundle,
@@ -10,6 +11,7 @@ import type {
   InteractionQuestion,
   SkillDefaultProposal,
   ScenarioMatch,
+  SkillReportNarrativeInput,
   ScenarioSupportLevel,
   ScenarioTemplateKey,
 } from './types.js';
@@ -34,6 +36,7 @@ export type {
   SkillDefaultProposal,
   SkillHandler,
   SkillManifest,
+  SkillReportNarrativeInput,
 } from './types.js';
 
 export class AgentSkillRuntime {
@@ -264,5 +267,17 @@ export class AgentSkillRuntime {
       return undefined;
     }
     return plugin.handler.buildModel(state);
+  }
+
+  async buildReportNarrative(
+    input: SkillReportNarrativeInput,
+    draft?: DraftState,
+    skillIds?: string[],
+  ): Promise<string> {
+    const plugin = await this.registry.resolvePluginForState(draft, skillIds);
+    if (plugin?.handler.buildReportNarrative) {
+      return plugin.handler.buildReportNarrative(input);
+    }
+    return buildDefaultReportNarrative(input);
   }
 }

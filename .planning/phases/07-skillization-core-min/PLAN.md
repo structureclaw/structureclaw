@@ -62,6 +62,13 @@
 - Done: interaction payload now includes explicit route telemetry (`routeHint`, `routeReason`) for frontend traceability.
 - Goal: evaluate whether route telemetry should be normalized to stable reason codes in addition to localized text.
 
+## PR-5 Progress (In Progress)
+- Done: report markdown narrative rendering has been moved out of `agent.ts` into `backend/src/services/agent-skills/report-template.ts` (skill runtime fallback template).
+- Done: `AgentSkillRuntime` now exposes `buildReportNarrative(...)`, enabling per-skill narrative overrides through optional `SkillHandler.buildReportNarrative`.
+- Done: `AgentService.generateReport(...)` now keeps report data aggregation only (summary/key metrics/traceability/controlling cases) and delegates narrative rendering to skill runtime.
+- Verified: backend build + `validate-report-template-contract.sh` + `validate-agent-orchestration.sh` + `validate-agent-skills-contract.sh`.
+- Next: add first scenario-specific report narrative override in a structural handler (e.g., frame) to demonstrate skill-level differentiation.
+
 ## Validation
 - `npm run lint --prefix backend`
 - `npm test --prefix backend -- --runInBand`

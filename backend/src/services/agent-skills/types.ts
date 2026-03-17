@@ -170,6 +170,18 @@ export interface SkillDefaultProposal {
   reason: string;
 }
 
+export interface SkillReportNarrativeInput {
+  message: string;
+  analysisType: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+  analysisSuccess: boolean;
+  codeCheckText: string;
+  summary: string;
+  keyMetrics: Record<string, unknown>;
+  clauseTraceability: Array<Record<string, unknown>>;
+  controllingCases: Record<string, unknown>;
+  locale: AppLocale;
+}
+
 export interface SkillHandler {
   detectScenario(input: SkillDetectionInput): ScenarioMatch | null;
   parseProvidedValues(values: Record<string, unknown>): DraftExtraction;
@@ -179,6 +191,7 @@ export interface SkillHandler {
   mapLabels(keys: string[], locale: AppLocale): string[];
   buildQuestions(keys: string[], criticalMissing: string[], state: DraftState, locale: AppLocale): InteractionQuestion[];
   buildDefaultProposals?(keys: string[], state: DraftState, locale: AppLocale): SkillDefaultProposal[];
+  buildReportNarrative?(input: SkillReportNarrativeInput): string;
   buildModel(state: DraftState): Record<string, unknown> | undefined;
   resolveStage?(missingKeys: string[], state: DraftState): 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';
 }

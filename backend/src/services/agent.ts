@@ -991,13 +991,15 @@ export class AgentService {
           format: resolvedReportFormat,
         });
         toolCalls.push(reportCall);
-        report = this.generateReport({
+        report = await this.generateReport({
           message: params.message,
           analysisType: resolvedAnalysisType,
           analysis: analyzed.data,
           codeCheck: codeCheckResult,
           format: resolvedReportFormat,
           locale,
+          draft: workingSession.draft,
+          skillIds,
         });
         if (report && resolvedReportOutput === 'file') {
           artifacts = await this.persistReportArtifacts(traceId, report, resolvedReportFormat);
@@ -1560,14 +1562,16 @@ export class AgentService {
       .filter((id): id is string => typeof id === 'string' && id.length > 0);
   }
 
-  private generateReport(params: {
+  private async generateReport(params: {
     message: string;
     analysisType: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
     analysis: unknown;
     codeCheck?: unknown;
     format: AgentReportFormat;
     locale: AppLocale;
-  }): AgentRunResult['report'] {
+    draft?: DraftState;
+    skillIds?: string[];
+  }): Promise<AgentRunResult['report']> {
     const analysisSuccess = Boolean((params.analysis as any)?.success);
     const codeCheckSummary = (params.codeCheck as any)?.summary;
     const codeCheckText = codeCheckSummary
@@ -1601,37 +1605,17 @@ export class AgentService {
       };
     }
 
-    const markdown = [
-      this.localize(params.locale, '# StructureClaw 计算报告', '# StructureClaw Calculation Report'),
-      '',
-      this.localize(params.locale, '## 目录', '## Contents'),
-      this.localize(params.locale, '1. 执行摘要', '1. Executive Summary'),
-      this.localize(params.locale, '2. 关键指标', '2. Key Metrics'),
-      this.localize(params.locale, '3. 条文追溯', '3. Clause Traceability'),
-      this.localize(params.locale, '4. 控制工况', '4. Governing Cases'),
-      '',
-      this.localize(params.locale, '## 执行摘要', '## Executive Summary'),
-      this.localize(params.locale, `- 用户意图：${params.message}`, `- User intent: ${params.message}`),
-      this.localize(params.locale, `- 分析类型：${params.analysisType}`, `- Analysis type: ${params.analysisType}`),
-      this.localize(params.locale, `- 分析结果：${analysisSuccess ? '成功' : '失败'}`, `- Analysis result: ${analysisSuccess ? 'Success' : 'Failure'}`),
-      this.localize(params.locale, `- 规范校核：${codeCheckText}`, `- Code checks: ${codeCheckText}`),
-      '',
+    const markdown = await this.skillRuntime.buildReportNarrative({
+      message: params.message,
+      analysisType: params.analysisType,
+      analysisSuccess,
+      codeCheckText,
       summary,
-      '',
-      this.localize(params.locale, '## 关键指标', '## Key Metrics'),
-      this.localize(params.locale, `- 最大位移: ${String((keyMetrics as Record<string, unknown>).maxAbsDisplacement ?? 'N/A')}`, `- Max displacement: ${String((keyMetrics as Record<string, unknown>).maxAbsDisplacement ?? 'N/A')}`),
-      this.localize(params.locale, `- 最大轴力: ${String((keyMetrics as Record<string, unknown>).maxAbsAxialForce ?? 'N/A')}`, `- Max axial force: ${String((keyMetrics as Record<string, unknown>).maxAbsAxialForce ?? 'N/A')}`),
-      this.localize(params.locale, `- 最大剪力: ${String((keyMetrics as Record<string, unknown>).maxAbsShearForce ?? 'N/A')}`, `- Max shear force: ${String((keyMetrics as Record<string, unknown>).maxAbsShearForce ?? 'N/A')}`),
-      this.localize(params.locale, `- 最大弯矩: ${String((keyMetrics as Record<string, unknown>).maxAbsMoment ?? 'N/A')}`, `- Max moment: ${String((keyMetrics as Record<string, unknown>).maxAbsMoment ?? 'N/A')}`),
-      this.localize(params.locale, `- 最大反力: ${String((keyMetrics as Record<string, unknown>).maxAbsReaction ?? 'N/A')}`, `- Max reaction: ${String((keyMetrics as Record<string, unknown>).maxAbsReaction ?? 'N/A')}`),
-      this.localize(params.locale, `- 校核通过率: ${String((keyMetrics as Record<string, unknown>).codeCheckPassRate ?? 'N/A')}`, `- Code-check pass rate: ${String((keyMetrics as Record<string, unknown>).codeCheckPassRate ?? 'N/A')}`),
-      '',
-      this.localize(params.locale, '## 条文追溯', '## Clause Traceability'),
-      ...this.renderClauseTraceabilityMarkdown(clauseTraceability, params.locale),
-      '',
-      this.localize(params.locale, '## 控制工况', '## Governing Cases'),
-      ...this.renderControllingCasesMarkdown(controllingCases, params.locale),
-    ].join('\n');
+      keyMetrics,
+      clauseTraceability,
+      controllingCases,
+      locale: params.locale,
+    }, params.draft, params.skillIds);
 
     return {
       summary,
@@ -1732,44 +1716,6 @@ export class AgentService {
       controlElementMoment: envelopeObject['controlElementMoment'] ?? null,
       controlNodeReaction: envelopeObject['controlNodeReaction'] ?? null,
     };
-  }
-
-  private renderClauseTraceabilityMarkdown(traceability: Array<Record<string, unknown>>, locale: AppLocale): string[] {
-    if (traceability.length === 0) {
-      return [this.localize(locale, '- 无条文追溯数据', '- No clause traceability data')];
-    }
-    return traceability.slice(0, 8).map((row) => {
-      const elementId = row['elementId'] ?? 'unknown';
-      const check = row['check'] ?? 'unknown';
-      const clause = row['clause'] ?? '';
-      const utilization = row['utilization'] ?? 'N/A';
-      const status = row['status'] ?? 'unknown';
-      return this.localize(
-        locale,
-        `- 构件 ${String(elementId)} / ${String(check)} / ${String(clause)} / 利用率 ${String(utilization)} / ${String(status)}`,
-        `- Element ${String(elementId)} / ${String(check)} / ${String(clause)} / utilization ${String(utilization)} / ${String(status)}`
-      );
-    });
-  }
-
-  private renderControllingCasesMarkdown(controllingCases: Record<string, unknown>, locale: AppLocale): string[] {
-    const batchControlCaseRaw = controllingCases['batchControlCase'];
-    const batchControlCase = batchControlCaseRaw && typeof batchControlCaseRaw === 'object'
-      ? batchControlCaseRaw as Record<string, unknown>
-      : {};
-    const lines = [
-      this.localize(locale, `- 批量位移控制工况: ${String(batchControlCase['displacement'] ?? 'N/A')}`, `- Governing displacement case: ${String(batchControlCase['displacement'] ?? 'N/A')}`),
-      this.localize(locale, `- 批量轴力控制工况: ${String(batchControlCase['axialForce'] ?? 'N/A')}`, `- Governing axial-force case: ${String(batchControlCase['axialForce'] ?? 'N/A')}`),
-      this.localize(locale, `- 批量剪力控制工况: ${String(batchControlCase['shearForce'] ?? 'N/A')}`, `- Governing shear-force case: ${String(batchControlCase['shearForce'] ?? 'N/A')}`),
-      this.localize(locale, `- 批量弯矩控制工况: ${String(batchControlCase['moment'] ?? 'N/A')}`, `- Governing moment case: ${String(batchControlCase['moment'] ?? 'N/A')}`),
-      this.localize(locale, `- 批量反力控制工况: ${String(batchControlCase['reaction'] ?? 'N/A')}`, `- Governing reaction case: ${String(batchControlCase['reaction'] ?? 'N/A')}`),
-      this.localize(locale, `- 位移控制节点: ${String(controllingCases['controlNodeDisplacement'] ?? 'N/A')}`, `- Control displacement node: ${String(controllingCases['controlNodeDisplacement'] ?? 'N/A')}`),
-      this.localize(locale, `- 轴力控制单元: ${String(controllingCases['controlElementAxialForce'] ?? 'N/A')}`, `- Control axial-force element: ${String(controllingCases['controlElementAxialForce'] ?? 'N/A')}`),
-      this.localize(locale, `- 剪力控制单元: ${String(controllingCases['controlElementShearForce'] ?? 'N/A')}`, `- Control shear-force element: ${String(controllingCases['controlElementShearForce'] ?? 'N/A')}`),
-      this.localize(locale, `- 弯矩控制单元: ${String(controllingCases['controlElementMoment'] ?? 'N/A')}`, `- Control moment element: ${String(controllingCases['controlElementMoment'] ?? 'N/A')}`),
-      this.localize(locale, `- 反力控制节点: ${String(controllingCases['controlNodeReaction'] ?? 'N/A')}`, `- Control reaction node: ${String(controllingCases['controlNodeReaction'] ?? 'N/A')}`),
-    ];
-    return lines;
   }
 
   private extractAnalysisSummary(analysis: unknown): Record<string, unknown> {
