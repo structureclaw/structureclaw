@@ -1900,11 +1900,16 @@ export function AIConsole() {
       details.push({
         id: engineId,
         name: engine.name || engineId,
-        reasons: reasonTexts,
+        reasons: [...reasonTexts].sort(),
       })
     }
 
-    return details
+    return details.sort((left, right) => {
+      if (left.reasons.length !== right.reasons.length) {
+        return right.reasons.length - left.reasons.length
+      }
+      return left.name.localeCompare(right.name)
+    })
   }, [enabledEngines, matrixCompatibleEngineIds, matrixReasonTextsByEngine])
 
   useEffect(() => {
@@ -1925,8 +1930,19 @@ export function AIConsole() {
     [compatibleEnabledEngines, selectedEngineId]
   )
   const candidateEngines = useMemo(
-    () => compatibleEnabledEngines.filter((engine) => engine.id !== selectedEngineId),
-    [compatibleEnabledEngines, selectedEngineId]
+    () => compatibleEnabledEngines
+      .filter((engine) => engine.id !== selectedEngineId)
+      .sort((left, right) => {
+        const leftIssue = getEngineSelectionIssue(left, analysisType, currentModelFamily, t, matrixReasonTextsByEngine[left.id])
+        const rightIssue = getEngineSelectionIssue(right, analysisType, currentModelFamily, t, matrixReasonTextsByEngine[right.id])
+        const leftPriority = leftIssue.length === 0 ? 0 : 1
+        const rightPriority = rightIssue.length === 0 ? 0 : 1
+        if (leftPriority !== rightPriority) {
+          return leftPriority - rightPriority
+        }
+        return (left.name || left.id).localeCompare(right.name || right.id)
+      }),
+    [analysisType, compatibleEnabledEngines, currentModelFamily, matrixReasonTextsByEngine, selectedEngineId, t]
   )
 
   useEffect(() => {
@@ -3408,7 +3424,8 @@ export function AIConsole() {
                                       <div key={item.id} className="text-xs leading-5 text-muted-foreground">
                                         <span className="font-medium text-foreground">{item.name}</span>
                                         {' · '}
-                                        {item.reasons.join(', ')}
+                                        {item.reasons[0] || ''}
+                                        {item.reasons.length > 1 ? ' ...' : ''}
                                       </div>
                                     ))}
                                   </div>
