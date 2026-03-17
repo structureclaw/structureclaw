@@ -117,20 +117,46 @@ describe('AIConsole grouped skill picker', () => {
     await user.click(screen.getByRole('button', { name: /expand skills/i }))
 
     await waitFor(() => {
-      expect(screen.getByText(/structure-type skills/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/structure-type skills/i).length).toBeGreaterThan(0)
       expect(screen.getByRole('button', { name: /clear category/i })).toBeInTheDocument()
     })
 
     await user.click(screen.getByRole('button', { name: 'Beam' }))
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /select category/i })).toBeInTheDocument()
+      const enabledSelectButtons = screen.getAllByRole('button', { name: /select category/i }).filter((button) => !button.hasAttribute('disabled'))
+      expect(enabledSelectButtons.length).toBeGreaterThan(0)
     })
 
-    await user.click(screen.getByRole('button', { name: /select category/i }))
+    const enabledSelectButtons = screen.getAllByRole('button', { name: /select category/i }).filter((button) => !button.hasAttribute('disabled'))
+    await user.click(enabledSelectButtons[0])
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /clear category/i })).toBeInTheDocument()
+    })
+  })
+
+  it('shows all ten domain groups even when some are empty', async () => {
+    const user = userEvent.setup()
+    render(<AIConsole />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /expand engineering context/i })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /expand skills/i }))
+
+    await waitFor(() => {
+      expect(screen.getAllByText(/structure-type skills/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/material & constitutive skills/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/geometry input skills/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/load & boundary skills/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/analysis strategy skills/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/code-check skills/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/result postprocess skills/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/visualization skills/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/report & export skills/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/generic fallback skills/i).length).toBeGreaterThan(0)
     })
   })
 })

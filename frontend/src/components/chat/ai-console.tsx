@@ -170,6 +170,19 @@ type SkillDomain =
   | 'generic-fallback'
   | 'unknown'
 
+const ALL_SKILL_DOMAINS: SkillDomain[] = [
+  'structure-type',
+  'material-constitutive',
+  'geometry-input',
+  'load-boundary',
+  'analysis-strategy',
+  'code-check',
+  'result-postprocess',
+  'visualization',
+  'report-export',
+  'generic-fallback',
+]
+
 type CapabilitySkillSummary = {
   id: string
   domain?: SkillDomain
@@ -223,19 +236,7 @@ type SkillHubInstalledItem = {
 
 function normalizeSkillDomain(value: unknown): SkillDomain {
   const raw = typeof value === 'string' ? value : ''
-  const supported: SkillDomain[] = [
-    'structure-type',
-    'material-constitutive',
-    'geometry-input',
-    'load-boundary',
-    'analysis-strategy',
-    'code-check',
-    'result-postprocess',
-    'visualization',
-    'report-export',
-    'generic-fallback',
-  ]
-  return supported.includes(raw as SkillDomain) ? (raw as SkillDomain) : 'unknown'
+  return ALL_SKILL_DOMAINS.includes(raw as SkillDomain) ? (raw as SkillDomain) : 'unknown'
 }
 
 function resolveSkillDomainLabel(domain: SkillDomain, t: (key: MessageKey) => string) {
@@ -1293,9 +1294,12 @@ export function AIConsole() {
 
   const groupedSkills = useMemo(() => {
     const domainOrder = new Map<string, number>()
+    ALL_SKILL_DOMAINS.forEach((domain, index) => {
+      domainOrder.set(domain, index)
+    })
     ;(capabilityMatrix?.domainSummaries || []).forEach((summary, index) => {
       const domain = normalizeSkillDomain(summary?.domain)
-      if (!domainOrder.has(domain)) {
+      if (domain !== 'unknown' && !domainOrder.has(domain)) {
         domainOrder.set(domain, index)
       }
     })
@@ -1309,7 +1313,16 @@ export function AIConsole() {
     })
 
     const selectedSet = new Set(selectedSkillIds)
-    return Array.from(bucket.entries())
+    const explicitDomains = Array.from(new Set<SkillDomain>([
+      ...ALL_SKILL_DOMAINS,
+      ...Array.from(bucket.keys()),
+    ]))
+
+    return explicitDomains
+      .map((domain) => {
+        const skills = bucket.get(domain) || []
+        return [domain, skills] as const
+      })
       .map(([domain, skills]) => {
         const sorted = [...skills].sort((a, b) => {
           const left = locale === 'zh' ? (a.name.zh || a.id) : (a.name.en || a.id)
@@ -1337,15 +1350,8 @@ export function AIConsole() {
   }, [availableSkills, capabilityMatrix, locale, selectedSkillIds, skillDomainById, t])
 
   const skillHubDomainOptions = useMemo(() => {
-    const domains = new Set<SkillDomain>()
-    skillHubCatalog.forEach((item) => {
-      const domain = normalizeSkillDomain(item.domain)
-      if (domain !== 'unknown') {
-        domains.add(domain)
-      }
-    })
-    return Array.from(domains).sort((a, b) => resolveSkillDomainLabel(a, t).localeCompare(resolveSkillDomainLabel(b, t)))
-  }, [skillHubCatalog, t])
+    return [...ALL_SKILL_DOMAINS]
+  }, [])
 
   const skillHubVisibleCatalog = useMemo(() => {
     if (skillHubDomainFilter === 'all') {
@@ -2940,12 +2946,16 @@ export function AIConsole() {
                               <button
                                 type="button"
                                 onClick={() => toggleSkillDomain(group.skillIds)}
+                                disabled={group.skillIds.length === 0}
                                 className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground transition hover:text-foreground dark:border-white/10 dark:bg-white/5"
                               >
                                 {allSelected ? t('skillClearDomainSelection') : t('skillSelectDomainSelection')}
                               </button>
                             </div>
                             <div className="flex flex-wrap gap-2">
+                              {group.skills.length === 0 && (
+                                <p className="text-xs text-muted-foreground">{t('skillDomainNoInstalledSkills')}</p>
+                              )}
                               {group.skills.map((skill) => {
                                 const label = locale === 'zh' ? (skill.name.zh || skill.id) : (skill.name.en || skill.id)
                                 const selected = selectedSkillIds.includes(skill.id)
