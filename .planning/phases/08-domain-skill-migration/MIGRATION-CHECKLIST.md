@@ -52,13 +52,13 @@
 - [x] Capability matrix includes analysis strategy compatibility
 
 ## P08-6
-- [ ] Code-check orchestration migrated to code-check domain
-- [ ] Postprocess metrics/envelope/governing cases migrated
-- [ ] Output schema compatibility preserved
+- [x] Code-check orchestration migrated to code-check domain
+- [x] Postprocess metrics/envelope/governing cases migrated
+- [x] Output schema compatibility preserved
 
 ## Done Definition
 - [ ] All phase validations pass
-- [ ] make backend-regression passes
+- [x] make backend-regression passes
 - [ ] Plan and docs synced
 - [ ] Baseline mode works when skill repository is unavailable
 - [ ] External SkillHub path works without storing extension skills in this GitHub repo
