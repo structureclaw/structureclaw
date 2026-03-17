@@ -99,3 +99,47 @@
 - `agent.ts` shrinks and no longer contains policy keyword heuristics/normalization internals.
 - API behavior remains backward compatible.
 - Regression scripts pass.
+
+## Next Stage Baseline (Domain Skill Taxonomy)
+
+### Guiding Principle
+- Skills are organized by capability domains (not only by structure type).
+- Skill loading is optional enhancement; it must not block core analysis execution.
+- When no domain skill is loaded, the system must still run via LLM-driven generic input extraction and core engine execution.
+
+### Domain Skill Categories
+1. Structure-Type Skills
+  - Scenario identification and type-specific templates (beam/frame/truss/plate-shell, etc.).
+  - Type-specific defaults and modeling constraints.
+2. Material and Constitutive Skills
+  - Material cards, constitutive model selection, damping/degradation parameters.
+3. Geometry Input Skills
+  - Natural-language geometry parsing, parametric generation, model import/conversion adapters.
+4. Load and Boundary Skills
+  - Load case/combination interpretation, boundary condition extraction and consistency checks.
+5. Analysis Strategy Skills
+  - Static/dynamic/seismic/nonlinear strategy selection and solver/step parameterization.
+6. Code-Check Skills
+  - Design code clause mapping, utilization checks, traceability output.
+7. Result Postprocess Skills
+  - Envelopes, governing cases, key engineering indicators, anomaly diagnostics.
+8. Visualization Skills
+  - Model/result rendering payload shaping, annotation and comparison interaction helpers.
+9. Report and Export Skills
+  - Narrative templates, review summaries, JSON/Markdown/PDF export styles.
+10. Generic Fallback Skills
+  - Minimum computable input extraction and conservative defaulting when no other skills are loaded.
+
+### No-Skill Fallback Policy (Mandatory)
+- If user loads no domain skills, route to generic fallback path automatically.
+- Use LLM extraction to produce minimum computable model input.
+- Ask clarification for critical missing fields; allow conservative auto-decide when user approves.
+- Execute core OpenSees pipeline directly and return baseline analysis/report outputs.
+
+### Execution Plan (Proposed)
+1. Define domain-skill protocol and dependency/conflict metadata (`requires`, `conflicts`, `priority`).
+2. Add no-skill fallback contract tests to guarantee non-blocking execution path.
+3. Migrate current functionality to domain categories incrementally while keeping API compatibility.
+
+## Handoff
+- Next execution phase is tracked in `.planning/phases/08-domain-skill-migration/PLAN.md`.
