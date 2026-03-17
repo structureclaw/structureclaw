@@ -222,11 +222,12 @@ Validation:
 - Do not start next phase until current phase acceptance criteria are green.
 - Baseline mode must remain fully usable when repository service is unavailable.
 
+Detailed execution blueprint:
+- `.planning/phases/08-domain-skill-migration/SURGERY-PLAN.md`
+
 ## Immediate Next Actions
-1. Add `scripts/validate-no-skill-fallback-contract.sh` covering `skillIds=[]` execute/chat routes and deterministic clarification behavior.
-2. Add no-skill contract case for generic complete request: no template-confirmation prompt, direct `ready` model.
-3. Add no-skill contract case for generic incomplete request: clarify only missing schema fields (no template list).
-4. Introduce observability reason codes: `generic_model_ready`, `generic_missing_fields`, `skill_template_route`.
-5. Refactor remaining template keyword/label logic from core service into skill handlers/runtime.
-6. Extend frontend debug panel to surface modeling source + route reason code in bilingual labels.
-7. Complete frontend domain-grouped skill loading UX and external repository contract drafts.
+1. Execute PR-S1/PR-S2 from `SURGERY-PLAN.md`: isolate no-skill runtime and remove no-skill template branching from core.
+2. Execute PR-S3: migrate residual template labels/questions/defaults into skill handlers only.
+3. Add `scripts/validate-no-skill-fallback-contract.sh` and wire contract cases from PR-S4.
+4. Implement telemetry reason codes from PR-S5 and surface source/reason in debug details.
+5. Execute PR-S6 dead-code removal and CI guard rails for forbidden template literals in core no-skill path.
