@@ -157,6 +157,30 @@ type AgentSkillSummary = {
   autoLoadByDefault?: boolean
 }
 
+type SkillDomain =
+  | 'structure-type'
+  | 'material-constitutive'
+  | 'geometry-input'
+  | 'load-boundary'
+  | 'analysis-strategy'
+  | 'code-check'
+  | 'result-postprocess'
+  | 'visualization'
+  | 'report-export'
+  | 'generic-fallback'
+  | 'unknown'
+
+type CapabilitySkillSummary = {
+  id: string
+  domain?: SkillDomain
+}
+
+type CapabilityDomainSummary = {
+  domain: SkillDomain
+  skillIds?: string[]
+  autoLoadSkillIds?: string[]
+}
+
 type AnalysisEngineSummary = {
   id: string
   name?: string
@@ -174,8 +198,42 @@ type AnalysisEngineSummary = {
 }
 
 type CapabilityMatrixPayload = {
+  skills?: CapabilitySkillSummary[]
+  domainSummaries?: CapabilityDomainSummary[]
+  skillDomainById?: Record<string, SkillDomain>
   validEngineIdsBySkill?: Record<string, string[]>
   filteredEngineReasonsBySkill?: Record<string, Record<string, string[]>>
+}
+
+function normalizeSkillDomain(value: unknown): SkillDomain {
+  const raw = typeof value === 'string' ? value : ''
+  const supported: SkillDomain[] = [
+    'structure-type',
+    'material-constitutive',
+    'geometry-input',
+    'load-boundary',
+    'analysis-strategy',
+    'code-check',
+    'result-postprocess',
+    'visualization',
+    'report-export',
+    'generic-fallback',
+  ]
+  return supported.includes(raw as SkillDomain) ? (raw as SkillDomain) : 'unknown'
+}
+
+function resolveSkillDomainLabel(domain: SkillDomain, t: (key: MessageKey) => string) {
+  if (domain === 'structure-type') return t('skillDomainStructureType')
+  if (domain === 'material-constitutive') return t('skillDomainMaterialConstitutive')
+  if (domain === 'geometry-input') return t('skillDomainGeometryInput')
+  if (domain === 'load-boundary') return t('skillDomainLoadBoundary')
+  if (domain === 'analysis-strategy') return t('skillDomainAnalysisStrategy')
+  if (domain === 'code-check') return t('skillDomainCodeCheck')
+  if (domain === 'result-postprocess') return t('skillDomainResultPostprocess')
+  if (domain === 'visualization') return t('skillDomainVisualization')
+  if (domain === 'report-export') return t('skillDomainReportExport')
+  if (domain === 'generic-fallback') return t('skillDomainGenericFallback')
+  return t('skillDomainUnknown')
 }
 
 function mapCapabilityReasonToText(reason: string, t: (key: MessageKey) => string) {
@@ -1183,6 +1241,79 @@ export function AIConsole() {
     [availableSkills]
   )
 
+  const skillDomainById = useMemo<Record<string, SkillDomain>>(() => {
+    const map: Record<string, SkillDomain> = {}
+    const matrixMap = capabilityMatrix?.skillDomainById
+    if (matrixMap && typeof matrixMap === 'object') {
+      Object.entries(matrixMap).forEach(([skillId, domain]) => {
+        map[skillId] = normalizeSkillDomain(domain)
+      })
+    }
+
+    const matrixSkills = Array.isArray(capabilityMatrix?.skills) ? capabilityMatrix.skills : []
+    matrixSkills.forEach((skill) => {
+      if (!skill || typeof skill !== 'object' || typeof skill.id !== 'string') {
+        return
+      }
+      if (!map[skill.id]) {
+        map[skill.id] = normalizeSkillDomain(skill.domain)
+      }
+    })
+
+    availableSkills.forEach((skill) => {
+      if (!map[skill.id]) {
+        map[skill.id] = 'unknown'
+      }
+    })
+
+    return map
+  }, [availableSkills, capabilityMatrix])
+
+  const groupedSkills = useMemo(() => {
+    const domainOrder = new Map<string, number>()
+    ;(capabilityMatrix?.domainSummaries || []).forEach((summary, index) => {
+      const domain = normalizeSkillDomain(summary?.domain)
+      if (!domainOrder.has(domain)) {
+        domainOrder.set(domain, index)
+      }
+    })
+
+    const bucket = new Map<SkillDomain, AgentSkillSummary[]>()
+    availableSkills.forEach((skill) => {
+      const domain = skillDomainById[skill.id] || 'unknown'
+      const list = bucket.get(domain) || []
+      list.push(skill)
+      bucket.set(domain, list)
+    })
+
+    const selectedSet = new Set(selectedSkillIds)
+    return Array.from(bucket.entries())
+      .map(([domain, skills]) => {
+        const sorted = [...skills].sort((a, b) => {
+          const left = locale === 'zh' ? (a.name.zh || a.id) : (a.name.en || a.id)
+          const right = locale === 'zh' ? (b.name.zh || b.id) : (b.name.en || b.id)
+          return left.localeCompare(right)
+        })
+        const skillIds = sorted.map((skill) => skill.id)
+        const selectedCount = skillIds.filter((id) => selectedSet.has(id)).length
+        return {
+          domain,
+          label: resolveSkillDomainLabel(domain, t),
+          skills: sorted,
+          skillIds,
+          selectedCount,
+        }
+      })
+      .sort((a, b) => {
+        const left = domainOrder.has(a.domain) ? domainOrder.get(a.domain)! : Number.MAX_SAFE_INTEGER
+        const right = domainOrder.has(b.domain) ? domainOrder.get(b.domain)! : Number.MAX_SAFE_INTEGER
+        if (left !== right) {
+          return left - right
+        }
+        return a.label.localeCompare(b.label)
+      })
+  }, [availableSkills, capabilityMatrix, locale, selectedSkillIds, skillDomainById, t])
+
   useEffect(() => {
     setMessages((current) => {
       if (current.length !== 1 || current[0]?.id !== 'welcome') {
@@ -1745,6 +1876,19 @@ export function AIConsole() {
         ? current.filter((item) => item !== skillId)
         : [...current, skillId]
     ))
+  }
+
+  function toggleSkillDomain(skillIds: string[]) {
+    if (skillIds.length === 0) {
+      return
+    }
+    setSelectedSkillIds((current) => {
+      const allSelected = skillIds.every((skillId) => current.includes(skillId))
+      if (allSelected) {
+        return current.filter((skillId) => !skillIds.includes(skillId))
+      }
+      return Array.from(new Set([...current, ...skillIds]))
+    })
   }
 
   function appendMessage(message: Message) {
@@ -2633,24 +2777,47 @@ export function AIConsole() {
                   </div>
 
                   {skillsOpen && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {availableSkills.map((skill) => {
-                        const label = locale === 'zh' ? (skill.name.zh || skill.id) : (skill.name.en || skill.id)
-                        const selected = selectedSkillIds.includes(skill.id)
+                    <div className="mt-3 space-y-3">
+                      <p className="text-xs text-muted-foreground">{t('skillSelectionCatalogHint')}</p>
+                      {groupedSkills.map((group) => {
+                        const allSelected = group.skills.length > 0 && group.selectedCount === group.skills.length
                         return (
-                          <button
-                            key={skill.id}
-                            type="button"
-                            onClick={() => toggleSkill(skill.id)}
-                            className={cn(
-                              'rounded-full border px-3 py-1.5 text-sm transition',
-                              selected
-                                ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
-                                : 'border-border/70 bg-background/70 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
-                            )}
-                          >
-                            {label}
-                          </button>
+                          <div key={group.domain} className="rounded-2xl border border-border/70 bg-background/60 p-2.5 dark:border-white/10 dark:bg-slate-950/30">
+                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-xs font-medium text-foreground">
+                                {group.label}
+                                <span className="ml-2 text-muted-foreground">{group.selectedCount}/{group.skills.length}</span>
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() => toggleSkillDomain(group.skillIds)}
+                                className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground transition hover:text-foreground dark:border-white/10 dark:bg-white/5"
+                              >
+                                {allSelected ? t('skillClearDomainSelection') : t('skillSelectDomainSelection')}
+                              </button>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              {group.skills.map((skill) => {
+                                const label = locale === 'zh' ? (skill.name.zh || skill.id) : (skill.name.en || skill.id)
+                                const selected = selectedSkillIds.includes(skill.id)
+                                return (
+                                  <button
+                                    key={skill.id}
+                                    type="button"
+                                    onClick={() => toggleSkill(skill.id)}
+                                    className={cn(
+                                      'rounded-full border px-3 py-1.5 text-sm transition',
+                                      selected
+                                        ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
+                                        : 'border-border/70 bg-background/70 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
+                                    )}
+                                  >
+                                    {label}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          </div>
                         )
                       })}
                     </div>
