@@ -9,8 +9,16 @@ import {
 } from '../../services/agent-skills/legacy.js';
 import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../services/agent-skills/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../services/agent-skills/fallback.js';
+import { buildDefaultReportNarrative } from '../../services/agent-skills/report-template.js';
 import type { AppLocale } from '../../services/locale.js';
-import type { DraftExtraction, DraftState, InteractionQuestion, SkillDefaultProposal, SkillHandler } from '../../services/agent-skills/types.js';
+import type {
+  DraftExtraction,
+  DraftState,
+  InteractionQuestion,
+  SkillDefaultProposal,
+  SkillHandler,
+  SkillReportNarrativeInput,
+} from '../../services/agent-skills/types.js';
 
 const ALLOWED_KEYS = ['lengthM', 'loadKN', 'loadType', 'loadPosition'] as const;
 
@@ -97,6 +105,21 @@ function buildTrussQuestions(
   });
 }
 
+function buildTrussReportNarrative(input: SkillReportNarrativeInput): string {
+  const base = buildDefaultReportNarrative(input);
+  const trussSpecificNotes = [
+    '',
+    input.locale === 'zh' ? '## 桁架专项说明' : '## Truss-Specific Notes',
+    input.locale === 'zh'
+      ? '- 桁架建议优先采用节点荷载与铰接理想化假定，复核杆件受拉受压分布是否符合预期。'
+      : '- For trusses, prioritize nodal loads and pin-joint idealization; verify tension/compression distribution across members.',
+    input.locale === 'zh'
+      ? '- 若节点偏心、次杆参与受力或连接刚度不可忽略，建议升级为更细化杆系/实体模型。'
+      : '- If joint eccentricity, secondary members, or connection stiffness are non-negligible, upgrade to a refined truss/solid model.',
+  ];
+  return [base, ...trussSpecificNotes].join('\n');
+}
+
 export const handler: SkillHandler = {
   detectScenario({ message, locale }) {
     const text = message.toLowerCase();
@@ -125,6 +148,9 @@ export const handler: SkillHandler = {
   },
   buildDefaultProposals(keys, state, locale) {
     return buildTrussDefaultProposals(keys, state, locale);
+  },
+  buildReportNarrative(input) {
+    return buildTrussReportNarrative(input);
   },
   buildModel(state) {
     return buildLegacyModel({ ...state, inferredType: 'truss' });

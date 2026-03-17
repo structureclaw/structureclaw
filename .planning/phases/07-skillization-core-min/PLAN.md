@@ -67,8 +67,9 @@
 - Done: `AgentSkillRuntime` now exposes `buildReportNarrative(...)`, enabling per-skill narrative overrides through optional `SkillHandler.buildReportNarrative`.
 - Done: `AgentService.generateReport(...)` now keeps report data aggregation only (summary/key metrics/traceability/controlling cases) and delegates narrative rendering to skill runtime.
 - Done: frame skill now provides its own report narrative override (appends frame-specific guidance section in bilingual markdown output).
+- Done: beam / truss / portal-frame skills now provide their own narrative overrides with bilingual scenario-specific guidance sections.
 - Verified: backend build + `validate-report-template-contract.sh` + `validate-agent-orchestration.sh` + `validate-agent-skills-contract.sh`.
-- Next: extend narrative overrides to additional structural skills (beam/truss/portal) with scenario-focused guidance.
+- Next: decide whether double-span-beam should inherit beam narrative or provide an independent continuous-beam section.
 
 ## Validation
 - `npm run lint --prefix backend`

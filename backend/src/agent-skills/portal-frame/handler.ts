@@ -9,8 +9,16 @@ import {
 } from '../../services/agent-skills/legacy.js';
 import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../services/agent-skills/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../services/agent-skills/fallback.js';
+import { buildDefaultReportNarrative } from '../../services/agent-skills/report-template.js';
 import type { AppLocale } from '../../services/locale.js';
-import type { DraftExtraction, DraftState, InteractionQuestion, SkillDefaultProposal, SkillHandler } from '../../services/agent-skills/types.js';
+import type {
+  DraftExtraction,
+  DraftState,
+  InteractionQuestion,
+  SkillDefaultProposal,
+  SkillHandler,
+  SkillReportNarrativeInput,
+} from '../../services/agent-skills/types.js';
 
 const ALLOWED_KEYS = ['spanLengthM', 'heightM', 'loadKN', 'loadType', 'loadPosition'] as const;
 
@@ -108,6 +116,21 @@ function buildPortalFrameQuestions(
   });
 }
 
+function buildPortalFrameReportNarrative(input: SkillReportNarrativeInput): string {
+  const base = buildDefaultReportNarrative(input);
+  const portalSpecificNotes = [
+    '',
+    input.locale === 'zh' ? '## 门式刚架专项说明' : '## Portal-Frame Notes',
+    input.locale === 'zh'
+      ? '- 门式刚架结果受檐口高度、跨高比与屋面荷载分布影响显著，建议优先复核几何与荷载简化假定。'
+      : '- Portal-frame response is strongly affected by eave height, span-to-height ratio, and roof load distribution; verify geometric/load simplifications first.',
+    input.locale === 'zh'
+      ? '- 若存在吊车荷载、风吸力分区或变截面刚架构件，建议补充专项工况后重新校核。'
+      : '- If crane loads, wind suction zoning, or tapered members are present, add dedicated load cases and rerun checks.',
+  ];
+  return [base, ...portalSpecificNotes].join('\n');
+}
+
 export const handler: SkillHandler = {
   detectScenario({ message, locale }) {
     const text = message.toLowerCase();
@@ -142,6 +165,9 @@ export const handler: SkillHandler = {
   },
   buildDefaultProposals(keys, state, locale) {
     return buildPortalFrameDefaultProposals(keys, state, locale);
+  },
+  buildReportNarrative(input) {
+    return buildPortalFrameReportNarrative(input);
   },
   buildModel(state) {
     return buildLegacyModel({ ...state, inferredType: 'portal-frame' });

@@ -9,8 +9,16 @@ import {
 } from '../../services/agent-skills/legacy.js';
 import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../services/agent-skills/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../services/agent-skills/fallback.js';
+import { buildDefaultReportNarrative } from '../../services/agent-skills/report-template.js';
 import type { AppLocale } from '../../services/locale.js';
-import type { DraftExtraction, DraftState, InteractionQuestion, SkillDefaultProposal, SkillHandler } from '../../services/agent-skills/types.js';
+import type {
+  DraftExtraction,
+  DraftState,
+  InteractionQuestion,
+  SkillDefaultProposal,
+  SkillHandler,
+  SkillReportNarrativeInput,
+} from '../../services/agent-skills/types.js';
 
 const ALLOWED_KEYS = ['lengthM', 'supportType', 'loadKN', 'loadType', 'loadPosition'] as const;
 
@@ -110,6 +118,21 @@ function buildBeamQuestions(
   });
 }
 
+function buildBeamReportNarrative(input: SkillReportNarrativeInput): string {
+  const base = buildDefaultReportNarrative(input);
+  const beamSpecificNotes = [
+    '',
+    input.locale === 'zh' ? '## 梁专项说明' : '## Beam-Specific Notes',
+    input.locale === 'zh'
+      ? '- 梁模型结果对支座边界与荷载位置较敏感，建议优先复核支座形式与荷载作用区段。'
+      : '- Beam results are sensitive to boundary conditions and load location; verify support assumptions and loaded segments first.',
+    input.locale === 'zh'
+      ? '- 若为连续梁、变截面梁或存在复杂连接，请补充更细分模型后再比较控制工况。'
+      : '- For continuous beams, variable sections, or complex connections, refine the model before comparing governing cases.',
+  ];
+  return [base, ...beamSpecificNotes].join('\n');
+}
+
 export const handler: SkillHandler = {
   detectScenario({ message, locale }) {
     const text = message.toLowerCase();
@@ -147,6 +170,9 @@ export const handler: SkillHandler = {
   },
   buildDefaultProposals(keys, state, locale) {
     return buildBeamDefaultProposals(keys, state, locale);
+  },
+  buildReportNarrative(input) {
+    return buildBeamReportNarrative(input);
   },
   buildModel(state) {
     return buildLegacyModel({ ...state, inferredType: 'beam' });
