@@ -1191,7 +1191,9 @@ export class AgentService {
     const { params, traceId, startedAt, startedAtMs, locale, mode, toolCalls, plan, sessionKey, workingSession } = args;
     const noSkillMode = this.isNoSkillMode(params.context?.skillIds);
 
-    plan.push(this.localize(locale, '识别结构场景并匹配对话模板', 'Identify the structural scenario and select the matching dialogue template'));
+    plan.push(noSkillMode
+      ? this.localize(locale, '按通用规则提取可计算结构参数', 'Extract computable structural parameters using generic rules')
+      : this.localize(locale, '识别结构场景并匹配对话模板', 'Identify the structural scenario and select the matching dialogue template'));
     plan.push(this.localize(locale, '按当前阶段补齐关键工程参数', 'Collect the key engineering parameters for the current stage'));
 
     const draftCall = this.startToolCall('text-to-model-draft', { message: params.message, conversationId: sessionKey, mode: 'chat' });
@@ -2060,6 +2062,9 @@ export class AgentService {
   private computeMissingFields(state: DraftState): string[] {
     const missing: string[] = [];
     if (state.inferredType === 'unknown') {
+      if (this.isGenericLineModelComputable(state)) {
+        return missing;
+      }
       missing.push('结构体系/构件拓扑描述（不限类型，可直接给结构模型JSON）');
       if (
         state.lengthM === undefined
@@ -2108,6 +2113,10 @@ export class AgentService {
       missing.push('荷载大小（kN）');
     }
     return missing;
+  }
+
+  private isGenericLineModelComputable(state: DraftState): boolean {
+    return state.lengthM !== undefined && state.loadKN !== undefined;
   }
 
   private buildModel(state: DraftState): Record<string, unknown> {
@@ -2464,8 +2473,6 @@ export class AgentService {
 
   private extractDraftByRules(message: string): DraftExtraction {
     const text = message.toLowerCase();
-
-    const inferredType = this.inferDraftType(text);
     const spanLengthM = this.extractNumber(text, [
       /每跨\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
       /双跨[^\d]*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
@@ -2486,16 +2493,18 @@ export class AgentService {
       /(\d+(?:\.\d+)?)\s*(?:kn|千牛)(?!\s*\/\s*m)/i,
       /(load)\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
     ]);
+    const supportType = this.extractSupportType(text) ?? undefined;
     const loadType = this.extractLoadType(text);
-    const loadPosition = this.extractLoadPosition(text, inferredType, loadType);
+    const loadPosition = this.extractLoadPosition(text, 'unknown', loadType);
     const loadPositionM = this.extractLoadPositionOffsetM(text);
+    const inferredType: InferredModelType = supportType || loadPositionM !== undefined ? 'beam' : 'unknown';
 
     return {
       inferredType,
       lengthM: lengthM ?? undefined,
       spanLengthM: spanLengthM ?? undefined,
       heightM: heightM ?? undefined,
-      supportType: this.extractSupportType(text) ?? undefined,
+      supportType,
       loadKN: loadKN ?? undefined,
       loadType,
       loadPosition,
@@ -2522,25 +2531,6 @@ export class AgentService {
     }
 
     return undefined;
-  }
-
-  private inferDraftType(text: string): InferredModelType {
-    if (text.includes('门式刚架') || text.includes('portal frame')) {
-      return 'portal-frame';
-    }
-    if (text.includes('双跨梁') || text.includes('double-span')) {
-      return 'double-span-beam';
-    }
-    if (text.includes('桁架') || text.includes('truss')) {
-      return 'truss';
-    }
-    if (text.includes('钢框架') || text.includes('frame') || text.includes('框架')) {
-      return 'frame';
-    }
-    if (text.includes('梁') || text.includes('beam') || text.includes('悬臂')) {
-      return 'beam';
-    }
-    return 'unknown';
   }
 
   private extractLoadType(text: string): DraftLoadType | undefined {
