@@ -533,6 +533,45 @@ describe('AgentService orchestration', () => {
     expect(result.model).toBeUndefined();
   });
 
+  test('should execute analyze in no-skill mode with rule-based generic fallback when llm is unavailable', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+    svc.engineClient.post = async (path, payload) => {
+      if (path === '/validate') {
+        return { data: { valid: true, schemaVersion: '1.0.0' } };
+      }
+      if (path === '/analyze') {
+        return {
+          data: {
+            schema_version: '1.0.0',
+            analysis_type: payload.type,
+            success: true,
+            error_code: null,
+            message: 'ok',
+            data: {},
+            meta: {},
+          },
+        };
+      }
+      throw new Error(`unexpected path ${path}`);
+    };
+
+    const result = await svc.run({
+      message: '按3m悬臂梁端部10kN点荷载做静力分析',
+      mode: 'execute',
+      context: {
+        locale: 'zh',
+        skillIds: [],
+        userDecision: 'allow_auto_decide',
+        autoCodeCheck: false,
+        includeReport: false,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls.some((item) => item.tool === 'analyze' && item.status === 'success')).toBe(true);
+  });
+
   test('should build a fixed-fixed beam model when the support condition is explicit', async () => {
     const svc = new AgentService();
     svc.llm = null;

@@ -35,6 +35,7 @@ import {
   mergeNoSkillDraftExtraction,
   mergeNoSkillDraftState,
   normalizeNoSkillDraftState,
+  tryNoSkillRuleBasedBuildGenericModel,
   tryNoSkillLlmBuildGenericModel,
   tryNoSkillLlmExtract,
 } from './agent-noskill-runtime.js';
@@ -765,10 +766,29 @@ export class AgentService {
         }
       }
 
-      const finalAssessment = (noSkillMode && draft.model)
+      if (noSkillMode && !draft.model && workingSession.userApprovedAutoDecide) {
+        const fallback = tryNoSkillRuleBasedBuildGenericModel(params.message, workingSession.draft);
+        if (fallback.state) {
+          workingSession.draft = fallback.state;
+          workingSession.updatedAt = Date.now();
+        }
+        if (fallback.model) {
+          normalizedModel = fallback.model;
+          if (draftCall.output && typeof draftCall.output === 'object' && !Array.isArray(draftCall.output)) {
+            draftCall.output = {
+              ...(draftCall.output as Record<string, unknown>),
+              modelGenerated: true,
+              fallbackMode: 'rule-based-generic',
+            };
+          }
+        }
+      }
+
+      const availableModel = normalizedModel || draft.model;
+      const finalAssessment = (noSkillMode && availableModel)
         ? { criticalMissing: [], nonCriticalMissing: [], defaultProposals: [] }
         : await this.assessInteractionNeeds(workingSession, locale, skillIds);
-      if (finalAssessment.criticalMissing.length > 0 || finalAssessment.nonCriticalMissing.length > 0 || !draft.model) {
+      if (finalAssessment.criticalMissing.length > 0 || finalAssessment.nonCriticalMissing.length > 0 || !availableModel) {
         if (sessionKey) {
           await this.setInteractionSession(sessionKey, workingSession);
         }
@@ -835,7 +855,7 @@ export class AgentService {
         return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
       }
 
-      normalizedModel = draft.model;
+      normalizedModel = availableModel;
     }
 
     const resolvedAnalysisType = workingSession.resolved?.analysisType || params.context?.analysisType || this.policy.inferAnalysisType(params.message);
