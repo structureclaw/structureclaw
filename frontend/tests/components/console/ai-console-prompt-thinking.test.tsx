@@ -134,6 +134,8 @@ describe('AIConsole prompt and thinking details', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/prompt snapshot/i)).toBeInTheDocument()
+      expect(screen.getByText(/^skills$/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/beam/i).length).toBeGreaterThan(0)
       expect(screen.getByText(/thinking process/i)).toBeInTheDocument()
       expect(screen.getByText(/tool calls/i)).toBeInTheDocument()
       expect(screen.getAllByText(/analyze_structure/i).length).toBeGreaterThan(0)

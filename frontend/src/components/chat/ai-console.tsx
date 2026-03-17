@@ -44,6 +44,7 @@ type AgentToolCall = {
 
 type MessageDebugDetails = {
   promptSnapshot: string
+  skillIds: string[]
   responseSummary: string
   plan: string[]
   toolCalls: AgentToolCall[]
@@ -313,7 +314,7 @@ function toObjectRecord(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>
 }
 
-function buildMessageDebugDetails(promptSnapshot: string, result: AgentResult): MessageDebugDetails {
+function buildMessageDebugDetails(promptSnapshot: string, skillIds: string[], result: AgentResult): MessageDebugDetails {
   const rawToolCalls = Array.isArray(result.toolCalls) ? result.toolCalls : []
   const safeToolCalls = rawToolCalls.map((call) => {
     const status: AgentToolCall['status'] = call?.status === 'error' ? 'error' : 'success'
@@ -331,6 +332,7 @@ function buildMessageDebugDetails(promptSnapshot: string, result: AgentResult): 
 
   return {
     promptSnapshot,
+    skillIds,
     responseSummary: result.response || '',
     plan: Array.isArray(result.plan) ? result.plan : [],
     toolCalls: safeToolCalls,
@@ -2594,6 +2596,9 @@ export function AIConsole() {
               engineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
             }
       const promptSnapshot = buildPromptSnapshot(trimmedInput, contextPayload as Record<string, unknown>)
+            const debugSkillIds = Array.isArray((contextPayload as Record<string, unknown>).skillIds)
+              ? ((contextPayload as Record<string, unknown>).skillIds as string[])
+              : []
 
       if (action === 'execute') {
         const response = await fetch(`${API_BASE}/api/v1/chat/execute`, {
@@ -2619,7 +2624,7 @@ export function AIConsole() {
           ...(payload as AgentResult),
           requestedEngineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
         }
-        const debugDetails = buildMessageDebugDetails(promptSnapshot, result)
+        const debugDetails = buildMessageDebugDetails(promptSnapshot, debugSkillIds, result)
         if (result.model && typeof result.model === 'object' && !Array.isArray(result.model)) {
           applySynchronizedModel(result.model, 'execute')
         }
@@ -2739,7 +2744,7 @@ export function AIConsole() {
               ...(payload.content as AgentResult),
               requestedEngineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
             }
-            const debugDetails = buildMessageDebugDetails(promptSnapshot, result)
+            const debugDetails = buildMessageDebugDetails(promptSnapshot, debugSkillIds, result)
             if (result.model && typeof result.model === 'object' && !Array.isArray(result.model)) {
               applySynchronizedModel(result.model, action === 'chat' ? 'chat' : 'execute')
             }
@@ -3064,6 +3069,21 @@ export function AIConsole() {
                             <pre className="max-h-52 overflow-auto rounded-xl border border-border/70 bg-background/70 p-2 text-[11px] leading-5 text-foreground dark:border-white/10 dark:bg-black/20">
                               {message.debugDetails.promptSnapshot}
                             </pre>
+                          </div>
+
+                          <div>
+                            <div className="mb-1 text-xs font-medium text-foreground">{t('promptThinkingSkills')}</div>
+                            {message.debugDetails.skillIds.length > 0 ? (
+                              <div className="flex flex-wrap gap-1.5">
+                                {message.debugDetails.skillIds.map((skillId) => (
+                                  <Badge key={`${message.id}-skill-${skillId}`} variant="outline" className="text-[10px]">
+                                    {skillId}
+                                  </Badge>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-muted-foreground">{t('promptThinkingNoSkills')}</div>
+                            )}
                           </div>
 
                           <div>
