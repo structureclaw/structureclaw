@@ -21,7 +21,10 @@ Owner: backend-agent
 - Pruned template-driven deterministic synthesis tests from backend/tests/agent.service.test.mjs.
 - Removed no-skill execute compatibility rule-based fallback from core runtime.
 - Removed no-skill runtime helper functions that performed deterministic template-like synthesis.
+- Removed residual template-coupled span inference from no-skill draft-state merge.
+- Removed template-oriented wording from no-skill LLM extraction prompt constraints.
 - Updated repository-down contract to use explicit computable model input (deterministic, non-LLM-dependent).
+- Added explicit boundary test: no-skill execute must stay blocked when computable model is unavailable.
 - Verified `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs` is green (42/42).
 - Verified `make backend-regression` is green.
 
@@ -30,6 +33,10 @@ Owner: backend-agent
 2. Continue inventory/migration of remaining deterministic template behavior into explicit skill plugins only.
 3. Add boundary tests that prevent template logic from re-entering no-skill runtime.
 4. Re-run targeted/backend regression after each slice.
+
+Latest validation snapshot:
+- `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs`: green (43/43)
+- `make backend-regression`: green
 
 ## Exit Gate For Next-Step Planning
 All items below must be true:

@@ -56,11 +56,7 @@ export function mergeNoSkillDraftState(existing: DraftState | undefined, patch: 
     : (existing?.inferredType || 'unknown');
   const mergedLength = patch.lengthM ?? existing?.lengthM;
   const mergedSpan = patch.spanLengthM ?? existing?.spanLengthM;
-  const spanLengthM = mergedSpan ?? (
-    (mergedType === 'portal-frame' || mergedType === 'double-span-beam')
-      ? mergedLength
-      : undefined
-  );
+  const spanLengthM = mergedSpan;
   const storyCount = patch.storyCount ?? existing?.storyCount ?? patch.storyHeightsM?.length ?? existing?.storyHeightsM?.length;
   const bayCount = patch.bayCount ?? existing?.bayCount ?? patch.bayWidthsM?.length ?? existing?.bayWidthsM?.length;
   const bayCountX = patch.bayCountX ?? existing?.bayCountX ?? patch.bayWidthsXM?.length ?? existing?.bayWidthsXM?.length;
@@ -203,8 +199,8 @@ export async function tryNoSkillLlmExtract(
         'Output constraints:',
         '- Top-level allowed fields only: inferredType,lengthM,spanLengthM,heightM,supportType,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,frameBaseSupportType,loadKN,loadType,loadPosition,loadPositionM.',
         '- Omit unknown fields; do not output null; keep numeric fields as numbers.',
-        '- loadPositionM means offset from left end in meters and should be provided when a beam point-load location is explicit.',
-        'Keep inferredType=unknown unless user explicitly requests a known template.',
+        '- loadPositionM means offset from the start reference in meters and should be provided when a point-load location is explicit.',
+        'Keep inferredType=unknown unless user explicitly requests a known structural category.',
         'Use m and kN as units. Omit fields that are not present.',
         'Extract geometry, boundary, material, section, load, and combination hints when available.',
         `Known parameters: ${prior}`,

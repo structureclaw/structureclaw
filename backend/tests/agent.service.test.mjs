@@ -537,6 +537,27 @@ describe('AgentService orchestration', () => {
     expect(result.toolCalls.some((item) => item.tool === 'analyze' && item.status === 'success')).toBe(true);
   });
 
+  test('should block no-skill execute when computable model is unavailable', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const result = await svc.run({
+      message: '按3m悬臂梁端部10kN点荷载做静力分析',
+      mode: 'execute',
+      context: {
+        locale: 'zh',
+        skillIds: [],
+        userDecision: 'allow_auto_decide',
+        autoCodeCheck: false,
+        includeReport: false,
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.needsModelInput).toBe(true);
+    expect(result.toolCalls.some((item) => item.tool === 'analyze')).toBe(false);
+  });
+
   test('should continue to analyze when validate returns an upstream 502', async () => {
     const svc = new AgentService();
     svc.llm = null;
