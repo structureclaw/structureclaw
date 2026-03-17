@@ -175,6 +175,23 @@ type AnalysisEngineSummary = {
 
 type CapabilityMatrixPayload = {
   validEngineIdsBySkill?: Record<string, string[]>
+  filteredEngineReasonsBySkill?: Record<string, Record<string, string[]>>
+}
+
+function mapCapabilityReasonToText(reason: string, t: (key: MessageKey) => string) {
+  if (reason === 'engine_disabled') {
+    return t('capabilityReasonEngineDisabled')
+  }
+  if (reason === 'engine_unavailable') {
+    return t('capabilityReasonEngineUnavailable')
+  }
+  if (reason === 'engine_status_unavailable') {
+    return t('capabilityReasonEngineStatusUnavailable')
+  }
+  if (reason === 'model_family_mismatch') {
+    return t('capabilityReasonModelFamilyMismatch')
+  }
+  return reason
 }
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
@@ -1524,6 +1541,41 @@ export function AIConsole() {
 
   const engineCandidatesFilteredBySkills = matrixCompatibleEngineIds !== null
 
+  const filteredOutEngineDetails = useMemo(() => {
+    const targetSkillIds = selectedSkillIds.length > 0 ? selectedSkillIds : defaultSkillIds
+    const reasonsBySkill = capabilityMatrix?.filteredEngineReasonsBySkill
+    if (!reasonsBySkill || !matrixCompatibleEngineIds || targetSkillIds.length === 0) {
+      return [] as Array<{ id: string; name: string; reasons: string[] }>
+    }
+
+    const details: Array<{ id: string; name: string; reasons: string[] }> = []
+    const enabledById = new Map(enabledEngines.map((engine) => [engine.id, engine]))
+
+    for (const [engineId, engine] of enabledById.entries()) {
+      if (matrixCompatibleEngineIds.has(engineId)) {
+        continue
+      }
+      const reasonSet = new Set<string>()
+      for (const skillId of targetSkillIds) {
+        const reasons = reasonsBySkill[skillId]?.[engineId]
+        if (!Array.isArray(reasons)) {
+          continue
+        }
+        reasons.forEach((reason) => reasonSet.add(reason))
+      }
+      if (reasonSet.size === 0) {
+        continue
+      }
+      details.push({
+        id: engineId,
+        name: engine.name || engineId,
+        reasons: Array.from(reasonSet),
+      })
+    }
+
+    return details
+  }, [capabilityMatrix, defaultSkillIds, enabledEngines, matrixCompatibleEngineIds, selectedSkillIds])
+
   useEffect(() => {
     if (selectedEngineId === 'auto') {
       return
@@ -2829,6 +2881,18 @@ export function AIConsole() {
                                   <p className="rounded-2xl border border-border/70 bg-card/80 px-3 py-2 text-xs leading-5 text-muted-foreground dark:border-white/10 dark:bg-slate-950/40">
                                     {t('analysisEngineNoCompatibleCandidates')}
                                   </p>
+                                ) : null}
+                                {filteredOutEngineDetails.length > 0 ? (
+                                  <div className="space-y-2 rounded-2xl border border-border/70 bg-card/70 px-3 py-2 dark:border-white/10 dark:bg-slate-950/30">
+                                    <div className="text-xs font-medium text-muted-foreground">{t('analysisEngineFilteredOutGroup')}</div>
+                                    {filteredOutEngineDetails.slice(0, 4).map((item) => (
+                                      <div key={item.id} className="text-xs leading-5 text-muted-foreground">
+                                        <span className="font-medium text-foreground">{item.name}</span>
+                                        {' · '}
+                                        {item.reasons.map((reason) => mapCapabilityReasonToText(reason, t)).join(', ')}
+                                      </div>
+                                    ))}
+                                  </div>
                                 ) : null}
                               </div>
                             ) : null}

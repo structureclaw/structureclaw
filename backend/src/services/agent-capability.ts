@@ -22,6 +22,12 @@ interface CapabilityEngine {
   supportedAnalysisTypes: string[];
 }
 
+type CapabilityReasonCode =
+  | 'engine_disabled'
+  | 'engine_unavailable'
+  | 'engine_status_unavailable'
+  | 'model_family_mismatch';
+
 function normalizeModelFamilies(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return ['generic'];
@@ -51,11 +57,27 @@ function resolveSkillModelFamilies(structureType: string | undefined): string[] 
   return ['generic'];
 }
 
-function isEngineOperable(engine: Record<string, unknown>): boolean {
-  const enabled = engine.enabled !== false;
-  const available = engine.available !== false;
-  const status = typeof engine.status === 'string' ? engine.status : '';
-  return enabled && available && status !== 'disabled' && status !== 'unavailable';
+function evaluateEngineForSkill(
+  engine: CapabilityEngine,
+  requiredFamilies: Set<string>,
+): { compatible: boolean; reasons: CapabilityReasonCode[] } {
+  const reasons: CapabilityReasonCode[] = [];
+  if (!engine.enabled) {
+    reasons.push('engine_disabled');
+  }
+  if (!engine.available) {
+    reasons.push('engine_unavailable');
+  }
+  if (engine.status === 'disabled' || engine.status === 'unavailable') {
+    reasons.push('engine_status_unavailable');
+  }
+  if (!engine.supportedModelFamilies.some((family) => requiredFamilies.has(family))) {
+    reasons.push('model_family_mismatch');
+  }
+  return {
+    compatible: reasons.length === 0,
+    reasons,
+  };
 }
 
 export class AgentCapabilityService {
@@ -91,12 +113,21 @@ export class AgentCapabilityService {
       }));
 
     const validEngineIdsBySkill: Record<string, string[]> = {};
+    const filteredEngineReasonsBySkill: Record<string, Record<string, CapabilityReasonCode[]>> = {};
     for (const skill of skills) {
       const requiredFamilies = new Set(resolveSkillModelFamilies(skill.structureType));
-      validEngineIdsBySkill[skill.id] = engines
-        .filter((engine) => isEngineOperable(engine as unknown as Record<string, unknown>))
-        .filter((engine) => engine.supportedModelFamilies.some((family) => requiredFamilies.has(family)))
-        .map((engine) => engine.id);
+      const validEngineIds: string[] = [];
+      const reasonMap: Record<string, CapabilityReasonCode[]> = {};
+      for (const engine of engines) {
+        const evaluation = evaluateEngineForSkill(engine, requiredFamilies);
+        if (evaluation.compatible) {
+          validEngineIds.push(engine.id);
+        } else {
+          reasonMap[engine.id] = evaluation.reasons;
+        }
+      }
+      validEngineIdsBySkill[skill.id] = validEngineIds;
+      filteredEngineReasonsBySkill[skill.id] = reasonMap;
     }
 
     const validSkillIdsByEngine: Record<string, string[]> = {};
@@ -115,6 +146,7 @@ export class AgentCapabilityService {
       skills,
       engines,
       validEngineIdsBySkill,
+      filteredEngineReasonsBySkill,
       validSkillIdsByEngine,
     };
   }

@@ -79,8 +79,9 @@
 - Done: when a previously selected engine becomes incompatible with current skill selection, selector falls back to `auto`.
 - Done: engine picker now explicitly shows that candidates are filtered by selected skills and displays an empty-compatible-candidates hint.
 - Done: added contract script `scripts/validate-agent-capability-matrix.sh` and wired it into backend regression flow.
+- Done: capability matrix now exposes per-skill filtered-engine reason codes; frontend renders filtered-out engines with localized reason text.
 - Verified: backend build + frontend type-check + `validate-agent-api-contract.sh` + backend regression.
-- Next: expose capability matrix metadata to frontend (e.g., why an engine is filtered out) without breaking current lightweight payload.
+- Next: document reason-code contract in docs and pin a small frontend rendering test for filtered-reason text.
 
 ## Validation
 - `npm run lint --prefix backend`

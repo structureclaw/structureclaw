@@ -102,6 +102,7 @@ const run = async () => {
   assert(Array.isArray(payload.skills), 'payload.skills should be an array');
   assert(Array.isArray(payload.engines), 'payload.engines should be an array');
   assert(payload.validEngineIdsBySkill && typeof payload.validEngineIdsBySkill === 'object', 'validEngineIdsBySkill should be an object');
+  assert(payload.filteredEngineReasonsBySkill && typeof payload.filteredEngineReasonsBySkill === 'object', 'filteredEngineReasonsBySkill should be an object');
   assert(payload.validSkillIdsByEngine && typeof payload.validSkillIdsByEngine === 'object', 'validSkillIdsByEngine should be an object');
 
   const engineIds = new Set(payload.engines.map((engine) => engine.id));
@@ -123,6 +124,9 @@ const run = async () => {
   assert(!beamEngines.includes('engine-disabled'), 'beam should not include disabled engine');
   assert(trussEngines.includes('engine-truss-a'), 'truss should include truss-compatible engine');
   assert(trussEngines.includes('engine-generic'), 'truss should include generic engine');
+  assert(payload.filteredEngineReasonsBySkill.beam['engine-truss-a'].includes('model_family_mismatch'), 'beam should mark truss engine as family mismatch');
+  assert(payload.filteredEngineReasonsBySkill.beam['engine-disabled'].includes('engine_disabled'), 'beam should mark disabled engine reason');
+  assert(payload.filteredEngineReasonsBySkill.truss['engine-frame-a'].includes('model_family_mismatch'), 'truss should mark frame engine as family mismatch');
 
   await app.close();
   console.log('[ok] agent capability matrix contract');
