@@ -205,6 +205,22 @@ type CapabilityMatrixPayload = {
   filteredEngineReasonsBySkill?: Record<string, Record<string, string[]>>
 }
 
+type SkillHubCatalogItem = {
+  id: string
+  version?: string
+  domain?: SkillDomain
+  name?: { zh?: string; en?: string }
+  description?: { zh?: string; en?: string }
+  installed?: boolean
+  enabled?: boolean
+}
+
+type SkillHubInstalledItem = {
+  id: string
+  version?: string
+  enabled?: boolean
+}
+
 function normalizeSkillDomain(value: unknown): SkillDomain {
   const raw = typeof value === 'string' ? value : ''
   const supported: SkillDomain[] = [
@@ -1203,6 +1219,12 @@ export function AIConsole() {
   const [designCode, setDesignCode] = useState('GB50017')
   const [analysisType, setAnalysisType] = useState<AnalysisType>('static')
   const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([])
+  const [skillHubCatalog, setSkillHubCatalog] = useState<SkillHubCatalogItem[]>([])
+  const [skillHubInstalledById, setSkillHubInstalledById] = useState<Record<string, SkillHubInstalledItem>>({})
+  const [skillHubKeyword, setSkillHubKeyword] = useState('')
+  const [skillHubDomainFilter, setSkillHubDomainFilter] = useState<SkillDomain | 'all'>('all')
+  const [skillHubLoading, setSkillHubLoading] = useState(false)
+  const [skillHubActionById, setSkillHubActionById] = useState<Record<string, string>>({})
   const [availableEngines, setAvailableEngines] = useState<AnalysisEngineSummary[]>([])
   const [capabilityMatrix, setCapabilityMatrix] = useState<CapabilityMatrixPayload | null>(null)
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
@@ -1313,6 +1335,24 @@ export function AIConsole() {
         return a.label.localeCompare(b.label)
       })
   }, [availableSkills, capabilityMatrix, locale, selectedSkillIds, skillDomainById, t])
+
+  const skillHubDomainOptions = useMemo(() => {
+    const domains = new Set<SkillDomain>()
+    skillHubCatalog.forEach((item) => {
+      const domain = normalizeSkillDomain(item.domain)
+      if (domain !== 'unknown') {
+        domains.add(domain)
+      }
+    })
+    return Array.from(domains).sort((a, b) => resolveSkillDomainLabel(a, t).localeCompare(resolveSkillDomainLabel(b, t)))
+  }, [skillHubCatalog, t])
+
+  const skillHubVisibleCatalog = useMemo(() => {
+    if (skillHubDomainFilter === 'all') {
+      return skillHubCatalog
+    }
+    return skillHubCatalog.filter((item) => normalizeSkillDomain(item.domain) === skillHubDomainFilter)
+  }, [skillHubCatalog, skillHubDomainFilter])
 
   useEffect(() => {
     setMessages((current) => {
@@ -1432,6 +1472,61 @@ export function AIConsole() {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadSkillHubCatalog() {
+      setSkillHubLoading(true)
+      try {
+        const params = new URLSearchParams()
+        if (skillHubKeyword.trim()) {
+          params.set('q', skillHubKeyword.trim())
+        }
+        const searchResponse = await fetch(`${API_BASE}/api/v1/agent/skillhub/search?${params.toString()}`)
+        const installedResponse = await fetch(`${API_BASE}/api/v1/agent/skillhub/installed`)
+        if (!searchResponse.ok || !installedResponse.ok) {
+          return
+        }
+        const searchPayload = await searchResponse.json()
+        const installedPayload = await installedResponse.json()
+        if (!active) {
+          return
+        }
+
+        const catalog = Array.isArray(searchPayload?.items) ? searchPayload.items as SkillHubCatalogItem[] : []
+        const installedItems = Array.isArray(installedPayload?.items) ? installedPayload.items as SkillHubInstalledItem[] : []
+        const installedMap = installedItems.reduce<Record<string, SkillHubInstalledItem>>((acc, item) => {
+          if (item?.id) {
+            acc[item.id] = item
+          }
+          return acc
+        }, {})
+
+        setSkillHubInstalledById(installedMap)
+        setSkillHubCatalog(catalog.map((item) => ({
+          ...item,
+          installed: Boolean(installedMap[item.id]),
+          enabled: installedMap[item.id]?.enabled ?? item.enabled,
+        })))
+      } catch {
+        if (active) {
+          setSkillHubCatalog([])
+          setSkillHubInstalledById({})
+        }
+      } finally {
+        if (active) {
+          setSkillHubLoading(false)
+        }
+      }
+    }
+
+    loadSkillHubCatalog()
+
+    return () => {
+      active = false
+    }
+  }, [skillHubKeyword])
 
   useEffect(() => {
     let active = true
@@ -1889,6 +1984,60 @@ export function AIConsole() {
       }
       return Array.from(new Set([...current, ...skillIds]))
     })
+  }
+
+  async function runSkillHubAction(skillId: string, action: 'install' | 'enable' | 'disable' | 'uninstall') {
+    setSkillHubActionById((current) => ({ ...current, [skillId]: action }))
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/agent/skillhub/${action}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skillId }),
+      })
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+
+      setSkillHubCatalog((current) => current.map((item) => {
+        if (item.id !== skillId) {
+          return item
+        }
+        if (action === 'install') {
+          return { ...item, installed: true, enabled: true }
+        }
+        if (action === 'enable') {
+          return { ...item, installed: true, enabled: true }
+        }
+        if (action === 'disable') {
+          return { ...item, installed: true, enabled: false }
+        }
+        return { ...item, installed: false, enabled: false }
+      }))
+
+      setSkillHubInstalledById((current) => {
+        if (action === 'uninstall') {
+          const next = { ...current }
+          delete next[skillId]
+          return next
+        }
+        return {
+          ...current,
+          [skillId]: {
+            id: skillId,
+            enabled: action !== 'disable',
+          },
+        }
+      })
+      toast.success(t('skillHubActionSuccess'))
+    } catch {
+      toast.error(t('skillHubActionFailed'))
+    } finally {
+      setSkillHubActionById((current) => {
+        const next = { ...current }
+        delete next[skillId]
+        return next
+      })
+    }
   }
 
   function appendMessage(message: Message) {
@@ -2820,6 +2969,83 @@ export function AIConsole() {
                           </div>
                         )
                       })}
+
+                      <div className="rounded-2xl border border-border/70 bg-background/60 p-2.5 dark:border-white/10 dark:bg-slate-950/30">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs font-medium text-foreground">{t('skillHubSectionTitle')}</p>
+                          <p className="text-xs text-muted-foreground">{t('skillHubSectionHint')}</p>
+                        </div>
+                        <div className="mb-2 flex flex-wrap gap-2">
+                          <Input
+                            value={skillHubKeyword}
+                            onChange={(event) => setSkillHubKeyword(event.target.value)}
+                            placeholder={t('skillHubSearchPlaceholder')}
+                            className="h-9 max-w-[220px]"
+                          />
+                          <select
+                            value={skillHubDomainFilter}
+                            onChange={(event) => setSkillHubDomainFilter(event.target.value as SkillDomain | 'all')}
+                            className="h-9 rounded-md border border-border/70 bg-background px-3 text-xs text-foreground dark:border-white/10 dark:bg-black/20"
+                          >
+                            <option value="all">{t('skillHubDomainAll')}</option>
+                            {skillHubDomainOptions.map((domain) => (
+                              <option key={domain} value={domain}>{resolveSkillDomainLabel(domain, t)}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {skillHubLoading ? (
+                          <p className="text-xs text-muted-foreground">{t('skillHubLoading')}</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {skillHubVisibleCatalog.length === 0 && (
+                              <p className="text-xs text-muted-foreground">{t('skillHubNoResults')}</p>
+                            )}
+                            {skillHubVisibleCatalog.map((item) => {
+                              const domain = normalizeSkillDomain(item.domain)
+                              const label = locale === 'zh' ? (item.name?.zh || item.id) : (item.name?.en || item.id)
+                              const installed = Boolean(skillHubInstalledById[item.id] || item.installed)
+                              const enabled = installed && (skillHubInstalledById[item.id]?.enabled ?? item.enabled ?? false)
+                              const runningAction = skillHubActionById[item.id]
+                              return (
+                                <div key={item.id} className="rounded-xl border border-border/70 bg-background/70 px-3 py-2 dark:border-white/10 dark:bg-black/20">
+                                  <div className="flex flex-wrap items-center justify-between gap-2">
+                                    <div>
+                                      <p className="text-sm font-medium text-foreground">{label}</p>
+                                      <p className="text-xs text-muted-foreground">{resolveSkillDomainLabel(domain, t)}</p>
+                                    </div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <Badge variant="outline" className="text-[10px]">
+                                        {installed ? (enabled ? t('skillHubStatusEnabled') : t('skillHubStatusDisabled')) : t('skillHubStatusNotInstalled')}
+                                      </Badge>
+                                      {!installed && (
+                                        <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'install')}>
+                                          {runningAction === 'install' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubInstall')}
+                                        </Button>
+                                      )}
+                                      {installed && enabled && (
+                                        <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'disable')}>
+                                          {runningAction === 'disable' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubDisable')}
+                                        </Button>
+                                      )}
+                                      {installed && !enabled && (
+                                        <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'enable')}>
+                                          {runningAction === 'enable' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubEnable')}
+                                        </Button>
+                                      )}
+                                      {installed && (
+                                        <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'uninstall')}>
+                                          {runningAction === 'uninstall' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubUninstall')}
+                                        </Button>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
