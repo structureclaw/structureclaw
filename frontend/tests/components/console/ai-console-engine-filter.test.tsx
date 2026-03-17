@@ -119,7 +119,9 @@ describe('AIConsole engine filter reasons', () => {
     await waitFor(() => {
       expect(screen.getByText(/filtered out by current skills/i)).toBeInTheDocument()
       expect(screen.getByText(/truss engine a/i)).toBeInTheDocument()
-      expect(screen.getByText(/model family mismatch/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/model family mismatch/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/analysis type compatible/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/model family compatible|model family mismatch/i).length).toBeGreaterThan(0)
     })
   })
 })

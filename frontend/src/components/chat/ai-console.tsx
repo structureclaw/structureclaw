@@ -757,6 +757,20 @@ function getEngineSelectionIssue(
   return ''
 }
 
+function supportsAnalysisType(engine: AnalysisEngineSummary, analysisType: AnalysisType): boolean {
+  if (!engine.supportedAnalysisTypes?.length) {
+    return true
+  }
+  return engine.supportedAnalysisTypes.includes(analysisType)
+}
+
+function supportsModelFamily(engine: AnalysisEngineSummary, modelFamily: string): boolean {
+  if (!engine.supportedModelFamilies?.length) {
+    return true
+  }
+  return engine.supportedModelFamilies.includes(modelFamily)
+}
+
 function renderEngineOption(
   engine: AnalysisEngineSummary,
   selected: boolean,
@@ -767,6 +781,8 @@ function renderEngineOption(
   onSelect: (engineId: string) => void
 ) {
   const issue = getEngineSelectionIssue(engine, analysisType, currentModelFamily, t, matrixReasonTextsByEngine[engine.id])
+  const analysisCompatible = supportsAnalysisType(engine, analysisType)
+  const modelCompatible = supportsModelFamily(engine, currentModelFamily)
   const selectable = issue.length === 0
 
   return (
@@ -799,6 +815,28 @@ function renderEngineOption(
       <div className="mt-1 text-xs leading-5 text-muted-foreground">
         {t('engineModelFamiliesLabel')}: {(engine.supportedModelFamilies || []).join(', ') || 'generic'}
       </div>
+      <div className="mt-1 flex flex-wrap gap-1.5 text-[11px]">
+        <span
+          className={cn(
+            'rounded-full border px-2 py-0.5',
+            analysisCompatible
+              ? 'border-emerald-300/40 bg-emerald-300/10 text-emerald-700 dark:text-emerald-200'
+              : 'border-amber-300/40 bg-amber-300/10 text-amber-700 dark:text-amber-200'
+          )}
+        >
+          {analysisCompatible ? t('engineAnalysisCompatibilityOk') : t('engineAnalysisCompatibilityMismatch')}
+        </span>
+        <span
+          className={cn(
+            'rounded-full border px-2 py-0.5',
+            modelCompatible
+              ? 'border-emerald-300/40 bg-emerald-300/10 text-emerald-700 dark:text-emerald-200'
+              : 'border-amber-300/40 bg-amber-300/10 text-amber-700 dark:text-amber-200'
+          )}
+        >
+          {modelCompatible ? t('engineModelCompatibilityOk') : t('engineModelCompatibilityMismatch')}
+        </span>
+      </div>
       {issue ? (
         <div className="mt-1 text-xs leading-5 text-amber-600 dark:text-amber-300">{issue}</div>
       ) : null}
@@ -814,6 +852,8 @@ function renderEngineSummary(
   matrixReasonTextsByEngine: Record<string, string[]>
 ) {
   const issue = getEngineSelectionIssue(engine, analysisType, currentModelFamily, t, matrixReasonTextsByEngine[engine.id])
+  const analysisCompatible = supportsAnalysisType(engine, analysisType)
+  const modelCompatible = supportsModelFamily(engine, currentModelFamily)
 
   return (
     <div className="rounded-2xl border border-border/70 bg-card/80 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950/40">
@@ -829,6 +869,28 @@ function renderEngineSummary(
       </div>
       <div className="mt-1 text-xs leading-5 text-muted-foreground">
         {t('engineModelFamiliesLabel')}: {(engine.supportedModelFamilies || []).join(', ') || 'generic'}
+      </div>
+      <div className="mt-1 flex flex-wrap gap-1.5 text-[11px]">
+        <span
+          className={cn(
+            'rounded-full border px-2 py-0.5',
+            analysisCompatible
+              ? 'border-emerald-300/40 bg-emerald-300/10 text-emerald-700 dark:text-emerald-200'
+              : 'border-amber-300/40 bg-amber-300/10 text-amber-700 dark:text-amber-200'
+          )}
+        >
+          {analysisCompatible ? t('engineAnalysisCompatibilityOk') : t('engineAnalysisCompatibilityMismatch')}
+        </span>
+        <span
+          className={cn(
+            'rounded-full border px-2 py-0.5',
+            modelCompatible
+              ? 'border-emerald-300/40 bg-emerald-300/10 text-emerald-700 dark:text-emerald-200'
+              : 'border-amber-300/40 bg-amber-300/10 text-amber-700 dark:text-amber-200'
+          )}
+        >
+          {modelCompatible ? t('engineModelCompatibilityOk') : t('engineModelCompatibilityMismatch')}
+        </span>
       </div>
       {issue ? (
         <div className="mt-1 text-xs leading-5 text-amber-600 dark:text-amber-300">{issue}</div>
