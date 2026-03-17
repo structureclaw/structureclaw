@@ -410,6 +410,14 @@ export function normalizeLoadPosition(value: unknown): DraftLoadPosition | undef
   return undefined;
 }
 
+export function normalizeLoadPositionM(value: unknown): number | undefined {
+  const parsed = normalizeNumber(value);
+  if (parsed === undefined || parsed < 0) {
+    return undefined;
+  }
+  return parsed;
+}
+
 export function normalizeInferredType(value: unknown): InferredModelType | undefined {
   if (value === 'beam' || value === 'truss' || value === 'portal-frame' || value === 'double-span-beam' || value === 'frame' || value === 'unknown') {
     return value;
@@ -650,6 +658,7 @@ export function extractDraftByRules(message: string): DraftExtraction {
   const supportType = extractSupportType(text);
   const loadType = extractLoadType(text);
   const loadPosition = extractLoadPosition(text, inferredType, loadType);
+  const loadPositionM = extractLoadPositionOffsetM(text);
   const frameBaseSupportType = extractFrameBaseSupport(text);
 
   return {
@@ -672,7 +681,29 @@ export function extractDraftByRules(message: string): DraftExtraction {
     loadKN: loadKN ?? undefined,
     loadType,
     loadPosition,
+    loadPositionM,
   };
+}
+
+function extractLoadPositionOffsetM(text: string): number | undefined {
+  const patterns: RegExp[] = [
+    /荷载[\s\S]{0,20}?(?:在|距(?:离)?(?:左端|左支座|左侧)?|离(?:左端|左支座)?)\s*(\d+(?:\.\d+)?)\s*(?:m|米)(?:处|位置|点)?/i,
+    /(?:point load|concentrated load)[\s\S]{0,20}?(?:at|@|from(?: the)? left(?: end| support)?(?: by)?)\s*(\d+(?:\.\d+)?)\s*m/i,
+    /at\s*(\d+(?:\.\d+)?)\s*m\s*(?:from\s*(?:the\s*)?(?:left|start))/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match) {
+      continue;
+    }
+    const value = normalizeNumber(match[1]);
+    if (value !== undefined && value >= 0) {
+      return value;
+    }
+  }
+
+  return undefined;
 }
 
 export function inferDraftType(text: string): InferredModelType {
@@ -809,6 +840,7 @@ export function mergeDraftExtraction(preferred: DraftExtraction | null, fallback
     loadKN: preferred?.loadKN ?? fallback.loadKN,
     loadType: preferred?.loadType ?? fallback.loadType,
     loadPosition: preferred?.loadPosition ?? fallback.loadPosition,
+    loadPositionM: preferred?.loadPositionM ?? fallback.loadPositionM,
   };
 }
 
@@ -855,6 +887,7 @@ export function mergeDraftState(existing: DraftState | undefined, patch: DraftEx
     loadKN: patch.loadKN ?? existing?.loadKN,
     loadType: patch.loadType ?? existing?.loadType,
     loadPosition: patch.loadPosition ?? existing?.loadPosition,
+    loadPositionM: patch.loadPositionM ?? existing?.loadPositionM,
     updatedAt: Date.now(),
   };
 }
@@ -1097,7 +1130,7 @@ export function buildLoadTypeQuestion(type: InferredModelType, locale: AppLocale
 export function buildLoadPositionQuestion(type: InferredModelType, locale: AppLocale): string {
   switch (type) {
     case 'beam':
-      return localize(locale, '请确认荷载位置（端部/跨中/全跨）。', 'Please confirm the load position (end / midspan / full span).');
+      return localize(locale, '请确认荷载位置（可说端部/跨中/全跨，也可直接给距左端 x m）。', 'Please confirm the load position (end / midspan / full span), or provide an offset x m from the left end.');
     case 'portal-frame':
       return localize(locale, '请确认荷载位置（柱顶节点/檐梁全跨）。', 'Please confirm the load position (top nodes / full rafter span).');
     case 'double-span-beam':
@@ -1195,7 +1228,7 @@ export function getScenarioLabel(key: ScenarioTemplateKey, locale: AppLocale, bu
   }
 }
 
-function buildBeamNodes(length: number, supportType: DraftSupportType) {
+function buildBeamNodes(length: number, supportType: DraftSupportType, loadPositionM?: number) {
   const fixedRestraint = [true, true, true, true, true, true] as const;
   const pinnedRestraint = [true, true, true, true, true, false] as const;
   const rollerRestraint = [false, true, true, true, true, false] as const;
@@ -1211,10 +1244,14 @@ function buildBeamNodes(length: number, supportType: DraftSupportType) {
     rightRestraint = [...pinnedRestraint];
   }
 
+  const position = typeof loadPositionM === 'number' && loadPositionM > 0 && loadPositionM < length
+    ? loadPositionM
+    : length / 2;
+
   return {
     nodes: [
       { id: '1', x: 0, y: 0, z: 0, restraints: leftRestraint },
-      { id: '2', x: length / 2, y: 0, z: 0 },
+      { id: '2', x: position, y: 0, z: 0 },
       rightRestraint
         ? { id: '3', x: length, y: 0, z: 0, restraints: rightRestraint }
         : { id: '3', x: length, y: 0, z: 0 },
@@ -1223,7 +1260,7 @@ function buildBeamNodes(length: number, supportType: DraftSupportType) {
       { id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' },
       { id: '2', type: 'beam', nodes: ['2', '3'], material: '1', section: '1' },
     ],
-    middleNodeId: '2',
+    pointNodeId: '2',
     endNodeId: '3',
   };
 }
@@ -1232,7 +1269,7 @@ function buildBeamLoads(
   loadKN: number,
   loadType: DraftLoadType | undefined,
   loadPosition: DraftLoadPosition | undefined,
-  middleNodeId: string,
+  pointNodeId: string,
   endNodeId: string,
 ) {
   if (loadType === 'distributed' || loadPosition === 'full-span') {
@@ -1243,7 +1280,11 @@ function buildBeamLoads(
   }
 
   if (loadPosition === 'midspan') {
-    return [{ node: middleNodeId, fy: -loadKN }];
+    return [{ node: pointNodeId, fy: -loadKN }];
+  }
+
+  if (loadPosition === 'free-joint') {
+    return [{ node: pointNodeId, fy: -loadKN }];
   }
 
   return [{ node: endNodeId, fy: -loadKN }];
@@ -1351,8 +1392,8 @@ export function buildModel(state: DraftState): Record<string, unknown> {
   const length = state.lengthM!;
   const load = state.loadKN!;
   const supportType = state.supportType || 'cantilever';
-  const beamNodes = buildBeamNodes(length, supportType);
-  const beamLoads = buildBeamLoads(load, state.loadType, state.loadPosition, beamNodes.middleNodeId, beamNodes.endNodeId);
+  const beamNodes = buildBeamNodes(length, supportType, state.loadPositionM);
+  const beamLoads = buildBeamLoads(load, state.loadType, state.loadPosition, beamNodes.pointNodeId, beamNodes.endNodeId);
   return {
     schema_version: '1.0.0',
     unit_system: 'SI',
@@ -1368,7 +1409,7 @@ export function buildModel(state: DraftState): Record<string, unknown> {
       { id: 'LC1', type: 'other', loads: beamLoads },
     ],
     load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
-    metadata: { ...metadata, supportType },
+    metadata: { ...metadata, supportType, loadPositionM: state.loadPositionM },
   };
 }
 

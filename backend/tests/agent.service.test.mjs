@@ -482,6 +482,20 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.supportType).toBe('cantilever');
   });
 
+  test('should place a beam point load at an arbitrary offset when provided', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft('生成一个跨度10m的简支梁，荷载在4m处，一个集中荷载10kN', undefined, 'zh', []);
+
+    expect(draft.missingFields).toEqual([]);
+    expect(draft.stateToPersist?.inferredType).toBe('beam');
+    expect(draft.stateToPersist?.loadPositionM).toBe(4);
+    expect(draft.model?.nodes?.map((node) => node.x)).toEqual([0, 4, 10]);
+    expect(draft.model?.load_cases?.[0]?.loads).toEqual([{ node: '2', fy: -10 }]);
+    expect(draft.model?.metadata?.loadPositionM).toBe(4);
+  });
+
   test('should build a fixed-fixed beam model when the support condition is explicit', async () => {
     const svc = new AgentService();
     svc.llm = null;

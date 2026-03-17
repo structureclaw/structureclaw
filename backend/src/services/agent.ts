@@ -1450,6 +1450,14 @@ export class AgentService {
     return undefined;
   }
 
+  private normalizeLoadPositionM(value: unknown): number | undefined {
+    const parsed = this.normalizeNumber(value);
+    if (parsed === undefined || parsed < 0) {
+      return undefined;
+    }
+    return parsed;
+  }
+
   private async mapMissingFieldLabels(missing: string[], locale: AppLocale, draft: DraftState, skillIds?: string[]): Promise<string[]> {
     const labels = await this.skillRuntime.mapMissingFieldLabels(missing, locale, draft, skillIds);
     return missing.map((key, index) => {
@@ -1874,6 +1882,7 @@ export class AgentService {
       loadKN: patch.loadKN ?? existing?.loadKN,
       loadType: patch.loadType ?? existing?.loadType,
       loadPosition: patch.loadPosition ?? existing?.loadPosition,
+      loadPositionM: patch.loadPositionM ?? existing?.loadPositionM,
       updatedAt: Date.now(),
     };
   }
@@ -1899,6 +1908,7 @@ export class AgentService {
       loadKN: next.loadKN,
       loadType: next.loadType,
       loadPosition: next.loadPosition,
+      loadPositionM: next.loadPositionM,
     });
   }
 
@@ -1928,6 +1938,7 @@ export class AgentService {
       loadKN: preferred?.loadKN ?? fallback.loadKN,
       loadType: preferred?.loadType ?? fallback.loadType,
       loadPosition: preferred?.loadPosition ?? fallback.loadPosition,
+      loadPositionM: preferred?.loadPositionM ?? fallback.loadPositionM,
     };
   }
 
@@ -2094,28 +2105,38 @@ export class AgentService {
         : supportType === 'fixed-pinned'
           ? pinnedRestraint
           : undefined;
+
+    const loadPositionM = typeof state.loadPositionM === 'number'
+      && state.loadPositionM > 0
+      && state.loadPositionM < length
+      ? state.loadPositionM
+      : undefined;
+    const pointLoadX = loadPositionM ?? (state.loadPosition === 'midspan' ? length / 2 : length);
+
+    const nodes = [
+      { id: '1', x: 0, y: 0, z: 0, restraints: leftRestraint },
+      { id: '2', x: pointLoadX, y: 0, z: 0 },
+      rightRestraint
+        ? { id: '3', x: length, y: 0, z: 0, restraints: rightRestraint }
+        : { id: '3', x: length, y: 0, z: 0 },
+    ];
+
+    const elements = [
+      { id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' },
+      { id: '2', type: 'beam', nodes: ['2', '3'], material: '1', section: '1' },
+    ];
+
     const loads = state.loadType === 'distributed' || state.loadPosition === 'full-span'
       ? [
           { type: 'distributed', element: '1', wy: -load, wz: 0 },
           { type: 'distributed', element: '2', wy: -load, wz: 0 },
         ]
-      : state.loadPosition === 'midspan'
-        ? [{ node: '2', fy: -load }]
-        : [{ node: '3', fy: -load }];
+      : [{ node: '2', fy: -load }];
     return {
       schema_version: '1.0.0',
       unit_system: 'SI',
-      nodes: [
-        { id: '1', x: 0, y: 0, z: 0, restraints: leftRestraint },
-        { id: '2', x: length / 2, y: 0, z: 0 },
-        rightRestraint
-          ? { id: '3', x: length, y: 0, z: 0, restraints: rightRestraint }
-          : { id: '3', x: length, y: 0, z: 0 },
-      ],
-      elements: [
-        { id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' },
-        { id: '2', type: 'beam', nodes: ['2', '3'], material: '1', section: '1' },
-      ],
+      nodes,
+      elements,
       materials: [
         { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
       ],
@@ -2126,7 +2147,7 @@ export class AgentService {
         { id: 'LC1', type: 'other', loads },
       ],
       load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
-      metadata: { ...metadata, supportType },
+      metadata: { ...metadata, supportType, loadPositionM: loadPositionM ?? pointLoadX },
     };
   }
 
@@ -2247,6 +2268,7 @@ export class AgentService {
           loadKN: existingState.loadKN,
           loadType: existingState.loadType,
           loadPosition: existingState.loadPosition,
+          loadPositionM: existingState.loadPositionM,
         })
       : '{}';
 
@@ -2260,8 +2282,8 @@ export class AgentService {
           `用户输入：${message}`,
           '若已说明梁的支座/边界条件，请提取 supportType（cantilever/simply-supported/fixed-fixed/fixed-pinned）。',
           '若已说明规则框架，请提取 frameDimension（2d/3d）、storyCount、bayCount/bayCountX/bayCountY、storyHeightsM、bayWidthsM/bayWidthsXM/bayWidthsYM、floorLoads。',
-          '若已给出荷载，请同时提取 loadType（point/distributed）与 loadPosition。',
-          '输出示例：{"inferredType":"beam","lengthM":6,"supportType":"simply-supported","loadKN":20,"loadType":"point","loadPosition":"midspan"}',
+          '若已给出荷载，请同时提取 loadType（point/distributed）、loadPosition，以及点荷载位置距离 loadPositionM（单位 m，可选）。',
+          '输出示例：{"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPositionM":4}',
         ].join('\n')
       : [
           'You extract structural model draft parameters.',
@@ -2270,10 +2292,10 @@ export class AgentService {
           'Use m and kN as units. Omit fields that are not present.',
           'When beam support or boundary conditions are mentioned, also extract supportType (cantilever/simply-supported/fixed-fixed/fixed-pinned).',
           'When a regular frame is described, also extract frameDimension (2d/3d), storyCount, bayCount/bayCountX/bayCountY, storyHeightsM, bayWidthsM/bayWidthsXM/bayWidthsYM, and floorLoads.',
-          'When loads are mentioned, also extract loadType (point/distributed) and loadPosition.',
+          'When loads are mentioned, also extract loadType (point/distributed), loadPosition, and optional point-load offset loadPositionM (m).',
           `Known parameters: ${prior}`,
           `User input: ${message}`,
-          'Example output: {"inferredType":"beam","lengthM":6,"supportType":"simply-supported","loadKN":20,"loadType":"point","loadPosition":"midspan"}',
+          'Example output: {"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPositionM":4}',
         ].join('\n');
 
     try {
@@ -2306,6 +2328,7 @@ export class AgentService {
         loadKN: this.normalizeNumber(parsed.loadKN),
         loadType: this.normalizeLoadType(parsed.loadType),
         loadPosition: this.normalizeLoadPosition(parsed.loadPosition),
+        loadPositionM: this.normalizeLoadPositionM(parsed.loadPositionM),
       };
     } catch {
       return null;
@@ -2338,6 +2361,7 @@ export class AgentService {
     ]);
     const loadType = this.extractLoadType(text);
     const loadPosition = this.extractLoadPosition(text, inferredType, loadType);
+    const loadPositionM = this.extractLoadPositionOffsetM(text);
 
     return {
       inferredType,
@@ -2348,7 +2372,29 @@ export class AgentService {
       loadKN: loadKN ?? undefined,
       loadType,
       loadPosition,
+      loadPositionM,
     };
+  }
+
+  private extractLoadPositionOffsetM(text: string): number | undefined {
+    const patterns: RegExp[] = [
+      /荷载[\s\S]{0,20}?(?:在|距(?:离)?(?:左端|左支座|左侧)?|离(?:左端|左支座)?)\s*(\d+(?:\.\d+)?)\s*(?:m|米)(?:处|位置|点)?/i,
+      /(?:point load|concentrated load)[\s\S]{0,20}?(?:at|@|from(?: the)? left(?: end| support)?(?: by)?)\s*(\d+(?:\.\d+)?)\s*m/i,
+      /at\s*(\d+(?:\.\d+)?)\s*m\s*(?:from\s*(?:the\s*)?(?:left|start))/i,
+    ];
+
+    for (const pattern of patterns) {
+      const match = text.match(pattern);
+      if (!match) {
+        continue;
+      }
+      const value = this.normalizeNumber(match[1]);
+      if (value !== undefined && value >= 0) {
+        return value;
+      }
+    }
+
+    return undefined;
   }
 
   private inferDraftType(text: string): InferredModelType {

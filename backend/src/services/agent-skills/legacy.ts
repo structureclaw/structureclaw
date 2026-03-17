@@ -10,6 +10,7 @@ import {
   normalizeFrameDimension,
   normalizeInferredType,
   normalizeLoadPosition,
+  normalizeLoadPositionM,
   normalizeLoadType,
   normalizeNumber,
   normalizeNumberArray,
@@ -44,6 +45,7 @@ export function normalizeLegacyDraftPatch(patch: Record<string, unknown> | null 
     loadKN: normalizeNumber(patch.loadKN),
     loadType: normalizeLoadType(patch.loadType),
     loadPosition: normalizeLoadPosition(patch.loadPosition),
+    loadPositionM: normalizeLoadPositionM(patch.loadPositionM),
   };
 }
 

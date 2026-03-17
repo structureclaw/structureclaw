@@ -67,6 +67,7 @@ export interface DraftState {
   loadKN?: number;
   loadType?: DraftLoadType;
   loadPosition?: DraftLoadPosition;
+  loadPositionM?: number;
   updatedAt: number;
   [key: string]: unknown;
 }
@@ -96,6 +97,7 @@ export interface DraftExtraction {
   loadKN?: number;
   loadType?: DraftLoadType;
   loadPosition?: DraftLoadPosition;
+  loadPositionM?: number;
   [key: string]: unknown;
 }
 
