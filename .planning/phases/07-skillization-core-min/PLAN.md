@@ -84,8 +84,9 @@
 - Done: added frontend rendering test for filtered-out engine reasons (`frontend/tests/components/console/ai-console-engine-filter.test.tsx`).
 - Done: capability matrix now accepts optional `analysisType` query and includes `analysis_type_mismatch` reason evaluation.
 - Done: frontend requests capability matrix with current analysis type and surfaces analysis-type mismatch reasons via localized text.
+- Done: frontend engine issue evaluation now prefers capability-matrix reason payload, using local checks only as fallback.
 - Verified: backend build + frontend type-check + `validate-agent-api-contract.sh` + backend regression.
-- Next: simplify frontend local engine-issue checks by reusing capability-matrix reason payload as the single source.
+- Next: decide whether to expose analysis-type compatibility badges directly in engine cards for quick visual scanning.
 
 ## Validation
 - `npm run lint --prefix backend`

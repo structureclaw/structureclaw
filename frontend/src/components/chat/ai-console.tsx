@@ -661,8 +661,12 @@ function getEngineSelectionIssue(
   engine: AnalysisEngineSummary,
   analysisType: AnalysisType,
   modelFamily: string,
-  t: (key: MessageKey) => string
+  t: (key: MessageKey) => string,
+  matrixReasonTexts?: string[]
 ) {
+  if (Array.isArray(matrixReasonTexts) && matrixReasonTexts.length > 0) {
+    return matrixReasonTexts.join(', ')
+  }
   if (engine.status === 'disabled' || engine.enabled === false) {
     return t('engineStatusDisabled')
   }
@@ -684,9 +688,10 @@ function renderEngineOption(
   analysisType: AnalysisType,
   currentModelFamily: string,
   t: (key: MessageKey) => string,
+  matrixReasonTextsByEngine: Record<string, string[]>,
   onSelect: (engineId: string) => void
 ) {
-  const issue = getEngineSelectionIssue(engine, analysisType, currentModelFamily, t)
+  const issue = getEngineSelectionIssue(engine, analysisType, currentModelFamily, t, matrixReasonTextsByEngine[engine.id])
   const selectable = issue.length === 0
 
   return (
@@ -730,9 +735,10 @@ function renderEngineSummary(
   engine: AnalysisEngineSummary,
   analysisType: AnalysisType,
   currentModelFamily: string,
-  t: (key: MessageKey) => string
+  t: (key: MessageKey) => string,
+  matrixReasonTextsByEngine: Record<string, string[]>
 ) {
-  const issue = getEngineSelectionIssue(engine, analysisType, currentModelFamily, t)
+  const issue = getEngineSelectionIssue(engine, analysisType, currentModelFamily, t, matrixReasonTextsByEngine[engine.id])
 
   return (
     <div className="rounded-2xl border border-border/70 bg-card/80 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950/40">
@@ -1544,10 +1550,34 @@ export function AIConsole() {
 
   const engineCandidatesFilteredBySkills = matrixCompatibleEngineIds !== null
 
-  const filteredOutEngineDetails = useMemo(() => {
+  const matrixReasonTextsByEngine = useMemo<Record<string, string[]>>(() => {
     const targetSkillIds = selectedSkillIds.length > 0 ? selectedSkillIds : defaultSkillIds
     const reasonsBySkill = capabilityMatrix?.filteredEngineReasonsBySkill
-    if (!reasonsBySkill || !matrixCompatibleEngineIds || targetSkillIds.length === 0) {
+    if (!reasonsBySkill || targetSkillIds.length === 0) {
+      return {}
+    }
+
+    const map: Record<string, string[]> = {}
+    for (const skillId of targetSkillIds) {
+      const byEngine = reasonsBySkill[skillId]
+      if (!byEngine || typeof byEngine !== 'object') {
+        continue
+      }
+      for (const [engineId, reasonCodes] of Object.entries(byEngine)) {
+        if (!Array.isArray(reasonCodes) || reasonCodes.length === 0) {
+          continue
+        }
+        const bucket = new Set(map[engineId] || [])
+        reasonCodes.forEach((reason) => bucket.add(mapCapabilityReasonToText(reason, t)))
+        map[engineId] = Array.from(bucket)
+      }
+    }
+
+    return map
+  }, [capabilityMatrix, defaultSkillIds, selectedSkillIds, t])
+
+  const filteredOutEngineDetails = useMemo(() => {
+    if (!matrixCompatibleEngineIds) {
       return [] as Array<{ id: string; name: string; reasons: string[] }>
     }
 
@@ -1558,26 +1588,19 @@ export function AIConsole() {
       if (matrixCompatibleEngineIds.has(engineId)) {
         continue
       }
-      const reasonSet = new Set<string>()
-      for (const skillId of targetSkillIds) {
-        const reasons = reasonsBySkill[skillId]?.[engineId]
-        if (!Array.isArray(reasons)) {
-          continue
-        }
-        reasons.forEach((reason) => reasonSet.add(reason))
-      }
-      if (reasonSet.size === 0) {
+      const reasonTexts = matrixReasonTextsByEngine[engineId]
+      if (!Array.isArray(reasonTexts) || reasonTexts.length === 0) {
         continue
       }
       details.push({
         id: engineId,
         name: engine.name || engineId,
-        reasons: Array.from(reasonSet),
+        reasons: reasonTexts,
       })
     }
 
     return details
-  }, [capabilityMatrix, defaultSkillIds, enabledEngines, matrixCompatibleEngineIds, selectedSkillIds])
+  }, [enabledEngines, matrixCompatibleEngineIds, matrixReasonTextsByEngine])
 
   useEffect(() => {
     if (selectedEngineId === 'auto') {
@@ -2826,7 +2849,7 @@ export function AIConsole() {
                               <div className="mt-1 text-xs leading-5 text-muted-foreground">{t('analysisEngineAutoHelp')}</div>
                             </div>
                           ) : currentEngineSummary ? (
-                            renderEngineSummary(currentEngineSummary, analysisType, currentModelFamily, t)
+                            renderEngineSummary(currentEngineSummary, analysisType, currentModelFamily, t, matrixReasonTextsByEngine)
                           ) : (
                             <div className="rounded-2xl border border-border/70 bg-card/80 px-3 py-2 text-sm text-muted-foreground dark:border-white/10 dark:bg-slate-950/40">
                               {selectedEngineId}
@@ -2877,6 +2900,7 @@ export function AIConsole() {
                                     analysisType,
                                     currentModelFamily,
                                     t,
+                                    matrixReasonTextsByEngine,
                                     setSelectedEngineId
                                   )
                                 )}
@@ -2892,7 +2916,7 @@ export function AIConsole() {
                                       <div key={item.id} className="text-xs leading-5 text-muted-foreground">
                                         <span className="font-medium text-foreground">{item.name}</span>
                                         {' · '}
-                                        {item.reasons.map((reason) => mapCapabilityReasonToText(reason, t)).join(', ')}
+                                        {item.reasons.join(', ')}
                                       </div>
                                     ))}
                                   </div>
