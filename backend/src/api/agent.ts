@@ -2,9 +2,12 @@ import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AgentService } from '../services/agent.js';
 import { AgentCapabilityService } from '../services/agent-capability.js';
+import { AgentSkillHubService } from '../services/agent-skillhub.js';
+import type { SkillDomain } from '../services/agent-skills/types.js';
 
 const agentService = new AgentService();
 const capabilityService = new AgentCapabilityService();
+const skillHubService = new AgentSkillHubService();
 
 const optionalIdSchema = z.preprocess((value) => {
   if (value === null || value === undefined) {
@@ -45,6 +48,28 @@ const capabilityMatrixQuerySchema = z.object({
   analysisType: z.enum(['static', 'dynamic', 'seismic', 'nonlinear']).optional(),
 });
 
+const skillHubDomainSchema = z.enum([
+  'structure-type',
+  'material-constitutive',
+  'geometry-input',
+  'load-boundary',
+  'analysis-strategy',
+  'code-check',
+  'result-postprocess',
+  'visualization',
+  'report-export',
+  'generic-fallback',
+] as const);
+
+const skillHubSearchQuerySchema = z.object({
+  q: z.string().optional(),
+  domain: skillHubDomainSchema.optional(),
+});
+
+const skillHubMutationSchema = z.object({
+  skillId: z.string().min(1),
+});
+
 export async function agentRoutes(fastify: FastifyInstance) {
   fastify.get('/tools', {
     schema: {
@@ -72,6 +97,65 @@ export async function agentRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest<{ Querystring: z.infer<typeof capabilityMatrixQuerySchema> }>, reply: FastifyReply) => {
     const query = capabilityMatrixQuerySchema.parse(request.query);
     return reply.send(await capabilityService.getCapabilityMatrix({ analysisType: query.analysisType }));
+  });
+
+  fastify.get('/skillhub/search', {
+    schema: {
+      tags: ['Agent'],
+      summary: '搜索外部 SkillHub 扩展技能',
+    },
+  }, async (request: FastifyRequest<{ Querystring: z.infer<typeof skillHubSearchQuerySchema> }>, reply: FastifyReply) => {
+    const query = skillHubSearchQuerySchema.parse(request.query);
+    return reply.send(await skillHubService.search({ keyword: query.q, domain: query.domain as SkillDomain | undefined }));
+  });
+
+  fastify.get('/skillhub/installed', {
+    schema: {
+      tags: ['Agent'],
+      summary: '列出已安装 SkillHub 扩展技能',
+    },
+  }, async (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.send({ items: await skillHubService.listInstalled() });
+  });
+
+  fastify.post('/skillhub/install', {
+    schema: {
+      tags: ['Agent'],
+      summary: '安装 SkillHub 扩展技能',
+    },
+  }, async (request: FastifyRequest<{ Body: z.infer<typeof skillHubMutationSchema> }>, reply: FastifyReply) => {
+    const body = skillHubMutationSchema.parse(request.body);
+    return reply.send(await skillHubService.install(body.skillId));
+  });
+
+  fastify.post('/skillhub/enable', {
+    schema: {
+      tags: ['Agent'],
+      summary: '启用已安装 SkillHub 技能',
+    },
+  }, async (request: FastifyRequest<{ Body: z.infer<typeof skillHubMutationSchema> }>, reply: FastifyReply) => {
+    const body = skillHubMutationSchema.parse(request.body);
+    return reply.send(await skillHubService.enable(body.skillId));
+  });
+
+  fastify.post('/skillhub/disable', {
+    schema: {
+      tags: ['Agent'],
+      summary: '禁用已安装 SkillHub 技能',
+    },
+  }, async (request: FastifyRequest<{ Body: z.infer<typeof skillHubMutationSchema> }>, reply: FastifyReply) => {
+    const body = skillHubMutationSchema.parse(request.body);
+    return reply.send(await skillHubService.disable(body.skillId));
+  });
+
+  fastify.post('/skillhub/uninstall', {
+    schema: {
+      tags: ['Agent'],
+      summary: '卸载已安装 SkillHub 技能',
+    },
+  }, async (request: FastifyRequest<{ Body: z.infer<typeof skillHubMutationSchema> }>, reply: FastifyReply) => {
+    const body = skillHubMutationSchema.parse(request.body);
+    return reply.send(await skillHubService.uninstall(body.skillId));
   });
 
   fastify.post('/run', {

@@ -16,6 +16,12 @@ Usage:
   ./scripts/claw.sh stop
   ./scripts/claw.sh status
   ./scripts/claw.sh logs [frontend|backend|core|all] [--follow]
+  ./scripts/claw.sh skill search <keyword> [domain]
+  ./scripts/claw.sh skill install <skill-id>
+  ./scripts/claw.sh skill enable <skill-id>
+  ./scripts/claw.sh skill disable <skill-id>
+  ./scripts/claw.sh skill uninstall <skill-id>
+  ./scripts/claw.sh skill list
 
 Commands:
   doctor      Run startup checks (without starting full stack)
@@ -24,7 +30,60 @@ Commands:
   stop        Stop local services and local infra
   status      Show service runtime + health checks
   logs        Show runtime logs from .runtime/logs
+  skill       Manage external SkillHub skills (search/install/enable/disable/uninstall/list)
 EOF
+}
+
+skill_api_base() {
+  echo "${SCLAW_API_BASE:-http://localhost:8000}"
+}
+
+run_skill_command() {
+  local subcommand="${2:-}"
+  local api_base
+  api_base="$(skill_api_base)"
+
+  case "$subcommand" in
+    search)
+      local keyword="${3:-}"
+      local domain="${4:-}"
+      if [[ -z "$keyword" ]]; then
+        echo "Usage: ./scripts/claw.sh skill search <keyword> [domain]"
+        exit 1
+      fi
+      if [[ -n "$domain" ]]; then
+        curl -sS -G "${api_base}/api/v1/agent/skillhub/search" --data-urlencode "q=$keyword" --data-urlencode "domain=$domain"
+      else
+        curl -sS -G "${api_base}/api/v1/agent/skillhub/search" --data-urlencode "q=$keyword"
+      fi
+      echo
+      ;;
+    install|enable|disable|uninstall)
+      local skill_id="${3:-}"
+      if [[ -z "$skill_id" ]]; then
+        echo "Usage: ./scripts/claw.sh skill ${subcommand} <skill-id>"
+        exit 1
+      fi
+      curl -sS -X POST "${api_base}/api/v1/agent/skillhub/${subcommand}" \
+        -H 'Content-Type: application/json' \
+        -d "{\"skillId\":\"${skill_id}\"}"
+      echo
+      ;;
+    list)
+      curl -sS "${api_base}/api/v1/agent/skillhub/installed"
+      echo
+      ;;
+    *)
+      echo "Usage:"
+      echo "  ./scripts/claw.sh skill search <keyword> [domain]"
+      echo "  ./scripts/claw.sh skill install <skill-id>"
+      echo "  ./scripts/claw.sh skill enable <skill-id>"
+      echo "  ./scripts/claw.sh skill disable <skill-id>"
+      echo "  ./scripts/claw.sh skill uninstall <skill-id>"
+      echo "  ./scripts/claw.sh skill list"
+      exit 1
+      ;;
+  esac
 }
 
 service_log_path() {
@@ -121,6 +180,9 @@ case "$command_name" in
     ;;
   logs)
     show_logs "${2:-all}" "${3:-}"
+    ;;
+  skill)
+    run_skill_command "$@"
     ;;
   -h|--help|help)
     print_help
