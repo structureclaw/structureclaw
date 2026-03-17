@@ -607,6 +607,10 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.loadType).toBeUndefined();
     expect(draft.stateToPersist?.loadPosition).toBeUndefined();
     expect(draft.stateToPersist?.loadPositionM).toBe(4);
+    expect(Object.prototype.hasOwnProperty.call(draft.stateToPersist ?? {}, 'supportType')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(draft.stateToPersist ?? {}, 'frameBaseSupportType')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(draft.stateToPersist ?? {}, 'loadType')).toBe(false);
+    expect(Object.prototype.hasOwnProperty.call(draft.stateToPersist ?? {}, 'loadPosition')).toBe(false);
   });
 
   test('should execute analyze in no-skill mode when computable model is provided', async () => {

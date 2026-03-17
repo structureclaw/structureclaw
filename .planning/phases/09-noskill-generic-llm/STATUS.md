@@ -29,6 +29,7 @@ Owner: backend-agent
 - Removed no-skill inferredType from extraction prompt constraints and prior context payload.
 - Removed no-skill categorical loadType parsing and state merge; keep numeric load magnitude only.
 - Hardened no-skill state normalization to strip carried-over skill metadata fields from existing state.
+- Removed explicit no-skill template placeholder writes (supportType/frameBaseSupportType/loadType/loadPosition set to undefined) from normalize/merge/extract paths.
 - Updated repository-down contract to use explicit computable model input (deterministic, non-LLM-dependent).
 - Added explicit boundary test: no-skill execute must stay blocked when computable model is unavailable.
 - Added explicit boundary test: no-skill must keep inferredType unknown even when LLM extraction returns a template type.
@@ -36,6 +37,7 @@ Owner: backend-agent
 - Added explicit boundary test: no-skill must ignore categorical loadPosition even when LLM extraction returns it.
 - Added explicit boundary test: no-skill must ignore categorical loadType even when LLM extraction returns it.
 - Added explicit boundary test: no-skill state normalization must strip skill metadata from persisted state.
+- Strengthened no-skill boundary test to assert template placeholders are absent from persisted state object (not only undefined reads).
 - Verified `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs` is green (42/42).
 - Verified `make backend-regression` is green.
 
