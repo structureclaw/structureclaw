@@ -37,9 +37,9 @@
 - [x] Provide CLI workflow: search/install/enable/disable/uninstall
 - [x] Add CLI integration tests for external SkillHub
 - [x] P08-3b completed: external SkillHub integration flow is stable
-- [ ] Security test: bad signature is rejected
-- [ ] Security test: checksum mismatch is rejected
-- [ ] Security test: offline cache reuse works for installed skills
+- [x] Security test: bad signature is rejected
+- [x] Security test: checksum mismatch is rejected
+- [x] Security test: offline cache reuse works for installed skills
 
 ## P08-4
 - [ ] Geometry extraction separated into geometry domain layer

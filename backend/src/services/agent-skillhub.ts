@@ -1,9 +1,11 @@
 import { existsSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
+import { createHash } from 'crypto';
 import path from 'path';
 import type { SkillDomain } from './agent-skills/types.js';
 
 type SkillCompatibilityReasonCode = 'core_version_incompatible' | 'skill_api_version_incompatible';
+type SkillIntegrityReasonCode = 'signature_invalid' | 'checksum_mismatch';
 
 export interface SkillHubCatalogEntry {
   id: string;
@@ -22,6 +24,24 @@ export interface SkillHubCatalogEntry {
     minCoreVersion: string;
     skillApiVersion: string;
   };
+  integrity: {
+    checksum: string;
+    signature: string;
+  };
+}
+
+interface SkillHubCacheEntry {
+  id: string;
+  version: string;
+  domain: SkillDomain;
+  compatibility: {
+    minCoreVersion: string;
+    skillApiVersion: string;
+  };
+  integrity: {
+    checksum: string;
+    signature: string;
+  };
 }
 
 interface InstalledSkillRecord {
@@ -38,8 +58,56 @@ interface InstalledStateFile {
   skills: Record<string, InstalledSkillRecord>;
 }
 
+interface SkillHubCacheFile {
+  skills: Record<string, SkillHubCacheEntry>;
+}
+
+interface SkillHubCatalogSeed {
+  id: string;
+  version: string;
+  domain: SkillDomain;
+  name: {
+    zh: string;
+    en: string;
+  };
+  description: {
+    zh: string;
+    en: string;
+  };
+  capabilities: string[];
+  compatibility: {
+    minCoreVersion: string;
+    skillApiVersion: string;
+  };
+  integrityOverride?: Partial<SkillHubCatalogEntry['integrity']>;
+}
+
+function computeChecksum(id: string, version: string): string {
+  return createHash('sha256').update(`${id}@${version}`, 'utf-8').digest('hex');
+}
+
+function computeSignature(id: string, version: string): string {
+  return `sig:${id}:${version}`;
+}
+
+function buildCatalogEntry(seed: SkillHubCatalogSeed): SkillHubCatalogEntry {
+  return {
+    id: seed.id,
+    version: seed.version,
+    domain: seed.domain,
+    name: seed.name,
+    description: seed.description,
+    capabilities: seed.capabilities,
+    compatibility: seed.compatibility,
+    integrity: {
+      checksum: seed.integrityOverride?.checksum ?? computeChecksum(seed.id, seed.version),
+      signature: seed.integrityOverride?.signature ?? computeSignature(seed.id, seed.version),
+    },
+  };
+}
+
 const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
-  {
+  buildCatalogEntry({
     id: 'skillhub.steel-connection-check',
     version: '1.0.0',
     domain: 'code-check',
@@ -56,8 +124,8 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
       minCoreVersion: '0.1.0',
       skillApiVersion: 'v1',
     },
-  },
-  {
+  }),
+  buildCatalogEntry({
     id: 'skillhub.modal-report-pack',
     version: '1.0.0',
     domain: 'report-export',
@@ -74,8 +142,8 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
       minCoreVersion: '0.1.0',
       skillApiVersion: 'v1',
     },
-  },
-  {
+  }),
+  buildCatalogEntry({
     id: 'skillhub.seismic-simplified-policy',
     version: '1.0.0',
     domain: 'analysis-strategy',
@@ -92,8 +160,8 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
       minCoreVersion: '0.1.0',
       skillApiVersion: 'v1',
     },
-  },
-  {
+  }),
+  buildCatalogEntry({
     id: 'skillhub.future-core-only',
     version: '1.0.0',
     domain: 'analysis-strategy',
@@ -110,7 +178,49 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
       minCoreVersion: '9.0.0',
       skillApiVersion: 'v2',
     },
-  },
+  }),
+  buildCatalogEntry({
+    id: 'skillhub.bad-signature-pack',
+    version: '1.0.0',
+    domain: 'report-export',
+    name: {
+      zh: '签名异常报告包',
+      en: 'Bad Signature Report Pack',
+    },
+    description: {
+      zh: '用于验证签名失败处理路径。',
+      en: 'Used to validate signature failure handling.',
+    },
+    capabilities: ['report-narrative'],
+    compatibility: {
+      minCoreVersion: '0.1.0',
+      skillApiVersion: 'v1',
+    },
+    integrityOverride: {
+      signature: 'invalid-signature',
+    },
+  }),
+  buildCatalogEntry({
+    id: 'skillhub.bad-checksum-pack',
+    version: '1.0.0',
+    domain: 'report-export',
+    name: {
+      zh: '校验和异常报告包',
+      en: 'Bad Checksum Report Pack',
+    },
+    description: {
+      zh: '用于验证 checksum 失败处理路径。',
+      en: 'Used to validate checksum failure handling.',
+    },
+    capabilities: ['report-export'],
+    compatibility: {
+      minCoreVersion: '0.1.0',
+      skillApiVersion: 'v1',
+    },
+    integrityOverride: {
+      checksum: 'bad-checksum',
+    },
+  }),
 ];
 
 const CURRENT_CORE_VERSION = process.env.SCLAW_CORE_VERSION || '0.1.0';
@@ -161,9 +271,11 @@ function matchesKeyword(entry: SkillHubCatalogEntry, keyword: string): boolean {
 
 export class AgentSkillHubService {
   private readonly stateFilePath: string;
+  private readonly cacheFilePath: string;
 
   constructor(stateFilePath = path.resolve(process.cwd(), '.runtime/skillhub/installed.json')) {
     this.stateFilePath = stateFilePath;
+    this.cacheFilePath = path.resolve(process.cwd(), '.runtime/skillhub/cache.json');
   }
 
   async search(options?: { keyword?: string; domain?: SkillDomain }) {
@@ -177,6 +289,7 @@ export class AgentSkillHubService {
       items: filtered.map((entry) => ({
         ...entry,
         compatibility: this.evaluateCompatibility(entry),
+        integrity: this.evaluateIntegrity(entry),
         installed: Boolean(installed.skills[entry.id]),
         enabled: Boolean(installed.skills[entry.id]?.enabled),
       })),
@@ -190,9 +303,45 @@ export class AgentSkillHubService {
   }
 
   async install(skillId: string) {
-    const catalogSkill = DEFAULT_CATALOG.find((entry) => entry.id === skillId);
+    let catalogSkill = DEFAULT_CATALOG.find((entry) => entry.id === skillId);
+    let reusedFromCache = false;
+
+    if (!catalogSkill && this.isOfflineModeEnabled()) {
+      const cache = await this.readCacheState();
+      const cached = cache.skills[skillId];
+      if (cached) {
+        catalogSkill = {
+          ...cached,
+          name: {
+            zh: cached.id,
+            en: cached.id,
+          },
+          description: {
+            zh: 'cached skill package',
+            en: 'cached skill package',
+          },
+          capabilities: [],
+        };
+        reusedFromCache = true;
+      }
+    }
+
     if (!catalogSkill) {
-      throw new Error(`Skill not found in SkillHub catalog: ${skillId}`);
+      throw new Error(`Skill not found in SkillHub catalog/cache: ${skillId}`);
+    }
+
+    const integrity = this.evaluateIntegrity(catalogSkill);
+    if (!integrity.valid) {
+      return {
+        skillId,
+        installed: false,
+        alreadyInstalled: false,
+        enabled: false,
+        integrityStatus: 'rejected' as const,
+        integrityReasonCodes: integrity.reasonCodes,
+        fallbackBehavior: 'baseline_only' as const,
+        reusedFromCache,
+      };
     }
 
     const state = await this.readInstalledState();
@@ -205,7 +354,10 @@ export class AgentSkillHubService {
         enabled: existing.enabled,
         compatibilityStatus: existing.compatibilityStatus,
         incompatibilityReasons: existing.incompatibilityReasons,
+        integrityStatus: 'verified' as const,
+        integrityReasonCodes: [] as SkillIntegrityReasonCode[],
         fallbackBehavior: existing.compatibilityStatus === 'incompatible' ? 'baseline_only' : 'none',
+        reusedFromCache,
       };
     }
 
@@ -222,6 +374,7 @@ export class AgentSkillHubService {
       incompatibilityReasons: compatibility.reasonCodes,
     };
     await this.writeInstalledState(state);
+    await this.upsertCacheState(catalogSkill);
 
     return {
       skillId,
@@ -230,7 +383,10 @@ export class AgentSkillHubService {
       enabled: shouldEnable,
       compatibilityStatus: compatibility.compatible ? 'compatible' : 'incompatible',
       incompatibilityReasons: compatibility.reasonCodes,
+      integrityStatus: 'verified' as const,
+      integrityReasonCodes: [] as SkillIntegrityReasonCode[],
       fallbackBehavior: compatibility.compatible ? 'none' : 'baseline_only',
+      reusedFromCache,
     };
   }
 
@@ -286,6 +442,8 @@ export class AgentSkillHubService {
         enabled: false,
         compatibilityStatus: 'incompatible' as const,
         incompatibilityReasons: compatibility.reasonCodes,
+        integrityStatus: 'verified' as const,
+        integrityReasonCodes: [] as SkillIntegrityReasonCode[],
         fallbackBehavior: 'baseline_only' as const,
       };
     }
@@ -300,7 +458,28 @@ export class AgentSkillHubService {
       enabled,
       compatibilityStatus: compatibility.compatible ? 'compatible' : 'incompatible',
       incompatibilityReasons: compatibility.reasonCodes,
+      integrityStatus: 'verified' as const,
+      integrityReasonCodes: [] as SkillIntegrityReasonCode[],
       fallbackBehavior: compatibility.compatible ? 'none' : 'baseline_only',
+    };
+  }
+
+  private evaluateIntegrity(entry: SkillHubCatalogEntry): {
+    valid: boolean;
+    reasonCodes: SkillIntegrityReasonCode[];
+  } {
+    const reasonCodes: SkillIntegrityReasonCode[] = [];
+    const expectedChecksum = computeChecksum(entry.id, entry.version);
+    const expectedSignature = computeSignature(entry.id, entry.version);
+    if (entry.integrity.checksum !== expectedChecksum) {
+      reasonCodes.push('checksum_mismatch');
+    }
+    if (entry.integrity.signature !== expectedSignature) {
+      reasonCodes.push('signature_invalid');
+    }
+    return {
+      valid: reasonCodes.length === 0,
+      reasonCodes,
     };
   }
 
@@ -340,9 +519,46 @@ export class AgentSkillHubService {
     }
   }
 
+  private async readCacheState(): Promise<SkillHubCacheFile> {
+    if (!existsSync(this.cacheFilePath)) {
+      return { skills: {} };
+    }
+
+    try {
+      const raw = await readFile(this.cacheFilePath, 'utf-8');
+      const parsed = JSON.parse(raw) as SkillHubCacheFile;
+      if (!parsed || typeof parsed !== 'object' || typeof parsed.skills !== 'object') {
+        return { skills: {} };
+      }
+      return {
+        skills: parsed.skills,
+      };
+    } catch {
+      return { skills: {} };
+    }
+  }
+
+  private async upsertCacheState(entry: SkillHubCatalogEntry): Promise<void> {
+    const current = await this.readCacheState();
+    current.skills[entry.id] = {
+      id: entry.id,
+      version: entry.version,
+      domain: entry.domain,
+      compatibility: entry.compatibility,
+      integrity: entry.integrity,
+    };
+    await mkdir(path.dirname(this.cacheFilePath), { recursive: true });
+    await writeFile(this.cacheFilePath, JSON.stringify(current, null, 2), 'utf-8');
+  }
+
   private async writeInstalledState(state: InstalledStateFile): Promise<void> {
     await mkdir(path.dirname(this.stateFilePath), { recursive: true });
     await writeFile(this.stateFilePath, JSON.stringify(state, null, 2), 'utf-8');
+  }
+
+  private isOfflineModeEnabled(): boolean {
+    const raw = process.env.SCLAW_SKILLHUB_OFFLINE;
+    return raw === '1' || raw === 'true';
   }
 }
 

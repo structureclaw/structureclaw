@@ -19,6 +19,7 @@ const run = async () => {
   const Fastify = require('fastify');
   const fs = await import('node:fs/promises');
   const stateFile = './.runtime/skillhub/installed.json';
+  const cacheFile = './.runtime/skillhub/cache.json';
 
   await fs.rm('./.runtime/skillhub', { recursive: true, force: true });
 
@@ -120,6 +121,59 @@ const run = async () => {
   const incompatibleEnablePayload = incompatibleEnableResp.json();
   assert(incompatibleEnablePayload.enabled === false, 'incompatible enable should remain disabled');
   assert(incompatibleEnablePayload.fallbackBehavior === 'baseline_only', 'incompatible enable should keep baseline fallback');
+
+  const badSignatureInstallResp = await app.inject({
+    method: 'POST',
+    url: '/api/v1/agent/skillhub/install',
+    payload: { skillId: 'skillhub.bad-signature-pack' },
+  });
+  assert(badSignatureInstallResp.statusCode === 200, 'bad signature install should return 200');
+  const badSignaturePayload = badSignatureInstallResp.json();
+  assert(badSignaturePayload.installed === false, 'bad signature skill should not install');
+  assert(badSignaturePayload.integrityStatus === 'rejected', 'bad signature should be rejected');
+  assert(badSignaturePayload.integrityReasonCodes.includes('signature_invalid'), 'bad signature should report signature_invalid');
+
+  const badChecksumInstallResp = await app.inject({
+    method: 'POST',
+    url: '/api/v1/agent/skillhub/install',
+    payload: { skillId: 'skillhub.bad-checksum-pack' },
+  });
+  assert(badChecksumInstallResp.statusCode === 200, 'bad checksum install should return 200');
+  const badChecksumPayload = badChecksumInstallResp.json();
+  assert(badChecksumPayload.installed === false, 'bad checksum skill should not install');
+  assert(badChecksumPayload.integrityStatus === 'rejected', 'bad checksum should be rejected');
+  assert(badChecksumPayload.integrityReasonCodes.includes('checksum_mismatch'), 'bad checksum should report checksum_mismatch');
+
+  await fs.mkdir('./.runtime/skillhub', { recursive: true });
+  await fs.writeFile(cacheFile, JSON.stringify({
+    skills: {
+      'skillhub.cached-only-pack': {
+        id: 'skillhub.cached-only-pack',
+        version: '1.0.0',
+        domain: 'report-export',
+        compatibility: {
+          minCoreVersion: '0.1.0',
+          skillApiVersion: 'v1',
+        },
+        integrity: {
+          checksum: '4f9beaa82c00cb7d4c679020ac6f5021536b9b5b13b7be2ad55e872fe414d2f4',
+          signature: 'sig:skillhub.cached-only-pack:1.0.0',
+        },
+      },
+    },
+  }, null, 2), 'utf-8');
+
+  process.env.SCLAW_SKILLHUB_OFFLINE = 'true';
+  const offlineInstallResp = await app.inject({
+    method: 'POST',
+    url: '/api/v1/agent/skillhub/install',
+    payload: { skillId: 'skillhub.cached-only-pack' },
+  });
+  assert(offlineInstallResp.statusCode === 200, 'offline cache install should return 200');
+  const offlineInstallPayload = offlineInstallResp.json();
+  assert(offlineInstallPayload.installed === true, 'offline cache install should succeed');
+  assert(offlineInstallPayload.reusedFromCache === true, 'offline cache install should indicate cache reuse');
+  process.env.SCLAW_SKILLHUB_OFFLINE = 'false';
 
   await app.close();
   await fs.rm('./.runtime/skillhub', { recursive: true, force: true });
