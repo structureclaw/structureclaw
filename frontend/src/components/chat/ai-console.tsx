@@ -1229,6 +1229,7 @@ export function AIConsole() {
   const [availableEngines, setAvailableEngines] = useState<AnalysisEngineSummary[]>([])
   const [capabilityMatrix, setCapabilityMatrix] = useState<CapabilityMatrixPayload | null>(null)
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
+  const [skillDomainView, setSkillDomainView] = useState<SkillDomain>('structure-type')
   const [selectedEngineId, setSelectedEngineId] = useState('auto')
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
   const [latestModelVisualizationSnapshot, setLatestModelVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
@@ -1348,6 +1349,16 @@ export function AIConsole() {
         return a.label.localeCompare(b.label)
       })
   }, [availableSkills, capabilityMatrix, locale, selectedSkillIds, skillDomainById, t])
+
+  const visibleGroupedSkills = useMemo(() => {
+    return groupedSkills.filter((group) => group.domain === skillDomainView)
+  }, [groupedSkills, skillDomainView])
+
+  useEffect(() => {
+    if (!groupedSkills.some((group) => group.domain === skillDomainView)) {
+      setSkillDomainView('structure-type')
+    }
+  }, [groupedSkills, skillDomainView])
 
   const skillHubDomainOptions = useMemo(() => {
     return [...ALL_SKILL_DOMAINS]
@@ -2934,7 +2945,20 @@ export function AIConsole() {
                   {skillsOpen && (
                     <div className="mt-3 space-y-3">
                       <p className="text-xs text-muted-foreground">{t('skillSelectionCatalogHint')}</p>
-                      {groupedSkills.map((group) => {
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="text-xs font-medium text-foreground" htmlFor="skill-domain-view-select">{t('skillSelectionDomainViewLabel')}</label>
+                        <select
+                          id="skill-domain-view-select"
+                          value={skillDomainView}
+                          onChange={(event) => setSkillDomainView(event.target.value as SkillDomain)}
+                          className="h-9 min-w-[200px] rounded-md border border-border/70 bg-background px-3 text-xs text-foreground dark:border-white/10 dark:bg-black/20"
+                        >
+                          {groupedSkills.map((group) => (
+                            <option key={group.domain} value={group.domain}>{group.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {visibleGroupedSkills.map((group) => {
                         const allSelected = group.skills.length > 0 && group.selectedCount === group.skills.length
                         return (
                           <div key={group.domain} className="rounded-2xl border border-border/70 bg-background/60 p-2.5 dark:border-white/10 dark:bg-slate-950/30">

@@ -117,6 +117,7 @@ describe('AIConsole grouped skill picker', () => {
     await user.click(screen.getByRole('button', { name: /expand skills/i }))
 
     await waitFor(() => {
+      expect(screen.getByLabelText(/category view/i)).toBeInTheDocument()
       expect(screen.getAllByText(/structure-type skills/i).length).toBeGreaterThan(0)
       expect(screen.getByRole('button', { name: /clear category/i })).toBeInTheDocument()
     })
@@ -136,7 +137,7 @@ describe('AIConsole grouped skill picker', () => {
     })
   })
 
-  it('shows all ten domain groups even when some are empty', async () => {
+  it('allows switching among all ten domain groups', async () => {
     const user = userEvent.setup()
     render(<AIConsole />)
 
@@ -147,16 +148,16 @@ describe('AIConsole grouped skill picker', () => {
     await user.click(screen.getByRole('button', { name: /expand skills/i }))
 
     await waitFor(() => {
-      expect(screen.getAllByText(/structure-type skills/i).length).toBeGreaterThan(0)
+      const selector = screen.getByLabelText(/category view/i)
+      const options = selector.querySelectorAll('option')
+      expect(options.length).toBe(10)
+    })
+
+    await user.selectOptions(screen.getByLabelText(/category view/i), 'material-constitutive')
+
+    await waitFor(() => {
       expect(screen.getAllByText(/material & constitutive skills/i).length).toBeGreaterThan(0)
-      expect(screen.getAllByText(/geometry input skills/i).length).toBeGreaterThan(0)
-      expect(screen.getAllByText(/load & boundary skills/i).length).toBeGreaterThan(0)
-      expect(screen.getAllByText(/analysis strategy skills/i).length).toBeGreaterThan(0)
-      expect(screen.getAllByText(/code-check skills/i).length).toBeGreaterThan(0)
-      expect(screen.getAllByText(/result postprocess skills/i).length).toBeGreaterThan(0)
-      expect(screen.getAllByText(/visualization skills/i).length).toBeGreaterThan(0)
-      expect(screen.getAllByText(/report & export skills/i).length).toBeGreaterThan(0)
-      expect(screen.getAllByText(/generic fallback skills/i).length).toBeGreaterThan(0)
+      expect(screen.getByText(/no installed local skills in this category yet/i)).toBeInTheDocument()
     })
   })
 })
