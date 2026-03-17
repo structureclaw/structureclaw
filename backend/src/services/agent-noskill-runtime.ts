@@ -6,7 +6,29 @@ import type {
 } from './agent-skills/index.js';
 
 export function normalizeNoSkillDraftState(state: DraftState): DraftState {
-  return state;
+  return {
+    inferredType: 'unknown',
+    lengthM: state.lengthM,
+    spanLengthM: state.spanLengthM,
+    heightM: state.heightM,
+    supportType: undefined,
+    frameDimension: state.frameDimension,
+    storyCount: state.storyCount,
+    bayCount: state.bayCount,
+    bayCountX: state.bayCountX,
+    bayCountY: state.bayCountY,
+    storyHeightsM: state.storyHeightsM,
+    bayWidthsM: state.bayWidthsM,
+    bayWidthsXM: state.bayWidthsXM,
+    bayWidthsYM: state.bayWidthsYM,
+    floorLoads: state.floorLoads,
+    frameBaseSupportType: undefined,
+    loadKN: state.loadKN,
+    loadType: undefined,
+    loadPosition: undefined,
+    loadPositionM: state.loadPositionM,
+    updatedAt: Date.now(),
+  };
 }
 
 export function computeNoSkillMissingFields(state: DraftState): string[] {

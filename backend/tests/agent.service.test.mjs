@@ -576,6 +576,39 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.inferredType).toBe('unknown');
   });
 
+  test('should strip skill metadata from no-skill state normalization', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft(
+      '给我一个可计算结构模型',
+      {
+        inferredType: 'frame',
+        skillId: 'frame',
+        scenarioKey: 'frame',
+        supportLevel: 'supported',
+        supportNote: 'template note',
+        lengthM: 12,
+        loadKN: 20,
+        loadType: 'distributed',
+        loadPosition: 'midspan',
+        loadPositionM: 4,
+        updatedAt: Date.now() - 1000,
+      },
+      'zh',
+      [],
+    );
+
+    expect(draft.stateToPersist?.inferredType).toBe('unknown');
+    expect(draft.stateToPersist?.skillId).toBeUndefined();
+    expect(draft.stateToPersist?.scenarioKey).toBeUndefined();
+    expect(draft.stateToPersist?.supportLevel).toBeUndefined();
+    expect(draft.stateToPersist?.supportNote).toBeUndefined();
+    expect(draft.stateToPersist?.loadType).toBeUndefined();
+    expect(draft.stateToPersist?.loadPosition).toBeUndefined();
+    expect(draft.stateToPersist?.loadPositionM).toBe(4);
+  });
+
   test('should execute analyze in no-skill mode when computable model is provided', async () => {
     const svc = new AgentService();
     svc.llm = null;
