@@ -93,6 +93,12 @@ StructureClaw now exposes analysis engines as a pluggable execution layer.
 
 SkillHub extensions are designed to be managed outside this GitHub repository. Baseline/core skills remain in-repo.
 
+Current implementation status:
+
+- The API and CLI contracts are available and regression-covered.
+- The current searchable SkillHub catalog is example/demo data for contract and UX validation.
+- External repository-backed catalog/package distribution is planned as the next step.
+
 ### Endpoints
 - `GET /api/v1/agent/skillhub/search?q=<keyword>&domain=<optional-domain>`
 - `GET /api/v1/agent/skillhub/installed`

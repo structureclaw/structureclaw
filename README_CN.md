@@ -178,6 +178,12 @@ npm run build --prefix backend
 
 用于可选能力、行业专项能力或实验性功能，不直接并入本仓库。
 
+当前状态说明：
+
+- SkillHub 的搜索/安装/启用/停用/卸载流程已经打通。
+- 当前可搜索到的技能目录是示例条目，主要用于契约与交互流程验证。
+- 真实外部仓库驱动的技能包分发是下一步实现项。
+
 当前 SkillHub 命令流：
 
 - 搜索：`./scripts/claw.sh skill search <keyword> [domain]`

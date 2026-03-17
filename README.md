@@ -134,6 +134,12 @@ npm run build --prefix backend
 
 Use this path for optional or domain-specific skills that should not be bundled into this repository.
 
+Current status note:
+
+- The SkillHub workflow (`search/install/enable/disable/uninstall`) is already implemented end-to-end.
+- The current catalog entries are example/demo entries used to validate contracts and UX flows.
+- Real external repository-backed package distribution is the next implementation step.
+
 Current SkillHub workflow:
 
 - Search: `./scripts/claw.sh skill search <keyword> [domain]`
