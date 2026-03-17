@@ -5,6 +5,17 @@
 - Keep OpenSees core execution path minimal and always available.
 - Ensure no-skill mode can still complete LLM-driven input extraction and engine execution.
 
+## Architecture Directive (Core Minimalism First)
+- No-skill mode is the primary baseline path, not a degraded fallback.
+- Core (`backend/src/services/agent.ts` + runtime orchestration) must stay generic and schema-oriented:
+	- generic draft extraction,
+	- generic missing-field detection,
+	- generic model assembly/validation/execute pipeline,
+	- session/protocol/persistence/observability.
+- Core must not carry scenario keyword rules, structure-template branching, or structure-specific question templates.
+- All structure-template matching, scenario routing, template defaults, and template-specific clarification must live in skill handlers.
+- If `skillIds=[]`, core should never require selecting a predefined structure template before generating a model; it should generate when computable and only ask for truly missing fields.
+
 ## Execution Status (2026-03-17)
 - P08-1 baseline is in place: capability matrix now carries domain-oriented metadata and frontend consumes grouped capability payload.
 - P08-2 is actively landing with first implementation slice already coded:
@@ -106,16 +117,32 @@ Current implementation progress (2026-03-17):
 - Implemented: route preference update to avoid chat-loop dead-end in no-skill mode.
 - Pending: add dedicated no-skill contract script and regression assertions for fallback success and deterministic clarification.
 
+P08-2a Core cleanup scope (must-do):
+- Remove remaining template-enumeration prompts from no-skill flow.
+- Remove remaining structure-specific stage wording from no-skill chat guidance.
+- Keep no-skill missing fields schema-driven (geometry/topology/material/section/load/constraints) instead of template-driven labels.
+
+P08-2b Skill ownership scope (must-do):
+- Move scenario keyword matching and template-specific route heuristics behind skill runtime APIs only.
+- Move template-specific load-position semantics entirely into structure-type skill handlers.
+- Keep core route decision based on generic computability + missing-field status only.
+
 Success criteria:
 - No-skill request can reach analysis/report result or deterministic clarification.
 - No route dead-end when no skills are loaded.
 - Baseline skill pack is explicitly documented and can run without repository connectivity.
 - Repository outages do not block baseline compute path.
+- Core no-skill path has zero hardcoded structure template list in prompts/questions.
+- Scenario matching and template heuristics are owned by skill layer only.
 
 Validation:
 - validate-agent-orchestration.sh
 - validate-chat-message-routing.sh
 - new no-skill fallback contract script
+- New no-skill minimalism contract checks:
+	- complete generic request in chat mode returns `ready` + `model` without template confirmation,
+	- no-skill clarification questions contain missing-parameter semantics instead of template options,
+	- no-skill execution route does not call skill scenario-matching branches.
 
 ---
 
@@ -197,9 +224,9 @@ Validation:
 
 ## Immediate Next Actions
 1. Add `scripts/validate-no-skill-fallback-contract.sh` covering `skillIds=[]` execute/chat routes and deterministic clarification behavior.
-2. Add backend regression assertions for generic-model fallback (LLM unavailable, LLM malformed JSON, rule-only partial extraction).
-3. Add observability fields for modeling source (`skills` vs `generic-no-skill`) and fallback reason codes.
-4. Extend frontend debug panel to surface no-skill modeling source and fallback reason code in bilingual labels.
-5. Complete frontend domain-grouped skill loading UX (category select, mixed select, load-state feedback).
-6. Draft skill repository API contract (list/filter/install/load/unload) with bilingual labels.
-7. Draft external SkillHub CLI contract and security policy (signature/checksum verification).
+2. Add no-skill contract case for generic complete request: no template-confirmation prompt, direct `ready` model.
+3. Add no-skill contract case for generic incomplete request: clarify only missing schema fields (no template list).
+4. Introduce observability reason codes: `generic_model_ready`, `generic_missing_fields`, `skill_template_route`.
+5. Refactor remaining template keyword/label logic from core service into skill handlers/runtime.
+6. Extend frontend debug panel to surface modeling source + route reason code in bilingual labels.
+7. Complete frontend domain-grouped skill loading UX and external repository contract drafts.

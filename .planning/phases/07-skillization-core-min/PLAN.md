@@ -4,6 +4,12 @@
 - Move domain strategies out of `backend/src/services/agent.ts` into skill runtime/policy modules.
 - Keep core orchestration minimal: session state, tool gateway, protocol, persistence, observability.
 
+## Core/Skill Boundary (Enforced)
+- Core service is generic by default and schema-oriented.
+- No structure-template keyword matching, template lists, or template-specific clarification copy in core.
+- Template matching, type-specific defaults, template-specific load-position interpretation, and scenario-specific dialogue all belong to skill handlers.
+- In no-skill mode, core should attempt direct generic modeling first, then ask only missing schema fields.
+
 ## Scope (Ordered)
 1. PR-1: Extract non-structural policy inference and normalization from `agent.ts`.
 2. PR-2: Move interaction questions/default proposals into skill handlers/runtime.
@@ -11,6 +17,7 @@
 4. PR-4: Replace `shouldRouteToExecute` hardcoded keywords with skill-driven routing recommendation.
 5. PR-5: Skillize report narrative templates; core keeps data aggregation only.
 6. PR-6: Build capability matrix (skill x engine) and expose to frontend for valid combinations.
+7. PR-7: Purge residual template matching and template-style prompts from core no-skill path.
 
 ## PR-1 Concrete Tasks
 - Introduce a policy module under `backend/src/services/` for:
@@ -87,6 +94,17 @@
 - Done: frontend engine issue evaluation now prefers capability-matrix reason payload, using local checks only as fallback.
 - Verified: backend build + frontend type-check + `validate-agent-api-contract.sh` + backend regression.
 - Next: decide whether to expose analysis-type compatibility badges directly in engine cards for quick visual scanning.
+
+## PR-7 Progress (Planned)
+- Goal: complete strict core/skill separation for no-skill generic path.
+- Tasks:
+  - remove remaining template-enumeration wording from core no-skill questions,
+  - move any remaining scenario keyword logic from core to skill runtime,
+  - ensure core chat readiness is determined by computable model status, not template confirmation.
+- Validation:
+  - backend build,
+  - `backend/tests/agent.service.test.mjs` no-skill chat ready path,
+  - `scripts/validate-no-skill-fallback-contract.sh`.
 
 ## Validation
 - `npm run lint --prefix backend`
