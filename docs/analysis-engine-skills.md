@@ -58,3 +58,23 @@ StructureClaw now exposes analysis engines as a pluggable execution layer.
 - `POST /api/v1/analysis-engines/install`
 - `POST /api/v1/analysis-engines/:id/enable`
 - `POST /api/v1/analysis-engines/:id/disable`
+
+## Agent capability matrix API
+- `GET /api/v1/agent/capability-matrix`
+
+### Response highlights
+- `skills`: loaded skill summaries (`id`, `structureType`, `stages`, localized `name`)
+- `engines`: engine summaries (`id`, status flags, supported analysis/model families)
+- `validEngineIdsBySkill`: engine IDs that are currently selectable for each skill
+- `filteredEngineReasonsBySkill`: per-skill map of filtered engine IDs and reason codes
+- `validSkillIdsByEngine`: reverse compatibility map for UI/reference use
+
+### Current reason codes
+- `engine_disabled`: engine is disabled in manifest/runtime status
+- `engine_unavailable`: engine availability check indicates unavailable
+- `engine_status_unavailable`: engine status is `disabled` or `unavailable`
+- `model_family_mismatch`: engine model families do not satisfy the selected skill family
+
+### Notes
+- `validEngineIdsBySkill` only includes engines passing all compatibility checks.
+- `filteredEngineReasonsBySkill` is designed for frontend explainability and can contain multiple reason codes per engine.
