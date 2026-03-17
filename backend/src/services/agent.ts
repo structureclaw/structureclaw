@@ -2275,7 +2275,11 @@ export class AgentService {
     const prompt = locale === 'zh'
       ? [
           '你是结构建模参数提取器。',
-          '从用户输入里提取结构草模参数，仅返回 JSON，不要 markdown。',
+          '从用户输入里提取结构草模参数。仅返回一个 JSON 对象，不要 markdown、不要解释。',
+          '必须符合以下输出约束：',
+          '- 顶层只允许字段：inferredType,lengthM,spanLengthM,heightM,supportType,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,frameBaseSupportType,loadKN,loadType,loadPosition,loadPositionM。',
+          '- 不确定字段直接省略，不要输出 null，不要输出字符串数字。',
+          '- loadPositionM 表示距左端位置（m），当梁的点荷载位置明确时优先输出。',
           'inferredType 仅用于已覆盖模板（beam|truss|portal-frame|double-span-beam|frame）；其他任意结构请用 unknown，并尽量提取几何与荷载关键信息。',
           '数值统一单位：m, kN。不存在的字段不要输出。',
           `已有参数：${prior}`,
@@ -2283,11 +2287,15 @@ export class AgentService {
           '若已说明梁的支座/边界条件，请提取 supportType（cantilever/simply-supported/fixed-fixed/fixed-pinned）。',
           '若已说明规则框架，请提取 frameDimension（2d/3d）、storyCount、bayCount/bayCountX/bayCountY、storyHeightsM、bayWidthsM/bayWidthsXM/bayWidthsYM、floorLoads。',
           '若已给出荷载，请同时提取 loadType（point/distributed）、loadPosition，以及点荷载位置距离 loadPositionM（单位 m，可选）。',
-          '输出示例：{"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPositionM":4}',
+          '输出示例：{"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPosition":"free-joint","loadPositionM":4}',
         ].join('\n')
       : [
           'You extract structural model draft parameters.',
-          'Read the user request and return JSON only, without markdown.',
+          'Read the user request and return exactly one JSON object only, without markdown or explanations.',
+          'Output constraints:',
+          '- Top-level allowed fields only: inferredType,lengthM,spanLengthM,heightM,supportType,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,frameBaseSupportType,loadKN,loadType,loadPosition,loadPositionM.',
+          '- Omit unknown fields; do not output null; keep numeric fields as numbers.',
+          '- loadPositionM means offset from left end in meters and should be provided when a beam point-load location is explicit.',
           'Use inferredType for supported templates (beam|truss|portal-frame|double-span-beam|frame); for any other structure, set inferredType=unknown and still extract key geometry/load hints.',
           'Use m and kN as units. Omit fields that are not present.',
           'When beam support or boundary conditions are mentioned, also extract supportType (cantilever/simply-supported/fixed-fixed/fixed-pinned).',
@@ -2295,7 +2303,7 @@ export class AgentService {
           'When loads are mentioned, also extract loadType (point/distributed), loadPosition, and optional point-load offset loadPositionM (m).',
           `Known parameters: ${prior}`,
           `User input: ${message}`,
-          'Example output: {"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPositionM":4}',
+          'Example output: {"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPosition":"free-joint","loadPositionM":4}',
         ].join('\n');
 
     try {
@@ -2308,27 +2316,31 @@ export class AgentService {
         return null;
       }
 
+      const payload = parsed.draftPatch && typeof parsed.draftPatch === 'object'
+        ? parsed.draftPatch as Record<string, unknown>
+        : parsed;
+
       return {
-        inferredType: this.normalizeInferredType(parsed.inferredType),
-        lengthM: this.normalizeNumber(parsed.lengthM),
-        spanLengthM: this.normalizeNumber(parsed.spanLengthM),
-        heightM: this.normalizeNumber(parsed.heightM),
-        supportType: this.normalizeSupportType(parsed.supportType),
-        frameDimension: this.normalizeFrameDimension(parsed.frameDimension),
-        storyCount: this.normalizePositiveInteger(parsed.storyCount),
-        bayCount: this.normalizePositiveInteger(parsed.bayCount),
-        bayCountX: this.normalizePositiveInteger(parsed.bayCountX),
-        bayCountY: this.normalizePositiveInteger(parsed.bayCountY),
-        storyHeightsM: this.normalizeNumberArray(parsed.storyHeightsM),
-        bayWidthsM: this.normalizeNumberArray(parsed.bayWidthsM),
-        bayWidthsXM: this.normalizeNumberArray(parsed.bayWidthsXM),
-        bayWidthsYM: this.normalizeNumberArray(parsed.bayWidthsYM),
-        floorLoads: this.normalizeFloorLoads(parsed.floorLoads),
-        frameBaseSupportType: this.normalizeFrameBaseSupportType(parsed.frameBaseSupportType),
-        loadKN: this.normalizeNumber(parsed.loadKN),
-        loadType: this.normalizeLoadType(parsed.loadType),
-        loadPosition: this.normalizeLoadPosition(parsed.loadPosition),
-        loadPositionM: this.normalizeLoadPositionM(parsed.loadPositionM),
+        inferredType: this.normalizeInferredType(payload.inferredType),
+        lengthM: this.normalizeNumber(payload.lengthM),
+        spanLengthM: this.normalizeNumber(payload.spanLengthM),
+        heightM: this.normalizeNumber(payload.heightM),
+        supportType: this.normalizeSupportType(payload.supportType),
+        frameDimension: this.normalizeFrameDimension(payload.frameDimension),
+        storyCount: this.normalizePositiveInteger(payload.storyCount),
+        bayCount: this.normalizePositiveInteger(payload.bayCount),
+        bayCountX: this.normalizePositiveInteger(payload.bayCountX),
+        bayCountY: this.normalizePositiveInteger(payload.bayCountY),
+        storyHeightsM: this.normalizeNumberArray(payload.storyHeightsM),
+        bayWidthsM: this.normalizeNumberArray(payload.bayWidthsM),
+        bayWidthsXM: this.normalizeNumberArray(payload.bayWidthsXM),
+        bayWidthsYM: this.normalizeNumberArray(payload.bayWidthsYM),
+        floorLoads: this.normalizeFloorLoads(payload.floorLoads),
+        frameBaseSupportType: this.normalizeFrameBaseSupportType(payload.frameBaseSupportType),
+        loadKN: this.normalizeNumber(payload.loadKN),
+        loadType: this.normalizeLoadType(payload.loadType),
+        loadPosition: this.normalizeLoadPosition(payload.loadPosition),
+        loadPositionM: this.normalizeLoadPositionM(payload.loadPositionM),
       };
     } catch {
       return null;
