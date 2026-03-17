@@ -147,6 +147,60 @@ sclaw version
 sclaw start
 ```
 
+## 如何提交新的 Skill
+
+结合当前方案，Skill 提交有两条路径：
+
+1. 基础内置技能（提交到本仓库）
+2. 外部 SkillHub 扩展技能（推荐用于长尾能力）
+
+### 路径 A：基础内置技能（本仓库 PR）
+
+仅用于需要默认随系统发布的核心能力。
+
+最小提交清单：
+
+- 在 [backend/src/agent-skills](backend/src/agent-skills) 下新增技能目录
+- 提供 `manifest.ts`、`handler.ts` 以及阶段 markdown（`intent.md`、`draft.md`、`analysis.md`、`design.md`，按需）
+- 在 manifest 中补齐元数据字段：`domain`、`requires`、`conflicts`、`capabilities`、`priority`、`compatibility.minCoreVersion`、`compatibility.skillApiVersion`
+- 用户可见文案必须中英文双语
+- 提交 PR 前运行回归校验
+
+建议验证命令：
+
+```bash
+npm run build --prefix backend
+./scripts/validate-agent-skills-contract.sh
+./scripts/validate-agent-capability-matrix.sh
+```
+
+### 路径 B：SkillHub 扩展技能（推荐）
+
+用于可选能力、行业专项能力或实验性功能，不直接并入本仓库。
+
+当前 SkillHub 命令流：
+
+- 搜索：`./scripts/claw.sh skill search <keyword> [domain]`
+- 安装：`./scripts/claw.sh skill install <skill-id>`
+- 启用：`./scripts/claw.sh skill enable <skill-id>`
+- 停用：`./scripts/claw.sh skill disable <skill-id>`
+- 卸载：`./scripts/claw.sh skill uninstall <skill-id>`
+- 查看已安装：`./scripts/claw.sh skill list`
+
+当前后端 SkillHub API：
+
+- `GET /api/v1/agent/skillhub/search`
+- `GET /api/v1/agent/skillhub/installed`
+- `POST /api/v1/agent/skillhub/install`
+- `POST /api/v1/agent/skillhub/enable`
+- `POST /api/v1/agent/skillhub/disable`
+- `POST /api/v1/agent/skillhub/uninstall`
+
+说明：
+
+- 基础技能保留在仓库内，默认可用。
+- SkillHub 扩展技能可通过外部仓库（Git/Release/服务注册表）分发，并按需加载。
+
 ### 进阶场景
 
 1. 本地启动：

@@ -103,6 +103,60 @@ To install `sclaw` globally:
 make sclaw-install
 ```
 
+## How To Submit A New Skill
+
+StructureClaw supports two submission paths:
+
+1. Baseline skill (in-repo, via PR)
+2. SkillHub extension (external, on-demand install)
+
+### Path A: Baseline Skill (PR to this repo)
+
+Use this path only for core/common capabilities that should ship by default.
+
+Minimum checklist:
+
+- Add a new skill folder under [backend/src/agent-skills](backend/src/agent-skills)
+- Provide `manifest.ts`, `handler.ts`, and stage markdown files (`intent.md`, `draft.md`, `analysis.md`, `design.md` when applicable)
+- Include required metadata fields in manifest: `domain`, `requires`, `conflicts`, `capabilities`, `priority`, `compatibility.minCoreVersion`, `compatibility.skillApiVersion`
+- Keep user-facing text bilingual (`en` + `zh`)
+- Run regression scripts before opening PR
+
+Recommended validation:
+
+```bash
+npm run build --prefix backend
+./scripts/validate-agent-skills-contract.sh
+./scripts/validate-agent-capability-matrix.sh
+```
+
+### Path B: SkillHub Extension (recommended for long-tail features)
+
+Use this path for optional or domain-specific skills that should not be bundled into this repository.
+
+Current SkillHub workflow:
+
+- Search: `./scripts/claw.sh skill search <keyword> [domain]`
+- Install: `./scripts/claw.sh skill install <skill-id>`
+- Enable: `./scripts/claw.sh skill enable <skill-id>`
+- Disable: `./scripts/claw.sh skill disable <skill-id>`
+- Uninstall: `./scripts/claw.sh skill uninstall <skill-id>`
+- List installed: `./scripts/claw.sh skill list`
+
+Current SkillHub API contract (backend):
+
+- `GET /api/v1/agent/skillhub/search`
+- `GET /api/v1/agent/skillhub/installed`
+- `POST /api/v1/agent/skillhub/install`
+- `POST /api/v1/agent/skillhub/enable`
+- `POST /api/v1/agent/skillhub/disable`
+- `POST /api/v1/agent/skillhub/uninstall`
+
+Note:
+
+- Baseline skills remain in-repo and always available.
+- SkillHub extensions are designed to be distributed externally (Git/release/service registry) and loaded on demand.
+
 ## Environment
 
 The root `.env` is shared by frontend, backend, local scripts, and Docker Compose.
