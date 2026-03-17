@@ -33,6 +33,7 @@ import {
   extractControllingCases,
   extractKeyMetrics,
 } from './agent-skills/domains/postprocess-domain.js';
+import { extractVisualizationHints } from './agent-skills/domains/visualization-domain.js';
 
 export type AgentToolName = 'text-to-model-draft' | 'convert' | 'validate' | 'analyze' | 'code-check' | 'report';
 export type AgentRunMode = 'chat' | 'execute' | 'auto';
@@ -1573,6 +1574,7 @@ export class AgentService {
     const keyMetrics = extractKeyMetrics(params.analysis, params.codeCheck);
     const clauseTraceability = extractClauseTraceability(params.codeCheck);
     const controllingCases = extractControllingCases(params.analysis);
+    const visualizationHints = extractVisualizationHints(params.analysis);
     const jsonReport: Record<string, unknown> = {
       reportSchemaVersion: '1.0.0',
       intent: params.message,
@@ -1581,6 +1583,7 @@ export class AgentService {
       keyMetrics,
       clauseTraceability,
       controllingCases,
+      visualizationHints,
       analysis: params.analysis,
       codeCheck: params.codeCheck,
       generatedAt: new Date().toISOString(),
@@ -1602,6 +1605,7 @@ export class AgentService {
       keyMetrics,
       clauseTraceability,
       controllingCases,
+      visualizationHints,
       locale: params.locale,
     }, params.draft, params.skillIds);
 

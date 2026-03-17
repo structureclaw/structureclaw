@@ -205,6 +205,7 @@ export interface SkillReportNarrativeInput {
   keyMetrics: Record<string, unknown>;
   clauseTraceability: Array<Record<string, unknown>>;
   controllingCases: Record<string, unknown>;
+  visualizationHints: Record<string, unknown>;
   locale: AppLocale;
 }
 
