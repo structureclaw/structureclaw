@@ -504,6 +504,30 @@ describe('AgentService orchestration', () => {
     expect(draft.inferredType).toBe('unknown');
   });
 
+  test('should ignore template support fields in no-skill state even when llm extraction returns them', async () => {
+    const svc = new AgentService();
+    let invokeCount = 0;
+    svc.llm = {
+      invoke: async () => {
+        invokeCount += 1;
+        if (invokeCount === 1) {
+          return {
+            content: '{"inferredType":"beam","supportType":"cantilever","frameBaseSupportType":"fixed","lengthM":8,"loadKN":12}',
+          };
+        }
+        return {
+          content: '{"schema_version":"1.0.0","unit_system":"SI","nodes":[],"elements":[],"materials":[],"sections":[],"load_cases":[],"load_combinations":[]}',
+        };
+      },
+    };
+
+    const draft = await svc.textToModelDraft('8m cantilever beam with 12kN load', undefined, 'en', []);
+
+    expect(draft.stateToPersist?.supportType).toBeUndefined();
+    expect(draft.stateToPersist?.frameBaseSupportType).toBeUndefined();
+    expect(draft.stateToPersist?.inferredType).toBe('unknown');
+  });
+
   test('should execute analyze in no-skill mode when computable model is provided', async () => {
     const svc = new AgentService();
     svc.llm = null;

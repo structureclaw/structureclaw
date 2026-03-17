@@ -5,8 +5,6 @@ import type {
   DraftLoadPosition,
   DraftLoadType,
   DraftState,
-  DraftSupportType,
-  InferredModelType,
 } from './agent-skills/index.js';
 
 export function normalizeNoSkillDraftState(state: DraftState): DraftState {
@@ -29,7 +27,7 @@ export function mergeNoSkillDraftExtraction(
     lengthM: preferred?.lengthM ?? fallback.lengthM,
     spanLengthM: preferred?.spanLengthM ?? fallback.spanLengthM,
     heightM: preferred?.heightM ?? fallback.heightM,
-    supportType: preferred?.supportType ?? fallback.supportType,
+    supportType: undefined,
     frameDimension: preferred?.frameDimension ?? fallback.frameDimension,
     storyCount: preferred?.storyCount ?? fallback.storyCount,
     bayCount: preferred?.bayCount ?? fallback.bayCount,
@@ -40,7 +38,7 @@ export function mergeNoSkillDraftExtraction(
     bayWidthsXM: preferred?.bayWidthsXM ?? fallback.bayWidthsXM,
     bayWidthsYM: preferred?.bayWidthsYM ?? fallback.bayWidthsYM,
     floorLoads: preferred?.floorLoads ?? fallback.floorLoads,
-    frameBaseSupportType: preferred?.frameBaseSupportType ?? fallback.frameBaseSupportType,
+    frameBaseSupportType: undefined,
     loadKN: preferred?.loadKN ?? fallback.loadKN,
     loadType: preferred?.loadType ?? fallback.loadType,
     loadPosition: preferred?.loadPosition ?? fallback.loadPosition,
@@ -62,7 +60,7 @@ export function mergeNoSkillDraftState(existing: DraftState | undefined, patch: 
     lengthM: mergedLength,
     spanLengthM,
     heightM: patch.heightM ?? existing?.heightM,
-    supportType: patch.supportType ?? existing?.supportType,
+    supportType: undefined,
     frameDimension: patch.frameDimension ?? existing?.frameDimension,
     storyCount,
     bayCount,
@@ -73,7 +71,7 @@ export function mergeNoSkillDraftState(existing: DraftState | undefined, patch: 
     bayWidthsXM: patch.bayWidthsXM ?? existing?.bayWidthsXM,
     bayWidthsYM: patch.bayWidthsYM ?? existing?.bayWidthsYM,
     floorLoads: mergeFloorLoads(existing?.floorLoads, patch.floorLoads),
-    frameBaseSupportType: patch.frameBaseSupportType ?? existing?.frameBaseSupportType,
+    frameBaseSupportType: undefined,
     loadKN: patch.loadKN ?? existing?.loadKN,
     loadType: patch.loadType ?? existing?.loadType,
     loadPosition: patch.loadPosition ?? existing?.loadPosition,
@@ -154,7 +152,6 @@ export async function tryNoSkillLlmExtract(
         lengthM: existingState.lengthM,
         spanLengthM: existingState.spanLengthM,
         heightM: existingState.heightM,
-        supportType: existingState.supportType,
         frameDimension: existingState.frameDimension,
         storyCount: existingState.storyCount,
         bayCount: existingState.bayCount,
@@ -165,7 +162,6 @@ export async function tryNoSkillLlmExtract(
         bayWidthsXM: existingState.bayWidthsXM,
         bayWidthsYM: existingState.bayWidthsYM,
         floorLoads: existingState.floorLoads,
-        frameBaseSupportType: existingState.frameBaseSupportType,
         loadKN: existingState.loadKN,
         loadType: existingState.loadType,
         loadPosition: existingState.loadPosition,
@@ -178,7 +174,7 @@ export async function tryNoSkillLlmExtract(
         '你是结构建模参数提取器。',
         '从用户输入里提取结构草模参数。仅返回一个 JSON 对象，不要 markdown、不要解释。',
         '必须符合以下输出约束：',
-        '- 顶层只允许字段：inferredType,lengthM,spanLengthM,heightM,supportType,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,frameBaseSupportType,loadKN,loadType,loadPosition,loadPositionM。',
+        '- 顶层只允许字段：inferredType,lengthM,spanLengthM,heightM,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,loadKN,loadType,loadPosition,loadPositionM。',
         '- 不确定字段直接省略，不要输出 null，不要输出字符串数字。',
         '- loadPositionM 表示距左端位置（m），当梁的点荷载位置明确时优先输出。',
         '除非用户明确指定模板，请保持 inferredType=unknown。',
@@ -192,7 +188,7 @@ export async function tryNoSkillLlmExtract(
         'You extract structural model draft parameters.',
         'Read the user request and return exactly one JSON object only, without markdown or explanations.',
         'Output constraints:',
-        '- Top-level allowed fields only: inferredType,lengthM,spanLengthM,heightM,supportType,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,frameBaseSupportType,loadKN,loadType,loadPosition,loadPositionM.',
+        '- Top-level allowed fields only: inferredType,lengthM,spanLengthM,heightM,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,loadKN,loadType,loadPosition,loadPositionM.',
         '- Omit unknown fields; do not output null; keep numeric fields as numbers.',
         '- loadPositionM means offset from the start reference in meters and should be provided when a point-load location is explicit.',
         'Keep inferredType=unknown unless user explicitly requests a known structural category.',
@@ -218,11 +214,11 @@ export async function tryNoSkillLlmExtract(
       : parsed;
 
     return {
-      inferredType: normalizeInferredType(payload.inferredType),
+      inferredType: 'unknown',
       lengthM: normalizeNumber(payload.lengthM),
       spanLengthM: normalizeNumber(payload.spanLengthM),
       heightM: normalizeNumber(payload.heightM),
-      supportType: normalizeSupportType(payload.supportType),
+      supportType: undefined,
       frameDimension: normalizeFrameDimension(payload.frameDimension),
       storyCount: normalizePositiveInteger(payload.storyCount),
       bayCount: normalizePositiveInteger(payload.bayCount),
@@ -233,7 +229,7 @@ export async function tryNoSkillLlmExtract(
       bayWidthsXM: normalizeNumberArray(payload.bayWidthsXM),
       bayWidthsYM: normalizeNumberArray(payload.bayWidthsYM),
       floorLoads: normalizeFloorLoads(payload.floorLoads),
-      frameBaseSupportType: normalizeFrameBaseSupportType(payload.frameBaseSupportType),
+      frameBaseSupportType: undefined,
       loadKN: normalizeNumber(payload.loadKN),
       loadType: normalizeDraftLoadType(payload.loadType),
       loadPosition: normalizeDraftLoadPosition(payload.loadPosition),
@@ -288,22 +284,8 @@ function mergeFloorLoads(existing: DraftState['floorLoads'], incoming: DraftStat
   return normalized.length > 0 ? normalized : undefined;
 }
 
-function normalizeInferredType(value: unknown): InferredModelType | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
-  if (value === 'beam' || value === 'truss' || value === 'portal-frame' || value === 'double-span-beam' || value === 'frame' || value === 'unknown') {
-    return value;
-  }
-  return undefined;
-}
-
 function normalizeFrameDimension(value: unknown): DraftState['frameDimension'] | undefined {
   return value === '2d' || value === '3d' ? value : undefined;
-}
-
-function normalizeFrameBaseSupportType(value: unknown): DraftState['frameBaseSupportType'] | undefined {
-  return value === 'fixed' || value === 'pinned' ? value : undefined;
 }
 
 function normalizePositiveInteger(value: unknown): number | undefined {
@@ -349,13 +331,6 @@ function normalizeFloorLoads(value: unknown): DraftState['floorLoads'] | undefin
     });
   const filtered = normalized.filter((item) => item !== null) as NonNullable<DraftState['floorLoads']>;
   return filtered.length > 0 ? filtered : undefined;
-}
-
-function normalizeSupportType(value: unknown): DraftSupportType | undefined {
-  if (value === 'cantilever' || value === 'simply-supported' || value === 'fixed-fixed' || value === 'fixed-pinned') {
-    return value;
-  }
-  return undefined;
 }
 
 function normalizeDraftLoadType(value: unknown): DraftLoadType | undefined {

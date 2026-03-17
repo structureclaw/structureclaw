@@ -24,9 +24,11 @@ Owner: backend-agent
 - Removed residual template-coupled span inference from no-skill draft-state merge.
 - Removed template-oriented wording from no-skill LLM extraction prompt constraints.
 - Forced no-skill draft merge path to keep inferredType pinned to unknown.
+- Removed no-skill supportType/frameBaseSupportType parsing from LLM extraction and state merge path.
 - Updated repository-down contract to use explicit computable model input (deterministic, non-LLM-dependent).
 - Added explicit boundary test: no-skill execute must stay blocked when computable model is unavailable.
 - Added explicit boundary test: no-skill must keep inferredType unknown even when LLM extraction returns a template type.
+- Added explicit boundary test: no-skill must ignore template support fields even when LLM extraction returns them.
 - Verified `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs` is green (42/42).
 - Verified `make backend-regression` is green.
 
@@ -37,7 +39,7 @@ Owner: backend-agent
 4. Re-run targeted/backend regression after each slice.
 
 Latest validation snapshot:
-- `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs`: green (44/44)
+- `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs`: green (45/45)
 - `make backend-regression`: green
 
 ## Exit Gate For Next-Step Planning
