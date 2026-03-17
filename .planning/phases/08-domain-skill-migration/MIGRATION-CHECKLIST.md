@@ -42,9 +42,9 @@
 - [x] Security test: offline cache reuse works for installed skills
 
 ## P08-4
-- [ ] Geometry extraction separated into geometry domain layer
-- [ ] Load/boundary extraction separated into load-boundary domain layer
-- [ ] Structure-type handlers consume domain outputs
+- [x] Geometry extraction separated into geometry domain layer
+- [x] Load/boundary extraction separated into load-boundary domain layer
+- [x] Structure-type handlers consume domain outputs
 
 ## P08-5
 - [ ] Material/constitutive skill interface implemented
