@@ -24,6 +24,15 @@ import {
   buildCodeCheckSummaryText,
   executeCodeCheckDomain,
 } from '../agent-skills/code-check/entry.js';
+import {
+  inferAnalysisType,
+  inferCodeCheckIntent,
+  inferDesignCode,
+  inferReportIntent,
+  normalizePolicyAnalysisType,
+  normalizePolicyReportFormat,
+  normalizePolicyReportOutput,
+} from '../agent-skills/analysis-strategy/entry.js';
 import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.js';
 import {
   computeNoSkillMissingFields,
@@ -258,7 +267,7 @@ export class AgentService {
     if (options?.hasModel) {
       return true;
     }
-    if (this.policy.inferCodeCheckIntent(message) || this.policy.inferReportIntent(message) === true) {
+    if (inferCodeCheckIntent(this.policy, message) || inferReportIntent(this.policy, message) === true) {
       return true;
     }
     if (this.isNoSkillMode(options?.skillIds)) {
@@ -845,9 +854,9 @@ export class AgentService {
       normalizedModel = availableModel;
     }
 
-    const resolvedAnalysisType = workingSession.resolved?.analysisType || params.context?.analysisType || this.policy.inferAnalysisType(params.message);
+    const resolvedAnalysisType = workingSession.resolved?.analysisType || params.context?.analysisType || inferAnalysisType(this.policy, params.message);
     const resolvedDesignCode = workingSession.resolved?.designCode || params.context?.designCode || 'GB50017';
-    const resolvedAutoCodeCheck = workingSession.resolved?.autoCodeCheck ?? params.context?.autoCodeCheck ?? this.policy.inferCodeCheckIntent(params.message);
+    const resolvedAutoCodeCheck = workingSession.resolved?.autoCodeCheck ?? params.context?.autoCodeCheck ?? inferCodeCheckIntent(this.policy, params.message);
     const resolvedIncludeReport = workingSession.resolved?.includeReport ?? params.context?.includeReport ?? true;
     const resolvedReportFormat = workingSession.resolved?.reportFormat || params.context?.reportFormat || 'both';
     const resolvedReportOutput = workingSession.resolved?.reportOutput || params.context?.reportOutput || 'inline';
@@ -1491,17 +1500,17 @@ export class AgentService {
   private applyInferredNonCriticalFromMessage(session: InteractionSession, message: string): void {
     session.resolved = session.resolved || {};
     if (!session.resolved.analysisType) {
-      session.resolved.analysisType = this.policy.inferAnalysisType(message);
+      session.resolved.analysisType = inferAnalysisType(this.policy, message);
     }
-    const inferredCode = this.policy.inferDesignCode(message);
+    const inferredCode = inferDesignCode(this.policy, message);
     if (inferredCode && !session.resolved.designCode) {
       session.resolved.designCode = inferredCode;
     }
-    if (session.resolved.autoCodeCheck === undefined && this.policy.inferCodeCheckIntent(message)) {
+    if (session.resolved.autoCodeCheck === undefined && inferCodeCheckIntent(this.policy, message)) {
       session.resolved.autoCodeCheck = true;
     }
     if (session.resolved.includeReport === undefined) {
-      const reportIntent = this.policy.inferReportIntent(message);
+      const reportIntent = inferReportIntent(this.policy, message);
       if (reportIntent !== undefined) {
         session.resolved.includeReport = reportIntent;
       }
@@ -1534,7 +1543,7 @@ export class AgentService {
     }
     session.resolved = session.resolved || {};
     if (typeof values.analysisType === 'string') {
-      session.resolved.analysisType = this.policy.normalizeAnalysisType(values.analysisType);
+      session.resolved.analysisType = normalizePolicyAnalysisType(this.policy, values.analysisType);
     }
     if (typeof values.designCode === 'string' && values.designCode.trim()) {
       session.resolved.designCode = values.designCode.trim().toUpperCase();
@@ -1546,10 +1555,10 @@ export class AgentService {
       session.resolved.includeReport = values.includeReport;
     }
     if (typeof values.reportFormat === 'string') {
-      session.resolved.reportFormat = this.policy.normalizeReportFormat(values.reportFormat);
+      session.resolved.reportFormat = normalizePolicyReportFormat(this.policy, values.reportFormat);
     }
     if (typeof values.reportOutput === 'string') {
-      session.resolved.reportOutput = this.policy.normalizeReportOutput(values.reportOutput);
+      session.resolved.reportOutput = normalizePolicyReportOutput(this.policy, values.reportOutput);
     }
     session.updatedAt = Date.now();
   }

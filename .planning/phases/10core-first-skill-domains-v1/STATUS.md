@@ -7,6 +7,7 @@ Owner: backend-agent
 - Step 1 (completed): enforce core-first fallback when enabled skills cannot match request.
 - Step 2 (completed): migrate structure-modeling plugins under domain folder and keep loader migration-safe.
 - Step 3 (completed): extract non-modeling domain entry points under categorized skill folders.
+- Step 4 (completed): route analysis-strategy and material-constitutive policy/material helpers through categorized entry modules.
 
 ## Step 1 Scope
 - Keep no-skill as baseline path.
@@ -47,3 +48,19 @@ Owner: backend-agent
 - Completed
   - `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs` (pass: 52/52)
   - `make backend-regression` (pass)
+
+## Step 4 Progress
+- Added categorized domain entry modules:
+  - `backend/src/agent-skills/analysis-strategy/entry.ts`
+  - `backend/src/agent-skills/material-constitutive/entry.ts`
+- Updated policy/material call sites to consume these entries:
+  - `backend/src/services/agent.ts`
+  - `backend/src/services/agent-capability.ts`
+
+## Step 4 Validation
+- Completed
+  - `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs` (pass: 52/52)
+  - `make backend-regression` (pass)
+
+## Next Step
+- Step 5: continue extracting remaining domain logic from `backend/src/services/agent-skills/domains/*` into categorized `backend/src/agent-skills/<domain>/entry.ts` modules while preserving runtime behavior.
