@@ -231,17 +231,32 @@ export class AgentService {
     return this.skillRuntime.getScenarioLabel(key, locale);
   }
 
-  shouldRouteToExecute(message: string): boolean {
-    const text = message.toLowerCase();
-    return text.includes('分析')
-      || text.includes('验算')
-      || text.includes('校核')
-      || text.includes('设计')
-      || text.includes('建模')
-      || text.includes('seismic')
-      || text.includes('dynamic')
-      || text.includes('nonlinear')
-      || text.includes('code-check');
+  async shouldPreferExecute(message: string, options?: {
+    locale?: AppLocale;
+    conversationId?: string;
+    skillIds?: string[];
+    hasModel?: boolean;
+  }): Promise<boolean> {
+    if (options?.hasModel) {
+      return true;
+    }
+    const locale = this.resolveInteractionLocale(options?.locale);
+    const sessionKey = options?.conversationId?.trim();
+    const session = await this.getInteractionSession(sessionKey);
+    if (session?.draft && session.draft.inferredType !== 'unknown') {
+      const assessment = await this.assessInteractionNeeds(session, locale, options?.skillIds, 'chat');
+      if (assessment.criticalMissing.length > 0) {
+        const stage = await this.skillRuntime.resolveInteractionStage(
+          assessment.criticalMissing,
+          session.draft,
+          options?.skillIds,
+        );
+        if (stage === 'intent' || stage === 'model' || stage === 'loads') {
+          return false;
+        }
+      }
+    }
+    return this.skillRuntime.shouldPreferExecute(message, locale, session?.draft, options?.skillIds);
   }
 
   async getConversationSessionSnapshot(
@@ -655,7 +670,13 @@ export class AgentService {
       workingSession.userApprovedAutoDecide = false;
     }
 
-    if (runMode === 'chat') {
+    const resolvedRunMode: AgentRunMode = runMode === 'auto'
+      ? ((modelInput || await this.skillRuntime.shouldPreferExecute(params.message, locale, workingSession.draft, skillIds))
+        ? 'execute'
+        : 'chat')
+      : runMode;
+
+    if (resolvedRunMode === 'chat') {
       return this.handleChatMode({
         params,
         traceId,

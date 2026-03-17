@@ -51,6 +51,19 @@ export class AgentSkillRuntime {
     return this.registry.detectScenario(message, locale, currentState, skillIds);
   }
 
+  async shouldPreferExecute(
+    message: string,
+    locale: AppLocale,
+    currentState?: DraftState,
+    skillIds?: string[],
+  ): Promise<boolean> {
+    const scenario = await this.registry.detectScenario(message, locale, currentState, skillIds);
+    if (scenario.supportLevel === 'unsupported') {
+      return false;
+    }
+    return scenario.mappedType !== 'unknown';
+  }
+
   async getScenarioLabel(key: string, locale: AppLocale, skillIds?: string[]): Promise<string> {
     return this.registry.getScenarioLabel(key, locale, skillIds);
   }

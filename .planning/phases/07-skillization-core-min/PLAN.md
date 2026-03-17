@@ -53,6 +53,13 @@
 - Done: removed deprecated `detectScenarioByRules` branch from `fallback.ts` to avoid parallel scenario-routing logic.
 - Goal: continue reducing duplicated scenario semantics by converging any remaining fallback-only scenario mapping branches.
 
+## PR-4 Progress (In Progress)
+- Done: added skill-runtime routing recommendation API (`shouldPreferExecute`) derived from detected scenario support level and mapped type.
+- Done: `AgentService` auto mode now routes by skill-runtime recommendation instead of keyword-based `shouldRouteToExecute` heuristic.
+- Done: chat API routes now call `AgentService.shouldPreferExecute` (async) for auto-mode routing, reusing conversation draft context when available.
+- Done: added stage-aware guard in `AgentService.shouldPreferExecute`; when current session is still in `intent/model/loads` due to critical missing fields, auto mode prefers chat.
+- Goal: evaluate whether non-structural stage hints (`analysis/code_check/report`) should also contribute to route decisions.
+
 ## Validation
 - `npm run lint --prefix backend`
 - `npm test --prefix backend -- --runInBand`

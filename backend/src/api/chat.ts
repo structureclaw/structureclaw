@@ -183,7 +183,12 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const mode = body.mode || 'auto';
 
       const shouldExecute = mode === 'execute'
-        || (mode === 'auto' && (Boolean(body.context?.model) || agentService.shouldRouteToExecute(body.message)));
+        || (mode === 'auto' && await agentService.shouldPreferExecute(body.message, {
+          locale: body.context?.locale,
+          conversationId: body.conversationId,
+          skillIds: body.context?.skillIds,
+          hasModel: Boolean(body.context?.model),
+        }));
 
       if (shouldExecute) {
         const result = await agentService.run({
@@ -420,7 +425,12 @@ export async function chatRoutes(fastify: FastifyInstance) {
     reply.raw.flushHeaders?.();
 
     const shouldExecute = mode === 'execute'
-      || (mode === 'auto' && (Boolean(body.context?.model) || agentService.shouldRouteToExecute(body.message)));
+      || (mode === 'auto' && await agentService.shouldPreferExecute(body.message, {
+        locale: body.context?.locale,
+        conversationId: body.conversationId,
+        skillIds: body.context?.skillIds,
+        hasModel: Boolean(body.context?.model),
+      }));
 
     try {
       if (shouldExecute) {
