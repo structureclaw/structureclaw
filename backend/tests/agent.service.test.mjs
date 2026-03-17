@@ -528,7 +528,7 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.inferredType).toBe('unknown');
   });
 
-  test('should ignore categorical loadPosition in no-skill state and keep numeric loadPositionM', async () => {
+  test('should ignore categorical loadPosition in no-skill state', async () => {
     const svc = new AgentService();
     let invokeCount = 0;
     svc.llm = {
@@ -548,11 +548,11 @@ describe('AgentService orchestration', () => {
     const draft = await svc.textToModelDraft('5m member with 10kN point load at 2.5m', undefined, 'en', []);
 
     expect(draft.stateToPersist?.loadPosition).toBeUndefined();
-    expect(draft.stateToPersist?.loadPositionM).toBe(2.5);
+    expect(draft.stateToPersist?.loadPositionM).toBeUndefined();
     expect(draft.stateToPersist?.inferredType).toBe('unknown');
   });
 
-  test('should ignore categorical loadType in no-skill state and keep numeric load magnitude', async () => {
+  test('should ignore categorical loadType in no-skill state', async () => {
     const svc = new AgentService();
     let invokeCount = 0;
     svc.llm = {
@@ -572,7 +572,7 @@ describe('AgentService orchestration', () => {
     const draft = await svc.textToModelDraft('6m member with 15kN load', undefined, 'en', []);
 
     expect(draft.stateToPersist?.loadType).toBeUndefined();
-    expect(draft.stateToPersist?.loadKN).toBe(15);
+    expect(draft.stateToPersist?.loadKN).toBeUndefined();
     expect(draft.stateToPersist?.inferredType).toBe('unknown');
   });
 
@@ -606,7 +606,7 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.supportNote).toBeUndefined();
     expect(draft.stateToPersist?.loadType).toBeUndefined();
     expect(draft.stateToPersist?.loadPosition).toBeUndefined();
-    expect(draft.stateToPersist?.loadPositionM).toBe(4);
+    expect(draft.stateToPersist?.loadPositionM).toBeUndefined();
     expect(Object.prototype.hasOwnProperty.call(draft.stateToPersist ?? {}, 'supportType')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(draft.stateToPersist ?? {}, 'frameBaseSupportType')).toBe(false);
     expect(Object.prototype.hasOwnProperty.call(draft.stateToPersist ?? {}, 'loadType')).toBe(false);
@@ -648,11 +648,11 @@ describe('AgentService orchestration', () => {
     expect(snapshot?.draft.scenarioKey).toBeUndefined();
     expect(snapshot?.draft.supportLevel).toBeUndefined();
     expect(snapshot?.draft.supportNote).toBeUndefined();
-    expect(snapshot?.draft.lengthM).toBe(9);
-    expect(snapshot?.draft.loadKN).toBe(12);
+    expect(snapshot?.draft.lengthM).toBeUndefined();
+    expect(snapshot?.draft.loadKN).toBeUndefined();
     expect(snapshot?.draft.loadType).toBeUndefined();
     expect(snapshot?.draft.loadPosition).toBeUndefined();
-    expect(snapshot?.draft.loadPositionM).toBe(3);
+    expect(snapshot?.draft.loadPositionM).toBeUndefined();
 
     await svc.clearConversationSession(conversationId);
   });

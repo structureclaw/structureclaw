@@ -15,6 +15,11 @@ Owner: backend-agent
 - WP5 Validation and Regression Matrix: in progress (priority)
 
 ## Completed This Iteration
+- Simplified no-skill draft normalization to a minimal generic state (`inferredType=unknown` + timestamps), removing retained structure-specific draft parameters.
+- Removed no-skill providedValues parameter merge/carry-over behavior for structural fields; no-skill now avoids persisting structure-template draft values.
+- Removed no-skill LLM extraction/merge pipeline from `agent.ts`; no-skill now uses direct generic model JSON generation path only.
+- Re-aligned no-skill boundary tests to enforce that structural template parameters are not persisted in generic core state.
+- Added one retry for no-skill generic LLM JSON generation when first output is non-JSON/invalid, while preserving generic core behavior.
 - Added explicit de-scope policy for template-only no-skill tests in phase plan.
 - Added strict execution order: test cleanup first, then next-step planning.
 - Added dedicated status ledger file for phase tracking.

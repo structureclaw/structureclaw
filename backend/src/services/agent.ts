@@ -32,12 +32,8 @@ import {
 import { extractVisualizationHints } from './agent-skills/domains/visualization-domain.js';
 import {
   computeNoSkillMissingFields,
-  extractNoSkillDraftExtractionFromProvidedValues,
-  mergeNoSkillDraftExtraction,
-  mergeNoSkillDraftState,
   normalizeNoSkillDraftState,
   tryNoSkillLlmBuildGenericModel,
-  tryNoSkillLlmExtract,
 } from './agent-noskill-runtime.js';
 
 export type AgentToolName = 'text-to-model-draft' | 'convert' | 'validate' | 'analyze' | 'code-check' | 'report';
@@ -1527,8 +1523,7 @@ export class AgentService {
       return;
     }
     if (this.isNoSkillMode(skillIds)) {
-      const noSkillPatch = extractNoSkillDraftExtractionFromProvidedValues(values);
-      session.draft = normalizeNoSkillDraftState(mergeNoSkillDraftState(session.draft, noSkillPatch));
+      session.draft = normalizeNoSkillDraftState(session.draft);
       session.scenario = undefined;
     } else {
       session.draft = await this.skillRuntime.applyProvidedValues(session.draft, values, locale, skillIds);
@@ -1845,13 +1840,10 @@ export class AgentService {
     locale: AppLocale,
   ): Promise<DraftResult> {
     const llmPreferred = this.llm !== null;
-    const llmExtraction = await tryNoSkillLlmExtract(this.llm, message, existingState, locale);
-    const mergedExtraction = mergeNoSkillDraftExtraction(llmExtraction, { inferredType: 'unknown' });
-    const stateToPersist = mergeNoSkillDraftState(existingState, mergedExtraction);
-    const noSkillState = normalizeNoSkillDraftState(stateToPersist);
+    const noSkillState = normalizeNoSkillDraftState(existingState || { inferredType: 'unknown', updatedAt: Date.now() });
 
     const model = await tryNoSkillLlmBuildGenericModel(this.llm, message, noSkillState, locale);
-    const missingFields = model ? [] : computeNoSkillMissingFields(noSkillState);
+    const missingFields = model ? [] : computeNoSkillMissingFields();
 
     return {
       inferredType: noSkillState.inferredType,
