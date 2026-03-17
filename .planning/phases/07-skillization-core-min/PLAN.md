@@ -82,8 +82,10 @@
 - Done: capability matrix now exposes per-skill filtered-engine reason codes; frontend renders filtered-out engines with localized reason text.
 - Done: documented capability-matrix reason-code contract in `docs/analysis-engine-skills.md`.
 - Done: added frontend rendering test for filtered-out engine reasons (`frontend/tests/components/console/ai-console-engine-filter.test.tsx`).
+- Done: capability matrix now accepts optional `analysisType` query and includes `analysis_type_mismatch` reason evaluation.
+- Done: frontend requests capability matrix with current analysis type and surfaces analysis-type mismatch reasons via localized text.
 - Verified: backend build + frontend type-check + `validate-agent-api-contract.sh` + backend regression.
-- Next: evaluate whether to surface analysis-type incompatibility in capability matrix (currently UI still computes this locally).
+- Next: simplify frontend local engine-issue checks by reusing capability-matrix reason payload as the single source.
 
 ## Validation
 - `npm run lint --prefix backend`

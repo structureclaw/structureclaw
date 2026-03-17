@@ -128,6 +128,12 @@ const run = async () => {
   assert(payload.filteredEngineReasonsBySkill.beam['engine-disabled'].includes('engine_disabled'), 'beam should mark disabled engine reason');
   assert(payload.filteredEngineReasonsBySkill.truss['engine-frame-a'].includes('model_family_mismatch'), 'truss should mark frame engine as family mismatch');
 
+  const responseDynamic = await app.inject({ method: 'GET', url: '/api/v1/agent/capability-matrix?analysisType=dynamic' });
+  assert(responseDynamic.statusCode === 200, 'analysisType-specific capability matrix route should return 200');
+  const dynamicPayload = responseDynamic.json();
+  assert(dynamicPayload.appliedAnalysisType === 'dynamic', 'payload should echo applied analysis type');
+  assert(dynamicPayload.filteredEngineReasonsBySkill.truss['engine-truss-a'].includes('analysis_type_mismatch'), 'dynamic matrix should mark analysis type mismatch for static-only truss engine');
+
   await app.close();
   console.log('[ok] agent capability matrix contract');
 };

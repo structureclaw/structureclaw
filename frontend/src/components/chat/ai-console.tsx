@@ -191,6 +191,9 @@ function mapCapabilityReasonToText(reason: string, t: (key: MessageKey) => strin
   if (reason === 'model_family_mismatch') {
     return t('capabilityReasonModelFamilyMismatch')
   }
+  if (reason === 'analysis_type_mismatch') {
+    return t('capabilityReasonAnalysisTypeMismatch')
+  }
   return reason
 }
 
@@ -1298,7 +1301,7 @@ export function AIConsole() {
 
     async function loadCapabilityMatrix() {
       try {
-        const response = await fetch(`${API_BASE}/api/v1/agent/capability-matrix`)
+        const response = await fetch(`${API_BASE}/api/v1/agent/capability-matrix?analysisType=${encodeURIComponent(analysisType)}`)
         if (!response.ok) {
           return
         }
@@ -1319,7 +1322,7 @@ export function AIConsole() {
     return () => {
       active = false
     }
-  }, [])
+  }, [analysisType])
 
   useEffect(() => {
     let active = true

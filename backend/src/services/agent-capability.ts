@@ -26,7 +26,10 @@ type CapabilityReasonCode =
   | 'engine_disabled'
   | 'engine_unavailable'
   | 'engine_status_unavailable'
-  | 'model_family_mismatch';
+  | 'model_family_mismatch'
+  | 'analysis_type_mismatch';
+
+type CapabilityAnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear';
 
 function normalizeModelFamilies(value: unknown): string[] {
   if (!Array.isArray(value)) {
@@ -60,6 +63,7 @@ function resolveSkillModelFamilies(structureType: string | undefined): string[] 
 function evaluateEngineForSkill(
   engine: CapabilityEngine,
   requiredFamilies: Set<string>,
+  analysisType?: CapabilityAnalysisType,
 ): { compatible: boolean; reasons: CapabilityReasonCode[] } {
   const reasons: CapabilityReasonCode[] = [];
   if (!engine.enabled) {
@@ -74,6 +78,9 @@ function evaluateEngineForSkill(
   if (!engine.supportedModelFamilies.some((family) => requiredFamilies.has(family))) {
     reasons.push('model_family_mismatch');
   }
+  if (analysisType && engine.supportedAnalysisTypes.length > 0 && !engine.supportedAnalysisTypes.includes(analysisType)) {
+    reasons.push('analysis_type_mismatch');
+  }
   return {
     compatible: reasons.length === 0,
     reasons,
@@ -86,7 +93,7 @@ export class AgentCapabilityService {
     private readonly engineCatalog = new AnalysisEngineCatalogService(),
   ) {}
 
-  async getCapabilityMatrix() {
+  async getCapabilityMatrix(options?: { analysisType?: CapabilityAnalysisType }) {
     const skills: CapabilitySkill[] = this.skillRuntime.listSkills().map((skill) => ({
       id: skill.id,
       structureType: skill.structureType,
@@ -119,7 +126,7 @@ export class AgentCapabilityService {
       const validEngineIds: string[] = [];
       const reasonMap: Record<string, CapabilityReasonCode[]> = {};
       for (const engine of engines) {
-        const evaluation = evaluateEngineForSkill(engine, requiredFamilies);
+        const evaluation = evaluateEngineForSkill(engine, requiredFamilies, options?.analysisType);
         if (evaluation.compatible) {
           validEngineIds.push(engine.id);
         } else {
@@ -148,6 +155,7 @@ export class AgentCapabilityService {
       validEngineIdsBySkill,
       filteredEngineReasonsBySkill,
       validSkillIdsByEngine,
+      appliedAnalysisType: options?.analysisType,
     };
   }
 }

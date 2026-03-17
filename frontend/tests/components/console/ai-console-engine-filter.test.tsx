@@ -53,7 +53,7 @@ describe('AIConsole engine filter reasons', () => {
         } as Response
       }
 
-      if (url === `${API_BASE}/api/v1/agent/capability-matrix`) {
+      if (url.startsWith(`${API_BASE}/api/v1/agent/capability-matrix`)) {
         return {
           ok: true,
           json: async () => ({

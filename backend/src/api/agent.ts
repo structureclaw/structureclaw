@@ -41,6 +41,10 @@ const agentRunSchema = z.object({
   }).optional(),
 });
 
+const capabilityMatrixQuerySchema = z.object({
+  analysisType: z.enum(['static', 'dynamic', 'seismic', 'nonlinear']).optional(),
+});
+
 export async function agentRoutes(fastify: FastifyInstance) {
   fastify.get('/tools', {
     schema: {
@@ -65,8 +69,9 @@ export async function agentRoutes(fastify: FastifyInstance) {
       tags: ['Agent'],
       summary: '查询技能与分析引擎能力矩阵',
     },
-  }, async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.send(await capabilityService.getCapabilityMatrix());
+  }, async (request: FastifyRequest<{ Querystring: z.infer<typeof capabilityMatrixQuerySchema> }>, reply: FastifyReply) => {
+    const query = capabilityMatrixQuerySchema.parse(request.query);
+    return reply.send(await capabilityService.getCapabilityMatrix({ analysisType: query.analysisType }));
   });
 
   fastify.post('/run', {

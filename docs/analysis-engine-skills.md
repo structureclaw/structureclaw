@@ -62,6 +62,10 @@ StructureClaw now exposes analysis engines as a pluggable execution layer.
 ## Agent capability matrix API
 - `GET /api/v1/agent/capability-matrix`
 
+### Query parameters
+- `analysisType` (optional): `static | dynamic | seismic | nonlinear`
+- When provided, the matrix applies analysis-type filtering and reason-code evaluation for the requested analysis type.
+
 ### Response highlights
 - `skills`: loaded skill summaries (`id`, `structureType`, `stages`, localized `name`)
 - `engines`: engine summaries (`id`, status flags, supported analysis/model families)
@@ -74,6 +78,7 @@ StructureClaw now exposes analysis engines as a pluggable execution layer.
 - `engine_unavailable`: engine availability check indicates unavailable
 - `engine_status_unavailable`: engine status is `disabled` or `unavailable`
 - `model_family_mismatch`: engine model families do not satisfy the selected skill family
+- `analysis_type_mismatch`: engine supported analysis types do not include the requested `analysisType`
 
 ### Notes
 - `validEngineIdsBySkill` only includes engines passing all compatibility checks.
