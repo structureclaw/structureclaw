@@ -87,6 +87,40 @@ const run = async () => {
   const listAfter = listAfterResp.json();
   assert(!listAfter.items.some((item) => item.id === targetSkillId), 'uninstalled skill should not appear in installed list');
 
+  const incompatibleSearchResp = await app.inject({
+    method: 'GET',
+    url: '/api/v1/agent/skillhub/search?q=future-core-only',
+  });
+  assert(incompatibleSearchResp.statusCode === 200, 'incompatible search should return 200');
+  const incompatibleSearchPayload = incompatibleSearchResp.json();
+  const incompatibleSkill = incompatibleSearchPayload.items.find((item) => item.id === 'skillhub.future-core-only');
+  assert(Boolean(incompatibleSkill), 'future-core-only skill should exist in catalog');
+  assert(incompatibleSkill.compatibility.compatible === false, 'future-core-only should be incompatible');
+  assert(incompatibleSkill.compatibility.reasonCodes.includes('core_version_incompatible'), 'future-core-only should report core version incompatibility');
+  assert(incompatibleSkill.compatibility.reasonCodes.includes('skill_api_version_incompatible'), 'future-core-only should report skill api incompatibility');
+
+  const incompatibleInstallResp = await app.inject({
+    method: 'POST',
+    url: '/api/v1/agent/skillhub/install',
+    payload: { skillId: 'skillhub.future-core-only' },
+  });
+  assert(incompatibleInstallResp.statusCode === 200, 'incompatible install should return 200');
+  const incompatibleInstallPayload = incompatibleInstallResp.json();
+  assert(incompatibleInstallPayload.installed === true, 'incompatible skill should still install');
+  assert(incompatibleInstallPayload.enabled === false, 'incompatible skill should auto-disable after install');
+  assert(incompatibleInstallPayload.fallbackBehavior === 'baseline_only', 'incompatible skill should declare baseline fallback');
+  assert(incompatibleInstallPayload.compatibilityStatus === 'incompatible', 'incompatible install should return incompatible status');
+
+  const incompatibleEnableResp = await app.inject({
+    method: 'POST',
+    url: '/api/v1/agent/skillhub/enable',
+    payload: { skillId: 'skillhub.future-core-only' },
+  });
+  assert(incompatibleEnableResp.statusCode === 200, 'incompatible enable should return 200');
+  const incompatibleEnablePayload = incompatibleEnableResp.json();
+  assert(incompatibleEnablePayload.enabled === false, 'incompatible enable should remain disabled');
+  assert(incompatibleEnablePayload.fallbackBehavior === 'baseline_only', 'incompatible enable should keep baseline fallback');
+
   await app.close();
   await fs.rm('./.runtime/skillhub', { recursive: true, force: true });
   console.log('[ok] agent skillhub contract');

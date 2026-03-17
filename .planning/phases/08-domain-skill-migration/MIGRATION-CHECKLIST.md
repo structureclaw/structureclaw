@@ -15,7 +15,7 @@
 - [x] Expose domain-grouped payload for frontend skill picker (no hardcoded map)
 - [x] Unify metadata contract for bundled skills and SkillHub packages
 - [x] Add compatibility contract fields: `minCoreVersion`, `skillApiVersion`
-- [ ] Add incompatibility reason codes and fallback behavior contract
+- [x] Add incompatibility reason codes and fallback behavior contract
 
 ## P08-2
 - [x] Add contract test: empty skillIds in chat mode

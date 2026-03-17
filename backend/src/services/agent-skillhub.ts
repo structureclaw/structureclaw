@@ -3,6 +3,8 @@ import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import type { SkillDomain } from './agent-skills/types.js';
 
+type SkillCompatibilityReasonCode = 'core_version_incompatible' | 'skill_api_version_incompatible';
+
 export interface SkillHubCatalogEntry {
   id: string;
   version: string;
@@ -28,6 +30,8 @@ interface InstalledSkillRecord {
   enabled: boolean;
   installedAt: string;
   source: 'skillhub';
+  compatibilityStatus: 'compatible' | 'incompatible';
+  incompatibilityReasons: SkillCompatibilityReasonCode[];
 }
 
 interface InstalledStateFile {
@@ -89,7 +93,52 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
       skillApiVersion: 'v1',
     },
   },
+  {
+    id: 'skillhub.future-core-only',
+    version: '1.0.0',
+    domain: 'analysis-strategy',
+    name: {
+      zh: '未来核心策略包',
+      en: 'Future Core Strategy Pack',
+    },
+    description: {
+      zh: '需要更高核心版本的实验性策略包。',
+      en: 'Experimental policy pack requiring a newer core version.',
+    },
+    capabilities: ['analysis-policy'],
+    compatibility: {
+      minCoreVersion: '9.0.0',
+      skillApiVersion: 'v2',
+    },
+  },
 ];
+
+const CURRENT_CORE_VERSION = process.env.SCLAW_CORE_VERSION || '0.1.0';
+const CURRENT_SKILL_API_VERSION = process.env.SCLAW_SKILL_API_VERSION || 'v1';
+
+function parseVersion(value: string): number[] {
+  return String(value)
+    .trim()
+    .replace(/^v/i, '')
+    .split('.')
+    .map((part) => Number.parseInt(part, 10))
+    .filter((part) => Number.isFinite(part));
+}
+
+function isVersionGreater(required: string, current: string): boolean {
+  const requiredParts = parseVersion(required);
+  const currentParts = parseVersion(current);
+  const maxLen = Math.max(requiredParts.length, currentParts.length);
+  for (let index = 0; index < maxLen; index += 1) {
+    const left = requiredParts[index] || 0;
+    const right = currentParts[index] || 0;
+    if (left === right) {
+      continue;
+    }
+    return left > right;
+  }
+  return false;
+}
 
 function normalizeKeyword(value: string | undefined): string {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -127,6 +176,7 @@ export class AgentSkillHubService {
     return {
       items: filtered.map((entry) => ({
         ...entry,
+        compatibility: this.evaluateCompatibility(entry),
         installed: Boolean(installed.skills[entry.id]),
         enabled: Boolean(installed.skills[entry.id]?.enabled),
       })),
@@ -153,15 +203,23 @@ export class AgentSkillHubService {
         installed: true,
         alreadyInstalled: true,
         enabled: existing.enabled,
+        compatibilityStatus: existing.compatibilityStatus,
+        incompatibilityReasons: existing.incompatibilityReasons,
+        fallbackBehavior: existing.compatibilityStatus === 'incompatible' ? 'baseline_only' : 'none',
       };
     }
+
+    const compatibility = this.evaluateCompatibility(catalogSkill);
+    const shouldEnable = compatibility.compatible;
 
     state.skills[skillId] = {
       id: catalogSkill.id,
       version: catalogSkill.version,
-      enabled: true,
+      enabled: shouldEnable,
       installedAt: new Date().toISOString(),
       source: 'skillhub',
+      compatibilityStatus: compatibility.compatible ? 'compatible' : 'incompatible',
+      incompatibilityReasons: compatibility.reasonCodes,
     };
     await this.writeInstalledState(state);
 
@@ -169,7 +227,10 @@ export class AgentSkillHubService {
       skillId,
       installed: true,
       alreadyInstalled: false,
-      enabled: true,
+      enabled: shouldEnable,
+      compatibilityStatus: compatibility.compatible ? 'compatible' : 'incompatible',
+      incompatibilityReasons: compatibility.reasonCodes,
+      fallbackBehavior: compatibility.compatible ? 'none' : 'baseline_only',
     };
   }
 
@@ -209,12 +270,54 @@ export class AgentSkillHubService {
       throw new Error(`Skill is not installed: ${skillId}`);
     }
 
+    const catalogSkill = DEFAULT_CATALOG.find((entry) => entry.id === skillId);
+    if (!catalogSkill) {
+      throw new Error(`Skill not found in SkillHub catalog: ${skillId}`);
+    }
+
+    const compatibility = this.evaluateCompatibility(catalogSkill);
+    if (!compatibility.compatible && enabled) {
+      existing.enabled = false;
+      existing.compatibilityStatus = 'incompatible';
+      existing.incompatibilityReasons = compatibility.reasonCodes;
+      await this.writeInstalledState(state);
+      return {
+        skillId,
+        enabled: false,
+        compatibilityStatus: 'incompatible' as const,
+        incompatibilityReasons: compatibility.reasonCodes,
+        fallbackBehavior: 'baseline_only' as const,
+      };
+    }
+
     existing.enabled = enabled;
+    existing.compatibilityStatus = compatibility.compatible ? 'compatible' : 'incompatible';
+    existing.incompatibilityReasons = compatibility.reasonCodes;
     await this.writeInstalledState(state);
 
     return {
       skillId,
       enabled,
+      compatibilityStatus: compatibility.compatible ? 'compatible' : 'incompatible',
+      incompatibilityReasons: compatibility.reasonCodes,
+      fallbackBehavior: compatibility.compatible ? 'none' : 'baseline_only',
+    };
+  }
+
+  private evaluateCompatibility(entry: SkillHubCatalogEntry): {
+    compatible: boolean;
+    reasonCodes: SkillCompatibilityReasonCode[];
+  } {
+    const reasonCodes: SkillCompatibilityReasonCode[] = [];
+    if (isVersionGreater(entry.compatibility.minCoreVersion, CURRENT_CORE_VERSION)) {
+      reasonCodes.push('core_version_incompatible');
+    }
+    if (entry.compatibility.skillApiVersion !== CURRENT_SKILL_API_VERSION) {
+      reasonCodes.push('skill_api_version_incompatible');
+    }
+    return {
+      compatible: reasonCodes.length === 0,
+      reasonCodes,
     };
   }
 
