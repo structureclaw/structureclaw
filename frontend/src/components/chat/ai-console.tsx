@@ -1522,6 +1522,8 @@ export function AIConsole() {
     return enabledEngines.filter((engine) => matrixCompatibleEngineIds.has(engine.id))
   }, [enabledEngines, matrixCompatibleEngineIds])
 
+  const engineCandidatesFilteredBySkills = matrixCompatibleEngineIds !== null
+
   useEffect(() => {
     if (selectedEngineId === 'auto') {
       return
@@ -2795,6 +2797,11 @@ export function AIConsole() {
                                 <div className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                                   {t('analysisEngineCandidatesGroup')}
                                 </div>
+                                {engineCandidatesFilteredBySkills ? (
+                                  <p className="px-1 text-xs leading-5 text-muted-foreground">
+                                    {t('analysisEngineFilteredBySkillsHint')}
+                                  </p>
+                                ) : null}
                                 <button
                                   type="button"
                                   onClick={() => setSelectedEngineId('auto')}
@@ -2818,6 +2825,11 @@ export function AIConsole() {
                                     setSelectedEngineId
                                   )
                                 )}
+                                {candidateEngines.length === 0 ? (
+                                  <p className="rounded-2xl border border-border/70 bg-card/80 px-3 py-2 text-xs leading-5 text-muted-foreground dark:border-white/10 dark:bg-slate-950/40">
+                                    {t('analysisEngineNoCompatibleCandidates')}
+                                  </p>
+                                ) : null}
                               </div>
                             ) : null}
                             <p className="text-xs leading-5 text-muted-foreground">

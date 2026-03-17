@@ -77,8 +77,9 @@
 - Done: exposed `GET /api/v1/agent/capability-matrix` for frontend consumption.
 - Done: frontend AI console now fetches capability matrix and constrains selectable engines to skill-compatible enabled engines.
 - Done: when a previously selected engine becomes incompatible with current skill selection, selector falls back to `auto`.
+- Done: engine picker now explicitly shows that candidates are filtered by selected skills and displays an empty-compatible-candidates hint.
 - Verified: backend build + frontend type-check + `validate-agent-api-contract.sh` + backend regression.
-- Next: add explicit UI hint for "engine filtered by selected skills" in console engine picker.
+- Next: add a backend contract script that asserts capability-matrix schema and compatibility map consistency.
 
 ## Validation
 - `npm run lint --prefix backend`
