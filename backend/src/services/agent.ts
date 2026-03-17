@@ -23,13 +23,8 @@ import {
   buildCodeCheckInput,
   buildCodeCheckSummaryText,
   executeCodeCheckDomain,
-} from './agent-skills/domains/code-check-domain.js';
-import {
-  extractClauseTraceability,
-  extractControllingCases,
-  extractKeyMetrics,
-} from './agent-skills/domains/postprocess-domain.js';
-import { extractVisualizationHints } from './agent-skills/domains/visualization-domain.js';
+} from '../agent-skills/code-check/entry.js';
+import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.js';
 import {
   computeNoSkillMissingFields,
   normalizeNoSkillDraftState,
@@ -1726,10 +1721,12 @@ export class AgentService {
       `分析类型 ${params.analysisType}，分析${analysisSuccess ? '成功' : '失败'}，${codeCheckText}。`,
       `Analysis type ${params.analysisType}; analysis ${analysisSuccess ? 'succeeded' : 'failed'}; ${codeCheckText}.`
     );
-    const keyMetrics = extractKeyMetrics(params.analysis, params.codeCheck);
-    const clauseTraceability = extractClauseTraceability(params.codeCheck);
-    const controllingCases = extractControllingCases(params.analysis);
-    const visualizationHints = extractVisualizationHints(params.analysis);
+    const {
+      keyMetrics,
+      clauseTraceability,
+      controllingCases,
+      visualizationHints,
+    } = buildReportDomainArtifacts(params.analysis, params.codeCheck);
     const jsonReport: Record<string, unknown> = {
       reportSchemaVersion: '1.0.0',
       intent: params.message,
