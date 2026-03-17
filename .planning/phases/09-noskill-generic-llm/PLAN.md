@@ -3,6 +3,14 @@
 ## Goal
 Turn no-skill mode into a truly generic, LLM-first path with no scenario/template matching logic in core no-skill runtime.
 
+## Execution Priority
+Phase-09 execution order is strict:
+1. First remove redundant no-skill tests that rely on deterministic template assumptions and do not validate generic capability.
+2. Then stabilize no-skill contract tests around orchestration boundaries (clarification, gating, validate/analyze flow).
+3. Only after test cleanup is complete, schedule and execute the next implementation package.
+
+Next-step planning after WP5 cleanup is gated and must not start early.
+
 ## Problem Statement
 Current no-skill runtime still contains domain-template assumptions (beam-oriented parsing, support/load-position heuristics, template-oriented inferredType coercion, and hardcoded model skeletons). This violates the target architecture:
 - no-skill: generic orchestration + validation + clarification only
@@ -81,25 +89,61 @@ Acceptance:
 ### WP5: Validation and Regression Matrix
 Scope:
 - Add/adjust tests to enforce generic no-skill behavior.
+- Remove template-only tests that primarily verify deterministic template synthesis in no-skill mode.
+- Keep contract tests that verify orchestration, safety boundaries, and fallback behavior.
 
 Required tests:
 - no-skill should not infer beam from support/load wording alone.
 - no-skill should not emit template-anchored missing fields.
 - no-skill should accept arbitrary structural intent and request generic computability details.
 - skill-enabled flows retain existing deterministic template behavior.
+- no-skill tests should focus on protocol contracts (clarification, execute gating, validate/analyze chaining), not LLM quality scoring.
+
+De-scope tests (for phase-09 no-skill path):
+- remove tests that assert fixed template geometry/topology from plain natural language in no-skill mode.
+- remove tests that depend on deterministic template tokens as a proxy for LLM capability.
+
+Must keep tests:
+- no-skill clarification remains template-agnostic.
+- no-skill execute gating behaves correctly with/without computable model.
+- no-skill validate/analyze tool-chain contracts remain stable.
+- repository-down fallback contract remains green.
 
 Commands:
 - npm run build --prefix backend
 - npm test --prefix backend -- backend/tests/agent.service.test.mjs --runInBand
 
 ## Suggested Commit Slices
-1. refactor(agent): remove no-skill rule/template extraction
-2. refactor(agent): remove no-skill hardcoded model synthesis
-3. feat(agent-skills): absorb moved template behavior into skills
-4. test(agent): enforce template-agnostic no-skill contract
+1. test(agent): prune redundant no-skill template-driven tests
+2. test(agent): enforce no-skill generic contract coverage only
+3. refactor(agent): remove remaining no-skill template coupling
+4. feat(agent-skills): absorb moved template behavior into skills
 5. docs(planning): finalize phase-09 outcomes
+
+## Progress Tracking
+Execution status is tracked in a dedicated file:
+- .planning/phases/09-noskill-generic-llm/STATUS.md
+
+## Post-Cleanup Next Plan
+Precondition: test-cleanup gate satisfied (template-driven no-skill tests removed, targeted/backend regressions green).
+
+Step 1:
+- tighten no-skill execute path to avoid compatibility template fallback as default behavior.
+- keep behavior strictly generic: computable model -> execute, non-computable model -> generic clarification.
+
+Step 2:
+- inventory remaining template-coupled behavior in core no-skill path and migrate/delete it.
+- ensure any deterministic template synthesis is discoverable only under agent-skills.
+
+Step 3:
+- add/adjust contract tests only at orchestration boundary (not LLM quality).
+- enforce no-skill/skill boundary with explicit assertions.
+
+Step 4:
+- run `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs` and `make backend-regression` after each implementation slice.
 
 ## Exit Criteria
 - no-skill path is LLM-first and template-agnostic.
 - template matching/synthesis exists only in skill modules.
 - regression suite passes with explicit no-skill generic guarantees.
+- no-skill redundant template-driven tests are removed before any next-step phase expansion.

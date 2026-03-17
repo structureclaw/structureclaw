@@ -431,56 +431,6 @@ describe('AgentService orchestration', () => {
     expect(Array.isArray(second.interaction?.missingOptional)).toBe(true);
   });
 
-  test('should ask for support condition before assuming a beam template', async () => {
-    const svc = new AgentService();
-    svc.llm = null;
-
-    const result = await svc.run({
-      conversationId: 'conv-chat-beam-support-en',
-      message: 'Beam span 10 m',
-      mode: 'chat',
-      context: {
-        locale: 'en',
-      },
-    });
-
-    expect(result.interaction?.detectedScenario).toBe('beam');
-    expect(result.interaction?.missingCritical).toContain('Support condition (cantilever / simply supported / fixed-fixed / fixed-pinned)');
-    expect(result.interaction?.missingCritical).not.toContain('Load type (point / distributed)');
-    expect(result.interaction?.conversationStage).toBe('Geometry');
-  });
-
-  test('should build a simply supported beam model when the support condition is explicit', async () => {
-    const svc = new AgentService();
-    svc.llm = null;
-
-    const draft = await svc.textToModelDraft('简支梁，跨度6m，20kN跨中点荷载', undefined, 'zh');
-    const nodes = draft.model?.nodes;
-
-    expect(draft.missingFields).toEqual([]);
-    expect(Array.isArray(nodes)).toBe(true);
-    expect(nodes).toEqual([
-      { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, false] },
-      { id: '2', x: 3, y: 0, z: 0 },
-      { id: '3', x: 6, y: 0, z: 0, restraints: [false, true, true, true, true, false] },
-    ]);
-    expect(draft.model?.load_cases?.[0]?.loads).toEqual([{ node: '2', fy: -20 }]);
-    expect(draft.stateToPersist?.supportType).toBe('simply-supported');
-  });
-
-  test('should preserve cantilever beam generation when the support condition is explicit', async () => {
-    const svc = new AgentService();
-    svc.llm = null;
-
-    const draft = await svc.textToModelDraft('悬臂梁，跨度6m，20kN端部点荷载', undefined, 'zh');
-    const nodes = draft.model?.nodes;
-
-    expect(draft.missingFields).toEqual([]);
-    expect(nodes?.[0]?.restraints).toEqual([true, true, true, true, true, true]);
-    expect(nodes?.[2]?.restraints).toBeUndefined();
-    expect(draft.model?.load_cases?.[0]?.loads).toEqual([{ node: '3', fy: -20 }]);
-    expect(draft.stateToPersist?.supportType).toBe('cantilever');
-  });
 
   test('should not synthesize template model in no-skill mode when llm is unavailable', async () => {
     const svc = new AgentService();
@@ -533,7 +483,7 @@ describe('AgentService orchestration', () => {
     expect(result.model).toBeUndefined();
   });
 
-  test('should execute analyze in no-skill mode with rule-based generic fallback when llm is unavailable', async () => {
+  test('should execute analyze in no-skill mode when computable model is provided', async () => {
     const svc = new AgentService();
     svc.llm = null;
     svc.engineClient.post = async (path, payload) => {
@@ -562,6 +512,21 @@ describe('AgentService orchestration', () => {
       context: {
         locale: 'zh',
         skillIds: [],
+        model: {
+          schema_version: '1.0.0',
+          unit_system: 'SI',
+          nodes: [
+            { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
+            { id: '2', x: 3, y: 0, z: 0 },
+          ],
+          elements: [
+            { id: '1', type: 'beam', node_i: '1', node_j: '2', material: 'mat1', section: 'sec1' },
+          ],
+          materials: [{ id: 'mat1', type: 'steel', E: 2.06e11, nu: 0.3, density: 7850 }],
+          sections: [{ id: 'sec1', type: 'rectangular', width: 0.3, height: 0.6 }],
+          load_cases: [{ id: 'LC1', type: 'dead', loads: [{ type: 'nodal', node: '2', fy: -10 }] }],
+          load_combinations: [{ id: 'ULS1', factors: [{ case: 'LC1', factor: 1.0 }] }],
+        },
         userDecision: 'allow_auto_decide',
         autoCodeCheck: false,
         includeReport: false,
@@ -570,23 +535,6 @@ describe('AgentService orchestration', () => {
 
     expect(result.success).toBe(true);
     expect(result.toolCalls.some((item) => item.tool === 'analyze' && item.status === 'success')).toBe(true);
-  });
-
-  test('should build a fixed-fixed beam model when the support condition is explicit', async () => {
-    const svc = new AgentService();
-    svc.llm = null;
-
-    const draft = await svc.textToModelDraft('两端固结梁，跨度10m，10kN/m均布荷载', undefined, 'zh');
-    const nodes = draft.model?.nodes;
-
-    expect(draft.missingFields).toEqual([]);
-    expect(nodes).toEqual([
-      { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
-      { id: '2', x: 5, y: 0, z: 0 },
-      { id: '3', x: 10, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
-    ]);
-    expect(draft.model?.metadata?.supportType).toBe('fixed-fixed');
-    expect(draft.stateToPersist?.supportType).toBe('fixed-fixed');
   });
 
   test('should continue to analyze when validate returns an upstream 502', async () => {
