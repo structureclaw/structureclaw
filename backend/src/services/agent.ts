@@ -10,6 +10,7 @@ import { prisma } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
 import { redis } from '../utils/redis.js';
 import { type AppLocale } from './locale.js';
+import { AgentPolicyService } from './agent-policy.js';
 import {
   AgentSkillRuntime,
   type DraftExtraction,
@@ -195,6 +196,7 @@ export class AgentService {
   private readonly engineClient: AxiosInstance;
   public llm: ChatOpenAI | null;
   private readonly skillRuntime: AgentSkillRuntime;
+  private readonly policy: AgentPolicyService;
   private static readonly draftStateTtlSeconds = 30 * 60;
 
   constructor() {
@@ -206,6 +208,7 @@ export class AgentService {
 
     this.llm = createChatModel(0.1);
     this.skillRuntime = new AgentSkillRuntime();
+    this.policy = new AgentPolicyService();
   }
 
   private isZh(locale: AppLocale): boolean {
@@ -221,20 +224,7 @@ export class AgentService {
   }
 
   private getStageLabel(stage: AgentInteractionStage, locale: AppLocale): string {
-    switch (stage) {
-      case 'intent':
-        return this.localize(locale, '需求识别', 'Intent');
-      case 'model':
-        return this.localize(locale, '几何建模', 'Geometry');
-      case 'loads':
-        return this.localize(locale, '荷载条件', 'Loads');
-      case 'analysis':
-        return this.localize(locale, '分析设置', 'Analysis');
-      case 'code_check':
-        return this.localize(locale, '规范校核', 'Code Check');
-      case 'report':
-        return this.localize(locale, '报告输出', 'Report');
-    }
+    return this.policy.getStageLabel(stage, locale);
   }
 
   private async getScenarioLabel(key: ScenarioTemplateKey, locale: AppLocale): Promise<string> {
@@ -753,9 +743,9 @@ export class AgentService {
       normalizedModel = draft.model;
     }
 
-    const resolvedAnalysisType = workingSession.resolved?.analysisType || params.context?.analysisType || this.inferAnalysisType(params.message);
+    const resolvedAnalysisType = workingSession.resolved?.analysisType || params.context?.analysisType || this.policy.inferAnalysisType(params.message);
     const resolvedDesignCode = workingSession.resolved?.designCode || params.context?.designCode || 'GB50017';
-    const resolvedAutoCodeCheck = workingSession.resolved?.autoCodeCheck ?? params.context?.autoCodeCheck ?? this.inferCodeCheckIntent(params.message);
+    const resolvedAutoCodeCheck = workingSession.resolved?.autoCodeCheck ?? params.context?.autoCodeCheck ?? this.policy.inferCodeCheckIntent(params.message);
     const resolvedIncludeReport = workingSession.resolved?.includeReport ?? params.context?.includeReport ?? true;
     const resolvedReportFormat = workingSession.resolved?.reportFormat || params.context?.reportFormat || 'both';
     const resolvedReportOutput = workingSession.resolved?.reportOutput || params.context?.reportOutput || 'inline';
@@ -1177,44 +1167,6 @@ export class AgentService {
     return this.finalizeRunResult(traceId, sessionKey, params.message, result);
   }
 
-  private inferAnalysisType(message: string): 'static' | 'dynamic' | 'seismic' | 'nonlinear' {
-    const text = message.toLowerCase();
-    if (text.includes('地震') || text.includes('seismic')) {
-      return 'seismic';
-    }
-    if (text.includes('动力') || text.includes('dynamic') || text.includes('时程')) {
-      return 'dynamic';
-    }
-    if (text.includes('非线性') || text.includes('nonlinear')) {
-      return 'nonlinear';
-    }
-    return 'static';
-  }
-
-  private inferCodeCheckIntent(message: string): boolean {
-    const text = message.toLowerCase();
-    return text.includes('校核')
-      || text.includes('规范')
-      || text.includes('code-check')
-      || text.includes('验算');
-  }
-
-  private inferDesignCode(message: string): string | undefined {
-    const match = message.toUpperCase().match(/GB\s*([0-9]{5})/);
-    if (!match?.[1]) {
-      return undefined;
-    }
-    return `GB${match[1]}`;
-  }
-
-  private inferReportIntent(message: string): boolean | undefined {
-    const text = message.toLowerCase();
-    if (text.includes('报告') || text.includes('report')) {
-      return true;
-    }
-    return undefined;
-  }
-
   private async assessInteractionNeeds(
     session: InteractionSession,
     locale: AppLocale,
@@ -1257,29 +1209,8 @@ export class AgentService {
     return {
       criticalMissing,
       nonCriticalMissing,
-      defaultProposals: this.buildDefaultProposals(nonCriticalMissing, locale),
+      defaultProposals: this.policy.buildDefaultProposals(nonCriticalMissing, locale),
     };
-  }
-
-  private buildDefaultProposals(nonCriticalMissing: string[], locale: AppLocale): InteractionDefaultProposal[] {
-    return nonCriticalMissing.map((key) => {
-      switch (key) {
-        case 'analysisType':
-          return { paramKey: key, value: 'static', reason: this.localize(locale, '默认采用静力分析，属于最保守且最常用起步工况。', 'Default to static analysis as the most conservative and common starting case.') };
-        case 'autoCodeCheck':
-          return { paramKey: key, value: true, reason: this.localize(locale, '默认开启规范校核以保证验算完整性。', 'Enable code checks by default to keep the verification flow complete.') };
-        case 'designCode':
-          return { paramKey: key, value: 'GB50017', reason: this.localize(locale, '默认采用钢结构设计标准 GB50017 进行保守校核。', 'Use GB50017 by default for a conservative steel-design check.') };
-        case 'includeReport':
-          return { paramKey: key, value: true, reason: this.localize(locale, '默认生成报告，便于复核输入与结果。', 'Generate a report by default so inputs and results can be reviewed.') };
-        case 'reportFormat':
-          return { paramKey: key, value: 'both', reason: this.localize(locale, '默认同时输出 json/markdown，兼顾机器和人工阅读。', 'Return both JSON and Markdown by default for machine and human consumption.') };
-        case 'reportOutput':
-          return { paramKey: key, value: 'inline', reason: this.localize(locale, '默认内联返回，减少文件写入依赖。', 'Return results inline by default to avoid file-output dependencies.') };
-        default:
-          return { paramKey: key, value: null, reason: this.localize(locale, '默认保守值。', 'Apply a conservative default.') };
-      }
-    });
   }
 
   private applyNonCriticalDefaults(session: InteractionSession, defaults: InteractionDefaultProposal[]): void {
@@ -1339,17 +1270,17 @@ export class AgentService {
   private applyInferredNonCriticalFromMessage(session: InteractionSession, message: string): void {
     session.resolved = session.resolved || {};
     if (!session.resolved.analysisType) {
-      session.resolved.analysisType = this.inferAnalysisType(message);
+      session.resolved.analysisType = this.policy.inferAnalysisType(message);
     }
-    const inferredCode = this.inferDesignCode(message);
+    const inferredCode = this.policy.inferDesignCode(message);
     if (inferredCode && !session.resolved.designCode) {
       session.resolved.designCode = inferredCode;
     }
-    if (session.resolved.autoCodeCheck === undefined && this.inferCodeCheckIntent(message)) {
+    if (session.resolved.autoCodeCheck === undefined && this.policy.inferCodeCheckIntent(message)) {
       session.resolved.autoCodeCheck = true;
     }
     if (session.resolved.includeReport === undefined) {
-      const reportIntent = this.inferReportIntent(message);
+      const reportIntent = this.policy.inferReportIntent(message);
       if (reportIntent !== undefined) {
         session.resolved.includeReport = reportIntent;
       }
@@ -1377,7 +1308,7 @@ export class AgentService {
     }
     session.resolved = session.resolved || {};
     if (typeof values.analysisType === 'string') {
-      session.resolved.analysisType = this.normalizeAnalysisType(values.analysisType);
+      session.resolved.analysisType = this.policy.normalizeAnalysisType(values.analysisType);
     }
     if (typeof values.designCode === 'string' && values.designCode.trim()) {
       session.resolved.designCode = values.designCode.trim().toUpperCase();
@@ -1389,33 +1320,12 @@ export class AgentService {
       session.resolved.includeReport = values.includeReport;
     }
     if (typeof values.reportFormat === 'string') {
-      session.resolved.reportFormat = this.normalizeReportFormat(values.reportFormat);
+      session.resolved.reportFormat = this.policy.normalizeReportFormat(values.reportFormat);
     }
     if (typeof values.reportOutput === 'string') {
-      session.resolved.reportOutput = this.normalizeReportOutput(values.reportOutput);
+      session.resolved.reportOutput = this.policy.normalizeReportOutput(values.reportOutput);
     }
     session.updatedAt = Date.now();
-  }
-
-  private normalizeAnalysisType(value: string): NonNullable<InteractionSession['resolved']>['analysisType'] {
-    if (value === 'static' || value === 'dynamic' || value === 'seismic' || value === 'nonlinear') {
-      return value;
-    }
-    return 'static';
-  }
-
-  private normalizeReportFormat(value: string): AgentReportFormat {
-    if (value === 'json' || value === 'markdown' || value === 'both') {
-      return value;
-    }
-    return 'both';
-  }
-
-  private normalizeReportOutput(value: string): AgentReportOutput {
-    if (value === 'inline' || value === 'file') {
-      return value;
-    }
-    return 'inline';
   }
 
   private normalizeLoadType(value: unknown): DraftLoadType | undefined {
@@ -1449,22 +1359,8 @@ export class AgentService {
   private async mapMissingFieldLabels(missing: string[], locale: AppLocale, draft: DraftState, skillIds?: string[]): Promise<string[]> {
     const labels = await this.skillRuntime.mapMissingFieldLabels(missing, locale, draft, skillIds);
     return missing.map((key, index) => {
-      switch (key) {
-        case 'analysisType':
-          return this.localize(locale, '分析类型（static/dynamic/seismic/nonlinear）', 'Analysis type (static/dynamic/seismic/nonlinear)');
-        case 'designCode':
-          return this.localize(locale, '规范编号（如 GB50017）', 'Design code (for example GB50017)');
-        case 'autoCodeCheck':
-          return this.localize(locale, '是否自动规范校核', 'Whether to run code checks automatically');
-        case 'includeReport':
-          return this.localize(locale, '是否生成报告', 'Whether to generate a report');
-        case 'reportFormat':
-          return this.localize(locale, '报告格式（json/markdown/both）', 'Report format (json/markdown/both)');
-        case 'reportOutput':
-          return this.localize(locale, '报告输出位置（inline/file）', 'Report output location (inline/file)');
-        default:
-          return labels[index] || key;
-      }
+      const policyLabel = this.policy.mapNonStructuralMissingFieldLabel(key, locale);
+      return policyLabel || labels[index] || key;
     });
   }
 
@@ -1519,37 +1415,17 @@ export class AgentService {
       if (structuralQuestion) {
         return structuralQuestion;
       }
-      switch (paramKey) {
-        case 'analysisType':
-          return { paramKey, label: this.localize(locale, '分析类型', 'Analysis type'), question: this.localize(locale, '请选择分析类型。', 'Please choose the analysis type.'), required: true, critical, suggestedValue: 'static' };
-        case 'autoCodeCheck':
-          return { paramKey, label: this.localize(locale, '自动校核', 'Auto code check'), question: this.localize(locale, '是否自动执行规范校核？', 'Should code checks run automatically?'), required: true, critical, suggestedValue: true };
-        case 'designCode':
-          return { paramKey, label: this.localize(locale, '规范编号', 'Design code'), question: this.localize(locale, '请确认规范编号（例如 GB50017）。', 'Please confirm the design code (for example GB50017).'), required: true, critical, suggestedValue: 'GB50017' };
-        case 'includeReport':
-          return { paramKey, label: this.localize(locale, '报告开关', 'Report toggle'), question: this.localize(locale, '是否生成计算与校核报告？', 'Should an analysis and code-check report be generated?'), required: true, critical, suggestedValue: true };
-        case 'reportFormat':
-          return { paramKey, label: this.localize(locale, '报告格式', 'Report format'), question: this.localize(locale, '请确认报告格式。', 'Please confirm the report format.'), required: true, critical, suggestedValue: 'both' };
-        case 'reportOutput':
-          return { paramKey, label: this.localize(locale, '报告输出', 'Report output'), question: this.localize(locale, '请确认报告输出位置。', 'Please confirm where the report should be returned.'), required: true, critical, suggestedValue: 'inline' };
-        default:
-          return { paramKey, label: paramKey, question: this.localize(locale, `请确认参数 ${paramKey}。`, `Please confirm parameter ${paramKey}.`), required: true, critical };
+      const policyQuestion = this.policy.buildNonStructuralInteractionQuestion(paramKey, locale, critical);
+      if (policyQuestion) {
+        return policyQuestion;
       }
+      return { paramKey, label: paramKey, question: this.localize(locale, `请确认参数 ${paramKey}。`, `Please confirm parameter ${paramKey}.`), required: true, critical };
     });
   }
 
   private async resolveInteractionStage(missingKeys: string[], draft: DraftState, skillIds?: string[]): Promise<AgentInteractionStage> {
     const structuralStage = await this.skillRuntime.resolveInteractionStage(missingKeys, draft, skillIds);
-    if (structuralStage === 'intent' || structuralStage === 'model' || structuralStage === 'loads') {
-      return structuralStage;
-    }
-    if (missingKeys.includes('analysisType')) {
-      return 'analysis';
-    }
-    if (missingKeys.includes('autoCodeCheck') || missingKeys.includes('designCode')) {
-      return 'code_check';
-    }
-    return 'report';
+    return this.policy.resolveInteractionStageFromMissing(structuralStage, missingKeys);
   }
 
   private buildInteractionQuestion(interaction: AgentInteraction, locale: AppLocale): string {
