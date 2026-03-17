@@ -1189,6 +1189,7 @@ export class AgentService {
     workingSession: InteractionSession;
   }): Promise<AgentRunResult> {
     const { params, traceId, startedAt, startedAtMs, locale, mode, toolCalls, plan, sessionKey, workingSession } = args;
+    const noSkillMode = this.isNoSkillMode(params.context?.skillIds);
 
     plan.push(this.localize(locale, '识别结构场景并匹配对话模板', 'Identify the structural scenario and select the matching dialogue template'));
     plan.push(this.localize(locale, '按当前阶段补齐关键工程参数', 'Collect the key engineering parameters for the current stage'));
@@ -1211,6 +1212,120 @@ export class AgentService {
       extractionMode: draft.extractionMode,
       modelGenerated: Boolean(draft.model),
     });
+
+    if (noSkillMode) {
+      if (sessionKey) {
+        await this.setInteractionSession(sessionKey, workingSession);
+      }
+
+      if (draft.model) {
+        const interaction: AgentInteraction = {
+          state: 'ready',
+          stage: 'model',
+          turnId: randomUUID(),
+          routeHint: 'prefer_execute',
+          routeReason: this.localize(
+            locale,
+            '未启用技能，但当前输入已可直接生成结构模型。',
+            'No skills are enabled, but the current input is sufficient to build a structural model directly.',
+          ),
+          conversationStage: this.getStageLabel('model', locale),
+          missingCritical: [],
+          missingOptional: [],
+          questions: [],
+          pending: {
+            criticalMissing: [],
+            nonCriticalMissing: [],
+          },
+          proposedDefaults: [],
+          nextActions: ['confirm_all'],
+          recommendedNextStep: this.localize(
+            locale,
+            '可直接执行分析，或继续补充更细的建模参数。',
+            'You can run analysis directly, or continue refining modeling parameters.',
+          ),
+        };
+
+        const response = this.localize(
+          locale,
+          '已根据当前输入直接生成结构模型 JSON，可直接执行分析。',
+          'A structural model JSON has been generated directly from your input and is ready for analysis.',
+        );
+
+        const result: AgentRunResult = {
+          traceId,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          durationMs: Date.now() - startedAtMs,
+          success: true,
+          mode,
+          needsModelInput: false,
+          plan,
+          toolCalls,
+          metrics: this.buildMetrics(toolCalls),
+          model: draft.model,
+          interaction,
+          response,
+        };
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result, params.context?.skillIds);
+      }
+
+      const missingFields = draft.missingFields.length > 0
+        ? draft.missingFields
+        : [this.localize(locale, '关键结构参数', 'key structural parameters')];
+      const question = this.localize(
+        locale,
+        `当前未启用技能。我会走通用建模能力，请先补充：${missingFields.join('、')}。`,
+        `No skills are enabled. I will use generic modeling capability. Please provide: ${missingFields.join(', ')}.`,
+      );
+      const interaction: AgentInteraction = {
+        state: 'confirming',
+        stage: 'model',
+        turnId: randomUUID(),
+        routeHint: 'prefer_chat',
+        routeReason: this.localize(
+          locale,
+          '当前仍缺少关键建模参数，请先补充后再执行。',
+          'Critical modeling parameters are still missing. Please provide them before execution.',
+        ),
+        conversationStage: this.getStageLabel('model', locale),
+        missingCritical: missingFields,
+        missingOptional: [],
+        questions: [{
+          paramKey: 'genericModeling',
+          label: this.localize(locale, '关键参数', 'Key parameters'),
+          question,
+          required: true,
+          critical: true,
+        }],
+        pending: {
+          criticalMissing: missingFields,
+          nonCriticalMissing: [],
+        },
+        proposedDefaults: [],
+        nextActions: ['provide_values', 'revise'],
+      };
+
+      const result: AgentRunResult = {
+        traceId,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedAtMs,
+        success: true,
+        mode,
+        needsModelInput: true,
+        plan,
+        toolCalls,
+        metrics: this.buildMetrics(toolCalls),
+        interaction,
+        clarification: {
+          missingFields,
+          question,
+        },
+        response: question,
+      };
+      return this.finalizeRunResult(traceId, sessionKey, params.message, result, params.context?.skillIds);
+    }
 
     const assessment = await this.assessInteractionNeeds(workingSession, locale, params.context?.skillIds, 'chat');
     const state: AgentInteractionState = assessment.criticalMissing.length > 0

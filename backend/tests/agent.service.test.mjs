@@ -496,6 +496,27 @@ describe('AgentService orchestration', () => {
     expect(draft.model?.metadata?.loadPositionM).toBe(4);
   });
 
+  test('should return ready model in chat mode when no skills are loaded and beam parameters are complete', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const result = await svc.run({
+      message: '我希望生成一个跨度10m的简支梁，荷载在4m处，一个集中荷载10kN',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+        skillIds: [],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.needsModelInput).toBe(false);
+    expect(result.interaction?.state).toBe('ready');
+    expect(result.interaction?.missingCritical).toEqual([]);
+    expect(result.model?.nodes?.map((node) => node.x)).toEqual([0, 4, 10]);
+    expect(result.model?.load_cases?.[0]?.loads).toEqual([{ node: '2', fy: -10 }]);
+  });
+
   test('should build a fixed-fixed beam model when the support condition is explicit', async () => {
     const svc = new AgentService();
     svc.llm = null;
