@@ -36,9 +36,7 @@ import {
 } from './agent-skills/domains/postprocess-domain.js';
 import { extractVisualizationHints } from './agent-skills/domains/visualization-domain.js';
 import {
-  buildNoSkillGenericModel,
   computeNoSkillMissingFields,
-  extractNoSkillDraftByRules,
   mergeNoSkillDraftExtraction,
   mergeNoSkillDraftState,
   normalizeNoSkillDraftState,
@@ -1830,18 +1828,12 @@ export class AgentService {
     locale: AppLocale,
   ): Promise<DraftResult> {
     const llmExtraction = await tryNoSkillLlmExtract(this.llm, message, existingState, locale);
-    const ruleExtraction = extractNoSkillDraftByRules(message);
-    const mergedExtraction = mergeNoSkillDraftExtraction(llmExtraction, ruleExtraction);
+    const mergedExtraction = mergeNoSkillDraftExtraction(llmExtraction, { inferredType: 'unknown' });
     const stateToPersist = mergeNoSkillDraftState(existingState, mergedExtraction);
     const noSkillState = normalizeNoSkillDraftState(stateToPersist);
 
-    let model: Record<string, unknown> | undefined;
-    const missingFields = computeNoSkillMissingFields(noSkillState);
-    if (missingFields.length === 0) {
-      model = buildNoSkillGenericModel(noSkillState);
-    } else {
-      model = await tryNoSkillLlmBuildGenericModel(this.llm, message, noSkillState, locale);
-    }
+    const model = await tryNoSkillLlmBuildGenericModel(this.llm, message, noSkillState, locale);
+    const missingFields = model ? [] : computeNoSkillMissingFields(noSkillState);
 
     return {
       inferredType: noSkillState.inferredType,

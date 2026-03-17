@@ -10,140 +10,14 @@ import type {
 } from './agent-skills/index.js';
 
 export function normalizeNoSkillDraftState(state: DraftState): DraftState {
-  if (state.inferredType !== 'unknown') {
-    return state;
-  }
-
-  if (state.supportType || state.loadPositionM !== undefined || state.loadType !== undefined) {
-    return {
-      ...state,
-      inferredType: 'beam',
-    };
-  }
-
   return state;
 }
 
 export function computeNoSkillMissingFields(state: DraftState): string[] {
-  const missing: string[] = [];
-  const effectiveLength = state.lengthM ?? state.spanLengthM;
-  if (effectiveLength === undefined) {
-    missing.push('主要几何参数（跨度/层高/层数/轴网）');
+  if (state.lengthM !== undefined || state.spanLengthM !== undefined || state.storyCount !== undefined || state.storyHeightsM?.length) {
+    return ['可计算结构模型JSON（或补充边界、材料、截面、荷载与组合）'];
   }
-  if (state.loadKN === undefined && !state.floorLoads?.length) {
-    missing.push('作用荷载信息（大小/方向/位置）');
-  }
-  return missing;
-}
-
-export function buildNoSkillGenericModel(state: DraftState): Record<string, unknown> {
-  const length = state.lengthM ?? state.spanLengthM;
-  const load = state.loadKN;
-  if (length === undefined || load === undefined) {
-    throw new Error('no-skill generic model requires length and load');
-  }
-
-  const supportType = state.supportType || 'simply-supported';
-  const fixedRestraint = [true, true, true, true, true, true];
-  const pinnedRestraint = [true, true, true, true, true, false];
-  const rollerRestraint = [false, true, true, true, true, false];
-  const leftRestraint = supportType === 'simply-supported'
-    ? pinnedRestraint
-    : fixedRestraint;
-  const rightRestraint = supportType === 'simply-supported'
-    ? rollerRestraint
-    : supportType === 'fixed-fixed'
-      ? fixedRestraint
-      : supportType === 'fixed-pinned'
-        ? pinnedRestraint
-        : undefined;
-  const loadPositionM = typeof state.loadPositionM === 'number'
-    && state.loadPositionM > 0
-    && state.loadPositionM < length
-    ? state.loadPositionM
-    : undefined;
-  const pointLoadX = loadPositionM ?? (state.loadPosition === 'midspan' ? length / 2 : length);
-  const nodes = [
-    { id: '1', x: 0, y: 0, z: 0, restraints: leftRestraint },
-    { id: '2', x: pointLoadX, y: 0, z: 0 },
-    rightRestraint
-      ? { id: '3', x: length, y: 0, z: 0, restraints: rightRestraint }
-      : { id: '3', x: length, y: 0, z: 0 },
-  ];
-  const elements = [
-    { id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' },
-    { id: '2', type: 'beam', nodes: ['2', '3'], material: '1', section: '1' },
-  ];
-  const loads = state.loadType === 'distributed' || state.loadPosition === 'full-span'
-    ? [
-        { type: 'distributed', element: '1', wy: -load, wz: 0 },
-        { type: 'distributed', element: '2', wy: -load, wz: 0 },
-      ]
-    : [{ node: '2', fy: -load }];
-
-  return {
-    schema_version: '1.0.0',
-    unit_system: 'SI',
-    nodes,
-    elements,
-    materials: [
-      { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
-    ],
-    sections: [
-      { id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001, Iz: 0.0001, J: 0.0001, G: 79000 } },
-    ],
-    load_cases: [
-      { id: 'LC1', type: 'other', loads },
-    ],
-    load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
-    metadata: {
-      source: 'generic-no-skill',
-      inferredType: state.inferredType,
-      supportType,
-      loadPositionM: loadPositionM ?? pointLoadX,
-    },
-  };
-}
-
-export function extractNoSkillDraftByRules(message: string): DraftExtraction {
-  const text = message.toLowerCase();
-  const spanLengthM = extractNumber(text, [
-    /每跨\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /双跨[^\d]*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /each span\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*m/i,
-    /per span\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*m/i,
-  ]);
-  const lengthM = extractNumber(text, [
-    /(跨度|跨长|长度|长)\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /(span|length)\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*m/i,
-  ], [2, 1]);
-  const heightM = extractNumber(text, [
-    /(柱高|高度|高)\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /(height|column height)\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*m/i,
-  ], [2]);
-  const loadKN = extractNumber(text, [
-    /(\d+(?:\.\d+)?)\s*(?:kn|千牛)\s*\/\s*(?:m|米)/i,
-    /(\d+(?:\.\d+)?)\s*(?:kn|千牛)(?!\s*\/\s*m)/i,
-    /(load)\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
-  ]);
-  const supportType = extractSupportType(text) ?? undefined;
-  const loadType = extractLoadType(text);
-  const loadPosition = extractLoadPosition(text, 'unknown', loadType);
-  const loadPositionM = extractLoadPositionOffsetM(text);
-  const inferredType: InferredModelType = supportType || loadPositionM !== undefined ? 'beam' : 'unknown';
-
-  return {
-    inferredType,
-    lengthM: lengthM ?? undefined,
-    spanLengthM: spanLengthM ?? undefined,
-    heightM: heightM ?? undefined,
-    supportType,
-    loadKN: loadKN ?? undefined,
-    loadType,
-    loadPosition,
-    loadPositionM,
-  };
+  return ['可计算结构模型JSON，或完整自然语言结构描述（几何、边界、材料、截面、荷载、组合）'];
 }
 
 export function mergeNoSkillDraftExtraction(
@@ -316,14 +190,12 @@ export async function tryNoSkillLlmExtract(
         '- 顶层只允许字段：inferredType,lengthM,spanLengthM,heightM,supportType,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,frameBaseSupportType,loadKN,loadType,loadPosition,loadPositionM。',
         '- 不确定字段直接省略，不要输出 null，不要输出字符串数字。',
         '- loadPositionM 表示距左端位置（m），当梁的点荷载位置明确时优先输出。',
-        'inferredType 仅用于已覆盖模板（beam|truss|portal-frame|double-span-beam|frame）；其他任意结构请用 unknown，并尽量提取几何与荷载关键信息。',
+        '除非用户明确指定模板，请保持 inferredType=unknown。',
         '数值统一单位：m, kN。不存在的字段不要输出。',
         `已有参数：${prior}`,
         `用户输入：${message}`,
-        '若已说明梁的支座/边界条件，请提取 supportType（cantilever/simply-supported/fixed-fixed/fixed-pinned）。',
-        '若已说明规则框架，请提取 frameDimension（2d/3d）、storyCount、bayCount/bayCountX/bayCountY、storyHeightsM、bayWidthsM/bayWidthsXM/bayWidthsYM、floorLoads。',
-        '若已给出荷载，请同时提取 loadType（point/distributed）、loadPosition，以及点荷载位置距离 loadPositionM（单位 m，可选）。',
-        '输出示例：{"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPosition":"free-joint","loadPositionM":4}',
+        '若已说明几何、边界、材料、截面、荷载、组合，请按字段提取。',
+        '输出示例：{"inferredType":"unknown","lengthM":10,"loadKN":10}',
       ].join('\n')
     : [
         'You extract structural model draft parameters.',
@@ -332,14 +204,12 @@ export async function tryNoSkillLlmExtract(
         '- Top-level allowed fields only: inferredType,lengthM,spanLengthM,heightM,supportType,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,frameBaseSupportType,loadKN,loadType,loadPosition,loadPositionM.',
         '- Omit unknown fields; do not output null; keep numeric fields as numbers.',
         '- loadPositionM means offset from left end in meters and should be provided when a beam point-load location is explicit.',
-        'Use inferredType for supported templates (beam|truss|portal-frame|double-span-beam|frame); for any other structure, set inferredType=unknown and still extract key geometry/load hints.',
+        'Keep inferredType=unknown unless user explicitly requests a known template.',
         'Use m and kN as units. Omit fields that are not present.',
-        'When beam support or boundary conditions are mentioned, also extract supportType (cantilever/simply-supported/fixed-fixed/fixed-pinned).',
-        'When a regular frame is described, also extract frameDimension (2d/3d), storyCount, bayCount/bayCountX/bayCountY, storyHeightsM, bayWidthsM/bayWidthsXM/bayWidthsYM, and floorLoads.',
-        'When loads are mentioned, also extract loadType (point/distributed), loadPosition, and optional point-load offset loadPositionM (m).',
+        'Extract geometry, boundary, material, section, load, and combination hints when available.',
         `Known parameters: ${prior}`,
         `User input: ${message}`,
-        'Example output: {"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPosition":"free-joint","loadPositionM":4}',
+        'Example output: {"inferredType":"unknown","lengthM":10,"loadKN":10}',
       ].join('\n');
 
   try {
@@ -381,117 +251,6 @@ export async function tryNoSkillLlmExtract(
   } catch {
     return null;
   }
-}
-
-function extractLoadPositionOffsetM(text: string): number | undefined {
-  const patterns: RegExp[] = [
-    /荷载[\s\S]{0,20}?(?:在|距(?:离)?(?:左端|左支座|左侧)?|离(?:左端|左支座)?)\s*(\d+(?:\.\d+)?)\s*(?:m|米)(?:处|位置|点)?/i,
-    /(?:point load|concentrated load)[\s\S]{0,20}?(?:at|@|from(?: the)? left(?: end| support)?(?: by)?)\s*(\d+(?:\.\d+)?)\s*m/i,
-    /at\s*(\d+(?:\.\d+)?)\s*m\s*(?:from\s*(?:the\s*)?(?:left|start))/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (!match) {
-      continue;
-    }
-    const value = normalizeNumber(match[1]);
-    if (value !== undefined && value >= 0) {
-      return value;
-    }
-  }
-
-  return undefined;
-}
-
-function extractLoadType(text: string): DraftLoadType | undefined {
-  if (text.includes('均布') || text.includes('distributed') || text.includes('uniform') || text.includes('udl')) {
-    return 'distributed';
-  }
-  if (text.includes('点荷载') || text.includes('集中荷载') || text.includes('point load') || text.includes('concentrated')) {
-    return 'point';
-  }
-  if (text.includes('端部') || text.includes('跨中') || text.includes('midspan') || text.includes('tip')) {
-    return 'point';
-  }
-  return undefined;
-}
-
-function extractSupportType(text: string): DraftSupportType | undefined {
-  if (
-    text.includes('fixed-pinned')
-    || text.includes('fixed pinned')
-    || text.includes('固铰')
-    || text.includes('一端固结一端铰支')
-  ) {
-    return 'fixed-pinned';
-  }
-  if (
-    text.includes('fixed-fixed')
-    || text.includes('fixed fixed')
-    || text.includes('两端固结')
-    || text.includes('双固结')
-  ) {
-    return 'fixed-fixed';
-  }
-  if (text.includes('simply supported') || text.includes('simple support') || text.includes('简支')) {
-    return 'simply-supported';
-  }
-  if (text.includes('cantilever') || text.includes('悬臂')) {
-    return 'cantilever';
-  }
-  return undefined;
-}
-
-function extractLoadPosition(
-  text: string,
-  inferredType: InferredModelType,
-  loadType: DraftLoadType | undefined,
-): DraftLoadPosition | undefined {
-  if (text.includes('柱顶') || text.includes('顶节点') || text.includes('top nodes')) {
-    return 'top-nodes';
-  }
-  if (text.includes('中跨节点') || text.includes('中间节点') || text.includes('middle joint') || text.includes('center joint')) {
-    return 'middle-joint';
-  }
-  if (text.includes('跨中') || text.includes('midspan') || text.includes('mid span')) {
-    return 'midspan';
-  }
-  if (text.includes('全跨') || text.includes('整跨') || text.includes('满跨') || text.includes('full span') || text.includes('entire span')) {
-    return 'full-span';
-  }
-  if (text.includes('端部') || text.includes('端点') || text.includes('tip') || text.includes('free end') || text.includes('at end')) {
-    return 'end';
-  }
-  if (text.includes('节点') || text.includes('joint') || text.includes('node')) {
-    return inferredType === 'double-span-beam' ? 'middle-joint' : 'free-joint';
-  }
-  if (loadType === 'distributed') {
-    return inferredType === 'portal-frame' || inferredType === 'double-span-beam' || inferredType === 'beam'
-      ? 'full-span'
-      : undefined;
-  }
-  return undefined;
-}
-
-function extractNumber(text: string, patterns: RegExp[], groupPriority: number[] = [1]): number | null {
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (!match) {
-      continue;
-    }
-    for (const groupIndex of groupPriority) {
-      const valueText = match[groupIndex];
-      if (!valueText) {
-        continue;
-      }
-      const value = Number.parseFloat(valueText);
-      if (Number.isFinite(value)) {
-        return value;
-      }
-    }
-  }
-  return null;
 }
 
 function normalizeNumber(value: unknown): number | undefined {

@@ -482,21 +482,18 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.supportType).toBe('cantilever');
   });
 
-  test('should place a beam point load at an arbitrary offset when provided', async () => {
+  test('should not synthesize template model in no-skill mode when llm is unavailable', async () => {
     const svc = new AgentService();
     svc.llm = null;
 
     const draft = await svc.textToModelDraft('生成一个跨度10m的简支梁，荷载在4m处，一个集中荷载10kN', undefined, 'zh', []);
 
-    expect(draft.missingFields).toEqual([]);
-    expect(draft.stateToPersist?.inferredType).toBe('beam');
-    expect(draft.stateToPersist?.loadPositionM).toBe(4);
-    expect(draft.model?.nodes?.map((node) => node.x)).toEqual([0, 4, 10]);
-    expect(draft.model?.load_cases?.[0]?.loads).toEqual([{ node: '2', fy: -10 }]);
-    expect(draft.model?.metadata?.loadPositionM).toBe(4);
+    expect(draft.model).toBeUndefined();
+    expect(draft.stateToPersist?.inferredType).toBe('unknown');
+    expect(draft.missingFields.length).toBeGreaterThan(0);
   });
 
-  test('should return ready model in chat mode when no skills are loaded and beam parameters are complete', async () => {
+  test('should stay in collecting state in no-skill mode when llm is unavailable', async () => {
     const svc = new AgentService();
     svc.llm = null;
 
@@ -510,11 +507,10 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.needsModelInput).toBe(false);
-    expect(result.interaction?.state).toBe('ready');
-    expect(result.interaction?.missingCritical).toEqual([]);
-    expect(result.model?.nodes?.map((node) => node.x)).toEqual([0, 4, 10]);
-    expect(result.model?.load_cases?.[0]?.loads).toEqual([{ node: '2', fy: -10 }]);
+    expect(result.needsModelInput).toBe(true);
+    expect(result.interaction?.state).toBe('confirming');
+    expect((result.interaction?.missingCritical || []).length).toBeGreaterThan(0);
+    expect(result.model).toBeUndefined();
   });
 
   test('should keep no-skill chat generic even when message contains template keywords', async () => {
@@ -531,11 +527,10 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.needsModelInput).toBe(false);
-    expect(result.interaction?.state).toBe('ready');
-    expect(result.model?.metadata?.source).toBe('generic-no-skill');
-    expect(result.model?.nodes?.map((node) => node.x)).toEqual([0, 4, 10]);
-    expect(result.model?.load_cases?.[0]?.loads).toEqual([{ node: '2', fy: -10 }]);
+    expect(result.needsModelInput).toBe(true);
+    expect(result.interaction?.state).toBe('confirming');
+    expect(result.interaction?.detectedScenario).not.toBe('beam');
+    expect(result.model).toBeUndefined();
   });
 
   test('should build a fixed-fixed beam model when the support condition is explicit', async () => {
