@@ -35,7 +35,7 @@
 - [x] Frontend can load/unload repository skills and show loaded state
 - [x] Add repository loading lifecycle tests (fetch/list/load/unload)
 - [x] Provide CLI workflow: search/install/enable/disable/uninstall
-- [ ] Add CLI integration tests for external SkillHub
+- [x] Add CLI integration tests for external SkillHub
 - [x] P08-3b completed: external SkillHub integration flow is stable
 - [ ] Security test: bad signature is rejected
 - [ ] Security test: checksum mismatch is rejected
