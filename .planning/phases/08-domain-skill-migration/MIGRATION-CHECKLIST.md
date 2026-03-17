@@ -26,7 +26,7 @@
 
 ## P08-3
 - [x] Report/export domain hooks completed
-- [ ] Visualization domain hooks completed
+- [x] Visualization domain hooks completed
 - [x] Frontend remains backward compatible
 - [x] Frontend supports domain-category selection + skill-level mixed selection when loading skills
 - [x] Add frontend interaction tests for group select / clear / mixed select
@@ -57,9 +57,9 @@
 - [x] Output schema compatibility preserved
 
 ## Done Definition
-- [ ] All phase validations pass
+- [x] All phase validations pass
 - [x] make backend-regression passes
-- [ ] Plan and docs synced
-- [ ] Baseline mode works when skill repository is unavailable
-- [ ] External SkillHub path works without storing extension skills in this GitHub repo
-- [ ] Incompatible extension skills auto-disable and do not block baseline execution
+- [x] Plan and docs synced
+- [x] Baseline mode works when skill repository is unavailable
+- [x] External SkillHub path works without storing extension skills in this GitHub repo
+- [x] Incompatible extension skills auto-disable and do not block baseline execution
