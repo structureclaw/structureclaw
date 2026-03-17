@@ -5,6 +5,18 @@
 - Keep OpenSees core execution path minimal and always available.
 - Ensure no-skill mode can still complete LLM-driven input extraction and engine execution.
 
+## Execution Status (2026-03-17)
+- P08-1 baseline is in place: capability matrix now carries domain-oriented metadata and frontend consumes grouped capability payload.
+- P08-2 is actively landing with first implementation slice already coded:
+	- Skill selection semantics are now explicit three-state behavior:
+		- `skillIds === undefined`: auto default skills.
+		- `skillIds === []`: strict no-skill mode.
+		- `skillIds.length > 0`: explicit manual skill set.
+	- Frontend now always sends `skillIds` to preserve no-skill intent across requests.
+	- Backend no-skill path now attempts generic modeling via LLM+rule extraction merge, with LLM direct StructureModel v1 synthesis fallback when rule completeness is insufficient.
+	- Auto-route behavior now prefers execute path in strict no-skill mode when model can be produced.
+- Remaining P08-2 work is test hardening and observability polish (see Immediate Next Actions).
+
 ## Migration Principles
 - Easy to hard migration order.
 - Prefer migrating existing stable capabilities first.
@@ -82,6 +94,17 @@ Validation:
 - Add explicit contract tests for empty `skillIds` path.
 - Define baseline skill pack boundary and repository extension boundary.
 - Add repository-down fallback policy (analysis remains available with baseline skills only).
+
+Current implementation progress (2026-03-17):
+- Implemented: empty `skillIds` no longer falls back to default auto-loaded skills.
+- Implemented: no-skill fallback draft builder in agent service (`textToModelDraftWithoutSkills`) with:
+	- LLM extraction attempt,
+	- deterministic rule extraction,
+	- merged draft state,
+	- optional LLM direct generic model generation (`tryLlmBuildGenericModel`) when critical fields remain.
+- Implemented: no-skill clarification response path when draft cannot yet produce computable model.
+- Implemented: route preference update to avoid chat-loop dead-end in no-skill mode.
+- Pending: add dedicated no-skill contract script and regression assertions for fallback success and deterministic clarification.
 
 Success criteria:
 - No-skill request can reach analysis/report result or deterministic clarification.
@@ -173,10 +196,10 @@ Validation:
 - Baseline mode must remain fully usable when repository service is unavailable.
 
 ## Immediate Next Actions
-1. Implement P08-1 metadata fields and domain mapping on existing skills.
-2. Add no-skill fallback contract script skeleton for P08-2.
-3. Extend capability-matrix payload with domain group summaries.
-4. Draft frontend grouped-skill selection UX states (empty, partial, full-category select).
-5. Draft skill repository API contract (list/filter/install/load/unload) with bilingual labels.
-6. Draft external SkillHub CLI contract and security policy (signature/checksum verification).
-7. Draft compatibility spec (`minCoreVersion`, `skillApiVersion`, incompatibility reason codes, downgrade fallback).
+1. Add `scripts/validate-no-skill-fallback-contract.sh` covering `skillIds=[]` execute/chat routes and deterministic clarification behavior.
+2. Add backend regression assertions for generic-model fallback (LLM unavailable, LLM malformed JSON, rule-only partial extraction).
+3. Add observability fields for modeling source (`skills` vs `generic-no-skill`) and fallback reason codes.
+4. Extend frontend debug panel to surface no-skill modeling source and fallback reason code in bilingual labels.
+5. Complete frontend domain-grouped skill loading UX (category select, mixed select, load-state feedback).
+6. Draft skill repository API contract (list/filter/install/load/unload) with bilingual labels.
+7. Draft external SkillHub CLI contract and security policy (signature/checksum verification).
