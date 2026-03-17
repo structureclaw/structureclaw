@@ -1827,7 +1827,20 @@ export class AgentService {
     if (this.isNoSkillMode(skillIds)) {
       return this.textToModelDraftWithoutSkills(message, existingState, locale);
     }
-    return this.skillRuntime.textToModelDraft(this.llm, message, existingState, locale, skillIds);
+    const skillDraft = await this.skillRuntime.textToModelDraft(this.llm, message, existingState, locale, skillIds);
+    if (skillDraft.model || skillDraft.inferredType !== 'unknown') {
+      return skillDraft;
+    }
+
+    const genericDraft = await this.textToModelDraftWithoutSkills(message, existingState, locale);
+    if (!genericDraft.model) {
+      return skillDraft;
+    }
+
+    return {
+      ...genericDraft,
+      scenario: skillDraft.scenario,
+    };
   }
 
   private isNoSkillMode(skillIds?: string[]): boolean {

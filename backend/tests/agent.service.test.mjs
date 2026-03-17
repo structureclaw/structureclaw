@@ -724,6 +724,27 @@ describe('AgentService orchestration', () => {
     expect(draft.model).toBeDefined();
   });
 
+  test('should fallback to generic llm model when skill scenarios stay unknown', async () => {
+    const svc = new AgentService();
+    svc.llm = {
+      invoke: async () => ({
+        content: '{"schema_version":"1.0.0","unit_system":"SI","nodes":[],"elements":[],"materials":[],"sections":[],"load_cases":[],"load_combinations":[]}',
+      }),
+    };
+
+    const draft = await svc.textToModelDraft(
+      '希望生成一个跨度10m的简支梁，荷载在4m处，一个集中荷载10kN',
+      undefined,
+      'zh',
+      ['double-span-beam', 'frame', 'portal-frame', 'truss'],
+    );
+
+    expect(draft.inferredType).toBe('unknown');
+    expect(draft.extractionMode).toBe('llm');
+    expect(draft.model).toBeDefined();
+    expect(draft.missingFields).toEqual([]);
+  });
+
   test('should execute analyze in no-skill mode when computable model is provided', async () => {
     const svc = new AgentService();
     svc.llm = null;

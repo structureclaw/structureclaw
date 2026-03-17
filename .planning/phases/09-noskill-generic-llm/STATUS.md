@@ -15,6 +15,8 @@ Owner: backend-agent
 - WP5 Validation and Regression Matrix: in progress (priority)
 
 ## Completed This Iteration
+- Added orchestration fallback: when skill path remains `unknown` and cannot build a model, backend now falls back to generic no-skill LLM JSON model generation instead of hard-blocking on scenario clarification.
+- Added regression test to verify unknown skill scenario falls back to generic LLM JSON generation under a restricted skill set.
 - Simplified no-skill draft normalization to a minimal generic state (`inferredType=unknown` + timestamps), removing retained structure-specific draft parameters.
 - Removed no-skill providedValues parameter merge/carry-over behavior for structural fields; no-skill now avoids persisting structure-template draft values.
 - Removed no-skill LLM extraction/merge pipeline from `agent.ts`; no-skill now uses direct generic model JSON generation path only.
