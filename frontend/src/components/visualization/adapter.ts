@@ -590,7 +590,7 @@ export function buildVisualizationSnapshot(params: {
 
         return nextCases
       })()
-    : [buildCase('model', 'Model', 'result', null, null, null, null)]
+    : [buildCase('model', 'Model', 'case', null, null, null, null)]
 
   const unsupportedElementTypes = Array.from(
     new Set(elements.map((element) => element.type).filter((type) => !['beam', 'truss'].includes(type)))

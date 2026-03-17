@@ -256,7 +256,31 @@ function loadConversationArchive(): Record<string, PersistedConversation> {
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       return {}
     }
-    return parsed as Record<string, PersistedConversation>
+    const migrated: Record<string, PersistedConversation> = {}
+
+    Object.entries(parsed as Record<string, PersistedConversation>).forEach(([conversationId, value]) => {
+      const archived = value as PersistedConversation
+      const normalizedLatestResult = normalizeAgentResultPayload(archived.latestResult || null)
+      const preferredStoredResultSnapshot = pickPreferredResultSnapshot(
+        archived.resultVisualizationSnapshot,
+        archived.visualizationSnapshot
+      )
+      const synthesizedResultSnapshot = buildResultSnapshotFromResult(
+        normalizedLatestResult,
+        archived.title || 'Conversation',
+        toModelFromVisualizationSnapshot(archived.modelVisualizationSnapshot || preferredStoredResultSnapshot)
+      )
+      const repairedResultSnapshot = pickPreferredResultSnapshot(preferredStoredResultSnapshot, synthesizedResultSnapshot)
+
+      migrated[conversationId] = {
+        ...archived,
+        latestResult: normalizedLatestResult,
+        resultVisualizationSnapshot: repairedResultSnapshot,
+        visualizationSnapshot: repairedResultSnapshot || archived.visualizationSnapshot || null,
+      }
+    })
+
+    return migrated
   } catch {
     return {}
   }
@@ -322,15 +346,75 @@ function buildInteractionMessage(
   return lines.length > 0 ? lines.join('\n') : t('interactionNeedMoreParams')
 }
 
+function normalizeAgentResultPayload(result: AgentResult | null | undefined): AgentResult | null {
+  if (!result || typeof result !== 'object') {
+    return null
+  }
+
+  const record = result as Record<string, unknown>
+  const wrapped = record.result
+  if (wrapped && typeof wrapped === 'object' && !Array.isArray(wrapped)) {
+    const wrappedRecord = wrapped as Record<string, unknown>
+    const hasTopLevelResultData = Boolean(
+      result.analysis
+      || result.data
+      || result.model
+      || result.response
+      || result.report
+    )
+    const hasWrappedResultData = Boolean(
+      wrappedRecord.analysis
+      || wrappedRecord.data
+      || wrappedRecord.model
+      || wrappedRecord.response
+      || wrappedRecord.report
+    )
+    if (!hasTopLevelResultData && hasWrappedResultData) {
+      return wrapped as AgentResult
+    }
+  }
+
+  return result
+}
+
 function extractAnalysis(result: AgentResult | null) {
   if (!result) return null
-  if (result.analysis && typeof result.analysis === 'object') {
-    return result.analysis
+  const normalized = normalizeAgentResultPayload(result)
+  if (!normalized) return null
+  if (normalized.analysis && typeof normalized.analysis === 'object') {
+    return normalized.analysis
   }
-  if (result.data && typeof result.data === 'object') {
-    return result.data
+  if (normalized.data && typeof normalized.data === 'object') {
+    return normalized.data
   }
   return null
+}
+
+function hasAnalysisPayload(result: AgentResult | null | undefined) {
+  return Boolean(extractAnalysis(result ?? null))
+}
+
+function pickPreferredLatestResult(
+  primary: AgentResult | null | undefined,
+  secondary: AgentResult | null | undefined
+) {
+  const normalizedPrimary = normalizeAgentResultPayload(primary ?? null)
+  const normalizedSecondary = normalizeAgentResultPayload(secondary ?? null)
+
+  const primaryHasAnalysis = hasAnalysisPayload(normalizedPrimary)
+  const secondaryHasAnalysis = hasAnalysisPayload(normalizedSecondary)
+
+  if (primaryHasAnalysis && secondaryHasAnalysis) {
+    return normalizedPrimary
+  }
+  if (primaryHasAnalysis) {
+    return normalizedPrimary
+  }
+  if (secondaryHasAnalysis) {
+    return normalizedSecondary
+  }
+
+  return normalizedPrimary ?? normalizedSecondary ?? null
 }
 
 function buildVisualizationTitle(result: AgentResult | null, conversationTitle: string) {
@@ -342,6 +426,112 @@ function buildVisualizationTitle(result: AgentResult | null, conversationTitle: 
 
 function buildModelVisualizationTitle(baseTitle: string, t: (key: MessageKey) => string) {
   return `${baseTitle} · ${t('visualizationSourceModel')}`
+}
+
+function snapshotHasResultData(snapshot?: VisualizationSnapshot | null) {
+  if (!snapshot || !Array.isArray(snapshot.cases)) {
+    return false
+  }
+
+  return snapshot.cases.some((item) => {
+    const nodeResults = item && typeof item === 'object' && item.nodeResults && typeof item.nodeResults === 'object'
+      ? Object.values(item.nodeResults)
+      : []
+    const elementResults = item && typeof item === 'object' && item.elementResults && typeof item.elementResults === 'object'
+      ? Object.values(item.elementResults)
+      : []
+
+    const hasNodeResult = nodeResults.some((entry) => {
+      const record = entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : null
+      const displacement = record?.displacement && typeof record.displacement === 'object'
+        ? (record.displacement as Record<string, unknown>)
+        : null
+      const reaction = record?.reaction && typeof record.reaction === 'object'
+        ? (record.reaction as Record<string, unknown>)
+        : null
+      const envelope = record?.envelope && typeof record.envelope === 'object'
+        ? (record.envelope as Record<string, unknown>)
+        : null
+      return Boolean(displacement || reaction || envelope)
+    })
+
+    const hasElementResult = elementResults.some((entry) => {
+      const record = entry && typeof entry === 'object' ? (entry as Record<string, unknown>) : null
+      return Boolean(
+        record
+        && (
+          typeof record.axial === 'number'
+          || typeof record.shear === 'number'
+          || typeof record.moment === 'number'
+          || typeof record.torsion === 'number'
+          || (record.envelope && typeof record.envelope === 'object')
+        )
+      )
+    })
+
+    return hasNodeResult || hasElementResult
+  })
+}
+
+function isResultVisualizationSnapshot(snapshot?: VisualizationSnapshot | null) {
+  if (!snapshot) {
+    return false
+  }
+  const hasResultViews = snapshot.availableViews.some((view) => view === 'deformed' || view === 'forces' || view === 'reactions')
+  const hasResultData = snapshotHasResultData(snapshot)
+  if (snapshot.source === 'result') {
+    return true
+  }
+  // Legacy archives may carry model snapshots with unexpected case kinds.
+  // For model-source snapshots, rely on actual result views/data only.
+  if (snapshot.source === 'model') {
+    return hasResultViews || hasResultData
+  }
+  return hasResultViews
+    || snapshot.cases.some((item) => item.kind === 'result' || item.kind === 'envelope')
+    || hasResultData
+}
+
+function pickPreferredResultSnapshot(
+  primary?: VisualizationSnapshot | null,
+  secondary?: VisualizationSnapshot | null
+): VisualizationSnapshot | null {
+  const primaryIsResult = isResultVisualizationSnapshot(primary)
+  const secondaryIsResult = isResultVisualizationSnapshot(secondary)
+
+  if (primaryIsResult && secondaryIsResult) {
+    return primary ?? null
+  }
+  if (primaryIsResult) {
+    return primary ?? null
+  }
+  if (secondaryIsResult) {
+    return secondary ?? null
+  }
+  return primary ?? secondary ?? null
+}
+
+function buildResultSnapshotFromResult(
+  result: AgentResult | null | undefined,
+  title: string,
+  fallbackModel?: Record<string, unknown> | null
+): VisualizationSnapshot | null {
+  const normalizedResult = normalizeAgentResultPayload(result ?? null)
+  if (!normalizedResult) {
+    return null
+  }
+
+  const modelFromResult =
+    normalizedResult.model && typeof normalizedResult.model === 'object' && !Array.isArray(normalizedResult.model)
+      ? normalizedResult.model
+      : null
+
+  return buildVisualizationSnapshot({
+    title: buildVisualizationTitle(normalizedResult, title),
+    model: modelFromResult ?? fallbackModel ?? null,
+    analysis: extractAnalysis(normalizedResult),
+    mode: 'analysis-result',
+  })
 }
 
 function extractSummaryStats(
@@ -567,6 +757,8 @@ function AnalysisPanel({
   const reportMarkdown = result?.report?.markdown?.trim()
   const reportSummary = result?.report?.summary?.trim()
   const guidance = result?.interaction
+  const hasVisualizationData = Boolean(visualizationSnapshot || modelVisualizationSnapshot)
+  const showVisualizationAction = Boolean(result || visualizationSnapshot)
 
   return (
     <div
@@ -579,10 +771,10 @@ function AnalysisPanel({
           <h2 className="mt-1 text-lg font-semibold text-foreground">{t('analysisAndReport')}</h2>
         </div>
         <div className="flex w-full flex-col gap-3 sm:w-auto sm:min-w-[220px] sm:items-end">
-          {result && (
+          {showVisualizationAction && (
             <Button
               className="h-11 w-full justify-center rounded-2xl border border-cyan-300/35 bg-cyan-300/10 px-4 text-cyan-800 hover:bg-cyan-300/20 sm:w-auto dark:text-cyan-100"
-              disabled={!visualizationSnapshot && !modelVisualizationSnapshot}
+              disabled={!hasVisualizationData}
               onClick={() => onOpenVisualization('result')}
               title={
                 !visualizationSnapshot && !modelVisualizationSnapshot
@@ -1322,9 +1514,17 @@ export function AIConsole() {
         selectedEngineId,
         modelSyncMessage,
         activePanel,
-        latestResult,
-        modelVisualizationSnapshot: latestModelVisualizationSnapshot,
-        resultVisualizationSnapshot: latestResultVisualizationSnapshot,
+        // Preserve persisted result/model snapshots during transient null states (e.g. refresh restore sequence).
+        latestResult: latestResult ?? current[conversationId]?.latestResult ?? null,
+        modelVisualizationSnapshot:
+          latestModelVisualizationSnapshot
+          ?? current[conversationId]?.modelVisualizationSnapshot
+          ?? null,
+        resultVisualizationSnapshot:
+          latestResultVisualizationSnapshot
+          ?? current[conversationId]?.resultVisualizationSnapshot
+          ?? current[conversationId]?.visualizationSnapshot
+          ?? null,
       },
     }))
   }, [
@@ -1412,6 +1612,60 @@ export function AIConsole() {
     setMessages((current) => current.map((message) => (message.id === messageId ? updater(message) : message)))
   }
 
+  function persistConversationSnapshotsToArchive(
+    targetConversationId: string,
+    params: {
+      latestResult?: AgentResult | null
+      modelSnapshot?: VisualizationSnapshot | null
+      resultSnapshot?: VisualizationSnapshot | null
+    }
+  ) {
+    if (!targetConversationId) {
+      return
+    }
+
+    setConversationArchive((current) => {
+      const existing = current[targetConversationId]
+      const serverConversation = serverConversations.find((conversation) => conversation.id === targetConversationId)
+      const resultSnapshot =
+        params.resultSnapshot
+        ?? existing?.resultVisualizationSnapshot
+        ?? existing?.visualizationSnapshot
+        ?? null
+      const modelSnapshot =
+        params.modelSnapshot
+        ?? existing?.modelVisualizationSnapshot
+        ?? null
+      const latestResultValue =
+        params.latestResult
+        ?? existing?.latestResult
+        ?? null
+
+      return {
+        ...current,
+        [targetConversationId]: {
+          id: targetConversationId,
+          title: existing?.title || serverConversation?.title || t('untitledConversation'),
+          type: existing?.type || serverConversation?.type || 'analysis',
+          createdAt: existing?.createdAt || serverConversation?.createdAt || new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          messages: existing?.messages || messages,
+          modelText: existing?.modelText ?? modelText,
+          analysisType: existing?.analysisType || analysisType,
+          designCode: existing?.designCode || designCode,
+          selectedSkillIds: existing?.selectedSkillIds || selectedSkillIds,
+          selectedEngineId: existing?.selectedEngineId || selectedEngineId,
+          modelSyncMessage: existing?.modelSyncMessage || modelSyncMessage,
+          activePanel: existing?.activePanel || activePanel,
+          latestResult: latestResultValue,
+          modelVisualizationSnapshot: modelSnapshot,
+          resultVisualizationSnapshot: resultSnapshot,
+          visualizationSnapshot: resultSnapshot,
+        },
+      }
+    })
+  }
+
   async function handleSelectConversation(nextConversationId: string) {
     if (isSending || nextConversationId === conversationId) {
       return
@@ -1458,8 +1712,8 @@ export function AIConsole() {
       const nextSelectedSkillIds = archived?.selectedSkillIds?.length ? archived.selectedSkillIds : defaultSkillIds
       const nextSelectedEngineId = archived?.selectedEngineId || 'auto'
       const nextLatestResult = preferArchiveState
-        ? (archived?.latestResult ?? backendSnapshots?.latestResult ?? null)
-        : (backendSnapshots?.latestResult ?? archived?.latestResult ?? null)
+        ? pickPreferredLatestResult(archived?.latestResult, backendSnapshots?.latestResult)
+        : pickPreferredLatestResult(backendSnapshots?.latestResult, archived?.latestResult)
       const nextActivePanel = archived?.activePanel || (nextLatestResult?.report?.markdown ? 'report' : 'analysis')
       const nextModelSyncMessage = session?.model ? t('modelSyncFromChat') : (archived?.modelSyncMessage || '')
       const nextModelSnapshot = preferArchiveState
@@ -1468,12 +1722,21 @@ export function AIConsole() {
       const nextResultSnapshot = preferArchiveState
         ? (archived?.resultVisualizationSnapshot ?? archived?.visualizationSnapshot ?? backendSnapshots?.resultSnapshot ?? null)
         : (backendSnapshots?.resultSnapshot ?? archived?.resultVisualizationSnapshot ?? archived?.visualizationSnapshot ?? null)
+      const backendResultSnapshot = backendSnapshots?.resultSnapshot ?? null
+      const archivedResultSnapshot = archived?.resultVisualizationSnapshot ?? archived?.visualizationSnapshot ?? null
+      const nextResolvedResultSnapshot = pickPreferredResultSnapshot(nextResultSnapshot, pickPreferredResultSnapshot(backendResultSnapshot, archivedResultSnapshot))
+      const synthesizedResultSnapshot = buildResultSnapshotFromResult(
+        nextLatestResult,
+        payload?.title || archived?.title || t('untitledConversation'),
+        session?.model || null
+      )
+      const nextFinalResultSnapshot = pickPreferredResultSnapshot(nextResolvedResultSnapshot, synthesizedResultSnapshot)
       const nextModelText =
         toModelText(session?.model)
         || archived?.modelText
         || toModelText(nextLatestResult?.model)
         || toModelTextFromSnapshot(nextModelSnapshot)
-        || toModelTextFromSnapshot(nextResultSnapshot)
+        || toModelTextFromSnapshot(nextFinalResultSnapshot)
         || ''
 
       setConversationId(nextConversationId)
@@ -1486,7 +1749,7 @@ export function AIConsole() {
       setModelSyncMessage(nextModelSyncMessage)
       setLatestResult(nextLatestResult)
       setLatestModelVisualizationSnapshot(nextModelSnapshot)
-      setLatestResultVisualizationSnapshot(nextResultSnapshot)
+      setLatestResultVisualizationSnapshot(nextFinalResultSnapshot)
       setActivePanel(nextActivePanel)
     } catch (error) {
       if (archived) {
@@ -1504,10 +1767,21 @@ export function AIConsole() {
         setSelectedSkillIds(archived.selectedSkillIds?.length ? archived.selectedSkillIds : defaultSkillIds)
         setSelectedEngineId(archived.selectedEngineId || 'auto')
         setModelSyncMessage(archived.modelSyncMessage || '')
-        setLatestResult(archived.latestResult || null)
+        const archivedLatestResult = normalizeAgentResultPayload(archived.latestResult || null)
+        setLatestResult(archivedLatestResult)
         setLatestModelVisualizationSnapshot(archived.modelVisualizationSnapshot || null)
-        setLatestResultVisualizationSnapshot(archived.resultVisualizationSnapshot || archived.visualizationSnapshot || null)
-        setActivePanel(archived.activePanel || (archived.latestResult?.report?.markdown ? 'report' : 'analysis'))
+        const archivedSynthesizedResultSnapshot = buildResultSnapshotFromResult(
+          archivedLatestResult,
+          archived.title || t('untitledConversation'),
+          toModelFromVisualizationSnapshot(archived.modelVisualizationSnapshot || archived.resultVisualizationSnapshot || archived.visualizationSnapshot)
+        )
+        setLatestResultVisualizationSnapshot(
+          pickPreferredResultSnapshot(
+            pickPreferredResultSnapshot(archived.resultVisualizationSnapshot, archived.visualizationSnapshot),
+            archivedSynthesizedResultSnapshot
+          )
+        )
+        setActivePanel(archived.activePanel || (archivedLatestResult?.report?.markdown ? 'report' : 'analysis'))
         return
       }
 
@@ -1588,12 +1862,38 @@ export function AIConsole() {
   }
 
   function openVisualization(preferredSource: 'model' | 'result') {
+    const snapshotTitle =
+      mergedConversations.find((conversation) => conversation.id === conversationId)?.title
+      || modelPreviewBaseTitle
+      || t('untitledConversation')
+
+    let repairedSnapshot: VisualizationSnapshot | null = null
+    if (preferredSource === 'result' && latestResult && !isResultVisualizationSnapshot(latestResultVisualizationSnapshot)) {
+      const repairedResultSnapshot = buildResultSnapshotFromResult(latestResult, snapshotTitle, parsedComposerModel || null)
+      if (repairedResultSnapshot && isResultVisualizationSnapshot(repairedResultSnapshot)) {
+        repairedSnapshot = repairedResultSnapshot
+        setLatestResultVisualizationSnapshot(repairedResultSnapshot)
+        if (conversationId) {
+          persistConversationSnapshotsToArchive(conversationId, {
+            latestResult,
+            resultSnapshot: repairedResultSnapshot,
+          })
+        }
+      }
+    }
+
+    const effectiveResultSnapshot =
+      repairedSnapshot
+      || (latestResult && !isResultVisualizationSnapshot(latestResultVisualizationSnapshot)
+        ? buildResultSnapshotFromResult(latestResult, snapshotTitle, parsedComposerModel || null)
+        : latestResultVisualizationSnapshot)
+
     const nextSource =
       preferredSource === 'result'
-        ? (latestResultVisualizationSnapshot ? 'result' : 'model')
+        ? (isResultVisualizationSnapshot(effectiveResultSnapshot) ? 'result' : 'model')
         : 'model'
     setVisualizationSource(nextSource)
-    setVisualizationOpen(Boolean(nextSource === 'result' ? (latestResultVisualizationSnapshot || latestModelVisualizationSnapshot) : latestModelVisualizationSnapshot))
+    setVisualizationOpen(Boolean(nextSource === 'result' ? (effectiveResultSnapshot || latestModelVisualizationSnapshot) : latestModelVisualizationSnapshot))
   }
 
   function applySynchronizedModel(nextModel: Record<string, unknown>, source: 'chat' | 'execute') {
@@ -1726,6 +2026,11 @@ export function AIConsole() {
         setLatestResult(result)
         setLatestResultVisualizationSnapshot(visualizationSnapshot)
         setActivePanel(result.report?.markdown ? 'report' : 'analysis')
+        persistConversationSnapshotsToArchive(nextConversationId, {
+          latestResult: result,
+          modelSnapshot,
+          resultSnapshot: visualizationSnapshot,
+        })
         // 保存结果快照到后端
         await saveConversationSnapshotToBackend(nextConversationId, {
           modelSnapshot,
@@ -1837,6 +2142,11 @@ export function AIConsole() {
             receivedResult = true
             setLatestResult(result)
             setLatestResultVisualizationSnapshot(visualizationSnapshot)
+            persistConversationSnapshotsToArchive(activeConversationId || nextConversationId, {
+              latestResult: result,
+              modelSnapshot,
+              resultSnapshot: visualizationSnapshot,
+            })
             // 保存结果快照到后端
             await saveConversationSnapshotToBackend(activeConversationId, {
               modelSnapshot,

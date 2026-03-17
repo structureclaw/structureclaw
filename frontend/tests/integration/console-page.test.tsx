@@ -1,7 +1,8 @@
+import '@testing-library/jest-dom/vitest'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import ConsolePage from '@/app/(console)/console/page'
-import type { VisualizationSnapshot } from '@/components/visualization'
+import ConsolePage from '../../src/app/(console)/console/page'
+import type { VisualizationSnapshot } from '../../src/components/visualization'
 
 const mockSkills = [
   {
@@ -1001,8 +1002,10 @@ describe('ConsolePage Integration (CONS-13)', () => {
       expect(executePayload).not.toBeNull()
     })
 
-    expect((executePayload?.context as Record<string, unknown>)?.locale).toBe('zh')
-    expect((executePayload?.context as Record<string, unknown>)?.engineId).toBeUndefined()
+    const executeContext = ((executePayload as Record<string, unknown> | null)?.['context']
+      ?? null) as Record<string, unknown> | null
+    expect(executeContext?.locale).toBe('zh')
+    expect(executeContext?.engineId).toBeUndefined()
   })
 
   it('allows selecting a manual engine for execution requests', async () => {
@@ -1343,7 +1346,9 @@ describe('ConsolePage Integration (CONS-13)', () => {
       expect(screen.getByTestId('console-guidance-panel')).toBeInTheDocument()
     })
 
-    expect((streamPayload?.context as Record<string, unknown>)?.locale).toBe('en')
+    const streamContext = ((streamPayload as Record<string, unknown> | null)?.['context']
+      ?? null) as Record<string, unknown> | null
+    expect(streamContext?.locale).toBe('en')
     expect(screen.getByText('Conversation Guidance')).toBeInTheDocument()
     expect(screen.getByText('Steel Frame')).toBeInTheDocument()
     expect(screen.getByText('Fill in Structure type first.')).toBeInTheDocument()
@@ -1706,5 +1711,154 @@ describe('ConsolePage Integration (CONS-13)', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
     expect(screen.getByText('Archived Beam')).toBeInTheDocument()
+  })
+
+  it('opens visualization from backend snapshots even when latestResult is missing', async () => {
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([{ id: 'conv-backend-snapshot', title: 'Backend Snapshot', updatedAt: '2026-03-12T08:00:00.000Z' }]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation/conv-backend-snapshot')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-backend-snapshot',
+            title: 'Backend Snapshot',
+            messages: [],
+            snapshots: {
+              resultSnapshot: archivedVisualizationSnapshot,
+              latestResult: null,
+            },
+          }),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+    fireEvent.click(await screen.findByText('Backend Snapshot'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Open Visualization|打开可视化/ })).toBeEnabled()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Open Visualization|打开可视化/ }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+    expect(screen.getByText('Archived Beam')).toBeInTheDocument()
+  })
+
+  it('keeps result visualization after refresh-style restore without overwriting with null', async () => {
+    window.localStorage.setItem(
+      'structureclaw.console.conversations',
+      JSON.stringify({
+        'conv-refresh-visual': {
+          id: 'conv-refresh-visual',
+          title: 'Refresh Visual',
+          type: 'analysis',
+          createdAt: '2026-03-12T08:00:00.000Z',
+          updatedAt: '2026-03-12T08:00:00.000Z',
+          messages: [{ id: 'assistant-1', role: 'assistant', content: 'done', status: 'done', timestamp: '2026-03-12T08:00:00.000Z' }],
+          latestResult: null,
+          modelVisualizationSnapshot: {
+            ...archivedVisualizationSnapshot,
+            source: 'model',
+            availableViews: ['model'],
+            defaultCaseId: 'model',
+            cases: [{ ...archivedVisualizationSnapshot.cases[0], id: 'model', kind: 'case', label: 'Model', nodeResults: {}, elementResults: {} }],
+          },
+          resultVisualizationSnapshot: archivedVisualizationSnapshot,
+        },
+      })
+    )
+
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([{ id: 'conv-refresh-visual', title: 'Refresh Visual', updatedAt: '2026-03-12T08:00:00.000Z' }]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation/conv-refresh-visual')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-refresh-visual',
+            title: 'Refresh Visual',
+            messages: [],
+            snapshots: {
+              modelSnapshot: {
+                ...archivedVisualizationSnapshot,
+                source: 'model',
+                availableViews: ['model'],
+                defaultCaseId: 'model',
+                cases: [{ ...archivedVisualizationSnapshot.cases[0], id: 'model', kind: 'case', label: 'Model', nodeResults: {}, elementResults: {} }],
+              },
+              resultSnapshot: archivedVisualizationSnapshot,
+              latestResult: null,
+            },
+          }),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+    fireEvent.click(await screen.findByText('Refresh Visual'))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Open Visualization|打开可视化/ })).toBeEnabled()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /Open Visualization|打开可视化/ }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('dialog')).toBeInTheDocument()
+    })
+
+    expect(screen.getByText('Archived Beam')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Forces|内力/ })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Deformed|变形/ })).toBeInTheDocument()
   })
 })
