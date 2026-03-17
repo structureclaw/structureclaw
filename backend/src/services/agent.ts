@@ -14,13 +14,8 @@ import { type AppLocale } from './locale.js';
 import { AgentPolicyService } from './agent-policy.js';
 import {
   AgentSkillRuntime,
-  type DraftExtraction,
-  type DraftLoadPosition,
-  type DraftLoadType,
   type DraftResult,
   type DraftState,
-  type DraftSupportType,
-  type InferredModelType,
   type ScenarioMatch,
   type ScenarioTemplateKey,
 } from './agent-skills/index.js';
