@@ -7,6 +7,7 @@ import {
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
 } from '../../services/agent-skills/legacy.js';
+import { combineDomainKeys, composeStructuralDomainPatch } from '../../services/agent-skills/domains/structural-domains.js';
 import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../services/agent-skills/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../services/agent-skills/fallback.js';
 import { buildDefaultReportNarrative } from '../../services/agent-skills/report-template.js';
@@ -20,10 +21,17 @@ import type {
   SkillReportNarrativeInput,
 } from '../../services/agent-skills/types.js';
 
-const ALLOWED_KEYS = ['lengthM', 'supportType', 'loadKN', 'loadType', 'loadPosition'] as const;
+const GEOMETRY_KEYS = ['lengthM'] as const;
+const LOAD_BOUNDARY_KEYS = ['supportType', 'loadKN', 'loadType', 'loadPosition'] as const;
+const ALLOWED_KEYS = combineDomainKeys(GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS);
 
 function toBeamPatch(patch: DraftExtraction): DraftExtraction {
-  return restrictLegacyDraftPatch(patch, 'beam', [...ALLOWED_KEYS]);
+  const domainPatch = composeStructuralDomainPatch({
+    patch,
+    geometryKeys: GEOMETRY_KEYS,
+    loadBoundaryKeys: LOAD_BOUNDARY_KEYS,
+  });
+  return restrictLegacyDraftPatch(domainPatch, 'beam', [...ALLOWED_KEYS]);
 }
 
 function buildBeamDefaultReason(paramKey: string, locale: AppLocale): string {
@@ -160,7 +168,7 @@ export const handler: SkillHandler = {
     return mergeLegacyState(existing, toBeamPatch(patch), 'beam', 'beam');
   },
   computeMissing(state, mode) {
-    return computeLegacyMissing({ ...state, inferredType: 'beam' }, mode, ['lengthM', 'supportType', 'loadKN', 'loadType', 'loadPosition']);
+    return computeLegacyMissing({ ...state, inferredType: 'beam' }, mode, [...ALLOWED_KEYS]);
   },
   mapLabels(keys, locale) {
     return buildLegacyLabels(keys, locale);

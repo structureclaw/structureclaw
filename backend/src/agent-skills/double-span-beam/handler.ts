@@ -7,6 +7,7 @@ import {
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
 } from '../../services/agent-skills/legacy.js';
+import { combineDomainKeys, composeStructuralDomainPatch } from '../../services/agent-skills/domains/structural-domains.js';
 import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../services/agent-skills/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../services/agent-skills/fallback.js';
 import { buildDefaultReportNarrative } from '../../services/agent-skills/report-template.js';
@@ -20,13 +21,18 @@ import type {
   SkillReportNarrativeInput,
 } from '../../services/agent-skills/types.js';
 
-const ALLOWED_KEYS = ['spanLengthM', 'loadKN', 'loadType', 'loadPosition'] as const;
+const GEOMETRY_KEYS = ['spanLengthM'] as const;
+const LOAD_BOUNDARY_KEYS = ['loadKN', 'loadType', 'loadPosition'] as const;
+const ALLOWED_KEYS = combineDomainKeys(GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS);
 
 function toDoubleSpanPatch(patch: DraftExtraction): DraftExtraction {
-  return restrictLegacyDraftPatch({
-    ...patch,
-    spanLengthM: patch.spanLengthM ?? patch.lengthM,
-  }, 'double-span-beam', [...ALLOWED_KEYS]);
+  const domainPatch = composeStructuralDomainPatch({
+    patch,
+    geometryKeys: GEOMETRY_KEYS,
+    loadBoundaryKeys: LOAD_BOUNDARY_KEYS,
+    spanLengthAliasFromLength: true,
+  });
+  return restrictLegacyDraftPatch(domainPatch, 'double-span-beam', [...ALLOWED_KEYS]);
 }
 
 function buildDoubleSpanDefaultReason(paramKey: string, locale: AppLocale): string {
@@ -149,7 +155,7 @@ export const handler: SkillHandler = {
     return mergeLegacyState(existing, toDoubleSpanPatch(patch), 'double-span-beam', 'double-span-beam');
   },
   computeMissing(state, mode) {
-    return computeLegacyMissing({ ...state, inferredType: 'double-span-beam' }, mode, ['spanLengthM', 'loadKN', 'loadType', 'loadPosition']);
+    return computeLegacyMissing({ ...state, inferredType: 'double-span-beam' }, mode, [...ALLOWED_KEYS]);
   },
   mapLabels(keys, locale) {
     return buildLegacyLabels(keys, locale);

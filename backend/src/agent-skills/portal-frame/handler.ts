@@ -7,6 +7,7 @@ import {
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
 } from '../../services/agent-skills/legacy.js';
+import { combineDomainKeys, composeStructuralDomainPatch } from '../../services/agent-skills/domains/structural-domains.js';
 import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../services/agent-skills/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../services/agent-skills/fallback.js';
 import { buildDefaultReportNarrative } from '../../services/agent-skills/report-template.js';
@@ -20,13 +21,18 @@ import type {
   SkillReportNarrativeInput,
 } from '../../services/agent-skills/types.js';
 
-const ALLOWED_KEYS = ['spanLengthM', 'heightM', 'loadKN', 'loadType', 'loadPosition'] as const;
+const GEOMETRY_KEYS = ['spanLengthM', 'heightM'] as const;
+const LOAD_BOUNDARY_KEYS = ['loadKN', 'loadType', 'loadPosition'] as const;
+const ALLOWED_KEYS = combineDomainKeys(GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS);
 
 function toPortalFramePatch(patch: DraftExtraction): DraftExtraction {
-  return restrictLegacyDraftPatch({
-    ...patch,
-    spanLengthM: patch.spanLengthM ?? patch.lengthM,
-  }, 'portal-frame', [...ALLOWED_KEYS]);
+  const domainPatch = composeStructuralDomainPatch({
+    patch,
+    geometryKeys: GEOMETRY_KEYS,
+    loadBoundaryKeys: LOAD_BOUNDARY_KEYS,
+    spanLengthAliasFromLength: true,
+  });
+  return restrictLegacyDraftPatch(domainPatch, 'portal-frame', [...ALLOWED_KEYS]);
 }
 
 function buildPortalFrameDefaultReason(paramKey: string, locale: AppLocale): string {
@@ -155,7 +161,7 @@ export const handler: SkillHandler = {
     return mergeLegacyState(existing, toPortalFramePatch(patch), 'portal-frame', 'portal-frame');
   },
   computeMissing(state, mode) {
-    return computeLegacyMissing({ ...state, inferredType: 'portal-frame' }, mode, ['spanLengthM', 'heightM', 'loadKN', 'loadType', 'loadPosition']);
+    return computeLegacyMissing({ ...state, inferredType: 'portal-frame' }, mode, [...ALLOWED_KEYS]);
   },
   mapLabels(keys, locale) {
     return buildLegacyLabels(keys, locale);
