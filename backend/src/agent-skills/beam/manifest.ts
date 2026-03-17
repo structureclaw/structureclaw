@@ -15,7 +15,15 @@ export const manifest: SkillManifest = {
   stages: ['intent', 'draft', 'analysis', 'design'],
   autoLoadByDefault: true,
   scenarioKeys: ['beam', 'girder'],
+  domain: 'structure-type',
+  requires: [],
+  conflicts: [],
+  capabilities: ['intent-detection', 'draft-extraction', 'interaction-questions', 'model-build', 'report-narrative'],
   priority: 40,
+  compatibility: {
+    minCoreVersion: '0.1.0',
+    skillApiVersion: 'v1',
+  },
 };
 
 export default manifest;

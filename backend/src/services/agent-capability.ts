@@ -1,15 +1,32 @@
 import { AnalysisEngineCatalogService } from './analysis-engine.js';
 import { AgentSkillRuntime } from './agent-skills/index.js';
+import type { SkillDomain, SkillManifest } from './agent-skills/types.js';
 
 interface CapabilitySkill {
   id: string;
   structureType?: string;
+  domain: SkillDomain;
+  requires: string[];
+  conflicts: string[];
+  capabilities: string[];
+  priority: number;
+  compatibility: {
+    minCoreVersion: string;
+    skillApiVersion: string;
+  };
   autoLoadByDefault: boolean;
   stages: string[];
   name: {
     zh?: string;
     en?: string;
   };
+}
+
+interface DomainSummary {
+  domain: SkillDomain;
+  skillIds: string[];
+  autoLoadSkillIds: string[];
+  capabilities: string[];
 }
 
 interface CapabilityEngine {
@@ -94,14 +111,24 @@ export class AgentCapabilityService {
   ) {}
 
   async getCapabilityMatrix(options?: { analysisType?: CapabilityAnalysisType }) {
-    const skills: CapabilitySkill[] = this.skillRuntime.listSkills().map((skill) => ({
-      id: skill.id,
-      structureType: skill.structureType,
-      autoLoadByDefault: Boolean(skill.autoLoadByDefault),
-      stages: Array.isArray(skill.stages) ? skill.stages : [],
+    const manifests = await this.skillRuntime.listSkillManifests();
+    const skills: CapabilitySkill[] = manifests.map((manifest: SkillManifest) => ({
+      id: manifest.id,
+      structureType: manifest.structureType,
+      domain: manifest.domain,
+      requires: Array.isArray(manifest.requires) ? manifest.requires : [],
+      conflicts: Array.isArray(manifest.conflicts) ? manifest.conflicts : [],
+      capabilities: Array.isArray(manifest.capabilities) ? manifest.capabilities : [],
+      priority: manifest.priority,
+      compatibility: {
+        minCoreVersion: manifest.compatibility?.minCoreVersion || '0.1.0',
+        skillApiVersion: manifest.compatibility?.skillApiVersion || 'v1',
+      },
+      autoLoadByDefault: Boolean(manifest.autoLoadByDefault),
+      stages: Array.isArray(manifest.stages) ? manifest.stages : [],
       name: {
-        zh: skill.name?.zh,
-        en: skill.name?.en,
+        zh: manifest.name?.zh,
+        en: manifest.name?.en,
       },
     }));
 
@@ -148,13 +175,48 @@ export class AgentCapabilityService {
         .map((skill) => skill.id);
     }
 
+    const domainSummaryMap = new Map<SkillDomain, DomainSummary>();
+    for (const skill of skills) {
+      const existing = domainSummaryMap.get(skill.domain);
+      if (!existing) {
+        domainSummaryMap.set(skill.domain, {
+          domain: skill.domain,
+          skillIds: [skill.id],
+          autoLoadSkillIds: skill.autoLoadByDefault ? [skill.id] : [],
+          capabilities: [...skill.capabilities],
+        });
+        continue;
+      }
+      existing.skillIds.push(skill.id);
+      if (skill.autoLoadByDefault) {
+        existing.autoLoadSkillIds.push(skill.id);
+      }
+      existing.capabilities = Array.from(new Set([...existing.capabilities, ...skill.capabilities]));
+    }
+
+    const domainSummaries = [...domainSummaryMap.values()]
+      .map((summary) => ({
+        ...summary,
+        skillIds: [...summary.skillIds].sort(),
+        autoLoadSkillIds: [...summary.autoLoadSkillIds].sort(),
+        capabilities: [...summary.capabilities].sort(),
+      }))
+      .sort((a, b) => a.domain.localeCompare(b.domain));
+
+    const skillDomainById = skills.reduce<Record<string, SkillDomain>>((acc, skill) => {
+      acc[skill.id] = skill.domain;
+      return acc;
+    }, {});
+
     return {
       generatedAt: new Date().toISOString(),
       skills,
       engines,
+      domainSummaries,
       validEngineIdsBySkill,
       filteredEngineReasonsBySkill,
       validSkillIdsByEngine,
+      skillDomainById,
       appliedAnalysisType: options?.analysisType,
     };
   }

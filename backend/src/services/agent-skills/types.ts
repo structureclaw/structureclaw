@@ -140,9 +140,31 @@ export interface AgentSkillBundle extends AgentSkillMetadata {
   markdownByStage: Partial<Record<SkillStage, string>>;
 }
 
+export type SkillDomain =
+  | 'structure-type'
+  | 'material-constitutive'
+  | 'geometry-input'
+  | 'load-boundary'
+  | 'analysis-strategy'
+  | 'code-check'
+  | 'result-postprocess'
+  | 'visualization'
+  | 'report-export'
+  | 'generic-fallback';
+
+export interface SkillCompatibility {
+  minCoreVersion: string;
+  skillApiVersion: string;
+}
+
 export interface SkillManifest extends AgentSkillMetadata {
   scenarioKeys: ScenarioTemplateKey[];
+  domain: SkillDomain;
+  requires: string[];
+  conflicts: string[];
+  capabilities: string[];
   priority: number;
+  compatibility: SkillCompatibility;
 }
 
 export interface SkillDetectionInput {

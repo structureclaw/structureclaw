@@ -21,27 +21,45 @@ const run = async () => {
   const { AnalysisEngineCatalogService } = await import('./backend/dist/services/analysis-engine.js');
   const { AgentSkillRuntime } = await import('./backend/dist/services/agent-skills/index.js');
 
-  AgentSkillRuntime.prototype.listSkills = function mockListSkills() {
+  AgentSkillRuntime.prototype.listSkillManifests = async function mockListSkillManifests() {
     return [
       {
         id: 'beam',
         structureType: 'beam',
+        domain: 'structure-type',
         name: { zh: '梁', en: 'Beam' },
         description: { zh: 'beam', en: 'beam' },
         triggers: ['beam'],
         stages: ['intent', 'draft', 'analysis', 'design'],
         autoLoadByDefault: true,
-        markdownByStage: {},
+        scenarioKeys: ['beam'],
+        requires: [],
+        conflicts: [],
+        capabilities: ['intent-detection'],
+        priority: 10,
+        compatibility: {
+          minCoreVersion: '0.1.0',
+          skillApiVersion: 'v1',
+        },
       },
       {
         id: 'truss',
         structureType: 'truss',
+        domain: 'structure-type',
         name: { zh: '桁架', en: 'Truss' },
         description: { zh: 'truss', en: 'truss' },
         triggers: ['truss'],
         stages: ['intent', 'draft', 'analysis', 'design'],
         autoLoadByDefault: true,
-        markdownByStage: {},
+        scenarioKeys: ['truss'],
+        requires: [],
+        conflicts: [],
+        capabilities: ['intent-detection'],
+        priority: 20,
+        compatibility: {
+          minCoreVersion: '0.1.0',
+          skillApiVersion: 'v1',
+        },
       },
     ];
   };
@@ -101,9 +119,11 @@ const run = async () => {
   assert(typeof payload.generatedAt === 'string', 'payload.generatedAt should be present');
   assert(Array.isArray(payload.skills), 'payload.skills should be an array');
   assert(Array.isArray(payload.engines), 'payload.engines should be an array');
+  assert(Array.isArray(payload.domainSummaries), 'payload.domainSummaries should be an array');
   assert(payload.validEngineIdsBySkill && typeof payload.validEngineIdsBySkill === 'object', 'validEngineIdsBySkill should be an object');
   assert(payload.filteredEngineReasonsBySkill && typeof payload.filteredEngineReasonsBySkill === 'object', 'filteredEngineReasonsBySkill should be an object');
   assert(payload.validSkillIdsByEngine && typeof payload.validSkillIdsByEngine === 'object', 'validSkillIdsByEngine should be an object');
+  assert(payload.skillDomainById && typeof payload.skillDomainById === 'object', 'skillDomainById should be an object');
 
   const engineIds = new Set(payload.engines.map((engine) => engine.id));
   const skillIds = new Set(payload.skills.map((skill) => skill.id));
@@ -119,6 +139,8 @@ const run = async () => {
 
   const beamEngines = payload.validEngineIdsBySkill.beam || [];
   const trussEngines = payload.validEngineIdsBySkill.truss || [];
+  assert(payload.skillDomainById.beam === 'structure-type', 'beam should have structure-type domain mapping');
+  assert(payload.skillDomainById.truss === 'structure-type', 'truss should have structure-type domain mapping');
   assert(beamEngines.includes('engine-frame-a'), 'beam should include frame-compatible engine');
   assert(beamEngines.includes('engine-generic'), 'beam should include generic engine');
   assert(!beamEngines.includes('engine-disabled'), 'beam should not include disabled engine');

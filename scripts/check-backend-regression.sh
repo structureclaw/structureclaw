@@ -23,6 +23,10 @@ echo "==> Agent orchestration regression"
 ./scripts/validate-agent-orchestration.sh
 
 echo
+echo "==> Agent no-skill fallback contract"
+./scripts/validate-agent-no-skill-fallback.sh
+
+echo
 echo "==> Agent tools protocol contract"
 ./scripts/validate-agent-tools-contract.sh
 

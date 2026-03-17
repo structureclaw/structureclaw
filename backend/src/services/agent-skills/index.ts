@@ -14,6 +14,7 @@ import type {
   SkillReportNarrativeInput,
   ScenarioSupportLevel,
   ScenarioTemplateKey,
+  SkillManifest,
 } from './types.js';
 
 export type {
@@ -48,6 +49,11 @@ export class AgentSkillRuntime {
 
   listSkills(): AgentSkillBundle[] {
     return this.registry.listSkills();
+  }
+
+  async listSkillManifests(): Promise<SkillManifest[]> {
+    const plugins = await this.registry.listPlugins();
+    return plugins.map((plugin) => plugin.manifest);
   }
 
   async detectScenario(message: string, locale: AppLocale, currentState?: DraftState, skillIds?: string[]): Promise<ScenarioMatch> {
