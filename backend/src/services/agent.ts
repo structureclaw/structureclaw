@@ -1844,6 +1844,7 @@ export class AgentService {
     existingState: DraftState | undefined,
     locale: AppLocale,
   ): Promise<DraftResult> {
+    const llmPreferred = this.llm !== null;
     const llmExtraction = await tryNoSkillLlmExtract(this.llm, message, existingState, locale);
     const mergedExtraction = mergeNoSkillDraftExtraction(llmExtraction, { inferredType: 'unknown' });
     const stateToPersist = mergeNoSkillDraftState(existingState, mergedExtraction);
@@ -1855,7 +1856,7 @@ export class AgentService {
     return {
       inferredType: noSkillState.inferredType,
       missingFields: model ? [] : missingFields,
-      extractionMode: llmExtraction ? 'llm' : 'rule-based',
+      extractionMode: llmPreferred ? 'llm' : 'rule-based',
       model,
       stateToPersist: noSkillState,
     };

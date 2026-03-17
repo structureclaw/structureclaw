@@ -703,6 +703,27 @@ describe('AgentService orchestration', () => {
     await svc.clearConversationSession(conversationId);
   });
 
+  test('should keep llm extractionMode in no-skill when llm extraction falls back', async () => {
+    const svc = new AgentService();
+    let invokeCount = 0;
+    svc.llm = {
+      invoke: async () => {
+        invokeCount += 1;
+        if (invokeCount === 1) {
+          return { content: 'not-json' };
+        }
+        return {
+          content: '{"schema_version":"1.0.0","unit_system":"SI","nodes":[],"elements":[],"materials":[],"sections":[],"load_cases":[],"load_combinations":[]}',
+        };
+      },
+    };
+
+    const draft = await svc.textToModelDraft('给我一个可计算结构模型', undefined, 'zh', []);
+
+    expect(draft.extractionMode).toBe('llm');
+    expect(draft.model).toBeDefined();
+  });
+
   test('should execute analyze in no-skill mode when computable model is provided', async () => {
     const svc = new AgentService();
     svc.llm = null;
