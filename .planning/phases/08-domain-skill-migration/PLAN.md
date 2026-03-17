@@ -15,6 +15,7 @@
 - Core must not carry scenario keyword rules, structure-template branching, or structure-specific question templates.
 - All structure-template matching, scenario routing, template defaults, and template-specific clarification must live in skill handlers.
 - If `skillIds=[]`, core should never require selecting a predefined structure template before generating a model; it should generate when computable and only ask for truly missing fields.
+- If no enabled skill matches the user request, runtime should default to generic LLM modeling and proceed with schema validation + engine execution path.
 
 ## Execution Status (2026-03-17)
 - P08-1 baseline is in place: capability matrix now carries domain-oriented metadata and frontend consumes grouped capability payload.
@@ -67,7 +68,7 @@ Suggested CLI surface:
 - Domain grouping and labels must stay bilingual (`en` and `zh`) and align with backend capability-matrix metadata.
 
 ## Target Domain Categories
-1. Structure-Type Skills
+1. Structure Modeling Skills
 2. Material and Constitutive Skills
 3. Geometry Input Skills
 4. Load and Boundary Skills

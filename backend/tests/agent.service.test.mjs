@@ -724,7 +724,7 @@ describe('AgentService orchestration', () => {
     expect(draft.model).toBeDefined();
   });
 
-  test('should fallback to generic llm model when skill scenarios stay unknown', async () => {
+  test('should fallback to generic llm model when enabled skills cannot match request', async () => {
     const svc = new AgentService();
     svc.llm = {
       invoke: async () => ({
@@ -736,7 +736,7 @@ describe('AgentService orchestration', () => {
       '希望生成一个跨度10m的简支梁，荷载在4m处，一个集中荷载10kN',
       undefined,
       'zh',
-      ['double-span-beam', 'frame', 'portal-frame', 'truss'],
+      ['frame'],
     );
 
     expect(draft.inferredType).toBe('unknown');
