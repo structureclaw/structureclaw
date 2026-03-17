@@ -64,3 +64,14 @@ Owner: backend-agent
 
 ## Next Step
 - Step 5: continue extracting remaining domain logic from `backend/src/services/agent-skills/domains/*` into categorized `backend/src/agent-skills/<domain>/entry.ts` modules while preserving runtime behavior.
+
+## Step 5 Progress (in progress)
+- Extracted visualization-domain logic into categorized entry implementation:
+  - `backend/src/agent-skills/visualization/entry.ts`
+- Removed migrated services-domain source file:
+  - `backend/src/services/agent-skills/domains/visualization-domain.ts`
+
+## Step 5 Validation (visualization slice)
+- Completed
+  - `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs` (pass: 52/52)
+  - `make backend-regression` (pass)
