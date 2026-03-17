@@ -243,6 +243,9 @@ export class AgentService {
     if (options?.hasModel) {
       return true;
     }
+    if (this.policy.inferCodeCheckIntent(message) || this.policy.inferReportIntent(message) === true) {
+      return true;
+    }
     const locale = this.resolveInteractionLocale(options?.locale);
     const sessionKey = options?.conversationId?.trim();
     const session = await this.getInteractionSession(sessionKey);
