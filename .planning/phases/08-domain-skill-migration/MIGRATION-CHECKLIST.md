@@ -47,9 +47,9 @@
 - [x] Structure-type handlers consume domain outputs
 
 ## P08-5
-- [ ] Material/constitutive skill interface implemented
-- [ ] Analysis strategy skill interface implemented
-- [ ] Capability matrix includes analysis strategy compatibility
+- [x] Material/constitutive skill interface implemented
+- [x] Analysis strategy skill interface implemented
+- [x] Capability matrix includes analysis strategy compatibility
 
 ## P08-6
 - [ ] Code-check orchestration migrated to code-check domain
