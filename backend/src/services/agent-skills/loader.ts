@@ -10,6 +10,28 @@ interface FrontmatterResult {
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
+function collectDirectories(root: string): string[] {
+  const result: string[] = [];
+  const stack = [root];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    result.push(current);
+    const entries = readdirSync(current, { withFileTypes: true });
+    for (const entry of entries) {
+      if (!entry.isDirectory()) {
+        continue;
+      }
+      stack.push(path.join(current, entry.name));
+    }
+  }
+  return result;
+}
+
+function hasRequiredExtensionInDescendants(root: string, requiredExtensions: string[]): boolean {
+  const directories = collectDirectories(root);
+  return directories.some((directory) => requiredExtensions.some((requiredExtension) => existsSync(path.join(directory, requiredExtension))));
+}
+
 function resolveSkillRoot(candidates: string[], requiredExtensions?: string[]): string {
   const matched = candidates.find((candidate) => {
     if (!existsSync(candidate)) {
@@ -18,8 +40,7 @@ function resolveSkillRoot(candidates: string[], requiredExtensions?: string[]): 
     if (!requiredExtensions?.length) {
       return true;
     }
-    const entries = readdirSync(candidate, { withFileTypes: true });
-    return entries.some((entry) => entry.isDirectory() && requiredExtensions.some((requiredExtension) => existsSync(path.join(candidate, entry.name, requiredExtension))));
+    return hasRequiredExtensionInDescendants(candidate, requiredExtensions);
   });
   if (!matched) {
     throw new Error(`Agent skill directory not found. Tried: ${candidates.join(', ')}`);
@@ -28,12 +49,12 @@ function resolveSkillRoot(candidates: string[], requiredExtensions?: string[]): 
 }
 
 const MODULE_SKILL_ROOT = resolveSkillRoot([
+  path.resolve(process.cwd(), 'backend/dist/agent-skills'),
+  path.resolve(process.cwd(), 'dist/agent-skills'),
+  path.resolve(process.cwd(), 'backend/src/agent-skills'),
+  path.resolve(process.cwd(), 'src/agent-skills'),
   path.resolve(MODULE_DIR, '../../agent-skills'),
   path.resolve(MODULE_DIR, '../../src/agent-skills'),
-  path.resolve(process.cwd(), 'dist/agent-skills'),
-  path.resolve(process.cwd(), 'backend/dist/agent-skills'),
-  path.resolve(process.cwd(), 'src/agent-skills'),
-  path.resolve(process.cwd(), 'backend/src/agent-skills'),
 ], ['handler.js', 'handler.ts']);
 
 const MARKDOWN_SKILL_ROOT = resolveSkillRoot([
@@ -105,6 +126,26 @@ function assertStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.length > 0) : [];
 }
 
+function isSkillMarkdownDirectory(skillDir: string): boolean {
+  const stageEntries = readdirSync(skillDir, { withFileTypes: true });
+  return stageEntries.some((stageEntry) => stageEntry.isFile() && normalizeStage(stageEntry.name.replace(/\.md$/, '')) !== null);
+}
+
+function isSkillModuleDirectory(skillDir: string): boolean {
+  return (
+    existsSync(path.join(skillDir, 'manifest.ts'))
+    || existsSync(path.join(skillDir, 'manifest.js'))
+  ) && (
+    existsSync(path.join(skillDir, 'handler.ts'))
+    || existsSync(path.join(skillDir, 'handler.js'))
+  );
+}
+
+function listTopLevelDirectories(root: string): Set<string> {
+  const entries = readdirSync(root, { withFileTypes: true });
+  return new Set(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name));
+}
+
 export class AgentSkillLoader {
   private cache: AgentSkillBundle[] | null = null;
   private pluginCache: Promise<AgentSkillPlugin[]> | null = null;
@@ -114,18 +155,18 @@ export class AgentSkillLoader {
       return this.cache;
     }
 
-    const entries = readdirSync(MARKDOWN_SKILL_ROOT, { withFileTypes: true });
+    const entries = collectDirectories(MARKDOWN_SKILL_ROOT);
     const files: AgentSkillFile[] = [];
 
-    for (const entry of entries) {
-      if (!entry.isDirectory()) {
+    for (const skillDir of entries) {
+      if (!isSkillMarkdownDirectory(skillDir)) {
         continue;
       }
-      const skillDir = path.join(MARKDOWN_SKILL_ROOT, entry.name);
       const skillStat = statSync(skillDir);
       if (!skillStat.isDirectory()) {
         continue;
       }
+      const skillId = path.basename(skillDir);
       const stageEntries = readdirSync(skillDir, { withFileTypes: true });
       for (const stageEntry of stageEntries) {
         if (!stageEntry.isFile() || !stageEntry.name.endsWith('.md')) {
@@ -138,11 +179,11 @@ export class AgentSkillLoader {
         const raw = readFileSync(path.join(skillDir, stageEntry.name), 'utf-8');
         const { metadata, body } = parseFrontmatter(raw);
         const file: AgentSkillFile = {
-          id: assertString(metadata.id, entry.name),
-          structureType: assertString(metadata.structureType, entry.name) as AgentSkillMetadata['structureType'],
+          id: assertString(metadata.id, skillId),
+          structureType: assertString(metadata.structureType, skillId) as AgentSkillMetadata['structureType'],
           name: {
-            zh: assertString(metadata.zhName, entry.name),
-            en: assertString(metadata.enName, entry.name),
+            zh: assertString(metadata.zhName, skillId),
+            en: assertString(metadata.enName, skillId),
           },
           description: {
             zh: assertString(metadata.zhDescription),
@@ -192,15 +233,20 @@ export class AgentSkillLoader {
     this.pluginCache = (async () => {
       const bundles = this.loadBundles();
       const bundleById = new Map(bundles.map((bundle) => [bundle.id, bundle]));
-      const entries = readdirSync(MODULE_SKILL_ROOT, { withFileTypes: true });
+      const entries = collectDirectories(MODULE_SKILL_ROOT);
+      const allowedTopLevelDirectories = listTopLevelDirectories(MARKDOWN_SKILL_ROOT);
       const plugins: AgentSkillPlugin[] = [];
 
-      for (const entry of entries) {
-        if (!entry.isDirectory()) {
+      for (const skillDir of entries) {
+        if (!isSkillModuleDirectory(skillDir)) {
           continue;
         }
-        const skillDir = path.join(MODULE_SKILL_ROOT, entry.name);
-        const bundle = bundleById.get(entry.name);
+        const relativePath = path.relative(MODULE_SKILL_ROOT, skillDir);
+        const topLevel = relativePath.split(path.sep)[0] || '';
+        if (!allowedTopLevelDirectories.has(topLevel)) {
+          continue;
+        }
+        const bundle = bundleById.get(path.basename(skillDir));
         if (!bundle) {
           continue;
         }

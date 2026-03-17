@@ -1,25 +1,25 @@
-import type { SkillManifest } from '../../services/agent-skills/types.js';
+import type { SkillManifest } from '../../../services/agent-skills/types.js';
 
 export const manifest: SkillManifest = {
-  id: 'truss',
-  structureType: 'truss',
+  id: 'portal-frame',
+  structureType: 'portal-frame',
   name: {
-    zh: '桁架',
-    en: 'Truss',
+    zh: '门式刚架',
+    en: 'Portal Frame',
   },
   description: {
-    zh: '平面桁架的需求识别与补参 skill。',
-    en: 'Skill for planar truss intent detection and clarification.',
+    zh: '门式刚架需求识别与补参 skill。',
+    en: 'Skill for portal-frame intent detection and clarification.',
   },
-  triggers: ['truss', '桁架'],
+  triggers: ['portal frame', '门式刚架', 'portal', '门架', '刚架'],
   stages: ['intent', 'draft', 'analysis', 'design'],
   autoLoadByDefault: true,
-  scenarioKeys: ['truss'],
+  scenarioKeys: ['portal-frame', 'portal'],
   domain: 'structure-type',
   requires: [],
   conflicts: [],
   capabilities: ['intent-detection', 'draft-extraction', 'interaction-questions', 'model-build', 'report-narrative'],
-  priority: 80,
+  priority: 100,
   compatibility: {
     minCoreVersion: '0.1.0',
     skillApiVersion: 'v1',

@@ -1,25 +1,25 @@
-import type { SkillManifest } from '../../services/agent-skills/types.js';
+import type { SkillManifest } from '../../../services/agent-skills/types.js';
 
 export const manifest: SkillManifest = {
-  id: 'portal-frame',
-  structureType: 'portal-frame',
+  id: 'beam',
+  structureType: 'beam',
   name: {
-    zh: '门式刚架',
-    en: 'Portal Frame',
+    zh: '梁',
+    en: 'Beam',
   },
   description: {
-    zh: '门式刚架需求识别与补参 skill。',
-    en: 'Skill for portal-frame intent detection and clarification.',
+    zh: '单跨梁或悬臂梁的需求识别与补参 skill。',
+    en: 'Skill for beam or cantilever intent detection and clarification.',
   },
-  triggers: ['portal frame', '门式刚架', 'portal', '门架', '刚架'],
+  triggers: ['beam', '梁', '悬臂', 'girder', '主梁', '大梁'],
   stages: ['intent', 'draft', 'analysis', 'design'],
   autoLoadByDefault: true,
-  scenarioKeys: ['portal-frame', 'portal'],
+  scenarioKeys: ['beam', 'girder'],
   domain: 'structure-type',
   requires: [],
   conflicts: [],
   capabilities: ['intent-detection', 'draft-extraction', 'interaction-questions', 'model-build', 'report-narrative'],
-  priority: 100,
+  priority: 40,
   compatibility: {
     minCoreVersion: '0.1.0',
     skillApiVersion: 'v1',

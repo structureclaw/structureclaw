@@ -4,7 +4,8 @@ Updated: 2026-03-18
 Owner: backend-agent
 
 ## Stepwise Execution
-- Step 1 (in progress): enforce core-first fallback when enabled skills cannot match request.
+- Step 1 (completed): enforce core-first fallback when enabled skills cannot match request.
+- Step 2 (completed): migrate structure-modeling plugins under domain folder and keep loader migration-safe.
 
 ## Step 1 Scope
 - Keep no-skill as baseline path.
@@ -22,3 +23,13 @@ Owner: backend-agent
 
 ## Next Step
 - Step 2: migrate existing structure-modeling plugins into `backend/src/agent-skills/structure-modeling/*` with migration-safe loader recursion.
+
+## Step 2 Progress
+- Moved structure-modeling plugins (`beam`, `double-span-beam`, `frame`, `portal-frame`, `truss`) into `backend/src/agent-skills/structure-modeling/*`.
+- Updated skill loader (`backend/src/services/agent-skills/loader.ts`) to recursively discover nested markdown and module skill directories.
+- Updated moved plugin import paths to account for deeper directory level.
+
+## Step 2 Validation
+- Completed
+  - `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs` (pass: 52/52)
+  - `make backend-regression` (pass)
