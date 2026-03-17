@@ -22,7 +22,7 @@
 - [x] Add contract test: empty skillIds in execute/auto mode
 - [x] Verify deterministic clarification or successful execution
 - [x] Baseline skill pack documented and runnable without repository connectivity
-- [ ] Repository-down fallback verified (baseline compute still available)
+- [x] Repository-down fallback verified (baseline compute still available)
 
 ## P08-3
 - [x] Report/export domain hooks completed

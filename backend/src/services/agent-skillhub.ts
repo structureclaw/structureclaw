@@ -279,6 +279,7 @@ export class AgentSkillHubService {
   }
 
   async search(options?: { keyword?: string; domain?: SkillDomain }) {
+    this.assertRepositoryAvailable();
     const installed = await this.readInstalledState();
     const keyword = normalizeKeyword(options?.keyword);
     const filtered = DEFAULT_CATALOG
@@ -298,11 +299,13 @@ export class AgentSkillHubService {
   }
 
   async listInstalled() {
+    this.assertRepositoryAvailable();
     const installed = await this.readInstalledState();
     return Object.values(installed.skills).sort((a, b) => a.id.localeCompare(b.id));
   }
 
   async install(skillId: string) {
+    this.assertRepositoryAvailable();
     let catalogSkill = DEFAULT_CATALOG.find((entry) => entry.id === skillId);
     let reusedFromCache = false;
 
@@ -391,14 +394,17 @@ export class AgentSkillHubService {
   }
 
   async enable(skillId: string) {
+    this.assertRepositoryAvailable();
     return this.updateEnabledState(skillId, true);
   }
 
   async disable(skillId: string) {
+    this.assertRepositoryAvailable();
     return this.updateEnabledState(skillId, false);
   }
 
   async uninstall(skillId: string) {
+    this.assertRepositoryAvailable();
     const state = await this.readInstalledState();
     const existing = state.skills[skillId];
     if (!existing) {
@@ -559,6 +565,13 @@ export class AgentSkillHubService {
   private isOfflineModeEnabled(): boolean {
     const raw = process.env.SCLAW_SKILLHUB_OFFLINE;
     return raw === '1' || raw === 'true';
+  }
+
+  private assertRepositoryAvailable(): void {
+    const raw = process.env.SCLAW_SKILLHUB_FORCE_DOWN;
+    if (raw === '1' || raw === 'true') {
+      throw new Error('SKILLHUB_REPOSITORY_UNAVAILABLE');
+    }
   }
 }
 

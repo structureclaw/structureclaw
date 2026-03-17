@@ -47,6 +47,10 @@ echo "==> Agent SkillHub CLI integration contract"
 ./scripts/validate-agent-skillhub-cli.sh
 
 echo
+echo "==> Agent SkillHub repository-down fallback contract"
+./scripts/validate-agent-skillhub-repository-down.sh
+
+echo
 echo "==> Chat stream contract regression"
 ./scripts/validate-chat-stream-contract.sh
 
