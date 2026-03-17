@@ -35,6 +35,12 @@ import {
   extractKeyMetrics,
 } from './agent-skills/domains/postprocess-domain.js';
 import { extractVisualizationHints } from './agent-skills/domains/visualization-domain.js';
+import {
+  buildNoSkillGenericModel,
+  computeNoSkillMissingFields,
+  extractNoSkillDraftByRules,
+  normalizeNoSkillDraftState,
+} from './agent-noskill-runtime.js';
 
 export type AgentToolName = 'text-to-model-draft' | 'convert' | 'validate' | 'analyze' | 'code-check' | 'report';
 export type AgentRunMode = 'chat' | 'execute' | 'auto';
@@ -1856,15 +1862,15 @@ export class AgentService {
     locale: AppLocale,
   ): Promise<DraftResult> {
     const llmExtraction = await this.tryLlmExtract(message, existingState, locale);
-    const ruleExtraction = this.extractDraftByRules(message);
+    const ruleExtraction = extractNoSkillDraftByRules(message);
     const mergedExtraction = this.mergeDraftExtraction(llmExtraction, ruleExtraction);
     const stateToPersist = this.mergeDraftState(existingState, mergedExtraction);
-    const noSkillState = this.normalizeNoSkillDraftState(stateToPersist);
+    const noSkillState = normalizeNoSkillDraftState(stateToPersist);
 
     let model: Record<string, unknown> | undefined;
-    const missingFields = this.computeNoSkillMissingFields(noSkillState);
+    const missingFields = computeNoSkillMissingFields(noSkillState);
     if (missingFields.length === 0) {
-      model = this.buildNoSkillGenericModel(noSkillState);
+      model = buildNoSkillGenericModel(noSkillState);
     } else {
       model = await this.tryLlmBuildGenericModel(message, noSkillState, locale);
     }
