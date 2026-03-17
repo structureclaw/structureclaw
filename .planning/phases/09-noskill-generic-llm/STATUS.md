@@ -26,6 +26,7 @@ Owner: backend-agent
 - Forced no-skill draft merge path to keep inferredType pinned to unknown.
 - Removed no-skill supportType/frameBaseSupportType parsing from LLM extraction and state merge path.
 - Removed no-skill categorical loadPosition parsing and state merge; keep numeric loadPositionM only.
+- Removed no-skill inferredType from extraction prompt constraints and prior context payload.
 - Updated repository-down contract to use explicit computable model input (deterministic, non-LLM-dependent).
 - Added explicit boundary test: no-skill execute must stay blocked when computable model is unavailable.
 - Added explicit boundary test: no-skill must keep inferredType unknown even when LLM extraction returns a template type.

@@ -147,7 +147,6 @@ export async function tryNoSkillLlmExtract(
 
   const prior = existingState
     ? JSON.stringify({
-        inferredType: existingState.inferredType,
         lengthM: existingState.lengthM,
         spanLengthM: existingState.spanLengthM,
         heightM: existingState.heightM,
@@ -172,29 +171,27 @@ export async function tryNoSkillLlmExtract(
         '你是结构建模参数提取器。',
         '从用户输入里提取结构草模参数。仅返回一个 JSON 对象，不要 markdown、不要解释。',
         '必须符合以下输出约束：',
-        '- 顶层只允许字段：inferredType,lengthM,spanLengthM,heightM,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,loadKN,loadType,loadPositionM。',
+        '- 顶层只允许字段：lengthM,spanLengthM,heightM,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,loadKN,loadType,loadPositionM。',
         '- 不确定字段直接省略，不要输出 null，不要输出字符串数字。',
         '- loadPositionM 表示某参考起点的数值位置（m），位置信息请优先用该数值字段表达。',
-        '除非用户明确指定模板，请保持 inferredType=unknown。',
         '数值统一单位：m, kN。不存在的字段不要输出。',
         `已有参数：${prior}`,
         `用户输入：${message}`,
         '若已说明几何、边界、材料、截面、荷载、组合，请按字段提取。',
-        '输出示例：{"inferredType":"unknown","lengthM":10,"loadKN":10}',
+        '输出示例：{"lengthM":10,"loadKN":10}',
       ].join('\n')
     : [
         'You extract structural model draft parameters.',
         'Read the user request and return exactly one JSON object only, without markdown or explanations.',
         'Output constraints:',
-        '- Top-level allowed fields only: inferredType,lengthM,spanLengthM,heightM,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,loadKN,loadType,loadPositionM.',
+        '- Top-level allowed fields only: lengthM,spanLengthM,heightM,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,loadKN,loadType,loadPositionM.',
         '- Omit unknown fields; do not output null; keep numeric fields as numbers.',
         '- loadPositionM means offset from the start reference in meters and should be provided when a point-load location is explicit.',
-        'Keep inferredType=unknown unless user explicitly requests a known structural category.',
         'Use m and kN as units. Omit fields that are not present.',
         'Extract geometry, boundary, material, section, load, and combination hints when available.',
         `Known parameters: ${prior}`,
         `User input: ${message}`,
-        'Example output: {"inferredType":"unknown","lengthM":10,"loadKN":10}',
+        'Example output: {"lengthM":10,"loadKN":10}',
       ].join('\n');
 
   try {
