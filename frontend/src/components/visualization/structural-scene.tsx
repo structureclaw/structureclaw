@@ -351,8 +351,10 @@ function SceneContent({
             if (!startData || !endData) {
               return null
             }
-            const start = (view === 'deformed' && !showUndeformed) ? startData.displacedPosition : startData.position
-            const end = (view === 'deformed' && !showUndeformed) ? endData.displacedPosition : endData.position
+            // In deformed view, always render the main member geometry at deformed coordinates.
+            // The "undeformed" toggle controls only the gray overlay reference line.
+            const start = view === 'deformed' ? startData.displacedPosition : startData.position
+            const end = view === 'deformed' ? endData.displacedPosition : endData.position
             const forceColor = createColorScale(getElementMetric(activeCase, element.id, forceMetric), maxElementMetric)
             const color = view === 'forces'
               ? forceColor
