@@ -483,113 +483,72 @@ export function normalizeFloorLoads(value: unknown): DraftFloorLoad[] | undefine
   return filtered.length > 0 ? filtered : undefined;
 }
 
-export function detectScenarioByRules(
-  message: string,
+export function buildUnsupportedScenario(
   locale: AppLocale,
-  bundles: AgentSkillBundle[],
-  currentType?: InferredModelType,
+  key: ScenarioTemplateKey,
+  noteZh: string,
+  noteEn: string,
 ): ScenarioMatch {
-  const text = message.toLowerCase();
-  const enabledTypes = new Set(bundles.map((bundle) => bundle.structureType));
-  const unsupported = (key: ScenarioTemplateKey, noteZh: string, noteEn: string): ScenarioMatch => ({
+  return {
     key,
     mappedType: 'unknown',
     supportLevel: 'unsupported',
     supportNote: localize(locale, noteZh, noteEn),
-  });
+  };
+}
 
+export function buildUnknownScenario(locale: AppLocale): ScenarioMatch {
+  return buildUnsupportedScenario(
+    locale,
+    'unknown',
+    '我还没有从当前描述中稳定识别出可直接补参的结构场景。请先说明它更接近梁、桁架、门式刚架还是规则框架。',
+    'I have not yet identified a stable structural scenario from the current description. Please tell me whether it is closer to a beam, truss, portal frame, or regular frame.'
+  );
+}
+
+export function detectUnsupportedScenarioByRules(message: string, locale: AppLocale): ScenarioMatch | null {
+  const text = message.toLowerCase();
   if (text.includes('space frame') || text.includes('网架')) {
-    return unsupported(
+    return buildUnsupportedScenario(
+      locale,
       'space-frame',
       '当前对话补参链路还不直接支持空间网架；如果你愿意，可先收敛成梁、桁架、门式刚架或规则框架进行澄清。',
       'The current guidance flow does not directly support space frames. If acceptable, we can first simplify the problem to a beam, truss, portal frame, or regular frame.'
     );
   }
   if (text.includes('slab') || text.includes('plate') || text.includes('楼板') || text.includes('板')) {
-    return unsupported(
+    return buildUnsupportedScenario(
+      locale,
       'plate-slab',
       '当前补参链路还不直接支持板/楼板模型；请先确认是否可以简化为梁系、框架或桁架问题。',
       'The current guidance flow does not directly support plate or slab models. Please confirm whether the problem can be simplified into beams, frames, or trusses.'
     );
   }
   if (text.includes('shell') || text.includes('壳')) {
-    return unsupported(
+    return buildUnsupportedScenario(
+      locale,
       'shell',
       '当前补参链路还不直接支持壳体模型；请先说明是否可以收敛到梁、桁架或规则框架的近似模型。',
       'The current guidance flow does not directly support shell models. Please clarify whether the problem can be reduced to a beam, truss, or regular-frame approximation.'
     );
   }
   if (text.includes('tower') || text.includes('塔')) {
-    return unsupported(
+    return buildUnsupportedScenario(
+      locale,
       'tower',
       '当前补参链路还不直接支持塔架专用模板；如果只是杆系近似，可先按桁架继续澄清。',
       'The current guidance flow does not directly support tower-specific templates. If a truss approximation is acceptable, we can continue with that.'
     );
   }
   if (text.includes('bridge') || text.includes('桥')) {
-    return unsupported(
+    return buildUnsupportedScenario(
+      locale,
       'bridge',
       '当前补参链路还不直接支持桥梁专用模板；若你只想先讨论主梁近似，可收敛到梁模板。',
       'The current guidance flow does not directly support bridge-specific templates. If you only want a girder-style approximation first, we can narrow the problem to a beam template.'
     );
   }
-  if (
-    (text.includes('frame') || text.includes('框架') || text.includes('钢框架'))
-    && (text.includes('irregular') || text.includes('不规则') || text.includes('退台') || text.includes('缺跨'))
-  ) {
-    return unsupported(
-      'frame',
-      '当前 frame skill 只支持规则楼层和规则轴网框架。若结构存在退台、缺跨或明显不规则，请直接提供 JSON 或更具体的节点构件描述。',
-      'The current frame skill only supports regular stories and regular grids. If the structure has setbacks, missing bays, or strong irregularities, please provide JSON or a more explicit node/member description.'
-    );
-  }
-  if ((text.includes('portal frame') || text.includes('门式刚架')) && enabledTypes.has('portal-frame')) {
-    return { key: 'portal-frame', mappedType: 'portal-frame', supportLevel: 'supported' };
-  }
-  if ((text.includes('double-span') || text.includes('双跨梁')) && enabledTypes.has('double-span-beam')) {
-    return { key: 'double-span-beam', mappedType: 'double-span-beam', supportLevel: 'supported' };
-  }
-  if ((text.includes('truss') || text.includes('桁架')) && enabledTypes.has('truss')) {
-    return { key: 'truss', mappedType: 'truss', supportLevel: 'supported' };
-  }
-  if (text.includes('girder') || text.includes('主梁') || text.includes('大梁')) {
-    return {
-      key: 'girder',
-      mappedType: enabledTypes.has('beam') ? 'beam' : 'unknown',
-      supportLevel: enabledTypes.has('beam') ? 'fallback' : 'unsupported',
-      supportNote: localize(
-        locale,
-        '已将“主梁/大梁”先按梁模板处理；若实际是连续梁或更复杂体系，请继续说明。',
-        '“Girder” has been normalized to the beam template for now. If the actual system is continuous or more complex, please clarify further.'
-      ),
-    };
-  }
-  if ((text.includes('steel frame') || text.includes('钢框架') || text.includes('frame') || text.includes('框架')) && enabledTypes.has('frame')) {
-    return { key: text.includes('steel frame') || text.includes('钢框架') ? 'steel-frame' : 'frame', mappedType: 'frame', supportLevel: 'supported' };
-  }
-  if (text.includes('portal') || text.includes('门架') || text.includes('刚架')) {
-    return {
-      key: 'portal',
-      mappedType: enabledTypes.has('portal-frame') ? 'portal-frame' : 'unknown',
-      supportLevel: enabledTypes.has('portal-frame') ? 'fallback' : 'unsupported',
-      supportNote: localize(
-        locale,
-        '已将“门架/刚架”先收敛到门式刚架模板继续补参。',
-        '“Portal structure” has been narrowed to the portal-frame template for continued guidance.'
-      ),
-    };
-  }
-  if ((text.includes('beam') || text.includes('梁') || text.includes('悬臂')) && enabledTypes.has('beam')) {
-    return { key: 'beam', mappedType: 'beam', supportLevel: 'supported' };
-  }
-  if (currentType && currentType !== 'unknown' && enabledTypes.has(currentType)) {
-    return { key: currentType, mappedType: currentType, supportLevel: 'supported' };
-  }
-  return unsupported(
-    'unknown',
-    '我还没有从当前描述中稳定识别出可直接补参的结构场景。请先说明它更接近梁、桁架、门式刚架还是规则框架。',
-    'I have not yet identified a stable structural scenario from the current description. Please tell me whether it is closer to a beam, truss, portal frame, or regular frame.'
-  );
+  return null;
 }
 
 export function extractDraftByRules(message: string): DraftExtraction {

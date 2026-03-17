@@ -45,7 +45,13 @@
 - Done: removed unused `legacy` question/default-proposal wrappers to reduce coupling surface.
 - Done: `agent.ts` now merges structural defaults from skill runtime with non-structural defaults from policy service.
 - Verified: backend build + `validate-agent-orchestration.sh` + `validate-agent-skills-contract.sh`.
-- Next: decompose remaining `legacy.ts` question/default helpers into shared primitives only, reducing legacy coupling inside handlers.
+- Next: start PR-3 and unify unsupported/fallback detection source between `registry` and rule helpers.
+
+## PR-3 Progress (In Progress)
+- Done: unsupported scenario keyword detection is now shared from `fallback.ts` via `detectUnsupportedScenarioByRules`.
+- Done: `AgentSkillRegistry.detectScenario` now consumes shared helpers (`detectUnsupportedScenarioByRules`, `buildUnknownScenario`) instead of local duplicated rules.
+- Done: removed deprecated `detectScenarioByRules` branch from `fallback.ts` to avoid parallel scenario-routing logic.
+- Goal: continue reducing duplicated scenario semantics by converging any remaining fallback-only scenario mapping branches.
 
 ## Validation
 - `npm run lint --prefix backend`
