@@ -1,5 +1,6 @@
 import axios, { AxiosInstance } from 'axios';
 import { ChatOpenAI } from '@langchain/openai';
+import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
@@ -78,6 +79,14 @@ interface InteractionDefaultProposal {
   paramKey: string;
   value: unknown;
   reason: string;
+}
+
+interface PersistedMessageDebugDetails {
+  promptSnapshot: string;
+  skillIds: string[];
+  responseSummary: string;
+  plan: string[];
+  toolCalls: AgentToolCall[];
 }
 
 export interface AgentInteraction {
@@ -783,7 +792,7 @@ export class AgentService {
           response: question,
         };
 
-        return this.finalizeRunResult(traceId, sessionKey, params.message, result);
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
       }
 
       normalizedModel = draft.model;
@@ -827,7 +836,7 @@ export class AgentService {
             interaction: this.buildExecutionInteraction('blocked', locale),
             response: this.localize(locale, `模型格式转换失败：${convertCall.error}`, `Model conversion failed: ${convertCall.error}`),
           };
-        return this.finalizeRunResult(traceId, sessionKey, params.message, result);
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
       }
     }
 
@@ -863,7 +872,7 @@ export class AgentService {
           interaction: this.buildExecutionInteraction('blocked', locale),
           response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
         };
-        return this.finalizeRunResult(traceId, sessionKey, params.message, result);
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
       }
     } catch (error: any) {
       this.completeToolCallError(validateCall, error);
@@ -891,7 +900,7 @@ export class AgentService {
           interaction: this.buildExecutionInteraction('blocked', locale),
           response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
         };
-        return this.finalizeRunResult(traceId, sessionKey, params.message, result);
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
       }
     }
 
@@ -919,7 +928,7 @@ export class AgentService {
       if (sessionKey) {
         await this.clearInteractionSession(sessionKey);
       }
-      return this.finalizeRunResult(traceId, sessionKey, params.message, result);
+      return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
     }
 
     plan.push(this.localize(locale, `执行 ${resolvedAnalysisType} 分析并返回摘要`, `Run ${resolvedAnalysisType} analysis and return a summary`));
@@ -977,7 +986,7 @@ export class AgentService {
             interaction: this.buildExecutionInteraction('blocked', locale),
             response: this.localize(locale, `规范校核失败：${codeCheckCall.error}`, `Code check failed: ${codeCheckCall.error}`),
           };
-          return this.finalizeRunResult(traceId, sessionKey, params.message, result);
+          return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
         }
       }
 
@@ -1044,7 +1053,7 @@ export class AgentService {
       if (sessionKey) {
         await this.clearInteractionSession(sessionKey);
       }
-      return this.finalizeRunResult(traceId, sessionKey, params.message, result);
+      return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
     } catch (error: any) {
       this.completeToolCallError(analyzeCall, error);
       const transientUpstreamFailure = this.shouldRetryEngineCall(error);
@@ -1069,7 +1078,7 @@ export class AgentService {
           )
           : this.localize(locale, `分析执行失败：${analyzeCall.error}`, `Analysis execution failed: ${analyzeCall.error}`),
       };
-      return this.finalizeRunResult(traceId, sessionKey, params.message, result);
+      return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
     }
   }
 
@@ -1202,7 +1211,7 @@ export class AgentService {
         : undefined,
       response,
     };
-    return this.finalizeRunResult(traceId, sessionKey, params.message, result);
+    return this.finalizeRunResult(traceId, sessionKey, params.message, result, params.context?.skillIds);
   }
 
   private async assessInteractionNeeds(
@@ -2567,20 +2576,48 @@ export class AgentService {
     conversationId: string | undefined,
     userMessage: string,
     result: AgentRunResult,
+    skillIds?: string[],
   ): Promise<AgentRunResult> {
-    await this.persistConversationMessages(conversationId, userMessage, result.response);
+    await this.persistConversationMessages(conversationId, userMessage, result, skillIds);
     this.logRunResult(traceId, conversationId, result);
     return result;
+  }
+
+  private buildPersistedDebugDetails(
+    userMessage: string,
+    result: AgentRunResult,
+    skillIds?: string[],
+  ): PersistedMessageDebugDetails {
+    const safeSkillIds = Array.isArray(skillIds) ? skillIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0) : [];
+    const promptSnapshot = JSON.stringify({
+      message: userMessage,
+      context: {
+        traceId: result.traceId,
+        skillIds: safeSkillIds,
+      },
+    }, null, 2);
+
+    return {
+      promptSnapshot,
+      skillIds: safeSkillIds,
+      responseSummary: result.response || '',
+      plan: Array.isArray(result.plan) ? result.plan : [],
+      toolCalls: Array.isArray(result.toolCalls) ? result.toolCalls : [],
+    };
   }
 
   private async persistConversationMessages(
     conversationId: string | undefined,
     userMessage: string,
-    assistantMessage: string | undefined,
+    result: AgentRunResult,
+    skillIds?: string[],
   ): Promise<void> {
+    const assistantMessage = result.response;
     if (!conversationId || !userMessage.trim() || !assistantMessage?.trim()) {
       return;
     }
+
+    const debugDetails = this.buildPersistedDebugDetails(userMessage, result, skillIds);
 
     try {
       const conversation = await prisma.conversation.findUnique({
@@ -2602,6 +2639,9 @@ export class AgentService {
             conversationId,
             role: 'assistant',
             content: assistantMessage.trim(),
+            metadata: {
+              debugDetails,
+            } as unknown as Prisma.InputJsonValue,
           },
         ],
       });

@@ -50,6 +50,10 @@ type MessageDebugDetails = {
   toolCalls: AgentToolCall[]
 }
 
+type MessageMetadata = {
+  debugDetails?: MessageDebugDetails
+}
+
 type AgentInteraction = {
   detectedScenario?: string
   detectedScenarioLabel?: string
@@ -119,7 +123,7 @@ type AgentSessionSnapshot = {
 }
 
 type ConversationDetail = ConversationSummary & {
-  messages?: Array<{ id: string; role: string; content: string; createdAt: string }>
+  messages?: Array<{ id: string; role: string; content: string; createdAt: string; metadata?: MessageMetadata }>
   session?: AgentSessionSnapshot | null
   snapshots?: {
     modelSnapshot?: VisualizationSnapshot | null
@@ -314,9 +318,9 @@ function toObjectRecord(value: unknown): Record<string, unknown> | undefined {
   return value as Record<string, unknown>
 }
 
-function buildMessageDebugDetails(promptSnapshot: string, skillIds: string[], result: AgentResult): MessageDebugDetails {
-  const rawToolCalls = Array.isArray(result.toolCalls) ? result.toolCalls : []
-  const safeToolCalls = rawToolCalls.map((call) => {
+function normalizeToolCalls(value: unknown): AgentToolCall[] {
+  const rawToolCalls = Array.isArray(value) ? value : []
+  return rawToolCalls.map((call) => {
     const status: AgentToolCall['status'] = call?.status === 'error' ? 'error' : 'success'
     return {
       tool: typeof call?.tool === 'string' ? call.tool : 'unknown_tool',
@@ -329,6 +333,41 @@ function buildMessageDebugDetails(promptSnapshot: string, skillIds: string[], re
       error: typeof call?.error === 'string' ? call.error : undefined,
     }
   })
+}
+
+function parsePersistedDebugDetails(metadata: unknown): MessageDebugDetails | undefined {
+  const metadataRecord = toObjectRecord(metadata)
+  const debugRecord = toObjectRecord(metadataRecord?.debugDetails)
+  if (!debugRecord) {
+    return undefined
+  }
+
+  const promptSnapshot = typeof debugRecord.promptSnapshot === 'string'
+    ? debugRecord.promptSnapshot
+    : ''
+  const skillIds = Array.isArray(debugRecord.skillIds)
+    ? debugRecord.skillIds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : []
+
+  const responseSummary = typeof debugRecord.responseSummary === 'string' ? debugRecord.responseSummary : ''
+  const plan = Array.isArray(debugRecord.plan) ? debugRecord.plan.filter((item): item is string => typeof item === 'string') : []
+  const toolCalls = normalizeToolCalls(debugRecord.toolCalls)
+
+  if (!promptSnapshot && skillIds.length === 0 && !responseSummary && plan.length === 0 && toolCalls.length === 0) {
+    return undefined
+  }
+
+  return {
+    promptSnapshot,
+    skillIds,
+    responseSummary,
+    plan,
+    toolCalls,
+  }
+}
+
+function buildMessageDebugDetails(promptSnapshot: string, skillIds: string[], result: AgentResult): MessageDebugDetails {
+  const safeToolCalls = normalizeToolCalls(result.toolCalls)
 
   return {
     promptSnapshot,
@@ -2302,6 +2341,7 @@ export function AIConsole() {
             content: message.content,
             status: 'done' as const,
             timestamp: message.createdAt,
+            debugDetails: parsePersistedDebugDetails(message.metadata),
           }))
         : []
       const archivedMessages = archived?.messages || []

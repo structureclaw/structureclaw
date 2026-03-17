@@ -135,6 +135,7 @@ model Message {
   id             String   @id @default(cuid())
   role           String
   content        String
+  metadata       Json?
   tokenCount     Int?
   createdAt      DateTime @default(now())
 
