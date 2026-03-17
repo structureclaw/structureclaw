@@ -255,6 +255,12 @@ export class AgentService {
           return false;
         }
       }
+      if (assessment.nonCriticalMissing.length > 0 && !session.userApprovedAutoDecide) {
+        const stage = this.policy.resolveInteractionStageFromMissing('analysis', assessment.nonCriticalMissing);
+        if (stage === 'analysis' || stage === 'code_check' || stage === 'report') {
+          return false;
+        }
+      }
     }
     return this.skillRuntime.shouldPreferExecute(message, locale, session?.draft, options?.skillIds);
   }
