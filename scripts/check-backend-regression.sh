@@ -31,6 +31,10 @@ echo "==> Agent API contract regression"
 ./scripts/validate-agent-api-contract.sh
 
 echo
+echo "==> Agent capability matrix contract"
+./scripts/validate-agent-capability-matrix.sh
+
+echo
 echo "==> Chat stream contract regression"
 ./scripts/validate-chat-stream-contract.sh
 
