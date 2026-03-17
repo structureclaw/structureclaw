@@ -18,7 +18,7 @@ import {
   type DraftState,
   type ScenarioMatch,
   type ScenarioTemplateKey,
-} from './agent-skills/index.js';
+} from '../agent-skills/runtime/index.js';
 import {
   buildCodeCheckInput,
   buildCodeCheckSummaryText,

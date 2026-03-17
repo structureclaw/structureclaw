@@ -1,8 +1,8 @@
 import { AnalysisEngineCatalogService } from './analysis-engine.js';
-import { AgentSkillRuntime } from './agent-skills/index.js';
+import { AgentSkillRuntime } from '../agent-skills/runtime/index.js';
 import { normalizeAnalysisTypes as normalizeDomainAnalysisTypes } from '../agent-skills/analysis-strategy/entry.js';
 import { normalizeMaterialFamilies as normalizeDomainMaterialFamilies } from '../agent-skills/material-constitutive/entry.js';
-import type { AgentAnalysisType, SkillDomain, SkillManifest } from './agent-skills/types.js';
+import type { AgentAnalysisType, SkillDomain, SkillManifest } from '../agent-skills/runtime/types.js';
 
 interface CapabilitySkill {
   id: string;

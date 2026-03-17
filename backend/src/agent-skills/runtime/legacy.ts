@@ -17,7 +17,7 @@ import {
   normalizePositiveInteger,
   normalizeSupportType,
 } from './fallback.js';
-import type { AppLocale } from '../locale.js';
+import type { AppLocale } from '../../services/locale.js';
 import type { DraftExtraction, DraftFloorLoad, DraftState, InferredModelType } from './types.js';
 
 export function normalizeLegacyDraftPatch(patch: Record<string, unknown> | null | undefined): DraftExtraction {

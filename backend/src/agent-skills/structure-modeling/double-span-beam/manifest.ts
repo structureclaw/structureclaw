@@ -1,4 +1,4 @@
-import type { SkillManifest } from '../../../services/agent-skills/types.js';
+import type { SkillManifest } from '../../../agent-skills/runtime/types.js';
 
 export const manifest: SkillManifest = {
   id: 'double-span-beam',

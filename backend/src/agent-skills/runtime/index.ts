@@ -1,5 +1,5 @@
 import { ChatOpenAI } from '@langchain/openai';
-import type { AppLocale } from '../locale.js';
+import type { AppLocale } from '../../services/locale.js';
 import { AgentSkillRegistry } from './registry.js';
 import { AgentSkillExecutor } from './executor.js';
 import { buildDefaultReportNarrative } from './report-template.js';

@@ -1,4 +1,4 @@
-import type { AppLocale } from '../locale.js';
+import type { AppLocale } from '../../services/locale.js';
 import type { SkillReportNarrativeInput } from './types.js';
 
 function localize(locale: AppLocale, zh: string, en: string): string {

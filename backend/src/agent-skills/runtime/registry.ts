@@ -1,4 +1,4 @@
-import type { AppLocale } from '../locale.js';
+import type { AppLocale } from '../../services/locale.js';
 import { AgentSkillLoader } from './loader.js';
 import { buildUnknownScenario, detectUnsupportedScenarioByRules } from './fallback.js';
 import { localize } from './plugin-helpers.js';

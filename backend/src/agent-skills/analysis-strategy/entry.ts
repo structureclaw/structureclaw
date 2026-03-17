@@ -4,7 +4,7 @@ import type {
   AgentPolicyReportOutput,
 } from '../../services/agent-policy.js';
 import { AgentPolicyService } from '../../services/agent-policy.js';
-import type { AgentAnalysisType } from '../../services/agent-skills/types.js';
+import type { AgentAnalysisType } from '../../agent-skills/runtime/types.js';
 
 const ANALYSIS_TYPE_SET = new Set<AgentAnalysisType>(['static', 'dynamic', 'seismic', 'nonlinear']);
 

@@ -7,11 +7,11 @@ import {
   mergeLegacyState,
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
-} from '../../../services/agent-skills/legacy.js';
-import { combineDomainKeys, composeStructuralDomainPatch } from '../../../services/agent-skills/domains/structural-domains.js';
-import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../../services/agent-skills/plugin-helpers.js';
-import { buildInteractionQuestions, normalizeNumber, normalizePositiveInteger } from '../../../services/agent-skills/fallback.js';
-import { buildDefaultReportNarrative } from '../../../services/agent-skills/report-template.js';
+} from '../../../agent-skills/runtime/legacy.js';
+import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-skills/runtime/domains/structural-domains.js';
+import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../../agent-skills/runtime/plugin-helpers.js';
+import { buildInteractionQuestions, normalizeNumber, normalizePositiveInteger } from '../../../agent-skills/runtime/fallback.js';
+import { buildDefaultReportNarrative } from '../../../agent-skills/runtime/report-template.js';
 import type { AppLocale } from '../../../services/locale.js';
 import type {
   DraftExtraction,
@@ -21,7 +21,7 @@ import type {
   SkillDefaultProposal,
   SkillHandler,
   SkillReportNarrativeInput,
-} from '../../../services/agent-skills/types.js';
+} from '../../../agent-skills/runtime/types.js';
 
 const GEOMETRY_KEYS = [
   'frameDimension',

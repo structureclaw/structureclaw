@@ -2,7 +2,7 @@ import { existsSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { createHash } from 'crypto';
 import path from 'path';
-import type { SkillDomain } from './agent-skills/types.js';
+import type { SkillDomain } from '../agent-skills/runtime/types.js';
 
 type SkillCompatibilityReasonCode = 'core_version_incompatible' | 'skill_api_version_incompatible';
 type SkillIntegrityReasonCode = 'signature_invalid' | 'checksum_mismatch';

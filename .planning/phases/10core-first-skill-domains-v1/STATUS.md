@@ -8,6 +8,7 @@ Owner: backend-agent
 - Step 2 (completed): migrate structure-modeling plugins under domain folder and keep loader migration-safe.
 - Step 3 (completed): extract non-modeling domain entry points under categorized skill folders.
 - Step 4 (completed): route analysis-strategy and material-constitutive policy/material helpers through categorized entry modules.
+- Step 5 (completed): migrate remaining `services/agent-skills` domain/runtime helpers into `agent-skills` and remove duplicate folder structure.
 
 ## Step 1 Scope
 - Keep no-skill as baseline path.
@@ -65,7 +66,7 @@ Owner: backend-agent
 ## Next Step
 - Step 5: continue extracting remaining domain logic from `backend/src/services/agent-skills/domains/*` into categorized `backend/src/agent-skills/<domain>/entry.ts` modules while preserving runtime behavior.
 
-## Step 5 Progress (in progress)
+## Step 5 Progress (completed)
 - Extracted visualization-domain logic into categorized entry implementation:
   - `backend/src/agent-skills/visualization/entry.ts`
 - Removed migrated services-domain source file:
@@ -83,6 +84,11 @@ Owner: backend-agent
   - `backend/src/agent-skills/material-constitutive/entry.ts`
 - Removed migrated services-domain source file:
   - `backend/src/services/agent-skills/domains/material-analysis.ts`
+- Migrated remaining runtime files from `backend/src/services/agent-skills/*` to `backend/src/agent-skills/runtime/*` and rewired imports in services/api/skills:
+  - moved runtime modules: `index`, `types`, `loader`, `registry`, `executor`, `fallback`, `legacy`, `plugin-helpers`, `report-template`, `schema`, `domains/structural-domains`
+  - import rewiring touched: `backend/src/services/agent.ts`, `backend/src/services/agent-capability.ts`, `backend/src/services/agent-noskill-runtime.ts`, `backend/src/services/agent-skillhub.ts`, `backend/src/api/agent.ts`, and all `backend/src/agent-skills/structure-modeling/*` handlers/manifests
+- Removed legacy duplicate directory:
+  - `backend/src/services/agent-skills/`
 
 ## Step 5 Validation (visualization slice)
 - Completed
@@ -99,5 +105,10 @@ Owner: backend-agent
   - `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs` (pass: 52/52)
   - `make backend-regression` (pass)
 
+## Step 5 Validation (runtime consolidation)
+- Completed
+  - `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs` (pass: 52/52)
+  - `make backend-regression` (pass)
+
 ## Next Step
-- Continue Step 5 by migrating the remaining shared domain helper (`structural-domains.ts`) behind categorized `backend/src/agent-skills/*/entry.ts` modules and reducing direct `services/agent-skills/domains/*` usage.
+- Phase 10 cleanup: verify docs and codebase map references to old `services/agent-skills/*` paths are updated to `agent-skills/runtime/*`.

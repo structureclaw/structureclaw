@@ -1,4 +1,4 @@
-import type { AppLocale } from '../locale.js';
+import type { AppLocale } from '../../services/locale.js';
 import type { DraftState, ScenarioMatch, ScenarioSupportLevel } from './types.js';
 
 type StructuralStage = 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';

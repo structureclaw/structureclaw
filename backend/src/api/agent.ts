@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { AgentService } from '../services/agent.js';
 import { AgentCapabilityService } from '../services/agent-capability.js';
 import { AgentSkillHubService } from '../services/agent-skillhub.js';
-import type { SkillDomain } from '../services/agent-skills/types.js';
+import type { SkillDomain } from '../agent-skills/runtime/types.js';
 
 const agentService = new AgentService();
 const capabilityService = new AgentCapabilityService();

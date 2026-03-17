@@ -1,4 +1,4 @@
-import type { MaterialFamily } from '../../services/agent-skills/types.js';
+import type { MaterialFamily } from '../../agent-skills/runtime/types.js';
 
 const MATERIAL_FAMILY_SET = new Set<MaterialFamily>(['steel', 'concrete', 'composite', 'timber', 'masonry', 'generic']);
 
