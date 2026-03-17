@@ -657,6 +657,52 @@ describe('AgentService orchestration', () => {
     await svc.clearConversationSession(conversationId);
   });
 
+  test('should clear scenario carry-over when switching an existing conversation to no-skill mode', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+    const conversationId = 'conv-switch-skill-to-no-skill';
+    await svc.clearConversationSession(conversationId);
+
+    await svc.run({
+      message: '先按框架场景保存会话',
+      mode: 'chat',
+      conversationId,
+      context: {
+        locale: 'zh',
+        skillIds: ['frame'],
+        providedValues: {
+          inferredType: 'frame',
+          skillId: 'frame',
+          scenarioKey: 'frame',
+          supportLevel: 'supported',
+          supportNote: 'frame template support',
+          lengthM: 12,
+        },
+      },
+    });
+
+    const switched = await svc.run({
+      message: '切到通用模式继续',
+      mode: 'chat',
+      conversationId,
+      context: {
+        locale: 'zh',
+        skillIds: [],
+      },
+    });
+
+    expect(switched.interaction?.detectedScenario).toBeUndefined();
+    expect(switched.interaction?.detectedScenarioLabel).toBeUndefined();
+    expect(switched.interaction?.fallbackSupportNote).toBeUndefined();
+
+    const snapshot = await svc.getConversationSessionSnapshot(conversationId, 'zh', []);
+    expect(snapshot?.draft.inferredType).toBe('unknown');
+    expect(snapshot?.draft.skillId).toBeUndefined();
+    expect(snapshot?.draft.scenarioKey).toBeUndefined();
+
+    await svc.clearConversationSession(conversationId);
+  });
+
   test('should execute analyze in no-skill mode when computable model is provided', async () => {
     const svc = new AgentService();
     svc.llm = null;

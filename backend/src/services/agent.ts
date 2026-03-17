@@ -308,6 +308,15 @@ export class AgentService {
       return undefined;
     }
 
+    if (this.isNoSkillMode(skillIds)) {
+      session.draft = normalizeNoSkillDraftState(session.draft);
+      session.scenario = undefined;
+      session.updatedAt = Date.now();
+      if (conversationId?.trim()) {
+        await this.setInteractionSession(conversationId.trim(), session);
+      }
+    }
+
     const assessment = await this.assessInteractionNeeds(session, locale, skillIds, 'chat');
     const state = assessment.criticalMissing.length > 0
       ? 'collecting'
@@ -703,6 +712,11 @@ export class AgentService {
       updatedAt: Date.now(),
       resolved: {},
     };
+
+    if (noSkillMode) {
+      workingSession.draft = normalizeNoSkillDraftState(workingSession.draft);
+      workingSession.scenario = undefined;
+    }
 
     this.applyResolvedConfigFromContext(workingSession, params.context);
     await this.applyProvidedValuesToSession(workingSession, providedValues, locale, skillIds);
