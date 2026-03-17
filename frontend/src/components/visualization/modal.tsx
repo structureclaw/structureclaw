@@ -348,12 +348,14 @@ export function StructuralVisualizationModal({
             activeCaseId={activeCase.id}
             deformationScale={deformationScale}
             forceMetric={forceMetric}
+            selectedView={view}
             deformationScaleMin={deformationScaleRange.min}
             deformationScaleMax={deformationScaleRange.max}
             deformationScaleStep={deformationScaleRange.step}
             onActiveCaseChange={setActiveCaseId}
             onDeformationScaleChange={setDeformationScale}
             onForceMetricChange={setForceMetric}
+            onSwitchToForcesView={() => setView('forces')}
             onToggleElementLabels={() => setShowElementLabels((current) => !current)}
             onToggleLegend={() => setShowLegend((current) => !current)}
             onToggleNodeLabels={() => setShowNodeLabels((current) => !current)}

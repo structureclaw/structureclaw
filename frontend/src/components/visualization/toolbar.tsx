@@ -2,7 +2,7 @@
 
 import type { MessageKey } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
-import type { VisualizationSnapshot } from './types'
+import type { VisualizationSnapshot, VisualizationViewMode } from './types'
 
 type ForceMetric = 'axial' | 'shear' | 'moment'
 
@@ -14,6 +14,7 @@ type VisualizationToolbarProps = {
   deformationScaleMax: number
   deformationScaleStep: number
   forceMetric: ForceMetric
+  selectedView: VisualizationViewMode
   showElementLabels: boolean
   showLegend: boolean
   showNodeLabels: boolean
@@ -21,6 +22,7 @@ type VisualizationToolbarProps = {
   onActiveCaseChange: (caseId: string) => void
   onDeformationScaleChange: (value: number) => void
   onForceMetricChange: (value: ForceMetric) => void
+  onSwitchToForcesView: () => void
   onToggleElementLabels: () => void
   onToggleLegend: () => void
   onToggleNodeLabels: () => void
@@ -49,6 +51,7 @@ export function VisualizationToolbar({
   deformationScaleMax,
   deformationScaleStep,
   forceMetric,
+  selectedView,
   showElementLabels,
   showLegend,
   showNodeLabels,
@@ -56,6 +59,7 @@ export function VisualizationToolbar({
   onActiveCaseChange,
   onDeformationScaleChange,
   onForceMetricChange,
+  onSwitchToForcesView,
   onToggleElementLabels,
   onToggleLegend,
   onToggleNodeLabels,
@@ -93,11 +97,16 @@ export function VisualizationToolbar({
               key={metric}
               className={cn(
                 'rounded-full border px-3 py-2 text-sm transition',
-                forceMetric === metric
+                selectedView === 'forces' && forceMetric === metric
                   ? 'border-cyan-300/45 bg-cyan-300/14 text-foreground'
                   : 'border-border/70 bg-background/70 text-muted-foreground hover:border-cyan-300/30 hover:text-foreground dark:border-white/10 dark:bg-white/5'
               )}
-              onClick={() => onForceMetricChange(metric)}
+              onClick={() => {
+                onForceMetricChange(metric)
+                if (selectedView !== 'forces') {
+                  onSwitchToForcesView()
+                }
+              }}
               type="button"
             >
               {t(FORCE_LABELS[metric])}
