@@ -1859,21 +1859,118 @@ export class AgentService {
     const ruleExtraction = this.extractDraftByRules(message);
     const mergedExtraction = this.mergeDraftExtraction(llmExtraction, ruleExtraction);
     const stateToPersist = this.mergeDraftState(existingState, mergedExtraction);
+    const noSkillState = this.normalizeNoSkillDraftState(stateToPersist);
 
     let model: Record<string, unknown> | undefined;
-    const missingFields = this.computeMissingFields(stateToPersist);
+    const missingFields = this.computeNoSkillMissingFields(noSkillState);
     if (missingFields.length === 0) {
-      model = this.buildModel(stateToPersist);
+      model = this.buildNoSkillGenericModel(noSkillState);
     } else {
-      model = await this.tryLlmBuildGenericModel(message, stateToPersist, locale);
+      model = await this.tryLlmBuildGenericModel(message, noSkillState, locale);
     }
 
     return {
-      inferredType: stateToPersist.inferredType,
+      inferredType: noSkillState.inferredType,
       missingFields: model ? [] : missingFields,
       extractionMode: llmExtraction ? 'llm' : 'rule-based',
       model,
-      stateToPersist,
+      stateToPersist: noSkillState,
+    };
+  }
+
+  private normalizeNoSkillDraftState(state: DraftState): DraftState {
+    if (state.inferredType !== 'unknown') {
+      return state;
+    }
+
+    if (state.supportType || state.loadPositionM !== undefined || state.loadType !== undefined) {
+      return {
+        ...state,
+        inferredType: 'beam',
+      };
+    }
+
+    return state;
+  }
+
+  private computeNoSkillMissingFields(state: DraftState): string[] {
+    const missing: string[] = [];
+    const effectiveLength = state.lengthM ?? state.spanLengthM;
+    if (effectiveLength === undefined) {
+      missing.push('主要几何参数（跨度/层高/层数/轴网）');
+    }
+    if (state.loadKN === undefined && !state.floorLoads?.length) {
+      missing.push('作用荷载信息（大小/方向/位置）');
+    }
+    return missing;
+  }
+
+  private buildNoSkillGenericModel(state: DraftState): Record<string, unknown> {
+    const length = state.lengthM ?? state.spanLengthM;
+    const load = state.loadKN;
+    if (length === undefined || load === undefined) {
+      throw new Error('no-skill generic model requires length and load');
+    }
+
+    const supportType = state.supportType || 'simply-supported';
+    const fixedRestraint = [true, true, true, true, true, true];
+    const pinnedRestraint = [true, true, true, true, true, false];
+    const rollerRestraint = [false, true, true, true, true, false];
+    const leftRestraint = supportType === 'simply-supported'
+      ? pinnedRestraint
+      : fixedRestraint;
+    const rightRestraint = supportType === 'simply-supported'
+      ? rollerRestraint
+      : supportType === 'fixed-fixed'
+        ? fixedRestraint
+        : supportType === 'fixed-pinned'
+          ? pinnedRestraint
+          : undefined;
+    const loadPositionM = typeof state.loadPositionM === 'number'
+      && state.loadPositionM > 0
+      && state.loadPositionM < length
+      ? state.loadPositionM
+      : undefined;
+    const pointLoadX = loadPositionM ?? (state.loadPosition === 'midspan' ? length / 2 : length);
+    const nodes = [
+      { id: '1', x: 0, y: 0, z: 0, restraints: leftRestraint },
+      { id: '2', x: pointLoadX, y: 0, z: 0 },
+      rightRestraint
+        ? { id: '3', x: length, y: 0, z: 0, restraints: rightRestraint }
+        : { id: '3', x: length, y: 0, z: 0 },
+    ];
+    const elements = [
+      { id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' },
+      { id: '2', type: 'beam', nodes: ['2', '3'], material: '1', section: '1' },
+    ];
+    const loads = state.loadType === 'distributed' || state.loadPosition === 'full-span'
+      ? [
+          { type: 'distributed', element: '1', wy: -load, wz: 0 },
+          { type: 'distributed', element: '2', wy: -load, wz: 0 },
+        ]
+      : [{ node: '2', fy: -load }];
+
+    return {
+      schema_version: '1.0.0',
+      unit_system: 'SI',
+      nodes,
+      elements,
+      materials: [
+        { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
+      ],
+      sections: [
+        { id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001, Iz: 0.0001, J: 0.0001, G: 79000 } },
+      ],
+      load_cases: [
+        { id: 'LC1', type: 'other', loads },
+      ],
+      load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
+      metadata: {
+        source: 'generic-no-skill',
+        inferredType: state.inferredType,
+        supportType,
+        loadPositionM: loadPositionM ?? pointLoadX,
+      },
     };
   }
 

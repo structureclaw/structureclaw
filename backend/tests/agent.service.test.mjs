@@ -517,6 +517,27 @@ describe('AgentService orchestration', () => {
     expect(result.model?.load_cases?.[0]?.loads).toEqual([{ node: '2', fy: -10 }]);
   });
 
+  test('should keep no-skill chat generic even when message contains template keywords', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const result = await svc.run({
+      message: '门式刚架，跨度10m，10kN集中荷载在4m处',
+      mode: 'chat',
+      context: {
+        locale: 'zh',
+        skillIds: [],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.needsModelInput).toBe(false);
+    expect(result.interaction?.state).toBe('ready');
+    expect(result.model?.metadata?.source).toBe('generic-no-skill');
+    expect(result.model?.nodes?.map((node) => node.x)).toEqual([0, 4, 10]);
+    expect(result.model?.load_cases?.[0]?.loads).toEqual([{ node: '2', fy: -10 }]);
+  });
+
   test('should build a fixed-fixed beam model when the support condition is explicit', async () => {
     const svc = new AgentService();
     svc.llm = null;
