@@ -78,6 +78,11 @@ Owner: backend-agent
   - `backend/src/agent-skills/code-check/entry.ts`
 - Removed migrated services-domain source file:
   - `backend/src/services/agent-skills/domains/code-check-domain.ts`
+- Extracted material-analysis shared helpers into categorized entry implementations:
+  - `backend/src/agent-skills/analysis-strategy/entry.ts`
+  - `backend/src/agent-skills/material-constitutive/entry.ts`
+- Removed migrated services-domain source file:
+  - `backend/src/services/agent-skills/domains/material-analysis.ts`
 
 ## Step 5 Validation (visualization slice)
 - Completed
@@ -89,5 +94,10 @@ Owner: backend-agent
   - `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs` (pass: 52/52)
   - `make backend-regression` (pass)
 
+## Step 5 Validation (material-analysis slice)
+- Completed
+  - `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs` (pass: 52/52)
+  - `make backend-regression` (pass)
+
 ## Next Step
-- Continue Step 5 by migrating the remaining shared domain helpers (`structural-domains.ts`, `material-analysis.ts`) behind categorized `backend/src/agent-skills/*/entry.ts` modules and reducing direct `services/agent-skills/domains/*` usage.
+- Continue Step 5 by migrating the remaining shared domain helper (`structural-domains.ts`) behind categorized `backend/src/agent-skills/*/entry.ts` modules and reducing direct `services/agent-skills/domains/*` usage.
