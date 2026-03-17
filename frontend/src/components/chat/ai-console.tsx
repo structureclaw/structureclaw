@@ -2975,6 +2975,9 @@ export function AIConsole() {
                           <p className="text-xs font-medium text-foreground">{t('skillHubSectionTitle')}</p>
                           <p className="text-xs text-muted-foreground">{t('skillHubSectionHint')}</p>
                         </div>
+                        <p className="mb-2 rounded-md border border-amber-400/30 bg-amber-300/10 px-2.5 py-1.5 text-[11px] leading-5 text-amber-700 dark:text-amber-200">
+                          {t('skillHubDemoDisclaimer')}
+                        </p>
                         <div className="mb-2 flex flex-wrap gap-2">
                           <Input
                             value={skillHubKeyword}
