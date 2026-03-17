@@ -10,8 +10,17 @@ import {
 } from '../../services/agent-skills/legacy.js';
 import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../services/agent-skills/plugin-helpers.js';
 import { buildInteractionQuestions, normalizeNumber, normalizePositiveInteger } from '../../services/agent-skills/fallback.js';
+import { buildDefaultReportNarrative } from '../../services/agent-skills/report-template.js';
 import type { AppLocale } from '../../services/locale.js';
-import type { DraftExtraction, DraftFloorLoad, DraftState, InteractionQuestion, SkillDefaultProposal, SkillHandler } from '../../services/agent-skills/types.js';
+import type {
+  DraftExtraction,
+  DraftFloorLoad,
+  DraftState,
+  InteractionQuestion,
+  SkillDefaultProposal,
+  SkillHandler,
+  SkillReportNarrativeInput,
+} from '../../services/agent-skills/types.js';
 
 const ALLOWED_KEYS = [
   'frameDimension',
@@ -490,6 +499,21 @@ function buildFrameQuestions(
   });
 }
 
+function buildFrameReportNarrative(input: SkillReportNarrativeInput): string {
+  const base = buildDefaultReportNarrative(input);
+  const frameSpecificNotes = [
+    '',
+    input.locale === 'zh' ? '## 框架专项说明' : '## Frame-Specific Notes',
+    input.locale === 'zh'
+      ? '- 本报告按规则轴网框架场景生成，建议结合实际结构布置复核边界条件与荷载路径。'
+      : '- This report is generated for regular-grid frame scenarios; verify boundary conditions and load paths against the actual structural layout.',
+    input.locale === 'zh'
+      ? '- 对于退台、缺跨或明显不规则框架，建议补充更细化模型后重新分析与校核。'
+      : '- For setbacks, missing bays, or strongly irregular frames, refine the model and rerun analysis/code checks.',
+  ];
+  return [base, ...frameSpecificNotes].join('\n');
+}
+
 export const handler: SkillHandler = {
   detectScenario({ message, locale }) {
     const text = message.toLowerCase();
@@ -538,6 +562,9 @@ export const handler: SkillHandler = {
   },
   buildDefaultProposals(keys, state, locale) {
     return buildFrameDefaultProposals(keys, state, locale);
+  },
+  buildReportNarrative(input) {
+    return buildFrameReportNarrative(input);
   },
   buildModel(state) {
     return buildLegacyModel({ ...state, inferredType: 'frame' });

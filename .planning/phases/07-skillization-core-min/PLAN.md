@@ -66,8 +66,9 @@
 - Done: report markdown narrative rendering has been moved out of `agent.ts` into `backend/src/services/agent-skills/report-template.ts` (skill runtime fallback template).
 - Done: `AgentSkillRuntime` now exposes `buildReportNarrative(...)`, enabling per-skill narrative overrides through optional `SkillHandler.buildReportNarrative`.
 - Done: `AgentService.generateReport(...)` now keeps report data aggregation only (summary/key metrics/traceability/controlling cases) and delegates narrative rendering to skill runtime.
+- Done: frame skill now provides its own report narrative override (appends frame-specific guidance section in bilingual markdown output).
 - Verified: backend build + `validate-report-template-contract.sh` + `validate-agent-orchestration.sh` + `validate-agent-skills-contract.sh`.
-- Next: add first scenario-specific report narrative override in a structural handler (e.g., frame) to demonstrate skill-level differentiation.
+- Next: extend narrative overrides to additional structural skills (beam/truss/portal) with scenario-focused guidance.
 
 ## Validation
 - `npm run lint --prefix backend`
