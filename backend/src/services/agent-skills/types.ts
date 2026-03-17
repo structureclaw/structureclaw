@@ -164,6 +164,12 @@ export interface SkillMissingResult {
   optional: string[];
 }
 
+export interface SkillDefaultProposal {
+  paramKey: string;
+  value: unknown;
+  reason: string;
+}
+
 export interface SkillHandler {
   detectScenario(input: SkillDetectionInput): ScenarioMatch | null;
   parseProvidedValues(values: Record<string, unknown>): DraftExtraction;
@@ -172,6 +178,7 @@ export interface SkillHandler {
   computeMissing(state: DraftState, mode: 'chat' | 'execute'): SkillMissingResult;
   mapLabels(keys: string[], locale: AppLocale): string[];
   buildQuestions(keys: string[], criticalMissing: string[], state: DraftState, locale: AppLocale): InteractionQuestion[];
+  buildDefaultProposals?(keys: string[], state: DraftState, locale: AppLocale): SkillDefaultProposal[];
   buildModel(state: DraftState): Record<string, unknown> | undefined;
   resolveStage?(missingKeys: string[], state: DraftState): 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';
 }

@@ -8,6 +8,7 @@ import type {
   DraftResult,
   DraftState,
   InteractionQuestion,
+  SkillDefaultProposal,
   ScenarioMatch,
   ScenarioSupportLevel,
   ScenarioTemplateKey,
@@ -30,6 +31,7 @@ export type {
   ScenarioMatch,
   ScenarioTemplateKey,
   ScenarioSupportLevel,
+  SkillDefaultProposal,
   SkillHandler,
   SkillManifest,
 } from './types.js';
@@ -193,6 +195,39 @@ export class AgentSkillRuntime {
       }];
     }
     return plugin.handler.buildQuestions(missingKeys, criticalMissing, draft, locale);
+  }
+
+  async buildStructuralDefaultProposals(
+    missingKeys: string[],
+    draft: DraftState,
+    locale: AppLocale,
+    skillIds?: string[],
+  ): Promise<SkillDefaultProposal[]> {
+    if (!missingKeys.length) {
+      return [];
+    }
+
+    const plugin = await this.registry.resolvePluginForState(draft, skillIds);
+    if (!plugin) {
+      return [];
+    }
+
+    if (plugin.handler.buildDefaultProposals) {
+      return plugin.handler.buildDefaultProposals(missingKeys, draft, locale);
+    }
+
+    const questions = plugin.handler.buildQuestions(missingKeys, [], draft, locale);
+    return questions
+      .filter((question) => missingKeys.includes(question.paramKey) && question.suggestedValue !== undefined)
+      .map((question) => ({
+        paramKey: question.paramKey,
+        value: question.suggestedValue,
+        reason: localize(
+          locale,
+          `根据 ${question.label} 的推荐值采用默认配置。`,
+          `Apply the recommended default value for ${question.label}.`
+        ),
+      }));
   }
 
   async resolveInteractionStage(

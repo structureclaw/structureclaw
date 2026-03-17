@@ -1,5 +1,4 @@
 import {
-  buildInteractionQuestions,
   buildModel,
   computeMissingCriticalKeys,
   computeMissingLoadDetailKeys,
@@ -18,7 +17,7 @@ import {
   normalizeSupportType,
 } from './fallback.js';
 import type { AppLocale } from '../locale.js';
-import type { DraftExtraction, DraftFloorLoad, DraftState, InferredModelType, InteractionQuestion } from './types.js';
+import type { DraftExtraction, DraftFloorLoad, DraftState, InferredModelType } from './types.js';
 
 export function normalizeLegacyDraftPatch(patch: Record<string, unknown> | null | undefined): DraftExtraction {
   if (!patch) {
@@ -150,15 +149,6 @@ export function computeLegacyMissing(
     critical.push(...computeMissingLoadDetailKeys(state).filter((key) => allowed.has(key) && !critical.includes(key)));
   }
   return { critical, optional: [] };
-}
-
-export function buildLegacyQuestions(
-  keys: string[],
-  criticalMissing: string[],
-  state: DraftState,
-  locale: AppLocale,
-): InteractionQuestion[] {
-  return buildInteractionQuestions(keys, criticalMissing, state, locale);
 }
 
 export function buildLegacyLabels(keys: string[], locale: AppLocale): string[] {

@@ -1206,10 +1206,20 @@ export class AgentService {
       nonCriticalMissing.push('reportOutput');
     }
 
+    const structuralDefaults = await this.skillRuntime.buildStructuralDefaultProposals(
+      structural.optionalMissing,
+      session.draft,
+      locale,
+      skillIds,
+    );
+    const nonStructuralDefaults = this.policy.buildDefaultProposals(nonCriticalMissing, locale);
+    const mergedDefaults = [...structuralDefaults, ...nonStructuralDefaults];
+    const uniqueDefaults = Array.from(new Map(mergedDefaults.map((item) => [item.paramKey, item])).values());
+
     return {
       criticalMissing,
       nonCriticalMissing,
-      defaultProposals: this.policy.buildDefaultProposals(nonCriticalMissing, locale),
+      defaultProposals: uniqueDefaults,
     };
   }
 

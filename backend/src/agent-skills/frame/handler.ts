@@ -2,7 +2,6 @@ import {
   buildLegacyDraftPatchLlmFirst,
   buildLegacyLabels,
   buildLegacyModel,
-  buildLegacyQuestions,
   computeLegacyMissing,
   mergeLegacyDraftPatchLlmFirst,
   mergeLegacyState,
@@ -10,8 +9,9 @@ import {
   restrictLegacyDraftPatch,
 } from '../../services/agent-skills/legacy.js';
 import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../services/agent-skills/plugin-helpers.js';
-import { normalizeNumber, normalizePositiveInteger } from '../../services/agent-skills/fallback.js';
-import type { DraftExtraction, DraftFloorLoad, DraftState, SkillHandler } from '../../services/agent-skills/types.js';
+import { buildInteractionQuestions, normalizeNumber, normalizePositiveInteger } from '../../services/agent-skills/fallback.js';
+import type { AppLocale } from '../../services/locale.js';
+import type { DraftExtraction, DraftFloorLoad, DraftState, InteractionQuestion, SkillDefaultProposal, SkillHandler } from '../../services/agent-skills/types.js';
 
 const ALLOWED_KEYS = [
   'frameDimension',
@@ -376,6 +376,120 @@ function buildFrameDraftPatch(
   );
 }
 
+function inferFrameDimensionProposal(state: DraftState): '2d' | '3d' {
+  if (state.frameDimension === '3d') {
+    return '3d';
+  }
+  if ((state.bayCountY ?? 0) > 0) {
+    return '3d';
+  }
+  if ((state.bayWidthsYM?.length ?? 0) > 0) {
+    return '3d';
+  }
+  if (hasLateralYFloorLoad(state.floorLoads)) {
+    return '3d';
+  }
+  return '2d';
+}
+
+function buildFrameDefaultReason(paramKey: string, locale: AppLocale, state: DraftState): string {
+  switch (paramKey) {
+    case 'frameDimension': {
+      const dimension = inferFrameDimensionProposal(state);
+      if (dimension === '3d') {
+        return locale === 'zh'
+          ? '已识别到 Y 向信息或双向侧向荷载，默认按 3D 规则轴网框架继续补参。'
+          : 'Y-direction information or bi-directional lateral loading is detected, so default to a 3D regular-grid frame.';
+      }
+      return locale === 'zh'
+        ? '未发现明确 Y 向输入，默认按 2D 平面框架先完成首轮分析。'
+        : 'No explicit Y-direction inputs were found, so default to a 2D planar frame for the first analysis round.';
+    }
+    case 'frameBaseSupportType':
+      return locale === 'zh'
+        ? '框架柱脚默认采用固定支座，便于获得更稳健的初始刚度评估。'
+        : 'Default frame base support to fixed to obtain a stable initial stiffness assessment.';
+    default:
+      return locale === 'zh'
+        ? `根据 ${paramKey} 的推荐值采用默认配置。`
+        : `Apply the recommended default value for ${paramKey}.`;
+  }
+}
+
+function buildFrameDefaultProposals(keys: string[], state: DraftState, locale: AppLocale): SkillDefaultProposal[] {
+  const questions = buildInteractionQuestions(keys, [], { ...state, inferredType: 'frame' }, locale);
+  const next = new Map<string, SkillDefaultProposal>();
+
+  for (const question of questions) {
+    if (question.suggestedValue === undefined) {
+      continue;
+    }
+    next.set(question.paramKey, {
+      paramKey: question.paramKey,
+      value: question.suggestedValue,
+      reason: buildFrameDefaultReason(question.paramKey, locale, state),
+    });
+  }
+
+  if (keys.includes('frameDimension')) {
+    next.set('frameDimension', {
+      paramKey: 'frameDimension',
+      value: inferFrameDimensionProposal(state),
+      reason: buildFrameDefaultReason('frameDimension', locale, state),
+    });
+  }
+  if (keys.includes('frameBaseSupportType')) {
+    next.set('frameBaseSupportType', {
+      paramKey: 'frameBaseSupportType',
+      value: 'fixed',
+      reason: buildFrameDefaultReason('frameBaseSupportType', locale, state),
+    });
+  }
+
+  return Array.from(next.values());
+}
+
+function buildFrameQuestions(
+  keys: string[],
+  criticalMissing: string[],
+  state: DraftState,
+  locale: AppLocale,
+): InteractionQuestion[] {
+  const inferredDimension = inferFrameDimensionProposal(state);
+  return buildInteractionQuestions(keys, criticalMissing, { ...state, inferredType: 'frame' }, locale).map((question) => {
+    if (question.paramKey === 'frameDimension') {
+      return {
+        ...question,
+        question: locale === 'zh'
+          ? '请确认框架维度（2d / 3d）。若有 Y 向跨数、Y 向跨度或双向水平荷载，建议选择 3d。'
+          : 'Please confirm frame dimension (2d / 3d). If Y-direction bays/widths or bi-directional lateral loads exist, 3d is recommended.',
+        suggestedValue: inferredDimension,
+      };
+    }
+    if (question.paramKey === 'frameBaseSupportType') {
+      return {
+        ...question,
+        question: locale === 'zh'
+          ? '请确认柱脚边界（fixed / pinned）。常规首轮分析建议先按 fixed。'
+          : 'Please confirm base support condition (fixed / pinned). For initial frame analysis, fixed is usually recommended.',
+        suggestedValue: 'fixed',
+      };
+    }
+    if (question.paramKey === 'floorLoads') {
+      const loadHint = inferredDimension === '3d'
+        ? (locale === 'zh' ? '请至少给出各层竖向荷载，并补充 X/Y 向水平荷载。' : 'At minimum provide vertical load per story, plus lateral loads in both X and Y.')
+        : (locale === 'zh' ? '请至少给出各层竖向荷载，可按需补充一个方向的水平荷载。' : 'At minimum provide vertical load per story, and optionally one-direction lateral load.');
+      return {
+        ...question,
+        question: locale === 'zh'
+          ? `请确认各层节点荷载（单位 kN）。${loadHint}`
+          : `Please confirm per-story nodal loads (kN). ${loadHint}`,
+      };
+    }
+    return question;
+  });
+}
+
 export const handler: SkillHandler = {
   detectScenario({ message, locale }) {
     const text = message.toLowerCase();
@@ -420,7 +534,10 @@ export const handler: SkillHandler = {
     return buildLegacyLabels(keys, locale);
   },
   buildQuestions(keys, criticalMissing, state, locale) {
-    return buildLegacyQuestions(keys, criticalMissing, { ...state, inferredType: 'frame' }, locale);
+    return buildFrameQuestions(keys, criticalMissing, state, locale);
+  },
+  buildDefaultProposals(keys, state, locale) {
+    return buildFrameDefaultProposals(keys, state, locale);
   },
   buildModel(state) {
     return buildLegacyModel({ ...state, inferredType: 'frame' });

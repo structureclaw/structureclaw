@@ -85,24 +85,34 @@ export class AgentPolicyService {
   }
 
   buildDefaultProposals(nonCriticalMissing: string[], locale: AgentPolicyLocale): AgentPolicyDefaultProposal[] {
-    return nonCriticalMissing.map((key) => {
+    const proposals: AgentPolicyDefaultProposal[] = [];
+
+    nonCriticalMissing.forEach((key) => {
       switch (key) {
         case 'analysisType':
-          return { paramKey: key, value: 'static', reason: this.localize(locale, '默认采用静力分析，属于最保守且最常用起步工况。', 'Default to static analysis as the most conservative and common starting case.') };
+          proposals.push({ paramKey: key, value: 'static', reason: this.localize(locale, '默认采用静力分析，属于最保守且最常用起步工况。', 'Default to static analysis as the most conservative and common starting case.') });
+          return;
         case 'autoCodeCheck':
-          return { paramKey: key, value: true, reason: this.localize(locale, '默认开启规范校核以保证验算完整性。', 'Enable code checks by default to keep the verification flow complete.') };
+          proposals.push({ paramKey: key, value: true, reason: this.localize(locale, '默认开启规范校核以保证验算完整性。', 'Enable code checks by default to keep the verification flow complete.') });
+          return;
         case 'designCode':
-          return { paramKey: key, value: 'GB50017', reason: this.localize(locale, '默认采用钢结构设计标准 GB50017 进行保守校核。', 'Use GB50017 by default for a conservative steel-design check.') };
+          proposals.push({ paramKey: key, value: 'GB50017', reason: this.localize(locale, '默认采用钢结构设计标准 GB50017 进行保守校核。', 'Use GB50017 by default for a conservative steel-design check.') });
+          return;
         case 'includeReport':
-          return { paramKey: key, value: true, reason: this.localize(locale, '默认生成报告，便于复核输入与结果。', 'Generate a report by default so inputs and results can be reviewed.') };
+          proposals.push({ paramKey: key, value: true, reason: this.localize(locale, '默认生成报告，便于复核输入与结果。', 'Generate a report by default so inputs and results can be reviewed.') });
+          return;
         case 'reportFormat':
-          return { paramKey: key, value: 'both', reason: this.localize(locale, '默认同时输出 json/markdown，兼顾机器和人工阅读。', 'Return both JSON and Markdown by default for machine and human consumption.') };
+          proposals.push({ paramKey: key, value: 'both', reason: this.localize(locale, '默认同时输出 json/markdown，兼顾机器和人工阅读。', 'Return both JSON and Markdown by default for machine and human consumption.') });
+          return;
         case 'reportOutput':
-          return { paramKey: key, value: 'inline', reason: this.localize(locale, '默认内联返回，减少文件写入依赖。', 'Return results inline by default to avoid file-output dependencies.') };
+          proposals.push({ paramKey: key, value: 'inline', reason: this.localize(locale, '默认内联返回，减少文件写入依赖。', 'Return results inline by default to avoid file-output dependencies.') });
+          return;
         default:
-          return { paramKey: key, value: null, reason: this.localize(locale, '默认保守值。', 'Apply a conservative default.') };
+          return;
       }
     });
+
+    return proposals;
   }
 
   getStageLabel(stage: AgentPolicyInteractionStage, locale: AgentPolicyLocale): string {
