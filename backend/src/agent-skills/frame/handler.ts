@@ -8,6 +8,7 @@ import {
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
 } from '../../services/agent-skills/legacy.js';
+import { combineDomainKeys, composeStructuralDomainPatch } from '../../services/agent-skills/domains/structural-domains.js';
 import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../services/agent-skills/plugin-helpers.js';
 import { buildInteractionQuestions, normalizeNumber, normalizePositiveInteger } from '../../services/agent-skills/fallback.js';
 import { buildDefaultReportNarrative } from '../../services/agent-skills/report-template.js';
@@ -22,7 +23,22 @@ import type {
   SkillReportNarrativeInput,
 } from '../../services/agent-skills/types.js';
 
-const ALLOWED_KEYS = [
+const GEOMETRY_KEYS = [
+  'frameDimension',
+  'storyCount',
+  'bayCount',
+  'bayCountX',
+  'bayCountY',
+  'storyHeightsM',
+  'bayWidthsM',
+  'bayWidthsXM',
+  'bayWidthsYM',
+] as const;
+
+const LOAD_BOUNDARY_KEYS = ['floorLoads', 'frameBaseSupportType'] as const;
+const ALLOWED_KEYS = combineDomainKeys(GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS);
+
+const REQUIRED_KEYS = [
   'frameDimension',
   'storyCount',
   'bayCount',
@@ -33,11 +49,15 @@ const ALLOWED_KEYS = [
   'bayWidthsXM',
   'bayWidthsYM',
   'floorLoads',
-  'frameBaseSupportType',
 ] as const;
 
 function toFramePatch(patch: DraftExtraction): DraftExtraction {
-  return restrictLegacyDraftPatch(patch, 'frame', [...ALLOWED_KEYS]);
+  const domainPatch = composeStructuralDomainPatch({
+    patch,
+    geometryKeys: GEOMETRY_KEYS,
+    loadBoundaryKeys: LOAD_BOUNDARY_KEYS,
+  });
+  return restrictLegacyDraftPatch(domainPatch, 'frame', [...ALLOWED_KEYS]);
 }
 
 const CHINESE_NUMERAL_MAP: Record<string, number> = {
@@ -551,7 +571,7 @@ export const handler: SkillHandler = {
     return computeLegacyMissing(
       { ...state, inferredType: 'frame' },
       mode,
-      ['frameDimension', 'storyCount', 'bayCount', 'bayCountX', 'bayCountY', 'storyHeightsM', 'bayWidthsM', 'bayWidthsXM', 'bayWidthsYM', 'floorLoads']
+      [...REQUIRED_KEYS]
     );
   },
   mapLabels(keys, locale) {
