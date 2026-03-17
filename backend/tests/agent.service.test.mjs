@@ -613,6 +613,50 @@ describe('AgentService orchestration', () => {
     expect(Object.prototype.hasOwnProperty.call(draft.stateToPersist ?? {}, 'loadPosition')).toBe(false);
   });
 
+  test('should sanitize providedValues in no-skill mode without scenario carry-over', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+    const conversationId = 'conv-no-skill-provided-values-sanitize';
+    await svc.clearConversationSession(conversationId);
+
+    await svc.run({
+      message: '继续',
+      mode: 'chat',
+      conversationId,
+      context: {
+        locale: 'zh',
+        skillIds: [],
+        providedValues: {
+          inferredType: 'frame',
+          skillId: 'frame',
+          scenarioKey: 'frame',
+          supportLevel: 'supported',
+          supportNote: 'template note',
+          lengthM: 9,
+          loadKN: 12,
+          loadType: 'distributed',
+          loadPosition: 'midspan',
+          loadPositionM: 3,
+        },
+      },
+    });
+
+    const snapshot = await svc.getConversationSessionSnapshot(conversationId, 'zh', []);
+
+    expect(snapshot?.draft.inferredType).toBe('unknown');
+    expect(snapshot?.draft.skillId).toBeUndefined();
+    expect(snapshot?.draft.scenarioKey).toBeUndefined();
+    expect(snapshot?.draft.supportLevel).toBeUndefined();
+    expect(snapshot?.draft.supportNote).toBeUndefined();
+    expect(snapshot?.draft.lengthM).toBe(9);
+    expect(snapshot?.draft.loadKN).toBe(12);
+    expect(snapshot?.draft.loadType).toBeUndefined();
+    expect(snapshot?.draft.loadPosition).toBeUndefined();
+    expect(snapshot?.draft.loadPositionM).toBe(3);
+
+    await svc.clearConversationSession(conversationId);
+  });
+
   test('should execute analyze in no-skill mode when computable model is provided', async () => {
     const svc = new AgentService();
     svc.llm = null;

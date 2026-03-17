@@ -32,6 +32,7 @@ import {
 import { extractVisualizationHints } from './agent-skills/domains/visualization-domain.js';
 import {
   computeNoSkillMissingFields,
+  extractNoSkillDraftExtractionFromProvidedValues,
   mergeNoSkillDraftExtraction,
   mergeNoSkillDraftState,
   normalizeNoSkillDraftState,
@@ -1511,15 +1512,21 @@ export class AgentService {
     if (!values || typeof values !== 'object') {
       return;
     }
-    session.draft = await this.skillRuntime.applyProvidedValues(session.draft, values, locale, skillIds);
-    if (session.draft.scenarioKey) {
-      session.scenario = {
-        key: session.draft.scenarioKey,
-        mappedType: session.draft.inferredType,
-        skillId: session.draft.skillId,
-        supportLevel: session.draft.supportLevel || 'supported',
-        supportNote: session.draft.supportNote,
-      };
+    if (this.isNoSkillMode(skillIds)) {
+      const noSkillPatch = extractNoSkillDraftExtractionFromProvidedValues(values);
+      session.draft = normalizeNoSkillDraftState(mergeNoSkillDraftState(session.draft, noSkillPatch));
+      session.scenario = undefined;
+    } else {
+      session.draft = await this.skillRuntime.applyProvidedValues(session.draft, values, locale, skillIds);
+      if (session.draft.scenarioKey) {
+        session.scenario = {
+          key: session.draft.scenarioKey,
+          mappedType: session.draft.inferredType,
+          skillId: session.draft.skillId,
+          supportLevel: session.draft.supportLevel || 'supported',
+          supportNote: session.draft.supportNote,
+        };
+      }
     }
     session.resolved = session.resolved || {};
     if (typeof values.analysisType === 'string') {

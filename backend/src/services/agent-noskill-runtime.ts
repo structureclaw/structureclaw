@@ -88,6 +88,27 @@ export function mergeNoSkillDraftState(existing: DraftState | undefined, patch: 
   };
 }
 
+export function extractNoSkillDraftExtractionFromProvidedValues(values: Record<string, unknown>): DraftExtraction {
+  return {
+    inferredType: 'unknown',
+    lengthM: normalizeNumber(values.lengthM),
+    spanLengthM: normalizeNumber(values.spanLengthM),
+    heightM: normalizeNumber(values.heightM),
+    frameDimension: normalizeFrameDimension(values.frameDimension),
+    storyCount: normalizePositiveInteger(values.storyCount),
+    bayCount: normalizePositiveInteger(values.bayCount),
+    bayCountX: normalizePositiveInteger(values.bayCountX),
+    bayCountY: normalizePositiveInteger(values.bayCountY),
+    storyHeightsM: normalizeNumberArray(values.storyHeightsM),
+    bayWidthsM: normalizeNumberArray(values.bayWidthsM),
+    bayWidthsXM: normalizeNumberArray(values.bayWidthsXM),
+    bayWidthsYM: normalizeNumberArray(values.bayWidthsYM),
+    floorLoads: normalizeFloorLoads(values.floorLoads),
+    loadKN: normalizeNumber(values.loadKN),
+    loadPositionM: normalizeDraftLoadPositionM(values.loadPositionM),
+  };
+}
+
 export async function tryNoSkillLlmBuildGenericModel(
   llm: ChatOpenAI | null,
   message: string,

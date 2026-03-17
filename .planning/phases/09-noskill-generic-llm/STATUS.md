@@ -30,6 +30,7 @@ Owner: backend-agent
 - Removed no-skill categorical loadType parsing and state merge; keep numeric load magnitude only.
 - Hardened no-skill state normalization to strip carried-over skill metadata fields from existing state.
 - Removed explicit no-skill template placeholder writes (supportType/frameBaseSupportType/loadType/loadPosition set to undefined) from normalize/merge/extract paths.
+- Routed no-skill providedValues through generic sanitizer path (no skillRuntime applyProvidedValues) and cleared scenario carry-over.
 - Updated repository-down contract to use explicit computable model input (deterministic, non-LLM-dependent).
 - Added explicit boundary test: no-skill execute must stay blocked when computable model is unavailable.
 - Added explicit boundary test: no-skill must keep inferredType unknown even when LLM extraction returns a template type.
@@ -38,6 +39,7 @@ Owner: backend-agent
 - Added explicit boundary test: no-skill must ignore categorical loadType even when LLM extraction returns it.
 - Added explicit boundary test: no-skill state normalization must strip skill metadata from persisted state.
 - Strengthened no-skill boundary test to assert template placeholders are absent from persisted state object (not only undefined reads).
+- Added explicit boundary test: no-skill providedValues must not reintroduce skill metadata or scenario state.
 - Verified `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs` is green (42/42).
 - Verified `make backend-regression` is green.
 
@@ -48,7 +50,7 @@ Owner: backend-agent
 4. Re-run targeted/backend regression after each slice.
 
 Latest validation snapshot:
-- `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs`: green (48/48)
+- `npm test --prefix backend -- --runInBand backend/tests/agent.service.test.mjs`: green (49/49)
 - `make backend-regression`: green
 
 ## Exit Gate For Next-Step Planning
