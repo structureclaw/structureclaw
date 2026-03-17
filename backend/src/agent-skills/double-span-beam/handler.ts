@@ -9,8 +9,16 @@ import {
 } from '../../services/agent-skills/legacy.js';
 import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../services/agent-skills/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../services/agent-skills/fallback.js';
+import { buildDefaultReportNarrative } from '../../services/agent-skills/report-template.js';
 import type { AppLocale } from '../../services/locale.js';
-import type { DraftExtraction, DraftState, InteractionQuestion, SkillDefaultProposal, SkillHandler } from '../../services/agent-skills/types.js';
+import type {
+  DraftExtraction,
+  DraftState,
+  InteractionQuestion,
+  SkillDefaultProposal,
+  SkillHandler,
+  SkillReportNarrativeInput,
+} from '../../services/agent-skills/types.js';
 
 const ALLOWED_KEYS = ['spanLengthM', 'loadKN', 'loadType', 'loadPosition'] as const;
 
@@ -108,6 +116,21 @@ function buildDoubleSpanQuestions(
   });
 }
 
+function buildDoubleSpanReportNarrative(input: SkillReportNarrativeInput): string {
+  const base = buildDefaultReportNarrative(input);
+  const continuousBeamNotes = [
+    '',
+    input.locale === 'zh' ? '## 双跨连续梁专项说明' : '## Double-Span Continuous Beam Notes',
+    input.locale === 'zh'
+      ? '- 双跨连续梁建议重点关注中间支座负弯矩与跨中正弯矩的组合控制关系。'
+      : '- For double-span continuous beams, focus on the combined control of negative moment at the interior support and positive moment at span centers.',
+    input.locale === 'zh'
+      ? '- 若两跨不等跨或荷载不对称，建议分别定义分跨荷载与工况组合后再进行校核对比。'
+      : '- If spans are unequal or loading is asymmetric, define per-span loads and load combinations explicitly before check comparisons.',
+  ];
+  return [base, ...continuousBeamNotes].join('\n');
+}
+
 export const handler: SkillHandler = {
   detectScenario({ message, locale }) {
     const text = message.toLowerCase();
@@ -136,6 +159,9 @@ export const handler: SkillHandler = {
   },
   buildDefaultProposals(keys, state, locale) {
     return buildDoubleSpanDefaultProposals(keys, state, locale);
+  },
+  buildReportNarrative(input) {
+    return buildDoubleSpanReportNarrative(input);
   },
   buildModel(state) {
     return buildLegacyModel({ ...state, inferredType: 'double-span-beam' });

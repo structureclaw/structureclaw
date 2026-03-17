@@ -68,8 +68,9 @@
 - Done: `AgentService.generateReport(...)` now keeps report data aggregation only (summary/key metrics/traceability/controlling cases) and delegates narrative rendering to skill runtime.
 - Done: frame skill now provides its own report narrative override (appends frame-specific guidance section in bilingual markdown output).
 - Done: beam / truss / portal-frame skills now provide their own narrative overrides with bilingual scenario-specific guidance sections.
+- Done: double-span-beam now has an independent continuous-beam narrative section (no longer implicitly inheriting beam narrative).
 - Verified: backend build + `validate-report-template-contract.sh` + `validate-agent-orchestration.sh` + `validate-agent-skills-contract.sh`.
-- Next: decide whether double-span-beam should inherit beam narrative or provide an independent continuous-beam section.
+- Next: evaluate whether any scenario should expose report reason codes to align with PR-4 route telemetry normalization direction.
 
 ## Validation
 - `npm run lint --prefix backend`
