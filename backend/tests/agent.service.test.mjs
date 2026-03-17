@@ -528,6 +528,30 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.inferredType).toBe('unknown');
   });
 
+  test('should ignore categorical loadPosition in no-skill state and keep numeric loadPositionM', async () => {
+    const svc = new AgentService();
+    let invokeCount = 0;
+    svc.llm = {
+      invoke: async () => {
+        invokeCount += 1;
+        if (invokeCount === 1) {
+          return {
+            content: '{"inferredType":"beam","loadType":"point","loadPosition":"midspan","loadPositionM":2.5,"lengthM":5,"loadKN":10}',
+          };
+        }
+        return {
+          content: '{"schema_version":"1.0.0","unit_system":"SI","nodes":[],"elements":[],"materials":[],"sections":[],"load_cases":[],"load_combinations":[]}',
+        };
+      },
+    };
+
+    const draft = await svc.textToModelDraft('5m member with 10kN point load at 2.5m', undefined, 'en', []);
+
+    expect(draft.stateToPersist?.loadPosition).toBeUndefined();
+    expect(draft.stateToPersist?.loadPositionM).toBe(2.5);
+    expect(draft.stateToPersist?.inferredType).toBe('unknown');
+  });
+
   test('should execute analyze in no-skill mode when computable model is provided', async () => {
     const svc = new AgentService();
     svc.llm = null;

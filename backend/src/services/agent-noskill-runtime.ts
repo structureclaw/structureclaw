@@ -2,7 +2,6 @@ import type { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from './locale.js';
 import type {
   DraftExtraction,
-  DraftLoadPosition,
   DraftLoadType,
   DraftState,
 } from './agent-skills/index.js';
@@ -41,7 +40,7 @@ export function mergeNoSkillDraftExtraction(
     frameBaseSupportType: undefined,
     loadKN: preferred?.loadKN ?? fallback.loadKN,
     loadType: preferred?.loadType ?? fallback.loadType,
-    loadPosition: preferred?.loadPosition ?? fallback.loadPosition,
+    loadPosition: undefined,
     loadPositionM: preferred?.loadPositionM ?? fallback.loadPositionM,
   };
 }
@@ -74,7 +73,7 @@ export function mergeNoSkillDraftState(existing: DraftState | undefined, patch: 
     frameBaseSupportType: undefined,
     loadKN: patch.loadKN ?? existing?.loadKN,
     loadType: patch.loadType ?? existing?.loadType,
-    loadPosition: patch.loadPosition ?? existing?.loadPosition,
+    loadPosition: undefined,
     loadPositionM: patch.loadPositionM ?? existing?.loadPositionM,
     updatedAt: Date.now(),
   };
@@ -164,7 +163,6 @@ export async function tryNoSkillLlmExtract(
         floorLoads: existingState.floorLoads,
         loadKN: existingState.loadKN,
         loadType: existingState.loadType,
-        loadPosition: existingState.loadPosition,
         loadPositionM: existingState.loadPositionM,
       })
     : '{}';
@@ -174,9 +172,9 @@ export async function tryNoSkillLlmExtract(
         '你是结构建模参数提取器。',
         '从用户输入里提取结构草模参数。仅返回一个 JSON 对象，不要 markdown、不要解释。',
         '必须符合以下输出约束：',
-        '- 顶层只允许字段：inferredType,lengthM,spanLengthM,heightM,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,loadKN,loadType,loadPosition,loadPositionM。',
+        '- 顶层只允许字段：inferredType,lengthM,spanLengthM,heightM,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,loadKN,loadType,loadPositionM。',
         '- 不确定字段直接省略，不要输出 null，不要输出字符串数字。',
-        '- loadPositionM 表示距左端位置（m），当梁的点荷载位置明确时优先输出。',
+        '- loadPositionM 表示某参考起点的数值位置（m），位置信息请优先用该数值字段表达。',
         '除非用户明确指定模板，请保持 inferredType=unknown。',
         '数值统一单位：m, kN。不存在的字段不要输出。',
         `已有参数：${prior}`,
@@ -188,7 +186,7 @@ export async function tryNoSkillLlmExtract(
         'You extract structural model draft parameters.',
         'Read the user request and return exactly one JSON object only, without markdown or explanations.',
         'Output constraints:',
-        '- Top-level allowed fields only: inferredType,lengthM,spanLengthM,heightM,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,loadKN,loadType,loadPosition,loadPositionM.',
+        '- Top-level allowed fields only: inferredType,lengthM,spanLengthM,heightM,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,loadKN,loadType,loadPositionM.',
         '- Omit unknown fields; do not output null; keep numeric fields as numbers.',
         '- loadPositionM means offset from the start reference in meters and should be provided when a point-load location is explicit.',
         'Keep inferredType=unknown unless user explicitly requests a known structural category.',
@@ -232,7 +230,7 @@ export async function tryNoSkillLlmExtract(
       frameBaseSupportType: undefined,
       loadKN: normalizeNumber(payload.loadKN),
       loadType: normalizeDraftLoadType(payload.loadType),
-      loadPosition: normalizeDraftLoadPosition(payload.loadPosition),
+      loadPosition: undefined,
       loadPositionM: normalizeDraftLoadPositionM(payload.loadPositionM),
     };
   } catch {
@@ -335,20 +333,6 @@ function normalizeFloorLoads(value: unknown): DraftState['floorLoads'] | undefin
 
 function normalizeDraftLoadType(value: unknown): DraftLoadType | undefined {
   if (value === 'point' || value === 'distributed') {
-    return value;
-  }
-  return undefined;
-}
-
-function normalizeDraftLoadPosition(value: unknown): DraftLoadPosition | undefined {
-  if (
-    value === 'end'
-    || value === 'midspan'
-    || value === 'full-span'
-    || value === 'top-nodes'
-    || value === 'middle-joint'
-    || value === 'free-joint'
-  ) {
     return value;
   }
   return undefined;
