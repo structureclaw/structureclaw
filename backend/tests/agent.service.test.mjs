@@ -764,7 +764,7 @@ describe('AgentService orchestration', () => {
     expect(result.success).toBe(true);
     expect(result.interaction?.detectedScenario).toBe('bridge');
     expect(result.interaction?.fallbackSupportNote).toContain('桥梁');
-    expect(result.interaction?.missingCritical).toContain('结构类型（门式刚架/双跨梁/梁/平面桁架/规则框架）');
+    expect(result.interaction?.missingCritical).toContain('结构体系/构件拓扑描述（不限类型，可直接给结构模型JSON）');
     expect(result.response).toContain('识别场景：桥梁');
   });
 

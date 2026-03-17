@@ -862,7 +862,7 @@ export function mergeDraftState(existing: DraftState | undefined, patch: DraftEx
 export function computeMissingFields(state: DraftState): string[] {
   const missing: string[] = [];
   if (state.inferredType === 'unknown') {
-    missing.push('结构类型（门式刚架/双跨梁/梁/平面桁架/规则框架）');
+    missing.push('结构体系/构件拓扑描述（不限类型，可直接给结构模型JSON）');
     return missing;
   }
   if (state.inferredType === 'frame') {
@@ -1030,7 +1030,7 @@ export function mapMissingFieldLabels(missing: string[], locale: AppLocale): str
   return missing.map((key) => {
     switch (key) {
       case 'inferredType':
-        return localize(locale, '结构类型（门式刚架/双跨梁/梁/平面桁架/规则框架）', 'Structure type (portal frame / double-span beam / beam / truss / regular frame)');
+        return localize(locale, '结构体系/构件拓扑描述（不限类型，可直接给结构模型JSON）', 'Structural system / topology description (any type, or provide computable model JSON directly)');
       case 'lengthM':
         return localize(locale, '跨度/长度（m）', 'Span / length (m)');
       case 'spanLengthM':
@@ -1119,7 +1119,13 @@ export function buildInteractionQuestions(
     const critical = criticalMissing.includes(paramKey);
     switch (paramKey) {
       case 'inferredType':
-        return { paramKey, label: localize(locale, '结构类型', 'Structure type'), question: localize(locale, '请确认结构类型（门式刚架/双跨梁/梁/平面桁架/规则框架）。', 'Please confirm the structure type (portal frame / double-span beam / beam / truss / regular frame).'), required: true, critical };
+        return {
+          paramKey,
+          label: localize(locale, '结构体系', 'Structural system'),
+          question: localize(locale, '请描述结构体系与构件连接关系（不限类型）；也可以直接提供可计算的结构模型 JSON。', 'Please describe the structural system and member connectivity (any type). You can also provide a computable structural model JSON directly.'),
+          required: true,
+          critical,
+        };
       case 'lengthM':
         return { paramKey, label: localize(locale, '跨度/长度', 'Span / length'), question: localize(locale, '请确认跨度或长度。', 'Please confirm the span or length.'), unit: 'm', required: true, critical };
       case 'spanLengthM':

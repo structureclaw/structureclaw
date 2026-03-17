@@ -1934,7 +1934,18 @@ export class AgentService {
   private computeMissingFields(state: DraftState): string[] {
     const missing: string[] = [];
     if (state.inferredType === 'unknown') {
-      missing.push('结构类型（门式刚架/双跨梁/梁/平面桁架）');
+      missing.push('结构体系/构件拓扑描述（不限类型，可直接给结构模型JSON）');
+      if (
+        state.lengthM === undefined
+        && state.spanLengthM === undefined
+        && state.storyCount === undefined
+        && !state.storyHeightsM?.length
+      ) {
+        missing.push('主要几何参数（跨度/层高/层数/轴网）');
+      }
+      if (state.loadKN === undefined && !state.floorLoads?.length) {
+        missing.push('作用荷载信息（大小/方向/位置）');
+      }
       return missing;
     }
 
@@ -2243,7 +2254,7 @@ export class AgentService {
       ? [
           '你是结构建模参数提取器。',
           '从用户输入里提取结构草模参数，仅返回 JSON，不要 markdown。',
-          '可选 inferredType: beam | truss | portal-frame | double-span-beam | frame | unknown。',
+          'inferredType 仅用于已覆盖模板（beam|truss|portal-frame|double-span-beam|frame）；其他任意结构请用 unknown，并尽量提取几何与荷载关键信息。',
           '数值统一单位：m, kN。不存在的字段不要输出。',
           `已有参数：${prior}`,
           `用户输入：${message}`,
@@ -2255,7 +2266,7 @@ export class AgentService {
       : [
           'You extract structural model draft parameters.',
           'Read the user request and return JSON only, without markdown.',
-          'Allowed inferredType values: beam | truss | portal-frame | double-span-beam | frame | unknown.',
+          'Use inferredType for supported templates (beam|truss|portal-frame|double-span-beam|frame); for any other structure, set inferredType=unknown and still extract key geometry/load hints.',
           'Use m and kN as units. Omit fields that are not present.',
           'When beam support or boundary conditions are mentioned, also extract supportType (cantilever/simply-supported/fixed-fixed/fixed-pinned).',
           'When a regular frame is described, also extract frameDimension (2d/3d), storyCount, bayCount/bayCountX/bayCountY, storyHeightsM, bayWidthsM/bayWidthsXM/bayWidthsYM, and floorLoads.',

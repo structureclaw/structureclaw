@@ -193,7 +193,7 @@ export class AgentSkillRuntime {
     const plugin = await this.registry.resolvePluginForState(state, skillIds);
     if (!plugin) {
       return missing.map((key) => key === 'inferredType'
-        ? localize(locale, '结构类型（门式刚架/双跨梁/梁/平面桁架/规则框架）', 'Structure type (portal frame / double-span beam / beam / truss / regular frame)')
+        ? localize(locale, '结构体系/构件拓扑描述（不限类型，可直接给结构模型JSON）', 'Structural system / topology description (any type, or provide computable model JSON directly)')
         : key);
     }
     return plugin.handler.mapLabels(missing, locale);
@@ -210,8 +210,8 @@ export class AgentSkillRuntime {
     if (!plugin) {
       return [{
         paramKey: 'inferredType',
-        label: localize(locale, '结构类型', 'Structure type'),
-        question: localize(locale, '请确认结构类型（门式刚架/双跨梁/梁/平面桁架/规则框架）。', 'Please confirm the structure type (portal frame / double-span beam / beam / truss / regular frame).'),
+        label: localize(locale, '结构体系', 'Structural system'),
+        question: localize(locale, '请描述结构体系与构件连接关系（不限类型）；也可以直接提供可计算的结构模型 JSON。', 'Please describe the structural system and member connectivity (any type). You can also provide a computable structural model JSON directly.'),
         required: true,
         critical: true,
       }];
