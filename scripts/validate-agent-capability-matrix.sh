@@ -61,6 +61,26 @@ const run = async () => {
           skillApiVersion: 'v1',
         },
       },
+      {
+        id: 'analysis-strategy-baseline',
+        structureType: 'beam',
+        domain: 'analysis-strategy',
+        name: { zh: '分析策略基线', en: 'Analysis Strategy Baseline' },
+        description: { zh: 'analysis strategy', en: 'analysis strategy' },
+        triggers: ['analysis'],
+        stages: ['analysis'],
+        autoLoadByDefault: true,
+        scenarioKeys: ['beam'],
+        requires: [],
+        conflicts: [],
+        capabilities: ['analysis-policy'],
+        supportedAnalysisTypes: ['static', 'dynamic'],
+        priority: 5,
+        compatibility: {
+          minCoreVersion: '0.1.0',
+          skillApiVersion: 'v1',
+        },
+      },
     ];
   };
 
@@ -124,6 +144,7 @@ const run = async () => {
   assert(payload.filteredEngineReasonsBySkill && typeof payload.filteredEngineReasonsBySkill === 'object', 'filteredEngineReasonsBySkill should be an object');
   assert(payload.validSkillIdsByEngine && typeof payload.validSkillIdsByEngine === 'object', 'validSkillIdsByEngine should be an object');
   assert(payload.skillDomainById && typeof payload.skillDomainById === 'object', 'skillDomainById should be an object');
+  assert(payload.analysisStrategyCompatibility && typeof payload.analysisStrategyCompatibility === 'object', 'analysisStrategyCompatibility should be an object');
 
   const engineIds = new Set(payload.engines.map((engine) => engine.id));
   const skillIds = new Set(payload.skills.map((skill) => skill.id));
@@ -149,6 +170,11 @@ const run = async () => {
   assert(payload.filteredEngineReasonsBySkill.beam['engine-truss-a'].includes('model_family_mismatch'), 'beam should mark truss engine as family mismatch');
   assert(payload.filteredEngineReasonsBySkill.beam['engine-disabled'].includes('engine_disabled'), 'beam should mark disabled engine reason');
   assert(payload.filteredEngineReasonsBySkill.truss['engine-frame-a'].includes('model_family_mismatch'), 'truss should mark frame engine as family mismatch');
+  assert(Array.isArray(payload.analysisStrategyCompatibility.static.strategySkillIds), 'static strategy skill IDs should be an array');
+  assert(payload.analysisStrategyCompatibility.static.strategySkillIds.includes('analysis-strategy-baseline'), 'static strategy should include baseline strategy skill');
+  assert(payload.analysisStrategyCompatibility.dynamic.strategySkillIds.includes('analysis-strategy-baseline'), 'dynamic strategy should include baseline strategy skill');
+  assert(!payload.analysisStrategyCompatibility.seismic.strategySkillIds.includes('analysis-strategy-baseline'), 'seismic strategy should exclude unsupported strategy skill');
+  assert(payload.analysisStrategyCompatibility.static.baselinePolicyAvailable === true, 'baseline policy should be available for static');
 
   const responseDynamic = await app.inject({ method: 'GET', url: '/api/v1/agent/capability-matrix?analysisType=dynamic' });
   assert(responseDynamic.statusCode === 200, 'analysisType-specific capability matrix route should return 200');

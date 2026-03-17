@@ -1,6 +1,7 @@
 import { AnalysisEngineCatalogService } from './analysis-engine.js';
 import { AgentSkillRuntime } from './agent-skills/index.js';
-import type { SkillDomain, SkillManifest } from './agent-skills/types.js';
+import { normalizeAnalysisTypes as normalizeDomainAnalysisTypes, normalizeMaterialFamilies as normalizeDomainMaterialFamilies } from './agent-skills/domains/material-analysis.js';
+import type { AgentAnalysisType, SkillDomain, SkillManifest } from './agent-skills/types.js';
 
 interface CapabilitySkill {
   id: string;
@@ -9,6 +10,8 @@ interface CapabilitySkill {
   requires: string[];
   conflicts: string[];
   capabilities: string[];
+  supportedAnalysisTypes: AgentAnalysisType[];
+  materialFamilies: string[];
   priority: number;
   compatibility: {
     minCoreVersion: string;
@@ -47,6 +50,8 @@ type CapabilityReasonCode =
   | 'analysis_type_mismatch';
 
 type CapabilityAnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+
+const ANALYSIS_TYPES: CapabilityAnalysisType[] = ['static', 'dynamic', 'seismic', 'nonlinear'];
 
 function normalizeModelFamilies(value: unknown): string[] {
   if (!Array.isArray(value)) {
@@ -119,6 +124,8 @@ export class AgentCapabilityService {
       requires: Array.isArray(manifest.requires) ? manifest.requires : [],
       conflicts: Array.isArray(manifest.conflicts) ? manifest.conflicts : [],
       capabilities: Array.isArray(manifest.capabilities) ? manifest.capabilities : [],
+      supportedAnalysisTypes: normalizeDomainAnalysisTypes(manifest.supportedAnalysisTypes),
+      materialFamilies: normalizeDomainMaterialFamilies(manifest.materialFamilies),
       priority: manifest.priority,
       compatibility: {
         minCoreVersion: manifest.compatibility?.minCoreVersion || '0.1.0',
@@ -208,6 +215,34 @@ export class AgentCapabilityService {
       return acc;
     }, {});
 
+    const analysisStrategySkills = skills.filter((skill) => skill.domain === 'analysis-strategy');
+    const analysisStrategyCompatibility = ANALYSIS_TYPES.reduce<Record<CapabilityAnalysisType, {
+      strategySkillIds: string[];
+      compatibleEngineIds: string[];
+      baselinePolicyAvailable: boolean;
+    }>>((acc, analysisType) => {
+      const strategySkillIds = analysisStrategySkills
+        .filter((skill) => skill.supportedAnalysisTypes.length === 0 || skill.supportedAnalysisTypes.includes(analysisType))
+        .map((skill) => skill.id)
+        .sort();
+      const compatibleEngineIds = engines
+        .filter((engine) => engine.enabled && engine.available && engine.supportedAnalysisTypes.includes(analysisType))
+        .map((engine) => engine.id)
+        .sort();
+
+      acc[analysisType] = {
+        strategySkillIds,
+        compatibleEngineIds,
+        baselinePolicyAvailable: true,
+      };
+      return acc;
+    }, {
+      static: { strategySkillIds: [], compatibleEngineIds: [], baselinePolicyAvailable: true },
+      dynamic: { strategySkillIds: [], compatibleEngineIds: [], baselinePolicyAvailable: true },
+      seismic: { strategySkillIds: [], compatibleEngineIds: [], baselinePolicyAvailable: true },
+      nonlinear: { strategySkillIds: [], compatibleEngineIds: [], baselinePolicyAvailable: true },
+    });
+
     return {
       generatedAt: new Date().toISOString(),
       skills,
@@ -217,6 +252,7 @@ export class AgentCapabilityService {
       filteredEngineReasonsBySkill,
       validSkillIdsByEngine,
       skillDomainById,
+      analysisStrategyCompatibility,
       appliedAnalysisType: options?.analysisType,
     };
   }

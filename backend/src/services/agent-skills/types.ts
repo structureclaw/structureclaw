@@ -5,6 +5,8 @@ export type DraftLoadPosition = 'end' | 'midspan' | 'full-span' | 'top-nodes' | 
 export type DraftSupportType = 'cantilever' | 'simply-supported' | 'fixed-fixed' | 'fixed-pinned';
 export type FrameDimension = '2d' | '3d';
 export type FrameBaseSupportType = 'fixed' | 'pinned';
+export type AgentAnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+export type MaterialFamily = 'steel' | 'concrete' | 'composite' | 'timber' | 'masonry' | 'generic';
 
 export interface DraftFloorLoad {
   story: number;
@@ -163,6 +165,8 @@ export interface SkillManifest extends AgentSkillMetadata {
   requires: string[];
   conflicts: string[];
   capabilities: string[];
+  supportedAnalysisTypes?: AgentAnalysisType[];
+  materialFamilies?: MaterialFamily[];
   priority: number;
   compatibility: SkillCompatibility;
 }
@@ -194,7 +198,7 @@ export interface SkillDefaultProposal {
 
 export interface SkillReportNarrativeInput {
   message: string;
-  analysisType: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+  analysisType: AgentAnalysisType;
   analysisSuccess: boolean;
   codeCheckText: string;
   summary: string;
