@@ -59,7 +59,8 @@
 - Done: chat API routes now call `AgentService.shouldPreferExecute` (async) for auto-mode routing, reusing conversation draft context when available.
 - Done: added stage-aware guard in `AgentService.shouldPreferExecute`; when current session is still in `intent/model/loads` due to critical missing fields, auto mode prefers chat.
 - Done: non-structural stage hints now contribute to route decisions; if analysis/code-check/report preferences are still missing and user has not approved auto-decide, auto mode prefers chat.
-- Goal: decide if PR-4 should add explicit route-reason telemetry in interaction payload for frontend traceability.
+- Done: interaction payload now includes explicit route telemetry (`routeHint`, `routeReason`) for frontend traceability.
+- Goal: evaluate whether route telemetry should be normalized to stable reason codes in addition to localized text.
 
 ## Validation
 - `npm run lint --prefix backend`

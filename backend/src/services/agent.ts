@@ -31,6 +31,7 @@ export type AgentReportOutput = 'inline' | 'file';
 export type AgentUserDecision = 'provide_values' | 'confirm_all' | 'allow_auto_decide' | 'revise';
 export type AgentInteractionState = 'collecting' | 'confirming' | 'ready' | 'executing' | 'completed' | 'blocked';
 export type AgentInteractionStage = 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';
+export type AgentInteractionRouteHint = 'prefer_chat' | 'prefer_execute';
 
 interface InteractionSession {
   draft: DraftState;
@@ -72,6 +73,8 @@ export interface AgentInteraction {
   state: AgentInteractionState;
   stage: AgentInteractionStage;
   turnId: string;
+  routeHint?: AgentInteractionRouteHint;
+  routeReason?: string;
   detectedScenario?: string;
   detectedScenarioLabel?: string;
   conversationStage?: string;
@@ -401,6 +404,8 @@ export class AgentService {
               state: { enum: ['collecting', 'confirming', 'ready', 'executing', 'completed', 'blocked'] },
               stage: { enum: ['intent', 'model', 'loads', 'analysis', 'code_check', 'report'] },
               turnId: { type: 'string' },
+              routeHint: { enum: ['prefer_chat', 'prefer_execute'] },
+              routeReason: { type: 'string' },
               detectedScenario: { type: 'string' },
               detectedScenarioLabel: { type: 'string' },
               conversationStage: { type: 'string' },
@@ -805,7 +810,7 @@ export class AgentService {
           plan,
           toolCalls,
           metrics: this.buildMetrics(toolCalls),
-            interaction: this.buildExecutionInteraction('blocked'),
+            interaction: this.buildExecutionInteraction('blocked', locale),
             response: this.localize(locale, `模型格式转换失败：${convertCall.error}`, `Model conversion failed: ${convertCall.error}`),
           };
         return this.finalizeRunResult(traceId, sessionKey, params.message, result);
@@ -841,7 +846,7 @@ export class AgentService {
           toolCalls,
           model: normalizedModel,
           metrics: this.buildMetrics(toolCalls),
-          interaction: this.buildExecutionInteraction('blocked'),
+          interaction: this.buildExecutionInteraction('blocked', locale),
           response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
         };
         return this.finalizeRunResult(traceId, sessionKey, params.message, result);
@@ -869,7 +874,7 @@ export class AgentService {
           toolCalls,
           model: normalizedModel,
           metrics: this.buildMetrics(toolCalls),
-          interaction: this.buildExecutionInteraction('blocked'),
+          interaction: this.buildExecutionInteraction('blocked', locale),
           response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
         };
         return this.finalizeRunResult(traceId, sessionKey, params.message, result);
@@ -894,7 +899,7 @@ export class AgentService {
         toolCalls,
         model: normalizedModel,
         metrics: this.buildMetrics(toolCalls),
-        interaction: this.buildExecutionInteraction('completed'),
+        interaction: this.buildExecutionInteraction('completed', locale),
         response,
       };
       if (sessionKey) {
@@ -965,7 +970,7 @@ export class AgentService {
             model: normalizedModel,
             analysis: analyzed.data,
             metrics: this.buildMetrics(toolCalls),
-            interaction: this.buildExecutionInteraction('blocked'),
+            interaction: this.buildExecutionInteraction('blocked', locale),
             response: this.localize(locale, `规范校核失败：${codeCheckCall.error}`, `Code check failed: ${codeCheckCall.error}`),
           };
           return this.finalizeRunResult(traceId, sessionKey, params.message, result);
@@ -1027,7 +1032,7 @@ export class AgentService {
         report,
         artifacts,
         metrics: this.buildMetrics(toolCalls),
-        interaction: this.buildExecutionInteraction('completed'),
+        interaction: this.buildExecutionInteraction('completed', locale),
         response: validationWarning ? `${validationWarning}\n\n${response}` : response,
       };
       if (sessionKey) {
@@ -1049,7 +1054,7 @@ export class AgentService {
         toolCalls,
         model: normalizedModel,
         metrics: this.buildMetrics(toolCalls),
-        interaction: this.buildExecutionInteraction('blocked'),
+        interaction: this.buildExecutionInteraction('blocked', locale),
         response: transientUpstreamFailure
           ? this.localize(
             locale,
@@ -1413,10 +1418,13 @@ export class AgentService {
     const stage = await this.resolveInteractionStage(missingKeys, session.draft, skillIds);
     const missingCritical = await this.mapMissingFieldLabels(assessment.criticalMissing, locale, session.draft, skillIds);
     const missingOptional = await this.mapMissingFieldLabels(assessment.nonCriticalMissing, locale, session.draft, skillIds);
+    const route = this.buildInteractionRouteHint(assessment, stage, session, locale);
     return {
       state,
       stage,
       turnId: randomUUID(),
+      routeHint: route.routeHint,
+      routeReason: route.routeReason,
       detectedScenario: session.scenario?.key,
       detectedScenarioLabel: session.scenario ? await this.getScenarioLabel(session.scenario.key, locale) : undefined,
       conversationStage: this.getStageLabel(stage, locale),
@@ -1432,6 +1440,54 @@ export class AgentService {
       nextActions: assessment.criticalMissing.length > 0
         ? ['provide_values', 'revise']
         : ['provide_values', 'allow_auto_decide', 'confirm_all', 'revise'],
+    };
+  }
+
+  private buildInteractionRouteHint(
+    assessment: { criticalMissing: string[]; nonCriticalMissing: string[] },
+    stage: AgentInteractionStage,
+    session: InteractionSession,
+    locale: AppLocale,
+  ): { routeHint: AgentInteractionRouteHint; routeReason: string } {
+    if (assessment.criticalMissing.length > 0) {
+      if (stage === 'intent' || stage === 'model' || stage === 'loads') {
+        return {
+          routeHint: 'prefer_chat',
+          routeReason: this.localize(
+            locale,
+            '当前仍缺少关键建模参数，建议继续对话补参后再执行。',
+            'Critical modeling inputs are still missing; continue clarification before execution.',
+          ),
+        };
+      }
+      return {
+        routeHint: 'prefer_chat',
+        routeReason: this.localize(
+          locale,
+          '仍有关键参数待确认，建议先完成参数补充。',
+          'Key parameters are still pending; complete clarification first.',
+        ),
+      };
+    }
+
+    if (assessment.nonCriticalMissing.length > 0 && !session.userApprovedAutoDecide) {
+      return {
+        routeHint: 'prefer_chat',
+        routeReason: this.localize(
+          locale,
+          '分析、校核或报告偏好尚未确认，建议先确认策略再执行。',
+          'Analysis, code-check, or reporting preferences are pending; confirm strategy before execution.',
+        ),
+      };
+    }
+
+    return {
+      routeHint: 'prefer_execute',
+      routeReason: this.localize(
+        locale,
+        '当前参数已达到执行条件，可直接进入分析流程。',
+        'Current inputs are execution-ready; analysis can proceed directly.',
+      ),
     };
   }
 
@@ -1475,11 +1531,15 @@ export class AgentService {
     );
   }
 
-  private buildExecutionInteraction(state: 'completed' | 'blocked'): AgentInteraction {
+  private buildExecutionInteraction(state: 'completed' | 'blocked', locale: AppLocale): AgentInteraction {
     return {
       state,
       stage: 'report',
       turnId: randomUUID(),
+      routeHint: 'prefer_execute',
+      routeReason: state === 'completed'
+        ? this.localize(locale, '执行已完成。', 'Execution completed.')
+        : this.localize(locale, '执行已触发，但被下游工具或校验失败阻断。', 'Execution attempted but was blocked by downstream tool or validation failure.'),
       nextActions: state === 'completed' ? [] : ['revise'],
     };
   }
