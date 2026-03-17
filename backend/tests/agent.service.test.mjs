@@ -483,6 +483,27 @@ describe('AgentService orchestration', () => {
     expect(result.model).toBeUndefined();
   });
 
+  test('should keep inferredType unknown in no-skill mode even when llm extraction suggests template type', async () => {
+    const svc = new AgentService();
+    let invokeCount = 0;
+    svc.llm = {
+      invoke: async () => {
+        invokeCount += 1;
+        if (invokeCount === 1) {
+          return { content: '{"inferredType":"beam","lengthM":10,"loadKN":10}' };
+        }
+        return {
+          content: '{"schema_version":"1.0.0","unit_system":"SI","nodes":[],"elements":[],"materials":[],"sections":[],"load_cases":[],"load_combinations":[]}',
+        };
+      },
+    };
+
+    const draft = await svc.textToModelDraft('10m beam with 10kN point load', undefined, 'en', []);
+
+    expect(draft.stateToPersist?.inferredType).toBe('unknown');
+    expect(draft.inferredType).toBe('unknown');
+  });
+
   test('should execute analyze in no-skill mode when computable model is provided', async () => {
     const svc = new AgentService();
     svc.llm = null;

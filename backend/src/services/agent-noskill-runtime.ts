@@ -25,9 +25,7 @@ export function mergeNoSkillDraftExtraction(
   fallback: DraftExtraction,
 ): DraftExtraction {
   return {
-    inferredType: preferred?.inferredType && preferred.inferredType !== 'unknown'
-      ? preferred.inferredType
-      : fallback.inferredType,
+    inferredType: 'unknown',
     lengthM: preferred?.lengthM ?? fallback.lengthM,
     spanLengthM: preferred?.spanLengthM ?? fallback.spanLengthM,
     heightM: preferred?.heightM ?? fallback.heightM,
@@ -51,9 +49,6 @@ export function mergeNoSkillDraftExtraction(
 }
 
 export function mergeNoSkillDraftState(existing: DraftState | undefined, patch: DraftExtraction): DraftState {
-  const mergedType = patch.inferredType && patch.inferredType !== 'unknown'
-    ? patch.inferredType
-    : (existing?.inferredType || 'unknown');
   const mergedLength = patch.lengthM ?? existing?.lengthM;
   const mergedSpan = patch.spanLengthM ?? existing?.spanLengthM;
   const spanLengthM = mergedSpan;
@@ -63,7 +58,7 @@ export function mergeNoSkillDraftState(existing: DraftState | undefined, patch: 
   const bayCountY = patch.bayCountY ?? existing?.bayCountY ?? patch.bayWidthsYM?.length ?? existing?.bayWidthsYM?.length;
 
   return {
-    inferredType: mergedType,
+    inferredType: 'unknown',
     lengthM: mergedLength,
     spanLengthM,
     heightM: patch.heightM ?? existing?.heightM,
