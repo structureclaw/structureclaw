@@ -72,6 +72,14 @@
 - Verified: backend build + `validate-report-template-contract.sh` + `validate-agent-orchestration.sh` + `validate-agent-skills-contract.sh`.
 - Next: evaluate whether any scenario should expose report reason codes to align with PR-4 route telemetry normalization direction.
 
+## PR-6 Progress (In Progress)
+- Done: added backend capability matrix service (`backend/src/services/agent-capability.ts`) that combines skill manifests with engine catalog manifests.
+- Done: exposed `GET /api/v1/agent/capability-matrix` for frontend consumption.
+- Done: frontend AI console now fetches capability matrix and constrains selectable engines to skill-compatible enabled engines.
+- Done: when a previously selected engine becomes incompatible with current skill selection, selector falls back to `auto`.
+- Verified: backend build + frontend type-check + `validate-agent-api-contract.sh` + backend regression.
+- Next: add explicit UI hint for "engine filtered by selected skills" in console engine picker.
+
 ## Validation
 - `npm run lint --prefix backend`
 - `npm test --prefix backend -- --runInBand`

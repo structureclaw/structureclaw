@@ -173,6 +173,10 @@ type AnalysisEngineSummary = {
   routingHints?: string[]
 }
 
+type CapabilityMatrixPayload = {
+  validEngineIdsBySkill?: Record<string, string[]>
+}
+
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const STORAGE_KEY = 'structureclaw.console.conversations'
 
@@ -1116,6 +1120,7 @@ export function AIConsole() {
   const [analysisType, setAnalysisType] = useState<AnalysisType>('static')
   const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([])
   const [availableEngines, setAvailableEngines] = useState<AnalysisEngineSummary[]>([])
+  const [capabilityMatrix, setCapabilityMatrix] = useState<CapabilityMatrixPayload | null>(null)
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
   const [selectedEngineId, setSelectedEngineId] = useState('auto')
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
@@ -1265,6 +1270,34 @@ export function AIConsole() {
     }
 
     loadSkills()
+
+    return () => {
+      active = false
+    }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadCapabilityMatrix() {
+      try {
+        const response = await fetch(`${API_BASE}/api/v1/agent/capability-matrix`)
+        if (!response.ok) {
+          return
+        }
+        const payload = await response.json()
+        if (!active || !payload || typeof payload !== 'object') {
+          return
+        }
+        setCapabilityMatrix(payload as CapabilityMatrixPayload)
+      } catch {
+        if (active) {
+          setCapabilityMatrix(null)
+        }
+      }
+    }
+
+    loadCapabilityMatrix()
 
     return () => {
       active = false
@@ -1457,17 +1490,58 @@ export function AIConsole() {
     [availableEngines]
   )
 
+  const matrixCompatibleEngineIds = useMemo<Set<string> | null>(() => {
+    const matrix = capabilityMatrix?.validEngineIdsBySkill
+    if (!matrix || typeof matrix !== 'object') {
+      return null
+    }
+
+    const targetSkillIds = selectedSkillIds.length > 0 ? selectedSkillIds : defaultSkillIds
+    let intersection: Set<string> | null = null
+
+    for (const skillId of targetSkillIds) {
+      const validIds = matrix[skillId]
+      if (!Array.isArray(validIds) || validIds.length === 0) {
+        continue
+      }
+      const current = new Set(validIds)
+      if (!intersection) {
+        intersection = current
+        continue
+      }
+      intersection = new Set(Array.from(intersection).filter((id) => current.has(id)))
+    }
+
+    return intersection
+  }, [capabilityMatrix, defaultSkillIds, selectedSkillIds])
+
+  const compatibleEnabledEngines = useMemo(() => {
+    if (!matrixCompatibleEngineIds) {
+      return enabledEngines
+    }
+    return enabledEngines.filter((engine) => matrixCompatibleEngineIds.has(engine.id))
+  }, [enabledEngines, matrixCompatibleEngineIds])
+
+  useEffect(() => {
+    if (selectedEngineId === 'auto') {
+      return
+    }
+    if (!compatibleEnabledEngines.some((engine) => engine.id === selectedEngineId)) {
+      setSelectedEngineId('auto')
+    }
+  }, [compatibleEnabledEngines, selectedEngineId])
+
   const selectedEngineSummary = useMemo(
-    () => enabledEngines.find((engine) => engine.id === selectedEngineId) || null,
-    [enabledEngines, selectedEngineId]
+    () => compatibleEnabledEngines.find((engine) => engine.id === selectedEngineId) || null,
+    [compatibleEnabledEngines, selectedEngineId]
   )
   const currentEngineSummary = useMemo(
-    () => enabledEngines.find((engine) => engine.id === selectedEngineId) || null,
-    [enabledEngines, selectedEngineId]
+    () => compatibleEnabledEngines.find((engine) => engine.id === selectedEngineId) || null,
+    [compatibleEnabledEngines, selectedEngineId]
   )
   const candidateEngines = useMemo(
-    () => enabledEngines.filter((engine) => engine.id !== selectedEngineId),
-    [enabledEngines, selectedEngineId]
+    () => compatibleEnabledEngines.filter((engine) => engine.id !== selectedEngineId),
+    [compatibleEnabledEngines, selectedEngineId]
   )
 
   useEffect(() => {

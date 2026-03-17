@@ -1,8 +1,10 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AgentService } from '../services/agent.js';
+import { AgentCapabilityService } from '../services/agent-capability.js';
 
 const agentService = new AgentService();
+const capabilityService = new AgentCapabilityService();
 
 const optionalIdSchema = z.preprocess((value) => {
   if (value === null || value === undefined) {
@@ -56,6 +58,15 @@ export async function agentRoutes(fastify: FastifyInstance) {
     },
   }, async (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.send(agentService.listSkills());
+  });
+
+  fastify.get('/capability-matrix', {
+    schema: {
+      tags: ['Agent'],
+      summary: '查询技能与分析引擎能力矩阵',
+    },
+  }, async (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.send(await capabilityService.getCapabilityMatrix());
   });
 
   fastify.post('/run', {
