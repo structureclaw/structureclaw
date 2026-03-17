@@ -67,11 +67,16 @@ StructureClaw now exposes analysis engines as a pluggable execution layer.
 - When provided, the matrix applies analysis-type filtering and reason-code evaluation for the requested analysis type.
 
 ### Response highlights
-- `skills`: loaded skill summaries (`id`, `structureType`, `stages`, localized `name`)
+- `skills`: loaded skill summaries with domain metadata:
+  - `id`, `structureType`, `domain`, `stages`, localized `name`
+  - `requires`, `conflicts`, `capabilities`, `priority`
+  - `compatibility.minCoreVersion`, `compatibility.skillApiVersion`
 - `engines`: engine summaries (`id`, status flags, supported analysis/model families)
+- `domainSummaries`: grouped skill IDs and capability rollups by domain
 - `validEngineIdsBySkill`: engine IDs that are currently selectable for each skill
 - `filteredEngineReasonsBySkill`: per-skill map of filtered engine IDs and reason codes
 - `validSkillIdsByEngine`: reverse compatibility map for UI/reference use
+- `skillDomainById`: direct skill-to-domain mapping for frontend grouping
 
 ### Current reason codes
 - `engine_disabled`: engine is disabled in manifest/runtime status
@@ -83,3 +88,38 @@ StructureClaw now exposes analysis engines as a pluggable execution layer.
 ### Notes
 - `validEngineIdsBySkill` only includes engines passing all compatibility checks.
 - `filteredEngineReasonsBySkill` is designed for frontend explainability and can contain multiple reason codes per engine.
+
+## Agent SkillHub API (external extension skills)
+
+SkillHub extensions are designed to be managed outside this GitHub repository. Baseline/core skills remain in-repo.
+
+### Endpoints
+- `GET /api/v1/agent/skillhub/search?q=<keyword>&domain=<optional-domain>`
+- `GET /api/v1/agent/skillhub/installed`
+- `POST /api/v1/agent/skillhub/install` with body `{ "skillId": "..." }`
+- `POST /api/v1/agent/skillhub/enable` with body `{ "skillId": "..." }`
+- `POST /api/v1/agent/skillhub/disable` with body `{ "skillId": "..." }`
+- `POST /api/v1/agent/skillhub/uninstall` with body `{ "skillId": "..." }`
+
+### Current catalog metadata
+- `id`, `version`, `domain`
+- localized `name` and `description`
+- `capabilities`
+- `compatibility.minCoreVersion`, `compatibility.skillApiVersion`
+
+### Current installed-state behavior
+- Installed SkillHub state is persisted in `.runtime/skillhub/installed.json`.
+- Install enables by default.
+- Enable/disable toggles installed state only.
+- Uninstall removes installed record.
+
+## CLI workflow (ClawHub style)
+
+Use `scripts/claw.sh`:
+
+- `./scripts/claw.sh skill search <keyword> [domain]`
+- `./scripts/claw.sh skill install <skill-id>`
+- `./scripts/claw.sh skill enable <skill-id>`
+- `./scripts/claw.sh skill disable <skill-id>`
+- `./scripts/claw.sh skill uninstall <skill-id>`
+- `./scripts/claw.sh skill list`

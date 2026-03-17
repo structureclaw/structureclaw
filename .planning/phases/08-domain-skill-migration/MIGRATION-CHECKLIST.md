@@ -1,42 +1,42 @@
 # Phase 08 Migration Checklist
 
 ## Readiness Gates
-- [ ] Domain taxonomy confirmed (10 categories)
-- [ ] Existing skill inventory mapped to domains
-- [ ] No-skill fallback path contract defined
-- [ ] Baseline/core skill pack scope confirmed (in-repo only)
-- [ ] Skill repository extension scope confirmed (out-of-repo on-demand)
-- [ ] External SkillHub mode confirmed (repository independent from this GitHub repo)
+- [x] Domain taxonomy confirmed (10 categories)
+- [x] Existing skill inventory mapped to domains
+- [x] No-skill fallback path contract defined
+- [x] Baseline/core skill pack scope confirmed (in-repo only)
+- [x] Skill repository extension scope confirmed (out-of-repo on-demand)
+- [x] External SkillHub mode confirmed (repository independent from this GitHub repo)
 
 ## P08-1
-- [ ] Add `domain` metadata to all current skill manifests
-- [ ] Add `requires/conflicts/priority/capabilities` metadata fields
-- [ ] Update capability matrix output to include domain summaries
-- [ ] Expose domain-grouped payload for frontend skill picker (no hardcoded map)
-- [ ] Unify metadata contract for bundled skills and SkillHub packages
-- [ ] Add compatibility contract fields: `minCoreVersion`, `skillApiVersion`
+- [x] Add `domain` metadata to all current skill manifests
+- [x] Add `requires/conflicts/priority/capabilities` metadata fields
+- [x] Update capability matrix output to include domain summaries
+- [x] Expose domain-grouped payload for frontend skill picker (no hardcoded map)
+- [x] Unify metadata contract for bundled skills and SkillHub packages
+- [x] Add compatibility contract fields: `minCoreVersion`, `skillApiVersion`
 - [ ] Add incompatibility reason codes and fallback behavior contract
 
 ## P08-2
-- [ ] Add contract test: empty skillIds in chat mode
-- [ ] Add contract test: empty skillIds in execute/auto mode
-- [ ] Verify deterministic clarification or successful execution
-- [ ] Baseline skill pack documented and runnable without repository connectivity
+- [x] Add contract test: empty skillIds in chat mode
+- [x] Add contract test: empty skillIds in execute/auto mode
+- [x] Verify deterministic clarification or successful execution
+- [x] Baseline skill pack documented and runnable without repository connectivity
 - [ ] Repository-down fallback verified (baseline compute still available)
 
 ## P08-3
-- [ ] Report/export domain hooks completed
+- [x] Report/export domain hooks completed
 - [ ] Visualization domain hooks completed
-- [ ] Frontend remains backward compatible
-- [ ] Frontend supports domain-category selection + skill-level mixed selection when loading skills
-- [ ] Add frontend interaction tests for group select / clear / mixed select
-- [ ] P08-3a completed: installed-skill catalog loading flow is stable
-- [ ] Frontend can browse/filter extension skills from skill repository by domain
-- [ ] Frontend can load/unload repository skills and show loaded state
-- [ ] Add repository loading lifecycle tests (fetch/list/load/unload)
-- [ ] Provide CLI workflow: search/install/enable/disable/uninstall
+- [x] Frontend remains backward compatible
+- [x] Frontend supports domain-category selection + skill-level mixed selection when loading skills
+- [x] Add frontend interaction tests for group select / clear / mixed select
+- [x] P08-3a completed: installed-skill catalog loading flow is stable
+- [x] Frontend can browse/filter extension skills from skill repository by domain
+- [x] Frontend can load/unload repository skills and show loaded state
+- [x] Add repository loading lifecycle tests (fetch/list/load/unload)
+- [x] Provide CLI workflow: search/install/enable/disable/uninstall
 - [ ] Add CLI integration tests for external SkillHub
-- [ ] P08-3b completed: external SkillHub integration flow is stable
+- [x] P08-3b completed: external SkillHub integration flow is stable
 - [ ] Security test: bad signature is rejected
 - [ ] Security test: checksum mismatch is rejected
 - [ ] Security test: offline cache reuse works for installed skills
