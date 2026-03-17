@@ -2,7 +2,6 @@ import type { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from './locale.js';
 import type {
   DraftExtraction,
-  DraftLoadType,
   DraftState,
 } from './agent-skills/index.js';
 
@@ -39,7 +38,7 @@ export function mergeNoSkillDraftExtraction(
     floorLoads: preferred?.floorLoads ?? fallback.floorLoads,
     frameBaseSupportType: undefined,
     loadKN: preferred?.loadKN ?? fallback.loadKN,
-    loadType: preferred?.loadType ?? fallback.loadType,
+    loadType: undefined,
     loadPosition: undefined,
     loadPositionM: preferred?.loadPositionM ?? fallback.loadPositionM,
   };
@@ -72,7 +71,7 @@ export function mergeNoSkillDraftState(existing: DraftState | undefined, patch: 
     floorLoads: mergeFloorLoads(existing?.floorLoads, patch.floorLoads),
     frameBaseSupportType: undefined,
     loadKN: patch.loadKN ?? existing?.loadKN,
-    loadType: patch.loadType ?? existing?.loadType,
+    loadType: undefined,
     loadPosition: undefined,
     loadPositionM: patch.loadPositionM ?? existing?.loadPositionM,
     updatedAt: Date.now(),
@@ -161,7 +160,6 @@ export async function tryNoSkillLlmExtract(
         bayWidthsYM: existingState.bayWidthsYM,
         floorLoads: existingState.floorLoads,
         loadKN: existingState.loadKN,
-        loadType: existingState.loadType,
         loadPositionM: existingState.loadPositionM,
       })
     : '{}';
@@ -171,7 +169,7 @@ export async function tryNoSkillLlmExtract(
         '你是结构建模参数提取器。',
         '从用户输入里提取结构草模参数。仅返回一个 JSON 对象，不要 markdown、不要解释。',
         '必须符合以下输出约束：',
-        '- 顶层只允许字段：lengthM,spanLengthM,heightM,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,loadKN,loadType,loadPositionM。',
+        '- 顶层只允许字段：lengthM,spanLengthM,heightM,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,loadKN,loadPositionM。',
         '- 不确定字段直接省略，不要输出 null，不要输出字符串数字。',
         '- loadPositionM 表示某参考起点的数值位置（m），位置信息请优先用该数值字段表达。',
         '数值统一单位：m, kN。不存在的字段不要输出。',
@@ -184,7 +182,7 @@ export async function tryNoSkillLlmExtract(
         'You extract structural model draft parameters.',
         'Read the user request and return exactly one JSON object only, without markdown or explanations.',
         'Output constraints:',
-        '- Top-level allowed fields only: lengthM,spanLengthM,heightM,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,loadKN,loadType,loadPositionM.',
+        '- Top-level allowed fields only: lengthM,spanLengthM,heightM,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,loadKN,loadPositionM.',
         '- Omit unknown fields; do not output null; keep numeric fields as numbers.',
         '- loadPositionM means offset from the start reference in meters and should be provided when a point-load location is explicit.',
         'Use m and kN as units. Omit fields that are not present.',
@@ -226,7 +224,7 @@ export async function tryNoSkillLlmExtract(
       floorLoads: normalizeFloorLoads(payload.floorLoads),
       frameBaseSupportType: undefined,
       loadKN: normalizeNumber(payload.loadKN),
-      loadType: normalizeDraftLoadType(payload.loadType),
+      loadType: undefined,
       loadPosition: undefined,
       loadPositionM: normalizeDraftLoadPositionM(payload.loadPositionM),
     };
@@ -326,13 +324,6 @@ function normalizeFloorLoads(value: unknown): DraftState['floorLoads'] | undefin
     });
   const filtered = normalized.filter((item) => item !== null) as NonNullable<DraftState['floorLoads']>;
   return filtered.length > 0 ? filtered : undefined;
-}
-
-function normalizeDraftLoadType(value: unknown): DraftLoadType | undefined {
-  if (value === 'point' || value === 'distributed') {
-    return value;
-  }
-  return undefined;
 }
 
 function normalizeDraftLoadPositionM(value: unknown): number | undefined {

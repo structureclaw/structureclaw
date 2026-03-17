@@ -552,6 +552,30 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.inferredType).toBe('unknown');
   });
 
+  test('should ignore categorical loadType in no-skill state and keep numeric load magnitude', async () => {
+    const svc = new AgentService();
+    let invokeCount = 0;
+    svc.llm = {
+      invoke: async () => {
+        invokeCount += 1;
+        if (invokeCount === 1) {
+          return {
+            content: '{"loadType":"distributed","loadKN":15,"lengthM":6}',
+          };
+        }
+        return {
+          content: '{"schema_version":"1.0.0","unit_system":"SI","nodes":[],"elements":[],"materials":[],"sections":[],"load_cases":[],"load_combinations":[]}',
+        };
+      },
+    };
+
+    const draft = await svc.textToModelDraft('6m member with 15kN load', undefined, 'en', []);
+
+    expect(draft.stateToPersist?.loadType).toBeUndefined();
+    expect(draft.stateToPersist?.loadKN).toBe(15);
+    expect(draft.stateToPersist?.inferredType).toBe('unknown');
+  });
+
   test('should execute analyze in no-skill mode when computable model is provided', async () => {
     const svc = new AgentService();
     svc.llm = null;
