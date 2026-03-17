@@ -266,6 +266,9 @@ export class AgentService {
     if (this.policy.inferCodeCheckIntent(message) || this.policy.inferReportIntent(message) === true) {
       return true;
     }
+    if (this.isNoSkillMode(options?.skillIds)) {
+      return true;
+    }
     const locale = this.resolveInteractionLocale(options?.locale);
     const sessionKey = options?.conversationId?.trim();
     const session = await this.getInteractionSession(sessionKey);
@@ -683,6 +686,7 @@ export class AgentService {
     const userDecision = params.context?.userDecision;
     const providedValues = params.context?.providedValues || {};
     const skillIds = params.context?.skillIds;
+    const noSkillMode = this.isNoSkillMode(skillIds);
 
     const plan: string[] = [];
     const toolCalls: AgentToolCall[] = [];
@@ -758,10 +762,43 @@ export class AgentService {
         }
       }
 
-      const finalAssessment = await this.assessInteractionNeeds(workingSession, locale, skillIds);
+      const finalAssessment = (noSkillMode && draft.model)
+        ? { criticalMissing: [], nonCriticalMissing: [], defaultProposals: [] }
+        : await this.assessInteractionNeeds(workingSession, locale, skillIds);
       if (finalAssessment.criticalMissing.length > 0 || finalAssessment.nonCriticalMissing.length > 0 || !draft.model) {
         if (sessionKey) {
           await this.setInteractionSession(sessionKey, workingSession);
+        }
+
+        if (noSkillMode) {
+          const missingFields = draft.missingFields.length > 0
+            ? draft.missingFields
+            : [this.localize(locale, '关键结构参数', 'key structural parameters')];
+          const question = this.localize(
+            locale,
+            `当前未启用技能。我会走通用建模能力，请先补充：${missingFields.join('、')}。`,
+            `No skills are enabled. I will use generic modeling capability. Please provide: ${missingFields.join(', ')}.`
+          );
+          const result: AgentRunResult = {
+            traceId,
+            startedAt,
+            completedAt: new Date().toISOString(),
+            durationMs: Date.now() - startedAtMs,
+            success: false,
+            mode,
+            needsModelInput: true,
+            plan,
+            toolCalls,
+            metrics: this.buildMetrics(toolCalls),
+            interaction: this.buildExecutionInteraction('blocked', locale),
+            clarification: {
+              missingFields,
+              question,
+            },
+            response: question,
+          };
+
+          return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
         }
 
         const interaction = await this.buildInteractionPayload(
@@ -1678,7 +1715,96 @@ export class AgentService {
   }
 
   private async textToModelDraft(message: string, existingState?: DraftState, locale: AppLocale = 'en', skillIds?: string[]): Promise<DraftResult> {
+    if (this.isNoSkillMode(skillIds)) {
+      return this.textToModelDraftWithoutSkills(message, existingState, locale);
+    }
     return this.skillRuntime.textToModelDraft(this.llm, message, existingState, locale, skillIds);
+  }
+
+  private isNoSkillMode(skillIds?: string[]): boolean {
+    return Array.isArray(skillIds) && skillIds.length === 0;
+  }
+
+  private async textToModelDraftWithoutSkills(
+    message: string,
+    existingState: DraftState | undefined,
+    locale: AppLocale,
+  ): Promise<DraftResult> {
+    const llmExtraction = await this.tryLlmExtract(message, existingState, locale);
+    const ruleExtraction = this.extractDraftByRules(message);
+    const mergedExtraction = this.mergeDraftExtraction(llmExtraction, ruleExtraction);
+    const stateToPersist = this.mergeDraftState(existingState, mergedExtraction);
+
+    let model: Record<string, unknown> | undefined;
+    const missingFields = this.computeMissingFields(stateToPersist);
+    if (missingFields.length === 0) {
+      model = this.buildModel(stateToPersist);
+    } else {
+      model = await this.tryLlmBuildGenericModel(message, stateToPersist, locale);
+    }
+
+    return {
+      inferredType: stateToPersist.inferredType,
+      missingFields: model ? [] : missingFields,
+      extractionMode: llmExtraction ? 'llm' : 'rule-based',
+      model,
+      stateToPersist,
+    };
+  }
+
+  private async tryLlmBuildGenericModel(
+    message: string,
+    state: DraftState,
+    locale: AppLocale,
+  ): Promise<Record<string, unknown> | undefined> {
+    if (!this.llm) {
+      return undefined;
+    }
+
+    const stateHint = JSON.stringify(state);
+    const prompt = locale === 'zh'
+      ? [
+          '你是结构建模专家。',
+          '请根据用户描述输出可计算的 StructureModel v1 JSON。',
+          '只输出 JSON 对象，不要 Markdown。',
+          '至少包含: schema_version, unit_system, nodes, elements, materials, sections, load_cases, load_combinations。',
+          `已有草模信息: ${stateHint}`,
+          `用户输入: ${message}`,
+        ].join('\n')
+      : [
+          'You are a structural modeling expert.',
+          'Generate a computable StructureModel v1 JSON from the user request.',
+          'Return JSON object only, without markdown.',
+          'At minimum include: schema_version, unit_system, nodes, elements, materials, sections, load_cases, load_combinations.',
+          `Current draft hints: ${stateHint}`,
+          `User request: ${message}`,
+        ].join('\n');
+
+    try {
+      const aiMessage = await this.llm.invoke(prompt);
+      const content = typeof aiMessage.content === 'string'
+        ? aiMessage.content
+        : JSON.stringify(aiMessage.content);
+      const parsed = this.parseJsonObject(content);
+      if (!parsed) {
+        return undefined;
+      }
+
+      if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.elements) || !Array.isArray(parsed.load_cases)) {
+        return undefined;
+      }
+
+      if (typeof parsed.schema_version !== 'string') {
+        parsed.schema_version = '1.0.0';
+      }
+      if (typeof parsed.unit_system !== 'string') {
+        parsed.unit_system = 'SI';
+      }
+
+      return parsed;
+    } catch {
+      return undefined;
+    }
   }
 
   private mergeFloorLoads(existing: DraftState['floorLoads'], incoming: DraftState['floorLoads']): DraftState['floorLoads'] {

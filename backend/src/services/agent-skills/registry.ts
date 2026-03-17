@@ -17,8 +17,11 @@ export class AgentSkillRegistry {
 
   async resolveEnabledPlugins(skillIds?: string[]): Promise<AgentSkillPlugin[]> {
     const skills = await this.listPlugins();
-    if (!skillIds?.length) {
+    if (skillIds === undefined) {
       return skills.filter((skill) => skill.autoLoadByDefault);
+    }
+    if (skillIds.length === 0) {
+      return [];
     }
     const requested = new Set(skillIds);
     return skills.filter((skill) => requested.has(skill.id));

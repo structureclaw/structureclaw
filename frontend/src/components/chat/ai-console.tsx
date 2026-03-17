@@ -2618,7 +2618,7 @@ export function AIConsole() {
         action === 'execute'
           ? {
               locale,
-              skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined,
+              skillIds: selectedSkillIds,
               engineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
               model: parsedModel.model,
               modelFormat: parsedModel.model ? 'structuremodel-v1' : undefined,
@@ -2632,7 +2632,7 @@ export function AIConsole() {
             }
           : {
               locale,
-              skillIds: selectedSkillIds.length > 0 ? selectedSkillIds : undefined,
+              skillIds: selectedSkillIds,
               engineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
             }
       const promptSnapshot = buildPromptSnapshot(trimmedInput, contextPayload as Record<string, unknown>)
