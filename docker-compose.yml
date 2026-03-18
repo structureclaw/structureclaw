@@ -57,6 +57,8 @@ services:
     container_name: structureclaw-backend
     environment:
       - NODE_ENV=production
+      - PORT=${PORT:-8000}
+      - BACKEND_BODY_LIMIT_MB=${BACKEND_BODY_LIMIT_MB:-20}
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/structureclaw
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-change-in-production}
@@ -66,14 +68,15 @@ services:
       - LLM_BASE_URL=${LLM_BASE_URL}
       - ZAI_API_KEY=${ZAI_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - ANALYSIS_ENGINE_URL=http://analysis-engine:8001
+      - CORE_PORT=${CORE_PORT:-8001}
+      - ANALYSIS_ENGINE_URL=http://analysis-engine:${CORE_PORT:-8001}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     ports:
-      - "${PORT:-8000}:8000"
+      - "${PORT:-8000}:${PORT:-8000}"
     volumes:
       - ./uploads:/app/uploads
     restart: unless-stopped
@@ -86,8 +89,9 @@ services:
     container_name: structureclaw-analysis
     environment:
       - PYTHONUNBUFFERED=1
+      - CORE_PORT=${CORE_PORT:-8001}
     ports:
-      - "${CORE_PORT:-8001}:8001"
+      - "${CORE_PORT:-8001}:${CORE_PORT:-8001}"
     volumes:
       - ./core:/app
     restart: unless-stopped
@@ -97,11 +101,14 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     container_name: structureclaw-frontend
     environment:
+      - PORT=${FRONTEND_PORT:-30000}
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     ports:
-      - "${FRONTEND_PORT:-30000}:3000"
+      - "${FRONTEND_PORT:-30000}:${FRONTEND_PORT:-30000}"
     depends_on:
       - backend
     restart: unless-stopped

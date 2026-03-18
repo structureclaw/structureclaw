@@ -2,12 +2,14 @@
 FROM python:3.11-slim
 
 WORKDIR /app
+ENV CORE_PORT=8001
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     gfortran \
+    libopenblas-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -21,7 +23,7 @@ COPY . .
 RUN python -m engines.opensees_runtime --json
 
 # Expose port
-EXPOSE 8001
+EXPOSE ${CORE_PORT}
 
 # Start server
-CMD ["python", "main.py"]
+CMD ["sh", "-c", "python -m uvicorn main:app --host 0.0.0.0 --port ${CORE_PORT} --app-dir /app"]

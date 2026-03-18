@@ -336,6 +336,13 @@ export class ChatService {
       where: { userId },
       orderBy: { updatedAt: 'desc' },
       take: 50,
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     });
   }
 
