@@ -58,6 +58,7 @@ services:
     environment:
       - NODE_ENV=production
       - PORT=${PORT:-8000}
+      - BACKEND_BODY_LIMIT_MB=${BACKEND_BODY_LIMIT_MB:-20}
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/structureclaw
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-change-in-production}
