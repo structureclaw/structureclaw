@@ -1,30 +1,40 @@
+# OS and editor settings
 .DS_Store
+Thumbs.db
+.vscode/
+.idea/
+.claude/
+
+# Environment and local runtime config
 .env
 .env.local
-.venv/
-venv/
+.env.*.local
+backend/.env
+frontend/.env.local
+!.env.example
+
+# Python cache and virtual environments
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .pytest_cache/
 .mypy_cache/
-.runtime/
-.vscode/
-
-node_modules/
-
-backend/node_modules/
-backend/dist/
-backend/.env
-
-frontend/node_modules/
-frontend/.next/
-frontend/.env.local
-
+.venv/
+venv/
 core/.venv/
 
+# Node and frontend/backend build outputs
+node_modules/
+backend/dist/
+frontend/.next/
+backend/coverage/
+frontend/coverage/
+*tsconfig.tsbuildinfo
+
+# Runtime directories and generated artifacts
+.runtime/
 uploads/*
 !uploads/.gitkeep
-
-*tsconfig.tsbuildinfo
+backend/uploads/*
+!backend/uploads/.gitkeep
