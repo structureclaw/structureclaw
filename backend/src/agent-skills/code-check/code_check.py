@@ -1,26 +1,72 @@
-"""
-规范校核模块
-支持中国规范 GB 系列
+"""规范校核统一入口。
+
+各规范的具体校核实现位于对应 skill 子目录的 ``code_check.py`` 中。
 """
 
 from __future__ import annotations
 
+from functools import lru_cache
+from importlib.util import module_from_spec, spec_from_file_location
+from pathlib import Path
+from types import ModuleType
 from typing import Dict, Any, List, Optional
 import logging
 
 logger = logging.getLogger(__name__)
 
 
+@lru_cache(maxsize=None)
+def _load_local_skill_module(relative_path: str) -> ModuleType:
+    target = Path(__file__).resolve().parent / relative_path
+    if not target.exists():
+        raise ImportError(f"Skill module not found: {target}")
+
+    module_name = "_code_check_skill_" + relative_path.replace("/", "_").replace(".", "_").replace("-", "_")
+    spec = spec_from_file_location(module_name, target)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load spec for: {target}")
+
+    module = module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+@lru_cache(maxsize=None)
+def _discover_code_skill_paths() -> Dict[str, str]:
+    base_dir = Path(__file__).resolve().parent
+    code_skill_paths: Dict[str, str] = {}
+
+    for child in sorted(base_dir.iterdir(), key=lambda item: item.name):
+        if not child.is_dir() or child.name.startswith('__'):
+            continue
+
+        skill_file = child / 'code_check.py'
+        if not skill_file.exists():
+            continue
+
+        relative_path = f'{child.name}/code_check.py'
+        module = _load_local_skill_module(relative_path)
+
+        code: Optional[str] = None
+        rule_loader = getattr(module, 'get_rules', None)
+        if callable(rule_loader):
+            loaded = rule_loader()
+            if isinstance(loaded, dict) and isinstance(loaded.get('code'), str):
+                code = loaded['code']
+
+        if not code:
+            code = child.name.upper()
+
+        if code in code_skill_paths:
+            raise RuntimeError(f'Duplicate code-check skill code discovered: {code}')
+
+        code_skill_paths[code] = relative_path
+
+    return code_skill_paths
+
+
 class CodeChecker:
     """规范校核器"""
-
-    SUPPORTED_CODES = [
-        'GB50010',  # 混凝土结构设计规范
-        'GB50017',  # 钢结构设计标准
-        'GB50011',  # 建筑抗震设计规范
-        'JGJ3',     # 高层建筑混凝土结构技术规程
-        'GB50009',  # 建筑结构荷载规范
-    ]
 
     def __init__(self, code: str):
         """
@@ -29,10 +75,14 @@ class CodeChecker:
         Args:
             code: 规范代码，如 'GB50010'
         """
-        if code not in self.SUPPORTED_CODES:
-            raise ValueError(f"不支持的规范: {code}。支持的规范: {self.SUPPORTED_CODES}")
+        self.code_skill_paths = _discover_code_skill_paths()
+        self.supported_codes = sorted(self.code_skill_paths.keys())
+
+        if code not in self.code_skill_paths:
+            raise ValueError(f"不支持的规范: {code}。支持的规范: {self.supported_codes}")
 
         self.code = code
+        self.skill_module = _load_local_skill_module(self.code_skill_paths[code])
         self.rules = self._load_rules(code)
 
     def check(self, model_id: str, elements: List[str], context: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
@@ -92,85 +142,15 @@ class CodeChecker:
 
     def _check_element(self, elem_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """校核单个构件"""
-        # 根据规范执行不同的校核
-        if self.code == 'GB50010':
-            return self._check_concrete_element(elem_id, context)
-        if self.code == 'GB50017':
-            return self._check_steel_element(elem_id, context)
-        if self.code == 'GB50011':
-            return self._check_seismic_element(elem_id, context)
+        check_func = getattr(self.skill_module, 'check_element', None)
+        if callable(check_func):
+            return check_func(self, elem_id, context)
+
         return {
             'elementId': elem_id,
             'status': 'not_implemented',
-            'message': f'{self.code} 校核尚未实现'
+            'message': f'{self.code} 校核尚未实现',
         }
-
-    def _check_concrete_element(self, elem_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        """混凝土构件校核 (GB50010)"""
-        checks = [
-            {
-                'name': '承载力验算',
-                'items': [
-                    self._calc_item(elem_id, '正截面受弯', context, 'GB50010-2010 6.2.1', 'M <= α1*f_c*b*x*(h0-0.5*x)', 0.95),
-                    self._calc_item(elem_id, '斜截面受剪', context, 'GB50010-2010 6.3.1', 'V <= Vc + Vs', 0.95),
-                ],
-            },
-            {
-                'name': '正常使用验算',
-                'items': [
-                    self._calc_item(elem_id, '挠度', context, 'GB50010-2010 3.3.2', 'f <= l/250', 1.0),
-                    self._calc_item(elem_id, '裂缝宽度', context, 'GB50010-2010 3.4.5', 'w_max <= w_lim', 1.0),
-                ],
-            },
-        ]
-        return self._build_element_result(elem_id, 'beam', checks, 'GB50010-2010')
-
-    def _check_steel_element(self, elem_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        """钢构件校核 (GB50017)"""
-        checks = [
-            {
-                'name': '强度验算',
-                'items': [
-                    self._calc_item(elem_id, '正应力', context, 'GB50017-2017 7.1.1', 'σ = N/A <= f', 0.95),
-                    self._calc_item(elem_id, '剪应力', context, 'GB50017-2017 7.1.2', 'τ = V/Aw <= f_v', 0.95),
-                    self._calc_item(elem_id, '折算应力', context, 'GB50017-2017 7.1.4', 'sqrt(σ^2 + 3τ^2) <= f', 0.95),
-                ],
-            },
-            {
-                'name': '稳定验算',
-                'items': [
-                    self._calc_item(elem_id, '整体稳定', context, 'GB50017-2017 8.2.1', 'N/(φ*A*f) <= 1.0', 1.0),
-                    self._calc_item(elem_id, '局部稳定', context, 'GB50017-2017 8.4.1', 'b/t <= λ_lim', 1.0),
-                ],
-            },
-            {
-                'name': '刚度验算',
-                'items': [
-                    self._calc_item(elem_id, '长细比', context, 'GB50017-2017 8.3.1', 'λ = l0/i <= λ_lim', 1.0),
-                    self._calc_item(elem_id, '挠度', context, 'GB50017-2017 10.2.1', 'f <= l/250', 1.0),
-                ],
-            },
-        ]
-        return self._build_element_result(elem_id, 'beam', checks, 'GB50017-2017')
-
-    def _check_seismic_element(self, elem_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
-        """抗震校核 (GB50011)"""
-        checks = [
-            {
-                'name': '截面抗震验算',
-                'items': [
-                    self._calc_item(elem_id, '轴压比', context, 'GB50011-2010 6.3.6', 'N/(fc*A) <= ξ_lim', 1.0),
-                    self._calc_item(elem_id, '剪跨比', context, 'GB50011-2010 6.3.7', 'a/h0 >= 2.0', 1.0),
-                ],
-            },
-            {
-                'name': '位移验算',
-                'items': [
-                    self._calc_item(elem_id, '弹性层间位移角', context, 'GB50011-2010 5.5.1', 'θ_e <= θ_lim', 1.0),
-                ],
-            },
-        ]
-        return self._build_element_result(elem_id, 'column', checks, 'GB50011-2010')
 
     def _build_element_result(self, elem_id: str, element_type: str, checks: List[Dict[str, Any]], code_version: str) -> Dict[str, Any]:
         all_items = [item for check in checks for item in check.get('items', [])]
@@ -231,8 +211,14 @@ class CodeChecker:
 
     def _load_rules(self, code: str) -> Dict[str, Any]:
         """加载规范规则"""
+        rule_loader = getattr(self.skill_module, 'get_rules', None)
+        if callable(rule_loader):
+            loaded = rule_loader()
+            if isinstance(loaded, dict):
+                return loaded
+
         return {
             'code': code,
             'version': 'v1-minimal',
-            'rules': []
+            'rules': [],
         }

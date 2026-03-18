@@ -23,6 +23,7 @@ import {
   buildCodeCheckInput,
   buildCodeCheckSummaryText,
   executeCodeCheckDomain,
+  resolveCodeCheckDesignCodeFromSkillIds,
 } from '../agent-skills/code-check/entry.js';
 import {
   inferAnalysisType,
@@ -859,7 +860,8 @@ export class AgentService {
     }
 
     const resolvedAnalysisType = workingSession.resolved?.analysisType || params.context?.analysisType || inferAnalysisType(this.policy, params.message);
-    const resolvedDesignCode = workingSession.resolved?.designCode || params.context?.designCode || 'GB50017';
+    const codeFromSkills = resolveCodeCheckDesignCodeFromSkillIds(skillIds);
+    const resolvedDesignCode = workingSession.resolved?.designCode || params.context?.designCode || codeFromSkills || 'GB50017';
     const resolvedAutoCodeCheck = workingSession.resolved?.autoCodeCheck ?? params.context?.autoCodeCheck ?? inferCodeCheckIntent(this.policy, params.message);
     const resolvedIncludeReport = workingSession.resolved?.includeReport ?? params.context?.includeReport ?? true;
     const resolvedReportFormat = workingSession.resolved?.reportFormat || params.context?.reportFormat || 'both';
@@ -1878,7 +1880,7 @@ export class AgentService {
   }
 
   private isNoSkillMode(skillIds?: string[]): boolean {
-    return Array.isArray(skillIds) && skillIds.length === 0;
+    return !Array.isArray(skillIds) || skillIds.length === 0;
   }
 
   private async textToModelDraftWithoutSkills(
@@ -1886,16 +1888,28 @@ export class AgentService {
     existingState: DraftState | undefined,
     locale: AppLocale,
   ): Promise<DraftResult> {
-    const llmPreferred = this.llm !== null;
     const noSkillState = normalizeNoSkillDraftState(existingState || { inferredType: 'unknown', updatedAt: Date.now() });
+
+    if (!this.llm) {
+      const configError = locale === 'zh'
+        ? 'LLM 尚未配置。请在 .env 文件中设置 LLM_API_KEY、LLM_MODEL 和 LLM_BASE_URL。'
+        : 'LLM is not configured. Please set LLM_API_KEY, LLM_MODEL, and LLM_BASE_URL in your .env file.';
+      return {
+        inferredType: noSkillState.inferredType,
+        missingFields: [configError],
+        extractionMode: 'llm',
+        model: undefined,
+        stateToPersist: noSkillState,
+      };
+    }
 
     const model = await tryNoSkillLlmBuildGenericModel(this.llm, message, noSkillState, locale);
     const missingFields = model ? [] : computeNoSkillMissingFields();
 
     return {
       inferredType: noSkillState.inferredType,
-      missingFields: model ? [] : missingFields,
-      extractionMode: llmPreferred ? 'llm' : 'rule-based',
+      missingFields,
+      extractionMode: 'llm',
       model,
       stateToPersist: noSkillState,
     };

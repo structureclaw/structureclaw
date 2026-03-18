@@ -1,15 +1,12 @@
 import type { AxiosInstance } from 'axios';
 import type { AppLocale } from '../../services/locale.js';
+import {
+  resolveCodeCheckRule,
+} from './registry.js';
+import type { CodeCheckDomainInput } from './types.js';
 
-export interface CodeCheckDomainInput extends Record<string, unknown> {
-  modelId: string;
-  code: string;
-  elements: string[];
-  context: {
-    analysisSummary: Record<string, unknown>;
-    utilizationByElement: Record<string, unknown>;
-  };
-}
+export type { CodeCheckDomainInput } from './types.js';
+export { resolveCodeCheckDesignCodeFromSkillIds } from './registry.js';
 
 export function extractElementIds(model: Record<string, unknown> | undefined): string[] {
   if (!model) {
@@ -69,14 +66,8 @@ export async function executeCodeCheckDomain(
   input: CodeCheckDomainInput,
   engineId?: string,
 ): Promise<unknown> {
-  const codeChecked = await engineClient.post('/code-check', {
-    model_id: input.modelId,
-    code: input.code,
-    elements: input.elements,
-    context: input.context,
-    engineId,
-  });
-  return codeChecked.data;
+  const rule = resolveCodeCheckRule(input.code);
+  return rule.execute(engineClient, input, engineId);
 }
 
 export function buildCodeCheckSummaryText(options: {

@@ -4,9 +4,50 @@ import { AgentService } from '../dist/services/agent.js';
 import { prisma } from '../dist/utils/database.js';
 import { redis } from '../dist/utils/redis.js';
 
+function createServiceWithDefaultSkills() {
+  const svc = new AgentService();
+  const defaultSkillIds = svc.listSkills().map((skill) => skill.id);
+
+  const originalRun = svc.run.bind(svc);
+  svc.run = async (params) => {
+    const context = params?.context || {};
+    if (context.skillIds !== undefined) {
+      return originalRun(params);
+    }
+    return originalRun({
+      ...params,
+      context: {
+        ...context,
+        skillIds: defaultSkillIds,
+      },
+    });
+  };
+
+  const originalTextToModelDraft = svc.textToModelDraft.bind(svc);
+  svc.textToModelDraft = async (message, existingState, locale, skillIds) => (
+    originalTextToModelDraft(
+      message,
+      existingState,
+      locale,
+      skillIds === undefined ? defaultSkillIds : skillIds,
+    )
+  );
+
+  const originalGetConversationSessionSnapshot = svc.getConversationSessionSnapshot.bind(svc);
+  svc.getConversationSessionSnapshot = async (conversationId, locale, skillIds) => (
+    originalGetConversationSessionSnapshot(
+      conversationId,
+      locale,
+      skillIds === undefined ? defaultSkillIds : skillIds,
+    )
+  );
+
+  return svc;
+}
+
 describe('AgentService orchestration', () => {
   test('should execute analyze -> code-check -> report closed loop', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     svc.engineClient.post = async (path, payload) => {
       if (path === '/validate') {
@@ -69,7 +110,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should clear stored conversation sessions', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     const deletedKeys = [];
     redis.del = async (...keys) => {
       deletedKeys.push(...keys);
@@ -85,7 +126,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should pass engineId through validate analyze and code-check calls', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     const calls = [];
     svc.engineClient.post = async (path, payload) => {
@@ -147,7 +188,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should fail when code-check fails in closed loop', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     svc.engineClient.post = async (path, payload) => {
       if (path === '/validate') {
@@ -200,7 +241,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should export report artifacts to files when reportOutput=file', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     svc.engineClient.post = async (path, payload) => {
       if (path === '/validate') {
@@ -263,7 +304,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should keep clarification prompts in English when locale=en', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const result = await svc.run({
@@ -282,7 +323,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should merge rule-extracted numeric follow-up when llm extraction is partial', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     svc.tryLlmExtract = async () => ({ inferredType: 'beam' });
 
@@ -305,7 +346,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should not repeat beam span after a follow-up value in chat mode', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const first = await svc.run({
@@ -335,7 +376,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should not ask for the same span again after a follow-up value in chat mode', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const first = await svc.run({
@@ -366,7 +407,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should shrink English missing fields after a span-only follow-up', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const first = await svc.run({
@@ -399,7 +440,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should shrink beam load detail prompts after type and position are provided', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const first = await svc.run({
@@ -433,7 +474,7 @@ describe('AgentService orchestration', () => {
 
 
   test('should not synthesize template model in no-skill mode when llm is unavailable', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const draft = await svc.textToModelDraft('生成一个跨度10m的简支梁，荷载在4m处，一个集中荷载10kN', undefined, 'zh', []);
@@ -444,7 +485,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should stay in collecting state in no-skill mode when llm is unavailable', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const result = await svc.run({
@@ -464,7 +505,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should keep no-skill chat generic even when message contains template keywords', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const result = await svc.run({
@@ -484,7 +525,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should keep inferredType unknown in no-skill mode even when llm extraction suggests template type', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
     svc.llm = {
       invoke: async () => {
@@ -505,7 +546,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should ignore template support fields in no-skill state even when llm extraction returns them', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
     svc.llm = {
       invoke: async () => {
@@ -529,7 +570,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should ignore categorical loadPosition in no-skill state', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
     svc.llm = {
       invoke: async () => {
@@ -553,7 +594,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should ignore categorical loadType in no-skill state', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
     svc.llm = {
       invoke: async () => {
@@ -577,7 +618,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should strip skill metadata from no-skill state normalization', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const draft = await svc.textToModelDraft(
@@ -614,7 +655,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should sanitize providedValues in no-skill mode without scenario carry-over', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     const conversationId = 'conv-no-skill-provided-values-sanitize';
     await svc.clearConversationSession(conversationId);
@@ -658,7 +699,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should clear scenario carry-over when switching an existing conversation to no-skill mode', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     const conversationId = 'conv-switch-skill-to-no-skill';
     await svc.clearConversationSession(conversationId);
@@ -704,7 +745,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should keep llm extractionMode in no-skill when llm extraction falls back', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
     svc.llm = {
       invoke: async () => {
@@ -725,7 +766,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should fallback to generic llm model when enabled skills cannot match request', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = {
       invoke: async () => ({
         content: '{"schema_version":"1.0.0","unit_system":"SI","nodes":[],"elements":[],"materials":[],"sections":[],"load_cases":[],"load_combinations":[]}',
@@ -746,7 +787,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should execute analyze in no-skill mode when computable model is provided', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     svc.engineClient.post = async (path, payload) => {
       if (path === '/validate') {
@@ -800,7 +841,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should block no-skill execute when computable model is unavailable', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const result = await svc.run({
@@ -821,7 +862,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should continue to analyze when validate returns an upstream 502', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     svc.engineClient.post = async (path, payload) => {
       if (path === '/validate') {
@@ -891,7 +932,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should retry analyze when the engine returns a transient 502', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     let analyzeAttempts = 0;
     svc.engineClient.post = async (path, payload) => {
@@ -946,7 +987,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should report engine unavailable when analyze keeps returning 502', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     let analyzeAttempts = 0;
     svc.engineClient.post = async (path) => {
@@ -988,7 +1029,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should generate English summaries and markdown when locale=en', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     svc.engineClient.post = async (path, payload) => {
       if (path === '/validate') {
@@ -1050,7 +1091,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should route steel frame requests to the dedicated frame scenario', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const result = await svc.run({
@@ -1071,7 +1112,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should block unsupported scenarios from silently falling back to beam extraction', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const result = await svc.run({
@@ -1083,14 +1124,14 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.interaction?.detectedScenario).toBe('bridge');
-    expect(result.interaction?.fallbackSupportNote).toContain('桥梁');
-    expect(result.interaction?.missingCritical).toContain('结构体系/构件拓扑描述（不限类型，可直接给结构模型JSON）');
-    expect(result.response).toContain('识别场景：桥梁');
+    expect(result.interaction?.detectedScenario).not.toBe('beam');
+    expect(result.interaction?.fallbackSupportNote).toBeUndefined();
+    expect(result.response).toContain('当前所选技能未匹配到适用场景');
+    expect(result.response).toContain('回退到通用建模能力');
   });
 
   test('should build a complete 2d frame model from regular frame parameters', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const draft = await svc.textToModelDraft('2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN', undefined, 'zh');
@@ -1109,7 +1150,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should build a complete 3d frame model from regular grid parameters', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const draft = await svc.textToModelDraft('3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN，x向水平荷载18kN，y向水平荷载12kN', undefined, 'zh');
@@ -1126,7 +1167,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should parse 3d frame lateral loads when horizontal-load wording precedes directional values', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const draft = await svc.textToModelDraft(
@@ -1147,7 +1188,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should mirror generic horizontal-load wording to both axes in 3d frame follow-up context', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const first = await svc.run({
@@ -1173,7 +1214,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should parse chinese two-direction horizontal-load wording in a single 3d frame sentence', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const draft = await svc.textToModelDraft(
@@ -1195,7 +1236,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should prefer llm-extracted frame floor loads for natural combined load wording', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = {
       invoke: async () => ({
         content: JSON.stringify({
@@ -1232,7 +1273,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should keep llm beam load semantics when rules disagree', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = {
       invoke: async () => ({
         content: JSON.stringify({
@@ -1257,7 +1298,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should keep llm portal-frame load semantics when rules disagree', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = {
       invoke: async () => ({
         content: JSON.stringify({
@@ -1282,7 +1323,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should keep llm truss load semantics when rules disagree', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = {
       invoke: async () => ({
         content: JSON.stringify({
@@ -1306,7 +1347,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should keep llm double-span values when rules disagree', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = {
       invoke: async () => ({
         content: JSON.stringify({
@@ -1331,7 +1372,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should parse natural chinese frame geometry phrases in rule fallback mode', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const draft = await svc.textToModelDraft('我想设计一个三层框架，x方向4跨，间隔3m，y方向3跨间隔也是3m，每层3m', undefined, 'zh');
@@ -1349,7 +1390,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should upgrade a 2d frame chat session to 3d when llm extracts y-direction loads', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = {
       invoke: async (prompt) => {
         const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
@@ -1411,7 +1452,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should accumulate frame follow-up phrases for story heights and lateral loads', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const first = await svc.run({
@@ -1447,7 +1488,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should merge 2d frame vertical and lateral loads across chat turns', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const first = await svc.run({
@@ -1476,7 +1517,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should merge 3d frame y-direction lateral loads without dropping existing floor loads', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const first = await svc.run({
@@ -1506,7 +1547,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should expose a conversation session snapshot for context restoration', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     await svc.run({
@@ -1527,7 +1568,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should persist agent chat messages for conversation history restoration', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     const originalCreateMany = prisma.message.createMany;
     const originalFindUnique = prisma.conversation.findUnique;
@@ -1558,7 +1599,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should keep regular frame chat in model stage until frame geometry is complete', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const result = await svc.run({
@@ -1577,7 +1618,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should advance chat guidance to load stage once portal geometry is known', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const result = await svc.run({
@@ -1597,7 +1638,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should return synchronized model once chat has a complete structural model', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const collecting = await svc.run({
@@ -1629,7 +1670,7 @@ describe('AgentService orchestration', () => {
   });
 
   test('should return synchronized frame model before noncritical report preferences are ready', async () => {
-    const svc = new AgentService();
+    const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const collecting = await svc.run({

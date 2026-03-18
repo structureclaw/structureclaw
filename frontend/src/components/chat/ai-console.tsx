@@ -1433,11 +1433,6 @@ export function AIConsole() {
     }
   }, [latestResultVisualizationSnapshot])
 
-  const defaultSkillIds = useMemo(
-    () => availableSkills.filter((skill) => skill.autoLoadByDefault).map((skill) => skill.id),
-    [availableSkills]
-  )
-
   const skillDomainById = useMemo<Record<string, SkillDomain>>(() => {
     const map: Record<string, SkillDomain> = {}
     const matrixMap = capabilityMatrix?.skillDomainById
@@ -1459,6 +1454,10 @@ export function AIConsole() {
 
     availableSkills.forEach((skill) => {
       if (!map[skill.id]) {
+        if (skill.id.startsWith('code-check-')) {
+          map[skill.id] = 'code-check'
+          return
+        }
         map[skill.id] = 'unknown'
       }
     })
@@ -1648,7 +1647,7 @@ export function AIConsole() {
         }
         const skills = payload as AgentSkillSummary[]
         setAvailableSkills(skills)
-        setSelectedSkillIds((current) => (current.length > 0 ? current : skills.filter((skill) => skill.autoLoadByDefault).map((skill) => skill.id)))
+        setSelectedSkillIds((current) => (current.length > 0 ? current : []))
       } catch {
         if (active) {
           setAvailableSkills([])
@@ -1938,7 +1937,7 @@ export function AIConsole() {
       return null
     }
 
-    const targetSkillIds = selectedSkillIds.length > 0 ? selectedSkillIds : defaultSkillIds
+    const targetSkillIds = selectedSkillIds
     let intersection: Set<string> | null = null
 
     for (const skillId of targetSkillIds) {
@@ -1955,7 +1954,7 @@ export function AIConsole() {
     }
 
     return intersection
-  }, [capabilityMatrix, defaultSkillIds, selectedSkillIds])
+  }, [capabilityMatrix, selectedSkillIds])
 
   const compatibleEnabledEngines = useMemo(() => {
     if (!matrixCompatibleEngineIds) {
@@ -1967,7 +1966,7 @@ export function AIConsole() {
   const engineCandidatesFilteredBySkills = matrixCompatibleEngineIds !== null
 
   const matrixReasonTextsByEngine = useMemo<Record<string, string[]>>(() => {
-    const targetSkillIds = selectedSkillIds.length > 0 ? selectedSkillIds : defaultSkillIds
+    const targetSkillIds = selectedSkillIds
     const reasonsBySkill = capabilityMatrix?.filteredEngineReasonsBySkill
     if (!reasonsBySkill || targetSkillIds.length === 0) {
       return {}
@@ -1990,7 +1989,7 @@ export function AIConsole() {
     }
 
     return map
-  }, [capabilityMatrix, defaultSkillIds, selectedSkillIds, t])
+  }, [capabilityMatrix, selectedSkillIds, t])
 
   const filteredOutEngineDetails = useMemo(() => {
     if (!matrixCompatibleEngineIds) {
@@ -2363,7 +2362,7 @@ export function AIConsole() {
       const preferArchiveState = Boolean(archived && archivedUpdatedAt > backendUpdatedAt)
       const nextAnalysisType = session?.resolved?.analysisType || archived?.analysisType || 'static'
       const nextDesignCode = session?.resolved?.designCode || archived?.designCode || 'GB50017'
-      const nextSelectedSkillIds = archived?.selectedSkillIds?.length ? archived.selectedSkillIds : defaultSkillIds
+      const nextSelectedSkillIds = archived?.selectedSkillIds?.length ? archived.selectedSkillIds : []
       const nextSelectedEngineId = archived?.selectedEngineId || 'auto'
       const nextLatestResult = preferArchiveState
         ? pickPreferredLatestResult(archived?.latestResult, backendSnapshots?.latestResult)
@@ -2418,7 +2417,7 @@ export function AIConsole() {
         )
         setAnalysisType(archived.analysisType || 'static')
         setDesignCode(archived.designCode || 'GB50017')
-        setSelectedSkillIds(archived.selectedSkillIds?.length ? archived.selectedSkillIds : defaultSkillIds)
+        setSelectedSkillIds(archived.selectedSkillIds?.length ? archived.selectedSkillIds : [])
         setSelectedEngineId(archived.selectedEngineId || 'auto')
         setModelSyncMessage(archived.modelSyncMessage || '')
         const archivedLatestResult = normalizeAgentResultPayload(archived.latestResult || null)
@@ -2449,7 +2448,7 @@ export function AIConsole() {
     setModelText('')
     setAnalysisType('static')
     setDesignCode('GB50017')
-    setSelectedSkillIds(defaultSkillIds)
+    setSelectedSkillIds([])
     setSelectedEngineId('auto')
     setModelSyncMessage('')
     setLatestResult(null)
@@ -2615,11 +2614,12 @@ export function AIConsole() {
     try {
       const nextConversationId = await ensureConversation(trimmedInput)
       activeConversationId = nextConversationId
+      const explicitSkillIds = selectedSkillIds.length > 0 ? selectedSkillIds : undefined
       const contextPayload =
         action === 'execute'
           ? {
               locale,
-              skillIds: selectedSkillIds,
+              skillIds: explicitSkillIds,
               engineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
               model: parsedModel.model,
               modelFormat: parsedModel.model ? 'structuremodel-v1' : undefined,
@@ -2633,7 +2633,7 @@ export function AIConsole() {
             }
           : {
               locale,
-              skillIds: selectedSkillIds,
+              skillIds: explicitSkillIds,
               engineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
             }
       const promptSnapshot = buildPromptSnapshot(trimmedInput, contextPayload as Record<string, unknown>)

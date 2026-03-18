@@ -60,6 +60,9 @@ const run = async () => {
     payload: {
       message: 'auto without model',
       mode: 'auto',
+      context: {
+        skillIds: ['beam'],
+      },
     },
   });
   assert(autoChatResp.statusCode === 200, 'auto chat response should be 200');

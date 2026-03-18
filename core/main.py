@@ -11,9 +11,7 @@ from typing import List, Dict, Any, Optional
 import uvicorn
 import logging
 
-from design.concrete import ConcreteDesigner
-from design.code_check import CodeChecker
-from converters import get_converter, supported_formats
+from skill_bridge import SkillNotLoadedError, build_missing_skill_detail, load_skill_symbol
 from engines import AnalysisEngineRegistry
 from schemas.structure_model_v1 import StructureModelV1
 from schemas.migrations import (
@@ -24,6 +22,21 @@ from schemas.migrations import (
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _supported_formats() -> List[str]:
+    provider = load_skill_symbol("geometry-input/converters/registry.py", "supported_formats")
+    return provider()
+
+
+def _get_converter(format_name: str):
+    resolver = load_skill_symbol("geometry-input/converters/registry.py", "get_converter")
+    return resolver(format_name)
+
+
+def _create_concrete_designer():
+    cls = load_skill_symbol("material-constitutive/concrete.py", "ConcreteDesigner")
+    return cls()
 
 app = FastAPI(
     title="StructureClaw Analysis Engine",
@@ -117,10 +130,18 @@ async def structure_model_schema():
 @app.get("/schema/converters")
 async def converter_schema():
     """返回已支持的格式转换器"""
+    try:
+        formats = _supported_formats()
+        warning = None
+    except SkillNotLoadedError as error:
+        formats = []
+        warning = build_missing_skill_detail(error, capability="converter schema")
+
     return {
-        "supportedFormats": supported_formats(),
+        "supportedFormats": formats,
         "defaultSourceFormat": "structuremodel-v1",
         "defaultTargetFormat": "structuremodel-v1",
+        "warning": warning,
     }
 
 
@@ -183,25 +204,29 @@ async def convert_structure_model(request: ConvertRequest):
             },
         )
 
-    source_converter = get_converter(request.source_format)
+    try:
+        source_converter = _get_converter(request.source_format)
+    except SkillNotLoadedError as error:
+        raise HTTPException(status_code=503, detail=build_missing_skill_detail(error, capability="model conversion"))
+
     if source_converter is None:
         raise HTTPException(
             status_code=400,
             detail={
                 "errorCode": "UNSUPPORTED_SOURCE_FORMAT",
                 "message": f"source_format '{request.source_format}' is not supported",
-                "supportedFormats": supported_formats(),
+                "supportedFormats": _supported_formats(),
             },
         )
 
-    target_converter = get_converter(request.target_format)
+    target_converter = _get_converter(request.target_format)
     if target_converter is None:
         raise HTTPException(
             status_code=400,
             detail={
                 "errorCode": "UNSUPPORTED_TARGET_FORMAT",
                 "message": f"target_format '{request.target_format}' is not supported",
-                "supportedFormats": supported_formats(),
+                "supportedFormats": _supported_formats(),
             },
         )
 
@@ -306,6 +331,9 @@ async def code_check(request: CodeCheckRequest):
         )
         return result
 
+    except HTTPException:
+        raise
+
     except Exception as e:
         logger.error(f"Code check failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -317,9 +345,12 @@ async def design_beam(params: Dict[str, Any]):
     梁截面设计
     """
     try:
-        designer = ConcreteDesigner()
+        designer = _create_concrete_designer()
         result = designer.design_beam(params)
         return result
+
+    except SkillNotLoadedError as error:
+        raise HTTPException(status_code=503, detail=build_missing_skill_detail(error, capability="beam design"))
 
     except Exception as e:
         logger.error(f"Beam design failed: {str(e)}")
@@ -332,9 +363,12 @@ async def design_column(params: Dict[str, Any]):
     柱截面设计
     """
     try:
-        designer = ConcreteDesigner()
+        designer = _create_concrete_designer()
         result = designer.design_column(params)
         return result
+
+    except SkillNotLoadedError as error:
+        raise HTTPException(status_code=503, detail=build_missing_skill_detail(error, capability="column design"))
 
     except Exception as e:
         logger.error(f"Column design failed: {str(e)}")

@@ -12,8 +12,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from fastapi import HTTPException
 
-from converters import supported_formats
-from design.code_check import CodeChecker
+from skill_bridge import SkillNotLoadedError, build_missing_skill_detail, load_skill_symbol
 from fem.dynamic_analysis import DynamicAnalyzer
 from fem.seismic_analysis import SeismicAnalyzer
 from fem.static_analysis import StaticAnalyzer
@@ -23,6 +22,11 @@ logger = logging.getLogger(__name__)
 
 ENGINE_MANIFEST_ENV = "ANALYSIS_ENGINE_MANIFEST_PATH"
 _UNSET = object()
+
+
+def _create_code_checker(code: str):
+    cls = load_skill_symbol("code-check/code_check.py", "CodeChecker")
+    return cls(code)
 
 
 @dataclass
@@ -207,8 +211,14 @@ class AnalysisEngineRegistry:
                 payload["engineId"] = engine_id
             result = self._post_to_http_engine(manifest, "/code-check", payload)
         else:
-            checker = CodeChecker(code)
-            result = checker.check(model_id, elements, context)
+            try:
+                checker = _create_code_checker(code)
+                result = checker.check(model_id, elements, context)
+            except SkillNotLoadedError as error:
+                raise HTTPException(
+                    status_code=503,
+                    detail=build_missing_skill_detail(error, capability="code-check"),
+                )
 
         if isinstance(result, dict):
             result["meta"] = self._build_engine_meta(selection)
