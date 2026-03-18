@@ -23,6 +23,7 @@ import {
   buildCodeCheckInput,
   buildCodeCheckSummaryText,
   executeCodeCheckDomain,
+  resolveCodeCheckDesignCodeFromSkillIds,
 } from '../agent-skills/code-check/entry.js';
 import {
   inferAnalysisType,
@@ -859,7 +860,8 @@ export class AgentService {
     }
 
     const resolvedAnalysisType = workingSession.resolved?.analysisType || params.context?.analysisType || inferAnalysisType(this.policy, params.message);
-    const resolvedDesignCode = workingSession.resolved?.designCode || params.context?.designCode || 'GB50017';
+    const codeFromSkills = resolveCodeCheckDesignCodeFromSkillIds(skillIds);
+    const resolvedDesignCode = workingSession.resolved?.designCode || params.context?.designCode || codeFromSkills || 'GB50017';
     const resolvedAutoCodeCheck = workingSession.resolved?.autoCodeCheck ?? params.context?.autoCodeCheck ?? inferCodeCheckIntent(this.policy, params.message);
     const resolvedIncludeReport = workingSession.resolved?.includeReport ?? params.context?.includeReport ?? true;
     const resolvedReportFormat = workingSession.resolved?.reportFormat || params.context?.reportFormat || 'both';
