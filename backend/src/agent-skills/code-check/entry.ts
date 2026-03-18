@@ -1,7 +1,6 @@
 import type { AxiosInstance } from 'axios';
 import type { AppLocale } from '../../services/locale.js';
 import {
-  resolveCodeCheckDesignCodeFromSkillIds,
   resolveCodeCheckRule,
 } from './registry.js';
 import type { CodeCheckDomainInput } from './types.js';
