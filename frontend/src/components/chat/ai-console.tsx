@@ -1382,6 +1382,7 @@ export function AIConsole() {
   const [isSending, setIsSending] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [skillsOpen, setSkillsOpen] = useState(false)
+  const [skillHubOpen, setSkillHubOpen] = useState(false)
   const [contextOpen, setContextOpen] = useState(false)
   const [analysisSettingsOpen, setAnalysisSettingsOpen] = useState(false)
   const [engineSettingsOpen, setEngineSettingsOpen] = useState(false)
@@ -1432,10 +1433,7 @@ export function AIConsole() {
     }
   }, [latestResultVisualizationSnapshot])
 
-  const defaultSkillIds = useMemo(
-    () => availableSkills.filter((skill) => skill.autoLoadByDefault).map((skill) => skill.id),
-    [availableSkills]
-  )
+  const defaultSkillIds = useMemo(() => [] as string[], [])
 
   const skillDomainById = useMemo<Record<string, SkillDomain>>(() => {
     const map: Record<string, SkillDomain> = {}
@@ -1645,9 +1643,7 @@ export function AIConsole() {
         if (!active || !Array.isArray(payload)) {
           return
         }
-        const skills = payload as AgentSkillSummary[]
-        setAvailableSkills(skills)
-        setSelectedSkillIds((current) => (current.length > 0 ? current : skills.filter((skill) => skill.autoLoadByDefault).map((skill) => skill.id)))
+        setAvailableSkills(payload as AgentSkillSummary[])
       } catch {
         if (active) {
           setAvailableSkills([])
@@ -3303,81 +3299,98 @@ export function AIConsole() {
 
                       <div className="rounded-2xl border border-border/70 bg-background/60 p-2.5 dark:border-white/10 dark:bg-slate-950/30">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-xs font-medium text-foreground">{t('skillHubSectionTitle')}</p>
-                          <p className="text-xs text-muted-foreground">{t('skillHubSectionHint')}</p>
-                        </div>
-                        <p className="mb-2 rounded-md border border-amber-400/30 bg-amber-300/10 px-2.5 py-1.5 text-[11px] leading-5 text-amber-700 dark:text-amber-200">
-                          {t('skillHubDemoDisclaimer')}
-                        </p>
-                        <div className="mb-2 flex flex-wrap gap-2">
-                          <Input
-                            value={skillHubKeyword}
-                            onChange={(event) => setSkillHubKeyword(event.target.value)}
-                            placeholder={t('skillHubSearchPlaceholder')}
-                            className="h-9 max-w-[220px]"
-                          />
-                          <select
-                            value={skillHubDomainFilter}
-                            onChange={(event) => setSkillHubDomainFilter(event.target.value as SkillDomain | 'all')}
-                            className="h-9 rounded-md border border-border/70 bg-background px-3 text-xs text-foreground dark:border-white/10 dark:bg-black/20"
-                          >
-                            <option value="all">{t('skillHubDomainAll')}</option>
-                            {skillHubDomainOptions.map((domain) => (
-                              <option key={domain} value={domain}>{resolveSkillDomainLabel(domain, t)}</option>
-                            ))}
-                          </select>
-                        </div>
-
-                        {skillHubLoading ? (
-                          <p className="text-xs text-muted-foreground">{t('skillHubLoading')}</p>
-                        ) : (
-                          <div className="space-y-2">
-                            {skillHubVisibleCatalog.length === 0 && (
-                              <p className="text-xs text-muted-foreground">{t('skillHubNoResults')}</p>
-                            )}
-                            {skillHubVisibleCatalog.map((item) => {
-                              const domain = normalizeSkillDomain(item.domain)
-                              const label = locale === 'zh' ? (item.name?.zh || item.id) : (item.name?.en || item.id)
-                              const installed = Boolean(skillHubInstalledById[item.id] || item.installed)
-                              const enabled = installed && (skillHubInstalledById[item.id]?.enabled ?? item.enabled ?? false)
-                              const runningAction = skillHubActionById[item.id]
-                              return (
-                                <div key={item.id} className="rounded-xl border border-border/70 bg-background/70 px-3 py-2 dark:border-white/10 dark:bg-black/20">
-                                  <div className="flex flex-wrap items-center justify-between gap-2">
-                                    <div>
-                                      <p className="text-sm font-medium text-foreground">{label}</p>
-                                      <p className="text-xs text-muted-foreground">{resolveSkillDomainLabel(domain, t)}</p>
-                                    </div>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <Badge variant="outline" className="text-[10px]">
-                                        {installed ? (enabled ? t('skillHubStatusEnabled') : t('skillHubStatusDisabled')) : t('skillHubStatusNotInstalled')}
-                                      </Badge>
-                                      {!installed && (
-                                        <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'install')}>
-                                          {runningAction === 'install' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubInstall')}
-                                        </Button>
-                                      )}
-                                      {installed && enabled && (
-                                        <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'disable')}>
-                                          {runningAction === 'disable' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubDisable')}
-                                        </Button>
-                                      )}
-                                      {installed && !enabled && (
-                                        <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'enable')}>
-                                          {runningAction === 'enable' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubEnable')}
-                                        </Button>
-                                      )}
-                                      {installed && (
-                                        <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'uninstall')}>
-                                          {runningAction === 'uninstall' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubUninstall')}
-                                        </Button>
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              )
-                            })}
+                          <div>
+                            <p className="text-xs font-medium text-foreground">{t('skillHubSectionTitle')}</p>
+                            <p className="text-xs text-muted-foreground">{t('skillHubSectionHint')}</p>
                           </div>
+                          <button
+                            type="button"
+                            className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground transition hover:text-foreground dark:border-white/10 dark:bg-white/5"
+                            onClick={() => setSkillHubOpen((current) => !current)}
+                          >
+                            {skillHubOpen ? t('skillHubCollapse') : t('skillHubExpand')}
+                          </button>
+                        </div>
+                        {skillHubOpen && (
+                          <>
+                            <p className="mb-2 rounded-md border border-amber-400/30 bg-amber-300/10 px-2.5 py-1.5 text-[11px] leading-5 text-amber-700 dark:text-amber-200">
+                              {t('skillHubDemoDisclaimer')}
+                            </p>
+                            <div className="mb-2 flex flex-wrap gap-2">
+                              <Input
+                                value={skillHubKeyword}
+                                onChange={(event) => setSkillHubKeyword(event.target.value)}
+                                placeholder={t('skillHubSearchPlaceholder')}
+                                className="h-9 max-w-[220px]"
+                              />
+                              <select
+                                value={skillHubDomainFilter}
+                                onChange={(event) => setSkillHubDomainFilter(event.target.value as SkillDomain | 'all')}
+                                className="h-9 rounded-md border border-border/70 bg-background px-3 text-xs text-foreground dark:border-white/10 dark:bg-black/20"
+                              >
+                                <option value="all">{t('skillHubDomainAll')}</option>
+                                {skillHubDomainOptions.map((domain) => (
+                                  <option key={domain} value={domain}>{resolveSkillDomainLabel(domain, t)}</option>
+                                ))}
+                              </select>
+                            </div>
+
+                            {skillHubLoading ? (
+                              <p className="text-xs text-muted-foreground">{t('skillHubLoading')}</p>
+                            ) : (
+                              <div className="space-y-2">
+                                {skillHubVisibleCatalog.length === 0 && (
+                                  <p className="text-xs text-muted-foreground">{t('skillHubNoResults')}</p>
+                                )}
+                                {skillHubVisibleCatalog.length > 0 && (
+                                  <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+                                    {skillHubVisibleCatalog.map((item) => {
+                                      const domain = normalizeSkillDomain(item.domain)
+                                      const label = locale === 'zh' ? (item.name?.zh || item.id) : (item.name?.en || item.id)
+                                      const installed = Boolean(skillHubInstalledById[item.id] || item.installed)
+                                      const enabled = installed && (skillHubInstalledById[item.id]?.enabled ?? item.enabled ?? false)
+                                      const runningAction = skillHubActionById[item.id]
+                                      return (
+                                        <div key={item.id} className="rounded-xl border border-border/70 bg-background/70 px-3 py-2 dark:border-white/10 dark:bg-black/20">
+                                          <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div>
+                                              <p className="text-sm font-medium text-foreground">{label}</p>
+                                              <p className="text-xs text-muted-foreground">{resolveSkillDomainLabel(domain, t)}</p>
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-2">
+                                              <Badge variant="outline" className="text-[10px]">
+                                                {installed ? (enabled ? t('skillHubStatusEnabled') : t('skillHubStatusDisabled')) : t('skillHubStatusNotInstalled')}
+                                              </Badge>
+                                              {!installed && (
+                                                <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'install')}>
+                                                  {runningAction === 'install' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubInstall')}
+                                                </Button>
+                                              )}
+                                              {installed && enabled && (
+                                                <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'disable')}>
+                                                  {runningAction === 'disable' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubDisable')}
+                                                </Button>
+                                              )}
+                                              {installed && !enabled && (
+                                                <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'enable')}>
+                                                  {runningAction === 'enable' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubEnable')}
+                                                </Button>
+                                              )}
+                                              {installed && (
+                                                <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'uninstall')}>
+                                                  {runningAction === 'uninstall' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubUninstall')}
+                                                </Button>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </>
                         )}
                       </div>
                     </div>
