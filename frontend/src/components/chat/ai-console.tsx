@@ -2614,11 +2614,12 @@ export function AIConsole() {
     try {
       const nextConversationId = await ensureConversation(trimmedInput)
       activeConversationId = nextConversationId
+      const explicitSkillIds = selectedSkillIds.length > 0 ? selectedSkillIds : undefined
       const contextPayload =
         action === 'execute'
           ? {
               locale,
-              skillIds: selectedSkillIds,
+              skillIds: explicitSkillIds,
               engineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
               model: parsedModel.model,
               modelFormat: parsedModel.model ? 'structuremodel-v1' : undefined,
@@ -2632,7 +2633,7 @@ export function AIConsole() {
             }
           : {
               locale,
-              skillIds: selectedSkillIds,
+              skillIds: explicitSkillIds,
               engineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
             }
       const promptSnapshot = buildPromptSnapshot(trimmedInput, contextPayload as Record<string, unknown>)
