@@ -288,12 +288,3 @@ class MidasTextV1Converter(FormatConverter):
             return float(raw)
         except Exception as exc:
             raise ValueError(f"line {line_no}: invalid number for {field}: '{raw}'") from exc
-
-
-try:
-    from skill_bridge import load_skill_module
-
-    _SKILL_MODULE = load_skill_module("geometry-input/converters/midas_text_v1_converter.py")
-    MidasTextV1Converter = _SKILL_MODULE.MidasTextV1Converter
-except Exception:
-    pass

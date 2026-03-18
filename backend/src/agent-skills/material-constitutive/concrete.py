@@ -372,12 +372,3 @@ class ConcreteDesigner:
             return f"承载力接近极限，建议加大截面或提高材料强度"
         else:
             return f"承载力不足，需加大截面至 {int(b*np.sqrt(ratio))}x{int(h*np.sqrt(ratio))}mm"
-
-
-try:
-    from skill_bridge import load_skill_module
-
-    _SKILL_MODULE = load_skill_module("material-constitutive/concrete.py")
-    ConcreteDesigner = _SKILL_MODULE.ConcreteDesigner
-except Exception:
-    pass

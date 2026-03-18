@@ -153,12 +153,3 @@ class SimpleV1Converter(FormatConverter):
             "name": combo.id,
             "factors": combo.factors,
         }
-
-
-try:
-    from skill_bridge import load_skill_module
-
-    _SKILL_MODULE = load_skill_module("geometry-input/converters/simple_v1_converter.py")
-    SimpleV1Converter = _SKILL_MODULE.SimpleV1Converter
-except Exception:
-    pass

@@ -16,12 +16,3 @@ class FormatConverter(ABC):
     @abstractmethod
     def from_v1(self, model: StructureModelV1) -> Dict[str, Any]:
         """Convert StructureModel v1 to target payload."""
-
-
-try:
-    from skill_bridge import load_skill_module
-
-    _SKILL_MODULE = load_skill_module("geometry-input/converters/base.py")
-    FormatConverter = _SKILL_MODULE.FormatConverter
-except Exception:
-    pass

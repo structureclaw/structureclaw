@@ -267,12 +267,3 @@ class SteelDesigner:
             rec.append(f"挠度超限，需增大截面刚度")
 
         return '；'.join(rec)
-
-
-try:
-    from skill_bridge import load_skill_module
-
-    _SKILL_MODULE = load_skill_module("material-constitutive/steel.py")
-    SteelDesigner = _SKILL_MODULE.SteelDesigner
-except Exception:
-    pass

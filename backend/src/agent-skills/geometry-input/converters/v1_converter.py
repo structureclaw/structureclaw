@@ -14,12 +14,3 @@ class StructureModelV1Converter(FormatConverter):
 
     def from_v1(self, model: StructureModelV1) -> Dict[str, Any]:
         return model.model_dump(mode="json")
-
-
-try:
-    from skill_bridge import load_skill_module
-
-    _SKILL_MODULE = load_skill_module("geometry-input/converters/v1_converter.py")
-    StructureModelV1Converter = _SKILL_MODULE.StructureModelV1Converter
-except Exception:
-    pass

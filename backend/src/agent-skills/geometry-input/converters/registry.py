@@ -23,13 +23,3 @@ def get_converter(format_name: str) -> FormatConverter | None:
 
 def supported_formats() -> List[str]:
     return sorted(_CONVERTERS.keys())
-
-
-try:
-    from skill_bridge import load_skill_module
-
-    _SKILL_MODULE = load_skill_module("geometry-input/converters/registry.py")
-    get_converter = _SKILL_MODULE.get_converter
-    supported_formats = _SKILL_MODULE.supported_formats
-except Exception:
-    pass

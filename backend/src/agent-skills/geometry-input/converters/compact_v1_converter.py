@@ -135,12 +135,3 @@ class CompactV1Converter(FormatConverter):
             },
             "meta": model.metadata,
         }
-
-
-try:
-    from skill_bridge import load_skill_module
-
-    _SKILL_MODULE = load_skill_module("geometry-input/converters/compact_v1_converter.py")
-    CompactV1Converter = _SKILL_MODULE.CompactV1Converter
-except Exception:
-    pass
