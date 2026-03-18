@@ -7,7 +7,7 @@ import { formatNumber } from '@/lib/utils'
 import { VisualizationModalShell } from './modal-shell'
 import { StructuralScene } from './structural-scene'
 import { VisualizationToolbar } from './toolbar'
-import type { VisualizationCase, VisualizationSnapshot, VisualizationViewMode } from './types'
+import type { VisualizationCase, VisualizationPlane, VisualizationSnapshot, VisualizationViewMode } from './types'
 
 function getCaseLabel(caseId: string, fallbackLabel: string, t: (key: MessageKey) => string) {
   if (caseId === 'model') return t('visualizationSourceModel')
@@ -71,6 +71,7 @@ export function StructuralVisualizationModal({
   t,
 }: StructuralVisualizationModalProps) {
   const [view, setView] = useState<VisualizationViewMode>('model')
+  const [plane, setPlane] = useState<VisualizationPlane>('xz')
   const [resetToken, setResetToken] = useState(0)
   const [activeCaseId, setActiveCaseId] = useState('')
   const [deformationScale, setDeformationScale] = useState(12)
@@ -88,6 +89,7 @@ export function StructuralVisualizationModal({
       return
     }
     setView(snapshot.availableViews[0] || 'model')
+    setPlane(snapshot.plane)
     setActiveCaseId(snapshot.defaultCaseId)
     setSelectedNodeId(null)
     setSelectedElementId(null)
@@ -146,8 +148,10 @@ export function StructuralVisualizationModal({
     <VisualizationModalShell
       onClose={onClose}
       onResetView={() => setResetToken((current) => current + 1)}
+      onPlaneChange={setPlane}
       onViewChange={setView}
       open={open}
+      selectedPlane={plane}
       selectedView={view}
       snapshot={snapshot}
       t={t}
@@ -380,6 +384,7 @@ export function StructuralVisualizationModal({
                 setSelectedLoadIndex(null)
               }}
               resetToken={resetToken}
+              plane={plane}
               selectedElementId={selectedElementId}
               selectedNodeId={selectedNodeId}
               showElementLabels={showElementLabels}

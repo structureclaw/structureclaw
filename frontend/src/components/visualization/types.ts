@@ -1,5 +1,6 @@
 export type VisualizationViewMode = 'model' | 'deformed' | 'forces' | 'reactions'
 export type VisualizationSource = 'model' | 'result'
+export type VisualizationPlane = 'xy' | 'xz' | 'yz'
 
 export type VisualizationVector3 = {
   x: number
@@ -58,7 +59,7 @@ export type VisualizationSnapshot = {
   title: string
   source: VisualizationSource
   dimension: 2 | 3
-  plane: 'xy' | 'xz'
+  plane: VisualizationPlane
   analysisType?: string
   availableViews: VisualizationViewMode[]
   defaultCaseId: string

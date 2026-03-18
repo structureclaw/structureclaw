@@ -6,14 +6,16 @@ import { Focus, Maximize2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { MessageKey } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
-import type { VisualizationSnapshot, VisualizationViewMode } from './types'
+import type { VisualizationPlane, VisualizationSnapshot, VisualizationViewMode } from './types'
 
 type VisualizationModalShellProps = {
   open: boolean
   snapshot: VisualizationSnapshot | null
   title: string
   selectedView: VisualizationViewMode
+  selectedPlane: VisualizationPlane
   onViewChange: (mode: VisualizationViewMode) => void
+  onPlaneChange: (plane: VisualizationPlane) => void
   onClose: () => void
   onResetView: () => void
   t: (key: MessageKey) => string
@@ -28,12 +30,22 @@ const VIEW_LABELS: Record<VisualizationViewMode, MessageKey> = {
   reactions: 'visualizationViewReactions',
 }
 
+const PLANE_LABELS: Record<VisualizationPlane, MessageKey> = {
+  xy: 'visualizationPlaneXY',
+  xz: 'visualizationPlaneXZ',
+  yz: 'visualizationPlaneYZ',
+}
+
+const PLANE_OPTIONS: VisualizationPlane[] = ['xz', 'xy', 'yz']
+
 export function VisualizationModalShell({
   open,
   snapshot,
   title,
   selectedView,
+  selectedPlane,
   onViewChange,
+  onPlaneChange,
   onClose,
   onResetView,
   t,
@@ -181,6 +193,24 @@ export function VisualizationModalShell({
                   type="button"
                 >
                   {t(VIEW_LABELS[view])}
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">{t('visualizationGridPlane')}</span>
+              {PLANE_OPTIONS.map((plane) => (
+                <button
+                  key={plane}
+                  className={cn(
+                    'rounded-full border px-3 py-1.5 text-xs font-medium transition',
+                    selectedPlane === plane
+                      ? 'border-cyan-300/50 bg-cyan-300/16 text-foreground'
+                      : 'border-border/70 bg-background/70 text-muted-foreground hover:border-cyan-300/30 hover:text-foreground dark:border-white/10 dark:bg-white/5'
+                  )}
+                  onClick={() => onPlaneChange(plane)}
+                  type="button"
+                >
+                  {t(PLANE_LABELS[plane])}
                 </button>
               ))}
             </div>

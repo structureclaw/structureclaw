@@ -5,12 +5,13 @@ import { Canvas } from '@react-three/fiber'
 import { Bounds, Html, Line, OrbitControls, OrthographicCamera, PerspectiveCamera } from '@react-three/drei'
 import * as THREE from 'three'
 import type { MessageKey } from '@/lib/i18n'
-import type { VisualizationCase, VisualizationSnapshot, VisualizationViewMode } from './types'
+import type { VisualizationCase, VisualizationPlane, VisualizationSnapshot, VisualizationViewMode } from './types'
 
 type ForceMetric = 'axial' | 'shear' | 'moment'
 
 type StructuralSceneProps = {
   snapshot: VisualizationSnapshot
+  plane: VisualizationPlane
   activeCase: VisualizationCase
   deformationScale: number
   forceMetric: ForceMetric
@@ -104,13 +105,28 @@ function roundUpNice(value: number) {
   return step * base
 }
 
-function getAdaptiveGridConfig(snapshot: VisualizationSnapshot) {
+function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: VisualizationPlane) {
   if (!snapshot.nodes.length) {
+    if (snapshot.dimension === 2) {
+      return {
+        size: 24,
+        divisions: 24,
+        position: [0, 0, -0.001] as [number, number, number],
+        rotation: [Math.PI / 2, 0, 0] as [number, number, number],
+      }
+    }
+
+    const defaultRotation: Record<VisualizationPlane, [number, number, number]> = {
+      xy: [Math.PI / 2, 0, 0],
+      xz: [0, 0, 0],
+      yz: [0, 0, Math.PI / 2],
+    }
+
     return {
       size: 24,
       divisions: 24,
       position: [0, -0.001, 0] as [number, number, number],
-      rotation: snapshot.dimension === 3 ? [0, 0, 0] as [number, number, number] : [Math.PI / 2, 0, 0] as [number, number, number],
+      rotation: defaultRotation[plane],
     }
   }
 
@@ -124,23 +140,45 @@ function getAdaptiveGridConfig(snapshot: VisualizationSnapshot) {
   const minZ = Math.min(...zs)
   const maxZ = Math.max(...zs)
 
+  const axisMin = { x: minX, y: minY, z: minZ }
+  const axisMax = { x: maxX, y: maxY, z: maxZ }
+  const planeAxes: Record<VisualizationPlane, { primary: 'x' | 'y'; secondary: 'y' | 'z'; normal: 'x' | 'y' | 'z' }> = {
+    xy: { primary: 'x', secondary: 'y', normal: 'z' },
+    xz: { primary: 'x', secondary: 'z', normal: 'y' },
+    yz: { primary: 'y', secondary: 'z', normal: 'x' },
+  }
+  const axes = planeAxes[plane]
+
   if (snapshot.dimension === 3) {
-    const spanX = Math.max(maxX - minX, 1)
-    const spanZ = Math.max(maxZ - minZ, 1)
-    const span = Math.max(spanX, spanZ)
+    const spanPrimary = Math.max(axisMax[axes.primary] - axisMin[axes.primary], 1)
+    const spanSecondary = Math.max(axisMax[axes.secondary] - axisMin[axes.secondary], 1)
+    const span = Math.max(spanPrimary, spanSecondary)
     const size = roundUpNice(span * 1.5)
     const divisions = Math.min(120, Math.max(8, Math.round(size / Math.max(span / 18, 0.25))))
+    const offset = Math.max(span * 0.01, 0.001)
+
+    const positionByPlane: Record<VisualizationPlane, [number, number, number]> = {
+      xy: [(minX + maxX) * 0.5, (minY + maxY) * 0.5, minZ - offset],
+      xz: [(minX + maxX) * 0.5, minY - offset, (minZ + maxZ) * 0.5],
+      yz: [minX - offset, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5],
+    }
+    const rotationByPlane: Record<VisualizationPlane, [number, number, number]> = {
+      xy: [Math.PI / 2, 0, 0],
+      xz: [0, 0, 0],
+      yz: [0, 0, Math.PI / 2],
+    }
+
     return {
       size,
       divisions,
-      position: [(minX + maxX) * 0.5, minY - Math.max(span * 0.01, 0.001), (minZ + maxZ) * 0.5] as [number, number, number],
-      rotation: [0, 0, 0] as [number, number, number],
+      position: positionByPlane[plane],
+      rotation: rotationByPlane[plane],
     }
   }
 
-  const secondaryMin = snapshot.plane === 'xy' ? minY : minZ
-  const secondaryMax = snapshot.plane === 'xy' ? maxY : maxZ
-  const spanPrimary = Math.max(maxX - minX, 1)
+  const spanPrimary = Math.max(axisMax[axes.primary] - axisMin[axes.primary], 1)
+  const secondaryMin = axisMin[axes.secondary]
+  const secondaryMax = axisMax[axes.secondary]
   const spanSecondary = Math.max(secondaryMax - secondaryMin, 1)
   const span = Math.max(spanPrimary, spanSecondary)
   const size = roundUpNice(span * 1.5)
@@ -149,7 +187,7 @@ function getAdaptiveGridConfig(snapshot: VisualizationSnapshot) {
   return {
     size,
     divisions,
-    position: [(minX + maxX) * 0.5, (secondaryMin + secondaryMax) * 0.5, -0.001] as [number, number, number],
+    position: [(axisMin[axes.primary] + axisMax[axes.primary]) * 0.5, (secondaryMin + secondaryMax) * 0.5, -0.001] as [number, number, number],
     rotation: [Math.PI / 2, 0, 0] as [number, number, number],
   }
 }
@@ -197,10 +235,14 @@ function ColorBar({
   )
 }
 
-function projectPosition(position: THREE.Vector3, plane: 'xy' | 'xz') {
-  return plane === 'xz'
-    ? new THREE.Vector3(position.x, position.z, 0)
-    : new THREE.Vector3(position.x, position.y, 0)
+function projectPosition(position: THREE.Vector3, plane: VisualizationPlane) {
+  if (plane === 'xz') {
+    return new THREE.Vector3(position.x, position.z, 0)
+  }
+  if (plane === 'yz') {
+    return new THREE.Vector3(position.y, position.z, 0)
+  }
+  return new THREE.Vector3(position.x, position.y, 0)
 }
 
 function ElementTube({
@@ -299,6 +341,7 @@ function SceneContent({
   showElementLabels,
   showNodeLabels,
   showUndeformed,
+  plane,
   snapshot,
   view,
   onSelectElement,
@@ -314,7 +357,7 @@ function SceneContent({
 }) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [hoveredElementId, setHoveredElementId] = useState<string | null>(null)
-  const gridConfig = useMemo(() => getAdaptiveGridConfig(snapshot), [snapshot])
+  const gridConfig = useMemo(() => getAdaptiveGridConfig(snapshot, plane), [snapshot, plane])
   const nodeMap = useMemo(
     () =>
       new Map(
@@ -363,10 +406,10 @@ function SceneContent({
                 : hoveredElementId === element.id
                   ? '#67e8f9'
                   : '#38bdf8'
-            const undeformedStart = snapshot.dimension === 2 ? projectPosition(startData.position, snapshot.plane) : startData.position
-            const undeformedEnd = snapshot.dimension === 2 ? projectPosition(endData.position, snapshot.plane) : endData.position
-            const currentStart = snapshot.dimension === 2 ? projectPosition(start, snapshot.plane) : start
-            const currentEnd = snapshot.dimension === 2 ? projectPosition(end, snapshot.plane) : end
+            const undeformedStart = snapshot.dimension === 2 ? projectPosition(startData.position, plane) : startData.position
+            const undeformedEnd = snapshot.dimension === 2 ? projectPosition(endData.position, plane) : endData.position
+            const currentStart = snapshot.dimension === 2 ? projectPosition(start, plane) : start
+            const currentEnd = snapshot.dimension === 2 ? projectPosition(end, plane) : end
 
             return (
               <group key={element.id}>
@@ -417,7 +460,7 @@ function SceneContent({
                       ? '#67e8f9'
                     : '#f8fafc'
             const position = view === 'deformed' ? nodeData.displacedPosition : nodeData.position
-            const finalPosition = snapshot.dimension === 2 ? projectPosition(position, snapshot.plane) : position
+            const finalPosition = snapshot.dimension === 2 ? projectPosition(position, plane) : position
             const reaction = activeCase.nodeResults[entry.id]?.reaction
             const arrowVector = reaction
               ? new THREE.Vector3(reaction.fx || 0, reaction.fy || 0, reaction.fz || 0)
@@ -462,14 +505,14 @@ function SceneContent({
                   </Html>
                 )}
                 {view === 'reactions' && arrowVector && arrowVector.length() > 0.0001 && (
-                  <VectorArrow color="#fb923c" origin={finalPosition} vector={snapshot.dimension === 2 ? projectPosition(arrowVector, snapshot.plane) : arrowVector} />
+                  <VectorArrow color="#fb923c" origin={finalPosition} vector={snapshot.dimension === 2 ? projectPosition(arrowVector, plane) : arrowVector} />
                 )}
                 {view === 'model' && loadVectors.map((vector, index) => (
                   <VectorArrow
                     color="#22c55e"
                     key={`${entry.id}-load-${index}`}
                     origin={finalPosition}
-                    vector={snapshot.dimension === 2 ? projectPosition(vector, snapshot.plane) : vector}
+                    vector={snapshot.dimension === 2 ? projectPosition(vector, plane) : vector}
                   />
                 ))}
               </group>
