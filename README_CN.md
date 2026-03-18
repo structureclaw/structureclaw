@@ -2,6 +2,10 @@
 
 面向 AEC 场景的 AI 协同结构工程工作台。
 
+## Demo
+
+![StructureClaw 演示](docs/demo.gif)
+
 ## 项目能力
 
 - 从自然语言需求到分析工件的结构工程闭环

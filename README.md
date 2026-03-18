@@ -2,6 +2,10 @@
 
 AI-assisted structural engineering workspace for AEC workflows.
 
+## Demo
+
+![StructureClaw Demo](docs/demo.gif)
+
 ## What You Get
 
 - Conversational engineering workflow from natural language to analysis artifacts
