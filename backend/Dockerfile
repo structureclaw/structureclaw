@@ -16,6 +16,7 @@ FROM node:20-slim AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production
+ENV PORT=8000
 
 # Install OpenSSL
 RUN apt-get update && \
@@ -32,6 +33,6 @@ COPY --from=builder /app/prisma ./prisma
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/src/agent-skills ./src/agent-skills
 
-EXPOSE 8000
+EXPOSE ${PORT}
 
 CMD ["npm", "start"]

@@ -21,6 +21,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
+ENV PORT=3000
 
 # Copy built files
 COPY --from=builder /app/.next ./.next
@@ -29,7 +30,7 @@ COPY --from=builder /app/package*.json ./
 COPY --from=builder /app/node_modules ./node_modules
 
 # Expose port
-EXPOSE 3000
+EXPOSE ${PORT}
 
 # Start server
 CMD ["npm", "start"]
