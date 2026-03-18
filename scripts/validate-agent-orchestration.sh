@@ -13,6 +13,42 @@ const assert = (cond, msg) => {
   }
 };
 
+const withDefaultSkills = (svc) => {
+  const defaultSkillIds = svc.listSkills().map((skill) => skill.id);
+
+  const originalRun = svc.run.bind(svc);
+  svc.run = async (params) => {
+    const context = params?.context || {};
+    if (context.skillIds !== undefined) {
+      return originalRun(params);
+    }
+    return originalRun({
+      ...params,
+      context: {
+        ...context,
+        skillIds: defaultSkillIds,
+      },
+    });
+  };
+
+  const originalRunStream = svc.runStream.bind(svc);
+  svc.runStream = (params) => {
+    const context = params?.context || {};
+    if (context.skillIds !== undefined) {
+      return originalRunStream(params);
+    }
+    return originalRunStream({
+      ...params,
+      context: {
+        ...context,
+        skillIds: defaultSkillIds,
+      },
+    });
+  };
+
+  return svc;
+};
+
 const run = async () => {
   process.env.LLM_API_KEY = '';
   process.env.OPENAI_API_KEY = '';
@@ -37,7 +73,7 @@ const run = async () => {
 
   // 1) missing model -> clarification
   {
-    const svc = new AgentService();
+    const svc = withDefaultSkills(new AgentService());
     const result = await svc.run({ message: '帮我算一下门式刚架' });
     assert(result.success === false, 'missing model should fail');
     assert(result.needsModelInput === true, 'missing model should require model input');
@@ -46,7 +82,7 @@ const run = async () => {
 
   // 2) validate failure path
   {
-    const svc = new AgentService();
+    const svc = withDefaultSkills(new AgentService());
     svc.engineClient.post = async (path) => {
       if (path === '/validate') {
         const err = new Error('validation failed');
@@ -70,7 +106,7 @@ const run = async () => {
 
   // 3) success orchestration path
   {
-    const svc = new AgentService();
+    const svc = withDefaultSkills(new AgentService());
     svc.engineClient.post = async (path, payload) => {
       if (path === '/validate') {
         return { data: { valid: true, schemaVersion: '1.0.0' } };
@@ -119,7 +155,7 @@ const run = async () => {
 
   // 4) stream orchestration events
   {
-    const svc = new AgentService();
+    const svc = withDefaultSkills(new AgentService());
     svc.engineClient.post = async (path, payload) => {
       if (path === '/validate') {
         return { data: { valid: true, schemaVersion: '1.0.0' } };
@@ -167,7 +203,7 @@ const run = async () => {
 
   // 5) text-to-model draft success path
   {
-    const svc = new AgentService();
+    const svc = withDefaultSkills(new AgentService());
     svc.engineClient.post = async (path, payload) => {
       if (path === '/validate') {
         return { data: { valid: true, schemaVersion: '1.0.0' } };
@@ -207,7 +243,7 @@ const run = async () => {
 
   // 6) conversation-level clarification carry-over
   {
-    const svc = new AgentService();
+    const svc = withDefaultSkills(new AgentService());
     svc.engineClient.post = async (path, payload) => {
       if (path === '/validate') {
         return { data: { valid: true, schemaVersion: '1.0.0' } };
@@ -253,7 +289,7 @@ const run = async () => {
 
   // 6.0) chat with a complete structural model should return synchronized model, incomplete chat should not
   {
-    const svc = new AgentService();
+    const svc = withDefaultSkills(new AgentService());
 
     const collecting = await svc.run({
       conversationId: 'conv-chat-complete-model',
@@ -283,7 +319,7 @@ const run = async () => {
 
   // 6.1) chat-mode follow-up should shrink missing fields instead of repeating span
   {
-    const svc = new AgentService();
+    const svc = withDefaultSkills(new AgentService());
 
     const first = await svc.run({
       conversationId: 'conv-chat-followup-1',
@@ -315,7 +351,7 @@ const run = async () => {
 
   // 6.2) beam follow-up should ask for support before load details after span is provided
   {
-    const svc = new AgentService();
+    const svc = withDefaultSkills(new AgentService());
 
     const first = await svc.run({
       conversationId: 'conv-chat-followup-beam-1',
@@ -382,7 +418,7 @@ const run = async () => {
 
   // 7) draft type coverage: double-span beam and planar truss
   {
-    const svc = new AgentService();
+    const svc = withDefaultSkills(new AgentService());
     svc.engineClient.post = async (path, payload) => {
       if (path === '/validate') {
         return { data: { valid: true, schemaVersion: '1.0.0' } };
@@ -431,7 +467,7 @@ const run = async () => {
 
   // 8) analyze -> code-check -> report closed loop
   {
-    const svc = new AgentService();
+    const svc = withDefaultSkills(new AgentService());
     let capturedCodeCheckPayload;
     svc.engineClient.post = async (path, payload) => {
       if (path === '/validate') {

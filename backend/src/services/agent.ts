@@ -1888,20 +1888,21 @@ export class AgentService {
     existingState: DraftState | undefined,
     locale: AppLocale,
   ): Promise<DraftResult> {
+    const noSkillState = normalizeNoSkillDraftState(existingState || { inferredType: 'unknown', updatedAt: Date.now() });
+
     if (!this.llm) {
       const configError = locale === 'zh'
         ? 'LLM 尚未配置。请在 .env 文件中设置 LLM_API_KEY、LLM_MODEL 和 LLM_BASE_URL。'
         : 'LLM is not configured. Please set LLM_API_KEY, LLM_MODEL, and LLM_BASE_URL in your .env file.';
       return {
-        inferredType: 'unknown',
+        inferredType: noSkillState.inferredType,
         missingFields: [configError],
         extractionMode: 'llm',
         model: undefined,
-        stateToPersist: undefined,
+        stateToPersist: noSkillState,
       };
     }
 
-    const noSkillState = normalizeNoSkillDraftState(existingState || { inferredType: 'unknown', updatedAt: Date.now() });
     const model = await tryNoSkillLlmBuildGenericModel(this.llm, message, noSkillState, locale);
     const missingFields = model ? [] : computeNoSkillMissingFields();
 
