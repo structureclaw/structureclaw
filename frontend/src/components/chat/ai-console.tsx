@@ -1382,7 +1382,7 @@ export function AIConsole() {
   const [isSending, setIsSending] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
   const [skillsOpen, setSkillsOpen] = useState(false)
-  const [skillHubOpen, setSkillHubOpen] = useState(false)
+  const [skillHubOpen, setSkillHubOpen] = useState(true)
   const [contextOpen, setContextOpen] = useState(false)
   const [analysisSettingsOpen, setAnalysisSettingsOpen] = useState(false)
   const [engineSettingsOpen, setEngineSettingsOpen] = useState(false)
@@ -1433,7 +1433,10 @@ export function AIConsole() {
     }
   }, [latestResultVisualizationSnapshot])
 
-  const defaultSkillIds = useMemo(() => [] as string[], [])
+  const defaultSkillIds = useMemo(
+    () => availableSkills.filter((skill) => skill.autoLoadByDefault).map((skill) => skill.id),
+    [availableSkills]
+  )
 
   const skillDomainById = useMemo<Record<string, SkillDomain>>(() => {
     const map: Record<string, SkillDomain> = {}
@@ -1643,7 +1646,9 @@ export function AIConsole() {
         if (!active || !Array.isArray(payload)) {
           return
         }
-        setAvailableSkills(payload as AgentSkillSummary[])
+        const skills = payload as AgentSkillSummary[]
+        setAvailableSkills(skills)
+        setSelectedSkillIds((current) => (current.length > 0 ? current : skills.filter((skill) => skill.autoLoadByDefault).map((skill) => skill.id)))
       } catch {
         if (active) {
           setAvailableSkills([])
