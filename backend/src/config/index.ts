@@ -45,6 +45,7 @@ export const config = {
   port: parseInt(process.env.PORT || '8000', 10),
   host: process.env.HOST || '0.0.0.0',
   nodeEnv: process.env.NODE_ENV || 'development',
+  bodyLimitMb: parseInt(process.env.BACKEND_BODY_LIMIT_MB || '20', 10),
 
   // 数据库配置
   databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/structureclaw',

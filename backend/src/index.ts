@@ -10,6 +10,7 @@ import { logger } from './utils/logger.js';
 
 const fastify = Fastify({
   logger: logger as any,
+  bodyLimit: Math.max(1, config.bodyLimitMb) * 1024 * 1024,
 });
 
 // 注册插件
