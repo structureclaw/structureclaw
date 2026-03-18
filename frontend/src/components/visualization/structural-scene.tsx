@@ -105,90 +105,48 @@ function roundUpNice(value: number) {
   return step * base
 }
 
+function orientToFloorPlane(position: THREE.Vector3, plane: VisualizationPlane) {
+  if (plane === 'xy') {
+    return new THREE.Vector3(position.x, position.z, position.y)
+  }
+  if (plane === 'yz') {
+    return new THREE.Vector3(position.y, position.x, position.z)
+  }
+  return new THREE.Vector3(position.x, position.y, position.z)
+}
+
 function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: VisualizationPlane) {
   if (!snapshot.nodes.length) {
-    if (snapshot.dimension === 2) {
-      return {
-        size: 24,
-        divisions: 24,
-        position: [0, 0, -0.001] as [number, number, number],
-        rotation: [Math.PI / 2, 0, 0] as [number, number, number],
-      }
-    }
-
-    const defaultRotation: Record<VisualizationPlane, [number, number, number]> = {
-      xy: [Math.PI / 2, 0, 0],
-      xz: [0, 0, 0],
-      yz: [0, 0, Math.PI / 2],
-    }
-
     return {
       size: 24,
       divisions: 24,
       position: [0, -0.001, 0] as [number, number, number],
-      rotation: defaultRotation[plane],
+      rotation: [0, 0, 0] as [number, number, number],
     }
   }
 
-  const xs = snapshot.nodes.map((node) => node.position.x)
-  const ys = snapshot.nodes.map((node) => node.position.y)
-  const zs = snapshot.nodes.map((node) => node.position.z)
+  const orientedNodes = snapshot.nodes.map((node) => orientToFloorPlane(new THREE.Vector3(node.position.x, node.position.y, node.position.z), plane))
+  const xs = orientedNodes.map((node) => node.x)
+  const ys = orientedNodes.map((node) => node.y)
+  const zs = orientedNodes.map((node) => node.z)
   const minX = Math.min(...xs)
   const maxX = Math.max(...xs)
   const minY = Math.min(...ys)
-  const maxY = Math.max(...ys)
   const minZ = Math.min(...zs)
   const maxZ = Math.max(...zs)
 
-  const axisMin = { x: minX, y: minY, z: minZ }
-  const axisMax = { x: maxX, y: maxY, z: maxZ }
-  const planeAxes: Record<VisualizationPlane, { primary: 'x' | 'y'; secondary: 'y' | 'z'; normal: 'x' | 'y' | 'z' }> = {
-    xy: { primary: 'x', secondary: 'y', normal: 'z' },
-    xz: { primary: 'x', secondary: 'z', normal: 'y' },
-    yz: { primary: 'y', secondary: 'z', normal: 'x' },
-  }
-  const axes = planeAxes[plane]
-
-  if (snapshot.dimension === 3) {
-    const spanPrimary = Math.max(axisMax[axes.primary] - axisMin[axes.primary], 1)
-    const spanSecondary = Math.max(axisMax[axes.secondary] - axisMin[axes.secondary], 1)
-    const span = Math.max(spanPrimary, spanSecondary)
-    const size = roundUpNice(span * 1.5)
-    const divisions = Math.min(120, Math.max(8, Math.round(size / Math.max(span / 18, 0.25))))
-    const offset = Math.max(span * 0.01, 0.001)
-
-    const positionByPlane: Record<VisualizationPlane, [number, number, number]> = {
-      xy: [(minX + maxX) * 0.5, (minY + maxY) * 0.5, minZ - offset],
-      xz: [(minX + maxX) * 0.5, minY - offset, (minZ + maxZ) * 0.5],
-      yz: [minX - offset, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5],
-    }
-    const rotationByPlane: Record<VisualizationPlane, [number, number, number]> = {
-      xy: [Math.PI / 2, 0, 0],
-      xz: [0, 0, 0],
-      yz: [0, 0, Math.PI / 2],
-    }
-
-    return {
-      size,
-      divisions,
-      position: positionByPlane[plane],
-      rotation: rotationByPlane[plane],
-    }
-  }
-
-  const spanPrimary = Math.max(axisMax[axes.primary] - axisMin[axes.primary], 1)
-  const secondaryMin = axisMin[axes.secondary]
-  const secondaryMax = axisMax[axes.secondary]
-  const spanSecondary = Math.max(secondaryMax - secondaryMin, 1)
-  const span = Math.max(spanPrimary, spanSecondary)
+  const spanX = Math.max(maxX - minX, 1)
+  const spanZ = Math.max(maxZ - minZ, 1)
+  const span = Math.max(spanX, spanZ)
   const size = roundUpNice(span * 1.5)
   const divisions = Math.min(120, Math.max(8, Math.round(size / Math.max(span / 18, 0.25))))
+  const offset = Math.max(span * 0.01, 0.001)
 
   return {
     size,
     divisions,
-    position: [(axisMin[axes.primary] + axisMax[axes.primary]) * 0.5, (secondaryMin + secondaryMax) * 0.5, -0.001] as [number, number, number],
-    rotation: [Math.PI / 2, 0, 0] as [number, number, number],
+    position: [(minX + maxX) * 0.5, minY - offset, (minZ + maxZ) * 0.5] as [number, number, number],
+    rotation: [0, 0, 0] as [number, number, number],
   }
 }
 
@@ -236,13 +194,14 @@ function ColorBar({
 }
 
 function projectPosition(position: THREE.Vector3, plane: VisualizationPlane) {
-  if (plane === 'xz') {
-    return new THREE.Vector3(position.x, position.z, 0)
+  return orientToFloorPlane(position, plane)
+}
+
+function getPlaneCameraPreset() {
+  return {
+    position: [0, 10, 0] as [number, number, number],
+    up: [0, 0, 1] as [number, number, number],
   }
-  if (plane === 'yz') {
-    return new THREE.Vector3(position.y, position.z, 0)
-  }
-  return new THREE.Vector3(position.x, position.y, 0)
 }
 
 function ElementTube({
@@ -358,6 +317,7 @@ function SceneContent({
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [hoveredElementId, setHoveredElementId] = useState<string | null>(null)
   const gridConfig = useMemo(() => getAdaptiveGridConfig(snapshot, plane), [snapshot, plane])
+  const cameraPreset = useMemo(() => getPlaneCameraPreset(), [])
   const nodeMap = useMemo(
     () =>
       new Map(
@@ -374,14 +334,30 @@ function SceneContent({
   return (
     <>
       {snapshot.dimension === 3 ? (
-        <PerspectiveCamera key={`perspective-${resetToken}`} makeDefault fov={42} position={[8, 8, 8]} />
+        <PerspectiveCamera
+          key={`perspective-${plane}-${resetToken}`}
+          makeDefault
+          fov={42}
+          position={[8, 8, 8]}
+          onUpdate={(camera) => {
+            camera.up.set(0, 1, 0)
+          }}
+        />
       ) : (
-        <OrthographicCamera key={`ortho-${resetToken}`} makeDefault position={[0, 0, 10]} zoom={48} />
+        <OrthographicCamera
+          key={`ortho-${plane}-${resetToken}`}
+          makeDefault
+          position={cameraPreset.position}
+          zoom={48}
+          onUpdate={(camera) => {
+            camera.up.set(cameraPreset.up[0], cameraPreset.up[1], cameraPreset.up[2])
+          }}
+        />
       )}
       <ambientLight intensity={0.9} />
       <directionalLight intensity={1.2} position={[10, 12, 8]} />
       <directionalLight intensity={0.45} position={[-8, -4, 10]} />
-      <OrbitControls makeDefault />
+      <OrbitControls key={`controls-${plane}-${resetToken}`} makeDefault target={[0, 0, 0]} />
       <gridHelper args={[gridConfig.size, gridConfig.divisions, '#1f9dc2', '#334155']} position={gridConfig.position} rotation={gridConfig.rotation} />
 
       <Bounds clip fit margin={1.2} observe>
@@ -406,10 +382,10 @@ function SceneContent({
                 : hoveredElementId === element.id
                   ? '#67e8f9'
                   : '#38bdf8'
-            const undeformedStart = snapshot.dimension === 2 ? projectPosition(startData.position, plane) : startData.position
-            const undeformedEnd = snapshot.dimension === 2 ? projectPosition(endData.position, plane) : endData.position
-            const currentStart = snapshot.dimension === 2 ? projectPosition(start, plane) : start
-            const currentEnd = snapshot.dimension === 2 ? projectPosition(end, plane) : end
+            const undeformedStart = projectPosition(startData.position, plane)
+            const undeformedEnd = projectPosition(endData.position, plane)
+            const currentStart = projectPosition(start, plane)
+            const currentEnd = projectPosition(end, plane)
 
             return (
               <group key={element.id}>
@@ -460,7 +436,7 @@ function SceneContent({
                       ? '#67e8f9'
                     : '#f8fafc'
             const position = view === 'deformed' ? nodeData.displacedPosition : nodeData.position
-            const finalPosition = snapshot.dimension === 2 ? projectPosition(position, plane) : position
+            const finalPosition = projectPosition(position, plane)
             const reaction = activeCase.nodeResults[entry.id]?.reaction
             const arrowVector = reaction
               ? new THREE.Vector3(reaction.fx || 0, reaction.fy || 0, reaction.fz || 0)
@@ -505,14 +481,14 @@ function SceneContent({
                   </Html>
                 )}
                 {view === 'reactions' && arrowVector && arrowVector.length() > 0.0001 && (
-                  <VectorArrow color="#fb923c" origin={finalPosition} vector={snapshot.dimension === 2 ? projectPosition(arrowVector, plane) : arrowVector} />
+                  <VectorArrow color="#fb923c" origin={finalPosition} vector={projectPosition(arrowVector, plane)} />
                 )}
                 {view === 'model' && loadVectors.map((vector, index) => (
                   <VectorArrow
                     color="#22c55e"
                     key={`${entry.id}-load-${index}`}
                     origin={finalPosition}
-                    vector={snapshot.dimension === 2 ? projectPosition(vector, plane) : vector}
+                    vector={projectPosition(vector, plane)}
                   />
                 ))}
               </group>

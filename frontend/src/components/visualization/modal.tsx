@@ -84,6 +84,11 @@ export function StructuralVisualizationModal({
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
   const [selectedLoadIndex, setSelectedLoadIndex] = useState<number | null>(null)
 
+  const handlePlaneChange = (nextPlane: VisualizationPlane) => {
+    setPlane(nextPlane)
+    setResetToken((current) => current + 1)
+  }
+
   useEffect(() => {
     if (!open || !snapshot) {
       return
@@ -148,7 +153,7 @@ export function StructuralVisualizationModal({
     <VisualizationModalShell
       onClose={onClose}
       onResetView={() => setResetToken((current) => current + 1)}
-      onPlaneChange={setPlane}
+      onPlaneChange={handlePlaneChange}
       onViewChange={setView}
       open={open}
       selectedPlane={plane}
