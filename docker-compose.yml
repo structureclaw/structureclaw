@@ -10,7 +10,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 10s
@@ -24,7 +24,7 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -59,7 +59,7 @@ services:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/structureclaw
       - REDIS_URL=redis://redis:6379
-      - JWT_SECRET=your-jwt-secret-change-in-production
+      - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-change-in-production}
       - LLM_PROVIDER=${LLM_PROVIDER:-openai}
       - LLM_API_KEY=${LLM_API_KEY}
       - LLM_MODEL=${LLM_MODEL}
@@ -73,7 +73,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "${PORT:-8000}:8000"
     volumes:
       - ./uploads:/app/uploads
     restart: unless-stopped
@@ -87,7 +87,7 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
     ports:
-      - "8001:8001"
+      - "${CORE_PORT:-8001}:8001"
     volumes:
       - ./core:/app
     restart: unless-stopped
@@ -99,9 +99,9 @@ services:
       dockerfile: Dockerfile
     container_name: structureclaw-frontend
     environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-30000}:3000"
     depends_on:
       - backend
     restart: unless-stopped
@@ -111,8 +111,8 @@ services:
     image: nginx:alpine
     container_name: structureclaw-nginx
     ports:
-      - "80:80"
-      - "443:443"
+      - "${NGINX_HTTP_PORT:-80}:80"
+      - "${NGINX_HTTPS_PORT:-443}:443"
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf
       - ./docker/nginx/ssl:/etc/nginx/ssl
