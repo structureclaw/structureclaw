@@ -75,6 +75,15 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    command:
+      - /bin/sh
+      - -c
+      - |
+        until npx prisma migrate deploy; do
+          echo "Prisma migrate failed, retrying in 2s..."
+          sleep 2
+        done
+        npm start
     ports:
       - "${PORT:-8000}:${PORT:-8000}"
     volumes:
