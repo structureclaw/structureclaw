@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import ConsolePage from '../../src/app/(console)/console/page'
 import type { VisualizationSnapshot } from '../../src/components/visualization'
 
@@ -16,6 +16,12 @@ const mockSkills = [
     name: { en: 'Frame Checker', zh: '框架校核' },
     description: { en: 'Frame workflow', zh: '框架工作流' },
     autoLoadByDefault: true,
+  },
+  {
+    id: 'code-check-gb50017',
+    name: { en: 'Code Check GB50017', zh: '规范校核 GB50017' },
+    description: { en: 'GB50017 code check', zh: 'GB50017 规范校核' },
+    autoLoadByDefault: false,
   },
 ] as const
 
@@ -196,6 +202,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
@@ -298,7 +305,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Analysis Settings|展开分析设置/ }))
 
-    expect(screen.getAllByText(/^Design Code$|^设计规范$/).length).toBeGreaterThan(0)
+    expect(screen.queryByText(/^Design Code$|^设计规范$/)).not.toBeInTheDocument()
   })
 
   it('loads conversation history from the backend', async () => {
@@ -332,6 +339,64 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(await screen.findByText('历史会话标题')).toBeInTheDocument()
   })
 
+  it('stops showing conversation-list loading when the backend request hangs', async () => {
+    vi.useFakeTimers()
+
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response)
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response)
+      }
+
+      if (url.includes('/api/v1/models/latest')) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+        } as unknown as Response)
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return new Promise<Response>((_, reject) => {
+          const signal = init?.signal
+          if (signal) {
+            signal.addEventListener(
+              'abort',
+              () => {
+                reject(signal.reason ?? new DOMException('Aborted', 'AbortError'))
+              },
+              { once: true }
+            )
+          }
+        })
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    render(<ConsolePage />)
+
+    expect(screen.getByText(/Loading conversation list|正在加载会话列表/)).toBeInTheDocument()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000)
+    })
+
+    expect(screen.queryByText(/Loading conversation list|正在加载会话列表/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Loading the conversation list timed out|加载会话列表超时/)).toBeInTheDocument()
+  })
+
   it('restores model context and local result snapshots when selecting a conversation', async () => {
     window.localStorage.setItem('structureclaw.console.conversations', JSON.stringify({
       'conv-ctx': {
@@ -345,7 +410,6 @@ describe('ConsolePage Integration (CONS-13)', () => {
         ],
         modelText: sampleModelJson,
         analysisType: 'nonlinear',
-        designCode: 'GB50017',
         selectedSkillIds: ['frame'],
         selectedEngineId: 'builtin-simplified',
         modelSyncMessage: 'Model JSON was synchronized from the conversation draft.',
@@ -423,7 +487,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     const modelInput = screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/) as HTMLTextAreaElement
     expect(modelInput.value).toContain('"schema_version": "1.0.0"')
-    expect(screen.getByDisplayValue('GB50017')).toBeInTheDocument()
+    expect(screen.queryByText(/^Design Code$|^设计规范$/)).not.toBeInTheDocument()
     expect(screen.getByText('Archived summary')).toBeInTheDocument()
   })
 
@@ -440,7 +504,6 @@ describe('ConsolePage Integration (CONS-13)', () => {
         ],
         modelText: sampleModelJson,
         analysisType: 'nonlinear',
-        designCode: 'GB50017',
         selectedSkillIds: ['frame'],
         selectedEngineId: 'builtin-simplified',
         activePanel: 'report',
@@ -1231,7 +1294,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Analysis Settings|展开分析设置/ }))
     expect(screen.getByRole('button', { name: /Collapse Analysis Settings|收起分析设置/ })).toBeInTheDocument()
-    expect(screen.getByText(/Design Code|设计规范/)).toBeInTheDocument()
+    expect(screen.queryByText(/Design Code|设计规范/)).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engine Settings|展开引擎设置/ }))
     expect(screen.getByRole('button', { name: /Change Engine|更换引擎/ })).toBeInTheDocument()
@@ -1587,6 +1650,147 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
   })
 
+  it('sends autoCodeCheck=true during execute when a code-check skill is selected', async () => {
+    const executeBodies: Array<Record<string, unknown>> = []
+
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-code-check-on',
+            title: 'Code check on',
+            type: 'analysis',
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/execute')) {
+        executeBodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>)
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(sampleAnalysisResult),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Skills|展开技能/ }))
+    fireEvent.change(screen.getByLabelText(/Category View|分类视图/), { target: { value: 'code-check' } })
+    fireEvent.click(screen.getByRole('button', { name: /Code Check GB50017|规范校核 GB50017/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    fireEvent.change(screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/), {
+      target: { value: sampleModelJson },
+    })
+    fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
+      target: { value: 'Analyze this model with code checks' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Run Analysis|执行分析/ }))
+
+    await waitFor(() => {
+      expect(executeBodies.length).toBeGreaterThan(0)
+    })
+
+    const context = (executeBodies[0].context || {}) as Record<string, unknown>
+    expect(context.autoCodeCheck).toBe(true)
+    expect(context.skillIds).toEqual(expect.arrayContaining(['code-check-gb50017']))
+  })
+
+  it('sends autoCodeCheck=false during execute when no code-check skill is selected', async () => {
+    const executeBodies: Array<Record<string, unknown>> = []
+
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-code-check-off',
+            title: 'Code check off',
+            type: 'analysis',
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/execute')) {
+        executeBodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>)
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(sampleAnalysisResult),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    fireEvent.change(screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/), {
+      target: { value: sampleModelJson },
+    })
+    fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
+      target: { value: 'Analyze this model only' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Run Analysis|执行分析/ }))
+
+    await waitFor(() => {
+      expect(executeBodies.length).toBeGreaterThan(0)
+    })
+
+    const context = (executeBodies[0].context || {}) as Record<string, unknown>
+    expect(context.autoCodeCheck).toBe(false)
+    expect(Array.isArray(context.skillIds) ? context.skillIds : []).not.toContain('code-check-gb50017')
+  })
+
   it('disables the visualization action when a restored result has no model snapshot', async () => {
     window.localStorage.setItem(
       'structureclaw.console.conversations',
@@ -1856,9 +2060,10 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
+    const dialog = screen.getByRole('dialog')
 
-    expect(screen.getByText('Archived Beam')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Forces|内力/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Deformed|变形/ })).toBeInTheDocument()
+    expect(within(dialog).getByText('Archived Beam')).toBeInTheDocument()
+    expect(within(dialog).getAllByRole('button', { name: /Forces|内力/ }).length).toBeGreaterThan(0)
+    expect(within(dialog).getAllByRole('button', { name: /Deformed|变形/ }).length).toBeGreaterThan(0)
   })
 })

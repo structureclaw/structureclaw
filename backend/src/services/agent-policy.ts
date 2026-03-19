@@ -92,12 +92,6 @@ export class AgentPolicyService {
         case 'analysisType':
           proposals.push({ paramKey: key, value: 'static', reason: this.localize(locale, '默认采用静力分析，属于最保守且最常用起步工况。', 'Default to static analysis as the most conservative and common starting case.') });
           return;
-        case 'autoCodeCheck':
-          proposals.push({ paramKey: key, value: true, reason: this.localize(locale, '默认开启规范校核以保证验算完整性。', 'Enable code checks by default to keep the verification flow complete.') });
-          return;
-        case 'designCode':
-          proposals.push({ paramKey: key, value: 'GB50017', reason: this.localize(locale, '默认采用钢结构设计标准 GB50017 进行保守校核。', 'Use GB50017 by default for a conservative steel-design check.') });
-          return;
         case 'includeReport':
           proposals.push({ paramKey: key, value: true, reason: this.localize(locale, '默认生成报告，便于复核输入与结果。', 'Generate a report by default so inputs and results can be reviewed.') });
           return;
@@ -136,10 +130,6 @@ export class AgentPolicyService {
     switch (key) {
       case 'analysisType':
         return this.localize(locale, '分析类型（static/dynamic/seismic/nonlinear）', 'Analysis type (static/dynamic/seismic/nonlinear)');
-      case 'designCode':
-        return this.localize(locale, '规范编号（如 GB50017）', 'Design code (for example GB50017)');
-      case 'autoCodeCheck':
-        return this.localize(locale, '是否自动规范校核', 'Whether to run code checks automatically');
       case 'includeReport':
         return this.localize(locale, '是否生成报告', 'Whether to generate a report');
       case 'reportFormat':
@@ -159,10 +149,6 @@ export class AgentPolicyService {
     switch (paramKey) {
       case 'analysisType':
         return { paramKey, label: this.localize(locale, '分析类型', 'Analysis type'), question: this.localize(locale, '请选择分析类型。', 'Please choose the analysis type.'), required: true, critical, suggestedValue: 'static' };
-      case 'autoCodeCheck':
-        return { paramKey, label: this.localize(locale, '自动校核', 'Auto code check'), question: this.localize(locale, '是否自动执行规范校核？', 'Should code checks run automatically?'), required: true, critical, suggestedValue: true };
-      case 'designCode':
-        return { paramKey, label: this.localize(locale, '规范编号', 'Design code'), question: this.localize(locale, '请确认规范编号（例如 GB50017）。', 'Please confirm the design code (for example GB50017).'), required: true, critical, suggestedValue: 'GB50017' };
       case 'includeReport':
         return { paramKey, label: this.localize(locale, '报告开关', 'Report toggle'), question: this.localize(locale, '是否生成计算与校核报告？', 'Should an analysis and code-check report be generated?'), required: true, critical, suggestedValue: true };
       case 'reportFormat':
@@ -183,9 +169,6 @@ export class AgentPolicyService {
     }
     if (missingKeys.includes('analysisType')) {
       return 'analysis';
-    }
-    if (missingKeys.includes('autoCodeCheck') || missingKeys.includes('designCode')) {
-      return 'code_check';
     }
     return 'report';
   }

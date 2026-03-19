@@ -28,7 +28,6 @@ import {
 import {
   inferAnalysisType,
   inferCodeCheckIntent,
-  inferDesignCode,
   inferReportIntent,
   normalizePolicyAnalysisType,
   normalizePolicyReportFormat,
@@ -63,6 +62,10 @@ interface InteractionSession {
     reportOutput?: AgentReportOutput;
   };
   updatedAt: number;
+}
+
+function hasExplicitCodeCheckSkill(skillIds: string[] | undefined): boolean {
+  return Array.isArray(skillIds) && skillIds.some((skillId) => skillId.startsWith('code-check-'));
 }
 
 interface InteractionQuestion {
@@ -861,8 +864,10 @@ export class AgentService {
 
     const resolvedAnalysisType = workingSession.resolved?.analysisType || params.context?.analysisType || inferAnalysisType(this.policy, params.message);
     const codeFromSkills = resolveCodeCheckDesignCodeFromSkillIds(skillIds);
-    const resolvedDesignCode = workingSession.resolved?.designCode || params.context?.designCode || codeFromSkills || 'GB50017';
-    const resolvedAutoCodeCheck = workingSession.resolved?.autoCodeCheck ?? params.context?.autoCodeCheck ?? inferCodeCheckIntent(this.policy, params.message);
+    const resolvedDesignCode = workingSession.resolved?.designCode || params.context?.designCode || codeFromSkills;
+    const resolvedAutoCodeCheck = workingSession.resolved?.autoCodeCheck
+      ?? params.context?.autoCodeCheck
+      ?? Boolean(codeFromSkills || workingSession.resolved?.designCode || params.context?.designCode);
     const resolvedIncludeReport = workingSession.resolved?.includeReport ?? params.context?.includeReport ?? true;
     const resolvedReportFormat = workingSession.resolved?.reportFormat || params.context?.reportFormat || 'both';
     const resolvedReportOutput = workingSession.resolved?.reportOutput || params.context?.reportOutput || 'inline';
@@ -1013,7 +1018,7 @@ export class AgentService {
       const analysisSuccess = Boolean(analyzed.data?.success);
       let codeCheckResult: unknown;
 
-      if (analysisSuccess && resolvedAutoCodeCheck) {
+      if (analysisSuccess && resolvedAutoCodeCheck && resolvedDesignCode) {
         plan.push(this.localize(locale, `执行 ${resolvedDesignCode} 规范校核`, `Run ${resolvedDesignCode} code checks`));
         const codeCheckInput = buildCodeCheckInput({
           traceId,
@@ -1442,12 +1447,6 @@ export class AgentService {
     if (!resolved.analysisType) {
       nonCriticalMissing.push('analysisType');
     }
-    if (resolved.autoCodeCheck === undefined) {
-      nonCriticalMissing.push('autoCodeCheck');
-    }
-    if (resolved.autoCodeCheck === true && !resolved.designCode) {
-      nonCriticalMissing.push('designCode');
-    }
     if (resolved.includeReport === undefined) {
       nonCriticalMissing.push('includeReport');
     }
@@ -1482,12 +1481,6 @@ export class AgentService {
         case 'analysisType':
           session.resolved.analysisType = proposal.value as NonNullable<InteractionSession['resolved']>['analysisType'];
           break;
-        case 'autoCodeCheck':
-          session.resolved.autoCodeCheck = Boolean(proposal.value);
-          break;
-        case 'designCode':
-          session.resolved.designCode = String(proposal.value);
-          break;
         case 'includeReport':
           session.resolved.includeReport = Boolean(proposal.value);
           break;
@@ -1517,6 +1510,8 @@ export class AgentService {
     }
     if (context.autoCodeCheck !== undefined) {
       session.resolved.autoCodeCheck = context.autoCodeCheck;
+    } else if (hasExplicitCodeCheckSkill(context.skillIds)) {
+      session.resolved.autoCodeCheck = true;
     }
     if (context.includeReport !== undefined) {
       session.resolved.includeReport = context.includeReport;
@@ -1533,13 +1528,6 @@ export class AgentService {
     session.resolved = session.resolved || {};
     if (!session.resolved.analysisType) {
       session.resolved.analysisType = inferAnalysisType(this.policy, message);
-    }
-    const inferredCode = inferDesignCode(this.policy, message);
-    if (inferredCode && !session.resolved.designCode) {
-      session.resolved.designCode = inferredCode;
-    }
-    if (session.resolved.autoCodeCheck === undefined && inferCodeCheckIntent(this.policy, message)) {
-      session.resolved.autoCodeCheck = true;
     }
     if (session.resolved.includeReport === undefined) {
       const reportIntent = inferReportIntent(this.policy, message);
@@ -1577,6 +1565,7 @@ export class AgentService {
     if (typeof values.analysisType === 'string') {
       session.resolved.analysisType = normalizePolicyAnalysisType(this.policy, values.analysisType);
     }
+    // Keep the raw designCode as a compatibility bridge for legacy callers and custom-code-check flows.
     if (typeof values.designCode === 'string' && values.designCode.trim()) {
       session.resolved.designCode = values.designCode.trim().toUpperCase();
     }

@@ -84,6 +84,7 @@ describe('AgentService orchestration', () => {
       message: '请静力分析并规范校核',
       mode: 'execute',
       context: {
+        skillIds: [],
         model: {
           schema_version: '1.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
@@ -93,9 +94,9 @@ describe('AgentService orchestration', () => {
           load_cases: [],
           load_combinations: [],
         },
+        skillIds: ['code-check-gb50017'],
         autoAnalyze: true,
         autoCodeCheck: true,
-        designCode: 'GB50017',
         includeReport: true,
         reportFormat: 'both',
       },
@@ -107,6 +108,59 @@ describe('AgentService orchestration', () => {
     expect(result.toolCalls.some((c) => c.tool === 'report')).toBe(true);
     expect(result.codeCheck?.code).toBe('GB50017');
     expect(typeof result.report?.markdown).toBe('string');
+  });
+
+  test('should not run code-check when no code-check skill or legacy designCode is provided', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+    const calls = [];
+    svc.engineClient.post = async (path, payload) => {
+      calls.push({ path, payload });
+      if (path === '/validate') {
+        return { data: { valid: true, schemaVersion: '1.0.0' } };
+      }
+      if (path === '/analyze') {
+        return {
+          data: {
+            schema_version: '1.0.0',
+            analysis_type: payload.type,
+            success: true,
+            error_code: null,
+            message: 'ok',
+            data: {},
+            meta: {},
+          },
+        };
+      }
+      if (path === '/code-check') {
+        throw new Error('code-check should not run without an explicit code-check skill');
+      }
+      throw new Error(`unexpected path ${path}`);
+    };
+
+    const result = await svc.run({
+      message: '请静力分析并规范校核',
+      mode: 'execute',
+      context: {
+        skillIds: [],
+        model: {
+          schema_version: '1.0.0',
+          nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
+          elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
+          materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
+          sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } }],
+          load_cases: [],
+          load_combinations: [],
+        },
+        autoAnalyze: true,
+        includeReport: false,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls.some((c) => c.tool === 'analyze')).toBe(true);
+    expect(result.toolCalls.some((c) => c.tool === 'code-check')).toBe(false);
+    expect(calls.some((item) => item.path === '/code-check')).toBe(false);
   });
 
   test('should clear stored conversation sessions', async () => {
@@ -175,9 +229,9 @@ describe('AgentService orchestration', () => {
           load_combinations: [],
         },
         engineId: 'builtin-opensees',
+        skillIds: ['code-check-gb50017'],
         autoAnalyze: true,
         autoCodeCheck: true,
-        designCode: 'GB50017',
       },
     });
 
@@ -228,9 +282,9 @@ describe('AgentService orchestration', () => {
           load_cases: [],
           load_combinations: [],
         },
+        skillIds: ['code-check-gb50017'],
         autoAnalyze: true,
         autoCodeCheck: true,
-        designCode: 'GB50017',
       },
     });
 
@@ -917,9 +971,9 @@ describe('AgentService orchestration', () => {
           load_cases: [{ id: 'LC1', type: 'other', loads: [{ type: 'distributed', element: '1', wz: -10 }] }],
           load_combinations: [{ id: 'ULS', factors: { LC1: 1 } }],
         },
+        skillIds: ['code-check-gb50017'],
         autoAnalyze: true,
         autoCodeCheck: true,
-        designCode: 'GB50017',
         includeReport: true,
         reportFormat: 'both',
       },
@@ -1075,9 +1129,9 @@ describe('AgentService orchestration', () => {
           load_cases: [],
           load_combinations: [],
         },
+        skillIds: ['code-check-gb50017'],
         autoAnalyze: true,
         autoCodeCheck: true,
-        designCode: 'GB50017',
         includeReport: true,
         reportFormat: 'both',
       },
@@ -1651,7 +1705,6 @@ describe('AgentService orchestration', () => {
 
     expect(collecting.success).toBe(true);
     expect(collecting.interaction?.state).toBe('collecting');
-    expect(collecting.interaction?.missingOptional).toContain('是否自动规范校核');
     expect(collecting.interaction?.missingOptional).toContain('是否生成报告');
     expect(collecting.model?.schema_version).toBe('1.0.0');
     expect(Array.isArray(collecting.model?.nodes)).toBe(true);

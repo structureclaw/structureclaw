@@ -16,6 +16,7 @@ import { StructuralVisualizationModal, type VisualizationSnapshot } from '@/comp
 import { useI18n, type MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { fetchLatestModel, type LatestModelResponse } from '@/lib/api'
+import { API_BASE } from '@/lib/api-base'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
 
 type AnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear'
@@ -297,7 +298,6 @@ function mapCapabilityReasonToText(reason: string, t: (key: MessageKey) => strin
   return reason
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const STORAGE_KEY = 'structureclaw.console.conversations'
 
 function createId(prefix: string) {
@@ -1390,7 +1390,6 @@ export function AIConsole() {
   const [modelText, setModelText] = useState('')
   const [modelSyncMessage, setModelSyncMessage] = useState('')
   const [isAutoLoadingModel, setIsAutoLoadingModel] = useState(false)
-  const [designCode, setDesignCode] = useState('GB50017')
   const [analysisType, setAnalysisType] = useState<AnalysisType>('static')
   const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([])
   const [skillHubCatalog, setSkillHubCatalog] = useState<SkillHubCatalogItem[]>([])
@@ -1464,6 +1463,11 @@ export function AIConsole() {
 
     return map
   }, [availableSkills, capabilityMatrix])
+
+  const hasSelectedCodeCheckSkill = useMemo(
+    () => selectedSkillIds.some((skillId) => skillDomainById[skillId] === 'code-check'),
+    [selectedSkillIds, skillDomainById]
+  )
 
   const groupedSkills = useMemo(() => {
     const domainOrder = new Map<string, number>()
@@ -2094,7 +2098,6 @@ export function AIConsole() {
         messages,
         modelText,
         analysisType,
-        designCode,
         selectedSkillIds,
         selectedEngineId,
         modelSyncMessage,
@@ -2116,7 +2119,6 @@ export function AIConsole() {
     activePanel,
     analysisType,
     conversationId,
-    designCode,
     latestModelVisualizationSnapshot,
     latestResult,
     latestResultVisualizationSnapshot,
@@ -2304,7 +2306,6 @@ export function AIConsole() {
           messages: existing?.messages || messages,
           modelText: existing?.modelText ?? modelText,
           analysisType: existing?.analysisType || analysisType,
-          designCode: existing?.designCode || designCode,
           selectedSkillIds: existing?.selectedSkillIds || selectedSkillIds,
           selectedEngineId: existing?.selectedEngineId || selectedEngineId,
           modelSyncMessage: existing?.modelSyncMessage || modelSyncMessage,
@@ -2361,7 +2362,6 @@ export function AIConsole() {
       const archivedUpdatedAt = archived?.updatedAt || archived?.createdAt || ''
       const preferArchiveState = Boolean(archived && archivedUpdatedAt > backendUpdatedAt)
       const nextAnalysisType = session?.resolved?.analysisType || archived?.analysisType || 'static'
-      const nextDesignCode = session?.resolved?.designCode || archived?.designCode || 'GB50017'
       const nextSelectedSkillIds = archived?.selectedSkillIds?.length ? archived.selectedSkillIds : []
       const nextSelectedEngineId = archived?.selectedEngineId || 'auto'
       const nextLatestResult = preferArchiveState
@@ -2396,7 +2396,6 @@ export function AIConsole() {
       setMessages(nextMessages)
       setModelText(nextModelText)
       setAnalysisType(nextAnalysisType)
-      setDesignCode(nextDesignCode)
       setSelectedSkillIds(nextSelectedSkillIds)
       setSelectedEngineId(nextSelectedEngineId)
       setModelSyncMessage(nextModelSyncMessage)
@@ -2416,7 +2415,6 @@ export function AIConsole() {
           || ''
         )
         setAnalysisType(archived.analysisType || 'static')
-        setDesignCode(archived.designCode || 'GB50017')
         setSelectedSkillIds(archived.selectedSkillIds?.length ? archived.selectedSkillIds : [])
         setSelectedEngineId(archived.selectedEngineId || 'auto')
         setModelSyncMessage(archived.modelSyncMessage || '')
@@ -2447,7 +2445,6 @@ export function AIConsole() {
     setMessages([initialAssistantMessage])
     setModelText('')
     setAnalysisType('static')
-    setDesignCode('GB50017')
     setSelectedSkillIds([])
     setSelectedEngineId('auto')
     setModelSyncMessage('')
@@ -2625,8 +2622,7 @@ export function AIConsole() {
               modelFormat: parsedModel.model ? 'structuremodel-v1' : undefined,
               analysisType,
               autoAnalyze: true,
-              autoCodeCheck: Boolean(designCode.trim()),
-              designCode: designCode.trim() || undefined,
+              autoCodeCheck: hasSelectedCodeCheckSkill,
               includeReport: true,
               reportFormat: 'both',
               reportOutput: 'inline',
@@ -3541,18 +3537,6 @@ export function AIConsole() {
                                   </button>
                                 ))}
                               </div>
-                            </div>
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium text-foreground">{t('designCodeLabel')}</label>
-                              <Input
-                                className="border-border/70 bg-card/80 text-foreground placeholder:text-muted-foreground dark:border-white/10 dark:bg-slate-950/70"
-                                value={designCode}
-                                onChange={(event) => setDesignCode(event.target.value)}
-                                placeholder={t('designCodePlaceholder')}
-                              />
-                              <p className="text-xs leading-5 text-muted-foreground">
-                                {t('designCodeHelp')}
-                              </p>
                             </div>
                             <p className="text-xs leading-5 text-muted-foreground">
                               {t('composerHelp')}
