@@ -4,9 +4,9 @@ import { useEffect, useState } from 'react'
 import { Database, ExternalLink, Server, ShieldAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { API_BASE } from '@/lib/api-base'
 import { useI18n } from '@/lib/i18n'
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const FALLBACK_PGADMIN_URL = 'http://localhost:5050'
 
 type DatabaseAdminStatus = {

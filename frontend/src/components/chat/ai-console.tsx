@@ -16,6 +16,7 @@ import { StructuralVisualizationModal, type VisualizationSnapshot } from '@/comp
 import { useI18n, type MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { fetchLatestModel, type LatestModelResponse } from '@/lib/api'
+import { API_BASE } from '@/lib/api-base'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
 
 type AnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear'
@@ -297,7 +298,6 @@ function mapCapabilityReasonToText(reason: string, t: (key: MessageKey) => strin
   return reason
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 const STORAGE_KEY = 'structureclaw.console.conversations'
 
 function createId(prefix: string) {

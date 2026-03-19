@@ -1,6 +1,6 @@
 'use client'
 
-import { useContext, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useContext, useEffect, useRef } from 'react'
 import { createStore } from 'zustand/vanilla'
 import { useStore as useZustandStore } from 'zustand'
 import { AppStoreContext } from '@/lib/stores/context'

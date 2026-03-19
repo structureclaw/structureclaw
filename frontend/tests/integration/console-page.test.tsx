@@ -1,6 +1,6 @@
 import '@testing-library/jest-dom/vitest'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import ConsolePage from '../../src/app/(console)/console/page'
 import type { VisualizationSnapshot } from '../../src/components/visualization'
 
@@ -202,6 +202,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
   })
 
   afterEach(() => {
+    vi.useRealTimers()
     vi.restoreAllMocks()
   })
 
@@ -336,6 +337,64 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
     await renderConsolePage()
     expect(await screen.findByText('历史会话标题')).toBeInTheDocument()
+  })
+
+  it('stops showing conversation-list loading when the backend request hangs', async () => {
+    vi.useFakeTimers()
+
+    vi.mocked(fetch).mockImplementation((input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response)
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response)
+      }
+
+      if (url.includes('/api/v1/models/latest')) {
+        return Promise.resolve({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+        } as unknown as Response)
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return new Promise<Response>((_, reject) => {
+          const signal = init?.signal
+          if (signal) {
+            signal.addEventListener(
+              'abort',
+              () => {
+                reject(signal.reason ?? new DOMException('Aborted', 'AbortError'))
+              },
+              { once: true }
+            )
+          }
+        })
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    render(<ConsolePage />)
+
+    expect(screen.getByText(/Loading conversation list|正在加载会话列表/)).toBeInTheDocument()
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(8000)
+    })
+
+    expect(screen.queryByText(/Loading conversation list|正在加载会话列表/)).not.toBeInTheDocument()
+    expect(screen.getByText(/Loading the conversation list timed out|加载会话列表超时/)).toBeInTheDocument()
   })
 
   it('restores model context and local result snapshots when selecting a conversation', async () => {
@@ -2001,9 +2060,10 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await waitFor(() => {
       expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
+    const dialog = screen.getByRole('dialog')
 
-    expect(screen.getByText('Archived Beam')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Forces|内力/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Deformed|变形/ })).toBeInTheDocument()
+    expect(within(dialog).getByText('Archived Beam')).toBeInTheDocument()
+    expect(within(dialog).getAllByRole('button', { name: /Forces|内力/ }).length).toBeGreaterThan(0)
+    expect(within(dialog).getAllByRole('button', { name: /Deformed|变形/ }).length).toBeGreaterThan(0)
   })
 })
