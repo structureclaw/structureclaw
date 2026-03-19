@@ -1,12 +1,13 @@
 import type { AxiosInstance } from 'axios';
 import type { AppLocale } from '../../services/locale.js';
 import {
+  listCodeCheckRuleProviders,
   resolveCodeCheckRule,
 } from './registry.js';
 import type { CodeCheckDomainInput } from './types.js';
 
 export type { CodeCheckDomainInput } from './types.js';
-export { resolveCodeCheckDesignCodeFromSkillIds } from './registry.js';
+export { listCodeCheckRuleProviders, resolveCodeCheckDesignCodeFromSkillIds } from './registry.js';
 
 export function extractElementIds(model: Record<string, unknown> | undefined): string[] {
   if (!model) {

@@ -1,6 +1,7 @@
 import { describe, expect, test } from '@jest/globals';
 import {
   executeCodeCheckDomain,
+  listCodeCheckRuleProviders,
   resolveCodeCheckDesignCodeFromSkillIds,
 } from '../dist/agent-skills/code-check/entry.js';
 
@@ -29,7 +30,7 @@ describe('code-check per-standard skill routing', () => {
     expect(result.code).toBe('GB50017');
   });
 
-  test('should fallback to custom passthrough for unknown code', async () => {
+  test('should reject unknown code-check standards explicitly', async () => {
     const calls = [];
     const engineClient = {
       post: async (path, payload) => {
@@ -38,7 +39,7 @@ describe('code-check per-standard skill routing', () => {
       },
     };
 
-    const result = await executeCodeCheckDomain(engineClient, {
+    await expect(executeCodeCheckDomain(engineClient, {
       modelId: 'm2',
       code: 'ACI318',
       elements: ['E9'],
@@ -46,10 +47,8 @@ describe('code-check per-standard skill routing', () => {
         analysisSummary: {},
         utilizationByElement: {},
       },
-    });
-
-    expect(calls[0].payload.code).toBe('ACI318');
-    expect(result.code).toBe('ACI318');
+    })).rejects.toThrow('Unsupported code-check standard: ACI318');
+    expect(calls).toHaveLength(0);
   });
 
   test('should dispatch each supported standard independently', async () => {
@@ -88,7 +87,53 @@ describe('code-check per-standard skill routing', () => {
   test('should resolve design code from selected code-check skill ids', () => {
     expect(resolveCodeCheckDesignCodeFromSkillIds(['beam', 'code-check-gb50010'])).toBe('GB50010');
     expect(resolveCodeCheckDesignCodeFromSkillIds(['code-check-jgj3'])).toBe('JGJ3');
-    expect(resolveCodeCheckDesignCodeFromSkillIds(['code-check-custom'])).toBeUndefined();
     expect(resolveCodeCheckDesignCodeFromSkillIds(['beam'])).toBeUndefined();
+  });
+
+  test('should expose built-in providers in deterministic order', () => {
+    const providers = listCodeCheckRuleProviders();
+
+    expect(providers.map((provider) => provider.id)).toEqual([
+      'code-check-gb50017',
+      'code-check-gb50010',
+      'code-check-gb50011',
+      'code-check-jgj3',
+    ]);
+  });
+
+  test('should merge external providers by priority into deterministic order', () => {
+    const externalRule = {
+      skillId: 'code-check-ext',
+      designCode: 'EXT001',
+      matches: (code) => code === 'EXT001',
+      execute: async () => ({ source: 'external' }),
+    };
+
+    const providers = listCodeCheckRuleProviders({
+      externalProviders: [{
+        id: externalRule.skillId,
+        domain: 'code-check',
+        source: 'skillhub',
+        priority: 115,
+        rule: externalRule,
+      }],
+    });
+
+    expect(providers.map((provider) => provider.id)).toEqual([
+      'code-check-gb50017',
+      'code-check-gb50010',
+      'code-check-ext',
+      'code-check-gb50011',
+      'code-check-jgj3',
+    ]);
+    expect(resolveCodeCheckDesignCodeFromSkillIds(['code-check-ext'], {
+      externalProviders: [{
+        id: externalRule.skillId,
+        domain: 'code-check',
+        source: 'skillhub',
+        priority: 115,
+        rule: externalRule,
+      }],
+    })).toBe('EXT001');
   });
 });
