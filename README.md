@@ -59,6 +59,46 @@ CLI alternative:
 ./sclaw stop
 ```
 
+### Windows / Docker Quick Start
+
+Windows users can now start the full stack directly with Docker, which is the easiest path for beginners who do not want to install local Node.js, Python, PostgreSQL, and Redis first.
+
+Recommended steps:
+
+1. Install and start Docker Desktop.
+2. If Docker Desktop asks you to enable WSL 2 or required container features on first launch, follow the setup wizard and restart Docker Desktop.
+3. Create `.env` from `.env.example` in the project root, and at minimum fill in `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, and `LLM_BASE_URL`.
+4. Start the full stack with Docker Compose:
+
+```bash
+make docker-up
+```
+
+If your Windows environment does not have `make`, run:
+
+```bash
+docker compose up --build
+```
+
+Once the stack is ready, the main entrypoints are:
+
+- Frontend: `http://localhost:30000`
+- Backend health check: `http://localhost:30010/health`
+- Analysis engine: `http://localhost:30011/health`
+- pgAdmin: `http://localhost:5050`
+
+To stop the containers:
+
+```bash
+make docker-down
+```
+
+Or:
+
+```bash
+docker compose down
+```
+
 ## Environment
 
 Copy and adjust environment variables from `.env.example`.

@@ -124,6 +124,17 @@ const run = async () => {
           },
         };
       }
+      if (path === '/code-check') {
+        return {
+          data: {
+            code: payload.code,
+            status: 'success',
+            summary: { total: payload.elements.length, passed: payload.elements.length, failed: 0, warnings: 0 },
+            traceability: { analysisSummary: payload.context?.analysisSummary || {} },
+            details: [],
+          },
+        };
+      }
       throw new Error(`unexpected path ${path}`);
     };
 
@@ -170,6 +181,17 @@ const run = async () => {
             message: 'ok',
             data: {},
             meta: {},
+          },
+        };
+      }
+      if (path === '/code-check') {
+        return {
+          data: {
+            code: payload.code,
+            status: 'success',
+            summary: { total: payload.elements.length, passed: payload.elements.length, failed: 0, warnings: 0 },
+            traceability: { analysisSummary: payload.context?.analysisSummary || {} },
+            details: [],
           },
         };
       }

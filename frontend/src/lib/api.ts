@@ -2,8 +2,7 @@
  * API Client Functions
  * Centralized API calls to the backend
  */
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+import { API_BASE } from '@/lib/api-base'
 
 /**
  * Latest model response from backend

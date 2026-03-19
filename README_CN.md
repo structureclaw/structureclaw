@@ -59,6 +59,46 @@ CLI 方式：
 ./sclaw stop
 ```
 
+### Windows / Docker 新手说明
+
+Windows 现在可以直接使用 Docker 启动完整栈，适合不想先手动安装本地 Node.js、Python 和数据库环境的新手。
+
+推荐步骤：
+
+1. 安装并启动 Docker Desktop。
+2. 首次启动如果提示启用 WSL 2 或容器功能，按向导完成后重启 Docker Desktop。
+3. 在项目根目录基于 `.env.example` 创建 `.env`，至少补齐 `LLM_PROVIDER`、`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`。
+4. 优先使用 Docker Compose 启动完整服务：
+
+```bash
+make docker-up
+```
+
+如果你的 Windows 环境没有 `make`，也可以直接执行：
+
+```bash
+docker compose up --build
+```
+
+启动完成后，常用入口如下：
+
+- 前端：`http://localhost:30000`
+- 后端健康检查：`http://localhost:30010/health`
+- 分析引擎：`http://localhost:30011/health`
+- pgAdmin：`http://localhost:5050`
+
+停止容器：
+
+```bash
+make docker-down
+```
+
+或：
+
+```bash
+docker compose down
+```
+
 ## 环境变量
 
 请基于 `.env.example` 配置本地环境。

@@ -1,6 +1,6 @@
 'use client'
 
-import { useContext, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useContext, useEffect, useRef } from 'react'
 import { createStore } from 'zustand/vanilla'
 import { useStore as useZustandStore } from 'zustand'
 import { AppStoreContext } from '@/lib/stores/context'
@@ -111,9 +111,6 @@ export const messages = {
     analysisTypeDynamic: 'Dynamic',
     analysisTypeSeismic: 'Seismic',
     analysisTypeNonlinear: 'Nonlinear',
-    designCodeLabel: 'Design Code',
-    designCodePlaceholder: 'For example GB50017',
-    designCodeHelp: 'If this field is present, execution also requests a more complete engineering report.',
     skillSelectionLabel: 'Loaded skills',
     skillSelectionHelp: 'Choose which local Markdown skills the agent may use. Keep the default selection to preserve automatic routing.',
     skillSelectionCatalogHint: 'Skills are grouped by capability domain from the installed catalog. You can select individual skills or batch-select a category.',
@@ -427,9 +424,6 @@ export const messages = {
     analysisTypeDynamic: '动力',
     analysisTypeSeismic: '抗震',
     analysisTypeNonlinear: '非线性',
-    designCodeLabel: '设计规范',
-    designCodePlaceholder: '例如 GB50017',
-    designCodeHelp: '保留该字段时，执行分析会顺带请求生成更完整的工程报告。',
     skillSelectionLabel: '已加载技能',
     skillSelectionHelp: '选择允许 agent 使用的本地 Markdown skills。保持默认选择即可继续自动匹配。',
     skillSelectionCatalogHint: '技能按已安装目录中的能力域分组。你可以逐个选择技能，也可以按分类批量选择。',
@@ -650,11 +644,6 @@ type LocaleOnlyStore = {
   setLocale: (locale: AppLocale) => void
 }
 
-const fallbackLocaleStore = createStore<LocaleOnlyStore>()((set) => ({
-  locale: 'en',
-  setLocale: (locale) => set({ locale }),
-}))
-
 const normalizeLocale = (value: unknown): AppLocale | null => {
   if (value === 'en' || value === 'zh') {
     return value
@@ -662,12 +651,16 @@ const normalizeLocale = (value: unknown): AppLocale | null => {
   return null
 }
 
+const fallbackLocaleStore = createStore<LocaleOnlyStore>()((set) => ({
+  locale: 'en',
+  setLocale: (locale) => set({ locale }),
+}))
+
 export function useI18n() {
   const appStoreContext = useContext(AppStoreContext)
   const localeStore = (appStoreContext ?? fallbackLocaleStore) as unknown as typeof fallbackLocaleStore
   const locale = useZustandStore(localeStore, (state) => state.locale)
   const setLocale = useZustandStore(localeStore, (state) => state.setLocale)
-
   const localeInitializedRef = useRef(false)
 
   useEffect(() => {
@@ -686,9 +679,7 @@ export function useI18n() {
     document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en'
   }, [locale])
 
-  const t = useMemo(() => {
-    return (key: MessageKey): string => messages[locale][key]
-  }, [locale])
+  const t = useCallback((key: MessageKey): string => messages[locale][key], [locale])
 
   return { locale, setLocale, t }
 }
