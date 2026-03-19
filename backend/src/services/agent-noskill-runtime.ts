@@ -1,6 +1,7 @@
 import type { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from './locale.js';
 import type { DraftState } from '../agent-skills/runtime/index.js';
+import { logger } from '../utils/logger.js';
 
 export function normalizeNoSkillDraftState(_state: DraftState): DraftState {
   return {
@@ -71,18 +72,40 @@ export async function tryNoSkillLlmBuildGenericModel(
     : '\nThe previous output did not pass JSON validation. Return a valid JSON object only.';
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
+    const prompt = attempt === 0 ? basePrompt : `${basePrompt}${retrySuffix}`;
+    const startedAt = Date.now();
+    logger.info({
+      attempt: attempt + 1,
+      locale,
+      promptChars: prompt.length,
+      stateHintChars: stateHint.length,
+      messagePreview: message.slice(0, 160),
+    }, 'no-skill llm draft attempt started');
+
     try {
-      const prompt = attempt === 0 ? basePrompt : `${basePrompt}${retrySuffix}`;
       const aiMessage = await llm.invoke(prompt);
       const content = typeof aiMessage.content === 'string'
         ? aiMessage.content
         : JSON.stringify(aiMessage.content);
       const parsed = parseJsonObject(content);
       if (!parsed) {
+        logger.warn({
+          attempt: attempt + 1,
+          durationMs: Date.now() - startedAt,
+          responseChars: content.length,
+          responsePreview: content.slice(0, 200),
+        }, 'no-skill llm draft returned non-json content');
         continue;
       }
 
       if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.elements) || !Array.isArray(parsed.load_cases)) {
+        logger.warn({
+          attempt: attempt + 1,
+          durationMs: Date.now() - startedAt,
+          hasNodes: Array.isArray(parsed.nodes),
+          hasElements: Array.isArray(parsed.elements),
+          hasLoadCases: Array.isArray(parsed.load_cases),
+        }, 'no-skill llm draft returned json without required structural arrays');
         continue;
       }
 
@@ -93,11 +116,30 @@ export async function tryNoSkillLlmBuildGenericModel(
         parsed.unit_system = 'SI';
       }
 
+      logger.info({
+        attempt: attempt + 1,
+        durationMs: Date.now() - startedAt,
+        nodeCount: parsed.nodes.length,
+        elementCount: parsed.elements.length,
+        loadCaseCount: parsed.load_cases.length,
+      }, 'no-skill llm draft attempt succeeded');
+
       return parsed;
-    } catch {
+    } catch (error) {
+      logger.warn({
+        attempt: attempt + 1,
+        durationMs: Date.now() - startedAt,
+        error: error instanceof Error ? error.message : String(error),
+      }, 'no-skill llm draft attempt failed with upstream error');
       continue;
     }
   }
+
+  logger.warn({
+    locale,
+    promptChars: basePrompt.length,
+    messagePreview: message.slice(0, 160),
+  }, 'no-skill llm draft exhausted all attempts without a valid model');
 
   return undefined;
 }
