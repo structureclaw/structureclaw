@@ -30,7 +30,7 @@ help:
 	@echo "  check-startup   Run local startup checks without launching the full stack"
 	@echo "  core-regression Run core analysis regression checks (contract + cases + schema)"
 	@echo "  doctor          Beginner alias of check-startup"
-	@echo "  start           Beginner one-command startup (full core deps + uv)"
+	@echo "  start           Beginner one-command local startup (SQLite, no Docker)"
 	@echo "  restart         Restart the local stack with the default startup profile"
 	@echo "  stop            Beginner alias of local-down"
 	@echo "  status          Beginner alias of local-status"

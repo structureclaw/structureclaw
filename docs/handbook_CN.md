@@ -22,17 +22,16 @@ StructureClaw 是一个 AI 协同结构工程平台，采用单仓多服务架�
 
 ## 3. 环境要求
 
-推荐：
-
-- Docker Engine / Docker Desktop
-- Docker Compose v2
-
-源码本地开发建议：
+推荐的本地环境：
 
 - Node.js 18+
 - Python 3.11
-- PostgreSQL 14+
-- Redis 7+（可选）
+
+可选：
+
+- Docker Engine / Docker Desktop
+- Docker Compose v2
+- Redis 7+（仅在你显式启用 `REDIS_URL` 时需要）
 
 ## 4. 仓库结构
 
@@ -54,6 +53,8 @@ make doctor
 make start
 make status
 ```
+
+`make start` 是 SQLite 本地优先的启动路径，会直接从源码启动 frontend、backend 和 core，不会调用 Docker。
 
 ### 5.2 常用生命周期命令
 
@@ -86,6 +87,7 @@ make restart
 
 说明：
 
+- `DATABASE_URL` 默认指向 `.runtime/data` 下的本地 SQLite 文件。
 - `REDIS_URL=disabled` 时后端使用内存降级缓存。
 - `ANALYSIS_ENGINE_URL` 可留空，由 `CORE_PORT` 推导。
 
@@ -170,7 +172,7 @@ make backend-regression
 ## 12. 故障排查
 
 - 启动异常优先执行 `make doctor`。
-- 数据库相关测试失败时，先检查 `DATABASE_URL` 指向与连通性。
+- 数据库相关测试失败时，先检查 `DATABASE_URL` 是否以 `file:` 开头，并且指向本地可写路径。
 - LLM 流程异常时，检查 `LLM_PROVIDER` 与 API Key。
 - 契约失败时，直接运行对应 `scripts/validate-*.sh` 进行定向诊断。
 

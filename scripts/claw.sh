@@ -25,8 +25,8 @@ Usage:
 
 Commands:
   doctor      Run startup checks (without starting full stack)
-  start       Recommended for beginners (full core deps + uv)
-  restart     Restart local services with the default startup profile (full + uv)
+  start       Recommended for beginners (full core deps + uv, no Docker)
+  restart     Restart local services with the default startup profile (full + uv, no Docker)
   stop        Stop local services and local infra
   status      Show service runtime + health checks
   logs        Show runtime logs from .runtime/logs
@@ -166,11 +166,11 @@ case "$command_name" in
     "$ROOT_DIR/scripts/check-startup.sh"
     ;;
   start)
-    "$ROOT_DIR/scripts/dev-up.sh" full --uv
+    "$ROOT_DIR/scripts/dev-up.sh" full --uv --skip-infra
     ;;
   restart)
     "$ROOT_DIR/scripts/dev-down.sh"
-    "$ROOT_DIR/scripts/dev-up.sh" full --uv
+    "$ROOT_DIR/scripts/dev-up.sh" full --uv --skip-infra
     ;;
   stop)
     "$ROOT_DIR/scripts/dev-down.sh"
