@@ -26,8 +26,8 @@ Owner: backend-agent
 - [x] Shared provider base types implemented in backend code
 - [x] Class provider contract defined for `code-check`
 - [x] Class provider contract defined for `structure-modeling`
-- [ ] Shared provider loader skeleton implemented
-- [ ] Built-in provider loading wired through shared loader
+- [x] Shared provider loader skeleton implemented
+- [x] Built-in provider loading wired through shared loader
 - [ ] External SkillHub executable provider loading implemented
 - [x] `code-check` migrated to built-in + external provider registry
 - [ ] Scenario-driven classes migrated to shared provider pipeline
@@ -54,11 +54,12 @@ Owner: backend-agent
 - Added initial `structure-modeling` provider metadata and built-in provider registry wiring so runtime selection now flows through a class registry without changing built-in behavior.
 - Added shared provider base types so `code-check` and `structure-modeling` no longer define separate copies of the same core provider metadata shape.
 - Added shared package metadata normalization for built-in manifests and SkillHub catalog entries, and wired current services onto that package layer.
+- Added a shared provider loader skeleton and routed both `code-check` and `structure-modeling` built-in provider loading through it.
 
 ## Next Actions (Priority Order)
-1. Build a shared provider loader skeleton that can host both built-in packages and future SkillHub executable providers.
-2. Decide how current `structure-modeling` manifests/handlers should map onto the shared package layer without changing existing scenario behavior.
-3. Define the first executable package layout for SkillHub providers so runtime import and validation can start from one class.
+1. Define the first executable package layout for SkillHub providers so runtime import and validation can start from one class.
+2. Decide how current `structure-modeling` manifests/handlers should map onto the shared package layer without changing existing scenario behavior once external packages are present.
+3. Extend the shared loader from merge/order/dedupe skeleton to real executable-provider import and validation hooks.
 4. Re-verify no-skill fallback and failure isolation against the new provider architecture once the shared loader and structure-modeling registry exist.
 5. Start wiring the first real external executable-provider path after the shared package/loader layer is stable.
 
