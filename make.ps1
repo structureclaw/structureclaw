@@ -242,33 +242,40 @@ function Test-InstalledPackageMatchesLock {
     return $true
   }
 
+  try {
+    $lockJson = Get-Content -LiteralPath $lockFile -Raw | ConvertFrom-Json
+  }
+  catch {
+    return $false
+  }
+
   foreach ($packageName in $PackageNames) {
     $installedPackageJson = Join-Path $ProjectDir ("node_modules/{0}/package.json" -f $packageName)
     if (-not (Test-Path -LiteralPath $installedPackageJson)) {
       return $false
     }
 
-    $nodeScript = @'
-const fs = require("node:fs");
-const lockFile = process.argv[1];
-const packageJsonFile = process.argv[2];
-const packageName = process.argv[3];
-const lockJson = JSON.parse(fs.readFileSync(lockFile, "utf8"));
-const packageKey = `node_modules/${packageName}`;
-const expectedVersion = lockJson.packages && lockJson.packages[packageKey] ? String(lockJson.packages[packageKey].version || "") : "";
-const installedJson = JSON.parse(fs.readFileSync(packageJsonFile, "utf8"));
-const installedVersion = String(installedJson.version || "");
-process.stdout.write(JSON.stringify({ expectedVersion, installedVersion }));
-'@
+    $packageKey = "node_modules/$packageName"
+    $expectedVersion = ""
+    if ($null -ne $lockJson.packages) {
+      $lockPackageEntry = $lockJson.packages.$packageKey
+      if ($null -ne $lockPackageEntry -and $null -ne $lockPackageEntry.version) {
+        $expectedVersion = [string]$lockPackageEntry.version
+      }
+    }
 
-    $resultJson = & node -e $nodeScript $lockFile $installedPackageJson $packageName
-    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($resultJson)) {
+    try {
+      $installedJson = Get-Content -LiteralPath $installedPackageJson -Raw | ConvertFrom-Json
+    }
+    catch {
       return $false
     }
 
-    $result = $resultJson | ConvertFrom-Json
-    $expectedVersion = [string]$result.expectedVersion
-    $installedVersion = [string]$result.installedVersion
+    $installedVersion = ""
+    if ($null -ne $installedJson.version) {
+      $installedVersion = [string]$installedJson.version
+    }
+
     if ([string]::IsNullOrWhiteSpace($expectedVersion)) {
       continue
     }
@@ -446,18 +453,24 @@ function Start-TrackedService {
   $pidFile = Get-PidFile $Name
   Add-Content -LiteralPath $logFile -Value ("=== [{0}] starting {1} ===" -f (Get-Date -Format s), $Name)
 
+  # Use an encoded bootstrap script to preserve the full command text verbatim.
+  # Start-Process -ArgumentList can split unquoted values with spaces, which makes
+  # -CommandText bind incorrectly and causes the child shell to exit immediately.
+  $escapedRootDir = $RootDir.Replace("'", "''")
+  $escapedLogFile = $logFile.Replace("'", "''")
+  $bootstrapScript = @"
+& '$escapedRootDir/scripts/windows/run-service.ps1' -RootDir '$escapedRootDir' -LogFile '$escapedLogFile' -CommandText @'
+$CommandText
+'@
+"@
+  $encodedBootstrap = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($bootstrapScript))
+
   $process = Start-Process -FilePath (Get-PowerShellExe) -ArgumentList @(
     '-NoProfile',
     '-ExecutionPolicy',
     'Bypass',
-    '-File',
-    $ServiceRunner,
-    '-RootDir',
-    $RootDir,
-    '-LogFile',
-    $logFile,
-    '-CommandText',
-    $CommandText
+    '-EncodedCommand',
+    $encodedBootstrap
   ) -PassThru
 
   Set-Content -LiteralPath $pidFile -Value $process.Id
@@ -643,7 +656,7 @@ function Invoke-LocalUp {
   $corePort = Get-ConfigValue -DotEnv $DotEnv -Name 'CORE_PORT' -DefaultValue '8001'
 
   Start-TrackedService -Name 'backend' -CommandText 'npm run dev --prefix backend'
-  Start-TrackedService -Name 'frontend' -CommandText ('$env:FRONTEND_PORT = ''{0}''; npm run dev --prefix frontend -- --port {0}' -f $frontendPort)
+  Start-TrackedService -Name 'frontend' -CommandText ('$env:FRONTEND_PORT = ''{0}''; $env:PORT = ''{0}''; npm --prefix frontend run dev' -f $frontendPort)
   Start-TrackedService -Name 'core' -CommandText (("& '{0}' -m uvicorn main:app --host 0.0.0.0 --port {1} --reload --app-dir core") -f $CorePython, $corePort)
 
   Write-Host ''

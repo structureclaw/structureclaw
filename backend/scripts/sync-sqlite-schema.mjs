@@ -13,7 +13,7 @@ const repoRoot = path.resolve(backendDir, '..');
 const prismaDir = path.join(backendDir, 'prisma');
 const schemaPath = path.join(prismaDir, 'schema.prisma');
 const defaultDatabasePath = path.join(repoRoot, '.runtime', 'data', 'structureclaw.db');
-const npxCommand = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+const prismaCliPath = path.join(backendDir, 'node_modules', 'prisma', 'build', 'index.js');
 
 function normalizeDatabaseUrl(databaseUrl) {
   if (!databaseUrl || !databaseUrl.startsWith('file:')) {
@@ -37,7 +37,8 @@ function normalizeDatabaseUrl(databaseUrl) {
 }
 
 function runPrisma(args, databaseUrl) {
-  const result = spawnSync(npxCommand, args, {
+  const prismaArgs = args[0] === 'prisma' ? args.slice(1) : args;
+  const result = spawnSync(process.execPath, [prismaCliPath, ...prismaArgs], {
     cwd: backendDir,
     env: {
       ...process.env,
@@ -47,6 +48,9 @@ function runPrisma(args, databaseUrl) {
   });
 
   if (result.status !== 0) {
+    if (result.error) {
+      console.error(result.error.message);
+    }
     if (result.stdout) {
       process.stdout.write(result.stdout);
     }
