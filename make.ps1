@@ -204,27 +204,37 @@ function Test-InstalledPackageMatchesLock {
     return $true
   }
 
-  $lockJson = Get-Content -LiteralPath $lockFile -Raw | ConvertFrom-Json -AsHashtable
   foreach ($packageName in $PackageNames) {
-    $packageKey = if ($packageName.StartsWith('@')) {
-      "node_modules/{0}" -f $packageName
-    }
-    else {
-      "node_modules/{0}" -f $packageName
-    }
-
-    if (-not $lockJson.packages.ContainsKey($packageKey)) {
-      continue
-    }
-
     $installedPackageJson = Join-Path $ProjectDir ("node_modules/{0}/package.json" -f $packageName)
     if (-not (Test-Path -LiteralPath $installedPackageJson)) {
       return $false
     }
 
-    $installedJson = Get-Content -LiteralPath $installedPackageJson -Raw | ConvertFrom-Json -AsHashtable
-    $expectedVersion = [string]$lockJson.packages[$packageKey].version
-    $installedVersion = [string]$installedJson.version
+    $nodeScript = @'
+const fs = require("node:fs");
+const lockFile = process.argv[1];
+const packageJsonFile = process.argv[2];
+const packageName = process.argv[3];
+const lockJson = JSON.parse(fs.readFileSync(lockFile, "utf8"));
+const packageKey = `node_modules/${packageName}`;
+const expectedVersion = lockJson.packages && lockJson.packages[packageKey] ? String(lockJson.packages[packageKey].version || "") : "";
+const installedJson = JSON.parse(fs.readFileSync(packageJsonFile, "utf8"));
+const installedVersion = String(installedJson.version || "");
+process.stdout.write(JSON.stringify({ expectedVersion, installedVersion }));
+'@
+
+    $resultJson = & node -e $nodeScript $lockFile $installedPackageJson $packageName
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($resultJson)) {
+      return $false
+    }
+
+    $result = $resultJson | ConvertFrom-Json
+    $expectedVersion = [string]$result.expectedVersion
+    $installedVersion = [string]$result.installedVersion
+    if ([string]::IsNullOrWhiteSpace($expectedVersion)) {
+      continue
+    }
+
     if ($installedVersion -ne $expectedVersion) {
       Write-Info ("Installed package drift detected for {0}: have {1}, expected {2}." -f $packageName, $installedVersion, $expectedVersion)
       return $false
