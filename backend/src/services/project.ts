@@ -49,8 +49,8 @@ export class ProjectService {
     if (filters.search) {
       where.OR = [
         ...(Array.isArray(where.OR) ? where.OR : []),
-        { name: { contains: filters.search, mode: 'insensitive' } },
-        { description: { contains: filters.search, mode: 'insensitive' } },
+        { name: { contains: filters.search } },
+        { description: { contains: filters.search } },
       ];
     }
 

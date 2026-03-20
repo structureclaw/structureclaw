@@ -21,10 +21,10 @@ model User {
   organization  String?
   title         String?
   bio           String?
-  expertise     String[]
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  expertiseItems UserExpertise[]
   projects      Project[]
   conversations Conversation[]
   skills        Skill[]
@@ -154,7 +154,6 @@ model Skill {
   category    String
   version     String
   author      String
-  tags        String[]
   config      Json
   isPublic    Boolean  @default(false)
   rating      Float    @default(0)
@@ -164,6 +163,7 @@ model Skill {
 
   authorId    String?
   authorUser  User?    @relation(fields: [authorId], references: [id])
+  tagItems    SkillTag[]
   projects    ProjectSkill[]
   reviews     SkillReview[]
   executions  SkillExecution[]
@@ -222,8 +222,6 @@ model Post {
   title       String
   content     String
   category    String
-  tags        String[]
-  attachments String[]
   viewCount   Int      @default(0)
   likeCount   Int      @default(0)
   isPinned    Boolean  @default(false)
@@ -233,10 +231,65 @@ model Post {
   authorId    String
   author      User     @relation(fields: [authorId], references: [id])
   projectId   String?
+  tagItems    PostTag[]
+  attachments PostAttachment[]
   comments    Comment[]
   likes       PostLike[]
 
   @@map("posts")
+}
+
+model UserExpertise {
+  id        String   @id @default(cuid())
+  userId    String
+  value     String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, value])
+  @@index([userId, position])
+  @@map("user_expertise")
+}
+
+model SkillTag {
+  id        String   @id @default(cuid())
+  skillId   String
+  value     String
+  createdAt DateTime @default(now())
+
+  skill     Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, value])
+  @@index([value])
+  @@map("skill_tags")
+}
+
+model PostTag {
+  id        String   @id @default(cuid())
+  postId    String
+  value     String
+  createdAt DateTime @default(now())
+
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, value])
+  @@index([value])
+  @@map("post_tags")
+}
+
+model PostAttachment {
+  id        String   @id @default(cuid())
+  postId    String
+  url       String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, position])
+  @@map("post_attachments")
 }
 
 // 帖子评论
