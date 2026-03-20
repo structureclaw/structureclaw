@@ -2,6 +2,7 @@ import { GB50010CodeCheckRule } from './gb50010/rule.js';
 import { GB50011CodeCheckRule } from './gb50011/rule.js';
 import { GB50017CodeCheckRule } from './gb50017/rule.js';
 import { JGJ3CodeCheckRule } from './jgj3/rule.js';
+import { loadSkillProviders } from '../shared/loader.js';
 import type { CodeCheckRule, CodeCheckRuleProvider } from './rule.js';
 
 const BUILTIN_CODE_CHECK_PROVIDERS: CodeCheckRuleProvider[] = [
@@ -35,35 +36,18 @@ const BUILTIN_CODE_CHECK_PROVIDERS: CodeCheckRuleProvider[] = [
   },
 ];
 
-function compareProviders(left: CodeCheckRuleProvider, right: CodeCheckRuleProvider): number {
-  if (left.priority !== right.priority) {
-    return left.priority - right.priority;
-  }
-  if (left.source !== right.source) {
-    return left.source === 'builtin' ? -1 : 1;
-  }
-  return left.id.localeCompare(right.id);
-}
-
-function dedupeProviders(providers: CodeCheckRuleProvider[]): CodeCheckRuleProvider[] {
-  const byId = new Map<string, CodeCheckRuleProvider>();
-  const ordered = [...providers].sort(compareProviders);
-  for (const provider of ordered) {
-    if (!byId.has(provider.id)) {
-      byId.set(provider.id, provider);
-    }
-  }
-  return [...byId.values()];
-}
-
 function buildProviderRegistry(externalProviders: CodeCheckRuleProvider[] = []): CodeCheckRuleProvider[] {
-  const merged = dedupeProviders([
-    ...BUILTIN_CODE_CHECK_PROVIDERS,
-    ...externalProviders,
-  ]).filter((provider) => provider.domain === 'code-check');
-  const primary = merged.filter((provider) => !provider.fallback).sort(compareProviders);
-  const fallback = merged.filter((provider) => provider.fallback).sort(compareProviders);
-  return [...primary, ...fallback];
+  return loadSkillProviders({
+    builtInProviders: BUILTIN_CODE_CHECK_PROVIDERS,
+    externalProviders,
+    priorityOrder: 'asc',
+    filter: (provider) => provider.domain === 'code-check',
+    finalize: (providers) => {
+      const primary = providers.filter((provider) => !provider.fallback);
+      const fallback = providers.filter((provider) => provider.fallback);
+      return [...primary, ...fallback];
+    },
+  });
 }
 
 function buildRuleRegistry(externalProviders: CodeCheckRuleProvider[] = []): CodeCheckRule[] {
