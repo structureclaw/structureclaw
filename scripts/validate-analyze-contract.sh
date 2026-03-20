@@ -107,7 +107,12 @@ frame_3d_model = StructureModelV1(
     load_combinations=[],
 )
 
-frame_3d_request = AnalysisRequest(type='static', model=frame_3d_model, parameters={'loadCaseIds': ['LC1']})
+frame_3d_request = AnalysisRequest(
+    type='static',
+    model=frame_3d_model,
+    parameters={'loadCaseIds': ['LC1']},
+    engineId='builtin-simplified',
+)
 frame_3d_result = asyncio.run(analyze(frame_3d_request)).model_dump()
 if frame_3d_result['success'] is not True:
     raise SystemExit('Expected success=true for 3D frame request')
