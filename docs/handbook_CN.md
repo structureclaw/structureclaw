@@ -74,6 +74,18 @@ make restart
 ./sclaw stop
 ```
 
+### 5.4 Windows PowerShell
+
+```powershell
+.\make.ps1 doctor
+.\make.ps1 start
+.\make.ps1 status
+.\make.ps1 logs all --follow
+.\make.ps1 stop
+```
+
+`make.ps1` 是 Windows 原生的本地开发入口；如果使用 `cmd.exe`，也可以通过仓库里的 `make.cmd` 进行转发启动。
+
 ## 6. 环境变量与配置
 
 请基于 `.env.example` 配置。
