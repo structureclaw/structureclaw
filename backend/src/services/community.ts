@@ -1,4 +1,3 @@
-import type { Prisma } from '@prisma/client';
 import { prisma } from '../utils/database.js';
 import { ensureUserId } from '../utils/demo-data.js';
 
@@ -32,6 +31,10 @@ type PostWithArrays = {
   attachments?: Array<{ url: string }> | null;
 } & Record<string, unknown>;
 
+type SkillWithTagItems = {
+  tagItems: Array<{ value: string }>;
+} & Record<string, unknown>;
+
 function mapPostArrays<T extends PostWithArrays | null>(post: T) {
   if (!post) {
     return null;
@@ -47,7 +50,7 @@ function mapPostArrays<T extends PostWithArrays | null>(post: T) {
 
 export class CommunityService {
   async listPosts(params: ListPostsParams = {}) {
-    const where: Prisma.PostWhereInput = {};
+    const where: Record<string, unknown> = {};
 
     if (params.category) {
       where.category = params.category;
@@ -59,7 +62,7 @@ export class CommunityService {
       };
     }
 
-    const orderBy: Prisma.PostOrderByWithRelationInput[] =
+    const orderBy: Array<Record<string, string>> =
       params.sort === 'popular'
         ? [{ likeCount: 'desc' }, { viewCount: 'desc' }]
         : [{ createdAt: 'desc' }];
@@ -94,7 +97,7 @@ export class CommunityService {
       take: params.limit || 20,
     });
 
-    return posts.map((post) => mapPostArrays(post));
+    return posts.map((post: PostWithArrays) => mapPostArrays(post));
   }
 
   async createPost(params: CreatePostParams) {
@@ -263,7 +266,7 @@ export class CommunityService {
       take: 50,
     });
 
-    return posts.map((post) => mapPostArrays(post));
+    return posts.map((post: PostWithArrays) => mapPostArrays(post));
   }
 
   async getPopularTags() {
@@ -309,7 +312,13 @@ export class CommunityService {
         take: 20,
       });
 
-      return { posts: [], skills: skills.map((skill) => ({ ...skill, tags: skill.tagItems.map((item) => item.value) })) };
+      return {
+        posts: [],
+        skills: skills.map((skill: SkillWithTagItems) => ({
+          ...skill,
+          tags: skill.tagItems.map((item: { value: string }) => item.value),
+        })),
+      };
     }
 
     const [posts, skills] = await Promise.all([
@@ -353,8 +362,11 @@ export class CommunityService {
     ]);
 
     return {
-      posts: posts.map((post) => mapPostArrays(post)),
-      skills: skills.map((skill) => ({ ...skill, tags: skill.tagItems.map((item) => item.value) })),
+      posts: posts.map((post: PostWithArrays) => mapPostArrays(post)),
+      skills: skills.map((skill: SkillWithTagItems) => ({
+        ...skill,
+        tags: skill.tagItems.map((item: { value: string }) => item.value),
+      })),
     };
   }
 }

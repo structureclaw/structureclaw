@@ -17,6 +17,10 @@ export interface CreateSkillParams {
   isPublic: boolean;
 }
 
+type SkillWithTagItems = {
+  tagItems?: Array<{ value: string }> | null;
+} & Record<string, unknown>;
+
 // 内置技能列表
 const BUILTIN_SKILLS = [
   {
@@ -115,10 +119,6 @@ const BUILTIN_SKILLS = [
   },
 ];
 
-type SkillWithTagItems = {
-  tagItems?: Array<{ value: string }> | null;
-} & Record<string, unknown>;
-
 function mapSkillTags<T extends SkillWithTagItems | null>(skill: T) {
   if (!skill) {
     return null;
@@ -163,7 +163,7 @@ export class SkillService {
       take: 100,
     });
 
-    return skills.map((skill) => mapSkillTags(skill));
+    return skills.map((skill: SkillWithTagItems) => mapSkillTags(skill));
   }
 
   // 获取技能详情

@@ -183,9 +183,9 @@ export class UserService {
       take: 50,
     });
 
-    return skills.map(({ tagItems, ...skill }) => ({
+    return skills.map(({ tagItems, ...skill }: { tagItems: Array<{ value: string }> } & Record<string, unknown>) => ({
       ...skill,
-      tags: tagItems.map((item) => item.value),
+      tags: tagItems.map((item: { value: string }) => item.value),
     }));
   }
 

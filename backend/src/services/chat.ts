@@ -6,7 +6,7 @@ import { config } from '../config/index.js';
 import { createChatModel } from '../utils/llm.js';
 import { isLlmTimeoutError, toLlmApiError } from '../utils/llm-error.js';
 import { prisma } from '../utils/database.js';
-import { Prisma } from '@prisma/client';
+import type { JsonValue } from '../utils/json.js';
 import { logger } from '../utils/logger.js';
 import { resolveLocale, type AppLocale } from './locale.js';
 
@@ -388,9 +388,9 @@ export class ChatService {
   }
 
   async getConversationSnapshot(conversationId: string): Promise<{
-    modelSnapshot?: Prisma.JsonValue | null;
-    resultSnapshot?: Prisma.JsonValue | null;
-    latestResult?: Prisma.JsonValue | null;
+    modelSnapshot?: JsonValue | null;
+    resultSnapshot?: JsonValue | null;
+    latestResult?: JsonValue | null;
   } | null> {
     const conversation = await prisma.conversation.findUnique({
       where: { id: conversationId },
