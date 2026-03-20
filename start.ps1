@@ -94,12 +94,74 @@ function Test-HttpEndpoint {
   )
 
   try {
-    $null = Invoke-WebRequest -Uri $Uri -Method Get -TimeoutSec $TimeoutSeconds
-    return $true
+    # Use curl.exe to bypass PowerShell proxy issues
+    # Note: Use curl.exe explicitly, not PowerShell alias
+    $result = curl.exe -s -o NUL -w "%{http_code}" $Uri --max-time $TimeoutSeconds 2>$null
+    return ($result -eq '200')
   }
   catch {
     return $false
   }
+}
+
+function Get-EnvPort {
+  param(
+    [string]$EnvPath,
+    [string]$VarName,
+    [string]$DefaultPort
+  )
+
+  if (Test-Path -LiteralPath $EnvPath) {
+    $content = Get-Content -LiteralPath $EnvPath -Raw
+    if ($content -match "$VarName=(\d+)") {
+      return $matches[1]
+    }
+  }
+  return $DefaultPort
+}
+
+function Get-ContainerStatus {
+  param([string]$ServiceName)
+
+  try {
+    # Docker outputs NDJSON (one JSON per line), parse each line separately
+    $jsonOutput = docker compose ps --format json 2>$null
+    if ($jsonOutput) {
+      $lines = $jsonOutput -split "`n" | Where-Object { $_.Trim() -ne "" }
+      foreach ($line in $lines) {
+        try {
+          $container = $line | ConvertFrom-Json
+          if ($container.Service -eq $ServiceName) {
+            $state = $container.State
+            $health = $container.Health
+            if ($health) {
+              return "$state ($health)"
+            }
+            return $state
+          }
+        }
+        catch {
+          # Skip invalid JSON lines
+        }
+      }
+    }
+  }
+  catch {}
+
+  try {
+    # Fallback: parse text output
+    $textOutput = docker compose ps 2>$null
+    $line = $textOutput | Select-String -Pattern $ServiceName
+    if ($line) {
+      if ($line -match "Up") {
+        return "running"
+      }
+      return "stopped"
+    }
+  }
+  catch {}
+
+  return "not found"
 }
 
 function Get-ServiceStatus {
@@ -233,23 +295,47 @@ Write-Success "Service startup command executed / 服务启动命令已执行"
 # Step 4: Display service status
 Write-Step "Service Status / 服务状态"
 
+# Read ports from .env file
+$frontendPort = Get-EnvPort -EnvPath $EnvFile -VarName "FRONTEND_PORT" -DefaultPort "30000"
+$backendPort = Get-EnvPort -EnvPath $EnvFile -VarName "PORT" -DefaultPort "30010"
+$corePort = Get-EnvPort -EnvPath $EnvFile -VarName "CORE_PORT" -DefaultPort "30011"
+
+Write-Info "Ports from .env: Frontend=$frontendPort, Backend=$backendPort, Core=$corePort"
+Write-Info "Checking container status..."
+
+# Show container status for debugging
+try {
+  $containerStatus = docker compose ps 2>$null
+  if ($containerStatus) {
+    Write-Host ""
+    Write-Host "  [Docker Container Status / Docker 容器状态]" -ForegroundColor DarkGray
+    $containerStatus | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+    Write-Host ""
+  }
+}
+catch {}
+
 Start-Sleep -Seconds 3
 
 $services = @(
-  @{Name = 'Frontend'; Url = 'http://localhost:30000'; Port = '30000'},
-  @{Name = 'Backend'; Url = 'http://localhost:8000/health'; Port = '8000'},
-  @{Name = 'Core'; Url = 'http://localhost:8001/health'; Port = '8001'}
+  @{Name = 'Frontend'; Url = "http://localhost:$frontendPort"; Port = $frontendPort; Service = 'frontend'},
+  @{Name = 'Backend'; Url = "http://localhost:$backendPort/health"; Port = $backendPort; Service = 'backend'},
+  @{Name = 'Analysis'; Url = "http://localhost:$corePort/health"; Port = $corePort; Service = 'analysis-engine'}
 )
 
 $allRunning = $true
 
 foreach ($service in $services) {
-  $status = Get-ServiceStatus -Name $service.Name -Url $service.Url
-  if ($status.Status -eq 'running') {
-    Write-Host ("  {0,-12} {1,-10} http://localhost:{2}" -f $service.Name, $status.Status, $service.Port) -ForegroundColor $status.Color
+  $containerStatus = Get-ContainerStatus -ServiceName $service.Service
+  $httpStatus = Get-ServiceStatus -Name $service.Name -Url $service.Url
+
+  Write-Info "Debug: $($service.Name) - Container: $containerStatus, HTTP: $($httpStatus.Status)"
+
+  if ($httpStatus.Status -eq 'running') {
+    Write-Host ("  {0,-12} {1,-10} http://localhost:{2}" -f $service.Name, $httpStatus.Status, $service.Port) -ForegroundColor $httpStatus.Color
   }
   else {
-    Write-Host ("  {0,-12} {1,-10}" -f $service.Name, $status.Status) -ForegroundColor $status.Color
+    Write-Host ("  {0,-12} {1,-10} (container: {2})" -f $service.Name, $httpStatus.Status, $containerStatus) -ForegroundColor $httpStatus.Color
     $allRunning = $false
   }
 }
@@ -262,9 +348,9 @@ if ($allRunning) {
                Services Started / 服务已启动
   ====================================================================
 
-  Frontend:          http://localhost:30000
-  Backend:           http://localhost:8000/health
-  Core Engine:       http://localhost:8001/health
+  Frontend:          http://localhost:$frontendPort
+  Backend:           http://localhost:$backendPort/health
+  Core Engine:       http://localhost:$corePort/health
 
   Stop services / 停止服务:   .\stop.ps1
   View logs / 查看日志:       docker compose logs -f
@@ -274,6 +360,19 @@ if ($allRunning) {
 "@ -ForegroundColor Green
 }
 else {
+  # Show recent logs for troubleshooting
+  Write-Info "Fetching recent logs for troubleshooting..."
+  try {
+    $recentLogs = docker compose logs --tail 20 2>$null
+    if ($recentLogs) {
+      Write-Host ""
+      Write-Host "  [Recent Logs / 最近日志]" -ForegroundColor DarkGray
+      $recentLogs | ForEach-Object { Write-Host "    $_" -ForegroundColor DarkGray }
+      Write-Host ""
+    }
+  }
+  catch {}
+
   Write-Host @"
 
   ====================================================================

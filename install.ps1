@@ -11,7 +11,12 @@
 
 [CmdletBinding()]
 param(
-  [string]$DockerInstallerPath = ""
+  [string]$DockerInstallerPath = "",
+  [string]$LLMProvider = "",
+  [string]$LLMBaseUrl = "",
+  [string]$LLMApiKey = "",
+  [string]$LLMModel = "",
+  [switch]$NonInteractive
 )
 
 $ErrorActionPreference = 'Stop'
@@ -208,8 +213,9 @@ function Test-HttpEndpoint {
     [int]$TimeoutSeconds = 5
   )
   try {
-    $null = Invoke-WebRequest -Uri $Uri -Method Get -TimeoutSec $TimeoutSeconds
-    return $true
+    # Use curl.exe to bypass PowerShell proxy issues
+    $result = curl.exe -s -o NUL -w "%{http_code}" $Uri --max-time $TimeoutSeconds 2>$null
+    return ($result -eq '200')
   }
   catch {
     return $false
@@ -358,30 +364,63 @@ else {
 
 # Step 4: Collect LLM configuration
 Write-Step "Configure LLM Service"
-Write-Host "  Please enter LLM service configuration (API Key input will be hidden)" -ForegroundColor Gray
-Write-Host ""
 
-$llmProvider = Read-Host "  LLM Provider [openai]"
-if ([string]::IsNullOrWhiteSpace($llmProvider)) {
-  $llmProvider = 'openai'
+if ($NonInteractive) {
+  # Use command-line parameters
+  if ([string]::IsNullOrWhiteSpace($LLMProvider)) {
+    Write-Error "NonInteractive mode requires -LLMProvider parameter"
+    exit 1
+  }
+  if ([string]::IsNullOrWhiteSpace($LLMBaseUrl)) {
+    Write-Error "NonInteractive mode requires -LLMBaseUrl parameter"
+    exit 1
+  }
+  if ([string]::IsNullOrWhiteSpace($LLMApiKey)) {
+    Write-Error "NonInteractive mode requires -LLMApiKey parameter"
+    exit 1
+  }
+  if ([string]::IsNullOrWhiteSpace($LLMModel)) {
+    Write-Error "NonInteractive mode requires -LLMModel parameter"
+    exit 1
+  }
+  
+  $llmProvider = $LLMProvider
+  $llmBaseUrl = $LLMBaseUrl
+  $llmApiKey = $LLMApiKey
+  $llmModel = $LLMModel
+  
+  Write-Host "  LLM Provider: $llmProvider" -ForegroundColor Gray
+  Write-Host "  LLM Base URL: $llmBaseUrl" -ForegroundColor Gray
+  Write-Host "  LLM API Key: $($llmApiKey.Substring(0, [Math]::Min(8, $llmApiKey.Length)))..." -ForegroundColor Gray
+  Write-Host "  LLM Model: $llmModel" -ForegroundColor Gray
 }
+else {
+  # Interactive mode
+  Write-Host "  Please enter LLM service configuration (API Key input will be hidden)" -ForegroundColor Gray
+  Write-Host ""
 
-$llmBaseUrl = Read-Host "  LLM Base URL (e.g. https://api.deepseek.com)"
-while ([string]::IsNullOrWhiteSpace($llmBaseUrl)) {
-  Write-Warning "LLM Base URL cannot be empty"
-  $llmBaseUrl = Read-Host "  LLM Base URL"
-}
+  $llmProvider = Read-Host "  LLM Provider [openai]"
+  if ([string]::IsNullOrWhiteSpace($llmProvider)) {
+    $llmProvider = 'openai'
+  }
 
-$llmApiKey = Read-SecureInput "LLM API Key: "
-while ([string]::IsNullOrWhiteSpace($llmApiKey)) {
-  Write-Warning "LLM API Key cannot be empty"
+  $llmBaseUrl = Read-Host "  LLM Base URL (e.g. https://api.deepseek.com)"
+  while ([string]::IsNullOrWhiteSpace($llmBaseUrl)) {
+    Write-Warning "LLM Base URL cannot be empty"
+    $llmBaseUrl = Read-Host "  LLM Base URL"
+  }
+
   $llmApiKey = Read-SecureInput "LLM API Key: "
-}
+  while ([string]::IsNullOrWhiteSpace($llmApiKey)) {
+    Write-Warning "LLM API Key cannot be empty"
+    $llmApiKey = Read-SecureInput "LLM API Key: "
+  }
 
-$llmModel = Read-Host "  LLM Model (e.g. deepseek-chat)"
-while ([string]::IsNullOrWhiteSpace($llmModel)) {
-  Write-Warning "LLM Model cannot be empty"
-  $llmModel = Read-Host "  LLM Model"
+  $llmModel = Read-Host "  LLM Model (e.g. deepseek-chat)"
+  while ([string]::IsNullOrWhiteSpace($llmModel)) {
+    Write-Warning "LLM Model cannot be empty"
+    $llmModel = Read-Host "  LLM Model"
+  }
 }
 
 Write-Success "LLM configuration collected"
