@@ -1906,7 +1906,7 @@ export function AIConsole() {
         modelSnapshot: snapshot,
       })
     }
-  }, [modelPreviewBaseTitle, parsedComposerModel, t])
+  }, [conversationId, modelPreviewBaseTitle, parsedComposerModel, t])
 
   const activeVisualizationSnapshot = useMemo(() => {
     if (visualizationSource === 'model') {
