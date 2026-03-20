@@ -1,1 +1,1 @@
-provider = "postgresql"
+provider = "sqlite"

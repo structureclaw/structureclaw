@@ -65,7 +65,8 @@ echo "==> Report template contract"
 echo
 echo "==> Prisma schema validate"
 if [[ -z "${DATABASE_URL:-}" ]]; then
-  export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/structureclaw"
+  mkdir -p "$ROOT_DIR/.runtime/data"
+  export DATABASE_URL="file:$ROOT_DIR/.runtime/data/structureclaw-regression.db"
   echo "[info] DATABASE_URL is not set; using fallback for prisma validate."
 fi
 npm run db:validate --prefix backend

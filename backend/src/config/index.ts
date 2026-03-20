@@ -5,6 +5,8 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootEnvPath = path.resolve(__dirname, '../../../.env');
+const defaultSqliteDatabasePath = path.resolve(__dirname, '../../../.runtime/data/structureclaw.db');
+const defaultSqliteDatabaseUrl = `file:${defaultSqliteDatabasePath}`;
 
 dotenv.config({ path: rootEnvPath });
 
@@ -25,7 +27,6 @@ const llmBaseUrl = process.env.LLM_BASE_URL
 const frontendPort = process.env.FRONTEND_PORT || '30000';
 const backendPort = process.env.PORT || '8000';
 const corePort = process.env.CORE_PORT || '8001';
-const pgAdminPort = process.env.PGADMIN_PORT || '5050';
 const analysisEngineManifestPath = process.env.ANALYSIS_ENGINE_MANIFEST_PATH || path.resolve(__dirname, '../../../.runtime/analysis-engines.json');
 
 const defaultCorsOrigins = [
@@ -48,7 +49,7 @@ export const config = {
   bodyLimitMb: parseInt(process.env.BACKEND_BODY_LIMIT_MB || '20', 10),
 
   // 数据库配置
-  databaseUrl: process.env.DATABASE_URL || 'postgresql://postgres:postgres@localhost:5432/structureclaw',
+  databaseUrl: process.env.DATABASE_URL || defaultSqliteDatabaseUrl,
 
   // Redis 配置
   redisUrl: redisEnabled ? redisUrlRaw! : '',
@@ -75,9 +76,9 @@ export const config = {
   analysisEngineManifestPath,
 
   // pgAdmin 配置
-  pgAdminEnabled: (process.env.PGADMIN_ENABLED || 'true').toLowerCase() !== 'false',
-  pgAdminPort: parseInt(pgAdminPort, 10),
-  pgAdminUrl: process.env.PGADMIN_PUBLIC_URL || `http://localhost:${pgAdminPort}`,
+  pgAdminEnabled: (process.env.PGADMIN_ENABLED || 'false').toLowerCase() !== 'false',
+  pgAdminPort: parseInt(process.env.PGADMIN_PORT || '5050', 10),
+  pgAdminUrl: process.env.PGADMIN_PUBLIC_URL || `http://localhost:${process.env.PGADMIN_PORT || '5050'}`,
   pgAdminDefaultEmail: process.env.PGADMIN_DEFAULT_EMAIL || 'admin@structureclaw.dev',
 
   // CORS
