@@ -8,6 +8,17 @@ Migrate `backend/src/agent-skills/structure-modeling` from the current built-in 
 - class-local scenario detection, draft extraction, clarification, and model assembly;
 - strict isolation from no-skill mode.
 
+## Current Scope Closure Rule
+This class plan does not require a real external structure-modeling package before it can close.
+
+For the current repository scope, `structure-modeling` is considered complete when:
+- built-in runtime resolution is routed through a class provider registry;
+- the class participates in the shared package/provider/loader architecture;
+- executable-provider entrypoint contracts and validation hooks exist for future external packages;
+- no-skill isolation and built-in regression coverage remain intact.
+
+Real installed-package discovery and runtime loading are deferred until the first external structure-modeling package exists.
+
 ## Product Direction
 For `structure-modeling`, the product goal is not to replace the current scenario-driven interaction model.
 
@@ -147,6 +158,7 @@ The current `SkillManifest` already covers much of this shape for built-in skill
 - redesigning the current structure-modeling conversation UX;
 - replacing the protected no-skill generic model builder;
 - shipping the final SkillHub executable package format for all classes;
+- wiring runtime imports to real installed SkillHub package directories before an external structure-modeling package exists;
 - changing core FEM model schemas outside what provider migration requires.
 
 ## Work Packages
@@ -233,3 +245,5 @@ Acceptance:
 - the registry can merge built-in and external providers for this class;
 - existing built-in behavior remains backward compatible;
 - no-skill mode remains isolated and regression-covered.
+
+Installed-package loading for real external packages is an explicit follow-up, not part of this class plan's closure criteria.

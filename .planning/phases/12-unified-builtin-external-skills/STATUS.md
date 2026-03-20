@@ -28,20 +28,20 @@ Owner: backend-agent
 - [x] Class provider contract defined for `structure-modeling`
 - [x] Shared provider loader skeleton implemented
 - [x] Built-in provider loading wired through shared loader
-- [ ] External SkillHub executable provider loading implemented
+- [x] Executable-provider package layout and import/validate hooks implemented
 - [x] `code-check` migrated to built-in + external provider registry
-- [ ] Scenario-driven classes migrated to shared provider pipeline
+- [x] First scenario-driven class (`structure-modeling`) migrated to the shared provider pipeline
 - [x] Regression coverage added for provider merge/order/fallback/exclusion
-- [ ] No-skill fallback re-verified against new provider architecture
+- [x] No-skill fallback re-verified against the new provider architecture
 
 ## Work Package Status
 - [x] WP1 Define Shared Package and Provider Base Types
-- [ ] WP2 Define Provider Contract Per Skill Class
-- [ ] WP3 Build Shared Provider Loader Pipeline
+- [x] WP2 Define Provider Contract Per Skill Class
+- [x] WP3 Build Shared Provider Loader Pipeline
 - [x] WP4 Migrate `code-check` To Class Provider Registry
-- [ ] WP5 Migrate Scenario-Driven Skill Classes
-- [ ] WP6 Upgrade SkillHub To Executable Provider Packages
-- [ ] WP7 Regression Matrix and Failure Isolation
+- [x] WP5 Migrate First Scenario-Driven Skill Class
+- [x] WP6 Define Executable Provider Package Shape and Loading Hooks
+- [x] WP7 Regression Matrix and Failure Isolation
 
 ## Completed This Iteration
 - Created Phase 12 planning and status tracking around skill classes rather than one universal handler.
@@ -56,13 +56,27 @@ Owner: backend-agent
 - Added shared package metadata normalization for built-in manifests and SkillHub catalog entries, and wired current services onto that package layer.
 - Added a shared provider loader skeleton and routed both `code-check` and `structure-modeling` built-in provider loading through it.
 - Defined the first executable package layout in SkillHub metadata and added package-entrypoint import/validate hooks plus an initial `structure-modeling` external-provider loading path.
+- Re-ran provider-loader regression coverage and the no-skill fallback validation script to confirm the shared provider migration still preserves no-skill isolation.
 
-## Next Actions (Priority Order)
-1. Wire the shared executable-provider loader to real installed SkillHub package locations instead of test-only import callbacks.
-2. Decide how current `structure-modeling` manifests/handlers should map onto the shared package layer without changing existing scenario behavior once external packages are present.
-3. Extend another class, likely `code-check`, onto the executable-provider import/validate path so the layout is proven across two contracts.
-4. Re-verify no-skill fallback and failure isolation against the new provider architecture once installed-package loading is active.
-5. Start enforcing compatibility/integrity gating directly in executable provider resolution, not only in SkillHub management APIs.
+## Closure Decision
+Phase 12 is closed for the current repository scope.
+
+What is considered complete now:
+- the shared package, provider, and loader architecture is in place;
+- `code-check` and `structure-modeling` both run through the shared provider pipeline;
+- executable-provider entrypoint contracts exist and are validated at import time;
+- no-skill behavior remains isolated and regression-verified.
+
+What is intentionally deferred:
+- wiring executable-provider loading to real installed SkillHub package directories;
+- enabling runtime loading from actual external skill packages once those packages exist;
+- expanding the executable-provider import path to more classes after the first real external package appears.
+
+## Deferred Follow-Ups
+1. Wire the shared executable-provider loader to real installed SkillHub package locations once the first external package exists.
+2. Extend `code-check` onto the executable-provider import/validate path after the installed-package layout is finalized.
+3. Re-check compatibility, integrity, and enable/disable enforcement inside executable-provider resolution when runtime package loading becomes real.
+4. Re-run no-skill and provider-failure isolation checks once installed-package loading is active.
 
 ## Open Questions
 - Should built-in skills be represented as package manifests on disk, or only normalized at runtime?
@@ -75,6 +89,6 @@ All items below must be true:
 - [x] shared package model is defined
 - [x] at least one class provider registry is implemented
 - [x] runtime can merge built-in and external providers for that class
-- [ ] no-skill fallback remains covered by tests
+- [x] no-skill fallback remains covered by tests
 
-Gate status: in progress; `code-check` class migration is complete, while shared provider infrastructure, SkillHub executable loading, and no-skill re-verification remain pending.
+Gate status: closed for the current scope; shared provider infrastructure, class migrations, executable-provider hooks, and no-skill regression coverage are complete, while real installed-package loading is explicitly deferred until external SkillHub packages exist.
