@@ -20,7 +20,7 @@ Owner: backend-agent
 - [x] Core migration direction documented
 - [x] Persistence surface audit completed
 - [x] PostgreSQL-only schema features inventory completed
-- [ ] SQLite schema redesign approved
+- [x] SQLite schema redesign approved
 - [ ] SQLite datasource and migration baseline implemented
 - [ ] Runtime defaults switched from PostgreSQL to SQLite
 - [ ] Scripts and Docker default path switched to SQLite
@@ -31,7 +31,7 @@ Owner: backend-agent
 
 ## Work Package Status
 - [x] WP1 Audit the Real Persistence Surface
-- [ ] WP2 Redesign the Prisma Schema for SQLite
+- [x] WP2 Redesign the Prisma Schema for SQLite
 - [ ] WP3 Define Runtime Database Defaults and File Lifecycle
 - [ ] WP4 Migrate Tooling, Scripts, and Docker Away From PostgreSQL-First Assumptions
 - [ ] WP5 Replace pgAdmin-Centric Admin UX
@@ -55,10 +55,11 @@ Owner: backend-agent
 - Identified service-level query rewrites required beyond the schema flip, especially scalar-list `has` filters and case-insensitive `contains(..., mode: 'insensitive')` queries.
 - Identified all beginner-path PostgreSQL assumptions in config, Docker, Make targets, scripts, admin API responses, frontend database UI, and related tests.
 - Captured the audit in [01-persistence-surface-audit.md](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/.planning/phases/13-sqlite-local-first/01-persistence-surface-audit.md).
+- Approved the SQLite target schema in [02-sqlite-schema-redesign.md](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/.planning/phases/13-sqlite-local-first/02-sqlite-schema-redesign.md), including normalized replacements for all active scalar lists and the required service-layer query rewrites.
 
 ## Immediate Next Actions
-1. Finalize the SQLite schema redesign for scalar-list replacements and relation names before changing the datasource provider.
-2. Decide how search semantics should behave under SQLite for the current `mode: 'insensitive'` call sites.
+1. Implement the approved SQLite Prisma schema, including relation-table replacements for expertise, tags, and attachments.
+2. Update service-layer writes and reads so API responses still expose arrays even though persistence moves to normalized relations.
 3. Define the default SQLite file path and whether WAL mode is enabled in local runtime.
 4. Split operator requirements into two paths: fresh SQLite-first setup and existing PostgreSQL-to-SQLite migration.
 
@@ -71,4 +72,4 @@ All items below must be true:
 - [ ] persistence-critical regressions pass under SQLite
 - [ ] onboarding docs present SQLite as the default path
 
-Gate status: in progress; persistence audit and PostgreSQL-only inventory are complete, and the next blocking step is the SQLite schema redesign.
+Gate status: in progress; persistence audit and schema redesign are complete, and the next blocking step is the first SQLite Prisma implementation slice.
