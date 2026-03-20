@@ -58,12 +58,6 @@ app.add_middleware(
 
 # ============ 数据模型 ============
 
-class LoadCase(BaseModel):
-    name: str
-    type: str  # dead, live, wind, seismic
-    loads: List[Dict[str, Any]]
-
-
 class AnalysisRequest(BaseModel):
     type: str  # static, dynamic, seismic, nonlinear
     model: StructureModelV1

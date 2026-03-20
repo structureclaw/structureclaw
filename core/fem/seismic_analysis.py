@@ -304,7 +304,6 @@ class SeismicAnalyzer:
         eta1 = 0.02 + (0.05 - damping) / (4 + 32 * damping)
         eta2 = 1 + (0.05 - damping) / (0.08 + 1.6 * damping)
 
-        Tg = Tg
         T0 = 0.1
 
         if T < T0:

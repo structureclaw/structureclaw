@@ -394,9 +394,6 @@ class AnalysisEngineRegistry:
             return "frame"
         return "generic"
 
-    def _is_engine_available(self, manifest: Dict[str, Any]) -> bool:
-        return self._get_engine_unavailable_reason(manifest) is None
-
     def _get_engine_unavailable_reason(self, manifest: Dict[str, Any]) -> Optional[str]:
         if not manifest.get("enabled", True):
             return "Engine is disabled"
