@@ -1,28 +1,62 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Database, ExternalLink, Server, ShieldAlert } from 'lucide-react'
-import { Button } from '@/components/ui/button'
+import { Database, HardDrive, Server, ShieldAlert } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { API_BASE } from '@/lib/api-base'
 import { useI18n } from '@/lib/i18n'
 
-const FALLBACK_PGADMIN_URL = 'http://localhost:5050'
-
 type DatabaseAdminStatus = {
   enabled: boolean
   provider: string
-  url: string
-  defaultEmail?: string
+  mode?: string
   database?: {
-    host?: string
-    port?: string
-    database?: string
+    provider?: string
+    databaseUrl?: string
+    databasePath?: string
+    directoryPath?: string
+    exists?: boolean
+    writable?: boolean
+    sizeBytes?: number
   }
 }
 
+const FALLBACK_STATUS: DatabaseAdminStatus = {
+  enabled: false,
+  provider: 'sqlite',
+  mode: 'local-file',
+  database: {
+    provider: 'sqlite',
+    databaseUrl: 'file:.runtime/data/structureclaw.db',
+    databasePath: '.runtime/data/structureclaw.db',
+    directoryPath: '.runtime/data',
+    exists: false,
+    writable: false,
+    sizeBytes: 0,
+  },
+}
+
+function formatBytes(sizeBytes: number | undefined, locale: string) {
+  const size = sizeBytes ?? 0
+  if (size <= 0) {
+    return '0 B'
+  }
+
+  if (size < 1024) {
+    return `${size} B`
+  }
+
+  if (size < 1024 * 1024) {
+    return `${(size / 1024).toFixed(1)} KB`
+  }
+
+  return new Intl.NumberFormat(locale, {
+    maximumFractionDigits: 1,
+  }).format(size / (1024 * 1024)) + ' MB'
+}
+
 export default function DatabaseAdminPage() {
-  const { t } = useI18n()
+  const { t, locale } = useI18n()
   const [status, setStatus] = useState<DatabaseAdminStatus | null>(null)
   const [error, setError] = useState('')
 
@@ -44,16 +78,7 @@ export default function DatabaseAdminPage() {
       } catch (nextError) {
         if (!cancelled) {
           setError(nextError instanceof Error ? nextError.message : t('databaseAdminFetchFailed'))
-          setStatus({
-            enabled: true,
-            provider: 'pgadmin',
-            url: FALLBACK_PGADMIN_URL,
-            database: {
-              host: 'localhost',
-              port: '5432',
-              database: 'structureclaw',
-            },
-          })
+          setStatus(FALLBACK_STATUS)
         }
       }
     }
@@ -65,19 +90,18 @@ export default function DatabaseAdminPage() {
     }
   }, [t])
 
-  const effectiveStatus = status ?? {
-    enabled: true,
-    provider: 'pgadmin',
-    url: FALLBACK_PGADMIN_URL,
-  }
-
+  const effectiveStatus = status ?? FALLBACK_STATUS
+  const database = effectiveStatus.database ?? FALLBACK_STATUS.database!
   const statusLabel = effectiveStatus.enabled
     ? t('databaseAdminStatusEnabled')
     : t('databaseAdminStatusDisabled')
-
-  const databaseTarget = effectiveStatus.database
-    ? `${effectiveStatus.database.host || 'localhost'}:${effectiveStatus.database.port || '5432'} / ${effectiveStatus.database.database || 'structureclaw'}`
-    : 'localhost:5432 / structureclaw'
+  const fileExistsLabel = database.exists
+    ? t('databaseAdminFileExistsYes')
+    : t('databaseAdminFileExistsNo')
+  const writableLabel = database.writable
+    ? t('databaseAdminWritableYes')
+    : t('databaseAdminWritableNo')
+  const sizeLabel = formatBytes(database.sizeBytes, locale)
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_360px]">
@@ -94,15 +118,6 @@ export default function DatabaseAdminPage() {
                 {t('databaseAdminIntro')}
               </CardDescription>
             </div>
-            <Button
-              asChild
-              className="rounded-full bg-cyan-300 px-5 text-slate-950 hover:bg-cyan-200"
-            >
-              <a href={effectiveStatus.url || FALLBACK_PGADMIN_URL} target="_blank" rel="noreferrer">
-                <ExternalLink className="h-4 w-4" />
-                {t('databaseAdminOpen')}
-              </a>
-            </Button>
           </div>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-2">
@@ -122,21 +137,36 @@ export default function DatabaseAdminPage() {
           </div>
           <div className="rounded-[24px] border border-border/70 bg-background/75 p-5 dark:border-white/10 dark:bg-white/5">
             <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">{t('databaseAdminAccessUrl')}</div>
-            <div className="mt-3 break-all text-sm font-medium text-foreground">{effectiveStatus.url || FALLBACK_PGADMIN_URL}</div>
-            <div className="mt-4 text-xs uppercase tracking-[0.22em] text-muted-foreground">{t('databaseAdminDefaultLogin')}</div>
-            <div className="mt-2 text-sm text-foreground">{effectiveStatus.defaultEmail || 'admin@structureclaw.local'}</div>
+            <div className="mt-3 break-all text-sm font-medium text-foreground">{database.databaseUrl}</div>
+            <div className="mt-4 text-xs uppercase tracking-[0.22em] text-muted-foreground">{t('databaseAdminDirectory')}</div>
+            <div className="mt-2 break-all text-sm text-foreground">{database.directoryPath}</div>
           </div>
           <div className="rounded-[24px] border border-border/70 bg-background/75 p-5 dark:border-white/10 dark:bg-white/5">
             <div className="flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-muted-foreground">
-              <Server className="h-4 w-4" />
+              <HardDrive className="h-4 w-4" />
               {t('databaseAdminTarget')}
             </div>
-            <div className="mt-3 text-sm font-medium text-foreground">{databaseTarget}</div>
+            <div className="mt-3 break-all text-sm font-medium text-foreground">{database.databasePath}</div>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">{t('databaseAdminTargetHelp')}</p>
           </div>
           <div className="rounded-[24px] border border-border/70 bg-background/75 p-5 dark:border-white/10 dark:bg-white/5">
             <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">{t('databaseAdminProvider')}</div>
-            <div className="mt-3 text-sm font-medium uppercase text-foreground">{effectiveStatus.provider || 'pgadmin'}</div>
+            <div className="mt-3 text-sm font-medium uppercase text-foreground">{effectiveStatus.provider || 'sqlite'}</div>
+            <div className="mt-4 flex items-center gap-2 text-xs uppercase tracking-[0.22em] text-muted-foreground">
+              <Server className="h-4 w-4" />
+              {t('databaseAdminMode')}
+            </div>
+            <div className="mt-2 text-sm text-foreground">{effectiveStatus.mode || 'local-file'}</div>
+          </div>
+          <div className="rounded-[24px] border border-border/70 bg-background/75 p-5 dark:border-white/10 dark:bg-white/5">
+            <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">{t('databaseAdminFileExists')}</div>
+            <div className="mt-3 text-sm font-medium text-foreground">{fileExistsLabel}</div>
+            <div className="mt-4 text-xs uppercase tracking-[0.22em] text-muted-foreground">{t('databaseAdminWritable')}</div>
+            <div className="mt-2 text-sm text-foreground">{writableLabel}</div>
+          </div>
+          <div className="rounded-[24px] border border-border/70 bg-background/75 p-5 dark:border-white/10 dark:bg-white/5">
+            <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">{t('databaseAdminFileSize')}</div>
+            <div className="mt-3 text-sm font-medium text-foreground">{sizeLabel}</div>
             <div className="mt-4 text-xs text-muted-foreground">{t('databaseAdminOpenHint')}</div>
           </div>
         </CardContent>
