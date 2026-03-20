@@ -18,8 +18,8 @@ Owner: backend-agent
 ## Checklist
 - [x] Phase 13 planning track created
 - [x] Core migration direction documented
-- [ ] Persistence surface audit completed
-- [ ] PostgreSQL-only schema features inventory completed
+- [x] Persistence surface audit completed
+- [x] PostgreSQL-only schema features inventory completed
 - [ ] SQLite schema redesign approved
 - [ ] SQLite datasource and migration baseline implemented
 - [ ] Runtime defaults switched from PostgreSQL to SQLite
@@ -30,7 +30,7 @@ Owner: backend-agent
 - [ ] Docs updated for SQLite-first onboarding
 
 ## Work Package Status
-- [ ] WP1 Audit the Real Persistence Surface
+- [x] WP1 Audit the Real Persistence Surface
 - [ ] WP2 Redesign the Prisma Schema for SQLite
 - [ ] WP3 Define Runtime Database Defaults and File Lifecycle
 - [ ] WP4 Migrate Tooling, Scripts, and Docker Away From PostgreSQL-First Assumptions
@@ -46,10 +46,19 @@ Owner: backend-agent
 - Docker compose still starts `postgres` and `pgadmin`.
 - Startup and regression scripts still assume PostgreSQL in multiple places.
 - The frontend database page is currently a pgAdmin launcher, not a provider-neutral database status page.
+- Service-layer search currently uses `mode: 'insensitive'` in project, community, and skill queries and must be re-verified for SQLite.
+- Community and skill tag filtering currently depends on scalar-list `has` queries and must move to normalized relations.
+
+## Completed This Iteration
+- Audited every active Prisma-backed service surface and mapped the main persistence domains: chat, agent snapshots, projects, analyses, users, skills, and community content.
+- Identified all active schema-level SQLite blockers: `User.expertise`, `Skill.tags`, `Post.tags`, and `Post.attachments`.
+- Identified service-level query rewrites required beyond the schema flip, especially scalar-list `has` filters and case-insensitive `contains(..., mode: 'insensitive')` queries.
+- Identified all beginner-path PostgreSQL assumptions in config, Docker, Make targets, scripts, admin API responses, frontend database UI, and related tests.
+- Captured the audit in [01-persistence-surface-audit.md](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/.planning/phases/13-sqlite-local-first/01-persistence-surface-audit.md).
 
 ## Immediate Next Actions
-1. Produce a persistence audit covering models, routes, scripts, and operator docs that still assume PostgreSQL.
-2. Decide the exact SQLite replacements for scalar list fields before touching the datasource provider.
+1. Finalize the SQLite schema redesign for scalar-list replacements and relation names before changing the datasource provider.
+2. Decide how search semantics should behave under SQLite for the current `mode: 'insensitive'` call sites.
 3. Define the default SQLite file path and whether WAL mode is enabled in local runtime.
 4. Split operator requirements into two paths: fresh SQLite-first setup and existing PostgreSQL-to-SQLite migration.
 
@@ -62,4 +71,4 @@ All items below must be true:
 - [ ] persistence-critical regressions pass under SQLite
 - [ ] onboarding docs present SQLite as the default path
 
-Gate status: not started.
+Gate status: in progress; persistence audit and PostgreSQL-only inventory are complete, and the next blocking step is the SQLite schema redesign.
