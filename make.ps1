@@ -349,14 +349,14 @@ function Show-ServiceStatus {
   $header = Get-LatestSessionHeader $logFile
 
   if ($pidValue) {
-    Write-Host "$Name: running (pid $pidValue)"
+    Write-Host "${Name}: running (pid $pidValue)"
     if ($header) {
       Write-Host "  session: $header"
     }
     return
   }
 
-  Write-Host "$Name: stopped"
+  Write-Host "${Name}: stopped"
   if ($header) {
     Write-Host "  last session: $header"
   }
