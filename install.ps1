@@ -49,6 +49,11 @@ function Write-Info {
   Write-Host "  $Message" -ForegroundColor Gray
 }
 
+function Write-Progress {
+  param([string]$Message)
+  Write-Host "  > $Message" -ForegroundColor White
+}
+
 function Test-Administrator {
   $currentUser = [Security.Principal.WindowsIdentity]::GetCurrent()
   $principal = New-Object Security.Principal.WindowsPrincipal($currentUser)
@@ -164,6 +169,60 @@ function New-EnvFile {
   Set-Content -LiteralPath $OutputPath -Value $content -NoNewline
 }
 
+function Test-ApiConnection {
+  param(
+    [string]$BaseUrl,
+    [string]$ApiKey,
+    [string]$Model,
+    [string]$Provider
+  )
+
+  Write-Info "Testing API connection to $BaseUrl..."
+
+  try {
+    # Build chat completion URL
+    $chatUrl = $BaseUrl.TrimEnd('/')
+    if (-not $chatUrl.EndsWith('/chat/completions')) {
+      $chatUrl = "$chatUrl/chat/completions"
+    }
+
+    $headers = @{
+      "Content-Type" = "application/json"
+    }
+
+    # Add authorization header based on provider
+    if ($Provider -eq 'openai') {
+      $headers["Authorization"] = "Bearer $ApiKey"
+    }
+    elseif ($Provider -eq 'deepseek') {
+      $headers["Authorization"] = "Bearer $ApiKey"
+    }
+    else {
+      $headers["Authorization"] = "Bearer $ApiKey"
+    }
+
+    $body = @{
+      model = $Model
+      messages = @(@{role = "user"; content = "Hi"})
+      max_tokens = 5
+    } | ConvertTo-Json -Depth 2
+
+    try {
+      $response = Invoke-RestMethod -Uri $chatUrl -Headers $headers -Method Post -Body $body -TimeoutSec 30
+      Write-Success "API connection successful / API 连接成功"
+      return $true
+    }
+    catch {
+      Write-Warning "API connection test failed / API 连接测试失败: $($_.Exception.Message)"
+      return $false
+    }
+  }
+  catch {
+    Write-Warning "API connection test failed / API 连接测试失败: $($_.Exception.Message)"
+    return $false
+  }
+}
+
 function Test-HttpEndpoint {
   param(
     [string]$Uri,
@@ -219,6 +278,46 @@ function Wait-ForServices {
 
   Write-Host ""
   return $false
+}
+
+function Invoke-DockerCompose {
+  param([string]$Arguments)
+
+  $process = New-Object System.Diagnostics.Process
+  $process.StartInfo.FileName = "docker"
+  $process.StartInfo.Arguments = "compose $Arguments"
+  $process.StartInfo.UseShellExecute = $false
+  $process.StartInfo.RedirectStandardOutput = $true
+  $process.StartInfo.RedirectStandardError = $true
+  $process.StartInfo.CreateNoWindow = $true
+  $process.StartInfo.WorkingDirectory = $RootDir
+
+  $null = $process.Start()
+
+  # Read output line by line
+  while (-not $process.StandardOutput.EndOfStream) {
+    $line = $process.StandardOutput.ReadLine()
+    if ($line -match "Building|Step|#[0-9]+|DONE|ERROR|WARN") {
+      Write-Host "    $line" -ForegroundColor Gray
+    }
+    elseif ($line -match "Successfully|built|Created|Started") {
+      Write-Host "    $line" -ForegroundColor Green
+    }
+    elseif ($line -ne "") {
+      Write-Host "    $line"
+    }
+  }
+
+  # Read stderr (progress info)
+  while (-not $process.StandardError.EndOfStream) {
+    $line = $process.StandardError.ReadLine()
+    if ($line -match "Building|#[0-9]+") {
+      Write-Host "    $line" -ForegroundColor DarkGray
+    }
+  }
+
+  $process.WaitForExit()
+  return $process.ExitCode
 }
 
 # ============================================
@@ -317,7 +416,7 @@ if ([string]::IsNullOrWhiteSpace($llmProvider)) {
   $llmProvider = 'openai'
 }
 
-$llmBaseUrl = Read-Host "  LLM Base URL / API 端点 (e.g. https://api.openai.com/v1)"
+$llmBaseUrl = Read-Host "  LLM Base URL / API 端点 (e.g. https://api.deepseek.com)"
 while ([string]::IsNullOrWhiteSpace($llmBaseUrl)) {
   Write-Warning "LLM Base URL cannot be empty / LLM Base URL 不能为空"
   $llmBaseUrl = Read-Host "  LLM Base URL / API 端点"
@@ -329,13 +428,21 @@ while ([string]::IsNullOrWhiteSpace($llmApiKey)) {
   $llmApiKey = Read-SecureInput "LLM API Key / 密钥: "
 }
 
-$llmModel = Read-Host "  LLM Model / 模型 (e.g. gpt-4-turbo-preview)"
+$llmModel = Read-Host "  LLM Model / 模型 (e.g. deepseek-chat)"
 while ([string]::IsNullOrWhiteSpace($llmModel)) {
   Write-Warning "LLM Model cannot be empty / LLM Model 不能为空"
   $llmModel = Read-Host "  LLM Model / 模型"
 }
 
 Write-Success "LLM configuration collected / LLM 配置已收集"
+
+# Step 4.5: Test API connection
+Write-Step "Testing API Connection / 测试 API 连接"
+$apiTestResult = Test-ApiConnection -BaseUrl $llmBaseUrl -ApiKey $llmApiKey -Model $llmModel -Provider $llmProvider
+if (-not $apiTestResult) {
+  Write-Warning "API test failed, but continuing with installation / API 测试失败，但继续安装"
+  Write-Info "You can verify your API settings later / 稍后可以验证 API 设置"
+}
 
 # Step 5: Generate .env file
 Write-Step "Generating Configuration File / 生成配置文件"
@@ -351,13 +458,18 @@ catch {
 
 # Step 6: Build and start services
 Write-Step "Building and Starting Services / 构建并启动服务"
-Write-Info "Building Docker images / 构建 Docker 镜像 (first build may take a few minutes / 首次构建可能需要几分钟)..."
+Write-Info "Building Docker images / 构建 Docker 镜像..."
+Write-Info "This may take a few minutes on first run / 首次运行可能需要几分钟"
+Write-Host ""
 
 Push-Location $RootDir
 try {
-  & docker compose up --build -d 2>&1 | ForEach-Object { Write-Host "    $_" }
+  Write-Progress "Pulling base images... / 拉取基础镜像..."
 
-  if ($LASTEXITCODE -ne 0) {
+  # Run docker compose with progress output
+  $exitCode = Invoke-DockerCompose -Arguments "up --build -d"
+
+  if ($exitCode -ne 0) {
     Write-Error "Docker Compose startup failed / Docker Compose 启动失败"
     Write-Host "  Please check the error and run manually / 请检查错误并手动运行: docker compose up --build" -ForegroundColor Yellow
     exit 1
