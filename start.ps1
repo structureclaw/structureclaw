@@ -1,0 +1,257 @@
+﻿<#
+.SYNOPSIS
+    StructureClaw One-click Startup Script / StructureClaw 一键启动脚本
+.DESCRIPTION
+    This script quickly starts all services for the StructureClaw project.
+    此脚本快速启动 StructureClaw 项目的所有服务。
+.EXAMPLE
+    .\start.ps1
+#>
+
+[CmdletBinding()]
+param()
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version Latest
+
+$RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$EnvFile = Join-Path $RootDir '.env'
+
+# Color output functions
+function Write-Step {
+  param([string]$Message)
+  Write-Host "`n[$Message]" -ForegroundColor Cyan
+}
+
+function Write-Success {
+  param([string]$Message)
+  Write-Host "  [OK] $Message" -ForegroundColor Green
+}
+
+function Write-Warning {
+  param([string]$Message)
+  Write-Host "  [!] $Message" -ForegroundColor Yellow
+}
+
+function Write-Error {
+  param([string]$Message)
+  Write-Host "  [X] $Message" -ForegroundColor Red
+}
+
+function Write-Info {
+  param([string]$Message)
+  Write-Host "  $Message" -ForegroundColor Gray
+}
+
+function Test-DockerRunning {
+  try {
+    $result = docker version --format '{{.Server.Version}}' 2>$null
+    return -not [string]::IsNullOrWhiteSpace($result)
+  }
+  catch {
+    return $false
+  }
+}
+
+function Start-DockerDesktop {
+  $dockerPaths = @(
+    "${env:ProgramFiles}\Docker\Docker\Docker Desktop.exe",
+    "${env:ProgramFiles(x86)}\Docker\Docker\Docker Desktop.exe"
+  )
+
+  foreach ($path in $dockerPaths) {
+    if (Test-Path -LiteralPath $path) {
+      Start-Process -FilePath $path
+      return $true
+    }
+  }
+
+  return $false
+}
+
+function Wait-ForDocker {
+  param([int]$TimeoutSeconds = 60)
+
+  $startTime = Get-Date
+  $timeout = $startTime.AddSeconds($TimeoutSeconds)
+
+  while ((Get-Date) -lt $timeout) {
+    if (Test-DockerRunning) {
+      return $true
+    }
+    Write-Host "." -NoNewline
+    Start-Sleep -Seconds 3
+  }
+
+  Write-Host ""
+  return $false
+}
+
+function Test-HttpEndpoint {
+  param(
+    [string]$Uri,
+    [int]$TimeoutSeconds = 5
+  )
+
+  try {
+    $null = Invoke-WebRequest -Uri $Uri -Method Get -TimeoutSec $TimeoutSeconds
+    return $true
+  }
+  catch {
+    return $false
+  }
+}
+
+function Get-ServiceStatus {
+  param([string]$Name, [string]$Url)
+
+  if (Test-HttpEndpoint -Uri $Url) {
+    return @{Name = $Name; Status = 'running'; Color = 'Green'}
+  }
+  else {
+    return @{Name = $Name; Status = 'stopped'; Color = 'Red'}
+  }
+}
+
+# ============================================
+# Main Script
+# ============================================
+
+Write-Host @"
+
+  ____ _                            _     ___
+ / ___| |_ _ __ ___ _ __   ___  ___| |_  / _ \ _ __  ___
+| |   | __| '__/ _ \ '_ \ / _ \/ __| __|| | | | '_ \/ __|
+| |___| |_| | |  __/ | | |  __/ (__| |_ | |_| | |_) \__ \
+ \____|\__|_|  \___|_| |_|\___|\___|\__| \___/| .__/|___|
+                                               |_|
+                Startup Script / 启动脚本
+
+"@ -ForegroundColor Cyan
+
+# Step 1: Check Docker service
+Write-Step "Checking Docker Service / 检查 Docker 服务"
+if (Test-DockerRunning) {
+  Write-Success "Docker service is running / Docker 服务运行中"
+}
+else {
+  Write-Warning "Docker service is not running, attempting to start... / Docker 服务未运行，正在尝试启动..."
+
+  if (Start-DockerDesktop) {
+    Write-Info "Starting Docker Desktop... / 正在启动 Docker Desktop..."
+    if (Wait-ForDocker -TimeoutSeconds 60) {
+      Write-Success "Docker service started successfully / Docker 服务启动成功"
+    }
+    else {
+      Write-Error "Docker service startup timeout / Docker 服务启动超时"
+      Write-Host "  Please start Docker Desktop manually and run this script again" -ForegroundColor Yellow
+      Write-Host "  请手动启动 Docker Desktop 后重新运行此脚本" -ForegroundColor Yellow
+      exit 1
+    }
+  }
+  else {
+    Write-Error "Cannot start Docker Desktop / 无法启动 Docker Desktop"
+    Write-Host "  Please start Docker Desktop manually and run this script again" -ForegroundColor Yellow
+    Write-Host "  请手动启动 Docker Desktop 后重新运行此脚本" -ForegroundColor Yellow
+    exit 1
+  }
+}
+
+# Step 2: Check .env file
+Write-Step "Checking Configuration File / 检查配置文件"
+if (Test-Path -LiteralPath $EnvFile) {
+  Write-Success ".env configuration file exists / .env 配置文件存在"
+}
+else {
+  Write-Error ".env configuration file not found / .env 配置文件不存在"
+  Write-Host "  Please run .\install.ps1 first to configure the project" -ForegroundColor Yellow
+  Write-Host "  请先运行 .\install.ps1 进行安装配置" -ForegroundColor Yellow
+  exit 1
+}
+
+# Step 3: Start services
+Write-Step "Starting Services / 启动服务"
+Push-Location $RootDir
+try {
+  # Check if containers exist
+  $containerCount = (docker compose ps -q 2>$null | Measure-Object).Count
+
+  if ($containerCount -gt 0) {
+    Write-Info "Existing containers detected, starting... / 检测到已有容器，正在启动..."
+    & docker compose start 2>&1 | ForEach-Object { Write-Host "    $_" }
+  }
+  else {
+    Write-Info "Starting services... / 正在启动服务..."
+    & docker compose up -d 2>&1 | ForEach-Object { Write-Host "    $_" }
+  }
+
+  if ($LASTEXITCODE -ne 0) {
+    Write-Error "Service startup failed / 服务启动失败"
+    Write-Host "  Please check the error and run manually / 请检查错误并手动运行: docker compose up -d" -ForegroundColor Yellow
+    exit 1
+  }
+}
+finally {
+  Pop-Location
+}
+
+Write-Success "Service startup command executed / 服务启动命令已执行"
+
+# Step 4: Display service status
+Write-Step "Service Status / 服务状态"
+
+Start-Sleep -Seconds 3
+
+$services = @(
+  @{Name = 'Frontend'; Url = 'http://localhost:30000'; Port = '30000'},
+  @{Name = 'Backend'; Url = 'http://localhost:30010/health'; Port = '30010'},
+  @{Name = 'Core'; Url = 'http://localhost:30011/health'; Port = '30011'}
+)
+
+$allRunning = $true
+
+foreach ($service in $services) {
+  $status = Get-ServiceStatus -Name $service.Name -Url $service.Url
+  if ($status.Status -eq 'running') {
+    Write-Host ("  {0,-12} {1,-10} http://localhost:{2}" -f $service.Name, $status.Status, $service.Port) -ForegroundColor $status.Color
+  }
+  else {
+    Write-Host ("  {0,-12} {1,-10}" -f $service.Name, $status.Status) -ForegroundColor $status.Color
+    $allRunning = $false
+  }
+}
+
+# Step 5: Display completion message
+if ($allRunning) {
+  Write-Host @"
+
+  ====================================================================
+               Services Started / 服务已启动
+  ====================================================================
+
+  Frontend:          http://localhost:30000
+  Backend:           http://localhost:30010/health
+  Core Engine:       http://localhost:30011/health
+
+  Stop services / 停止服务:   .\stop.ps1
+  View logs / 查看日志:       docker compose logs -f
+
+  ====================================================================
+
+"@ -ForegroundColor Green
+}
+else {
+  Write-Host @"
+
+  ====================================================================
+            Some Services Not Ready / 部分服务未就绪
+  ====================================================================
+
+  Please wait a moment and refresh, or check logs for troubleshooting:
+  请稍等片刻后刷新页面，或查看日志排查问题：
+  docker compose logs -f
+
+  ====================================================================
+
+"@ -ForegroundColor Yellow
+}
