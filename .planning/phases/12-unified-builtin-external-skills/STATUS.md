@@ -23,7 +23,7 @@ Owner: backend-agent
 - [x] Principle established: class-to-class differences allowed, within-class contract must be pluggable
 - [x] First migration target selected: `code-check`
 - [ ] Shared package metadata types implemented in backend code
-- [ ] Shared provider base types implemented in backend code
+- [x] Shared provider base types implemented in backend code
 - [x] Class provider contract defined for `code-check`
 - [x] Class provider contract defined for `structure-modeling`
 - [ ] Shared provider loader skeleton implemented
@@ -52,13 +52,14 @@ Owner: backend-agent
 - Confirmed `structure-modeling` already has an explicit class contract in backend runtime code, but it is not yet migrated onto the broader Phase 12 built-in/external provider architecture.
 - Added a dedicated `structure-modeling` class planning track so the next migration target now has explicit `PLAN.md + STATUS.md` coverage.
 - Added initial `structure-modeling` provider metadata and built-in provider registry wiring so runtime selection now flows through a class registry without changing built-in behavior.
+- Added shared provider base types so `code-check` and `structure-modeling` no longer define separate copies of the same core provider metadata shape.
 
 ## Next Actions (Priority Order)
-1. Extract truly shared package metadata and provider-base types so `code-check` and `structure-modeling` stop relying on separate class-local representations.
-2. Decide how current `structure-modeling` manifests/handlers should map onto a class provider wrapper without changing existing scenario behavior.
-3. Build a shared provider loader skeleton that can host both built-in packages and future SkillHub executable providers.
-4. Refactor built-in `structure-modeling` resolution through a class provider registry while preserving `skillIds` filtering and `autoLoadByDefault`.
-5. Re-verify no-skill fallback and failure isolation against the new provider architecture once the shared loader and structure-modeling registry exist.
+1. Extract truly shared package metadata so `code-check` and `structure-modeling` can normalize built-in and future SkillHub packages through one shape.
+2. Build a shared provider loader skeleton that can host both built-in packages and future SkillHub executable providers.
+3. Decide how current `structure-modeling` manifests/handlers should map onto the shared package layer without changing existing scenario behavior.
+4. Re-verify no-skill fallback and failure isolation against the new provider architecture once the shared loader and structure-modeling registry exist.
+5. Start wiring the first real external executable-provider path after the shared package/loader layer is stable.
 
 ## Open Questions
 - Should built-in skills be represented as package manifests on disk, or only normalized at runtime?
