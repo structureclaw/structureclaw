@@ -114,7 +114,8 @@ function Ensure-LocalSqliteConfig {
     Fail "Windows local workflow expects a SQLite DATABASE_URL. Current value: $databaseUrl"
   }
 
-  $sqliteUrl = 'file:../../.runtime/data/structureclaw.db'
+  $sqlitePath = Join-Path $RootDir '.runtime/data/structureclaw.db'
+  $sqliteUrl = 'file:' + $sqlitePath.Replace('\', '/')
   Write-Info ("Detected legacy local PostgreSQL DATABASE_URL. Overriding to SQLite for Windows local workflow: {0}" -f $sqliteUrl)
   Set-ConfigValue -DotEnv $DotEnv -Name 'DATABASE_URL' -Value $sqliteUrl
 
@@ -556,9 +557,14 @@ function Invoke-DbInit {
   Ensure-LocalSqliteConfig -DotEnv $DotEnv
   Assert-SqliteDatabaseUrl -DotEnv $DotEnv
   Ensure-Directory (Join-Path $RootDir '.runtime/data')
+
+  $databaseUrl = Get-ConfigValue -DotEnv $DotEnv -Name 'DATABASE_URL' -DefaultValue ''
+  $env:DATABASE_URL = $databaseUrl
+  Write-Info ("Running db:init with DATABASE_URL={0}" -f $databaseUrl)
+
   & npm run db:init --prefix (Join-Path $RootDir 'backend')
   if ($LASTEXITCODE -ne 0) {
-    Fail 'Database init failed.'
+    Fail ("Database init failed. DATABASE_URL={0}" -f $databaseUrl)
   }
 }
 
