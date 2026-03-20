@@ -19,7 +19,8 @@ $EnvExampleFile = Join-Path $RootDir '.env.example'
 $CoreVenvDir = Join-Path $RootDir 'core/.venv'
 $CorePython = Join-Path $CoreVenvDir 'Scripts/python.exe'
 $ServiceRunner = Join-Path $RootDir 'scripts/windows/run-service.ps1'
-$DefaultCorePythonVersion = if ($IsWindows) { '3.12' } else { '3.11' }
+$IsWindowsHost = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
+$DefaultCorePythonVersion = if ($IsWindowsHost) { '3.12' } else { '3.11' }
 $CorePythonVersion = if ($env:CORE_PYTHON_VERSION) { $env:CORE_PYTHON_VERSION } else { $DefaultCorePythonVersion }
 
 function Write-Info {
