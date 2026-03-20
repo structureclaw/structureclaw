@@ -145,8 +145,8 @@ make start
 
 Notes:
 
-- `make doctor` runs startup checks before launch.
-- The repo now auto-installs Node.js during `doctor` (via Volta) and persists PATH into common shell profile files.
+- `make doctor` runs startup checks before launch (including verifying your Node.js setup).
+- Node.js is not installed automatically; please install Node.js yourself (manually or via a tool like Volta/nvm) before running `make doctor`.
 
 ### 6. Check status and stop
 
