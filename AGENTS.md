@@ -2,10 +2,9 @@
 
 ## Repository Snapshot
 - `backend/`: Fastify + Prisma API service. Route handlers live in `src/api`, orchestration and domain logic live in `src/services`, infrastructure helpers live in `src/utils`.
-- `core/`: FastAPI-based structural analysis engine. Main entrypoint is `main.py`; schemas, FEM logic, design checks, converters, and regression fixtures live under `schemas/`, `fem/`, `design/`, `converters/`, and `regression/`.
+- `core/`: FastAPI-based structural analysis engine. Main entrypoint is `main.py`; schemas, FEM logic, engine registry, and regression fixtures live under `schemas/`, `fem/`, `engines/`, and `regression/`.
 - `frontend/`: Next.js 14 app. App routes live under `src/app`, reusable UI in `src/components`, client state and i18n helpers in `src/lib`.
 - `scripts/`: operational and regression scripts. Prefer these over ad hoc commands when validating contracts, startup behavior, chat flows, converters, or regressions.
-- `.planning/`: project workflow state, roadmap, phase plans, and codebase map. Treat this as durable project context, not scratch output.
 - `docs/`: user-facing and protocol documentation such as the stream protocol and roadmap.
 
 ## Working Rules
@@ -15,7 +14,6 @@
 - Do not add new single-language user-facing flows. If a feature produces user-visible text from backend chat, agent, or report paths, the implementation must include locale propagation and locale-aware backend templates in the same change.
 - Treat the frontend locale as the single source of truth for new interactions. Once a user selects a language, all newly generated user-visible text in that interaction must follow that locale without mixing languages.
 - Keep core changes deterministic. Structural examples, regression fixtures, and converters should remain scriptable and reproducible.
-- Do not treat `.planning/` as disposable. Update planning artifacts intentionally when work changes roadmap, state, or codebase guidance.
 - Commit discipline is mandatory: make small, logical commits as you go, and do it promptly.
 - Do not wait until the end of a long task to bundle unrelated work into one commit.
 - When a task naturally splits into implementation, tests, docs, or follow-up cleanup, prefer separate commits with clear boundaries.
@@ -85,7 +83,7 @@
   - docs or workflow-note follow-ups in their own commit
 - PRs should state:
   - what changed and why
-  - impacted areas (`backend`, `core`, `frontend`, `scripts`, `docs`, `.planning`)
+  - impacted areas (`backend`, `core`, `frontend`, `scripts`, `docs`)
   - commands run and results
   - sample request/response when API behavior changed
 
