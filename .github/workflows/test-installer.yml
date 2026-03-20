@@ -91,12 +91,13 @@ jobs:
         shell: powershell
         run: |
           # Create mock .env file for testing
-          $envContent = @"
-LLM_PROVIDER=openai
-LLM_API_KEY=test-key-for-ci
-LLM_MODEL=gpt-4-turbo-preview
-LLM_BASE_URL=https://api.openai.com/v1
-"@
+          $envLines = @(
+            "LLM_PROVIDER=openai",
+            "LLM_API_KEY=test-key-for-ci",
+            "LLM_MODEL=gpt-4-turbo-preview",
+            "LLM_BASE_URL=https://api.openai.com/v1"
+          )
+          $envContent = $envLines -join "`r`n"
           Set-Content -Path ".env" -Value $envContent -NoNewline
 
           Write-Host "Testing docker compose configuration..." -ForegroundColor Cyan
@@ -111,6 +112,3 @@ LLM_BASE_URL=https://api.openai.com/v1
             Write-Error "Docker compose configuration is invalid"
             exit 1
           }
-
-          # Note: We don't actually build and run in CI to save time and resources
-          # The actual deployment test should be done manually or in a dedicated environment
