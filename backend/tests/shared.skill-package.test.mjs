@@ -35,12 +35,15 @@ describe('shared skill package metadata', () => {
     expect(entry.packageMetadata.version).toBe('1.0.0');
     expect(entry.packageMetadata.source).toBe('skillhub');
     expect(entry.packageMetadata.enabledByDefault).toBe(false);
-    expect(entry.packageMetadata.entrypoints).toEqual({});
+    expect(entry.packageMetadata.entrypoints).toEqual({
+      codeCheck: 'dist/code-check.js',
+    });
 
     const direct = normalizeSkillHubCatalogEntryToSkillPackage({
       id: entry.id,
       version: entry.version,
       domain: entry.domain,
+      entrypoints: entry.entrypoints,
       name: entry.name,
       description: entry.description,
       capabilities: entry.capabilities,
@@ -53,5 +56,6 @@ describe('shared skill package metadata', () => {
 
     expect(direct.id).toBe(entry.packageMetadata.id);
     expect(direct.compatibility.skillApiVersion).toBe(entry.packageMetadata.compatibility.skillApiVersion);
+    expect(direct.entrypoints).toEqual(entry.packageMetadata.entrypoints);
   });
 });

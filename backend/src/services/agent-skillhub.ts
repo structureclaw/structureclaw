@@ -12,6 +12,9 @@ export interface SkillHubCatalogEntry {
   id: string;
   version: string;
   domain: SkillDomain;
+  entrypoints?: {
+    [key: string]: string | undefined;
+  };
   name: {
     zh: string;
     en: string;
@@ -35,6 +38,9 @@ interface SkillHubCacheEntry {
   id: string;
   version: string;
   domain: SkillDomain;
+  entrypoints?: {
+    [key: string]: string | undefined;
+  };
   compatibility: {
     minCoreVersion: string;
     skillApiVersion: string;
@@ -67,6 +73,9 @@ interface SkillHubCatalogSeed {
   id: string;
   version: string;
   domain: SkillDomain;
+  entrypoints?: {
+    [key: string]: string | undefined;
+  };
   name: {
     zh: string;
     en: string;
@@ -96,6 +105,7 @@ function buildCatalogEntry(seed: SkillHubCatalogSeed): SkillHubCatalogEntry {
     id: seed.id,
     version: seed.version,
     domain: seed.domain,
+    entrypoints: seed.entrypoints,
     name: seed.name,
     description: seed.description,
     capabilities: seed.capabilities,
@@ -112,6 +122,9 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
     id: 'skillhub.steel-connection-check',
     version: '1.0.0',
     domain: 'code-check',
+    entrypoints: {
+      codeCheck: 'dist/code-check.js',
+    },
     name: {
       zh: '钢连接节点校核',
       en: 'Steel Connection Check',
@@ -130,6 +143,9 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
     id: 'skillhub.modal-report-pack',
     version: '1.0.0',
     domain: 'report-export',
+    entrypoints: {
+      reportExport: 'dist/report-export.js',
+    },
     name: {
       zh: '模态分析报告包',
       en: 'Modal Report Pack',
@@ -148,6 +164,9 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
     id: 'skillhub.seismic-simplified-policy',
     version: '1.0.0',
     domain: 'analysis-strategy',
+    entrypoints: {
+      analysisStrategy: 'dist/analysis-strategy.js',
+    },
     name: {
       zh: '抗震简化策略',
       en: 'Seismic Simplified Policy',
@@ -166,6 +185,9 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
     id: 'skillhub.future-core-only',
     version: '1.0.0',
     domain: 'analysis-strategy',
+    entrypoints: {
+      analysisStrategy: 'dist/analysis-strategy.js',
+    },
     name: {
       zh: '未来核心策略包',
       en: 'Future Core Strategy Pack',
@@ -184,6 +206,9 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
     id: 'skillhub.bad-signature-pack',
     version: '1.0.0',
     domain: 'report-export',
+    entrypoints: {
+      reportExport: 'dist/report-export.js',
+    },
     name: {
       zh: '签名异常报告包',
       en: 'Bad Signature Report Pack',
@@ -205,6 +230,9 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
     id: 'skillhub.bad-checksum-pack',
     version: '1.0.0',
     domain: 'report-export',
+    entrypoints: {
+      reportExport: 'dist/report-export.js',
+    },
     name: {
       zh: '校验和异常报告包',
       en: 'Bad Checksum Report Pack',

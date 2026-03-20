@@ -97,7 +97,7 @@ export function normalizeSkillHubCatalogEntryToSkillPackage(
       minCoreVersion: entry.compatibility?.minCoreVersion || '0.1.0',
       skillApiVersion: entry.compatibility?.skillApiVersion || 'v1',
     },
-    entrypoints: options?.entrypoints ?? {},
+    entrypoints: options?.entrypoints ?? entry.entrypoints ?? {},
     enabledByDefault: Boolean(options?.enabledByDefault ?? false),
     supportedLocales: ['zh', 'en'],
     name: {
