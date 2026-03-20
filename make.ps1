@@ -85,6 +85,45 @@ function Load-DotEnv {
   return $values
 }
 
+function Set-ConfigValue {
+  param(
+    [hashtable]$DotEnv,
+    [string]$Name,
+    [string]$Value
+  )
+
+  $DotEnv[$Name] = $Value
+  Set-Item -Path ("Env:{0}" -f $Name) -Value $Value
+}
+
+function Ensure-LocalSqliteConfig {
+  param([hashtable]$DotEnv)
+
+  $databaseUrl = Get-ConfigValue -DotEnv $DotEnv -Name 'DATABASE_URL' -DefaultValue 'file:../../.runtime/data/structureclaw.db'
+  if ($databaseUrl.StartsWith('file:')) {
+    return
+  }
+
+  $lowerDatabaseUrl = $databaseUrl.ToLowerInvariant()
+  $isLegacyLocalPostgres = $lowerDatabaseUrl.StartsWith('postgresql://') -and (
+    $lowerDatabaseUrl.Contains('@localhost:') -or
+    $lowerDatabaseUrl.Contains('@127.0.0.1:')
+  )
+
+  if (-not $isLegacyLocalPostgres) {
+    Fail "Windows local workflow expects a SQLite DATABASE_URL. Current value: $databaseUrl"
+  }
+
+  $sqliteUrl = 'file:../../.runtime/data/structureclaw.db'
+  Write-Info ("Detected legacy local PostgreSQL DATABASE_URL. Overriding to SQLite for Windows local workflow: {0}" -f $sqliteUrl)
+  Set-ConfigValue -DotEnv $DotEnv -Name 'DATABASE_URL' -Value $sqliteUrl
+
+  $existingSource = Get-ConfigValue -DotEnv $DotEnv -Name 'POSTGRES_SOURCE_DATABASE_URL' -DefaultValue ''
+  if ([string]::IsNullOrWhiteSpace($existingSource)) {
+    Set-ConfigValue -DotEnv $DotEnv -Name 'POSTGRES_SOURCE_DATABASE_URL' -Value $databaseUrl
+  }
+}
+
 function Get-ConfigValue {
   param(
     [hashtable]$DotEnv,
@@ -136,10 +175,52 @@ function Get-FileHashOrBlank {
   return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash
 }
 
+function Test-InstalledPackageMatchesLock {
+  param(
+    [string]$ProjectDir,
+    [string[]]$PackageNames
+  )
+
+  $lockFile = Join-Path $ProjectDir 'package-lock.json'
+  if (-not (Test-Path -LiteralPath $lockFile)) {
+    return $true
+  }
+
+  $lockJson = Get-Content -LiteralPath $lockFile -Raw | ConvertFrom-Json -AsHashtable
+  foreach ($packageName in $PackageNames) {
+    $packageKey = if ($packageName.StartsWith('@')) {
+      "node_modules/{0}" -f $packageName
+    }
+    else {
+      "node_modules/{0}" -f $packageName
+    }
+
+    if (-not $lockJson.packages.ContainsKey($packageKey)) {
+      continue
+    }
+
+    $installedPackageJson = Join-Path $ProjectDir ("node_modules/{0}/package.json" -f $packageName)
+    if (-not (Test-Path -LiteralPath $installedPackageJson)) {
+      return $false
+    }
+
+    $installedJson = Get-Content -LiteralPath $installedPackageJson -Raw | ConvertFrom-Json -AsHashtable
+    $expectedVersion = [string]$lockJson.packages[$packageKey].version
+    $installedVersion = [string]$installedJson.version
+    if ($installedVersion -ne $expectedVersion) {
+      Write-Info ("Installed package drift detected for {0}: have {1}, expected {2}." -f $packageName, $installedVersion, $expectedVersion)
+      return $false
+    }
+  }
+
+  return $true
+}
+
 function Ensure-NpmDependencies {
   param(
     [string]$ProjectDir,
-    [string]$ProjectName
+    [string]$ProjectName,
+    [string[]]$VersionChecks = @()
   )
 
   $lockFile = Join-Path $ProjectDir 'package-lock.json'
@@ -149,6 +230,10 @@ function Ensure-NpmDependencies {
 
   if (-not $needsInstall -and (Test-Path -LiteralPath $lockFile)) {
     $needsInstall = (Get-FileHashOrBlank $lockFile) -ne (Get-FileHashOrBlank $lockSnapshot)
+  }
+
+  if (-not $needsInstall -and $VersionChecks.Count -gt 0) {
+    $needsInstall = -not (Test-InstalledPackageMatchesLock -ProjectDir $ProjectDir -PackageNames $VersionChecks)
   }
 
   if ($needsInstall) {
@@ -440,6 +525,7 @@ function Invoke-BackendBuild {
 function Invoke-DbInit {
   param([hashtable]$DotEnv)
 
+  Ensure-LocalSqliteConfig -DotEnv $DotEnv
   Assert-SqliteDatabaseUrl -DotEnv $DotEnv
   Ensure-Directory (Join-Path $RootDir '.runtime/data')
   & npm run db:init --prefix (Join-Path $RootDir 'backend')
@@ -458,9 +544,10 @@ function Invoke-LocalUp {
   Require-Command 'npm' 'Install npm and retry.'
   Require-Command 'python' 'Install Python 3.11 and retry.'
 
+  Ensure-LocalSqliteConfig -DotEnv $DotEnv
   Assert-SqliteDatabaseUrl -DotEnv $DotEnv
-  Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'backend') -ProjectName 'backend'
-  Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'frontend') -ProjectName 'frontend'
+  Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'backend') -ProjectName 'backend' -VersionChecks @('prisma', '@prisma/client')
+  Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'frontend') -ProjectName 'frontend' -VersionChecks @('next')
   Ensure-CoreVenv
 
   if (-not (Test-OpenSeesRuntime)) {
@@ -538,9 +625,10 @@ function Invoke-Doctor {
   Require-Command 'python' 'Install Python 3.11 and retry.'
   Require-Command 'uv' 'Install uv first, then rerun. Example: winget install --id AstralSoftware.UV -e'
 
+  Ensure-LocalSqliteConfig -DotEnv $DotEnv
   Assert-SqliteDatabaseUrl -DotEnv $DotEnv
-  Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'backend') -ProjectName 'backend'
-  Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'frontend') -ProjectName 'frontend'
+  Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'backend') -ProjectName 'backend' -VersionChecks @('prisma', '@prisma/client')
+  Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'frontend') -ProjectName 'frontend' -VersionChecks @('next')
   Ensure-CoreVenv
 
   if (-not (Test-OpenSeesRuntime)) {
@@ -603,8 +691,8 @@ switch ($Target) {
   'help' { Show-Help }
   'install' {
     Require-Command 'npm' 'Install npm and retry.'
-    Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'backend') -ProjectName 'backend'
-    Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'frontend') -ProjectName 'frontend'
+    Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'backend') -ProjectName 'backend' -VersionChecks @('prisma', '@prisma/client')
+    Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'frontend') -ProjectName 'frontend' -VersionChecks @('next')
   }
   'setup-core-full' { Ensure-CoreVenv }
   'setup-core-full-uv' { Ensure-CoreVenv }

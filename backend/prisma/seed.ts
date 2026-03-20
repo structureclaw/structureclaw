@@ -1,5 +1,16 @@
 import crypto from 'node:crypto';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const rootEnvPath = path.resolve(__dirname, '../../.env');
+const defaultSqliteDatabasePath = path.resolve(__dirname, '../../.runtime/data/structureclaw.db');
+
+dotenv.config({ path: rootEnvPath, quiet: true });
+process.env.DATABASE_URL = process.env.DATABASE_URL || `file:${defaultSqliteDatabasePath}`;
 
 const prisma = new PrismaClient();
 
