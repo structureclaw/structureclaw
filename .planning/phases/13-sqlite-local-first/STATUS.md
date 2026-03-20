@@ -42,7 +42,6 @@ Owner: backend-agent
 ## Known Migration Constraints
 - Existing Prisma migration history is still PostgreSQL-based; the current SQLite path uses a custom schema-sync baseline instead of an adopted migration reset.
 - Some backend regression helpers still emit noisy missing-`DATABASE_URL` validation logs before their local SQLite fallback kicks in.
-- The new PostgreSQL-to-SQLite migration script is implemented, but it still needs one real historical PostgreSQL dataset rehearsal before Phase 13 can be called fully closed.
 
 ## Completed This Iteration
 - Audited every active Prisma-backed service surface and mapped the main persistence domains: chat, agent snapshots, projects, analyses, users, skills, and community content.
@@ -63,12 +62,14 @@ Owner: backend-agent
 - Updated the related user-facing copy in [i18n.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/frontend/src/lib/i18n.ts) and added targeted regression coverage in [admin-database.route.test.mjs](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/tests/admin-database.route.test.mjs) and [database-page.test.tsx](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/frontend/tests/integration/database-page.test.tsx).
 - Added PostgreSQL-to-SQLite migration tooling via [migrate-postgres-to-sqlite.sh](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/scripts/migrate-postgres-to-sqlite.sh), [migrate-postgres-to-sqlite.mjs](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/scripts/migrate-postgres-to-sqlite.mjs), and [postgres-to-sqlite-lib.mjs](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/scripts/postgres-to-sqlite-lib.mjs), including conversion of legacy PostgreSQL scalar-list arrays into the new SQLite relation tables.
 - Added targeted regression coverage in [postgres-to-sqlite-migration.test.mjs](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/tests/postgres-to-sqlite-migration.test.mjs), plus CLI usage validation for the new migration entrypoints.
+- Added [auto-migrate-legacy-postgres.sh](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/scripts/auto-migrate-legacy-postgres.sh) and wired it into [check-startup.sh](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/scripts/check-startup.sh) and [dev-up.sh](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/scripts/dev-up.sh) so `doctor` and default startup can detect a legacy local PostgreSQL `.env`, migrate into SQLite, and rewrite `.env` to the SQLite default path automatically.
+- Completed one real local rehearsal against an existing legacy PostgreSQL-backed workspace, which surfaced and then validated the remaining scalar-list sanitization needed by the migration tool.
 
 ## Immediate Next Actions
-1. Run one end-to-end rehearsal from a real historical PostgreSQL dataset into a fresh SQLite file and capture any field-level gaps.
-2. Remove the remaining noisy missing-`DATABASE_URL` regression-script paths so SQLite validation is clean by default.
-3. Update onboarding and operator docs so SQLite is described as the first-class default path.
-4. Decide whether to keep the current custom SQLite schema-sync baseline or replace it later with a formal adopted migration reset.
+1. Remove the remaining noisy missing-`DATABASE_URL` regression-script paths so SQLite validation is clean by default.
+2. Update onboarding and operator docs so SQLite is described as the first-class default path.
+3. Decide whether to keep the current custom SQLite schema-sync baseline or replace it later with a formal adopted migration reset.
+4. Add a small operator note explaining the new `.env.pre-sqlite-migration.*.bak` backup behavior.
 
 ## Exit Gate
 All items below must be true:
@@ -79,4 +80,4 @@ All items below must be true:
 - [x] persistence-critical regressions pass under SQLite
 - [ ] onboarding docs present SQLite as the default path
 
-Gate status: in progress; WP3 through WP6 are now implemented, and the remaining blocking steps are migration rehearsal, quieter regression scripts, and final onboarding cleanup.
+Gate status: in progress; WP3 through WP6 are implemented and locally rehearsed, and the remaining blocking steps are quieter regression scripts plus final onboarding cleanup.
