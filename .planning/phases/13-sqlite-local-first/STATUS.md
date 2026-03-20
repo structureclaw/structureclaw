@@ -24,7 +24,7 @@ Owner: backend-agent
 - [x] SQLite datasource and migration baseline implemented
 - [x] Runtime defaults switched from PostgreSQL to SQLite
 - [x] Scripts and Docker default path switched to SQLite
-- [ ] pgAdmin-specific admin UX removed or replaced
+- [x] pgAdmin-specific admin UX removed or replaced
 - [ ] PostgreSQL-to-SQLite migration tooling implemented
 - [x] SQLite regression matrix added
 - [ ] Docs updated for SQLite-first onboarding
@@ -34,14 +34,12 @@ Owner: backend-agent
 - [x] WP2 Redesign the Prisma Schema for SQLite
 - [x] WP3 Define Runtime Database Defaults and File Lifecycle
 - [x] WP4 Migrate Tooling, Scripts, and Docker Away From PostgreSQL-First Assumptions
-- [ ] WP5 Replace pgAdmin-Centric Admin UX
+- [x] WP5 Replace pgAdmin-Centric Admin UX
 - [ ] WP6 Add PostgreSQL-to-SQLite Migration Utilities
 - [ ] WP7 Rebuild the Regression Matrix Under SQLite
 - [ ] WP8 Docs, Release, and Default-Path Cleanup
 
 ## Known Migration Constraints
-- The frontend database page is still a pgAdmin-oriented launcher rather than a SQLite status page.
-- The backend admin database route still returns pgAdmin-oriented metadata and copy.
 - Existing Prisma migration history is still PostgreSQL-based; the current SQLite path uses a custom schema-sync baseline instead of an adopted migration reset.
 - Some backend regression helpers still emit noisy missing-`DATABASE_URL` validation logs before their local SQLite fallback kicks in.
 
@@ -60,12 +58,14 @@ Owner: backend-agent
 - Switched backend runtime defaults in [index.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/config/index.ts) and [database.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/utils/database.ts) to `.runtime/data/structureclaw.db`, including local directory creation and absolute `file:` URL normalization.
 - Switched the beginner startup path in [docker-compose.yml](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/docker-compose.yml), [Makefile](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/Makefile), [dev-up.sh](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/scripts/dev-up.sh), [dev-down.sh](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/scripts/dev-down.sh), and [.env.example](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/.env.example) so PostgreSQL and pgAdmin are no longer part of the default local or Docker startup path.
 - Verified the new SQLite path with fresh-schema sync, no-op re-sync, `db:init`, targeted backend tests, and [check-backend-regression.sh](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/scripts/check-backend-regression.sh).
+- Replaced pgAdmin-oriented admin metadata in [admin-database.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/api/admin-database.ts) with a SQLite file-status response, and rebuilt the console database page in [page.tsx](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/frontend/src/app/(console)/console/database/page.tsx) as a bilingual read-only SQLite status view.
+- Updated the related user-facing copy in [i18n.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/frontend/src/lib/i18n.ts) and added targeted regression coverage in [admin-database.route.test.mjs](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/tests/admin-database.route.test.mjs) and [database-page.test.tsx](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/frontend/tests/integration/database-page.test.tsx).
 
 ## Immediate Next Actions
-1. Rework the backend admin database metadata and frontend database page away from pgAdmin-specific messaging into a SQLite-oriented status UX.
-2. Add PostgreSQL-to-SQLite migration tooling for existing local users who need to carry forward data.
-3. Remove the remaining noisy missing-`DATABASE_URL` regression-script paths so SQLite validation is clean by default.
-4. Update onboarding and operator docs so SQLite is described as the first-class default path.
+1. Add PostgreSQL-to-SQLite migration tooling for existing local users who need to carry forward data.
+2. Remove the remaining noisy missing-`DATABASE_URL` regression-script paths so SQLite validation is clean by default.
+3. Update onboarding and operator docs so SQLite is described as the first-class default path.
+4. Decide whether to keep the current custom SQLite schema-sync baseline or replace it later with a formal adopted migration reset.
 
 ## Exit Gate
 All items below must be true:
