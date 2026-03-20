@@ -1,13 +1,7 @@
+import type { ManifestBackedSkillProvider, SkillProviderSource } from '../shared/provider.js';
 import type { AgentSkillPlugin, SkillHandler, SkillManifest } from '../runtime/types.js';
 
-export type StructureModelingProviderSource = 'builtin' | 'skillhub';
-
-export interface StructureModelingProvider {
-  id: string;
-  domain: 'structure-modeling';
-  source: StructureModelingProviderSource;
-  priority: number;
-  manifest: SkillManifest;
+export interface StructureModelingProvider extends ManifestBackedSkillProvider<'structure-modeling', SkillManifest> {
   handler: SkillHandler;
   plugin: AgentSkillPlugin;
 }
@@ -15,7 +9,7 @@ export interface StructureModelingProvider {
 export function toStructureModelingProvider(
   plugin: AgentSkillPlugin,
   options?: {
-    source?: StructureModelingProviderSource;
+    source?: SkillProviderSource;
     priority?: number;
   },
 ): StructureModelingProvider {
