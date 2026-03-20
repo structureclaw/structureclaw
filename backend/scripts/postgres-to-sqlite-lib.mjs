@@ -98,3 +98,12 @@ export function buildPostAttachmentRows(posts, explicitRows = []) {
     createdAt: post.createdAt ?? new Date(),
   })));
 }
+
+export function stripLegacyScalarLists(source) {
+  return {
+    ...source,
+    users: source.users.map(({ expertise, ...user }) => user),
+    skills: source.skills.map(({ tags, ...skill }) => skill),
+    posts: source.posts.map(({ tags, attachments, ...post }) => post),
+  };
+}

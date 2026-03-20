@@ -4,6 +4,7 @@ import {
   buildPostTagRows,
   buildSkillTagRows,
   buildUserExpertiseRows,
+  stripLegacyScalarLists,
 } from '../scripts/postgres-to-sqlite-lib.mjs';
 
 describe('postgres to sqlite migration helpers', () => {
@@ -98,5 +99,32 @@ describe('postgres to sqlite migration helpers', () => {
         createdAt,
       },
     ]);
+  });
+
+  test('stripLegacyScalarLists removes array columns before sqlite inserts', () => {
+    const sanitized = stripLegacyScalarLists({
+      users: [{ id: 'user-1', expertise: ['analysis'] }],
+      skills: [{ id: 'skill-1', tags: ['beam'] }],
+      posts: [{ id: 'post-1', tags: ['tip'], attachments: ['a.png'] }],
+      projects: [{ id: 'project-1' }],
+      projectMembers: [],
+      structuralModels: [],
+      analyses: [],
+      conversations: [],
+      messages: [],
+      projectSkills: [],
+      skillReviews: [],
+      skillExecutions: [],
+      comments: [],
+      postLikes: [],
+      userExpertise: [],
+      skillTags: [],
+      postTags: [],
+      postAttachments: [],
+    });
+
+    expect(sanitized.users).toEqual([{ id: 'user-1' }]);
+    expect(sanitized.skills).toEqual([{ id: 'skill-1' }]);
+    expect(sanitized.posts).toEqual([{ id: 'post-1' }]);
   });
 });

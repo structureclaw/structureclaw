@@ -11,6 +11,7 @@ import {
   buildPostTagRows,
   buildSkillTagRows,
   buildUserExpertiseRows,
+  stripLegacyScalarLists,
 } from './postgres-to-sqlite-lib.mjs';
 
 const { Client } = pg;
@@ -287,29 +288,30 @@ async function main() {
 
     try {
       const source = await loadSourceData(sourceClient);
+      const normalizedSource = stripLegacyScalarLists(source);
       const userExpertiseRows = buildUserExpertiseRows(source.users, source.userExpertise);
       const skillTagRows = buildSkillTagRows(source.skills, source.skillTags);
       const postTagRows = buildPostTagRows(source.posts, source.postTags);
       const postAttachmentRows = buildPostAttachmentRows(source.posts, source.postAttachments);
 
-      await insertMany(prisma.user, source.users);
+      await insertMany(prisma.user, normalizedSource.users);
       await insertMany(prisma.userExpertise, userExpertiseRows);
-      await insertMany(prisma.project, source.projects);
-      await insertMany(prisma.projectMember, source.projectMembers);
-      await insertMany(prisma.structuralModel, source.structuralModels);
-      await insertMany(prisma.analysis, source.analyses);
-      await insertMany(prisma.conversation, source.conversations);
-      await insertMany(prisma.message, source.messages);
-      await insertMany(prisma.skill, source.skills);
+      await insertMany(prisma.project, normalizedSource.projects);
+      await insertMany(prisma.projectMember, normalizedSource.projectMembers);
+      await insertMany(prisma.structuralModel, normalizedSource.structuralModels);
+      await insertMany(prisma.analysis, normalizedSource.analyses);
+      await insertMany(prisma.conversation, normalizedSource.conversations);
+      await insertMany(prisma.message, normalizedSource.messages);
+      await insertMany(prisma.skill, normalizedSource.skills);
       await insertMany(prisma.skillTag, skillTagRows);
-      await insertMany(prisma.projectSkill, source.projectSkills);
-      await insertMany(prisma.skillReview, source.skillReviews);
-      await insertMany(prisma.skillExecution, source.skillExecutions);
-      await insertMany(prisma.post, source.posts);
+      await insertMany(prisma.projectSkill, normalizedSource.projectSkills);
+      await insertMany(prisma.skillReview, normalizedSource.skillReviews);
+      await insertMany(prisma.skillExecution, normalizedSource.skillExecutions);
+      await insertMany(prisma.post, normalizedSource.posts);
       await insertMany(prisma.postTag, postTagRows);
       await insertMany(prisma.postAttachment, postAttachmentRows);
-      await insertMany(prisma.comment, source.comments);
-      await insertMany(prisma.postLike, source.postLikes);
+      await insertMany(prisma.comment, normalizedSource.comments);
+      await insertMany(prisma.postLike, normalizedSource.postLikes);
 
       logSummary({
         users: source.users.length,

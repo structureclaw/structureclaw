@@ -248,6 +248,9 @@ ensure_uv
 ensure_npm_dependencies "$ROOT_DIR/backend" "backend"
 ensure_npm_dependencies "$ROOT_DIR/frontend" "frontend"
 
+"$ROOT_DIR/scripts/auto-migrate-legacy-postgres.sh"
+load_root_env
+
 if [[ ! -x "$ROOT_DIR/core/.venv/bin/python" ]] || ! core_module_available "uvicorn"; then
   recreate_core_venv=0
   if [[ ! -x "$ROOT_DIR/core/.venv/bin/python" ]]; then
