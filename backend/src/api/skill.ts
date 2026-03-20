@@ -103,9 +103,9 @@ export async function skillRoutes(fastify: FastifyInstance) {
       tags: ['Skills'],
       summary: '执行技能',
     },
-  }, async (request: FastifyRequest<{ Params: { id: string }; Body: any }>, reply: FastifyReply) => {
+  }, async (request: FastifyRequest<{ Params: { id: string }; Body: Record<string, unknown> }>, reply: FastifyReply) => {
     const { id } = request.params;
-    const params = request.body;
+    const params = request.body as Record<string, unknown>;
     const userId = request.user?.id;
 
     const result = await skillService.executeSkill(id, params, userId);

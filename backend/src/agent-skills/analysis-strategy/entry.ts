@@ -8,14 +8,6 @@ import type { AgentAnalysisType } from '../../agent-skills/runtime/types.js';
 
 const ANALYSIS_TYPE_SET = new Set<AgentAnalysisType>(['static', 'dynamic', 'seismic', 'nonlinear']);
 
-export interface AnalysisStrategyProfile {
-  analysisType: AgentAnalysisType;
-  includeGeometricNonlinearity: boolean;
-  includeMaterialNonlinearity: boolean;
-  dampingRatio?: number;
-  designCodeHint?: string;
-}
-
 export function inferAnalysisType(policy: AgentPolicyService, message: string): AgentPolicyAnalysisType {
   return policy.inferAnalysisType(message);
 }
@@ -26,10 +18,6 @@ export function inferCodeCheckIntent(policy: AgentPolicyService, message: string
 
 export function inferReportIntent(policy: AgentPolicyService, message: string): boolean | undefined {
   return policy.inferReportIntent(message);
-}
-
-export function inferDesignCode(policy: AgentPolicyService, message: string): string | undefined {
-  return policy.inferDesignCode(message);
 }
 
 export function normalizePolicyAnalysisType(policy: AgentPolicyService, value: string): AgentPolicyAnalysisType {
@@ -50,14 +38,4 @@ export function normalizeAnalysisTypes(value: unknown): AgentAnalysisType[] {
   }
   const normalized = value.filter((item): item is AgentAnalysisType => ANALYSIS_TYPE_SET.has(item as AgentAnalysisType));
   return Array.from(new Set(normalized));
-}
-
-export function buildDefaultAnalysisStrategy(analysisType: AgentAnalysisType): AnalysisStrategyProfile {
-  return {
-    analysisType,
-    includeGeometricNonlinearity: analysisType === 'nonlinear',
-    includeMaterialNonlinearity: analysisType === 'nonlinear',
-    dampingRatio: analysisType === 'dynamic' || analysisType === 'seismic' ? 0.05 : undefined,
-    designCodeHint: analysisType === 'seismic' ? 'GB50011' : undefined,
-  };
 }

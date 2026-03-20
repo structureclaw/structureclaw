@@ -87,36 +87,6 @@ const BUILTIN_SKILLS = [
       },
     },
   },
-  {
-    id: 'skill-mesh-generator',
-    name: '网格划分',
-    description: '自动生成有限元网格',
-    category: 'modeling',
-    tags: ['网格', '有限元', '建模'],
-    config: {
-      triggers: ['划分网格', '网格生成', 'mesh'],
-      parameters: {
-        elementType: { type: 'string', enum: ['shell', 'solid'] },
-        maxSize: { type: 'number', description: '最大网格尺寸 (mm)' },
-        refinement: { type: 'string', enum: ['coarse', 'medium', 'fine'] },
-      },
-    },
-  },
-  {
-    id: 'skill-report-generator',
-    name: '计算书生成',
-    description: '生成结构计算书',
-    category: 'report',
-    tags: ['计算书', '报告', '文档'],
-    config: {
-      triggers: ['生成计算书', '计算报告', 'report'],
-      parameters: {
-        projectId: { type: 'string', description: '项目ID' },
-        sections: { type: 'array', description: '报告章节' },
-        format: { type: 'string', enum: ['pdf', 'docx', 'html'] },
-      },
-    },
-  },
 ];
 
 function mapSkillTags<T extends SkillWithTagItems | null>(skill: T) {
@@ -241,7 +211,7 @@ export class SkillService {
   }
 
   // 执行技能
-  async executeSkill(skillId: string, params: any, userId?: string) {
+  async executeSkill(skillId: string, params: Record<string, unknown>, userId?: string) {
     const skill = await prisma.skill.findUnique({
       where: { id: skillId },
     });
@@ -311,7 +281,7 @@ export class SkillService {
   }
 
   // 执行技能处理器
-  private async runSkillHandler(handler: string, params: any): Promise<any> {
+  private async runSkillHandler(handler: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
     // 根据处理器名称调用相应函数
     switch (handler) {
       case 'beam-design':
@@ -328,10 +298,11 @@ export class SkillService {
   }
 
   // 梁设计处理器
-  private async handleBeamDesign(params: any) {
+  private async handleBeamDesign(params: Record<string, unknown>) {
     // 简化的梁截面设计计算
-    const { M, h } = params;
-    const h0 = h - 40; // 假设保护层厚度40mm
+    const M = Number(params.M);
+    const h = Number(params.h);
+    const h0 = h - 40;
 
     // 简化计算：As = M / (fy * γs * h0)
     const fy = 360; // HRB400钢筋
@@ -345,8 +316,11 @@ export class SkillService {
   }
 
   // 柱设计处理器
-  private async handleColumnDesign(params: any) {
-    const { N, b, h, concreteGrade } = params;
+  private async handleColumnDesign(params: Record<string, unknown>) {
+    const N = Number(params.N);
+    const b = Number(params.b);
+    const h = Number(params.h);
+    const concreteGrade = String(params.concreteGrade ?? 'C30');
     const fcd = this.getConcreteStrength(concreteGrade);
 
     // 轴心受压简化计算
@@ -361,8 +335,9 @@ export class SkillService {
   }
 
   // 荷载计算处理器
-  private async handleLoadCalculation(params: any) {
-    const { area, type } = params;
+  private async handleLoadCalculation(params: Record<string, unknown>) {
+    const area = Number(params.area);
+    const type = String(params.type ?? 'floor');
     let deadLoad = 0;
     let liveLoad = 0;
 
@@ -389,8 +364,10 @@ export class SkillService {
   }
 
   // 地震作用计算处理器
-  private async handleSeismicLoad(params: any) {
-    const { totalWeight, seismicZone, siteClass } = params;
+  private async handleSeismicLoad(params: Record<string, unknown>) {
+    const totalWeight = Number(params.totalWeight);
+    const seismicZone = Number(params.seismicZone);
+    const siteClass = String(params.siteClass ?? 'II');
 
     // 简化的底部剪力法
     const αmax = [0.04, 0.08, 0.16, 0.24, 0.32][seismicZone - 6] || 0.16;

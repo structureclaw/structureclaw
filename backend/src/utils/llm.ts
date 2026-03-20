@@ -17,7 +17,3 @@ export function createChatModel(temperature: number): ChatOpenAI | null {
     },
   });
 }
-
-export function llmProviderLabel(): string {
-  return `${config.llmProvider}:${config.llmModel}`;
-}
