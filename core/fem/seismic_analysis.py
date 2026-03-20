@@ -20,6 +20,28 @@ class SeismicAnalyzer:
         self.elements = {e.id: e for e in model.elements}
         self.materials = {m.id: m for m in model.materials}
 
+        self._ops_node_tags = {str(n.id): i + 1 for i, n in enumerate(model.nodes)}
+        self._ops_element_tags = {str(e.id): i + 1 for i, e in enumerate(model.elements)}
+        self._ops_material_tags = {str(m.id): i + 1 for i, m in enumerate(model.materials)}
+
+    def _ops_node_tag(self, node_id) -> int:
+        key = str(node_id)
+        if key not in self._ops_node_tags:
+            raise ValueError(f"Unknown node id '{node_id}' in OpenSees mapping")
+        return self._ops_node_tags[key]
+
+    def _ops_element_tag(self, element_id) -> int:
+        key = str(element_id)
+        if key not in self._ops_element_tags:
+            raise ValueError(f"Unknown element id '{element_id}' in OpenSees mapping")
+        return self._ops_element_tags[key]
+
+    def _ops_material_tag(self, material_id) -> int:
+        key = str(material_id)
+        if key not in self._ops_material_tags:
+            raise ValueError(f"Unknown material id '{material_id}' in OpenSees mapping")
+        return self._ops_material_tags[key]
+
     def run(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
         执行地震分析
@@ -145,16 +167,17 @@ class SeismicAnalyzer:
 
         # 定义节点
         for node in self.model.nodes:
-            ops.node(int(node.id), node.x, node.y, node.z)
+            tag = self._ops_node_tag(node.id)
+            ops.node(tag, node.x, node.y, node.z)
             if node.restraints:
-                ops.fix(int(node.id), *node.restraints)
+                ops.fix(tag, *node.restraints)
 
         # 定义非线性材料
         for mat in self.model.materials:
             # Concrete01 - 混凝土
             ops.uniaxialMaterial(
                 'Concrete01',
-                int(mat.id),
+                self._ops_material_tag(mat.id),
                 mat.fy * 0.002 if mat.fy else 30,  # fpc
                 0.002,  # epsc0
                 mat.fy * 0.004 if mat.fy else 20,  # fpcu
@@ -166,9 +189,9 @@ class SeismicAnalyzer:
             if elem.type == 'beam':
                 ops.element(
                     'elasticBeamColumn',
-                    int(elem.id),
-                    int(elem.nodes[0]),
-                    int(elem.nodes[1]),
+                    self._ops_element_tag(elem.id),
+                    self._ops_node_tag(elem.nodes[0]),
+                    self._ops_node_tag(elem.nodes[1]),
                     0.01, 200000000, 0.0001, 0.0001, 79000000, 0.00001
                 )
 
@@ -177,7 +200,7 @@ class SeismicAnalyzer:
         ops.pattern('Plain', 1, 1)
         for node in self.model.nodes:
             if not node.restraints or not all(node.restraints):
-                ops.load(int(node.id), 0, -100, 0, 0, 0, 0)
+                ops.load(self._ops_node_tag(node.id), 0, -100, 0, 0, 0, 0)
 
         # 重力分析
         ops.system('BandSPD')
@@ -201,7 +224,7 @@ class SeismicAnalyzer:
         for node in self.model.nodes:
             if not node.restraints or not all(node.restraints):
                 coeff = node.z / max_height
-                ops.load(int(node.id), coeff * 10, 0, 0, 0, 0, 0)
+                ops.load(self._ops_node_tag(node.id), coeff * 10, 0, 0, 0, 0, 0)
 
         # 位移控制分析
         if not control_node:
@@ -210,7 +233,7 @@ class SeismicAnalyzer:
                     control_node = node.id
                     break
 
-        ops.integrator('DisplacementControl', int(control_node), 1, 0.001)
+        ops.integrator('DisplacementControl', self._ops_node_tag(control_node), 1, 0.001)
         ops.analysis('Static')
 
         # 分步执行
@@ -330,12 +353,10 @@ class SeismicAnalyzer:
 
     def _get_modes_opensees(self, ops) -> List[Dict]:
         """使用 OpenSees 获取模态"""
-        # 简化：返回3个模态
-        return [
-            {'modeNumber': 1, 'period': 0.8},
-            {'modeNumber': 2, 'period': 0.3},
-            {'modeNumber': 3, 'period': 0.18}
-        ]
+        raise NotImplementedError(
+            "OpenSees modal extraction is not yet implemented; "
+            "use the simplified fallback via engine_mode='simplified'"
+        )
 
     def _get_modes_simplified(self) -> List[Dict]:
         """简化模态估算"""

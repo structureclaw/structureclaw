@@ -20,6 +20,28 @@ class DynamicAnalyzer:
         self.elements = {e.id: e for e in model.elements}
         self.materials = {m.id: m for m in model.materials}
 
+        self._ops_node_tags = {str(n.id): i + 1 for i, n in enumerate(model.nodes)}
+        self._ops_element_tags = {str(e.id): i + 1 for i, e in enumerate(model.elements)}
+        self._ops_material_tags = {str(m.id): i + 1 for i, m in enumerate(model.materials)}
+
+    def _ops_node_tag(self, node_id) -> int:
+        key = str(node_id)
+        if key not in self._ops_node_tags:
+            raise ValueError(f"Unknown node id '{node_id}' in OpenSees mapping")
+        return self._ops_node_tags[key]
+
+    def _ops_element_tag(self, element_id) -> int:
+        key = str(element_id)
+        if key not in self._ops_element_tags:
+            raise ValueError(f"Unknown element id '{element_id}' in OpenSees mapping")
+        return self._ops_element_tags[key]
+
+    def _ops_material_tag(self, material_id) -> int:
+        key = str(material_id)
+        if key not in self._ops_material_tags:
+            raise ValueError(f"Unknown material id '{material_id}' in OpenSees mapping")
+        return self._ops_material_tags[key]
+
     def run(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
         执行动力分析
@@ -75,29 +97,30 @@ class DynamicAnalyzer:
 
         # 定义节点
         for node in self.model.nodes:
-            ops.node(int(node.id), node.x, node.y, node.z)
+            tag = self._ops_node_tag(node.id)
+            ops.node(tag, node.x, node.y, node.z)
             if node.restraints:
-                ops.fix(int(node.id), *node.restraints)
+                ops.fix(tag, *node.restraints)
 
         # 定义质量和刚度
         total_mass = 0
         for node in self.model.nodes:
             mass = [100] * 6  # 简化的质量
-            ops.mass(int(node.id), *mass)
+            ops.mass(self._ops_node_tag(node.id), *mass)
             total_mass += mass[0]
 
         # 定义材料
         for mat in self.model.materials:
-            ops.uniaxialMaterial('Elastic', int(mat.id), mat.E * 1000)
+            ops.uniaxialMaterial('Elastic', self._ops_material_tag(mat.id), mat.E * 1000)
 
         # 定义单元
         for elem in self.model.elements:
             if elem.type == 'beam':
                 ops.element(
                     'elasticBeamColumn',
-                    int(elem.id),
-                    int(elem.nodes[0]),
-                    int(elem.nodes[1]),
+                    self._ops_element_tag(elem.id),
+                    self._ops_node_tag(elem.nodes[0]),
+                    self._ops_node_tag(elem.nodes[1]),
                     0.01,  # A
                     200000000,  # E
                     0.0001,  # Iz
@@ -125,7 +148,7 @@ class DynamicAnalyzer:
             mode_shape = {}
             for node in self.model.nodes:
                 try:
-                    shape = ops.nodeEigenvector(int(node.id), i + 1)
+                    shape = ops.nodeEigenvector(self._ops_node_tag(node.id), i + 1)
                     mode_shape[node.id] = shape[:3].tolist()
                 except:
                     mode_shape[node.id] = [0, 0, 0]
@@ -215,28 +238,29 @@ class DynamicAnalyzer:
         ops.wipe()
         ops.model('basic', '-ndm', 3, '-ndf', 6)
 
-        # 定义节点和单元...
+        # 定义节点和单元
         for node in self.model.nodes:
-            ops.node(int(node.id), node.x, node.y, node.z)
+            tag = self._ops_node_tag(node.id)
+            ops.node(tag, node.x, node.y, node.z)
             if node.restraints:
-                ops.fix(int(node.id), *node.restraints)
+                ops.fix(tag, *node.restraints)
 
         # 定义质量
         for node in self.model.nodes:
-            ops.mass(int(node.id), 100, 100, 100, 0, 0, 0)
+            ops.mass(self._ops_node_tag(node.id), 100, 100, 100, 0, 0, 0)
 
         # 定义材料
         for mat in self.model.materials:
-            ops.uniaxialMaterial('Elastic', int(mat.id), mat.E * 1000)
+            ops.uniaxialMaterial('Elastic', self._ops_material_tag(mat.id), mat.E * 1000)
 
         # 定义单元
         for elem in self.model.elements:
             if elem.type == 'beam':
                 ops.element(
                     'elasticBeamColumn',
-                    int(elem.id),
-                    int(elem.nodes[0]),
-                    int(elem.nodes[1]),
+                    self._ops_element_tag(elem.id),
+                    self._ops_node_tag(elem.nodes[0]),
+                    self._ops_node_tag(elem.nodes[1]),
                     0.01, 200000000, 0.0001, 0.0001, 79000000, 0.00001
                 )
 

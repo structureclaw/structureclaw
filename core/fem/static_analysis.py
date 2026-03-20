@@ -1710,49 +1710,10 @@ class StaticAnalyzer:
         """
         使用 OpenSeesPy 执行非线性分析
         """
-        import openseespy.opensees as ops
-
-        ops.wipe()
-        ops.model('basic', '-ndm', 3, '-ndf', 6)
-
-        # ... 定义非线性材料和单元 ...
-
-        # Pushover 分析设置
-        ops.pattern('Plain', 1, 'Linear')
-
-        # 控制位移分析
-        target_disp = parameters.get('targetDisplacement', 0.1)
-        ops.integrator('DisplacementControl', 1, 2, 0.001)
-
-        ops.analysis('Static')
-
-        # 分步执行
-        results = []
-        current_step = 0
-        max_steps = int(target_disp / 0.001)
-
-        while current_step < max_steps:
-            ok = ops.analyze(1)
-            if ok != 0:
-                break
-
-            base_shear = ops.getTime()
-            roof_disp = ops.nodeDisp(1, 2)
-
-            results.append({
-                'step': current_step,
-                'baseShear': base_shear,
-                'roofDisplacement': roof_disp
-            })
-
-            current_step += 1
-
-        ops.wipe()
-
-        return {
-            'status': 'success',
-            'pushoverCurve': results
-        }
+        raise NotImplementedError(
+            "Nonlinear OpenSees analysis is not yet implemented; "
+            "node/element definitions and nonlinear material setup are required"
+        )
 
     def _define_beam_element(self, elem, ops):
         """定义梁单元"""
