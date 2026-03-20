@@ -33,6 +33,7 @@ Phase 12 uses this structure:
 
 Initial class folders:
 - `code-check/`
+- `structure-modeling/`
 
 ## Core Principle
 The project goal is not "one universal skill handler for everything".

@@ -50,13 +50,14 @@ Owner: backend-agent
 - Removed standalone design-code ownership from the target analysis-settings flow; selected `code-check` skills now drive code-check execution.
 - Added regression coverage for provider ordering, explicit unsupported-standard failure, and merged-provider routing behavior.
 - Confirmed `structure-modeling` already has an explicit class contract in backend runtime code, but it is not yet migrated onto the broader Phase 12 built-in/external provider architecture.
+- Added a dedicated `structure-modeling` class planning track so the next migration target now has explicit `PLAN.md + STATUS.md` coverage.
 
 ## Next Actions (Priority Order)
-1. Create a dedicated `structure-modeling/PLAN.md` and `structure-modeling/STATUS.md` to make the next class migration explicit.
-2. Extract truly shared package metadata and provider-base types so `code-check` and `structure-modeling` stop relying on separate class-local representations.
+1. Extract truly shared package metadata and provider-base types so `code-check` and `structure-modeling` stop relying on separate class-local representations.
+2. Decide how current `structure-modeling` manifests/handlers should map onto a class provider wrapper without changing existing scenario behavior.
 3. Build a shared provider loader skeleton that can host both built-in packages and future SkillHub executable providers.
-4. Decide how `structure-modeling` manifests/handlers should map onto the shared Phase 12 provider pipeline without breaking no-skill mode.
-5. Re-verify no-skill fallback and failure isolation against the new provider architecture once the shared loader exists.
+4. Refactor built-in `structure-modeling` resolution through a class provider registry while preserving `skillIds` filtering and `autoLoadByDefault`.
+5. Re-verify no-skill fallback and failure isolation against the new provider architecture once the shared loader and structure-modeling registry exist.
 
 ## Open Questions
 - Should built-in skills be represented as package manifests on disk, or only normalized at runtime?
