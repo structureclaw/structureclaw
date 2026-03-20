@@ -33,7 +33,8 @@ Owner: backend-agent
 - Built-in loading now passes through an explicit structure-modeling provider registry, but shared package/provider base types are still not extracted across classes.
 - `AgentSkillRegistry` currently applies two important semantics that the migration must preserve: explicit `skillIds` filtering and `autoLoadByDefault` when no `skillIds` are provided.
 - `AgentService` still protects no-skill mode by bypassing the structure-modeling runtime entirely and calling `textToModelDraftWithoutSkills()`.
-- Existing tests now cover provider ordering, explicit skill filtering, and external-provider merge ordering for this class, but provider-failure isolation is still not covered directly.
+- Existing tests now cover provider ordering, explicit skill filtering, external-provider merge ordering, and a class-specific executable-provider import/validate path for `structure-modeling`.
+- The new executable-provider path is still a hook layer only; it is not yet wired to real SkillHub installed-package directories or runtime enable/disable state.
 
 ## Validation Snapshot
 - [x] Existing backend tests cover built-in structure-modeling scenarios in `backend/tests/agent.service.test.mjs`
@@ -49,4 +50,4 @@ Owner: backend-agent
 - [x] existing built-in behavior remains regression-covered through the migration
 - [ ] no-skill fallback remains isolated and regression-covered against the new provider architecture
 
-Gate status: implementation in progress; provider metadata, built-in registry routing, and merge-order regression coverage are in place, while shared cross-class types and explicit no-skill/provider-failure isolation closure remain pending.
+Gate status: implementation in progress; provider metadata, built-in registry routing, merge-order coverage, and executable-provider import hooks are in place, while installed-package wiring and explicit no-skill/provider-failure isolation closure remain pending.

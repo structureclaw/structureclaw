@@ -55,13 +55,14 @@ Owner: backend-agent
 - Added shared provider base types so `code-check` and `structure-modeling` no longer define separate copies of the same core provider metadata shape.
 - Added shared package metadata normalization for built-in manifests and SkillHub catalog entries, and wired current services onto that package layer.
 - Added a shared provider loader skeleton and routed both `code-check` and `structure-modeling` built-in provider loading through it.
+- Defined the first executable package layout in SkillHub metadata and added package-entrypoint import/validate hooks plus an initial `structure-modeling` external-provider loading path.
 
 ## Next Actions (Priority Order)
-1. Define the first executable package layout for SkillHub providers so runtime import and validation can start from one class.
+1. Wire the shared executable-provider loader to real installed SkillHub package locations instead of test-only import callbacks.
 2. Decide how current `structure-modeling` manifests/handlers should map onto the shared package layer without changing existing scenario behavior once external packages are present.
-3. Extend the shared loader from merge/order/dedupe skeleton to real executable-provider import and validation hooks.
-4. Re-verify no-skill fallback and failure isolation against the new provider architecture once the shared loader and structure-modeling registry exist.
-5. Start wiring the first real external executable-provider path after the shared package/loader layer is stable.
+3. Extend another class, likely `code-check`, onto the executable-provider import/validate path so the layout is proven across two contracts.
+4. Re-verify no-skill fallback and failure isolation against the new provider architecture once installed-package loading is active.
+5. Start enforcing compatibility/integrity gating directly in executable provider resolution, not only in SkillHub management APIs.
 
 ## Open Questions
 - Should built-in skills be represented as package manifests on disk, or only normalized at runtime?
