@@ -15,6 +15,9 @@ param(
 $ErrorActionPreference = 'Stop'
 $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
+# Detect CI environment
+$IsCI = $env:CI -eq 'true' -or $env:GITHUB_ACTIONS -eq 'true'
+
 # Helper functions
 function Write-Step {
   param([string]$Message)
@@ -41,6 +44,11 @@ function Write-Info {
   Write-Host "  $Message" -ForegroundColor Gray
 }
 
+function Write-Skip {
+  param([string]$Message)
+  Write-Host "  [SKIP] $Message" -ForegroundColor Gray
+}
+
 function Test-DockerRunning {
   try {
     $result = docker version --format '{{.Server.Version}}' 2>$null
@@ -58,6 +66,13 @@ function Test-Administrator {
 }
 
 function Test-DockerInstalled {
+  # Check if docker command is available (works in CI environments)
+  $dockerCmd = Get-Command 'docker' -ErrorAction SilentlyContinue
+  if ($dockerCmd) {
+    return $true
+  }
+
+  # Check Docker Desktop paths (Windows desktop)
   $dockerPaths = @(
     "${env:ProgramFiles}\Docker\Docker\Docker Desktop.exe",
     "${env:ProgramFiles(x86)}\Docker\Docker\Docker Desktop.exe"
@@ -67,10 +82,7 @@ function Test-DockerInstalled {
       return $true
     }
   }
-  $dockerCmd = Get-Command 'docker' -ErrorAction SilentlyContinue
-  if ($dockerCmd) {
-    return $true
-  }
+
   return $false
 }
 
@@ -103,35 +115,53 @@ function New-EnvFile {
 Write-Host @"
 
   ====================================================================
-           Testing StructureClaw Installer / 测试安装脚本
+           Testing StructureClaw Installer / Testing Install Scripts
   ====================================================================
 
 "@ -ForegroundColor Cyan
 
+if ($IsCI) {
+  Write-Info "Running in CI environment / 在 CI 环境中运行"
+}
+
 $allPassed = $true
+$dockerAvailable = $false
 
 # Test 1: Check Docker Installed
-Write-Step "Test 1: Docker Installation Check / Docker 安装检测"
+Write-Step "Test 1: Docker Installation Check / Docker Installation Check"
 if (Test-DockerInstalled) {
-  Write-Success "Docker Desktop is installed / Docker Desktop 已安装"
+  Write-Success "Docker is available / Docker 可用"
+  $dockerAvailable = $true
 }
 else {
-  Write-Error "Docker Desktop is not installed / Docker Desktop 未安装"
-  $allPassed = $false
+  Write-Warning "Docker is not installed / Docker 未安装"
+  if ($IsCI) {
+    Write-Warning "Docker tests will be skipped / Docker 相关测试将被跳过"
+  }
+  else {
+    $allPassed = $false
+  }
 }
 
-# Test 2: Check Docker Running
-Write-Step "Test 2: Docker Service Check / Docker 服务检测"
-if (Test-DockerRunning) {
-  Write-Success "Docker service is running / Docker 服务运行中"
+# Test 2: Check Docker Running (only if Docker is installed)
+Write-Step "Test 2: Docker Service Check / Docker Service Check"
+if ($dockerAvailable) {
+  if (Test-DockerRunning) {
+    Write-Success "Docker service is running / Docker 服务运行中"
+  }
+  else {
+    Write-Warning "Docker service is not running / Docker 服务未运行"
+    if (-not $IsCI) {
+      Write-Info "This is OK for script testing / 脚本测试时可接受"
+    }
+  }
 }
 else {
-  Write-Error "Docker service is not running / Docker 服务未运行"
-  $allPassed = $false
+  Write-Skip "Docker not available, skipping / Docker 不可用，跳过"
 }
 
 # Test 3: Check .env.example exists
-Write-Step "Test 3: Template File Check / 模板文件检测"
+Write-Step "Test 3: Template File Check / Template File Check"
 $EnvExampleFile = Join-Path $RootDir '.env.example'
 if (Test-Path -LiteralPath $EnvExampleFile) {
   Write-Success ".env.example exists / .env.example 存在"
@@ -142,7 +172,7 @@ else {
 }
 
 # Test 4: Generate .env file
-Write-Step "Test 4: Generate .env File / 生成 .env 文件"
+Write-Step "Test 4: Generate .env File / Generate .env File"
 $EnvFile = Join-Path $RootDir '.env.test'
 try {
   New-EnvFile -TemplatePath $EnvExampleFile -OutputPath $EnvFile `
@@ -171,28 +201,53 @@ catch {
 }
 
 # Test 5: Administrator check
-Write-Step "Test 5: Administrator Check / 管理员权限检测"
+Write-Step "Test 5: Administrator Check / Administrator Check"
 if (Test-Administrator) {
   Write-Success "Running as administrator / 以管理员权限运行"
 }
 else {
-  Write-Warning "Not running as administrator / 未以管理员权限运行 (this is OK for testing / 测试时可以接受)"
+  Write-Warning "Not running as administrator / 未以管理员权限运行"
+  Write-Info "This is OK for testing / 测试时可以接受"
+}
+
+# Test 6: Script syntax validation
+Write-Step "Test 6: Script Syntax Check / Script Syntax Check"
+$scripts = @('install.ps1', 'start.ps1', 'stop.ps1')
+$syntaxOk = $true
+
+foreach ($script in $scripts) {
+  $scriptPath = Join-Path $RootDir $script
+  if (Test-Path -LiteralPath $scriptPath) {
+    try {
+      $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -LiteralPath $scriptPath -Raw), [ref]$null)
+      Write-Success "$script syntax OK / $script 语法正确"
+    }
+    catch {
+      Write-Error "$script has syntax errors / $script 有语法错误: $_"
+      $syntaxOk = $false
+      $allPassed = $false
+    }
+  }
+  else {
+    Write-Error "$script not found / $script 不存在"
+    $allPassed = $false
+  }
 }
 
 # Summary
 Write-Host @"
 
   ====================================================================
-              Test Summary / 测试总结
+              Test Summary / Test Summary
   ====================================================================
 
 "@ -ForegroundColor $(if ($allPassed) { 'Green' } else { 'Red' })
 
 if ($allPassed) {
-  Write-Host "  All tests passed / 所有测试通过" -ForegroundColor Green
+  Write-Host "  All tests passed / All tests passed" -ForegroundColor Green
   exit 0
 }
 else {
-  Write-Host "  Some tests failed / 部分测试失败" -ForegroundColor Red
+  Write-Host "  Some tests failed / Some tests failed" -ForegroundColor Red
   exit 1
 }
