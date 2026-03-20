@@ -204,8 +204,8 @@ Start-Sleep -Seconds 3
 
 $services = @(
   @{Name = 'Frontend'; Url = 'http://localhost:30000'; Port = '30000'},
-  @{Name = 'Backend'; Url = 'http://localhost:30010/health'; Port = '30010'},
-  @{Name = 'Core'; Url = 'http://localhost:30011/health'; Port = '30011'}
+  @{Name = 'Backend'; Url = 'http://localhost:8000/health'; Port = '8000'},
+  @{Name = 'Core'; Url = 'http://localhost:8001/health'; Port = '8001'}
 )
 
 $allRunning = $true
@@ -230,8 +230,8 @@ if ($allRunning) {
   ====================================================================
 
   Frontend:          http://localhost:30000
-  Backend:           http://localhost:30010/health
-  Core Engine:       http://localhost:30011/health
+  Backend:           http://localhost:8000/health
+  Core Engine:       http://localhost:8001/health
 
   Stop services / 停止服务:   .\stop.ps1
   View logs / 查看日志:       docker compose logs -f

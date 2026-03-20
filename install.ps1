@@ -247,8 +247,8 @@ function Wait-ForServices {
   $timeout = $startTime.AddSeconds($TimeoutSeconds)
   $services = @(
     @{Name = 'Frontend'; Url = 'http://localhost:30000'},
-    @{Name = 'Backend'; Url = 'http://localhost:30010/health'},
-    @{Name = 'Core'; Url = 'http://localhost:30011/health'}
+    @{Name = 'Backend'; Url = 'http://localhost:8000/health'},
+    @{Name = 'Core'; Url = 'http://localhost:8001/health'}
   )
 
   $ready = @{}
@@ -499,8 +499,8 @@ Write-Host @"
   ====================================================================
 
   Frontend:          http://localhost:30000
-  Backend:           http://localhost:30010/health
-  Core Engine:       http://localhost:30011/health
+  Backend:           http://localhost:8000/health
+  Core Engine:       http://localhost:8001/health
 
   Next Steps / 后续操作:
   - Start services / 启动服务:    .\start.ps1
