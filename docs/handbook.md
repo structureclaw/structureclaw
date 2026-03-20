@@ -84,7 +84,7 @@ make restart
 .\make.ps1 stop
 ```
 
-`make.ps1` is the native Windows entrypoint for the common local-development lifecycle. `make.cmd` is included as a thin launcher for cmd.exe users.
+`make.ps1` is the native Windows entrypoint for the common local-development lifecycle. `make.cmd` is included as a thin launcher for cmd.exe users. On Windows, the core Python environment defaults to 3.12 because the current OpenSeesPy runtime requires it.
 
 ## 6. Environment and Configuration
 

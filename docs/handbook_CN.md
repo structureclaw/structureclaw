@@ -84,7 +84,7 @@ make restart
 .\make.ps1 stop
 ```
 
-`make.ps1` 是 Windows 原生的本地开发入口；如果使用 `cmd.exe`，也可以通过仓库里的 `make.cmd` 进行转发启动。
+`make.ps1` 是 Windows 原生的本地开发入口；如果使用 `cmd.exe`，也可以通过仓库里的 `make.cmd` 进行转发启动。当前 Windows 下 core Python 默认使用 3.12，因为现有 OpenSeesPy 运行时依赖它。
 
 ## 6. 环境变量与配置
 

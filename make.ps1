@@ -19,7 +19,8 @@ $EnvExampleFile = Join-Path $RootDir '.env.example'
 $CoreVenvDir = Join-Path $RootDir 'core/.venv'
 $CorePython = Join-Path $CoreVenvDir 'Scripts/python.exe'
 $ServiceRunner = Join-Path $RootDir 'scripts/windows/run-service.ps1'
-$CorePythonVersion = if ($env:CORE_PYTHON_VERSION) { $env:CORE_PYTHON_VERSION } else { '3.11' }
+$DefaultCorePythonVersion = if ($IsWindows) { '3.12' } else { '3.11' }
+$CorePythonVersion = if ($env:CORE_PYTHON_VERSION) { $env:CORE_PYTHON_VERSION } else { $DefaultCorePythonVersion }
 
 function Write-Info {
   param([string]$Message)
@@ -566,7 +567,7 @@ Usage:
 Common targets:
   help               Show this help
   install            Install backend and frontend npm dependencies
-  setup-core-full    Create core/.venv with uv-managed Python 3.11
+  setup-core-full    Create core/.venv with uv-managed Python (Windows default: 3.12)
   setup-core-full-uv Same as setup-core-full
   dev-backend        Run backend in the foreground
   dev-frontend       Run frontend in the foreground
