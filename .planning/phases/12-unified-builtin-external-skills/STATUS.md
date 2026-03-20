@@ -51,6 +51,7 @@ Owner: backend-agent
 - Added regression coverage for provider ordering, explicit unsupported-standard failure, and merged-provider routing behavior.
 - Confirmed `structure-modeling` already has an explicit class contract in backend runtime code, but it is not yet migrated onto the broader Phase 12 built-in/external provider architecture.
 - Added a dedicated `structure-modeling` class planning track so the next migration target now has explicit `PLAN.md + STATUS.md` coverage.
+- Added initial `structure-modeling` provider metadata and built-in provider registry wiring so runtime selection now flows through a class registry without changing built-in behavior.
 
 ## Next Actions (Priority Order)
 1. Extract truly shared package metadata and provider-base types so `code-check` and `structure-modeling` stop relying on separate class-local representations.
