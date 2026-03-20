@@ -113,6 +113,41 @@ function Get-ServiceStatus {
   }
 }
 
+function Invoke-DockerCommand {
+  param([string]$Command)
+
+  # Use process to avoid stderr being treated as error
+  $process = New-Object System.Diagnostics.Process
+  $process.StartInfo.FileName = "docker"
+  $process.StartInfo.Arguments = "compose $Command"
+  $process.StartInfo.UseShellExecute = $false
+  $process.StartInfo.RedirectStandardOutput = $true
+  $process.StartInfo.RedirectStandardError = $true
+  $process.StartInfo.CreateNoWindow = $true
+  $process.StartInfo.WorkingDirectory = $RootDir
+
+  $null = $process.Start()
+
+  # Read stdout
+  while (-not $process.StandardOutput.EndOfStream) {
+    $line = $process.StandardOutput.ReadLine()
+    if ($line -ne "") {
+      Write-Host "    $line" -ForegroundColor Gray
+    }
+  }
+
+  # Read stderr (Docker progress info)
+  while (-not $process.StandardError.EndOfStream) {
+    $line = $process.StandardError.ReadLine()
+    if ($line -ne "" -and $line -notmatch "Waiting") {
+      Write-Host "    $line" -ForegroundColor DarkGray
+    }
+  }
+
+  $process.WaitForExit()
+  return $process.ExitCode
+}
+
 # ============================================
 # Main Script
 # ============================================
@@ -145,14 +180,12 @@ else {
     else {
       Write-Error "Docker service startup timeout / Docker 服务启动超时"
       Write-Host "  Please start Docker Desktop manually and run this script again" -ForegroundColor Yellow
-      Write-Host "  请手动启动 Docker Desktop 后重新运行此脚本" -ForegroundColor Yellow
       exit 1
     }
   }
   else {
     Write-Error "Cannot start Docker Desktop / 无法启动 Docker Desktop"
     Write-Host "  Please start Docker Desktop manually and run this script again" -ForegroundColor Yellow
-    Write-Host "  请手动启动 Docker Desktop 后重新运行此脚本" -ForegroundColor Yellow
     exit 1
   }
 }
@@ -178,14 +211,14 @@ try {
 
   if ($containerCount -gt 0) {
     Write-Info "Existing containers detected, starting... / 检测到已有容器，正在启动..."
-    & docker compose start 2>&1 | ForEach-Object { Write-Host "    $_" }
+    $exitCode = Invoke-DockerCommand -Command "start"
   }
   else {
     Write-Info "Starting services... / 正在启动服务..."
-    & docker compose up -d 2>&1 | ForEach-Object { Write-Host "    $_" }
+    $exitCode = Invoke-DockerCommand -Command "up -d"
   }
 
-  if ($LASTEXITCODE -ne 0) {
+  if ($exitCode -ne 0) {
     Write-Error "Service startup failed / 服务启动失败"
     Write-Host "  Please check the error and run manually / 请检查错误并手动运行: docker compose up -d" -ForegroundColor Yellow
     exit 1
