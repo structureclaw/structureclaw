@@ -96,11 +96,48 @@ function Set-ConfigValue {
   Set-Item -Path ("Env:{0}" -f $Name) -Value $Value
 }
 
+function Normalize-SqliteFileUrl {
+  param([string]$DatabaseUrl)
+
+  if ([string]::IsNullOrWhiteSpace($DatabaseUrl) -or -not $DatabaseUrl.StartsWith('file:')) {
+    return $DatabaseUrl
+  }
+
+  $suffix = $DatabaseUrl.Substring(5)
+  $queryIndex = $suffix.IndexOf('?')
+  if ($queryIndex -ge 0) {
+    $location = $suffix.Substring(0, $queryIndex)
+    $query = $suffix.Substring($queryIndex)
+  }
+  else {
+    $location = $suffix
+    $query = ''
+  }
+
+  if ([string]::IsNullOrWhiteSpace($location)) {
+    return $DatabaseUrl
+  }
+
+  $normalizedPath = if ([System.IO.Path]::IsPathRooted($location)) {
+    $location
+  }
+  else {
+    [System.IO.Path]::GetFullPath((Join-Path $RootDir ('backend/prisma/' + $location)))
+  }
+
+  return 'file:' + $normalizedPath.Replace('\', '/') + $query
+}
+
 function Ensure-LocalSqliteConfig {
   param([hashtable]$DotEnv)
 
   $databaseUrl = Get-ConfigValue -DotEnv $DotEnv -Name 'DATABASE_URL' -DefaultValue 'file:../../.runtime/data/structureclaw.db'
   if ($databaseUrl.StartsWith('file:')) {
+    $normalizedSqliteUrl = Normalize-SqliteFileUrl -DatabaseUrl $databaseUrl
+    if ($normalizedSqliteUrl -ne $databaseUrl) {
+      Write-Info ("Normalizing SQLite DATABASE_URL for Windows local workflow: {0}" -f $normalizedSqliteUrl)
+      Set-ConfigValue -DotEnv $DotEnv -Name 'DATABASE_URL' -Value $normalizedSqliteUrl
+    }
     return
   }
 
