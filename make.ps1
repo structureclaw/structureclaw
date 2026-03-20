@@ -172,7 +172,25 @@ function Get-FileHashOrBlank {
     return ''
   }
 
-  return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash
+  $getFileHash = Get-Command 'Get-FileHash' -ErrorAction SilentlyContinue
+  if ($getFileHash) {
+    return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash
+  }
+
+  $sha256 = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+      $hashBytes = $sha256.ComputeHash($stream)
+      return ([System.BitConverter]::ToString($hashBytes)).Replace('-', '')
+    }
+    finally {
+      $stream.Dispose()
+    }
+  }
+  finally {
+    $sha256.Dispose()
+  }
 }
 
 function Test-InstalledPackageMatchesLock {
