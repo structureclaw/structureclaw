@@ -2,6 +2,7 @@ import { AnalysisEngineCatalogService } from './analysis-engine.js';
 import { AgentSkillRuntime } from '../agent-skills/runtime/index.js';
 import { normalizeAnalysisTypes as normalizeDomainAnalysisTypes } from '../agent-skills/analysis-strategy/entry.js';
 import { normalizeMaterialFamilies as normalizeDomainMaterialFamilies } from '../agent-skills/material-constitutive/entry.js';
+import { normalizeBuiltInManifestToSkillPackage } from '../agent-skills/shared/package.js';
 import type { AgentAnalysisType, SkillDomain, SkillManifest } from '../agent-skills/runtime/types.js';
 
 interface CapabilitySkill {
@@ -118,27 +119,30 @@ export class AgentCapabilityService {
 
   async getCapabilityMatrix(options?: { analysisType?: CapabilityAnalysisType }) {
     const manifests = await this.skillRuntime.listSkillManifests();
-    const skills: CapabilitySkill[] = manifests.map((manifest: SkillManifest) => ({
-      id: manifest.id,
-      structureType: manifest.structureType,
-      domain: manifest.domain,
-      requires: Array.isArray(manifest.requires) ? manifest.requires : [],
-      conflicts: Array.isArray(manifest.conflicts) ? manifest.conflicts : [],
-      capabilities: Array.isArray(manifest.capabilities) ? manifest.capabilities : [],
-      supportedAnalysisTypes: normalizeDomainAnalysisTypes(manifest.supportedAnalysisTypes),
-      materialFamilies: normalizeDomainMaterialFamilies(manifest.materialFamilies),
-      priority: manifest.priority,
-      compatibility: {
-        minCoreVersion: manifest.compatibility?.minCoreVersion || '0.1.0',
-        skillApiVersion: manifest.compatibility?.skillApiVersion || 'v1',
-      },
-      autoLoadByDefault: Boolean(manifest.autoLoadByDefault),
-      stages: Array.isArray(manifest.stages) ? manifest.stages : [],
-      name: {
-        zh: manifest.name?.zh,
-        en: manifest.name?.en,
-      },
-    }));
+    const skills: CapabilitySkill[] = manifests.map((manifest: SkillManifest) => {
+      const pkg = normalizeBuiltInManifestToSkillPackage(manifest);
+      return {
+        id: pkg.id,
+        structureType: manifest.structureType,
+        domain: pkg.domain,
+        requires: Array.isArray(pkg.requires) ? pkg.requires : [],
+        conflicts: Array.isArray(pkg.conflicts) ? pkg.conflicts : [],
+        capabilities: Array.isArray(pkg.capabilities) ? pkg.capabilities : [],
+        supportedAnalysisTypes: normalizeDomainAnalysisTypes(pkg.supportedAnalysisTypes),
+        materialFamilies: normalizeDomainMaterialFamilies(pkg.materialFamilies),
+        priority: pkg.priority ?? 0,
+        compatibility: {
+          minCoreVersion: pkg.compatibility.minCoreVersion,
+          skillApiVersion: pkg.compatibility.skillApiVersion,
+        },
+        autoLoadByDefault: pkg.enabledByDefault,
+        stages: Array.isArray(manifest.stages) ? manifest.stages : [],
+        name: {
+          zh: pkg.name?.zh,
+          en: pkg.name?.en,
+        },
+      };
+    });
 
     const enginePayload = await this.engineCatalog.listEngines();
     const rawEngines = Array.isArray(enginePayload?.engines) ? enginePayload.engines as Array<Record<string, unknown>> : [];

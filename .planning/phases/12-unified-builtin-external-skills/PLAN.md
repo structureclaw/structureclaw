@@ -7,6 +7,17 @@ Build one consistent extension architecture for all `backend/src/agent-skills` d
 - different classes are allowed to keep different runtime semantics where the business model truly differs;
 - no-skill mode remains a first-class fallback and never depends on SkillHub availability.
 
+## Current Scope Closure Rule
+Phase 12 does not require real external packages to exist before the architecture work can close.
+
+For the current repository scope, this phase is considered complete when:
+- shared package metadata, shared provider types, and the shared loader pipeline are in place;
+- at least one non-scenario class and one scenario-driven class are migrated onto that pipeline;
+- executable-provider package entrypoints, import hooks, and class-level validation seams are defined;
+- no-skill fallback remains isolated and regression-covered.
+
+Real installed-package discovery and runtime loading are intentionally deferred until the first actual external SkillHub package exists.
+
 ## Core Target
 This phase exists to establish the long-term migration target for the entire skill system.
 
@@ -33,6 +44,7 @@ Phase 12 uses this structure:
 
 Initial class folders:
 - `code-check/`
+- `structure-modeling/`
 
 ## Core Principle
 The project goal is not "one universal skill handler for everything".
@@ -59,6 +71,8 @@ This leaves a gap:
 - built-in skills work;
 - external skills can be cataloged and enabled administratively;
 - but external skills do not yet cleanly join class-specific runtime execution.
+
+Phase 12 closes that architectural gap at the interface level first, then leaves real installed-package execution as a follow-up once there is something concrete to load.
 
 ## Non-Negotiable Rules
 - No-skill mode stays production-safe and executable with zero enabled skills.
@@ -98,7 +112,7 @@ SkillHub owns:
 - enable/disable
 - compatibility evaluation
 - integrity checks
-- installed package location
+- installed package location once real external packages exist
 
 Runtime owns:
 - provider import
@@ -106,6 +120,9 @@ Runtime owns:
 - provider merge
 - execution ordering
 - failure isolation
+
+Current closure note:
+- for now, runtime package import stops at validated executable-provider hooks and does not resolve installed package directories yet.
 
 ### Layer 2: Skill Class Provider Contracts
 Each top-level skill class under `backend/src/agent-skills` should define its own pluggable provider contract.

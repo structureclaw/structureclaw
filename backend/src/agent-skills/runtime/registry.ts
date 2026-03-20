@@ -1,4 +1,5 @@
 import type { AppLocale } from '../../services/locale.js';
+import { listStructureModelingProviders } from '../structure-modeling/registry.js';
 import { AgentSkillLoader } from './loader.js';
 import { buildUnknownScenario, detectUnsupportedScenarioByRules } from './fallback.js';
 import { localize } from './plugin-helpers.js';
@@ -16,15 +17,21 @@ export class AgentSkillRegistry {
   }
 
   async resolveEnabledPlugins(skillIds?: string[]): Promise<AgentSkillPlugin[]> {
-    const skills = await this.listPlugins();
+    const providers = listStructureModelingProviders({
+      builtInPlugins: await this.listPlugins(),
+    });
     if (skillIds === undefined) {
-      return skills.filter((skill) => skill.autoLoadByDefault);
+      return providers
+        .filter((provider) => provider.manifest.autoLoadByDefault)
+        .map((provider) => provider.plugin);
     }
     if (skillIds.length === 0) {
       return [];
     }
     const requested = new Set(skillIds);
-    return skills.filter((skill) => requested.has(skill.id));
+    return providers
+      .filter((provider) => requested.has(provider.id))
+      .map((provider) => provider.plugin);
   }
 
   async resolvePluginForState(state: DraftState | undefined, skillIds?: string[]): Promise<AgentSkillPlugin | null> {
