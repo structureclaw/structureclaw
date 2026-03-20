@@ -40,6 +40,12 @@ make start
 make status
 ```
 
+补充说明：
+
+- 本地默认数据库现在是 SQLite，默认文件位置是 `.runtime/data/structureclaw.db`。
+- 如果你原来的本地 `.env` 还把 `DATABASE_URL` 指向本地 PostgreSQL，`make doctor` 和 `make start` 会先自动迁移到 SQLite，再把 `.env` 改写成 SQLite 默认配置，同时把原 PostgreSQL 地址保留到 `POSTGRES_SOURCE_DATABASE_URL`。
+- 第一次自动迁移时，还会生成一个类似 `.env.pre-sqlite-migration.<timestamp>.bak` 的本地备份文件。
+
 常用后续命令：
 
 ```bash
@@ -85,7 +91,7 @@ docker compose up --build
 - 前端：`http://localhost:30000`
 - 后端健康检查：`http://localhost:30010/health`
 - 分析引擎：`http://localhost:30011/health`
-- pgAdmin：`http://localhost:5050`
+- 数据库状态页：`http://localhost:30000/console/database`
 
 停止容器：
 
@@ -106,7 +112,7 @@ docker compose down
 关键变量包括：
 
 - `PORT`、`FRONTEND_PORT`、`CORE_PORT`
-- `DATABASE_URL`、`REDIS_URL`
+- `DATABASE_URL`、`POSTGRES_SOURCE_DATABASE_URL`、`REDIS_URL`
 - `LLM_PROVIDER`、`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`
 - `ANALYSIS_ENGINE_URL`（可自动推导）
 

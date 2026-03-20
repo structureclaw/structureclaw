@@ -40,6 +40,12 @@ make start
 make status
 ```
 
+Notes:
+
+- SQLite is now the default local database. A fresh setup writes to `.runtime/data/structureclaw.db`.
+- If your old local `.env` still points `DATABASE_URL` at a local PostgreSQL instance, `make doctor` and `make start` will auto-migrate that data into SQLite, rewrite `.env` to the SQLite default, and keep the original PostgreSQL URL in `POSTGRES_SOURCE_DATABASE_URL`.
+- That first auto-migration also creates a local backup file like `.env.pre-sqlite-migration.<timestamp>.bak`.
+
 Useful follow-up commands:
 
 ```bash
@@ -85,7 +91,7 @@ Once the stack is ready, the main entrypoints are:
 - Frontend: `http://localhost:30000`
 - Backend health check: `http://localhost:30010/health`
 - Analysis engine: `http://localhost:30011/health`
-- pgAdmin: `http://localhost:5050`
+- Database status page: `http://localhost:30000/console/database`
 
 To stop the containers:
 
@@ -106,7 +112,7 @@ Copy and adjust environment variables from `.env.example`.
 Key variables include:
 
 - `PORT`, `FRONTEND_PORT`, `CORE_PORT`
-- `DATABASE_URL`, `REDIS_URL`
+- `DATABASE_URL`, `POSTGRES_SOURCE_DATABASE_URL`, `REDIS_URL`
 - `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`
 - `ANALYSIS_ENGINE_URL` (can be auto-derived)
 
