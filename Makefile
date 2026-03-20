@@ -1,6 +1,11 @@
+ifeq ($(OS),Windows_NT)
+SHELL := cmd
+WINDOWS_PS := powershell -NoProfile -ExecutionPolicy Bypass -File .\make.ps1
+else
 SHELL := /bin/bash
 UV_CACHE_DIR ?= /tmp/uv-cache
 UV_PYTHON_INSTALL_DIR ?= /tmp/uv-python
+endif
 CORE_PYTHON_VERSION ?= 3.11
 
 .PHONY: help ensure-uv install setup-core-full setup-core-full-uv dev-backend dev-frontend dev-core-full build db-up db-down db-init docker-up docker-down local-up local-up-uv local-up-noinfra local-down local-status health check-startup backend-regression core-regression doctor start restart stop status logs sclaw-install up
@@ -38,6 +43,95 @@ help:
 	@echo "  sclaw-install   Install global sclaw command to ~/.local/bin"
 	@echo "  up              Alias of docker-up"
 
+ifeq ($(OS),Windows_NT)
+ensure-uv:
+	$(WINDOWS_PS) ensure-uv
+
+install:
+	$(WINDOWS_PS) install
+
+setup-core-full:
+	$(WINDOWS_PS) setup-core-full
+
+setup-core-full-uv:
+	$(WINDOWS_PS) setup-core-full-uv
+
+dev-backend:
+	$(WINDOWS_PS) dev-backend
+
+dev-frontend:
+	$(WINDOWS_PS) dev-frontend
+
+dev-core-full:
+	$(WINDOWS_PS) dev-core-full
+
+build:
+	$(WINDOWS_PS) build
+
+db-up:
+	$(WINDOWS_PS) db-up
+
+db-down:
+	$(WINDOWS_PS) db-down
+
+db-init:
+	$(WINDOWS_PS) db-init
+
+docker-up:
+	$(WINDOWS_PS) docker-up
+
+docker-down:
+	$(WINDOWS_PS) docker-down
+
+local-up:
+	$(WINDOWS_PS) local-up
+
+local-up-uv:
+	$(WINDOWS_PS) local-up-uv
+
+local-up-noinfra:
+	$(WINDOWS_PS) local-up-noinfra
+
+local-down:
+	$(WINDOWS_PS) local-down
+
+local-status:
+	$(WINDOWS_PS) local-status
+
+health:
+	$(WINDOWS_PS) health
+
+check-startup:
+	$(WINDOWS_PS) check-startup
+
+backend-regression:
+	$(WINDOWS_PS) backend-regression
+
+core-regression:
+	$(WINDOWS_PS) core-regression
+
+doctor: check-startup
+
+start:
+	$(WINDOWS_PS) start
+
+restart:
+	$(WINDOWS_PS) restart
+
+stop:
+	$(WINDOWS_PS) stop
+
+status:
+	$(WINDOWS_PS) status
+
+logs:
+	$(WINDOWS_PS) logs
+
+sclaw-install:
+	$(WINDOWS_PS) sclaw-install
+
+up: docker-up
+else
 ensure-uv:
 	./scripts/ensure-uv.sh
 
@@ -131,3 +225,4 @@ sclaw-install:
 	./sclaw install
 
 up: docker-up
+endif
