@@ -12,6 +12,33 @@ ensure_uv() {
   export PATH="${UV_INSTALL_DIR:-$HOME/.local/bin}:$PATH"
 }
 
+ensure_npm_dependencies() {
+  local project_dir="$1"
+  local project_name="$2"
+  local lockfile="$project_dir/package-lock.json"
+  local node_modules_dir="$project_dir/node_modules"
+  local lock_snapshot="$node_modules_dir/.package-lock.snapshot"
+  local needs_install=0
+
+  if [[ ! -d "$node_modules_dir" ]]; then
+    needs_install=1
+  elif [[ -f "$lockfile" ]]; then
+    if [[ ! -f "$lock_snapshot" ]] || ! cmp -s "$lockfile" "$lock_snapshot"; then
+      needs_install=1
+    fi
+  fi
+
+  if [[ "$needs_install" -eq 1 ]]; then
+    echo "Installing $project_name dependencies..."
+    npm ci --prefix "$project_dir"
+
+    if [[ -f "$lockfile" ]]; then
+      mkdir -p "$node_modules_dir"
+      cp "$lockfile" "$lock_snapshot"
+    fi
+  fi
+}
+
 run_check() {
   local name="$1"
   local command="$2"
@@ -43,7 +70,10 @@ echo "StructureClaw startup checks"
 echo "Workspace: $ROOT_DIR"
 
 ensure_uv
+ensure_npm_dependencies "$ROOT_DIR/backend" "backend"
+ensure_npm_dependencies "$ROOT_DIR/frontend" "frontend"
 
+run_check "Legacy PostgreSQL auto-migration" "./scripts/auto-migrate-legacy-postgres.sh"
 run_check "Backend regression" "./scripts/check-backend-regression.sh"
 run_check "Startup self-healing guards" "./scripts/validate-dev-startup-guards.sh"
 run_check "Frontend type-check" "npm run type-check --prefix frontend"

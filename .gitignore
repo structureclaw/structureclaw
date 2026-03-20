@@ -9,6 +9,7 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+.env.pre-sqlite-migration.*.bak
 backend/.env
 frontend/.env.local
 !.env.example

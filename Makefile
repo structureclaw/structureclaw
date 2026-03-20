@@ -15,14 +15,14 @@ help:
 	@echo "  dev-frontend    Start frontend in dev mode"
 	@echo "  dev-core-full   Start analysis engine with full deps"
 	@echo "  build           Build frontend and backend"
-	@echo "  db-up           Start postgres, redis, and pgadmin only"
-	@echo "  db-down         Stop postgres, redis, and pgadmin"
-	@echo "  db-init         Run Prisma migrations and seed"
+	@echo "  db-up           Start optional local infra (redis only)"
+	@echo "  db-down         Stop optional local infra (redis only)"
+	@echo "  db-init         Run SQLite schema sync and seed"
 	@echo "  docker-up       Start full docker compose stack"
 	@echo "  docker-down     Stop full docker compose stack"
 	@echo "  local-up        One-command local startup (full core profile)"
 	@echo "  local-up-uv     One-command local startup using uv-managed Python $(CORE_PYTHON_VERSION)"
-	@echo "  local-up-noinfra Start local app stack without starting postgres/redis docker containers"
+	@echo "  local-up-noinfra Start local app stack without starting optional infra containers"
 	@echo "  local-down      Stop local app processes and infra"
 	@echo "  local-status    Show local app process/health status"
 	@echo "  health          Check local service health endpoints"
@@ -67,10 +67,10 @@ build:
 	npm run build --prefix frontend
 
 db-up:
-	docker compose up -d postgres redis pgadmin
+	docker compose up -d redis
 
 db-down:
-	docker compose stop postgres redis pgadmin
+	docker compose stop redis
 
 db-init:
 	npm run db:init --prefix backend

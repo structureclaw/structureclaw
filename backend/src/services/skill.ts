@@ -17,6 +17,10 @@ export interface CreateSkillParams {
   isPublic: boolean;
 }
 
+type SkillWithTagItems = {
+  tagItems?: Array<{ value: string }> | null;
+} & Record<string, unknown>;
+
 // 内置技能列表
 const BUILTIN_SKILLS = [
   {
@@ -115,6 +119,18 @@ const BUILTIN_SKILLS = [
   },
 ];
 
+function mapSkillTags<T extends SkillWithTagItems | null>(skill: T) {
+  if (!skill) {
+    return null;
+  }
+
+  const { tagItems, ...rest } = skill;
+  return {
+    ...rest,
+    tags: (tagItems || []).map((item) => item.value),
+  };
+}
+
 export class SkillService {
   // 获取技能列表
   async listSkills(params: { category?: string; search?: string }) {
@@ -126,14 +142,20 @@ export class SkillService {
 
     if (params.search) {
       where.OR = [
-        { name: { contains: params.search, mode: 'insensitive' } },
-        { description: { contains: params.search, mode: 'insensitive' } },
-        { tags: { has: params.search } },
+        { name: { contains: params.search } },
+        { description: { contains: params.search } },
+        { tagItems: { some: { value: { contains: params.search } } } },
       ];
     }
 
     const skills = await prisma.skill.findMany({
       where,
+      include: {
+        tagItems: {
+          select: { value: true },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
       orderBy: [
         { installs: 'desc' },
         { rating: 'desc' },
@@ -141,7 +163,7 @@ export class SkillService {
       take: 100,
     });
 
-    return skills;
+    return skills.map((skill: SkillWithTagItems) => mapSkillTags(skill));
   }
 
   // 获取技能详情
@@ -149,6 +171,10 @@ export class SkillService {
     const skill = await prisma.skill.findUnique({
       where: { id },
       include: {
+        tagItems: {
+          select: { value: true },
+          orderBy: { createdAt: 'asc' },
+        },
         authorUser: {
           select: { id: true, name: true, avatar: true },
         },
@@ -159,12 +185,12 @@ export class SkillService {
       },
     });
 
-    return skill;
+    return mapSkillTags(skill);
   }
 
   // 创建技能
   async createSkill(params: CreateSkillParams) {
-    return prisma.skill.create({
+    const skill = await prisma.skill.create({
       data: {
         name: params.name,
         description: params.description,
@@ -172,11 +198,21 @@ export class SkillService {
         version: params.version,
         author: params.author,
         authorId: params.authorId,
-        tags: params.tags,
+        tagItems: {
+          create: params.tags.map((value) => ({ value })),
+        },
         config: params.config,
         isPublic: params.isPublic,
       },
+      include: {
+        tagItems: {
+          select: { value: true },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
     });
+
+    return mapSkillTags(skill);
   }
 
   // 安装技能

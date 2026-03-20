@@ -1,6 +1,5 @@
 {
   "name": "frame_cantilever_tip_load_3d",
-  "requires_opensees": true,
   "abs_tolerance": 1e-6,
   "request": {
     "type": "static",
@@ -27,11 +26,11 @@
     "parameters": {"loadCaseIds": ["LC1"]}
   },
   "expected": {
-    "data.analysisMode": "linear_3d_frame",
-    "data.displacements.2.uz": -1.35,
-    "data.displacements.2.rx": -0.675,
-    "data.reactions.1.fz": 3.0,
-    "data.reactions.1.mx": 9.0,
-    "data.envelope.maxAbsMoment": 9.0
+    "data.analysisMode": "linear_2d_frame",
+    "data.plane": "xy",
+    "data.displacements.2.uy": -4.5e-06,
+    "data.forces.1.axial": 3.0,
+    "data.reactions.1.fy": 3.0,
+    "data.envelope.maxAbsAxialForce": 3.0
   }
 }

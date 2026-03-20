@@ -15,7 +15,13 @@ async function main() {
       organization: 'StructureClaw',
       title: 'Structural Engineer',
       bio: 'Local seeded user for development.',
-      expertise: ['analysis', 'design', 'community'],
+      expertiseItems: {
+        deleteMany: {},
+        create: ['analysis', 'design', 'community'].map((value, index) => ({
+          value,
+          position: index,
+        })),
+      },
     },
     create: {
       id: 'seed-user-demo',
@@ -25,7 +31,12 @@ async function main() {
       organization: 'StructureClaw',
       title: 'Structural Engineer',
       bio: 'Local seeded user for development.',
-      expertise: ['analysis', 'design', 'community'],
+      expertiseItems: {
+        create: ['analysis', 'design', 'community'].map((value, index) => ({
+          value,
+          position: index,
+        })),
+      },
     },
   });
 
@@ -193,7 +204,10 @@ async function main() {
       version: '0.1.0',
       author: 'StructureClaw',
       authorId: demoUser.id,
-      tags: ['beam', 'design', 'concrete'],
+      tagItems: {
+        deleteMany: {},
+        create: ['beam', 'design', 'concrete'].map((value) => ({ value })),
+      },
       config: {
         handler: 'beam-design',
         triggers: ['beam design', '设计梁'],
@@ -212,7 +226,9 @@ async function main() {
       version: '0.1.0',
       author: 'StructureClaw',
       authorId: demoUser.id,
-      tags: ['beam', 'design', 'concrete'],
+      tagItems: {
+        create: ['beam', 'design', 'concrete'].map((value) => ({ value })),
+      },
       config: {
         handler: 'beam-design',
         triggers: ['beam design', '设计梁'],
@@ -231,8 +247,13 @@ async function main() {
       title: 'Welcome to StructureClaw',
       content: 'This seeded post helps verify the community module locally.',
       category: 'discussion',
-      tags: ['welcome', 'seed'],
-      attachments: [],
+      tagItems: {
+        deleteMany: {},
+        create: ['welcome', 'seed'].map((value) => ({ value })),
+      },
+      attachments: {
+        deleteMany: {},
+      },
       authorId: demoUser.id,
     },
     create: {
@@ -240,8 +261,9 @@ async function main() {
       title: 'Welcome to StructureClaw',
       content: 'This seeded post helps verify the community module locally.',
       category: 'discussion',
-      tags: ['welcome', 'seed'],
-      attachments: [],
+      tagItems: {
+        create: ['welcome', 'seed'].map((value) => ({ value })),
+      },
       authorId: demoUser.id,
     },
   });

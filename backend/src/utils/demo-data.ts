@@ -10,7 +10,15 @@ export function hashPassword(password: string): string {
 export async function ensureDemoUser() {
   return prisma.user.upsert({
     where: { email: DEMO_USER_EMAIL },
-    update: {},
+    update: {
+      expertiseItems: {
+        deleteMany: {},
+        create: ['structural-analysis', 'community'].map((value, index) => ({
+          value,
+          position: index,
+        })),
+      },
+    },
     create: {
       email: DEMO_USER_EMAIL,
       passwordHash: hashPassword('demo-password'),
@@ -18,7 +26,12 @@ export async function ensureDemoUser() {
       organization: 'StructureClaw',
       title: 'Demo Engineer',
       bio: 'Automatically created local demo user.',
-      expertise: ['structural-analysis', 'community'],
+      expertiseItems: {
+        create: ['structural-analysis', 'community'].map((value, index) => ({
+          value,
+          position: index,
+        })),
+      },
     },
   });
 }

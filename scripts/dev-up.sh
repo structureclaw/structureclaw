@@ -10,7 +10,6 @@ ROOT_ENV_FILE="$ROOT_DIR/.env"
 FRONTEND_PORT="${FRONTEND_PORT:-30000}"
 BACKEND_PORT="${PORT:-8000}"
 CORE_PORT="${CORE_PORT:-8001}"
-PGADMIN_ENABLED="${PGADMIN_ENABLED:-true}"
 CORE_PROFILE="full"
 CORE_ENV_MANAGER="uv"
 SKIP_INFRA=0
@@ -24,8 +23,8 @@ Usage: ./scripts/dev-up.sh [full] [--uv] [--skip-infra] [--skip-db-init]
 Options:
   full            Start core with full Python dependencies (default)
   --uv            Create core/.venv with uv-managed Python 3.11
-  --skip-infra    Do not start postgres/redis/pgadmin via docker compose
-  --skip-db-init  Skip Prisma migrate+seed
+  --skip-infra    Do not start optional infra services via docker compose
+  --skip-db-init  Skip SQLite schema sync+seed
 EOF
 }
 
@@ -235,26 +234,8 @@ is_redis_enabled() {
   [[ -n "$redis_url" && "${redis_url,,}" != "disabled" ]]
 }
 
-is_pgadmin_enabled() {
-  [[ "${PGADMIN_ENABLED,,}" != "false" ]]
-}
-
 docker_ready() {
   docker info >/dev/null 2>&1
-}
-
-wait_for_postgres() {
-  echo "Waiting for PostgreSQL..."
-  for _ in {1..30}; do
-    if docker compose exec -T postgres pg_isready -U postgres >/dev/null 2>&1; then
-      echo "PostgreSQL is ready."
-      return 0
-    fi
-    sleep 2
-  done
-
-  echo "PostgreSQL did not become ready in time."
-  return 1
 }
 
 ensure_file "$ROOT_DIR/.env" "$ROOT_DIR/.env.example"
@@ -266,6 +247,9 @@ ensure_uv
 
 ensure_npm_dependencies "$ROOT_DIR/backend" "backend"
 ensure_npm_dependencies "$ROOT_DIR/frontend" "frontend"
+
+"$ROOT_DIR/scripts/auto-migrate-legacy-postgres.sh"
+load_root_env
 
 if [[ ! -x "$ROOT_DIR/core/.venv/bin/python" ]] || ! core_module_available "uvicorn"; then
   recreate_core_venv=0
@@ -297,40 +281,34 @@ if ! core_opensees_runtime_available; then
 fi
 
 if [[ "$SKIP_INFRA" -eq 0 ]]; then
-  require_command "docker" "Install Docker and Docker Compose plugin, or rerun with --skip-infra."
-
-  if ! docker_ready; then
-    echo "Docker daemon is not reachable."
-    echo "Start Docker Desktop/service, or rerun with --skip-infra if you already have PostgreSQL/Redis/pgAdmin."
-    exit 1
-  fi
-
-  echo "Starting local infrastructure..."
-  compose_services=(postgres)
+  compose_services=()
   if is_redis_enabled; then
     compose_services+=(redis)
   else
     echo "Redis is disabled in .env; skipping redis container startup."
   fi
-  docker compose -f "$ROOT_DIR/docker-compose.yml" up -d "${compose_services[@]}"
-  wait_for_postgres
 
-  if is_pgadmin_enabled; then
-    echo "Starting pgAdmin..."
-    if ! docker compose -f "$ROOT_DIR/docker-compose.yml" up -d pgadmin; then
-      echo "WARNING: pgAdmin failed to start. The core local stack will continue without it."
-      echo "If this is a transient registry/network issue, rerun: docker compose up -d pgadmin"
-      echo "To skip pgAdmin entirely, set PGADMIN_ENABLED=false in .env"
+  if [[ "${#compose_services[@]}" -gt 0 ]]; then
+    require_command "docker" "Install Docker and Docker Compose plugin, or rerun with --skip-infra."
+
+    if ! docker_ready; then
+      echo "Docker daemon is not reachable."
+      echo "Start Docker Desktop/service, or rerun with --skip-infra."
+      exit 1
     fi
+
+    echo "Starting optional local infrastructure..."
+    docker compose -f "$ROOT_DIR/docker-compose.yml" up -d "${compose_services[@]}"
   else
-    echo "pgAdmin is disabled in .env; skipping pgadmin container startup."
+    echo "No optional infra services are enabled; continuing without docker-managed infra."
   fi
 else
-  echo "Skipping local postgres/redis/pgadmin startup (--skip-infra)."
+  echo "Skipping optional infra startup (--skip-infra)."
 fi
 
 if [[ "$SKIP_DB_INIT" -eq 0 ]]; then
-  echo "Running database migrations and seed..."
+  mkdir -p "$ROOT_DIR/.runtime/data"
+  echo "Running SQLite schema sync and seed..."
   npm run db:init --prefix "$ROOT_DIR/backend"
 else
   echo "Skipping database init (--skip-db-init)."
@@ -347,5 +325,4 @@ echo "Logs: $LOG_DIR"
 echo "Frontend: http://localhost:$FRONTEND_PORT"
 echo "Backend:  http://localhost:$BACKEND_PORT (GET / returns 404 by design; use /health)"
 echo "Core:     http://localhost:$CORE_PORT"
-echo "pgAdmin:  http://localhost:${PGADMIN_PORT:-5050}"
 echo "Use ./scripts/dev-status.sh to inspect services."

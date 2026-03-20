@@ -1,13 +1,13 @@
-import type { Prisma } from '@prisma/client';
 import { prisma } from '../utils/database.js';
 import { ensureUserId } from '../utils/demo-data.js';
+import type { InputJsonValue } from '../utils/json.js';
 
 interface CreateProjectParams {
   name: string;
   description?: string;
   type: string;
-  location?: Prisma.InputJsonValue;
-  settings?: Prisma.InputJsonValue;
+  location?: InputJsonValue;
+  settings?: InputJsonValue;
   ownerId?: string;
 }
 
@@ -49,8 +49,8 @@ export class ProjectService {
     if (filters.search) {
       where.OR = [
         ...(Array.isArray(where.OR) ? where.OR : []),
-        { name: { contains: filters.search, mode: 'insensitive' } },
-        { description: { contains: filters.search, mode: 'insensitive' } },
+        { name: { contains: filters.search } },
+        { description: { contains: filters.search } },
       ];
     }
 

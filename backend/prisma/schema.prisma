@@ -2,35 +2,35 @@
 // Learn more: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
 // 用户表
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  passwordHash  String
-  name          String
-  avatar        String?
-  organization  String?
-  title         String?
-  bio           String?
-  expertise     String[]
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  avatar       String?
+  organization String?
+  title        String?
+  bio          String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  projects      Project[]
-  conversations Conversation[]
-  skills        Skill[]
-  posts         Post[]
-  comments      Comment[]
-  reviews       SkillReview[]
+  expertiseItems     UserExpertise[]
+  projects           Project[]
+  conversations      Conversation[]
+  skills             Skill[]
+  posts              Post[]
+  comments           Comment[]
+  reviews            SkillReview[]
   projectMemberships ProjectMember[]
 
   @@map("users")
@@ -38,21 +38,21 @@ model User {
 
 // 项目表
 model Project {
-  id          String    @id @default(cuid())
+  id          String   @id @default(cuid())
   name        String
   description String?
   type        String
   location    Json?
   settings    Json?
-  status      String    @default("active")
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  status      String   @default("active")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  ownerId     String
-  owner       User      @relation(fields: [ownerId], references: [id])
-  members     ProjectMember[]
-  models      StructuralModel[]
-  skills      ProjectSkill[]
+  ownerId String
+  owner   User              @relation(fields: [ownerId], references: [id])
+  members ProjectMember[]
+  models  StructuralModel[]
+  skills  ProjectSkill[]
 
   @@map("projects")
 }
@@ -65,8 +65,8 @@ model ProjectMember {
   role      String   @default("member")
   joinedAt  DateTime @default(now())
 
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id])
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
 
   @@unique([projectId, userId])
   @@map("project_members")
@@ -84,61 +84,61 @@ model StructuralModel {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  projectId   String
-  project     Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  analyses    Analysis[]
-  createdBy   String?
+  projectId String
+  project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  analyses  Analysis[]
+  createdBy String?
 
   @@map("structural_models")
 }
 
 // 分析任务
 model Analysis {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   name        String
   type        String
   parameters  Json
-  status      String   @default("pending")
+  status      String    @default("pending")
   results     Json?
   error       String?
   startedAt   DateTime?
   completedAt DateTime?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
-  modelId     String
-  model       StructuralModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
-  createdBy   String?
+  modelId   String
+  model     StructuralModel @relation(fields: [modelId], references: [id], onDelete: Cascade)
+  createdBy String?
 
   @@map("analyses")
 }
 
 // 对话
 model Conversation {
-  id        String    @id @default(cuid())
+  id        String   @id @default(cuid())
   title     String
   type      String
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  modelSnapshot    Json?
-  resultSnapshot   Json?
-  latestResult    Json?
+  modelSnapshot  Json?
+  resultSnapshot Json?
+  latestResult   Json?
 
-  userId    String?
-  user      User?     @relation(fields: [userId], references: [id])
-  messages  Message[]
+  userId   String?
+  user     User?     @relation(fields: [userId], references: [id])
+  messages Message[]
 
   @@map("conversations")
 }
 
 // 消息
 model Message {
-  id             String   @id @default(cuid())
-  role           String
-  content        String
-  metadata       Json?
-  tokenCount     Int?
-  createdAt      DateTime @default(now())
+  id         String   @id @default(cuid())
+  role       String
+  content    String
+  metadata   Json?
+  tokenCount Int?
+  createdAt  DateTime @default(now())
 
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
@@ -154,7 +154,6 @@ model Skill {
   category    String
   version     String
   author      String
-  tags        String[]
   config      Json
   isPublic    Boolean  @default(false)
   rating      Float    @default(0)
@@ -162,24 +161,25 @@ model Skill {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  authorId    String?
-  authorUser  User?    @relation(fields: [authorId], references: [id])
-  projects    ProjectSkill[]
-  reviews     SkillReview[]
-  executions  SkillExecution[]
+  authorId   String?
+  authorUser User?            @relation(fields: [authorId], references: [id])
+  tagItems   SkillTag[]
+  projects   ProjectSkill[]
+  reviews    SkillReview[]
+  executions SkillExecution[]
 
   @@map("skills")
 }
 
 // 项目技能关联
 model ProjectSkill {
-  id        String   @id @default(cuid())
-  projectId String
-  skillId   String
+  id          String   @id @default(cuid())
+  projectId   String
+  skillId     String
   installedAt DateTime @default(now())
 
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  skill     Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  skill   Skill   @relation(fields: [skillId], references: [id], onDelete: Cascade)
 
   @@unique([projectId, skillId])
   @@map("project_skills")
@@ -193,10 +193,10 @@ model SkillReview {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  skillId   String
-  skill     Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User     @relation(fields: [userId], references: [id])
+  skillId String
+  skill   Skill  @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User   @relation(fields: [userId], references: [id])
 
   @@unique([skillId, userId])
   @@map("skill_reviews")
@@ -209,34 +209,87 @@ model SkillExecution {
   result     Json?
   createdAt  DateTime @default(now())
 
-  skillId    String
-  skill      Skill    @relation(fields: [skillId], references: [id], onDelete: Cascade)
-  userId     String?
+  skillId String
+  skill   Skill   @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  userId  String?
 
   @@map("skill_executions")
 }
 
 // 社区帖子
 model Post {
-  id          String   @id @default(cuid())
-  title       String
-  content     String
-  category    String
-  tags        String[]
-  attachments String[]
-  viewCount   Int      @default(0)
-  likeCount   Int      @default(0)
-  isPinned    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  category  String
+  viewCount Int      @default(0)
+  likeCount Int      @default(0)
+  isPinned  Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   authorId    String
-  author      User     @relation(fields: [authorId], references: [id])
+  author      User             @relation(fields: [authorId], references: [id])
   projectId   String?
+  tagItems    PostTag[]
+  attachments PostAttachment[]
   comments    Comment[]
   likes       PostLike[]
 
   @@map("posts")
+}
+
+model UserExpertise {
+  id        String   @id @default(cuid())
+  userId    String
+  value     String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, value])
+  @@index([userId, position])
+  @@map("user_expertise")
+}
+
+model SkillTag {
+  id        String   @id @default(cuid())
+  skillId   String
+  value     String
+  createdAt DateTime @default(now())
+
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([skillId, value])
+  @@index([value])
+  @@map("skill_tags")
+}
+
+model PostTag {
+  id        String   @id @default(cuid())
+  postId    String
+  value     String
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, value])
+  @@index([value])
+  @@map("post_tags")
+}
+
+model PostAttachment {
+  id        String   @id @default(cuid())
+  postId    String
+  url       String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@index([postId, position])
+  @@map("post_attachments")
 }
 
 // 帖子评论
@@ -245,13 +298,13 @@ model Comment {
   content   String
   createdAt DateTime @default(now())
 
-  postId    String
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  authorId  String
-  author    User     @relation(fields: [authorId], references: [id])
-  parentId  String?
-  replies   Comment[] @relation("CommentReplies")
-  parent    Comment? @relation("CommentReplies", fields: [parentId], references: [id])
+  postId   String
+  post     Post      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId String
+  author   User      @relation(fields: [authorId], references: [id])
+  parentId String?
+  replies  Comment[] @relation("CommentReplies")
+  parent   Comment?  @relation("CommentReplies", fields: [parentId], references: [id])
 
   @@map("comments")
 }
@@ -261,9 +314,9 @@ model PostLike {
   id        String   @id @default(cuid())
   createdAt DateTime @default(now())
 
-  postId    String
-  post      Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
-  userId    String
+  postId String
+  post   Post   @relation(fields: [postId], references: [id], onDelete: Cascade)
+  userId String
 
   @@unique([postId, userId])
   @@map("post_likes")

@@ -1,11 +1,11 @@
 import axios, { AxiosInstance } from 'axios';
 import { ChatOpenAI } from '@langchain/openai';
-import { Prisma } from '@prisma/client';
 import { randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 import { config } from '../config/index.js';
 import { buildProxyConfig } from '../utils/http.js';
+import type { InputJsonValue } from '../utils/json.js';
 import { createChatModel } from '../utils/llm.js';
 import { prisma } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
@@ -2205,7 +2205,7 @@ export class AgentService {
             content: assistantMessage.trim(),
             metadata: {
               debugDetails,
-            } as unknown as Prisma.InputJsonValue,
+            } as unknown as InputJsonValue,
           },
         ],
       });

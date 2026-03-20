@@ -1,4 +1,3 @@
-import type { Prisma } from '@prisma/client';
 import { prisma } from '../utils/database.js';
 import { ensureUserId } from '../utils/demo-data.js';
 
@@ -27,6 +26,28 @@ interface CreateCommentParams {
   authorId?: string;
 }
 
+type PostWithArrays = {
+  tagItems?: Array<{ value: string }> | null;
+  attachments?: Array<{ url: string }> | null;
+} & Record<string, unknown>;
+
+type SkillWithTagItems = {
+  tagItems: Array<{ value: string }>;
+} & Record<string, unknown>;
+
+function mapPostArrays<T extends PostWithArrays | null>(post: T) {
+  if (!post) {
+    return null;
+  }
+
+  const { tagItems, attachments, ...rest } = post;
+  return {
+    ...rest,
+    tags: (tagItems || []).map((item) => item.value),
+    attachments: (attachments || []).map((item) => item.url),
+  };
+}
+
 export class CommunityService {
   async listPosts(params: ListPostsParams = {}) {
     const where: Record<string, unknown> = {};
@@ -36,17 +57,27 @@ export class CommunityService {
     }
 
     if (params.tag) {
-      where.tags = { has: params.tag };
+      where.tagItems = {
+        some: { value: params.tag },
+      };
     }
 
-    const orderBy: Prisma.PostOrderByWithRelationInput[] =
+    const orderBy: Array<Record<string, string>> =
       params.sort === 'popular'
         ? [{ likeCount: 'desc' }, { viewCount: 'desc' }]
         : [{ createdAt: 'desc' }];
 
-    return prisma.post.findMany({
+    const posts = await prisma.post.findMany({
       where,
       include: {
+        tagItems: {
+          select: { value: true },
+          orderBy: { createdAt: 'asc' },
+        },
+        attachments: {
+          select: { url: true },
+          orderBy: { position: 'asc' },
+        },
         author: {
           select: {
             id: true,
@@ -65,22 +96,43 @@ export class CommunityService {
       skip: ((params.page || 1) - 1) * (params.limit || 20),
       take: params.limit || 20,
     });
+
+    return posts.map((post: PostWithArrays) => mapPostArrays(post));
   }
 
   async createPost(params: CreatePostParams) {
     const authorId = await ensureUserId(params.authorId);
 
-    return prisma.post.create({
+    const post = await prisma.post.create({
       data: {
         title: params.title,
         content: params.content,
         category: params.category,
-        tags: params.tags,
-        attachments: params.attachments || [],
+        tagItems: {
+          create: params.tags.map((value) => ({ value })),
+        },
+        attachments: {
+          create: (params.attachments || []).map((url, index) => ({
+            url,
+            position: index,
+          })),
+        },
         projectId: params.projectId,
         authorId,
       },
+      include: {
+        tagItems: {
+          select: { value: true },
+          orderBy: { createdAt: 'asc' },
+        },
+        attachments: {
+          select: { url: true },
+          orderBy: { position: 'asc' },
+        },
+      },
     });
+
+    return mapPostArrays(post);
   }
 
   async getPost(id: string) {
@@ -93,9 +145,17 @@ export class CommunityService {
       },
     }).catch(() => undefined);
 
-    return prisma.post.findUnique({
+    const post = await prisma.post.findUnique({
       where: { id },
       include: {
+        tagItems: {
+          select: { value: true },
+          orderBy: { createdAt: 'asc' },
+        },
+        attachments: {
+          select: { url: true },
+          orderBy: { position: 'asc' },
+        },
         author: {
           select: {
             id: true,
@@ -120,6 +180,8 @@ export class CommunityService {
         },
       },
     });
+
+    return mapPostArrays(post);
   }
 
   async likePost(id: string, userId?: string) {
@@ -184,28 +246,44 @@ export class CommunityService {
   }
 
   async listKnowledge(category?: string) {
-    return prisma.post.findMany({
+    const posts = await prisma.post.findMany({
       where: {
         category: category || {
           in: ['tutorial', 'case-study'],
         },
       },
+      include: {
+        tagItems: {
+          select: { value: true },
+          orderBy: { createdAt: 'asc' },
+        },
+        attachments: {
+          select: { url: true },
+          orderBy: { position: 'asc' },
+        },
+      },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
+
+    return posts.map((post: PostWithArrays) => mapPostArrays(post));
   }
 
   async getPopularTags() {
     const posts = await prisma.post.findMany({
-      select: { tags: true },
+      select: {
+        tagItems: {
+          select: { value: true },
+        },
+      },
       take: 100,
       orderBy: { createdAt: 'desc' },
     });
 
     const counts = new Map<string, number>();
     for (const post of posts) {
-      for (const tag of post.tags) {
-        counts.set(tag, (counts.get(tag) || 0) + 1);
+      for (const tag of post.tagItems) {
+        counts.set(tag.value, (counts.get(tag.value) || 0) + 1);
       }
     }
 
@@ -220,24 +298,47 @@ export class CommunityService {
       const skills = await prisma.skill.findMany({
         where: {
           OR: [
-            { name: { contains: q, mode: 'insensitive' } },
-            { description: { contains: q, mode: 'insensitive' } },
+            { name: { contains: q } },
+            { description: { contains: q } },
+            { tagItems: { some: { value: { contains: q } } } },
           ],
+        },
+        include: {
+          tagItems: {
+            select: { value: true },
+            orderBy: { createdAt: 'asc' },
+          },
         },
         take: 20,
       });
 
-      return { posts: [], skills };
+      return {
+        posts: [],
+        skills: skills.map((skill: SkillWithTagItems) => ({
+          ...skill,
+          tags: skill.tagItems.map((item: { value: string }) => item.value),
+        })),
+      };
     }
 
     const [posts, skills] = await Promise.all([
       prisma.post.findMany({
         where: {
           OR: [
-            { title: { contains: q, mode: 'insensitive' } },
-            { content: { contains: q, mode: 'insensitive' } },
-            { tags: { has: q } },
+            { title: { contains: q } },
+            { content: { contains: q } },
+            { tagItems: { some: { value: { contains: q } } } },
           ],
+        },
+        include: {
+          tagItems: {
+            select: { value: true },
+            orderBy: { createdAt: 'asc' },
+          },
+          attachments: {
+            select: { url: true },
+            orderBy: { position: 'asc' },
+          },
         },
         take: 20,
         orderBy: { createdAt: 'desc' },
@@ -245,14 +346,27 @@ export class CommunityService {
       prisma.skill.findMany({
         where: {
           OR: [
-            { name: { contains: q, mode: 'insensitive' } },
-            { description: { contains: q, mode: 'insensitive' } },
+            { name: { contains: q } },
+            { description: { contains: q } },
+            { tagItems: { some: { value: { contains: q } } } },
           ],
+        },
+        include: {
+          tagItems: {
+            select: { value: true },
+            orderBy: { createdAt: 'asc' },
+          },
         },
         take: 20,
       }),
     ]);
 
-    return { posts, skills };
+    return {
+      posts: posts.map((post: PostWithArrays) => mapPostArrays(post)),
+      skills: skills.map((skill: SkillWithTagItems) => ({
+        ...skill,
+        tags: skill.tagItems.map((item: { value: string }) => item.value),
+      })),
+    };
   }
 }

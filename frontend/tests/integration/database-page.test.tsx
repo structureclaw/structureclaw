@@ -12,13 +12,16 @@ describe('DatabaseAdminPage', () => {
           ok: true,
           json: vi.fn().mockResolvedValue({
             enabled: true,
-            provider: 'pgadmin',
-            url: 'http://localhost:5050',
-            defaultEmail: 'admin@structureclaw.local',
+            provider: 'sqlite',
+            mode: 'local-file',
             database: {
-              host: 'postgres',
-              port: '5432',
-              database: 'structureclaw',
+              provider: 'sqlite',
+              databaseUrl: 'file:/workspace/.runtime/data/structureclaw.db',
+              databasePath: '/workspace/.runtime/data/structureclaw.db',
+              directoryPath: '/workspace/.runtime/data',
+              exists: true,
+              writable: true,
+              sizeBytes: 32768,
             },
           }),
         } as unknown as Response
@@ -32,16 +35,17 @@ describe('DatabaseAdminPage', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders pgAdmin access details', async () => {
+  it('renders sqlite status details', async () => {
     render(<DatabaseAdminPage />)
 
-    expect(await screen.findByRole('heading', { name: 'Database Visual Admin' })).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'SQLite Database Status' })).toBeInTheDocument()
     await waitFor(() => {
       expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/api/v1/admin/database/status'), { cache: 'no-store' })
     })
 
-    expect(screen.getByRole('link', { name: 'Open pgAdmin' })).toHaveAttribute('href', 'http://localhost:5050')
-    expect(screen.getByText('postgres:5432 / structureclaw')).toBeInTheDocument()
-    expect(screen.getByText('admin@structureclaw.local')).toBeInTheDocument()
+    expect(screen.getByText('/workspace/.runtime/data/structureclaw.db')).toBeInTheDocument()
+    expect(screen.getByText('file:/workspace/.runtime/data/structureclaw.db')).toBeInTheDocument()
+    expect(screen.getByText('Ready')).toBeInTheDocument()
+    expect(screen.getByText('Writable')).toBeInTheDocument()
   })
 })

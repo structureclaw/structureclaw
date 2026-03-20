@@ -23,6 +23,22 @@ interface UpdateProfileParams {
   expertise?: string[];
 }
 
+type UserWithExpertiseItems = {
+  expertiseItems?: Array<{ value: string }> | null;
+} & Record<string, unknown>;
+
+function mapUserExpertise<T extends UserWithExpertiseItems | null>(user: T) {
+  if (!user) {
+    return null;
+  }
+
+  const { expertiseItems, ...rest } = user;
+  return {
+    ...rest,
+    expertise: (expertiseItems || []).map((item) => item.value),
+  };
+}
+
 export class UserService {
   async register(params: RegisterParams) {
     const user = await prisma.user.create({
@@ -32,7 +48,6 @@ export class UserService {
         name: params.name,
         organization: params.organization,
         title: params.title,
-        expertise: [],
       },
       select: {
         id: true,
@@ -74,7 +89,7 @@ export class UserService {
 
   async getUserById(userId?: string) {
     const resolvedUserId = await ensureUserId(userId);
-    return prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { id: resolvedUserId },
       select: {
         id: true,
@@ -84,18 +99,37 @@ export class UserService {
         organization: true,
         title: true,
         bio: true,
-        expertise: true,
+        expertiseItems: {
+          select: { value: true },
+          orderBy: { position: 'asc' },
+        },
         createdAt: true,
         updatedAt: true,
       },
     });
+
+    return mapUserExpertise(user);
   }
 
   async updateProfile(userId: string | undefined, data: UpdateProfileParams) {
     const resolvedUserId = await ensureUserId(userId);
-    return prisma.user.update({
+    const { expertise, ...rest } = data;
+    const user = await prisma.user.update({
       where: { id: resolvedUserId },
-      data,
+      data: {
+        ...rest,
+        ...(expertise
+          ? {
+              expertiseItems: {
+                deleteMany: {},
+                create: expertise.map((value, index) => ({
+                  value,
+                  position: index,
+                })),
+              },
+            }
+          : {}),
+      },
       select: {
         id: true,
         email: true,
@@ -104,14 +138,19 @@ export class UserService {
         organization: true,
         title: true,
         bio: true,
-        expertise: true,
+        expertiseItems: {
+          select: { value: true },
+          orderBy: { position: 'asc' },
+        },
         updatedAt: true,
       },
     });
+
+    return mapUserExpertise(user);
   }
 
   async getPublicProfile(id: string) {
-    return prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { id },
       select: {
         id: true,
@@ -120,18 +159,34 @@ export class UserService {
         organization: true,
         title: true,
         bio: true,
-        expertise: true,
+        expertiseItems: {
+          select: { value: true },
+          orderBy: { position: 'asc' },
+        },
         createdAt: true,
       },
     });
+
+    return mapUserExpertise(user);
   }
 
   async getUserSkills(id: string) {
-    return prisma.skill.findMany({
+    const skills = await prisma.skill.findMany({
       where: { authorId: id },
+      include: {
+        tagItems: {
+          select: { value: true },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
       orderBy: { createdAt: 'desc' },
       take: 50,
     });
+
+    return skills.map(({ tagItems, ...skill }: { tagItems: Array<{ value: string }> } & Record<string, unknown>) => ({
+      ...skill,
+      tags: tagItems.map((item: { value: string }) => item.value),
+    }));
   }
 
   async getUserProjects(id: string) {

@@ -4,7 +4,30 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+ensure_sqlite_regression_database_url() {
+  local fallback_database_url="file:$ROOT_DIR/.runtime/data/structureclaw-regression.db"
+  mkdir -p "$ROOT_DIR/.runtime/data"
+
+  if [[ -z "${DATABASE_URL:-}" ]]; then
+    export DATABASE_URL="$fallback_database_url"
+    echo "[info] DATABASE_URL is not set; using SQLite regression fallback."
+    return
+  fi
+
+  if [[ "${DATABASE_URL}" != file:* ]]; then
+    echo "[info] DATABASE_URL='${DATABASE_URL}' is not a SQLite file URL; using SQLite regression fallback."
+    export DATABASE_URL="$fallback_database_url"
+  fi
+}
+
+ensure_sqlite_regression_database_url
+
 echo "Backend regression checks"
+
+echo
+echo "==> Backend regression database sync"
+npm run db:deploy --prefix backend >/dev/null
+echo "[ok] Backend regression database sync"
 
 echo
 echo "==> Backend build"
@@ -64,10 +87,6 @@ echo "==> Report template contract"
 
 echo
 echo "==> Prisma schema validate"
-if [[ -z "${DATABASE_URL:-}" ]]; then
-  export DATABASE_URL="postgresql://postgres:postgres@localhost:5432/structureclaw"
-  echo "[info] DATABASE_URL is not set; using fallback for prisma validate."
-fi
 npm run db:validate --prefix backend
 
 echo
