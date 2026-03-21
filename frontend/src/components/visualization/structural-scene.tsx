@@ -290,6 +290,50 @@ function VectorArrow({
   )
 }
 
+function DistributedLoadMarker({
+  color,
+  start,
+  end,
+  vector,
+  arrowCount = 6,
+}: {
+  color: string
+  start: THREE.Vector3
+  end: THREE.Vector3
+  vector: THREE.Vector3
+  arrowCount?: number
+}) {
+  const length = Math.max(vector.length(), 0.01)
+  const direction = useMemo(() => vector.clone().normalize(), [vector])
+  const topStart = useMemo(() => start.clone().sub(direction.clone().multiplyScalar(length)), [start, direction, length])
+  const topEnd = useMemo(() => end.clone().sub(direction.clone().multiplyScalar(length)), [end, direction, length])
+  const capLength = Math.max(length * 0.16, 0.08)
+  const boundaryVector = useMemo(() => direction.clone().multiplyScalar(capLength), [direction, capLength])
+  const ratios = useMemo(() => {
+    const count = Math.max(2, arrowCount)
+    return Array.from({ length: count }, (_, index) => (count === 1 ? 0.5 : index / (count - 1)))
+  }, [arrowCount])
+
+  return (
+    <>
+      <Line color={color} lineWidth={1.5} points={[topStart.toArray(), topEnd.toArray()]} />
+      <Line color={color} lineWidth={1.2} points={[topStart.toArray(), topStart.clone().add(boundaryVector).toArray()]} />
+      <Line color={color} lineWidth={1.2} points={[topEnd.toArray(), topEnd.clone().add(boundaryVector).toArray()]} />
+      {ratios.map((ratio, index) => {
+        const arrowOrigin = topStart.clone().lerp(topEnd, ratio)
+        return (
+          <VectorArrow
+            color={color}
+            key={`distributed-arrow-${index}`}
+            origin={arrowOrigin}
+            vector={vector}
+          />
+        )
+      })}
+    </>
+  )
+}
+
 function SceneContent({
   activeCase,
   deformationScale,
@@ -330,6 +374,22 @@ function SceneContent({
       ),
     [activeCase, deformationScale, snapshot.nodes]
   )
+  const loadArrowLength = useMemo(() => {
+    if (!snapshot.nodes.length) {
+      return 0.3
+    }
+
+    const xs = snapshot.nodes.map((node) => node.position.x)
+    const ys = snapshot.nodes.map((node) => node.position.y)
+    const zs = snapshot.nodes.map((node) => node.position.z)
+
+    const spanX = Math.max(...xs) - Math.min(...xs)
+    const spanY = Math.max(...ys) - Math.min(...ys)
+    const spanZ = Math.max(...zs) - Math.min(...zs)
+    const modelSpan = Math.max(spanX, spanY, spanZ, 1)
+
+    return Math.max(0.15, Math.min(modelSpan / 10, 1.2))
+  }, [snapshot.nodes])
 
   return (
     <>
@@ -386,7 +446,28 @@ function SceneContent({
             const undeformedEnd = projectPosition(endData.position, plane)
             const currentStart = projectPosition(start, plane)
             const currentEnd = projectPosition(end, plane)
+            const distributedLoadVectors = snapshot.loads
+              .filter((load) => {
+                if (load.kind !== 'distributed' || load.elementId !== element.id) {
+                  return false
+                }
 
+                if (view === 'model') {
+                  return true
+                }
+
+                return !load.caseId || load.caseId === activeCase.id
+              })
+              .map((load) => {
+                const raw = new THREE.Vector3(load.vector.x, load.vector.y, load.vector.z)
+                const length = raw.length()
+
+                if (length < 1e-9) {
+                  return raw
+                }
+
+                return raw.normalize().multiplyScalar(loadArrowLength)
+              })
             return (
               <group key={element.id}>
                 {(view === 'deformed' && showUndeformed) && (
@@ -410,6 +491,15 @@ function SceneContent({
                     </div>
                   </Html>
                 )}
+                {view === 'model' && distributedLoadVectors.map((vector, vectorIndex) => (
+                  <DistributedLoadMarker
+                    color="#22c55e"
+                    key={`${element.id}-distributed-${vectorIndex}`}
+                    start={currentStart}
+                    end={currentEnd}
+                    vector={projectPosition(vector, plane)}
+                  />
+                ))}
               </group>
             )
           })}
@@ -443,8 +533,28 @@ function SceneContent({
                   .multiplyScalar(0.03 / Math.max(maxReaction, 1))
               : null
             const loadVectors = snapshot.loads
-              .filter((load) => load.nodeId === entry.id && (!load.caseId || load.caseId === activeCase.id))
-              .map((load) => new THREE.Vector3(load.vector.x, load.vector.y, load.vector.z).multiplyScalar(0.03))
+              .filter((load) => {
+                if (load.nodeId !== entry.id) {
+                  return false
+                }
+
+                // In model preview, show all loads regardless of case id.
+                if (view === 'model') {
+                  return true
+                }
+
+                return !load.caseId || load.caseId === activeCase.id
+              })
+              .map((load) => {
+                const raw = new THREE.Vector3(load.vector.x, load.vector.y, load.vector.z)
+                const length = raw.length()
+
+                if (length < 1e-9) {
+                  return raw
+                }
+
+                return raw.normalize().multiplyScalar(loadArrowLength)
+              })
 
             return (
               <group key={entry.id}>
