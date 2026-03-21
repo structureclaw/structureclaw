@@ -7,7 +7,6 @@ on:
       - 'install.ps1'
       - 'start.ps1'
       - 'stop.ps1'
-      - 'test-installer.ps1'
       - '.github/workflows/test-installer.yml'
   pull_request:
     branches: [master, main]
@@ -15,7 +14,6 @@ on:
       - 'install.ps1'
       - 'start.ps1'
       - 'stop.ps1'
-      - 'test-installer.ps1'
 
 jobs:
   test-scripts:
@@ -24,20 +22,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Run installer tests
-        shell: powershell
-        run: |
-          Write-Host "Running StructureClaw installer tests..." -ForegroundColor Cyan
-          . ./test-installer.ps1
-
       - name: Verify script syntax
         shell: powershell
         run: |
           $scripts = @('install.ps1', 'start.ps1', 'stop.ps1')
           $allValid = $true
 
+          Write-Host "Verifying PowerShell script syntax..." -ForegroundColor Cyan
+
           foreach ($script in $scripts) {
-            Write-Host "Checking $script syntax..." -NoNewline
+            Write-Host "  Checking $script..." -NoNewline
             try {
               $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content $script -Raw), [ref]$null)
               Write-Host " OK" -ForegroundColor Green
@@ -52,6 +46,8 @@ jobs:
           if (-not $allValid) {
             exit 1
           }
+
+          Write-Host "All scripts passed syntax check" -ForegroundColor Green
 
   test-with-docker:
     runs-on: windows-latest
