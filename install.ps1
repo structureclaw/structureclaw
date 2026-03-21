@@ -112,7 +112,7 @@ function Start-DockerDesktop {
   )
   foreach ($path in $dockerPaths) {
     if (Test-Path -LiteralPath $path) {
-      Write-Info "Starting Docker Desktop..."
+      Write-Info "Starting Docker Desktop... / 正在启动 Docker Desktop..."
       Start-Process -FilePath $path
       return $true
     }
@@ -122,7 +122,7 @@ function Start-DockerDesktop {
 
 function Wait-ForDocker {
   param([int]$TimeoutSeconds = 120)
-  Write-Info "Waiting for Docker to start (max $TimeoutSeconds seconds)..."
+  Write-Info "Waiting for Docker to start (max $TimeoutSeconds seconds)... / 等待 Docker 启动（最长 $TimeoutSeconds 秒）..."
   $startTime = Get-Date
   $timeout = $startTime.AddSeconds($TimeoutSeconds)
   while ((Get-Date) -lt $timeout) {
@@ -176,7 +176,7 @@ function Test-ApiConnection {
     [string]$Model,
     [string]$Provider
   )
-  Write-Info "Testing API connection to $BaseUrl..."
+  Write-Info "Testing API connection to $BaseUrl... / 测试 API 连接 $BaseUrl..."
   try {
     $chatUrl = $BaseUrl.TrimEnd('/')
     if (-not $chatUrl.EndsWith('/chat/completions')) {
@@ -234,7 +234,7 @@ function Wait-ForServices {
   $backendPort = Get-EnvPort -EnvPath $EnvPath -VarName "PORT" -DefaultPort "30010"
   $corePort = Get-EnvPort -EnvPath $EnvPath -VarName "CORE_PORT" -DefaultPort "30011"
 
-  Write-Info "Ports - Frontend: $frontendPort, Backend: $backendPort, Core: $corePort"
+  Write-Info "Ports / 端口 - Frontend: $frontendPort, Backend: $backendPort, Core: $corePort"
 
   $startTime = Get-Date
   $timeout = $startTime.AddSeconds($TimeoutSeconds)
@@ -323,139 +323,140 @@ else {
 }
 
 # Step 2: Check Docker Desktop
-Write-Step "Checking Docker Desktop"
+Write-Step "Checking Docker Desktop / 检查 Docker Desktop"
 if (Test-DockerInstalled) {
-  Write-Success "Docker Desktop is installed"
+  Write-Success "Docker Desktop is installed / Docker Desktop 已安装"
 }
 else {
-  Write-Warning "Docker Desktop is not installed"
-  Write-Host "  Please install Docker Desktop from: https://www.docker.com/products/docker-desktop" -ForegroundColor White
+  Write-Warning "Docker Desktop is not installed / Docker Desktop 未安装"
+  Write-Host "  Please install Docker Desktop from / 请从以下地址安装: https://www.docker.com/products/docker-desktop" -ForegroundColor White
   if ($DockerInstallerPath -and (Test-Path -LiteralPath $DockerInstallerPath)) {
-    Write-Info "Installing Docker Desktop..."
+    Write-Info "Installing Docker Desktop... / 正在安装 Docker Desktop..."
     Start-Process -FilePath $DockerInstallerPath -Wait
     exit 0
   }
-  Write-Host "  Press any key to exit..." -ForegroundColor Gray
+  Write-Host "  Press any key to exit... / 按任意键退出..." -ForegroundColor Gray
   $null = $Host.UI.RawUI.ReadKey('NoEcho,IncludeKeyDown')
   exit 1
 }
 
 # Step 3: Check Docker service
-Write-Step "Checking Docker Service"
+Write-Step "Checking Docker Service / 检查 Docker 服务"
 if (Test-DockerRunning) {
-  Write-Success "Docker service is running"
+  Write-Success "Docker service is running / Docker 服务运行中"
 }
 else {
-  Write-Warning "Docker service is not running"
+  Write-Warning "Docker service is not running / Docker 服务未运行"
   if (Start-DockerDesktop) {
     if (Wait-ForDocker -TimeoutSeconds 120) {
-      Write-Success "Docker service started successfully"
+      Write-Success "Docker service started successfully / Docker 服务启动成功"
     }
     else {
-      Write-Error "Docker service startup timeout"
+      Write-Error "Docker service startup timeout / Docker 服务启动超时"
       exit 1
     }
   }
   else {
-    Write-Error "Cannot start Docker Desktop"
+    Write-Error "Cannot start Docker Desktop / 无法启动 Docker Desktop"
     exit 1
   }
 }
 
 # Step 4: Collect LLM configuration
-Write-Step "Configure LLM Service"
+Write-Step "Configure LLM Service / 配置 LLM 服务"
 
 if ($NonInteractive) {
-  # Use command-line parameters
+  # Use command-line parameters / 使用命令行参数
   if ([string]::IsNullOrWhiteSpace($LLMProvider)) {
-    Write-Error "NonInteractive mode requires -LLMProvider parameter"
+    Write-Error "NonInteractive mode requires -LLMProvider parameter / 非交互模式需要 -LLMProvider 参数"
     exit 1
   }
   if ([string]::IsNullOrWhiteSpace($LLMBaseUrl)) {
-    Write-Error "NonInteractive mode requires -LLMBaseUrl parameter"
+    Write-Error "NonInteractive mode requires -LLMBaseUrl parameter / 非交互模式需要 -LLMBaseUrl 参数"
     exit 1
   }
   if ([string]::IsNullOrWhiteSpace($LLMApiKey)) {
-    Write-Error "NonInteractive mode requires -LLMApiKey parameter"
+    Write-Error "NonInteractive mode requires -LLMApiKey parameter / 非交互模式需要 -LLMApiKey 参数"
     exit 1
   }
   if ([string]::IsNullOrWhiteSpace($LLMModel)) {
-    Write-Error "NonInteractive mode requires -LLMModel parameter"
+    Write-Error "NonInteractive mode requires -LLMModel parameter / 非交互模式需要 -LLMModel 参数"
     exit 1
   }
-  
+
   $llmProvider = $LLMProvider
   $llmBaseUrl = $LLMBaseUrl
   $llmApiKey = $LLMApiKey
   $llmModel = $LLMModel
-  
-  Write-Host "  LLM Provider: $llmProvider" -ForegroundColor Gray
-  Write-Host "  LLM Base URL: $llmBaseUrl" -ForegroundColor Gray
-  Write-Host "  LLM API Key: $($llmApiKey.Substring(0, [Math]::Min(8, $llmApiKey.Length)))..." -ForegroundColor Gray
-  Write-Host "  LLM Model: $llmModel" -ForegroundColor Gray
+
+  Write-Host "  LLM Provider / 提供商: $llmProvider" -ForegroundColor Gray
+  Write-Host "  LLM Base URL / 地址: $llmBaseUrl" -ForegroundColor Gray
+  Write-Host "  LLM API Key / 密钥: $($llmApiKey.Substring(0, [Math]::Min(8, $llmApiKey.Length)))..." -ForegroundColor Gray
+  Write-Host "  LLM Model / 模型: $llmModel" -ForegroundColor Gray
 }
 else {
-  # Interactive mode
+  # Interactive mode / 交互模式
   Write-Host "  Please enter LLM service configuration (API Key input will be hidden)" -ForegroundColor Gray
+  Write-Host "  请输入 LLM 服务配置（API Key 输入时将隐藏）" -ForegroundColor Gray
   Write-Host ""
 
-  $llmProvider = Read-Host "  LLM Provider [openai]"
+  $llmProvider = Read-Host "  LLM Provider / 提供商 [openai]"
   if ([string]::IsNullOrWhiteSpace($llmProvider)) {
     $llmProvider = 'openai'
   }
 
-  $llmBaseUrl = Read-Host "  LLM Base URL (e.g. https://api.deepseek.com)"
+  $llmBaseUrl = Read-Host "  LLM Base URL / 地址 (e.g. https://api.deepseek.com)"
   while ([string]::IsNullOrWhiteSpace($llmBaseUrl)) {
-    Write-Warning "LLM Base URL cannot be empty"
-    $llmBaseUrl = Read-Host "  LLM Base URL"
+    Write-Warning "LLM Base URL cannot be empty / LLM Base URL 不能为空"
+    $llmBaseUrl = Read-Host "  LLM Base URL / 地址"
   }
 
-  $llmApiKey = Read-SecureInput "LLM API Key: "
+  $llmApiKey = Read-SecureInput "LLM API Key / 密钥: "
   while ([string]::IsNullOrWhiteSpace($llmApiKey)) {
-    Write-Warning "LLM API Key cannot be empty"
-    $llmApiKey = Read-SecureInput "LLM API Key: "
+    Write-Warning "LLM API Key cannot be empty / LLM API Key 不能为空"
+    $llmApiKey = Read-SecureInput "LLM API Key / 密钥: "
   }
 
-  $llmModel = Read-Host "  LLM Model (e.g. deepseek-chat)"
+  $llmModel = Read-Host "  LLM Model / 模型 (e.g. deepseek-chat)"
   while ([string]::IsNullOrWhiteSpace($llmModel)) {
-    Write-Warning "LLM Model cannot be empty"
-    $llmModel = Read-Host "  LLM Model"
+    Write-Warning "LLM Model cannot be empty / LLM Model 不能为空"
+    $llmModel = Read-Host "  LLM Model / 模型"
   }
 }
 
-Write-Success "LLM configuration collected"
+Write-Success "LLM configuration collected / LLM 配置已收集"
 
 # Step 4.5: Test API connection
-Write-Step "Testing API Connection"
+Write-Step "Testing API Connection / 测试 API 连接"
 $apiTestResult = Test-ApiConnection -BaseUrl $llmBaseUrl -ApiKey $llmApiKey -Model $llmModel -Provider $llmProvider
 if (-not $apiTestResult) {
-  Write-Warning "API test failed, but continuing with installation"
+  Write-Warning "API test failed, but continuing with installation / API 测试失败，但继续安装"
 }
 
 # Step 5: Generate .env file
-Write-Step "Generating Configuration File"
+Write-Step "Generating Configuration File / 生成配置文件"
 try {
   New-EnvFile -TemplatePath $EnvExampleFile -OutputPath $EnvFile `
     -BaseUrl $llmBaseUrl -ApiKey $llmApiKey -Model $llmModel -Provider $llmProvider
-  Write-Success ".env file generated"
+  Write-Success ".env file generated / .env 文件已生成"
 }
 catch {
-  Write-Error "Failed to generate .env file: $_"
+  Write-Error "Failed to generate .env file / 生成 .env 文件失败: $_"
   exit 1
 }
 
 # Step 6: Build and start services
-Write-Step "Building and Starting Services"
-Write-Info "Building Docker images (first build may take a few minutes)..."
+Write-Step "Building and Starting Services / 构建并启动服务"
+Write-Info "Building Docker images (first build may take a few minutes)... / 构建 Docker 镜像（首次构建可能需要几分钟）..."
 Write-Host ""
 
 Push-Location $RootDir
 try {
-  Write-Progress "Pulling base images and building..."
+  Write-Progress "Pulling base images and building... / 拉取基础镜像并构建..."
   $exitCode = Invoke-DockerCompose -Arguments "up --build -d"
   if ($exitCode -ne 0) {
-    Write-Error "Docker Compose startup failed"
-    Write-Host "  Please check the error and run manually: docker compose up --build" -ForegroundColor Yellow
+    Write-Error "Docker Compose startup failed / Docker Compose 启动失败"
+    Write-Host "  Please check the error and run manually / 请检查错误并手动运行: docker compose up --build" -ForegroundColor Yellow
     exit 1
   }
 }
@@ -463,15 +464,15 @@ finally {
   Pop-Location
 }
 
-Write-Success "Docker services started"
+Write-Success "Docker services started / Docker 服务已启动"
 
 # Step 7: Wait for services to be ready
-Write-Step "Waiting for Services"
+Write-Step "Waiting for Services / 等待服务"
 if (Wait-ForServices -EnvPath $EnvFile -TimeoutSeconds 180) {
-  Write-Success "All services are ready"
+  Write-Success "All services are ready / 所有服务已就绪"
 }
 else {
-  Write-Warning "Some services may not be ready yet"
+  Write-Warning "Some services may not be ready yet / 部分服务可能尚未就绪"
 }
 
 # Read ports for display
@@ -483,18 +484,18 @@ $corePort = Get-EnvPort -EnvPath $EnvFile -VarName "CORE_PORT" -DefaultPort "300
 Write-Host @"
 
   ====================================================================
-                    Installation Complete
+                    Installation Complete / 安装完成
   ====================================================================
 
-  Frontend:          http://localhost:$frontendPort
-  Backend:           http://localhost:$backendPort/health
-  Core Engine:       http://localhost:$corePort/health
+  Frontend / 前端:      http://localhost:$frontendPort
+  Backend / 后端:       http://localhost:$backendPort/health
+  Core Engine / 引擎:   http://localhost:$corePort/health
 
-  Next Steps:
-  - Start services:    .\start.ps1
-  - Stop services:     .\stop.ps1
-  - View logs:         docker compose logs -f
-  - View status:       docker compose ps
+  Next Steps / 后续步骤:
+  - Start services / 启动服务:    .\start.ps1
+  - Stop services / 停止服务:     .\stop.ps1
+  - View logs / 查看日志:         docker compose logs -f
+  - View status / 查看状态:       docker compose ps
 
   ====================================================================
 

@@ -300,8 +300,8 @@ $frontendPort = Get-EnvPort -EnvPath $EnvFile -VarName "FRONTEND_PORT" -DefaultP
 $backendPort = Get-EnvPort -EnvPath $EnvFile -VarName "PORT" -DefaultPort "30010"
 $corePort = Get-EnvPort -EnvPath $EnvFile -VarName "CORE_PORT" -DefaultPort "30011"
 
-Write-Info "Ports from .env: Frontend=$frontendPort, Backend=$backendPort, Core=$corePort"
-Write-Info "Checking container status..."
+Write-Info "Ports from .env / 端口配置: Frontend=$frontendPort, Backend=$backendPort, Core=$corePort"
+Write-Info "Checking container status... / 检查容器状态..."
 
 # Show container status for debugging
 try {
@@ -328,8 +328,6 @@ $allRunning = $true
 foreach ($service in $services) {
   $containerStatus = Get-ContainerStatus -ServiceName $service.Service
   $httpStatus = Get-ServiceStatus -Name $service.Name -Url $service.Url
-
-  Write-Info "Debug: $($service.Name) - Container: $containerStatus, HTTP: $($httpStatus.Status)"
 
   if ($httpStatus.Status -eq 'running') {
     Write-Host ("  {0,-12} {1,-10} http://localhost:{2}" -f $service.Name, $httpStatus.Status, $service.Port) -ForegroundColor $httpStatus.Color
