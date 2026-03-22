@@ -16,7 +16,7 @@ interface CapabilitySkill {
   materialFamilies: string[];
   priority: number;
   compatibility: {
-    minCoreVersion: string;
+    minRuntimeVersion: string;
     skillApiVersion: string;
   };
   autoLoadByDefault: boolean;
@@ -132,7 +132,7 @@ export class AgentCapabilityService {
         materialFamilies: normalizeDomainMaterialFamilies(pkg.materialFamilies),
         priority: pkg.priority ?? 0,
         compatibility: {
-          minCoreVersion: pkg.compatibility.minCoreVersion,
+          minRuntimeVersion: pkg.compatibility.minRuntimeVersion,
           skillApiVersion: pkg.compatibility.skillApiVersion,
         },
         autoLoadByDefault: pkg.enabledByDefault,
@@ -145,7 +145,7 @@ export class AgentCapabilityService {
     });
 
     const enginePayload = await this.engineCatalog.listEngines();
-    const rawEngines = Array.isArray(enginePayload?.engines) ? enginePayload.engines as Array<Record<string, unknown>> : [];
+    const rawEngines = Array.isArray(enginePayload?.engines) ? enginePayload.engines.map((engine) => engine as unknown as Record<string, unknown>) : [];
     const engines: CapabilityEngine[] = rawEngines
       .filter((engine) => typeof engine.id === 'string' && engine.id.trim().length > 0)
       .map((engine) => ({

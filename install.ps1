@@ -161,11 +161,6 @@ function New-EnvFile {
   $content = $content -replace 'LLM_API_KEY=.*', "LLM_API_KEY=$ApiKey"
   $content = $content -replace 'LLM_MODEL=.*', "LLM_MODEL=$Model"
   $content = $content -replace 'LLM_BASE_URL=.*', "LLM_BASE_URL=$BaseUrl"
-  if ($Provider -eq 'openai') {
-    $content = $content -replace 'OPENAI_API_KEY=.*', "OPENAI_API_KEY=$ApiKey"
-    $content = $content -replace 'OPENAI_MODEL=.*', "OPENAI_MODEL=$Model"
-    $content = $content -replace 'OPENAI_BASE_URL=.*', "OPENAI_BASE_URL=$BaseUrl"
-  }
   Set-Content -LiteralPath $OutputPath -Value $content -NoNewline
 }
 
@@ -232,16 +227,13 @@ function Wait-ForServices {
   # Read ports from .env file
   $frontendPort = Get-EnvPort -EnvPath $EnvPath -VarName "FRONTEND_PORT" -DefaultPort "30000"
   $backendPort = Get-EnvPort -EnvPath $EnvPath -VarName "PORT" -DefaultPort "30010"
-  $corePort = Get-EnvPort -EnvPath $EnvPath -VarName "CORE_PORT" -DefaultPort "30011"
-
-  Write-Info "Ports / 端口 - Frontend: $frontendPort, Backend: $backendPort, Core: $corePort"
+  Write-Info "Ports / 端口 - Frontend: $frontendPort, Backend: $backendPort"
 
   $startTime = Get-Date
   $timeout = $startTime.AddSeconds($TimeoutSeconds)
   $services = @(
     @{Name = 'Frontend'; Url = "http://localhost:$frontendPort"},
-    @{Name = 'Backend'; Url = "http://localhost:$backendPort/health"},
-    @{Name = 'Core'; Url = "http://localhost:$corePort/health"}
+    @{Name = 'Backend'; Url = "http://localhost:$backendPort/health"}
   )
   $ready = @{}
   while ((Get-Date) -lt $timeout) {
@@ -478,8 +470,6 @@ else {
 # Read ports for display
 $frontendPort = Get-EnvPort -EnvPath $EnvFile -VarName "FRONTEND_PORT" -DefaultPort "30000"
 $backendPort = Get-EnvPort -EnvPath $EnvFile -VarName "PORT" -DefaultPort "30010"
-$corePort = Get-EnvPort -EnvPath $EnvFile -VarName "CORE_PORT" -DefaultPort "30011"
-
 # Step 8: Display completion message
 Write-Host @"
 
@@ -489,7 +479,7 @@ Write-Host @"
 
   Frontend / 前端:      http://localhost:$frontendPort
   Backend / 后端:       http://localhost:$backendPort/health
-  Core Engine / 引擎:   http://localhost:$corePort/health
+  Analysis / 分析:      http://localhost:$backendPort/analyze
 
   Next Steps / 后续步骤:
   - Start services / 启动服务:    .\start.ps1

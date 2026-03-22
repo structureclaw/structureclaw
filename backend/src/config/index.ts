@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import process from 'process';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -26,8 +27,10 @@ const llmBaseUrl = process.env.LLM_BASE_URL
   || (isZhipu ? 'https://open.bigmodel.cn/api/paas/v4/' : (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'));
 const frontendPort = process.env.FRONTEND_PORT || '30000';
 const backendPort = process.env.PORT || '8000';
-const corePort = process.env.CORE_PORT || '8001';
 const analysisEngineManifestPath = process.env.ANALYSIS_ENGINE_MANIFEST_PATH || path.resolve(__dirname, '../../../.runtime/analysis-engines.json');
+const defaultAnalysisPythonBin = process.platform === 'win32'
+  ? path.resolve(__dirname, '../../.venv/Scripts/python.exe')
+  : path.resolve(__dirname, '../../.venv/bin/python');
 
 const defaultCorsOrigins = [
   `http://localhost:${frontendPort}`,
@@ -71,15 +74,10 @@ export const config = {
   openaiModel: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview',
   openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
 
-  // 分析引擎配置
-  analysisEngineUrl: process.env.ANALYSIS_ENGINE_URL || `http://localhost:${corePort}`,
+  // 分析执行配置
+  analysisPythonBin: process.env.ANALYSIS_PYTHON_BIN || defaultAnalysisPythonBin,
+  analysisPythonTimeoutMs: parseInt(process.env.ANALYSIS_PYTHON_TIMEOUT_MS || '300000', 10),
   analysisEngineManifestPath,
-
-  // pgAdmin 配置
-  pgAdminEnabled: (process.env.PGADMIN_ENABLED || 'false').toLowerCase() !== 'false',
-  pgAdminPort: parseInt(process.env.PGADMIN_PORT || '5050', 10),
-  pgAdminUrl: process.env.PGADMIN_PUBLIC_URL || `http://localhost:${process.env.PGADMIN_PORT || '5050'}`,
-  pgAdminDefaultEmail: process.env.PGADMIN_DEFAULT_EMAIL || 'admin@structureclaw.dev',
 
   // CORS
   corsOrigins,

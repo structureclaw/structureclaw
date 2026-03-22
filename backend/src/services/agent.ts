@@ -1,10 +1,8 @@
-import axios, { AxiosInstance } from 'axios';
 import { ChatOpenAI } from '@langchain/openai';
 import { randomUUID } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
 import path from 'path';
 import { config } from '../config/index.js';
-import { buildProxyConfig } from '../utils/http.js';
 import type { InputJsonValue } from '../utils/json.js';
 import { createChatModel } from '../utils/llm.js';
 import { prisma } from '../utils/database.js';
@@ -39,6 +37,8 @@ import {
   normalizeNoSkillDraftState,
   tryNoSkillLlmBuildGenericModel,
 } from './agent-noskill-runtime.js';
+import { createLocalAnalysisEngineClient } from './analysis-execution.js';
+import type { LocalAnalysisEngineClient } from '../agent-skills/analysis-execution/types.js';
 
 export type AgentToolName = 'text-to-model-draft' | 'convert' | 'validate' | 'analyze' | 'code-check' | 'report';
 export type AgentRunMode = 'chat' | 'execute' | 'auto';
@@ -224,18 +224,14 @@ export interface AgentStreamChunk {
 }
 
 export class AgentService {
-  private readonly engineClient: AxiosInstance;
+  public engineClient: LocalAnalysisEngineClient;
   public llm: ChatOpenAI | null;
   private readonly skillRuntime: AgentSkillRuntime;
   private readonly policy: AgentPolicyService;
   private static readonly draftStateTtlSeconds = 30 * 60;
 
   constructor() {
-    this.engineClient = axios.create({
-      baseURL: config.analysisEngineUrl,
-      timeout: 300000,
-      ...buildProxyConfig(config.analysisEngineUrl),
-    });
+    this.engineClient = createLocalAnalysisEngineClient();
 
     this.llm = createChatModel(0.1);
     this.skillRuntime = new AgentSkillRuntime();
@@ -1165,7 +1161,7 @@ export class AgentService {
       return this.localize(
         locale,
         '关键参数已基本齐备，继续确认分析类型、规范和报告偏好。',
-        'Core geometry and loading are mostly ready; continue by confirming analysis, code-check, and report preferences.'
+        'Primary geometry and loading are mostly ready; continue by confirming analysis, code-check, and report preferences.'
       );
     }
     return this.localize(

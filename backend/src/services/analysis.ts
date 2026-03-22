@@ -1,9 +1,7 @@
 import { prisma } from '../utils/database.js';
 import { redis } from '../utils/redis.js';
-import axios from 'axios';
-import { config } from '../config/index.js';
-import { buildProxyConfig } from '../utils/http.js';
 import { ensureProjectId } from '../utils/demo-data.js';
+import { AnalysisExecutionService } from './analysis-execution.js';
 
 export interface CreateModelParams {
   name: string;
@@ -25,12 +23,10 @@ export interface CreateAnalysisParams {
 }
 
 export class AnalysisService {
-  private engineUrl: string;
-  private engineProxyConfig: { proxy?: false };
+  private readonly executionService: AnalysisExecutionService;
 
   constructor() {
-    this.engineUrl = config.analysisEngineUrl;
-    this.engineProxyConfig = buildProxyConfig(this.engineUrl);
+    this.executionService = new AnalysisExecutionService();
   }
 
   // 创建结构模型
@@ -116,8 +112,7 @@ export class AnalysisService {
     });
 
     try {
-      // 调用 Python 分析引擎
-      const response = await axios.post(`${this.engineUrl}/analyze`, {
+      const results = await this.executionService.analyze({
         type: analysis.type,
         engineId: (analysis.parameters as Record<string, unknown> | null)?.engineId,
         model: {
@@ -128,12 +123,7 @@ export class AnalysisService {
           sections: analysis.model.sections,
         },
         parameters: analysis.parameters,
-      }, {
-        timeout: 300000, // 5分钟超时
-        ...this.engineProxyConfig,
       });
-
-      const results = response.data;
       if (results && results.success === false) {
         const errorCode = results.error_code || 'ANALYSIS_EXECUTION_FAILED';
         const message = results.message || 'Analysis execution failed';
@@ -146,7 +136,7 @@ export class AnalysisService {
         data: {
           status: 'completed',
           completedAt: new Date(),
-          results,
+          results: results as any,
         },
       });
 
@@ -192,13 +182,12 @@ export class AnalysisService {
     context?: Record<string, unknown>;
     engineId?: string;
   }) {
-    const response = await axios.post(`${this.engineUrl}/code-check`, {
+    return this.executionService.codeCheck({
       model_id: params.modelId,
       code: params.code,
       elements: params.elements,
       context: params.context || {},
       engineId: params.engineId,
-    }, this.engineProxyConfig);
-    return response.data;
+    });
   }
 }

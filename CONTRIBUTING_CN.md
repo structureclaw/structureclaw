@@ -2,7 +2,7 @@
 
 ## 适用范围
 
-本指南适用于 `frontend`、`backend`、`core`、`scripts`、`docs` 的开源协作。
+本指南适用于 `frontend`、`backend`、`scripts`、`docs` 的开源协作。
 
 默认采用常见的 Fork + Pull Request 工作方式。
 
@@ -22,7 +22,7 @@ make status
 ## 核心协作原则
 
 - 改动保持小步、聚焦。
-- 保持 `frontend`、`backend`、`core` 的模块边界清晰。
+- 保持 `frontend`、`backend` 以及 backend-hosted analysis skills 的模块边界清晰。
 - 不要把无关重构混入功能或修复 PR。
 - 所有用户可见文案必须同时支持英文和中文。
 - 把“可回归、可复现、可脚本化”当作功能的一部分，不要随意改变 schema、fixture、回归输出或契约载荷。
@@ -111,7 +111,7 @@ git push origin --delete my-feature
 
 - Backend：保持路由层轻量，把编排和领域逻辑放进 services。
 - Frontend：路由与布局放在 app routes，可复用 UI 放在 components。
-- Core：保持引擎、schema、回归逻辑的确定性与可脚本化。
+- 分析运行时：保持引擎、schema、回归逻辑的确定性与可脚本化。
 - Scripts：优先扩展现有验证脚本，而不是新增一次性本地辅助脚本。
 
 ### 语言与用户体验要求
@@ -146,11 +146,11 @@ npm run type-check --prefix frontend
 npm run test:run --prefix frontend
 ```
 
-核心与跨服务验证：
+分析运行时与跨服务验证：
 
 ```bash
 make backend-regression
-make core-regression
+make analysis-regression
 ```
 
 常用定向校验：
@@ -166,7 +166,7 @@ make core-regression
 
 - Backend / 契约改动：覆盖成功、失败、缺参三类场景。
 - Frontend 改动：至少运行定向测试和 `type-check`；涉及路由、布局、provider 时再跑 `build`。
-- Core 改动：保持回归算例稳定，若需要更新预期输出，请在 PR 中明确说明原因。
+- 分析运行时改动：保持回归算例稳定，若需要更新预期输出，请在 PR 中明确说明原因。
 - 纯文档改动：不强制跑代码测试，但要确保命令、路径、接口名称准确。
 
 ## Pull Request 要求
@@ -187,7 +187,7 @@ PR 的质量比 PR 的体积更重要，但强烈建议保持小而可评审。
 
 - 改了什么
 - 为什么要改
-- 影响范围：`frontend`、`backend`、`core`、`scripts`、`docs`
+- 影响范围：`frontend`、`backend`、`scripts`、`docs`
 - 执行过哪些命令，以及结果如何
 - 如果是 UI 改动，补充截图会更好
 - 如果改动了 API 或契约，附上请求/响应示例
@@ -230,7 +230,7 @@ PR 的质量比 PR 的体积更重要，但强烈建议保持小而可评审。
 
 ## 沟通建议
 
-- 如果你不确定某项职责应放在 `backend` 还是 `core`，请在 PR 里写清楚你的判断依据。
+- 如果你不确定某项职责应放在 backend API/services 还是 backend-hosted analysis skills，请在 PR 里写清楚你的判断依据。
 - 如果改动引入了新的用户可见文案，请说明中英文支持是如何处理的。
 - 如果改动影响了契约，请说明使用了哪些脚本或 fixture 做验证。
 

@@ -10,23 +10,22 @@ https://github.com/user-attachments/assets/031fe757-551d-4775-ab3f-0411037ad5ae
 
 - 从自然语言需求到分析工件的结构工程闭环
 - 统一编排链路：建模草案 -> 校验 -> 分析 -> 校核 -> 报告
-- 单仓多服务：Web 前端、后端编排 API、Python 分析引擎
+- 单仓能力栈：Web 前端、后端编排 API、后端托管的 Python 分析运行时
 - 具备回归脚本与契约校验脚本，支持可重复验证
 
 ## 架构概览
 
 ```text
 frontend (Next.js)
-	-> backend (Fastify + Prisma + Agent 编排)
-	-> core (FastAPI 分析引擎)
+	-> backend (Fastify + Prisma + Agent 编排 + 分析运行时宿主)
+	-> backend/src/agent-skills/analysis-execution/python
 	-> 报告/指标/工件输出
 ```
 
 主要目录：
 
 - `frontend/`：Next.js 14 前端
-- `backend/`：Fastify API、Agent/Chat 编排、Prisma
-- `core/`：FastAPI 结构校验/转换/分析引擎
+- `backend/`：Fastify API、Agent/Chat 编排、Prisma，以及分析执行宿主
 - `scripts/`：启动脚本、契约与回归验证
 - `docs/`：手册与协议参考文档
 
@@ -52,7 +51,7 @@ make status
 make logs
 make stop
 make backend-regression
-make core-regression
+make analysis-regression
 ```
 
 CLI 方式：
@@ -90,7 +89,7 @@ docker compose up --build
 
 - 前端：`http://localhost:30000`
 - 后端健康检查：`http://localhost:30010/health`
-- 分析引擎：`http://localhost:30011/health`
+- 分析接口：`http://localhost:30010/analyze`
 - 数据库状态页：`http://localhost:30000/console/database`
 
 停止容器：
@@ -111,10 +110,10 @@ docker compose down
 
 关键变量包括：
 
-- `PORT`、`FRONTEND_PORT`、`CORE_PORT`
+- `PORT`、`FRONTEND_PORT`
 - `DATABASE_URL`、`POSTGRES_SOURCE_DATABASE_URL`、`REDIS_URL`
 - `LLM_PROVIDER`、`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`
-- `ANALYSIS_ENGINE_URL`（可自动推导）
+- `ANALYSIS_PYTHON_BIN`、`ANALYSIS_PYTHON_TIMEOUT_MS`、`ANALYSIS_ENGINE_MANIFEST_PATH`
 
 ## 主要 API 入口
 
@@ -125,7 +124,7 @@ docker compose down
 - `POST /api/v1/chat/stream`
 - `POST /api/v1/chat/execute`
 
-引擎：
+后端托管分析：
 
 - `POST /validate`
 - `POST /convert`
@@ -137,7 +136,7 @@ docker compose down
 - Skill 是增强层，不是唯一执行路径。
 - 已选技能未匹配时回退到通用 no-skill 建模。
 - 所有用户可见内容必须支持中英文双语。
-- 保持前端、后端、引擎模块边界清晰。
+- 保持前端、后端、分析技能模块边界清晰。
 
 ## 文档入口
 

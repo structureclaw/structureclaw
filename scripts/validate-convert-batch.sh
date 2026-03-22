@@ -4,20 +4,14 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-if [[ -x core/.venv-uv-lite/bin/python ]]; then
-  PYTHON_BIN="core/.venv-uv-lite/bin/python"
-elif [[ -x core/.venv/bin/python ]]; then
-  PYTHON_BIN="core/.venv/bin/python"
-else
-  echo "No Python environment found at core/.venv or core/.venv-uv-lite" >&2
-  exit 1
-fi
+source "$ROOT_DIR/scripts/analysis-python-env.sh"
+require_analysis_python
 
 TMP_DIR="$(mktemp -d /tmp/structureclaw-batch-XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 mkdir -p "$TMP_DIR/input" "$TMP_DIR/output"
-cp core/schemas/examples/model_03_simple_truss.json "$TMP_DIR/input/valid.json"
+cp backend/src/agent-skills/analysis-execution/python/examples/model_03_simple_truss.json "$TMP_DIR/input/valid.json"
 cat > "$TMP_DIR/input/invalid.json" <<'JSON'
 {
   "schema_version": "1.0.0",

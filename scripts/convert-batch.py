@@ -14,10 +14,13 @@ from fastapi import HTTPException
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-CORE_DIR = ROOT_DIR / "core"
-sys.path.insert(0, str(CORE_DIR))
+PYTHON_ROOT = ROOT_DIR / "backend" / "src" / "agent-skills" / "analysis-execution" / "python"
+sys.path.insert(0, str(PYTHON_ROOT))
+sys.path.insert(0, str(ROOT_DIR / "backend" / "src" / "agent-skills" / "geometry-input"))
+sys.path.insert(0, str(ROOT_DIR / "backend" / "src" / "agent-skills" / "code-check"))
+sys.path.insert(0, str(ROOT_DIR / "backend" / "src" / "agent-skills" / "material-constitutive"))
 
-from main import ConvertRequest, convert_structure_model  # noqa: E402
+from api import ConvertRequest, convert_structure_model  # noqa: E402
 
 
 @dataclass

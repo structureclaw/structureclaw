@@ -4,22 +4,19 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-if [[ ! -x core/.venv/bin/python ]]; then
-  echo "core/.venv/bin/python is required for OpenSees validation" >&2
-  exit 1
-fi
+source "$ROOT_DIR/scripts/analysis-python-env.sh"
+require_analysis_python
 
-PYTHONPATH=core core/.venv/bin/python - <<'PY'
+"$PYTHON_BIN" - <<'PY'
 import asyncio
 import math
 import sys
 import types
 
-sys.path.insert(0, 'core')
 
-from engines.opensees_runtime import get_opensees_runtime_issue
-from engines.registry import AnalysisEngineRegistry
-from main import AnalysisRequest, analyze
+from providers.opensees.runtime import get_opensees_runtime_issue
+from providers.registry import AnalysisEngineRegistry
+from api import AnalysisRequest, analyze
 from schemas.structure_model_v1 import StructureModelV1
 
 

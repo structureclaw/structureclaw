@@ -1,8 +1,7 @@
 # StructureClaw Agent Guide
 
 ## Repository Snapshot
-- `backend/`: Fastify + Prisma API service. Route handlers live in `src/api`, orchestration and domain logic live in `src/services`, infrastructure helpers live in `src/utils`.
-- `core/`: FastAPI-based structural analysis engine. Main entrypoint is `main.py`; schemas, FEM logic, engine registry, and regression fixtures live under `schemas/`, `fem/`, `engines/`, and `regression/`.
+- `backend/`: Fastify + Prisma API service. Route handlers live in `src/api`, orchestration and domain logic live in `src/services`, infrastructure helpers live in `src/utils`. Backend-hosted analysis runtime lives under `src/agent-skills/analysis-execution`.
 - `frontend/`: Next.js 14 app. App routes live under `src/app`, reusable UI in `src/components`, client state and i18n helpers in `src/lib`.
 - `scripts/`: operational and regression scripts. Prefer these over ad hoc commands when validating contracts, startup behavior, chat flows, converters, or regressions.
 - `docs/`: user-facing and protocol documentation such as the stream protocol and roadmap.
@@ -13,7 +12,7 @@
 - Bilingual support is mandatory for every new user-visible feature. New UI copy, empty states, errors, prompts, templates, guidance text, and report-facing labels must ship in both `en` and `zh`.
 - Do not add new single-language user-facing flows. If a feature produces user-visible text from backend chat, agent, or report paths, the implementation must include locale propagation and locale-aware backend templates in the same change.
 - Treat the frontend locale as the single source of truth for new interactions. Once a user selects a language, all newly generated user-visible text in that interaction must follow that locale without mixing languages.
-- Keep core changes deterministic. Structural examples, regression fixtures, and converters should remain scriptable and reproducible.
+- Keep analysis-runtime changes deterministic. Structural examples, regression fixtures, and converters should remain scriptable and reproducible.
 - Commit discipline is mandatory: make small, logical commits as you go, and do it promptly.
 - Do not wait until the end of a long task to bundle unrelated work into one commit.
 - When a task naturally splits into implementation, tests, docs, or follow-up cleanup, prefer separate commits with clear boundaries.
@@ -22,7 +21,7 @@
 - Preferred local health flow:
   - `make doctor`
   - `make start`
-  - `make core-regression`
+  - `make analysis-regression`
 - Useful lifecycle commands:
   - `make start`, `make restart`
   - `make stop`
@@ -36,8 +35,8 @@
   - `npm run build --prefix frontend`
   - `npm run type-check --prefix frontend`
   - `npm run test:run --prefix frontend`
-- Core and contract validation:
-  - `make core-regression`
+- Analysis and contract validation:
+  - `make analysis-regression`
   - `./scripts/check-backend-regression.sh`
   - `./scripts/validate-agent-orchestration.sh`
   - `./scripts/validate-chat-stream-contract.sh`
@@ -68,7 +67,7 @@
 - For backend and contract work, cover success, failure, and missing-input scenarios.
 - For frontend work, run targeted Vitest checks plus `type-check`; run `build` when layout, routing, or provider behavior changes.
 - For new user-visible frontend features, verify both `en` and `zh` paths. Cover the key rendered copy or interaction behavior in tests instead of validating only one locale.
-- For core work, keep regression fixtures deterministic and avoid changing expected outputs casually.
+- For analysis runtime work, keep regression fixtures deterministic and avoid changing expected outputs casually.
 - If a change affects chat, agent orchestration, report output, converters, or schema migration, extend or run the matching validation script in `scripts/`.
 
 ## Commit and PR Guidance
@@ -83,7 +82,7 @@
   - docs or workflow-note follow-ups in their own commit
 - PRs should state:
   - what changed and why
-  - impacted areas (`backend`, `core`, `frontend`, `scripts`, `docs`)
+  - impacted areas (`backend`, `frontend`, `scripts`, `docs`)
   - commands run and results
   - sample request/response when API behavior changed
 

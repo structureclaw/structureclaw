@@ -14,10 +14,10 @@ This roadmap focuses on turning the current foundation into a clearer platform w
 
 StructureClaw already has a substantial foundation in place:
 
-- A monorepo architecture with `frontend`, `backend`, `core`, `scripts`, and `docs`.
+- A monorepo architecture with `frontend`, `backend`, `scripts`, and `docs`, with analysis hosted inside backend skills.
 - A primary orchestration flow from draft model generation to `validate -> analyze -> code-check -> report`.
 - Backend agent capabilities exposed through `POST /api/v1/agent/run` and chat endpoints under `POST /api/v1/chat/*`.
-- Core engine capabilities exposed through `POST /validate`, `POST /convert`, `POST /analyze`, and `POST /code-check`.
+- Backend-hosted analysis capabilities exposed through `POST /validate`, `POST /convert`, `POST /analyze`, and `POST /code-check`.
 - An existing built-in skill foundation under `backend/src/agent-skills`, including structure modeling, geometry input, load/boundary, material, analysis strategy, code-check, report export, result postprocess, visualization, runtime, and generic fallback layers.
 - Existing SkillHub-facing APIs and validation scripts for agent orchestration, chat streaming, report contracts, skill contracts, converter contracts, and regression checks.
 - A local-first workflow through `make` plus a growing unified CLI direction via `sclaw` and `scripts/claw.sh`.
@@ -30,7 +30,7 @@ The roadmap below therefore emphasizes systematizing and extending these capabil
 ### Skill Architecture and Runtime Boundaries
 
 - Make skill taxonomy and skill boundary refactoring the top repository priority.
-- Continue extracting agent-invoked structural analysis logic from `core` into the built-in skill system under `backend/src/agent-skills`, especially OpenSeesPy-oriented capabilities that currently behave more like platform skills than isolated engine internals.
+- Continue deepening the backend-hosted structural analysis runtime under `backend/src/agent-skills`, especially OpenSeesPy-oriented capabilities that behave more like platform skills than isolated engine internals.
 - Clarify the functional boundaries of built-in skills across the end-to-end engineering chain: design, calculation, code-check, report export, and visualization.
 - Formalize the split between built-in skills and external SkillHub packages so that loading, registration, capability discovery, fallback behavior, and lifecycle expectations are easier to reason about.
 - Tighten the runtime contract for skills so new skills can be added without weakening the existing no-skill fallback path.
@@ -73,7 +73,7 @@ The roadmap below therefore emphasizes systematizing and extending these capabil
 
 ### Quality, Coverage, and Documentation
 
-- Increase unit, integration, and runner-level automated coverage across backend, frontend, core, CLI, and orchestration surfaces.
+- Increase unit, integration, and runner-level automated coverage across backend, frontend, CLI, and orchestration surfaces.
 - Add installation and startup verification for Windows and Linux in both native and Docker modes.
 - Refresh the documentation set, including `README.md`, `README_CN.md`, `docs/handbook.md`, `docs/handbook_CN.md`, `docs/reference.md`, and `docs/reference_CN.md`, after the skill architecture and CLI direction are stable enough to document without churn.
 - Synchronize the repository documentation direction with the GitHub wiki.

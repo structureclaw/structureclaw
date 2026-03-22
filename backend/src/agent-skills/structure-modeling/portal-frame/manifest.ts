@@ -21,7 +21,7 @@ export const manifest: SkillManifest = {
   capabilities: ['intent-detection', 'draft-extraction', 'interaction-questions', 'model-build', 'report-narrative'],
   priority: 100,
   compatibility: {
-    minCoreVersion: '0.1.0',
+    minRuntimeVersion: '0.1.0',
     skillApiVersion: 'v1',
   },
 };

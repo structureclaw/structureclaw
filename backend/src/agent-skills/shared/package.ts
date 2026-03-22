@@ -54,7 +54,7 @@ export function normalizeBuiltInManifestToSkillPackage(
     source: 'builtin',
     capabilities: Array.isArray(manifest.capabilities) ? [...manifest.capabilities] : [],
     compatibility: {
-      minCoreVersion: manifest.compatibility?.minCoreVersion || '0.1.0',
+      minRuntimeVersion: manifest.compatibility?.minRuntimeVersion || '0.1.0',
       skillApiVersion: manifest.compatibility?.skillApiVersion || 'v1',
     },
     entrypoints: options?.entrypoints ?? {
@@ -94,7 +94,7 @@ export function normalizeSkillHubCatalogEntryToSkillPackage(
     source: 'skillhub',
     capabilities: Array.isArray(entry.capabilities) ? [...entry.capabilities] : [],
     compatibility: {
-      minCoreVersion: entry.compatibility?.minCoreVersion || '0.1.0',
+      minRuntimeVersion: entry.compatibility?.minRuntimeVersion || '0.1.0',
       skillApiVersion: entry.compatibility?.skillApiVersion || 'v1',
     },
     entrypoints: options?.entrypoints ?? entry.entrypoints ?? {},

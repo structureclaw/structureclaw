@@ -10,23 +10,22 @@ https://github.com/user-attachments/assets/031fe757-551d-4775-ab3f-0411037ad5ae
 
 - Conversational engineering workflow from natural language to analysis artifacts
 - Unified orchestration loop: draft -> validate -> analyze -> code-check -> report
-- Web UI, API backend, and Python analysis engine in one monorepo
+- Web UI, API backend, and backend-hosted Python analysis runtime in one monorepo
 - Regression and contract scripts for repeatable engineering validation
 
 ## Architecture
 
 ```text
 frontend (Next.js)
-	-> backend (Fastify + Prisma + Agent orchestration)
-	-> core (FastAPI analysis engine)
+	-> backend (Fastify + Prisma + Agent orchestration + analysis runtime host)
+	-> backend/src/agent-skills/analysis-execution/python
 	-> reports / metrics / artifacts
 ```
 
 Main directories:
 
 - `frontend/`: Next.js 14 application
-- `backend/`: Fastify API, agent/chat flows, Prisma integration
-- `core/`: FastAPI structural validation/conversion/analysis engine
+- `backend/`: Fastify API, agent/chat flows, Prisma integration, and analysis execution host
 - `scripts/`: startup helpers and contract/regression checks
 - `docs/`: user handbook and protocol references
 
@@ -52,7 +51,7 @@ Useful follow-up commands:
 make logs
 make stop
 make backend-regression
-make core-regression
+make analysis-regression
 ```
 
 CLI alternative:
@@ -90,7 +89,7 @@ Once the stack is ready, the main entrypoints are:
 
 - Frontend: `http://localhost:30000`
 - Backend health check: `http://localhost:30010/health`
-- Analysis engine: `http://localhost:30011/health`
+- Analysis routes: `http://localhost:30010/analyze`
 - Database status page: `http://localhost:30000/console/database`
 
 To stop the containers:
@@ -111,10 +110,10 @@ Copy and adjust environment variables from `.env.example`.
 
 Key variables include:
 
-- `PORT`, `FRONTEND_PORT`, `CORE_PORT`
+- `PORT`, `FRONTEND_PORT`
 - `DATABASE_URL`, `POSTGRES_SOURCE_DATABASE_URL`, `REDIS_URL`
 - `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`
-- `ANALYSIS_ENGINE_URL` (can be auto-derived)
+- `ANALYSIS_PYTHON_BIN`, `ANALYSIS_PYTHON_TIMEOUT_MS`, `ANALYSIS_ENGINE_MANIFEST_PATH`
 
 ## API Entrypoints
 
@@ -125,7 +124,7 @@ Backend:
 - `POST /api/v1/chat/stream`
 - `POST /api/v1/chat/execute`
 
-Core:
+Backend-hosted analysis:
 
 - `POST /validate`
 - `POST /convert`
@@ -137,7 +136,7 @@ Core:
 - Skills are enhancement layers, not the only execution path.
 - Unmatched selected skills fall back to generic no-skill modeling.
 - User-visible content must support both English and Chinese.
-- Keep module boundaries explicit across frontend/backend/core.
+- Keep module boundaries explicit across frontend/backend/analysis skills.
 
 ## Documentation
 

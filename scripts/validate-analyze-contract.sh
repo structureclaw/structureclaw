@@ -4,22 +4,15 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-if [[ -x core/.venv-uv-lite/bin/python ]]; then
-  PYTHON_BIN="core/.venv-uv-lite/bin/python"
-elif [[ -x core/.venv/bin/python ]]; then
-  PYTHON_BIN="core/.venv/bin/python"
-else
-  echo "No Python environment found at core/.venv or core/.venv-uv-lite" >&2
-  exit 1
-fi
+source "$ROOT_DIR/scripts/analysis-python-env.sh"
+require_analysis_python
 
 "$PYTHON_BIN" - <<'PY'
 import asyncio
 import sys
 
-sys.path.insert(0, 'core')
 from fastapi import HTTPException
-from main import AnalysisRequest, analyze
+from api import AnalysisRequest, analyze
 from schemas.structure_model_v1 import StructureModelV1, Node, Element, Material, Section
 
 model = StructureModelV1(

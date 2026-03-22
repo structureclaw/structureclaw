@@ -1,4 +1,4 @@
-# StructureClaw Core - Python Analysis Engine
+# StructureClaw Backend-Hosted Python Analysis Runtime
 # Finite Element Analysis & Structural Design
 
 # FEA Libraries

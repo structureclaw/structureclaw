@@ -9,20 +9,15 @@ PID_DIR="$RUNTIME_DIR/pids"
 ROOT_ENV_FILE="$ROOT_DIR/.env"
 FRONTEND_PORT="${FRONTEND_PORT:-30000}"
 BACKEND_PORT="${PORT:-8000}"
-CORE_PORT="${CORE_PORT:-8001}"
-CORE_PROFILE="full"
-CORE_ENV_MANAGER="uv"
 SKIP_INFRA=0
 SKIP_DB_INIT=0
-UV_LOCAL_BIN="${UV_INSTALL_DIR:-$HOME/.local/bin}"
 
 print_usage() {
   cat <<'EOF'
-Usage: ./scripts/dev-up.sh [full] [--uv] [--skip-infra] [--skip-db-init]
+Usage: ./scripts/dev-up.sh [--uv] [--skip-infra] [--skip-db-init]
 
 Options:
-  full            Start core with full Python dependencies (default)
-  --uv            Create core/.venv with uv-managed Python 3.11
+  --uv            Create backend/.venv with uv-managed Python 3.11
   --skip-infra    Do not start optional infra services via docker compose
   --skip-db-init  Skip SQLite schema sync+seed
 EOF
@@ -30,11 +25,7 @@ EOF
 
 for arg in "$@"; do
   case "$arg" in
-    lite|full)
-      CORE_PROFILE="$arg"
-      ;;
     --uv)
-      CORE_ENV_MANAGER="uv"
       ;;
     --skip-infra)
       SKIP_INFRA=1
@@ -53,11 +44,6 @@ for arg in "$@"; do
       ;;
   esac
 done
-
-if [[ "$CORE_PROFILE" == "lite" ]]; then
-  echo "The lite core profile has been retired; using full dependencies instead."
-  CORE_PROFILE="full"
-fi
 
 mkdir -p "$LOG_DIR" "$PID_DIR"
 
@@ -78,7 +64,6 @@ load_root_env() {
     set +a
     FRONTEND_PORT="${FRONTEND_PORT:-30000}"
     BACKEND_PORT="${PORT:-8000}"
-    CORE_PORT="${CORE_PORT:-8001}"
   fi
 }
 
@@ -112,26 +97,6 @@ start_service() {
   echo $! >"$pid_file"
 }
 
-require_command() {
-  local cmd="$1"
-  local hint="$2"
-  if ! command -v "$cmd" >/dev/null 2>&1; then
-    echo "Missing required command: $cmd"
-    echo "$hint"
-    exit 1
-  fi
-}
-
-has_command() {
-  command -v "$1" >/dev/null 2>&1
-}
-
-ensure_uv() {
-  "$ROOT_DIR/scripts/ensure-uv.sh"
-  export PATH="$UV_LOCAL_BIN:$PATH"
-  require_command "uv" "uv bootstrap finished but the command is still unavailable."
-}
-
 ensure_npm_dependencies() {
   local project_dir="$1"
   local project_name="$2"
@@ -151,7 +116,6 @@ ensure_npm_dependencies() {
   if [[ "$needs_install" -eq 1 ]]; then
     echo "Installing $project_name dependencies..."
     npm ci --prefix "$project_dir"
-
     if [[ -f "$lockfile" ]]; then
       mkdir -p "$node_modules_dir"
       cp "$lockfile" "$lock_snapshot"
@@ -159,170 +123,52 @@ ensure_npm_dependencies() {
   fi
 }
 
-core_module_available() {
-  local module_name="$1"
-  if [[ ! -x "$ROOT_DIR/core/.venv/bin/python" ]]; then
-    return 1
-  fi
-
-  "$ROOT_DIR/core/.venv/bin/python" - "$module_name" <<'PY' >/dev/null 2>&1
-import importlib.util
-import sys
-
-module = sys.argv[1]
-sys.exit(0 if importlib.util.find_spec(module) else 1)
-PY
-}
-
-core_opensees_runtime_available() {
-  if [[ ! -x "$ROOT_DIR/core/.venv/bin/python" ]]; then
-    return 1
-  fi
-
-  PYTHONPATH="$ROOT_DIR/core" "$ROOT_DIR/core/.venv/bin/python" -m engines.opensees_runtime --json >/dev/null 2>&1
-}
-
-should_reset_frontend_cache() {
-  local log_file="$LOG_DIR/frontend.log"
-
-  if [[ ! -f "$log_file" ]]; then
-    return 1
-  fi
-
-  if grep -Fq "Cannot find module './" "$log_file" && grep -Fq ".next/server/webpack-runtime.js" "$log_file"; then
-    return 0
-  fi
-
-  return 1
-}
-
-reset_frontend_cache_if_needed() {
-  local frontend_pid_file="$PID_DIR/frontend.pid"
-
-  if is_pid_running "$frontend_pid_file"; then
-    return 0
-  fi
-
-  if should_reset_frontend_cache; then
-    echo "Detected stale frontend build artifacts from previous session; resetting frontend/.next..."
-    rm -rf "$ROOT_DIR/frontend/.next"
-  fi
-}
-
 is_redis_enabled() {
   local redis_url=""
-  local raw_line=""
-  local line=""
-  local value=""
-
   if [[ -f "$ROOT_ENV_FILE" ]]; then
-    while IFS= read -r raw_line || [[ -n "$raw_line" ]]; do
-      line="${raw_line#"${raw_line%%[![:space:]]*}"}"
-      [[ -z "$line" || "${line:0:1}" == "#" || "$line" != *=* ]] && continue
-
-      if [[ "${line%%=*}" == "REDIS_URL" ]]; then
-        value="${line#*=}"
-        value="${value%\"}"
-        value="${value#\"}"
-        value="${value%\'}"
-        value="${value#\'}"
-        redis_url="$value"
-      fi
-    done <"$ROOT_ENV_FILE"
+    redis_url="$(grep '^REDIS_URL=' "$ROOT_ENV_FILE" | tail -1 | cut -d= -f2- || true)"
   fi
-
   [[ -n "$redis_url" && "${redis_url,,}" != "disabled" ]]
-}
-
-docker_ready() {
-  docker info >/dev/null 2>&1
 }
 
 ensure_file "$ROOT_DIR/.env" "$ROOT_DIR/.env.example"
 load_root_env
-
-require_command "node" "Install Node.js 18+ and retry."
-require_command "npm" "Install npm and retry."
-ensure_uv
-
 ensure_npm_dependencies "$ROOT_DIR/backend" "backend"
 ensure_npm_dependencies "$ROOT_DIR/frontend" "frontend"
 
 "$ROOT_DIR/scripts/auto-migrate-legacy-postgres.sh"
-load_root_env
 
-if [[ ! -x "$ROOT_DIR/core/.venv/bin/python" ]] || ! core_module_available "uvicorn"; then
-  recreate_core_venv=0
-  if [[ ! -x "$ROOT_DIR/core/.venv/bin/python" ]]; then
-    echo "Creating Python virtual environment for core ($CORE_PROFILE)..."
-  else
-    echo "Core virtual environment exists but is missing required modules; reinstalling core dependencies ($CORE_PROFILE)..."
-    recreate_core_venv=1
-  fi
-
-  if [[ "$recreate_core_venv" -eq 1 ]]; then
-    echo "Removing stale core virtual environment at core/.venv..."
-    rm -rf "$ROOT_DIR/core/.venv"
-  fi
-
-  if [[ "$CORE_ENV_MANAGER" == "uv" ]]; then
-    make -C "$ROOT_DIR" setup-core-full-uv
-  else
-    echo "Using Python 3.11 managed by uv."
-    make -C "$ROOT_DIR" setup-core-full-uv
-  fi
+if [[ ! -x "$ROOT_DIR/backend/.venv/bin/python" ]]; then
+  echo "Creating backend/.venv for analysis runtime..."
+  make -C "$ROOT_DIR" setup-analysis-python
 fi
 
-if ! core_opensees_runtime_available; then
-  echo "OpenSees runtime check failed in core/.venv."
-  echo "Run: PYTHONPATH=core core/.venv/bin/python -m engines.opensees_runtime --json"
-  echo "The default startup profile requires a working OpenSees runtime for builtin-opensees."
+source "$ROOT_DIR/scripts/analysis-python-env.sh"
+require_analysis_python
+
+if ! "$PYTHON_BIN" -m providers.opensees.runtime --json >/dev/null 2>&1; then
+  echo "OpenSees runtime check failed in backend/.venv."
+  echo "Run: PYTHONPATH=\"$PYTHONPATH\" \"$PYTHON_BIN\" -m providers.opensees.runtime --json"
   exit 1
 fi
 
-if [[ "$SKIP_INFRA" -eq 0 ]]; then
-  compose_services=()
-  if is_redis_enabled; then
-    compose_services+=(redis)
-  else
-    echo "Redis is disabled in .env; skipping redis container startup."
-  fi
-
-  if [[ "${#compose_services[@]}" -gt 0 ]]; then
-    require_command "docker" "Install Docker and Docker Compose plugin, or rerun with --skip-infra."
-
-    if ! docker_ready; then
-      echo "Docker daemon is not reachable."
-      echo "Start Docker Desktop/service, or rerun with --skip-infra."
-      exit 1
-    fi
-
-    echo "Starting optional local infrastructure..."
-    docker compose -f "$ROOT_DIR/docker-compose.yml" up -d "${compose_services[@]}"
-  else
-    echo "No optional infra services are enabled; continuing without docker-managed infra."
-  fi
-else
-  echo "Skipping optional infra startup (--skip-infra)."
+if [[ "$SKIP_INFRA" -eq 0 ]] && is_redis_enabled; then
+  echo "Starting optional local infrastructure..."
+  docker compose -f "$ROOT_DIR/docker-compose.yml" up -d redis
 fi
 
 if [[ "$SKIP_DB_INIT" -eq 0 ]]; then
   mkdir -p "$ROOT_DIR/.runtime/data"
   echo "Running SQLite schema sync and seed..."
   npm run db:init --prefix "$ROOT_DIR/backend"
-else
-  echo "Skipping database init (--skip-db-init)."
 fi
 
 start_service "backend" "npm run dev --prefix backend"
-reset_frontend_cache_if_needed
 start_service "frontend" "npm run dev --prefix frontend -- --port $FRONTEND_PORT"
-start_service "core" "core/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port $CORE_PORT --reload --app-dir core"
 
 echo
 echo "Local stack started."
 echo "Logs: $LOG_DIR"
 echo "Frontend: http://localhost:$FRONTEND_PORT"
-echo "Backend:  http://localhost:$BACKEND_PORT (GET / returns 404 by design; use /health)"
-echo "Core:     http://localhost:$CORE_PORT"
+echo "Backend:  http://localhost:$BACKEND_PORT"
 echo "Use ./scripts/dev-status.sh to inspect services."

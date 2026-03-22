@@ -38,7 +38,7 @@ const run = async () => {
         capabilities: ['intent-detection'],
         priority: 10,
         compatibility: {
-          minCoreVersion: '0.1.0',
+          minRuntimeVersion: '0.1.0',
           skillApiVersion: 'v1',
         },
       },
@@ -57,7 +57,7 @@ const run = async () => {
         capabilities: ['intent-detection'],
         priority: 20,
         compatibility: {
-          minCoreVersion: '0.1.0',
+          minRuntimeVersion: '0.1.0',
           skillApiVersion: 'v1',
         },
       },
@@ -77,7 +77,7 @@ const run = async () => {
         supportedAnalysisTypes: ['static', 'dynamic'],
         priority: 5,
         compatibility: {
-          minCoreVersion: '0.1.0',
+          minRuntimeVersion: '0.1.0',
           skillApiVersion: 'v1',
         },
       },

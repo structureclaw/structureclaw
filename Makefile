@@ -6,34 +6,32 @@ SHELL := /bin/bash
 UV_CACHE_DIR ?= /tmp/uv-cache
 UV_PYTHON_INSTALL_DIR ?= /tmp/uv-python
 endif
-CORE_PYTHON_VERSION ?= 3.11
+ANALYSIS_PYTHON_VERSION ?= 3.11
 
-.PHONY: help ensure-uv install setup-core-full setup-core-full-uv dev-backend dev-frontend dev-core-full build db-up db-down db-init docker-up docker-down local-up local-up-uv local-up-noinfra local-down local-status health check-startup backend-regression core-regression doctor start restart stop status logs sclaw-install up
+.PHONY: help ensure-uv install setup-analysis-python dev-backend dev-frontend build db-up db-down db-init docker-up docker-down local-up local-up-uv local-up-noinfra local-down local-status health check-startup backend-regression analysis-regression doctor start restart stop status logs sclaw-install up
 
 help:
 	@echo "Available targets:"
 	@echo "  ensure-uv      Bootstrap uv into ~/.local/bin when missing"
 	@echo "  install         Install frontend and backend npm dependencies"
-	@echo "  setup-core-full Create core .venv with full dependencies via uv"
-	@echo "  setup-core-full-uv Create core .venv with uv + Python $(CORE_PYTHON_VERSION) (full deps)"
+	@echo "  setup-analysis-python Create backend/.venv with analysis Python dependencies via uv"
 	@echo "  dev-backend     Start backend in watch mode"
 	@echo "  dev-frontend    Start frontend in dev mode"
-	@echo "  dev-core-full   Start analysis engine with full deps"
 	@echo "  build           Build frontend and backend"
 	@echo "  db-up           Start optional local infra (redis only)"
 	@echo "  db-down         Stop optional local infra (redis only)"
 	@echo "  db-init         Run SQLite schema sync and seed"
 	@echo "  docker-up       Start full docker compose stack"
 	@echo "  docker-down     Stop full docker compose stack"
-	@echo "  local-up        One-command local startup (full core profile)"
-	@echo "  local-up-uv     One-command local startup using uv-managed Python $(CORE_PYTHON_VERSION)"
+	@echo "  local-up        One-command local startup"
+	@echo "  local-up-uv     One-command local startup using uv-managed Python $(ANALYSIS_PYTHON_VERSION)"
 	@echo "  local-up-noinfra Start local app stack without starting optional infra containers"
 	@echo "  local-down      Stop local app processes and infra"
 	@echo "  local-status    Show local app process/health status"
 	@echo "  health          Check local service health endpoints"
 	@echo "  backend-regression Run backend + agent/chat contract regressions"
 	@echo "  check-startup   Run local startup checks without launching the full stack"
-	@echo "  core-regression Run core analysis regression checks (contract + cases + schema)"
+	@echo "  analysis-regression Run analysis regression checks (contract + cases + schema)"
 	@echo "  doctor          Beginner alias of check-startup"
 	@echo "  start           Beginner one-command local startup (SQLite, no Docker)"
 	@echo "  restart         Restart the local stack with the default startup profile"
@@ -50,20 +48,14 @@ ensure-uv:
 install:
 	$(WINDOWS_PS) install
 
-setup-core-full:
-	$(WINDOWS_PS) setup-core-full
-
-setup-core-full-uv:
-	$(WINDOWS_PS) setup-core-full-uv
+setup-analysis-python:
+	$(WINDOWS_PS) setup-analysis-python
 
 dev-backend:
 	$(WINDOWS_PS) dev-backend
 
 dev-frontend:
 	$(WINDOWS_PS) dev-frontend
-
-dev-core-full:
-	$(WINDOWS_PS) dev-core-full
 
 build:
 	$(WINDOWS_PS) build
@@ -107,8 +99,8 @@ check-startup:
 backend-regression:
 	$(WINDOWS_PS) backend-regression
 
-core-regression:
-	$(WINDOWS_PS) core-regression
+analysis-regression:
+	$(WINDOWS_PS) analysis-regression
 
 doctor: check-startup
 
@@ -139,22 +131,15 @@ install:
 	npm install --prefix backend
 	npm install --prefix frontend
 
-setup-core-full: ensure-uv
-	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv venv --python $(CORE_PYTHON_VERSION) core/.venv
-	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv pip install --python core/.venv/bin/python --link-mode=copy -r core/requirements.txt
-
-setup-core-full-uv: ensure-uv
-	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv venv --python $(CORE_PYTHON_VERSION) core/.venv
-	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv pip install --python core/.venv/bin/python --link-mode=copy -r core/requirements.txt
+setup-analysis-python: ensure-uv
+	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv venv --python $(ANALYSIS_PYTHON_VERSION) backend/.venv
+	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv pip install --python backend/.venv/bin/python --link-mode=copy -r backend/src/agent-skills/analysis-execution/python/requirements.txt
 
 dev-backend:
 	npm run dev --prefix backend
 
 dev-frontend:
 	FRONTEND_PORT=$${FRONTEND_PORT:-30000} npm run dev --prefix frontend -- --port $$FRONTEND_PORT
-
-dev-core-full:
-	CORE_PORT=$${CORE_PORT:-8001} core/.venv/bin/python -m uvicorn main:app --host 0.0.0.0 --port $$CORE_PORT --reload --app-dir core
 
 build:
 	npm run build --prefix backend
@@ -192,7 +177,6 @@ local-status:
 
 health:
 	curl http://localhost:$${PORT:-8000}/health
-	curl http://localhost:$${CORE_PORT:-8001}/health
 	curl -I http://localhost:$${FRONTEND_PORT:-30000}
 
 check-startup:
@@ -201,8 +185,8 @@ check-startup:
 backend-regression:
 	./scripts/check-backend-regression.sh
 
-core-regression:
-	./scripts/check-core-regression.sh
+analysis-regression:
+	./scripts/check-analysis-regression.sh
 
 doctor: check-startup
 

@@ -1,0 +1,45 @@
+name: Analysis Regression
+
+on:
+  pull_request:
+    paths:
+      - 'backend/src/agent-skills/analysis-execution/**'
+      - 'scripts/**'
+      - 'Makefile'
+      - '.github/workflows/backend-regression.yml'
+      - '.github/workflows/analysis-regression.yml'
+  push:
+    branches:
+      - master
+    paths:
+      - 'backend/src/agent-skills/analysis-execution/**'
+      - 'scripts/**'
+      - 'Makefile'
+      - '.github/workflows/backend-regression.yml'
+      - '.github/workflows/analysis-regression.yml'
+
+jobs:
+  analysis-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Prepare Analysis Virtualenv
+        run: |
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install --upgrade pip
+          backend/.venv/bin/pip install -r backend/src/agent-skills/analysis-execution/python/requirements.txt
+
+      - name: Run Analysis Regression
+        # CI may not always provide a usable OpenSeesPy runtime on Linux.
+        # The regression suite still verifies unavailable-engine signaling,
+        # auto-fallback routing, and the non-OpenSees regression surface.
+        run: make analysis-regression

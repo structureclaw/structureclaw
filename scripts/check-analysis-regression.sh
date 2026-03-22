@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-echo "Core regression checks"
+echo "Analysis regression checks"
 
 echo
 echo "==> OpenSees runtime and routing"
@@ -55,4 +55,4 @@ echo "==> Convert round-trip pass rate"
 ./scripts/validate-convert-passrate.sh
 
 echo
-echo "Core regression checks passed."
+echo "Analysis regression checks passed."

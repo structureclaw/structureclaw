@@ -157,7 +157,7 @@ export type SkillDomain =
   | 'generic-fallback';
 
 export interface SkillCompatibility {
-  minCoreVersion: string;
+  minRuntimeVersion: string;
   skillApiVersion: string;
 }
 
