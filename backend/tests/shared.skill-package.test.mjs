@@ -48,7 +48,7 @@ describe('shared skill package metadata', () => {
       description: entry.description,
       capabilities: entry.capabilities,
       compatibility: {
-        minCoreVersion: entry.packageMetadata.compatibility.minCoreVersion,
+        minRuntimeVersion: entry.packageMetadata.compatibility.minRuntimeVersion,
         skillApiVersion: entry.packageMetadata.compatibility.skillApiVersion,
       },
       integrity: entry.integrity,

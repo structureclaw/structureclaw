@@ -90,7 +90,7 @@ describe('structure-modeling provider registry', () => {
         source: 'skillhub',
         capabilities: ['intent-detection'],
         compatibility: {
-          minCoreVersion: '0.1.0',
+          minRuntimeVersion: '0.1.0',
           skillApiVersion: 'v1',
         },
         entrypoints: {

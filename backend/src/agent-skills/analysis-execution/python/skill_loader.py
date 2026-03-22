@@ -20,9 +20,9 @@ class SkillNotLoadedError(RuntimeError):
 
 def build_missing_skill_detail(error: SkillNotLoadedError, capability: str | None = None) -> dict[str, Any]:
     hint = (
-        "Please install/enable related local skill markdown and implementation, then restart core service."
+        "Please install/enable related local skill markdown and implementation, then retry the analysis runtime."
     )
-    hint_zh = "请安装/启用对应本地 skill（Markdown+实现），然后重启 core 服务。"
+    hint_zh = "请安装/启用对应本地 skill（Markdown+实现），然后重试分析运行时。"
     capability_text = capability or "requested capability"
     return {
         "errorCode": "SKILL_NOT_LOADED",
@@ -39,8 +39,8 @@ def build_missing_skill_detail(error: SkillNotLoadedError, capability: str | Non
 @lru_cache(maxsize=None)
 def load_skill_module(relative_path: str) -> ModuleType:
     """Load migrated Python module from backend skill path."""
-    repo_root = Path(__file__).resolve().parents[1]
-    target = repo_root / "backend" / "src" / "agent-skills" / relative_path
+    skill_root = Path(__file__).resolve().parents[2]
+    target = skill_root / relative_path
     if not target.exists():
         raise ImportError(f"Skill module not found: {target}")
 
@@ -54,7 +54,7 @@ def load_skill_module(relative_path: str) -> ModuleType:
     sys.modules[module_name] = module
 
     # For geometry-input converters, force absolute import "converters.*" to resolve
-    # from backend skill tree instead of the legacy core package.
+    # from the backend skill tree instead of the removed legacy analysis package.
     injected_path: str | None = None
     if relative_path.startswith("geometry-input/converters/"):
         injected_path = str(target.parent.parent)

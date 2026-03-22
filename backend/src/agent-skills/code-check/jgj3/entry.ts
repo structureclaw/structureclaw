@@ -1,5 +1,5 @@
-import type { AxiosInstance } from 'axios';
 import type { CodeCheckDomainInput } from '../types.js';
+import type { CodeCheckClient } from '../rule.js';
 
 const JGJ3_ALIASES = new Set(['JGJ3', 'JGJ3-2010']);
 
@@ -8,7 +8,7 @@ export function matchesJGJ3Code(code: string): boolean {
 }
 
 export async function executeJGJ3CodeCheckDomain(
-  engineClient: AxiosInstance,
+  engineClient: CodeCheckClient,
   input: CodeCheckDomainInput,
   engineId?: string,
 ): Promise<unknown> {

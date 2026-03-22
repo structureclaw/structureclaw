@@ -12,11 +12,11 @@ from typing import Any, Dict, List, Optional
 import httpx
 from fastapi import HTTPException
 
-from skill_bridge import SkillNotLoadedError, build_missing_skill_detail, load_skill_symbol
-from fem.dynamic_analysis import DynamicAnalyzer
-from fem.seismic_analysis import SeismicAnalyzer
-from fem.static_analysis import StaticAnalyzer
-from schemas.structure_model_v1 import StructureModelV1
+from skill_loader import SkillNotLoadedError, build_missing_skill_detail, load_skill_symbol
+from providers.common.dynamic_analysis import DynamicAnalyzer
+from providers.common.seismic_analysis import SeismicAnalyzer
+from providers.common.static_analysis import StaticAnalyzer
+from contracts.structure_model_v1 import StructureModelV1
 
 logger = logging.getLogger(__name__)
 
@@ -137,7 +137,7 @@ class AnalysisEngineRegistry:
         meta = self._build_engine_meta(selection)
         existing_meta = result.get("meta") if isinstance(result, dict) else None
         if isinstance(existing_meta, dict):
-          meta.update(existing_meta)
+            meta.update(existing_meta)
         return {
             **result,
             "meta": meta,
@@ -430,19 +430,19 @@ class AnalysisEngineRegistry:
         if self._opensees_runtime_reason is not _UNSET:
             return self._opensees_runtime_reason if isinstance(self._opensees_runtime_reason, str) else None
 
-        core_root = Path(__file__).resolve().parents[1]
+        python_root = Path(__file__).resolve().parents[1]
         env = os.environ.copy()
         existing_pythonpath = env.get("PYTHONPATH", "").strip()
         env["PYTHONPATH"] = (
-            f"{core_root}{os.pathsep}{existing_pythonpath}"
+            f"{python_root}{os.pathsep}{existing_pythonpath}"
             if existing_pythonpath
-            else str(core_root)
+            else str(python_root)
         )
 
         try:
             probe = subprocess.run(
-                [sys.executable, "-m", "engines.opensees_runtime", "--json"],
-                cwd=core_root,
+                [sys.executable, "-m", "providers.opensees.runtime", "--json"],
+                cwd=python_root,
                 env=env,
                 capture_output=True,
                 text=True,
@@ -550,4 +550,4 @@ class AnalysisEngineRegistry:
         value = os.getenv(ENGINE_MANIFEST_ENV, "").strip()
         if value:
             return Path(value)
-        return Path(__file__).resolve().parents[2] / ".runtime" / "analysis-engines.json"
+        return Path(__file__).resolve().parents[6] / ".runtime" / "analysis-engines.json"

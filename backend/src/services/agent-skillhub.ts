@@ -5,7 +5,7 @@ import path from 'path';
 import { normalizeSkillHubCatalogEntryToSkillPackage } from '../agent-skills/shared/package.js';
 import type { SkillDomain } from '../agent-skills/runtime/types.js';
 
-type SkillCompatibilityReasonCode = 'core_version_incompatible' | 'skill_api_version_incompatible';
+type SkillCompatibilityReasonCode = 'runtime_version_incompatible' | 'skill_api_version_incompatible';
 type SkillIntegrityReasonCode = 'signature_invalid' | 'checksum_mismatch';
 
 export interface SkillHubCatalogEntry {
@@ -25,7 +25,7 @@ export interface SkillHubCatalogEntry {
   };
   capabilities: string[];
   compatibility: {
-    minCoreVersion: string;
+    minRuntimeVersion: string;
     skillApiVersion: string;
   };
   integrity: {
@@ -42,7 +42,7 @@ interface SkillHubCacheEntry {
     [key: string]: string | undefined;
   };
   compatibility: {
-    minCoreVersion: string;
+    minRuntimeVersion: string;
     skillApiVersion: string;
   };
   integrity: {
@@ -86,7 +86,7 @@ interface SkillHubCatalogSeed {
   };
   capabilities: string[];
   compatibility: {
-    minCoreVersion: string;
+    minRuntimeVersion: string;
     skillApiVersion: string;
   };
   integrityOverride?: Partial<SkillHubCatalogEntry['integrity']>;
@@ -135,7 +135,7 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
     },
     capabilities: ['code-check', 'traceability'],
     compatibility: {
-      minCoreVersion: '0.1.0',
+      minRuntimeVersion: '0.1.0',
       skillApiVersion: 'v1',
     },
   }),
@@ -156,7 +156,7 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
     },
     capabilities: ['report-narrative', 'report-export'],
     compatibility: {
-      minCoreVersion: '0.1.0',
+      minRuntimeVersion: '0.1.0',
       skillApiVersion: 'v1',
     },
   }),
@@ -177,28 +177,28 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
     },
     capabilities: ['analysis-policy', 'interaction-questions'],
     compatibility: {
-      minCoreVersion: '0.1.0',
+      minRuntimeVersion: '0.1.0',
       skillApiVersion: 'v1',
     },
   }),
   buildCatalogEntry({
-    id: 'skillhub.future-core-only',
+    id: 'skillhub.future-runtime-only',
     version: '1.0.0',
     domain: 'analysis-strategy',
     entrypoints: {
       analysisStrategy: 'dist/analysis-strategy.js',
     },
     name: {
-      zh: '未来核心策略包',
-      en: 'Future Core Strategy Pack',
+      zh: '未来运行时策略包',
+      en: 'Future Runtime Strategy Pack',
     },
     description: {
-      zh: '需要更高核心版本的实验性策略包。',
-      en: 'Experimental policy pack requiring a newer core version.',
+      zh: '需要更高运行时版本的实验性策略包。',
+      en: 'Experimental policy pack requiring a newer runtime version.',
     },
     capabilities: ['analysis-policy'],
     compatibility: {
-      minCoreVersion: '9.0.0',
+      minRuntimeVersion: '9.0.0',
       skillApiVersion: 'v2',
     },
   }),
@@ -219,7 +219,7 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
     },
     capabilities: ['report-narrative'],
     compatibility: {
-      minCoreVersion: '0.1.0',
+      minRuntimeVersion: '0.1.0',
       skillApiVersion: 'v1',
     },
     integrityOverride: {
@@ -243,7 +243,7 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
     },
     capabilities: ['report-export'],
     compatibility: {
-      minCoreVersion: '0.1.0',
+      minRuntimeVersion: '0.1.0',
       skillApiVersion: 'v1',
     },
     integrityOverride: {
@@ -252,7 +252,7 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
   }),
 ];
 
-const CURRENT_CORE_VERSION = process.env.SCLAW_CORE_VERSION || '0.1.0';
+const CURRENT_RUNTIME_VERSION = process.env.SCLAW_RUNTIME_VERSION || '0.1.0';
 const CURRENT_SKILL_API_VERSION = process.env.SCLAW_SKILL_API_VERSION || 'v1';
 
 function parseVersion(value: string): number[] {
@@ -524,8 +524,8 @@ export class AgentSkillHubService {
     reasonCodes: SkillCompatibilityReasonCode[];
   } {
     const reasonCodes: SkillCompatibilityReasonCode[] = [];
-    if (isVersionGreater(entry.compatibility.minCoreVersion, CURRENT_CORE_VERSION)) {
-      reasonCodes.push('core_version_incompatible');
+    if (isVersionGreater(entry.compatibility.minRuntimeVersion, CURRENT_RUNTIME_VERSION)) {
+      reasonCodes.push('runtime_version_incompatible');
     }
     if (entry.compatibility.skillApiVersion !== CURRENT_SKILL_API_VERSION) {
       reasonCodes.push('skill_api_version_incompatible');

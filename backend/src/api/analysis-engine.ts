@@ -24,6 +24,9 @@ const installManifestSchema = z.object({
   healthcheckPath: z.string().optional(),
   checkMode: z.enum(['ping', 'analyze', 'validate']).optional(),
 }).superRefine((manifest, ctx) => {
+  if (manifest.kind === 'python' && !manifest.adapterKey) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['adapterKey'], message: 'Python engines require adapterKey' });
+  }
   if (manifest.kind === 'http') {
     if (!manifest.baseUrl) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['baseUrl'], message: 'HTTP engines require baseUrl' });

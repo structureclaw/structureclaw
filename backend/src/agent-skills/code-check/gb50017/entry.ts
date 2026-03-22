@@ -1,5 +1,5 @@
-import type { AxiosInstance } from 'axios';
 import type { CodeCheckDomainInput } from '../types.js';
+import type { CodeCheckClient } from '../rule.js';
 
 const GB50017_ALIASES = new Set(['GB50017', 'GB50017-2017']);
 
@@ -8,7 +8,7 @@ export function matchesGB50017Code(code: string): boolean {
 }
 
 export async function executeGB50017CodeCheckDomain(
-  engineClient: AxiosInstance,
+  engineClient: CodeCheckClient,
   input: CodeCheckDomainInput,
   engineId?: string,
 ): Promise<unknown> {

@@ -1,9 +1,9 @@
-import type { AxiosInstance } from 'axios';
 import type { AppLocale } from '../../services/locale.js';
 import {
   resolveCodeCheckRule,
 } from './registry.js';
 import type { CodeCheckDomainInput } from './types.js';
+import type { CodeCheckClient } from './rule.js';
 
 export type { CodeCheckDomainInput } from './types.js';
 export { listCodeCheckRuleProviders, resolveCodeCheckDesignCodeFromSkillIds } from './registry.js';
@@ -62,7 +62,7 @@ export function buildCodeCheckInput(options: {
 }
 
 export async function executeCodeCheckDomain(
-  engineClient: AxiosInstance,
+  engineClient: CodeCheckClient,
   input: CodeCheckDomainInput,
   engineId?: string,
 ): Promise<unknown> {

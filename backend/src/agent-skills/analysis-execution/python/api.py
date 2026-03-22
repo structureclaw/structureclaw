@@ -1,20 +1,16 @@
-"""
-StructureClaw Core - 结构分析引擎
-基于 OpenSees 和 Pynite 的有限元分析引擎
-"""
+"""StructureClaw backend-hosted Python analysis runtime."""
 
 from datetime import datetime, timezone
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from typing import List, Dict, Any, Optional
-import uvicorn
 import logging
 
-from skill_bridge import SkillNotLoadedError, build_missing_skill_detail, load_skill_symbol
-from engines import AnalysisEngineRegistry
-from schemas.structure_model_v1 import StructureModelV1
-from schemas.migrations import (
+from skill_loader import SkillNotLoadedError, build_missing_skill_detail, load_skill_symbol
+from providers.registry import AnalysisEngineRegistry
+from contracts.structure_model_v1 import StructureModelV1
+from contracts.migrations import (
     is_supported_target_schema_version,
     migrate_structure_model_v1,
 )
@@ -39,8 +35,8 @@ def _create_concrete_designer():
     return cls()
 
 app = FastAPI(
-    title="StructureClaw Analysis Engine",
-    description="建筑结构有限元分析引擎",
+    title="StructureClaw Analysis Runtime",
+    description="Backend-hosted structural analysis runtime",
     version="0.1.0"
 )
 
@@ -367,15 +363,3 @@ async def design_column(params: Dict[str, Any]):
     except Exception as e:
         logger.error(f"Column design failed: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
-# ============ 启动服务 ============
-
-if __name__ == "__main__":
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8001,
-        reload=True,
-        log_level="info"
-    )

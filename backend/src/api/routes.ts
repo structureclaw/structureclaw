@@ -9,8 +9,11 @@ import { agentRoutes } from './agent.js';
 import { analysisEngineRoutes } from './analysis-engine.js';
 import { adminDatabaseRoutes } from './admin-database.js';
 import { modelRoutes } from './models.js';
+import { analysisRuntimeCompatibilityRoutes } from './analysis-runtime.js';
 
 export async function registerRoutes(fastify: FastifyInstance) {
+  await fastify.register(analysisRuntimeCompatibilityRoutes);
+
   // API 版本前缀
   const apiPrefix = '/api/v1';
 

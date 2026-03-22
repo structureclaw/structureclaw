@@ -1,8 +1,7 @@
-import axios from 'axios';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import { config } from '../config/index.js';
-import { buildProxyConfig } from '../utils/http.js';
+import { AnalysisExecutionService } from './analysis-execution.js';
 
 export interface AnalysisEngineManifest {
   id: string;
@@ -26,30 +25,24 @@ export interface AnalysisEngineManifest {
 }
 
 export class AnalysisEngineCatalogService {
-  private engineUrl: string;
-  private engineProxyConfig: { proxy?: false };
-  private manifestPath: string;
+  private readonly manifestPath: string;
+  private readonly executionService: AnalysisExecutionService;
 
   constructor() {
-    this.engineUrl = config.analysisEngineUrl;
-    this.engineProxyConfig = buildProxyConfig(this.engineUrl);
     this.manifestPath = config.analysisEngineManifestPath;
+    this.executionService = new AnalysisExecutionService();
   }
 
   async listEngines() {
-    const response = await axios.get(`${this.engineUrl}/engines`, this.engineProxyConfig);
-    return response.data;
+    return this.executionService.listEngines();
   }
 
   async getEngine(id: string) {
-    const payload = await this.listEngines();
-    const engines = Array.isArray(payload?.engines) ? payload.engines : [];
-    return engines.find((engine: { id?: string }) => engine.id === id) || null;
+    return this.executionService.getEngine(id);
   }
 
   async checkEngine(id: string) {
-    const response = await axios.post(`${this.engineUrl}/engines/${id}/check`, {}, this.engineProxyConfig);
-    return response.data;
+    return this.executionService.checkEngine(id);
   }
 
   getManifestSchema() {

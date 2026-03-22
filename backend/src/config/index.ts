@@ -26,8 +26,8 @@ const llmBaseUrl = process.env.LLM_BASE_URL
   || (isZhipu ? 'https://open.bigmodel.cn/api/paas/v4/' : (process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1'));
 const frontendPort = process.env.FRONTEND_PORT || '30000';
 const backendPort = process.env.PORT || '8000';
-const corePort = process.env.CORE_PORT || '8001';
 const analysisEngineManifestPath = process.env.ANALYSIS_ENGINE_MANIFEST_PATH || path.resolve(__dirname, '../../../.runtime/analysis-engines.json');
+const defaultAnalysisPythonBin = path.resolve(__dirname, '../../.venv/bin/python');
 
 const defaultCorsOrigins = [
   `http://localhost:${frontendPort}`,
@@ -71,8 +71,9 @@ export const config = {
   openaiModel: process.env.OPENAI_MODEL || 'gpt-4-turbo-preview',
   openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
 
-  // 分析引擎配置
-  analysisEngineUrl: process.env.ANALYSIS_ENGINE_URL || `http://localhost:${corePort}`,
+  // 分析执行配置
+  analysisPythonBin: process.env.ANALYSIS_PYTHON_BIN || defaultAnalysisPythonBin,
+  analysisPythonTimeoutMs: parseInt(process.env.ANALYSIS_PYTHON_TIMEOUT_MS || '300000', 10),
   analysisEngineManifestPath,
 
   // pgAdmin 配置

@@ -11,7 +11,7 @@ describe('shared executable skill provider loader', () => {
         source: 'skillhub',
         capabilities: [],
         compatibility: {
-          minCoreVersion: '0.1.0',
+          minRuntimeVersion: '0.1.0',
           skillApiVersion: 'v1',
         },
         entrypoints: {
@@ -44,7 +44,7 @@ describe('shared executable skill provider loader', () => {
           source: 'skillhub',
           capabilities: [],
           compatibility: {
-            minCoreVersion: '0.1.0',
+            minRuntimeVersion: '0.1.0',
             skillApiVersion: 'v1',
           },
           entrypoints: {},
@@ -57,7 +57,7 @@ describe('shared executable skill provider loader', () => {
           source: 'skillhub',
           capabilities: [],
           compatibility: {
-            minCoreVersion: '0.1.0',
+            minRuntimeVersion: '0.1.0',
             skillApiVersion: 'v1',
           },
           entrypoints: {

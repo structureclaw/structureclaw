@@ -53,7 +53,7 @@ export async function tryNoSkillLlmBuildGenericModel(
         'You are a structural modeling expert.',
         'Generate a computable StructureModel v1 JSON from the user request.',
         'Return JSON object only, without markdown.',
-        'The 1.0.0 JSON template below is the core format. Follow its keys and nesting strictly.',
+        'The 1.0.0 JSON template below is the base format. Follow its keys and nesting strictly.',
         `Template:\n${template}`,
         'Use strict StructureModel v1 fields. At minimum include: schema_version, unit_system, nodes, elements, materials, sections, load_cases, load_combinations.',
         'Node fields must be id, x, y, z, restraints(optional). Do not use coordinates or boundary_conditions.',

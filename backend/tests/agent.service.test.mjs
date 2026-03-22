@@ -599,6 +599,24 @@ describe('AgentService orchestration', () => {
     expect(draft.inferredType).toBe('unknown');
   });
 
+  test('should constrain no-skill prompt load case types to core enum values', async () => {
+    const svc = createServiceWithDefaultSkills();
+    const prompts = [];
+    svc.llm = {
+      invoke: async (prompt) => {
+        prompts.push(prompt);
+        return {
+          content: '{"schema_version":"1.0.0","unit_system":"SI","nodes":[],"elements":[],"materials":[],"sections":[],"load_cases":[],"load_combinations":[]}',
+        };
+      },
+    };
+
+    await svc.textToModelDraft('10m beam with dead load', undefined, 'en', []);
+
+    expect(prompts).toHaveLength(1);
+    expect(prompts[0]).toContain('type must be one of dead, live, wind, seismic, other');
+  });
+
   test('should ignore template support fields in no-skill state even when llm extraction returns them', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
