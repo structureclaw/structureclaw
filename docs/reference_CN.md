@@ -58,7 +58,7 @@
 
 异常路径事件：`error`。
 
-## 4. 核心引擎契约
+## 4. Backend 托管分析契约
 
 核心接口：
 
@@ -115,7 +115,7 @@
 回归入口：
 
 - `make backend-regression`
-- `make core-regression`
+- `make analysis-regression`
 
 ## 8. 相关文档
 

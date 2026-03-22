@@ -11,7 +11,7 @@
 ## 范围内事项
 
 - 重新整理 `backend/src/agent-skills` 下的 skill 分类，使现有类别更贴近工程工作流和后续扩展路径。
-- 将 `core` 中那些本质上属于可复用平台 skill 的 agent-facing 结构分析能力逐步迁移出来，尤其是 OpenSeesPy 执行链路及相关转换层。
+- 将 agent-facing 结构分析能力完全迁入 `backend/src/agent-skills`，尤其是 OpenSeesPy 执行链路及相关转换层。
 - 明确 builtin skill 与 external SkillHub 的职责边界。
 - 强化 skill runtime 在注册、加载、能力发现、执行与回退机制上的契约。
 - 推进 v1 结构计算 JSON 基线，使其足以支撑 skill 化编排和未来多引擎适配。
@@ -28,14 +28,14 @@
 ## 交付物
 
 - 一套重新梳理后的 builtin skill 分类结构，以及更清晰的领域边界。
-- 一条明确的迁移路径，用于将 agent 调用的 OpenSeesPy 及相关结构分析能力从 `core` 向 skill 体系迁移。
+- 一条明确的 backend-hosted 执行路径，用于承载 agent 调用的 OpenSeesPy 及相关结构分析能力。
 - builtin skill 与 external SkillHub 的稳定运行时约束。
 - 与 skill 架构对齐的 v1 结构计算 JSON 方向说明。
 - 对 orchestration、fallback、analyze/code-check/report 和结构校验链路保持回归信心。
 
 ## 验收标准
 
-- 仓库能够更清楚地回答哪些职责属于 `core`，哪些职责属于 `backend/src/agent-skills`。
+- 仓库能够清楚回答哪些职责属于 backend API/services，哪些职责属于 `backend/src/agent-skills`。
 - builtin skill 分类能够体现目标工作流，而不是零散工具的集合。
 - 在 skill 缺失、未命中或部分迁移时，no-skill fallback 仍然正常工作。
 - 关键契约与回归脚本在重构后仍能通过，或至少在迁移过程中有清晰的兼容与验收说明。

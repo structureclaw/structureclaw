@@ -58,7 +58,7 @@ Typical stream event sequence:
 
 Failure path emits: `error`.
 
-## 4. Core Engine Contract
+## 4. Backend-Hosted Analysis Contract
 
 Main endpoints:
 
@@ -102,7 +102,7 @@ Practical rules:
 
 ## 7. Contract Validation Scripts
 
-Core orchestration and protocol scripts:
+Primary orchestration and protocol scripts:
 
 - `./scripts/validate-agent-orchestration.sh`
 - `./scripts/validate-agent-no-skill-fallback.sh`
@@ -115,7 +115,7 @@ Core orchestration and protocol scripts:
 Regression entrypoints:
 
 - `make backend-regression`
-- `make core-regression`
+- `make analysis-regression`
 
 ## 8. Related Docs
 

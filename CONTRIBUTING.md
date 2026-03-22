@@ -2,7 +2,7 @@
 
 ## Scope
 
-This guide covers contribution workflow for `frontend`, `backend`, `core`, `scripts`, and `docs`.
+This guide covers contribution workflow for `frontend`, `backend`, `scripts`, and `docs`.
 
 It is written for typical open source collaboration through a fork-and-pull-request model.
 
@@ -19,10 +19,10 @@ make status
 
 3. If your change touches chat, agent orchestration, reports, converters, or schema behavior, identify the matching validation script in `scripts/` before you start.
 
-## Core Contribution Rules
+## Contribution Rules
 
 - Keep changes focused and small.
-- Preserve module boundaries across `frontend`, `backend`, and `core`.
+- Preserve module boundaries across `frontend`, `backend`, and backend-hosted analysis skills.
 - Do not mix unrelated refactors into feature or bug-fix PRs.
 - Keep user-visible text bilingual in English and Chinese.
 - Treat deterministic behavior as a feature: avoid casual changes to schemas, fixtures, regression outputs, or contract payloads.
@@ -110,7 +110,7 @@ git push origin --delete my-feature
 
 - Backend: keep route handlers thin; put orchestration and domain logic in services.
 - Frontend: keep route/layout code in app routes and reusable UI in components.
-- Core: keep engine, schema, and regression behavior deterministic and scriptable.
+- Analysis runtime: keep engine, schema, and regression behavior deterministic and scriptable.
 - Scripts: prefer extending existing validation scripts instead of creating one-off local-only helpers.
 
 ### Language and UX rules
@@ -145,11 +145,11 @@ npm run type-check --prefix frontend
 npm run test:run --prefix frontend
 ```
 
-Core and cross-service validation:
+Analysis runtime and cross-service validation:
 
 ```bash
 make backend-regression
-make core-regression
+make analysis-regression
 ```
 
 Useful targeted validators:
@@ -165,7 +165,7 @@ Expectation by change type:
 
 - Backend and contract work: cover success, failure, and missing-input behavior.
 - Frontend work: run targeted tests plus `type-check`; run `build` for routing, layout, or provider changes.
-- Core work: keep regression fixtures stable and justify expected-output updates clearly.
+- Analysis runtime work: keep regression fixtures stable and justify expected-output updates clearly.
 - Docs-only changes: no code tests are required, but commands and file paths in the docs should be checked for accuracy.
 
 ## Pull Request Requirements
@@ -186,7 +186,7 @@ Every PR should include:
 
 - What changed
 - Why the change is needed
-- Impacted areas: `frontend`, `backend`, `core`, `scripts`, `docs`
+- Impacted areas: `frontend`, `backend`, `scripts`, `docs`
 - Commands run and their results
 - Screenshots for UI changes when helpful
 - Example request and response payloads when API or contract behavior changed
@@ -229,7 +229,7 @@ Convert the PR to ready-for-review only after the validation checklist is meanin
 
 ## Communication Tips
 
-- If you are unsure whether a change belongs in `backend` or `core`, explain your reasoning in the PR.
+- If you are unsure whether a change belongs in backend API/services or backend-hosted analysis skills, explain your reasoning in the PR.
 - If the change introduces new user-visible text, call out how bilingual support was handled.
 - If the change updates a contract, mention which scripts or fixtures were used to validate it.
 

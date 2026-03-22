@@ -11,7 +11,7 @@ Deliver a clearer built-in skill architecture that can support the end-to-end wo
 ## In Scope
 
 - Reorganize the skill taxonomy under `backend/src/agent-skills` so the current categories map more directly to the engineering workflow and future expansion path.
-- Move agent-facing structural analysis logic out of `core` where it behaves like reusable platform skill logic, especially OpenSeesPy-oriented execution and related transformation layers.
+- Complete the migration of agent-facing structural analysis logic into `backend/src/agent-skills`, especially OpenSeesPy-oriented execution and related transformation layers.
 - Define and document the boundary between built-in skills and external SkillHub packages.
 - Tighten the skill runtime contract for registration, loading, capability discovery, execution, and fallback behavior.
 - Advance the v1 structural calculation JSON baseline enough to support skill-oriented orchestration and future engine adapters.
@@ -28,14 +28,14 @@ These items may continue in small supporting increments, but they should not tak
 ## Deliverables
 
 - A revised built-in skill taxonomy with clearer domain ownership.
-- A defined migration path for agent-invoked OpenSeesPy and related structural analysis capabilities from `core` into skills.
+- A defined backend-hosted execution path for agent-invoked OpenSeesPy and related structural analysis capabilities.
 - Stable runtime expectations for built-in skills and external SkillHub packages.
 - A documented v1 structural calculation JSON direction aligned with the skill architecture.
 - Regression confidence for orchestration, fallback, analyze/code-check/report flows, and structure validation.
 
 ## Acceptance Criteria
 
-- The repository has a clearer answer to which responsibilities belong in `core` versus `backend/src/agent-skills`.
+- The repository has a clear answer to which responsibilities belong in backend API/services versus `backend/src/agent-skills`.
 - The built-in skill categories reflect the intended workflow rather than a loose collection of utilities.
 - No-skill fallback still works when selected skills are absent, unmatched, or partially migrated.
 - Existing key contracts and regression scripts still pass or remain explicitly accounted for during the refactor.

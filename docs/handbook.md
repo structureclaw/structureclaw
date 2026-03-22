@@ -11,8 +11,7 @@ Use this file for day-to-day engineering work. Use `docs/reference.md` for proto
 StructureClaw is an AI-assisted structural engineering platform with a monorepo architecture:
 
 - `frontend`: Next.js 14 product and console UI
-- `backend`: Fastify + Prisma API and agent orchestration
-- `core`: FastAPI structural analysis engine (validation, conversion, analyze, code-check)
+- `backend`: Fastify + Prisma API, agent orchestration, and the hosted Python analysis runtime
 
 Primary workflow:
 
@@ -37,8 +36,7 @@ Optional:
 
 ```text
 frontend/   Next.js application
-backend/    Fastify API, Prisma schema, tests
-core/       FastAPI engine, schemas, converters, FEM, regressions
+backend/    Fastify API, agent skills, hosted analysis runtime, Prisma schema, tests
 scripts/    startup scripts and contract/regression validators
 docs/       handbook and protocol reference
 uploads/    generated report artifacts
@@ -54,7 +52,7 @@ make start
 make status
 ```
 
-`make start` is the SQLite local-first startup path. It starts frontend, backend, and core from source and does not invoke Docker.
+`make start` is the SQLite local-first startup path. It starts frontend and backend from source and does not invoke Docker.
 
 ### 5.2 Common lifecycle commands
 
@@ -84,7 +82,7 @@ make restart
 .\make.ps1 stop
 ```
 
-`make.ps1` is the native Windows entrypoint for the common local-development lifecycle. `make.cmd` is included as a thin launcher for cmd.exe users. On Windows, the core Python environment defaults to 3.12 because the current OpenSeesPy runtime requires it.
+`make.ps1` is the native Windows entrypoint for the common local-development lifecycle. `make.cmd` is included as a thin launcher for cmd.exe users.
 
 ## 6. Environment and Configuration
 
@@ -92,18 +90,18 @@ Start with `.env.example`.
 
 Important variables:
 
-- Runtime: `NODE_ENV`, `PORT`, `FRONTEND_PORT`, `CORE_PORT`
+- Runtime: `NODE_ENV`, `PORT`, `FRONTEND_PORT`
 - Data: `DATABASE_URL`, `REDIS_URL`
 - LLM: `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`
-- Integration: `ANALYSIS_ENGINE_URL`, `CORS_ORIGINS`
+- Integration: `ANALYSIS_PYTHON_BIN`, `ANALYSIS_ENGINE_MANIFEST_PATH`, `CORS_ORIGINS`
 
 Notes:
 
 - `DATABASE_URL` defaults to a local SQLite file under `.runtime/data`.
 - `REDIS_URL=disabled` enables in-memory fallback mode in backend.
-- `ANALYSIS_ENGINE_URL` can be omitted and derived from `CORE_PORT`.
+- `ANALYSIS_PYTHON_BIN` defaults to `backend/.venv/bin/python`.
 
-## 7. Core Workflows
+## 7. Primary Workflows
 
 ### 7.1 Chat and Agent execution
 
@@ -118,14 +116,15 @@ Execution chain:
 
 `text-to-model-draft -> convert -> validate -> analyze -> code-check -> report`
 
-### 7.2 Analysis engine
+### 7.2 Backend-hosted analysis runtime
 
-Main core endpoints:
+Compatibility endpoints exposed by backend:
 
 - `POST /validate`
 - `POST /convert`
 - `POST /analyze`
 - `POST /code-check`
+- `GET /engines`
 
 ## 8. StructureModel Governance
 
@@ -157,10 +156,10 @@ npm run type-check --prefix frontend
 npm run test:run --prefix frontend
 ```
 
-### 10.3 Core and contracts
+### 10.3 Analysis runtime and contracts
 
 ```bash
-make core-regression
+make analysis-regression
 make backend-regression
 ```
 
