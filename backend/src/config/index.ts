@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import process from 'process';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -27,7 +28,9 @@ const llmBaseUrl = process.env.LLM_BASE_URL
 const frontendPort = process.env.FRONTEND_PORT || '30000';
 const backendPort = process.env.PORT || '8000';
 const analysisEngineManifestPath = process.env.ANALYSIS_ENGINE_MANIFEST_PATH || path.resolve(__dirname, '../../../.runtime/analysis-engines.json');
-const defaultAnalysisPythonBin = path.resolve(__dirname, '../../.venv/bin/python');
+const defaultAnalysisPythonBin = process.platform === 'win32'
+  ? path.resolve(__dirname, '../../.venv/Scripts/python.exe')
+  : path.resolve(__dirname, '../../.venv/bin/python');
 
 const defaultCorsOrigins = [
   `http://localhost:${frontendPort}`,

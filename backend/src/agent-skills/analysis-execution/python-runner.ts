@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { access } from 'node:fs/promises';
 import path from 'node:path';
+import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { config } from '../../config/index.js';
 import type { AnalysisExecutionInput, AnalysisExecutionResponse } from './types.js';
@@ -21,47 +22,61 @@ function resolveWorkerPath(): string {
 export class PythonAnalysisRunner {
   private readonly workerPath = resolveWorkerPath();
 
-  private async resolvePythonExecutable(): Promise<string> {
+  private async isAccessibleExecutable(candidate: string): Promise<boolean> {
+    try {
+      await access(candidate);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async resolvePythonCommand(): Promise<{ executable: string; args: string[] }> {
     const configured = config.analysisPythonBin?.trim();
     if (configured) {
       if (configured === 'python3' || configured === 'python') {
-        return configured;
+        return { executable: configured, args: [] };
       }
-      try {
-        await access(configured);
-        return configured;
-      } catch {
-        // Fall through to the candidate list when the configured path is absent.
+      if (configured === 'py' || configured === 'py.exe') {
+        return { executable: configured, args: ['-3'] };
+      }
+      if (await this.isAccessibleExecutable(configured)) {
+        return { executable: configured, args: [] };
       }
     }
 
-    const candidates = [
-      path.resolve(process.cwd(), 'backend/.venv/bin/python'),
-      path.resolve(process.cwd(), '.venv/bin/python'),
-      'python3',
-      'python',
+    const candidates: Array<{ executable: string; args: string[] }> = [
+      { executable: path.resolve(process.cwd(), 'backend/.venv/Scripts/python.exe'), args: [] },
+      { executable: path.resolve(process.cwd(), '.venv/Scripts/python.exe'), args: [] },
+      { executable: path.resolve(process.cwd(), 'backend/.venv/bin/python'), args: [] },
+      { executable: path.resolve(process.cwd(), '.venv/bin/python'), args: [] },
+      { executable: 'py', args: ['-3'] },
+      { executable: 'python3', args: [] },
+      { executable: 'python', args: [] },
     ];
 
     for (const candidate of candidates) {
-      if (candidate === 'python3' || candidate === 'python') {
+      if (!path.isAbsolute(candidate.executable)) {
+        if (process.platform === 'win32' && candidate.executable === 'python') {
+          continue;
+        }
         return candidate;
       }
-      try {
-        await access(candidate);
+      if (await this.isAccessibleExecutable(candidate.executable)) {
         return candidate;
-      } catch {
-        continue;
       }
     }
 
-    return 'python3';
+    return process.platform === 'win32'
+      ? { executable: 'py', args: ['-3'] }
+      : { executable: 'python3', args: [] };
   }
 
   async invoke<T = unknown>(input: AnalysisExecutionInput): Promise<T> {
-    const pythonExecutable = await this.resolvePythonExecutable();
+    const pythonCommand = await this.resolvePythonCommand();
     const payload = JSON.stringify(input);
     const { stdout, stderr } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
-      const child = spawn(pythonExecutable, [this.workerPath], {
+      const child = spawn(pythonCommand.executable, [...pythonCommand.args, this.workerPath], {
         cwd: process.cwd(),
         stdio: ['pipe', 'pipe', 'pipe'],
       });
