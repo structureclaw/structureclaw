@@ -20,8 +20,8 @@ services:
       - LLM_MAX_RETRIES=${LLM_MAX_RETRIES:-0}
       - ZAI_API_KEY=${ZAI_API_KEY}
       - OPENAI_API_KEY=${OPENAI_API_KEY}
-      - CORE_PORT=${CORE_PORT:-8001}
-      - ANALYSIS_ENGINE_URL=http://analysis-engine:${CORE_PORT:-8001}
+      - ANALYSIS_PYTHON_BIN=${ANALYSIS_PYTHON_BIN:-/usr/bin/python3}
+      - ANALYSIS_PYTHON_TIMEOUT_MS=${ANALYSIS_PYTHON_TIMEOUT_MS:-300000}
     command:
       - /bin/sh
       - -c
@@ -48,21 +48,6 @@ services:
     volumes:
       - ./uploads:/app/uploads
       - ./.runtime/data:/.runtime/data
-    restart: unless-stopped
-
-  # 分析引擎
-  analysis-engine:
-    build:
-      context: ./core
-      dockerfile: Dockerfile
-    container_name: structureclaw-analysis
-    environment:
-      - PYTHONUNBUFFERED=1
-      - CORE_PORT=${CORE_PORT:-8001}
-    ports:
-      - "${CORE_PORT:-8001}:${CORE_PORT:-8001}"
-    volumes:
-      - ./core:/app
     restart: unless-stopped
 
   # 前端服务

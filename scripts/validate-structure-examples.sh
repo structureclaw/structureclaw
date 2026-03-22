@@ -4,27 +4,20 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-if [[ -x core/.venv-uv-lite/bin/python ]]; then
-  PYTHON_BIN="core/.venv-uv-lite/bin/python"
-elif [[ -x core/.venv/bin/python ]]; then
-  PYTHON_BIN="core/.venv/bin/python"
-else
-  echo "No Python environment found at core/.venv or core/.venv-uv-lite" >&2
-  exit 1
-fi
+source "$ROOT_DIR/scripts/analysis-python-env.sh"
+require_analysis_python
 
 "$PYTHON_BIN" - <<'PY'
 import json
 from pathlib import Path
 import sys
 
-sys.path.insert(0, 'core')
 from schemas.structure_model_v1 import StructureModelV1
 
-base = Path('core/schemas/examples')
+base = Path('backend/src/agent-skills/analysis-execution/python/examples')
 files = sorted(base.glob('*.json'))
 if not files:
-    raise SystemExit('No example files found under core/schemas/examples')
+    raise SystemExit('No example files found under backend/src/agent-skills/analysis-execution/python/examples')
 
 minimum_expected = 20
 if len(files) < minimum_expected:

@@ -29,7 +29,7 @@ echo "Validating startup self-healing guards..."
 
 assert_contains "ensure_npm_dependencies\\(" "missing npm dependency self-healing function"
 assert_contains "lock_snapshot" "missing lockfile snapshot drift detection"
-assert_contains "core_module_available \"uvicorn\"" "missing core uvicorn guard"
+assert_contains "require_analysis_python" "missing analysis Python guard"
 assert_contains "reset_frontend_cache_if_needed" "missing frontend cache recovery hook"
 assert_contains "Cannot find module '\\./" "missing frontend chunk corruption detection signature"
 assert_contains "starting %s" "missing session header for log isolation"

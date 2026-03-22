@@ -17,7 +17,7 @@ Usage:
   sclaw restart
   sclaw stop
   sclaw status
-  sclaw logs [frontend|backend|core|all] [--follow]
+  sclaw logs [frontend|backend|all] [--follow]
   sclaw install [--force]
   sclaw version
   sclaw help

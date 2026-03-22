@@ -16,12 +16,12 @@ $LogDir = Join-Path $RuntimeDir 'logs'
 $PidDir = Join-Path $RuntimeDir 'pids'
 $EnvFile = Join-Path $RootDir '.env'
 $EnvExampleFile = Join-Path $RootDir '.env.example'
-$CoreVenvDir = Join-Path $RootDir 'core/.venv'
-$CorePython = Join-Path $CoreVenvDir 'Scripts/python.exe'
+$AnalysisVenvDir = Join-Path $RootDir 'backend/.venv'
+$AnalysisPython = Join-Path $AnalysisVenvDir 'Scripts/python.exe'
 $ServiceRunner = Join-Path $RootDir 'scripts/windows/run-service.ps1'
 $IsWindowsHost = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
-$DefaultCorePythonVersion = if ($IsWindowsHost) { '3.12' } else { '3.11' }
-$CorePythonVersion = if ($env:CORE_PYTHON_VERSION) { $env:CORE_PYTHON_VERSION } else { $DefaultCorePythonVersion }
+$DefaultAnalysisPythonVersion = if ($IsWindowsHost) { '3.12' } else { '3.11' }
+$AnalysisPythonVersion = if ($env:ANALYSIS_PYTHON_VERSION) { $env:ANALYSIS_PYTHON_VERSION } else { $DefaultAnalysisPythonVersion }
 
 function Write-Info {
   param([string]$Message)
@@ -337,37 +337,41 @@ function Test-PythonModule {
   return $LASTEXITCODE -eq 0
 }
 
-function Ensure-CoreVenv {
+function Ensure-AnalysisVenv {
   Require-Command 'uv' 'Install uv first, then rerun. Example: winget install --id AstralSoftware.UV -e'
 
-  $needsInstall = (-not (Test-Path -LiteralPath $CorePython)) -or (-not (Test-PythonModule -PythonPath $CorePython -ModuleName 'uvicorn'))
+  $needsInstall = (-not (Test-Path -LiteralPath $AnalysisPython)) -or (-not (Test-PythonModule -PythonPath $AnalysisPython -ModuleName 'uvicorn'))
   if ($needsInstall) {
-    Write-Info 'Preparing core Python virtual environment...'
-    & uv venv --python $CorePythonVersion $CoreVenvDir
+    Write-Info 'Preparing analysis Python virtual environment...'
+    & uv venv --python $AnalysisPythonVersion $AnalysisVenvDir
     if ($LASTEXITCODE -ne 0) {
-      Fail 'uv venv failed for core/.venv.'
+      Fail 'uv venv failed for backend/.venv.'
     }
 
-    & uv pip install --python $CorePython --link-mode=copy -r (Join-Path $RootDir 'core/requirements.txt')
+    & uv pip install --python $AnalysisPython --link-mode=copy -r (Join-Path $RootDir 'backend/src/agent-skills/analysis-execution/python/requirements.txt')
     if ($LASTEXITCODE -ne 0) {
-      Fail 'uv pip install failed for core dependencies.'
+      Fail 'uv pip install failed for analysis dependencies.'
     }
   }
 
-  if (-not (Test-PythonModule -PythonPath $CorePython -ModuleName 'uvicorn')) {
-    Fail 'core/.venv is present but missing uvicorn.'
+  if (-not (Test-PythonModule -PythonPath $AnalysisPython -ModuleName 'uvicorn')) {
+    Fail 'backend/.venv is present but missing uvicorn.'
   }
 }
 
 function Test-OpenSeesRuntime {
-  if (-not (Test-Path -LiteralPath $CorePython)) {
+  if (-not (Test-Path -LiteralPath $AnalysisPython)) {
     return $false
   }
 
   $previousPythonPath = $env:PYTHONPATH
   try {
-    $env:PYTHONPATH = Join-Path $RootDir 'core'
-    & $CorePython -m engines.opensees_runtime --json *> $null
+    $analysisPythonRoot = Join-Path $RootDir 'backend/src/agent-skills/analysis-execution/python'
+    $geometrySkillRoot = Join-Path $RootDir 'backend/src/agent-skills/geometry-input'
+    $codeCheckSkillRoot = Join-Path $RootDir 'backend/src/agent-skills/code-check'
+    $materialSkillRoot = Join-Path $RootDir 'backend/src/agent-skills/material-constitutive'
+    $env:PYTHONPATH = "$analysisPythonRoot;$geometrySkillRoot;$codeCheckSkillRoot;$materialSkillRoot"
+    & $AnalysisPython -m providers.opensees.runtime --json *> $null
     return $LASTEXITCODE -eq 0
   }
   finally {
@@ -548,7 +552,6 @@ function Show-Health {
 
   $frontendPort = Get-ConfigValue -DotEnv $DotEnv -Name 'FRONTEND_PORT' -DefaultValue '30000'
   $backendPort = Get-ConfigValue -DotEnv $DotEnv -Name 'PORT' -DefaultValue '8000'
-  $corePort = Get-ConfigValue -DotEnv $DotEnv -Name 'CORE_PORT' -DefaultValue '8001'
 
   Write-Host 'Health checks:'
   if (Test-HttpEndpoint -Uri ("http://localhost:{0}/health" -f $backendPort)) {
@@ -556,13 +559,6 @@ function Show-Health {
   }
   else {
     Write-Host 'backend: unavailable'
-  }
-
-  if (Test-HttpEndpoint -Uri ("http://localhost:{0}/health" -f $corePort)) {
-    Write-Host 'core: healthy'
-  }
-  else {
-    Write-Host 'core: unavailable'
   }
 
   if (Test-HttpEndpoint -Uri ("http://localhost:{0}" -f $frontendPort) -Method 'Head') {
@@ -632,10 +628,10 @@ function Invoke-LocalUp {
   Assert-SqliteDatabaseUrl -DotEnv $DotEnv
   Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'backend') -ProjectName 'backend' -VersionChecks @('prisma', '@prisma/client')
   Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'frontend') -ProjectName 'frontend' -VersionChecks @('next')
-  Ensure-CoreVenv
+  Ensure-AnalysisVenv
 
   if (-not (Test-OpenSeesRuntime)) {
-    Fail 'OpenSees runtime check failed in core/.venv.'
+    Fail 'OpenSees runtime check failed in backend/.venv.'
   }
 
   $redisUrl = Get-ConfigValue -DotEnv $DotEnv -Name 'REDIS_URL' -DefaultValue 'disabled'
@@ -653,18 +649,15 @@ function Invoke-LocalUp {
   Invoke-DbInit -DotEnv $DotEnv
 
   $frontendPort = Get-ConfigValue -DotEnv $DotEnv -Name 'FRONTEND_PORT' -DefaultValue '30000'
-  $corePort = Get-ConfigValue -DotEnv $DotEnv -Name 'CORE_PORT' -DefaultValue '8001'
 
   Start-TrackedService -Name 'backend' -CommandText 'npm run dev --prefix backend'
   Start-TrackedService -Name 'frontend' -CommandText ('$env:FRONTEND_PORT = ''{0}''; $env:PORT = ''{0}''; npm --prefix frontend run dev' -f $frontendPort)
-  Start-TrackedService -Name 'core' -CommandText (("& '{0}' -m uvicorn main:app --host 0.0.0.0 --port {1} --reload --app-dir core") -f $CorePython, $corePort)
 
   Write-Host ''
   Write-Host 'Local stack started.'
   Write-Host ("Logs: {0}" -f $LogDir)
   Write-Host ("Frontend: http://localhost:{0}" -f $frontendPort)
   Write-Host ("Backend:  http://localhost:{0} (use /health)" -f (Get-ConfigValue -DotEnv $DotEnv -Name 'PORT' -DefaultValue '8000'))
-  Write-Host ("Core:     http://localhost:{0}" -f $corePort)
 }
 
 function Invoke-Logs {
@@ -682,8 +675,7 @@ function Invoke-Logs {
   $files = switch ($target) {
     'backend' { @(Get-LogFile 'backend') }
     'frontend' { @(Get-LogFile 'frontend') }
-    'core' { @(Get-LogFile 'core') }
-    default { @((Get-LogFile 'frontend'), (Get-LogFile 'backend'), (Get-LogFile 'core')) }
+    default { @((Get-LogFile 'frontend'), (Get-LogFile 'backend')) }
   }
 
   foreach ($file in $files) {
@@ -713,10 +705,10 @@ function Invoke-Doctor {
   Assert-SqliteDatabaseUrl -DotEnv $DotEnv
   Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'backend') -ProjectName 'backend' -VersionChecks @('prisma', '@prisma/client')
   Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'frontend') -ProjectName 'frontend' -VersionChecks @('next')
-  Ensure-CoreVenv
+  Ensure-AnalysisVenv
 
   if (-not (Test-OpenSeesRuntime)) {
-    Fail 'OpenSees runtime check failed in core/.venv.'
+    Fail 'OpenSees runtime check failed in backend/.venv.'
   }
 
   Invoke-DbInit -DotEnv $DotEnv
@@ -735,16 +727,14 @@ Usage:
   .\make.ps1 restart
   .\make.ps1 stop
   .\make.ps1 status
-  .\make.ps1 logs [frontend|backend|core|all] [--follow]
+  .\make.ps1 logs [frontend|backend|all] [--follow]
 
 Common targets:
   help               Show this help
   install            Install backend and frontend npm dependencies
-  setup-core-full    Create core/.venv with uv-managed Python (Windows default: 3.12)
-  setup-core-full-uv Same as setup-core-full
+  setup-analysis-python Create backend/.venv with analysis Python dependencies
   dev-backend        Run backend in the foreground
   dev-frontend       Run frontend in the foreground
-  dev-core-full      Run core in the foreground
   build              Build backend and frontend
   db-init            Sync SQLite schema and seed data
   local-up           Start local stack, optionally starting redis if REDIS_URL is enabled
@@ -761,7 +751,7 @@ Common targets:
 
 Compatibility notes:
   - db-up/db-down and docker-up/docker-down call docker compose directly.
-  - backend-regression and core-regression still require bash/WSL today.
+  - backend-regression and analysis-regression still require bash or WSL today.
 '@ | Write-Host
 }
 
@@ -778,8 +768,7 @@ switch ($Target) {
     Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'backend') -ProjectName 'backend' -VersionChecks @('prisma', '@prisma/client')
     Ensure-NpmDependencies -ProjectDir (Join-Path $RootDir 'frontend') -ProjectName 'frontend' -VersionChecks @('next')
   }
-  'setup-core-full' { Ensure-CoreVenv }
-  'setup-core-full-uv' { Ensure-CoreVenv }
+  'setup-analysis-python' { Ensure-AnalysisVenv }
   'dev-backend' {
     & npm run dev --prefix (Join-Path $RootDir 'backend')
     exit $LASTEXITCODE
@@ -788,12 +777,6 @@ switch ($Target) {
     $frontendPort = Get-ConfigValue -DotEnv $DotEnv -Name 'FRONTEND_PORT' -DefaultValue '30000'
     $env:FRONTEND_PORT = $frontendPort
     & npm run dev --prefix (Join-Path $RootDir 'frontend') -- --port $frontendPort
-    exit $LASTEXITCODE
-  }
-  'dev-core-full' {
-    Ensure-CoreVenv
-    $corePort = Get-ConfigValue -DotEnv $DotEnv -Name 'CORE_PORT' -DefaultValue '8001'
-    & $CorePython -m uvicorn main:app --host 0.0.0.0 --port $corePort --reload --app-dir core
     exit $LASTEXITCODE
   }
   'build' {
@@ -823,7 +806,6 @@ switch ($Target) {
   'local-down' {
     Stop-TrackedService 'frontend'
     Stop-TrackedService 'backend'
-    Stop-TrackedService 'core'
     try {
       & docker compose -f (Join-Path $RootDir 'docker-compose.yml') stop redis *> $null
     }
@@ -834,7 +816,6 @@ switch ($Target) {
   'local-status' {
     Show-ServiceStatus 'backend'
     Show-ServiceStatus 'frontend'
-    Show-ServiceStatus 'core'
     Write-Host ''
     Show-Health -DotEnv $DotEnv
   }
@@ -848,12 +829,12 @@ switch ($Target) {
     & $bash (Join-Path $RootDir 'scripts/check-backend-regression.sh')
     exit $LASTEXITCODE
   }
-  'core-regression' {
+  'analysis-regression' {
     $bash = Get-CommandPath 'bash'
     if (-not $bash) {
-      Fail 'core-regression currently requires bash or WSL on Windows.'
+      Fail 'analysis-regression currently requires bash or WSL on Windows.'
     }
-    & $bash (Join-Path $RootDir 'scripts/check-core-regression.sh')
+    & $bash (Join-Path $RootDir 'scripts/check-analysis-regression.sh')
     exit $LASTEXITCODE
   }
   'doctor' { Invoke-Doctor -DotEnv $DotEnv }
@@ -861,13 +842,11 @@ switch ($Target) {
   'restart' {
     Stop-TrackedService 'frontend'
     Stop-TrackedService 'backend'
-    Stop-TrackedService 'core'
     Invoke-LocalUp -DotEnv $DotEnv -SkipInfra
   }
   'stop' {
     Stop-TrackedService 'frontend'
     Stop-TrackedService 'backend'
-    Stop-TrackedService 'core'
     try {
       & docker compose -f (Join-Path $RootDir 'docker-compose.yml') stop redis *> $null
     }
@@ -878,7 +857,6 @@ switch ($Target) {
   'status' {
     Show-ServiceStatus 'backend'
     Show-ServiceStatus 'frontend'
-    Show-ServiceStatus 'core'
     Write-Host ''
     Show-Health -DotEnv $DotEnv
   }

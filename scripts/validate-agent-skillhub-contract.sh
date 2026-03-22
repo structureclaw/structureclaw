@@ -90,20 +90,20 @@ const run = async () => {
 
   const incompatibleSearchResp = await app.inject({
     method: 'GET',
-    url: '/api/v1/agent/skillhub/search?q=future-core-only',
+    url: '/api/v1/agent/skillhub/search?q=future-runtime-only',
   });
   assert(incompatibleSearchResp.statusCode === 200, 'incompatible search should return 200');
   const incompatibleSearchPayload = incompatibleSearchResp.json();
-  const incompatibleSkill = incompatibleSearchPayload.items.find((item) => item.id === 'skillhub.future-core-only');
-  assert(Boolean(incompatibleSkill), 'future-core-only skill should exist in catalog');
-  assert(incompatibleSkill.compatibility.compatible === false, 'future-core-only should be incompatible');
-  assert(incompatibleSkill.compatibility.reasonCodes.includes('core_version_incompatible'), 'future-core-only should report core version incompatibility');
-  assert(incompatibleSkill.compatibility.reasonCodes.includes('skill_api_version_incompatible'), 'future-core-only should report skill api incompatibility');
+  const incompatibleSkill = incompatibleSearchPayload.items.find((item) => item.id === 'skillhub.future-runtime-only');
+  assert(Boolean(incompatibleSkill), 'future-runtime-only skill should exist in catalog');
+  assert(incompatibleSkill.compatibility.compatible === false, 'future-runtime-only should be incompatible');
+  assert(incompatibleSkill.compatibility.reasonCodes.includes('runtime_version_incompatible'), 'future-runtime-only should report runtime version incompatibility');
+  assert(incompatibleSkill.compatibility.reasonCodes.includes('skill_api_version_incompatible'), 'future-runtime-only should report skill api incompatibility');
 
   const incompatibleInstallResp = await app.inject({
     method: 'POST',
     url: '/api/v1/agent/skillhub/install',
-    payload: { skillId: 'skillhub.future-core-only' },
+    payload: { skillId: 'skillhub.future-runtime-only' },
   });
   assert(incompatibleInstallResp.statusCode === 200, 'incompatible install should return 200');
   const incompatibleInstallPayload = incompatibleInstallResp.json();
@@ -115,7 +115,7 @@ const run = async () => {
   const incompatibleEnableResp = await app.inject({
     method: 'POST',
     url: '/api/v1/agent/skillhub/enable',
-    payload: { skillId: 'skillhub.future-core-only' },
+    payload: { skillId: 'skillhub.future-runtime-only' },
   });
   assert(incompatibleEnableResp.statusCode === 200, 'incompatible enable should return 200');
   const incompatibleEnablePayload = incompatibleEnableResp.json();
@@ -152,7 +152,7 @@ const run = async () => {
         version: '1.0.0',
         domain: 'report-export',
         compatibility: {
-          minCoreVersion: '0.1.0',
+          minRuntimeVersion: '0.1.0',
           skillApiVersion: 'v1',
         },
         integrity: {

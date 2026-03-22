@@ -15,7 +15,7 @@ Usage:
   ./scripts/claw.sh restart
   ./scripts/claw.sh stop
   ./scripts/claw.sh status
-  ./scripts/claw.sh logs [frontend|backend|core|all] [--follow]
+  ./scripts/claw.sh logs [frontend|backend|all] [--follow]
   ./scripts/claw.sh skill search <keyword> [domain]
   ./scripts/claw.sh skill install <skill-id>
   ./scripts/claw.sh skill enable <skill-id>
@@ -25,8 +25,8 @@ Usage:
 
 Commands:
   doctor      Run startup checks (without starting full stack)
-  start       Recommended for beginners (full core deps + uv, no Docker)
-  restart     Restart local services with the default startup profile (full + uv, no Docker)
+  start       Recommended for beginners (backend-hosted analysis runtime, no Docker)
+  restart     Restart local services with the default startup profile (no Docker)
   stop        Stop local services and local infra
   status      Show service runtime + health checks
   logs        Show runtime logs from .runtime/logs
@@ -89,7 +89,7 @@ run_skill_command() {
 service_log_path() {
   local service="$1"
   case "$service" in
-    frontend|backend|core)
+    frontend|backend)
       echo "$RUNTIME_LOG_DIR/$service.log"
       ;;
     *)
@@ -129,7 +129,6 @@ show_logs() {
     files=(
       "$RUNTIME_LOG_DIR/frontend.log"
       "$RUNTIME_LOG_DIR/backend.log"
-      "$RUNTIME_LOG_DIR/core.log"
     )
   else
     files=("$(service_log_path "$target")")
@@ -166,11 +165,11 @@ case "$command_name" in
     "$ROOT_DIR/scripts/check-startup.sh"
     ;;
   start)
-    "$ROOT_DIR/scripts/dev-up.sh" full --uv --skip-infra
+    "$ROOT_DIR/scripts/dev-up.sh" --uv --skip-infra
     ;;
   restart)
     "$ROOT_DIR/scripts/dev-down.sh"
-    "$ROOT_DIR/scripts/dev-up.sh" full --uv --skip-infra
+    "$ROOT_DIR/scripts/dev-up.sh" --uv --skip-infra
     ;;
   stop)
     "$ROOT_DIR/scripts/dev-down.sh"

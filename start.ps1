@@ -298,9 +298,8 @@ Write-Step "Service Status / 服务状态"
 # Read ports from .env file
 $frontendPort = Get-EnvPort -EnvPath $EnvFile -VarName "FRONTEND_PORT" -DefaultPort "30000"
 $backendPort = Get-EnvPort -EnvPath $EnvFile -VarName "PORT" -DefaultPort "30010"
-$corePort = Get-EnvPort -EnvPath $EnvFile -VarName "CORE_PORT" -DefaultPort "30011"
 
-Write-Info "Ports from .env / 端口配置: Frontend=$frontendPort, Backend=$backendPort, Core=$corePort"
+Write-Info "Ports from .env / 端口配置: Frontend=$frontendPort, Backend=$backendPort"
 Write-Info "Checking container status... / 检查容器状态..."
 
 # Show container status for debugging
@@ -319,8 +318,7 @@ Start-Sleep -Seconds 3
 
 $services = @(
   @{Name = 'Frontend'; Url = "http://localhost:$frontendPort"; Port = $frontendPort; Service = 'frontend'},
-  @{Name = 'Backend'; Url = "http://localhost:$backendPort/health"; Port = $backendPort; Service = 'backend'},
-  @{Name = 'Analysis'; Url = "http://localhost:$corePort/health"; Port = $corePort; Service = 'analysis-engine'}
+  @{Name = 'Backend'; Url = "http://localhost:$backendPort/health"; Port = $backendPort; Service = 'backend'}
 )
 
 $allRunning = $true
@@ -348,7 +346,7 @@ if ($allRunning) {
 
   Frontend:          http://localhost:$frontendPort
   Backend:           http://localhost:$backendPort/health
-  Core Engine:       http://localhost:$corePort/health
+  Analysis Routes:   http://localhost:$backendPort/analyze
 
   Stop services / 停止服务:   .\stop.ps1
   View logs / 查看日志:       docker compose logs -f
