@@ -79,6 +79,7 @@ export function StructuralVisualizationModal({
   const [showUndeformed, setShowUndeformed] = useState(true)
   const [showNodeLabels, setShowNodeLabels] = useState(false)
   const [showElementLabels, setShowElementLabels] = useState(false)
+  const [showLoads, setShowLoads] = useState(true)
   const [showLegend, setShowLegend] = useState(true)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
@@ -367,10 +368,12 @@ export function StructuralVisualizationModal({
             onSwitchToForcesView={() => setView('forces')}
             onToggleElementLabels={() => setShowElementLabels((current) => !current)}
             onToggleLegend={() => setShowLegend((current) => !current)}
+            onToggleLoads={() => setShowLoads((current) => !current)}
             onToggleNodeLabels={() => setShowNodeLabels((current) => !current)}
             onToggleUndeformed={() => setShowUndeformed((current) => !current)}
             showElementLabels={showElementLabels}
             showLegend={showLegend}
+            showLoads={showLoads}
             showNodeLabels={showNodeLabels}
             showUndeformed={showUndeformed}
             snapshot={snapshot}
@@ -394,6 +397,7 @@ export function StructuralVisualizationModal({
               selectedNodeId={selectedNodeId}
               showElementLabels={showElementLabels}
               showLegend={showLegend}
+              showLoads={showLoads}
               showNodeLabels={showNodeLabels}
               showUndeformed={showUndeformed}
               snapshot={snapshot}

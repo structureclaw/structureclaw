@@ -17,6 +17,7 @@ type VisualizationToolbarProps = {
   selectedView: VisualizationViewMode
   showElementLabels: boolean
   showLegend: boolean
+  showLoads: boolean
   showNodeLabels: boolean
   showUndeformed: boolean
   onActiveCaseChange: (caseId: string) => void
@@ -25,6 +26,7 @@ type VisualizationToolbarProps = {
   onSwitchToForcesView: () => void
   onToggleElementLabels: () => void
   onToggleLegend: () => void
+  onToggleLoads: () => void
   onToggleNodeLabels: () => void
   onToggleUndeformed: () => void
   t: (key: MessageKey) => string
@@ -54,6 +56,7 @@ export function VisualizationToolbar({
   selectedView,
   showElementLabels,
   showLegend,
+  showLoads,
   showNodeLabels,
   showUndeformed,
   onActiveCaseChange,
@@ -62,13 +65,13 @@ export function VisualizationToolbar({
   onSwitchToForcesView,
   onToggleElementLabels,
   onToggleLegend,
+  onToggleLoads,
   onToggleNodeLabels,
   onToggleUndeformed,
   t,
 }: VisualizationToolbarProps) {
   const supportsDeformedView = snapshot.availableViews.includes('deformed')
   const supportsForcesView = snapshot.availableViews.includes('forces')
-  const supportsReactionsView = snapshot.availableViews.includes('reactions')
   const showCaseSelector = snapshot.source === 'result' && snapshot.cases.length > 1
 
   return (
@@ -136,6 +139,7 @@ export function VisualizationToolbar({
           ...(supportsDeformedView ? [{ active: showUndeformed, key: 'visualizationUndeformedOverlay', onClick: onToggleUndeformed }] : []),
           { active: showNodeLabels, key: 'visualizationNodeLabels', onClick: onToggleNodeLabels },
           { active: showElementLabels, key: 'visualizationElementLabels', onClick: onToggleElementLabels },
+          { active: showLoads, key: 'visualizationShowLoads', onClick: onToggleLoads },
           { active: showLegend, key: 'visualizationLegend', onClick: onToggleLegend },
         ].map((item) => (
           <button

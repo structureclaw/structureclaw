@@ -50,6 +50,7 @@ describe('StructuralVisualizationModal', () => {
     expect(screen.getByText('Current Source: Model Preview')).toBeInTheDocument()
     expect(screen.getAllByText(modelSnapshot.statusMessage as string)).toHaveLength(2)
     expect(screen.queryByRole('button', { name: 'Deformed' })).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Load Markers' })).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: '1' }))
     expect(screen.getByText('Selected Node')).toBeInTheDocument()

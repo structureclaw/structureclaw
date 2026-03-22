@@ -20,6 +20,7 @@ type StructuralSceneProps = {
   selectedNodeId: string | null
   showElementLabels: boolean
   showLegend: boolean
+  showLoads: boolean
   showNodeLabels: boolean
   showUndeformed: boolean
   view: VisualizationViewMode
@@ -113,6 +114,40 @@ function orientToFloorPlane(position: THREE.Vector3, plane: VisualizationPlane) 
     return new THREE.Vector3(position.y, position.x, position.z)
   }
   return new THREE.Vector3(position.x, position.y, position.z)
+}
+
+function isRenderableLoadVector(vector: THREE.Vector3) {
+  return vector.lengthSq() >= 1e-18
+}
+
+function getLoadArrowLength(snapshot: VisualizationSnapshot, plane: VisualizationPlane) {
+  if (!snapshot.nodes.length) {
+    return 0.3
+  }
+
+  let minX = Number.POSITIVE_INFINITY
+  let maxX = Number.NEGATIVE_INFINITY
+  let minY = Number.POSITIVE_INFINITY
+  let maxY = Number.NEGATIVE_INFINITY
+  let minZ = Number.POSITIVE_INFINITY
+  let maxZ = Number.NEGATIVE_INFINITY
+
+  snapshot.nodes.forEach((node) => {
+    const oriented = orientToFloorPlane(new THREE.Vector3(node.position.x, node.position.y, node.position.z), plane)
+    minX = Math.min(minX, oriented.x)
+    maxX = Math.max(maxX, oriented.x)
+    minY = Math.min(minY, oriented.y)
+    maxY = Math.max(maxY, oriented.y)
+    minZ = Math.min(minZ, oriented.z)
+    maxZ = Math.max(maxZ, oriented.z)
+  })
+
+  const spanX = maxX - minX
+  const spanY = maxY - minY
+  const spanZ = maxZ - minZ
+  const modelSpan = Math.max(spanX, spanY, spanZ, 1)
+
+  return Math.max(0.15, Math.min(modelSpan / 10, 1.2))
 }
 
 function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: VisualizationPlane) {
@@ -311,7 +346,7 @@ function DistributedLoadMarker({
   const boundaryVector = useMemo(() => direction.clone().multiplyScalar(capLength), [direction, capLength])
   const ratios = useMemo(() => {
     const count = Math.max(2, arrowCount)
-    return Array.from({ length: count }, (_, index) => (count === 1 ? 0.5 : index / (count - 1)))
+    return Array.from({ length: count }, (_, index) => index / (count - 1))
   }, [arrowCount])
 
   return (
@@ -342,6 +377,7 @@ function SceneContent({
   selectedElementId,
   selectedNodeId,
   showElementLabels,
+  showLoads,
   showNodeLabels,
   showUndeformed,
   plane,
@@ -374,22 +410,7 @@ function SceneContent({
       ),
     [activeCase, deformationScale, snapshot.nodes]
   )
-  const loadArrowLength = useMemo(() => {
-    if (!snapshot.nodes.length) {
-      return 0.3
-    }
-
-    const xs = snapshot.nodes.map((node) => node.position.x)
-    const ys = snapshot.nodes.map((node) => node.position.y)
-    const zs = snapshot.nodes.map((node) => node.position.z)
-
-    const spanX = Math.max(...xs) - Math.min(...xs)
-    const spanY = Math.max(...ys) - Math.min(...ys)
-    const spanZ = Math.max(...zs) - Math.min(...zs)
-    const modelSpan = Math.max(spanX, spanY, spanZ, 1)
-
-    return Math.max(0.15, Math.min(modelSpan / 10, 1.2))
-  }, [snapshot.nodes])
+  const loadArrowLength = useMemo(() => getLoadArrowLength(snapshot, plane), [snapshot, plane])
 
   return (
     <>
@@ -446,28 +467,25 @@ function SceneContent({
             const undeformedEnd = projectPosition(endData.position, plane)
             const currentStart = projectPosition(start, plane)
             const currentEnd = projectPosition(end, plane)
-            const distributedLoadVectors = snapshot.loads
-              .filter((load) => {
-                if (load.kind !== 'distributed' || load.elementId !== element.id) {
-                  return false
-                }
+            const distributedLoadVectors = showLoads
+              ? snapshot.loads.reduce<THREE.Vector3[]>((vectors, load) => {
+                  if (load.kind !== 'distributed' || load.elementId !== element.id) {
+                    return vectors
+                  }
 
-                if (view === 'model') {
-                  return true
-                }
+                  if (view !== 'model' && load.caseId && load.caseId !== activeCase.id) {
+                    return vectors
+                  }
 
-                return !load.caseId || load.caseId === activeCase.id
-              })
-              .map((load) => {
-                const raw = new THREE.Vector3(load.vector.x, load.vector.y, load.vector.z)
-                const length = raw.length()
+                  const raw = new THREE.Vector3(load.vector.x, load.vector.y, load.vector.z)
+                  if (!isRenderableLoadVector(raw)) {
+                    return vectors
+                  }
 
-                if (length < 1e-9) {
-                  return raw
-                }
-
-                return raw.normalize().multiplyScalar(loadArrowLength)
-              })
+                  vectors.push(raw.normalize().multiplyScalar(loadArrowLength))
+                  return vectors
+                }, [])
+              : []
             return (
               <group key={element.id}>
                 {(view === 'deformed' && showUndeformed) && (
@@ -491,7 +509,7 @@ function SceneContent({
                     </div>
                   </Html>
                 )}
-                {view === 'model' && distributedLoadVectors.map((vector, vectorIndex) => (
+                {showLoads && view === 'model' && distributedLoadVectors.map((vector, vectorIndex) => (
                   <DistributedLoadMarker
                     color="#22c55e"
                     key={`${element.id}-distributed-${vectorIndex}`}
@@ -532,29 +550,25 @@ function SceneContent({
               ? new THREE.Vector3(reaction.fx || 0, reaction.fy || 0, reaction.fz || 0)
                   .multiplyScalar(0.03 / Math.max(maxReaction, 1))
               : null
-            const loadVectors = snapshot.loads
-              .filter((load) => {
-                if (load.nodeId !== entry.id) {
-                  return false
-                }
+            const loadVectors = showLoads
+              ? snapshot.loads.reduce<THREE.Vector3[]>((vectors, load) => {
+                  if (load.nodeId !== entry.id) {
+                    return vectors
+                  }
 
-                // In model preview, show all loads regardless of case id.
-                if (view === 'model') {
-                  return true
-                }
+                  if (view !== 'model' && load.caseId && load.caseId !== activeCase.id) {
+                    return vectors
+                  }
 
-                return !load.caseId || load.caseId === activeCase.id
-              })
-              .map((load) => {
-                const raw = new THREE.Vector3(load.vector.x, load.vector.y, load.vector.z)
-                const length = raw.length()
+                  const raw = new THREE.Vector3(load.vector.x, load.vector.y, load.vector.z)
+                  if (!isRenderableLoadVector(raw)) {
+                    return vectors
+                  }
 
-                if (length < 1e-9) {
-                  return raw
-                }
-
-                return raw.normalize().multiplyScalar(loadArrowLength)
-              })
+                  vectors.push(raw.normalize().multiplyScalar(loadArrowLength))
+                  return vectors
+                }, [])
+              : []
 
             return (
               <group key={entry.id}>
@@ -593,7 +607,7 @@ function SceneContent({
                 {view === 'reactions' && arrowVector && arrowVector.length() > 0.0001 && (
                   <VectorArrow color="#fb923c" origin={finalPosition} vector={projectPosition(arrowVector, plane)} />
                 )}
-                {view === 'model' && loadVectors.map((vector, index) => (
+                {showLoads && view === 'model' && loadVectors.map((vector, index) => (
                   <VectorArrow
                     color="#22c55e"
                     key={`${entry.id}-load-${index}`}
