@@ -1,23 +1,25 @@
-name: Core Regression
+name: Analysis Regression
 
 on:
   pull_request:
     paths:
-      - 'core/**'
+      - 'backend/src/agent-skills/analysis-execution/**'
       - 'scripts/**'
       - 'Makefile'
+      - '.github/workflows/backend-regression.yml'
       - '.github/workflows/core-regression.yml'
   push:
     branches:
       - master
     paths:
-      - 'core/**'
+      - 'backend/src/agent-skills/analysis-execution/**'
       - 'scripts/**'
       - 'Makefile'
+      - '.github/workflows/backend-regression.yml'
       - '.github/workflows/core-regression.yml'
 
 jobs:
-  core-regression:
+  analysis-regression:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -30,14 +32,14 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Prepare Core Virtualenv
+      - name: Prepare Analysis Virtualenv
         run: |
-          python -m venv core/.venv
-          core/.venv/bin/pip install --upgrade pip
-          core/.venv/bin/pip install -r core/requirements.txt
+          python -m venv backend/.venv
+          backend/.venv/bin/pip install --upgrade pip
+          backend/.venv/bin/pip install -r backend/src/agent-skills/analysis-execution/python/requirements.txt
 
-      - name: Run Core Regression
+      - name: Run Analysis Regression
         # CI may not always provide a usable OpenSeesPy runtime on Linux.
         # The regression suite still verifies unavailable-engine signaling,
         # auto-fallback routing, and the non-OpenSees regression surface.
-        run: make core-regression
+        run: make analysis-regression
