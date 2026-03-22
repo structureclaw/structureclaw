@@ -161,11 +161,6 @@ function New-EnvFile {
   $content = $content -replace 'LLM_API_KEY=.*', "LLM_API_KEY=$ApiKey"
   $content = $content -replace 'LLM_MODEL=.*', "LLM_MODEL=$Model"
   $content = $content -replace 'LLM_BASE_URL=.*', "LLM_BASE_URL=$BaseUrl"
-  if ($Provider -eq 'openai') {
-    $content = $content -replace 'OPENAI_API_KEY=.*', "OPENAI_API_KEY=$ApiKey"
-    $content = $content -replace 'OPENAI_MODEL=.*', "OPENAI_MODEL=$Model"
-    $content = $content -replace 'OPENAI_BASE_URL=.*', "OPENAI_BASE_URL=$BaseUrl"
-  }
   Set-Content -LiteralPath $OutputPath -Value $content -NoNewline
 }
 

@@ -76,12 +76,6 @@ export const config = {
   analysisPythonTimeoutMs: parseInt(process.env.ANALYSIS_PYTHON_TIMEOUT_MS || '300000', 10),
   analysisEngineManifestPath,
 
-  // pgAdmin 配置
-  pgAdminEnabled: (process.env.PGADMIN_ENABLED || 'false').toLowerCase() !== 'false',
-  pgAdminPort: parseInt(process.env.PGADMIN_PORT || '5050', 10),
-  pgAdminUrl: process.env.PGADMIN_PUBLIC_URL || `http://localhost:${process.env.PGADMIN_PORT || '5050'}`,
-  pgAdminDefaultEmail: process.env.PGADMIN_DEFAULT_EMAIL || 'admin@structureclaw.dev',
-
   // CORS
   corsOrigins,
 
