@@ -16,7 +16,7 @@ import {
   type DraftState,
   type ScenarioMatch,
   type ScenarioTemplateKey,
-} from '../agent-skills/runtime/index.js';
+} from '../agent-runtime/index.js';
 import {
   buildCodeCheckInput,
   buildCodeCheckSummaryText,
@@ -30,7 +30,7 @@ import {
   normalizePolicyAnalysisType,
   normalizePolicyReportFormat,
   normalizePolicyReportOutput,
-} from '../agent-skills/analysis-strategy/entry.js';
+} from '../agent-skills/design/entry.js';
 import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.js';
 import {
   computeNoSkillMissingFields,
@@ -38,7 +38,7 @@ import {
   tryNoSkillLlmBuildGenericModel,
 } from './agent-noskill-runtime.js';
 import { createLocalAnalysisEngineClient } from './analysis-execution.js';
-import type { LocalAnalysisEngineClient } from '../agent-skills/analysis-execution/types.js';
+import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
 
 export type AgentToolName = 'text-to-model-draft' | 'convert' | 'validate' | 'analyze' | 'code-check' | 'report';
 export type AgentRunMode = 'chat' | 'execute' | 'auto';

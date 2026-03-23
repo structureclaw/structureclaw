@@ -1,5 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
-import { loadExecutableSkillProviders } from '../dist/agent-skills/shared/loader.js';
+import { loadExecutableSkillProviders } from '../dist/skill-shared/loader.js';
 
 describe('shared executable skill provider loader', () => {
   test('should load executable providers when entrypoint import and validation succeed', async () => {

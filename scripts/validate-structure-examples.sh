@@ -14,10 +14,10 @@ import sys
 
 from schemas.structure_model_v1 import StructureModelV1
 
-base = Path('backend/src/agent-skills/analysis-execution/python/examples')
+base = Path('backend/src/agent-skills/analysis/python/examples')
 files = sorted(base.glob('*.json'))
 if not files:
-    raise SystemExit('No example files found under backend/src/agent-skills/analysis-execution/python/examples')
+    raise SystemExit('No example files found under backend/src/agent-skills/analysis/python/examples')
 
 minimum_expected = 20
 if len(files) < minimum_expected:

@@ -2,7 +2,7 @@ import { GB50010CodeCheckRule } from './gb50010/rule.js';
 import { GB50011CodeCheckRule } from './gb50011/rule.js';
 import { GB50017CodeCheckRule } from './gb50017/rule.js';
 import { JGJ3CodeCheckRule } from './jgj3/rule.js';
-import { loadSkillProviders } from '../shared/loader.js';
+import { loadSkillProviders } from '../../skill-shared/loader.js';
 import type { CodeCheckRule, CodeCheckRuleProvider } from './rule.js';
 
 const BUILTIN_CODE_CHECK_PROVIDERS: CodeCheckRuleProvider[] = [

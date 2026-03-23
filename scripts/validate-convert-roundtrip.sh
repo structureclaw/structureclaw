@@ -15,7 +15,7 @@ import sys
 
 from api import ConvertRequest, convert_structure_model
 
-sample_file = Path('backend/src/agent-skills/analysis-execution/python/examples/model_03_simple_truss.json')
+sample_file = Path('backend/src/agent-skills/analysis/python/examples/model_03_simple_truss.json')
 source = json.loads(sample_file.read_text(encoding='utf-8'))
 
 async def run() -> None:

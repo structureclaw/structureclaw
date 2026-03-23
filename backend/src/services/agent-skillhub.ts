@@ -2,8 +2,8 @@ import { existsSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { createHash } from 'crypto';
 import path from 'path';
-import { normalizeSkillHubCatalogEntryToSkillPackage } from '../agent-skills/shared/package.js';
-import type { SkillDomain } from '../agent-skills/runtime/types.js';
+import { normalizeSkillHubCatalogEntryToSkillPackage } from '../skill-shared/package.js';
+import type { SkillDomain } from '../agent-runtime/types.js';
 
 type SkillCompatibilityReasonCode = 'runtime_version_incompatible' | 'skill_api_version_incompatible';
 type SkillIntegrityReasonCode = 'signature_invalid' | 'checksum_mismatch';

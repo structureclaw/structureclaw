@@ -11,7 +11,7 @@ TMP_DIR="$(mktemp -d /tmp/structureclaw-batch-XXXXXX)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 
 mkdir -p "$TMP_DIR/input" "$TMP_DIR/output"
-cp backend/src/agent-skills/analysis-execution/python/examples/model_03_simple_truss.json "$TMP_DIR/input/valid.json"
+cp backend/src/agent-skills/analysis/python/examples/model_03_simple_truss.json "$TMP_DIR/input/valid.json"
 cat > "$TMP_DIR/input/invalid.json" <<'JSON'
 {
   "schema_version": "1.0.0",

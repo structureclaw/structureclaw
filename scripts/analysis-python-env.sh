@@ -4,10 +4,10 @@ if [[ -z "${ROOT_DIR:-}" ]]; then
   ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fi
 
-ANALYSIS_PYTHON_ROOT="$ROOT_DIR/backend/src/agent-skills/analysis-execution/python"
+ANALYSIS_PYTHON_ROOT="$ROOT_DIR/backend/src/agent-skills/analysis/python"
 ANALYSIS_EXAMPLES_DIR="$ANALYSIS_PYTHON_ROOT/examples"
 ANALYSIS_REGRESSION_DIR="$ANALYSIS_PYTHON_ROOT/regression"
-ANALYSIS_PYTHONPATH="$ANALYSIS_PYTHON_ROOT:$ROOT_DIR/backend/src/agent-skills/geometry-input:$ROOT_DIR/backend/src/agent-skills/code-check:$ROOT_DIR/backend/src/agent-skills/material-constitutive${PYTHONPATH:+:$PYTHONPATH}"
+ANALYSIS_PYTHONPATH="$ANALYSIS_PYTHON_ROOT:$ROOT_DIR/backend/src/agent-skills/data-input:$ROOT_DIR/backend/src/agent-skills/code-check:$ROOT_DIR/backend/src/agent-skills/material${PYTHONPATH:+:$PYTHONPATH}"
 
 resolve_analysis_python_bin() {
   if [[ -x "$ROOT_DIR/backend/.venv/bin/python" ]]; then

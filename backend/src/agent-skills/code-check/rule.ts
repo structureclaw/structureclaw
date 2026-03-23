@@ -1,4 +1,4 @@
-import type { BaseSkillProvider } from '../shared/provider.js';
+import type { BaseSkillProvider } from '../../skill-shared/provider.js';
 import type { CodeCheckDomainInput } from './types.js';
 
 export interface CodeCheckClient {

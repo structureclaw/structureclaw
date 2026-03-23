@@ -1,11 +1,11 @@
 import { describe, expect, test } from '@jest/globals';
-import { AgentSkillLoader } from '../dist/agent-skills/runtime/loader.js';
+import { AgentSkillLoader } from '../dist/agent-runtime/loader.js';
 import {
   listStructureModelingProviders,
   loadStructureModelingExecutableProviders,
-} from '../dist/agent-skills/structure-modeling/registry.js';
+} from '../dist/agent-skills/structure-type/registry.js';
 
-describe('structure-modeling provider registry', () => {
+describe('structure-type provider registry', () => {
   test('should expose built-in providers in deterministic priority order', async () => {
     const loader = new AgentSkillLoader();
     const providers = listStructureModelingProviders({
@@ -42,7 +42,7 @@ describe('structure-modeling provider registry', () => {
       builtInPlugins: await loader.loadPlugins(),
       externalProviders: [{
         id: 'frame-ext',
-        domain: 'structure-modeling',
+        domain: 'structure-type',
         source: 'skillhub',
         priority: 85,
         manifest: {
@@ -79,7 +79,7 @@ describe('structure-modeling provider registry', () => {
     ]);
   });
 
-  test('should load executable structure-modeling providers from package entrypoints', async () => {
+  test('should load executable structure-type providers from package entrypoints', async () => {
     const loader = new AgentSkillLoader();
     const [framePlugin] = (await loader.loadPlugins()).filter((plugin) => plugin.id === 'frame');
     const result = await loadStructureModelingExecutableProviders({
@@ -94,7 +94,7 @@ describe('structure-modeling provider registry', () => {
           skillApiVersion: 'v1',
         },
         entrypoints: {
-          structureModeling: 'dist/structure-modeling.js',
+          structureModeling: 'dist/structure-type.js',
         },
         enabledByDefault: false,
         priority: 95,

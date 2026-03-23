@@ -19,7 +19,7 @@ const run = async () => {
   const Fastify = require('fastify');
 
   const { AnalysisEngineCatalogService } = await import('./backend/dist/services/analysis-engine.js');
-  const { AgentSkillRuntime } = await import('./backend/dist/agent-skills/runtime/index.js');
+  const { AgentSkillRuntime } = await import('./backend/dist/agent-runtime/index.js');
 
   AgentSkillRuntime.prototype.listSkillManifests = async function mockListSkillManifests() {
     return [

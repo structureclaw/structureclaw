@@ -3,8 +3,8 @@ import {
   LOCAL_GET_ACTION_BY_PATH,
   LOCAL_POST_ACTION_BY_PATH,
   PythonAnalysisRunner,
-} from '../agent-skills/analysis-execution/entry.js';
-import type { LocalAnalysisEngineClient } from '../agent-skills/analysis-execution/types.js';
+} from '../agent-skills/analysis/entry.js';
+import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
 
 function buildError(message: string, statusCode = 500): Error & { statusCode?: number } {
   const error = new Error(message) as Error & { statusCode?: number };

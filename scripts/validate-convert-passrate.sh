@@ -14,7 +14,7 @@ from pathlib import Path
 from api import ConvertRequest, convert_structure_model
 
 formats = ('simple-1', 'compact-1', 'midas-text-1')
-samples = sorted(Path('backend/src/agent-skills/analysis-execution/python/examples').glob('model_*.json'))
+samples = sorted(Path('backend/src/agent-skills/analysis/python/examples').glob('model_*.json'))
 threshold = 0.95
 
 async def check_one(sample_path: Path, external_format: str) -> bool:

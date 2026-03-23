@@ -3,8 +3,8 @@ import {
   BUILTIN_SKILL_PACKAGE_VERSION,
   normalizeBuiltInManifestToSkillPackage,
   normalizeSkillHubCatalogEntryToSkillPackage,
-} from '../dist/agent-skills/shared/package.js';
-import { manifest as frameManifest } from '../dist/agent-skills/structure-modeling/frame/manifest.js';
+} from '../dist/skill-shared/package.js';
+import { manifest as frameManifest } from '../dist/agent-skills/structure-type/frame/manifest.js';
 import { AgentSkillHubService } from '../dist/services/agent-skillhub.js';
 
 describe('shared skill package metadata', () => {

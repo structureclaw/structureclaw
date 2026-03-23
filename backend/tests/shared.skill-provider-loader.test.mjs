@@ -1,5 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
-import { loadSkillProviders } from '../dist/agent-skills/shared/loader.js';
+import { loadSkillProviders } from '../dist/skill-shared/loader.js';
 
 describe('shared skill provider loader', () => {
   test('should merge providers with builtin-before-skillhub tie breaking', () => {

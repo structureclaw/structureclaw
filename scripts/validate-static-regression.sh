@@ -27,7 +27,7 @@ def get_by_path(obj, dotted):
     return cur
 
 
-base = Path('backend/src/agent-skills/analysis-execution/python/regression/static_2d')
+base = Path('backend/src/agent-skills/analysis/python/regression/static_2d')
 cases = sorted(base.glob('case_*.json'))
 if not cases:
     raise SystemExit('No regression case files found')

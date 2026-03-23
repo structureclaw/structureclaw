@@ -1,6 +1,6 @@
 import type { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from './locale.js';
-import type { DraftState } from '../agent-skills/runtime/index.js';
+import type { DraftState } from '../agent-runtime/index.js';
 import { logger } from '../utils/logger.js';
 
 export function normalizeNoSkillDraftState(_state: DraftState): DraftState {
