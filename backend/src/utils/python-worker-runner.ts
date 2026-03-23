@@ -64,9 +64,17 @@ export class PythonWorkerRunner<TInput extends object> {
       { executable: path.resolve(process.cwd(), '.venv/Scripts/python.exe'), args: [] },
       { executable: path.resolve(process.cwd(), 'backend/.venv/bin/python'), args: [] },
       { executable: path.resolve(process.cwd(), '.venv/bin/python'), args: [] },
-      { executable: 'py', args: ['-3'] },
-      { executable: 'python3', args: [] },
-      { executable: 'python', args: [] },
+      ...(process.platform === 'win32'
+        ? [
+            { executable: 'py', args: ['-3'] },
+            { executable: 'python3', args: [] },
+            { executable: 'python', args: [] },
+          ]
+        : [
+            { executable: 'python3', args: [] },
+            { executable: 'python', args: [] },
+            { executable: 'py', args: ['-3'] },
+          ]),
     ];
 
     for (const candidate of candidates) {

@@ -151,7 +151,7 @@ class OpenSeesDynamicExecutor:
             current_time += time_step
 
             if monitor_node and i % 10 == 0:
-                disp = ops.nodeDisp(int(monitor_node))
+                disp = ops.nodeDisp(self.analyzer._ops_node_tag(monitor_node))
                 results.append({
                     'time': current_time,
                     'displacement': disp[1] if len(disp) > 1 else 0,

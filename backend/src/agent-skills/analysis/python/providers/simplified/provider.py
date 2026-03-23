@@ -22,7 +22,13 @@ def run_analysis(
     if analysis_type == "seismic":
         return SimplifiedSeismicAnalyzer(model).run(parameters)
     if analysis_type == "nonlinear":
-        return StaticAnalyzer(model).run_nonlinear(parameters)
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "errorCode": "UNSUPPORTED_ANALYSIS_TYPE",
+                "message": "Nonlinear analysis is not supported by the simplified provider.",
+            },
+        )
     raise HTTPException(
         status_code=400,
         detail={

@@ -92,7 +92,7 @@ class OpenSeesSeismicExecutor:
                 break
 
             reaction = ops.nodeReaction(1, 1)
-            roof_disp = ops.nodeDisp(int(control_node), 1)
+            roof_disp = ops.nodeDisp(self.analyzer._ops_node_tag(control_node), 1)
 
             results.append({
                 'step': i,

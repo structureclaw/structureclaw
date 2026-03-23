@@ -85,9 +85,14 @@ def main() -> int:
     except HTTPException as error:
         detail = error.detail
         if isinstance(detail, dict):
-          _error(str(detail.get("errorCode") or f"HTTP_{error.status_code}"), str(detail.get("message") or detail), status_code=error.status_code, detail=detail)
+            _error(
+                str(detail.get("errorCode") or f"HTTP_{error.status_code}"),
+                str(detail.get("message") or detail),
+                status_code=error.status_code,
+                detail=detail,
+            )
         else:
-          _error(f"HTTP_{error.status_code}", str(detail), status_code=error.status_code, detail=detail)
+            _error(f"HTTP_{error.status_code}", str(detail), status_code=error.status_code, detail=detail)
         return 1
     except ValidationError as error:
         _error("VALIDATION_ERROR", "Validation failed", status_code=422, detail=error.errors())
