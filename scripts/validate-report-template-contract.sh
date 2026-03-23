@@ -21,10 +21,15 @@ const run = async () => {
   const { AgentService } = await import('./backend/dist/services/agent.js');
 
   const svc = new AgentService();
+  svc.structureProtocolClient = {
+    post: async (path) => {
+      if (path === '/validate') {
+        return { data: { valid: true, schemaVersion: '1.0.0' } };
+      }
+      throw new Error(`unexpected structure protocol path ${path}`);
+    },
+  };
   svc.engineClient.post = async (path, payload) => {
-    if (path === '/validate') {
-      return { data: { valid: true, schemaVersion: '1.0.0' } };
-    }
     if (path === '/analyze') {
       return {
         data: {
@@ -58,30 +63,35 @@ const run = async () => {
         },
       };
     }
-    if (path === '/code-check') {
-      return {
-        data: {
-          code: payload.code,
-          status: 'success',
-          summary: { total: 1, passed: 1, failed: 0, warnings: 0 },
-          details: [{
-            elementId: 'E1',
-            status: 'pass',
-            checks: [{
-              name: '强度验算',
-              items: [{
-                item: '正应力',
-                clause: 'GB50017-2017 7.1.1',
-                formula: 'σ = N/A <= f',
-                utilization: 0.72,
-                status: 'pass',
+    throw new Error(`unexpected analysis path ${path}`);
+  };
+  svc.codeCheckClient = {
+    post: async (path, payload) => {
+      if (path === '/code-check') {
+        return {
+          data: {
+            code: payload.code,
+            status: 'success',
+            summary: { total: 1, passed: 1, failed: 0, warnings: 0 },
+            details: [{
+              elementId: 'E1',
+              status: 'pass',
+              checks: [{
+                name: '强度验算',
+                items: [{
+                  item: '正应力',
+                  clause: 'GB50017-2017 7.1.1',
+                  formula: 'σ = N/A <= f',
+                  utilization: 0.72,
+                  status: 'pass',
+                }],
               }],
             }],
-          }],
-        },
-      };
-    }
-    throw new Error(`unexpected path ${path}`);
+          },
+        };
+      }
+      throw new Error(`unexpected code-check path ${path}`);
+    },
   };
 
   const result = await svc.run({

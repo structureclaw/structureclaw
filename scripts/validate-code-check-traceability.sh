@@ -11,18 +11,18 @@ require_analysis_python
 import asyncio
 import sys
 
-from api import CodeCheckRequest, code_check
+from runtime import run_code_check
 
 async def run() -> None:
-    result = await code_check(CodeCheckRequest(
-        model_id='trace-demo',
-        code='GB50017',
-        elements=['E1'],
-        context={
+    result = run_code_check(
+        'trace-demo',
+        'GB50017',
+        ['E1'],
+        {
             'analysisSummary': {'analysisType': 'static', 'success': True},
             'utilizationByElement': {'E1': {'正应力': 0.73}},
         },
-    ))
+    )
 
     assert result['traceability']['modelId'] == 'trace-demo'
     assert result['traceability']['analysisSummary']['analysisType'] == 'static'

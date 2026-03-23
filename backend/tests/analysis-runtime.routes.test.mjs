@@ -7,10 +7,12 @@ describe('analysis runtime compatibility routes', () => {
     const Fastify = require('fastify');
 
     const { AnalysisExecutionService } = await import('../dist/services/analysis-execution.js');
-    AnalysisExecutionService.prototype.getStructureModelSchema = async function mockStructureSchema() {
+    const { StructureProtocolExecutionService } = await import('../dist/services/structure-protocol-execution.js');
+    const { CodeCheckExecutionService } = await import('../dist/services/code-check-execution.js');
+    StructureProtocolExecutionService.prototype.getStructureModelSchema = async function mockStructureSchema() {
       return { title: 'StructureModelV1' };
     };
-    AnalysisExecutionService.prototype.getConverterSchema = async function mockConverterSchema() {
+    StructureProtocolExecutionService.prototype.getConverterSchema = async function mockConverterSchema() {
       return { supportedFormats: ['structuremodel-v1'] };
     };
     AnalysisExecutionService.prototype.listEngines = async function mockListEngines() {
@@ -22,16 +24,16 @@ describe('analysis runtime compatibility routes', () => {
     AnalysisExecutionService.prototype.checkEngine = async function mockCheckEngine(id) {
       return { engine: { id } };
     };
-    AnalysisExecutionService.prototype.validate = async function mockValidate(body) {
+    StructureProtocolExecutionService.prototype.validate = async function mockValidate(body) {
       return { valid: true, echo: body.engineId };
     };
-    AnalysisExecutionService.prototype.convert = async function mockConvert() {
+    StructureProtocolExecutionService.prototype.convert = async function mockConvert() {
       return { model: { schema_version: '1.0.0' } };
     };
     AnalysisExecutionService.prototype.analyze = async function mockAnalyze(body) {
       return { success: true, analysis_type: body.type };
     };
-    AnalysisExecutionService.prototype.codeCheck = async function mockCodeCheck(body) {
+    CodeCheckExecutionService.prototype.codeCheck = async function mockCodeCheck(body) {
       return { code: body.code, status: 'success' };
     };
 

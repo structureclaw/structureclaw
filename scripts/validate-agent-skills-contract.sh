@@ -16,10 +16,15 @@ const assert = (cond, msg) => {
 const run = async () => {
   const { AgentService } = await import('./backend/dist/services/agent.js');
   const svc = new AgentService();
+  svc.structureProtocolClient = {
+    post: async (path) => {
+      if (path === '/validate') {
+        return { data: { valid: true, schemaVersion: '1.0.0' } };
+      }
+      throw new Error(`unexpected structure protocol path ${path}`);
+    },
+  };
   svc.engineClient.post = async (path, payload) => {
-    if (path === '/validate') {
-      return { data: { valid: true, schemaVersion: '1.0.0' } };
-    }
     if (path === '/analyze') {
       return {
         data: {
@@ -33,7 +38,7 @@ const run = async () => {
         },
       };
     }
-    throw new Error(`unexpected path ${path}`);
+    throw new Error(`unexpected analysis path ${path}`);
   };
   const skills = svc.listSkills();
 

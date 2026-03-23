@@ -49,6 +49,66 @@ const withDefaultSkills = (svc) => {
   return svc;
 };
 
+const stubExecutionClients = (svc, handlers = {}) => {
+  svc.structureProtocolClient = {
+    post: async (path, payload) => {
+      if (path === '/validate') {
+        if (handlers.validate) {
+          return handlers.validate(path, payload);
+        }
+        return { data: { valid: true, schemaVersion: '1.0.0' } };
+      }
+      if (path === '/convert') {
+        if (handlers.convert) {
+          return handlers.convert(path, payload);
+        }
+        return { data: { model: payload?.model ?? {} } };
+      }
+      throw new Error(`unexpected structure protocol path ${path}`);
+    },
+  };
+
+  svc.engineClient.post = async (path, payload) => {
+    if (path === '/analyze') {
+      if (handlers.analyze) {
+        return handlers.analyze(path, payload);
+      }
+      return {
+        data: {
+          schema_version: '1.0.0',
+          analysis_type: payload.type,
+          success: true,
+          error_code: null,
+          message: 'ok',
+          data: {},
+          meta: {},
+        },
+      };
+    }
+    throw new Error(`unexpected analysis path ${path}`);
+  };
+
+  svc.codeCheckClient = {
+    post: async (path, payload) => {
+      if (path === '/code-check') {
+        if (handlers.codeCheck) {
+          return handlers.codeCheck(path, payload);
+        }
+        return {
+          data: {
+            code: payload.code,
+            status: 'success',
+            summary: { total: payload.elements.length, passed: payload.elements.length, failed: 0, warnings: 0 },
+            traceability: { analysisSummary: payload.context?.analysisSummary || {} },
+            details: [],
+          },
+        };
+      }
+      throw new Error(`unexpected code-check path ${path}`);
+    },
+  };
+};
+
 const run = async () => {
   process.env.LLM_API_KEY = '';
   process.env.OPENAI_API_KEY = '';
@@ -83,14 +143,13 @@ const run = async () => {
   // 2) validate failure path
   {
     const svc = withDefaultSkills(new AgentService());
-    svc.engineClient.post = async (path) => {
-      if (path === '/validate') {
+    stubExecutionClients(svc, {
+      validate: async () => {
         const err = new Error('validation failed');
         err.response = { data: { errorCode: 'INVALID_STRUCTURE_MODEL' } };
         throw err;
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+      },
+    });
 
     const result = await svc.run({
       message: '做静力分析',
@@ -107,36 +166,7 @@ const run = async () => {
   // 3) success orchestration path
   {
     const svc = withDefaultSkills(new AgentService());
-    svc.engineClient.post = async (path, payload) => {
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
-      }
-      if (path === '/analyze') {
-        return {
-          data: {
-            schema_version: '1.0.0',
-            analysis_type: payload.type,
-            success: true,
-            error_code: null,
-            message: 'ok',
-            data: {},
-            meta: {},
-          },
-        };
-      }
-      if (path === '/code-check') {
-        return {
-          data: {
-            code: payload.code,
-            status: 'success',
-            summary: { total: payload.elements.length, passed: payload.elements.length, failed: 0, warnings: 0 },
-            traceability: { analysisSummary: payload.context?.analysisSummary || {} },
-            details: [],
-          },
-        };
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+    stubExecutionClients(svc);
 
     const result = await svc.run({
       message: '静力分析这个模型',
@@ -167,36 +197,7 @@ const run = async () => {
   // 4) stream orchestration events
   {
     const svc = withDefaultSkills(new AgentService());
-    svc.engineClient.post = async (path, payload) => {
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
-      }
-      if (path === '/analyze') {
-        return {
-          data: {
-            schema_version: '1.0.0',
-            analysis_type: payload.type,
-            success: true,
-            error_code: null,
-            message: 'ok',
-            data: {},
-            meta: {},
-          },
-        };
-      }
-      if (path === '/code-check') {
-        return {
-          data: {
-            code: payload.code,
-            status: 'success',
-            summary: { total: payload.elements.length, passed: payload.elements.length, failed: 0, warnings: 0 },
-            traceability: { analysisSummary: payload.context?.analysisSummary || {} },
-            details: [],
-          },
-        };
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+    stubExecutionClients(svc);
 
     const events = [];
     let streamTraceId;
@@ -226,25 +227,7 @@ const run = async () => {
   // 5) text-to-model draft success path
   {
     const svc = withDefaultSkills(new AgentService());
-    svc.engineClient.post = async (path, payload) => {
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
-      }
-      if (path === '/analyze') {
-        return {
-          data: {
-            schema_version: '1.0.0',
-            analysis_type: payload.type,
-            success: true,
-            error_code: null,
-            message: 'ok',
-            data: {},
-            meta: {},
-          },
-        };
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+    stubExecutionClients(svc);
 
     const result = await svc.run({
       message: '请按一个3m悬臂梁，端部10kN竖向荷载做静力分析',
@@ -266,25 +249,7 @@ const run = async () => {
   // 6) conversation-level clarification carry-over
   {
     const svc = withDefaultSkills(new AgentService());
-    svc.engineClient.post = async (path, payload) => {
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
-      }
-      if (path === '/analyze') {
-        return {
-          data: {
-            schema_version: '1.0.0',
-            analysis_type: payload.type,
-            success: true,
-            error_code: null,
-            message: 'ok',
-            data: {},
-            meta: {},
-          },
-        };
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+    stubExecutionClients(svc);
 
     const first = await svc.run({
       conversationId: 'conv-clarify-1',
@@ -441,25 +406,7 @@ const run = async () => {
   // 7) draft type coverage: double-span beam and planar truss
   {
     const svc = withDefaultSkills(new AgentService());
-    svc.engineClient.post = async (path, payload) => {
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
-      }
-      if (path === '/analyze') {
-        return {
-          data: {
-            schema_version: '1.0.0',
-            analysis_type: payload.type,
-            success: true,
-            error_code: null,
-            message: 'ok',
-            data: {},
-            meta: {},
-          },
-        };
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+    stubExecutionClients(svc);
 
     const beam = await svc.run({
       message: '按双跨梁建模，每跨4m，中跨节点施加12kN竖向荷载做静力分析',
@@ -491,24 +438,8 @@ const run = async () => {
   {
     const svc = withDefaultSkills(new AgentService());
     let capturedCodeCheckPayload;
-    svc.engineClient.post = async (path, payload) => {
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
-      }
-      if (path === '/analyze') {
-        return {
-          data: {
-            schema_version: '1.0.0',
-            analysis_type: payload.type,
-            success: true,
-            error_code: null,
-            message: 'ok',
-            data: {},
-            meta: {},
-          },
-        };
-      }
-      if (path === '/code-check') {
+    stubExecutionClients(svc, {
+      codeCheck: async (_path, payload) => {
         capturedCodeCheckPayload = payload;
         return {
           data: {
@@ -533,9 +464,8 @@ const run = async () => {
             }],
           },
         };
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+      },
+    });
 
     const result = await svc.run({
       message: '请对该模型做静力分析并按GB50017做规范校核并出报告',

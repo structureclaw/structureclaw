@@ -45,15 +45,78 @@ function createServiceWithDefaultSkills() {
   return svc;
 }
 
+function stubExecutionClients(svc, handlers = {}) {
+  const calls = [];
+
+  svc.structureProtocolClient = {
+    post: async (path, payload) => {
+      calls.push({ client: 'structureProtocol', path, payload });
+      if (path === '/validate') {
+        if (handlers.validate) {
+          return handlers.validate(path, payload, calls);
+        }
+        return { data: { valid: true, schemaVersion: '1.0.0' } };
+      }
+      if (path === '/convert') {
+        if (handlers.convert) {
+          return handlers.convert(path, payload, calls);
+        }
+        return { data: { model: payload?.model ?? {} } };
+      }
+      throw new Error(`unexpected structure protocol path ${path}`);
+    },
+  };
+
+  svc.engineClient.post = async (path, payload) => {
+    calls.push({ client: 'analysis', path, payload });
+    if (path === '/analyze') {
+      if (handlers.analyze) {
+        return handlers.analyze(path, payload, calls);
+      }
+      return {
+        data: {
+          schema_version: '1.0.0',
+          analysis_type: payload.type,
+          success: true,
+          error_code: null,
+          message: 'ok',
+          data: {},
+          meta: {},
+        },
+      };
+    }
+    throw new Error(`unexpected analysis path ${path}`);
+  };
+
+  svc.codeCheckClient = {
+    post: async (path, payload) => {
+      calls.push({ client: 'codeCheck', path, payload });
+      if (path === '/code-check') {
+        if (handlers.codeCheck) {
+          return handlers.codeCheck(path, payload, calls);
+        }
+        return {
+          data: {
+            code: payload.code,
+            status: 'success',
+            summary: { total: payload.elements.length, passed: payload.elements.length, failed: 0, warnings: 0 },
+            details: [],
+          },
+        };
+      }
+      throw new Error(`unexpected code-check path ${path}`);
+    },
+  };
+
+  return calls;
+}
+
 describe('AgentService orchestration', () => {
   test('should execute analyze -> code-check -> report closed loop', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
-    svc.engineClient.post = async (path, payload) => {
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
-      }
-      if (path === '/analyze') {
+    stubExecutionClients(svc, {
+      analyze: async (_path, payload) => {
         expect(payload.engineId).toBeUndefined();
         return {
           data: {
@@ -66,19 +129,8 @@ describe('AgentService orchestration', () => {
             meta: {},
           },
         };
-      }
-      if (path === '/code-check') {
-        return {
-          data: {
-            code: payload.code,
-            status: 'success',
-            summary: { total: payload.elements.length, passed: payload.elements.length, failed: 0, warnings: 0 },
-            details: [],
-          },
-        };
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+      },
+    });
 
     const result = await svc.run({
       message: '请静力分析并规范校核',
@@ -113,30 +165,11 @@ describe('AgentService orchestration', () => {
   test('should not run code-check when no code-check skill or legacy designCode is provided', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
-    const calls = [];
-    svc.engineClient.post = async (path, payload) => {
-      calls.push({ path, payload });
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
-      }
-      if (path === '/analyze') {
-        return {
-          data: {
-            schema_version: '1.0.0',
-            analysis_type: payload.type,
-            success: true,
-            error_code: null,
-            message: 'ok',
-            data: {},
-            meta: {},
-          },
-        };
-      }
-      if (path === '/code-check') {
+    const calls = stubExecutionClients(svc, {
+      codeCheck: async () => {
         throw new Error('code-check should not run without an explicit code-check skill');
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+      },
+    });
 
     const result = await svc.run({
       message: '请静力分析并规范校核',
@@ -160,7 +193,7 @@ describe('AgentService orchestration', () => {
     expect(result.success).toBe(true);
     expect(result.toolCalls.some((c) => c.tool === 'analyze')).toBe(true);
     expect(result.toolCalls.some((c) => c.tool === 'code-check')).toBe(false);
-    expect(calls.some((item) => item.path === '/code-check')).toBe(false);
+    expect(calls.some((item) => item.client === 'codeCheck' && item.path === '/code-check')).toBe(false);
   });
 
   test('should clear stored conversation sessions', async () => {
@@ -182,38 +215,29 @@ describe('AgentService orchestration', () => {
   test('should pass engineId through validate analyze and code-check calls', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
-    const calls = [];
-    svc.engineClient.post = async (path, payload) => {
-      calls.push({ path, payload });
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0', meta: { engineId: payload.engineId } } };
-      }
-      if (path === '/analyze') {
-        return {
-          data: {
-            schema_version: '1.0.0',
-            analysis_type: payload.type,
-            success: true,
-            error_code: null,
-            message: 'ok',
-            data: {},
-            meta: { engineId: payload.engineId, selectionMode: 'manual' },
-          },
-        };
-      }
-      if (path === '/code-check') {
-        return {
-          data: {
-            code: payload.code,
-            status: 'success',
-            summary: { total: payload.elements.length, passed: payload.elements.length, failed: 0, warnings: 0 },
-            details: [],
-            meta: { engineId: payload.engineId },
-          },
-        };
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+    const calls = stubExecutionClients(svc, {
+      validate: async (_path, payload) => ({ data: { valid: true, schemaVersion: '1.0.0', meta: { engineId: payload.engineId } } }),
+      analyze: async (_path, payload) => ({
+        data: {
+          schema_version: '1.0.0',
+          analysis_type: payload.type,
+          success: true,
+          error_code: null,
+          message: 'ok',
+          data: {},
+          meta: { engineId: payload.engineId, selectionMode: 'manual' },
+        },
+      }),
+      codeCheck: async (_path, payload) => ({
+        data: {
+          code: payload.code,
+          status: 'success',
+          summary: { total: payload.elements.length, passed: payload.elements.length, failed: 0, warnings: 0 },
+          details: [],
+          meta: { engineId: payload.engineId },
+        },
+      }),
+    });
 
     const result = await svc.run({
       message: '请静力分析并规范校核',
@@ -236,38 +260,21 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(calls.find((item) => item.path === '/validate')?.payload.engineId).toBe('builtin-opensees');
-    expect(calls.find((item) => item.path === '/analyze')?.payload.engineId).toBe('builtin-opensees');
-    expect(calls.find((item) => item.path === '/code-check')?.payload.engineId).toBe('builtin-opensees');
+    expect(calls.find((item) => item.client === 'structureProtocol' && item.path === '/validate')?.payload.engineId).toBe('builtin-opensees');
+    expect(calls.find((item) => item.client === 'analysis' && item.path === '/analyze')?.payload.engineId).toBe('builtin-opensees');
+    expect(calls.find((item) => item.client === 'codeCheck' && item.path === '/code-check')?.payload.engineId).toBe('builtin-opensees');
   });
 
   test('should fail when code-check fails in closed loop', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
-    svc.engineClient.post = async (path, payload) => {
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
-      }
-      if (path === '/analyze') {
-        return {
-          data: {
-            schema_version: '1.0.0',
-            analysis_type: payload.type,
-            success: true,
-            error_code: null,
-            message: 'ok',
-            data: {},
-            meta: {},
-          },
-        };
-      }
-      if (path === '/code-check') {
+    stubExecutionClients(svc, {
+      codeCheck: async () => {
         const error = new Error('code check failed');
         error.response = { data: { errorCode: 'CODE_CHECK_EXECUTION_FAILED' } };
         throw error;
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+      },
+    });
 
     const result = await svc.run({
       message: '请静力分析并规范校核',
@@ -297,35 +304,7 @@ describe('AgentService orchestration', () => {
   test('should export report artifacts to files when reportOutput=file', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
-    svc.engineClient.post = async (path, payload) => {
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
-      }
-      if (path === '/analyze') {
-        return {
-          data: {
-            schema_version: '1.0.0',
-            analysis_type: payload.type,
-            success: true,
-            error_code: null,
-            message: 'ok',
-            data: {},
-            meta: {},
-          },
-        };
-      }
-      if (path === '/code-check') {
-        return {
-          data: {
-            code: payload.code,
-            status: 'success',
-            summary: { total: payload.elements.length, passed: payload.elements.length, failed: 0, warnings: 0 },
-            details: [],
-          },
-        };
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+    stubExecutionClients(svc);
 
     const result = await svc.run({
       message: '请静力分析并规范校核并导出报告',
@@ -861,25 +840,7 @@ describe('AgentService orchestration', () => {
   test('should execute analyze in no-skill mode when computable model is provided', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
-    svc.engineClient.post = async (path, payload) => {
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
-      }
-      if (path === '/analyze') {
-        return {
-          data: {
-            schema_version: '1.0.0',
-            analysis_type: payload.type,
-            success: true,
-            error_code: null,
-            message: 'ok',
-            data: {},
-            meta: {},
-          },
-        };
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+    stubExecutionClients(svc);
 
     const result = await svc.run({
       message: '按3m悬臂梁端部10kN点荷载做静力分析',
@@ -936,37 +897,13 @@ describe('AgentService orchestration', () => {
   test('should continue to analyze when validate returns an upstream 502', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
-    svc.engineClient.post = async (path, payload) => {
-      if (path === '/validate') {
+    stubExecutionClients(svc, {
+      validate: async () => {
         const error = new Error('Request failed with status code 502');
         error.response = { status: 502, data: { message: 'bad gateway' } };
         throw error;
-      }
-      if (path === '/analyze') {
-        return {
-          data: {
-            schema_version: '1.0.0',
-            analysis_type: payload.type,
-            success: true,
-            error_code: null,
-            message: 'ok',
-            data: {},
-            meta: {},
-          },
-        };
-      }
-      if (path === '/code-check') {
-        return {
-          data: {
-            code: payload.code,
-            status: 'success',
-            summary: { total: payload.elements.length, passed: payload.elements.length, failed: 0, warnings: 0 },
-            details: [],
-          },
-        };
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+      },
+    });
 
     const result = await svc.run({
       message: '请自动校核并生成报告',
@@ -1007,11 +944,8 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     let analyzeAttempts = 0;
-    svc.engineClient.post = async (path, payload) => {
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
-      }
-      if (path === '/analyze') {
+    stubExecutionClients(svc, {
+      analyze: async (_path, payload) => {
         analyzeAttempts += 1;
         if (analyzeAttempts < 2) {
           const error = new Error('Request failed with status code 502');
@@ -1029,9 +963,8 @@ describe('AgentService orchestration', () => {
             meta: {},
           },
         };
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+      },
+    });
 
     const result = await svc.run({
       message: '请做静力分析',
@@ -1062,18 +995,14 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     let analyzeAttempts = 0;
-    svc.engineClient.post = async (path) => {
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
-      }
-      if (path === '/analyze') {
+    stubExecutionClients(svc, {
+      analyze: async () => {
         analyzeAttempts += 1;
         const error = new Error('Request failed with status code 502');
         error.response = { status: 502, data: { message: 'bad gateway' } };
         throw error;
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+      },
+    });
 
     const result = await svc.run({
       message: '请做静力分析',
@@ -1103,35 +1032,7 @@ describe('AgentService orchestration', () => {
   test('should generate English summaries and markdown when locale=en', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
-    svc.engineClient.post = async (path, payload) => {
-      if (path === '/validate') {
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
-      }
-      if (path === '/analyze') {
-        return {
-          data: {
-            schema_version: '1.0.0',
-            analysis_type: payload.type,
-            success: true,
-            error_code: null,
-            message: 'ok',
-            data: {},
-            meta: {},
-          },
-        };
-      }
-      if (path === '/code-check') {
-        return {
-          data: {
-            code: payload.code,
-            status: 'success',
-            summary: { total: payload.elements.length, passed: payload.elements.length, failed: 0, warnings: 0 },
-            details: [],
-          },
-        };
-      }
-      throw new Error(`unexpected path ${path}`);
-    };
+    stubExecutionClients(svc);
 
     const result = await svc.run({
       message: 'Run a static analysis and code check',
