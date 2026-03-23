@@ -36,7 +36,7 @@ jobs:
         run: |
           python -m venv backend/.venv
           backend/.venv/bin/pip install --upgrade pip
-          backend/.venv/bin/pip install -r backend/src/agent-skills/analysis-execution/python/requirements.txt
+          backend/.venv/bin/pip install -r backend/src/agent-skills/analysis/python/requirements.txt
 
       - name: Run Analysis Regression
         # CI may not always provide a usable OpenSeesPy runtime on Linux.

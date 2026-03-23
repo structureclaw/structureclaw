@@ -35,7 +35,7 @@ COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/src/agent-skills ./src/agent-skills
-RUN python3 -m pip install --break-system-packages --no-cache-dir -r /app/src/agent-skills/analysis-execution/python/requirements.txt
+RUN python3 -m pip install --break-system-packages --no-cache-dir -r /app/src/agent-skills/analysis/python/requirements.txt
 
 EXPOSE ${PORT}
 
