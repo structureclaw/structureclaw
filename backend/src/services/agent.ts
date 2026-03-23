@@ -38,6 +38,8 @@ import {
   tryNoSkillLlmBuildGenericModel,
 } from './agent-noskill-runtime.js';
 import { createLocalAnalysisEngineClient } from './analysis-execution.js';
+import { createLocalCodeCheckClient } from './code-check-execution.js';
+import { createLocalStructureProtocolClient } from './structure-protocol-execution.js';
 import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
 
 export type AgentToolName = 'text-to-model-draft' | 'convert' | 'validate' | 'analyze' | 'code-check' | 'report';
@@ -225,6 +227,8 @@ export interface AgentStreamChunk {
 
 export class AgentService {
   public engineClient: LocalAnalysisEngineClient;
+  public structureProtocolClient = createLocalStructureProtocolClient();
+  public codeCheckClient = createLocalCodeCheckClient();
   public llm: ChatOpenAI | null;
   private readonly skillRuntime: AgentSkillRuntime;
   private readonly policy: AgentPolicyService;
@@ -880,7 +884,7 @@ export class AgentService {
       toolCalls.push(convertCall);
 
       try {
-        const converted = await this.engineClient.post('/convert', convertInput);
+        const converted = await this.structureProtocolClient.post('/convert', convertInput);
         this.completeToolCallSuccess(convertCall, converted.data);
         normalizedModel = (converted.data?.model ?? {}) as Record<string, unknown>;
       } catch (error: any) {
@@ -911,7 +915,7 @@ export class AgentService {
     toolCalls.push(validateCall);
 
     try {
-      const validated = await this.engineClient.post('/validate', {
+      const validated = await this.structureProtocolClient.post('/validate', {
         ...validateInput,
         engineId: params.context?.engineId,
       });
@@ -1028,7 +1032,7 @@ export class AgentService {
         toolCalls.push(codeCheckCall);
 
         try {
-          const codeChecked = await executeCodeCheckDomain(this.engineClient, codeCheckInput, params.context?.engineId);
+          const codeChecked = await executeCodeCheckDomain(this.codeCheckClient, codeCheckInput, params.context?.engineId);
           this.completeToolCallSuccess(codeCheckCall, codeChecked);
           codeCheckResult = codeChecked;
         } catch (error: any) {

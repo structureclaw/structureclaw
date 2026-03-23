@@ -12,12 +12,12 @@ import json
 from pathlib import Path
 import sys
 
-from schemas.structure_model_v1 import StructureModelV1
+from structure_protocol.structure_model_v1 import StructureModelV1
 
-base = Path('backend/src/agent-skills/analysis/python/examples')
+base = Path('backend/src/skill-shared/python/structure_protocol/examples')
 files = sorted(base.glob('*.json'))
 if not files:
-    raise SystemExit('No example files found under backend/src/agent-skills/analysis/python/examples')
+    raise SystemExit('No example files found under backend/src/skill-shared/python/structure_protocol/examples')
 
 minimum_expected = 20
 if len(files) < minimum_expected:

@@ -13,7 +13,7 @@ import sys
 
 from fastapi import HTTPException
 from api import AnalysisRequest, analyze
-from schemas.structure_model_v1 import StructureModelV1, Node, Element, Material, Section
+from structure_protocol.structure_model_v1 import StructureModelV1, Node, Element, Material, Section
 
 model = StructureModelV1(
     schema_version='1.0.0',

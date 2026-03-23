@@ -9,16 +9,20 @@ require_analysis_python
 
 "$PYTHON_BIN" - <<'PY'
 import asyncio
-import sys
 
 from fastapi import HTTPException
 
-from api import ConvertRequest, converter_schema, convert_structure_model
+from converters.registry import get_converter, supported_formats
+from structure_protocol.runtime import convert_structure_model_payload
 
 EXPECTED_FORMATS = {'structuremodel-v1', 'simple-1', 'compact-1', 'midas-text-1'}
 
 async def run() -> None:
-    schema = await converter_schema()
+    schema = {
+        'supportedFormats': supported_formats(),
+        'defaultSourceFormat': 'structuremodel-v1',
+        'defaultTargetFormat': 'structuremodel-v1',
+    }
     supported = set(schema.get('supportedFormats', []))
     missing = EXPECTED_FORMATS - supported
     if missing:
@@ -28,11 +32,14 @@ async def run() -> None:
     print('[ok] converter schema contract')
 
     try:
-        await convert_structure_model(ConvertRequest(
-            model={},
+        convert_structure_model_payload(
+            model_payload={},
+            target_schema_version='1.0.0',
             source_format='unsupported-format',
             target_format='structuremodel-v1',
-        ))
+            supported_formats=supported_formats(),
+            get_converter=get_converter,
+        )
         raise AssertionError('unsupported source format should fail')
     except HTTPException as exc:
         assert exc.status_code == 400
@@ -42,11 +49,14 @@ async def run() -> None:
     print('[ok] convert unsupported source format contract')
 
     try:
-        await convert_structure_model(ConvertRequest(
-            model={},
+        convert_structure_model_payload(
+            model_payload={},
+            target_schema_version='1.0.0',
             source_format='structuremodel-v1',
             target_format='unsupported-format',
-        ))
+            supported_formats=supported_formats(),
+            get_converter=get_converter,
+        )
         raise AssertionError('unsupported target format should fail')
     except HTTPException as exc:
         assert exc.status_code == 400
@@ -65,11 +75,14 @@ async def run() -> None:
         ])
     }
     try:
-        await convert_structure_model(ConvertRequest(
-            model=invalid_midas,
+        convert_structure_model_payload(
+            model_payload=invalid_midas,
+            target_schema_version='1.0.0',
             source_format='midas-text-1',
             target_format='structuremodel-v1',
-        ))
+            supported_formats=supported_formats(),
+            get_converter=get_converter,
+        )
         raise AssertionError('invalid midas field should fail')
     except HTTPException as exc:
         assert exc.status_code == 422

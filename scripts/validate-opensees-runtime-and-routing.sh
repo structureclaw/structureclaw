@@ -17,7 +17,7 @@ import types
 from providers.opensees.runtime import get_opensees_runtime_issue
 from providers.registry import AnalysisEngineRegistry
 from api import AnalysisRequest, analyze
-from schemas.structure_model_v1 import StructureModelV1
+from structure_protocol.structure_model_v1 import StructureModelV1
 
 
 def assert_true(condition, message):

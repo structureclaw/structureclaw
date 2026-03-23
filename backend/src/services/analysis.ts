@@ -2,6 +2,7 @@ import { prisma } from '../utils/database.js';
 import { redis } from '../utils/redis.js';
 import { ensureProjectId } from '../utils/demo-data.js';
 import { AnalysisExecutionService } from './analysis-execution.js';
+import { CodeCheckExecutionService } from './code-check-execution.js';
 
 export interface CreateModelParams {
   name: string;
@@ -24,9 +25,11 @@ export interface CreateAnalysisParams {
 
 export class AnalysisService {
   private readonly executionService: AnalysisExecutionService;
+  private readonly codeCheckExecutionService: CodeCheckExecutionService;
 
   constructor() {
     this.executionService = new AnalysisExecutionService();
+    this.codeCheckExecutionService = new CodeCheckExecutionService();
   }
 
   // 创建结构模型
@@ -182,7 +185,7 @@ export class AnalysisService {
     context?: Record<string, unknown>;
     engineId?: string;
   }) {
-    return this.executionService.codeCheck({
+    return this.codeCheckExecutionService.codeCheck({
       model_id: params.modelId,
       code: params.code,
       elements: params.elements,

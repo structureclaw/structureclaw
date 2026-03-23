@@ -6,9 +6,6 @@ export {
 } from './registry.js';
 export type {
   AnalysisExecutionAction,
-  AnalysisExecutionFailure,
   AnalysisExecutionInput,
-  AnalysisExecutionResponse,
-  AnalysisExecutionSuccess,
   LocalAnalysisEngineClient,
 } from './types.js';

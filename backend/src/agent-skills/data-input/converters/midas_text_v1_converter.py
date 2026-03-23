@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List
 
 from converters.base import FormatConverter
-from schemas.structure_model_v1 import StructureModelV1
+from structure_protocol.structure_model_v1 import StructureModelV1
 
 
 @dataclass

@@ -3,7 +3,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
-from schemas.structure_model_v1 import StructureModelV1
+from structure_protocol.structure_model_v1 import StructureModelV1
 
 
 class FormatConverter(ABC):

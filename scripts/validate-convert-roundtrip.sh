@@ -11,30 +11,34 @@ require_analysis_python
 import asyncio
 import json
 from pathlib import Path
-import sys
 
-from api import ConvertRequest, convert_structure_model
+from converters.registry import get_converter, supported_formats
+from structure_protocol.runtime import convert_structure_model_payload
 
-sample_file = Path('backend/src/agent-skills/analysis/python/examples/model_03_simple_truss.json')
+sample_file = Path('backend/src/skill-shared/python/structure_protocol/examples/model_03_simple_truss.json')
 source = json.loads(sample_file.read_text(encoding='utf-8'))
 
 async def run() -> None:
     original = source
 
     for external_format in ('simple-1', 'compact-1', 'midas-text-1'):
-        export_req = ConvertRequest(
-            model=source,
+        exported = convert_structure_model_payload(
+            model_payload=source,
+            target_schema_version='1.0.0',
             source_format='structuremodel-v1',
             target_format=external_format,
+            supported_formats=supported_formats(),
+            get_converter=get_converter,
         )
-        exported = await convert_structure_model(export_req)
 
-        import_req = ConvertRequest(
-            model=exported['model'],
+        imported = convert_structure_model_payload(
+            model_payload=exported['model'],
+            target_schema_version='1.0.0',
             source_format=external_format,
             target_format='structuremodel-v1',
+            supported_formats=supported_formats(),
+            get_converter=get_converter,
         )
-        imported = await convert_structure_model(import_req)
 
         round_trip = imported['model']
         assert round_trip['schema_version'] == '1.0.0'

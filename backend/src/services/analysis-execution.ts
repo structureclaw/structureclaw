@@ -35,28 +35,8 @@ export class AnalysisExecutionService {
     return this.runner.invoke({ action: 'check_engine', engineId: id });
   }
 
-  async getStructureModelSchema(): Promise<Record<string, unknown>> {
-    return this.runner.invoke({ action: 'structure_model_schema' });
-  }
-
-  async getConverterSchema(): Promise<Record<string, unknown>> {
-    return this.runner.invoke({ action: 'converter_schema' });
-  }
-
-  async validate(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.runner.invoke({ action: 'validate', input: payload });
-  }
-
-  async convert(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.runner.invoke({ action: 'convert', input: payload });
-  }
-
   async analyze(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
     return this.runner.invoke({ action: 'analyze', input: payload });
-  }
-
-  async codeCheck(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
-    return this.runner.invoke({ action: 'code_check', input: payload });
   }
 }
 
@@ -76,10 +56,6 @@ export function createLocalAnalysisEngineClient(
       switch (action) {
         case 'list_engines':
           return { data: await service.listEngines() as T };
-        case 'structure_model_schema':
-          return { data: await service.getStructureModelSchema() as T };
-        case 'converter_schema':
-          return { data: await service.getConverterSchema() as T };
         default:
           throw buildError(`Unsupported local GET action: ${action}`, 400);
       }
@@ -94,14 +70,8 @@ export function createLocalAnalysisEngineClient(
         throw buildError(`Unsupported local POST path: ${path}`, 400);
       }
       switch (action) {
-        case 'validate':
-          return { data: await service.validate(payload) as T };
-        case 'convert':
-          return { data: await service.convert(payload) as T };
         case 'analyze':
           return { data: await service.analyze(payload) as T };
-        case 'code_check':
-          return { data: await service.codeCheck(payload) as T };
         default:
           throw buildError(`Unsupported local POST action: ${action}`, 400);
       }

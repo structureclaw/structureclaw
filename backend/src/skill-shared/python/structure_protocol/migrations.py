@@ -26,9 +26,6 @@ def migrate_structure_model_v1(model: Dict[str, Any], target_schema_version: str
         metadata = {}
     migrated["metadata"] = metadata
 
-    # v1.x migration policy:
-    # - Keep data shape stable
-    # - Fill deterministic defaults for newly standardized fields
     if "unit_system" not in migrated or not migrated.get("unit_system"):
         migrated["unit_system"] = "SI"
 

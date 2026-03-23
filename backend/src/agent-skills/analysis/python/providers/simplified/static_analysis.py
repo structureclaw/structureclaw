@@ -11,9 +11,9 @@ logger = logging.getLogger(__name__)
 
 
 class StaticAnalyzer:
-    """静力分析器"""
+    """简化静力分析器"""
 
-    def __init__(self, model, engine_mode: str = "auto"):
+    def __init__(self, model):
         """
         初始化分析器
 
@@ -21,16 +21,10 @@ class StaticAnalyzer:
             model: 结构模型数据
         """
         self.model = model
-        self.engine_mode = engine_mode
         self.nodes = {n.id: n for n in model.nodes}
         self.elements = {e.id: e for e in model.elements}
         self.materials = {m.id: m for m in model.materials}
         self.sections = {s.id: s for s in model.sections}
-
-        # OpenSees requires integer tags; keep external IDs untouched and map internally.
-        self._ops_node_tags = {str(node.id): index + 1 for index, node in enumerate(model.nodes)}
-        self._ops_element_tags = {str(elem.id): index + 1 for index, elem in enumerate(model.elements)}
-        self._ops_material_tags = {str(mat.id): index + 1 for index, mat in enumerate(model.materials)}
 
         # 位移结果
         self.displacements = {}
@@ -39,278 +33,20 @@ class StaticAnalyzer:
         # 应力结果
         self.stresses = {}
 
-    def _ops_node_tag(self, node_id: Any) -> int:
-        key = str(node_id)
-        if key not in self._ops_node_tags:
-            raise ValueError(f"Unknown node id '{node_id}' in OpenSees mapping")
-        return self._ops_node_tags[key]
-
-    def _ops_element_tag(self, element_id: Any) -> int:
-        key = str(element_id)
-        if key not in self._ops_element_tags:
-            raise ValueError(f"Unknown element id '{element_id}' in OpenSees mapping")
-        return self._ops_element_tags[key]
-
-    def _ops_material_tag(self, material_id: Any) -> int:
-        key = str(material_id)
-        if key not in self._ops_material_tags:
-            raise ValueError(f"Unknown material id '{material_id}' in OpenSees mapping")
-        return self._ops_material_tags[key]
-
     def run(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        执行静力分析
-
-        Args:
-            parameters: 分析参数，包含荷载工况等
-
-        Returns:
-            分析结果
-        """
         logger.info("Starting static analysis")
-
-        if self.engine_mode == "simplified":
-            result = self._run_simplified(parameters)
-        else:
-            try:
-                import openseespy.opensees as ops  # noqa: F401
-            except Exception as error:
-                if self.engine_mode == "opensees":
-                    raise RuntimeError("OpenSeesPy is not available for the requested engine") from error
-                # 降级到简化计算
-                logger.warning("OpenSeesPy runtime unavailable, using simplified analysis: %s", error)
-                result = self._run_simplified(parameters)
-            else:
-                try:
-                    result = self._run_with_opensees(parameters)
-                except Exception as error:
-                    if self.engine_mode == "opensees":
-                        raise RuntimeError(f"OpenSees analysis failed: {error}") from error
-                    logger.warning("OpenSees analysis failed, using simplified analysis: %s", error)
-                    result = self._run_simplified(parameters)
-
-        return result
+        return self._run_simplified(parameters)
 
     def _raise_unstable_structure(self) -> None:
         raise ValueError(
             "Structure is unstable or insufficiently restrained; please check node restraints / boundary conditions."
         )
 
-    def _run_with_opensees(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        使用 OpenSeesPy 执行分析
-        """
-        import openseespy.opensees as ops
-
-        ops.wipe()
-        if self._select_opensees_planar_frame_mode(parameters):
-            return self._run_with_opensees_2d_frame(parameters, ops)
-        return self._run_with_opensees_3d_frame(parameters, ops)
-
-    def _select_opensees_planar_frame_mode(self, parameters: Dict[str, Any]) -> Optional[str]:
-        return self._select_planar_frame_mode(parameters)
-
     def _axis_range(self, axis: str) -> float:
         values = [float(getattr(node, axis)) for node in self.model.nodes]
         if not values:
             return 0.0
         return max(values) - min(values)
-
-    def _run_with_opensees_2d_frame(self, parameters: Dict[str, Any], ops) -> Dict[str, Any]:
-        plane = self._select_opensees_planar_frame_mode(parameters) or 'xz'
-        loads = self._collect_nodal_loads(parameters)
-
-        ops.model('basic', '-ndm', 2, '-ndf', 3)
-
-        for node in self.model.nodes:
-            x_coord, y_coord = self._get_2d_plane_coordinates(node, plane)
-            node_tag = self._ops_node_tag(node.id)
-            ops.node(node_tag, x_coord, y_coord)
-            restraints = node.restraints or [False] * 6
-            if plane == 'xy':
-                ops.fix(node_tag, int(bool(restraints[0])), int(bool(restraints[1])), int(bool(restraints[5])))
-            else:
-                ops.fix(node_tag, int(bool(restraints[0])), int(bool(restraints[2])), int(bool(restraints[4])))
-
-        for elem in self.model.elements:
-            self._define_beam_element_2d(elem, ops)
-
-        self._apply_standardized_loads_2d(loads, ops, plane)
-        analysis_status = self._run_opensees_static_analysis(ops)
-        if analysis_status != 0:
-            ops.wipe()
-            raise RuntimeError(
-                f"OpenSees static analysis failed with code {analysis_status}. "
-                "The model may be unstable or insufficiently restrained."
-            )
-
-        ops.reactions()
-        displacements: Dict[str, Dict[str, float]] = {}
-        reactions: Dict[str, Dict[str, float]] = {}
-        for node in self.model.nodes:
-            node_tag = self._ops_node_tag(node.id)
-            disp = ops.nodeDisp(node_tag)
-            react = ops.nodeReaction(node_tag)
-            if plane == 'xy':
-                displacements[node.id] = {
-                    'ux': float(disp[0]),
-                    'uy': float(disp[1]),
-                    'uz': 0.0,
-                    'rx': 0.0,
-                    'ry': 0.0,
-                    'rz': float(disp[2]),
-                }
-                if any(node.restraints or []):
-                    reactions[node.id] = {
-                        'fx': float(react[0]),
-                        'fy': float(react[1]),
-                        'mz': float(react[2]),
-                    }
-            else:
-                displacements[node.id] = {
-                    'ux': float(disp[0]),
-                    'uy': 0.0,
-                    'uz': float(disp[1]),
-                    'rx': 0.0,
-                    'ry': float(disp[2]),
-                    'rz': 0.0,
-                }
-                if any(node.restraints or []):
-                    reactions[node.id] = {
-                        'fx': float(react[0]),
-                        'fz': float(react[1]),
-                        'my': float(react[2]),
-                    }
-
-        forces: Dict[str, Dict[str, Any]] = {}
-        for elem in self.model.elements:
-            raw_force = ops.eleForce(self._ops_element_tag(elem.id))
-            axial_start, shear_start, moment_start, axial_end, shear_end, moment_end = [float(value) for value in raw_force[:6]]
-            area = float(self.sections[elem.section].properties.get('A', 0.0))
-            forces[elem.id] = {
-                'n1': {'N': axial_start, 'V': shear_start, 'M': moment_start},
-                'n2': {'N': axial_end, 'V': shear_end, 'M': moment_end},
-                'axial': axial_start,
-                'stress': float(axial_start / area) if area > 0.0 else 0.0,
-            }
-
-        ops.wipe()
-        return {
-            'status': 'success',
-            'analysisMode': 'opensees_2d_frame',
-            'plane': plane,
-            'displacements': displacements,
-            'forces': forces,
-            'reactions': reactions,
-            'envelope': self._build_envelope(displacements, forces, reactions),
-            'summary': self._generate_summary(displacements, forces),
-        }
-
-    def _run_with_opensees_3d_frame(self, parameters: Dict[str, Any], ops) -> Dict[str, Any]:
-        loads = self._collect_nodal_loads(parameters)
-
-        ops.model('basic', '-ndm', 3, '-ndf', 6)
-
-        for node in self.model.nodes:
-            node_tag = self._ops_node_tag(node.id)
-            ops.node(node_tag, node.x, node.y, node.z)
-            if node.restraints:
-                ops.fix(node_tag, *[int(bool(value)) for value in node.restraints])
-
-        for elem in self.model.elements:
-            if elem.type == 'beam':
-                self._define_beam_element(elem, ops)
-            elif elem.type == 'truss':
-                self._define_truss_element(elem, ops)
-
-        self._apply_standardized_loads_3d(loads, ops)
-        analysis_status = self._run_opensees_static_analysis(ops)
-        if analysis_status != 0:
-            ops.wipe()
-            raise RuntimeError(
-                f"OpenSees static analysis failed with code {analysis_status}. "
-                "The model may be unstable or insufficiently restrained."
-            )
-
-        ops.reactions()
-        displacements = {}
-        reactions = {}
-        for node in self.model.nodes:
-            node_tag = self._ops_node_tag(node.id)
-            disp = ops.nodeDisp(node_tag)
-            react = ops.nodeReaction(node_tag)
-            displacements[node.id] = {
-                'ux': float(disp[0]),
-                'uy': float(disp[1]),
-                'uz': float(disp[2]),
-                'rx': float(disp[3]),
-                'ry': float(disp[4]),
-                'rz': float(disp[5]),
-            }
-            if any(node.restraints or []):
-                reactions[node.id] = {
-                    'fx': float(react[0]),
-                    'fy': float(react[1]),
-                    'fz': float(react[2]),
-                    'mx': float(react[3]),
-                    'my': float(react[4]),
-                    'mz': float(react[5]),
-                }
-
-        forces = {}
-        for elem in self.model.elements:
-            try:
-                force = ops.eleForce(self._ops_element_tag(elem.id))
-                if elem.type == 'beam':
-                    area = float(self.sections[elem.section].properties.get('A', 0.0))
-                    forces[elem.id] = {
-                        'n1': {
-                            'N': float(force[0]),
-                            'V': float(np.sqrt(force[1] ** 2 + force[2] ** 2)),
-                            'M': float(np.sqrt(force[4] ** 2 + force[5] ** 2)),
-                            'V2': float(force[1]),
-                            'V3': float(force[2]),
-                            'T': float(force[3]),
-                            'M2': float(force[4]),
-                            'M3': float(force[5]),
-                        },
-                        'n2': {
-                            'N': float(force[6]),
-                            'V': float(np.sqrt(force[7] ** 2 + force[8] ** 2)),
-                            'M': float(np.sqrt(force[10] ** 2 + force[11] ** 2)),
-                            'V2': float(force[7]),
-                            'V3': float(force[8]),
-                            'T': float(force[9]),
-                            'M2': float(force[10]),
-                            'M3': float(force[11]),
-                        },
-                        'axial': float(force[0]),
-                        'stress': float(force[0] / area) if area > 0.0 else 0.0,
-                    }
-                else:
-                    forces[elem.id] = list(force)
-            except Exception:
-                pass
-
-        ops.wipe()
-        return {
-            'status': 'success',
-            'analysisMode': 'opensees_3d_frame',
-            'displacements': displacements,
-            'forces': forces,
-            'reactions': reactions,
-            'envelope': self._build_envelope(displacements, forces, reactions),
-            'summary': self._generate_summary(displacements, forces),
-        }
-
-    def _run_opensees_static_analysis(self, ops) -> int:
-        ops.system('BandGeneral')
-        ops.numberer('Plain')
-        ops.constraints('Plain')
-        ops.integrator('LoadControl', 1.0)
-        ops.algorithm('Newton')
-        ops.analysis('Static')
-        return int(ops.analyze(1))
 
     def _get_2d_plane_coordinates(self, node, plane: str) -> tuple[float, float]:
         if plane == 'xy':
@@ -1687,76 +1423,8 @@ class StaticAnalyzer:
             yield float(obj)
 
     def run_nonlinear(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        非线性静力分析 (Pushover)
-        """
-        logger.info("Starting nonlinear static analysis")
-
-        try:
-            if self.engine_mode == "simplified":
-                return {
-                    'status': 'error',
-                    'message': 'Nonlinear analysis requires OpenSeesPy'
-                }
-            import openseespy.opensees as ops
-            return self._run_nonlinear_opensees(parameters)
-        except Exception:
-            return {
-                'status': 'error',
-                'message': 'Nonlinear analysis requires OpenSeesPy'
-            }
-
-    def _run_nonlinear_opensees(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        使用 OpenSeesPy 执行非线性分析
-        """
         raise NotImplementedError(
-            "Nonlinear OpenSees analysis is not yet implemented; "
-            "node/element definitions and nonlinear material setup are required"
-        )
-
-    def _define_beam_element(self, elem, ops):
-        """定义梁单元"""
-        section = self.sections.get(elem.section)
-        material = self.materials.get(elem.material)
-        if not section:
-            raise ValueError(f"Section '{elem.section}' was not found for beam element '{elem.id}'")
-
-        transform_tag = self._ops_element_tag(elem.id)
-        reference_vector = self._get_beam_reference_vector(elem)
-        ops.geomTransf('Linear', transform_tag, *reference_vector)
-        ops.element(
-            'elasticBeamColumn',
-            self._ops_element_tag(elem.id),
-            self._ops_node_tag(elem.nodes[0]),
-            self._ops_node_tag(elem.nodes[1]),
-            section.properties.get('A', 0.01),
-            (material.E * 1000) if material else section.properties.get('E', 200000000),
-            section.properties.get('G', 79000000),
-            section.properties.get('J', 0.0001),
-            section.properties.get('Iy', 0.0001),
-            section.properties.get('Iz', 0.0001),
-            transform_tag
-        )
-
-    def _define_beam_element_2d(self, elem, ops):
-        section = self.sections.get(elem.section)
-        material = self.materials.get(elem.material)
-        if not section:
-            raise ValueError(f"Section '{elem.section}' was not found for beam element '{elem.id}'")
-
-        transform_tag = self._ops_element_tag(elem.id)
-        inertia = float(section.properties.get('Iy', section.properties.get('Iz', 0.0001)))
-        ops.geomTransf('Linear', transform_tag)
-        ops.element(
-            'elasticBeamColumn',
-            self._ops_element_tag(elem.id),
-            self._ops_node_tag(elem.nodes[0]),
-            self._ops_node_tag(elem.nodes[1]),
-            float(section.properties.get('A', 0.01)),
-            float((material.E * 1000) if material else section.properties.get('E', 200000000)),
-            inertia,
-            transform_tag,
+            "Nonlinear analysis is not supported by the simplified engine"
         )
 
     def _get_beam_reference_vector(self, elem) -> List[float]:
@@ -1775,75 +1443,6 @@ class StaticAnalyzer:
         if abs(float(np.dot(axis, reference))) > 0.9:
             reference = np.array([0.0, 1.0, 0.0], dtype=float)
         return reference.tolist()
-
-    def _define_truss_element(self, elem, ops):
-        """定义桁架单元"""
-        section = self.sections.get(elem.section)
-        if section:
-            ops.element(
-                'truss',
-                self._ops_element_tag(elem.id),
-                self._ops_node_tag(elem.nodes[0]),
-                self._ops_node_tag(elem.nodes[1]),
-                section.properties.get('A', 0.01),
-                self._ops_material_tag(elem.material)
-            )
-
-    def _apply_standardized_loads_2d(self, loads: List[Dict[str, Any]], ops, plane: str):
-        if not loads:
-            return
-        ops.timeSeries('Linear', 1)
-        ops.pattern('Plain', 1, 1)
-
-        for load in loads:
-            if load.get('type') == 'nodal':
-                transverse = self._plane_transverse_force(load, plane)
-                moment = self._plane_bending_moment(load, plane)
-                ops.load(
-                    self._ops_node_tag(load['node']),
-                    float(load.get('fx', 0.0)),
-                    transverse,
-                    moment,
-                )
-            elif load.get('type') == 'distributed':
-                ops.eleLoad(
-                    '-ele',
-                    self._ops_element_tag(load['element']),
-                    '-type',
-                    '-beamUniform',
-                    self._plane_distributed_load(load, plane),
-                )
-
-    def _apply_standardized_loads_3d(self, loads: List[Dict[str, Any]], ops):
-        if not loads:
-            return
-        ops.timeSeries('Linear', 1)
-        ops.pattern('Plain', 1, 1)
-
-        for load in loads:
-            if load.get('type') == 'nodal':
-                forces = load.get('forces')
-                if isinstance(forces, list) and len(forces) >= 6:
-                    ops.load(self._ops_node_tag(load['node']), *[float(value) for value in forces[:6]])
-                else:
-                    ops.load(
-                        self._ops_node_tag(load['node']),
-                        float(load.get('fx', 0.0)),
-                        float(load.get('fy', 0.0)),
-                        float(load.get('fz', 0.0)),
-                        float(load.get('mx', 0.0)),
-                        float(load.get('my', 0.0)),
-                        float(load.get('mz', 0.0)),
-                    )
-            elif load.get('type') == 'distributed':
-                ops.eleLoad(
-                    '-ele',
-                    self._ops_element_tag(load['element']),
-                    '-type',
-                    '-beamUniform',
-                    float(load.get('wy', 0.0)),
-                    float(load.get('wz', 0.0)),
-                )
 
     def _generate_summary(self, displacements: Dict, forces: Dict) -> Dict:
         """生成分析结果摘要"""

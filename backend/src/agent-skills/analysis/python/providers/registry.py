@@ -6,6 +6,7 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass
+from importlib import import_module
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -13,15 +14,16 @@ import httpx
 from fastapi import HTTPException
 
 from skill_loader import SkillNotLoadedError, build_missing_skill_detail, load_skill_symbol
-from providers.common.dynamic_analysis import DynamicAnalyzer
-from providers.common.seismic_analysis import SeismicAnalyzer
-from providers.common.static_analysis import StaticAnalyzer
-from contracts.structure_model_v1 import StructureModelV1
+from structure_protocol.structure_model_v1 import StructureModelV1
 
 logger = logging.getLogger(__name__)
 
 ENGINE_MANIFEST_ENV = "ANALYSIS_ENGINE_MANIFEST_PATH"
 _UNSET = object()
+PYTHON_PROVIDER_MODULES = {
+    "builtin-opensees": "providers.opensees.provider",
+    "builtin-simplified": "providers.simplified.provider",
+}
 
 
 def _create_code_checker(code: str):
@@ -231,32 +233,11 @@ class AnalysisEngineRegistry:
         model: StructureModelV1,
         parameters: Dict[str, Any],
     ) -> Dict[str, Any]:
-        if adapter_key == "builtin-opensees":
-            mode = "opensees"
-        elif adapter_key == "builtin-simplified":
-            mode = "simplified"
-        else:
+        provider_module_name = PYTHON_PROVIDER_MODULES.get(adapter_key)
+        if provider_module_name is None:
             raise RuntimeError(f"Unknown python analysis adapter: {adapter_key}")
-
-        if analysis_type == "static":
-            analyzer = StaticAnalyzer(model, engine_mode=mode)
-            return analyzer.run(parameters)
-        if analysis_type == "dynamic":
-            analyzer = DynamicAnalyzer(model, engine_mode=mode)
-            return analyzer.run(parameters)
-        if analysis_type == "seismic":
-            analyzer = SeismicAnalyzer(model, engine_mode=mode)
-            return analyzer.run(parameters)
-        if analysis_type == "nonlinear":
-            analyzer = StaticAnalyzer(model, engine_mode=mode)
-            return analyzer.run_nonlinear(parameters)
-        raise HTTPException(
-            status_code=400,
-            detail={
-                "errorCode": "INVALID_ANALYSIS_TYPE",
-                "message": f"Unknown analysis type: {analysis_type}",
-            },
-        )
+        provider_module = import_module(provider_module_name)
+        return provider_module.run_analysis(analysis_type, model, parameters)
 
     def _post_to_http_engine(self, manifest: Dict[str, Any], path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         base_url = manifest.get("baseUrl")

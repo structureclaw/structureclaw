@@ -9,10 +9,10 @@ require_analysis_python
 
 "$PYTHON_BIN" - <<'PY'
 import asyncio
-import sys
 
 from fastapi import HTTPException
-from api import ConvertRequest, convert_structure_model
+from converters.registry import get_converter, supported_formats
+from structure_protocol.runtime import convert_structure_model_payload
 
 TEXT = """
 # minimal midas text
@@ -29,32 +29,41 @@ COMBO,ULS,LC1=1.0
 """.strip()
 
 async def run() -> None:
-    exported = await convert_structure_model(ConvertRequest(
-        model={'text': TEXT},
+    exported = convert_structure_model_payload(
+        model_payload={'text': TEXT},
+        target_schema_version='1.0.0',
         source_format='midas-text-1',
         target_format='structuremodel-v1',
-    ))
+        supported_formats=supported_formats(),
+        get_converter=get_converter,
+    )
     model = exported['model']
     assert model['schema_version'] == '1.0.0'
     assert len(model['nodes']) == 2
     assert len(model['elements']) == 1
 
-    reexport = await convert_structure_model(ConvertRequest(
-        model=model,
+    reexport = convert_structure_model_payload(
+        model_payload=model,
+        target_schema_version='1.0.0',
         source_format='structuremodel-v1',
         target_format='midas-text-1',
-    ))
+        supported_formats=supported_formats(),
+        get_converter=get_converter,
+    )
     text2 = reexport['model'].get('text', '')
     assert 'NODE,1,0.0,0.0,0.0' in text2
     assert 'ELEM,1,beam,1,2,1,1' in text2
     print('[ok] midas-text convert import/export')
 
     try:
-        await convert_structure_model(ConvertRequest(
-            model={'text': 'NODE,1,a,0,0'},
+        convert_structure_model_payload(
+            model_payload={'text': 'NODE,1,a,0,0'},
+            target_schema_version='1.0.0',
             source_format='midas-text-1',
             target_format='structuremodel-v1',
-        ))
+            supported_formats=supported_formats(),
+            get_converter=get_converter,
+        )
         raise SystemExit('Expected HTTPException for invalid number')
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, dict) else {}

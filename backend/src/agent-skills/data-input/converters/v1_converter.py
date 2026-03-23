@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from converters.base import FormatConverter
-from schemas.structure_model_v1 import StructureModelV1
+from structure_protocol.structure_model_v1 import StructureModelV1
 
 
 class StructureModelV1Converter(FormatConverter):

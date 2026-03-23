@@ -11,24 +11,31 @@ import asyncio
 import json
 from pathlib import Path
 
-from api import ConvertRequest, convert_structure_model
+from converters.registry import get_converter, supported_formats
+from structure_protocol.runtime import convert_structure_model_payload
 
 formats = ('simple-1', 'compact-1', 'midas-text-1')
-samples = sorted(Path('backend/src/agent-skills/analysis/python/examples').glob('model_*.json'))
+samples = sorted(Path('backend/src/skill-shared/python/structure_protocol/examples').glob('model_*.json'))
 threshold = 0.95
 
 async def check_one(sample_path: Path, external_format: str) -> bool:
     source = json.loads(sample_path.read_text(encoding='utf-8'))
-    exported = await convert_structure_model(ConvertRequest(
-        model=source,
+    exported = convert_structure_model_payload(
+        model_payload=source,
+        target_schema_version='1.0.0',
         source_format='structuremodel-v1',
         target_format=external_format,
-    ))
-    imported = await convert_structure_model(ConvertRequest(
-        model=exported['model'],
+        supported_formats=supported_formats(),
+        get_converter=get_converter,
+    )
+    imported = convert_structure_model_payload(
+        model_payload=exported['model'],
+        target_schema_version='1.0.0',
         source_format=external_format,
         target_format='structuremodel-v1',
-    ))
+        supported_formats=supported_formats(),
+        get_converter=get_converter,
+    )
     round_trip = imported['model']
     return (
         len(source.get('nodes', [])) == len(round_trip.get('nodes', []))

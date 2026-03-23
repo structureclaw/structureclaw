@@ -14,13 +14,12 @@ from fastapi import HTTPException
 
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
-PYTHON_ROOT = ROOT_DIR / "backend" / "src" / "agent-skills" / "analysis" / "python"
-sys.path.insert(0, str(PYTHON_ROOT))
+sys.path.insert(0, str(ROOT_DIR / "backend" / "src" / "skill-shared" / "python"))
 sys.path.insert(0, str(ROOT_DIR / "backend" / "src" / "agent-skills" / "data-input"))
-sys.path.insert(0, str(ROOT_DIR / "backend" / "src" / "agent-skills" / "code-check"))
 sys.path.insert(0, str(ROOT_DIR / "backend" / "src" / "agent-skills" / "material"))
 
-from api import ConvertRequest, convert_structure_model  # noqa: E402
+from converters.registry import get_converter, supported_formats  # noqa: E402
+from structure_protocol.runtime import convert_structure_model_payload  # noqa: E402
 
 
 @dataclass
@@ -65,15 +64,15 @@ async def convert_one_file(
             message=str(exc),
         )
 
-    request = ConvertRequest(
-        model=payload,
-        source_format=source_format,
-        target_format=target_format,
-        target_schema_version=target_schema_version,
-    )
-
     try:
-        result = await convert_structure_model(request)
+        result = convert_structure_model_payload(
+            model_payload=payload,
+            target_schema_version=target_schema_version,
+            source_format=source_format,
+            target_format=target_format,
+            supported_formats=supported_formats(),
+            get_converter=get_converter,
+        )
     except HTTPException as exc:
         detail = exc.detail if isinstance(exc.detail, dict) else {"message": str(exc.detail)}
         return BatchResult(
