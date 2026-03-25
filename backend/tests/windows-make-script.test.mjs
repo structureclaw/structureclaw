@@ -23,7 +23,11 @@ describe('windows make analysis python paths', () => {
     expect(script).toContain("Join-Path $RootDir 'backend/src/agent-skills/analysis'");
     expect(script).toContain("$AnalysisRequirementsFile = Join-Path $AnalysisPythonRoot 'requirements.txt'");
     expect(script).toContain('& uv pip install --python $AnalysisPython --link-mode=copy -r $AnalysisRequirementsFile');
+    expect(script).toContain("Join-Path $RootDir 'backend/src/agent-skills/data-input'");
+    expect(script).toContain("Join-Path $RootDir 'backend/src/agent-skills/material'");
     expect(script).not.toContain('backend/src/agent-skills/analysis-execution/python/requirements.txt');
+    expect(script).not.toContain("Join-Path $RootDir 'backend/src/agent-skills/geometry-input'");
+    expect(script).not.toContain("Join-Path $RootDir 'backend/src/agent-skills/material-constitutive'");
   });
 
   test('should keep Makefile analysis setup aligned with the same requirements file', () => {
