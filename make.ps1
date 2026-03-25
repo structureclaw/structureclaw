@@ -18,6 +18,9 @@ $EnvFile = Join-Path $RootDir '.env'
 $EnvExampleFile = Join-Path $RootDir '.env.example'
 $AnalysisVenvDir = Join-Path $RootDir 'backend/.venv'
 $AnalysisPython = Join-Path $AnalysisVenvDir 'Scripts/python.exe'
+$AnalysisSkillDir = Join-Path $RootDir 'backend/src/agent-skills/analysis'
+$AnalysisPythonRoot = Join-Path $AnalysisSkillDir 'python'
+$AnalysisRequirementsFile = Join-Path $AnalysisPythonRoot 'requirements.txt'
 $ServiceRunner = Join-Path $RootDir 'scripts/windows/run-service.ps1'
 $IsWindowsHost = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
 $DefaultAnalysisPythonVersion = if ($IsWindowsHost) { '3.12' } else { '3.11' }
@@ -339,6 +342,9 @@ function Test-PythonModule {
 
 function Ensure-AnalysisVenv {
   Require-Command 'uv' 'Install uv first, then rerun. Example: winget install --id AstralSoftware.UV -e'
+  if (-not (Test-Path -LiteralPath $AnalysisRequirementsFile)) {
+    Fail "Analysis requirements file not found: $AnalysisRequirementsFile"
+  }
 
   $needsInstall = (-not (Test-Path -LiteralPath $AnalysisPython)) -or (-not (Test-PythonModule -PythonPath $AnalysisPython -ModuleName 'uvicorn'))
   if ($needsInstall) {
@@ -348,7 +354,7 @@ function Ensure-AnalysisVenv {
       Fail 'uv venv failed for backend/.venv.'
     }
 
-    & uv pip install --python $AnalysisPython --link-mode=copy -r (Join-Path $RootDir 'backend/src/agent-skills/analysis-execution/python/requirements.txt')
+    & uv pip install --python $AnalysisPython --link-mode=copy -r $AnalysisRequirementsFile
     if ($LASTEXITCODE -ne 0) {
       Fail 'uv pip install failed for analysis dependencies.'
     }
@@ -366,11 +372,10 @@ function Test-OpenSeesRuntime {
 
   $previousPythonPath = $env:PYTHONPATH
   try {
-    $analysisPythonRoot = Join-Path $RootDir 'backend/src/agent-skills/analysis-execution/python'
     $geometrySkillRoot = Join-Path $RootDir 'backend/src/agent-skills/geometry-input'
     $codeCheckSkillRoot = Join-Path $RootDir 'backend/src/agent-skills/code-check'
     $materialSkillRoot = Join-Path $RootDir 'backend/src/agent-skills/material-constitutive'
-    $env:PYTHONPATH = "$analysisPythonRoot;$geometrySkillRoot;$codeCheckSkillRoot;$materialSkillRoot"
+    $env:PYTHONPATH = "$AnalysisPythonRoot;$geometrySkillRoot;$codeCheckSkillRoot;$materialSkillRoot"
     & $AnalysisPython -m providers.opensees.runtime --json *> $null
     return $LASTEXITCODE -eq 0
   }

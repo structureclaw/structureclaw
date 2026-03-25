@@ -133,7 +133,7 @@ install:
 
 setup-analysis-python: ensure-uv
 	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv venv --python $(ANALYSIS_PYTHON_VERSION) backend/.venv
-	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv pip install --python backend/.venv/bin/python --link-mode=copy -r backend/src/agent-skills/analysis-execution/python/requirements.txt
+	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv pip install --python backend/.venv/bin/python --link-mode=copy -r backend/src/agent-skills/analysis/python/requirements.txt
 
 dev-backend:
 	npm run dev --prefix backend
