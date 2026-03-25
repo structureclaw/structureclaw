@@ -11,14 +11,15 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 CURRENT_DIR = Path(__file__).resolve().parent
-SKILL_ROOT = CURRENT_DIR.parents[2]
+AGENT_SKILLS_ROOT = CURRENT_DIR.parents[2]
+SRC_ROOT = CURRENT_DIR.parents[3]
 
 for path in (
     CURRENT_DIR,
-    CURRENT_DIR.parents[3] / "skill-shared" / "python",
-    SKILL_ROOT / "data-input",
-    SKILL_ROOT / "code-check",
-    SKILL_ROOT / "material",
+    SRC_ROOT / "skill-shared" / "python",
+    AGENT_SKILLS_ROOT / "data-input",
+    AGENT_SKILLS_ROOT / "code-check",
+    AGENT_SKILLS_ROOT / "material",
 ):
     path_str = str(path)
     if path_str not in sys.path:
