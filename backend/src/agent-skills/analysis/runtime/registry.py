@@ -6,7 +6,7 @@ import os
 import subprocess
 import sys
 from dataclasses import dataclass
-from importlib import import_module
+from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -20,9 +20,20 @@ logger = logging.getLogger(__name__)
 
 ENGINE_MANIFEST_ENV = "ANALYSIS_ENGINE_MANIFEST_PATH"
 _UNSET = object()
-PYTHON_PROVIDER_MODULES = {
-    "builtin-opensees": "providers.opensees.provider",
-    "builtin-simplified": "providers.simplified.provider",
+
+ENGINE_DEFAULTS = {
+    "builtin-opensees": {
+        "name": "OpenSees Builtin",
+        "priority": 100,
+        "routingHints": ["high-fidelity", "default"],
+        "constraints": {"requiresOpenSees": True},
+    },
+    "builtin-simplified": {
+        "name": "Simplified Builtin",
+        "priority": 10,
+        "routingHints": ["fallback", "fast"],
+        "constraints": {},
+    },
 }
 
 
@@ -233,11 +244,27 @@ class AnalysisEngineRegistry:
         model: StructureModelV1,
         parameters: Dict[str, Any],
     ) -> Dict[str, Any]:
-        provider_module_name = PYTHON_PROVIDER_MODULES.get(adapter_key)
-        if provider_module_name is None:
-            raise RuntimeError(f"Unknown python analysis adapter: {adapter_key}")
-        provider_module = import_module(provider_module_name)
-        return provider_module.run_analysis(analysis_type, model, parameters)
+        skill = self._resolve_builtin_skill(adapter_key, analysis_type)
+        if skill is None:
+            raise RuntimeError(
+                f"No installed analysis skill runtime found for adapter '{adapter_key}' and analysis type '{analysis_type}'"
+            )
+
+        runtime_module = _load_runtime_module(skill["id"], Path(skill["runtimePath"]))
+        run_analysis = getattr(runtime_module, "run_analysis", None)
+        if run_analysis is None:
+            raise RuntimeError(f"Analysis skill runtime '{skill['id']}' is missing run_analysis()")
+        result = run_analysis(model, parameters)
+        if isinstance(result, dict):
+            meta = result.get("meta") if isinstance(result.get("meta"), dict) else {}
+            result["meta"] = {
+                **meta,
+                "analysisSkillId": skill["id"],
+                "analysisSkillIds": [skill["id"]],
+                "analysisAdapterKey": adapter_key,
+                "analysisType": analysis_type,
+            }
+        return result
 
     def _post_to_http_engine(self, manifest: Dict[str, Any], path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         base_url = manifest.get("baseUrl")
@@ -411,19 +438,20 @@ class AnalysisEngineRegistry:
         if self._opensees_runtime_reason is not _UNSET:
             return self._opensees_runtime_reason if isinstance(self._opensees_runtime_reason, str) else None
 
-        python_root = Path(__file__).resolve().parents[1]
+        runtime_root = Path(__file__).resolve().parent
+        probe_path = runtime_root.parent / "opensees-static" / "opensees_runtime.py"
         env = os.environ.copy()
         existing_pythonpath = env.get("PYTHONPATH", "").strip()
         env["PYTHONPATH"] = (
-            f"{python_root}{os.pathsep}{existing_pythonpath}"
+            f"{runtime_root}{os.pathsep}{existing_pythonpath}"
             if existing_pythonpath
-            else str(python_root)
+            else str(runtime_root)
         )
 
         try:
             probe = subprocess.run(
-                [sys.executable, "-m", "providers.opensees.runtime", "--json"],
-                cwd=python_root,
+                [sys.executable, str(probe_path), "--json"],
+                cwd=runtime_root,
                 env=env,
                 capture_output=True,
                 text=True,
@@ -456,38 +484,89 @@ class AnalysisEngineRegistry:
         return self._opensees_runtime_reason
 
     def _builtin_manifests(self) -> List[Dict[str, Any]]:
-        return [
-            {
-                "id": "builtin-opensees",
-                "name": "OpenSees Builtin",
+        manifests: List[Dict[str, Any]] = []
+        skills = self._discover_builtin_skills()
+
+        for engine_id, defaults in ENGINE_DEFAULTS.items():
+            matched = [skill for skill in skills if skill["engineId"] == engine_id]
+            if not matched:
+                continue
+
+            supported_types = []
+            for skill in matched:
+                analysis_type = skill["analysisType"]
+                if analysis_type not in supported_types:
+                    supported_types.append(analysis_type)
+
+            supported_families = []
+            for skill in matched:
+                for family in skill["supportedModelFamilies"]:
+                    if family not in supported_families:
+                        supported_families.append(family)
+
+            manifests.append({
+                "id": engine_id,
+                "name": defaults["name"],
                 "version": self.app_version,
                 "kind": "python",
-                "adapterKey": "builtin-opensees",
+                "adapterKey": matched[0]["adapterKey"],
                 "capabilities": ["analyze", "validate", "code-check"],
-                "supportedAnalysisTypes": ["static", "dynamic", "seismic", "nonlinear"],
-                "supportedModelFamilies": ["frame", "truss", "generic"],
-                "priority": 100,
-                "routingHints": ["high-fidelity", "default"],
+                "supportedAnalysisTypes": supported_types,
+                "supportedModelFamilies": supported_families,
+                "priority": defaults["priority"],
+                "routingHints": defaults["routingHints"],
                 "visibility": "builtin",
                 "enabled": True,
-                "constraints": {"requiresOpenSees": True},
-            },
-            {
-                "id": "builtin-simplified",
-                "name": "Simplified Builtin",
-                "version": self.app_version,
-                "kind": "python",
-                "adapterKey": "builtin-simplified",
-                "capabilities": ["analyze", "validate", "code-check"],
-                "supportedAnalysisTypes": ["static", "dynamic", "seismic"],
-                "supportedModelFamilies": ["frame", "truss", "generic"],
-                "priority": 10,
-                "routingHints": ["fallback", "fast"],
-                "visibility": "builtin",
-                "enabled": True,
-                "constraints": {},
-            },
-        ]
+                "constraints": defaults["constraints"],
+                "skillIds": [skill["id"] for skill in matched],
+            })
+
+        return manifests
+
+    def _discover_builtin_skills(self) -> List[Dict[str, Any]]:
+        analysis_root = Path(__file__).resolve().parents[1]
+        skills: List[Dict[str, Any]] = []
+
+        for child in analysis_root.iterdir():
+            if not child.is_dir() or child.name.startswith(".") or child.name == "runtime":
+                continue
+
+            intent_path = child / "intent.md"
+            runtime_path = child / "runtime.py"
+            if not intent_path.exists() or not runtime_path.exists():
+                continue
+
+            metadata = _parse_frontmatter(intent_path.read_text(encoding="utf-8"))
+            skill_id = str(metadata.get("id", child.name)).strip()
+            engine_id = str(metadata.get("engineId", "")).strip()
+            adapter_key = str(metadata.get("adapterKey", "")).strip()
+            analysis_type = str(metadata.get("analysisType", "")).strip()
+
+            if not skill_id or not engine_id or not adapter_key or not analysis_type:
+                continue
+
+            supported_model_families = metadata.get("supportedModelFamilies", ["frame", "truss", "generic"])
+            if not isinstance(supported_model_families, list):
+                supported_model_families = ["frame", "truss", "generic"]
+
+            skills.append({
+                "id": skill_id,
+                "engineId": engine_id,
+                "adapterKey": adapter_key,
+                "analysisType": analysis_type,
+                "priority": int(metadata.get("priority", 0)),
+                "supportedModelFamilies": [str(item) for item in supported_model_families],
+                "runtimePath": str(runtime_path),
+            })
+
+        skills.sort(key=lambda item: (-int(item["priority"]), str(item["id"])))
+        return skills
+
+    def _resolve_builtin_skill(self, adapter_key: str, analysis_type: str) -> Optional[Dict[str, Any]]:
+        for skill in self._discover_builtin_skills():
+            if skill["adapterKey"] == adapter_key and skill["analysisType"] == analysis_type:
+                return skill
+        return None
 
     def _load_installed_manifests(self) -> List[Dict[str, Any]]:
         path = self._manifest_path()
@@ -532,3 +611,60 @@ class AnalysisEngineRegistry:
         if value:
             return Path(value)
         return Path(__file__).resolve().parents[6] / ".runtime" / "analysis-engines.json"
+
+
+def _parse_scalar(raw: str) -> Any:
+    value = raw.strip()
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    if (
+        (value.startswith("[") and value.endswith("]"))
+        or (value.startswith("{") and value.endswith("}"))
+    ):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            return value
+    return value
+
+
+def _parse_frontmatter(markdown: str) -> Dict[str, Any]:
+    trimmed = markdown.lstrip()
+    if not trimmed.startswith("---\n"):
+        return {}
+
+    end_index = trimmed.find("\n---\n", 4)
+    if end_index == -1:
+        return {}
+
+    metadata: Dict[str, Any] = {}
+    for line in trimmed[4:end_index].splitlines():
+        separator = line.find(":")
+        if separator == -1:
+            continue
+        key = line[:separator].strip()
+        metadata[key] = _parse_scalar(line[separator + 1 :])
+    return metadata
+
+
+def _load_runtime_module(skill_id: str, runtime_path: Path):
+    module_name = f"_analysis_skill_runtime_{skill_id.replace('-', '_')}"
+    spec = spec_from_file_location(module_name, runtime_path)
+    if spec is None or spec.loader is None:
+        raise ImportError(f"Unable to load runtime module for {runtime_path}")
+
+    module = module_from_spec(spec)
+    sys.modules[module_name] = module
+    skill_dir = str(runtime_path.parent)
+    inserted = False
+    if skill_dir not in sys.path:
+        sys.path.insert(0, skill_dir)
+        inserted = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        if inserted and sys.path and sys.path[0] == skill_dir:
+            sys.path.pop(0)
+    return module

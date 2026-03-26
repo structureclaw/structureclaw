@@ -1,8 +1,8 @@
 import type { AnalysisEngineManifest } from './analysis-engine.js';
 import {
+  AnalysisRuntimeRunner,
   LOCAL_GET_ACTION_BY_PATH,
   LOCAL_POST_ACTION_BY_PATH,
-  PythonAnalysisRunner,
 } from '../agent-skills/analysis/entry.js';
 import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
 
@@ -13,7 +13,7 @@ function buildError(message: string, statusCode = 500): Error & { statusCode?: n
 }
 
 export class AnalysisExecutionService {
-  constructor(private readonly runner = new PythonAnalysisRunner()) {}
+  constructor(private readonly runner = new AnalysisRuntimeRunner()) {}
 
   async listEngines(): Promise<{ engines: AnalysisEngineManifest[]; defaultSelectionMode: 'auto' }> {
     return this.runner.invoke({ action: 'list_engines' });

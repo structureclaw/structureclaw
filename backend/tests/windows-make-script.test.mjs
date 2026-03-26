@@ -11,7 +11,7 @@ const analysisRequirementsPath = path.join(
   'src',
   'agent-skills',
   'analysis',
-  'python',
+  'runtime',
   'requirements.txt',
 );
 
@@ -33,7 +33,7 @@ describe('windows make analysis python paths', () => {
   test('should keep Makefile analysis setup aligned with the same requirements file', () => {
     const makefile = fs.readFileSync(makefilePath, 'utf8');
 
-    expect(makefile).toContain('backend/src/agent-skills/analysis/python/requirements.txt');
+    expect(makefile).toContain('backend/src/agent-skills/analysis/runtime/requirements.txt');
     expect(makefile).not.toContain('backend/src/agent-skills/analysis-execution/python/requirements.txt');
   });
 });

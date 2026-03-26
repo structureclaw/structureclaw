@@ -9,7 +9,7 @@ const workerPath = path.join(
   'src',
   'agent-skills',
   'analysis',
-  'python',
+  'runtime',
   'worker.py',
 );
 

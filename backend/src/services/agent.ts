@@ -94,9 +94,18 @@ interface InteractionDefaultProposal {
 interface PersistedMessageDebugDetails {
   promptSnapshot: string;
   skillIds: string[];
+  routing?: AgentResolvedRouting;
   responseSummary: string;
   plan: string[];
   toolCalls: AgentToolCall[];
+}
+
+export interface AgentResolvedRouting {
+  selectedSkillIds: string[];
+  structuralSkillId?: string;
+  structuralScenarioKey?: string;
+  analysisSkillId?: string;
+  analysisSkillIds?: string[];
 }
 
 export interface AgentInteraction {
@@ -211,6 +220,7 @@ export interface AgentRunResult {
     maxToolDurationMs: number;
     toolDurationMsByName: Record<string, number>;
   };
+  routing?: AgentResolvedRouting;
   interaction?: AgentInteraction;
   clarification?: {
     missingFields: string[];
@@ -825,7 +835,7 @@ export class AgentService {
             response: question,
           };
 
-          return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
+          return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
         }
 
         const interaction = await this.buildInteractionPayload(
@@ -856,7 +866,7 @@ export class AgentService {
           response: question,
         };
 
-        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
       }
 
       normalizedModel = availableModel;
@@ -903,7 +913,7 @@ export class AgentService {
             interaction: this.buildExecutionInteraction('blocked', locale),
             response: this.localize(locale, `模型格式转换失败：${convertCall.error}`, `Model conversion failed: ${convertCall.error}`),
           };
-        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
       }
     }
 
@@ -939,7 +949,7 @@ export class AgentService {
           interaction: this.buildExecutionInteraction('blocked', locale),
           response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
         };
-        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
       }
     } catch (error: any) {
       this.completeToolCallError(validateCall, error);
@@ -967,7 +977,7 @@ export class AgentService {
           interaction: this.buildExecutionInteraction('blocked', locale),
           response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
         };
-        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
       }
     }
 
@@ -995,7 +1005,7 @@ export class AgentService {
       if (sessionKey) {
         await this.clearInteractionSession(sessionKey);
       }
-      return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
+      return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
     }
 
     plan.push(this.localize(locale, `执行 ${resolvedAnalysisType} 分析并返回摘要`, `Run ${resolvedAnalysisType} analysis and return a summary`));
@@ -1053,7 +1063,7 @@ export class AgentService {
             interaction: this.buildExecutionInteraction('blocked', locale),
             response: this.localize(locale, `规范校核失败：${codeCheckCall.error}`, `Code check failed: ${codeCheckCall.error}`),
           };
-          return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
+          return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
         }
       }
 
@@ -1123,7 +1133,7 @@ export class AgentService {
       if (sessionKey) {
         await this.clearInteractionSession(sessionKey);
       }
-      return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
+      return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
     } catch (error: any) {
       this.completeToolCallError(analyzeCall, error);
       const transientUpstreamFailure = this.shouldRetryEngineCall(error);
@@ -1148,7 +1158,7 @@ export class AgentService {
           )
           : this.localize(locale, `分析执行失败：${analyzeCall.error}`, `Analysis execution failed: ${analyzeCall.error}`),
       };
-      return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds);
+      return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
     }
   }
 
@@ -1327,7 +1337,7 @@ export class AgentService {
           interaction,
           response,
         };
-        return this.finalizeRunResult(traceId, sessionKey, params.message, result, params.context?.skillIds);
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result, params.context?.skillIds, workingSession);
       }
 
       const missingFields = draft.missingFields.length > 0
@@ -1385,7 +1395,7 @@ export class AgentService {
         },
         response: question,
       };
-      return this.finalizeRunResult(traceId, sessionKey, params.message, result, params.context?.skillIds);
+      return this.finalizeRunResult(traceId, sessionKey, params.message, result, params.context?.skillIds, workingSession);
     }
 
     let assessment = await this.assessInteractionNeeds(workingSession, locale, params.context?.skillIds, 'chat');
@@ -1435,7 +1445,7 @@ export class AgentService {
         : undefined,
       response,
     };
-    return this.finalizeRunResult(traceId, sessionKey, params.message, result, params.context?.skillIds);
+    return this.finalizeRunResult(traceId, sessionKey, params.message, result, params.context?.skillIds, workingSession);
   }
 
   private async assessInteractionNeeds(
@@ -2205,10 +2215,63 @@ export class AgentService {
     userMessage: string,
     result: AgentRunResult,
     skillIds?: string[],
+    session?: InteractionSession,
   ): Promise<AgentRunResult> {
+    result.routing = this.buildResolvedRouting(result, skillIds, session);
     await this.persistConversationMessages(conversationId, userMessage, result, skillIds);
     this.logRunResult(traceId, conversationId, result);
     return result;
+  }
+
+  private buildResolvedRouting(
+    result: AgentRunResult,
+    skillIds?: string[],
+    session?: InteractionSession,
+  ): AgentResolvedRouting | undefined {
+    const selectedSkillIds = Array.isArray(skillIds)
+      ? skillIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+      : [];
+
+    const routing: AgentResolvedRouting = {
+      selectedSkillIds,
+    };
+
+    const structuralSkillId = session?.scenario?.skillId || session?.draft?.skillId;
+    if (structuralSkillId) {
+      routing.structuralSkillId = structuralSkillId;
+    }
+
+    const structuralScenarioKey = session?.scenario?.key || session?.draft?.scenarioKey;
+    if (structuralScenarioKey) {
+      routing.structuralScenarioKey = structuralScenarioKey;
+    }
+
+    const analysisRecord = result.analysis && typeof result.analysis === 'object'
+      ? result.analysis as Record<string, unknown>
+      : undefined;
+    const analysisMeta = analysisRecord?.meta && typeof analysisRecord.meta === 'object'
+      ? analysisRecord.meta as Record<string, unknown>
+      : undefined;
+
+    if (typeof analysisMeta?.analysisSkillId === 'string' && analysisMeta.analysisSkillId.trim().length > 0) {
+      routing.analysisSkillId = analysisMeta.analysisSkillId;
+    }
+    if (Array.isArray(analysisMeta?.analysisSkillIds)) {
+      routing.analysisSkillIds = analysisMeta.analysisSkillIds
+        .filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
+    }
+
+    if (
+      routing.selectedSkillIds.length === 0
+      && !routing.structuralSkillId
+      && !routing.structuralScenarioKey
+      && !routing.analysisSkillId
+      && (!routing.analysisSkillIds || routing.analysisSkillIds.length === 0)
+    ) {
+      return undefined;
+    }
+
+    return routing;
   }
 
   private buildPersistedDebugDetails(
@@ -2228,6 +2291,7 @@ export class AgentService {
     return {
       promptSnapshot,
       skillIds: safeSkillIds,
+      routing: result.routing,
       responseSummary: result.response || '',
       plan: Array.isArray(result.plan) ? result.plan : [],
       toolCalls: Array.isArray(result.toolCalls) ? result.toolCalls : [],

@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from 'fs/promises';
 import path from 'path';
 import { config } from '../config/index.js';
 import { AnalysisExecutionService } from './analysis-execution.js';
+import { BUILTIN_ANALYSIS_RUNTIME_ADAPTER_KEYS } from '../agent-skills/analysis/entry.js';
 
 export interface AnalysisEngineManifest {
   id: string;
@@ -51,7 +52,7 @@ export class AnalysisEngineCatalogService {
       allowedCapabilities: ['analyze', 'validate', 'code-check'],
       allowedAnalysisTypes: ['static', 'dynamic', 'seismic', 'nonlinear'],
       allowedModelFamilies: ['frame', 'truss', 'generic'],
-      allowedAdapterKeys: ['builtin-opensees', 'builtin-simplified'],
+      allowedAdapterKeys: BUILTIN_ANALYSIS_RUNTIME_ADAPTER_KEYS,
       allowedCheckModes: ['ping', 'analyze', 'validate'],
       requiredFields: ['id', 'name', 'version', 'kind', 'capabilities'],
       httpRequiredFields: ['baseUrl', 'supportedAnalysisTypes', 'supportedModelFamilies'],
@@ -101,7 +102,7 @@ export class AnalysisEngineCatalogService {
 
   private assertManifestIsAllowed(manifest: AnalysisEngineManifest) {
     if (manifest.kind === 'python') {
-      const allowedAdapterKeys = new Set(['builtin-opensees', 'builtin-simplified']);
+      const allowedAdapterKeys = new Set<string>(BUILTIN_ANALYSIS_RUNTIME_ADAPTER_KEYS);
       if (!manifest.adapterKey || !allowedAdapterKeys.has(manifest.adapterKey)) {
         throw new Error('Python engine manifests must reference a whitelisted adapterKey');
       }

@@ -56,7 +56,7 @@ source "$ROOT_DIR/scripts/analysis-python-env.sh"
 if [[ -x backend/.venv/bin/python ]]; then
   require_analysis_python
   run_check "Analysis runtime import" "\"$PYTHON_BIN\" -c \"import api; print(api.app.title)\""
-  run_check "OpenSees runtime smoke test" "\"$PYTHON_BIN\" -m providers.opensees.runtime --json"
+  run_check "OpenSees runtime smoke test" "\"$PYTHON_BIN\" \"$ROOT_DIR/backend/src/agent-skills/analysis/opensees-static/opensees_runtime.py\" --json"
   run_check "Analyze response contract" "./scripts/validate-analyze-contract.sh"
   run_check "Code-check traceability" "./scripts/validate-code-check-traceability.sh"
   run_check "Static regression" "./scripts/validate-static-regression.sh"

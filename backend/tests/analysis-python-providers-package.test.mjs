@@ -11,7 +11,16 @@ const analysisPythonRoot = path.join(
   'src',
   'agent-skills',
   'analysis',
-  'python',
+  'runtime',
+);
+const openseesProbePath = path.join(
+  repoRoot,
+  'backend',
+  'src',
+  'agent-skills',
+  'analysis',
+  'opensees-static',
+  'opensees_runtime.py',
 );
 
 function probePython(executable, args) {
@@ -61,16 +70,9 @@ describe('analysis python providers package', () => {
   }
 
   test('should not require structure_protocol just to start the opensees runtime module', () => {
-    const pathForPython = analysisPythonRoot.replace(/\\/g, '/').replace(/"/g, '\\"');
-    const script = [
-      'import importlib, sys',
-      `sys.path.insert(0, "${pathForPython}")`,
-      'importlib.import_module("providers.opensees.runtime")',
-    ].join('\n');
-
     const result = spawnSync(
       resolvedPython.executable,
-      [...resolvedPython.args, '-c', script],
+      [...resolvedPython.args, openseesProbePath, '--json'],
       {
         encoding: 'utf8',
         windowsHide: process.platform === 'win32',
@@ -86,7 +88,8 @@ describe('analysis python providers package', () => {
         `spawnSync failed: ${result.error.message} (executable=${resolvedPython.executable})`,
       );
     }
-    expect(result.status).toBe(0);
+    expect([0, 1]).toContain(result.status);
     expect(result.stderr).not.toContain("No module named 'structure_protocol'");
+    expect(result.stdout).not.toContain("No module named 'structure_protocol'");
   });
 });

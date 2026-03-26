@@ -10,12 +10,15 @@ require_analysis_python
 "$PYTHON_BIN" - <<'PY'
 import asyncio
 import math
+import pathlib
 import sys
 import types
 
 
-from providers.opensees.runtime import get_opensees_runtime_issue
-from providers.registry import AnalysisEngineRegistry
+sys.path.insert(0, str((pathlib.Path.cwd() / 'backend' / 'src' / 'agent-skills' / 'analysis' / 'opensees-static').resolve()))
+
+from opensees_runtime import get_opensees_runtime_issue
+from registry import AnalysisEngineRegistry
 from api import AnalysisRequest, analyze
 from structure_protocol.structure_model_v1 import StructureModelV1
 

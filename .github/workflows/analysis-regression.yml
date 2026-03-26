@@ -3,7 +3,8 @@ name: Analysis Regression
 on:
   pull_request:
     paths:
-      - 'backend/src/agent-skills/analysis-execution/**'
+      - 'backend/src/agent-skills/analysis/**'
+      - 'backend/src/skill-shared/python/**'
       - 'scripts/**'
       - 'Makefile'
       - '.github/workflows/backend-regression.yml'
@@ -12,7 +13,8 @@ on:
     branches:
       - master
     paths:
-      - 'backend/src/agent-skills/analysis-execution/**'
+      - 'backend/src/agent-skills/analysis/**'
+      - 'backend/src/skill-shared/python/**'
       - 'scripts/**'
       - 'Makefile'
       - '.github/workflows/backend-regression.yml'
@@ -36,7 +38,7 @@ jobs:
         run: |
           python -m venv backend/.venv
           backend/.venv/bin/pip install --upgrade pip
-          backend/.venv/bin/pip install -r backend/src/agent-skills/analysis/python/requirements.txt
+          backend/.venv/bin/pip install -r backend/src/agent-skills/analysis/runtime/requirements.txt
 
       - name: Run Analysis Regression
         # CI may not always provide a usable OpenSeesPy runtime on Linux.

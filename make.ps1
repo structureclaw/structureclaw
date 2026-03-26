@@ -19,7 +19,7 @@ $EnvExampleFile = Join-Path $RootDir '.env.example'
 $AnalysisVenvDir = Join-Path $RootDir 'backend/.venv'
 $AnalysisPython = Join-Path $AnalysisVenvDir 'Scripts/python.exe'
 $AnalysisSkillDir = Join-Path $RootDir 'backend/src/agent-skills/analysis'
-$AnalysisPythonRoot = Join-Path $AnalysisSkillDir 'python'
+$AnalysisPythonRoot = Join-Path $AnalysisSkillDir 'runtime'
 $AnalysisRequirementsFile = Join-Path $AnalysisPythonRoot 'requirements.txt'
 $ServiceRunner = Join-Path $RootDir 'scripts/windows/run-service.ps1'
 $IsWindowsHost = [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT
@@ -376,7 +376,8 @@ function Test-OpenSeesRuntime {
     $codeCheckSkillRoot = Join-Path $RootDir 'backend/src/agent-skills/code-check'
     $materialSkillRoot = Join-Path $RootDir 'backend/src/agent-skills/material'
     $env:PYTHONPATH = "$AnalysisPythonRoot;$geometrySkillRoot;$codeCheckSkillRoot;$materialSkillRoot"
-    & $AnalysisPython -m providers.opensees.runtime --json *> $null
+    $OpenSeesProbe = Join-Path $RootDir 'backend/src/agent-skills/analysis/opensees-static/opensees_runtime.py'
+    & $AnalysisPython $OpenSeesProbe --json *> $null
     return $LASTEXITCODE -eq 0
   }
   finally {

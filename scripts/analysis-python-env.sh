@@ -4,7 +4,8 @@ if [[ -z "${ROOT_DIR:-}" ]]; then
   ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 fi
 
-ANALYSIS_PYTHON_ROOT="$ROOT_DIR/backend/src/agent-skills/analysis/python"
+ANALYSIS_RUNTIME_ROOT="$ROOT_DIR/backend/src/agent-skills/analysis/runtime"
+ANALYSIS_PYTHON_ROOT="$ANALYSIS_RUNTIME_ROOT"
 SKILL_SHARED_PYTHON_ROOT="$ROOT_DIR/backend/src/skill-shared/python"
 ANALYSIS_EXAMPLES_DIR="$ANALYSIS_PYTHON_ROOT/examples"
 ANALYSIS_REGRESSION_DIR="$ANALYSIS_PYTHON_ROOT/regression"
@@ -28,6 +29,7 @@ require_analysis_python() {
     exit 1
   fi
   export PYTHON_BIN
+  export ANALYSIS_RUNTIME_ROOT
   export ANALYSIS_PYTHON_ROOT
   export ANALYSIS_EXAMPLES_DIR
   export ANALYSIS_REGRESSION_DIR
