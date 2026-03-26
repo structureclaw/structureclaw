@@ -41,6 +41,10 @@
   - `./scripts/validate-agent-orchestration.sh`
   - `./scripts/validate-chat-stream-contract.sh`
   - `./scripts/validate-analyze-contract.sh`
+- Install smoke (mirrors `.github/workflows/install-smoke.yml`; `test-smoke-docker` needs Docker; on Windows, `make.ps1` runs the bash scripts via Git Bash or WSL):
+  - `make test-smoke-native`
+  - `make test-smoke-docker`
+- Windows-only Pester tests for `install-helpers.psm1` (from repo root): install Pester 5, then `Invoke-Pester -Path ./tests/windows/install-helpers.Tests.ps1 -CI`.
 
 ## Coding Expectations
 - TypeScript:
