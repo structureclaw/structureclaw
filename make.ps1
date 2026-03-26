@@ -753,10 +753,13 @@ Common targets:
   stop               Alias of local-down
   status             Alias of local-status
   logs               Show logs
+  test-smoke-native  npm ci + build (backend and frontend), CI-style
+  test-smoke-docker  docker compose up, health checks, then down
 
 Compatibility notes:
   - db-up/db-down and docker-up/docker-down call docker compose directly.
   - backend-regression and analysis-regression still require bash or WSL today.
+  - test-smoke-native and test-smoke-docker run scripts/ci/*.sh via bash (Git Bash or WSL).
 '@ | Write-Host
 }
 
@@ -871,6 +874,22 @@ switch ($Target) {
   }
   'up' {
     & docker compose -f (Join-Path $RootDir 'docker-compose.yml') up --build
+    exit $LASTEXITCODE
+  }
+  'test-smoke-native' {
+    $bash = Get-CommandPath 'bash'
+    if (-not $bash) {
+      Fail 'test-smoke-native requires bash (Git Bash or WSL).'
+    }
+    & $bash (Join-Path $RootDir 'scripts/ci/native-install-smoke.sh')
+    exit $LASTEXITCODE
+  }
+  'test-smoke-docker' {
+    $bash = Get-CommandPath 'bash'
+    if (-not $bash) {
+      Fail 'test-smoke-docker requires bash (Git Bash or WSL).'
+    }
+    & $bash (Join-Path $RootDir 'scripts/ci/docker-compose-smoke.sh')
     exit $LASTEXITCODE
   }
   default {

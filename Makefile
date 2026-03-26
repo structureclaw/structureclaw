@@ -8,7 +8,7 @@ UV_PYTHON_INSTALL_DIR ?= /tmp/uv-python
 endif
 ANALYSIS_PYTHON_VERSION ?= 3.11
 
-.PHONY: help ensure-uv install setup-analysis-python dev-backend dev-frontend build db-up db-down db-init docker-up docker-down local-up local-up-uv local-up-noinfra local-down local-status health check-startup backend-regression analysis-regression doctor start restart stop status logs sclaw-install up
+.PHONY: help ensure-uv install setup-analysis-python dev-backend dev-frontend build db-up db-down db-init docker-up docker-down local-up local-up-uv local-up-noinfra local-down local-status health check-startup backend-regression analysis-regression doctor start restart stop status logs sclaw-install up test-smoke-native test-smoke-docker
 
 help:
 	@echo "Available targets:"
@@ -40,6 +40,8 @@ help:
 	@echo "  logs            Show logs (default: all services)"
 	@echo "  sclaw-install   Install global sclaw command to ~/.local/bin"
 	@echo "  up              Alias of docker-up"
+	@echo "  test-smoke-native  CI-style npm ci + build (backend + frontend)"
+	@echo "  test-smoke-docker  Docker compose up, health checks, then down"
 
 ifeq ($(OS),Windows_NT)
 ensure-uv:
@@ -123,6 +125,12 @@ sclaw-install:
 	$(WINDOWS_PS) sclaw-install
 
 up: docker-up
+
+test-smoke-native:
+	$(WINDOWS_PS) test-smoke-native
+
+test-smoke-docker:
+	$(WINDOWS_PS) test-smoke-docker
 else
 ensure-uv:
 	./scripts/ensure-uv.sh
@@ -209,4 +217,10 @@ sclaw-install:
 	./sclaw install
 
 up: docker-up
+
+test-smoke-native:
+	bash scripts/ci/native-install-smoke.sh
+
+test-smoke-docker:
+	bash scripts/ci/docker-compose-smoke.sh
 endif
