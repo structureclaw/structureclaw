@@ -32,11 +32,12 @@ export interface AnalysisSkillManifest {
   engineId: BuiltInAnalysisEngineId;
   adapterKey: AnalysisRuntimeAdapterKey;
   triggers: string[];
+  stages: ['analysis'];
   capabilities: string[];
   supportedModelFamilies: AnalysisModelFamily[];
   priority: number;
   autoLoadByDefault: boolean;
-  runtimeAdapterModule: string;
+  runtimeRelativePath: string;
 }
 
 export interface AnalysisEngineDefinition {

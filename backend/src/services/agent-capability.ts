@@ -1,5 +1,6 @@
 import { AnalysisEngineCatalogService } from './analysis-engine.js';
 import { AgentSkillRuntime } from '../agent-runtime/index.js';
+import { listBuiltinAnalysisSkills } from '../agent-skills/analysis/entry.js';
 import { normalizeAnalysisTypes as normalizeDomainAnalysisTypes } from '../agent-skills/design/entry.js';
 import { normalizeMaterialFamilies as normalizeDomainMaterialFamilies } from '../agent-skills/material/entry.js';
 import { normalizeBuiltInManifestToSkillPackage } from '../skill-shared/package.js';
@@ -13,6 +14,7 @@ interface CapabilitySkill {
   conflicts: string[];
   capabilities: string[];
   supportedAnalysisTypes: AgentAnalysisType[];
+  supportedModelFamilies: string[];
   materialFamilies: string[];
   priority: number;
   compatibility: {
@@ -119,7 +121,7 @@ export class AgentCapabilityService {
 
   async getCapabilityMatrix(options?: { analysisType?: CapabilityAnalysisType }) {
     const manifests = await this.skillRuntime.listSkillManifests();
-    const skills: CapabilitySkill[] = manifests.map((manifest: SkillManifest) => {
+    const structuralAndGeneralSkills: CapabilitySkill[] = manifests.map((manifest: SkillManifest) => {
       const pkg = normalizeBuiltInManifestToSkillPackage(manifest);
       return {
         id: pkg.id,
@@ -129,6 +131,7 @@ export class AgentCapabilityService {
         conflicts: Array.isArray(pkg.conflicts) ? pkg.conflicts : [],
         capabilities: Array.isArray(pkg.capabilities) ? pkg.capabilities : [],
         supportedAnalysisTypes: normalizeDomainAnalysisTypes(pkg.supportedAnalysisTypes),
+        supportedModelFamilies: resolveSkillModelFamilies(manifest.structureType),
         materialFamilies: normalizeDomainMaterialFamilies(pkg.materialFamilies),
         priority: pkg.priority ?? 0,
         compatibility: {
@@ -143,6 +146,29 @@ export class AgentCapabilityService {
         },
       };
     });
+    const analysisSkills: CapabilitySkill[] = listBuiltinAnalysisSkills().map((skill) => ({
+      id: skill.id,
+      structureType: undefined,
+      domain: 'analysis-strategy',
+      requires: [],
+      conflicts: [],
+      capabilities: [...skill.capabilities],
+      supportedAnalysisTypes: [skill.analysisType],
+      supportedModelFamilies: [...skill.supportedModelFamilies],
+      materialFamilies: [],
+      priority: skill.priority,
+      compatibility: {
+        minRuntimeVersion: '0.1.0',
+        skillApiVersion: 'v1',
+      },
+      autoLoadByDefault: skill.autoLoadByDefault,
+      stages: [...skill.stages],
+      name: {
+        zh: skill.name.zh,
+        en: skill.name.en,
+      },
+    }));
+    const skills: CapabilitySkill[] = [...structuralAndGeneralSkills, ...analysisSkills];
 
     const enginePayload = await this.engineCatalog.listEngines();
     const rawEngines = Array.isArray(enginePayload?.engines) ? enginePayload.engines.map((engine) => engine as unknown as Record<string, unknown>) : [];
@@ -161,7 +187,11 @@ export class AgentCapabilityService {
     const validEngineIdsBySkill: Record<string, string[]> = {};
     const filteredEngineReasonsBySkill: Record<string, Record<string, CapabilityReasonCode[]>> = {};
     for (const skill of skills) {
-      const requiredFamilies = new Set(resolveSkillModelFamilies(skill.structureType));
+      const requiredFamilies = new Set(
+        skill.supportedModelFamilies.length > 0
+          ? skill.supportedModelFamilies
+          : resolveSkillModelFamilies(skill.structureType),
+      );
       const validEngineIds: string[] = [];
       const reasonMap: Record<string, CapabilityReasonCode[]> = {};
       for (const engine of engines) {
@@ -181,7 +211,9 @@ export class AgentCapabilityService {
       const familySet = new Set(engine.supportedModelFamilies);
       validSkillIdsByEngine[engine.id] = skills
         .filter((skill) => {
-          const requiredFamilies = resolveSkillModelFamilies(skill.structureType);
+          const requiredFamilies = skill.supportedModelFamilies.length > 0
+            ? skill.supportedModelFamilies
+            : resolveSkillModelFamilies(skill.structureType);
           return requiredFamilies.some((family) => familySet.has(family));
         })
         .map((skill) => skill.id);
