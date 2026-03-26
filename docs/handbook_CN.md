@@ -47,19 +47,19 @@ uploads/    报告工件输出目录
 ### 5.1 推荐路径
 
 ```bash
-make doctor
-make start
-make status
+./sclaw doctor
+./sclaw start
+./sclaw status
 ```
 
-`make start` 是 SQLite 本地优先的启动路径，会直接从源码启动 frontend 和 backend，不会调用 Docker。
+`./sclaw start` 是 SQLite 本地优先的启动路径，会直接从源码启动 frontend 和 backend，不会调用 Docker。
 
 ### 5.2 常用生命周期命令
 
 ```bash
-make logs
-make stop
-make restart
+./sclaw logs
+./sclaw stop
+./sclaw restart
 ```
 
 ### 5.3 CLI 方式
@@ -75,14 +75,14 @@ make restart
 ### 5.4 Windows PowerShell
 
 ```powershell
-.\make.ps1 doctor
-.\make.ps1 start
-.\make.ps1 status
-.\make.ps1 logs all --follow
-.\make.ps1 stop
+node .\sclaw doctor
+node .\sclaw start
+node .\sclaw status
+node .\sclaw logs all --follow
+node .\sclaw stop
 ```
 
-`make.ps1` 是 Windows 原生的本地开发入口；如果使用 `cmd.exe`，也可以通过仓库里的 `make.cmd` 进行转发启动。
+如果要走 Docker 方式的 Windows 新手路径，直接使用 `node .\sclaw docker-install`、`node .\sclaw docker-start` 和 `node .\sclaw docker-stop`。
 
 ## 6. 环境变量与配置
 
@@ -159,8 +159,8 @@ npm run test:run --prefix frontend
 ### 10.3 分析运行时与契约
 
 ```bash
-make analysis-regression
-make backend-regression
+./sclaw analysis-regression
+./sclaw backend-regression
 ```
 
 常用定向校验：
@@ -182,7 +182,7 @@ make backend-regression
 
 ## 12. 故障排查
 
-- 启动异常优先执行 `make doctor`。
+- 启动异常优先执行 `./sclaw doctor`。
 - 数据库相关测试失败时，先检查 `DATABASE_URL` 是否以 `file:` 开头，并且指向本地可写路径。
 - LLM 流程异常时，检查 `LLM_PROVIDER` 与 API Key。
 - 契约失败时，直接运行对应 `scripts/validate-*.sh` 进行定向诊断。

@@ -5,7 +5,8 @@ on:
     paths:
       - 'backend/**'
       - 'scripts/**'
-      - 'Makefile'
+      - 'sclaw'
+      - 'package.json'
       - '.github/workflows/backend-regression.yml'
   push:
     branches:
@@ -13,7 +14,8 @@ on:
     paths:
       - 'backend/**'
       - 'scripts/**'
-      - 'Makefile'
+      - 'sclaw'
+      - 'package.json'
       - '.github/workflows/backend-regression.yml'
 
 jobs:
@@ -36,4 +38,4 @@ jobs:
         run: npm ci --prefix backend
 
       - name: Run Backend Regression
-        run: make backend-regression
+        run: ./sclaw backend-regression

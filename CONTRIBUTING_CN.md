@@ -12,9 +12,9 @@
 2. 确认本地开发环境可用：
 
 ```bash
-make doctor
-make start
-make status
+./sclaw doctor
+./sclaw start
+./sclaw status
 ```
 
 3. 如果你的改动涉及 chat、agent orchestration、report、converter 或 schema，请在开始前先确认对应的 `scripts/validate-*.sh` 校验脚本。
@@ -149,8 +149,8 @@ npm run test:run --prefix frontend
 分析运行时与跨服务验证：
 
 ```bash
-make backend-regression
-make analysis-regression
+./sclaw backend-regression
+./sclaw analysis-regression
 ```
 
 常用定向校验：

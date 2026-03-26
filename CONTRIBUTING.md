@@ -12,9 +12,9 @@ It is written for typical open source collaboration through a fork-and-pull-requ
 2. Make sure your local environment works:
 
 ```bash
-make doctor
-make start
-make status
+./sclaw doctor
+./sclaw start
+./sclaw status
 ```
 
 3. If your change touches chat, agent orchestration, reports, converters, or schema behavior, identify the matching validation script in `scripts/` before you start.
@@ -148,8 +148,8 @@ npm run test:run --prefix frontend
 Analysis runtime and cross-service validation:
 
 ```bash
-make backend-regression
-make analysis-regression
+./sclaw backend-regression
+./sclaw analysis-regression
 ```
 
 Useful targeted validators:

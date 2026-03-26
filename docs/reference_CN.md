@@ -114,8 +114,8 @@
 
 回归入口：
 
-- `make backend-regression`
-- `make analysis-regression`
+- `./sclaw backend-regression`
+- `./sclaw analysis-regression`
 
 ## 8. 相关文档
 

@@ -34,34 +34,34 @@ frontend (Next.js)
 推荐本地流程：
 
 ```bash
-make doctor
-make start
-make status
+./sclaw doctor
+./sclaw start
+./sclaw status
 ```
 
 补充说明：
 
 - 本地默认数据库现在是 SQLite，默认文件位置是 `.runtime/data/structureclaw.db`。
-- 如果你原来的本地 `.env` 还把 `DATABASE_URL` 指向本地 PostgreSQL，`make doctor` 和 `make start` 会先自动迁移到 SQLite，再把 `.env` 改写成 SQLite 默认配置，同时把原 PostgreSQL 地址保留到 `POSTGRES_SOURCE_DATABASE_URL`。
+- 如果你原来的本地 `.env` 还把 `DATABASE_URL` 指向本地 PostgreSQL，`./sclaw doctor` 和 `./sclaw start` 会先自动迁移到 SQLite，再把 `.env` 改写成 SQLite 默认配置，同时把原 PostgreSQL 地址保留到 `POSTGRES_SOURCE_DATABASE_URL`。
 - 第一次自动迁移时，还会生成一个类似 `.env.pre-sqlite-migration.<timestamp>.bak` 的本地备份文件。
 
 常用后续命令：
 
 ```bash
-make logs
-make stop
-make backend-regression
-make analysis-regression
+./sclaw logs
+./sclaw stop
+./sclaw backend-regression
+./sclaw analysis-regression
 ```
 
-CLI 方式：
+Windows PowerShell：
 
-```bash
-./sclaw doctor
-./sclaw start
-./sclaw status
-./sclaw logs all --follow
-./sclaw stop
+```powershell
+node .\sclaw doctor
+node .\sclaw start
+node .\sclaw status
+node .\sclaw logs all --follow
+node .\sclaw stop
 ```
 
 ### Windows / Docker 新手说明
@@ -72,17 +72,16 @@ Windows 现在可以直接使用 Docker 启动完整栈，适合不想先手动�
 
 1. 安装并启动 Docker Desktop。
 2. 首次启动如果提示启用 WSL 2 或容器功能，按向导完成后重启 Docker Desktop。
-3. 在项目根目录基于 `.env.example` 创建 `.env`，至少补齐 `LLM_PROVIDER`、`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`。
-4. 优先使用 Docker Compose 启动完整服务：
+3. 在项目根目录运行交互式 Docker 引导命令：
 
-```bash
-make docker-up
+```powershell
+node .\sclaw docker-install
 ```
 
-如果你的 Windows 环境没有 `make`，也可以直接执行：
+如果是 CI 或脚本化环境，使用非交互方式：
 
-```bash
-docker compose up --build
+```powershell
+node .\sclaw docker-install --non-interactive --llm-provider openai --llm-base-url https://api.openai.com/v1 --llm-api-key <your-key> --llm-model gpt-4.1
 ```
 
 启动完成后，常用入口如下：
@@ -94,8 +93,8 @@ docker compose up --build
 
 停止容器：
 
-```bash
-make docker-down
+```powershell
+node .\sclaw docker-stop
 ```
 
 或：

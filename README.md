@@ -34,34 +34,34 @@ Main directories:
 Recommended local flow:
 
 ```bash
-make doctor
-make start
-make status
+./sclaw doctor
+./sclaw start
+./sclaw status
 ```
 
 Notes:
 
 - SQLite is now the default local database. A fresh setup writes to `.runtime/data/structureclaw.db`.
-- If your old local `.env` still points `DATABASE_URL` at a local PostgreSQL instance, `make doctor` and `make start` will auto-migrate that data into SQLite, rewrite `.env` to the SQLite default, and keep the original PostgreSQL URL in `POSTGRES_SOURCE_DATABASE_URL`.
+- If your old local `.env` still points `DATABASE_URL` at a local PostgreSQL instance, `./sclaw doctor` and `./sclaw start` will auto-migrate that data into SQLite, rewrite `.env` to the SQLite default, and keep the original PostgreSQL URL in `POSTGRES_SOURCE_DATABASE_URL`.
 - That first auto-migration also creates a local backup file like `.env.pre-sqlite-migration.<timestamp>.bak`.
 
 Useful follow-up commands:
 
 ```bash
-make logs
-make stop
-make backend-regression
-make analysis-regression
+./sclaw logs
+./sclaw stop
+./sclaw backend-regression
+./sclaw analysis-regression
 ```
 
-CLI alternative:
+Windows PowerShell:
 
-```bash
-./sclaw doctor
-./sclaw start
-./sclaw status
-./sclaw logs all --follow
-./sclaw stop
+```powershell
+node .\sclaw doctor
+node .\sclaw start
+node .\sclaw status
+node .\sclaw logs all --follow
+node .\sclaw stop
 ```
 
 ### Windows / Docker Quick Start
@@ -72,17 +72,16 @@ Recommended steps:
 
 1. Install and start Docker Desktop.
 2. If Docker Desktop asks you to enable WSL 2 or required container features on first launch, follow the setup wizard and restart Docker Desktop.
-3. Create `.env` from `.env.example` in the project root, and at minimum fill in `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, and `LLM_BASE_URL`.
-4. Start the full stack with Docker Compose:
+3. Run the interactive Docker bootstrap command from the project root:
 
-```bash
-make docker-up
+```powershell
+node .\sclaw docker-install
 ```
 
-If your Windows environment does not have `make`, run:
+For CI or scripted setup, use the non-interactive variant:
 
-```bash
-docker compose up --build
+```powershell
+node .\sclaw docker-install --non-interactive --llm-provider openai --llm-base-url https://api.openai.com/v1 --llm-api-key <your-key> --llm-model gpt-4.1
 ```
 
 Once the stack is ready, the main entrypoints are:
@@ -95,7 +94,7 @@ Once the stack is ready, the main entrypoints are:
 To stop the containers:
 
 ```bash
-make docker-down
+node .\sclaw docker-stop
 ```
 
 Or:

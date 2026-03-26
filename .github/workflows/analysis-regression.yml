@@ -5,7 +5,8 @@ on:
     paths:
       - 'backend/src/agent-skills/analysis-execution/**'
       - 'scripts/**'
-      - 'Makefile'
+      - 'sclaw'
+      - 'package.json'
       - '.github/workflows/backend-regression.yml'
       - '.github/workflows/analysis-regression.yml'
   push:
@@ -14,7 +15,8 @@ on:
     paths:
       - 'backend/src/agent-skills/analysis-execution/**'
       - 'scripts/**'
-      - 'Makefile'
+      - 'sclaw'
+      - 'package.json'
       - '.github/workflows/backend-regression.yml'
       - '.github/workflows/analysis-regression.yml'
 
@@ -42,4 +44,4 @@ jobs:
         # CI may not always provide a usable OpenSeesPy runtime on Linux.
         # The regression suite still verifies unavailable-engine signaling,
         # auto-fallback routing, and the non-OpenSees regression surface.
-        run: make analysis-regression
+        run: ./sclaw analysis-regression

@@ -2,7 +2,7 @@
 
 ## 目标
 
-在空白 Windows 系统上验证 `install.ps1`、`start.ps1`、`stop.ps1` 脚本的完整功能。
+在空白 Windows 系统上验证 `sclaw` 提供的 Docker 安装、启动、停止命令的完整功能。
 
 ---
 
@@ -24,15 +24,17 @@ name: Test Windows Installer
 on:
   push:
     paths:
-      - 'install.ps1'
-      - 'start.ps1'
-      - 'stop.ps1'
+      - 'sclaw'
+      - 'package.json'
+      - 'scripts/cli/**'
+      - 'docker-compose.yml'
       - '.github/workflows/test-installer.yml'
   pull_request:
     paths:
-      - 'install.ps1'
-      - 'start.ps1'
-      - 'stop.ps1'
+      - 'sclaw'
+      - 'package.json'
+      - 'scripts/cli/**'
+      - 'docker-compose.yml'
 
 jobs:
   test-installer:
@@ -46,18 +48,10 @@ jobs:
         run: |
           . ./test-installer.ps1
 
-      - name: Test install script (dry-run)
+      - name: Test docker bootstrap command
         shell: powershell
         run: |
-          # 模拟用户输入测试
-          $inputs = @"
-openai
-https://api.openai.com/v1
-test-key
-gpt-4-turbo-preview
-"@
-          # 注意：GitHub Actions 的 Windows runner 已预装 Docker
-          # 但可能需要启动服务
+          node .\sclaw docker-install --non-interactive --llm-provider openai --llm-base-url https://api.openai.com/v1 --llm-api-key test-key --llm-model gpt-4.1 --skip-api-test
 ```
 
 ### 限制
@@ -130,12 +124,12 @@ param(
 Checkpoint-VM -Name $VMName -SnapshotName "BeforeTest"
 
 # 复制测试文件到 VM
-Copy-VMFile -Name $VMName -SourcePath ".\install.ps1" -DestinationPath "C:\Test\" -CreateFullPath
+Copy-VMFile -Name $VMName -SourcePath ".\sclaw" -DestinationPath "C:\Test\" -CreateFullPath
 
 # 在 VM 中执行测试
 Invoke-Command -VMName $VMName -ScriptBlock {
   Set-Location C:\Test
-  .\test-installer.ps1
+  node .\sclaw docker-install --non-interactive --llm-provider openai --llm-base-url https://api.openai.com/v1 --llm-api-key test-key --llm-model gpt-4.1 --skip-api-test
 }
 
 # 恢复检查点
@@ -144,7 +138,7 @@ Restore-VMSnapshot -VMName $VMName -Name "BeforeTest"
 
 ---
 
-## 方案 4: Pester 单元测试（代码层面）
+## 方案 4: Node CLI 单元测试（代码层面）
 
 ### 优点
 - 快速执行
@@ -153,36 +147,18 @@ Restore-VMSnapshot -VMName $VMName -Name "BeforeTest"
 
 ### 实现步骤
 
-创建 `tests/install.Tests.ps1`:
+创建 `scripts/cli/main.test.js` 或额外的 CLI 测试文件：
 
-```powershell
-Describe "StructureClaw Installer Tests" {
-  BeforeAll {
-    . $PSScriptRoot\..\install.ps1 -DryRun
-  }
+```javascript
+import test from 'node:test';
+import assert from 'node:assert/strict';
 
-  Context "Docker Detection" {
-    It "Should detect Docker installation" {
-      Test-DockerInstalled | Should -Be $true
-    }
-
-    It "Should detect Docker service" {
-      Test-DockerRunning | Should -Be $true
-    }
-  }
-
-  Context "Environment File Generation" {
-    It "Should generate valid .env file" {
-      $envFile = Join-Path $TestDrive ".env"
-      New-EnvFile -TemplatePath ".env.example" -OutputPath $envFile `
-        -BaseUrl "https://api.test.com/v1" -ApiKey "test-key" -Model "test-model" -Provider "openai"
-
-      $envFile | Should -Exist
-      $content = Get-Content $envFile
-      $content | Should -Match "LLM_PROVIDER=openai"
-    }
-  }
-}
+test('docker commands are exposed through sclaw', async () => {
+  const { COMMAND_NAMES } = require('../../scripts/cli/command-manifest.js');
+  assert.equal(COMMAND_NAMES.has('docker-install'), true);
+  assert.equal(COMMAND_NAMES.has('docker-start'), true);
+  assert.equal(COMMAND_NAMES.has('docker-stop'), true);
+});
 ```
 
 ---
@@ -191,7 +167,7 @@ Describe "StructureClaw Installer Tests" {
 
 | 测试类型 | 工具 | 触发条件 | 目的 |
 |---------|------|---------|------|
-| 单元测试 | Pester | 每次 commit | 验证函数逻辑 |
+| 单元测试 | Node test | 每次 commit | 验证 CLI 命令与参数逻辑 |
 | 集成测试 | GitHub Actions | PR / Push | 验证 Docker 环境 |
 | 端到端测试 | Windows Sandbox | 发布前 | 完整用户体验 |
 
@@ -200,6 +176,6 @@ Describe "StructureClaw Installer Tests" {
 ## 下一步行动
 
 1. 创建 `.github/workflows/test-installer.yml`
-2. 创建 `tests/install.Tests.ps1` Pester 测试
+2. 为 `scripts/cli` 增补更多 Docker 命令测试
 3. 创建 `test-sandbox.wsb` 配置文件
 4. 编写测试文档 `tests/README.md`

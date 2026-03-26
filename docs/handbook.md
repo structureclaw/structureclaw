@@ -47,19 +47,19 @@ uploads/    generated report artifacts
 ### 5.1 Recommended path
 
 ```bash
-make doctor
-make start
-make status
+./sclaw doctor
+./sclaw start
+./sclaw status
 ```
 
-`make start` is the SQLite local-first startup path. It starts frontend and backend from source and does not invoke Docker.
+`./sclaw start` is the SQLite local-first startup path. It starts frontend and backend from source and does not invoke Docker.
 
 ### 5.2 Common lifecycle commands
 
 ```bash
-make logs
-make stop
-make restart
+./sclaw logs
+./sclaw stop
+./sclaw restart
 ```
 
 ### 5.3 CLI alternative
@@ -75,14 +75,14 @@ make restart
 ### 5.4 Windows PowerShell
 
 ```powershell
-.\make.ps1 doctor
-.\make.ps1 start
-.\make.ps1 status
-.\make.ps1 logs all --follow
-.\make.ps1 stop
+node .\sclaw doctor
+node .\sclaw start
+node .\sclaw status
+node .\sclaw logs all --follow
+node .\sclaw stop
 ```
 
-`make.ps1` is the native Windows entrypoint for the common local-development lifecycle. `make.cmd` is included as a thin launcher for cmd.exe users.
+For Docker-based Windows onboarding, use `node .\sclaw docker-install`, `node .\sclaw docker-start`, and `node .\sclaw docker-stop`.
 
 ## 6. Environment and Configuration
 
@@ -159,8 +159,8 @@ npm run test:run --prefix frontend
 ### 10.3 Analysis runtime and contracts
 
 ```bash
-make analysis-regression
-make backend-regression
+./sclaw analysis-regression
+./sclaw backend-regression
 ```
 
 Useful targeted validators:
@@ -182,7 +182,7 @@ Contribution details: `CONTRIBUTING.md`.
 
 ## 12. Troubleshooting
 
-- If startup fails, run `make doctor` first.
+- If startup fails, run `./sclaw doctor` first.
 - If DB-related tests fail locally, verify that `DATABASE_URL` starts with `file:` and points to a writable local path.
 - If LLM flow degrades unexpectedly, confirm `LLM_PROVIDER` and API key env variables.
 - If contracts fail, run the corresponding `scripts/validate-*.sh` script directly for focused diagnostics.

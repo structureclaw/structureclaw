@@ -1,60 +1,53 @@
-name: Test Windows Installer
+name: Test Windows Docker CLI
 
 on:
   push:
     branches: [master, main, 'feat/*']
     paths:
-      - 'install.ps1'
-      - 'start.ps1'
-      - 'stop.ps1'
+      - 'sclaw'
+      - 'package.json'
+      - 'scripts/cli/**'
+      - 'docker-compose.yml'
       - '.github/workflows/test-installer.yml'
   pull_request:
     branches: [master, main]
     paths:
-      - 'install.ps1'
-      - 'start.ps1'
-      - 'stop.ps1'
+      - 'sclaw'
+      - 'package.json'
+      - 'scripts/cli/**'
+      - 'docker-compose.yml'
 
 jobs:
-  test-scripts:
+  test-cli:
     runs-on: windows-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Verify script syntax
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Run CLI tests
         shell: powershell
-        run: |
-          $scripts = @('install.ps1', 'start.ps1', 'stop.ps1')
-          $allValid = $true
-
-          Write-Host "Verifying PowerShell script syntax..." -ForegroundColor Cyan
-
-          foreach ($script in $scripts) {
-            Write-Host "  Checking $script..." -NoNewline
-            try {
-              $null = [System.Management.Automation.PSParser]::Tokenize((Get-Content $script -Raw), [ref]$null)
-              Write-Host " OK" -ForegroundColor Green
-            }
-            catch {
-              Write-Host " FAILED" -ForegroundColor Red
-              Write-Error "Syntax error in $script : $_"
-              $allValid = $false
-            }
-          }
-
-          if (-not $allValid) {
-            exit 1
-          }
-
-          Write-Host "All scripts passed syntax check" -ForegroundColor Green
+        run: npm run test:cli
 
   test-with-docker:
     runs-on: windows-latest
-    needs: test-scripts
+    needs: test-cli
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
 
       - name: Start Docker service
         shell: powershell
@@ -83,28 +76,24 @@ jobs:
             exit 1
           }
 
-      - name: Test install script with mock inputs
+      - name: Validate docker compose configuration
         shell: powershell
         run: |
-          # Create mock .env file for testing
-          $envLines = @(
-            "LLM_PROVIDER=openai",
-            "LLM_API_KEY=test-key-for-ci",
-            "LLM_MODEL=gpt-4-turbo-preview",
-            "LLM_BASE_URL=https://api.openai.com/v1"
-          )
-          $envContent = $envLines -join "`r`n"
-          Set-Content -Path ".env" -Value $envContent -NoNewline
-
-          Write-Host "Testing docker compose configuration..." -ForegroundColor Cyan
-
-          # Validate docker-compose.yml syntax
           docker compose config --quiet
 
-          if ($LASTEXITCODE -eq 0) {
-            Write-Host "Docker compose configuration is valid" -ForegroundColor Green
-          }
-          else {
-            Write-Error "Docker compose configuration is invalid"
-            exit 1
-          }
+      - name: Bootstrap docker stack through sclaw
+        shell: powershell
+        run: |
+          node .\sclaw docker-install --non-interactive --llm-provider openai --llm-base-url https://api.openai.com/v1 --llm-api-key test-key-for-ci --llm-model gpt-4.1 --skip-api-test
+
+      - name: Verify docker status through sclaw
+        shell: powershell
+        run: |
+          node .\sclaw docker-status
+          node .\sclaw docker-stop
+
+      - name: Tear down docker stack
+        if: always()
+        shell: powershell
+        run: |
+          node .\sclaw docker-down

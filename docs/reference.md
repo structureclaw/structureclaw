@@ -114,8 +114,8 @@ Primary orchestration and protocol scripts:
 
 Regression entrypoints:
 
-- `make backend-regression`
-- `make analysis-regression`
+- `./sclaw backend-regression`
+- `./sclaw analysis-regression`
 
 ## 8. Related Docs
 

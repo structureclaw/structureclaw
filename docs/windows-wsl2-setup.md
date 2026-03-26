@@ -5,8 +5,8 @@
 1. WSL2
 2. Ubuntu 22.04
 3. Docker Desktop
-4. `make doctor`
-5. `make start`
+4. `./sclaw doctor`
+5. `./sclaw start`
 
 ## 中文步骤
 
@@ -27,7 +27,7 @@ wsl --set-default-version 2
 
 ```bash
 sudo apt update
-sudo apt install -y git make curl wget
+sudo apt install -y git curl wget
 ```
 
 ### 3. 安装并配置 Docker Desktop（Windows）
@@ -64,21 +64,21 @@ cp .env.example .env
 ### 5. 运行健康检查与启动
 
 ```bash
-make doctor
-make start
+./sclaw doctor
+./sclaw start
 ```
 
 说明：
 
-- `make doctor` 会执行依赖检查和启动前验证。
+- `./sclaw doctor` 会执行依赖检查和启动前验证。
 - 当前仓库已支持在 `doctor` 过程中自动安装 Node.js（通过 Volta），并自动写入 PATH 到常见 shell 配置。
 
 ### 6. 运行状态与停止
 
 ```bash
-make status
-make logs
-make stop
+./sclaw status
+./sclaw logs
+./sclaw stop
 ```
 
 ---
@@ -102,7 +102,7 @@ Run in Ubuntu terminal:
 
 ```bash
 sudo apt update
-sudo apt install -y git make curl wget
+sudo apt install -y git curl wget
 ```
 
 ### 3. Install and configure Docker Desktop (Windows)
@@ -139,19 +139,19 @@ Adjust `.env` as needed (for example, LLM settings).
 ### 5. Run checks and start
 
 ```bash
-make doctor
-make start
+./sclaw doctor
+./sclaw start
 ```
 
 Notes:
 
-- `make doctor` runs startup checks before launch (including verifying your Node.js setup).
-- Node.js is not installed automatically; please install Node.js yourself (manually or via a tool like Volta/nvm) before running `make doctor`.
+- `./sclaw doctor` runs startup checks before launch (including verifying your Node.js setup).
+- Node.js is not installed automatically; please install Node.js yourself (manually or via a tool like Volta/nvm) before running `./sclaw doctor`.
 
 ### 6. Check status and stop
 
 ```bash
-make status
-make logs
-make stop
+./sclaw status
+./sclaw logs
+./sclaw stop
 ```

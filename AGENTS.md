@@ -19,14 +19,14 @@
 
 ## Build, Run, and Verify
 - Preferred local health flow:
-  - `make doctor`
-  - `make start`
-  - `make analysis-regression`
+ - `./sclaw doctor`
+ - `./sclaw start`
+ - `./sclaw analysis-regression`
 - Useful lifecycle commands:
-  - `make start`, `make restart`
-  - `make stop`
-  - `make status`
-  - `make logs`
+ - `./sclaw start`, `./sclaw restart`
+ - `./sclaw stop`
+ - `./sclaw status`
+ - `./sclaw logs`
 - Backend:
   - `npm run build --prefix backend`
   - `npm run lint --prefix backend`
@@ -36,7 +36,7 @@
   - `npm run type-check --prefix frontend`
   - `npm run test:run --prefix frontend`
 - Analysis and contract validation:
-  - `make analysis-regression`
+ - `./sclaw analysis-regression`
   - `./scripts/check-backend-regression.sh`
   - `./scripts/validate-agent-orchestration.sh`
   - `./scripts/validate-chat-stream-contract.sh`
