@@ -1,6 +1,8 @@
 services:
   # 后端服务
   backend:
+    # Windows Docker hosts default to windows/amd64 image pulls; stack images are Linux-only.
+    platform: linux/amd64
     build:
       context: ./backend
       dockerfile: Dockerfile
@@ -50,6 +52,7 @@ services:
 
   # 前端服务
   frontend:
+    platform: linux/amd64
     build:
       context: ./frontend
       dockerfile: Dockerfile
@@ -67,6 +70,7 @@ services:
 
   # Nginx 反向代理
   nginx:
+    platform: linux/amd64
     image: nginx:1.29.6-alpine
     container_name: structureclaw-nginx
     ports:
