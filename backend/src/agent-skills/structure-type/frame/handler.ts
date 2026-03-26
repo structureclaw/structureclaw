@@ -10,7 +10,7 @@ import {
 } from '../../../agent-runtime/legacy.js';
 import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
 import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
-import { buildInteractionQuestions, normalizeNumber, normalizePositiveInteger } from '../../../agent-runtime/fallback.js';
+import { buildInteractionQuestions, lookupSteelSection, normalizeNumber, normalizePositiveInteger, suggestBeamSection, suggestColumnSection } from '../../../agent-runtime/fallback.js';
 import { buildDefaultReportNarrative } from '../../../agent-runtime/report-template.js';
 import type { AppLocale } from '../../../services/locale.js';
 import type {
@@ -36,7 +36,8 @@ const GEOMETRY_KEYS = [
 ] as const;
 
 const LOAD_BOUNDARY_KEYS = ['floorLoads', 'frameBaseSupportType'] as const;
-const ALLOWED_KEYS = combineDomainKeys(GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS);
+const MATERIAL_SECTION_KEYS = ['steelGrade', 'columnSection', 'beamSection'] as const;
+const ALLOWED_KEYS = [...combineDomainKeys(GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS), ...MATERIAL_SECTION_KEYS];
 
 const REQUIRED_KEYS = [
   'frameDimension',
@@ -49,6 +50,9 @@ const REQUIRED_KEYS = [
   'bayWidthsXM',
   'bayWidthsYM',
   'floorLoads',
+  'steelGrade',
+  'columnSection',
+  'beamSection',
 ] as const;
 
 function toFramePatch(patch: DraftExtraction): DraftExtraction {
@@ -57,6 +61,11 @@ function toFramePatch(patch: DraftExtraction): DraftExtraction {
     geometryKeys: GEOMETRY_KEYS,
     loadBoundaryKeys: LOAD_BOUNDARY_KEYS,
   });
+  for (const key of MATERIAL_SECTION_KEYS) {
+    if (patch[key] !== undefined) {
+      domainPatch[key] = patch[key];
+    }
+  }
   return restrictLegacyDraftPatch(domainPatch, 'frame', [...ALLOWED_KEYS]);
 }
 
@@ -147,6 +156,43 @@ function extractNumberArray(text: string, patterns: RegExp[]): number[] | undefi
     }
   }
   return undefined;
+}
+
+function extractSteelGrade(text: string): string | undefined {
+  const match = text.match(/q\s*(235|345|390|420|460)/i);
+  return match ? `Q${match[1]}` : undefined;
+}
+
+function extractColumnSection(text: string): string | undefined {
+  const explicit = text.match(/(?:柱|col(?:umn)?)[^，,。\n]{0,12}?(h[wm]\d+x\d+)/i);
+  if (explicit) {
+    return explicit[1].toUpperCase();
+  }
+  const hw = text.match(/\b(hw\d+x\d+)\b/i);
+  if (hw) {
+    return hw[1].toUpperCase();
+  }
+  return undefined;
+}
+
+function extractBeamSection(text: string): string | undefined {
+  const explicit = text.match(/(?:梁|beam)[^，,。\n]{0,12}?(h[wmn]\d+x\d+)/i);
+  if (explicit) {
+    return explicit[1].toUpperCase();
+  }
+  const hn = text.match(/\b(hn\d+x\d+)\b/i);
+  if (hn) {
+    return hn[1].toUpperCase();
+  }
+  const hm = text.match(/\b(hm\d+x\d+)\b/i);
+  if (hm) {
+    return hm[1].toUpperCase();
+  }
+  return undefined;
+}
+
+function isSupportedSection(name: string | undefined): boolean {
+  return name !== undefined && lookupSteelSection(name) !== undefined;
 }
 
 function extractDirectionalLoadScalar(text: string, axis: 'x' | 'y'): number | undefined {
@@ -315,6 +361,10 @@ function normalizeFrameNaturalPatch(message: string, existingState: DraftState |
   const lateralXLoadKN = extractedLateralXLoadKN;
   const lateralYLoadKN = extractedLateralYLoadKN ?? (mirrorHorizontalLoad ? extractedLateralXLoadKN : undefined);
 
+  const extractedSteelGrade = extractSteelGrade(text);
+  const extractedColSec = extractColumnSection(text);
+  const extractedBeamSec = extractBeamSection(text);
+
   return {
     inferredType: 'frame',
     frameDimension: resolvedFrameDimension,
@@ -332,6 +382,9 @@ function normalizeFrameNaturalPatch(message: string, existingState: DraftState |
       lateralXLoadKN,
       resolvedFrameDimension === '3d' ? lateralYLoadKN : undefined,
     ),
+    steelGrade: extractedSteelGrade,
+    columnSection: isSupportedSection(extractedColSec) ? extractedColSec : undefined,
+    beamSection: isSupportedSection(extractedBeamSec) ? extractedBeamSec : undefined,
   };
 }
 
@@ -367,6 +420,10 @@ function buildFramePatchFromLlm(
   const frameDimension = normalized.frameDimension
     ?? (normalized.bayCountY !== undefined || normalized.bayWidthsYM !== undefined || lateralYKN !== undefined ? '3d' : undefined);
 
+  const rawSteelGrade = typeof rawPatch?.steelGrade === 'string' ? rawPatch.steelGrade : undefined;
+  const rawColSec = typeof rawPatch?.columnSection === 'string' ? rawPatch.columnSection : undefined;
+  const rawBeamSec = typeof rawPatch?.beamSection === 'string' ? rawPatch.beamSection : undefined;
+
   return {
     ...normalized,
     frameDimension,
@@ -375,6 +432,9 @@ function buildFramePatchFromLlm(
     bayWidthsXM: normalized.bayWidthsXM ?? repeatScalar(bayCountX, bayWidthXScalar ?? bayWidthScalar),
     bayWidthsYM: normalized.bayWidthsYM ?? repeatScalar(bayCountY, bayWidthYScalar ?? bayWidthScalar),
     floorLoads: normalized.floorLoads ?? buildUniformFloorLoads(storyCount, verticalLoadKN, lateralXKN, frameDimension === '3d' ? lateralYKN : undefined),
+    steelGrade: rawSteelGrade ?? normalized.steelGrade,
+    columnSection: isSupportedSection(rawColSec) ? rawColSec : (isSupportedSection(normalized.columnSection as string | undefined) ? normalized.columnSection : undefined),
+    beamSection: isSupportedSection(rawBeamSec) ? rawBeamSec : (isSupportedSection(normalized.beamSection as string | undefined) ? normalized.beamSection : undefined),
   };
 }
 
@@ -476,6 +536,18 @@ function buildFrameDefaultReason(paramKey: string, locale: AppLocale, state: Dra
       return locale === 'zh'
         ? '框架柱脚默认采用固定支座，便于获得更稳健的初始刚度评估。'
         : 'Default frame base support to fixed to obtain a stable initial stiffness assessment.';
+    case 'steelGrade':
+      return locale === 'zh'
+        ? '钢材牌号默认为 Q345，适合常规多层钢框架。如有其他要求请在确认时修改。'
+        : 'Steel grade defaults to Q345, suitable for typical multi-story steel frames. Adjust when confirming if needed.';
+    case 'columnSection':
+      return locale === 'zh'
+        ? `柱截面根据层数推荐 ${suggestColumnSection(state)}（宽翼缘 HW 系列）。如有其他规格请在确认时修改。`
+        : `Column section ${suggestColumnSection(state)} is suggested based on story count (wide-flange HW series). Adjust when confirming if needed.`;
+    case 'beamSection':
+      return locale === 'zh'
+        ? `梁截面根据跨度推荐 ${suggestBeamSection(state)}（窄翼缘 HN 系列）。如有其他规格请在确认时修改。`
+        : `Beam section ${suggestBeamSection(state)} is suggested based on span length (narrow-flange HN series). Adjust when confirming if needed.`;
     default:
       return locale === 'zh'
         ? `根据 ${paramKey} 的推荐值采用默认配置。`
@@ -510,6 +582,27 @@ function buildFrameDefaultProposals(keys: string[], state: DraftState, locale: A
       paramKey: 'frameBaseSupportType',
       value: 'fixed',
       reason: buildFrameDefaultReason('frameBaseSupportType', locale, state),
+    });
+  }
+  if (keys.includes('steelGrade')) {
+    next.set('steelGrade', {
+      paramKey: 'steelGrade',
+      value: 'Q345',
+      reason: buildFrameDefaultReason('steelGrade', locale, state),
+    });
+  }
+  if (keys.includes('columnSection')) {
+    next.set('columnSection', {
+      paramKey: 'columnSection',
+      value: suggestColumnSection(state),
+      reason: buildFrameDefaultReason('columnSection', locale, state),
+    });
+  }
+  if (keys.includes('beamSection')) {
+    next.set('beamSection', {
+      paramKey: 'beamSection',
+      value: suggestBeamSection(state),
+      reason: buildFrameDefaultReason('beamSection', locale, state),
     });
   }
 
@@ -551,6 +644,35 @@ function buildFrameQuestions(
         question: locale === 'zh'
           ? `请确认各层节点荷载（单位 kN）。${loadHint}`
           : `Please confirm per-story nodal loads (kN). ${loadHint}`,
+      };
+    }
+    if (question.paramKey === 'steelGrade') {
+      return {
+        ...question,
+        question: locale === 'zh'
+          ? '请确认钢材牌号（Q235 / Q345 / Q390 / Q420）。常规多层钢框架建议选 Q345。'
+          : 'Please confirm the steel grade (Q235 / Q345 / Q390 / Q420). Q345 is recommended for typical multi-story steel frames.',
+        suggestedValue: 'Q345',
+      };
+    }
+    if (question.paramKey === 'columnSection') {
+      const suggested = suggestColumnSection(state);
+      return {
+        ...question,
+        question: locale === 'zh'
+          ? `请确认柱截面型号（宽翼缘 HW 系列，如 HW300x300、HW350x350、HW400x400）。根据层数建议：${suggested}。`
+          : `Please confirm column section (wide-flange HW series, e.g. HW300x300). Suggested based on story count: ${suggested}.`,
+        suggestedValue: suggested,
+      };
+    }
+    if (question.paramKey === 'beamSection') {
+      const suggested = suggestBeamSection(state);
+      return {
+        ...question,
+        question: locale === 'zh'
+          ? `请确认梁截面型号（窄翼缘 HN 系列，如 HN400x200、HN500x200）。根据跨度建议：${suggested}。`
+          : `Please confirm beam section (narrow-flange HN series, e.g. HN400x200). Suggested based on span: ${suggested}.`,
+        suggestedValue: suggested,
       };
     }
     return question;
@@ -607,7 +729,15 @@ export const handler: SkillHandler = {
     return buildFrameDraftPatch(message, llmDraftPatch, currentState);
   },
   mergeState(existing, patch) {
-    return mergeLegacyState(existing, coerceFrameDimension(toFramePatch(patch), existing, ''), 'frame', 'frame');
+    const framePatch = coerceFrameDimension(toFramePatch(patch), existing, '');
+    const merged = mergeLegacyState(existing, framePatch, 'frame', 'frame');
+    for (const key of MATERIAL_SECTION_KEYS) {
+      const next = framePatch[key] ?? existing?.[key];
+      if (next !== undefined) {
+        merged[key] = next;
+      }
+    }
+    return merged;
   },
   computeMissing(state, mode) {
     return computeLegacyMissing(

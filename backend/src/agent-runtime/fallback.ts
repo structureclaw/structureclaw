@@ -20,6 +20,77 @@ function localize(locale: AppLocale, zh: string, en: string): string {
   return locale === 'zh' ? zh : en;
 }
 
+// ---------------------------------------------------------------------------
+// Steel section catalog (GB/T 11263 simplified; SI units: A m², I m⁴, G MPa)
+// ---------------------------------------------------------------------------
+
+const STEEL_MATERIAL_CATALOG: Record<string, { E: number; nu: number; rho: number; fy: number }> = {
+  Q235: { E: 205000, nu: 0.3, rho: 7850, fy: 235 },
+  Q345: { E: 205000, nu: 0.3, rho: 7850, fy: 345 },
+  Q390: { E: 205000, nu: 0.3, rho: 7850, fy: 390 },
+  Q420: { E: 205000, nu: 0.3, rho: 7850, fy: 420 },
+};
+
+export const STEEL_GRADE_NAMES = Object.keys(STEEL_MATERIAL_CATALOG);
+
+// Keys are uppercase with capital X (e.g. 'HW300X300')
+const STEEL_SECTION_CATALOG: Record<string, { A: number; Iy: number; Iz: number; J: number; G: number }> = {
+  // Wide-flange columns (HW series)
+  'HW200X200': { A: 6.428e-3, Iy: 4.77e-5, Iz: 1.60e-5, J: 2.6e-7, G: 79000 },
+  'HW250X250': { A: 9.218e-3, Iy: 1.08e-4, Iz: 3.65e-5, J: 5.1e-7, G: 79000 },
+  'HW300X300': { A: 1.204e-2, Iy: 2.05e-4, Iz: 6.75e-5, J: 7.7e-7, G: 79000 },
+  'HW350X350': { A: 1.739e-2, Iy: 4.03e-4, Iz: 1.35e-4, J: 1.78e-6, G: 79000 },
+  'HW400X400': { A: 2.187e-2, Iy: 6.64e-4, Iz: 2.24e-4, J: 2.73e-6, G: 79000 },
+  // Narrow-flange beams (HN series)
+  'HN300X150': { A: 6.320e-3, Iy: 7.21e-5, Iz: 5.07e-6, J: 9.8e-8, G: 79000 },
+  'HN350X175': { A: 7.570e-3, Iy: 1.36e-4, Iz: 7.90e-6, J: 1.1e-7, G: 79000 },
+  'HN400X200': { A: 8.412e-3, Iy: 2.37e-4, Iz: 1.73e-5, J: 3.6e-7, G: 79000 },
+  'HN450X200': { A: 9.650e-3, Iy: 3.35e-4, Iz: 1.87e-5, J: 8.1e-7, G: 79000 },
+  'HN500X200': { A: 1.142e-2, Iy: 5.14e-4, Iz: 2.13e-5, J: 7.0e-7, G: 79000 },
+  // Medium-flange beams (HM series)
+  'HM500X300': { A: 1.318e-2, Iy: 6.09e-4, Iz: 6.76e-5, J: 8.8e-7, G: 79000 },
+};
+
+function normalizeSectionKey(name: string): string {
+  return name.toUpperCase().replace(/\s/g, '').replace(/x/g, 'X');
+}
+
+export function lookupSteelSection(name: string | undefined): { A: number; Iy: number; Iz: number; J: number; G: number } | undefined {
+  if (!name) {
+    return undefined;
+  }
+  return STEEL_SECTION_CATALOG[normalizeSectionKey(name)];
+}
+
+export function suggestColumnSection(state: DraftState): string {
+  const stories = (state.storyCount as number | undefined)
+    ?? (state.storyHeightsM as number[] | undefined)?.length
+    ?? 3;
+  if (stories <= 3) {
+    return 'HW300x300';
+  }
+  if (stories <= 6) {
+    return 'HW350x350';
+  }
+  return 'HW400x400';
+}
+
+export function suggestBeamSection(state: DraftState): string {
+  const spans = [
+    ...((state.bayWidthsM as number[] | undefined) ?? []),
+    ...((state.bayWidthsXM as number[] | undefined) ?? []),
+    ...((state.bayWidthsYM as number[] | undefined) ?? []),
+  ];
+  const maxSpan = spans.length > 0 ? Math.max(...spans) : 6;
+  if (maxSpan <= 6) {
+    return 'HN350x175';
+  }
+  if (maxSpan <= 9) {
+    return 'HN400x200';
+  }
+  return 'HN500x200';
+}
+
 function extractNumber(text: string, patterns: RegExp[], groups: number[] = [1]): number | undefined {
   for (const pattern of patterns) {
     const match = text.match(pattern);
@@ -165,6 +236,12 @@ function buildFrame2dModel(state: DraftState, metadata: Record<string, unknown>)
   const xCoordinates = accumulateCoordinates(bayWidths);
   const yCoordinates = accumulateCoordinates(storyHeights);
   const baseSupport = state.frameBaseSupportType || 'fixed';
+  const steelGrade = (state.steelGrade as string | undefined) ?? 'Q345';
+  const colSecName = (state.columnSection as string | undefined) ?? 'HW300x300';
+  const beamSecName = (state.beamSection as string | undefined) ?? 'HN400x200';
+  const matProps = STEEL_MATERIAL_CATALOG[steelGrade] ?? STEEL_MATERIAL_CATALOG['Q345'];
+  const colProps = lookupSteelSection(colSecName) ?? STEEL_SECTION_CATALOG['HW300X300'];
+  const beamProps = lookupSteelSection(beamSecName) ?? STEEL_SECTION_CATALOG['HN400X200'];
   const nodes: Array<Record<string, unknown>> = [];
   const elements: Array<Record<string, unknown>> = [];
   const loadCases = [{ id: 'LC1', type: 'other', loads: [] as Array<Record<string, unknown>> }];
@@ -238,16 +315,19 @@ function buildFrame2dModel(state: DraftState, metadata: Record<string, unknown>)
     unit_system: 'SI',
     nodes,
     elements,
-    materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850, fy: 345 }],
+    materials: [{ id: '1', name: `steel-${steelGrade}`, E: matProps.E, nu: matProps.nu, rho: matProps.rho, fy: matProps.fy }],
     sections: [
-      { id: '1', name: 'COLUMN', type: 'beam', properties: { A: 0.03, Iy: 0.00035, Iz: 0.00035, J: 0.00015, G: 79000 } },
-      { id: '2', name: 'BEAM', type: 'beam', properties: { A: 0.02, Iy: 0.00022, Iz: 0.00022, J: 0.0001, G: 79000 } },
+      { id: '1', name: colSecName, type: 'beam', properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
+      { id: '2', name: beamSecName, type: 'beam', properties: { A: beamProps.A, Iy: beamProps.Iy, Iz: beamProps.Iz, J: beamProps.J, G: beamProps.G } },
     ],
     load_cases: loadCases,
     load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
     metadata: {
       ...metadata,
       baseSupport,
+      steelGrade,
+      columnSection: colSecName,
+      beamSection: beamSecName,
       storyCount: storyHeights.length,
       bayCount: bayWidths.length,
       geometry: {
@@ -267,6 +347,12 @@ function buildFrame3dModel(state: DraftState, metadata: Record<string, unknown>)
   const zCoordinates = accumulateCoordinates(bayWidthsY);
   const yCoordinates = accumulateCoordinates(storyHeights);
   const baseSupport = state.frameBaseSupportType || 'fixed';
+  const steelGrade = (state.steelGrade as string | undefined) ?? 'Q345';
+  const colSecName = (state.columnSection as string | undefined) ?? 'HW300x300';
+  const beamSecName = (state.beamSection as string | undefined) ?? 'HN400x200';
+  const matProps = STEEL_MATERIAL_CATALOG[steelGrade] ?? STEEL_MATERIAL_CATALOG['Q345'];
+  const colProps = lookupSteelSection(colSecName) ?? STEEL_SECTION_CATALOG['HW300X300'];
+  const beamProps = lookupSteelSection(beamSecName) ?? STEEL_SECTION_CATALOG['HN400X200'];
   const nodes: Array<Record<string, unknown>> = [];
   const elements: Array<Record<string, unknown>> = [];
   const loadCases = [{ id: 'LC1', type: 'other', loads: [] as Array<Record<string, unknown>> }];
@@ -364,16 +450,19 @@ function buildFrame3dModel(state: DraftState, metadata: Record<string, unknown>)
     unit_system: 'SI',
     nodes,
     elements,
-    materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850, fy: 345 }],
+    materials: [{ id: '1', name: `steel-${steelGrade}`, E: matProps.E, nu: matProps.nu, rho: matProps.rho, fy: matProps.fy }],
     sections: [
-      { id: '1', name: 'COLUMN', type: 'beam', properties: { A: 0.035, Iy: 0.0004, Iz: 0.0004, J: 0.00018, G: 79000 } },
-      { id: '2', name: 'BEAM', type: 'beam', properties: { A: 0.025, Iy: 0.00025, Iz: 0.00025, J: 0.00012, G: 79000 } },
+      { id: '1', name: colSecName, type: 'beam', properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
+      { id: '2', name: beamSecName, type: 'beam', properties: { A: beamProps.A, Iy: beamProps.Iy, Iz: beamProps.Iz, J: beamProps.J, G: beamProps.G } },
     ],
     load_cases: loadCases,
     load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
     metadata: {
       ...metadata,
       baseSupport,
+      steelGrade,
+      columnSection: colSecName,
+      beamSection: beamSecName,
       storyCount: storyHeights.length,
       bayCountX: bayWidthsX.length,
       bayCountY: bayWidthsY.length,
