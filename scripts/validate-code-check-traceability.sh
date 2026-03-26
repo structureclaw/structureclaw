@@ -1,38 +1,10 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/usr/bin/env node
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$ROOT_DIR"
+const path = require("node:path");
 
-source "$ROOT_DIR/scripts/analysis-python-env.sh"
-require_analysis_python
-
-"$PYTHON_BIN" - <<'PY'
-import asyncio
-import sys
-
-from runtime import run_code_check
-
-async def run() -> None:
-    result = run_code_check(
-        'trace-demo',
-        'GB50017',
-        ['E1'],
-        {
-            'analysisSummary': {'analysisType': 'static', 'success': True},
-            'utilizationByElement': {'E1': {'正应力': 0.73}},
-        },
-    )
-
-    assert result['traceability']['modelId'] == 'trace-demo'
-    assert result['traceability']['analysisSummary']['analysisType'] == 'static'
-    detail = result['details'][0]
-    item = detail['checks'][0]['items'][0]
-    assert item['clause']
-    assert item['formula']
-    assert item['inputs']['demand'] >= 0
-    assert item['utilization'] >= 0
-    print('[ok] code-check traceability contract')
-
-asyncio.run(run())
-PY
+require("./cli/regressions/run-validation")
+  .runFromFilename(__filename, path.resolve(__dirname, ".."))
+  .catch((error) => {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 1;
+  });
