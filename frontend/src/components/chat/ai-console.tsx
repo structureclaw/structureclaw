@@ -1651,7 +1651,8 @@ export function AIConsole() {
         }
         const skills = payload as AgentSkillSummary[]
         setAvailableSkills(skills)
-        setSelectedSkillIds((current) => (current.length > 0 ? current : []))
+        const defaultSkillIds = skills.filter((skill) => skill.autoLoadByDefault).map((skill) => skill.id)
+        setSelectedSkillIds((current) => (current.length > 0 ? current : defaultSkillIds))
       } catch {
         if (active) {
           setAvailableSkills([])
@@ -1835,8 +1836,12 @@ export function AIConsole() {
       setHistoryLoading(true)
       setHistoryError('')
 
+      const controller = new AbortController()
+      const timeoutId = window.setTimeout(() => controller.abort(), 8000)
+
       try {
-        const response = await fetch(`${API_BASE}/api/v1/chat/conversations`)
+        const response = await fetch(`${API_BASE}/api/v1/chat/conversations`, { signal: controller.signal })
+        window.clearTimeout(timeoutId)
         if (!response.ok) {
           throw new Error(`${t('loadConversationFailed')}: HTTP ${response.status}`)
         }
@@ -1846,9 +1851,17 @@ export function AIConsole() {
         }
       } catch (error) {
         if (!cancelled) {
-          setHistoryError(error instanceof Error ? error.message : `${t('loadConversationFailed')}.`)
+          const isAbort =
+            (typeof DOMException !== 'undefined' && error instanceof DOMException && error.name === 'AbortError') ||
+            (error instanceof Error && error.name === 'AbortError')
+          if (isAbort) {
+            setHistoryError(t('conversationsLoadTimeout'))
+          } else {
+            setHistoryError(error instanceof Error ? error.message : `${t('loadConversationFailed')}.`)
+          }
         }
       } finally {
+        window.clearTimeout(timeoutId)
         if (!cancelled) {
           setHistoryLoading(false)
         }
