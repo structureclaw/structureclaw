@@ -1,10 +1,11 @@
 import { describe, expect, test } from '@jest/globals';
-import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 
 const repoRoot = path.resolve(process.cwd(), '..');
-const makeScriptPath = path.join(repoRoot, 'make.ps1');
-const makefilePath = path.join(repoRoot, 'Makefile');
+const require = createRequire(import.meta.url);
+const runtime = require(path.join(repoRoot, 'scripts', 'cli', 'runtime.js'));
+const { COMMAND_NAMES } = require(path.join(repoRoot, 'scripts', 'cli', 'command-manifest.js'));
 const analysisRequirementsPath = path.join(
   repoRoot,
   'backend',
@@ -14,26 +15,31 @@ const analysisRequirementsPath = path.join(
   'python',
   'requirements.txt',
 );
+const analysisPythonRoot = path.join(
+  repoRoot,
+  'backend',
+  'src',
+  'agent-skills',
+  'analysis',
+  'python',
+);
 
-describe('windows make analysis python paths', () => {
-  test('should point Windows setup-analysis-python to the current analysis requirements file', () => {
-    const script = fs.readFileSync(makeScriptPath, 'utf8');
+describe('sclaw runtime analysis python paths', () => {
+  test('should resolve setup-analysis-python to the current analysis requirements file', () => {
+    const paths = runtime.resolvePaths(repoRoot);
 
-    expect(fs.existsSync(analysisRequirementsPath)).toBe(true);
-    expect(script).toContain("Join-Path $RootDir 'backend/src/agent-skills/analysis'");
-    expect(script).toContain("$AnalysisRequirementsFile = Join-Path $AnalysisPythonRoot 'requirements.txt'");
-    expect(script).toContain('& uv pip install --python $AnalysisPython --link-mode=copy -r $AnalysisRequirementsFile');
-    expect(script).toContain("Join-Path $RootDir 'backend/src/agent-skills/data-input'");
-    expect(script).toContain("Join-Path $RootDir 'backend/src/agent-skills/material'");
-    expect(script).not.toContain('backend/src/agent-skills/analysis-execution/python/requirements.txt');
-    expect(script).not.toContain("Join-Path $RootDir 'backend/src/agent-skills/geometry-input'");
-    expect(script).not.toContain("Join-Path $RootDir 'backend/src/agent-skills/material-constitutive'");
+    expect(paths.analysisPythonRoot).toBe(analysisPythonRoot);
+    expect(paths.analysisRequirementsFile).toBe(analysisRequirementsPath);
+    expect(paths.analysisRequirementsFile).not.toContain('analysis-execution/python/requirements.txt');
+    expect(paths.dataInputSkillRoot).toContain(path.join('backend', 'src', 'agent-skills', 'data-input'));
+    expect(paths.materialSkillRoot).toContain(path.join('backend', 'src', 'agent-skills', 'material'));
   });
 
-  test('should keep Makefile analysis setup aligned with the same requirements file', () => {
-    const makefile = fs.readFileSync(makefilePath, 'utf8');
-
-    expect(makefile).toContain('backend/src/agent-skills/analysis/python/requirements.txt');
-    expect(makefile).not.toContain('backend/src/agent-skills/analysis-execution/python/requirements.txt');
+  test('should expose docker lifecycle commands through sclaw instead of windows wrappers', () => {
+    expect(COMMAND_NAMES.has('docker-install')).toBe(true);
+    expect(COMMAND_NAMES.has('docker-start')).toBe(true);
+    expect(COMMAND_NAMES.has('docker-stop')).toBe(true);
+    expect(COMMAND_NAMES.has('docker-status')).toBe(true);
+    expect(COMMAND_NAMES.has('docker-logs')).toBe(true);
   });
 });

@@ -12,6 +12,7 @@ test("resolveCommandName handles aliases", () => {
   assert.equal(resolveCommandName("--help"), "help");
   assert.equal(resolveCommandName("--version"), "version");
   assert.equal(resolveCommandName("doctor"), "doctor");
+  assert.equal(resolveCommandName("install-docker"), "docker-install");
   assert.equal(resolveCommandName("status"), "status");
   assert.equal(resolveCommandName("stop"), "stop");
 });
@@ -19,6 +20,8 @@ test("resolveCommandName handles aliases", () => {
 test("help output includes unified command surface", () => {
   const helpText = formatHelp(rootDir);
   assert.match(helpText, /sclaw start/);
+  assert.match(helpText, /sclaw docker-install/);
+  assert.match(helpText, /sclaw docker-start/);
   assert.match(helpText, /sclaw install-cli/);
   assert.match(helpText, /analysis-regression/);
 });
@@ -62,6 +65,11 @@ test("command manifest covers make lifecycle targets", () => {
     "db-init",
     "docker-up",
     "docker-down",
+    "docker-install",
+    "docker-start",
+    "docker-stop",
+    "docker-status",
+    "docker-logs",
     "local-up",
     "local-up-uv",
     "local-up-noinfra",

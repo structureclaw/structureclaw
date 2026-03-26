@@ -7,6 +7,8 @@ const fsp = require("node:fs/promises");
 const os = require("node:os");
 const { pathToFileURL } = require("node:url");
 
+const { COMMAND_NAMES } = require("../command-manifest");
+const runtime = require("../runtime");
 const { runBackendBuildOnce } = require("./shared");
 
 function assert(condition, message) {
@@ -1567,24 +1569,45 @@ async function validateReportTemplateContract(context) {
 }
 
 async function validateDevStartupGuards(context) {
-  const devUpContent = await fsp.readFile(path.join(context.rootDir, "scripts", "dev-up.sh"), "utf8");
-  const checkStartupContent = await fsp.readFile(path.join(context.rootDir, "scripts", "check-startup.sh"), "utf8");
-  const assertContains = (content, pattern, message) => {
-    if (!new RegExp(pattern, "u").test(content)) {
-      throw new Error(message);
-    }
-  };
+  const cliMainPath = path.join(context.rootDir, "scripts", "cli", "main.js");
+  const cliMainContent = await fsp.readFile(cliMainPath, "utf8");
+  const runtimePaths = runtime.resolvePaths(context.rootDir);
 
-  console.log("Validating startup self-healing guards...");
-  assertContains(devUpContent, "ensure_npm_dependencies\\(", "missing npm dependency self-healing function");
-  assertContains(devUpContent, "lock_snapshot", "missing lockfile snapshot drift detection");
-  assertContains(devUpContent, "require_analysis_python", "missing analysis Python guard");
-  assertContains(devUpContent, "reset_frontend_cache_if_needed", "missing frontend cache recovery hook");
-  assertContains(devUpContent, "Cannot find module '\\./", "missing frontend chunk corruption detection signature");
-  assertContains(devUpContent, "starting %s", "missing session header for log isolation");
-  assertContains(devUpContent, "auto-migrate-legacy-postgres\\.sh", "missing legacy postgres auto-migration hook in dev-up");
-  assertContains(checkStartupContent, "auto-migrate-legacy-postgres\\.sh", "missing legacy postgres auto-migration hook in check-startup");
-  console.log("[ok] startup self-healing guards are present");
+  console.log("Validating unified startup and docker command guards...");
+  assert(COMMAND_NAMES.has("doctor"), "missing doctor command");
+  assert(COMMAND_NAMES.has("start"), "missing start command");
+  assert(COMMAND_NAMES.has("docker-install"), "missing docker-install command");
+  assert(COMMAND_NAMES.has("docker-start"), "missing docker-start command");
+  assert(COMMAND_NAMES.has("docker-stop"), "missing docker-stop command");
+  assert(COMMAND_NAMES.has("docker-status"), "missing docker-status command");
+  assert(COMMAND_NAMES.has("docker-logs"), "missing docker-logs command");
+  assert(
+    cliMainContent.includes("installedPackagesMatchLock"),
+    "missing npm dependency drift detection in unified CLI",
+  );
+  assert(
+    cliMainContent.includes("ensureAnalysisPython"),
+    "missing analysis Python guard in unified CLI",
+  );
+  assert(
+    cliMainContent.includes("appendSessionHeader"),
+    "missing log session isolation hook in unified CLI",
+  );
+  assert(
+    cliMainContent.includes("persistDockerEnv"),
+    "missing docker env persistence in unified CLI",
+  );
+  assert(
+    cliMainContent.includes("waitForDockerServices"),
+    "missing docker readiness check in unified CLI",
+  );
+  assert(
+    runtimePaths.analysisRequirementsFile.endsWith(
+      path.join("backend", "src", "agent-skills", "analysis", "python", "requirements.txt"),
+    ),
+    "analysis requirements path is not aligned with the current runtime layout",
+  );
+  console.log("[ok] unified startup and docker command guards are present");
 }
 
 const BACKEND_VALIDATIONS = {
