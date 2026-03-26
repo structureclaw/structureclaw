@@ -161,10 +161,8 @@ async function saveConversationSnapshotToBackend(
 type PersistedConversation = ConversationSummary & {
   messages: Message[]
   modelText?: string
-  analysisType?: AnalysisType
   designCode?: string
   selectedSkillIds?: string[]
-  selectedEngineId?: string
   modelSyncMessage?: string
   activePanel?: PanelTab
   latestResult?: AgentResult | null
@@ -220,22 +218,6 @@ type CapabilityDomainSummary = {
   autoLoadSkillIds?: string[]
 }
 
-type AnalysisEngineSummary = {
-  id: string
-  name?: string
-  version?: string
-  kind?: string
-  capabilities?: string[]
-  supportedAnalysisTypes?: string[]
-  supportedModelFamilies?: string[]
-  available?: boolean
-  enabled?: boolean
-  visibility?: string
-  status?: 'available' | 'unavailable' | 'disabled'
-  unavailableReason?: string
-  routingHints?: string[]
-}
-
 type CapabilityMatrixPayload = {
   skills?: CapabilitySkillSummary[]
   domainSummaries?: CapabilityDomainSummary[]
@@ -277,25 +259,6 @@ function resolveSkillDomainLabel(domain: SkillDomain, t: (key: MessageKey) => st
   if (domain === 'report-export') return t('skillDomainReportExport')
   if (domain === 'generic-fallback') return t('skillDomainGenericFallback')
   return t('skillDomainUnknown')
-}
-
-function mapCapabilityReasonToText(reason: string, t: (key: MessageKey) => string) {
-  if (reason === 'engine_disabled') {
-    return t('capabilityReasonEngineDisabled')
-  }
-  if (reason === 'engine_unavailable') {
-    return t('capabilityReasonEngineUnavailable')
-  }
-  if (reason === 'engine_status_unavailable') {
-    return t('capabilityReasonEngineStatusUnavailable')
-  }
-  if (reason === 'model_family_mismatch') {
-    return t('capabilityReasonModelFamilyMismatch')
-  }
-  if (reason === 'analysis_type_mismatch') {
-    return t('capabilityReasonAnalysisTypeMismatch')
-  }
-  return reason
 }
 
 const STORAGE_KEY = 'structureclaw.console.conversations'
@@ -810,203 +773,21 @@ function extractEngineLabel(
   }
 }
 
-function detectModelFamily(model?: Record<string, unknown>) {
-  const elements = Array.isArray(model?.elements) ? model.elements : []
-  if (!elements.length) {
-    return 'generic'
+function inferAnalysisTypeFromSkillIds(skillIds: string[]): AnalysisType | undefined {
+  const normalized = skillIds.map((skillId) => skillId.toLowerCase())
+  if (normalized.some((skillId) => skillId.includes('nonlinear'))) {
+    return 'nonlinear'
   }
-  const types = new Set(
-    elements
-      .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
-      .map((item) => String(item.type || ''))
-  )
-  if (types.size > 0 && Array.from(types).every((type) => type === 'truss')) {
-    return 'truss'
+  if (normalized.some((skillId) => skillId.includes('seismic'))) {
+    return 'seismic'
   }
-  if (types.has('beam')) {
-    return 'frame'
+  if (normalized.some((skillId) => skillId.includes('dynamic'))) {
+    return 'dynamic'
   }
-  return 'generic'
-}
-
-function getEngineStatusLabel(
-  engine: AnalysisEngineSummary,
-  t: (key: MessageKey) => string
-) {
-  if (engine.status === 'disabled' || engine.enabled === false) {
-    return t('engineStatusDisabled')
+  if (normalized.some((skillId) => skillId.includes('static'))) {
+    return 'static'
   }
-  if (engine.available === false || engine.status === 'unavailable') {
-    return t('engineStatusUnavailable')
-  }
-  return t('engineStatusAvailable')
-}
-
-function getEngineSelectionIssue(
-  engine: AnalysisEngineSummary,
-  analysisType: AnalysisType,
-  modelFamily: string,
-  t: (key: MessageKey) => string,
-  matrixReasonTexts?: string[]
-) {
-  if (Array.isArray(matrixReasonTexts) && matrixReasonTexts.length > 0) {
-    return matrixReasonTexts.join(', ')
-  }
-  if (engine.status === 'disabled' || engine.enabled === false) {
-    return t('engineStatusDisabled')
-  }
-  if (engine.available === false || engine.status === 'unavailable') {
-    return engine.unavailableReason || t('engineUnavailableGeneric')
-  }
-  if (engine.supportedAnalysisTypes?.length && !engine.supportedAnalysisTypes.includes(analysisType)) {
-    return t('engineUnsupportedAnalysisType')
-  }
-  if (engine.supportedModelFamilies?.length && !engine.supportedModelFamilies.includes(modelFamily)) {
-    return t('engineUnsupportedModelFamily')
-  }
-  return ''
-}
-
-function supportsAnalysisType(engine: AnalysisEngineSummary, analysisType: AnalysisType): boolean {
-  if (!engine.supportedAnalysisTypes?.length) {
-    return true
-  }
-  return engine.supportedAnalysisTypes.includes(analysisType)
-}
-
-function supportsModelFamily(engine: AnalysisEngineSummary, modelFamily: string): boolean {
-  if (!engine.supportedModelFamilies?.length) {
-    return true
-  }
-  return engine.supportedModelFamilies.includes(modelFamily)
-}
-
-function renderEngineOption(
-  engine: AnalysisEngineSummary,
-  selected: boolean,
-  analysisType: AnalysisType,
-  currentModelFamily: string,
-  t: (key: MessageKey) => string,
-  matrixReasonTextsByEngine: Record<string, string[]>,
-  onSelect: (engineId: string) => void
-) {
-  const issue = getEngineSelectionIssue(engine, analysisType, currentModelFamily, t, matrixReasonTextsByEngine[engine.id])
-  const analysisCompatible = supportsAnalysisType(engine, analysisType)
-  const modelCompatible = supportsModelFamily(engine, currentModelFamily)
-  const selectable = issue.length === 0
-
-  return (
-    <button
-      key={engine.id}
-      type="button"
-      onClick={() => {
-        if (selectable) {
-          onSelect(engine.id)
-        }
-      }}
-      disabled={!selectable}
-      className={cn(
-        'rounded-2xl border px-3 py-2 text-left text-sm transition disabled:cursor-not-allowed disabled:opacity-60',
-        selected
-          ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
-          : 'border-border/70 bg-card/80 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
-      )}
-    >
-      <div className="font-medium text-foreground">
-        {engine.name || engine.id}
-        {engine.version ? ` v${engine.version}` : ''}
-      </div>
-      <div className="mt-1 text-xs leading-5 text-muted-foreground">
-        {(engine.kind || 'python')} · {getEngineStatusLabel(engine, t)}
-      </div>
-      <div className="mt-1 text-xs leading-5 text-muted-foreground">
-        {t('analysisTypeLabel')}: {(engine.supportedAnalysisTypes || []).join(', ') || 'all'}
-      </div>
-      <div className="mt-1 text-xs leading-5 text-muted-foreground">
-        {t('engineModelFamiliesLabel')}: {(engine.supportedModelFamilies || []).join(', ') || 'generic'}
-      </div>
-      <div className="mt-1 flex flex-wrap gap-1.5 text-[11px]">
-        <span
-          className={cn(
-            'rounded-full border px-2 py-0.5',
-            analysisCompatible
-              ? 'border-emerald-300/40 bg-emerald-300/10 text-emerald-700 dark:text-emerald-200'
-              : 'border-amber-300/40 bg-amber-300/10 text-amber-700 dark:text-amber-200'
-          )}
-        >
-          {analysisCompatible ? t('engineAnalysisCompatibilityOk') : t('engineAnalysisCompatibilityMismatch')}
-        </span>
-        <span
-          className={cn(
-            'rounded-full border px-2 py-0.5',
-            modelCompatible
-              ? 'border-emerald-300/40 bg-emerald-300/10 text-emerald-700 dark:text-emerald-200'
-              : 'border-amber-300/40 bg-amber-300/10 text-amber-700 dark:text-amber-200'
-          )}
-        >
-          {modelCompatible ? t('engineModelCompatibilityOk') : t('engineModelCompatibilityMismatch')}
-        </span>
-      </div>
-      {issue ? (
-        <div className="mt-1 text-xs leading-5 text-amber-600 dark:text-amber-300">{issue}</div>
-      ) : null}
-    </button>
-  )
-}
-
-function renderEngineSummary(
-  engine: AnalysisEngineSummary,
-  analysisType: AnalysisType,
-  currentModelFamily: string,
-  t: (key: MessageKey) => string,
-  matrixReasonTextsByEngine: Record<string, string[]>
-) {
-  const issue = getEngineSelectionIssue(engine, analysisType, currentModelFamily, t, matrixReasonTextsByEngine[engine.id])
-  const analysisCompatible = supportsAnalysisType(engine, analysisType)
-  const modelCompatible = supportsModelFamily(engine, currentModelFamily)
-
-  return (
-    <div className="rounded-2xl border border-border/70 bg-card/80 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950/40">
-      <div className="font-medium text-foreground">
-        {engine.name || engine.id}
-        {engine.version ? ` v${engine.version}` : ''}
-      </div>
-      <div className="mt-1 text-xs leading-5 text-muted-foreground">
-        {(engine.kind || 'python')} · {getEngineStatusLabel(engine, t)}
-      </div>
-      <div className="mt-1 text-xs leading-5 text-muted-foreground">
-        {t('analysisTypeLabel')}: {(engine.supportedAnalysisTypes || []).join(', ') || 'all'}
-      </div>
-      <div className="mt-1 text-xs leading-5 text-muted-foreground">
-        {t('engineModelFamiliesLabel')}: {(engine.supportedModelFamilies || []).join(', ') || 'generic'}
-      </div>
-      <div className="mt-1 flex flex-wrap gap-1.5 text-[11px]">
-        <span
-          className={cn(
-            'rounded-full border px-2 py-0.5',
-            analysisCompatible
-              ? 'border-emerald-300/40 bg-emerald-300/10 text-emerald-700 dark:text-emerald-200'
-              : 'border-amber-300/40 bg-amber-300/10 text-amber-700 dark:text-amber-200'
-          )}
-        >
-          {analysisCompatible ? t('engineAnalysisCompatibilityOk') : t('engineAnalysisCompatibilityMismatch')}
-        </span>
-        <span
-          className={cn(
-            'rounded-full border px-2 py-0.5',
-            modelCompatible
-              ? 'border-emerald-300/40 bg-emerald-300/10 text-emerald-700 dark:text-emerald-200'
-              : 'border-amber-300/40 bg-amber-300/10 text-amber-700 dark:text-amber-200'
-          )}
-        >
-          {modelCompatible ? t('engineModelCompatibilityOk') : t('engineModelCompatibilityMismatch')}
-        </span>
-      </div>
-      {issue ? (
-        <div className="mt-1 text-xs leading-5 text-amber-600 dark:text-amber-300">{issue}</div>
-      ) : null}
-    </div>
-  )
+  return undefined
 }
 
 function AnalysisPanel({
@@ -1363,15 +1144,6 @@ export function AIConsole() {
     () => [t('quickPrompt1'), t('quickPrompt2'), t('quickPrompt3')],
     [t]
   )
-  const analysisTypeOptions = useMemo<Array<{ value: AnalysisType; label: string }>>(
-    () => [
-      { value: 'static', label: t('analysisTypeStatic') },
-      { value: 'dynamic', label: t('analysisTypeDynamic') },
-      { value: 'seismic', label: t('analysisTypeSeismic') },
-      { value: 'nonlinear', label: t('analysisTypeNonlinear') },
-    ],
-    [t]
-  )
   const [messages, setMessages] = useState<Message[]>([initialAssistantMessage])
   const [input, setInput] = useState('')
   const [conversationId, setConversationId] = useState('')
@@ -1384,13 +1156,9 @@ export function AIConsole() {
   const [skillsOpen, setSkillsOpen] = useState(false)
   const [skillHubOpen, setSkillHubOpen] = useState(true)
   const [contextOpen, setContextOpen] = useState(false)
-  const [analysisSettingsOpen, setAnalysisSettingsOpen] = useState(false)
-  const [engineSettingsOpen, setEngineSettingsOpen] = useState(false)
-  const [enginePickerOpen, setEnginePickerOpen] = useState(false)
   const [modelText, setModelText] = useState('')
   const [modelSyncMessage, setModelSyncMessage] = useState('')
   const [isAutoLoadingModel, setIsAutoLoadingModel] = useState(false)
-  const [analysisType, setAnalysisType] = useState<AnalysisType>('static')
   const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([])
   const [skillHubCatalog, setSkillHubCatalog] = useState<SkillHubCatalogItem[]>([])
   const [skillHubInstalledById, setSkillHubInstalledById] = useState<Record<string, SkillHubInstalledItem>>({})
@@ -1398,11 +1166,9 @@ export function AIConsole() {
   const [skillHubDomainFilter, setSkillHubDomainFilter] = useState<SkillDomain | 'all'>('all')
   const [skillHubLoading, setSkillHubLoading] = useState(false)
   const [skillHubActionById, setSkillHubActionById] = useState<Record<string, string>>({})
-  const [availableEngines, setAvailableEngines] = useState<AnalysisEngineSummary[]>([])
   const [capabilityMatrix, setCapabilityMatrix] = useState<CapabilityMatrixPayload | null>(null)
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
   const [skillDomainView, setSkillDomainView] = useState<SkillDomain>('structure-type')
-  const [selectedEngineId, setSelectedEngineId] = useState('auto')
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
   const [latestModelVisualizationSnapshot, setLatestModelVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
   const [latestResultVisualizationSnapshot, setLatestResultVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
@@ -1726,7 +1492,7 @@ export function AIConsole() {
 
     async function loadCapabilityMatrix() {
       try {
-        const response = await fetch(`${API_BASE}/api/v1/agent/capability-matrix?analysisType=${encodeURIComponent(analysisType)}`)
+        const response = await fetch(`${API_BASE}/api/v1/agent/capability-matrix`)
         if (!response.ok) {
           return
         }
@@ -1743,35 +1509,6 @@ export function AIConsole() {
     }
 
     loadCapabilityMatrix()
-
-    return () => {
-      active = false
-    }
-  }, [analysisType])
-
-  useEffect(() => {
-    let active = true
-
-    async function loadEngines() {
-      try {
-        const response = await fetch(`${API_BASE}/api/v1/analysis-engines`)
-        if (!response.ok) {
-          return
-        }
-        const payload = await response.json()
-        const engines = Array.isArray(payload?.engines) ? (payload.engines as AnalysisEngineSummary[]) : []
-        if (!active) {
-          return
-        }
-        setAvailableEngines(engines)
-      } catch {
-        if (active) {
-          setAvailableEngines([])
-        }
-      }
-    }
-
-    loadEngines()
 
     return () => {
       active = false
@@ -1877,8 +1614,6 @@ export function AIConsole() {
   }, [modelText, t])
   const parsedComposerModel = parsedComposerModelState.model
   const parsedComposerModelError = parsedComposerModelState.error || ''
-
-  const currentModelFamily = useMemo(() => detectModelFamily(parsedComposerModel), [parsedComposerModel])
   const modelPreviewBaseTitle = useMemo(
     () =>
       messages.find((message) => message.role === 'user')?.content.slice(0, 48)
@@ -1930,145 +1665,6 @@ export function AIConsole() {
     }
   }, [latestModelVisualizationSnapshot, latestResultVisualizationSnapshot, parsedComposerModelError, t, visualizationSource])
 
-  const enabledEngines = useMemo(
-    () => availableEngines.filter((engine) => engine.enabled !== false),
-    [availableEngines]
-  )
-
-  const matrixCompatibleEngineIds = useMemo<Set<string> | null>(() => {
-    const matrix = capabilityMatrix?.validEngineIdsBySkill
-    if (!matrix || typeof matrix !== 'object') {
-      return null
-    }
-
-    const targetSkillIds = selectedSkillIds
-    let intersection: Set<string> | null = null
-
-    for (const skillId of targetSkillIds) {
-      const validIds = matrix[skillId]
-      if (!Array.isArray(validIds) || validIds.length === 0) {
-        continue
-      }
-      const current = new Set(validIds)
-      if (!intersection) {
-        intersection = current
-        continue
-      }
-      intersection = new Set(Array.from(intersection).filter((id) => current.has(id)))
-    }
-
-    return intersection
-  }, [capabilityMatrix, selectedSkillIds])
-
-  const compatibleEnabledEngines = useMemo(() => {
-    if (!matrixCompatibleEngineIds) {
-      return enabledEngines
-    }
-    return enabledEngines.filter((engine) => matrixCompatibleEngineIds.has(engine.id))
-  }, [enabledEngines, matrixCompatibleEngineIds])
-
-  const engineCandidatesFilteredBySkills = matrixCompatibleEngineIds !== null
-
-  const matrixReasonTextsByEngine = useMemo<Record<string, string[]>>(() => {
-    const targetSkillIds = selectedSkillIds
-    const reasonsBySkill = capabilityMatrix?.filteredEngineReasonsBySkill
-    if (!reasonsBySkill || targetSkillIds.length === 0) {
-      return {}
-    }
-
-    const map: Record<string, string[]> = {}
-    for (const skillId of targetSkillIds) {
-      const byEngine = reasonsBySkill[skillId]
-      if (!byEngine || typeof byEngine !== 'object') {
-        continue
-      }
-      for (const [engineId, reasonCodes] of Object.entries(byEngine)) {
-        if (!Array.isArray(reasonCodes) || reasonCodes.length === 0) {
-          continue
-        }
-        const bucket = new Set(map[engineId] || [])
-        reasonCodes.forEach((reason) => bucket.add(mapCapabilityReasonToText(reason, t)))
-        map[engineId] = Array.from(bucket)
-      }
-    }
-
-    return map
-  }, [capabilityMatrix, selectedSkillIds, t])
-
-  const filteredOutEngineDetails = useMemo(() => {
-    if (!matrixCompatibleEngineIds) {
-      return [] as Array<{ id: string; name: string; reasons: string[] }>
-    }
-
-    const details: Array<{ id: string; name: string; reasons: string[] }> = []
-    const enabledById = new Map(enabledEngines.map((engine) => [engine.id, engine]))
-
-    for (const [engineId, engine] of enabledById.entries()) {
-      if (matrixCompatibleEngineIds.has(engineId)) {
-        continue
-      }
-      const reasonTexts = matrixReasonTextsByEngine[engineId]
-      if (!Array.isArray(reasonTexts) || reasonTexts.length === 0) {
-        continue
-      }
-      details.push({
-        id: engineId,
-        name: engine.name || engineId,
-        reasons: [...reasonTexts].sort(),
-      })
-    }
-
-    return details.sort((left, right) => {
-      if (left.reasons.length !== right.reasons.length) {
-        return right.reasons.length - left.reasons.length
-      }
-      return left.name.localeCompare(right.name)
-    })
-  }, [enabledEngines, matrixCompatibleEngineIds, matrixReasonTextsByEngine])
-
-  useEffect(() => {
-    if (selectedEngineId === 'auto') {
-      return
-    }
-    if (!compatibleEnabledEngines.some((engine) => engine.id === selectedEngineId)) {
-      setSelectedEngineId('auto')
-    }
-  }, [compatibleEnabledEngines, selectedEngineId])
-
-  const selectedEngineSummary = useMemo(
-    () => compatibleEnabledEngines.find((engine) => engine.id === selectedEngineId) || null,
-    [compatibleEnabledEngines, selectedEngineId]
-  )
-  const currentEngineSummary = useMemo(
-    () => compatibleEnabledEngines.find((engine) => engine.id === selectedEngineId) || null,
-    [compatibleEnabledEngines, selectedEngineId]
-  )
-  const candidateEngines = useMemo(
-    () => compatibleEnabledEngines
-      .filter((engine) => engine.id !== selectedEngineId)
-      .sort((left, right) => {
-        const leftIssue = getEngineSelectionIssue(left, analysisType, currentModelFamily, t, matrixReasonTextsByEngine[left.id])
-        const rightIssue = getEngineSelectionIssue(right, analysisType, currentModelFamily, t, matrixReasonTextsByEngine[right.id])
-        const leftPriority = leftIssue.length === 0 ? 0 : 1
-        const rightPriority = rightIssue.length === 0 ? 0 : 1
-        if (leftPriority !== rightPriority) {
-          return leftPriority - rightPriority
-        }
-        return (left.name || left.id).localeCompare(right.name || right.id)
-      }),
-    [analysisType, compatibleEnabledEngines, currentModelFamily, matrixReasonTextsByEngine, selectedEngineId, t]
-  )
-
-  useEffect(() => {
-    if (contextOpen) {
-      setAnalysisSettingsOpen(false)
-    } else {
-      setAnalysisSettingsOpen(false)
-      setEngineSettingsOpen(false)
-    }
-    setEnginePickerOpen(false)
-  }, [contextOpen])
-
   useEffect(() => {
     if (!conversationId) {
       return
@@ -2097,9 +1693,7 @@ export function AIConsole() {
           || new Date().toISOString(),
         messages,
         modelText,
-        analysisType,
         selectedSkillIds,
-        selectedEngineId,
         modelSyncMessage,
         activePanel,
         // Preserve persisted result/model snapshots during transient null states (e.g. refresh restore sequence).
@@ -2117,7 +1711,6 @@ export function AIConsole() {
     }))
   }, [
     activePanel,
-    analysisType,
     conversationId,
     latestModelVisualizationSnapshot,
     latestResult,
@@ -2125,7 +1718,6 @@ export function AIConsole() {
     messages,
     modelSyncMessage,
     modelText,
-    selectedEngineId,
     selectedSkillIds,
     conversationActivityAt,
     serverConversations,
@@ -2305,9 +1897,7 @@ export function AIConsole() {
           updatedAt: new Date().toISOString(),
           messages: existing?.messages || messages,
           modelText: existing?.modelText ?? modelText,
-          analysisType: existing?.analysisType || analysisType,
           selectedSkillIds: existing?.selectedSkillIds || selectedSkillIds,
-          selectedEngineId: existing?.selectedEngineId || selectedEngineId,
           modelSyncMessage: existing?.modelSyncMessage || modelSyncMessage,
           activePanel: existing?.activePanel || activePanel,
           latestResult: latestResultValue,
@@ -2361,9 +1951,7 @@ export function AIConsole() {
       const backendUpdatedAt = payload?.updatedAt || payload?.createdAt || ''
       const archivedUpdatedAt = archived?.updatedAt || archived?.createdAt || ''
       const preferArchiveState = Boolean(archived && archivedUpdatedAt > backendUpdatedAt)
-      const nextAnalysisType = session?.resolved?.analysisType || archived?.analysisType || 'static'
       const nextSelectedSkillIds = archived?.selectedSkillIds?.length ? archived.selectedSkillIds : []
-      const nextSelectedEngineId = archived?.selectedEngineId || 'auto'
       const nextLatestResult = preferArchiveState
         ? pickPreferredLatestResult(archived?.latestResult, backendSnapshots?.latestResult)
         : pickPreferredLatestResult(backendSnapshots?.latestResult, archived?.latestResult)
@@ -2395,9 +1983,7 @@ export function AIConsole() {
       setConversationId(nextConversationId)
       setMessages(nextMessages)
       setModelText(nextModelText)
-      setAnalysisType(nextAnalysisType)
       setSelectedSkillIds(nextSelectedSkillIds)
-      setSelectedEngineId(nextSelectedEngineId)
       setModelSyncMessage(nextModelSyncMessage)
       setLatestResult(nextLatestResult)
       setLatestModelVisualizationSnapshot(nextModelSnapshot)
@@ -2414,9 +2000,7 @@ export function AIConsole() {
           || toModelTextFromSnapshot(archived.resultVisualizationSnapshot || archived.visualizationSnapshot)
           || ''
         )
-        setAnalysisType(archived.analysisType || 'static')
         setSelectedSkillIds(archived.selectedSkillIds?.length ? archived.selectedSkillIds : [])
-        setSelectedEngineId(archived.selectedEngineId || 'auto')
         setModelSyncMessage(archived.modelSyncMessage || '')
         const archivedLatestResult = normalizeAgentResultPayload(archived.latestResult || null)
         setLatestResult(archivedLatestResult)
@@ -2444,9 +2028,7 @@ export function AIConsole() {
     setConversationId('')
     setMessages([initialAssistantMessage])
     setModelText('')
-    setAnalysisType('static')
     setSelectedSkillIds([])
-    setSelectedEngineId('auto')
     setModelSyncMessage('')
     setLatestResult(null)
     setLatestModelVisualizationSnapshot(null)
@@ -2564,8 +2146,9 @@ export function AIConsole() {
       return
     }
 
+    const effectiveAction: ComposerAction = action === 'execute' && selectedSkillIds.length > 0 ? 'execute' : 'chat'
     const parsedModel = parseModelJson(modelText, t)
-    if (parsedModel.error && action === 'execute') {
+    if (parsedModel.error && effectiveAction === 'execute') {
       setErrorMessage(parsedModel.error)
       setContextOpen(true)
       return
@@ -2581,7 +2164,7 @@ export function AIConsole() {
 
     const assistantMessageId = createId('assistant')
     const assistantSeed =
-      action === 'chat' ? t('assistantSeedChat') : t('assistantSeedExecute')
+      effectiveAction === 'chat' ? t('assistantSeedChat') : t('assistantSeedExecute')
 
     setErrorMessage('')
     appendMessage(userMessage)
@@ -2597,7 +2180,7 @@ export function AIConsole() {
     setVisualizationOpen(false)
     setVisualizationSource('result')
     setModelSyncMessage('')
-    if (action === 'execute') {
+    if (effectiveAction === 'execute') {
       // Avoid showing stale output from a previous run while a new execution is in flight.
       setLatestResult(null)
       setLatestResultVisualizationSnapshot(null)
@@ -2612,15 +2195,15 @@ export function AIConsole() {
       const nextConversationId = await ensureConversation(trimmedInput)
       activeConversationId = nextConversationId
       const explicitSkillIds = selectedSkillIds.length > 0 ? selectedSkillIds : undefined
+      const inferredAnalysisType = inferAnalysisTypeFromSkillIds(selectedSkillIds)
       const contextPayload =
-        action === 'execute'
+        effectiveAction === 'execute'
           ? {
               locale,
               skillIds: explicitSkillIds,
-              engineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
               model: parsedModel.model,
               modelFormat: parsedModel.model ? 'structuremodel-v1' : undefined,
-              analysisType,
+              analysisType: inferredAnalysisType,
               autoAnalyze: true,
               autoCodeCheck: hasSelectedCodeCheckSkill,
               includeReport: true,
@@ -2630,14 +2213,15 @@ export function AIConsole() {
           : {
               locale,
               skillIds: explicitSkillIds,
-              engineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
+              model: parsedModel.model,
+              modelFormat: parsedModel.model ? 'structuremodel-v1' : undefined,
             }
       const promptSnapshot = buildPromptSnapshot(trimmedInput, contextPayload as Record<string, unknown>)
             const debugSkillIds = Array.isArray((contextPayload as Record<string, unknown>).skillIds)
               ? ((contextPayload as Record<string, unknown>).skillIds as string[])
               : []
 
-      if (action === 'execute') {
+      if (effectiveAction === 'execute') {
         const response = await fetch(`${API_BASE}/api/v1/chat/execute`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -2659,7 +2243,6 @@ export function AIConsole() {
 
         const result = {
           ...(payload as AgentResult),
-          requestedEngineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
         }
         const debugDetails = buildMessageDebugDetails(promptSnapshot, debugSkillIds, result)
         if (result.model && typeof result.model === 'object' && !Array.isArray(result.model)) {
@@ -2707,7 +2290,7 @@ export function AIConsole() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: trimmedInput,
-          mode: action === 'chat' ? 'chat' : 'execute',
+          mode: effectiveAction,
           conversationId: nextConversationId,
           context: contextPayload,
         }),
@@ -2779,11 +2362,10 @@ export function AIConsole() {
           if (payload.type === 'result' && payload.content && typeof payload.content === 'object') {
             const result = {
               ...(payload.content as AgentResult),
-              requestedEngineId: selectedEngineId !== 'auto' ? selectedEngineId : undefined,
             }
             const debugDetails = buildMessageDebugDetails(promptSnapshot, debugSkillIds, result)
             if (result.model && typeof result.model === 'object' && !Array.isArray(result.model)) {
-              applySynchronizedModel(result.model, action === 'chat' ? 'chat' : 'execute')
+              applySynchronizedModel(result.model, effectiveAction === 'chat' ? 'chat' : 'execute')
             }
             const visualizationSnapshot = buildVisualizationSnapshot({
               title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
@@ -3408,11 +2990,6 @@ export function AIConsole() {
                     <Badge className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
                       {t('conversationIdShort')} {conversationId ? conversationId.slice(0, 8) : t('notCreated')}
                     </Badge>
-                    <Badge className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
-                      {t('analysisEngineLabel')} {selectedEngineId === 'auto'
-                        ? t('analysisEngineAutoOption')
-                        : `${selectedEngineSummary?.name || selectedEngineId} · ${selectedEngineSummary ? getEngineStatusLabel(selectedEngineSummary, t) : t('engineStatusUnavailable')}`}
-                    </Badge>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
@@ -3438,7 +3015,7 @@ export function AIConsole() {
                 </div>
 
                 {contextOpen && (
-                  <div className="mt-3 grid gap-4 rounded-[24px] border border-border/70 bg-background/70 p-4 lg:grid-cols-[1fr_300px] dark:border-white/10 dark:bg-white/5">
+                  <div className="mt-3 rounded-[24px] border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
                     <div className="space-y-2">
                       <div>
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3489,166 +3066,6 @@ export function AIConsole() {
                           {t('visualizationModelPreviewHelp')}
                         </div>
                       ) : null}
-                    </div>
-
-                    <div className="space-y-3">
-                      <div className="rounded-2xl border border-border/70 bg-card/70 p-3 dark:border-white/10 dark:bg-slate-950/40">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-sm font-semibold text-foreground">{t('analysisSettingsSectionTitle')}</div>
-                            <div className="text-xs leading-5 text-muted-foreground">{t('contextSectionAnalysisHelp')}</div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => setAnalysisSettingsOpen((current) => !current)}
-                            className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground transition hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
-                          >
-                            {analysisSettingsOpen ? t('analysisSettingsCollapse') : t('analysisSettingsExpand')}
-                          </button>
-                        </div>
-                        {analysisSettingsOpen ? (
-                          <div className="mt-3 space-y-3">
-                            <div className="space-y-2">
-                              <label className="text-sm font-medium text-foreground">{t('analysisTypeLabel')}</label>
-                              <div className="grid grid-cols-2 gap-2">
-                                {analysisTypeOptions.map((option) => (
-                                  <button
-                                    key={option.value}
-                                    type="button"
-                                    onClick={() => setAnalysisType(option.value)}
-                                    className={cn(
-                                      'rounded-2xl border px-3 py-2 text-sm transition',
-                                      analysisType === option.value
-                                        ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
-                                        : 'border-border/70 bg-card/80 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
-                                    )}
-                                  >
-                                    {option.label}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-                            <p className="text-xs leading-5 text-muted-foreground">
-                              {t('composerHelp')}
-                            </p>
-                          </div>
-                        ) : null}
-                      </div>
-
-                      <div className="rounded-2xl border border-border/70 bg-card/70 p-3 dark:border-white/10 dark:bg-slate-950/40">
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <div className="text-sm font-semibold text-foreground">{t('engineSettingsSectionTitle')}</div>
-                            <div className="text-xs leading-5 text-muted-foreground">{t('contextSectionEngineHelp')}</div>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEngineSettingsOpen((current) => {
-                                const next = !current
-                                if (!next) {
-                                  setEnginePickerOpen(false)
-                                }
-                                return next
-                              })
-                            }}
-                            className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground transition hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
-                          >
-                            {engineSettingsOpen ? t('engineSettingsCollapse') : t('engineSettingsExpand')}
-                          </button>
-                        </div>
-
-                        <div className="mt-3 space-y-2">
-                          <div className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                            {t('analysisEngineCurrentGroup')}
-                          </div>
-                          {selectedEngineId === 'auto' ? (
-                            <div className="rounded-2xl border border-border/70 bg-card/80 px-3 py-2 text-sm dark:border-white/10 dark:bg-slate-950/40">
-                              <div className="font-medium text-foreground">{t('analysisEngineAutoOption')}</div>
-                              <div className="mt-1 text-xs leading-5 text-muted-foreground">{t('analysisEngineAutoHelp')}</div>
-                            </div>
-                          ) : currentEngineSummary ? (
-                            renderEngineSummary(currentEngineSummary, analysisType, currentModelFamily, t, matrixReasonTextsByEngine)
-                          ) : (
-                            <div className="rounded-2xl border border-border/70 bg-card/80 px-3 py-2 text-sm text-muted-foreground dark:border-white/10 dark:bg-slate-950/40">
-                              {selectedEngineId}
-                            </div>
-                          )}
-                        </div>
-
-                        {engineSettingsOpen ? (
-                          <div className="mt-3 space-y-2">
-                            <label className="text-sm font-medium text-foreground">{t('analysisEngineSelectorLabel')}</label>
-                            <button
-                              type="button"
-                              onClick={() => setEnginePickerOpen((current) => !current)}
-                              className="w-full rounded-2xl border border-dashed border-border/70 bg-background/50 px-3 py-2 text-left text-sm text-muted-foreground transition hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
-                            >
-                              {enginePickerOpen ? t('analysisEngineCollapseList') : t('analysisEngineChangeAction')}
-                            </button>
-                            {enginePickerOpen ? (
-                              <div
-                                data-testid="engine-candidate-list"
-                                className="max-h-56 space-y-2 overflow-y-auto rounded-2xl border border-border/70 bg-background/40 p-2 pr-1 dark:border-white/10 dark:bg-white/5"
-                              >
-                                <div className="px-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                  {t('analysisEngineCandidatesGroup')}
-                                </div>
-                                {engineCandidatesFilteredBySkills ? (
-                                  <p className="px-1 text-xs leading-5 text-muted-foreground">
-                                    {t('analysisEngineFilteredBySkillsHint')}
-                                  </p>
-                                ) : null}
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedEngineId('auto')}
-                                  className={cn(
-                                    'w-full rounded-2xl border px-3 py-2 text-left text-sm transition',
-                                    selectedEngineId === 'auto'
-                                      ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
-                                      : 'border-border/70 bg-card/80 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
-                                  )}
-                                >
-                                  <div className="font-medium">{t('analysisEngineAutoOption')}</div>
-                                  <div className="mt-1 text-xs leading-5 text-muted-foreground">{t('analysisEngineAutoHelp')}</div>
-                                </button>
-                                {candidateEngines.map((engine) =>
-                                  renderEngineOption(
-                                    engine,
-                                    selectedEngineId === engine.id,
-                                    analysisType,
-                                    currentModelFamily,
-                                    t,
-                                    matrixReasonTextsByEngine,
-                                    setSelectedEngineId
-                                  )
-                                )}
-                                {candidateEngines.length === 0 ? (
-                                  <p className="rounded-2xl border border-border/70 bg-card/80 px-3 py-2 text-xs leading-5 text-muted-foreground dark:border-white/10 dark:bg-slate-950/40">
-                                    {t('analysisEngineNoCompatibleCandidates')}
-                                  </p>
-                                ) : null}
-                                {filteredOutEngineDetails.length > 0 ? (
-                                  <div className="space-y-2 rounded-2xl border border-border/70 bg-card/70 px-3 py-2 dark:border-white/10 dark:bg-slate-950/30">
-                                    <div className="text-xs font-medium text-muted-foreground">{t('analysisEngineFilteredOutGroup')}</div>
-                                    {filteredOutEngineDetails.slice(0, 4).map((item) => (
-                                      <div key={item.id} className="text-xs leading-5 text-muted-foreground">
-                                        <span className="font-medium text-foreground">{item.name}</span>
-                                        {' · '}
-                                        {item.reasons[0] || ''}
-                                        {item.reasons.length > 1 ? ' ...' : ''}
-                                      </div>
-                                    ))}
-                                  </div>
-                                ) : null}
-                              </div>
-                            ) : null}
-                            <p className="text-xs leading-5 text-muted-foreground">
-                              {t('analysisEngineSelectorHelp')}
-                            </p>
-                          </div>
-                        ) : null}
-                      </div>
                     </div>
                   </div>
                 )}
