@@ -18,7 +18,9 @@ describe('Semantic HTML (ACCS-03)', () => {
   async function renderConsolePage() {
     render(<ConsolePage />)
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/api/v1/chat/conversations'))
+      expect(
+        vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/api/v1/chat/conversations')),
+      ).toBe(true)
     })
   }
 

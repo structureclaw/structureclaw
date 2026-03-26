@@ -192,6 +192,14 @@ describe('ConsolePage Integration (CONS-13)', () => {
         } as unknown as Response
       }
 
+      if (url.includes('/api/v1/models/latest')) {
+        return {
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+        } as unknown as Response
+      }
+
       return {
         ok: true,
         json: vi.fn().mockResolvedValue([]),
@@ -209,7 +217,9 @@ describe('ConsolePage Integration (CONS-13)', () => {
   async function renderConsolePage() {
     const view = render(<ConsolePage />)
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/api/v1/chat/conversations'))
+      expect(
+        vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/api/v1/chat/conversations')),
+      ).toBe(true)
     })
     return view
   }
@@ -229,8 +239,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByRole('button', { name: 'Expand Skills' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Expand Engineering Context' })).toBeInTheDocument()
     expect(screen.getByText('Analysis Engine Auto')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Database Admin' })).toBeInTheDocument()
     expect(screen.getByText('Database tools')).toBeInTheDocument()
+    expect(screen.getByText(/Review SQLite file health/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Discuss First' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run Analysis' })).toBeInTheDocument()
   })
