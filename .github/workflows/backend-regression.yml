@@ -19,7 +19,8 @@ on:
 jobs:
   backend-regression:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # npm ci + tsc + eslint + jest + many contract scripts can approach 20m on cold runners
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
