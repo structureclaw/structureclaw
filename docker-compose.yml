@@ -67,7 +67,7 @@ services:
 
   # Nginx 反向代理
   nginx:
-    image: nginx:alpine
+    image: nginx:1.29.6-alpine
     container_name: structureclaw-nginx
     ports:
       - "${NGINX_HTTP_PORT:-80}:80"
