@@ -76,6 +76,13 @@ describe('AIConsole prompt and thinking details', () => {
           json: async () => ({
             response: 'Execution completed for prompt-debug test.',
             success: true,
+            routing: {
+              selectedSkillIds: ['beam'],
+              structuralSkillId: 'beam',
+              structuralScenarioKey: 'beam',
+              analysisSkillId: 'opensees-static',
+              analysisSkillIds: ['opensees-static'],
+            },
             plan: ['Draft model payload', 'Analyze structure', 'Generate report summary'],
             toolCalls: [
               {
@@ -133,7 +140,9 @@ describe('AIConsole prompt and thinking details', () => {
     await waitFor(() => {
       expect(screen.getByText(/prompt snapshot/i)).toBeInTheDocument()
       expect(screen.getByText(/^skills$/i)).toBeInTheDocument()
+      expect(screen.getByText(/resolved skills/i)).toBeInTheDocument()
       expect(screen.getAllByText(/beam/i).length).toBeGreaterThan(0)
+      expect(screen.getByText(/opensees-static/i)).toBeInTheDocument()
       expect(screen.getByText(/thinking process/i)).toBeInTheDocument()
       expect(screen.getByText(/tool calls/i)).toBeInTheDocument()
       expect(screen.getAllByText(/analyze_structure/i).length).toBeGreaterThan(0)

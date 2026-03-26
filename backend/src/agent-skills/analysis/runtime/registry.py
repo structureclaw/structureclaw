@@ -254,7 +254,17 @@ class AnalysisEngineRegistry:
         run_analysis = getattr(runtime_module, "run_analysis", None)
         if run_analysis is None:
             raise RuntimeError(f"Analysis skill runtime '{skill['id']}' is missing run_analysis()")
-        return run_analysis(model, parameters)
+        result = run_analysis(model, parameters)
+        if isinstance(result, dict):
+            meta = result.get("meta") if isinstance(result.get("meta"), dict) else {}
+            result["meta"] = {
+                **meta,
+                "analysisSkillId": skill["id"],
+                "analysisSkillIds": [skill["id"]],
+                "analysisAdapterKey": adapter_key,
+                "analysisType": analysis_type,
+            }
+        return result
 
     def _post_to_http_engine(self, manifest: Dict[str, Any], path: str, payload: Dict[str, Any]) -> Dict[str, Any]:
         base_url = manifest.get("baseUrl")

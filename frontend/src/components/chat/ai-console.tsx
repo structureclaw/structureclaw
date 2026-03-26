@@ -46,6 +46,13 @@ type AgentToolCall = {
 type MessageDebugDetails = {
   promptSnapshot: string
   skillIds: string[]
+  routing?: {
+    selectedSkillIds: string[]
+    structuralSkillId?: string
+    structuralScenarioKey?: string
+    analysisSkillId?: string
+    analysisSkillIds?: string[]
+  }
   responseSummary: string
   plan: string[]
   toolCalls: AgentToolCall[]
@@ -90,6 +97,7 @@ type AgentResult = {
   completedAt?: string
   durationMs?: number
   requestedEngineId?: string
+  routing?: MessageDebugDetails['routing']
 }
 
 type StreamPayload =
@@ -342,14 +350,29 @@ function parsePersistedDebugDetails(metadata: unknown): MessageDebugDetails | un
   const responseSummary = typeof debugRecord.responseSummary === 'string' ? debugRecord.responseSummary : ''
   const plan = Array.isArray(debugRecord.plan) ? debugRecord.plan.filter((item): item is string => typeof item === 'string') : []
   const toolCalls = normalizeToolCalls(debugRecord.toolCalls)
+  const routingRecord = toObjectRecord(debugRecord.routing)
+  const routing = routingRecord
+    ? {
+        selectedSkillIds: Array.isArray(routingRecord.selectedSkillIds)
+          ? routingRecord.selectedSkillIds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+          : skillIds,
+        structuralSkillId: typeof routingRecord.structuralSkillId === 'string' ? routingRecord.structuralSkillId : undefined,
+        structuralScenarioKey: typeof routingRecord.structuralScenarioKey === 'string' ? routingRecord.structuralScenarioKey : undefined,
+        analysisSkillId: typeof routingRecord.analysisSkillId === 'string' ? routingRecord.analysisSkillId : undefined,
+        analysisSkillIds: Array.isArray(routingRecord.analysisSkillIds)
+          ? routingRecord.analysisSkillIds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+          : undefined,
+      }
+    : undefined
 
-  if (!promptSnapshot && skillIds.length === 0 && !responseSummary && plan.length === 0 && toolCalls.length === 0) {
+  if (!promptSnapshot && skillIds.length === 0 && !routing && !responseSummary && plan.length === 0 && toolCalls.length === 0) {
     return undefined
   }
 
   return {
     promptSnapshot,
     skillIds,
+    routing,
     responseSummary,
     plan,
     toolCalls,
@@ -362,6 +385,7 @@ function buildMessageDebugDetails(promptSnapshot: string, skillIds: string[], re
   return {
     promptSnapshot,
     skillIds,
+    routing: result.routing,
     responseSummary: result.response || '',
     plan: Array.isArray(result.plan) ? result.plan : [],
     toolCalls: safeToolCalls,
@@ -2719,6 +2743,49 @@ export function AIConsole() {
                               </div>
                             ) : (
                               <div className="text-xs text-muted-foreground">{t('promptThinkingNoSkills')}</div>
+                            )}
+                          </div>
+
+                          <div>
+                            <div className="mb-1 text-xs font-medium text-foreground">{t('promptThinkingResolvedSkills')}</div>
+                            {message.debugDetails.routing ? (
+                              <div className="space-y-2 rounded-xl border border-border/70 bg-background/70 px-2.5 py-2 text-xs leading-5 text-muted-foreground dark:border-white/10 dark:bg-black/20">
+                                {message.debugDetails.routing.structuralSkillId ? (
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-medium text-foreground">{t('promptThinkingStructuralSkill')}</span>
+                                    <Badge variant="outline" className="text-[10px]">
+                                      {message.debugDetails.routing.structuralSkillId}
+                                    </Badge>
+                                  </div>
+                                ) : null}
+                                {message.debugDetails.routing.structuralScenarioKey ? (
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-medium text-foreground">{t('promptThinkingScenario')}</span>
+                                    <Badge variant="outline" className="text-[10px]">
+                                      {message.debugDetails.routing.structuralScenarioKey}
+                                    </Badge>
+                                  </div>
+                                ) : null}
+                                {message.debugDetails.routing.analysisSkillId ? (
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-medium text-foreground">{t('promptThinkingAnalysisSkill')}</span>
+                                    <Badge variant="outline" className="text-[10px]">
+                                      {message.debugDetails.routing.analysisSkillId}
+                                    </Badge>
+                                  </div>
+                                ) : null}
+                                {message.debugDetails.routing.analysisSkillIds && message.debugDetails.routing.analysisSkillIds.length > 1 ? (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {message.debugDetails.routing.analysisSkillIds.map((skillId) => (
+                                      <Badge key={`${message.id}-resolved-analysis-${skillId}`} variant="outline" className="text-[10px]">
+                                        {skillId}
+                                      </Badge>
+                                    ))}
+                                  </div>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <div className="text-xs text-muted-foreground">{t('promptThinkingNoResolvedSkills')}</div>
                             )}
                           </div>
 
