@@ -146,9 +146,9 @@ fi
 source "$ROOT_DIR/scripts/analysis-python-env.sh"
 require_analysis_python
 
-if ! "$PYTHON_BIN" -m providers.opensees.runtime --json >/dev/null 2>&1; then
+if ! "$PYTHON_BIN" -m adapters.opensees.runtime --json >/dev/null 2>&1; then
   echo "OpenSees runtime check failed in backend/.venv."
-  echo "Run: PYTHONPATH=\"$PYTHONPATH\" \"$PYTHON_BIN\" -m providers.opensees.runtime --json"
+  echo "Run: PYTHONPATH=\"$PYTHONPATH\" \"$PYTHON_BIN\" -m adapters.opensees.runtime --json"
   exit 1
 fi
 

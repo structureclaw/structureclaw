@@ -4,12 +4,12 @@ from typing import Any, Dict
 
 from fastapi import HTTPException
 
-from providers.opensees.dynamic_analysis import OpenSeesDynamicExecutor
-from providers.opensees.seismic_analysis import OpenSeesSeismicExecutor
-from providers.opensees.static_analysis import OpenSeesStaticExecutor
-from providers.simplified.static_analysis import StaticAnalyzer
-from providers.simplified.dynamic_analysis import build_simplified_modal_result
-from providers.simplified.seismic_analysis import (
+from adapters.opensees.dynamic_analysis import OpenSeesDynamicExecutor
+from adapters.opensees.seismic_analysis import OpenSeesSeismicExecutor
+from adapters.opensees.static_analysis import OpenSeesStaticExecutor
+from adapters.simplified.static_analysis import StaticAnalyzer
+from adapters.simplified.dynamic_analysis import build_simplified_modal_result
+from adapters.simplified.seismic_analysis import (
     SimplifiedSeismicAnalyzer,
     build_simplified_pushover_result,
     build_simplified_response_spectrum_result,

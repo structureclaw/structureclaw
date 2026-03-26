@@ -9,7 +9,7 @@ const analysisPythonRoot = path.join(
   'src',
   'agent-skills',
   'analysis',
-  'python',
+  'runtime',
 );
 
 function resolvePythonCommand() {
@@ -27,7 +27,7 @@ describe('analysis python providers package', () => {
     const script = [
       'import importlib, sys',
       `sys.path.insert(0, r"${analysisPythonRoot}")`,
-      'importlib.import_module("providers.opensees.runtime")',
+      'importlib.import_module("adapters.opensees.runtime")',
     ].join('\n');
     const pythonCommand = resolvePythonCommand();
 

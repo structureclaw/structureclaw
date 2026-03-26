@@ -4,9 +4,9 @@ from typing import Any, Dict
 
 from fastapi import HTTPException
 
-from providers.simplified.dynamic_analysis import SimplifiedDynamicAnalyzer
-from providers.simplified.seismic_analysis import SimplifiedSeismicAnalyzer
-from providers.simplified.static_analysis import StaticAnalyzer
+from adapters.simplified.dynamic_analysis import SimplifiedDynamicAnalyzer
+from adapters.simplified.seismic_analysis import SimplifiedSeismicAnalyzer
+from adapters.simplified.static_analysis import StaticAnalyzer
 from structure_protocol.structure_model_v1 import StructureModelV1
 
 

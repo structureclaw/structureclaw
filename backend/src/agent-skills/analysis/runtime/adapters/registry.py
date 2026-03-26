@@ -20,9 +20,9 @@ logger = logging.getLogger(__name__)
 
 ENGINE_MANIFEST_ENV = "ANALYSIS_ENGINE_MANIFEST_PATH"
 _UNSET = object()
-PYTHON_PROVIDER_MODULES = {
-    "builtin-opensees": "providers.opensees.provider",
-    "builtin-simplified": "providers.simplified.provider",
+RUNTIME_ADAPTER_MODULES = {
+    "builtin-opensees": "adapters.opensees.provider",
+    "builtin-simplified": "adapters.simplified.provider",
 }
 
 
@@ -233,9 +233,9 @@ class AnalysisEngineRegistry:
         model: StructureModelV1,
         parameters: Dict[str, Any],
     ) -> Dict[str, Any]:
-        provider_module_name = PYTHON_PROVIDER_MODULES.get(adapter_key)
+        provider_module_name = RUNTIME_ADAPTER_MODULES.get(adapter_key)
         if provider_module_name is None:
-            raise RuntimeError(f"Unknown python analysis adapter: {adapter_key}")
+            raise RuntimeError(f"Unknown analysis runtime adapter: {adapter_key}")
         provider_module = import_module(provider_module_name)
         return provider_module.run_analysis(analysis_type, model, parameters)
 
@@ -422,7 +422,7 @@ class AnalysisEngineRegistry:
 
         try:
             probe = subprocess.run(
-                [sys.executable, "-m", "providers.opensees.runtime", "--json"],
+                [sys.executable, "-m", "adapters.opensees.runtime", "--json"],
                 cwd=python_root,
                 env=env,
                 capture_output=True,
@@ -471,6 +471,12 @@ class AnalysisEngineRegistry:
                 "visibility": "builtin",
                 "enabled": True,
                 "constraints": {"requiresOpenSees": True},
+                "skillIds": [
+                    "opensees-static",
+                    "opensees-dynamic",
+                    "opensees-seismic",
+                    "opensees-nonlinear",
+                ],
             },
             {
                 "id": "builtin-simplified",
@@ -486,6 +492,11 @@ class AnalysisEngineRegistry:
                 "visibility": "builtin",
                 "enabled": True,
                 "constraints": {},
+                "skillIds": [
+                    "simplified-static",
+                    "simplified-dynamic",
+                    "simplified-seismic",
+                ],
             },
         ]
 

@@ -1,9 +1,9 @@
 import { PythonWorkerRunner, resolveWorkerPath } from '../../utils/python-worker-runner.js';
 import type { AnalysisExecutionInput } from './types.js';
 
-export class PythonAnalysisRunner {
+export class AnalysisRuntimeRunner {
   private readonly runner = new PythonWorkerRunner<AnalysisExecutionInput>(
-    resolveWorkerPath('agent-skills/analysis/python/worker.py'),
+    resolveWorkerPath('agent-skills/analysis/runtime/worker.py'),
   );
 
   async invoke<T = unknown>(input: AnalysisExecutionInput): Promise<T> {
