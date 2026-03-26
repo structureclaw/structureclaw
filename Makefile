@@ -38,7 +38,7 @@ help:
 	@echo "  stop            Beginner alias of local-down"
 	@echo "  status          Beginner alias of local-status"
 	@echo "  logs            Show logs (default: all services)"
-	@echo "  sclaw-install   Install global sclaw command to ~/.local/bin"
+	@echo "  sclaw-install   Install user-local sclaw command shim"
 	@echo "  up              Alias of docker-up"
 
 ifeq ($(OS),Windows_NT)
@@ -120,93 +120,89 @@ logs:
 	$(WINDOWS_PS) logs
 
 sclaw-install:
-	$(WINDOWS_PS) sclaw-install
+	$(WINDOWS_PS) install-cli
 
 up: docker-up
 else
 ensure-uv:
-	./scripts/ensure-uv.sh
+	./sclaw ensure-uv
 
 install:
-	npm install --prefix backend
-	npm install --prefix frontend
+	./sclaw install
 
 setup-analysis-python: ensure-uv
-	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv venv --python $(ANALYSIS_PYTHON_VERSION) backend/.venv
-	UV_CACHE_DIR=$(UV_CACHE_DIR) UV_PYTHON_INSTALL_DIR=$(UV_PYTHON_INSTALL_DIR) PATH="$(HOME)/.local/bin:$$PATH" uv pip install --python backend/.venv/bin/python --link-mode=copy -r backend/src/agent-skills/analysis/python/requirements.txt
+	ANALYSIS_PYTHON_VERSION=$(ANALYSIS_PYTHON_VERSION) ./sclaw setup-analysis-python
 
 dev-backend:
-	npm run dev --prefix backend
+	./sclaw dev-backend
 
 dev-frontend:
-	FRONTEND_PORT=$${FRONTEND_PORT:-30000} npm run dev --prefix frontend -- --port $$FRONTEND_PORT
+	./sclaw dev-frontend
 
 build:
-	npm run build --prefix backend
-	npm run build --prefix frontend
+	./sclaw build
 
 db-up:
-	docker compose up -d redis
+	./sclaw db-up
 
 db-down:
-	docker compose stop redis
+	./sclaw db-down
 
 db-init:
-	npm run db:init --prefix backend
+	./sclaw db-init
 
 docker-up:
-	docker compose up --build
+	./sclaw docker-up
 
 docker-down:
-	docker compose down
+	./sclaw docker-down
 
 local-up:
-	./scripts/dev-up.sh full
+	./sclaw local-up
 
 local-up-uv:
-	./scripts/dev-up.sh full --uv
+	./sclaw local-up-uv
 
 local-up-noinfra:
-	./scripts/dev-up.sh full --skip-infra
+	./sclaw local-up-noinfra
 
 local-down:
-	./scripts/dev-down.sh
+	./sclaw local-down
 
 local-status:
-	./scripts/dev-status.sh
+	./sclaw local-status
 
 health:
-	curl http://localhost:$${PORT:-8000}/health
-	curl -I http://localhost:$${FRONTEND_PORT:-30000}
+	./sclaw health
 
 check-startup:
-	./scripts/check-startup.sh
+	./sclaw check-startup
 
 backend-regression:
-	./scripts/check-backend-regression.sh
+	./sclaw backend-regression
 
 analysis-regression:
-	./scripts/check-analysis-regression.sh
+	./sclaw analysis-regression
 
 doctor: check-startup
 
 start:
-	./scripts/claw.sh start
+	./sclaw start
 
 restart:
-	./scripts/claw.sh restart
+	./sclaw restart
 
 stop:
-	./scripts/claw.sh stop
+	./sclaw stop
 
 status:
-	./scripts/claw.sh status
+	./sclaw status
 
 logs:
-	./scripts/claw.sh logs
+	./sclaw logs
 
 sclaw-install:
-	./sclaw install
+	./sclaw install-cli
 
 up: docker-up
 endif

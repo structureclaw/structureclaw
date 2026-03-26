@@ -1,114 +1,15 @@
-#!/usr/bin/env bash
+#!/usr/bin/env node
 
-set -euo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CLI_VERSION="0.1.0"
-ROOT_DIR=""
-HUB_SCRIPT=""
-
-print_help() {
-  cat <<'EOF'
-StructureClaw CLI
-
-Usage:
-  sclaw doctor
-  sclaw start
-  sclaw restart
-  sclaw stop
-  sclaw status
-  sclaw logs [frontend|backend|all] [--follow]
-  sclaw install [--force]
-  sclaw version
-  sclaw help
-
-Commands:
-  doctor      Run startup checks without starting the full stack
-  start       Start local stack (full profile + uv)
-  restart     Restart local stack with the default startup profile
-  stop        Stop local stack and local infra
-  status      Show process + health status
-  logs        Show .runtime/logs output
-  install     Install global `sclaw` command to ~/.local/bin
-  version     Show CLI version
-  help        Show this help
-EOF
-}
-
-ensure_hub_script() {
-  if [[ -x "${SCLAW_PROJECT_ROOT:-}/scripts/claw.sh" ]]; then
-    ROOT_DIR="${SCLAW_PROJECT_ROOT}"
-    HUB_SCRIPT="$ROOT_DIR/scripts/claw.sh"
-    return 0
-  fi
-
-  if [[ -x "$PWD/scripts/claw.sh" ]]; then
-    ROOT_DIR="$PWD"
-    HUB_SCRIPT="$ROOT_DIR/scripts/claw.sh"
-    return 0
-  fi
-
-  if [[ -x "$SCRIPT_DIR/scripts/claw.sh" ]]; then
-    ROOT_DIR="$SCRIPT_DIR"
-    HUB_SCRIPT="$ROOT_DIR/scripts/claw.sh"
-    return 0
-  fi
-
-  echo "Cannot find scripts/claw.sh in current directory."
-  echo "Run this command from the StructureClaw project root, or set SCLAW_PROJECT_ROOT."
-  exit 1
-}
-
-install_cli() {
-  local force=0
-  if [[ "${1:-}" == "--force" ]]; then
-    force=1
-  elif [[ -n "${1:-}" ]]; then
-    echo "Unknown option for install: $1"
-    echo "Usage: sclaw install [--force]"
-    exit 1
-  fi
-
-  local install_dir="$HOME/.local/bin"
-  local target="$install_dir/sclaw"
-
-  mkdir -p "$install_dir"
-
-  if [[ -e "$target" && "$force" -ne 1 ]]; then
-    echo "Target already exists: $target"
-    echo "Use `sclaw install --force` to overwrite."
-    exit 1
-  fi
-
-  ln -sf "$SCRIPT_DIR/sclaw" "$target"
-
-  echo "Installed: $target -> $SCRIPT_DIR/sclaw"
-  echo "If command is not found, add ~/.local/bin to your PATH."
-}
-
-cmd="${1:-help}"
-case "$cmd" in
-  doctor|start|restart|stop|status)
-    ensure_hub_script
-    exec "$HUB_SCRIPT" "$cmd"
-    ;;
-  logs)
-    ensure_hub_script
-    exec "$HUB_SCRIPT" "$@"
-    ;;
-  install)
-    install_cli "${2:-}"
-    ;;
-  version|-v|--version)
-    echo "sclaw $CLI_VERSION"
-    ;;
-  help|-h|--help)
-    print_help
-    ;;
-  *)
-    echo "Unknown command: $cmd"
-    echo
-    print_help
-    exit 1
-    ;;
-esac
+require("./scripts/cli/main")
+  .main(process.argv.slice(2), {
+    rootDir: __dirname,
+  })
+  .then(
+    (code) => {
+      process.exitCode = code;
+    },
+    (error) => {
+      process.stderr.write(`${error.message}\n`);
+      process.exitCode = 1;
+    },
+  );

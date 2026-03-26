@@ -3,12 +3,19 @@
   "version": "0.1.0",
   "description": "CLI wrapper for StructureClaw local workflows",
   "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
   "bin": {
     "sclaw": "./sclaw"
   },
+  "scripts": {
+    "test:cli": "node --test scripts/cli/*.test.js"
+  },
   "files": [
     "sclaw",
-    "scripts/claw.sh"
+    "scripts/claw.sh",
+    "scripts/cli/**/*.js"
   ],
   "dependencies": {
     "typescript": "^5.9.3"
