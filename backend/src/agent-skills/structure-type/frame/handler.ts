@@ -740,14 +740,31 @@ export const handler: SkillHandler = {
     return merged;
   },
   computeMissing(state, mode) {
-    return computeLegacyMissing(
+    const missing = computeLegacyMissing(
       { ...state, inferredType: 'frame' },
       mode,
       [...REQUIRED_KEYS]
     );
+    for (const key of MATERIAL_SECTION_KEYS) {
+      if (state[key] === undefined && !missing.critical.includes(key)) {
+        missing.critical.push(key);
+      }
+    }
+    return missing;
   },
   mapLabels(keys, locale) {
-    return buildLegacyLabels(keys, locale);
+    return keys.map((key) => {
+      if (key === 'steelGrade') {
+        return locale === 'zh' ? '钢材牌号' : 'Steel grade';
+      }
+      if (key === 'columnSection') {
+        return locale === 'zh' ? '柱截面型号' : 'Column section';
+      }
+      if (key === 'beamSection') {
+        return locale === 'zh' ? '梁截面型号' : 'Beam section';
+      }
+      return buildLegacyLabels([key], locale)[0] ?? key;
+    });
   },
   buildQuestions(keys, criticalMissing, state, locale) {
     return buildFrameQuestions(keys, criticalMissing, state, locale);
@@ -759,9 +776,16 @@ export const handler: SkillHandler = {
     return buildFrameReportNarrative(input);
   },
   buildModel(state) {
+    const missing = handler.computeMissing({ ...state, inferredType: 'frame' }, 'execute');
+    if (missing.critical.length > 0) {
+      return undefined;
+    }
     return buildLegacyModel({ ...state, inferredType: 'frame' });
   },
   resolveStage(missingKeys) {
+    if (missingKeys.some((key) => MATERIAL_SECTION_KEYS.includes(key as typeof MATERIAL_SECTION_KEYS[number]))) {
+      return 'model';
+    }
     return resolveLegacyStructuralStage(missingKeys);
   },
 };
