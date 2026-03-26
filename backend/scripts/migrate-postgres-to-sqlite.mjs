@@ -22,7 +22,7 @@ const repoRoot = path.resolve(backendDir, '..');
 
 function printUsage() {
   console.log(`Usage:
-  POSTGRES_SOURCE_DATABASE_URL=postgresql://... ./scripts/migrate-postgres-to-sqlite.sh [--force] [--no-backup]
+  POSTGRES_SOURCE_DATABASE_URL=postgresql://... ./sclaw db-import-postgres [--force] [--no-backup]
 
 Options:
   --source <url>   Override the PostgreSQL source URL

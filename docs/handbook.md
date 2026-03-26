@@ -165,10 +165,10 @@ npm run test:run --prefix frontend
 
 Useful targeted validators:
 
-- `./scripts/validate-agent-orchestration.sh`
-- `./scripts/validate-agent-tools-contract.sh`
-- `./scripts/validate-chat-stream-contract.sh`
-- `./scripts/validate-analyze-contract.sh`
+- `./sclaw validate validate-agent-orchestration`
+- `./sclaw validate validate-agent-tools-contract`
+- `./sclaw validate validate-chat-stream-contract`
+- `./sclaw validate validate-analyze-contract`
 
 ## 11. Contributing Workflow
 
@@ -185,7 +185,7 @@ Contribution details: `CONTRIBUTING.md`.
 - If startup fails, run `./sclaw doctor` first.
 - If DB-related tests fail locally, verify that `DATABASE_URL` starts with `file:` and points to a writable local path.
 - If LLM flow degrades unexpectedly, confirm `LLM_PROVIDER` and API key env variables.
-- If contracts fail, run the corresponding `scripts/validate-*.sh` script directly for focused diagnostics.
+- If contracts fail, run the corresponding `./sclaw validate <name>` command directly for focused diagnostics.
 
 ## 13. Related Documents
 

@@ -14,7 +14,6 @@
   },
   "files": [
     "sclaw",
-    "scripts/claw.sh",
     "scripts/cli/**/*.js"
   ],
   "dependencies": {

@@ -20,6 +20,28 @@ const ANALYSIS_VALIDATION_NAMES = new Set([
   "validate-convert-passrate",
 ]);
 
+const CHECK_VALIDATION_NAME_BY_ALIAS = new Map([
+  ["backend-regression", "check-backend-regression"],
+  ["analysis-regression", "check-analysis-regression"],
+  ["check-backend-regression", "check-backend-regression"],
+  ["check-analysis-regression", "check-analysis-regression"],
+]);
+
+function getValidationNames() {
+  return [
+    ...Object.keys(BACKEND_VALIDATIONS),
+    ...ANALYSIS_VALIDATION_NAMES,
+  ].sort();
+}
+
+function getCheckNames() {
+  return [...CHECK_VALIDATION_NAME_BY_ALIAS.keys()].sort();
+}
+
+function resolveCheckValidationName(name) {
+  return CHECK_VALIDATION_NAME_BY_ALIAS.get(name) || null;
+}
+
 async function runValidationByName(name, rootDir) {
   if (name === "check-backend-regression") {
     await runBackendRegression(rootDir);
@@ -55,6 +77,9 @@ async function runFromFilename(filename, rootDir) {
 
 module.exports = {
   ANALYSIS_VALIDATION_NAMES,
+  getCheckNames,
+  getValidationNames,
+  resolveCheckValidationName,
   runFromFilename,
   runValidationByName,
 };

@@ -37,10 +37,10 @@
   - `npm run test:run --prefix frontend`
 - Analysis and contract validation:
  - `./sclaw analysis-regression`
-  - `./scripts/check-backend-regression.sh`
-  - `./scripts/validate-agent-orchestration.sh`
-  - `./scripts/validate-chat-stream-contract.sh`
-  - `./scripts/validate-analyze-contract.sh`
+  - `./sclaw check backend-regression`
+  - `./sclaw validate validate-agent-orchestration`
+  - `./sclaw validate validate-chat-stream-contract`
+  - `./sclaw validate validate-analyze-contract`
 
 ## Coding Expectations
 - TypeScript:
@@ -68,7 +68,7 @@
 - For frontend work, run targeted Vitest checks plus `type-check`; run `build` when layout, routing, or provider behavior changes.
 - For new user-visible frontend features, verify both `en` and `zh` paths. Cover the key rendered copy or interaction behavior in tests instead of validating only one locale.
 - For analysis runtime work, keep regression fixtures deterministic and avoid changing expected outputs casually.
-- If a change affects chat, agent orchestration, report output, converters, or schema migration, extend or run the matching validation script in `scripts/`.
+- If a change affects chat, agent orchestration, report output, converters, or schema migration, extend or run the matching `sclaw validate <name>` check.
 
 ## Commit and PR Guidance
 - Follow conventional commit style, for example:

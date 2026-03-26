@@ -100,17 +100,17 @@
 - `POST /api/v1/agent/skillhub/disable`
 - `POST /api/v1/agent/skillhub/uninstall`
 
-## 7. 契约与回归脚本
+## 7. 契约与回归命令
 
-核心脚本：
+核心命令：
 
-- `./scripts/validate-agent-orchestration.sh`
-- `./scripts/validate-agent-no-skill-fallback.sh`
-- `./scripts/validate-agent-tools-contract.sh`
-- `./scripts/validate-agent-api-contract.sh`
-- `./scripts/validate-chat-stream-contract.sh`
-- `./scripts/validate-chat-message-routing.sh`
-- `./scripts/validate-report-template-contract.sh`
+- `./sclaw validate validate-agent-orchestration`
+- `./sclaw validate validate-agent-no-skill-fallback`
+- `./sclaw validate validate-agent-tools-contract`
+- `./sclaw validate validate-agent-api-contract`
+- `./sclaw validate validate-chat-stream-contract`
+- `./sclaw validate validate-chat-message-routing`
+- `./sclaw validate validate-report-template-contract`
 
 回归入口：
 

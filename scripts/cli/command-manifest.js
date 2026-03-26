@@ -75,6 +75,18 @@ const COMMANDS = [
     group: "infra",
   },
   {
+    name: "db-import-postgres",
+    usage: "sclaw db-import-postgres [--source <url> --target <file:url> --force --no-backup]",
+    description: "Import a PostgreSQL dataset into SQLite",
+    group: "infra",
+  },
+  {
+    name: "db-auto-migrate-legacy-postgres",
+    usage: "sclaw db-auto-migrate-legacy-postgres",
+    description: "Auto-migrate a local legacy PostgreSQL .env to SQLite",
+    group: "infra",
+  },
+  {
     name: "docker-up",
     usage: "sclaw docker-up",
     description: "Start the full docker compose stack",
@@ -207,6 +219,18 @@ const COMMANDS = [
     name: "analysis-regression",
     usage: "sclaw analysis-regression",
     description: "Run analysis contract and regression checks",
+    group: "validation",
+  },
+  {
+    name: "validate",
+    usage: "sclaw validate <name> [--list]",
+    description: "Run a named validation or list available validations",
+    group: "validation",
+  },
+  {
+    name: "check",
+    usage: "sclaw check <name> [--list]",
+    description: "Run a named grouped check or list available checks",
     group: "validation",
   },
   {

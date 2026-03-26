@@ -165,10 +165,10 @@ npm run test:run --prefix frontend
 
 常用定向校验：
 
-- `./scripts/validate-agent-orchestration.sh`
-- `./scripts/validate-agent-tools-contract.sh`
-- `./scripts/validate-chat-stream-contract.sh`
-- `./scripts/validate-analyze-contract.sh`
+- `./sclaw validate validate-agent-orchestration`
+- `./sclaw validate validate-agent-tools-contract`
+- `./sclaw validate validate-chat-stream-contract`
+- `./sclaw validate validate-analyze-contract`
 
 ## 11. 贡献流程
 
@@ -185,7 +185,7 @@ npm run test:run --prefix frontend
 - 启动异常优先执行 `./sclaw doctor`。
 - 数据库相关测试失败时，先检查 `DATABASE_URL` 是否以 `file:` 开头，并且指向本地可写路径。
 - LLM 流程异常时，检查 `LLM_PROVIDER` 与 API Key。
-- 契约失败时，直接运行对应 `scripts/validate-*.sh` 进行定向诊断。
+- 契约失败时，直接运行对应 `./sclaw validate <name>` 进行定向诊断。
 
 ## 13. 相关文档
 

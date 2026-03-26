@@ -5,6 +5,7 @@ const readline = require("node:readline/promises");
 const { spawn, spawnSync } = require("node:child_process");
 
 const { ALIAS_TO_COMMAND, COMMANDS, COMMAND_NAMES } = require("./command-manifest");
+const validationRunner = require("./regressions/run-validation");
 const runtime = require("./runtime");
 
 const MIN_NODE_MAJOR = 18;
@@ -69,6 +70,30 @@ function log(message = "") {
 
 function getCliEntryPath(rootDir) {
   return path.join(rootDir, "sclaw");
+}
+
+function formatNamedCommandList(title, commandPrefix, names) {
+  const lines = [title, ""];
+  for (const name of names) {
+    lines.push(`  sclaw ${commandPrefix} ${name}`);
+  }
+  return lines.join(os.EOL);
+}
+
+function formatValidationList() {
+  return formatNamedCommandList(
+    "Available validations:",
+    "validate",
+    validationRunner.getValidationNames(),
+  );
+}
+
+function formatCheckList() {
+  return formatNamedCommandList(
+    "Available checks:",
+    "check",
+    validationRunner.getCheckNames(),
+  );
 }
 
 function parseCliOptions(args) {
@@ -496,6 +521,33 @@ async function invokeDockerInstall(rootDir, env, rawArgs) {
   });
 }
 
+async function installUvFromOfficialScript() {
+  const installDir = process.env.UV_INSTALL_DIR || path.join(os.homedir(), ".local", "bin");
+  const response = await fetch("https://astral.sh/uv/install.sh");
+  if (!response.ok) {
+    throw new Error(`Failed to download uv installer: ${response.status} ${response.statusText}`);
+  }
+
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "sclaw-uv-install-"));
+  const scriptPath = path.join(tempDir, "install-uv.sh");
+  try {
+    fs.writeFileSync(scriptPath, await response.text(), "utf8");
+    await runtime.runCommand("sh", [scriptPath], {
+      env: {
+        ...process.env,
+        UV_INSTALL_DIR: installDir,
+      },
+    });
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+
+  const installedUv = path.join(installDir, "uv");
+  if (runtime.pathExists(installedUv)) {
+    process.env.PATH = `${installDir}${path.delimiter}${process.env.PATH || ""}`;
+  }
+}
+
 async function ensureUv(rootDir) {
   if (runtime.hasCommand("uv")) {
     return;
@@ -521,7 +573,11 @@ async function ensureUv(rootDir) {
     return;
   }
 
-  await runtime.runCommand(path.join(rootDir, "scripts", "ensure-uv.sh"), []);
+  await installUvFromOfficialScript();
+  runtime.requireCommand(
+    "uv",
+    "uv installation finished, but `uv` is still unavailable. Add ~/.local/bin to PATH and retry.",
+  );
 }
 
 async function ensureNpmDependencies(projectDir, projectName, packageNames = []) {
@@ -611,6 +667,97 @@ async function ensureOpenSeesRuntime(rootDir, env) {
       stdio: "ignore",
     },
   );
+}
+
+async function invokePostgresImport(rootDir, env, rawArgs = []) {
+  const { paths } = runtime.loadProjectEnvironment(rootDir);
+  runtime.ensureDirectory(paths.dataDir);
+
+  const commandEnv = {
+    ...env,
+  };
+  if (!commandEnv.DATABASE_URL && !commandEnv.SQLITE_TARGET_DATABASE_URL) {
+    commandEnv.DATABASE_URL = `file:${path.join(paths.dataDir, "structureclaw.db").replace(/\\/gu, "/")}`;
+  }
+
+  await runtime.runCommand(
+    process.execPath,
+    [path.join(rootDir, "backend", "scripts", "migrate-postgres-to-sqlite.mjs"), ...rawArgs],
+    {
+      cwd: rootDir,
+      env: commandEnv,
+    },
+  );
+}
+
+function isLocalPostgresUrl(databaseUrl) {
+  try {
+    const parsed = new URL(databaseUrl);
+    return new Set(["localhost", "127.0.0.1", "::1", "postgres"]).has(
+      String(parsed.hostname || "").toLowerCase(),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function createTimestampToken() {
+  return new Date().toISOString().replace(/[-:TZ.]/gu, "").slice(0, 14);
+}
+
+async function invokeAutoMigrateLegacyPostgres(rootDir, env) {
+  const { paths } = runtime.loadProjectEnvironment(rootDir);
+  if (!runtime.pathExists(paths.envFile)) {
+    return;
+  }
+
+  const envText = fs.readFileSync(paths.envFile, "utf8");
+  const dotEnv = runtime.parseDotEnv(envText);
+  const legacyDatabaseUrl = String(dotEnv.DATABASE_URL || "").trim();
+
+  if (!legacyDatabaseUrl || legacyDatabaseUrl.startsWith("file:")) {
+    return;
+  }
+  if (
+    !legacyDatabaseUrl.startsWith("postgres://") &&
+    !legacyDatabaseUrl.startsWith("postgresql://")
+  ) {
+    return;
+  }
+  if (!isLocalPostgresUrl(legacyDatabaseUrl)) {
+    throw new Error(
+      ".env still points DATABASE_URL at a non-local PostgreSQL host. Automatic migration is limited to local legacy sources.",
+    );
+  }
+
+  const sqliteDatabaseUrl = `file:${path.join(paths.dataDir, "structureclaw.db").replace(/\\/gu, "/")}`;
+  log("[info] Detected legacy local PostgreSQL DATABASE_URL in .env.");
+  log(`[info] Migrating data into SQLite at ${sqliteDatabaseUrl} ...`);
+  await invokePostgresImport(
+    rootDir,
+    {
+      ...env,
+      POSTGRES_SOURCE_DATABASE_URL: legacyDatabaseUrl,
+      DATABASE_URL: sqliteDatabaseUrl,
+    },
+    ["--force"],
+  );
+
+  const backupPath = `${paths.envFile}.pre-sqlite-migration.${createTimestampToken()}.bak`;
+  fs.copyFileSync(paths.envFile, backupPath);
+  let updatedEnvText = replaceEnvValue(
+    envText,
+    "DATABASE_URL",
+    "file:../../.runtime/data/structureclaw.db",
+  );
+  updatedEnvText = replaceEnvValue(
+    updatedEnvText,
+    "POSTGRES_SOURCE_DATABASE_URL",
+    legacyDatabaseUrl,
+  );
+  fs.writeFileSync(paths.envFile, updatedEnvText);
+  log("[ok] Legacy PostgreSQL config migrated to SQLite.");
+  log(`[info] Original .env backed up to ${backupPath}`);
 }
 
 async function invokeDbInit(rootDir, env) {
@@ -969,6 +1116,12 @@ async function dispatch(commandName, rawArgs, rootDir) {
     case "db-init":
       await invokeDbInit(rootDir, env);
       return;
+    case "db-import-postgres":
+      await invokePostgresImport(rootDir, env, rawArgs);
+      return;
+    case "db-auto-migrate-legacy-postgres":
+      await invokeAutoMigrateLegacyPostgres(rootDir, env);
+      return;
     case "docker-up":
       await runDockerCompose(paths, ["up", "--build", "-d"], { env });
       return;
@@ -1057,6 +1210,42 @@ async function dispatch(commandName, rawArgs, rootDir) {
     case "analysis-regression":
       await require("./regressions/analysis-regression").runAnalysisRegression(rootDir);
       return;
+    case "validate": {
+      const { flags, positionals } = parseCliOptions(rawArgs);
+      if (flags.has("list")) {
+        log(formatValidationList());
+        return;
+      }
+      const validationName = positionals[0];
+      if (!validationName) {
+        throw new Error(
+          "Usage: sclaw validate <name>\n       sclaw validate --list",
+        );
+      }
+      await validationRunner.runValidationByName(validationName, rootDir);
+      return;
+    }
+    case "check": {
+      const { flags, positionals } = parseCliOptions(rawArgs);
+      if (flags.has("list")) {
+        log(formatCheckList());
+        return;
+      }
+      const checkName = positionals[0];
+      if (!checkName) {
+        throw new Error(
+          "Usage: sclaw check <name>\n       sclaw check --list",
+        );
+      }
+      const validationName = validationRunner.resolveCheckValidationName(checkName);
+      if (!validationName) {
+        throw new Error(
+          `Unknown check: ${checkName}\n\n${formatCheckList()}`,
+        );
+      }
+      await validationRunner.runValidationByName(validationName, rootDir);
+      return;
+    }
     case "skill":
       await runSkillCommand(env, rawArgs);
       return;
@@ -1096,7 +1285,9 @@ if (require.main === module) {
 }
 
 module.exports = {
+  formatCheckList,
   formatHelp,
+  formatValidationList,
   getPackageMetadata,
   main,
   resolveCommandName,

@@ -17,7 +17,7 @@ It is written for typical open source collaboration through a fork-and-pull-requ
 ./sclaw status
 ```
 
-3. If your change touches chat, agent orchestration, reports, converters, or schema behavior, identify the matching validation script in `scripts/` before you start.
+3. If your change touches chat, agent orchestration, reports, converters, or schema behavior, identify the matching validator with `./sclaw validate --list` before you start.
 
 ## Contribution Rules
 
@@ -111,7 +111,7 @@ git push origin --delete my-feature
 - Backend: keep route handlers thin; put orchestration and domain logic in services.
 - Frontend: keep route/layout code in app routes and reusable UI in components.
 - Analysis runtime: keep engine, schema, and regression behavior deterministic and scriptable.
-- Scripts: prefer extending existing validation scripts instead of creating one-off local-only helpers.
+- Scripts: prefer extending the existing `sclaw` validation surface instead of creating one-off local-only helpers.
 
 ### Language and UX rules
 
@@ -155,10 +155,10 @@ Analysis runtime and cross-service validation:
 Useful targeted validators:
 
 ```bash
-./scripts/validate-agent-orchestration.sh
-./scripts/validate-chat-stream-contract.sh
-./scripts/validate-analyze-contract.sh
-./scripts/validate-converter-api-contract.sh
+./sclaw validate validate-agent-orchestration
+./sclaw validate validate-chat-stream-contract
+./sclaw validate validate-analyze-contract
+./sclaw validate validate-converter-api-contract
 ```
 
 Expectation by change type:
