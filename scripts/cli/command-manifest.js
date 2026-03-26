@@ -115,7 +115,7 @@ const COMMANDS = [
   },
   {
     name: "docker-logs",
-    usage: "sclaw docker-logs [backend|frontend|nginx|all] [--follow]",
+    usage: "sclaw docker-logs [backend|frontend|all] [--follow]",
     description: "Show docker compose logs",
     group: "infra",
   },
