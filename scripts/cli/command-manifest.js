@@ -57,6 +57,13 @@ const COMMANDS = [
     group: "dev",
   },
   {
+    name: "convert-batch",
+    usage:
+      "sclaw convert-batch --input-dir <dir> --output-dir <dir> --report <file> --target-format <name> [--source-format <name> --target-schema-version <version> --allow-failures]",
+    description: "Batch-convert structure model JSON files with a report",
+    group: "dev",
+  },
+  {
     name: "db-up",
     usage: "sclaw db-up",
     description: "Start optional local infra via docker compose",

@@ -743,8 +743,9 @@ def validate_convert_batch():
         report_file = temp_dir / "report.json"
         subprocess.run(
             [
-                sys.executable,
-                str(ROOT_DIR / "scripts/convert-batch.py"),
+                "node",
+                str(ROOT_DIR / "sclaw"),
+                "convert-batch",
                 "--input-dir",
                 str(input_dir),
                 "--output-dir",

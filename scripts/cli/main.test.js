@@ -3,6 +3,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const runtime = require("./runtime");
+const convertBatch = require("./convert-batch");
 const {
   formatCheckList,
   formatHelp,
@@ -27,6 +28,7 @@ test("resolveCommandName handles aliases", () => {
 test("help output includes unified command surface", () => {
   const helpText = formatHelp(rootDir);
   assert.match(helpText, /sclaw start/);
+  assert.match(helpText, /sclaw convert-batch/);
   assert.match(helpText, /sclaw docker-install/);
   assert.match(helpText, /sclaw docker-start/);
   assert.match(helpText, /sclaw install-cli/);
@@ -79,6 +81,7 @@ test("command manifest covers make lifecycle targets", () => {
     "dev-backend",
     "dev-frontend",
     "build",
+    "convert-batch",
     "db-up",
     "db-down",
     "db-init",
@@ -157,4 +160,79 @@ test("main rejects unknown check names", async () => {
     main(["check", "not-a-real-check"], { rootDir }),
     /Unknown check: not-a-real-check/,
   );
+});
+
+test("main routes convert-batch through the JS batch runner", async () => {
+  const originalRequireCommand = runtime.requireCommand;
+  const originalHasCommand = runtime.hasCommand;
+  const originalLoadProjectEnvironment = runtime.loadProjectEnvironment;
+  const originalResolveAnalysisPython = runtime.resolveAnalysisPython;
+  const originalPythonModuleExists = runtime.pythonModuleExists;
+  const originalRunConvertBatch = convertBatch.runConvertBatch;
+  const calls = [];
+
+  runtime.requireCommand = () => {};
+  runtime.hasCommand = () => true;
+  runtime.loadProjectEnvironment = () => ({
+    paths: {
+      analysisRequirementsFile: path.join(
+        rootDir,
+        "backend",
+        "src",
+        "agent-skills",
+        "analysis",
+        "python",
+        "requirements.txt",
+      ),
+      backendDir: path.join(rootDir, "backend"),
+      frontendDir: path.join(rootDir, "frontend"),
+      dockerComposeFile: path.join(rootDir, "docker-compose.yml"),
+    },
+    env: {},
+  });
+  runtime.resolveAnalysisPython = () => "C:\\fake\\python.exe";
+  runtime.pythonModuleExists = async () => true;
+  convertBatch.runConvertBatch = async (rootDirArg, rawArgsArg) => {
+    calls.push({ rootDirArg, rawArgsArg });
+  };
+
+  try {
+    const code = await main(
+      [
+        "convert-batch",
+        "--input-dir",
+        "input",
+        "--output-dir",
+        "output",
+        "--report",
+        "report.json",
+        "--target-format",
+        "compact-1",
+      ],
+      { rootDir },
+    );
+    assert.equal(code, 0);
+    assert.deepEqual(calls, [
+      {
+        rootDirArg: rootDir,
+        rawArgsArg: [
+          "--input-dir",
+          "input",
+          "--output-dir",
+          "output",
+          "--report",
+          "report.json",
+          "--target-format",
+          "compact-1",
+        ],
+      },
+    ]);
+  } finally {
+    runtime.requireCommand = originalRequireCommand;
+    runtime.hasCommand = originalHasCommand;
+    runtime.loadProjectEnvironment = originalLoadProjectEnvironment;
+    runtime.resolveAnalysisPython = originalResolveAnalysisPython;
+    runtime.pythonModuleExists = originalPythonModuleExists;
+    convertBatch.runConvertBatch = originalRunConvertBatch;
+  }
 });

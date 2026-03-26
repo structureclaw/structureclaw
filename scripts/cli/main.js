@@ -5,6 +5,7 @@ const readline = require("node:readline/promises");
 const { spawn, spawnSync } = require("node:child_process");
 
 const { ALIAS_TO_COMMAND, COMMANDS, COMMAND_NAMES } = require("./command-manifest");
+const convertBatch = require("./convert-batch");
 const validationRunner = require("./regressions/run-validation");
 const runtime = require("./runtime");
 
@@ -669,6 +670,11 @@ async function ensureOpenSeesRuntime(rootDir, env) {
   );
 }
 
+async function invokeConvertBatch(rootDir, env, rawArgs = []) {
+  await ensureAnalysisPython(rootDir, env);
+  await convertBatch.runConvertBatch(rootDir, rawArgs);
+}
+
 async function invokePostgresImport(rootDir, env, rawArgs = []) {
   const { paths } = runtime.loadProjectEnvironment(rootDir);
   runtime.ensureDirectory(paths.dataDir);
@@ -1106,6 +1112,9 @@ async function dispatch(commandName, rawArgs, rootDir) {
         env,
       });
       await runFrontendBuild(paths, env);
+      return;
+    case "convert-batch":
+      await invokeConvertBatch(rootDir, env, rawArgs);
       return;
     case "db-up":
       await runtime.runCommand("docker", ["compose", "-f", paths.dockerComposeFile, "up", "-d", "redis"]);

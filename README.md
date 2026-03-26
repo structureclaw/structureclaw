@@ -54,6 +54,12 @@ Useful follow-up commands:
 ./sclaw analysis-regression
 ```
 
+Use the built-in CLI batch convert command to transform structure model JSON files and write a summary report:
+
+```bash
+./sclaw convert-batch --input-dir tmp/input --output-dir tmp/output --report tmp/report.json --target-format compact-1
+```
+
 Windows PowerShell:
 
 ```powershell
