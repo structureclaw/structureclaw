@@ -125,6 +125,30 @@ function extractScalar(text: string, patterns: RegExp[]): number | undefined {
   return undefined;
 }
 
+function extractNumberArray(text: string, patterns: RegExp[]): number[] | undefined {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match?.[1]) {
+      continue;
+    }
+    const items = match[1].split(/[、,，]\s*/);
+    const values: number[] = [];
+    for (const item of items) {
+      const cleaned = item.trim().replace(/\s*(?:m|米)\s*$/i, '').trim();
+      const v = normalizeNumber(cleaned);
+      if (v === undefined || v <= 0) {
+        values.length = 0;
+        break;
+      }
+      values.push(v);
+    }
+    if (values.length >= 2) {
+      return values;
+    }
+  }
+  return undefined;
+}
+
 function extractDirectionalLoadScalar(text: string, axis: 'x' | 'y'): number | undefined {
   const axisToken = axis === 'x' ? 'x' : 'y';
   return extractScalar(text, [
@@ -227,14 +251,24 @@ function normalizeFrameNaturalPatch(message: string, existingState: DraftState |
   ]);
   const xSegment = extractDirectionalSegment(text, 'x');
   const ySegment = extractDirectionalSegment(text, 'y');
-  const bayCountX = extractPositiveInt(xSegment, [
+  const bayCountXFromText = extractPositiveInt(xSegment, [
     /([0-9]+|[一二两三四五六七八九十]+)\s*跨/i,
     /([0-9]+|[一二两三四五六七八九十]+)\s*bays?/i,
   ]);
-  const bayCountY = extractPositiveInt(ySegment, [
+  const bayCountYFromText = extractPositiveInt(ySegment, [
     /([0-9]+|[一二两三四五六七八九十]+)\s*跨/i,
     /([0-9]+|[一二两三四五六七八九十]+)\s*bays?/i,
   ]);
+  const BAY_ARRAY_PATTERNS = [
+    /(?:跨度分别|各跨分别|分别为)\s*((?:[0-9]+(?:\.[0-9]+)?)\s*(?:m|米)(?:\s*[、,，]\s*[0-9]+(?:\.[0-9]+)?\s*(?:m|米))+)/i,
+  ];
+  const xBayArray = extractNumberArray(xSegment, BAY_ARRAY_PATTERNS);
+  const yBayArray = extractNumberArray(ySegment, BAY_ARRAY_PATTERNS);
+  const storyHeightArray = extractNumberArray(text, [
+    /(?:层高分别|各层层高|每层层高分别)\s*((?:[0-9]+(?:\.[0-9]+)?)\s*(?:m|米)(?:\s*[、,，]\s*[0-9]+(?:\.[0-9]+)?\s*(?:m|米))+)/i,
+  ]);
+  const bayCountX = bayCountXFromText ?? (xBayArray ? xBayArray.length : undefined);
+  const bayCountY = bayCountYFromText ?? (yBayArray ? yBayArray.length : undefined);
   const storyHeightScalar = extractScalar(text, [
     /每层(?:层高)?(?:都?是|统一为|为|高)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
     /层高(?:都?是|统一为|为)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
@@ -252,6 +286,8 @@ function normalizeFrameNaturalPatch(message: string, existingState: DraftState |
   ]);
   const verticalLoadKN = extractScalar(text, [
     /(?:每层|各层)(?:节点)?(?:竖向)?荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:每层|各层)?竖向荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:每层|各层)?竖向\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
   ]);
   const dualLateralLoadKN = extractScalar(text, [
     /x(?:、|\/|和|及)\s*y向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
@@ -260,6 +296,7 @@ function normalizeFrameNaturalPatch(message: string, existingState: DraftState |
     /(?:横向|侧向|水平)(?:方向)?荷载(?:两个方向)?(?:都?是|均为|都为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
     /水平方向荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
     /(?:横向|侧向|水平)荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:横向|侧向|水平)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
   ]) ?? extractDirectionalLoadScalar(text, 'x');
   const extractedLateralYLoadKN = dualLateralLoadKN ?? extractDirectionalLoadScalar(text, 'y');
   const resolvedStoryCount = storyCount ?? existingState?.storyCount ?? existingState?.storyHeightsM?.length;
@@ -269,6 +306,7 @@ function normalizeFrameNaturalPatch(message: string, existingState: DraftState |
     || text.includes('y向')
     || bayCountY !== undefined
     || yBayScalar !== undefined
+    || yBayArray !== undefined
     || extractedLateralYLoadKN !== undefined;
   const resolvedFrameDimension = inferred3d
     ? '3d'
@@ -284,10 +322,10 @@ function normalizeFrameNaturalPatch(message: string, existingState: DraftState |
     bayCount: resolvedFrameDimension !== '3d' ? genericBayCount : undefined,
     bayCountX,
     bayCountY,
-    storyHeightsM: repeatScalar(resolvedStoryCount, storyHeightScalar),
+    storyHeightsM: storyHeightArray ?? repeatScalar(resolvedStoryCount, storyHeightScalar),
     bayWidthsM: resolvedFrameDimension !== '3d' ? repeatScalar(genericBayCount ?? existingState?.bayCount, genericBayScalar) : undefined,
-    bayWidthsXM: repeatScalar(resolvedBayCountX, xBayScalar ?? (resolvedFrameDimension === '3d' ? genericBayScalar : undefined)),
-    bayWidthsYM: repeatScalar(resolvedBayCountY, yBayScalar),
+    bayWidthsXM: xBayArray ?? repeatScalar(resolvedBayCountX, xBayScalar ?? (resolvedFrameDimension === '3d' ? genericBayScalar : undefined)),
+    bayWidthsYM: yBayArray ?? repeatScalar(resolvedBayCountY, yBayScalar),
     floorLoads: buildUniformFloorLoads(
       resolvedStoryCount,
       verticalLoadKN,
@@ -535,7 +573,7 @@ function buildFrameReportNarrative(input: SkillReportNarrativeInput): string {
 }
 
 export const handler: SkillHandler = {
-  detectScenario({ message, locale }) {
+  detectScenario({ message, locale, currentState }) {
     const text = message.toLowerCase();
     if (
       (text.includes('frame') || text.includes('框架') || text.includes('钢框架'))
@@ -551,6 +589,10 @@ export const handler: SkillHandler = {
     }
     if (text.includes('frame') || text.includes('框架')) {
       return buildScenarioMatch('frame', 'frame', 'frame', 'supported', locale);
+    }
+    if (currentState?.inferredType === 'frame') {
+      const key = currentState.scenarioKey ?? 'frame';
+      return buildScenarioMatch(key, 'frame', 'frame', 'supported', locale);
     }
     return null;
   },

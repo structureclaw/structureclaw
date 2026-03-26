@@ -4,6 +4,7 @@ Thumbs.db
 .vscode/
 .idea/
 .claude/
+.kiro/
 
 # Environment and local runtime config
 .env
