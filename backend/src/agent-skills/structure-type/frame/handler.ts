@@ -50,9 +50,6 @@ const REQUIRED_KEYS = [
   'bayWidthsXM',
   'bayWidthsYM',
   'floorLoads',
-  'steelGrade',
-  'columnSection',
-  'beamSection',
 ] as const;
 
 function toFramePatch(patch: DraftExtraction): DraftExtraction {
@@ -746,8 +743,8 @@ export const handler: SkillHandler = {
       [...REQUIRED_KEYS]
     );
     for (const key of MATERIAL_SECTION_KEYS) {
-      if (state[key] === undefined && !missing.critical.includes(key)) {
-        missing.critical.push(key);
+      if (state[key] === undefined && !missing.critical.includes(key) && !missing.optional.includes(key)) {
+        missing.optional.push(key);
       }
     }
     return missing;
@@ -776,16 +773,9 @@ export const handler: SkillHandler = {
     return buildFrameReportNarrative(input);
   },
   buildModel(state) {
-    const missing = handler.computeMissing({ ...state, inferredType: 'frame' }, 'execute');
-    if (missing.critical.length > 0) {
-      return undefined;
-    }
     return buildLegacyModel({ ...state, inferredType: 'frame' });
   },
   resolveStage(missingKeys) {
-    if (missingKeys.some((key) => MATERIAL_SECTION_KEYS.includes(key as typeof MATERIAL_SECTION_KEYS[number]))) {
-      return 'model';
-    }
     return resolveLegacyStructuralStage(missingKeys);
   },
 };
