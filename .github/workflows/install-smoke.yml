@@ -72,8 +72,7 @@ jobs:
       - name: Verify Docker is ready
         shell: cmd
         run: |
-          "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command ^
-            "$maxAttempts = 30; $attempt = 0; Write-Host 'Waiting for Docker...'; while ($attempt -lt $maxAttempts) { try { $result = docker version --format '{{.Server.Os}}/{{.Server.Arch}} {{.Server.Version}}' 2^>^$null; if ($result) { Write-Host ('Docker is ready: ' + $result) -ForegroundColor Green; exit 0 } } catch {} $attempt++; Start-Sleep -Seconds 5 }; Write-Error 'Docker failed to start'; exit 1"
+          "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File ".\scripts\ci\verify-docker-ready.ps1"
 
       - name: Docker compose smoke
         shell: cmd
