@@ -151,7 +151,7 @@ describe('AIConsole grouped skill picker', () => {
     })
   })
 
-  it('allows switching among all ten domain groups', async () => {
+  it('allows switching among all fourteen domain groups', async () => {
     const user = userEvent.setup()
     render(<AIConsole />)
 
@@ -164,18 +164,18 @@ describe('AIConsole grouped skill picker', () => {
     await waitFor(() => {
       const selector = screen.getByLabelText(/category view/i)
       const options = selector.querySelectorAll('option')
-      expect(options.length).toBe(10)
+      expect(options.length).toBe(14)
     })
 
-    await user.selectOptions(screen.getByLabelText(/category view/i), 'material-constitutive')
+    await user.selectOptions(screen.getByLabelText(/category view/i), 'material')
 
     await waitFor(() => {
-      expect(screen.getAllByText(/material & constitutive skills/i).length).toBeGreaterThan(0)
+      expect(screen.getAllByText(/^material skills$/i).length).toBeGreaterThan(0)
       expect(screen.getByText(/no installed local skills in this category yet/i)).toBeInTheDocument()
     })
   })
 
-  it('preselects analysis strategy skills for a new conversation', async () => {
+  it('preselects analysis skills for a new conversation', async () => {
     const user = userEvent.setup()
     render(<AIConsole />)
 
@@ -184,7 +184,7 @@ describe('AIConsole grouped skill picker', () => {
     })
 
     await user.click(screen.getByRole('button', { name: /expand skills/i }))
-    await user.selectOptions(screen.getByLabelText(/category view/i), 'analysis-strategy')
+    await user.selectOptions(screen.getByLabelText(/category view/i), 'analysis')
 
     await waitFor(() => {
       const skillButton = screen.getByRole('button', { name: 'Seismic Policy' })

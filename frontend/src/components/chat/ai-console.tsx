@@ -182,29 +182,37 @@ type AgentSkillSummary = {
 }
 
 type SkillDomain =
-  | 'structure-type'
-  | 'material-constitutive'
-  | 'geometry-input'
-  | 'load-boundary'
-  | 'analysis-strategy'
+  | 'analysis'
   | 'code-check'
-  | 'result-postprocess'
-  | 'visualization'
+  | 'data-input'
+  | 'design'
+  | 'drawing'
+  | 'general'
+  | 'load-boundary'
+  | 'material'
   | 'report-export'
-  | 'generic-fallback'
+  | 'result-postprocess'
+  | 'section'
+  | 'structure-type'
+  | 'validation'
+  | 'visualization'
   | 'unknown'
 
 const ALL_SKILL_DOMAINS: SkillDomain[] = [
-  'structure-type',
-  'material-constitutive',
-  'geometry-input',
-  'load-boundary',
-  'analysis-strategy',
+  'analysis',
   'code-check',
-  'result-postprocess',
-  'visualization',
+  'data-input',
+  'design',
+  'drawing',
+  'general',
+  'load-boundary',
+  'material',
   'report-export',
-  'generic-fallback',
+  'result-postprocess',
+  'section',
+  'structure-type',
+  'validation',
+  'visualization',
 ]
 
 type CapabilitySkillSummary = {
@@ -244,20 +252,39 @@ type SkillHubInstalledItem = {
 
 function normalizeSkillDomain(value: unknown): SkillDomain {
   const raw = typeof value === 'string' ? value : ''
-  return ALL_SKILL_DOMAINS.includes(raw as SkillDomain) ? (raw as SkillDomain) : 'unknown'
+  if (ALL_SKILL_DOMAINS.includes(raw as SkillDomain)) {
+    return raw as SkillDomain
+  }
+  if (raw === 'analysis-strategy') {
+    return 'analysis'
+  }
+  if (raw === 'generic-fallback') {
+    return 'general'
+  }
+  if (raw === 'geometry-input') {
+    return 'data-input'
+  }
+  if (raw === 'material-constitutive') {
+    return 'material'
+  }
+  return 'unknown'
 }
 
 function resolveSkillDomainLabel(domain: SkillDomain, t: (key: MessageKey) => string) {
+  if (domain === 'analysis') return t('skillDomainAnalysis')
+  if (domain === 'data-input') return t('skillDomainDataInput')
+  if (domain === 'design') return t('skillDomainDesign')
+  if (domain === 'drawing') return t('skillDomainDrawing')
+  if (domain === 'general') return t('skillDomainGeneral')
+  if (domain === 'material') return t('skillDomainMaterial')
+  if (domain === 'section') return t('skillDomainSection')
   if (domain === 'structure-type') return t('skillDomainStructureType')
-  if (domain === 'material-constitutive') return t('skillDomainMaterialConstitutive')
-  if (domain === 'geometry-input') return t('skillDomainGeometryInput')
   if (domain === 'load-boundary') return t('skillDomainLoadBoundary')
-  if (domain === 'analysis-strategy') return t('skillDomainAnalysisStrategy')
   if (domain === 'code-check') return t('skillDomainCodeCheck')
   if (domain === 'result-postprocess') return t('skillDomainResultPostprocess')
   if (domain === 'visualization') return t('skillDomainVisualization')
   if (domain === 'report-export') return t('skillDomainReportExport')
-  if (domain === 'generic-fallback') return t('skillDomainGenericFallback')
+  if (domain === 'validation') return t('skillDomainValidation')
   return t('skillDomainUnknown')
 }
 
@@ -1239,7 +1266,7 @@ export function AIConsole() {
   const defaultSelectedSkillIds = useMemo(
     () => availableSkills
       .map((skill) => skill.id)
-      .filter((skillId) => skillDomainById[skillId] === 'analysis-strategy'),
+      .filter((skillId) => skillDomainById[skillId] === 'analysis'),
     [availableSkills, skillDomainById]
   )
 
@@ -1444,7 +1471,7 @@ export function AIConsole() {
     if (conversationId || seededDefaultAnalysisStrategySkillsRef.current || selectedSkillIds.length > 0 || defaultSelectedSkillIds.length === 0) {
       return
     }
-    // Transitional default: preselect installed analysis-strategy skills for new conversations.
+    // Transitional default: preselect installed analysis skills for new conversations.
     setSelectedSkillIds(defaultSelectedSkillIds)
     seededDefaultAnalysisStrategySkillsRef.current = true
   }, [conversationId, defaultSelectedSkillIds, selectedSkillIds.length])
