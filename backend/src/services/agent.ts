@@ -1883,7 +1883,7 @@ export class AgentService {
           if (recentMessages.length > 0) {
             conversationContext = recentMessages
               .reverse()
-              .map(m => `${m.role}: ${m.content.slice(0, 200)}`)
+              .map((m: { role: string; content: string }) => `${m.role}: ${m.content.slice(0, 200)}`)
               .join('\n');
           }
         } catch {
