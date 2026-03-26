@@ -70,7 +70,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Verify Docker is ready
-        shell: powershell
+        shell: '"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}'
         run: |
           $maxAttempts = 30
           $attempt = 0
@@ -91,5 +91,5 @@ jobs:
           exit 1
 
       - name: Docker compose smoke
-        shell: bash
-        run: bash scripts/ci/docker-compose-smoke.sh
+        shell: '"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -File {0}'
+        run: .\scripts\ci\docker-compose-smoke.ps1
