@@ -64,14 +64,21 @@ function Write-SmokeEnv {
 }
 
 function Invoke-Compose {
-  param([string[]]$Args)
-  & docker compose -f $ComposeFile --env-file $OutEnv @Args
+  param([string[]]$ComposeArgs)
+
+  $commandArgs = @(
+    'compose',
+    '-f', $ComposeFile,
+    '--env-file', $OutEnv
+  ) + $ComposeArgs
+
+  & docker @commandArgs
 }
 
 function Cleanup {
   try {
     Write-SmokeLog 'docker compose down'
-    Invoke-Compose -Args @('down', '--remove-orphans') 2>$null
+    Invoke-Compose -ComposeArgs @('down', '--remove-orphans') 2>$null
   } catch {
     # Best effort cleanup for CI.
   }
@@ -90,10 +97,10 @@ try {
   New-Item -ItemType Directory -Force -Path $RuntimeDataDir | Out-Null
 
   Write-SmokeLog 'docker compose config'
-  Invoke-Compose -Args @('config', '-q')
+  Invoke-Compose -ComposeArgs @('config', '-q')
 
   Write-SmokeLog 'docker compose up --build -d'
-  Invoke-Compose -Args @('up', '--build', '-d')
+  Invoke-Compose -ComposeArgs @('up', '--build', '-d')
 
   $backendPort = Get-EnvValue -Path $OutEnv -Key 'PORT'
   $frontendPort = Get-EnvValue -Path $OutEnv -Key 'FRONTEND_PORT'
@@ -127,7 +134,7 @@ try {
   if (-not $backendOk) {
     Write-SmokeLog 'backend health check failed'
     try {
-      Invoke-Compose -Args @('ps')
+      Invoke-Compose -ComposeArgs @('ps')
     } catch {
       # Best effort diagnostics.
     }
