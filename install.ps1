@@ -1,4 +1,4 @@
-﻿<#
+<#
 .SYNOPSIS
     StructureClaw One-click Installer
 .DESCRIPTION
@@ -25,6 +25,9 @@ Set-StrictMode -Version Latest
 $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $EnvFile = Join-Path $RootDir '.env'
 $EnvExampleFile = Join-Path $RootDir '.env.example'
+
+$InstallHelpersModule = Join-Path $RootDir (Join-Path 'scripts' (Join-Path 'windows' 'install-helpers.psm1'))
+Import-Module -Name $InstallHelpersModule -Force
 
 # Color output functions
 function Write-Step {
@@ -55,21 +58,6 @@ function Write-Info {
 function Write-Progress {
   param([string]$Message)
   Write-Host "  > $Message" -ForegroundColor White
-}
-
-function Get-EnvPort {
-  param(
-    [string]$EnvPath,
-    [string]$VarName,
-    [string]$DefaultPort
-  )
-  if (Test-Path -LiteralPath $EnvPath) {
-    $content = Get-Content -LiteralPath $EnvPath -Raw
-    if ($content -match "$VarName=(\d+)") {
-      return $matches[1]
-    }
-  }
-  return $DefaultPort
 }
 
 function Test-Administrator {
@@ -142,26 +130,6 @@ function Read-SecureInput {
   $secureString = Read-Host -AsSecureString
   $credential = New-Object System.Management.Automation.PSCredential('temp', $secureString)
   return $credential.GetNetworkCredential().Password
-}
-
-function New-EnvFile {
-  param(
-    [string]$TemplatePath,
-    [string]$OutputPath,
-    [string]$BaseUrl,
-    [string]$ApiKey,
-    [string]$Model,
-    [string]$Provider
-  )
-  if (-not (Test-Path -LiteralPath $TemplatePath)) {
-    throw "Template file not found: $TemplatePath"
-  }
-  $content = Get-Content -LiteralPath $TemplatePath -Raw
-  $content = $content -replace 'LLM_PROVIDER=.*', "LLM_PROVIDER=$Provider"
-  $content = $content -replace 'LLM_API_KEY=.*', "LLM_API_KEY=$ApiKey"
-  $content = $content -replace 'LLM_MODEL=.*', "LLM_MODEL=$Model"
-  $content = $content -replace 'LLM_BASE_URL=.*', "LLM_BASE_URL=$BaseUrl"
-  Set-Content -LiteralPath $OutputPath -Value $content -NoNewline
 }
 
 function Test-ApiConnection {

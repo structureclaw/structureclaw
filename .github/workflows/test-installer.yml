@@ -7,6 +7,8 @@ on:
       - 'install.ps1'
       - 'start.ps1'
       - 'stop.ps1'
+      - 'scripts/windows/install-helpers.psm1'
+      - 'tests/windows/**'
       - '.github/workflows/test-installer.yml'
   pull_request:
     branches: [master, main]
@@ -14,6 +16,9 @@ on:
       - 'install.ps1'
       - 'start.ps1'
       - 'stop.ps1'
+      - 'scripts/windows/install-helpers.psm1'
+      - 'tests/windows/**'
+      - '.github/workflows/test-installer.yml'
 
 jobs:
   test-scripts:
@@ -48,6 +53,20 @@ jobs:
           }
 
           Write-Host "All scripts passed syntax check" -ForegroundColor Green
+
+  pester-install-helpers:
+    runs-on: windows-latest
+    needs: test-scripts
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Pester and run install helper tests
+        shell: powershell
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name Pester -MinimumVersion 5.0.0 -MaximumVersion 5.99.99 -Force -Scope CurrentUser -SkipPublisherCheck
+          Invoke-Pester -Path ./tests/windows/install-helpers.Tests.ps1 -CI
 
   test-with-docker:
     runs-on: windows-latest
