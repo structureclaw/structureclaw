@@ -88,6 +88,38 @@ const COMMANDS = [
     group: "infra",
   },
   {
+    name: "docker-install",
+    usage:
+      "sclaw docker-install [--non-interactive --llm-provider <name> --llm-base-url <url> --llm-api-key <key> --llm-model <name>]",
+    description: "Configure .env and bootstrap the docker stack",
+    aliases: ["install-docker"],
+    group: "infra",
+  },
+  {
+    name: "docker-start",
+    usage: "sclaw docker-start",
+    description: "Start or resume the docker stack in detached mode",
+    group: "infra",
+  },
+  {
+    name: "docker-stop",
+    usage: "sclaw docker-stop",
+    description: "Stop the docker stack without removing containers",
+    group: "infra",
+  },
+  {
+    name: "docker-status",
+    usage: "sclaw docker-status",
+    description: "Show docker compose status and health checks",
+    group: "infra",
+  },
+  {
+    name: "docker-logs",
+    usage: "sclaw docker-logs [backend|frontend|nginx|all] [--follow]",
+    description: "Show docker compose logs",
+    group: "infra",
+  },
+  {
     name: "local-up",
     usage: "sclaw local-up",
     description: "Start the local stack and optional infra",

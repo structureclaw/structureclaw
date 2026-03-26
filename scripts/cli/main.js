@@ -1,7 +1,8 @@
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { spawnSync } = require("node:child_process");
+const readline = require("node:readline/promises");
+const { spawn, spawnSync } = require("node:child_process");
 
 const { ALIAS_TO_COMMAND, COMMANDS, COMMAND_NAMES } = require("./command-manifest");
 const runtime = require("./runtime");
@@ -68,6 +69,431 @@ function log(message = "") {
 
 function getCliEntryPath(rootDir) {
   return path.join(rootDir, "sclaw");
+}
+
+function parseCliOptions(args) {
+  const positionals = [];
+  const flags = new Map();
+
+  for (let index = 0; index < args.length; index += 1) {
+    const current = args[index];
+    if (!current.startsWith("--")) {
+      positionals.push(current);
+      continue;
+    }
+
+    const separator = current.indexOf("=");
+    if (separator > 2) {
+      flags.set(current.slice(2, separator), current.slice(separator + 1));
+      continue;
+    }
+
+    const key = current.slice(2);
+    const next = args[index + 1];
+    if (next && !next.startsWith("--")) {
+      flags.set(key, next);
+      index += 1;
+      continue;
+    }
+
+    flags.set(key, true);
+  }
+
+  return { flags, positionals };
+}
+
+function maskSecret(value) {
+  if (!value) {
+    return "";
+  }
+  if (value.length <= 8) {
+    return `${value.slice(0, 2)}***`;
+  }
+  return `${value.slice(0, 4)}***${value.slice(-2)}`;
+}
+
+function replaceEnvValue(rawText, key, value) {
+  const safeValue = String(value ?? "");
+  const linePattern = new RegExp(`^${key}=.*$`, "mu");
+  const nextLine = `${key}=${safeValue}`;
+
+  if (linePattern.test(rawText)) {
+    return rawText.replace(linePattern, nextLine);
+  }
+
+  const suffix = rawText.endsWith(os.EOL) || rawText.length === 0 ? "" : os.EOL;
+  return `${rawText}${suffix}${nextLine}${os.EOL}`;
+}
+
+function normalizeChatCompletionsUrl(baseUrl) {
+  const trimmed = String(baseUrl || "").trim().replace(/\/+$/u, "");
+  if (!trimmed) {
+    return "";
+  }
+  if (trimmed.endsWith("/chat/completions")) {
+    return trimmed;
+  }
+  return `${trimmed}/chat/completions`;
+}
+
+async function testApiConnection(config) {
+  const targetUrl = normalizeChatCompletionsUrl(config.baseUrl);
+  if (!targetUrl) {
+    return { ok: false, message: "Missing LLM base URL." };
+  }
+
+  try {
+    const response = await fetch(targetUrl, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${config.apiKey}`,
+      },
+      body: JSON.stringify({
+        model: config.model,
+        messages: [{ role: "user", content: "Hi" }],
+        max_tokens: 5,
+      }),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      return {
+        ok: false,
+        message: `${response.status} ${response.statusText}${text ? `: ${text}` : ""}`,
+      };
+    }
+    return { ok: true, message: "API connection successful / API 连接成功" };
+  } catch (error) {
+    return {
+      ok: false,
+      message: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
+function findDockerDesktopExecutable() {
+  if (!runtime.isWindows()) {
+    return null;
+  }
+
+  const candidates = [
+    path.join(process.env.ProgramFiles || "", "Docker", "Docker", "Docker Desktop.exe"),
+    path.join(process.env["ProgramFiles(x86)"] || "", "Docker", "Docker", "Docker Desktop.exe"),
+  ].filter(Boolean);
+
+  return candidates.find((candidate) => runtime.pathExists(candidate)) || null;
+}
+
+function isDockerInstalled() {
+  return runtime.hasCommand("docker") || Boolean(findDockerDesktopExecutable());
+}
+
+function isDockerServiceReady() {
+  if (!runtime.hasCommand("docker")) {
+    return false;
+  }
+  const result = spawnSync("docker", ["version", "--format", "{{.Server.Version}}"], {
+    stdio: ["ignore", "pipe", "ignore"],
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  return result.status === 0 && Boolean(result.stdout.trim());
+}
+
+function launchDockerDesktop() {
+  const executable = findDockerDesktopExecutable();
+  if (!executable) {
+    return false;
+  }
+
+  const child = spawn(executable, [], {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  child.unref();
+  return true;
+}
+
+async function waitForDockerService(timeoutMs = 120000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (isDockerServiceReady()) {
+      return true;
+    }
+    await runtime.sleep(3000);
+  }
+  return false;
+}
+
+async function ensureDockerReady(timeoutMs = 120000) {
+  if (!isDockerInstalled()) {
+    throw new Error(
+      "Docker is required for this command. Install Docker Desktop / Docker Engine and retry.",
+    );
+  }
+
+  if (isDockerServiceReady()) {
+    return;
+  }
+
+  if (runtime.isWindows() && launchDockerDesktop()) {
+    log("Starting Docker Desktop... / 正在启动 Docker Desktop...");
+    if (await waitForDockerService(timeoutMs)) {
+      log("Docker service is ready / Docker 服务已就绪");
+      return;
+    }
+  }
+
+  throw new Error(
+    "Docker service is not ready. Start Docker Desktop and retry. / Docker 服务未就绪，请先启动 Docker Desktop 后重试。",
+  );
+}
+
+async function promptForDockerInstallConfig(defaults) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    const providerInput = await rl.question(
+      `LLM provider / 模型提供商 [${defaults.provider}]: `,
+    );
+    const baseUrlInput = await rl.question(
+      `LLM base URL / 接口地址${defaults.baseUrl ? ` [${defaults.baseUrl}]` : ""}: `,
+    );
+    const modelInput = await rl.question(
+      `LLM model / 模型名称${defaults.model ? ` [${defaults.model}]` : ""}: `,
+    );
+    const apiKeyPrompt = defaults.apiKey
+      ? `LLM API key / 密钥 [press Enter to keep ${maskSecret(defaults.apiKey)}]: `
+      : "LLM API key / 密钥: ";
+    const apiKeyInput = await rl.question(apiKeyPrompt);
+
+    return {
+      provider: providerInput.trim() || defaults.provider,
+      baseUrl: baseUrlInput.trim() || defaults.baseUrl,
+      model: modelInput.trim() || defaults.model,
+      apiKey: apiKeyInput.trim() || defaults.apiKey,
+    };
+  } finally {
+    rl.close();
+  }
+}
+
+async function collectDockerInstallConfig(rawArgs, env) {
+  const { flags } = parseCliOptions(rawArgs);
+  const defaults = {
+    provider: String(flags.get("llm-provider") || env.LLM_PROVIDER || "openai"),
+    baseUrl: String(flags.get("llm-base-url") || env.LLM_BASE_URL || ""),
+    apiKey: String(flags.get("llm-api-key") || env.LLM_API_KEY || env.OPENAI_API_KEY || env.ZAI_API_KEY || ""),
+    model: String(flags.get("llm-model") || env.LLM_MODEL || ""),
+  };
+  const nonInteractive =
+    flags.has("non-interactive") || !process.stdin.isTTY || !process.stdout.isTTY;
+  const skipApiTest = flags.has("skip-api-test");
+
+  const config = nonInteractive
+    ? defaults
+    : await promptForDockerInstallConfig(defaults);
+
+  const missing = [
+    ["--llm-provider", config.provider],
+    ["--llm-base-url", config.baseUrl],
+    ["--llm-api-key", config.apiKey],
+    ["--llm-model", config.model],
+  ].filter(([, value]) => !String(value || "").trim());
+
+  if (missing.length > 0) {
+    throw new Error(
+      `docker-install requires ${missing.map(([name]) => name).join(", ")}. Add the flags or run interactively.`,
+    );
+  }
+
+  return {
+    provider: config.provider.trim(),
+    baseUrl: config.baseUrl.trim(),
+    apiKey: config.apiKey.trim(),
+    model: config.model.trim(),
+    skipApiTest,
+  };
+}
+
+function persistDockerEnv(paths, config) {
+  const templatePath = runtime.pathExists(paths.envFile) ? paths.envFile : paths.envExampleFile;
+  let content = fs.readFileSync(templatePath, "utf8");
+  content = replaceEnvValue(content, "LLM_PROVIDER", config.provider);
+  content = replaceEnvValue(content, "LLM_BASE_URL", config.baseUrl);
+  content = replaceEnvValue(content, "LLM_API_KEY", config.apiKey);
+  content = replaceEnvValue(content, "LLM_MODEL", config.model);
+  fs.writeFileSync(paths.envFile, content);
+}
+
+function getDockerPorts(env) {
+  return {
+    frontendPort: env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT,
+    backendPort: env.PORT || runtime.DEFAULT_BACKEND_PORT,
+  };
+}
+
+async function waitForDockerServices(env, timeoutMs = 180000) {
+  const { frontendPort, backendPort } = getDockerPorts(env);
+  const services = [
+    { name: "frontend", url: `http://localhost:${frontendPort}`, method: "HEAD" },
+    { name: "backend", url: `http://localhost:${backendPort}/health`, method: "GET" },
+  ];
+  const ready = new Set();
+  const deadline = Date.now() + timeoutMs;
+
+  while (Date.now() < deadline) {
+    for (const service of services) {
+      if (ready.has(service.name)) {
+        continue;
+      }
+      if (await runtime.requestUrl(service.url, service.method)) {
+        ready.add(service.name);
+        log(`${service.name} ready / ${service.name} 已就绪`);
+      }
+    }
+    if (ready.size === services.length) {
+      return true;
+    }
+    await runtime.sleep(5000);
+  }
+
+  return false;
+}
+
+async function runDockerCompose(paths, composeArgs, options = {}) {
+  await ensureDockerReady(options.timeoutMs);
+  await runtime.runCommand("docker", ["compose", "-f", paths.dockerComposeFile, ...composeArgs], {
+    cwd: paths.rootDir,
+    env: options.env,
+    stdio: options.stdio,
+  });
+}
+
+function readDockerCompose(paths, composeArgs) {
+  return spawnSync("docker", ["compose", "-f", paths.dockerComposeFile, ...composeArgs], {
+    cwd: paths.rootDir,
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
+    windowsHide: true,
+  });
+}
+
+async function showDockerHealth(env) {
+  const { frontendPort, backendPort } = getDockerPorts(env);
+  log("Docker service health:");
+  log(
+    (await runtime.requestUrl(`http://localhost:${frontendPort}`, "HEAD"))
+      ? `frontend: healthy / 健康 http://localhost:${frontendPort}`
+      : "frontend: unavailable / 不可用",
+  );
+  log(
+    (await runtime.requestUrl(`http://localhost:${backendPort}/health`))
+      ? `backend: healthy / 健康 http://localhost:${backendPort}/health`
+      : "backend: unavailable / 不可用",
+  );
+}
+
+async function showDockerStatus(paths, env) {
+  await ensureDockerReady();
+  const result = readDockerCompose(paths, ["ps"]);
+  if (result.stdout.trim()) {
+    process.stdout.write(`${result.stdout.trim()}${os.EOL}`);
+  } else {
+    log("No docker compose services found.");
+  }
+  if (result.status !== 0 && result.stderr.trim()) {
+    process.stderr.write(`${result.stderr.trim()}${os.EOL}`);
+  }
+  log("");
+  await showDockerHealth(env);
+}
+
+async function showDockerLogs(paths, args) {
+  const { flags, positionals } = parseCliOptions(args);
+  const target = positionals[0] || "all";
+  const follow = flags.has("follow");
+  const composeArgs = ["logs", "--tail", "80"];
+
+  if (follow) {
+    composeArgs.push("-f");
+  }
+  if (target !== "all") {
+    composeArgs.push(target);
+  }
+
+  await runDockerCompose(paths, composeArgs);
+}
+
+async function invokeDockerStart(rootDir, env, options = {}) {
+  const { paths } = runtime.loadProjectEnvironment(rootDir, log);
+
+  if (!options.skipEnvCheck && !runtime.pathExists(paths.envFile)) {
+    throw new Error(
+      `Missing ${paths.envFile}. Run \`sclaw docker-install\` first to configure the docker stack.`,
+    );
+  }
+
+  const psResult = readDockerCompose(paths, ["ps", "-q"]);
+  const hasExistingContainers = psResult.status === 0 && Boolean(psResult.stdout.trim());
+  const composeArgs = options.build
+    ? ["up", "--build", "-d"]
+    : hasExistingContainers
+      ? ["start"]
+      : ["up", "-d"];
+
+  await runDockerCompose(paths, composeArgs, { env });
+
+  const refreshed = runtime.loadProjectEnvironment(rootDir, log).env;
+  if (options.waitForServices !== false) {
+    log("Waiting for docker services... / 等待 Docker 服务启动...");
+    const ready = await waitForDockerServices(refreshed, options.timeoutMs || 180000);
+    if (!ready) {
+      log("Some docker services are not ready yet / 部分 Docker 服务尚未完全就绪");
+    }
+  }
+
+  log("");
+  await showDockerStatus(paths, refreshed);
+}
+
+async function invokeDockerStop(rootDir) {
+  const { paths } = runtime.loadProjectEnvironment(rootDir, log);
+  await runDockerCompose(paths, ["stop"]);
+  log("Docker services stopped / Docker 服务已停止");
+}
+
+async function invokeDockerInstall(rootDir, env, rawArgs) {
+  const { paths } = runtime.loadProjectEnvironment(rootDir, log);
+  const config = await collectDockerInstallConfig(rawArgs, env);
+
+  log("Saving docker configuration... / 正在写入 Docker 配置...");
+  persistDockerEnv(paths, config);
+  log(`LLM provider: ${config.provider}`);
+  log(`LLM base URL: ${config.baseUrl}`);
+  log(`LLM API key: ${maskSecret(config.apiKey)}`);
+  log(`LLM model: ${config.model}`);
+
+  if (!config.skipApiTest) {
+    log("Testing API connection... / 正在测试 API 连接...");
+    const testResult = await testApiConnection(config);
+    if (testResult.ok) {
+      log(testResult.message);
+    } else {
+      log(`API test failed, continuing anyway / API 测试失败，继续执行: ${testResult.message}`);
+    }
+  }
+
+  await invokeDockerStart(rootDir, runtime.loadProjectEnvironment(rootDir, log).env, {
+    build: true,
+    skipEnvCheck: true,
+    waitForServices: true,
+    timeoutMs: 180000,
+  });
 }
 
 async function ensureUv(rootDir) {
@@ -544,10 +970,25 @@ async function dispatch(commandName, rawArgs, rootDir) {
       await invokeDbInit(rootDir, env);
       return;
     case "docker-up":
-      await runtime.runCommand("docker", ["compose", "-f", paths.dockerComposeFile, "up", "--build"]);
+      await runDockerCompose(paths, ["up", "--build", "-d"], { env });
       return;
     case "docker-down":
-      await runtime.runCommand("docker", ["compose", "-f", paths.dockerComposeFile, "down"]);
+      await runDockerCompose(paths, ["down"], { env });
+      return;
+    case "docker-install":
+      await invokeDockerInstall(rootDir, env, rawArgs);
+      return;
+    case "docker-start":
+      await invokeDockerStart(rootDir, env, { waitForServices: true });
+      return;
+    case "docker-stop":
+      await invokeDockerStop(rootDir);
+      return;
+    case "docker-status":
+      await showDockerStatus(paths, env);
+      return;
+    case "docker-logs":
+      await showDockerLogs(paths, rawArgs);
       return;
     case "local-up":
       await invokeLocalUp(rootDir, env, { skipInfra: false });
