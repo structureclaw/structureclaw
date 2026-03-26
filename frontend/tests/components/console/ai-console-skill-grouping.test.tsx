@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AIConsole } from '@/components/chat/ai-console'
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+import { API_BASE } from '@/lib/api-base'
 
 describe('AIConsole grouped skill picker', () => {
   beforeEach(() => {
@@ -119,7 +118,7 @@ describe('AIConsole grouped skill picker', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/category view/i)).toBeInTheDocument()
       expect(screen.getAllByText(/structure-type skills/i).length).toBeGreaterThan(0)
-      expect(screen.getByRole('button', { name: /clear category/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /select category/i })).toBeInTheDocument()
     })
 
     await user.click(screen.getByRole('button', { name: 'Beam' }))

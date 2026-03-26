@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AIConsole } from '@/components/chat/ai-console'
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+import { API_BASE } from '@/lib/api-base'
 
 describe('AIConsole engine filter reasons', () => {
   beforeEach(() => {
@@ -58,7 +57,16 @@ describe('AIConsole engine filter reasons', () => {
           ok: true,
           json: async () => ({
             generatedAt: '2026-03-17T00:00:00.000Z',
-            skills: [{ id: 'beam' }],
+            skills: [{ id: 'beam', domain: 'structure-type' }],
+            domainSummaries: [
+              {
+                domain: 'structure-type',
+                skillIds: ['beam'],
+              },
+            ],
+            skillDomainById: {
+              beam: 'structure-type',
+            },
             engines: [
               { id: 'engine-frame-a', name: 'Frame Engine A' },
               { id: 'engine-truss-a', name: 'Truss Engine A' },
@@ -109,9 +117,11 @@ describe('AIConsole engine filter reasons', () => {
     render(<AIConsole />)
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /expand engineering context/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /expand skills/i })).toBeInTheDocument()
     })
 
+    await user.click(screen.getByRole('button', { name: /expand skills/i }))
+    await user.click(await screen.findByRole('button', { name: 'Beam' }))
     await user.click(screen.getByRole('button', { name: /expand engineering context/i }))
     await user.click(screen.getByRole('button', { name: /expand engine settings/i }))
     await user.click(screen.getByRole('button', { name: /change engine/i }))

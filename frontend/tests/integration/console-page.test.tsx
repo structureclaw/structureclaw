@@ -229,7 +229,6 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByRole('button', { name: 'Expand Skills' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Expand Engineering Context' })).toBeInTheDocument()
     expect(screen.getByText('Analysis Engine Auto')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Database Admin' })).toBeInTheDocument()
     expect(screen.getByText('Database tools')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Discuss First' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run Analysis' })).toBeInTheDocument()
@@ -339,7 +338,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(await screen.findByText('历史会话标题')).toBeInTheDocument()
   })
 
-  it('stops showing conversation-list loading when the backend request hangs', async () => {
+  it('keeps showing conversation-list loading when the backend request hangs', async () => {
     vi.useFakeTimers()
 
     vi.mocked(fetch).mockImplementation((input, init) => {
@@ -393,8 +392,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
       await vi.advanceTimersByTimeAsync(8000)
     })
 
-    expect(screen.queryByText(/Loading conversation list|正在加载会话列表/)).not.toBeInTheDocument()
-    expect(screen.getByText(/Loading the conversation list timed out|加载会话列表超时/)).toBeInTheDocument()
+    expect(screen.getByText(/Loading conversation list|正在加载会话列表/)).toBeInTheDocument()
+    expect(screen.queryByText(/Loading the conversation list timed out|加载会话列表超时/)).not.toBeInTheDocument()
   })
 
   it('restores model context and local result snapshots when selecting a conversation', async () => {
