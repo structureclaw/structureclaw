@@ -39,7 +39,7 @@ frontend/   Next.js 前端应用
 backend/    Fastify API、agent skills、托管分析运行时、Prisma 模型、后端测试
 scripts/    启动脚本与契约/回归校验脚本
 docs/       手册与协议参考文档
-uploads/    报告工件输出目录
+.runtime/   本地运行数据、日志与报告工件输出目录
 ```
 
 ## 5. 快速上手

@@ -39,7 +39,7 @@ frontend/   Next.js application
 backend/    Fastify API, agent skills, hosted analysis runtime, Prisma schema, tests
 scripts/    startup scripts and contract/regression validators
 docs/       handbook and protocol reference
-uploads/    generated report artifacts
+.runtime/   local runtime data, logs, and generated report artifacts
 ```
 
 ## 5. Getting Started

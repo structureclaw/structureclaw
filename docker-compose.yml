@@ -46,7 +46,7 @@ services:
     ports:
       - "${PORT:-8000}:${PORT:-8000}"
     volumes:
-      - ./uploads:/app/uploads
+      - ./.runtime:/app/.runtime
       - ./.runtime/data:/.runtime/data
     restart: unless-stopped
 

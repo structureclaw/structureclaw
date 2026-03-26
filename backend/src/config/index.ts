@@ -8,6 +8,20 @@ const __dirname = path.dirname(__filename);
 const rootEnvPath = path.resolve(__dirname, '../../../.env');
 const defaultSqliteDatabasePath = path.resolve(__dirname, '../../../.runtime/data/structureclaw.db');
 const defaultSqliteDatabaseUrl = `file:${defaultSqliteDatabasePath}`;
+const defaultUploadDir = path.resolve(__dirname, '../../../.runtime');
+
+function resolveUploadDir(rawValue: string | undefined): string {
+  const trimmed = rawValue?.trim();
+  if (!trimmed) {
+    return defaultUploadDir;
+  }
+
+  if (path.isAbsolute(trimmed)) {
+    return trimmed;
+  }
+
+  return path.resolve(__dirname, '../../../', trimmed);
+}
 
 dotenv.config({ path: rootEnvPath });
 
@@ -83,7 +97,7 @@ export const config = {
   corsOrigins,
 
   // 文件存储
-  uploadDir: process.env.UPLOAD_DIR || './uploads',
+  uploadDir: resolveUploadDir(process.env.UPLOAD_DIR),
   maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '104857600', 10), // 100MB
 
   // 日志级别

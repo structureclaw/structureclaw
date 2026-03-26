@@ -35,7 +35,3 @@ frontend/coverage/
 
 # Runtime directories and generated artifacts
 .runtime/
-uploads/*
-!uploads/.gitkeep
-backend/uploads/*
-!backend/uploads/.gitkeep
