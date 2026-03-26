@@ -26,6 +26,12 @@ describe('AIConsole grouped skill picker', () => {
               description: { zh: 'truss', en: 'truss' },
               autoLoadByDefault: true,
             },
+            {
+              id: 'seismic-policy',
+              name: { zh: '抗震策略', en: 'Seismic Policy' },
+              description: { zh: 'policy', en: 'policy' },
+              autoLoadByDefault: true,
+            },
           ]),
         } as Response
       }
@@ -38,6 +44,7 @@ describe('AIConsole grouped skill picker', () => {
             skills: [
               { id: 'beam', domain: 'structure-type' },
               { id: 'truss', domain: 'structure-type' },
+              { id: 'seismic-policy', domain: 'analysis-strategy' },
             ],
             domainSummaries: [
               {
@@ -45,19 +52,27 @@ describe('AIConsole grouped skill picker', () => {
                 skillIds: ['beam', 'truss'],
                 autoLoadSkillIds: ['beam', 'truss'],
               },
+              {
+                domain: 'analysis-strategy',
+                skillIds: ['seismic-policy'],
+                autoLoadSkillIds: ['seismic-policy'],
+              },
             ],
             skillDomainById: {
               beam: 'structure-type',
               truss: 'structure-type',
+              'seismic-policy': 'analysis-strategy',
             },
             validEngineIdsBySkill: {
               beam: ['engine-frame-a'],
               truss: ['engine-truss-a'],
+              'seismic-policy': ['engine-seismic-a'],
             },
             filteredEngineReasonsBySkill: {},
             validSkillIdsByEngine: {
               'engine-frame-a': ['beam'],
               'engine-truss-a': ['truss'],
+              'engine-seismic-a': ['seismic-policy'],
             },
           }),
         } as Response
@@ -157,6 +172,24 @@ describe('AIConsole grouped skill picker', () => {
     await waitFor(() => {
       expect(screen.getAllByText(/material & constitutive skills/i).length).toBeGreaterThan(0)
       expect(screen.getByText(/no installed local skills in this category yet/i)).toBeInTheDocument()
+    })
+  })
+
+  it('preselects analysis strategy skills for a new conversation', async () => {
+    const user = userEvent.setup()
+    render(<AIConsole />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /expand skills/i })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /expand skills/i }))
+    await user.selectOptions(screen.getByLabelText(/category view/i), 'analysis-strategy')
+
+    await waitFor(() => {
+      const skillButton = screen.getByRole('button', { name: 'Seismic Policy' })
+      expect(skillButton.className).toContain('border-cyan-300/50')
+      expect(screen.getByRole('button', { name: /clear category/i })).toBeInTheDocument()
     })
   })
 })

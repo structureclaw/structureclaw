@@ -1181,6 +1181,7 @@ export function AIConsole() {
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const shouldStickToBottomRef = useRef(true)
+  const seededDefaultAnalysisStrategySkillsRef = useRef(false)
   // 追踪最后有效的结果用于持久化（不会被引擎切换清除）
   const lastValidResultRef = useRef<AgentResult | null>(null)
   const lastValidResultVisualizationRef = useRef<VisualizationSnapshot | null>(null)
@@ -1233,6 +1234,13 @@ export function AIConsole() {
   const hasSelectedCodeCheckSkill = useMemo(
     () => selectedSkillIds.some((skillId) => skillDomainById[skillId] === 'code-check'),
     [selectedSkillIds, skillDomainById]
+  )
+
+  const defaultSelectedSkillIds = useMemo(
+    () => availableSkills
+      .map((skill) => skill.id)
+      .filter((skillId) => skillDomainById[skillId] === 'analysis-strategy'),
+    [availableSkills, skillDomainById]
   )
 
   const groupedSkills = useMemo(() => {
@@ -1431,6 +1439,15 @@ export function AIConsole() {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    if (conversationId || seededDefaultAnalysisStrategySkillsRef.current || selectedSkillIds.length > 0 || defaultSelectedSkillIds.length === 0) {
+      return
+    }
+    // Transitional default: preselect installed analysis-strategy skills for new conversations.
+    setSelectedSkillIds(defaultSelectedSkillIds)
+    seededDefaultAnalysisStrategySkillsRef.current = true
+  }, [conversationId, defaultSelectedSkillIds, selectedSkillIds.length])
 
   useEffect(() => {
     let active = true
@@ -2025,10 +2042,12 @@ export function AIConsole() {
   }
 
   function resetConsoleState() {
+    const nextDefaultSelectedSkillIds = defaultSelectedSkillIds
     setConversationId('')
     setMessages([initialAssistantMessage])
     setModelText('')
-    setSelectedSkillIds([])
+    setSelectedSkillIds(nextDefaultSelectedSkillIds)
+    seededDefaultAnalysisStrategySkillsRef.current = nextDefaultSelectedSkillIds.length > 0
     setModelSyncMessage('')
     setLatestResult(null)
     setLatestModelVisualizationSnapshot(null)
