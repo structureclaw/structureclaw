@@ -428,19 +428,20 @@ class AnalysisEngineRegistry:
         if self._opensees_runtime_reason is not _UNSET:
             return self._opensees_runtime_reason if isinstance(self._opensees_runtime_reason, str) else None
 
-        python_root = Path(__file__).resolve().parents[1]
+        runtime_root = Path(__file__).resolve().parent
+        probe_path = runtime_root.parent / "opensees-static" / "opensees_runtime.py"
         env = os.environ.copy()
         existing_pythonpath = env.get("PYTHONPATH", "").strip()
         env["PYTHONPATH"] = (
-            f"{python_root}{os.pathsep}{existing_pythonpath}"
+            f"{runtime_root}{os.pathsep}{existing_pythonpath}"
             if existing_pythonpath
-            else str(python_root)
+            else str(runtime_root)
         )
 
         try:
             probe = subprocess.run(
-                [sys.executable, "-m", "adapters.opensees.runtime", "--json"],
-                cwd=python_root,
+                [sys.executable, str(probe_path), "--json"],
+                cwd=runtime_root,
                 env=env,
                 capture_output=True,
                 text=True,
@@ -513,7 +514,7 @@ class AnalysisEngineRegistry:
         return manifests
 
     def _discover_builtin_skills(self) -> List[Dict[str, Any]]:
-        analysis_root = Path(__file__).resolve().parents[2]
+        analysis_root = Path(__file__).resolve().parents[1]
         skills: List[Dict[str, Any]] = []
 
         for child in analysis_root.iterdir():
@@ -646,5 +647,14 @@ def _load_runtime_module(skill_id: str, runtime_path: Path):
 
     module = module_from_spec(spec)
     sys.modules[module_name] = module
-    spec.loader.exec_module(module)
+    skill_dir = str(runtime_path.parent)
+    inserted = False
+    if skill_dir not in sys.path:
+        sys.path.insert(0, skill_dir)
+        inserted = True
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        if inserted and sys.path and sys.path[0] == skill_dir:
+            sys.path.pop(0)
     return module

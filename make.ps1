@@ -376,7 +376,8 @@ function Test-OpenSeesRuntime {
     $codeCheckSkillRoot = Join-Path $RootDir 'backend/src/agent-skills/code-check'
     $materialSkillRoot = Join-Path $RootDir 'backend/src/agent-skills/material'
     $env:PYTHONPATH = "$AnalysisPythonRoot;$geometrySkillRoot;$codeCheckSkillRoot;$materialSkillRoot"
-    & $AnalysisPython -m adapters.opensees.runtime --json *> $null
+    $OpenSeesProbe = Join-Path $RootDir 'backend/src/agent-skills/analysis/opensees-static/opensees_runtime.py'
+    & $AnalysisPython $OpenSeesProbe --json *> $null
     return $LASTEXITCODE -eq 0
   }
   finally {

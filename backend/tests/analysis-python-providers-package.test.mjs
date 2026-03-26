@@ -11,6 +11,15 @@ const analysisPythonRoot = path.join(
   'analysis',
   'runtime',
 );
+const openseesProbePath = path.join(
+  repoRoot,
+  'backend',
+  'src',
+  'agent-skills',
+  'analysis',
+  'opensees-static',
+  'opensees_runtime.py',
+);
 
 function resolvePythonCommand() {
   if (process.env.PYTHON_FOR_TEST) {
@@ -24,14 +33,9 @@ function resolvePythonCommand() {
 
 describe('analysis python providers package', () => {
   test('should not require structure_protocol just to start the opensees runtime module', () => {
-    const script = [
-      'import importlib, sys',
-      `sys.path.insert(0, r"${analysisPythonRoot}")`,
-      'importlib.import_module("adapters.opensees.runtime")',
-    ].join('\n');
     const pythonCommand = resolvePythonCommand();
 
-    const result = spawnSync(pythonCommand.executable, [...pythonCommand.args, '-c', script], {
+    const result = spawnSync(pythonCommand.executable, [...pythonCommand.args, openseesProbePath, '--json'], {
       encoding: 'utf8',
       env: {
         ...process.env,
@@ -39,7 +43,8 @@ describe('analysis python providers package', () => {
       },
     });
 
-    expect(result.status).toBe(0);
+    expect([0, 1]).toContain(result.status);
     expect(result.stderr).not.toContain("No module named 'structure_protocol'");
+    expect(result.stdout).not.toContain("No module named 'structure_protocol'");
   });
 });

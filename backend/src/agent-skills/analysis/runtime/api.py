@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from typing import List, Dict, Any, Optional
 import logging
 
-from adapters.registry import AnalysisEngineRegistry
+from registry import AnalysisEngineRegistry
 from structure_protocol.structure_model_v1 import StructureModelV1
 
 # 配置日志
