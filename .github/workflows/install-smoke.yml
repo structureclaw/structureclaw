@@ -63,6 +63,7 @@ jobs:
         run: bash scripts/ci/docker-compose-smoke.sh
 
   docker-compose-smoke-windows:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 45
     steps:
