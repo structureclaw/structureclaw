@@ -7,7 +7,7 @@ import { API_BASE } from '@/lib/api-base'
 describe('AIConsole grouped skill picker', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
-    vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+    vi.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input)
 
       if (url === `${API_BASE}/api/v1/agent/skills`) {
@@ -32,6 +32,12 @@ describe('AIConsole grouped skill picker', () => {
               description: { zh: 'policy', en: 'policy' },
               autoLoadByDefault: true,
             },
+            {
+              id: 'opensees-nonlinear',
+              name: { zh: '非线性策略', en: 'Nonlinear Policy' },
+              description: { zh: 'policy', en: 'policy' },
+              autoLoadByDefault: true,
+            },
           ]),
         } as Response
       }
@@ -45,6 +51,7 @@ describe('AIConsole grouped skill picker', () => {
               { id: 'beam', domain: 'structure-type' },
               { id: 'truss', domain: 'structure-type' },
               { id: 'seismic-policy', domain: 'analysis-strategy' },
+              { id: 'opensees-nonlinear', domain: 'analysis-strategy' },
             ],
             domainSummaries: [
               {
@@ -54,25 +61,28 @@ describe('AIConsole grouped skill picker', () => {
               },
               {
                 domain: 'analysis-strategy',
-                skillIds: ['seismic-policy'],
-                autoLoadSkillIds: ['seismic-policy'],
+                skillIds: ['seismic-policy', 'opensees-nonlinear'],
+                autoLoadSkillIds: ['seismic-policy', 'opensees-nonlinear'],
               },
             ],
             skillDomainById: {
               beam: 'structure-type',
               truss: 'structure-type',
               'seismic-policy': 'analysis-strategy',
+              'opensees-nonlinear': 'analysis-strategy',
             },
             validEngineIdsBySkill: {
               beam: ['engine-frame-a'],
               truss: ['engine-truss-a'],
               'seismic-policy': ['engine-seismic-a'],
+              'opensees-nonlinear': ['engine-nonlinear-a'],
             },
             filteredEngineReasonsBySkill: {},
             validSkillIdsByEngine: {
               'engine-frame-a': ['beam'],
               'engine-truss-a': ['truss'],
               'engine-seismic-a': ['seismic-policy'],
+              'engine-nonlinear-a': ['opensees-nonlinear'],
             },
           }),
         } as Response
@@ -99,6 +109,24 @@ describe('AIConsole grouped skill picker', () => {
         return {
           ok: true,
           json: async () => ([]),
+        } as Response
+      }
+
+      if (url === `${API_BASE}/api/v1/chat/conversation` && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({ id: 'conv-ambiguous-analysis', title: 'Ambiguous Analysis', type: 'analysis' }),
+        } as Response
+      }
+
+      if (url === `${API_BASE}/api/v1/chat/execute`) {
+        return {
+          ok: true,
+          json: async () => ({
+            response: 'ok',
+            success: true,
+            analysis: { meta: { analysisType: 'static' }, data: {} },
+          }),
         } as Response
       }
 
@@ -191,5 +219,28 @@ describe('AIConsole grouped skill picker', () => {
       expect(skillButton.className).toContain('border-cyan-300/50')
       expect(screen.getByRole('button', { name: /clear category/i })).toBeInTheDocument()
     })
+  })
+
+  it('does not send analysis type from frontend when executing with selected analysis skills', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.mocked(global.fetch)
+    render(<AIConsole />)
+
+    const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
+    await user.type(composer, 'Analyze this beam with the default policy selection')
+    await user.click(screen.getByRole('button', { name: /run analysis/i }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${API_BASE}/api/v1/chat/execute`,
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
+
+    const executeCall = fetchMock.mock.calls.find(([input]) => String(input) === `${API_BASE}/api/v1/chat/execute`)
+    expect(executeCall).toBeTruthy()
+    const requestInit = executeCall?.[1] as RequestInit | undefined
+    const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { analysisType?: string } }
+    expect(body.context?.analysisType).toBeUndefined()
   })
 })

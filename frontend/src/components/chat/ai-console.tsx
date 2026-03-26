@@ -800,23 +800,6 @@ function extractEngineLabel(
   }
 }
 
-function inferAnalysisTypeFromSkillIds(skillIds: string[]): AnalysisType | undefined {
-  const normalized = skillIds.map((skillId) => skillId.toLowerCase())
-  if (normalized.some((skillId) => skillId.includes('nonlinear'))) {
-    return 'nonlinear'
-  }
-  if (normalized.some((skillId) => skillId.includes('seismic'))) {
-    return 'seismic'
-  }
-  if (normalized.some((skillId) => skillId.includes('dynamic'))) {
-    return 'dynamic'
-  }
-  if (normalized.some((skillId) => skillId.includes('static'))) {
-    return 'static'
-  }
-  return undefined
-}
-
 function AnalysisPanel({
   result,
   modelVisualizationSnapshot,
@@ -2241,7 +2224,6 @@ export function AIConsole() {
       const nextConversationId = await ensureConversation(trimmedInput)
       activeConversationId = nextConversationId
       const explicitSkillIds = selectedSkillIds.length > 0 ? selectedSkillIds : undefined
-      const inferredAnalysisType = inferAnalysisTypeFromSkillIds(selectedSkillIds)
       const contextPayload =
         effectiveAction === 'execute'
           ? {
@@ -2249,7 +2231,6 @@ export function AIConsole() {
               skillIds: explicitSkillIds,
               model: parsedModel.model,
               modelFormat: parsedModel.model ? 'structuremodel-v1' : undefined,
-              analysisType: inferredAnalysisType,
               autoAnalyze: true,
               autoCodeCheck: hasSelectedCodeCheckSkill,
               includeReport: true,
