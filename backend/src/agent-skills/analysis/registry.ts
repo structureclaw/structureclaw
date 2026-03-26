@@ -52,7 +52,8 @@ function parseScalar(raw: string): unknown {
 }
 
 function parseFrontmatter(markdown: string): FrontmatterResult {
-  const trimmed = markdown.trimStart();
+  const normalized = markdown.replace(/\r\n/g, '\n');
+  const trimmed = normalized.trimStart();
   if (!trimmed.startsWith('---\n')) {
     return { metadata: {} };
   }
