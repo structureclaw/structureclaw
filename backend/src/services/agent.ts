@@ -1839,7 +1839,7 @@ export class AgentService {
     report: NonNullable<AgentRunResult['report']>,
     format: AgentReportFormat,
   ): Promise<NonNullable<AgentRunResult['artifacts']>> {
-    const reportDir = path.resolve(config.uploadDir, 'reports');
+    const reportDir = config.reportsDir;
     await mkdir(reportDir, { recursive: true });
 
     const artifacts: NonNullable<AgentRunResult['artifacts']> = [];

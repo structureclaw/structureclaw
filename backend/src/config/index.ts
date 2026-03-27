@@ -23,6 +23,19 @@ function resolveUploadDir(rawValue: string | undefined): string {
   return path.resolve(__dirname, '../../../', trimmed);
 }
 
+function resolveReportsDir(rawValue: string | undefined): string {
+  const trimmed = rawValue?.trim();
+  if (!trimmed) {
+    return path.join(defaultUploadDir, 'reports');
+  }
+
+  if (path.isAbsolute(trimmed)) {
+    return trimmed;
+  }
+
+  return path.resolve(__dirname, '../../../', trimmed);
+}
+
 dotenv.config({ path: rootEnvPath });
 
 const redisUrlRaw = process.env.REDIS_URL;
@@ -98,6 +111,8 @@ export const config = {
 
   // 文件存储
   uploadDir: resolveUploadDir(process.env.UPLOAD_DIR),
+  /** Agent 报告落盘目录；默认 <repo>/.runtime/reports，与 UPLOAD_DIR 无关 */
+  reportsDir: resolveReportsDir(process.env.REPORTS_DIR),
   maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '104857600', 10), // 100MB
 
   // 日志级别
