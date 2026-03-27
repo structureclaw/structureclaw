@@ -24,7 +24,7 @@ from structure_protocol.structure_model_v1 import (
 )
 
 
-ROOT_DIR = Path(__file__).resolve().parents[3]
+ROOT_DIR = Path(__file__).resolve().parents[2]
 
 
 def assert_true(condition, message):
