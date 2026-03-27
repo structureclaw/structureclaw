@@ -5,6 +5,7 @@ Thumbs.db
 .idea/
 .claude/
 .kiro/
+.cursor/
 
 # Environment and local runtime config
 .env
