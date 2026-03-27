@@ -10,7 +10,6 @@
     "sclaw": "./sclaw"
   },
   "scripts": {
-    "test:cli": "node --test scripts/cli/*.test.js tests/runner.contract.test.mjs",
     "regression:backend": "node tests/runner.mjs backend-regression",
     "regression:analysis": "node tests/runner.mjs analysis-regression",
     "smoke:native": "node tests/runner.mjs smoke-native",
