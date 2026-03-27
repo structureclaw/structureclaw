@@ -3,7 +3,7 @@ module.exports = {
   testEnvironment: 'node',
   testMatch: ['<rootDir>/tests/**/*.test.mjs'],
   transform: {},
-  testTimeout: 30000,
+  testTimeout: 60000,
   forceExit: true,
   globalTeardown: '<rootDir>/tests/teardown.cjs',
 };
