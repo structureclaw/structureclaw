@@ -1,27 +1,24 @@
 name: Analysis Regression
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
-      - 'backend/src/agent-skills/analysis/**'
-      - 'backend/src/skill-shared/python/**'
+      - 'backend/**'
       - 'scripts/cli/**'
       - 'tests/**'
       - 'sclaw'
       - 'package.json'
-      - '.github/workflows/backend-regression.yml'
       - '.github/workflows/analysis-regression.yml'
   push:
     branches:
       - master
     paths:
-      - 'backend/src/agent-skills/analysis/**'
-      - 'backend/src/skill-shared/python/**'
+      - 'backend/**'
       - 'scripts/cli/**'
       - 'tests/**'
       - 'sclaw'
       - 'package.json'
-      - '.github/workflows/backend-regression.yml'
       - '.github/workflows/analysis-regression.yml'
 
 jobs:
