@@ -33,6 +33,8 @@ test("help output includes unified command surface", () => {
   assert.match(helpText, /sclaw docker-start/);
   assert.match(helpText, /sclaw install-cli/);
   assert.match(helpText, /analysis-regression/);
+  assert.match(helpText, /test-smoke-native/);
+  assert.match(helpText, /test-smoke-docker/);
   assert.match(helpText, /sclaw validate <name>/);
   assert.match(helpText, /sclaw check <name>/);
 });
@@ -73,7 +75,7 @@ test("normalizeSqliteFileUrl resolves relative schema paths", () => {
   assert.doesNotMatch(normalized, /\\/);
 });
 
-test("command manifest covers make lifecycle targets", () => {
+test("command manifest covers the unified sclaw command surface", () => {
   for (const commandName of [
     "install",
     "ensure-uv",
@@ -108,6 +110,8 @@ test("command manifest covers make lifecycle targets", () => {
     "start",
     "restart",
     "logs",
+    "test-smoke-native",
+    "test-smoke-docker",
   ]) {
     assert.ok(COMMAND_NAMES.has(commandName), `${commandName} should exist`);
   }
@@ -181,7 +185,7 @@ test("main routes convert-batch through the JS batch runner", async () => {
         "src",
         "agent-skills",
         "analysis",
-        "python",
+        "runtime",
         "requirements.txt",
       ),
       backendDir: path.join(rootDir, "backend"),

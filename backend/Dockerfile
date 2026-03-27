@@ -1,5 +1,5 @@
 # StructureClaw Backend Dockerfile
-FROM node:20-slim AS builder
+FROM node:20.19.2-slim AS builder
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ COPY . .
 RUN npx prisma generate
 RUN npm run build
 
-FROM node:20-slim AS runner
+FROM node:20.19.2-slim AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production
@@ -35,7 +35,8 @@ COPY --from=builder /app/scripts ./scripts
 COPY --from=builder /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=builder /app/node_modules/prisma ./node_modules/prisma
 COPY --from=builder /app/src/agent-skills ./src/agent-skills
-RUN python3 -m pip install --break-system-packages --no-cache-dir -r /app/src/agent-skills/analysis/python/requirements.txt
+COPY --from=builder /app/src/skill-shared ./src/skill-shared
+RUN python3 -m pip install --break-system-packages --no-cache-dir -r /app/src/agent-skills/analysis/runtime/requirements.txt
 
 EXPOSE ${PORT}
 

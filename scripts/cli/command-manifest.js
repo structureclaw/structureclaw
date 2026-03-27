@@ -229,6 +229,18 @@ const COMMANDS = [
     group: "validation",
   },
   {
+    name: "test-smoke-native",
+    usage: "sclaw test-smoke-native",
+    description: "Run CI-style native install smoke checks",
+    group: "validation",
+  },
+  {
+    name: "test-smoke-docker",
+    usage: "sclaw test-smoke-docker",
+    description: "Run docker compose smoke checks with a generated env file",
+    group: "validation",
+  },
+  {
     name: "validate",
     usage: "sclaw validate <name> [--list]",
     description: "Run a named validation or list available validations",

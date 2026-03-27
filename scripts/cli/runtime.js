@@ -138,7 +138,7 @@ function resolvePaths(rootDir) {
       "src",
       "agent-skills",
       "analysis",
-      "python",
+      "runtime",
       "requirements.txt",
     ),
     analysisPythonRoot: path.join(
@@ -147,7 +147,7 @@ function resolvePaths(rootDir) {
       "src",
       "agent-skills",
       "analysis",
-      "python",
+      "runtime",
     ),
     skillSharedPythonRoot: path.join(rootDir, "backend", "src", "skill-shared", "python"),
     dataInputSkillRoot: path.join(rootDir, "backend", "src", "agent-skills", "data-input"),

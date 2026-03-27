@@ -2,8 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AIConsole } from '@/components/chat/ai-console'
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
+import { API_BASE } from '@/lib/api-base'
 
 describe('AIConsole prompt and thinking details', () => {
   beforeEach(() => {
@@ -42,14 +41,11 @@ describe('AIConsole prompt and thinking details', () => {
       if (url.startsWith(`${API_BASE}/api/v1/agent/capability-matrix`)) {
         return {
           ok: true,
-          json: async () => ({ skills: [{ id: 'beam' }] }),
-        } as Response
-      }
-
-      if (url === `${API_BASE}/api/v1/analysis-engines`) {
-        return {
-          ok: true,
-          json: async () => ({ engines: [] }),
+          json: async () => ({
+            skills: [{ id: 'beam', domain: 'structure-type' }],
+            skillDomainById: { beam: 'structure-type' },
+            domainSummaries: [{ domain: 'structure-type', skillIds: ['beam'] }],
+          }),
         } as Response
       }
 
@@ -80,6 +76,13 @@ describe('AIConsole prompt and thinking details', () => {
           json: async () => ({
             response: 'Execution completed for prompt-debug test.',
             success: true,
+            routing: {
+              selectedSkillIds: ['beam'],
+              structuralSkillId: 'beam',
+              structuralScenarioKey: 'beam',
+              analysisSkillId: 'opensees-static',
+              analysisSkillIds: ['opensees-static'],
+            },
             plan: ['Draft model payload', 'Analyze structure', 'Generate report summary'],
             toolCalls: [
               {
@@ -122,6 +125,8 @@ describe('AIConsole prompt and thinking details', () => {
     render(<AIConsole />)
 
     const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
+    await user.click(screen.getByRole('button', { name: /expand skills/i }))
+    await user.click(screen.getByRole('button', { name: 'Beam' }))
     await user.type(composer, 'Run static beam check for prompt debug test')
     await user.click(screen.getByRole('button', { name: /run analysis/i }))
 
@@ -135,7 +140,9 @@ describe('AIConsole prompt and thinking details', () => {
     await waitFor(() => {
       expect(screen.getByText(/prompt snapshot/i)).toBeInTheDocument()
       expect(screen.getByText(/^skills$/i)).toBeInTheDocument()
+      expect(screen.getByText(/resolved skills/i)).toBeInTheDocument()
       expect(screen.getAllByText(/beam/i).length).toBeGreaterThan(0)
+      expect(screen.getByText(/opensees-static/i)).toBeInTheDocument()
       expect(screen.getByText(/thinking process/i)).toBeInTheDocument()
       expect(screen.getByText(/tool calls/i)).toBeInTheDocument()
       expect(screen.getAllByText(/analyze_structure/i).length).toBeGreaterThan(0)

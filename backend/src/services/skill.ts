@@ -1,5 +1,5 @@
-import type { Prisma } from '@prisma/client';
 import { prisma } from '../utils/database.js';
+import type { InputJsonValue } from '../utils/json.js';
 import { ensureUserId } from '../utils/demo-data.js';
 
 export interface CreateSkillParams {
@@ -231,7 +231,7 @@ export class SkillService {
       data: {
         skillId,
         userId,
-        parameters: params as Prisma.InputJsonValue,
+        parameters: params as InputJsonValue,
       },
     });
 

@@ -23,10 +23,10 @@ beforeAll(() => {
 
 describe('Provider Composition (LAYT-04)', () => {
   describe('Providers Component', () => {
-    it('Providers wraps QueryClientProvider', () => {
+    it('Providers wraps AppStoreProvider', () => {
       const providersPath = path.join(process.cwd(), 'src/app/providers.tsx')
       const content = readFileSync(providersPath, 'utf-8')
-      expect(content).toContain('QueryClientProvider')
+      expect(content).toContain('AppStoreProvider')
     })
 
     it('Providers wraps ThemeProvider', () => {

@@ -1,0 +1,96 @@
+name: Install smoke
+
+on:
+  push:
+    branches: [master, main, 'feat/*']
+    paths:
+      - 'docker-compose.yml'
+      - 'docker/**'
+      - '.env.example'
+      - 'backend/**'
+      - 'frontend/**'
+      - 'scripts/cli/**'
+      - 'sclaw'
+      - 'package.json'
+      - '.github/workflows/install-smoke.yml'
+  pull_request:
+    branches: [master, main]
+    paths:
+      - 'docker-compose.yml'
+      - 'docker/**'
+      - '.env.example'
+      - 'backend/**'
+      - 'frontend/**'
+      - 'scripts/cli/**'
+      - 'sclaw'
+      - 'package.json'
+      - '.github/workflows/install-smoke.yml'
+
+jobs:
+  native-install-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Native install smoke (npm ci + build)
+        shell: bash
+        run: node ./sclaw test-smoke-native
+
+  docker-compose-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Docker compose smoke
+        shell: bash
+        run: node ./sclaw test-smoke-docker
+
+  docker-compose-smoke-windows:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 45
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Verify Docker is ready
+        shell: powershell
+        run: |
+          $maxAttempts = 30
+          $attempt = 0
+          Write-Host 'Waiting for Docker...'
+          while ($attempt -lt $maxAttempts) {
+            try {
+              $result = docker version --format '{{.Server.Os}}/{{.Server.Arch}} {{.Server.Version}}' 2>$null
+              if ($LASTEXITCODE -eq 0 -and $result) {
+                Write-Host "Docker is ready: $result"
+                break
+              }
+            } catch {}
+            $attempt++
+            Start-Sleep -Seconds 5
+          }
+          if ($attempt -eq $maxAttempts) {
+            throw 'Docker failed to start'
+          }
+
+      - name: Docker compose smoke
+        shell: powershell
+        run: node .\sclaw test-smoke-docker

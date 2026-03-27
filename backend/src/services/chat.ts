@@ -68,8 +68,8 @@ function getMissingConversationError(locale: AppLocale): string {
 
 function getChatFallbackResponse(locale: AppLocale): string {
   return locale === 'zh'
-    ? 'AI 聊天功能未配置 LLM API Key（支持 OPENAI_API_KEY/LLM_API_KEY/ZAI_API_KEY），其余 API 服务可正常使用。'
-    : 'AI chat is unavailable because no LLM API key is configured (OPENAI_API_KEY/LLM_API_KEY/ZAI_API_KEY are supported). Other API features remain available.';
+    ? 'AI 聊天功能未配置 LLM API Key（请在 .env 中设置 LLM_API_KEY），其余 API 服务可正常使用。'
+    : 'AI chat is unavailable because no LLM API key is configured (set LLM_API_KEY in .env). Other API features remain available.';
 }
 
 function getDefaultConversationTitle(locale: AppLocale): string {

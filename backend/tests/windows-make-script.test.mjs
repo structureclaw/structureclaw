@@ -12,7 +12,7 @@ const analysisRequirementsPath = path.join(
   'src',
   'agent-skills',
   'analysis',
-  'python',
+  'runtime',
   'requirements.txt',
 );
 const analysisPythonRoot = path.join(
@@ -21,7 +21,7 @@ const analysisPythonRoot = path.join(
   'src',
   'agent-skills',
   'analysis',
-  'python',
+  'runtime',
 );
 
 describe('sclaw runtime analysis python paths', () => {
@@ -35,11 +35,13 @@ describe('sclaw runtime analysis python paths', () => {
     expect(paths.materialSkillRoot).toContain(path.join('backend', 'src', 'agent-skills', 'material'));
   });
 
-  test('should expose docker lifecycle commands through sclaw instead of windows wrappers', () => {
+  test('should expose docker lifecycle and smoke commands through sclaw', () => {
     expect(COMMAND_NAMES.has('docker-install')).toBe(true);
     expect(COMMAND_NAMES.has('docker-start')).toBe(true);
     expect(COMMAND_NAMES.has('docker-stop')).toBe(true);
     expect(COMMAND_NAMES.has('docker-status')).toBe(true);
     expect(COMMAND_NAMES.has('docker-logs')).toBe(true);
+    expect(COMMAND_NAMES.has('test-smoke-native')).toBe(true);
+    expect(COMMAND_NAMES.has('test-smoke-docker')).toBe(true);
   });
 });

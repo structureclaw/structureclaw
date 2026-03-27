@@ -3,7 +3,7 @@
 ## Repository Snapshot
 - `backend/`: Fastify + Prisma API service. Route handlers live in `src/api`, orchestration and domain logic live in `src/services`, infrastructure helpers live in `src/utils`. Backend-hosted analysis runtime lives under `src/agent-skills/analysis-execution`.
 - `frontend/`: Next.js 14 app. App routes live under `src/app`, reusable UI in `src/components`, client state and i18n helpers in `src/lib`.
-- `scripts/`: operational and regression scripts. Prefer these over ad hoc commands when validating contracts, startup behavior, chat flows, converters, or regressions.
+- `scripts/cli/`: internal implementation for the `sclaw` command surface. Prefer `./sclaw ...` over calling script paths directly.
 - `docs/`: user-facing and protocol documentation such as the stream protocol and roadmap.
 
 ## Working Rules
@@ -36,11 +36,15 @@
   - `npm run type-check --prefix frontend`
   - `npm run test:run --prefix frontend`
 - Analysis and contract validation:
- - `./sclaw analysis-regression`
+  - `./sclaw analysis-regression`
   - `./sclaw check backend-regression`
   - `./sclaw validate validate-agent-orchestration`
   - `./sclaw validate validate-chat-stream-contract`
   - `./sclaw validate validate-analyze-contract`
+- Install smoke (mirrors `.github/workflows/install-smoke.yml`; `test-smoke-docker` needs Docker):
+  - `./sclaw test-smoke-native`
+  - `./sclaw test-smoke-docker`
+- Windows-only Pester tests for `install-helpers.psm1` (from repo root): install Pester 5, then `Invoke-Pester -Path ./tests/windows/install-helpers.Tests.ps1 -CI`.
 
 ## Coding Expectations
 - TypeScript:

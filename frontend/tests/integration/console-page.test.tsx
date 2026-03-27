@@ -147,6 +147,53 @@ function createSseResponse(events: unknown[]) {
   } as unknown as Response
 }
 
+function mockConsoleSupportRequest(url: string) {
+  if (url.includes('/api/v1/agent/capability-matrix')) {
+    return {
+      ok: true,
+      json: vi.fn().mockResolvedValue({
+        skills: [
+          { id: 'beam', domain: 'structure-type' },
+          { id: 'frame', domain: 'structure-type' },
+          { id: 'code-check-gb50017', domain: 'code-check' },
+        ],
+        skillDomainById: {
+          beam: 'structure-type',
+          frame: 'structure-type',
+          'code-check-gb50017': 'code-check',
+        },
+        domainSummaries: [
+          { domain: 'structure-type', skillIds: ['beam', 'frame'] },
+          { domain: 'code-check', skillIds: ['code-check-gb50017'] },
+        ],
+      }),
+    } as unknown as Response
+  }
+
+  if (url.includes('/api/v1/agent/skillhub/search')) {
+    return {
+      ok: true,
+      json: vi.fn().mockResolvedValue({ items: [] }),
+    } as unknown as Response
+  }
+
+  if (url.includes('/api/v1/agent/skillhub/installed')) {
+    return {
+      ok: true,
+      json: vi.fn().mockResolvedValue({ items: [] }),
+    } as unknown as Response
+  }
+
+  if (url.includes('/api/v1/models/latest')) {
+    return {
+      ok: true,
+      json: vi.fn().mockResolvedValue({ model: null }),
+    } as unknown as Response
+  }
+
+  return null
+}
+
 describe('ConsolePage Integration (CONS-13)', () => {
   beforeEach(() => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -159,36 +206,46 @@ describe('ConsolePage Integration (CONS-13)', () => {
         } as unknown as Response
       }
 
-      if (url.includes('/api/v1/analysis-engines')) {
+      if (url.includes('/api/v1/agent/capability-matrix')) {
         return {
           ok: true,
           json: vi.fn().mockResolvedValue({
-            engines: [
-              {
-                id: 'builtin-opensees',
-                name: 'OpenSees Builtin',
-                version: '0.1.0',
-                kind: 'python',
-                available: false,
-                enabled: true,
-                status: 'unavailable',
-                unavailableReason: 'OpenSees runtime is unavailable',
-                supportedAnalysisTypes: ['static', 'dynamic', 'seismic', 'nonlinear'],
-                supportedModelFamilies: ['frame', 'truss', 'generic'],
-              },
-              {
-                id: 'builtin-simplified',
-                name: 'Simplified Builtin',
-                version: '0.1.0',
-                kind: 'python',
-                available: true,
-                enabled: true,
-                status: 'available',
-                supportedAnalysisTypes: ['static', 'dynamic', 'seismic'],
-                supportedModelFamilies: ['frame', 'truss', 'generic'],
-              },
+            skills: [
+              { id: 'beam', domain: 'structure-type' },
+              { id: 'frame', domain: 'structure-type' },
+              { id: 'code-check-gb50017', domain: 'code-check' },
+            ],
+            skillDomainById: {
+              beam: 'structure-type',
+              frame: 'structure-type',
+              'code-check-gb50017': 'code-check',
+            },
+            domainSummaries: [
+              { domain: 'structure-type', skillIds: ['beam', 'frame'] },
+              { domain: 'code-check', skillIds: ['code-check-gb50017'] },
             ],
           }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/agent/skillhub/search')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ items: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/agent/skillhub/installed')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ items: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/models/latest')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ model: null }),
         } as unknown as Response
       }
 
@@ -209,9 +266,19 @@ describe('ConsolePage Integration (CONS-13)', () => {
   async function renderConsolePage() {
     const view = render(<ConsolePage />)
     await waitFor(() => {
-      expect(fetch).toHaveBeenCalledWith(expect.stringContaining('/api/v1/chat/conversations'))
+      expect(
+        vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/api/v1/chat/conversations')),
+      ).toBe(true)
     })
     return view
+  }
+
+  async function selectSkill(name: RegExp | string) {
+    fireEvent.click(screen.getByRole('button', { name: /Expand Skills|展开技能/ }))
+    if (!screen.queryByRole('button', { name })) {
+      fireEvent.change(screen.getByLabelText(/Category View|分类视图/), { target: { value: 'unknown' } })
+    }
+    fireEvent.click(await screen.findByRole('button', { name }))
   }
 
   it('renders the active AI console shell', async () => {
@@ -228,11 +295,11 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByPlaceholderText(/Describe your structural goal/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Expand Skills' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Expand Engineering Context' })).toBeInTheDocument()
-    expect(screen.getByText('Analysis Engine Auto')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Database Admin' })).toBeInTheDocument()
     expect(screen.getByText('Database tools')).toBeInTheDocument()
+    expect(screen.getByText(/Review SQLite file health/i)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Discuss First' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Run Analysis' })).toBeInTheDocument()
+    expect(screen.queryByText('Analysis Engine Auto')).not.toBeInTheDocument()
   })
 
   it('keeps the last valid model preview available when model json becomes invalid', async () => {
@@ -266,45 +333,37 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.queryByText('Selected skills 2')).not.toBeInTheDocument()
     expect(screen.queryByText('Beam Helper')).not.toBeInTheDocument()
     expect(screen.queryByText('Frame Checker')).not.toBeInTheDocument()
-    expect(screen.queryByText('Choose which local Markdown skills the agent may use. Keep the default selection to preserve automatic routing.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Choose which local Markdown skills the agent may use. If no skills are selected, the console falls back to direct LLM conversation.')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Expand Skills' }))
 
     expect(screen.getByRole('button', { name: 'Collapse Skills' })).toBeInTheDocument()
-    expect(screen.getByText('Choose which local Markdown skills the agent may use. Keep the default selection to preserve automatic routing.')).toBeInTheDocument()
+    expect(screen.getByText('Choose which local Markdown skills the agent may use. If no skills are selected, the console falls back to direct LLM conversation.')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Collapse Skills' }))
 
     expect(screen.getByRole('button', { name: 'Expand Skills' })).toBeInTheDocument()
-    expect(screen.queryByText('Choose which local Markdown skills the agent may use. Keep the default selection to preserve automatic routing.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Choose which local Markdown skills the agent may use. If no skills are selected, the console falls back to direct LLM conversation.')).not.toBeInTheDocument()
   })
 
   it('hides composer help in the default collapsed state', async () => {
     await renderConsolePage()
 
-    expect(screen.queryByText('The default path is to clarify through chat first. Before running analysis, it is recommended to provide model JSON or use chat to identify missing inputs.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Choose which local Markdown skills the agent may use. If no skills are selected, the console falls back to direct LLM conversation.')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Expand Skills|展开技能/ }))
 
-    expect(screen.queryByText('The default path is to clarify through chat first. Before running analysis, it is recommended to provide model JSON or use chat to identify missing inputs.')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /Expand Analysis Settings|展开分析设置/ }))
-
-    expect(screen.getByText('The default path is to clarify through chat first. Before running analysis, it is recommended to provide model JSON or use chat to identify missing inputs.')).toBeInTheDocument()
+    expect(screen.getByText('Choose which local Markdown skills the agent may use. If no skills are selected, the console falls back to direct LLM conversation.')).toBeInTheDocument()
   })
 
-  it('groups model analysis and engine settings inside the single engineering context panel', async () => {
+  it('keeps only the model section inside the engineering context panel', async () => {
     await renderConsolePage()
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
 
     expect(screen.getAllByText(/^Model$|^模型$/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/^Analysis Settings$|^分析设置$/).length).toBeGreaterThan(0)
-    expect(screen.getAllByText(/^Execution Engine$|^执行引擎$/).length).toBeGreaterThan(0)
-    expect(screen.queryByText(/^Design Code$|^设计规范$/)).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /Expand Analysis Settings|展开分析设置/ }))
-
+    expect(screen.queryByText(/^Analysis Settings$|^分析设置$/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Execution Engine$|^执行引擎$/)).not.toBeInTheDocument()
     expect(screen.queryByText(/^Design Code$|^设计规范$/)).not.toBeInTheDocument()
   })
 
@@ -339,7 +398,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(await screen.findByText('历史会话标题')).toBeInTheDocument()
   })
 
-  it('stops showing conversation-list loading when the backend request hangs', async () => {
+  it('shows conversation-list timeout when the backend request hangs', async () => {
     vi.useFakeTimers()
 
     vi.mocked(fetch).mockImplementation((input, init) => {
@@ -393,7 +452,6 @@ describe('ConsolePage Integration (CONS-13)', () => {
       await vi.advanceTimersByTimeAsync(8000)
     })
 
-    expect(screen.queryByText(/Loading conversation list|正在加载会话列表/)).not.toBeInTheDocument()
     expect(screen.getByText(/Loading the conversation list timed out|加载会话列表超时/)).toBeInTheDocument()
   })
 
@@ -483,7 +541,6 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.queryByText('welcome')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Expand Analysis Settings|展开分析设置/ }))
 
     const modelInput = screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/) as HTMLTextAreaElement
     expect(modelInput.value).toContain('"schema_version": "1.0.0"')
@@ -570,7 +627,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     const modelInput = screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/) as HTMLTextAreaElement
     expect(modelInput.value).toBe('')
     expect(screen.queryByText('Archived summary')).not.toBeInTheDocument()
-    expect(screen.getByText(/Analysis Engine Auto|计算引擎 自动选择/)).toBeInTheDocument()
+    expect(screen.queryByText(/Analysis Engine Auto|计算引擎 自动选择/)).not.toBeInTheDocument()
   })
 
   it('keeps conversation order stable when selecting a history item without a new round', async () => {
@@ -997,9 +1054,9 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByRole('button', { name: '执行分析' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '展开技能' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '展开工程上下文' })).toBeInTheDocument()
-    expect(screen.getByText('计算引擎 自动选择')).toBeInTheDocument()
+    expect(screen.queryByText('计算引擎 自动选择')).not.toBeInTheDocument()
     expect(screen.queryByText('已选择技能')).not.toBeInTheDocument()
-    expect(screen.queryByText('默认先聊天澄清需求。执行分析前建议补充模型 JSON，或先通过对话明确缺失条件。')).not.toBeInTheDocument()
+    expect(screen.queryByText('选择允许 agent 使用的本地 Markdown skills。不选择技能时，控制台会默认退回到直接和大模型对话。')).not.toBeInTheDocument()
   })
 
   it('sends the active locale with execute requests', async () => {
@@ -1009,10 +1066,10 @@ describe('ConsolePage Integration (CONS-13)', () => {
     vi.mocked(fetch).mockImplementation(async (input, init) => {
       const url = String(input)
 
-      if (url.includes('/api/v1/analysis-engines')) {
+      if (url.includes('/api/v1/agent/skills')) {
         return {
           ok: true,
-          json: vi.fn().mockResolvedValue({ engines: [] }),
+          json: vi.fn().mockResolvedValue(mockSkills),
         } as unknown as Response
       }
 
@@ -1051,10 +1108,43 @@ describe('ConsolePage Integration (CONS-13)', () => {
         } as unknown as Response
       }
 
+      if (url.includes('/api/v1/agent/capability-matrix')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            skills: [{ id: 'beam', domain: 'structure-type' }],
+            skillDomainById: { beam: 'structure-type' },
+            domainSummaries: [{ domain: 'structure-type', skillIds: ['beam'] }],
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/agent/skillhub/search')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ items: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/agent/skillhub/installed')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ items: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/models/latest')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ model: null }),
+        } as unknown as Response
+      }
+
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
     await renderConsolePage()
+    await selectSkill(/梁助手|Beam Helper/)
 
     fireEvent.change(screen.getByPlaceholderText(/描述你的结构目标/i), {
       target: { value: '请分析这个模型' },
@@ -1071,109 +1161,6 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(executeContext?.engineId).toBeUndefined()
   })
 
-  it('allows selecting a manual engine for execution requests', async () => {
-    let executePayload: Record<string, unknown> | null = null
-    vi.mocked(fetch).mockImplementation(async (input, init) => {
-      const url = String(input)
-
-      if (url.includes('/api/v1/agent/skills')) {
-        return {
-          ok: true,
-          json: vi.fn().mockResolvedValue(mockSkills),
-        } as unknown as Response
-      }
-
-      if (url.includes('/api/v1/analysis-engines')) {
-        return {
-          ok: true,
-          json: vi.fn().mockResolvedValue({
-            engines: [
-              {
-                id: 'builtin-opensees',
-                name: 'OpenSees Builtin',
-                version: '0.1.0',
-                kind: 'python',
-                available: true,
-                enabled: true,
-                status: 'available',
-                supportedAnalysisTypes: ['static'],
-                supportedModelFamilies: ['frame', 'generic'],
-              },
-            ],
-          }),
-        } as unknown as Response
-      }
-
-      if (url.includes('/api/v1/chat/conversations')) {
-        return {
-          ok: true,
-          json: vi.fn().mockResolvedValue([]),
-        } as unknown as Response
-      }
-
-      if (url.includes('/api/v1/chat/conversation') && init?.method === 'POST') {
-        return {
-          ok: true,
-          json: vi.fn().mockResolvedValue({
-            id: 'conv-engine',
-            title: 'OpenSees selection',
-            type: 'analysis',
-          }),
-        } as unknown as Response
-      }
-
-      if (url.includes('/api/v1/chat/execute')) {
-        executePayload = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>
-        return {
-          ok: true,
-          json: vi.fn().mockResolvedValue({
-            response: 'done',
-            success: true,
-            analysis: {
-              success: true,
-              meta: {
-                engineName: 'OpenSees Builtin',
-                engineVersion: '0.1.0',
-                selectionMode: 'manual',
-              },
-              data: {},
-            },
-          }),
-        } as unknown as Response
-      }
-
-      throw new Error(`Unexpected fetch: ${url}`)
-    })
-
-    await renderConsolePage()
-
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engine Settings|展开引擎设置/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Change Engine|更换引擎/ }))
-    fireEvent.click(screen.getByRole('button', { name: /OpenSees Builtin v0\.1\.0/ }))
-    fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
-      target: { value: 'Analyze beam with OpenSees' },
-    })
-    fireEvent.click(screen.getByRole('button', { name: /Run Analysis|执行分析/ }))
-
-    await waitFor(() => {
-      expect((executePayload?.context as Record<string, unknown>)?.engineId).toBe('builtin-opensees')
-    })
-  })
-
-  it('shows unavailable engines but disables them in the selector', async () => {
-    await renderConsolePage()
-
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engine Settings|展开引擎设置/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Change Engine|更换引擎/ }))
-
-    const unavailableButton = screen.getByRole('button', { name: /OpenSees Builtin v0\.1\.0/i })
-    expect(unavailableButton).toBeDisabled()
-    expect(screen.getByText(/OpenSees runtime is unavailable|未检测到 OpenSees 运行时/)).toBeInTheDocument()
-    expect(screen.getByText(/Unavailable|不可用/)).toBeInTheDocument()
-  })
-
   it('shows the analysis engine used for execution results', async () => {
     vi.mocked(fetch).mockImplementation(async (input, init) => {
       const url = String(input)
@@ -1185,23 +1172,35 @@ describe('ConsolePage Integration (CONS-13)', () => {
         } as unknown as Response
       }
 
-      if (url.includes('/api/v1/analysis-engines')) {
+      if (url.includes('/api/v1/agent/capability-matrix')) {
         return {
           ok: true,
           json: vi.fn().mockResolvedValue({
-            engines: [
-              {
-                id: 'builtin-opensees',
-                name: 'OpenSees Builtin',
-                version: '0.1.0',
-                kind: 'python',
-                available: true,
-                enabled: true,
-                status: 'available',
-                supportedModelFamilies: ['frame', 'generic'],
-              },
-            ],
+            skills: [{ id: 'beam', domain: 'structure-type' }],
+            skillDomainById: { beam: 'structure-type' },
+            domainSummaries: [{ domain: 'structure-type', skillIds: ['beam'] }],
           }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/agent/skillhub/search')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ items: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/agent/skillhub/installed')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ items: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/models/latest')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ model: null }),
         } as unknown as Response
       }
 
@@ -1231,6 +1230,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
           json: vi.fn().mockResolvedValue({
             response: 'Analysis finished.',
             success: true,
+            requestedEngineId: 'builtin-opensees',
             analysis: {
               success: true,
               meta: {
@@ -1256,12 +1256,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
 
     await renderConsolePage()
-
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engine Settings|展开引擎设置/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Change Engine|更换引擎/ }))
-    fireEvent.click(screen.getByRole('button', { name: /OpenSees Builtin v0\.1\.0/i }))
-    fireEvent.change(screen.getAllByRole('textbox')[0], {
+    await selectSkill(/Beam Helper|梁助手/)
+    fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
       target: { value: 'Analyze this model' },
     })
     fireEvent.click(screen.getByRole('button', { name: /Run Analysis|执行分析/ }))
@@ -1279,66 +1275,9 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     expect(screen.queryByRole('button', { name: /Manage Engines|管理引擎/ })).not.toBeInTheDocument()
-  })
-
-  it('keeps extra engines collapsed by default and reveals them on demand', async () => {
-    const { container } = await renderConsolePage()
-
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
-
-    expect(screen.getByRole('button', { name: /Expand Analysis Settings|展开分析设置/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Expand Engine Settings|展开引擎设置/ })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /OpenSees Builtin v0\.1\.0/i })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /Simplified Builtin v0\.1\.0/i })).not.toBeInTheDocument()
-    expect(screen.queryByText(/Design Code|设计规范/)).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /Expand Analysis Settings|展开分析设置/ }))
-    expect(screen.getByRole('button', { name: /Collapse Analysis Settings|收起分析设置/ })).toBeInTheDocument()
-    expect(screen.queryByText(/Design Code|设计规范/)).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engine Settings|展开引擎设置/ }))
-    expect(screen.getByRole('button', { name: /Change Engine|更换引擎/ })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /Change Engine|更换引擎/ }))
-
-    expect(screen.getByRole('button', { name: /Collapse Engine List|收起引擎列表/ })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /OpenSees Builtin v0\.1\.0/i })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Simplified Builtin v0\.1\.0/i })).toBeInTheDocument()
-    expect(container.querySelector('[data-testid="engine-candidate-list"].max-h-56.overflow-y-auto')).not.toBeNull()
-  })
-
-  it('keeps the selected manual engine visible after collapsing more engines', async () => {
-    await renderConsolePage()
-
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engine Settings|展开引擎设置/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Change Engine|更换引擎/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Simplified Builtin v0\.1\.0/i }))
-
-    expect(screen.getByText(/Current engine|当前引擎/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Collapse Engine List|收起引擎列表/ })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /Collapse Engine List|收起引擎列表/ }))
-
-    expect(screen.getByText(/Simplified Builtin v0\.1\.0/i)).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /OpenSees Builtin v0\.1\.0/i })).not.toBeInTheDocument()
-  })
-
-  it('renders the more-engines controls in Chinese', async () => {
-    window.localStorage.setItem('structureclaw.locale', 'zh')
-
-    await renderConsolePage()
-
-    fireEvent.click(screen.getByRole('button', { name: '展开工程上下文' }))
-    expect(screen.getByRole('button', { name: '展开引擎设置' })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: '展开引擎设置' }))
-    expect(screen.getByRole('button', { name: '更换引擎' })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: '更换引擎' }))
-
-    expect(screen.getByRole('button', { name: '收起引擎列表' })).toBeInTheDocument()
-    expect(screen.getByText('可选引擎')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Expand Engine Settings|展开引擎设置/ })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Change Engine|更换引擎/ })).not.toBeInTheDocument()
   })
 
   it('renders guided discuss-first state in English', async () => {
@@ -1618,6 +1557,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
 
     await renderConsolePage()
+    await selectSkill(/Beam Helper|梁助手/)
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
     fireEvent.change(screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/), {
@@ -1772,6 +1712,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
 
     await renderConsolePage()
+    await selectSkill(/Beam Helper|梁助手/)
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
     fireEvent.change(screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/), {

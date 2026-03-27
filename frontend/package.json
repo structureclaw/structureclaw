@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "NODE_OPTIONS='--require ./scripts/fs-rename-fallback.cjs' next build",
+    "build": "node --require ./scripts/fs-rename-fallback.cjs ./node_modules/next/dist/bin/next build",
     "start": "next start",
     "lint": "next lint",
     "type-check": "tsc --noEmit",
