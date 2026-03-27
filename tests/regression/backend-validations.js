@@ -28,11 +28,19 @@ function clearProviderEnv() {
   process.env.LLM_PROVIDER = "openai";
 }
 
+/** Load AgentService from dist; append a query so Node does not reuse a stale ESM graph after tsc rewrote the file. */
+async function importBackendAgentService(rootDir) {
+  const filePath = path.join(rootDir, "backend", "dist", "services", "agent.js");
+  const url = `${pathToFileURL(filePath).href}?regression=${Date.now()}`;
+  const mod = await import(url);
+  return mod.AgentService;
+}
+
 async function validateAgentOrchestration(context) {
   await runBackendBuildOnce(context);
   clearProviderEnv();
 
-  const { AgentService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent.js")).href);
+  const AgentService = await importBackendAgentService(context.rootDir);
   const fsModule = await import("node:fs");
 
   const withDefaultSkills = (svc) => {
@@ -545,7 +553,7 @@ async function validateAgentNoSkillFallback(context) {
   process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
   process.env.ZAI_API_KEY = process.env.ZAI_API_KEY || "";
 
-  const { AgentService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent.js")).href);
+  const AgentService = await importBackendAgentService(context.rootDir);
   const svc = new AgentService();
 
   const chatResult = await svc.run({
@@ -634,7 +642,7 @@ async function validateAgentToolsContract(context) {
 async function validateAgentApiContract(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
-  const { AgentService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent.js")).href);
+  const AgentService = await importBackendAgentService(context.rootDir);
   const captured = [];
   AgentService.prototype.run = async function mockRun(params) {
     captured.push(params);
@@ -1181,7 +1189,7 @@ async function validateAgentSkillhubRepositoryDown(context) {
   process.env.SCLAW_SKILLHUB_FORCE_DOWN = "true";
   const Fastify = backendRequire(context.rootDir)("fastify");
   const { agentRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "agent.js")).href);
-  const { AgentService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent.js")).href);
+  const AgentService = await importBackendAgentService(context.rootDir);
 
   const app = Fastify();
   await app.register(agentRoutes, { prefix: "/api/v1/agent" });
@@ -1250,7 +1258,7 @@ async function validateAgentSkillhubRepositoryDown(context) {
 async function validateChatStreamContract(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
-  const { AgentService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent.js")).href);
+  const AgentService = await importBackendAgentService(context.rootDir);
 
   let capturedTraceId;
   AgentService.prototype.runStream = async function* mockRunStream(params) {
@@ -1340,7 +1348,7 @@ async function validateChatStreamContract(context) {
 async function validateChatMessageRouting(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
-  const { AgentService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent.js")).href);
+  const AgentService = await importBackendAgentService(context.rootDir);
   const { ChatService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "chat.js")).href);
 
   let agentRunCount = 0;
@@ -1444,9 +1452,10 @@ async function validateChatMessageRouting(context) {
 }
 
 async function validateReportTemplateContract(context) {
+  context.backendBuildReady = false;
   await runBackendBuildOnce(context);
   clearProviderEnv();
-  const { AgentService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent.js")).href);
+  const AgentService = await importBackendAgentService(context.rootDir);
 
   const svc = new AgentService();
   svc.structureProtocolClient = {
