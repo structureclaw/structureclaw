@@ -28,8 +28,15 @@ function clearProviderEnv() {
   process.env.LLM_PROVIDER = "openai";
 }
 
-/** Load AgentService from dist; append a query so Node does not reuse a stale ESM graph after tsc rewrote the file. */
+/** Load AgentService from dist using the same module URL as backend/dist/api/agent.js (bare file URL). */
 async function importBackendAgentService(rootDir) {
+  const filePath = path.join(rootDir, "backend", "dist", "services", "agent.js");
+  const mod = await import(pathToFileURL(filePath).href);
+  return mod.AgentService;
+}
+
+/** Bust ESM cache after tsc rewrote dist; do not use when patching AgentService.prototype before registering routes. */
+async function importBackendAgentServiceFresh(rootDir) {
   const filePath = path.join(rootDir, "backend", "dist", "services", "agent.js");
   const url = `${pathToFileURL(filePath).href}?regression=${Date.now()}`;
   const mod = await import(url);
@@ -1455,7 +1462,7 @@ async function validateReportTemplateContract(context) {
   context.backendBuildReady = false;
   await runBackendBuildOnce(context);
   clearProviderEnv();
-  const AgentService = await importBackendAgentService(context.rootDir);
+  const AgentService = await importBackendAgentServiceFresh(context.rootDir);
 
   const svc = new AgentService();
   svc.structureProtocolClient = {
