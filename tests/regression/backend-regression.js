@@ -1,3 +1,4 @@
+const runtime = require("../../scripts/cli/runtime");
 const { runBackendValidation } = require("./backend-validations");
 const {
   ensureRegressionSqliteDatabaseUrl,
@@ -45,23 +46,16 @@ async function runBackendRegression(rootDir) {
   await runLoggedStep("Backend test", async () => {
     await runBackendCommand(context, ["run", "db:generate", "--prefix", context.paths.backendDir]);
     await runBackendCommand(context, ["run", "build", "--prefix", context.paths.backendDir]);
-    await runBackendCommand(
-      context,
-      [
-        "exec",
-        "--prefix",
-        context.paths.backendDir,
-        "jest",
-        "--",
-        "--passWithNoTests",
-        "--runInBand",
-      ],
-      {
-        env: {
-          NODE_OPTIONS: "--experimental-vm-modules",
-        },
+    // cwd must be backend so Jest loads jest.config.cjs; from repo root it matches frontend/**/*.test.tsx.
+    await runtime.runCommand(runtime.getNpmCommand(), ["exec", "jest", "--", "--passWithNoTests", "--runInBand"], {
+      cwd: context.paths.backendDir,
+      env: {
+        ...process.env,
+        ...context.env,
+        NODE_OPTIONS: "--experimental-vm-modules",
       },
-    );
+      stdio: "inherit",
+    });
   });
 
   for (const [title, validationName] of BACKEND_STEPS) {
