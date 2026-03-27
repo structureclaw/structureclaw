@@ -111,7 +111,7 @@ function stubExecutionClients(svc, handlers = {}) {
   return calls;
 }
 
-describe.skip('AgentService orchestration', () => {
+describe('AgentService orchestration', () => {
   afterAll(async () => {
     await Promise.all([
       prisma.$disconnect().catch(() => {}),
