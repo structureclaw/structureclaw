@@ -141,13 +141,8 @@ const COMMANDS = [
   {
     name: "local-up",
     usage: "sclaw local-up",
-    description: "Start the local stack and optional infra",
-    group: "lifecycle",
-  },
-  {
-    name: "local-up-uv",
-    usage: "sclaw local-up-uv",
-    description: "Start the local stack using the uv-managed Python env",
+    description: "Start the local stack and optional infra (alias: local-up-uv)",
+    aliases: ["local-up-uv"],
     group: "lifecycle",
   },
   {
@@ -157,33 +152,16 @@ const COMMANDS = [
     group: "lifecycle",
   },
   {
-    name: "local-down",
-    usage: "sclaw local-down",
-    description: "Stop local processes and infra",
-    group: "lifecycle",
-  },
-  {
-    name: "local-status",
-    usage: "sclaw local-status",
-    description: "Show process state and health checks",
-    group: "lifecycle",
-  },
-  {
     name: "health",
     usage: "sclaw health",
     description: "Check service health endpoints",
     group: "lifecycle",
   },
   {
-    name: "check-startup",
-    usage: "sclaw check-startup",
-    description: "Run local startup preflight checks",
-    group: "lifecycle",
-  },
-  {
     name: "doctor",
     usage: "sclaw doctor",
-    description: "Run local startup preflight checks",
+    description: "Run local startup preflight checks (alias: check-startup)",
+    aliases: ["check-startup"],
     group: "lifecycle",
   },
   {
@@ -201,13 +179,15 @@ const COMMANDS = [
   {
     name: "stop",
     usage: "sclaw stop",
-    description: "Stop the recommended local stack profile",
+    description: "Stop the recommended local stack profile (alias: local-down)",
+    aliases: ["local-down"],
     group: "lifecycle",
   },
   {
     name: "status",
     usage: "sclaw status",
-    description: "Show recommended local stack status",
+    description: "Show recommended local stack status (alias: local-status)",
+    aliases: ["local-status"],
     group: "lifecycle",
   },
   {

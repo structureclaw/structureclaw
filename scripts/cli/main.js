@@ -990,33 +990,12 @@ async function dispatch(commandName, rawArgs, rootDir) {
     case "local-up":
       await invokeLocalUp(rootDir, env, { skipInfra: false });
       return;
-    case "local-up-uv":
-      await invokeLocalUp(rootDir, env, { skipInfra: false });
-      return;
     case "local-up-noinfra":
       await invokeLocalUp(rootDir, env, { skipInfra: true });
-      return;
-    case "local-down":
-      await stopTrackedService(paths, "frontend");
-      await stopTrackedService(paths, "backend");
-      try {
-        await runtime.runCommand("docker", ["compose", "-f", paths.dockerComposeFile, "stop", "redis"], {
-          stdio: "ignore",
-        });
-      } catch {
-      }
-      log("Local stack stopped.");
-      return;
-    case "local-status":
-      showServiceStatus(paths, "backend");
-      showServiceStatus(paths, "frontend");
-      log("");
-      await showHealth(env);
       return;
     case "health":
       await showHealth(env);
       return;
-    case "check-startup":
     case "doctor":
       await invokeDoctor(rootDir, env);
       return;
