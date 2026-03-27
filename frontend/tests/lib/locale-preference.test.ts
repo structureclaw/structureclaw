@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 import {
   LOCALE_COOKIE_NAME,
   parseLocaleCookieValue,
@@ -6,7 +6,21 @@ import {
   normalizeLocale,
 } from '@/lib/locale-preference'
 
+function clearDocumentCookies() {
+  for (const cookie of document.cookie.split('; ')) {
+    if (!cookie) {
+      continue
+    }
+    const [name] = cookie.split('=')
+    document.cookie = `${name}=; path=/; max-age=0`
+  }
+}
+
 describe('locale-preference', () => {
+  beforeEach(() => {
+    clearDocumentCookies()
+  })
+
   it('parseLocaleCookieValue defaults to en', () => {
     expect(parseLocaleCookieValue(undefined)).toBe('en')
     expect(parseLocaleCookieValue(null)).toBe('en')
