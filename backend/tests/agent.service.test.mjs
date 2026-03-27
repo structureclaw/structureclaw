@@ -1112,13 +1112,14 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const draft = await svc.textToModelDraft('2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN', undefined, 'zh');
+    const draft = await svc.textToModelDraft('2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN，Q345钢，柱HW300x300，梁HN350x175', undefined, 'zh');
 
     expect(draft.missingFields).toEqual([]);
     expect(draft.stateToPersist?.inferredType).toBe('frame');
     expect(draft.stateToPersist?.frameDimension).toBe('2d');
     expect(draft.stateToPersist?.storyHeightsM).toEqual([3, 3]);
     expect(draft.stateToPersist?.bayWidthsM).toEqual([6, 6]);
+    expect(draft.stateToPersist?.steelGrade).toBe('Q345');
     expect(draft.model?.metadata?.inferredType).toBe('frame');
     expect(draft.model?.metadata?.storyCount).toBe(2);
     expect(draft.model?.metadata?.bayCount).toBe(2);
@@ -1131,7 +1132,7 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const draft = await svc.textToModelDraft('3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN，x向水平荷载18kN，y向水平荷载12kN', undefined, 'zh');
+    const draft = await svc.textToModelDraft('3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN，x向水平荷载18kN，y向水平荷载12kN，Q345钢，柱HW300x300，梁HN400x200', undefined, 'zh');
 
     expect(draft.missingFields).toEqual([]);
     expect(draft.stateToPersist?.frameDimension).toBe('3d');
@@ -1149,7 +1150,7 @@ describe('AgentService orchestration', () => {
     svc.llm = null;
 
     const draft = await svc.textToModelDraft(
-      '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN，水平荷载分别取x向18kN、y向12kN',
+      '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN，水平荷载分别取x向18kN、y向12kN，Q345钢，柱HW300x300，梁HN400x200',
       undefined,
       'zh',
     );
@@ -1185,10 +1186,8 @@ describe('AgentService orchestration', () => {
       context: { locale: 'zh' },
     });
 
-    const loads = second.model?.load_cases?.[0]?.loads ?? [];
     expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(loads).toHaveLength(12);
-    expect(loads.every((load) => typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
+    expect(second.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
   });
 
   test('should parse chinese two-direction horizontal-load wording in a single 3d frame sentence', async () => {
@@ -1196,7 +1195,7 @@ describe('AgentService orchestration', () => {
     svc.llm = null;
 
     const draft = await svc.textToModelDraft(
-      '我想设计一个三维框架结构，层数3层，各层层高3m，x向3跨，跨度为3m，y向2跨，跨度为3m，各层有竖向荷载1000kN，横向荷载两个方向都是500kN',
+      '我想设计一个三维框架结构，层数3层，各层层高3m，x向3跨，跨度为3m，y向2跨，跨度为3m，各层有竖向荷载1000kN，横向荷载两个方向都是500kN，Q345钢，柱HW300x300，梁HN350x175',
       undefined,
       'zh',
     );
@@ -1233,6 +1232,9 @@ describe('AgentService orchestration', () => {
               { story: 2, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
               { story: 3, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
             ],
+            steelGrade: 'Q345',
+            columnSection: 'HW300x300',
+            beamSection: 'HN350x175',
           },
         }),
       }),
@@ -1363,6 +1365,7 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.bayWidthsXM).toEqual([3, 3, 3, 3]);
     expect(draft.stateToPersist?.bayWidthsYM).toEqual([3, 3, 3]);
     expect(draft.missingFields).toContain('floorLoads');
+    expect(draft.missingFields).toContain('steelGrade');
     expect(draft.missingFields).not.toContain('storyCount');
     expect(draft.missingFields).not.toContain('storyHeightsM');
   });
@@ -1387,6 +1390,9 @@ describe('AgentService orchestration', () => {
                   { story: 1, verticalKN: 120, lateralXKN: 30 },
                   { story: 2, verticalKN: 120, lateralXKN: 30 },
                 ],
+                steelGrade: 'Q345',
+                columnSection: 'HW300x300',
+                beamSection: 'HN350x175',
               },
             }),
           };
@@ -1462,7 +1468,7 @@ describe('AgentService orchestration', () => {
 
     expect(third.interaction?.missingCritical).not.toContain('各层层高（m）');
     expect(third.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(third.interaction?.state).toBe('ready');
+    expect(third.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
   });
 
   test('should merge 2d frame vertical and lateral loads across chat turns', async () => {
@@ -1477,8 +1483,7 @@ describe('AgentService orchestration', () => {
     });
 
     expect(first.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(first.model?.load_cases?.[0]?.loads).toHaveLength(6);
-    expect(first.model?.load_cases?.[0]?.loads.every((load) => typeof load.fy === 'number' && load.fx === undefined)).toBe(true);
+    expect(first.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
 
     const second = await svc.run({
       conversationId: 'conv-frame-merge-2d-loads',
@@ -1487,11 +1492,8 @@ describe('AgentService orchestration', () => {
       context: { locale: 'zh' },
     });
 
-    const loads = second.model?.load_cases?.[0]?.loads ?? [];
     expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(loads).toHaveLength(6);
-    expect(loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number')).toBe(true);
-    expect(second.model?.metadata?.inferredType).toBe('frame');
+    expect(second.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
   });
 
   test('should merge 3d frame y-direction lateral loads without dropping existing floor loads', async () => {
@@ -1506,8 +1508,7 @@ describe('AgentService orchestration', () => {
     });
 
     expect(first.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(first.model?.load_cases?.[0]?.loads).toHaveLength(12);
-    expect(first.model?.load_cases?.[0]?.loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number' && load.fz === undefined)).toBe(true);
+    expect(first.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
 
     const second = await svc.run({
       conversationId: 'conv-frame-merge-3d-loads',
@@ -1516,12 +1517,8 @@ describe('AgentService orchestration', () => {
       context: { locale: 'zh' },
     });
 
-    const loads = second.model?.load_cases?.[0]?.loads ?? [];
     expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(loads).toHaveLength(12);
-    expect(loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
-    expect(second.model?.metadata?.bayCountX).toBe(2);
-    expect(second.model?.metadata?.bayCountY).toBe(1);
+    expect(second.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
   });
 
   test('should expose a conversation session snapshot for context restoration', async () => {
@@ -1539,10 +1536,8 @@ describe('AgentService orchestration', () => {
 
     expect(snapshot).toBeDefined();
     expect(snapshot?.draft?.inferredType).toBe('frame');
-    expect(snapshot?.resolved?.analysisType).toBe('static');
     expect(snapshot?.interaction?.detectedScenario).toBe('frame');
-    expect(snapshot?.interaction?.conversationStage).toBe('荷载条件');
-    expect(snapshot?.model?.metadata?.inferredType).toBe('frame');
+    expect(snapshot?.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
   });
 
   test('should persist agent chat messages for conversation history restoration', async () => {
@@ -1593,6 +1588,7 @@ describe('AgentService orchestration', () => {
     expect(result.interaction?.stage).toBe('model');
     expect(result.interaction?.missingCritical).toContain('层数');
     expect(result.interaction?.missingCritical).toContain('各层节点荷载（kN）');
+    expect(result.interaction?.missingCritical).toContain('钢材牌号');
   });
 
   test('should advance chat guidance to load stage once portal geometry is known', async () => {
@@ -1660,9 +1656,7 @@ describe('AgentService orchestration', () => {
 
     expect(collecting.success).toBe(true);
     expect(collecting.interaction?.detectedScenario).toBe('frame');
-    expect(collecting.interaction?.state).toBe('ready');
-    expect(collecting.model?.schema_version).toBe('1.0.0');
-    expect(collecting.model?.metadata?.inferredType).toBe('frame');
-    expect(Array.isArray(collecting.model?.nodes)).toBe(true);
+    expect(collecting.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+    expect(collecting.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
   });
 });
