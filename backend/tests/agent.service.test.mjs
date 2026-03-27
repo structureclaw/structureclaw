@@ -113,8 +113,10 @@ function stubExecutionClients(svc, handlers = {}) {
 
 describe('AgentService orchestration', () => {
   afterAll(async () => {
-    await prisma.$disconnect();
-    await redis.quit();
+    await Promise.all([
+      prisma.$disconnect(),
+      redis.quit(),
+    ]);
   });
 
   test('should execute analyze -> code-check -> report closed loop', async () => {
