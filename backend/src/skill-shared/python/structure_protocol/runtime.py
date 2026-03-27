@@ -74,13 +74,18 @@ def convert_structure_model_payload(
     try:
         normalized_source = source_converter.to_v1(model_payload)
         model = StructureModelV1.model_validate(normalized_source)
+        migrated = migrate_structure_model_v1(model.model_dump(mode="json"), target_schema_version)
+        if target_format == "structuremodel-v1":
+            normalized = migrated
+        else:
+            normalized = target_converter.from_v1(StructureModelV1.model_validate(migrated))
     except ValidationError as error:
         raise HTTPException(
             status_code=422,
             detail={
                 "errorCode": "INVALID_STRUCTURE_MODEL",
                 "message": "Input model failed StructureModel v1 validation",
-                "errors": error.errors(),
+                "errors": error.errors(include_context=False),
             },
         ) from error
     except ValueError as error:
@@ -91,12 +96,6 @@ def convert_structure_model_payload(
                 "message": str(error),
             },
         ) from error
-
-    migrated = migrate_structure_model_v1(model.model_dump(mode="json"), target_schema_version)
-    if target_format == "structuremodel-v1":
-        normalized = migrated
-    else:
-        normalized = target_converter.from_v1(StructureModelV1.model_validate(migrated))
 
     return {
         "sourceFormat": source_format,

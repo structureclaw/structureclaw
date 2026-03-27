@@ -95,7 +95,12 @@ def main() -> int:
             _error(f"HTTP_{error.status_code}", str(detail), status_code=error.status_code, detail=detail)
         return 1
     except ValidationError as error:
-        _error("VALIDATION_ERROR", "Validation failed", status_code=422, detail=error.errors())
+        _error(
+            "VALIDATION_ERROR",
+            "Validation failed",
+            status_code=422,
+            detail=error.errors(include_context=False),
+        )
         return 1
     except Exception as error:  # noqa: BLE001
         _error("WORKER_EXECUTION_FAILED", str(error), detail={"type": type(error).__name__})
