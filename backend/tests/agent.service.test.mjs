@@ -111,7 +111,7 @@ function stubExecutionClients(svc, handlers = {}) {
   return calls;
 }
 
-describe.skip('AgentService orchestration', () => {
+describe('AgentService orchestration', () => {
   afterAll(async () => {
     await Promise.all([
       prisma.$disconnect().catch(() => {}),
@@ -206,17 +206,22 @@ describe.skip('AgentService orchestration', () => {
   test('should clear stored conversation sessions', async () => {
     const svc = createServiceWithDefaultSkills();
     const deletedKeys = [];
+    const originalDel = redis.del;
     redis.del = async (...keys) => {
       deletedKeys.push(...keys);
       return keys.length;
     };
 
-    await svc.clearConversationSession('conv-cleanup');
+    try {
+      await svc.clearConversationSession('conv-cleanup');
 
-    expect(deletedKeys).toEqual([
-      'agent:interaction-session:conv-cleanup',
-      'agent:draft-state:conv-cleanup',
-    ]);
+      expect(deletedKeys).toEqual([
+        'agent:interaction-session:conv-cleanup',
+        'agent:draft-state:conv-cleanup',
+      ]);
+    } finally {
+      redis.del = originalDel;
+    }
   });
 
   test('should pass engineId through validate analyze and code-check calls', async () => {
