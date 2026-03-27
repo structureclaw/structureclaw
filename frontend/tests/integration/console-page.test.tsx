@@ -1436,7 +1436,10 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect((modelInput as HTMLTextAreaElement).value).toContain('"schema_version": "1.0.0"')
     expect((modelInput as HTMLTextAreaElement).value).toContain('"nodes"')
     expect(screen.queryByText(/Model JSON parse failed|模型 JSON 解析失败/)).not.toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Preview Model|预览模型/ })).toBeEnabled()
+    // latestModelVisualizationSnapshot is derived in a useEffect after modelText updates; avoid racing the DOM on CI.
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Preview Model|预览模型/ })).toBeEnabled()
+    })
   })
 
   it('renders guided discuss-first state in Chinese', async () => {
