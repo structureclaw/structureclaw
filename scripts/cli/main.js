@@ -505,10 +505,16 @@ async function ensureOpenSeesRuntime(rootDir, env) {
     throw new Error("No analysis Python environment found at backend/.venv.");
   }
 
+  const paths = runtime.resolvePaths(rootDir);
+  const probeScript = path.join(paths.analysisOpenseesStaticRoot, "opensees_runtime.py");
+  if (!runtime.pathExists(probeScript)) {
+    throw new Error(`OpenSees probe script missing: ${probeScript}`);
+  }
+
   const analysisEnv = runtime.buildAnalysisEnvironment(rootDir, env);
   await runtime.runCommand(
     pythonBin,
-    ["-m", "providers.opensees.runtime", "--json"],
+    [probeScript, "--json"],
     {
       env: analysisEnv,
       stdio: "ignore",
