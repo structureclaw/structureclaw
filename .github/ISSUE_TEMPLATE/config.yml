@@ -1,0 +1,9 @@
+blank_issues_enabled: true
+
+contact_links:
+  - name: GitHub Discussions
+    url: https://github.com/structureclaw/structureclaw/discussions
+    about: Ask questions and share ideas; use Discussions when it is not a reproducible bug or a concrete feature proposal. / 提问与交流请走讨论区；非可复现缺陷或明确功能提案时优先使用讨论。
+  - name: Contributing guide
+    url: https://github.com/structureclaw/structureclaw/blob/master/CONTRIBUTING.md
+    about: Workflow, regression commands, and repo conventions before you open an issue or PR. / 开 issue 或 PR 前请先了解贡献流程、回归命令与仓库约定（含双语界面要求）。
