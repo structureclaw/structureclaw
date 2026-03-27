@@ -58,13 +58,13 @@ jobs:
         shell: bash
         run: |
           python -m venv backend/.venv
-          if [ -f backend/.venv/Scripts/activate ]; then
-            source backend/.venv/Scripts/activate
+          if [ -f backend/.venv/Scripts/python.exe ]; then
+            VENV_PY=backend/.venv/Scripts/python.exe
           else
-            source backend/.venv/bin/activate
+            VENV_PY=backend/.venv/bin/python
           fi
-          pip install --upgrade pip
-          pip install -r backend/src/agent-skills/analysis/runtime/requirements.txt
+          "$VENV_PY" -m pip install --upgrade pip
+          "$VENV_PY" -m pip install -r backend/src/agent-skills/analysis/runtime/requirements.txt
 
       - name: Run Analysis Regression
         shell: bash
