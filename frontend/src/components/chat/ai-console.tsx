@@ -1,5 +1,6 @@
 'use client'
 
+import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
@@ -12,12 +13,17 @@ import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toast'
 import { buildVisualizationSnapshot } from '@/components/visualization/adapter'
-import { StructuralVisualizationModal, type VisualizationSnapshot } from '@/components/visualization'
+import type { VisualizationSnapshot } from '@/components/visualization/types'
 import { useI18n, type MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { fetchLatestModel, type LatestModelResponse } from '@/lib/api'
 import { API_BASE } from '@/lib/api-base'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
+
+const StructuralVisualizationModal = dynamic(
+  () => import('@/components/visualization/modal').then((mod) => mod.StructuralVisualizationModal),
+  { ssr: false }
+)
 
 type AnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear'
 type PanelTab = 'analysis' | 'report'
