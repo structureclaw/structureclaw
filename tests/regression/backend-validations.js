@@ -7,8 +7,8 @@ const fsp = require("node:fs/promises");
 const os = require("node:os");
 const { pathToFileURL } = require("node:url");
 
-const { COMMAND_NAMES } = require("../command-manifest");
-const runtime = require("../runtime");
+const { COMMAND_NAMES } = require("../../scripts/cli/command-manifest");
+const runtime = require("../../scripts/cli/runtime");
 const { runBackendBuildOnce } = require("./shared");
 
 function assert(condition, message) {

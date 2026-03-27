@@ -26,7 +26,8 @@ Main directories:
 
 - `frontend/`: Next.js 14 application
 - `backend/`: Fastify API, agent/chat flows, Prisma integration, and analysis execution host
-- `scripts/`: startup helpers and contract/regression checks
+- `scripts/`: startup helpers and the `sclaw` CLI implementation
+- `tests/`: regression runner (`node tests/runner.mjs ...`), install smoke, and Windows Pester tests
 - `docs/`: user handbook and protocol references
 
 ## Quick Start
@@ -50,8 +51,8 @@ Useful follow-up commands:
 ```bash
 ./sclaw logs
 ./sclaw stop
-./sclaw backend-regression
-./sclaw analysis-regression
+node tests/runner.mjs backend-regression
+node tests/runner.mjs analysis-regression
 ```
 
 Use the built-in CLI batch convert command to transform structure model JSON files and write a summary report:

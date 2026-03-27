@@ -6,6 +6,7 @@ on:
       - 'backend/src/agent-skills/analysis/**'
       - 'backend/src/skill-shared/python/**'
       - 'scripts/cli/**'
+      - 'tests/**'
       - 'sclaw'
       - 'package.json'
       - '.github/workflows/backend-regression.yml'
@@ -17,6 +18,7 @@ on:
       - 'backend/src/agent-skills/analysis/**'
       - 'backend/src/skill-shared/python/**'
       - 'scripts/cli/**'
+      - 'tests/**'
       - 'sclaw'
       - 'package.json'
       - '.github/workflows/backend-regression.yml'
@@ -46,4 +48,4 @@ jobs:
         # CI may not always provide a usable OpenSeesPy runtime on Linux.
         # The regression suite still verifies unavailable-engine signaling,
         # auto-fallback routing, and the non-OpenSees regression surface.
-        run: ./sclaw analysis-regression
+        run: node tests/runner.mjs analysis-regression

@@ -26,7 +26,8 @@ frontend (Next.js)
 
 - `frontend/`：Next.js 14 前端
 - `backend/`：Fastify API、Agent/Chat 编排、Prisma，以及分析执行宿主
-- `scripts/`：启动脚本、契约与回归验证
+- `scripts/`：启动脚本与 `sclaw` CLI 实现
+- `tests/`：回归入口（`node tests/runner.mjs ...`）、安装冒烟与 Windows Pester 测试
 - `docs/`：手册与协议参考文档
 
 ## 快速启动
@@ -50,8 +51,8 @@ frontend (Next.js)
 ```bash
 ./sclaw logs
 ./sclaw stop
-./sclaw backend-regression
-./sclaw analysis-regression
+node tests/runner.mjs backend-regression
+node tests/runner.mjs analysis-regression
 ```
 
 使用 CLI 内建批量转换命令处理结构模型 JSON，并输出汇总报告：

@@ -1,10 +1,13 @@
 import { describe, expect, test } from '@jest/globals';
 import fs from 'node:fs';
+import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..', '..');
+const require = createRequire(import.meta.url);
+const { COMMANDS, ALIAS_TO_COMMAND } = require(path.join(repoRoot, 'scripts', 'cli', 'command-manifest.js'));
 
 function envExampleKeys(text) {
   const keys = new Set();
@@ -63,12 +66,17 @@ describe('env example vs docker-compose contract', () => {
     }
   });
 
-  test('install.ps1 NonInteractive parameters remain documented in script', () => {
-    const install = fs.readFileSync(path.join(repoRoot, 'install.ps1'), 'utf8');
-    expect(install).toContain('[switch]$NonInteractive');
-    expect(install).toContain('$LLMProvider');
-    expect(install).toContain('$LLMBaseUrl');
-    expect(install).toContain('$LLMApiKey');
-    expect(install).toContain('$LLMModel');
+  test('docker-install CLI documents the non-interactive LLM bootstrap flags', () => {
+    const dockerInstall = COMMANDS.find((command) => command.name === 'docker-install');
+
+    expect(dockerInstall).toBeDefined();
+    expect(dockerInstall.usage).toContain('sclaw docker-install');
+    expect(dockerInstall.usage).toContain('--non-interactive');
+    expect(dockerInstall.usage).toContain('--llm-provider <name>');
+    expect(dockerInstall.usage).toContain('--llm-base-url <url>');
+    expect(dockerInstall.usage).toContain('--llm-api-key <key>');
+    expect(dockerInstall.usage).toContain('--llm-model <name>');
+    expect(dockerInstall.usage).toContain('--skip-api-test');
+    expect(ALIAS_TO_COMMAND.get('install-docker')).toBe('docker-install');
   });
 });

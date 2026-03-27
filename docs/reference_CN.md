@@ -102,20 +102,22 @@
 
 ## 7. 契约与回归命令
 
+契约与分组回归通过 `node tests/runner.mjs ...` 执行（不再挂在 `sclaw` 上）。列出全部校验名：`node tests/runner.mjs validate --list`。
+
 核心命令：
 
-- `./sclaw validate validate-agent-orchestration`
-- `./sclaw validate validate-agent-no-skill-fallback`
-- `./sclaw validate validate-agent-tools-contract`
-- `./sclaw validate validate-agent-api-contract`
-- `./sclaw validate validate-chat-stream-contract`
-- `./sclaw validate validate-chat-message-routing`
-- `./sclaw validate validate-report-template-contract`
+- `node tests/runner.mjs validate validate-agent-orchestration`
+- `node tests/runner.mjs validate validate-agent-no-skill-fallback`
+- `node tests/runner.mjs validate validate-agent-tools-contract`
+- `node tests/runner.mjs validate validate-agent-api-contract`
+- `node tests/runner.mjs validate validate-chat-stream-contract`
+- `node tests/runner.mjs validate validate-chat-message-routing`
+- `node tests/runner.mjs validate validate-report-template-contract`
 
 回归入口：
 
-- `./sclaw backend-regression`
-- `./sclaw analysis-regression`
+- `node tests/runner.mjs backend-regression`
+- `node tests/runner.mjs analysis-regression`
 
 ## 8. 相关文档
 

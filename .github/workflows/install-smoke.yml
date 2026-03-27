@@ -10,6 +10,7 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'scripts/cli/**'
+      - 'tests/**'
       - 'sclaw'
       - 'package.json'
       - '.github/workflows/install-smoke.yml'
@@ -22,6 +23,7 @@ on:
       - 'backend/**'
       - 'frontend/**'
       - 'scripts/cli/**'
+      - 'tests/**'
       - 'sclaw'
       - 'package.json'
       - '.github/workflows/install-smoke.yml'
@@ -49,7 +51,7 @@ jobs:
 
       - name: Native install smoke (npm ci + build)
         shell: bash
-        run: node ./sclaw test-smoke-native
+        run: node tests/runner.mjs smoke-native
 
   docker-compose-smoke:
     runs-on: ubuntu-latest
@@ -60,7 +62,7 @@ jobs:
 
       - name: Docker compose smoke
         shell: bash
-        run: node ./sclaw test-smoke-docker
+        run: node tests/runner.mjs smoke-docker
 
   docker-compose-smoke-windows:
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
@@ -93,4 +95,4 @@ jobs:
 
       - name: Docker compose smoke
         shell: powershell
-        run: node .\sclaw test-smoke-docker
+        run: node tests/runner.mjs smoke-docker

@@ -1,4 +1,4 @@
-# Shared helpers for StructureClaw install.ps1 (unit-tested via Pester).
+# Shared helpers for StructureClaw Windows install flows (unit-tested via Pester).
 
 Set-StrictMode -Version Latest
 

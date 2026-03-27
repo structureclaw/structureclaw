@@ -4,6 +4,7 @@
 - `backend/`: Fastify + Prisma API service. Route handlers live in `src/api`, orchestration and domain logic live in `src/services`, infrastructure helpers live in `src/utils`. Backend-hosted analysis runtime lives under `src/agent-skills/analysis-execution`.
 - `frontend/`: Next.js 14 app. App routes live under `src/app`, reusable UI in `src/components`, client state and i18n helpers in `src/lib`.
 - `scripts/cli/`: internal implementation for the `sclaw` command surface. Prefer `./sclaw ...` over calling script paths directly.
+- `tests/`: regression suite, install smoke, and `node tests/runner.mjs` entrypoint; Windows Pester tests live under `tests/windows/`.
 - `docs/`: user-facing and protocol documentation such as the stream protocol and roadmap.
 
 ## Working Rules
@@ -21,7 +22,7 @@
 - Preferred local health flow:
  - `./sclaw doctor`
  - `./sclaw start`
- - `./sclaw analysis-regression`
+ - `node tests/runner.mjs analysis-regression`
 - Useful lifecycle commands:
  - `./sclaw start`, `./sclaw restart`
  - `./sclaw stop`
@@ -35,16 +36,30 @@
   - `npm run build --prefix frontend`
   - `npm run type-check --prefix frontend`
   - `npm run test:run --prefix frontend`
-- Analysis and contract validation:
-  - `./sclaw analysis-regression`
-  - `./sclaw check backend-regression`
-  - `./sclaw validate validate-agent-orchestration`
-  - `./sclaw validate validate-chat-stream-contract`
-  - `./sclaw validate validate-analyze-contract`
-- Install smoke (mirrors `.github/workflows/install-smoke.yml`; `test-smoke-docker` needs Docker):
-  - `./sclaw test-smoke-native`
-  - `./sclaw test-smoke-docker`
+- Analysis and contract validation (via `tests/runner.mjs`):
+  - `node tests/runner.mjs analysis-regression`
+  - `node tests/runner.mjs check backend-regression`
+  - `node tests/runner.mjs validate validate-agent-orchestration`
+  - `node tests/runner.mjs validate validate-chat-stream-contract`
+  - `node tests/runner.mjs validate validate-analyze-contract`
+- Install smoke (mirrors `.github/workflows/install-smoke.yml`; `smoke-docker` needs Docker):
+  - `node tests/runner.mjs smoke-native`
+  - `node tests/runner.mjs smoke-docker`
+- Optional npm aliases (root `package.json`): `npm run regression:backend`, `npm run regression:analysis`, `npm run smoke:native`, `npm run smoke:docker`.
 - Windows-only Pester tests for `install-helpers.psm1` (from repo root): install Pester 5, then `Invoke-Pester -Path ./tests/windows/install-helpers.Tests.ps1 -CI`.
+
+### Migration: former `sclaw` regression commands
+
+| Former | Use instead |
+|--------|-------------|
+| `./sclaw validate <name>` | `node tests/runner.mjs validate <name>` |
+| `./sclaw validate --list` | `node tests/runner.mjs validate --list` |
+| `./sclaw check <name>` | `node tests/runner.mjs check <name>` |
+| `./sclaw check --list` | `node tests/runner.mjs check --list` |
+| `./sclaw backend-regression` | `node tests/runner.mjs backend-regression` |
+| `./sclaw analysis-regression` | `node tests/runner.mjs analysis-regression` |
+| `./sclaw test-smoke-native` | `node tests/runner.mjs smoke-native` |
+| `./sclaw test-smoke-docker` | `node tests/runner.mjs smoke-docker` |
 
 ## Coding Expectations
 - TypeScript:
@@ -72,7 +87,7 @@
 - For frontend work, run targeted Vitest checks plus `type-check`; run `build` when layout, routing, or provider behavior changes.
 - For new user-visible frontend features, verify both `en` and `zh` paths. Cover the key rendered copy or interaction behavior in tests instead of validating only one locale.
 - For analysis runtime work, keep regression fixtures deterministic and avoid changing expected outputs casually.
-- If a change affects chat, agent orchestration, report output, converters, or schema migration, extend or run the matching `sclaw validate <name>` check.
+- If a change affects chat, agent orchestration, report output, converters, or schema migration, extend or run the matching `node tests/runner.mjs validate <name>` check.
 
 ## Commit and PR Guidance
 - Follow conventional commit style, for example:

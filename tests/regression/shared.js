@@ -2,7 +2,7 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const runtime = require("../runtime");
+const runtime = require("../../scripts/cli/runtime");
 
 function logStep(title) {
   process.stdout.write(`\n==> ${title}\n`);
@@ -82,7 +82,7 @@ async function runAnalysisRunner(context, commandName) {
   const analysis = resolveAnalysisPythonContext(context);
   await runtime.runCommand(
     analysis.pythonBin,
-    [path.join(context.rootDir, "scripts", "cli", "regressions", "analysis-runner.py"), commandName],
+    [path.join(context.rootDir, "tests", "regression", "analysis-runner.py"), commandName],
     {
       cwd: context.rootDir,
       env: analysis.env,

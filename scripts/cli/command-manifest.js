@@ -109,8 +109,8 @@ const COMMANDS = [
   {
     name: "docker-install",
     usage:
-      "sclaw docker-install [--non-interactive --llm-provider <name> --llm-base-url <url> --llm-api-key <key> --llm-model <name>]",
-    description: "Configure .env and bootstrap the docker stack",
+      "sclaw docker-install [--non-interactive --llm-provider <name> --llm-base-url <url> --llm-api-key <key> --llm-model <name> --skip-api-test]",
+    description: "Configure .env and bootstrap the Docker onboarding stack",
     aliases: ["install-docker"],
     group: "infra",
   },
@@ -215,42 +215,6 @@ const COMMANDS = [
     usage: "sclaw logs [frontend|backend|all] [--follow]",
     description: "Show runtime logs from .runtime/logs",
     group: "lifecycle",
-  },
-  {
-    name: "backend-regression",
-    usage: "sclaw backend-regression",
-    description: "Run backend and agent/chat regressions",
-    group: "validation",
-  },
-  {
-    name: "analysis-regression",
-    usage: "sclaw analysis-regression",
-    description: "Run analysis contract and regression checks",
-    group: "validation",
-  },
-  {
-    name: "test-smoke-native",
-    usage: "sclaw test-smoke-native",
-    description: "Run CI-style native install smoke checks",
-    group: "validation",
-  },
-  {
-    name: "test-smoke-docker",
-    usage: "sclaw test-smoke-docker",
-    description: "Run docker compose smoke checks with a generated env file",
-    group: "validation",
-  },
-  {
-    name: "validate",
-    usage: "sclaw validate <name> [--list]",
-    description: "Run a named validation or list available validations",
-    group: "validation",
-  },
-  {
-    name: "check",
-    usage: "sclaw check <name> [--list]",
-    description: "Run a named grouped check or list available checks",
-    group: "validation",
   },
   {
     name: "skill",

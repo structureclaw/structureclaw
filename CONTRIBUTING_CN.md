@@ -17,7 +17,7 @@
 ./sclaw status
 ```
 
-3. 如果你的改动涉及 chat、agent orchestration、report、converter 或 schema，请在开始前先用 `./sclaw validate --list` 确认对应校验项。
+3. 如果你的改动涉及 chat、agent orchestration、report、converter 或 schema，请在开始前先用 `node tests/runner.mjs validate --list` 确认对应校验项。
 
 ## 核心协作原则
 
@@ -112,7 +112,7 @@ git push origin --delete my-feature
 - Backend：保持路由层轻量，把编排和领域逻辑放进 services。
 - Frontend：路由与布局放在 app routes，可复用 UI 放在 components。
 - 分析运行时：保持引擎、schema、回归逻辑的确定性与可脚本化。
-- Scripts：优先扩展现有 `sclaw` 校验入口，而不是新增一次性本地辅助脚本。
+- Scripts：优先扩展现有回归入口（`node tests/runner.mjs validate ...`），而不是新增一次性本地辅助脚本。
 
 ### 语言与用户体验要求
 
@@ -149,17 +149,17 @@ npm run test:run --prefix frontend
 分析运行时与跨服务验证：
 
 ```bash
-./sclaw backend-regression
-./sclaw analysis-regression
+node tests/runner.mjs backend-regression
+node tests/runner.mjs analysis-regression
 ```
 
 常用定向校验：
 
 ```bash
-./sclaw validate validate-agent-orchestration
-./sclaw validate validate-chat-stream-contract
-./sclaw validate validate-analyze-contract
-./sclaw validate validate-converter-api-contract
+node tests/runner.mjs validate validate-agent-orchestration
+node tests/runner.mjs validate validate-chat-stream-contract
+node tests/runner.mjs validate validate-analyze-contract
+node tests/runner.mjs validate validate-converter-api-contract
 ```
 
 按改动类型的最低期望：

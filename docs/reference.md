@@ -102,20 +102,22 @@ Practical rules:
 
 ## 7. Contract Validation Commands
 
+Contract checks and grouped regressions run via `node tests/runner.mjs ...` (not `sclaw`). List validation names with `node tests/runner.mjs validate --list`.
+
 Primary orchestration and protocol commands:
 
-- `./sclaw validate validate-agent-orchestration`
-- `./sclaw validate validate-agent-no-skill-fallback`
-- `./sclaw validate validate-agent-tools-contract`
-- `./sclaw validate validate-agent-api-contract`
-- `./sclaw validate validate-chat-stream-contract`
-- `./sclaw validate validate-chat-message-routing`
-- `./sclaw validate validate-report-template-contract`
+- `node tests/runner.mjs validate validate-agent-orchestration`
+- `node tests/runner.mjs validate validate-agent-no-skill-fallback`
+- `node tests/runner.mjs validate validate-agent-tools-contract`
+- `node tests/runner.mjs validate validate-agent-api-contract`
+- `node tests/runner.mjs validate validate-chat-stream-contract`
+- `node tests/runner.mjs validate validate-chat-message-routing`
+- `node tests/runner.mjs validate validate-report-template-contract`
 
 Regression entrypoints:
 
-- `./sclaw backend-regression`
-- `./sclaw analysis-regression`
+- `node tests/runner.mjs backend-regression`
+- `node tests/runner.mjs analysis-regression`
 
 ## 8. Related Docs
 

@@ -2,11 +2,11 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const readline = require("node:readline/promises");
-const { spawn, spawnSync } = require("node:child_process");
 
 const { ALIAS_TO_COMMAND, COMMANDS, COMMAND_NAMES } = require("./command-manifest");
 const convertBatch = require("./convert-batch");
-const validationRunner = require("./regressions/run-validation");
+const { createDockerComposeRunner } = require("./docker-compose-runner");
+const { runFrontendBuild } = require("./frontend-build");
 const runtime = require("./runtime");
 
 const MIN_NODE_MAJOR = 18;
@@ -61,7 +61,7 @@ function formatHelp(rootDir) {
   lines.push("Notes:");
   lines.push("  - `doctor` is the cross-platform local preflight check.");
   lines.push("  - `start` maps to the recommended no-infra local profile.");
-  lines.push("  - `backend-regression` / `analysis-regression` now run without bash or WSL.");
+  lines.push("  - Regressions and contract checks: `node tests/runner.mjs ...`.");
   return lines.join(os.EOL);
 }
 
@@ -69,32 +69,10 @@ function log(message = "") {
   process.stdout.write(`${message}${os.EOL}`);
 }
 
+const docker = createDockerComposeRunner(log);
+
 function getCliEntryPath(rootDir) {
   return path.join(rootDir, "sclaw");
-}
-
-function formatNamedCommandList(title, commandPrefix, names) {
-  const lines = [title, ""];
-  for (const name of names) {
-    lines.push(`  sclaw ${commandPrefix} ${name}`);
-  }
-  return lines.join(os.EOL);
-}
-
-function formatValidationList() {
-  return formatNamedCommandList(
-    "Available validations:",
-    "validate",
-    validationRunner.getValidationNames(),
-  );
-}
-
-function formatCheckList() {
-  return formatNamedCommandList(
-    "Available checks:",
-    "check",
-    validationRunner.getCheckNames(),
-  );
 }
 
 function parseCliOptions(args) {
@@ -197,85 +175,6 @@ async function testApiConnection(config) {
   }
 }
 
-function findDockerDesktopExecutable() {
-  if (!runtime.isWindows()) {
-    return null;
-  }
-
-  const candidates = [
-    path.join(process.env.ProgramFiles || "", "Docker", "Docker", "Docker Desktop.exe"),
-    path.join(process.env["ProgramFiles(x86)"] || "", "Docker", "Docker", "Docker Desktop.exe"),
-  ].filter(Boolean);
-
-  return candidates.find((candidate) => runtime.pathExists(candidate)) || null;
-}
-
-function isDockerInstalled() {
-  return runtime.hasCommand("docker") || Boolean(findDockerDesktopExecutable());
-}
-
-function isDockerServiceReady() {
-  if (!runtime.hasCommand("docker")) {
-    return false;
-  }
-  const result = spawnSync("docker", ["version", "--format", "{{.Server.Version}}"], {
-    stdio: ["ignore", "pipe", "ignore"],
-    encoding: "utf8",
-    windowsHide: true,
-  });
-  return result.status === 0 && Boolean(result.stdout.trim());
-}
-
-function launchDockerDesktop() {
-  const executable = findDockerDesktopExecutable();
-  if (!executable) {
-    return false;
-  }
-
-  const child = spawn(executable, [], {
-    detached: true,
-    stdio: "ignore",
-    windowsHide: true,
-  });
-  child.unref();
-  return true;
-}
-
-async function waitForDockerService(timeoutMs = 120000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (isDockerServiceReady()) {
-      return true;
-    }
-    await runtime.sleep(3000);
-  }
-  return false;
-}
-
-async function ensureDockerReady(timeoutMs = 120000) {
-  if (!isDockerInstalled()) {
-    throw new Error(
-      "Docker is required for this command. Install Docker Desktop / Docker Engine and retry.",
-    );
-  }
-
-  if (isDockerServiceReady()) {
-    return;
-  }
-
-  if (runtime.isWindows() && launchDockerDesktop()) {
-    log("Starting Docker Desktop... / 正在启动 Docker Desktop...");
-    if (await waitForDockerService(timeoutMs)) {
-      log("Docker service is ready / Docker 服务已就绪");
-      return;
-    }
-  }
-
-  throw new Error(
-    "Docker service is not ready. Start Docker Desktop and retry. / Docker 服务未就绪，请先启动 Docker Desktop 后重试。",
-  );
-}
-
 async function promptForDockerInstallConfig(defaults) {
   const rl = readline.createInterface({
     input: process.stdin,
@@ -356,71 +255,8 @@ function persistDockerEnv(paths, config) {
   fs.writeFileSync(paths.envFile, content);
 }
 
-function getDockerPorts(env) {
-  return {
-    frontendPort: env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT,
-    backendPort: env.PORT || runtime.DEFAULT_BACKEND_PORT,
-  };
-}
-
-async function waitForDockerServices(env, timeoutMs = 180000) {
-  const { frontendPort, backendPort } = getDockerPorts(env);
-  const services = [
-    { name: "frontend", url: `http://localhost:${frontendPort}`, method: "HEAD" },
-    { name: "backend", url: `http://localhost:${backendPort}/health`, method: "GET" },
-  ];
-  const ready = new Set();
-  const deadline = Date.now() + timeoutMs;
-
-  while (Date.now() < deadline) {
-    for (const service of services) {
-      if (ready.has(service.name)) {
-        continue;
-      }
-      if (await runtime.requestUrl(service.url, service.method)) {
-        ready.add(service.name);
-        log(`${service.name} ready / ${service.name} 已就绪`);
-      }
-    }
-    if (ready.size === services.length) {
-      return true;
-    }
-    await runtime.sleep(5000);
-  }
-
-  return false;
-}
-
-function getDockerComposeArgs(paths, composeArgs, options = {}) {
-  return [
-    "compose",
-    "-f",
-    paths.dockerComposeFile,
-    ...(options.envFile ? ["--env-file", options.envFile] : []),
-    ...composeArgs,
-  ];
-}
-
-async function runDockerCompose(paths, composeArgs, options = {}) {
-  await ensureDockerReady(options.timeoutMs);
-  await runtime.runCommand("docker", getDockerComposeArgs(paths, composeArgs, options), {
-    cwd: paths.rootDir,
-    env: options.env,
-    stdio: options.stdio,
-  });
-}
-
-function readDockerCompose(paths, composeArgs, options = {}) {
-  return spawnSync("docker", getDockerComposeArgs(paths, composeArgs, options), {
-    cwd: paths.rootDir,
-    stdio: ["ignore", "pipe", "pipe"],
-    encoding: "utf8",
-    windowsHide: true,
-  });
-}
-
 async function showDockerHealth(env) {
-  const { frontendPort, backendPort } = getDockerPorts(env);
+  const { frontendPort, backendPort } = docker.getDockerPorts(env);
   log("Docker service health:");
   log(
     (await runtime.requestUrl(`http://localhost:${frontendPort}`, "HEAD"))
@@ -435,8 +271,8 @@ async function showDockerHealth(env) {
 }
 
 async function showDockerStatus(paths, env) {
-  await ensureDockerReady();
-  const result = readDockerCompose(paths, ["ps"]);
+  await docker.ensureDockerReady();
+  const result = docker.readDockerCompose(paths, ["ps"]);
   if (result.stdout.trim()) {
     process.stdout.write(`${result.stdout.trim()}${os.EOL}`);
   } else {
@@ -462,7 +298,7 @@ async function showDockerLogs(paths, args) {
     composeArgs.push(target);
   }
 
-  await runDockerCompose(paths, composeArgs);
+  await docker.runDockerCompose(paths, composeArgs);
 }
 
 async function invokeDockerStart(rootDir, env, options = {}) {
@@ -474,7 +310,7 @@ async function invokeDockerStart(rootDir, env, options = {}) {
     );
   }
 
-  const psResult = readDockerCompose(paths, ["ps", "-q"]);
+  const psResult = docker.readDockerCompose(paths, ["ps", "-q"]);
   const hasExistingContainers = psResult.status === 0 && Boolean(psResult.stdout.trim());
   const composeArgs = options.build
     ? ["up", "--build", "-d"]
@@ -482,12 +318,12 @@ async function invokeDockerStart(rootDir, env, options = {}) {
       ? ["start"]
       : ["up", "-d"];
 
-  await runDockerCompose(paths, composeArgs, { env });
+  await docker.runDockerCompose(paths, composeArgs, { env });
 
   const refreshed = runtime.loadProjectEnvironment(rootDir, log).env;
   if (options.waitForServices !== false) {
     log("Waiting for docker services... / 等待 Docker 服务启动...");
-    const ready = await waitForDockerServices(refreshed, options.timeoutMs || 180000);
+    const ready = await docker.waitForDockerServices(refreshed, options.timeoutMs || 180000);
     if (!ready) {
       log("Some docker services are not ready yet / 部分 Docker 服务尚未完全就绪");
     }
@@ -499,7 +335,7 @@ async function invokeDockerStart(rootDir, env, options = {}) {
 
 async function invokeDockerStop(rootDir) {
   const { paths } = runtime.loadProjectEnvironment(rootDir, log);
-  await runDockerCompose(paths, ["stop"]);
+  await docker.runDockerCompose(paths, ["stop"]);
   log("Docker services stopped / Docker 服务已停止");
 }
 
@@ -791,17 +627,6 @@ async function invokeDbInit(rootDir, env) {
   );
 }
 
-async function runFrontendBuild(paths, env) {
-  const buildEnv = { ...env };
-  if (runtime.isWindows()) {
-    buildEnv.NODE_OPTIONS = "--require ./scripts/fs-rename-fallback.cjs";
-  }
-  await runtime.runCommand(runtime.getNpmCommand(), ["exec", "next", "build"], {
-    cwd: paths.frontendDir,
-    env: buildEnv,
-  });
-}
-
 function getServiceCommand(name, frontendPort) {
   if (name === "backend") {
     return {
@@ -1076,119 +901,6 @@ async function invokeDoctor(rootDir, env) {
   log("Local startup checks passed.");
 }
 
-function writeDockerSmokeEnv(paths) {
-  if (!runtime.pathExists(paths.envExampleFile)) {
-    throw new Error(`Missing ${paths.envExampleFile}`);
-  }
-
-  const outEnv =
-    process.env.STRUCTURECLAW_COMPOSE_ENV_FILE ||
-    path.join(paths.runtimeDir, "ci-docker-smoke.env");
-  const overrides = new Map([
-    ["DATABASE_URL", "file:/.runtime/data/structureclaw.db"],
-    ["LLM_API_KEY", "ci-dummy-key"],
-    ["LLM_MODEL", "gpt-4.1"],
-    ["LLM_BASE_URL", "https://api.openai.com/v1"],
-  ]);
-  const lines = fs
-    .readFileSync(paths.envExampleFile, "utf8")
-    .split(/\r?\n/u)
-    .map((line) => {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) {
-        return line;
-      }
-      const separator = line.indexOf("=");
-      if (separator < 1) {
-        return line;
-      }
-      const key = line.slice(0, separator);
-      return overrides.has(key) ? `${key}=${overrides.get(key)}` : line;
-    });
-  runtime.ensureDirectory(path.dirname(outEnv));
-  fs.writeFileSync(outEnv, lines.join(os.EOL));
-  return outEnv;
-}
-
-function readEnvFileValues(filePath) {
-  return runtime.parseDotEnv(fs.readFileSync(filePath, "utf8"));
-}
-
-async function invokeNativeInstallSmoke(rootDir, env) {
-  const { paths } = runtime.loadProjectEnvironment(rootDir, log);
-
-  log("[ci-native-smoke] npm ci backend");
-  await runtime.runCommand(runtime.getNpmCommand(), ["ci", "--prefix", paths.backendDir], { env });
-
-  log("[ci-native-smoke] npm ci frontend");
-  await runtime.runCommand(runtime.getNpmCommand(), ["ci", "--prefix", paths.frontendDir], { env });
-
-  log("[ci-native-smoke] backend build");
-  await runtime.runCommand(runtime.getNpmCommand(), ["run", "build", "--prefix", paths.backendDir], { env });
-
-  log("[ci-native-smoke] frontend build");
-  await runFrontendBuild(paths, env);
-
-  log("[ci-native-smoke] ok");
-}
-
-async function invokeDockerComposeSmoke(rootDir) {
-  const { paths } = runtime.loadProjectEnvironment(rootDir, log);
-  const envFile = writeDockerSmokeEnv(paths);
-  const smokeEnv = {
-    ...process.env,
-    ...readEnvFileValues(envFile),
-  };
-  let cleanupError = null;
-
-  runtime.ensureDirectory(paths.dataDir);
-
-  try {
-    log("[ci-docker-smoke] docker compose config");
-    await runDockerCompose(paths, ["config", "-q"], { env: smokeEnv, envFile, timeoutMs: 120000 });
-
-    log("[ci-docker-smoke] docker compose up --build -d");
-    await runDockerCompose(paths, ["up", "--build", "-d"], {
-      env: smokeEnv,
-      envFile,
-      timeoutMs: 300000,
-    });
-
-    log("[ci-docker-smoke] waiting for docker services");
-    const ready = await waitForDockerServices(smokeEnv, 300000);
-    if (!ready) {
-      const psResult = readDockerCompose(paths, ["ps"], { envFile });
-      if (psResult.stdout.trim()) {
-        process.stdout.write(`${psResult.stdout.trim()}${os.EOL}`);
-      }
-      throw new Error("docker compose smoke timed out waiting for healthy services");
-    }
-
-    const { frontendPort } = getDockerPorts(smokeEnv);
-    const frontendOk = await runtime.requestUrl(`http://127.0.0.1:${frontendPort}/`, "GET");
-    if (!frontendOk) {
-      log(`[ci-docker-smoke] frontend returned a non-healthy response on http://127.0.0.1:${frontendPort}/`);
-    }
-
-    log("[ci-docker-smoke] docker compose smoke passed");
-  } finally {
-    try {
-      log("[ci-docker-smoke] docker compose down");
-      await runDockerCompose(paths, ["down", "--remove-orphans"], {
-        env: smokeEnv,
-        envFile,
-        timeoutMs: 120000,
-      });
-    } catch (error) {
-      cleanupError = error;
-    }
-  }
-
-  if (cleanupError) {
-    throw cleanupError;
-  }
-}
-
 async function dispatch(commandName, rawArgs, rootDir) {
   const context = runtime.loadProjectEnvironment(rootDir, log);
   const { paths, env } = context;
@@ -1255,10 +967,10 @@ async function dispatch(commandName, rawArgs, rootDir) {
       await invokeAutoMigrateLegacyPostgres(rootDir, env);
       return;
     case "docker-up":
-      await runDockerCompose(paths, ["up", "--build", "-d"], { env });
+      await docker.runDockerCompose(paths, ["up", "--build", "-d"], { env });
       return;
     case "docker-down":
-      await runDockerCompose(paths, ["down"], { env });
+      await docker.runDockerCompose(paths, ["down"], { env });
       return;
     case "docker-install":
       await invokeDockerInstall(rootDir, env, rawArgs);
@@ -1336,54 +1048,6 @@ async function dispatch(commandName, rawArgs, rootDir) {
     case "logs":
       await showLogs(paths, rawArgs);
       return;
-    case "backend-regression":
-      await require("./regressions/backend-regression").runBackendRegression(rootDir);
-      return;
-    case "analysis-regression":
-      await require("./regressions/analysis-regression").runAnalysisRegression(rootDir);
-      return;
-    case "test-smoke-native":
-      await invokeNativeInstallSmoke(rootDir, env);
-      return;
-    case "test-smoke-docker":
-      await invokeDockerComposeSmoke(rootDir);
-      return;
-    case "validate": {
-      const { flags, positionals } = parseCliOptions(rawArgs);
-      if (flags.has("list")) {
-        log(formatValidationList());
-        return;
-      }
-      const validationName = positionals[0];
-      if (!validationName) {
-        throw new Error(
-          "Usage: sclaw validate <name>\n       sclaw validate --list",
-        );
-      }
-      await validationRunner.runValidationByName(validationName, rootDir);
-      return;
-    }
-    case "check": {
-      const { flags, positionals } = parseCliOptions(rawArgs);
-      if (flags.has("list")) {
-        log(formatCheckList());
-        return;
-      }
-      const checkName = positionals[0];
-      if (!checkName) {
-        throw new Error(
-          "Usage: sclaw check <name>\n       sclaw check --list",
-        );
-      }
-      const validationName = validationRunner.resolveCheckValidationName(checkName);
-      if (!validationName) {
-        throw new Error(
-          `Unknown check: ${checkName}\n\n${formatCheckList()}`,
-        );
-      }
-      await validationRunner.runValidationByName(validationName, rootDir);
-      return;
-    }
     case "skill":
       await runSkillCommand(env, rawArgs);
       return;
@@ -1423,9 +1087,7 @@ if (require.main === module) {
 }
 
 module.exports = {
-  formatCheckList,
   formatHelp,
-  formatValidationList,
   getPackageMetadata,
   main,
   resolveCommandName,

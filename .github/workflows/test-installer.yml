@@ -7,10 +7,13 @@ on:
       - 'sclaw'
       - 'scripts/cli/**'
       - 'docker-compose.yml'
-      - 'install.ps1'
       - 'package.json'
       - 'scripts/windows/install-helpers.psm1'
       - 'tests/windows/**'
+      - 'tests/runner.contract.test.mjs'
+      - 'tests/runner.mjs'
+      - 'tests/regression/**'
+      - 'tests/smoke/**'
       - '.github/workflows/test-installer.yml'
   pull_request:
     branches: [master, main]
@@ -18,10 +21,13 @@ on:
       - 'sclaw'
       - 'scripts/cli/**'
       - 'docker-compose.yml'
-      - 'install.ps1'
       - 'package.json'
       - 'scripts/windows/install-helpers.psm1'
       - 'tests/windows/**'
+      - 'tests/runner.contract.test.mjs'
+      - 'tests/runner.mjs'
+      - 'tests/regression/**'
+      - 'tests/smoke/**'
       - '.github/workflows/test-installer.yml'
 
 jobs:
