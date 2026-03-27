@@ -1187,7 +1187,7 @@ describe('AgentService orchestration', () => {
     });
 
     expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(second.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
+    expect(second.interaction?.missingCritical).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
   });
 
   test('should parse chinese two-direction horizontal-load wording in a single 3d frame sentence', async () => {
@@ -1468,7 +1468,7 @@ describe('AgentService orchestration', () => {
 
     expect(third.interaction?.missingCritical).not.toContain('各层层高（m）');
     expect(third.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(third.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
+    expect(third.interaction?.missingCritical).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
   });
 
   test('should merge 2d frame vertical and lateral loads across chat turns', async () => {
@@ -1483,7 +1483,7 @@ describe('AgentService orchestration', () => {
     });
 
     expect(first.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(first.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
+    expect(first.interaction?.missingCritical).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
 
     const second = await svc.run({
       conversationId: 'conv-frame-merge-2d-loads',
@@ -1493,7 +1493,7 @@ describe('AgentService orchestration', () => {
     });
 
     expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(second.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
+    expect(second.interaction?.missingCritical).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
   });
 
   test('should merge 3d frame y-direction lateral loads without dropping existing floor loads', async () => {
@@ -1508,7 +1508,7 @@ describe('AgentService orchestration', () => {
     });
 
     expect(first.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(first.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
+    expect(first.interaction?.missingCritical).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
 
     const second = await svc.run({
       conversationId: 'conv-frame-merge-3d-loads',
@@ -1518,7 +1518,7 @@ describe('AgentService orchestration', () => {
     });
 
     expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(second.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
+    expect(second.interaction?.missingCritical).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
   });
 
   test('should expose a conversation session snapshot for context restoration', async () => {
@@ -1537,7 +1537,7 @@ describe('AgentService orchestration', () => {
     expect(snapshot).toBeDefined();
     expect(snapshot?.draft?.inferredType).toBe('frame');
     expect(snapshot?.interaction?.detectedScenario).toBe('frame');
-    expect(snapshot?.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
+    expect(snapshot?.interaction?.missingCritical).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
   });
 
   test('should persist agent chat messages for conversation history restoration', async () => {
@@ -1657,6 +1657,6 @@ describe('AgentService orchestration', () => {
     expect(collecting.success).toBe(true);
     expect(collecting.interaction?.detectedScenario).toBe('frame');
     expect(collecting.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(collecting.interaction?.missingOptional).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
+    expect(collecting.interaction?.missingCritical).toEqual(expect.arrayContaining(['钢材牌号', '柱截面型号', '梁截面型号']));
   });
 });

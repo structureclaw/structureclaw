@@ -745,6 +745,11 @@ export const handler: SkillHandler = {
       mode,
       [...REQUIRED_KEYS]
     );
+    for (const key of MATERIAL_SECTION_KEYS) {
+      if (state[key] === undefined && !missing.critical.includes(key) && !missing.optional.includes(key)) {
+        missing.critical.push(key);
+      }
+    }
     return missing;
   },
   mapLabels(keys, locale) {
