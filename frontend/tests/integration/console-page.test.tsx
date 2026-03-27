@@ -846,11 +846,15 @@ describe('ConsolePage Integration (CONS-13)', () => {
       expect(screen.getByText('New reply')).toBeInTheDocument()
     })
 
-    const titleButtons = screen.getAllByRole('button').filter((button) => (
-      button.textContent?.includes('Top round conversation') || button.textContent?.includes('Round conversation')
-    ))
-    expect(titleButtons[0]).toHaveTextContent('Round conversation')
-    expect(titleButtons[1]).toHaveTextContent('Top round conversation')
+    // Bump to top runs in handleSubmit's `finally` after stream handling; DOM order can lag behind
+    // the assistant message update on slower runners (e.g. windows-latest CI).
+    await waitFor(() => {
+      const titleButtons = screen.getAllByRole('button').filter((button) => (
+        button.textContent?.includes('Top round conversation') || button.textContent?.includes('Round conversation')
+      ))
+      expect(titleButtons[0]?.textContent ?? '').toMatch(/Round conversation/)
+      expect(titleButtons[1]?.textContent ?? '').toMatch(/Top round conversation/)
+    }, { timeout: 8000 })
   })
 
   it('deletes a non-active conversation from history and local archive', async () => {
