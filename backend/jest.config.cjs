@@ -4,4 +4,5 @@ module.exports = {
   testMatch: ['<rootDir>/tests/**/*.test.mjs'],
   transform: {},
   forceExit: true,
+  globalTeardown: '<rootDir>/tests/teardown.cjs',
 };
