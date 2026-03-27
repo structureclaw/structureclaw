@@ -1,4 +1,4 @@
-import { afterAll, describe, expect, test } from '@jest/globals';
+import { describe, expect, test } from '@jest/globals';
 import fs from 'node:fs';
 import { AgentService } from '../dist/services/agent.js';
 import { prisma } from '../dist/utils/database.js';
@@ -112,13 +112,6 @@ function stubExecutionClients(svc, handlers = {}) {
 }
 
 describe('AgentService orchestration', () => {
-  afterAll(async () => {
-    await Promise.all([
-      prisma.$disconnect().catch(() => {}),
-      redis.quit().catch(() => {}),
-    ]);
-  });
-
   test('should execute analyze -> code-check -> report closed loop', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
