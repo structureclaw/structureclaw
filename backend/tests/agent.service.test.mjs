@@ -112,7 +112,7 @@ function stubExecutionClients(svc, handlers = {}) {
 }
 
 describe('AgentService orchestration', () => {
-  test('should execute analyze -> code-check -> report closed loop', async () => {
+  test.only('should execute analyze -> code-check -> report closed loop', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     stubExecutionClients(svc, {
