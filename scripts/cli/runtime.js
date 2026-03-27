@@ -6,7 +6,7 @@ const os = require("node:os");
 const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 
-const DEFAULT_ANALYSIS_PYTHON_VERSION = "3.11";
+const DEFAULT_ANALYSIS_PYTHON_VERSION = "3.12";
 const DEFAULT_FRONTEND_PORT = "30000";
 const DEFAULT_BACKEND_PORT = "8000";
 

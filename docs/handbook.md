@@ -24,7 +24,7 @@ natural language -> draft model -> validate -> analyze -> code-check -> report
 Recommended local setup:
 
 - Node.js 18+
-- Python 3.11
+- Python 3.12
 
 Optional:
 

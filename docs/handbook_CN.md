@@ -24,7 +24,7 @@ StructureClaw 是一个 AI 协同结构工程平台，采用单仓多服务架�
 推荐的本地环境：
 
 - Node.js 18+
-- Python 3.11
+- Python 3.12
 
 可选：
 
