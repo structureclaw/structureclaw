@@ -9,6 +9,11 @@ export default defineConfig({
     globals: true,
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
     setupFiles: ['./tests/setup.ts'],
+    // Windows CI and local runs are slower; userEvent + waitFor need headroom.
+    testTimeout: 20_000,
+    hookTimeout: 30_000,
+    // Console tests spy on global fetch; parallel files clobber each other's mock.
+    fileParallelism: false,
   },
   resolve: {
     alias: {

@@ -161,7 +161,8 @@ describe('AIConsole grouped skill picker', () => {
     await waitFor(() => {
       expect(screen.getByLabelText(/category view/i)).toBeInTheDocument()
       expect(screen.getAllByText(/structure-type skills/i).length).toBeGreaterThan(0)
-      expect(screen.getByRole('button', { name: /select category/i })).toBeInTheDocument()
+      // Auto-loaded skills may fully preselect the domain; UI shows Clear Category instead of Select Category.
+      expect(screen.getByRole('button', { name: /select category|clear category/i })).toBeInTheDocument()
     })
 
     await user.click(screen.getByRole('button', { name: 'Beam' }))
