@@ -1,5 +1,3 @@
-const path = require("node:path");
-
 const { runAnalysisRunner, resolveRegressionContext, runLoggedStep } = require("./shared");
 const { BACKEND_VALIDATIONS, runBackendValidation } = require("./backend-validations");
 const { runBackendRegression } = require("./backend-regression");
@@ -70,16 +68,10 @@ async function runValidationByName(name, rootDir) {
   throw new Error(`Unknown regression validation: ${name}`);
 }
 
-async function runFromFilename(filename, rootDir) {
-  const name = path.basename(filename).replace(/\.sh$/u, "");
-  await runValidationByName(name, rootDir);
-}
-
 module.exports = {
   ANALYSIS_VALIDATION_NAMES,
   getCheckNames,
   getValidationNames,
   resolveCheckValidationName,
-  runFromFilename,
   runValidationByName,
 };

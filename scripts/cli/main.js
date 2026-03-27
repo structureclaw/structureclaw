@@ -60,7 +60,7 @@ function formatHelp(rootDir) {
   lines.push("");
   lines.push("Notes:");
   lines.push("  - `doctor` is the cross-platform local preflight check.");
-  lines.push("  - `start` maps to the recommended no-infra local profile.");
+  lines.push("  - `start` maps to the recommended no-infra local profile (same as `local-up-noinfra`).");
   lines.push("  - Regressions and contract checks: `node tests/runner.mjs ...`.");
   return lines.join(os.EOL);
 }
@@ -858,7 +858,7 @@ async function invokeLocalUp(rootDir, env, options = {}) {
   if (!options.skipInfra && env.REDIS_URL && String(env.REDIS_URL).toLowerCase() !== "disabled") {
     runtime.requireCommand(
       "docker",
-      "Install Docker Desktop and retry, or use `sclaw local-up-noinfra` / `sclaw start`.",
+      "Install Docker Desktop and retry, or use `sclaw start` (alias: `local-up-noinfra`).",
     );
     await runtime.runCommand("docker", [
       "compose",
@@ -989,9 +989,6 @@ async function dispatch(commandName, rawArgs, rootDir) {
       return;
     case "local-up":
       await invokeLocalUp(rootDir, env, { skipInfra: false });
-      return;
-    case "local-up-noinfra":
-      await invokeLocalUp(rootDir, env, { skipInfra: true });
       return;
     case "health":
       await showHealth(env);

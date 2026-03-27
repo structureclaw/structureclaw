@@ -5,7 +5,10 @@ import path from 'node:path';
 const repoRoot = path.resolve(process.cwd(), '..');
 const require = createRequire(import.meta.url);
 const runtime = require(path.join(repoRoot, 'scripts', 'cli', 'runtime.js'));
-const { COMMAND_NAMES } = require(path.join(repoRoot, 'scripts', 'cli', 'command-manifest.js'));
+const {
+  ALIAS_TO_COMMAND,
+  COMMAND_NAMES,
+} = require(path.join(repoRoot, 'scripts', 'cli', 'command-manifest.js'));
 const analysisRequirementsPath = path.join(
   repoRoot,
   'backend',
@@ -43,5 +46,7 @@ describe('sclaw runtime analysis python paths', () => {
     expect(COMMAND_NAMES.has('docker-logs')).toBe(true);
     expect(COMMAND_NAMES.has('test-smoke-native')).toBe(false);
     expect(COMMAND_NAMES.has('test-smoke-docker')).toBe(false);
+    expect(COMMAND_NAMES.has('local-up-noinfra')).toBe(false);
+    expect(ALIAS_TO_COMMAND.get('local-up-noinfra')).toBe('start');
   });
 });

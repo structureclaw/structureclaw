@@ -146,12 +146,6 @@ const COMMANDS = [
     group: "lifecycle",
   },
   {
-    name: "local-up-noinfra",
-    usage: "sclaw local-up-noinfra",
-    description: "Start the local stack without docker-managed infra",
-    group: "lifecycle",
-  },
-  {
     name: "health",
     usage: "sclaw health",
     description: "Check service health endpoints",
@@ -167,7 +161,8 @@ const COMMANDS = [
   {
     name: "start",
     usage: "sclaw start",
-    description: "Recommended local startup without docker-managed infra",
+    description: "Recommended local startup without docker-managed infra (alias: local-up-noinfra)",
+    aliases: ["local-up-noinfra"],
     group: "lifecycle",
   },
   {
@@ -200,7 +195,7 @@ const COMMANDS = [
     name: "skill",
     usage: "sclaw skill <search|install|enable|disable|uninstall|list> ...",
     description: "Manage external SkillHub skills",
-    group: "validation",
+    group: "skillhub",
   },
 ];
 
