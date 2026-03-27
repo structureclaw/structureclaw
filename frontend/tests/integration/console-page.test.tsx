@@ -3,6 +3,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import ConsolePage from '../../src/app/(console)/console/page'
 import type { VisualizationSnapshot } from '../../src/components/visualization'
+import { clearLocaleCookie, LOCALE_STORAGE_KEY, normalizeLocale } from '@/lib/locale-preference'
+import { AppStoreProvider } from '@/lib/stores/context'
+import type { AppLocale } from '@/lib/stores/slices/preferences'
 
 const mockSkills = [
   {
@@ -255,6 +258,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
       } as unknown as Response
     })
     window.localStorage.clear()
+    clearLocaleCookie()
     Element.prototype.scrollIntoView = vi.fn()
   })
 
@@ -264,7 +268,13 @@ describe('ConsolePage Integration (CONS-13)', () => {
   })
 
   async function renderConsolePage() {
-    const view = render(<ConsolePage />)
+    const stored = normalizeLocale(window.localStorage.getItem(LOCALE_STORAGE_KEY))
+    const initialLocale: AppLocale = stored ?? 'en'
+    const view = render(
+      <AppStoreProvider initialState={{ locale: initialLocale }}>
+        <ConsolePage />
+      </AppStoreProvider>,
+    )
     await waitFor(() => {
       expect(
         vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/api/v1/chat/conversations')),
@@ -1046,9 +1056,9 @@ describe('ConsolePage Integration (CONS-13)', () => {
   })
 
   it('renders Chinese console copy when locale is set to zh', async () => {
-    window.localStorage.setItem('structureclaw.locale', 'zh')
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh')
 
-    render(<ConsolePage />)
+    await renderConsolePage()
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: '结构工程对话工作台' })).toBeInTheDocument()
@@ -1064,7 +1074,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
   })
 
   it('sends the active locale with execute requests', async () => {
-    window.localStorage.setItem('structureclaw.locale', 'zh')
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh')
 
     let executePayload: Record<string, unknown> | null = null
     vi.mocked(fetch).mockImplementation(async (input, init) => {
@@ -1285,7 +1295,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
   })
 
   it('renders guided discuss-first state in English', async () => {
-    window.localStorage.setItem('structureclaw.locale', 'en')
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
     let streamPayload: Record<string, unknown> | null = null
     const interaction = {
       detectedScenario: 'steel-frame',
@@ -1361,7 +1371,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
   })
 
   it('synchronizes model json from a collecting chat result once the structural model is complete', async () => {
-    window.localStorage.setItem('structureclaw.locale', 'en')
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
     const synchronizedModel = {
       schema_version: '1.0.0',
       nodes: [
@@ -1447,7 +1457,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
   })
 
   it('renders guided discuss-first state in Chinese', async () => {
-    window.localStorage.setItem('structureclaw.locale', 'zh')
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh')
     const interaction = {
       detectedScenario: 'bridge',
       detectedScenarioLabel: '桥梁',

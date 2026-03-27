@@ -1,11 +1,16 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { clearLocaleCookie } from '@/lib/locale-preference'
 import { AppStoreProvider, useStore } from '@/lib/stores/context'
 import { LanguageToggle } from '@/components/language-toggle'
+
+const switchToEnglishName = /switch language to english|切换语言为英文/i
+const switchToChineseName = /switch language to chinese|切换语言为中文/i
 
 describe('LanguageToggle', () => {
   beforeEach(() => {
     window.localStorage.clear()
+    clearLocaleCookie()
     document.documentElement.lang = 'en'
   })
 
@@ -16,7 +21,7 @@ describe('LanguageToggle', () => {
       </AppStoreProvider>
     )
 
-    const englishButton = screen.getByRole('button', { name: /switch language to english/i })
+    const englishButton = screen.getByRole('button', { name: switchToEnglishName })
     expect(englishButton).toBeInTheDocument()
   })
 
@@ -33,7 +38,7 @@ describe('LanguageToggle', () => {
       </AppStoreProvider>
     )
 
-    const chineseButton = screen.getByRole('button', { name: /switch language to chinese/i })
+    const chineseButton = screen.getByRole('button', { name: switchToChineseName })
     fireEvent.click(chineseButton)
 
     expect(screen.getByTestId('locale-value')).toHaveTextContent('zh')
@@ -46,7 +51,7 @@ describe('LanguageToggle', () => {
       </AppStoreProvider>
     )
 
-    fireEvent.click(screen.getByRole('button', { name: /switch language to chinese/i }))
+    fireEvent.click(screen.getByRole('button', { name: switchToChineseName }))
 
     await waitFor(() => {
       expect(document.documentElement.lang).toBe('zh-CN')

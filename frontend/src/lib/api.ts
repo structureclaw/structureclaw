@@ -37,8 +37,12 @@ export async function fetchLatestModel(): Promise<LatestModelResponse | null> {
       return null
     }
 
+    if (data.model == null) {
+      return null
+    }
+
     // Validate that the model has required fields
-    if (!data.model || !('nodes' in data.model) || !('elements' in data.model)) {
+    if (typeof data.model !== 'object' || !('nodes' in data.model) || !('elements' in data.model)) {
       console.error('[fetchLatestModel] Invalid model structure:', data.model)
       return null
     }

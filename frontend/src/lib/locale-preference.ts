@@ -36,3 +36,11 @@ export function readLocaleCookieFromDocument(): AppLocale | null {
   }
   return normalizeLocale(decodeURIComponent(part.slice(prefix.length)))
 }
+
+/** Test / isolated environments: remove locale cookie so localStorage + provider initialState win. */
+export function clearLocaleCookie(): void {
+  if (typeof document === 'undefined') {
+    return
+  }
+  document.cookie = `${LOCALE_COOKIE_NAME}=; path=/; max-age=0`
+}
