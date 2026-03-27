@@ -22,7 +22,11 @@ on:
 
 jobs:
   backend-regression:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
 
     steps:
@@ -40,4 +44,5 @@ jobs:
         run: npm ci --prefix backend
 
       - name: Run Backend Regression
+        shell: bash
         run: node tests/runner.mjs backend-regression

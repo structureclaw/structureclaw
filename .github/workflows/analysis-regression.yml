@@ -26,7 +26,11 @@ on:
 
 jobs:
   analysis-regression:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 20
 
     steps:
@@ -51,12 +55,19 @@ jobs:
           python-version: '3.11'
 
       - name: Prepare Analysis Virtualenv
+        shell: bash
         run: |
           python -m venv backend/.venv
-          backend/.venv/bin/pip install --upgrade pip
-          backend/.venv/bin/pip install -r backend/src/agent-skills/analysis/runtime/requirements.txt
+          if [ -f backend/.venv/Scripts/activate ]; then
+            source backend/.venv/Scripts/activate
+          else
+            source backend/.venv/bin/activate
+          fi
+          pip install --upgrade pip
+          pip install -r backend/src/agent-skills/analysis/runtime/requirements.txt
 
       - name: Run Analysis Regression
+        shell: bash
         # CI may not always provide a usable OpenSeesPy runtime on Linux.
         # The regression suite still verifies unavailable-engine signaling,
         # auto-fallback routing, and the non-OpenSees regression surface.
