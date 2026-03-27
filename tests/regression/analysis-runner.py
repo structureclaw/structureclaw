@@ -11,8 +11,8 @@ from fastapi import HTTPException
 
 from api import AnalysisRequest, analyze
 from converters.registry import get_converter, supported_formats
-from providers.opensees.runtime import get_opensees_runtime_issue
-from providers.registry import AnalysisEngineRegistry
+from opensees_runtime import get_opensees_runtime_issue
+from registry import AnalysisEngineRegistry
 from runtime import run_code_check
 from structure_protocol.runtime import convert_structure_model_payload
 from structure_protocol.structure_model_v1 import (

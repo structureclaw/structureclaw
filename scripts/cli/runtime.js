@@ -149,6 +149,14 @@ function resolvePaths(rootDir) {
       "analysis",
       "runtime",
     ),
+    analysisOpenseesStaticRoot: path.join(
+      rootDir,
+      "backend",
+      "src",
+      "agent-skills",
+      "analysis",
+      "opensees-static",
+    ),
     skillSharedPythonRoot: path.join(rootDir, "backend", "src", "skill-shared", "python"),
     dataInputSkillRoot: path.join(rootDir, "backend", "src", "agent-skills", "data-input"),
     codeCheckSkillRoot: path.join(rootDir, "backend", "src", "agent-skills", "code-check"),
@@ -493,6 +501,9 @@ function buildAnalysisPaths(rootDir) {
     paths.dataInputSkillRoot,
     paths.codeCheckSkillRoot,
     paths.materialSkillRoot,
+    // After code-check so `from runtime import …` resolves to code-check/runtime.py,
+    // not opensees-static/runtime.py; `opensees_runtime` still imports from this dir.
+    paths.analysisOpenseesStaticRoot,
   ];
 }
 
