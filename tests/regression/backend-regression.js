@@ -8,6 +8,7 @@ const {
 } = require("./shared");
 
 const BACKEND_STEPS = [
+  ["Dev startup CLI guards", "validate-dev-startup-guards"],
   ["Agent orchestration regression", "validate-agent-orchestration"],
   ["Agent no-skill fallback contract", "validate-agent-no-skill-fallback"],
   ["Agent tools protocol contract", "validate-agent-tools-contract"],

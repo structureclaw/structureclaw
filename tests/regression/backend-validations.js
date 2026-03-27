@@ -1619,7 +1619,7 @@ async function validateDevStartupGuards(context) {
   );
   assert(
     runtimePaths.analysisRequirementsFile.endsWith(
-      path.join("backend", "src", "agent-skills", "analysis", "python", "requirements.txt"),
+      path.join("backend", "src", "agent-skills", "analysis", "runtime", "requirements.txt"),
     ),
     "analysis requirements path is not aligned with the current runtime layout",
   );
