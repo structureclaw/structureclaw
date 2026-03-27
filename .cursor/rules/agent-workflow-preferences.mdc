@@ -1,0 +1,20 @@
+---
+description: 改代码后不自动跑测试；不主动 git 提交（除非用户要求）。No auto tests or commits unless user asks.
+alwaysApply: true
+---
+
+# Agent workflow preferences
+
+## Testing
+
+- **Do not** run tests, type-check, lint, build, or `make` verification commands after editing code unless the user **explicitly** asks you to run them or to verify the change.
+- The user will test locally. You may still suggest which commands they *could* use, but do not execute them by default after implementation.
+
+## Git
+
+- **Do not** run `git add`, `git commit`, `git push`, or create commits unless the user **explicitly** asks you to commit or push.
+- Summarize what changed and which files were touched; let the user decide when to commit.
+
+## Exceptions
+
+- If the user asks to "run tests", "verify", "CI", "build", or "commit", follow that request.

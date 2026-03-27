@@ -1,0 +1,32 @@
+---
+description: StructureClaw 贡献与PR规范（基于 CONTRIBUTING_CN.md）
+alwaysApply: true
+---
+
+# Contributing Guidelines
+
+- Keep changes small and focused. Do not mix unrelated refactors into feature/fix PRs.
+- Respect module boundaries:
+  - `backend/src/api` for route handlers
+  - `backend/src/services` for orchestration/domain logic
+  - `frontend/src/app` for route/layout
+  - `frontend/src/components` for reusable UI
+  - prefer extending existing `scripts/validate-*` for checks
+- All user-visible copy must be bilingual (`en` and `zh`) in the same change.
+- Locale-sensitive output must follow the active frontend locale.
+- Prefer deterministic, reproducible behavior for analysis runtime, schemas, fixtures, and contracts.
+
+## Git / PR Expectations
+
+- Branch from updated `master` for each new task (`feat/*`, `fix/*`, `docs/*`, `refactor/*`, `test/*`).
+- Use conventional commit style and keep logical commit boundaries clear.
+- PR should focus on one clear goal and include: what changed, why, impacted areas, and validation notes.
+- If API/contract changes, include request/response examples and compatibility or migration notes.
+- Do not force-push to erase review context unless explicitly needed for merge preparation.
+
+## Quality and Security
+
+- For backend/contract changes, consider success/failure/missing-input coverage.
+- For frontend user-visible changes, ensure both `en` and `zh` paths are covered.
+- Never commit real secrets or keys; use `.env.example` templates.
+- Document any new config defaults required by the change.
