@@ -377,6 +377,10 @@ function appendSessionHeader(logFile, name) {
 }
 
 function spawnDetached(command, args, options) {
+  const useShell =
+    options.shell !== undefined
+      ? options.shell
+      : isWindows() && /\.(cmd|bat)$/iu.test(command);
   const stdoutFd = fs.openSync(options.logFile, "a");
   const stderrFd = fs.openSync(options.logFile, "a");
   const child = spawn(command, args, {
@@ -385,7 +389,7 @@ function spawnDetached(command, args, options) {
     detached: true,
     stdio: ["ignore", stdoutFd, stderrFd],
     windowsHide: true,
-    shell: false,
+    shell: useShell,
   });
   child.unref();
   fs.closeSync(stdoutFd);
