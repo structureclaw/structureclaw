@@ -3,10 +3,17 @@
 import { ThemeProvider } from '@/components/theme-provider'
 import { Toaster } from '@/components/ui/toast'
 import { AppStoreProvider } from '@/lib/stores'
+import type { AppLocale } from '@/lib/stores/slices/preferences'
 
-export function Providers({ children }: { children: React.ReactNode }) {
+export function Providers({
+  children,
+  initialLocale = 'en',
+}: {
+  children: React.ReactNode
+  initialLocale?: AppLocale
+}) {
   return (
-    <AppStoreProvider>
+    <AppStoreProvider initialState={{ locale: initialLocale }}>
       <ThemeProvider
         attribute="class"
         defaultTheme="dark"
