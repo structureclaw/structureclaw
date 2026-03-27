@@ -27,7 +27,7 @@ Main directories:
 - `frontend/`: Next.js 14 application
 - `backend/`: Fastify API, agent/chat flows, Prisma integration, and analysis execution host
 - `scripts/`: startup helpers and the `sclaw` CLI implementation
-- `tests/`: regression runner (`node tests/runner.mjs ...`), install smoke, and Windows Pester tests
+- `tests/`: regression runner (`node tests/runner.mjs ...`), install smoke, and CI-covered frontend checks (type-check, Vitest, lint) after native smoke
 - `docs/`: user handbook and protocol references
 
 ## Quick Start

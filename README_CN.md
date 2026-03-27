@@ -27,7 +27,7 @@ frontend (Next.js)
 - `frontend/`：Next.js 14 前端
 - `backend/`：Fastify API、Agent/Chat 编排、Prisma，以及分析执行宿主
 - `scripts/`：启动脚本与 `sclaw` CLI 实现
-- `tests/`：回归入口（`node tests/runner.mjs ...`）、安装冒烟与 Windows Pester 测试
+- `tests/`：回归入口（`node tests/runner.mjs ...`）、安装冒烟，以及原生冒烟后在 CI 中执行的前端 type-check、Vitest 与 lint
 - `docs/`：手册与协议参考文档
 
 ## 快速启动
