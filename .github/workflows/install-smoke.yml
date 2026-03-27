@@ -53,6 +53,15 @@ jobs:
         shell: bash
         run: node tests/runner.mjs smoke-native
 
+      - name: Frontend type-check
+        run: npm run type-check --prefix frontend
+
+      - name: Frontend unit tests
+        run: npm run test:run --prefix frontend
+
+      - name: Frontend lint
+        run: npm run lint --prefix frontend
+
   docker-compose-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 45
