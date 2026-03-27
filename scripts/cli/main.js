@@ -454,7 +454,6 @@ async function ensureNpmDependencies(projectDir, projectName, packageNames = [])
 
 async function ensureAnalysisPython(rootDir, env) {
   runtime.requireCommand("python", "Install Python 3.12+ and retry.");
-  await ensureUv(rootDir);
 
   const { paths } = runtime.loadProjectEnvironment(rootDir);
   if (!runtime.pathExists(paths.analysisRequirementsFile)) {
@@ -462,10 +461,11 @@ async function ensureAnalysisPython(rootDir, env) {
   }
 
   const currentPython = runtime.resolveAnalysisPython(rootDir, env);
-  const venvReady = await runtime.pythonModuleExists(currentPython, "uvicorn");
-  if (venvReady) {
-    return runtime.resolveAnalysisPython(rootDir, env);
+  if (currentPython && (await runtime.pythonModuleExists(currentPython, "uvicorn"))) {
+    return currentPython;
   }
+
+  await ensureUv(rootDir);
 
   const pythonVersion =
     env.ANALYSIS_PYTHON_VERSION || runtime.DEFAULT_ANALYSIS_PYTHON_VERSION;
