@@ -4,7 +4,7 @@
 - `backend/`: Fastify + Prisma API service. Route handlers live in `src/api`, orchestration and domain logic live in `src/services`, infrastructure helpers live in `src/utils`. Backend-hosted analysis runtime lives under `src/agent-skills/analysis-execution`.
 - `frontend/`: Next.js 14 app. App routes live under `src/app`, reusable UI in `src/components`, client state and i18n helpers in `src/lib`.
 - `scripts/cli/`: internal implementation for the `sclaw` command surface. Prefer `./sclaw ...` over calling script paths directly.
-- `tests/`: regression suite, install smoke, and `node tests/runner.mjs` entrypoint; Windows Pester tests live under `tests/windows/`.
+- `tests/`: regression suite, install smoke, and `node tests/runner.mjs` entrypoint.
 - `docs/`: user-facing and protocol documentation such as the stream protocol and roadmap.
 
 ## Working Rules
@@ -46,7 +46,6 @@
   - `node tests/runner.mjs smoke-native`
   - `node tests/runner.mjs smoke-docker`
 - Optional npm aliases (root `package.json`): `npm run regression:backend`, `npm run regression:analysis`, `npm run smoke:native`, `npm run smoke:docker`.
-- Windows-only Pester tests for `install-helpers.psm1` (from repo root): install Pester 5, then `Invoke-Pester -Path ./tests/windows/install-helpers.Tests.ps1 -CI`.
 
 ### Migration: former `sclaw` regression commands
 
