@@ -1,12 +1,16 @@
 'use client'
 
-import { useCallback, useContext, useEffect, useRef } from 'react'
+import { useCallback, useContext, useEffect, useLayoutEffect } from 'react'
 import { createStore } from 'zustand/vanilla'
 import { useStore as useZustandStore } from 'zustand'
 import { AppStoreContext } from '@/lib/stores/context'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
-
-const LOCALE_STORAGE_KEY = 'structureclaw.locale'
+import {
+  LOCALE_STORAGE_KEY,
+  normalizeLocale,
+  readLocaleCookieFromDocument,
+  writeLocaleCookie,
+} from '@/lib/locale-preference'
 
 export const messages = {
   en: {
@@ -684,13 +688,6 @@ type LocaleOnlyStore = {
   setLocale: (locale: AppLocale) => void
 }
 
-const normalizeLocale = (value: unknown): AppLocale | null => {
-  if (value === 'en' || value === 'zh') {
-    return value
-  }
-  return null
-}
-
 const fallbackLocaleStore = createStore<LocaleOnlyStore>()((set) => ({
   locale: 'en',
   setLocale: (locale) => set({ locale }),
@@ -701,21 +698,37 @@ export function useI18n() {
   const localeStore = (appStoreContext ?? fallbackLocaleStore) as unknown as typeof fallbackLocaleStore
   const locale = useZustandStore(localeStore, (state) => state.locale)
   const setLocale = useZustandStore(localeStore, (state) => state.setLocale)
-  const localeInitializedRef = useRef(false)
 
-  useEffect(() => {
-    if (localeInitializedRef.current) {
+  // Align client storage/cookie with SSR on first paint; restore from localStorage when no cookie yet.
+  useLayoutEffect(() => {
+    const cookieLocale = readLocaleCookieFromDocument()
+    const storedLocale = normalizeLocale(window.localStorage.getItem(LOCALE_STORAGE_KEY))
+
+    if (cookieLocale) {
+      if (storedLocale !== cookieLocale) {
+        window.localStorage.setItem(LOCALE_STORAGE_KEY, cookieLocale)
+      }
+      if (cookieLocale !== locale) {
+        setLocale(cookieLocale)
+      }
       return
     }
-    localeInitializedRef.current = true
-    const stored = normalizeLocale(window.localStorage.getItem(LOCALE_STORAGE_KEY))
-    if (stored && stored !== locale) {
-      setLocale(stored)
+
+    if (storedLocale && storedLocale !== locale) {
+      setLocale(storedLocale)
+      writeLocaleCookie(storedLocale)
+      return
     }
-  }, [locale, setLocale])
+
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, locale)
+    writeLocaleCookie(locale)
+    // Intentionally only the initial SSR snapshot; avoids re-running when locale changes from user input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, locale)
+    writeLocaleCookie(locale)
     document.documentElement.lang = locale === 'zh' ? 'zh-CN' : 'en'
   }, [locale])
 

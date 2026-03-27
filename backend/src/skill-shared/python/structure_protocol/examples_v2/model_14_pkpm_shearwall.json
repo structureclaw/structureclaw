@@ -1,0 +1,84 @@
+{
+  "schema_version": "2.0.0",
+  "unit_system": "SI",
+  "project": {
+    "name": "某住宅剪力墙结构",
+    "code_standard": "GB50011-2010",
+    "design_life": 50,
+    "importance_class": "丙"
+  },
+  "structure_system": {
+    "type": "shear-wall",
+    "seismic_grade": "second",
+    "direction_x_system": "剪力墙",
+    "direction_y_system": "剪力墙"
+  },
+  "site_seismic": {
+    "intensity": 8,
+    "design_group": "第一组",
+    "site_category": "III",
+    "characteristic_period": 0.45,
+    "max_influence_coefficient": 0.16,
+    "damping_ratio": 0.05
+  },
+  "wind": {
+    "basic_pressure": 0.55,
+    "terrain_roughness": "C",
+    "shape_factor": 1.3
+  },
+  "stories": [
+    {"id": "B1", "height": 3.6, "elevation": -3.6, "is_basement": true, "rigid_diaphragm": true, "floor_loads": [{"type": "dead", "value": 5.5}, {"type": "live", "value": 3.5}]},
+    {"id": "F1", "height": 3.3, "elevation": 0.0, "is_basement": false, "rigid_diaphragm": true, "floor_loads": [{"type": "dead", "value": 5.0}, {"type": "live", "value": 2.0}]},
+    {"id": "F2", "height": 3.0, "elevation": 3.3, "is_basement": false, "rigid_diaphragm": true, "floor_loads": [{"type": "dead", "value": 5.0}, {"type": "live", "value": 2.0}]},
+    {"id": "F3", "height": 3.0, "elevation": 6.3, "is_basement": false, "rigid_diaphragm": true, "floor_loads": [{"type": "dead", "value": 5.0}, {"type": "live", "value": 2.0}]},
+    {"id": "F4", "height": 3.0, "elevation": 9.3, "is_basement": false, "rigid_diaphragm": true, "floor_loads": [{"type": "dead", "value": 4.5}, {"type": "live", "value": 2.0, "description": "屋面活荷载"}]}
+  ],
+  "analysis_control": {
+    "p_delta": true,
+    "rigid_floor": true,
+    "period_reduction_factor": 0.8,
+    "accidental_eccentricity": 0.05,
+    "consideration_torsion": true,
+    "modal_count": 21
+  },
+  "nodes": [
+    {"id": "1", "x": 0, "y": 0, "z": -3.6, "restraints": [true, true, true, true, true, true], "story": "B1"},
+    {"id": "2", "x": 6, "y": 0, "z": -3.6, "restraints": [true, true, true, true, true, true], "story": "B1"}
+  ],
+  "elements": [
+    {"id": "W1", "type": "wall", "nodes": ["1", "2"], "material": "conc1", "section": "wall1", "story": "B1"}
+  ],
+  "materials": [
+    {
+      "id": "conc1", "name": "C40", "E": 32500, "nu": 0.2, "rho": 2500,
+      "grade": "C40", "category": "concrete"
+    },
+    {
+      "id": "rebar1", "name": "HRB400", "E": 200000, "nu": 0.3, "rho": 7850,
+      "fy": 400, "grade": "HRB400", "category": "rebar"
+    }
+  ],
+  "sections": [
+    {"id": "wall1", "name": "剪力墙 200mm", "type": "rectangular", "width": 6000, "thickness": 200, "properties": {"A": 1200000}}
+  ],
+  "load_cases": [
+    {"id": "D", "type": "dead", "loads": [], "description": "恒荷载"},
+    {"id": "L", "type": "live", "loads": [], "description": "活荷载"},
+    {"id": "EX", "type": "seismic", "loads": [], "description": "X向地震"},
+    {"id": "EY", "type": "seismic", "loads": [], "description": "Y向地震"}
+  ],
+  "load_combinations": [
+    {"id": "ULS1", "factors": {"D": 1.2, "L": 1.4}, "combination_type": "uls"},
+    {"id": "ULS2", "factors": {"D": 1.2, "L": 0.5, "EX": 1.3}, "combination_type": "uls"},
+    {"id": "SLS1", "factors": {"D": 1.0, "L": 1.0}, "combination_type": "sls"}
+  ],
+  "metadata": {"name": "pkpm_shearwall_residential"},
+  "extensions": {
+    "pkpm": {
+      "version": "V5.1",
+      "satwe_params": {
+        "coupling_beam_stiffness_reduction": 0.5
+      }
+    }
+  }
+}
