@@ -151,7 +151,7 @@ Architecture note:
 
 ### 7.2 Backend-hosted analysis runtime
 
-Compatibility endpoints exposed by backend:
+Execution endpoints exposed by backend:
 
 - `POST /validate`
 - `POST /convert`

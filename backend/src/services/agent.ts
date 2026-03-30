@@ -2763,7 +2763,7 @@ export class AgentService {
     if (typeof values.analysisType === 'string') {
       session.resolved.analysisType = normalizePolicyAnalysisType(this.policy, values.analysisType);
     }
-    // Keep the raw designCode as a compatibility bridge for existing callers and custom run_code_check flows.
+    // Preserve the explicitly provided designCode for direct run_code_check configuration.
     if (typeof values.designCode === 'string' && values.designCode.trim()) {
       session.resolved.designCode = values.designCode.trim().toUpperCase();
     }
@@ -3548,10 +3548,6 @@ export class AgentService {
     return `agent:interaction-session:${conversationId}`;
   }
 
-  private buildLegacyDraftStateKey(conversationId: string): string {
-    return `agent:draft-state:${conversationId}`;
-  }
-
   private async getInteractionSession(conversationId: string | undefined): Promise<InteractionSession | undefined> {
     if (!conversationId) {
       return undefined;
@@ -3565,23 +3561,11 @@ export class AgentService {
           return parsed as InteractionSession;
         }
       }
-
-      const legacyRaw = await redis.get(this.buildLegacyDraftStateKey(conversationId));
-      if (!legacyRaw) {
-        return undefined;
-      }
-      const legacyParsed = JSON.parse(legacyRaw);
-      if (!legacyParsed || typeof legacyParsed !== 'object') {
-        return undefined;
-      }
-      return {
-        draft: legacyParsed as DraftState,
-        resolved: {},
-        updatedAt: Date.now(),
-      };
     } catch {
       return undefined;
     }
+
+    return undefined;
   }
 
   private async setInteractionSession(conversationId: string, session: InteractionSession): Promise<void> {
@@ -3599,7 +3583,6 @@ export class AgentService {
   private async clearInteractionSession(conversationId: string): Promise<void> {
     try {
       await redis.del(this.buildInteractionSessionKey(conversationId));
-      await redis.del(this.buildLegacyDraftStateKey(conversationId));
     } catch {
       // Keep non-blocking behavior for session cleanup.
     }

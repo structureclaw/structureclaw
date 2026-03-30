@@ -264,10 +264,7 @@ describe('AgentService orchestration', () => {
 
     await svc.clearConversationSession('conv-cleanup');
 
-    expect(deletedKeys).toEqual([
-      'agent:interaction-session:conv-cleanup',
-      'agent:draft-state:conv-cleanup',
-    ]);
+    expect(deletedKeys).toEqual(['agent:interaction-session:conv-cleanup']);
   });
 
   test('should pass engineId through validate analyze and code-check calls', async () => {
@@ -447,8 +444,8 @@ describe('AgentService orchestration', () => {
     expect(result.success).toBe(true);
     expect(result.interaction?.state).toBe('ready');
     expect(result.interaction?.routeHint).toBe('prefer_interactive');
-    expect(result.interaction?.routeReason).toContain('未启用分析 tool');
-    expect(result.interaction?.recommendedNextStep).toContain('未启用分析 tool');
+    expect(result.interaction?.routeReason).toContain('未启用 `run_analysis`');
+    expect(result.interaction?.recommendedNextStep).toContain('未启用 `run_analysis`');
   });
 
   test('should merge rule-extracted numeric follow-up when llm extraction is partial', async () => {

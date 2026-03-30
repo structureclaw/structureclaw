@@ -48,7 +48,7 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
     category: 'modeling',
     displayName: localize('转换结构模型', 'Convert Structural Model'),
     description: localize('在支持的结构协议格式之间转换模型。', 'Convert a structural model between supported protocol formats.'),
-    tags: ['convert', 'model', 'protocol'],
+    tags: ['convert_model', 'model', 'protocol'],
     inputSchema: {
       type: 'object',
       required: ['model'],
@@ -78,7 +78,7 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
     category: 'modeling',
     displayName: localize('校验结构模型', 'Validate Structural Model'),
     description: localize('校验结构模型字段合法性与引用完整性。', 'Validate the structural model fields and reference integrity.'),
-    tags: ['validate', 'model'],
+    tags: ['validate_model', 'model'],
     inputSchema: {
       type: 'object',
       required: ['model'],
@@ -134,7 +134,7 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
     category: 'code-check',
     displayName: localize('执行规范校核', 'Run Code Check'),
     description: localize('结构规范校核。', 'Run structural code checks.'),
-    tags: ['code-check', 'design-code'],
+    tags: ['run_code_check', 'design-code'],
     inputSchema: {
       type: 'object',
       required: ['code', 'elements'],
@@ -156,7 +156,7 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
     category: 'report',
     displayName: localize('生成报告', 'Generate Report'),
     description: localize('将模型、分析与规范校核结果汇总为可读报告。', 'Assemble inputs, analysis, and run_code_check outputs into a readable report.'),
-    tags: ['report', 'artifact'],
+    tags: ['generate_report', 'artifact'],
     inputSchema: {
       type: 'object',
       required: ['message', 'analysis'],

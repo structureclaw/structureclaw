@@ -179,7 +179,7 @@ Tool 是 agent 可调用的动作接口。
 
 当前运行时已经在 agent 协议与 tool trace 中统一暴露 canonical tool id。
 
-底层 backend 兼容执行端点，如 `/validate`、`/convert`、`/analyze`、`/code-check`，仍保留在 canonical tool id 之后。
+底层 backend 执行端点，如 `/validate`、`/convert`、`/analyze`、`/code-check`，仍作为内部运行时边界保留。
 
 ## 8. Skill 与 Tool 的关系
 

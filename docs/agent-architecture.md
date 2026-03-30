@@ -179,7 +179,7 @@ Suggested stable built-in tool concepts:
 
 The current runtime now exposes canonical tool ids through the agent protocol and tool-call traces.
 
-Backend-hosted compatibility endpoints such as `/validate`, `/convert`, `/analyze`, and `/code-check` remain in place behind those canonical tool ids.
+Backend-hosted execution endpoints such as `/validate`, `/convert`, `/analyze`, and `/code-check` remain as internal runtime boundaries.
 
 ## 8. Skill and Tool Relationship
 

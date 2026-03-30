@@ -151,7 +151,7 @@ node .\sclaw stop
 
 ### 7.2 Backend 托管分析运行时
 
-由 backend 暴露的兼容接口：
+由 backend 暴露的执行端点：
 
 - `POST /validate`
 - `POST /convert`
