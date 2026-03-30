@@ -1057,15 +1057,15 @@ export class AgentService {
     if (assessment.nonCriticalMissing.length > 0) {
       return this.localize(
         locale,
-        '关键参数已基本齐备，继续确认分析类型、规范和报告偏好。',
-        'Primary geometry and loading are mostly ready; continue by confirming analysis, code-check, and report preferences.'
+        '关键参数已基本齐备，继续确认 `run_analysis`、`run_code_check` 和 `generate_report` 的偏好。',
+        'Primary geometry and loading are mostly ready; continue by confirming preferences for `run_analysis`, `run_code_check`, and `generate_report`.'
       );
     }
     if (!this.hasActiveTool(activeToolIds, 'run_analysis')) {
       return this.localize(
         locale,
-        '当前能力集中未启用分析 tool，可继续细化参数，或启用分析能力后再执行。',
-        'The current capability set does not enable the analysis tool. Keep refining the inputs, or enable analysis capability before execution.'
+        '当前能力集中未启用 `run_analysis`，可继续细化参数，或启用分析能力后再执行。',
+        'The current capability set does not enable `run_analysis`. Keep refining the inputs, or enable analysis capability before execution.'
       );
     }
     return this.localize(
@@ -1697,7 +1697,7 @@ export class AgentService {
     if (!autoAnalyze) {
       const response = await this.renderSummary(
         params.message,
-        this.localize(locale, '模型已通过校验。根据当前配置，本轮未触发 analyze 工具。', 'The model passed validation. The analyze tool was not invoked for this turn under the current configuration.'),
+        this.localize(locale, '模型已通过校验。根据当前配置，本轮未触发 `run_analysis`。', 'The model passed validation. `run_analysis` was not invoked for this turn under the current configuration.'),
         locale,
       );
       const result: AgentRunResult = {
@@ -1925,7 +1925,7 @@ export class AgentService {
       return {};
     }
 
-    plan.push(this.localize(locale, '生成可读计算与校核报告', 'Generate a readable analysis and code-check report'));
+    plan.push(this.localize(locale, '生成可读计算与规范校核报告', 'Generate a readable analysis and run_code_check report'));
     const reportCall = this.startToolCall('generate_report', {
       message: params.message,
       analysis: analyzed,
@@ -2258,8 +2258,8 @@ export class AgentService {
         )
         : this.localize(
           locale,
-          '当前已能生成结构模型，但当前能力集中未启用分析 tool。',
-          'A structural model is ready, but the current capability set does not enable the analysis tool.',
+          '当前已能生成结构模型，但当前能力集中未启用 `run_analysis`。',
+          'A structural model is ready, but the current capability set does not enable `run_analysis`.',
         ),
       interactionStageLabel: this.getStageLabel('model', locale),
       missingCritical: [],
@@ -2857,8 +2857,8 @@ export class AgentService {
       routeHint: 'prefer_interactive',
       routeReason: this.localize(
         locale,
-        '分析、校核或报告偏好尚未确认，建议先确认策略再触发工具。',
-        'Analysis, code-check, or reporting preferences are pending; confirm strategy before invoking tools.',
+        '`run_analysis`、`run_code_check` 或 `generate_report` 的偏好尚未确认，建议先确认策略再触发工具。',
+        'Preferences for `run_analysis`, `run_code_check`, or `generate_report` are still pending; confirm strategy before invoking tools.',
       ),
     };
   }
@@ -2868,8 +2868,8 @@ export class AgentService {
       routeHint: 'prefer_interactive',
       routeReason: this.localize(
         locale,
-        '当前能力集中未启用分析 tool，建议先继续对话或调整能力集。',
-        'The current capability set does not enable the analysis tool, so continue in conversation or adjust the capability set first.',
+        '当前能力集中未启用 `run_analysis`，建议先继续对话或调整能力集。',
+        'The current capability set does not enable `run_analysis`, so continue in conversation or adjust the capability set first.',
       ),
     };
   }
