@@ -104,7 +104,7 @@ interface PersistedMessageDebugDetails {
 
 type ActiveToolSet = Set<string> | undefined;
 
-type AgentPlanKind = 'reply' | 'ask' | 'interactive_ready' | 'tool_call';
+type AgentPlanKind = 'reply' | 'ask' | 'tool_call';
 type AgentPlanningDirective = 'auto' | 'force_conversation' | 'force_tool';
 
 interface AgentNextStepPlan {
@@ -466,7 +466,7 @@ export class AgentService {
     activeToolIds?: ActiveToolSet;
   }): Promise<Exclude<AgentPlanKind, 'tool_call'>> {
     if (options.hasModel) {
-      return 'interactive_ready';
+      return 'reply';
     }
     if (this.isNoSkillMode(options.skillIds) && !this.hasActiveTool(options.activeToolIds, 'draft_model')) {
       return 'reply';
@@ -477,7 +477,7 @@ export class AgentService {
     const assessment = await this.assessInteractionNeeds(options.session, options.locale, options.skillIds, 'interactive');
     const readyForExecution = assessment.criticalMissing.length === 0
       && (assessment.nonCriticalMissing.length === 0 || Boolean(options.session.userApprovedAutoDecide));
-    return readyForExecution ? 'interactive_ready' : 'ask';
+    return readyForExecution ? 'reply' : 'ask';
   }
 
   private async prepareRunContext(params: AgentRunInput): Promise<PreparedRunContext> {
@@ -1405,8 +1405,8 @@ export class AgentService {
     const { nextPlan, params, traceId, startedAt, startedAtMs, locale, orchestrationMode, toolCalls, plan, sessionKey, workingSession, activeToolIds } = args;
     const noSkillMode = this.isNoSkillMode(params.context?.skillIds);
 
-    if (nextPlan.kind === 'reply') {
-      return this.buildReplyConversationResult({
+    if (nextPlan.kind === 'reply' && noSkillMode && !this.hasActiveTool(activeToolIds, 'draft_model')) {
+      return this.buildPlainReplyConversationResult({
         params,
         traceId,
         startedAt,
@@ -2078,7 +2078,7 @@ export class AgentService {
     return { draft, noSkillEquivalentDraft };
   }
 
-  private async buildReplyConversationResult(args: {
+  private async buildPlainReplyConversationResult(args: {
     params: AgentRunInput;
     traceId: string;
     startedAt: string;
@@ -2173,7 +2173,7 @@ export class AgentService {
     }
 
     if (draft.model && nextPlan.kind !== 'ask') {
-      return this.buildGenericInteractiveReadyResult({
+      return this.buildGenericReplyResult({
         params,
         traceId,
         startedAt,
@@ -2208,7 +2208,7 @@ export class AgentService {
     });
   }
 
-  private async buildGenericInteractiveReadyResult(args: {
+  private async buildGenericReplyResult(args: {
     params: AgentRunInput;
     traceId: string;
     startedAt: string;
@@ -2468,7 +2468,7 @@ export class AgentService {
     }
 
     if (resolved.state === 'ready' && nextPlan.kind !== 'ask') {
-      return this.buildStructuredInteractiveReadyResult({
+      return this.buildStructuredReplyResult({
         params,
         traceId,
         startedAt,
@@ -2502,7 +2502,7 @@ export class AgentService {
     });
   }
 
-  private async buildStructuredInteractiveReadyResult(args: {
+  private async buildStructuredReplyResult(args: {
     params: AgentRunInput;
     traceId: string;
     startedAt: string;
