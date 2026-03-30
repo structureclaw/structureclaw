@@ -659,6 +659,40 @@ describe('AgentService orchestration', () => {
     expect(result.response).toContain('普通对话');
   });
 
+  test('should let the planner reply directly to casual chat even when an analysis skill is enabled', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          return {
+            content: JSON.stringify({
+              kind: 'reply',
+              replyMode: 'plain',
+              reason: 'casual greeting',
+            }),
+          };
+        }
+        return { content: '你好，我在。' };
+      },
+    };
+
+    const result = await svc.run({
+      message: '你好',
+      conversationId: 'conv-casual-opensees-static',
+      context: {
+        locale: 'zh',
+        skillIds: ['opensees-static'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls).toEqual([]);
+    expect(result.model).toBeUndefined();
+    expect(result.interaction).toBeUndefined();
+    expect(result.response).toContain('你好');
+  });
+
   test('should behave like skilled-chat when skills are enabled but execution tools are disabled', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;

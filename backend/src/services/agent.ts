@@ -106,11 +106,13 @@ type ActiveToolSet = Set<string> | undefined;
 
 type AgentPlanKind = 'reply' | 'ask' | 'tool_call';
 type AgentPlanningDirective = 'auto' | 'force_interactive' | 'force_tool';
+type AgentReplyMode = 'plain' | 'structured';
 
 interface AgentNextStepPlan {
   kind: AgentPlanKind;
+  replyMode?: AgentReplyMode;
   planningDirective: AgentPlanningDirective;
-  rationale: 'override' | 'policy';
+  rationale: 'override' | 'llm' | 'rule';
 }
 
 interface ResolvedExecutionConfig {
@@ -162,6 +164,17 @@ interface ResolvedConversationAssessment {
   assessment: Awaited<ReturnType<AgentService['assessInteractionNeeds']>>;
   state: AgentInteractionState;
   interaction: AgentInteraction;
+}
+
+interface PlannerContextSnapshot {
+  hasModel: boolean;
+  inferredType: DraftState['inferredType'];
+  scenarioKey?: string;
+  criticalMissing: string[];
+  nonCriticalMissing: string[];
+  readyForExecution: boolean;
+  availableToolIds: string[];
+  skillIds: string[];
 }
 
 interface PreparedExecutionModel {
@@ -375,6 +388,104 @@ export class AgentService {
     })).kind === 'tool_call';
   }
 
+  private async buildPlannerContextSnapshot(options: {
+    locale: AppLocale;
+    skillIds?: string[];
+    hasModel: boolean;
+    session?: InteractionSession;
+    activeToolIds?: ActiveToolSet;
+  }): Promise<PlannerContextSnapshot> {
+    const assessment = options.session
+      ? await this.assessInteractionNeeds(options.session, options.locale, options.skillIds, 'interactive')
+      : undefined;
+    const readyForExecution = Boolean(
+      assessment
+      && assessment.criticalMissing.length === 0
+      && (assessment.nonCriticalMissing.length === 0 || Boolean(options.session?.userApprovedAutoDecide)),
+    );
+    return {
+      hasModel: options.hasModel,
+      inferredType: options.session?.draft.inferredType ?? 'unknown',
+      scenarioKey: options.session?.draft.scenarioKey,
+      criticalMissing: assessment?.criticalMissing ?? [],
+      nonCriticalMissing: assessment?.nonCriticalMissing ?? [],
+      readyForExecution,
+      availableToolIds: [...(options.activeToolIds ?? new Set<string>())].sort(),
+      skillIds: Array.isArray(options.skillIds) ? [...options.skillIds] : [],
+    };
+  }
+
+  private inferRuleBasedReplyMode(snapshot: PlannerContextSnapshot): AgentReplyMode {
+    return snapshot.hasModel || snapshot.readyForExecution ? 'structured' : 'plain';
+  }
+
+  private extractJsonObject(raw: string): string | null {
+    const trimmed = raw.trim();
+    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
+    const candidate = fenced?.[1]?.trim() || trimmed;
+    const start = candidate.indexOf('{');
+    const end = candidate.lastIndexOf('}');
+    if (start === -1 || end === -1 || end < start) {
+      return null;
+    }
+    return candidate.slice(start, end + 1);
+  }
+
+  private async planNextStepWithLlm(message: string, options: {
+    locale: AppLocale;
+    skillIds?: string[];
+    hasModel: boolean;
+    session?: InteractionSession;
+    activeToolIds?: ActiveToolSet;
+  }): Promise<AgentNextStepPlan | null> {
+    if (!this.llm) {
+      return null;
+    }
+
+    const snapshot = await this.buildPlannerContextSnapshot(options);
+    const prompt = [
+      'You are the planning layer for StructureClaw.',
+      'Decide the single best next step for the latest user message.',
+      'Available skills and tools constrain what can be invoked, but they do not force invocation.',
+      'If the user is greeting, chatting casually, or asking a non-execution question, choose reply.',
+      'Do not choose tool_call just because drafting or analysis tools are available.',
+      'Choose ask when the user is pursuing an engineering task but key information is still missing.',
+      'Choose tool_call only when the user is clearly asking to execute or continue execution now.',
+      'Use replyMode=structured only when a structural model already exists or the engineering draft is already ready and the best next step is to explain/summarize rather than ask or execute.',
+      'Return strict JSON only with this schema:',
+      '{"kind":"reply|ask|tool_call","replyMode":"plain|structured|null","reason":"short reason"}',
+      `Locale: ${options.locale}`,
+      `User message: ${message}`,
+      `Planner context: ${JSON.stringify(snapshot)}`,
+    ].join('\n');
+
+    try {
+      const aiMessage = await this.llm.invoke(prompt);
+      const raw = typeof aiMessage.content === 'string'
+        ? aiMessage.content
+        : JSON.stringify(aiMessage.content);
+      const jsonText = this.extractJsonObject(raw);
+      if (!jsonText) {
+        return null;
+      }
+      const parsed = JSON.parse(jsonText) as { kind?: unknown; replyMode?: unknown; reason?: unknown };
+      if (parsed.kind !== 'reply' && parsed.kind !== 'ask' && parsed.kind !== 'tool_call') {
+        return null;
+      }
+      const replyMode = parsed.kind === 'reply'
+        ? (parsed.replyMode === 'structured' ? 'structured' : 'plain')
+        : undefined;
+      return {
+        kind: parsed.kind,
+        replyMode,
+        planningDirective: 'auto',
+        rationale: 'llm',
+      };
+    } catch {
+      return null;
+    }
+  }
+
   private async shouldPlanToolCallForState(message: string, options: {
     locale: AppLocale;
     skillIds?: string[];
@@ -435,14 +546,21 @@ export class AgentService {
     activeToolIds?: ActiveToolSet;
   }): Promise<AgentNextStepPlan> {
     if (options.planningDirective === 'force_interactive') {
+      const snapshot = await this.buildPlannerContextSnapshot(options);
       return {
         kind: await this.resolveInteractivePlanKind(options),
+        replyMode: this.inferRuleBasedReplyMode(snapshot),
         planningDirective: options.planningDirective,
         rationale: 'override',
       };
     }
     if (options.planningDirective === 'force_tool') {
       return { kind: 'tool_call', planningDirective: options.planningDirective, rationale: 'override' };
+    }
+
+    const llmPlan = await this.planNextStepWithLlm(message, options);
+    if (llmPlan) {
+      return llmPlan;
     }
 
     const shouldCallTool = await this.shouldPlanToolCallForState(message, {
@@ -452,10 +570,16 @@ export class AgentService {
       session: options.session,
       activeToolIds: options.activeToolIds,
     });
+    const snapshot = await this.buildPlannerContextSnapshot(options);
     const kind = shouldCallTool
       ? 'tool_call'
       : await this.resolveInteractivePlanKind(options);
-    return { kind, planningDirective: options.planningDirective, rationale: 'policy' };
+    return {
+      kind,
+      replyMode: kind === 'reply' ? this.inferRuleBasedReplyMode(snapshot) : undefined,
+      planningDirective: options.planningDirective,
+      rationale: 'rule',
+    };
   }
 
   private async resolveInteractivePlanKind(options: {
@@ -1409,8 +1533,8 @@ export class AgentService {
     const { nextPlan, params, traceId, startedAt, startedAtMs, locale, orchestrationMode, toolCalls, plan, sessionKey, workingSession, activeToolIds } = args;
     const noSkillMode = this.isNoSkillMode(params.context?.skillIds);
 
-    if (nextPlan.kind === 'reply' && noSkillMode && !this.hasActiveTool(activeToolIds, 'draft_model')) {
-      return this.buildPlainReplyConversationResult({
+    if (nextPlan.kind === 'reply' && nextPlan.replyMode === 'plain') {
+      return this.buildDirectReplyConversationResult({
         params,
         traceId,
         startedAt,
@@ -1422,6 +1546,28 @@ export class AgentService {
         toolCalls,
         sessionKey,
         workingSession,
+        fallback: noSkillMode && !this.hasActiveTool(activeToolIds, 'draft_model')
+          ? this.localize(
+            locale,
+            '当前未启用结构技能或建模 tool。我可以先按普通对话协助你梳理需求；如果需要建模、分析或校核，请启用相应能力。',
+            'Structural skills or drafting tools are not enabled right now. I can still help as a plain chat assistant; enable the relevant capabilities when you want modeling, analysis, or code checks.',
+          )
+          : this.localize(
+            locale,
+            '你好，我在。你可以直接告诉我你的结构问题、建模需求，或者只是继续聊天。',
+            'Hello, I am here. You can tell me your structural question, modeling goal, or just keep chatting.',
+          ),
+        planNote: noSkillMode && !this.hasActiveTool(activeToolIds, 'draft_model')
+          ? this.localize(
+            locale,
+            '当前未启用工程技能或建模 tool，回退为普通对话回复',
+            'No engineering skills or drafting tools are enabled, so the agent falls back to a plain chat reply',
+          )
+          : this.localize(
+            locale,
+            '当前轮次由模型判定为直接回复，不触发工程建模或执行工具',
+            'The model decided to reply directly for this turn, without triggering engineering drafting or execution tools',
+          ),
       });
     }
 
@@ -2082,7 +2228,73 @@ export class AgentService {
     return { draft, noSkillEquivalentDraft };
   }
 
-  private async buildPlainReplyConversationResult(args: {
+  private async renderDirectReply(
+    message: string,
+    fallback: string,
+    locale: AppLocale,
+    conversationId?: string,
+    skillIds?: string[],
+  ): Promise<string> {
+    if (!this.llm) {
+      return fallback;
+    }
+
+    try {
+      let conversationContext = '';
+      if (conversationId) {
+        try {
+          const recentMessages = await prisma.message.findMany({
+            where: { conversationId },
+            orderBy: { createdAt: 'desc' },
+            take: 6,
+            select: { role: true, content: true },
+          });
+          if (recentMessages.length > 0) {
+            conversationContext = recentMessages
+              .reverse()
+              .map((m: { role: string; content: string }) => `${m.role}: ${m.content.slice(0, 200)}`)
+              .join('\n');
+          }
+        } catch {
+          // Non-blocking: proceed without conversation context.
+        }
+      }
+      const promptParts = [
+        this.localize(locale, '你是 StructureClaw 的对话 Agent。', 'You are the conversational agent for StructureClaw.'),
+        this.localize(
+          locale,
+          '请直接回答用户本轮消息。只有在用户明确要求建模、分析、校核或继续执行时才应进入工程工具链；本轮不要假装已经建模或执行。',
+          'Reply directly to the latest user message. Only move into modeling, analysis, code-check, or execution when the user clearly asks for it; do not pretend tools have been run in this turn.',
+        ),
+        this.localize(
+          locale,
+          '如果用户是在寒暄或闲聊，就自然简短回应；如果是非执行型工程问题，就直接回答问题，不要自动进入建模。',
+          'If the user is greeting or making small talk, answer naturally and briefly. If this is a non-execution engineering question, answer it directly without automatically starting modeling.',
+        ),
+        this.localize(
+          locale,
+          `当前启用技能：${JSON.stringify(Array.isArray(skillIds) ? skillIds : [])}`,
+          `Active skills: ${JSON.stringify(Array.isArray(skillIds) ? skillIds : [])}`,
+        ),
+      ];
+      if (conversationContext) {
+        promptParts.push(this.localize(locale, `对话上下文：\n${conversationContext}`, `Conversation context:\n${conversationContext}`));
+      }
+      promptParts.push(
+        this.localize(locale, `用户消息：${message}`, `User message: ${message}`),
+        this.localize(locale, `兜底回复：${fallback}`, `Fallback reply: ${fallback}`),
+      );
+      const aiMessage = await this.llm.invoke(promptParts.join('\n'));
+      const content = typeof aiMessage.content === 'string'
+        ? aiMessage.content
+        : JSON.stringify(aiMessage.content);
+      return content || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  private async buildDirectReplyConversationResult(args: {
     params: AgentRunInput;
     traceId: string;
     startedAt: string;
@@ -2094,6 +2306,8 @@ export class AgentService {
     toolCalls: AgentToolCall[];
     sessionKey?: string;
     workingSession: InteractionSession;
+    fallback: string;
+    planNote: string;
   }): Promise<AgentRunResult> {
     const {
       params,
@@ -2107,20 +2321,12 @@ export class AgentService {
       toolCalls,
       sessionKey,
       workingSession,
+      fallback,
+      planNote,
     } = args;
 
-    plan.push(this.localize(
-      locale,
-      '当前未启用工程技能或建模 tool，回退为普通对话回复',
-      'No engineering skills or drafting tools are enabled, so the agent falls back to a plain chat reply',
-    ));
-
-    const fallback = this.localize(
-      locale,
-      '当前未启用结构技能或建模 tool。我可以先按普通对话协助你梳理需求；如果需要建模、分析或校核，请启用相应能力。',
-      'Structural skills or drafting tools are not enabled right now. I can still help as a plain chat assistant; enable the relevant capabilities when you want modeling, analysis, or code checks.',
-    );
-    const response = await this.renderSummary(params.message, fallback, locale, undefined, sessionKey);
+    plan.push(planNote);
+    const response = await this.renderDirectReply(params.message, fallback, locale, sessionKey, skillIds);
 
     return this.finalizeRunResult(traceId, sessionKey, params.message, {
       traceId,
