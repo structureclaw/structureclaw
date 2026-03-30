@@ -103,6 +103,8 @@ interface PersistedMessageDebugDetails {
 
 type ActiveToolSet = Set<string> | undefined;
 
+type AgentNextStep = 'conversation' | 'tool';
+
 export interface AgentResolvedRouting {
   selectedSkillIds: string[];
   structuralSkillId?: string;
@@ -293,13 +295,14 @@ export class AgentService {
       enabledToolIds: options?.enabledToolIds,
       disabledToolIds: options?.disabledToolIds,
     });
-    return this.shouldPreferToolInvocationForState(message, {
+    return (await this.planNextStep(message, {
+      requestedMode: 'auto',
       locale,
       skillIds: options?.skillIds,
       hasModel: Boolean(options?.hasModel),
       session,
       activeToolIds,
-    });
+    })) === 'tool';
   }
 
   private async shouldPreferToolInvocationForState(message: string, options: {
@@ -351,6 +354,32 @@ export class AgentService {
     }
 
     return false;
+  }
+
+  private async planNextStep(message: string, options: {
+    requestedMode: AgentRunMode | string;
+    locale: AppLocale;
+    skillIds?: string[];
+    hasModel: boolean;
+    session?: InteractionSession;
+    activeToolIds?: ActiveToolSet;
+  }): Promise<AgentNextStep> {
+    if (options.requestedMode === 'conversation') {
+      return 'conversation';
+    }
+    if (options.requestedMode !== 'auto') {
+      return 'tool';
+    }
+
+    return (await this.shouldPreferToolInvocationForState(message, {
+      locale: options.locale,
+      skillIds: options.skillIds,
+      hasModel: options.hasModel,
+      session: options.session,
+      activeToolIds: options.activeToolIds,
+    }))
+      ? 'tool'
+      : 'conversation';
   }
 
   private async resolveActiveToolIds(
@@ -719,19 +748,16 @@ export class AgentService {
       workingSession.userApprovedAutoDecide = false;
     }
 
-    const resolvedRunMode: AgentRunMode = runMode === 'auto'
-      ? ((await this.shouldPreferToolInvocationForState(params.message, {
-        locale,
-        skillIds,
-        hasModel: Boolean(modelInput),
-        session: workingSession,
-        activeToolIds,
-      }))
-        ? 'tool'
-        : 'conversation')
-      : runMode;
+    const nextStep = await this.planNextStep(params.message, {
+      requestedMode: runMode,
+      locale,
+      skillIds,
+      hasModel: Boolean(modelInput),
+      session: workingSession,
+      activeToolIds,
+    });
 
-    if (resolvedRunMode === 'conversation') {
+    if (nextStep === 'conversation') {
       return this.handleConversationMode({
         params,
         traceId,
