@@ -667,6 +667,24 @@ describe('AgentService orchestration', () => {
     expect(result.response).toContain('普通对话');
   });
 
+  test('should auto-enable the generic structure skill when skillIds are omitted', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const result = await svc.runInteractive({
+      message: '帮我分析一个结构，跨度10m，荷载10kN',
+      context: {
+        locale: 'zh',
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+    expect(result.interaction).toBeDefined();
+    expect(result.response).not.toContain('当前未启用技能');
+    expect(result.response).toContain('通用结构类型');
+  });
+
   test('should let the planner reply directly to casual chat even when an analysis skill is enabled', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = {

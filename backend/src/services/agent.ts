@@ -3308,7 +3308,7 @@ export class AgentService {
   }
 
   private isNoSkillMode(skillIds?: string[]): boolean {
-    return !Array.isArray(skillIds) || skillIds.length === 0;
+    return Array.isArray(skillIds) && skillIds.length === 0;
   }
 
   private async textToModelDraftWithoutSkills(
