@@ -104,13 +104,13 @@ interface PersistedMessageDebugDetails {
 
 type ActiveToolSet = Set<string> | undefined;
 
-type AgentNextStep = 'conversation' | 'tool_call';
+type AgentPlanKind = 'interactive_response' | 'tool_call';
 type AgentPlanningDirective = 'auto' | 'force_conversation' | 'force_tool';
 
 interface AgentNextStepPlan {
-  nextStep: AgentNextStep;
-  directive: AgentPlanningDirective;
-  source: 'override' | 'policy';
+  kind: AgentPlanKind;
+  planningDirective: AgentPlanningDirective;
+  rationale: 'override' | 'policy';
 }
 
 interface ResolvedExecutionConfig {
@@ -370,7 +370,7 @@ export class AgentService {
       hasModel: Boolean(options?.hasModel),
       session,
       activeToolIds,
-    })).nextStep === 'tool_call';
+    })).kind === 'tool_call';
   }
 
   private async shouldPlanToolCallForState(message: string, options: {
@@ -433,13 +433,13 @@ export class AgentService {
     activeToolIds?: ActiveToolSet;
   }): Promise<AgentNextStepPlan> {
     if (options.planningDirective === 'force_conversation') {
-      return { nextStep: 'conversation', directive: options.planningDirective, source: 'override' };
+      return { kind: 'interactive_response', planningDirective: options.planningDirective, rationale: 'override' };
     }
     if (options.planningDirective === 'force_tool') {
-      return { nextStep: 'tool_call', directive: options.planningDirective, source: 'override' };
+      return { kind: 'tool_call', planningDirective: options.planningDirective, rationale: 'override' };
     }
 
-    const nextStep = (await this.shouldPlanToolCallForState(message, {
+    const kind = (await this.shouldPlanToolCallForState(message, {
       locale: options.locale,
       skillIds: options.skillIds,
       hasModel: options.hasModel,
@@ -447,8 +447,8 @@ export class AgentService {
       activeToolIds: options.activeToolIds,
     }))
       ? 'tool_call'
-      : 'conversation';
-    return { nextStep, directive: options.planningDirective, source: 'policy' };
+      : 'interactive_response';
+    return { kind, planningDirective: options.planningDirective, rationale: 'policy' };
   }
 
   private async prepareRunContext(params: AgentRunInput): Promise<PreparedRunContext> {
@@ -933,7 +933,7 @@ export class AgentService {
       activeToolIds,
     });
 
-    if (nextPlan.nextStep === 'conversation') {
+    if (nextPlan.kind === 'interactive_response') {
       return this.handleConversationMode({
         params,
         traceId,
