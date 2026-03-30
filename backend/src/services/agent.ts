@@ -43,7 +43,7 @@ import { createLocalStructureProtocolClient } from './structure-protocol-executi
 import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
 import { listBuiltinToolManifests, resolveCanonicalToolId } from '../agent-runtime/tool-registry.js';
 
-export type AgentToolName = 'text-to-model-draft' | 'convert' | 'validate' | 'analyze' | 'code-check' | 'report';
+export type AgentToolName = 'draft_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'rule-based' | 'llm-assisted';
 export type AgentInteractionPhase = 'interactive' | 'execution';
 export type AgentReportFormat = 'json' | 'markdown' | 'both';
@@ -708,7 +708,7 @@ export class AgentService {
     ];
     const tools = listBuiltinToolManifests().map((tool) => ({
       id: tool.id,
-      name: (tool.runtimeName ?? tool.id) as AgentToolName,
+      name: tool.id as AgentToolName,
       description: tool.description.en,
       inputSchema: tool.inputSchema || { type: 'object' },
       outputSchema: tool.outputSchema || { type: 'object' },
@@ -1177,7 +1177,7 @@ export class AgentService {
       target_format: 'structuremodel-v1',
       target_schema_version: '1.0.0',
     };
-    const convertCall = this.startToolCall('convert', convertInput);
+    const convertCall = this.startToolCall('convert_model', convertInput);
     toolCalls.push(convertCall);
 
     try {
@@ -1271,7 +1271,7 @@ export class AgentService {
 
     plan.push(this.localize(locale, '校验模型字段与引用完整性', 'Validate model fields and references'));
     const validateInput = { model: normalizedModel };
-    const validateCall = this.startToolCall('validate', validateInput);
+    const validateCall = this.startToolCall('validate_model', validateInput);
     toolCalls.push(validateCall);
 
     try {
@@ -1562,7 +1562,7 @@ export class AgentService {
     }
 
     plan.push(this.localize(locale, '从自然语言生成结构模型草案（支持会话级补数）', 'Generate a structural model draft from natural language with session carry-over'));
-    const draftCall = this.startToolCall('text-to-model-draft', { message: params.message, conversationId: sessionKey, phase: 'execution' });
+    const draftCall = this.startToolCall('draft_model', { message: params.message, conversationId: sessionKey, phase: 'execution' });
     toolCalls.push(draftCall);
 
     const draft = await this.textToModelDraft(params.message, workingSession.draft, locale, skillIds);
@@ -1795,14 +1795,14 @@ export class AgentService {
       model: normalizedModel,
       parameters: this.buildAnalysisParameters(analysisParameters, normalizedModel),
     };
-    const analyzeCall = this.startToolCall('analyze', analyzeInput);
+    const analyzeCall = this.startToolCall('run_analysis', analyzeInput);
     toolCalls.push(analyzeCall);
 
     try {
       const analyzed = await this.postToEngineWithRetry('/analyze', analyzeInput, {
         retries: 2,
         traceId,
-        tool: 'analyze',
+        tool: 'run_analysis',
       });
       this.completeToolCallSuccess(analyzeCall, analyzed.data);
       return { ok: true, value: { data: analyzed.data } };
@@ -1873,7 +1873,7 @@ export class AgentService {
       analysisParameters,
       codeCheckElements: params.context?.codeCheckElements,
     });
-    const codeCheckCall = this.startToolCall('code-check', codeCheckInput);
+    const codeCheckCall = this.startToolCall('run_code_check', codeCheckInput);
     toolCalls.push(codeCheckCall);
 
     try {
@@ -1926,7 +1926,7 @@ export class AgentService {
     }
 
     plan.push(this.localize(locale, '生成可读计算与校核报告', 'Generate a readable analysis and code-check report'));
-    const reportCall = this.startToolCall('report', {
+    const reportCall = this.startToolCall('generate_report', {
       message: params.message,
       analysis: analyzed,
       codeCheck: codeCheckResult,
@@ -2053,7 +2053,7 @@ export class AgentService {
       : this.localize(locale, '识别结构场景并匹配对话模板', 'Identify the structural scenario and select the matching dialogue template'));
     plan.push(this.localize(locale, '按当前阶段补齐关键工程参数', 'Collect the key engineering parameters for the current stage'));
 
-    const draftCall = this.startToolCall('text-to-model-draft', { message: params.message, conversationId: sessionKey, phase: 'interactive' });
+    const draftCall = this.startToolCall('draft_model', { message: params.message, conversationId: sessionKey, phase: 'interactive' });
     toolCalls.push(draftCall);
 
     const draft = await this.textToModelDraft(params.message, workingSession.draft, locale, skillIds);

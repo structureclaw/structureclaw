@@ -177,9 +177,9 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.toolCalls.some((c) => c.tool === 'analyze')).toBe(true);
-    expect(result.toolCalls.some((c) => c.tool === 'code-check')).toBe(true);
-    expect(result.toolCalls.some((c) => c.tool === 'report')).toBe(true);
+    expect(result.toolCalls.some((c) => c.tool === 'run_analysis')).toBe(true);
+    expect(result.toolCalls.some((c) => c.tool === 'run_code_check')).toBe(true);
+    expect(result.toolCalls.some((c) => c.tool === 'generate_report')).toBe(true);
     expect(result.codeCheck?.code).toBe('GB50017');
     expect(typeof result.report?.markdown).toBe('string');
   });
@@ -212,8 +212,8 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.toolCalls.some((c) => c.tool === 'analyze')).toBe(true);
-    expect(result.toolCalls.some((c) => c.tool === 'code-check')).toBe(false);
+    expect(result.toolCalls.some((c) => c.tool === 'run_analysis')).toBe(true);
+    expect(result.toolCalls.some((c) => c.tool === 'run_code_check')).toBe(false);
     expect(calls.some((item) => item.client === 'codeCheck' && item.path === '/code-check')).toBe(false);
   });
 
@@ -247,9 +247,9 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.toolCalls.some((c) => c.tool === 'analyze')).toBe(true);
-    expect(result.toolCalls.some((c) => c.tool === 'code-check')).toBe(false);
-    expect(result.toolCalls.some((c) => c.tool === 'report')).toBe(false);
+    expect(result.toolCalls.some((c) => c.tool === 'run_analysis')).toBe(true);
+    expect(result.toolCalls.some((c) => c.tool === 'run_code_check')).toBe(false);
+    expect(result.toolCalls.some((c) => c.tool === 'generate_report')).toBe(false);
     expect(calls.some((item) => item.client === 'codeCheck' && item.path === '/code-check')).toBe(false);
     expect(result.report).toBeUndefined();
   });
@@ -352,7 +352,7 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(false);
-    const codeCheckCall = result.toolCalls.find((c) => c.tool === 'code-check');
+    const codeCheckCall = result.toolCalls.find((c) => c.tool === 'run_code_check');
     expect(codeCheckCall?.status).toBe('error');
     expect(codeCheckCall?.errorCode).toBe('CODE_CHECK_EXECUTION_FAILED');
   });
@@ -679,9 +679,9 @@ describe('AgentService orchestration', () => {
     expect(result.interaction?.detectedScenario).toBe('portal-frame');
     expect(result.interaction?.state).not.toBe('completed');
     expect(result.response.length).toBeGreaterThan(0);
-    expect(result.toolCalls.some((call) => call.tool === 'analyze')).toBe(false);
-    expect(result.toolCalls.some((call) => call.tool === 'code-check')).toBe(false);
-    expect(result.toolCalls.some((call) => call.tool === 'report')).toBe(false);
+    expect(result.toolCalls.some((call) => call.tool === 'run_analysis')).toBe(false);
+    expect(result.toolCalls.some((call) => call.tool === 'run_code_check')).toBe(false);
+    expect(result.toolCalls.some((call) => call.tool === 'generate_report')).toBe(false);
   });
 
   test('should behave like a full agent when skills and execution tools are available', async () => {
@@ -701,7 +701,7 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.toolCalls.some((call) => call.tool === 'analyze')).toBe(true);
+    expect(result.toolCalls.some((call) => call.tool === 'run_analysis')).toBe(true);
     expect(result.model).toBeTruthy();
     expect(result.response.length).toBeGreaterThan(0);
   });
@@ -1035,7 +1035,7 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.toolCalls.some((item) => item.tool === 'analyze' && item.status === 'success')).toBe(true);
+    expect(result.toolCalls.some((item) => item.tool === 'run_analysis' && item.status === 'success')).toBe(true);
   });
 
   test('should block no-skill execute when computable model is unavailable', async () => {
@@ -1055,7 +1055,7 @@ describe('AgentService orchestration', () => {
 
     expect(result.success).toBe(false);
     expect(result.needsModelInput).toBe(true);
-    expect(result.toolCalls.some((item) => item.tool === 'analyze')).toBe(false);
+    expect(result.toolCalls.some((item) => item.tool === 'run_analysis')).toBe(false);
   });
 
   test('should continue to analyze when validate returns an upstream 502', async () => {
@@ -1098,8 +1098,8 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.toolCalls.find((call) => call.tool === 'validate')?.status).toBe('error');
-    expect(result.toolCalls.find((call) => call.tool === 'analyze')?.status).toBe('success');
+    expect(result.toolCalls.find((call) => call.tool === 'validate_model')?.status).toBe('error');
+    expect(result.toolCalls.find((call) => call.tool === 'run_analysis')?.status).toBe('success');
     expect(result.response).toContain('模型校验服务暂时不可用');
   });
 
@@ -1150,7 +1150,7 @@ describe('AgentService orchestration', () => {
 
     expect(result.success).toBe(true);
     expect(analyzeAttempts).toBe(2);
-    expect(result.toolCalls.find((call) => call.tool === 'analyze')?.status).toBe('success');
+    expect(result.toolCalls.find((call) => call.tool === 'run_analysis')?.status).toBe('success');
   });
 
   test('should report engine unavailable when analyze keeps returning 502', async () => {

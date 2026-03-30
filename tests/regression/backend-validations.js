@@ -160,7 +160,7 @@ async function validateAgentOrchestration(context) {
     assert(protocol.runRequestSchema?.type === "object", "runRequestSchema should be json schema object");
     assert(protocol.runResultSchema?.type === "object", "runResultSchema should be json schema object");
     assert(Array.isArray(protocol.streamEventSchema?.oneOf), "streamEventSchema should include oneOf");
-    assert(protocol.tools.some((tool) => tool.name === "analyze"), "analyze tool spec should exist");
+    assert(protocol.tools.some((tool) => tool.name === "run_analysis"), "run_analysis tool spec should exist");
     assert(protocol.tools.every((tool) => tool.outputSchema && typeof tool.outputSchema === "object"), "tool outputSchema should exist");
     assert(protocol.tools.every((tool) => Array.isArray(tool.errorCodes)), "tool errorCodes should be array");
     console.log("[ok] agent protocol metadata");
@@ -197,7 +197,7 @@ async function validateAgentOrchestration(context) {
     });
     assert(result.success === false, "validate failure should fail");
     assert(result.response.includes("模型校验失败"), "validate failure response should be surfaced");
-    assert(result.toolCalls.some((call) => call.tool === "validate" && call.error), "validate error trace should exist");
+    assert(result.toolCalls.some((call) => call.tool === "validate_model" && call.error), "validate trace should exist");
     console.log("[ok] agent validate-failure trace");
   }
 
@@ -220,9 +220,9 @@ async function validateAgentOrchestration(context) {
     });
 
     assert(result.success === true, "successful orchestration should succeed");
-    assert(result.toolCalls.some((call) => call.tool === "validate"), "validate should be called");
-    assert(result.toolCalls.some((call) => call.tool === "analyze"), "analyze should be called");
-    assert(result.toolCalls.some((call) => call.tool === "report"), "report should be generated");
+    assert(result.toolCalls.some((call) => call.tool === "validate_model"), "validate_model should be called");
+    assert(result.toolCalls.some((call) => call.tool === "run_analysis"), "run_analysis should be called");
+    assert(result.toolCalls.some((call) => call.tool === "generate_report"), "generate_report should be generated");
     assert(result.report && result.report.summary, "report payload should exist");
     assert(result.metrics?.toolCount >= 2, "tool metrics should be present");
     assert(typeof result.startedAt === "string" && typeof result.completedAt === "string", "run timestamps should be present");
@@ -273,9 +273,9 @@ async function validateAgentOrchestration(context) {
     });
 
     assert(result.success === true, "text draft orchestration should succeed");
-    assert(result.toolCalls.some((call) => call.tool === "text-to-model-draft"), "text draft tool should be called");
-    assert(result.toolCalls.some((call) => call.tool === "validate"), "validate should be called after draft");
-    assert(result.toolCalls.some((call) => call.tool === "analyze"), "analyze should be called after draft");
+    assert(result.toolCalls.some((call) => call.tool === "draft_model"), "draft_model should be called");
+    assert(result.toolCalls.some((call) => call.tool === "validate_model"), "validate_model should be called after draft");
+    assert(result.toolCalls.some((call) => call.tool === "run_analysis"), "run_analysis should be called after draft");
     console.log("[ok] agent text-to-model draft orchestration");
   }
 
@@ -300,7 +300,7 @@ async function validateAgentOrchestration(context) {
       },
     });
     assert(second.success === true, "second turn should complete using persisted draft state");
-    assert(second.toolCalls.some((call) => call.tool === "text-to-model-draft"), "second turn should still draft model");
+    assert(second.toolCalls.some((call) => call.tool === "draft_model"), "second turn should still draft model");
     console.log("[ok] conversation-level clarification carry-over");
   }
 
@@ -517,8 +517,8 @@ async function validateAgentOrchestration(context) {
     });
 
     assert(result.success === true, "closed loop should succeed");
-    assert(result.toolCalls.some((call) => call.tool === "code-check"), "code-check should be called");
-    assert(result.toolCalls.some((call) => call.tool === "report"), "report should be called");
+    assert(result.toolCalls.some((call) => call.tool === "run_code_check"), "run_code_check should be called");
+    assert(result.toolCalls.some((call) => call.tool === "generate_report"), "generate_report should be called");
     assert(result.codeCheck?.code === "GB50017", "code-check output should exist");
     assert(capturedCodeCheckPayload?.context?.analysisSummary?.analysisType === "static", "analysis summary should be forwarded");
     assert(capturedCodeCheckPayload?.context?.utilizationByElement?.E1?.正应力 === 0.72, "utilization context should be forwarded");
@@ -667,9 +667,9 @@ async function validateAgentCapabilityModes(context) {
   });
   assert(skilledChat.success === true, "skilled chat should succeed");
   assert(skilledChat.interaction?.detectedScenario === "portal-frame", "skilled chat should keep structural interaction guidance");
-  assert(!skilledChat.toolCalls.some((call) => call.tool === "analyze"), "skilled chat should not execute analyze");
-  assert(!skilledChat.toolCalls.some((call) => call.tool === "code-check"), "skilled chat should not execute code-check");
-  assert(!skilledChat.toolCalls.some((call) => call.tool === "report"), "skilled chat should not execute report");
+  assert(!skilledChat.toolCalls.some((call) => call.tool === "run_analysis"), "skilled chat should not execute run_analysis");
+  assert(!skilledChat.toolCalls.some((call) => call.tool === "run_code_check"), "skilled chat should not execute run_code_check");
+  assert(!skilledChat.toolCalls.some((call) => call.tool === "generate_report"), "skilled chat should not execute generate_report");
 
   const fullAgent = await svc.runToolCall({
     conversationId: "conv-capability-full-agent",
@@ -683,7 +683,7 @@ async function validateAgentCapabilityModes(context) {
     },
   });
   assert(fullAgent.success === true, "full agent should succeed");
-  assert(fullAgent.toolCalls.some((call) => call.tool === "analyze"), "full agent should execute analyze");
+  assert(fullAgent.toolCalls.some((call) => call.tool === "run_analysis"), "full agent should execute run_analysis");
   assert(fullAgent.model && typeof fullAgent.model === "object", "full agent should return model artifact");
 
   console.log("[ok] capability-mode contract");
@@ -708,7 +708,7 @@ async function validateAgentToolsContract(context) {
   assert(payload.tools.every((tool) => typeof tool.id === "string" && tool.id.length > 0), "tool specs should expose canonical ids");
 
   const toolNames = payload.tools.map((tool) => tool.name);
-  for (const requiredTool of ["text-to-model-draft", "convert", "validate", "analyze", "code-check", "report"]) {
+  for (const requiredTool of ["draft_model", "convert_model", "validate_model", "run_analysis", "run_code_check", "generate_report"]) {
     assert(toolNames.includes(requiredTool), `missing required tool: ${requiredTool}`);
   }
 
@@ -719,7 +719,7 @@ async function validateAgentToolsContract(context) {
   assert(requestContext.reportOutput?.enum?.includes("file"), "runRequestSchema should include reportOutput=file");
   assert(requestContext.reportFormat?.enum?.includes("both"), "runRequestSchema should include reportFormat=both");
 
-  const reportTool = payload.tools.find((tool) => tool.name === "report");
+  const reportTool = payload.tools.find((tool) => tool.name === "generate_report");
   assert(reportTool, "report tool spec should exist");
   assert(reportTool.inputSchema?.required?.includes("analysis"), "report tool input should require analysis");
   assert(reportTool.outputSchema?.properties?.json?.type === "object", "report output should include json object");
@@ -751,11 +751,11 @@ async function validateAgentApiContract(context) {
       success: true,
       orchestrationMode: "rule-based",
       needsModelInput: false,
-      plan: ["validate", "analyze", "report"],
+      plan: ["validate_model", "run_analysis", "generate_report"],
       toolCalls: [
-        { tool: "validate", input: {}, status: "success", startedAt: new Date().toISOString() },
-        { tool: "analyze", input: {}, status: "success", startedAt: new Date().toISOString() },
-        { tool: "report", input: {}, status: "success", startedAt: new Date().toISOString() },
+        { tool: "validate_model", input: {}, status: "success", startedAt: new Date().toISOString() },
+        { tool: "run_analysis", input: {}, status: "success", startedAt: new Date().toISOString() },
+        { tool: "generate_report", input: {}, status: "success", startedAt: new Date().toISOString() },
       ],
       response: "ok",
       report: {
@@ -769,7 +769,7 @@ async function validateAgentApiContract(context) {
         totalToolDurationMs: 10,
         averageToolDurationMs: 3.3,
         maxToolDurationMs: 5,
-        toolDurationMsByName: { validate: 2, analyze: 3, report: 5 },
+        toolDurationMsByName: { validate_model: 2, run_analysis: 3, generate_report: 5 },
       },
     };
   };
@@ -1356,7 +1356,7 @@ async function validateAgentSkillhubRepositoryDown(context) {
   });
 
   assert(result.success === true, "baseline tool invocation should still succeed when repository is down");
-  assert(result.toolCalls.some((item) => item.tool === "analyze" && item.status === "success"), "analyze should still run in baseline mode");
+  assert(result.toolCalls.some((item) => item.tool === "run_analysis" && item.status === "success"), "run_analysis should still run in baseline mode");
 
   await app.close();
   process.env.SCLAW_SKILLHUB_FORCE_DOWN = "false";
@@ -1385,7 +1385,7 @@ async function validateChatStreamContract(context) {
         success: true,
         orchestrationMode: "rule-based",
         needsModelInput: false,
-        plan: ["validate", "analyze", "report"],
+        plan: ["validate_model", "run_analysis", "generate_report"],
         toolCalls: [],
         response: "ok",
       },
@@ -1480,7 +1480,7 @@ async function validateChatMessageRouting(context) {
       success: true,
       orchestrationMode: "rule-based",
       needsModelInput: false,
-      plan: ["validate", "analyze"],
+      plan: ["validate_model", "run_analysis"],
       toolCalls: [],
       response: "tool-ok",
     };
@@ -1498,7 +1498,7 @@ async function validateChatMessageRouting(context) {
       success: true,
       orchestrationMode: "rule-based",
       needsModelInput: false,
-      plan: ["validate", "analyze"],
+      plan: ["validate_model", "run_analysis"],
       toolCalls: [],
       response: "tool-ok",
     };
