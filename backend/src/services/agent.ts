@@ -104,7 +104,7 @@ interface PersistedMessageDebugDetails {
 
 type ActiveToolSet = Set<string> | undefined;
 
-type AgentPlanKind = 'interactive_response' | 'tool_call';
+type AgentPlanKind = 'ask' | 'interactive_ready' | 'tool_call';
 type AgentPlanningDirective = 'auto' | 'force_conversation' | 'force_tool';
 
 interface AgentNextStepPlan {
@@ -433,22 +433,45 @@ export class AgentService {
     activeToolIds?: ActiveToolSet;
   }): Promise<AgentNextStepPlan> {
     if (options.planningDirective === 'force_conversation') {
-      return { kind: 'interactive_response', planningDirective: options.planningDirective, rationale: 'override' };
+      return {
+        kind: await this.resolveInteractivePlanKind(options),
+        planningDirective: options.planningDirective,
+        rationale: 'override',
+      };
     }
     if (options.planningDirective === 'force_tool') {
       return { kind: 'tool_call', planningDirective: options.planningDirective, rationale: 'override' };
     }
 
-    const kind = (await this.shouldPlanToolCallForState(message, {
+    const shouldCallTool = await this.shouldPlanToolCallForState(message, {
       locale: options.locale,
       skillIds: options.skillIds,
       hasModel: options.hasModel,
       session: options.session,
       activeToolIds: options.activeToolIds,
-    }))
+    });
+    const kind = shouldCallTool
       ? 'tool_call'
-      : 'interactive_response';
+      : await this.resolveInteractivePlanKind(options);
     return { kind, planningDirective: options.planningDirective, rationale: 'policy' };
+  }
+
+  private async resolveInteractivePlanKind(options: {
+    locale: AppLocale;
+    skillIds?: string[];
+    hasModel: boolean;
+    session?: InteractionSession;
+  }): Promise<Exclude<AgentPlanKind, 'tool_call'>> {
+    if (options.hasModel) {
+      return 'interactive_ready';
+    }
+    if (!options.session || options.session.draft.inferredType === 'unknown') {
+      return 'ask';
+    }
+    const assessment = await this.assessInteractionNeeds(options.session, options.locale, options.skillIds, 'interactive');
+    const readyForExecution = assessment.criticalMissing.length === 0
+      && (assessment.nonCriticalMissing.length === 0 || Boolean(options.session.userApprovedAutoDecide));
+    return readyForExecution ? 'interactive_ready' : 'ask';
   }
 
   private async prepareRunContext(params: AgentRunInput): Promise<PreparedRunContext> {
@@ -933,7 +956,7 @@ export class AgentService {
       activeToolIds,
     });
 
-    if (nextPlan.kind === 'interactive_response') {
+    if (nextPlan.kind !== 'tool_call') {
       return this.handleConversationMode({
         params,
         traceId,
