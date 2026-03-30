@@ -307,8 +307,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByRole('button', { name: 'Expand Engineering Context' })).toBeInTheDocument()
     expect(screen.getByText('Database tools')).toBeInTheDocument()
     expect(screen.getByText(/Review SQLite file health/i)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Discuss First' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Run Analysis' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument()
     expect(screen.queryByText('Analysis Engine Auto')).not.toBeInTheDocument()
   })
 
@@ -850,7 +849,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     const input = screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/) as HTMLTextAreaElement
     fireEvent.change(input, { target: { value: 'New round message' } })
-    fireEvent.click(screen.getByRole('button', { name: /Discuss First|先聊需求/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Send|发送/ }))
 
     await waitFor(() => {
       expect(screen.getByText('New reply')).toBeInTheDocument()
@@ -1065,7 +1064,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
 
     expect(screen.getByText('历史会话')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '执行分析' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '发送' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '展开技能' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '展开工程上下文' })).toBeInTheDocument()
     expect(screen.queryByText('计算引擎 自动选择')).not.toBeInTheDocument()
@@ -1100,26 +1099,28 @@ describe('ConsolePage Integration (CONS-13)', () => {
           json: vi.fn().mockResolvedValue({
             id: 'conv-zh',
             title: '新会话',
-            type: 'analysis',
+            type: 'general',
             createdAt: '2026-03-12T08:00:00.000Z',
             updatedAt: '2026-03-12T08:00:00.000Z',
           }),
         } as unknown as Response
       }
 
-      if (url.includes('/api/v1/chat/execute')) {
+      if (url.includes('/api/v1/chat/stream')) {
         executePayload = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>
-        return {
-          ok: true,
-          json: vi.fn().mockResolvedValue({
-            response: '已完成',
-            success: true,
-            report: {
-              summary: '摘要',
-              markdown: '# 报告',
+        return createSseResponse([
+          {
+            type: 'result',
+            content: {
+              response: '已完成',
+              success: true,
+              report: {
+                summary: '摘要',
+                markdown: '# 报告',
+              },
             },
-          }),
-        } as unknown as Response
+          },
+        ])
       }
 
       if (url.includes('/api/v1/agent/capability-matrix')) {
@@ -1163,7 +1164,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.change(screen.getByPlaceholderText(/描述你的结构目标/i), {
       target: { value: '请分析这个模型' },
     })
-    fireEvent.click(screen.getByRole('button', { name: '执行分析' }))
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
 
     await waitFor(() => {
       expect(executePayload).not.toBeNull()
@@ -1231,39 +1232,41 @@ describe('ConsolePage Integration (CONS-13)', () => {
           json: vi.fn().mockResolvedValue({
             id: 'conv-engine',
             title: 'Engine visibility',
-            type: 'analysis',
+            type: 'general',
             createdAt: '2026-03-12T08:00:00.000Z',
             updatedAt: '2026-03-12T08:00:00.000Z',
           }),
         } as unknown as Response
       }
 
-      if (url.includes('/api/v1/chat/execute')) {
-        return {
-          ok: true,
-          json: vi.fn().mockResolvedValue({
-            response: 'Analysis finished.',
-            success: true,
-            requestedEngineId: 'builtin-opensees',
-            analysis: {
+      if (url.includes('/api/v1/chat/stream')) {
+        return createSseResponse([
+          {
+            type: 'result',
+            content: {
+              response: 'Analysis finished.',
               success: true,
-              meta: {
-                engineId: 'builtin-simplified',
-                engineName: 'StructureClaw Analysis Engine',
-                engineVersion: '0.1.0',
-                engineKind: 'python',
-                selectionMode: 'fallback',
-                fallbackFrom: 'builtin-opensees',
-                unavailableReason: 'OpenSees runtime is unavailable',
-              },
-              data: {
-                summary: {
-                  nodeCount: 2,
+              requestedEngineId: 'builtin-opensees',
+              analysis: {
+                success: true,
+                meta: {
+                  engineId: 'builtin-simplified',
+                  engineName: 'StructureClaw Analysis Engine',
+                  engineVersion: '0.1.0',
+                  engineKind: 'python',
+                  selectionMode: 'fallback',
+                  fallbackFrom: 'builtin-opensees',
+                  unavailableReason: 'OpenSees runtime is unavailable',
+                },
+                data: {
+                  summary: {
+                    nodeCount: 2,
+                  },
                 },
               },
             },
-          }),
-        } as unknown as Response
+          },
+        ])
       }
 
       throw new Error(`Unexpected fetch: ${url}`)
@@ -1274,7 +1277,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
       target: { value: 'Analyze this model' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /Run Analysis|执行分析/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Send|发送/ }))
 
     await waitFor(() => {
       expect(screen.getByText('StructureClaw Analysis Engine v0.1.0')).toBeInTheDocument()
@@ -1335,7 +1338,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
           json: vi.fn().mockResolvedValue({
             id: 'conv-guidance',
             title: 'Guided conversation',
-            type: 'analysis',
+            type: 'general',
           }),
         } as unknown as Response
       }
@@ -1356,7 +1359,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.change(screen.getByRole('textbox'), {
       target: { value: 'Help me size a steel frame' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Discuss First' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => {
       expect(screen.getByTestId('console-guidance-panel')).toBeInTheDocument()
@@ -1408,7 +1411,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
           json: vi.fn().mockResolvedValue({
             id: 'conv-sync-model',
             title: 'Sync model',
-            type: 'analysis',
+            type: 'general',
           }),
         } as unknown as Response
       }
@@ -1441,13 +1444,12 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
       target: { value: 'Please draft a beam model' },
     })
-    fireEvent.click(screen.getByRole('button', { name: 'Discuss First' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
     await waitFor(() => {
-      expect(screen.getByText('Model JSON was synchronized from the conversation draft.')).toBeInTheDocument()
+      expect((modelInput as HTMLTextAreaElement).value).toContain('"schema_version": "1.0.0"')
     })
 
-    expect((modelInput as HTMLTextAreaElement).value).toContain('"schema_version": "1.0.0"')
     expect((modelInput as HTMLTextAreaElement).value).toContain('"nodes"')
     expect(screen.queryByText(/Model JSON parse failed|模型 JSON 解析失败/)).not.toBeInTheDocument()
     // latestModelVisualizationSnapshot is derived in a useEffect after modelText updates; avoid racing the DOM on CI.
@@ -1496,7 +1498,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
           json: vi.fn().mockResolvedValue({
             id: 'conv-guidance-zh',
             title: '引导对话',
-            type: 'analysis',
+            type: 'general',
           }),
         } as unknown as Response
       }
@@ -1516,7 +1518,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.change(screen.getByRole('textbox'), {
       target: { value: '请帮我梳理桥梁参数' },
     })
-    fireEvent.click(screen.getByRole('button', { name: '先聊需求' }))
+    fireEvent.click(screen.getByRole('button', { name: '发送' }))
 
     await waitFor(() => {
       expect(screen.getByTestId('console-guidance-panel')).toBeInTheDocument()
@@ -1558,16 +1560,18 @@ describe('ConsolePage Integration (CONS-13)', () => {
           json: vi.fn().mockResolvedValue({
             id: 'conv-visual',
             title: 'Visualization run',
-            type: 'analysis',
+            type: 'general',
           }),
         } as unknown as Response
       }
 
-      if (url.includes('/api/v1/chat/execute')) {
-        return {
-          ok: true,
-          json: vi.fn().mockResolvedValue(sampleAnalysisResult),
-        } as unknown as Response
+      if (url.includes('/api/v1/chat/stream')) {
+        return createSseResponse([
+          {
+            type: 'result',
+            content: sampleAnalysisResult,
+          },
+        ])
       }
 
       throw new Error(`Unexpected fetch: ${url}`)
@@ -1583,7 +1587,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
       target: { value: 'Analyze and visualize this beam' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /Run Analysis|执行分析/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Send|发送/ }))
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Open Visualization|打开可视化/ })).toBeEnabled()
@@ -1645,12 +1649,14 @@ describe('ConsolePage Integration (CONS-13)', () => {
         } as unknown as Response
       }
 
-      if (url.includes('/api/v1/chat/execute')) {
+      if (url.includes('/api/v1/chat/stream')) {
         executeBodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>)
-        return {
-          ok: true,
-          json: vi.fn().mockResolvedValue(sampleAnalysisResult),
-        } as unknown as Response
+        return createSseResponse([
+          {
+            type: 'result',
+            content: sampleAnalysisResult,
+          },
+        ])
       }
 
       throw new Error(`Unexpected fetch: ${url}`)
@@ -1668,7 +1674,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
       target: { value: 'Analyze this model with code checks' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /Run Analysis|执行分析/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Send|发送/ }))
 
     await waitFor(() => {
       expect(executeBodies.length).toBeGreaterThan(0)
@@ -1717,12 +1723,14 @@ describe('ConsolePage Integration (CONS-13)', () => {
         } as unknown as Response
       }
 
-      if (url.includes('/api/v1/chat/execute')) {
+      if (url.includes('/api/v1/chat/stream')) {
         executeBodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>)
-        return {
-          ok: true,
-          json: vi.fn().mockResolvedValue(sampleAnalysisResult),
-        } as unknown as Response
+        return createSseResponse([
+          {
+            type: 'result',
+            content: sampleAnalysisResult,
+          },
+        ])
       }
 
       throw new Error(`Unexpected fetch: ${url}`)
@@ -1738,14 +1746,14 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
       target: { value: 'Analyze this model only' },
     })
-    fireEvent.click(screen.getByRole('button', { name: /Run Analysis|执行分析/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Send|发送/ }))
 
     await waitFor(() => {
       expect(executeBodies.length).toBeGreaterThan(0)
     })
 
     const context = (executeBodies[0].context || {}) as Record<string, unknown>
-    expect(context.autoCodeCheck).toBe(false)
+    expect(context.autoCodeCheck).toBeUndefined()
     expect(Array.isArray(context.skillIds) ? context.skillIds : []).not.toContain('code-check-gb50017')
   })
 

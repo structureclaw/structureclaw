@@ -66,6 +66,9 @@ export class AgentSkillRegistry {
 
     const plugins = await this.resolveEnabledPlugins(skillIds);
     for (const plugin of plugins) {
+      if (plugin.id === 'generic') {
+        continue;
+      }
       const matched = plugin.handler.detectScenario({
         message,
         locale,
@@ -85,6 +88,18 @@ export class AgentSkillRegistry {
         supportLevel: currentState.supportLevel ?? 'supported',
         supportNote: currentState.supportNote,
       };
+    }
+
+    const genericPlugin = plugins.find((plugin) => plugin.id === 'generic');
+    if (genericPlugin) {
+      const matched = genericPlugin.handler.detectScenario({
+        message,
+        locale,
+        currentState,
+      });
+      if (matched) {
+        return { ...matched, skillId: matched.skillId ?? genericPlugin.id };
+      }
     }
 
     return buildUnknownScenario(locale);

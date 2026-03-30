@@ -7,6 +7,7 @@ export type FrameDimension = '2d' | '3d';
 export type FrameBaseSupportType = 'fixed' | 'pinned';
 export type AgentAnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear';
 export type MaterialFamily = 'steel' | 'concrete' | 'composite' | 'timber' | 'masonry' | 'generic';
+export type AgentToolSource = 'builtin' | 'skill';
 
 export interface DraftFloorLoad {
   story: number;
@@ -127,7 +128,7 @@ export interface LocalizedText {
 
 export interface AgentSkillMetadata {
   id: string;
-  structureType: Exclude<InferredModelType, 'unknown'>;
+  structureType: InferredModelType;
   name: LocalizedText;
   description: LocalizedText;
   triggers: string[];
@@ -167,10 +168,26 @@ export interface SkillManifest extends AgentSkillMetadata {
   requires: string[];
   conflicts: string[];
   capabilities: string[];
+  enabledTools?: string[];
+  providedTools?: string[];
   supportedAnalysisTypes?: AgentAnalysisType[];
   materialFamilies?: MaterialFamily[];
   priority: number;
   compatibility: SkillCompatibility;
+}
+
+export interface ToolManifest {
+  id: string;
+  source: AgentToolSource;
+  enabledByDefault: boolean;
+  displayName: LocalizedText;
+  description: LocalizedText;
+  providedBySkillId?: string;
+  requiresSkills?: string[];
+  requiresTools?: string[];
+  tags?: string[];
+  inputSchema?: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
 }
 
 export interface SkillDetectionInput {
@@ -216,7 +233,7 @@ export interface SkillHandler {
   parseProvidedValues(values: Record<string, unknown>): DraftExtraction;
   extractDraft(input: SkillDraftContext): DraftExtraction;
   mergeState(existing: DraftState | undefined, patch: DraftExtraction): DraftState;
-  computeMissing(state: DraftState, mode: 'chat' | 'execute'): SkillMissingResult;
+  computeMissing(state: DraftState, mode: 'conversation' | 'tool'): SkillMissingResult;
   mapLabels(keys: string[], locale: AppLocale): string[];
   buildQuestions(keys: string[], criticalMissing: string[], state: DraftState, locale: AppLocale): InteractionQuestion[];
   buildDefaultProposals?(keys: string[], state: DraftState, locale: AppLocale): SkillDefaultProposal[];

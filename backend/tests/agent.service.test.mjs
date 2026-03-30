@@ -363,7 +363,7 @@ describe('AgentService orchestration', () => {
     const result = await svc.run({
       conversationId: 'conv-rule-fallback-zh',
       message: '跨度10m',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'zh',
         providedValues: {
@@ -385,7 +385,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-chat-beam-span-zh',
       message: '我想设计一个梁',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -396,7 +396,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-chat-beam-span-zh',
       message: '跨度10m',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -415,7 +415,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-chat-span-zh',
       message: '先聊需求，我要做一个门式刚架',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -426,7 +426,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-chat-span-zh',
       message: '跨度10m',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -446,7 +446,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-chat-span-en',
       message: 'Discuss a portal frame first',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'en',
       },
@@ -457,7 +457,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-chat-span-en',
       message: 'span 10m',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'en',
       },
@@ -479,7 +479,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-chat-load-detail-zh',
       message: '我想设计一个简支梁，跨度10m',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -492,7 +492,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-chat-load-detail-zh',
       message: '20kN均布荷载，全跨布置',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -523,7 +523,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '我希望生成一个跨度10m的简支梁，荷载在4m处，一个集中荷载10kN',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'zh',
         skillIds: [],
@@ -543,7 +543,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '门式刚架，跨度10m，10kN集中荷载在4m处',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'zh',
         skillIds: [],
@@ -713,7 +713,7 @@ describe('AgentService orchestration', () => {
 
     await svc.run({
       message: '继续',
-      mode: 'chat',
+      mode: 'conversation',
       conversationId,
       context: {
         locale: 'zh',
@@ -757,7 +757,7 @@ describe('AgentService orchestration', () => {
 
     await svc.run({
       message: '先按框架场景保存会话',
-      mode: 'chat',
+      mode: 'conversation',
       conversationId,
       context: {
         locale: 'zh',
@@ -775,7 +775,7 @@ describe('AgentService orchestration', () => {
 
     const switched = await svc.run({
       message: '切到通用模式继续',
-      mode: 'chat',
+      mode: 'conversation',
       conversationId,
       context: {
         locale: 'zh',
@@ -835,6 +835,26 @@ describe('AgentService orchestration', () => {
     expect(draft.extractionMode).toBe('llm');
     expect(draft.model).toBeDefined();
     expect(draft.missingFields).toEqual([]);
+  });
+
+  test('should keep structure-type generic fallback when a selected generic skill catches the request', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft(
+      '请帮我先整理一个结构模型，跨度 10m，荷载 10kN，后面再继续细化',
+      undefined,
+      'zh',
+      ['generic'],
+    );
+
+    expect(draft.inferredType).toBe('unknown');
+    expect(draft.scenario?.skillId).toBe('generic');
+    expect(draft.stateToPersist?.skillId).toBe('generic');
+    expect(draft.stateToPersist?.supportLevel).toBe('fallback');
+    expect(draft.extractionMode).toBe('rule-based');
+    expect(draft.model).toBeUndefined();
+    expect(draft.missingFields).toEqual(['inferredType']);
   });
 
   test('should execute analyze in no-skill mode when computable model is provided', async () => {
@@ -1069,7 +1089,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: 'Help me size a steel frame for static analysis',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'en',
       },
@@ -1090,7 +1110,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '请帮我分析一个桥梁模型，跨度 30m',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -1167,7 +1187,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-frame-generic-horizontal-3d',
       message: '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN',
-      mode: 'chat',
+      mode: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1176,7 +1196,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-frame-generic-horizontal-3d',
       message: '水平方向荷载都是18kN',
-      mode: 'chat',
+      mode: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1404,7 +1424,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-frame-upgrade-3d',
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
-      mode: 'chat',
+      mode: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1414,7 +1434,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-frame-upgrade-3d',
       message: '每层竖向荷载120kN，x、y向水平荷载都是500kN',
-      mode: 'chat',
+      mode: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1431,7 +1451,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-frame-natural-followup',
       message: '我想设计一个三层框架，x方向4跨，间隔3m，y方向3跨间隔也是3m',
-      mode: 'chat',
+      mode: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1441,7 +1461,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-frame-natural-followup',
       message: '每层3m',
-      mode: 'chat',
+      mode: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1451,7 +1471,7 @@ describe('AgentService orchestration', () => {
     const third = await svc.run({
       conversationId: 'conv-frame-natural-followup',
       message: '各层竖向荷载都是1000kN，横向荷载都是500kN',
-      mode: 'chat',
+      mode: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1467,7 +1487,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-frame-merge-2d-loads',
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN',
-      mode: 'chat',
+      mode: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1478,7 +1498,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-frame-merge-2d-loads',
       message: '每层水平荷载30kN',
-      mode: 'chat',
+      mode: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1496,7 +1516,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-frame-merge-3d-loads',
       message: '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN，x向水平荷载18kN',
-      mode: 'chat',
+      mode: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1507,7 +1527,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-frame-merge-3d-loads',
       message: 'y向水平荷载12kN',
-      mode: 'chat',
+      mode: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1526,7 +1546,7 @@ describe('AgentService orchestration', () => {
     await svc.run({
       conversationId: 'conv-session-snapshot',
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
-      mode: 'chat',
+      mode: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1556,7 +1576,7 @@ describe('AgentService orchestration', () => {
       await svc.run({
         conversationId: 'conv-persist-history',
         message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
-        mode: 'chat',
+        mode: 'conversation',
         context: { locale: 'zh' },
       });
     } finally {
@@ -1577,7 +1597,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '请先聊一个框架',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -1596,7 +1616,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: 'Portal frame, each span 6 m and column height 4 m',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'en',
       },
@@ -1616,7 +1636,7 @@ describe('AgentService orchestration', () => {
 
     const collecting = await svc.run({
       message: '简支梁，跨度6m，20kN跨中点荷载',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -1630,7 +1650,7 @@ describe('AgentService orchestration', () => {
 
     const incomplete = await svc.run({
       message: '我想设计一个梁',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -1647,7 +1667,7 @@ describe('AgentService orchestration', () => {
 
     const collecting = await svc.run({
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
-      mode: 'chat',
+      mode: 'conversation',
       context: {
         locale: 'zh',
       },

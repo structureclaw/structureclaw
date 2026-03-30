@@ -167,8 +167,13 @@ async function validateAgentOrchestration(context) {
   {
     const svc = withDefaultSkills(new AgentService());
     const result = await svc.run({ message: "帮我算一下门式刚架" });
-    assert(result.success === false, "missing model should fail");
-    assert(result.needsModelInput === true, "missing model should require model input");
+    assert(result.success === true, "auto mode should stay in conversation when model details are missing");
+    assert(result.interaction?.state === "confirming", "auto mode should return clarification interaction");
+    assert(result.needsModelInput === true, "auto mode should still require model input");
+
+    const toolResult = await svc.run({ message: "帮我算一下门式刚架", mode: "tool" });
+    assert(toolResult.success === false, "tool mode should block when model details are missing");
+    assert(toolResult.needsModelInput === true, "tool mode should require model input");
     console.log("[ok] agent missing-model clarification");
   }
 
@@ -184,6 +189,7 @@ async function validateAgentOrchestration(context) {
 
     const result = await svc.run({
       message: "做静力分析",
+      mode: "tool",
       context: {
         model: { schema_version: "1.0.0" },
       },
@@ -233,7 +239,7 @@ async function validateAgentOrchestration(context) {
     let resultTraceId;
     for await (const chunk of svc.runStream({
       message: "stream test",
-      mode: "execute",
+      mode: "tool",
       context: { model: { schema_version: "1.0.0" } },
     })) {
       events.push(chunk.type);
@@ -259,7 +265,7 @@ async function validateAgentOrchestration(context) {
 
     const result = await svc.run({
       message: "请按一个3m悬臂梁，端部10kN竖向荷载做静力分析",
-      mode: "execute",
+      mode: "tool",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
@@ -281,7 +287,7 @@ async function validateAgentOrchestration(context) {
     const first = await svc.run({
       conversationId: "conv-clarify-1",
       message: "请帮我算一个门式刚架",
-      mode: "execute",
+      mode: "tool",
     });
     assert(first.success === false, "first turn should request clarification");
     assert(first.needsModelInput === true, "first turn should require model input");
@@ -289,7 +295,7 @@ async function validateAgentOrchestration(context) {
     const second = await svc.run({
       conversationId: "conv-clarify-1",
       message: "跨度6m，柱高4m，竖向荷载20kN，做静力分析",
-      mode: "execute",
+      mode: "tool",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
@@ -305,122 +311,122 @@ async function validateAgentOrchestration(context) {
     const svc = withDefaultSkills(new AgentService());
 
     const collecting = await svc.run({
-      conversationId: "conv-chat-complete-model",
+      conversationId: "conv-conversation-complete-model",
       message: "3m悬臂梁，端部10kN点荷载",
-      mode: "chat",
+      mode: "conversation",
       context: {
         locale: "zh",
       },
     });
-    assert(collecting.success === true, "chat complete-model turn should succeed");
+    assert(collecting.success === true, "conversation complete-model turn should succeed");
     assert(collecting.interaction?.state === "ready", `expected ready state, got ${collecting.interaction?.state}`);
-    assert(collecting.model && Array.isArray(collecting.model.nodes), "chat complete-model turn should return synchronized model");
+    assert(collecting.model && Array.isArray(collecting.model.nodes), "conversation complete-model turn should return synchronized model");
 
     const incomplete = await svc.run({
-      conversationId: "conv-chat-incomplete-model",
+      conversationId: "conv-conversation-incomplete-model",
       message: "帮我设计一个梁",
-      mode: "chat",
+      mode: "conversation",
       context: {
         locale: "zh",
       },
     });
-    assert(incomplete.success === true, "incomplete chat turn should succeed");
-    assert(incomplete.interaction?.state !== "ready", "incomplete chat turn should not be ready");
-    assert(incomplete.model === undefined, "incomplete chat turn should not return synchronized model");
-    console.log("[ok] chat complete-model sync contract");
+    assert(incomplete.success === true, "incomplete conversation turn should succeed");
+    assert(incomplete.interaction?.state !== "ready", "incomplete conversation turn should not be ready");
+    assert(incomplete.model === undefined, "incomplete conversation turn should not return synchronized model");
+    console.log("[ok] conversation complete-model sync contract");
   }
 
   {
     const svc = withDefaultSkills(new AgentService());
     const first = await svc.run({
-      conversationId: "conv-chat-followup-1",
+      conversationId: "conv-conversation-followup-1",
       message: "先聊需求，我要做一个门式刚架",
-      mode: "chat",
+      mode: "conversation",
     });
     assert(
       first.interaction?.missingCritical?.includes("门式刚架或双跨每跨跨度（m）"),
-      "first chat turn should ask for portal-frame span",
+      "first conversation turn should ask for portal-frame span",
     );
 
     const second = await svc.run({
-      conversationId: "conv-chat-followup-1",
+      conversationId: "conv-conversation-followup-1",
       message: "跨度10m",
-      mode: "chat",
+      mode: "conversation",
     });
-    assert(second.success === true, "second chat turn should still succeed");
-    assert(second.interaction?.detectedScenario === "portal-frame", "chat follow-up should keep portal-frame scenario");
+    assert(second.success === true, "second conversation turn should still succeed");
+    assert(second.interaction?.detectedScenario === "portal-frame", "conversation follow-up should keep portal-frame scenario");
     assert(
       !second.interaction?.missingCritical?.includes("门式刚架或双跨每跨跨度（m）"),
-      "second chat turn should not ask for span again",
+      "second conversation turn should not ask for span again",
     );
     assert(
       second.interaction?.missingCritical?.includes("门式刚架柱高（m）"),
-      "second chat turn should continue with height",
+      "second conversation turn should continue with height",
     );
-    console.log("[ok] chat clarification follow-up shrinkage");
+    console.log("[ok] conversation clarification follow-up shrinkage");
   }
 
   {
     const svc = withDefaultSkills(new AgentService());
 
     const first = await svc.run({
-      conversationId: "conv-chat-followup-beam-1",
+      conversationId: "conv-conversation-followup-beam-1",
       message: "我想设计一个梁",
-      mode: "chat",
+      mode: "conversation",
     });
-    assert(first.interaction?.missingCritical?.includes("跨度/长度（m）"), "first beam chat turn should ask for span");
+    assert(first.interaction?.missingCritical?.includes("跨度/长度（m）"), "first beam conversation turn should ask for span");
 
     const second = await svc.run({
-      conversationId: "conv-chat-followup-beam-1",
+      conversationId: "conv-conversation-followup-beam-1",
       message: "跨度10m",
-      mode: "chat",
+      mode: "conversation",
     });
-    assert(second.success === true, "second beam chat turn should still succeed");
+    assert(second.success === true, "second beam conversation turn should still succeed");
     assert(second.interaction?.detectedScenario === "beam", "beam follow-up should keep beam scenario");
     assert(
       !second.interaction?.missingCritical?.includes("跨度/长度（m）"),
-      "second beam chat turn should not ask for span again",
+      "second beam conversation turn should not ask for span again",
     );
     assert(
       second.interaction?.missingCritical?.includes("荷载大小（kN）"),
-      "second beam chat turn should continue with load",
+      "second beam conversation turn should continue with load",
     );
     assert(
       second.interaction?.missingCritical?.includes("支座/边界条件（悬臂/简支/两端固结/固铰）"),
-      "second beam chat turn should require support type before load details",
+      "second beam conversation turn should require support type before load details",
     );
     assert(
       !second.interaction?.missingCritical?.includes("荷载形式（点荷载/均布荷载）"),
-      "second beam chat turn should not require load type before support type is known",
+      "second beam conversation turn should not require load type before support type is known",
     );
     assert(
       !second.interaction?.missingCritical?.includes("荷载位置（按当前结构模板）"),
-      "second beam chat turn should not require load position before support type is known",
+      "second beam conversation turn should not require load position before support type is known",
     );
 
     const third = await svc.run({
-      conversationId: "conv-chat-followup-beam-1",
+      conversationId: "conv-conversation-followup-beam-1",
       message: "简支",
-      mode: "chat",
+      mode: "conversation",
     });
-    assert(third.success === true, "third beam chat turn should still succeed");
+    assert(third.success === true, "third beam conversation turn should still succeed");
     assert(
       !third.interaction?.missingCritical?.includes("支座/边界条件（悬臂/简支/两端固结/固铰）"),
-      "third beam chat turn should not ask for support type again",
+      "third beam conversation turn should not ask for support type again",
     );
     assert(
       third.interaction?.missingCritical?.includes("荷载大小（kN）"),
-      "third beam chat turn should still require load magnitude",
+      "third beam conversation turn should still require load magnitude",
     );
     assert(
       third.interaction?.missingCritical?.includes("荷载形式（点荷载/均布荷载）"),
-      "third beam chat turn should require load type after support type is known",
+      "third beam conversation turn should require load type after support type is known",
     );
     assert(
       third.interaction?.missingCritical?.includes("荷载位置（按当前结构模板）"),
-      "third beam chat turn should require load position after support type is known",
+      "third beam conversation turn should require load position after support type is known",
     );
-    console.log("[ok] beam chat clarification follow-up shrinkage");
+    console.log("[ok] beam conversation clarification follow-up shrinkage");
   }
 
   {
@@ -429,7 +435,7 @@ async function validateAgentOrchestration(context) {
 
     const beam = await svc.run({
       message: "按双跨梁建模，每跨4m，中跨节点施加12kN竖向荷载做静力分析",
-      mode: "execute",
+      mode: "tool",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
@@ -441,7 +447,7 @@ async function validateAgentOrchestration(context) {
 
     const truss = await svc.run({
       message: "建立一个平面桁架，长度5m，10kN轴向荷载并计算",
-      mode: "execute",
+      mode: "tool",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
@@ -493,7 +499,7 @@ async function validateAgentOrchestration(context) {
 
     const result = await svc.run({
       message: "请对该模型做静力分析并按GB50017做规范校核并出报告",
-      mode: "execute",
+      mode: "tool",
       context: {
         model: {
           schema_version: "1.0.0",
@@ -566,18 +572,18 @@ async function validateAgentNoSkillFallback(context) {
   const chatResult = await svc.run({
     conversationId: "conv-no-skill-chat",
     message: "先聊需求，我要算一个门式刚架",
-    mode: "chat",
+    mode: "conversation",
     context: {
       skillIds: [],
       locale: "zh",
     },
   });
-  assert(hasDeterministicOutcome(chatResult), "chat mode with empty skillIds should return deterministic outcome");
+  assert(hasDeterministicOutcome(chatResult), "conversation mode with empty skillIds should return deterministic outcome");
 
-  const executeResult = await svc.run({
+  const toolResult = await svc.run({
     conversationId: "conv-no-skill-exec",
     message: "按3m悬臂梁端部10kN点荷载做静力分析",
-    mode: "execute",
+    mode: "tool",
     context: {
       skillIds: [],
       autoCodeCheck: false,
@@ -586,7 +592,7 @@ async function validateAgentNoSkillFallback(context) {
       locale: "zh",
     },
   });
-  assert(hasDeterministicOutcome(executeResult), "execute mode with empty skillIds should return deterministic outcome");
+  assert(hasDeterministicOutcome(toolResult), "tool mode with empty skillIds should return deterministic outcome");
 
   const autoResult = await svc.run({
     conversationId: "conv-no-skill-auto",
@@ -718,21 +724,21 @@ async function validateAgentApiContract(context) {
   assert(runPayload.metrics?.toolCount === 3, "agent/run should include metrics");
   assert(runPayload.metrics?.maxToolDurationMs === 5, "agent/run should include expanded metrics");
 
-  const executeResponse = await app.inject({
+  const toolCallResponse = await app.inject({
     method: "POST",
-    url: "/api/v1/chat/execute",
+    url: "/api/v1/chat/tool-call",
     payload: requestBody,
   });
-  assert(executeResponse.statusCode === 200, "chat/execute should return 200");
-  const executePayload = executeResponse.json();
-  assert(executePayload.traceId === "trace-api-contract", "chat/execute should proxy agent result");
-  assert(executePayload.artifacts?.[0]?.path === "/tmp/report.json", "chat/execute should return artifacts");
+  assert(toolCallResponse.statusCode === 200, "chat/tool-call should return 200");
+  const toolCallPayload = toolCallResponse.json();
+  assert(toolCallPayload.traceId === "trace-api-contract", "chat/tool-call should proxy agent result");
+  assert(toolCallPayload.artifacts?.[0]?.path === "/tmp/report.json", "chat/tool-call should return artifacts");
 
   assert(captured.length >= 2, "agent run should be called for both endpoints");
   assert(captured[0]?.traceId === "trace-request-001", "agent/run should pass traceId");
-  assert(captured[1]?.traceId === "trace-request-001", "chat/execute should pass traceId");
+  assert(captured[1]?.traceId === "trace-request-001", "chat/tool-call should pass traceId");
   assert(captured[0]?.context?.reportOutput === "file", "agent/run should pass reportOutput context");
-  assert(captured[1]?.context?.reportFormat === "both", "chat/execute should pass reportFormat context");
+  assert(captured[1]?.context?.reportFormat === "both", "chat/tool-call should pass reportFormat context");
 
   await app.close();
   console.log("[ok] agent api contract regression");
@@ -1231,7 +1237,7 @@ async function validateAgentSkillhubRepositoryDown(context) {
 
   const result = await svc.run({
     message: "按3m悬臂梁端部10kN点荷载做静力分析",
-    mode: "execute",
+    mode: "tool",
     context: {
       skillIds: [],
       model: {
@@ -1254,7 +1260,7 @@ async function validateAgentSkillhubRepositoryDown(context) {
     },
   });
 
-  assert(result.success === true, "baseline execute should still succeed when repository is down");
+  assert(result.success === true, "baseline tool invocation should still succeed when repository is down");
   assert(result.toolCalls.some((item) => item.tool === "analyze" && item.status === "success"), "analyze should still run in baseline mode");
 
   await app.close();
@@ -1271,7 +1277,7 @@ async function validateChatStreamContract(context) {
   AgentService.prototype.runStream = async function* mockRunStream(params) {
     capturedTraceId = params.traceId;
     const traceId = "stream-trace-001";
-    yield { type: "start", content: { traceId, mode: "execute", startedAt: "2026-03-09T00:00:00.000Z" } };
+    yield { type: "start", content: { traceId, mode: "tool", startedAt: "2026-03-09T00:00:00.000Z" } };
     yield {
       type: "result",
       content: {
@@ -1308,7 +1314,7 @@ async function validateChatStreamContract(context) {
     headers: { origin: "http://localhost:30000" },
     payload: {
       message: "stream contract test",
-      mode: "execute",
+      mode: "tool",
       traceId: "trace-stream-request-1",
       context: { model: { schema_version: "1.0.0" } },
     },
@@ -1341,7 +1347,7 @@ async function validateChatStreamContract(context) {
     headers: { origin: "http://evil.example.com" },
     payload: {
       message: "stream contract test",
-      mode: "execute",
+      mode: "tool",
       traceId: "trace-stream-request-2",
       context: { model: { schema_version: "1.0.0" } },
     },
@@ -1375,7 +1381,7 @@ async function validateChatMessageRouting(context) {
       needsModelInput: false,
       plan: ["validate", "analyze"],
       toolCalls: [],
-      response: "execute-ok",
+      response: "tool-ok",
     };
   };
 
@@ -1402,25 +1408,40 @@ async function validateChatMessageRouting(context) {
       },
     },
   });
-  assert(autoChatResp.statusCode === 200, "auto chat response should be 200");
+  assert(autoChatResp.statusCode === 200, "auto conversation response should be 200");
   const autoChatPayload = autoChatResp.json();
-  assert(autoChatPayload.mode === "chat", "auto without model should route to chat");
-  assert(autoChatPayload.result?.response === "chat-ok", "chat result should be returned");
+  assert(autoChatPayload.mode === "conversation", "auto without model should route to conversation");
+  assert(autoChatPayload.result?.response === "chat-ok", "conversation result should be returned");
 
-  const autoExecResp = await app.inject({
+  const autoConversationWithModelResp = await app.inject({
     method: "POST",
     url: "/api/v1/chat/message",
     payload: {
-      message: "auto with model",
+      message: "auto with model but no execution intent",
       mode: "auto",
       traceId: "trace-route-auto-1",
       context: { model: { schema_version: "1.0.0" } },
     },
   });
-  assert(autoExecResp.statusCode === 200, "auto execute response should be 200");
-  const autoExecPayload = autoExecResp.json();
-  assert(autoExecPayload.mode === "execute", "auto with model should route to execute");
-  assert(autoExecPayload.result?.traceId === "trace-route-001", "execute result should be returned");
+  assert(autoConversationWithModelResp.statusCode === 200, "auto conversation-with-model response should be 200");
+  const autoConversationWithModelPayload = autoConversationWithModelResp.json();
+  assert(autoConversationWithModelPayload.mode === "conversation", "auto with model but no intent should stay in conversation");
+  assert(autoConversationWithModelPayload.result?.response === "chat-ok", "conversation with model should still return chat result");
+
+  const autoToolResp = await app.inject({
+    method: "POST",
+    url: "/api/v1/chat/message",
+    payload: {
+      message: "analyze this model",
+      mode: "auto",
+      traceId: "trace-route-auto-tool-1",
+      context: { model: { schema_version: "1.0.0" } },
+    },
+  });
+  assert(autoToolResp.statusCode === 200, "auto tool response should be 200");
+  const autoToolPayload = autoToolResp.json();
+  assert(autoToolPayload.mode === "tool", "auto with model and execution intent should route to tool invocation");
+  assert(autoToolPayload.result?.traceId === "trace-route-001", "tool result should be returned");
 
   const autoIntentExecResp = await app.inject({
     method: "POST",
@@ -1431,28 +1452,28 @@ async function validateChatMessageRouting(context) {
       traceId: "trace-route-auto-intent-1",
     },
   });
-  assert(autoIntentExecResp.statusCode === 200, "auto intent execute response should be 200");
+  assert(autoIntentExecResp.statusCode === 200, "auto intent tool response should be 200");
   const autoIntentExecPayload = autoIntentExecResp.json();
-  assert(autoIntentExecPayload.mode === "execute", "auto with design/check intent should route to execute");
+  assert(autoIntentExecPayload.mode === "tool", "auto with design/check intent should route to tool invocation");
 
   const forceExecResp = await app.inject({
     method: "POST",
     url: "/api/v1/chat/message",
     payload: {
-      message: "force execute",
-      mode: "execute",
-      traceId: "trace-route-exec-1",
+      message: "force tool",
+      mode: "tool",
+      traceId: "trace-route-tool-1",
     },
   });
-  assert(forceExecResp.statusCode === 200, "execute response should be 200");
+  assert(forceExecResp.statusCode === 200, "tool response should be 200");
   const forceExecPayload = forceExecResp.json();
-  assert(forceExecPayload.mode === "execute", "mode=execute should route to execute");
+  assert(forceExecPayload.mode === "tool", "mode=tool should route to tool invocation");
 
   assert(agentRunCount === 3, "agent run should be called three times");
-  assert(capturedTraceIds.includes("trace-route-auto-1"), "auto execute should pass traceId");
-  assert(capturedTraceIds.includes("trace-route-auto-intent-1"), "auto intent execute should pass traceId");
-  assert(capturedTraceIds.includes("trace-route-exec-1"), "forced execute should pass traceId");
-  assert(chatSendCount === 1, "chat send should be called once");
+  assert(capturedTraceIds.includes("trace-route-auto-tool-1"), "auto tool invocation should pass traceId");
+  assert(capturedTraceIds.includes("trace-route-auto-intent-1"), "auto intent tool invocation should pass traceId");
+  assert(capturedTraceIds.includes("trace-route-tool-1"), "forced tool invocation should pass traceId");
+  assert(chatSendCount === 2, "conversation send should be called twice");
 
   await app.close();
   console.log("[ok] chat message routing contract");
@@ -1546,7 +1567,7 @@ async function validateReportTemplateContract(context) {
 
   const result = await svc.run({
     message: "请分析并按规范校核后出报告",
-    mode: "execute",
+    mode: "tool",
     context: {
       model: {
         schema_version: "1.0.0",

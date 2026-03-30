@@ -142,12 +142,12 @@ export function mergeLegacyState(existing: DraftState | undefined, patch: DraftE
 
 export function computeLegacyMissing(
   state: DraftState,
-  mode: 'chat' | 'execute',
+  mode: 'conversation' | 'tool',
   allowedKeys: string[],
 ): { critical: string[]; optional: string[] } {
   const allowed = new Set(allowedKeys);
   const critical = computeMissingCriticalKeys(state).filter((key) => allowed.has(key));
-  if (mode === 'chat') {
+  if (mode === 'conversation') {
     critical.push(...computeMissingLoadDetailKeys(state).filter((key) => allowed.has(key) && !critical.includes(key)));
   }
   return { critical, optional: [] };

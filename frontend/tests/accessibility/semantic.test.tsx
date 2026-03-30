@@ -41,8 +41,7 @@ describe('Semantic HTML (ACCS-03)', () => {
       await renderConsolePage()
       const buttons = document.querySelectorAll('button')
       expect(buttons.length).toBeGreaterThan(0)
-      expect(screen.getByRole('button', { name: 'Discuss First' })).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Run Analysis' })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument()
     })
 
     it('exposes form fields with visible labels or placeholders', async () => {

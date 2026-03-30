@@ -27,7 +27,6 @@ const StructuralVisualizationModal = dynamic(
 
 type AnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear'
 type PanelTab = 'analysis' | 'report'
-type ComposerAction = 'chat' | 'execute'
 
 type Message = {
   id: string
@@ -1795,7 +1794,7 @@ export function AIConsole() {
           || serverConversations.find((conversation) => conversation.id === conversationId)?.title
           || messages.find((message) => message.role === 'user')?.content.slice(0, 48)
           || t('untitledConversation'),
-        type: 'analysis',
+        type: 'general',
         createdAt:
           current[conversationId]?.createdAt
           || serverConversations.find((conversation) => conversation.id === conversationId)?.createdAt
@@ -1850,7 +1849,7 @@ export function AIConsole() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: seedMessage.slice(0, 48),
-        type: 'analysis',
+        type: 'general',
         locale,
       }),
     })
@@ -1867,7 +1866,7 @@ export function AIConsole() {
     const nextConversation: ConversationSummary = {
       id: payload.id as string,
       title: (payload.title as string) || seedMessage.slice(0, 48),
-      type: (payload.type as string) || 'analysis',
+      type: (payload.type as string) || 'general',
       createdAt: payload.createdAt as string | undefined,
       updatedAt: payload.updatedAt as string | undefined,
     }
@@ -2008,7 +2007,7 @@ export function AIConsole() {
         [targetConversationId]: {
           id: targetConversationId,
           title: existing?.title || serverConversation?.title || t('untitledConversation'),
-          type: existing?.type || serverConversation?.type || 'analysis',
+          type: existing?.type || serverConversation?.type || 'general',
           createdAt: existing?.createdAt || serverConversation?.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           messages: existing?.messages || messages,
@@ -2246,31 +2245,30 @@ export function AIConsole() {
     setVisualizationOpen(Boolean(nextSource === 'result' ? (effectiveResultSnapshot || latestModelVisualizationSnapshot) : latestModelVisualizationSnapshot))
   }
 
-  function applySynchronizedModel(nextModel: Record<string, unknown>, source: 'chat' | 'execute') {
+  function applySynchronizedModel(nextModel: Record<string, unknown>, source: 'conversation' | 'tool') {
     const nextText = JSON.stringify(nextModel, null, 2)
     if (nextText !== modelText) {
       setModelText(nextText)
     }
-    if (source === 'chat') {
+    if (source === 'conversation') {
       setModelSyncMessage(t('modelSyncFromChat'))
       setContextOpen(true)
     }
     setErrorMessage('')
   }
 
-  async function handleSubmit(action: ComposerAction) {
+  async function handleSubmit() {
     const trimmedInput = input.trim()
     if (!trimmedInput || isSending) {
       return
     }
 
-    const effectiveAction: ComposerAction = action === 'execute' && selectedSkillIds.length > 0 ? 'execute' : 'chat'
     const parsedModel = parseModelJson(modelText, t)
-    if (parsedModel.error && effectiveAction === 'execute') {
+    if (parsedModel.error) {
       setErrorMessage(parsedModel.error)
       setContextOpen(true)
-      return
     }
+    const contextModel = parsedModel.error ? undefined : parsedModel.model
 
     const userMessage: Message = {
       id: createId('user'),
@@ -2281,8 +2279,7 @@ export function AIConsole() {
     }
 
     const assistantMessageId = createId('assistant')
-    const assistantSeed =
-      effectiveAction === 'chat' ? t('assistantSeedChat') : t('assistantSeedExecute')
+    const assistantSeed = t('assistantSeedAuto')
 
     setErrorMessage('')
     appendMessage(userMessage)
@@ -2298,12 +2295,6 @@ export function AIConsole() {
     setVisualizationOpen(false)
     setVisualizationSource('result')
     setModelSyncMessage('')
-    if (effectiveAction === 'execute') {
-      // Avoid showing stale output from a previous run while a new execution is in flight.
-      setLatestResult(null)
-      setLatestResultVisualizationSnapshot(null)
-      setActivePanel('analysis')
-    }
     let receivedResult = false
     let assistantContent = assistantSeed
     let activeConversationId = conversationId
@@ -2313,100 +2304,24 @@ export function AIConsole() {
       const nextConversationId = await ensureConversation(trimmedInput)
       activeConversationId = nextConversationId
       const explicitSkillIds = selectedSkillIds.length > 0 ? selectedSkillIds : undefined
-      const contextPayload =
-        effectiveAction === 'execute'
-          ? {
-              locale,
-              skillIds: explicitSkillIds,
-              model: parsedModel.model,
-              modelFormat: parsedModel.model ? 'structuremodel-v1' : undefined,
-              autoAnalyze: true,
-              autoCodeCheck: hasSelectedCodeCheckSkill,
-              includeReport: true,
-              reportFormat: 'both',
-              reportOutput: 'inline',
-            }
-          : {
-              locale,
-              skillIds: explicitSkillIds,
-              model: parsedModel.model,
-              modelFormat: parsedModel.model ? 'structuremodel-v1' : undefined,
-            }
-      const promptSnapshot = buildPromptSnapshot(trimmedInput, contextPayload as Record<string, unknown>)
-            const debugSkillIds = Array.isArray((contextPayload as Record<string, unknown>).skillIds)
-              ? ((contextPayload as Record<string, unknown>).skillIds as string[])
-              : []
-
-      if (effectiveAction === 'execute') {
-        const response = await fetch(`${API_BASE}/api/v1/chat/execute`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: trimmedInput,
-            conversationId: nextConversationId,
-            context: contextPayload,
-          }),
-        })
-
-        if (!response.ok) {
-          throw new Error(`${t('requestFailedHttp')}: HTTP ${response.status}`)
-        }
-
-        const payload = await response.json()
-        if (!payload || typeof payload !== 'object') {
-          throw new Error(t('invalidResponse'))
-        }
-
-        const result = {
-          ...(payload as AgentResult),
-        }
-        const debugDetails = buildMessageDebugDetails(promptSnapshot, debugSkillIds, result)
-        if (result.model && typeof result.model === 'object' && !Array.isArray(result.model)) {
-          applySynchronizedModel(result.model, 'execute')
-        }
-        const visualizationSnapshot = buildVisualizationSnapshot({
-          title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
-          model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : parsedModel.model) ?? null,
-          analysis: extractAnalysis(result),
-          mode: 'analysis-result',
-        })
-        const modelSnapshot = buildVisualizationSnapshot({
-          title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
-          model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : parsedModel.model) ?? null,
-          mode: 'model-only',
-        })
-        receivedResult = true
-        assistantContent = result.response || result.clarification?.question || t('returnedResult')
-        setLatestResult(result)
-        setLatestResultVisualizationSnapshot(visualizationSnapshot)
-        setActivePanel(result.report?.markdown ? 'report' : 'analysis')
-        persistConversationSnapshotsToArchive(nextConversationId, {
-          latestResult: result,
-          modelSnapshot,
-          resultSnapshot: visualizationSnapshot,
-        })
-        // 保存结果快照到后端
-        await saveConversationSnapshotToBackend(nextConversationId, {
-          modelSnapshot,
-          resultSnapshot: visualizationSnapshot,
-          latestResult: result,
-        })
-        replaceMessage(assistantMessageId, (message) => ({
-          ...message,
-          content: assistantContent,
-          status: 'done',
-          debugDetails,
-        }))
-        shouldBumpConversationActivity = true
-        return
+      const contextPayload = {
+        locale,
+        skillIds: explicitSkillIds,
+        model: contextModel,
+        modelFormat: contextModel ? 'structuremodel-v1' : undefined,
+        autoCodeCheck: hasSelectedCodeCheckSkill || undefined,
       }
+      const promptSnapshot = buildPromptSnapshot(trimmedInput, contextPayload as Record<string, unknown>)
+      const debugSkillIds = Array.isArray((contextPayload as Record<string, unknown>).skillIds)
+        ? ((contextPayload as Record<string, unknown>).skillIds as string[])
+        : []
 
       const response = await fetch(`${API_BASE}/api/v1/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: trimmedInput,
-          mode: effectiveAction,
+          mode: 'auto',
           conversationId: nextConversationId,
           context: contextPayload,
         }),
@@ -2481,17 +2396,17 @@ export function AIConsole() {
             }
             const debugDetails = buildMessageDebugDetails(promptSnapshot, debugSkillIds, result)
             if (result.model && typeof result.model === 'object' && !Array.isArray(result.model)) {
-              applySynchronizedModel(result.model, effectiveAction === 'chat' ? 'chat' : 'execute')
+              applySynchronizedModel(result.model, result.analysis ? 'tool' : 'conversation')
             }
             const visualizationSnapshot = buildVisualizationSnapshot({
               title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
-              model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : parsedModel.model) ?? null,
+              model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : contextModel) ?? null,
               analysis: extractAnalysis(result),
               mode: 'analysis-result',
             })
             const modelSnapshot = buildVisualizationSnapshot({
               title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
-              model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : parsedModel.model) ?? null,
+              model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : contextModel) ?? null,
               mode: 'model-only',
             })
             receivedResult = true
@@ -3182,22 +3097,12 @@ export function AIConsole() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="button"
-                      variant="outline"
-                      className="rounded-full border-border bg-background/70 text-foreground hover:bg-accent/10 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10"
-                      onClick={() => handleSubmit('chat')}
-                      disabled={isSending || !input.trim()}
-                    >
-                      {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
-                      {t('chatFirst')}
-                    </Button>
-                    <Button
-                      type="button"
                       className="rounded-full bg-cyan-300 px-5 text-slate-950 hover:bg-cyan-200"
-                      onClick={() => handleSubmit('execute')}
+                      onClick={() => handleSubmit()}
                       disabled={isSending || !input.trim()}
                     >
                       {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
-                      {t('runAnalysis')}
+                      {t('sendMessage')}
                     </Button>
                   </div>
                 </div>

@@ -60,7 +60,7 @@ export class AgentSkillRuntime {
     return this.registry.detectScenario(message, locale, currentState, skillIds);
   }
 
-  async shouldPreferExecute(
+  async shouldPreferToolInvocation(
     message: string,
     locale: AppLocale,
     currentState?: DraftState,
@@ -117,7 +117,7 @@ export class AgentSkillRuntime {
     skillIds?: string[]
   ): Promise<DraftResult> {
     const scenario = await this.registry.detectScenario(message, locale, existingState, skillIds);
-    if (scenario.mappedType === 'unknown' || !scenario.skillId) {
+    if (!scenario.skillId) {
       const stateToPersist: DraftState = {
         ...(existingState || { inferredType: 'unknown' }),
         scenarioKey: scenario.key,
@@ -160,7 +160,7 @@ export class AgentSkillRuntime {
       scenario,
     });
     const nextState = withScenarioState(plugin.handler.mergeState(existingState, patch), scenario);
-    const missing = plugin.handler.computeMissing(nextState, 'execute');
+    const missing = plugin.handler.computeMissing(nextState, 'tool');
     const model = missing.critical.length === 0 ? plugin.handler.buildModel(nextState) : undefined;
     return {
       inferredType: nextState.inferredType,
@@ -175,11 +175,14 @@ export class AgentSkillRuntime {
   async assessDraft(
     state: DraftState,
     locale: AppLocale,
-    mode: 'chat' | 'execute',
+    mode: 'conversation' | 'tool',
     skillIds?: string[],
   ): Promise<{ criticalMissing: string[]; optionalMissing: string[] }> {
     const plugin = await this.registry.resolvePluginForState(state, skillIds);
-    if (!plugin || state.inferredType === 'unknown') {
+    if (!plugin) {
+      return { criticalMissing: ['inferredType'], optionalMissing: [] };
+    }
+    if (state.inferredType === 'unknown' && state.skillId !== plugin.id) {
       return { criticalMissing: ['inferredType'], optionalMissing: [] };
     }
     const missing = plugin.handler.computeMissing(state, mode);

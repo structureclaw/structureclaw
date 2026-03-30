@@ -4,6 +4,22 @@ import userEvent from '@testing-library/user-event'
 import { AIConsole } from '@/components/chat/ai-console'
 import { API_BASE } from '@/lib/api-base'
 
+function createSseResponse(events: unknown[]) {
+  const encoder = new TextEncoder()
+  const chunks = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).concat('data: [DONE]\n\n')
+  const stream = new ReadableStream({
+    start(controller) {
+      chunks.forEach((chunk) => controller.enqueue(encoder.encode(chunk)))
+      controller.close()
+    },
+  })
+
+  return {
+    ok: true,
+    body: stream,
+  } as unknown as Response
+}
+
 describe('AIConsole grouped skill picker', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -125,19 +141,21 @@ describe('AIConsole grouped skill picker', () => {
       if (url === `${API_BASE}/api/v1/chat/conversation` && init?.method === 'POST') {
         return {
           ok: true,
-          json: async () => ({ id: 'conv-ambiguous-analysis', title: 'Ambiguous Analysis', type: 'analysis' }),
+          json: async () => ({ id: 'conv-ambiguous-analysis', title: 'Ambiguous Analysis', type: 'general' }),
         } as Response
       }
 
-      if (url === `${API_BASE}/api/v1/chat/execute`) {
-        return {
-          ok: true,
-          json: async () => ({
-            response: 'ok',
-            success: true,
-            analysis: { meta: { analysisType: 'static' }, data: {} },
-          }),
-        } as Response
+      if (url === `${API_BASE}/api/v1/chat/stream`) {
+        return createSseResponse([
+          {
+            type: 'result',
+            content: {
+              response: 'ok',
+              success: true,
+              analysis: { meta: { analysisType: 'static' }, data: {} },
+            },
+          },
+        ])
       }
 
       if (url === `${API_BASE}/api/v1/models/latest`) {
@@ -258,19 +276,20 @@ describe('AIConsole grouped skill picker', () => {
 
     const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
     await user.type(composer, 'Analyze this beam with the default policy selection')
-    await user.click(screen.getByRole('button', { name: /run analysis/i }))
+    await user.click(screen.getByRole('button', { name: /send/i }))
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
-        `${API_BASE}/api/v1/chat/execute`,
+        `${API_BASE}/api/v1/chat/stream`,
         expect.objectContaining({ method: 'POST' })
       )
     })
 
-    const executeCall = fetchMock.mock.calls.find(([input]) => String(input) === `${API_BASE}/api/v1/chat/execute`)
-    expect(executeCall).toBeTruthy()
-    const requestInit = executeCall?.[1] as RequestInit | undefined
-    const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { analysisType?: string } }
+    const streamCall = fetchMock.mock.calls.find(([input]) => String(input) === `${API_BASE}/api/v1/chat/stream`)
+    expect(streamCall).toBeTruthy()
+    const requestInit = streamCall?.[1] as RequestInit | undefined
+    const body = JSON.parse(String(requestInit?.body || '{}')) as { mode?: string; context?: { analysisType?: string } }
+    expect(body.mode).toBe('auto')
     expect(body.context?.analysisType).toBeUndefined()
   })
 })

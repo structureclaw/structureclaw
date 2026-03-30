@@ -211,8 +211,8 @@ export class SkillService {
     return { success: true, message: '技能安装成功' };
   }
 
-  // 执行技能
-  async executeSkill(skillId: string, params: Record<string, unknown>, userId?: string) {
+  // 调用技能
+  async invokeSkill(skillId: string, params: Record<string, unknown>, userId?: string) {
     const skill = await prisma.skill.findUnique({
       where: { id: skillId },
     });

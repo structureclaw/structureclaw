@@ -43,13 +43,13 @@ import { createLocalStructureProtocolClient } from './structure-protocol-executi
 import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
 
 export type AgentToolName = 'text-to-model-draft' | 'convert' | 'validate' | 'analyze' | 'code-check' | 'report';
-export type AgentRunMode = 'chat' | 'execute' | 'auto';
+export type AgentRunMode = 'conversation' | 'tool' | 'auto';
 export type AgentReportFormat = 'json' | 'markdown' | 'both';
 export type AgentReportOutput = 'inline' | 'file';
 export type AgentUserDecision = 'provide_values' | 'confirm_all' | 'allow_auto_decide' | 'revise';
 export type AgentInteractionState = 'collecting' | 'confirming' | 'ready' | 'executing' | 'completed' | 'blocked';
 export type AgentInteractionStage = 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';
-export type AgentInteractionRouteHint = 'prefer_chat' | 'prefer_execute';
+export type AgentInteractionRouteHint = 'prefer_conversation' | 'prefer_tool';
 
 interface InteractionSession {
   draft: DraftState;
@@ -272,44 +272,68 @@ export class AgentService {
     return this.skillRuntime.getScenarioLabel(key, locale);
   }
 
-  async shouldPreferExecute(message: string, options?: {
+  async shouldPreferToolInvocation(message: string, options?: {
     locale?: AppLocale;
     conversationId?: string;
     skillIds?: string[];
     hasModel?: boolean;
   }): Promise<boolean> {
-    if (options?.hasModel) {
-      return true;
-    }
-    if (inferCodeCheckIntent(this.policy, message) || inferReportIntent(this.policy, message) === true) {
-      return true;
-    }
-    if (this.isNoSkillMode(options?.skillIds)) {
-      return true;
-    }
     const locale = this.resolveInteractionLocale(options?.locale);
     const sessionKey = options?.conversationId?.trim();
     const session = await this.getInteractionSession(sessionKey);
-    if (session?.draft && session.draft.inferredType !== 'unknown') {
-      const assessment = await this.assessInteractionNeeds(session, locale, options?.skillIds, 'chat');
+    return this.shouldPreferToolInvocationForState(message, {
+      locale,
+      skillIds: options?.skillIds,
+      hasModel: Boolean(options?.hasModel),
+      session,
+    });
+  }
+
+  private async shouldPreferToolInvocationForState(message: string, options: {
+    locale: AppLocale;
+    skillIds?: string[];
+    hasModel: boolean;
+    session?: InteractionSession;
+  }): Promise<boolean> {
+    if (inferCodeCheckIntent(this.policy, message) || inferReportIntent(this.policy, message) === true) {
+      return true;
+    }
+
+    if (this.policy.inferExecutionIntent(message)) {
+      return true;
+    }
+
+    if (!options.session) {
+      return false;
+    }
+
+    if (options.session.draft && options.session.draft.inferredType !== 'unknown') {
+      const assessment = await this.assessInteractionNeeds(options.session, options.locale, options.skillIds, 'conversation');
+      const readyForExecution = assessment.criticalMissing.length === 0
+        && (assessment.nonCriticalMissing.length === 0 || Boolean(options.session.userApprovedAutoDecide));
+      if (readyForExecution && options.hasModel && this.policy.inferProceedIntent(message)) {
+        return true;
+      }
+
       if (assessment.criticalMissing.length > 0) {
         const stage = await this.skillRuntime.resolveInteractionStage(
           assessment.criticalMissing,
-          session.draft,
-          options?.skillIds,
+          options.session.draft,
+          options.skillIds,
         );
         if (stage === 'intent' || stage === 'model' || stage === 'loads') {
           return false;
         }
       }
-      if (assessment.nonCriticalMissing.length > 0 && !session.userApprovedAutoDecide) {
+      if (assessment.nonCriticalMissing.length > 0 && !options.session.userApprovedAutoDecide) {
         const stage = this.policy.resolveInteractionStageFromMissing('analysis', assessment.nonCriticalMissing);
         if (stage === 'analysis' || stage === 'code_check' || stage === 'report') {
           return false;
         }
       }
     }
-    return this.skillRuntime.shouldPreferExecute(message, locale, session?.draft, options?.skillIds);
+
+    return false;
   }
 
   async getConversationSessionSnapshot(
@@ -331,7 +355,7 @@ export class AgentService {
       }
     }
 
-    const assessment = await this.assessInteractionNeeds(session, locale, skillIds, 'chat');
+    const assessment = await this.assessInteractionNeeds(session, locale, skillIds, 'conversation');
     const state = assessment.criticalMissing.length > 0
       ? 'collecting'
       : assessment.nonCriticalMissing.length > 0
@@ -387,7 +411,7 @@ export class AgentService {
         required: ['message'],
         properties: {
           message: { type: 'string' },
-          mode: { enum: ['chat', 'execute', 'auto'] },
+          mode: { enum: ['conversation', 'tool', 'auto'] },
           conversationId: { type: 'string' },
           traceId: { type: 'string' },
           context: {
@@ -457,7 +481,7 @@ export class AgentService {
               state: { enum: ['collecting', 'confirming', 'ready', 'executing', 'completed', 'blocked'] },
               stage: { enum: ['intent', 'model', 'loads', 'analysis', 'code_check', 'report'] },
               turnId: { type: 'string' },
-              routeHint: { enum: ['prefer_chat', 'prefer_execute'] },
+              routeHint: { enum: ['prefer_conversation', 'prefer_tool'] },
               routeReason: { type: 'string' },
               detectedScenario: { type: 'string' },
               detectedScenarioLabel: { type: 'string' },
@@ -485,7 +509,7 @@ export class AgentService {
                 type: 'object',
                 properties: {
                   traceId: { type: 'string' },
-                  mode: { enum: ['chat', 'execute', 'auto'] },
+                  mode: { enum: ['conversation', 'tool', 'auto'] },
                   conversationId: { type: 'string' },
                   startedAt: { type: 'string' },
                 },
@@ -741,13 +765,18 @@ export class AgentService {
     }
 
     const resolvedRunMode: AgentRunMode = runMode === 'auto'
-      ? ((modelInput || await this.skillRuntime.shouldPreferExecute(params.message, locale, workingSession.draft, skillIds))
-        ? 'execute'
-        : 'chat')
+      ? ((await this.shouldPreferToolInvocationForState(params.message, {
+        locale,
+        skillIds,
+        hasModel: Boolean(modelInput),
+        session: workingSession,
+      }))
+        ? 'tool'
+        : 'conversation')
       : runMode;
 
-    if (resolvedRunMode === 'chat') {
-      return this.handleChatMode({
+    if (resolvedRunMode === 'conversation') {
+      return this.handleConversationMode({
         params,
         traceId,
         startedAt,
@@ -827,7 +856,7 @@ export class AgentService {
             plan,
             toolCalls,
             metrics: this.buildMetrics(toolCalls),
-            interaction: this.buildExecutionInteraction('blocked', locale),
+            interaction: this.buildToolInteraction('blocked', locale),
             clarification: {
               missingFields,
               question,
@@ -910,7 +939,7 @@ export class AgentService {
           plan,
           toolCalls,
           metrics: this.buildMetrics(toolCalls),
-            interaction: this.buildExecutionInteraction('blocked', locale),
+            interaction: this.buildToolInteraction('blocked', locale),
             response: this.localize(locale, `模型格式转换失败：${convertCall.error}`, `Model conversion failed: ${convertCall.error}`),
           };
         return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
@@ -946,7 +975,7 @@ export class AgentService {
           toolCalls,
           model: normalizedModel,
           metrics: this.buildMetrics(toolCalls),
-          interaction: this.buildExecutionInteraction('blocked', locale),
+          interaction: this.buildToolInteraction('blocked', locale),
           response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
         };
         return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
@@ -974,7 +1003,7 @@ export class AgentService {
           toolCalls,
           model: normalizedModel,
           metrics: this.buildMetrics(toolCalls),
-          interaction: this.buildExecutionInteraction('blocked', locale),
+          interaction: this.buildToolInteraction('blocked', locale),
           response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
         };
         return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
@@ -984,7 +1013,7 @@ export class AgentService {
     if (!autoAnalyze) {
       const response = await this.renderSummary(
         params.message,
-        this.localize(locale, '模型已通过校验。根据配置未自动执行 analyze。', 'The model passed validation. Analyze was not executed automatically under the current configuration.'),
+        this.localize(locale, '模型已通过校验。根据当前配置，本轮未触发 analyze 工具。', 'The model passed validation. The analyze tool was not invoked for this turn under the current configuration.'),
         locale,
       );
       const result: AgentRunResult = {
@@ -999,7 +1028,7 @@ export class AgentService {
         toolCalls,
         model: normalizedModel,
         metrics: this.buildMetrics(toolCalls),
-        interaction: this.buildExecutionInteraction('completed', locale),
+        interaction: this.buildToolInteraction('completed', locale),
         response,
       };
       if (sessionKey) {
@@ -1060,7 +1089,7 @@ export class AgentService {
             model: normalizedModel,
             analysis: analyzed.data,
             metrics: this.buildMetrics(toolCalls),
-            interaction: this.buildExecutionInteraction('blocked', locale),
+            interaction: this.buildToolInteraction('blocked', locale),
             response: this.localize(locale, `规范校核失败：${codeCheckCall.error}`, `Code check failed: ${codeCheckCall.error}`),
           };
           return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
@@ -1127,7 +1156,7 @@ export class AgentService {
         report,
         artifacts,
         metrics: this.buildMetrics(toolCalls),
-        interaction: this.buildExecutionInteraction('completed', locale),
+        interaction: this.buildToolInteraction('completed', locale),
         response: validationWarning ? `${validationWarning}\n\n${response}` : response,
       };
       if (sessionKey) {
@@ -1149,7 +1178,7 @@ export class AgentService {
         toolCalls,
         model: normalizedModel,
         metrics: this.buildMetrics(toolCalls),
-        interaction: this.buildExecutionInteraction('blocked', locale),
+        interaction: this.buildToolInteraction('blocked', locale),
         response: transientUpstreamFailure
           ? this.localize(
             locale,
@@ -1180,8 +1209,8 @@ export class AgentService {
     }
     return this.localize(
       locale,
-      '当前参数已足够进入执行阶段，可以点击“执行分析”或继续微调参数。',
-      'The current parameters are sufficient to proceed. You can click “Run Analysis” or keep refining the inputs.'
+      '当前参数已足够进入执行阶段，可以直接让我开始分析，或继续微调参数。',
+      'The current parameters are sufficient to proceed. You can ask me to start the analysis now, or keep refining the inputs.'
     );
   }
 
@@ -1233,7 +1262,7 @@ export class AgentService {
     return this.localize(locale, '当前所选技能未匹配到适用场景。我会回退到通用建模能力。', 'The selected skill did not match an applicable scenario. I will fall back to generic modeling capability.');
   }
 
-  private async handleChatMode(args: {
+  private async handleConversationMode(args: {
     params: AgentRunParams;
     traceId: string;
     startedAt: string;
@@ -1253,7 +1282,7 @@ export class AgentService {
       : this.localize(locale, '识别结构场景并匹配对话模板', 'Identify the structural scenario and select the matching dialogue template'));
     plan.push(this.localize(locale, '按当前阶段补齐关键工程参数', 'Collect the key engineering parameters for the current stage'));
 
-    const draftCall = this.startToolCall('text-to-model-draft', { message: params.message, conversationId: sessionKey, mode: 'chat' });
+      const draftCall = this.startToolCall('text-to-model-draft', { message: params.message, conversationId: sessionKey, mode: 'conversation' });
     toolCalls.push(draftCall);
 
     const draft = await this.textToModelDraft(params.message, workingSession.draft, locale, params.context?.skillIds);
@@ -1285,7 +1314,7 @@ export class AgentService {
           state: 'ready',
           stage: 'model',
           turnId: randomUUID(),
-          routeHint: 'prefer_execute',
+          routeHint: 'prefer_tool',
           routeReason: this.localize(
             locale,
             noSkillMode
@@ -1307,19 +1336,19 @@ export class AgentService {
           nextActions: ['confirm_all'],
           recommendedNextStep: this.localize(
             locale,
-            '可直接执行分析，或继续补充更细的建模参数。',
-            'You can run analysis directly, or continue refining modeling parameters.',
+            '可以直接让我开始分析，或继续补充更细的建模参数。',
+            'You can ask me to start the analysis now, or continue refining modeling parameters.',
           ),
         };
 
         const response = this.localize(
           locale,
           noSkillMode
-            ? '已根据当前输入直接生成结构模型 JSON，可直接执行分析。'
-            : '所选技能未匹配场景，已回退到通用建模并生成结构模型 JSON，可直接执行分析。',
+            ? '已根据当前输入直接生成结构模型 JSON，可直接触发分析工具。'
+            : '所选技能未匹配场景，已回退到通用建模并生成结构模型 JSON，可直接触发分析工具。',
           noSkillMode
-            ? 'A structural model JSON has been generated directly from your input and is ready for analysis.'
-            : 'The selected skill did not match, so I fell back to generic modeling and generated a structural model JSON ready for analysis.',
+            ? 'A structural model JSON has been generated directly from your input and is ready for analysis tools.'
+            : 'The selected skill did not match, so I fell back to generic modeling and generated a structural model JSON ready for analysis tools.',
         );
 
         const result: AgentRunResult = {
@@ -1353,11 +1382,11 @@ export class AgentService {
         state: 'confirming',
         stage: 'model',
         turnId: randomUUID(),
-        routeHint: 'prefer_chat',
+        routeHint: 'prefer_conversation',
         routeReason: this.localize(
           locale,
-          '当前仍缺少关键建模参数，请先补充后再执行。',
-          'Critical modeling parameters are still missing. Please provide them before execution.',
+          '当前仍缺少关键建模参数，请先补充后再触发工具。',
+          'Critical modeling parameters are still missing. Please provide them before invoking tools.',
         ),
         conversationStage: this.getStageLabel('model', locale),
         missingCritical: missingFields,
@@ -1398,7 +1427,7 @@ export class AgentService {
       return this.finalizeRunResult(traceId, sessionKey, params.message, result, params.context?.skillIds, workingSession);
     }
 
-    let assessment = await this.assessInteractionNeeds(workingSession, locale, params.context?.skillIds, 'chat');
+    let assessment = await this.assessInteractionNeeds(workingSession, locale, params.context?.skillIds, 'conversation');
 
     // When all critical (structural) parameters are present, auto-apply defaults
     // for non-critical parameters (includeReport, reportFormat, reportOutput, etc.)
@@ -1407,7 +1436,7 @@ export class AgentService {
     // new non-critical parameters (e.g. reportFormat, reportOutput).
     while (assessment.criticalMissing.length === 0 && assessment.nonCriticalMissing.length > 0) {
       this.applyNonCriticalDefaults(workingSession, assessment.defaultProposals);
-      assessment = await this.assessInteractionNeeds(workingSession, locale, params.context?.skillIds, 'chat');
+      assessment = await this.assessInteractionNeeds(workingSession, locale, params.context?.skillIds, 'conversation');
     }
 
     const state: AgentInteractionState = assessment.criticalMissing.length > 0
@@ -1452,7 +1481,7 @@ export class AgentService {
     session: InteractionSession,
     locale: AppLocale,
     skillIds?: string[],
-    mode: AgentRunMode = 'execute'
+    mode: Exclude<AgentRunMode, 'auto'> = 'tool'
   ): Promise<{
     criticalMissing: string[];
     nonCriticalMissing: string[];
@@ -1461,7 +1490,7 @@ export class AgentService {
     const structural = await this.skillRuntime.assessDraft(
       session.draft,
       locale,
-      mode === 'chat' ? 'chat' : 'execute',
+      mode,
       skillIds,
     );
     const criticalMissing = [...structural.criticalMissing];
@@ -1673,42 +1702,42 @@ export class AgentService {
   ): { routeHint: AgentInteractionRouteHint; routeReason: string } {
     if (assessment.criticalMissing.length > 0) {
       if (stage === 'intent' || stage === 'model' || stage === 'loads') {
-        return {
-          routeHint: 'prefer_chat',
-          routeReason: this.localize(
-            locale,
-            '当前仍缺少关键建模参数，建议继续对话补参后再执行。',
-            'Critical modeling inputs are still missing; continue clarification before execution.',
-          ),
-        };
-      }
       return {
-        routeHint: 'prefer_chat',
+        routeHint: 'prefer_conversation',
         routeReason: this.localize(
           locale,
-          '仍有关键参数待确认，建议先完成参数补充。',
-          'Key parameters are still pending; complete clarification first.',
+          '当前仍缺少关键建模参数，建议继续对话补参后再触发工具。',
+          'Critical modeling inputs are still missing; continue clarification before invoking tools.',
         ),
       };
     }
-
-    if (assessment.nonCriticalMissing.length > 0 && !session.userApprovedAutoDecide) {
-      return {
-        routeHint: 'prefer_chat',
-        routeReason: this.localize(
-          locale,
-          '分析、校核或报告偏好尚未确认，建议先确认策略再执行。',
-          'Analysis, code-check, or reporting preferences are pending; confirm strategy before execution.',
-        ),
-      };
-    }
-
     return {
-      routeHint: 'prefer_execute',
+      routeHint: 'prefer_conversation',
       routeReason: this.localize(
         locale,
-        '当前参数已达到执行条件，可直接进入分析流程。',
-        'Current inputs are execution-ready; analysis can proceed directly.',
+        '仍有关键参数待确认，建议先完成参数补充。',
+        'Key parameters are still pending; complete clarification first.',
+      ),
+    };
+  }
+
+  if (assessment.nonCriticalMissing.length > 0 && !session.userApprovedAutoDecide) {
+    return {
+      routeHint: 'prefer_conversation',
+      routeReason: this.localize(
+        locale,
+        '分析、校核或报告偏好尚未确认，建议先确认策略再触发工具。',
+        'Analysis, code-check, or reporting preferences are pending; confirm strategy before invoking tools.',
+      ),
+    };
+  }
+
+  return {
+      routeHint: 'prefer_tool',
+      routeReason: this.localize(
+        locale,
+        '当前参数已达到工具调用条件，可直接进入分析流程。',
+        'Current inputs are ready for tool invocation; analysis can proceed directly.',
       ),
     };
   }
@@ -1753,15 +1782,15 @@ export class AgentService {
     );
   }
 
-  private buildExecutionInteraction(state: 'completed' | 'blocked', locale: AppLocale): AgentInteraction {
+  private buildToolInteraction(state: 'completed' | 'blocked', locale: AppLocale): AgentInteraction {
     return {
       state,
       stage: 'report',
       turnId: randomUUID(),
-      routeHint: 'prefer_execute',
+      routeHint: 'prefer_tool',
       routeReason: state === 'completed'
-        ? this.localize(locale, '执行已完成。', 'Execution completed.')
-        : this.localize(locale, '执行已触发，但被下游工具或校验失败阻断。', 'Execution attempted but was blocked by downstream tool or validation failure.'),
+        ? this.localize(locale, '工具调用已完成。', 'Tool invocation completed.')
+        : this.localize(locale, '工具调用已触发，但被下游工具或校验失败阻断。', 'Tool invocation was attempted but blocked by downstream tool or validation failure.'),
       nextActions: state === 'completed' ? [] : ['revise'],
     };
   }
@@ -1929,7 +1958,7 @@ export class AgentService {
       return this.textToModelDraftWithoutSkills(message, existingState, locale);
     }
     const skillDraft = await this.skillRuntime.textToModelDraft(this.llm, message, existingState, locale, skillIds);
-    if (skillDraft.model || skillDraft.inferredType !== 'unknown') {
+    if (skillDraft.model || skillDraft.inferredType !== 'unknown' || skillDraft.scenario?.skillId) {
       return skillDraft;
     }
 

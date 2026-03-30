@@ -21,11 +21,12 @@ const optionalIdSchema = z.preprocess((value) => {
 }, z.string().optional());
 
 const localeSchema = z.enum(['en', 'zh']).optional();
+const agentModeSchema = z.enum(['conversation', 'tool', 'auto']).optional();
 
 // 请求验证
 const sendMessageSchema = z.object({
   message: z.string().min(1).max(10000),
-  mode: z.enum(['chat', 'execute', 'auto']).optional(),
+  mode: agentModeSchema,
   conversationId: optionalIdSchema,
   traceId: optionalIdSchema,
   context: z.object({
@@ -59,7 +60,7 @@ const conversationDetailQuerySchema = z.object({
   locale: localeSchema,
 });
 
-const executeSchema = z.object({
+const toolCallSchema = z.object({
   message: z.string().min(1).max(10000),
   conversationId: optionalIdSchema,
   traceId: optionalIdSchema,
@@ -85,7 +86,7 @@ const executeSchema = z.object({
 
 const streamMessageSchema = z.object({
   message: z.string().min(1).max(10000),
-  mode: z.enum(['chat', 'execute', 'auto']).optional(),
+  mode: agentModeSchema,
   conversationId: optionalIdSchema,
   traceId: optionalIdSchema,
   context: z.object({
@@ -182,18 +183,18 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const userId = request.user?.id;
       const mode = body.mode || 'auto';
 
-      const shouldExecute = mode === 'execute'
-        || (mode === 'auto' && await agentService.shouldPreferExecute(body.message, {
+      const shouldInvokeTool = mode === 'tool'
+        || (mode === 'auto' && await agentService.shouldPreferToolInvocation(body.message, {
           locale: body.context?.locale,
           conversationId: body.conversationId,
           skillIds: body.context?.skillIds,
           hasModel: Boolean(body.context?.model),
         }));
 
-      if (shouldExecute) {
+      if (shouldInvokeTool) {
         const result = await agentService.run({
           message: body.message,
-          mode: 'execute',
+          mode: 'tool',
           conversationId: body.conversationId,
           traceId: body.traceId,
           context: {
@@ -221,15 +222,15 @@ export async function chatRoutes(fastify: FastifyInstance) {
           latestResult: result,
         });
         return reply.send({
-          mode: 'execute',
+          mode: 'tool',
           result,
         });
       }
 
-      if (mode === 'chat') {
+      if (mode === 'conversation') {
         const result = await agentService.run({
           message: body.message,
-          mode: 'chat',
+          mode: 'conversation',
           conversationId: body.conversationId,
           traceId: body.traceId,
           context: {
@@ -257,7 +258,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
           latestResult: result,
         });
         return reply.send({
-          mode: 'chat',
+          mode: 'conversation',
           result,
         });
       }
@@ -270,7 +271,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       });
 
       return reply.send({
-        mode: 'chat',
+        mode: 'conversation',
         result,
       });
     } catch (error) {
@@ -424,8 +425,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
     reply.raw.setHeader('X-Accel-Buffering', 'no');
     reply.raw.flushHeaders?.();
 
-    const shouldExecute = mode === 'execute'
-      || (mode === 'auto' && await agentService.shouldPreferExecute(body.message, {
+    const shouldInvokeTool = mode === 'tool'
+      || (mode === 'auto' && await agentService.shouldPreferToolInvocation(body.message, {
         locale: body.context?.locale,
         conversationId: body.conversationId,
         skillIds: body.context?.skillIds,
@@ -433,10 +434,10 @@ export async function chatRoutes(fastify: FastifyInstance) {
       }));
 
     try {
-      if (shouldExecute) {
+      if (shouldInvokeTool) {
         const stream = agentService.runStream({
           message: body.message,
-          mode: 'execute',
+          mode: 'tool',
           conversationId: body.conversationId,
           traceId: body.traceId,
           context: {
@@ -486,10 +487,10 @@ export async function chatRoutes(fastify: FastifyInstance) {
         return;
       }
 
-      if (mode === 'chat') {
+      if (mode === 'conversation') {
         const stream = agentService.runStream({
           message: body.message,
-          mode: 'chat',
+          mode: 'conversation',
           conversationId: body.conversationId,
           traceId: body.traceId,
           context: {
@@ -568,11 +569,26 @@ export async function chatRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 执行模式：复用 Agent 工具编排链路
-  fastify.post('/execute', {
+  // Tool 调用入口：复用 Agent 工具编排链路
+  const toolCallHandler = async (request: FastifyRequest<{ Body: z.infer<typeof toolCallSchema> }>, reply: FastifyReply) => {
+    const body = toolCallSchema.parse(request.body);
+    const userId = request.user?.id;
+    const result = await agentService.run({
+      ...body,
+      mode: 'tool',
+    });
+    await persistLatestConversationResult({
+      conversationId: body.conversationId,
+      userId,
+      latestResult: result,
+    });
+    return reply.send({ ...result, conversationId: body.conversationId });
+  };
+
+  fastify.post('/tool-call', {
     schema: {
       tags: ['Chat'],
-      summary: '执行结构化任务（Agent 工具编排）',
+      summary: '触发 Agent tool/skill 调用链路',
       body: {
         type: 'object',
         required: ['message'],
@@ -584,17 +600,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
         },
       },
     },
-  }, async (request: FastifyRequest<{ Body: z.infer<typeof executeSchema> }>, reply: FastifyReply) => {
-    const body = executeSchema.parse(request.body);
-    const userId = request.user?.id;
-    const result = await agentService.run(body);
-    await persistLatestConversationResult({
-      conversationId: body.conversationId,
-      userId,
-      latestResult: result,
-    });
-    return reply.send({ ...result, conversationId: body.conversationId });
-  });
+  }, toolCallHandler);
+
 }
 
 function normalizeStreamChunkError(chunk: unknown): unknown {

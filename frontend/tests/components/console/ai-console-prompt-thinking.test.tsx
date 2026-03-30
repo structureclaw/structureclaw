@@ -17,6 +17,22 @@ function fetchInputUrl(input: RequestInfo | URL): string {
   return String(input)
 }
 
+function createSseResponse(events: unknown[]) {
+  const encoder = new TextEncoder()
+  const chunks = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).concat('data: [DONE]\n\n')
+  const stream = new ReadableStream({
+    start(controller) {
+      chunks.forEach((chunk) => controller.enqueue(encoder.encode(chunk)))
+      controller.close()
+    },
+  })
+
+  return {
+    ok: true,
+    body: stream,
+  } as unknown as Response
+}
+
 describe('AIConsole prompt and thinking details', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -62,33 +78,38 @@ describe('AIConsole prompt and thinking details', () => {
         return Response.json({ id: 'conv-debug-1', title: 'Prompt Debug' })
       }
 
-      if (url.includes('/api/v1/chat/execute')) {
-        return Response.json({
-          response: 'Execution completed for prompt-debug test.',
-          success: true,
-          routing: {
-            selectedSkillIds: ['beam'],
-            structuralSkillId: 'beam',
-            structuralScenarioKey: 'beam',
-            analysisSkillId: 'opensees-static',
-            analysisSkillIds: ['opensees-static'],
+      if (url.includes('/api/v1/chat/stream')) {
+        return createSseResponse([
+          {
+            type: 'result',
+            content: {
+              response: 'Execution completed for prompt-debug test.',
+              success: true,
+              routing: {
+                selectedSkillIds: ['beam'],
+                structuralSkillId: 'beam',
+                structuralScenarioKey: 'beam',
+                analysisSkillId: 'opensees-static',
+                analysisSkillIds: ['opensees-static'],
+              },
+              plan: ['Draft model payload', 'Analyze structure', 'Generate report summary'],
+              toolCalls: [
+                {
+                  tool: 'analyze_structure',
+                  status: 'success',
+                  durationMs: 120,
+                  input: { analysisType: 'static' },
+                  output: { status: 'ok' },
+                },
+                {
+                  tool: 'generate_report',
+                  status: 'error',
+                  error: 'mock report failure',
+                },
+              ],
+            },
           },
-          plan: ['Draft model payload', 'Analyze structure', 'Generate report summary'],
-          toolCalls: [
-            {
-              tool: 'analyze_structure',
-              status: 'success',
-              durationMs: 120,
-              input: { analysisType: 'static' },
-              output: { status: 'ok' },
-            },
-            {
-              tool: 'generate_report',
-              status: 'error',
-              error: 'mock report failure',
-            },
-          ],
-        })
+        ])
       }
 
       if (url.includes('/snapshot') && init?.method === 'POST') {
@@ -111,7 +132,7 @@ describe('AIConsole prompt and thinking details', () => {
     await user.click(screen.getByRole('button', { name: /expand skills/i }))
     await user.click(screen.getByRole('button', { name: 'Beam' }))
     await user.type(composer, 'Run static beam check for prompt debug test')
-    await user.click(screen.getByRole('button', { name: /run analysis/i }))
+    await user.click(screen.getByRole('button', { name: /send/i }))
 
     await waitFor(() => {
       expect(screen.getAllByText(/execution completed for prompt-debug test/i).length).toBeGreaterThan(0)

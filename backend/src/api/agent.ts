@@ -20,9 +20,11 @@ const optionalIdSchema = z.preprocess((value) => {
   return value;
 }, z.string().optional());
 
+const agentModeSchema = z.enum(['conversation', 'tool', 'auto']).optional();
+
 const agentRunSchema = z.object({
   message: z.string().min(1).max(10000),
-  mode: z.enum(['chat', 'execute', 'auto']).optional(),
+  mode: agentModeSchema,
   conversationId: optionalIdSchema,
   traceId: optionalIdSchema,
   context: z.object({

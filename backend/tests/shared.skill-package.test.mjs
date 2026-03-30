@@ -19,6 +19,8 @@ describe('shared skill package metadata', () => {
       manifest: 'manifest',
       handler: 'handler',
     });
+    expect(pkg.enabledTools).toEqual([]);
+    expect(pkg.providedTools).toEqual([]);
     expect(pkg.enabledByDefault).toBe(true);
     expect(pkg.priority).toBe(70);
   });
@@ -57,6 +59,8 @@ describe('shared skill package metadata', () => {
     expect(direct.id).toBe(entry.packageMetadata.id);
     expect(direct.compatibility.skillApiVersion).toBe(entry.packageMetadata.compatibility.skillApiVersion);
     expect(direct.entrypoints).toEqual(entry.packageMetadata.entrypoints);
+    expect(direct.enabledTools).toEqual([]);
+    expect(direct.providedTools).toEqual([]);
   });
 
   test('should apply safe defaults when manifest has minimal optional fields', () => {

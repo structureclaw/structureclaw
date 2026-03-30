@@ -47,6 +47,57 @@ export class AgentPolicyService {
       || text.includes('验算');
   }
 
+  inferExecutionIntent(message: string): boolean {
+    const text = message.toLowerCase().trim();
+    if (!text) {
+      return false;
+    }
+
+    return [
+      '执行分析',
+      '开始分析',
+      '运行分析',
+      '直接分析',
+      '开始计算',
+      '运行计算',
+      '执行计算',
+      '开始求解',
+      '运行求解',
+      '分析这个模型',
+      'run analysis',
+      'start analysis',
+      'perform analysis',
+      'run the analysis',
+      'analyze this model',
+      'solve this model',
+      'calculate the result',
+    ].some((pattern) => text.includes(pattern));
+  }
+
+  inferProceedIntent(message: string): boolean {
+    const text = message.toLowerCase().trim();
+    if (!text) {
+      return false;
+    }
+
+    return [
+      '继续',
+      '继续吧',
+      '开始吧',
+      '可以了',
+      '就这样',
+      '确认',
+      '确认执行',
+      '开始',
+      'go ahead',
+      'proceed',
+      'continue',
+      'run it',
+      'start now',
+      'confirm',
+    ].some((pattern) => text.includes(pattern));
+  }
+
   inferDesignCode(message: string): string | undefined {
     const match = message.toUpperCase().match(/GB\s*([0-9]{5})/);
     if (!match?.[1]) {
