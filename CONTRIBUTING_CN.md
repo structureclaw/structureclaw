@@ -8,7 +8,7 @@
 
 ## 开始前
 
-1. 先阅读 [README_CN.md](/home/openclaw/structureclaw/README_CN.md)、[docs/handbook_CN.md](/home/openclaw/structureclaw/docs/handbook_CN.md)、[docs/reference_CN.md](/home/openclaw/structureclaw/docs/reference_CN.md)。
+1. 先阅读 [README_CN.md](README_CN.md)、[docs/handbook_CN.md](docs/handbook_CN.md)、[docs/reference_CN.md](docs/reference_CN.md)。
 2. 确认本地开发环境可用：
 
 ```bash
@@ -224,7 +224,7 @@ PR 的质量比 PR 的体积更重要，但强烈建议保持小而可评审。
 ## 安全与密钥
 
 - 不要提交真实密钥、令牌或私钥。
-- 配置模板以 `.env.example` 和 `backend/.env.example` 为准。
+- 配置模板以 `.env.example` 为准。
 - 生产环境凭据必须保存在仓库外。
 - 如果你的改动依赖新的配置默认值，请在 PR 中说明。
 
@@ -236,4 +236,4 @@ PR 的质量比 PR 的体积更重要，但强烈建议保持小而可评审。
 
 ## 对应语言版本
 
-英文版：[CONTRIBUTING.md](/home/openclaw/structureclaw/CONTRIBUTING.md)
+英文版：[CONTRIBUTING.md](CONTRIBUTING.md)

@@ -44,6 +44,20 @@ docs/       手册与协议参考文档
 
 ## 5. 快速上手
 
+### 5.0 Node.js 安装（可选）
+
+如果你还没有安装 Node.js，可以先运行自动安装脚本：
+
+```bash
+bash ./scripts/install-node-linux.sh
+```
+
+Windows PowerShell（首次安装建议使用管理员权限）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
+```
+
 ### 5.1 推荐路径
 
 ```bash
@@ -83,6 +97,19 @@ node .\sclaw stop
 ```
 
 如果要走 Docker 方式的 Windows 新手路径，直接使用 `node .\sclaw docker-install`、`node .\sclaw docker-start` 和 `node .\sclaw docker-stop`。
+
+### 5.5 SkillHub CLI
+
+通过命令行管理可安装技能：
+
+```bash
+./sclaw skill list                          # 列出已安装的技能
+./sclaw skill search <keyword> [domain]     # 搜索技能仓库
+./sclaw skill install <skill-id>            # 安装技能
+./sclaw skill enable <skill-id>             # 启用已安装的技能
+./sclaw skill disable <skill-id>            # 禁用技能
+./sclaw skill uninstall <skill-id>          # 卸载技能
+```
 
 ## 6. 环境变量与配置
 
@@ -137,6 +164,24 @@ node .\sclaw stop
 - Skill 是增强层，不是唯一执行路径。
 - 已选技能未匹配场景时，回退到通用 no-skill 建模。
 - 所有新增用户可见文案必须同时支持中文和英文。
+
+内置技能域（位于 `backend/src/agent-skills/`）：
+
+| 领域 | 说明 |
+|---|---|
+| `structure-type` | 结构类型识别（梁、框架、桁架、门式刚架等） |
+| `analysis` | OpenSees 与 Simplified 分析执行 |
+| `code-check` | 设计规范校核 |
+| `data-input` | 结构化数据输入解析 |
+| `design` | 结构设计辅助 |
+| `drawing` | 图纸与可视化生成 |
+| `load-boundary` | 荷载与边界条件处理 |
+| `material` | 材料属性管理 |
+| `report-export` | 报告生成与导出 |
+| `result-postprocess` | 分析结果后处理 |
+| `section` | 截面属性计算 |
+| `validation` | 模型校验 |
+| `visualization` | 三维模型可视化 |
 
 ## 10. 质量保障与回归
 

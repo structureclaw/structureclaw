@@ -104,15 +104,53 @@
 
 契约与分组回归通过 `node tests/runner.mjs ...` 执行（不再挂在 `sclaw` 上）。列出全部校验名：`node tests/runner.mjs validate --list`。
 
-核心命令：
+Agent 编排与协议：
 
 - `node tests/runner.mjs validate validate-agent-orchestration`
 - `node tests/runner.mjs validate validate-agent-no-skill-fallback`
 - `node tests/runner.mjs validate validate-agent-tools-contract`
 - `node tests/runner.mjs validate validate-agent-api-contract`
+- `node tests/runner.mjs validate validate-agent-capability-matrix`
+
+SkillHub：
+
+- `node tests/runner.mjs validate validate-agent-skillhub-cli`
+- `node tests/runner.mjs validate validate-agent-skillhub-contract`
+- `node tests/runner.mjs validate validate-agent-skillhub-repository-down`
+
+Chat 与消息：
+
 - `node tests/runner.mjs validate validate-chat-stream-contract`
 - `node tests/runner.mjs validate validate-chat-message-routing`
+
+分析与运行时：
+
+- `node tests/runner.mjs validate validate-analyze-contract`
+- `node tests/runner.mjs validate validate-opensees-runtime-and-routing`
+
+转换器：
+
+- `node tests/runner.mjs validate validate-converter-api-contract`
+- `node tests/runner.mjs validate validate-convert-batch`
+- `node tests/runner.mjs validate validate-convert-passrate`
+- `node tests/runner.mjs validate validate-convert-roundtrip`
+- `node tests/runner.mjs validate validate-midas-text-converter`
+
+校核、报告与 Schema：
+
+- `node tests/runner.mjs validate validate-code-check-traceability`
 - `node tests/runner.mjs validate validate-report-template-contract`
+- `node tests/runner.mjs validate validate-schema-migration`
+
+回归：
+
+- `node tests/runner.mjs validate validate-static-regression`
+- `node tests/runner.mjs validate validate-static-3d-regression`
+- `node tests/runner.mjs validate validate-structure-examples`
+
+开发启动守卫：
+
+- `node tests/runner.mjs validate validate-dev-startup-guards`
 
 回归入口：
 

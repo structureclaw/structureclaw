@@ -8,7 +8,7 @@ It is written for typical open source collaboration through a fork-and-pull-requ
 
 ## Before You Start
 
-1. Read [README.md](/home/openclaw/structureclaw/README.md), [docs/handbook.md](/home/openclaw/structureclaw/docs/handbook.md), and [docs/reference.md](/home/openclaw/structureclaw/docs/reference.md).
+1. Read [README.md](README.md), [docs/handbook.md](docs/handbook.md), and [docs/reference.md](docs/reference.md).
 2. Make sure your local environment works:
 
 ```bash
@@ -223,7 +223,7 @@ Convert the PR to ready-for-review only after the validation checklist is meanin
 ## Security and Secrets
 
 - Never commit live secrets, tokens, or private keys.
-- Use `.env.example` and `backend/.env.example` as templates.
+- Use `.env.example` as the template.
 - Keep production credentials outside the repository.
 - Document new configuration defaults when your change depends on them.
 
@@ -235,4 +235,4 @@ Convert the PR to ready-for-review only after the validation checklist is meanin
 
 ## Language Counterpart
 
-Chinese version: [CONTRIBUTING_CN.md](/home/openclaw/structureclaw/CONTRIBUTING_CN.md)
+Chinese version: [CONTRIBUTING_CN.md](CONTRIBUTING_CN.md)

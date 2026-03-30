@@ -44,6 +44,20 @@ docs/       handbook and protocol reference
 
 ## 5. Getting Started
 
+### 5.0 Node.js setup (optional)
+
+If Node.js is not installed yet, use the helper installer script first:
+
+```bash
+bash ./scripts/install-node-linux.sh
+```
+
+Windows PowerShell (run as Administrator for first-time package install):
+
+```powershell
+powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
+```
+
 ### 5.1 Recommended path
 
 ```bash
@@ -83,6 +97,19 @@ node .\sclaw stop
 ```
 
 For Docker-based Windows onboarding, use `node .\sclaw docker-install`, `node .\sclaw docker-start`, and `node .\sclaw docker-stop`.
+
+### 5.5 SkillHub CLI
+
+Manage installable skills from the command line:
+
+```bash
+./sclaw skill list                          # list installed skills
+./sclaw skill search <keyword> [domain]     # search the skill registry
+./sclaw skill install <skill-id>            # install a skill
+./sclaw skill enable <skill-id>             # enable an installed skill
+./sclaw skill disable <skill-id>            # disable a skill
+./sclaw skill uninstall <skill-id>          # uninstall a skill
+```
 
 ## 6. Environment and Configuration
 
@@ -137,6 +164,24 @@ Compatibility endpoints exposed by backend:
 - Skills are enhancement layers, not a hard dependency for the full workflow.
 - If selected skills do not match the request, fallback uses generic no-skill modeling.
 - New user-visible copy must be provided in both English and Chinese.
+
+Built-in skill domains under `backend/src/agent-skills/`:
+
+| Domain | Description |
+|---|---|
+| `structure-type` | Structural type recognition (beam, frame, truss, portal-frame, etc.) |
+| `analysis` | OpenSees and Simplified analysis execution |
+| `code-check` | Design code compliance checking |
+| `data-input` | Structured data input parsing |
+| `design` | Structural design assistance |
+| `drawing` | Drawing and visualization generation |
+| `load-boundary` | Load and boundary condition handling |
+| `material` | Material property management |
+| `report-export` | Report generation and export |
+| `result-postprocess` | Post-processing of analysis results |
+| `section` | Cross-section property calculation |
+| `validation` | Model validation checks |
+| `visualization` | 3D model visualization |
 
 ## 10. Quality and Regression
 

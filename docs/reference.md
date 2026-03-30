@@ -104,15 +104,53 @@ Practical rules:
 
 Contract checks and grouped regressions run via `node tests/runner.mjs ...` (not `sclaw`). List validation names with `node tests/runner.mjs validate --list`.
 
-Primary orchestration and protocol commands:
+Agent orchestration and protocol:
 
 - `node tests/runner.mjs validate validate-agent-orchestration`
 - `node tests/runner.mjs validate validate-agent-no-skill-fallback`
 - `node tests/runner.mjs validate validate-agent-tools-contract`
 - `node tests/runner.mjs validate validate-agent-api-contract`
+- `node tests/runner.mjs validate validate-agent-capability-matrix`
+
+SkillHub:
+
+- `node tests/runner.mjs validate validate-agent-skillhub-cli`
+- `node tests/runner.mjs validate validate-agent-skillhub-contract`
+- `node tests/runner.mjs validate validate-agent-skillhub-repository-down`
+
+Chat and messaging:
+
 - `node tests/runner.mjs validate validate-chat-stream-contract`
 - `node tests/runner.mjs validate validate-chat-message-routing`
+
+Analysis and runtime:
+
+- `node tests/runner.mjs validate validate-analyze-contract`
+- `node tests/runner.mjs validate validate-opensees-runtime-and-routing`
+
+Converter:
+
+- `node tests/runner.mjs validate validate-converter-api-contract`
+- `node tests/runner.mjs validate validate-convert-batch`
+- `node tests/runner.mjs validate validate-convert-passrate`
+- `node tests/runner.mjs validate validate-convert-roundtrip`
+- `node tests/runner.mjs validate validate-midas-text-converter`
+
+Code-check, report and schema:
+
+- `node tests/runner.mjs validate validate-code-check-traceability`
 - `node tests/runner.mjs validate validate-report-template-contract`
+- `node tests/runner.mjs validate validate-schema-migration`
+
+Regression:
+
+- `node tests/runner.mjs validate validate-static-regression`
+- `node tests/runner.mjs validate validate-static-3d-regression`
+- `node tests/runner.mjs validate validate-structure-examples`
+
+Dev startup:
+
+- `node tests/runner.mjs validate validate-dev-startup-guards`
 
 Regression entrypoints:
 
