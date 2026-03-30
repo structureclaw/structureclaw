@@ -106,6 +106,7 @@ interface PersistedMessageDebugDetails {
 type ActiveToolSet = Set<string> | undefined;
 
 type AgentNextStep = 'conversation' | 'tool_call';
+type AgentPlanningDirective = 'auto' | 'force_conversation' | 'force_tool';
 
 interface ResolvedExecutionConfig {
   analysisType: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
@@ -138,7 +139,7 @@ interface ExecutionPipelineArgs {
 
 interface PreparedRunContext {
   locale: AppLocale;
-  requestedStep: AgentRequestedStep;
+  planningDirective: AgentPlanningDirective;
   orchestrationMode: AgentOrchestrationMode;
   modelInput?: Record<string, unknown>;
   sourceFormat: string;
@@ -360,7 +361,7 @@ export class AgentService {
       disabledToolIds: options?.disabledToolIds,
     });
     return (await this.planNextStep(message, {
-      requestedStep: 'auto',
+      planningDirective: 'auto',
       locale,
       skillIds: options?.skillIds,
       hasModel: Boolean(options?.hasModel),
@@ -421,17 +422,17 @@ export class AgentService {
   }
 
   private async planNextStep(message: string, options: {
-    requestedStep: AgentRequestedStep;
+    planningDirective: AgentPlanningDirective;
     locale: AppLocale;
     skillIds?: string[];
     hasModel: boolean;
     session?: InteractionSession;
     activeToolIds?: ActiveToolSet;
   }): Promise<AgentNextStep> {
-    if (options.requestedStep === 'conversation') {
+    if (options.planningDirective === 'force_conversation') {
       return 'conversation';
     }
-    if (options.requestedStep !== 'auto') {
+    if (options.planningDirective === 'force_tool') {
       return 'tool_call';
     }
 
@@ -446,19 +447,19 @@ export class AgentService {
       : 'conversation';
   }
 
-  private normalizeRequestedStep(requestedStep: AgentRequestedStep | string | undefined): AgentRequestedStep {
+  private normalizePlanningDirective(requestedStep: AgentRequestedStep | string | undefined): AgentPlanningDirective {
     if (requestedStep === 'conversation') {
-      return 'conversation';
+      return 'force_conversation';
     }
     if (requestedStep === undefined || requestedStep === 'auto') {
       return 'auto';
     }
-    return 'tool_call';
+    return 'force_tool';
   }
 
   private async prepareRunContext(params: AgentRunParams): Promise<PreparedRunContext> {
     const locale = this.resolveInteractionLocale(params.context?.locale);
-    const requestedStep = this.normalizeRequestedStep(params.requestedStep);
+    const planningDirective = this.normalizePlanningDirective(params.requestedStep);
     const skillIds = params.context?.skillIds;
     const noSkillMode = this.isNoSkillMode(skillIds);
     const activeToolIds = await this.resolveActiveToolIds(skillIds, {
@@ -489,7 +490,7 @@ export class AgentService {
 
     return {
       locale,
-      requestedStep,
+      planningDirective,
       orchestrationMode: this.llm ? 'llm-assisted' : 'rule-based',
       modelInput: params.context?.model,
       sourceFormat: params.context?.modelFormat || 'structuremodel-v1',
@@ -886,7 +887,7 @@ export class AgentService {
     const prepared = await this.prepareRunContext(params);
     const {
       locale,
-      requestedStep,
+      planningDirective,
       orchestrationMode,
       modelInput,
       sourceFormat,
@@ -902,7 +903,7 @@ export class AgentService {
     } = prepared;
 
     const nextStep = await this.planNextStep(params.message, {
-      requestedStep,
+      planningDirective,
       locale,
       skillIds,
       hasModel: Boolean(modelInput),
