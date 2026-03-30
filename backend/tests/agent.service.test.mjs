@@ -1029,7 +1029,7 @@ describe('AgentService orchestration', () => {
     expect(draft.scenario?.skillId).toBe('generic');
     expect(draft.stateToPersist?.skillId).toBe('generic');
     expect(draft.stateToPersist?.supportLevel).toBe('fallback');
-    expect(draft.extractionMode).toBe('rule-based');
+    expect(draft.extractionMode).toBe('deterministic');
     expect(draft.model).toBeUndefined();
     expect(draft.missingFields).toEqual(['inferredType']);
   });
@@ -1258,7 +1258,7 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runInteractive({
       message: 'Help me size a steel frame for static analysis',
       context: {
         locale: 'en',
@@ -1272,6 +1272,23 @@ describe('AgentService orchestration', () => {
     expect(result.interaction?.fallbackSupportNote).toBeUndefined();
     expect(result.interaction?.missingCritical).toContain('Story count');
     expect(result.response).toContain('Detected scenario: Steel Frame');
+  });
+
+  test('should block auto routing when the llm planner is unavailable', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const result = await svc.run({
+      message: 'Help me size a steel frame for static analysis',
+      context: {
+        locale: 'en',
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.orchestrationMode).toBe('llm-planned');
+    expect(result.toolCalls).toEqual([]);
+    expect(result.response).toContain('LLM planner');
   });
 
   test('should block unsupported scenarios from silently falling back to beam extraction', async () => {

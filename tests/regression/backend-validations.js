@@ -168,9 +168,18 @@ async function validateAgentOrchestration(context) {
 
   {
     const svc = withDefaultSkills(new AgentService());
+    svc.llm = {
+      invoke: async () => ({
+        content: JSON.stringify({
+          kind: "ask",
+          replyMode: null,
+          reason: "missing structural details",
+        }),
+      }),
+    };
     const result = await svc.run({ message: "帮我算一下门式刚架" });
-    assert(result.success === true, "auto mode should stay in conversation when model details are missing");
-    assert(result.interaction?.state === "confirming", "auto mode should return clarification interaction");
+    assert(result.success === true, "auto mode should follow the llm planner into clarification when model details are missing");
+    assert(result.interaction?.state === "confirming", "auto mode should return clarification interaction when the planner selects ask");
     assert(result.needsModelInput === true, "auto mode should still require model input");
 
     const toolResult = await svc.runToolCall({ message: "帮我算一下门式刚架" });
@@ -749,7 +758,7 @@ async function validateAgentApiContract(context) {
       completedAt: "2026-03-09T00:00:00.012Z",
       durationMs: 12,
       success: true,
-      orchestrationMode: "rule-based",
+      orchestrationMode: "llm-planned",
       needsModelInput: false,
       plan: ["validate_model", "run_analysis", "generate_report"],
       toolCalls: [
@@ -1386,7 +1395,7 @@ async function validateChatStreamContract(context) {
         completedAt: "2026-03-09T00:00:00.008Z",
         durationMs: 8,
         success: true,
-        orchestrationMode: "rule-based",
+        orchestrationMode: "llm-planned",
         needsModelInput: false,
         plan: ["validate_model", "run_analysis", "generate_report"],
         toolCalls: [],
@@ -1481,7 +1490,7 @@ async function validateChatMessageRouting(context) {
       completedAt: "2026-03-09T00:00:00.006Z",
       durationMs: 6,
       success: true,
-      orchestrationMode: "rule-based",
+      orchestrationMode: "llm-planned",
       needsModelInput: false,
       plan: ["validate_model", "run_analysis"],
       toolCalls: [],
@@ -1499,7 +1508,7 @@ async function validateChatMessageRouting(context) {
       completedAt: "2026-03-09T00:00:00.006Z",
       durationMs: 6,
       success: true,
-      orchestrationMode: "rule-based",
+      orchestrationMode: "directed",
       needsModelInput: false,
       plan: ["validate_model", "run_analysis"],
       toolCalls: [],

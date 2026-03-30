@@ -35,7 +35,7 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
       properties: {
         inferredType: { type: 'string' },
         missingFields: { type: 'array', items: { type: 'string' } },
-        extractionMode: { enum: ['llm', 'rule-based'] },
+        extractionMode: { enum: ['llm', 'deterministic'] },
         model: { type: 'object' },
       },
     },

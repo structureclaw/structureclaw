@@ -106,7 +106,7 @@ export interface DraftResult {
   inferredType: InferredModelType;
   missingFields: string[];
   model?: Record<string, unknown>;
-  extractionMode: 'llm' | 'rule-based';
+  extractionMode: 'llm' | 'deterministic';
   stateToPersist?: DraftState;
   scenario?: ScenarioMatch;
 }

@@ -44,7 +44,7 @@ import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.j
 import { listBuiltinToolManifests } from '../agent-runtime/tool-registry.js';
 
 export type AgentToolName = 'draft_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
-export type AgentOrchestrationMode = 'rule-based' | 'llm-assisted';
+export type AgentOrchestrationMode = 'directed' | 'llm-planned';
 export type AgentInteractionPhase = 'interactive' | 'execution';
 export type AgentReportFormat = 'json' | 'markdown' | 'both';
 export type AgentReportOutput = 'inline' | 'file';
@@ -112,7 +112,7 @@ interface AgentNextStepPlan {
   kind: AgentPlanKind;
   replyMode?: AgentReplyMode;
   planningDirective: AgentPlanningDirective;
-  rationale: 'override' | 'llm' | 'rule';
+  rationale: 'override' | 'llm';
 }
 
 interface ResolvedExecutionConfig {
@@ -415,7 +415,7 @@ export class AgentService {
     };
   }
 
-  private inferRuleBasedReplyMode(snapshot: PlannerContextSnapshot): AgentReplyMode {
+  private inferDirectedReplyMode(snapshot: PlannerContextSnapshot): AgentReplyMode {
     return snapshot.hasModel || snapshot.readyForExecution ? 'structured' : 'plain';
   }
 
@@ -437,9 +437,9 @@ export class AgentService {
     hasModel: boolean;
     session?: InteractionSession;
     activeToolIds?: ActiveToolSet;
-  }): Promise<AgentNextStepPlan | null> {
+  }): Promise<AgentNextStepPlan> {
     if (!this.llm) {
-      return null;
+      throw new Error('LLM_PLANNER_UNAVAILABLE');
     }
 
     const snapshot = await this.buildPlannerContextSnapshot(options);
@@ -466,11 +466,11 @@ export class AgentService {
         : JSON.stringify(aiMessage.content);
       const jsonText = this.extractJsonObject(raw);
       if (!jsonText) {
-        return null;
+        throw new Error('LLM_PLANNER_INVALID_RESPONSE');
       }
       const parsed = JSON.parse(jsonText) as { kind?: unknown; replyMode?: unknown; reason?: unknown };
       if (parsed.kind !== 'reply' && parsed.kind !== 'ask' && parsed.kind !== 'tool_call') {
-        return null;
+        throw new Error('LLM_PLANNER_INVALID_RESPONSE');
       }
       const replyMode = parsed.kind === 'reply'
         ? (parsed.replyMode === 'structured' ? 'structured' : 'plain')
@@ -482,59 +482,8 @@ export class AgentService {
         rationale: 'llm',
       };
     } catch {
-      return null;
+      throw new Error('LLM_PLANNER_INVALID_RESPONSE');
     }
-  }
-
-  private async shouldPlanToolCallForState(message: string, options: {
-    locale: AppLocale;
-    skillIds?: string[];
-    hasModel: boolean;
-    session?: InteractionSession;
-    activeToolIds?: ActiveToolSet;
-  }): Promise<boolean> {
-    const wantsCodeCheck = inferCodeCheckIntent(this.policy, message);
-    const wantsReport = inferReportIntent(this.policy, message) === true;
-    if ((wantsCodeCheck && this.hasActiveTool(options.activeToolIds, 'run_code_check'))
-      || (wantsReport && this.hasActiveTool(options.activeToolIds, 'generate_report'))) {
-      return true;
-    }
-
-    if (this.policy.inferExecutionIntent(message) && this.hasActiveTool(options.activeToolIds, 'run_analysis')) {
-      return true;
-    }
-
-    if (!options.session) {
-      return false;
-    }
-
-    if (options.session.draft && options.session.draft.inferredType !== 'unknown') {
-      const assessment = await this.assessInteractionNeeds(options.session, options.locale, options.skillIds, 'interactive');
-      const readyForExecution = assessment.criticalMissing.length === 0
-        && (assessment.nonCriticalMissing.length === 0 || Boolean(options.session.userApprovedAutoDecide));
-      if (readyForExecution && options.hasModel && this.policy.inferProceedIntent(message) && this.hasActiveTool(options.activeToolIds, 'run_analysis')) {
-        return true;
-      }
-
-      if (assessment.criticalMissing.length > 0) {
-        const stage = await this.skillRuntime.resolveInteractionStage(
-          assessment.criticalMissing,
-          options.session.draft,
-          options.skillIds,
-        );
-        if (stage === 'intent' || stage === 'model' || stage === 'loads') {
-          return false;
-        }
-      }
-      if (assessment.nonCriticalMissing.length > 0 && !options.session.userApprovedAutoDecide) {
-        const stage = this.policy.resolveInteractionStageFromMissing('analysis', assessment.nonCriticalMissing);
-        if (stage === 'analysis' || stage === 'code_check' || stage === 'report') {
-          return false;
-        }
-      }
-    }
-
-    return false;
   }
 
   private async planNextStep(message: string, options: {
@@ -549,7 +498,7 @@ export class AgentService {
       const snapshot = await this.buildPlannerContextSnapshot(options);
       return {
         kind: await this.resolveInteractivePlanKind(options),
-        replyMode: this.inferRuleBasedReplyMode(snapshot),
+        replyMode: this.inferDirectedReplyMode(snapshot),
         planningDirective: options.planningDirective,
         rationale: 'override',
       };
@@ -558,28 +507,7 @@ export class AgentService {
       return { kind: 'tool_call', planningDirective: options.planningDirective, rationale: 'override' };
     }
 
-    const llmPlan = await this.planNextStepWithLlm(message, options);
-    if (llmPlan) {
-      return llmPlan;
-    }
-
-    const shouldCallTool = await this.shouldPlanToolCallForState(message, {
-      locale: options.locale,
-      skillIds: options.skillIds,
-      hasModel: options.hasModel,
-      session: options.session,
-      activeToolIds: options.activeToolIds,
-    });
-    const snapshot = await this.buildPlannerContextSnapshot(options);
-    const kind = shouldCallTool
-      ? 'tool_call'
-      : await this.resolveInteractivePlanKind(options);
-    return {
-      kind,
-      replyMode: kind === 'reply' ? this.inferRuleBasedReplyMode(snapshot) : undefined,
-      planningDirective: options.planningDirective,
-      rationale: 'rule',
-    };
+    return this.planNextStepWithLlm(message, options);
   }
 
   private async resolveInteractivePlanKind(options: {
@@ -636,7 +564,7 @@ export class AgentService {
 
     return {
       locale,
-      orchestrationMode: this.llm ? 'llm-assisted' : 'rule-based',
+      orchestrationMode: 'directed',
       modelInput: params.context?.model,
       sourceFormat: params.context?.modelFormat || 'structuremodel-v1',
       autoAnalyze: params.context?.autoAnalyze ?? true,
@@ -885,7 +813,7 @@ export class AgentService {
           startedAt: { type: 'string' },
           completedAt: { type: 'string' },
           durationMs: { type: 'number' },
-          orchestrationMode: { enum: ['rule-based', 'llm-assisted'] },
+          orchestrationMode: { enum: ['directed', 'llm-planned'] },
           needsModelInput: { type: 'boolean' },
           plan: { type: 'array', items: { type: 'string' } },
           toolCalls: { type: 'array', items: { type: 'object' } },
@@ -1069,7 +997,7 @@ export class AgentService {
     const prepared = await this.prepareRunContext(params);
     const {
       locale,
-      orchestrationMode,
+      orchestrationMode: _preparedOrchestrationMode,
       modelInput,
       sourceFormat,
       autoAnalyze,
@@ -1082,15 +1010,47 @@ export class AgentService {
       plan,
       toolCalls,
     } = prepared;
+    const orchestrationMode: AgentOrchestrationMode = planningDirective === 'auto' ? 'llm-planned' : 'directed';
 
-    const nextPlan = await this.planNextStep(params.message, {
-      planningDirective,
-      locale,
-      skillIds,
-      hasModel: Boolean(modelInput),
-      session: workingSession,
-      activeToolIds,
-    });
+    let nextPlan: AgentNextStepPlan;
+    try {
+      nextPlan = await this.planNextStep(params.message, {
+        planningDirective,
+        locale,
+        skillIds,
+        hasModel: Boolean(modelInput),
+        session: workingSession,
+        activeToolIds,
+      });
+    } catch (error: any) {
+      const plannerErrorCode = typeof error?.message === 'string' ? error.message : 'LLM_PLANNER_UNAVAILABLE';
+      const plannerResponse = plannerErrorCode === 'LLM_PLANNER_INVALID_RESPONSE'
+        ? this.localize(
+          locale,
+          '当前无法可靠解析大模型的下一步决策结果，本轮不会自动进入工程技能或工具链。请重试，或改用明确的交互/执行入口。',
+          'The model planner returned an invalid next-step decision, so this turn will not automatically enter the engineering skill or tool chain. Please retry, or use an explicit interactive/tool entrypoint.',
+        )
+        : this.localize(
+          locale,
+          '当前自动路由依赖大模型规划，但规划器不可用，因此本轮不会退回任何确定性分流。请先恢复 LLM planner，或改用明确的交互/执行入口。',
+          'Automatic routing now depends on the LLM planner. The planner is unavailable, so this turn will not fall back to deterministic routing. Restore the LLM planner or use an explicit interactive/tool entrypoint.',
+        );
+      return this.finalizeBlockedRunResult({
+        params,
+        traceId,
+        startedAt,
+        startedAtMs,
+        locale,
+        orchestrationMode,
+        skillIds,
+        plan,
+        toolCalls,
+        sessionKey,
+        workingSession,
+        response: plannerResponse,
+        needsModelInput: false,
+      });
+    }
 
     if (nextPlan.kind !== 'tool_call') {
       return this.handleConversationMode({

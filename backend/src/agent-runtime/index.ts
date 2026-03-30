@@ -145,7 +145,7 @@ export class AgentSkillRuntime {
       return {
         inferredType: 'unknown',
         missingFields: ['inferredType'],
-        extractionMode: 'rule-based',
+        extractionMode: 'deterministic',
         stateToPersist,
         scenario,
       };
@@ -156,7 +156,7 @@ export class AgentSkillRuntime {
       return {
         inferredType: existingState?.inferredType || 'unknown',
         missingFields: ['inferredType'],
-        extractionMode: 'rule-based',
+        extractionMode: 'deterministic',
         stateToPersist: existingState,
         scenario,
       };
@@ -183,7 +183,7 @@ export class AgentSkillRuntime {
       inferredType: nextState.inferredType,
       missingFields: missing.critical,
       model,
-      extractionMode: execution.draftPatch ? 'llm' : 'rule-based',
+      extractionMode: execution.draftPatch ? 'llm' : 'deterministic',
       stateToPersist: nextState,
       scenario,
     };
