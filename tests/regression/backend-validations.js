@@ -1270,6 +1270,7 @@ async function validateChatStreamContract(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
   const AgentService = await importBackendAgentService(context.rootDir);
+  const { ChatService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "chat.js")).href);
 
   let capturedTraceId;
   const mockRunStream = async function* mockRunStream(params) {
@@ -1296,6 +1297,9 @@ async function validateChatStreamContract(context) {
   };
   AgentService.prototype.runStream = mockRunStream;
   AgentService.prototype.runToolCallStream = mockRunStream;
+  ChatService.prototype.createConversation = async function mockCreateConversation() {
+    return { id: "conv-stream-001" };
+  };
 
   const parseSseEvents = (raw) =>
     raw
@@ -1364,13 +1368,33 @@ async function validateChatMessageRouting(context) {
   const { ChatService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "chat.js")).href);
 
   let agentRunCount = 0;
-  let chatSendCount = 0;
-  const capturedTraceIds = [];
+  let agentToolRunCount = 0;
+  const capturedRunTraceIds = [];
+  const capturedToolTraceIds = [];
+  const capturedRunMessages = [];
 
   const mockAgentRun = async function mockAgentRun(params) {
     const request = params;
     agentRunCount += 1;
-    capturedTraceIds.push(request.traceId);
+    capturedRunTraceIds.push(request.traceId);
+    capturedRunMessages.push(request.message);
+    return {
+      traceId: "trace-route-001",
+      startedAt: "2026-03-09T00:00:00.000Z",
+      completedAt: "2026-03-09T00:00:00.006Z",
+      durationMs: 6,
+      success: true,
+      orchestrationMode: "rule-based",
+      needsModelInput: false,
+      plan: ["validate", "analyze"],
+      toolCalls: [],
+      response: "tool-ok",
+    };
+  };
+  const mockAgentToolRun = async function mockAgentToolRun(params) {
+    const request = params;
+    agentToolRunCount += 1;
+    capturedToolTraceIds.push(request.traceId);
     return {
       traceId: "trace-route-001",
       startedAt: "2026-03-09T00:00:00.000Z",
@@ -1385,13 +1409,10 @@ async function validateChatMessageRouting(context) {
     };
   };
   AgentService.prototype.run = mockAgentRun;
-  AgentService.prototype.runToolCall = mockAgentRun;
-
-  ChatService.prototype.sendMessage = async function mockSendMessage() {
-    chatSendCount += 1;
+  AgentService.prototype.runToolCall = mockAgentToolRun;
+  ChatService.prototype.createConversation = async function mockCreateConversation() {
     return {
-      conversationId: "conv-route-001",
-      response: "chat-ok",
+      id: "conv-route-001",
     };
   };
 
@@ -1411,7 +1432,8 @@ async function validateChatMessageRouting(context) {
   });
   assert(autoChatResp.statusCode === 200, "auto conversation response should be 200");
   const autoChatPayload = autoChatResp.json();
-  assert(autoChatPayload.result?.response === "chat-ok", "conversation result should be returned");
+  assert(autoChatPayload.result?.response === "tool-ok", "agent-first conversation result should be returned");
+  assert(autoChatPayload.result?.conversationId === "conv-route-001", "message response should include created conversationId");
 
   const autoConversationWithModelResp = await app.inject({
     method: "POST",
@@ -1424,7 +1446,7 @@ async function validateChatMessageRouting(context) {
   });
   assert(autoConversationWithModelResp.statusCode === 200, "auto conversation-with-model response should be 200");
   const autoConversationWithModelPayload = autoConversationWithModelResp.json();
-  assert(autoConversationWithModelPayload.result?.response === "chat-ok", "conversation with model should still return chat result");
+  assert(autoConversationWithModelPayload.result?.response === "tool-ok", "conversation with model should still route through agent");
 
   const autoToolResp = await app.inject({
     method: "POST",
@@ -1458,11 +1480,13 @@ async function validateChatMessageRouting(context) {
   });
   assert(forceExecResp.statusCode === 200, "tool-call response should be 200");
 
-  assert(agentRunCount === 3, "agent run should be called three times");
-  assert(capturedTraceIds.includes("trace-route-auto-tool-1"), "auto tool invocation should pass traceId");
-  assert(capturedTraceIds.includes("trace-route-auto-intent-1"), "auto intent tool invocation should pass traceId");
-  assert(capturedTraceIds.includes("trace-route-tool-1"), "tool-call invocation should pass traceId");
-  assert(chatSendCount === 2, "conversation send should be called twice");
+  assert(agentRunCount === 4, "agent run should be called for every /chat/message request");
+  assert(agentToolRunCount === 1, "explicit /chat/tool-call should still use tool-call entrypoint");
+  assert(capturedRunTraceIds.includes("trace-route-auto-1"), "agent-first message route should pass traceId for non-execution message");
+  assert(capturedRunTraceIds.includes("trace-route-auto-tool-1"), "auto tool invocation should pass traceId");
+  assert(capturedRunTraceIds.includes("trace-route-auto-intent-1"), "auto intent invocation should pass traceId");
+  assert(capturedToolTraceIds.includes("trace-route-tool-1"), "tool-call invocation should pass traceId");
+  assert(capturedRunMessages.includes("auto without model"), "plain chat-like requests should now route through agent");
 
   await app.close();
   console.log("[ok] chat message routing contract");
