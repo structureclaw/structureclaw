@@ -2,6 +2,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from '../services/locale.js';
 import { AgentSkillRegistry } from './registry.js';
 import { AgentSkillExecutor } from './executor.js';
+import { listBuiltinToolManifests, resolveToolingForSkillManifests } from './tool-registry.js';
 import { buildDefaultReportNarrative } from './report-template.js';
 import { localize, withScenarioState } from './plugin-helpers.js';
 import type {
@@ -15,6 +16,7 @@ import type {
   ScenarioSupportLevel,
   ScenarioTemplateKey,
   SkillManifest,
+  ToolManifest,
 } from './types.js';
 
 export type {
@@ -38,6 +40,7 @@ export type {
   SkillHandler,
   SkillManifest,
   SkillReportNarrativeInput,
+  ToolManifest,
 } from './types.js';
 
 export class AgentSkillRuntime {
@@ -54,6 +57,20 @@ export class AgentSkillRuntime {
   async listSkillManifests(): Promise<SkillManifest[]> {
     const plugins = await this.registry.listPlugins();
     return plugins.map((plugin) => plugin.manifest);
+  }
+
+  listBuiltinToolManifests(): ToolManifest[] {
+    return listBuiltinToolManifests();
+  }
+
+  async listToolManifests(skillIds?: string[]): Promise<ToolManifest[]> {
+    const manifests = await this.listSkillManifests();
+    return resolveToolingForSkillManifests(manifests, skillIds).tools;
+  }
+
+  async resolveSkillTooling(skillIds?: string[]) {
+    const manifests = await this.listSkillManifests();
+    return resolveToolingForSkillManifests(manifests, skillIds);
   }
 
   async detectScenario(message: string, locale: AppLocale, currentState?: DraftState, skillIds?: string[]): Promise<ScenarioMatch> {

@@ -4,7 +4,7 @@ import { listBuiltinAnalysisSkills } from '../agent-skills/analysis/entry.js';
 import { normalizeAnalysisTypes as normalizeDomainAnalysisTypes } from '../agent-skills/design/entry.js';
 import { normalizeMaterialFamilies as normalizeDomainMaterialFamilies } from '../agent-skills/material/entry.js';
 import { normalizeBuiltInManifestToSkillPackage } from '../skill-shared/package.js';
-import type { AgentAnalysisType, SkillDomain, SkillManifest } from '../agent-runtime/types.js';
+import type { AgentAnalysisType, SkillDomain, SkillManifest, ToolManifest } from '../agent-runtime/types.js';
 
 interface CapabilitySkill {
   id: string;
@@ -34,6 +34,17 @@ interface DomainSummary {
   skillIds: string[];
   autoLoadSkillIds: string[];
   capabilities: string[];
+}
+
+interface CapabilityTool {
+  id: string;
+  runtimeName?: string;
+  source: ToolManifest['source'];
+  category?: ToolManifest['category'];
+  enabledByDefault: boolean;
+  providedBySkillId?: string;
+  requiresSkills: string[];
+  tags: string[];
 }
 
 interface CapabilityEngine {
@@ -121,6 +132,7 @@ export class AgentCapabilityService {
 
   async getCapabilityMatrix(options?: { analysisType?: CapabilityAnalysisType }) {
     const manifests = await this.skillRuntime.listSkillManifests();
+    const tooling = await this.skillRuntime.resolveSkillTooling();
     const structuralAndGeneralSkills: CapabilitySkill[] = manifests.map((manifest: SkillManifest) => {
       const pkg = normalizeBuiltInManifestToSkillPackage(manifest);
       return {
@@ -169,6 +181,16 @@ export class AgentCapabilityService {
       },
     }));
     const skills: CapabilitySkill[] = [...structuralAndGeneralSkills, ...analysisSkills];
+    const tools: CapabilityTool[] = tooling.tools.map((tool) => ({
+      id: tool.id,
+      runtimeName: tool.runtimeName,
+      source: tool.source,
+      category: tool.category,
+      enabledByDefault: tool.enabledByDefault,
+      providedBySkillId: tool.providedBySkillId,
+      requiresSkills: Array.isArray(tool.requiresSkills) ? [...tool.requiresSkills] : [],
+      tags: Array.isArray(tool.tags) ? [...tool.tags] : [],
+    }));
 
     const enginePayload = await this.engineCatalog.listEngines();
     const rawEngines = Array.isArray(enginePayload?.engines) ? enginePayload.engines.map((engine) => engine as unknown as Record<string, unknown>) : [];
@@ -283,12 +305,16 @@ export class AgentCapabilityService {
     return {
       generatedAt: new Date().toISOString(),
       skills,
+      tools,
       engines,
       domainSummaries,
       validEngineIdsBySkill,
       filteredEngineReasonsBySkill,
       validSkillIdsByEngine,
       skillDomainById,
+      enabledToolIdsBySkill: tooling.enabledToolIdsBySkill,
+      providedToolIdsBySkill: tooling.providedToolIdsBySkill,
+      skillIdsByToolId: tooling.skillIdsByToolId,
       analysisStrategyCompatibility,
       appliedAnalysisType: options?.analysisType,
     };

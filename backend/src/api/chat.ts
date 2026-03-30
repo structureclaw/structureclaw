@@ -33,6 +33,8 @@ const sendMessageSchema = z.object({
     locale: localeSchema,
     projectId: z.string().optional(),
     skillIds: z.array(z.string()).optional(),
+    enabledToolIds: z.array(z.string()).optional(),
+    disabledToolIds: z.array(z.string()).optional(),
     engineId: z.string().optional(),
     model: z.record(z.any()).optional(),
     modelFormat: z.string().optional(),
@@ -67,6 +69,8 @@ const toolCallSchema = z.object({
   context: z.object({
     locale: localeSchema,
     skillIds: z.array(z.string()).optional(),
+    enabledToolIds: z.array(z.string()).optional(),
+    disabledToolIds: z.array(z.string()).optional(),
     engineId: z.string().optional(),
     model: z.record(z.any()).optional(),
     modelFormat: z.string().optional(),
@@ -93,6 +97,8 @@ const streamMessageSchema = z.object({
     locale: localeSchema,
     projectId: z.string().optional(),
     skillIds: z.array(z.string()).optional(),
+    enabledToolIds: z.array(z.string()).optional(),
+    disabledToolIds: z.array(z.string()).optional(),
     engineId: z.string().optional(),
     model: z.record(z.any()).optional(),
     modelFormat: z.string().optional(),
@@ -188,6 +194,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
           locale: body.context?.locale,
           conversationId: body.conversationId,
           skillIds: body.context?.skillIds,
+          enabledToolIds: body.context?.enabledToolIds,
+          disabledToolIds: body.context?.disabledToolIds,
           hasModel: Boolean(body.context?.model),
         }));
 
@@ -200,6 +208,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
           context: {
             locale: body.context?.locale,
             skillIds: body.context?.skillIds,
+            enabledToolIds: body.context?.enabledToolIds,
+            disabledToolIds: body.context?.disabledToolIds,
             engineId: body.context?.engineId,
             model: body.context?.model,
             modelFormat: body.context?.modelFormat,
@@ -236,6 +246,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
           context: {
             locale: body.context?.locale,
             skillIds: body.context?.skillIds,
+            enabledToolIds: body.context?.enabledToolIds,
+            disabledToolIds: body.context?.disabledToolIds,
             engineId: body.context?.engineId,
             model: body.context?.model,
             modelFormat: body.context?.modelFormat,
@@ -430,6 +442,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
         locale: body.context?.locale,
         conversationId: body.conversationId,
         skillIds: body.context?.skillIds,
+        enabledToolIds: body.context?.enabledToolIds,
+        disabledToolIds: body.context?.disabledToolIds,
         hasModel: Boolean(body.context?.model),
       }));
 
@@ -443,6 +457,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
           context: {
             locale: body.context?.locale,
             skillIds: body.context?.skillIds,
+            enabledToolIds: body.context?.enabledToolIds,
+            disabledToolIds: body.context?.disabledToolIds,
             engineId: body.context?.engineId,
             model: body.context?.model,
             modelFormat: body.context?.modelFormat,
@@ -496,6 +512,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
           context: {
             locale: body.context?.locale,
             skillIds: body.context?.skillIds,
+            enabledToolIds: body.context?.enabledToolIds,
+            disabledToolIds: body.context?.disabledToolIds,
             engineId: body.context?.engineId,
             model: body.context?.model,
             modelFormat: body.context?.modelFormat,

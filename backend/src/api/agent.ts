@@ -29,6 +29,8 @@ const agentRunSchema = z.object({
   traceId: optionalIdSchema,
   context: z.object({
     skillIds: z.array(z.string()).optional(),
+    enabledToolIds: z.array(z.string()).optional(),
+    disabledToolIds: z.array(z.string()).optional(),
     engineId: z.string().optional(),
     model: z.record(z.any()).optional(),
     modelFormat: z.string().optional(),

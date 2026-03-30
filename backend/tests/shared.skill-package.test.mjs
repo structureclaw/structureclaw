@@ -4,7 +4,9 @@ import {
   normalizeBuiltInManifestToSkillPackage,
   normalizeSkillHubCatalogEntryToSkillPackage,
 } from '../dist/skill-shared/package.js';
+import { resolveToolingForSkillManifests } from '../dist/agent-runtime/tool-registry.js';
 import { manifest as frameManifest } from '../dist/agent-skills/structure-type/frame/manifest.js';
+import { manifest as genericManifest } from '../dist/agent-skills/structure-type/generic/manifest.js';
 import { AgentSkillHubService } from '../dist/services/agent-skillhub.js';
 
 describe('shared skill package metadata', () => {
@@ -155,5 +157,23 @@ describe('shared skill package metadata', () => {
     expect(pkg.capabilities).toEqual([]);
     expect(pkg.supportedAnalysisTypes).toEqual([]);
     expect(pkg.materialFamilies).toEqual([]);
+  });
+
+  test('should resolve tooling from selected skill manifests', () => {
+    const tooling = resolveToolingForSkillManifests([frameManifest, genericManifest], ['generic']);
+
+    expect([...tooling.enabledToolIdsBySkill.generic].sort()).toEqual([
+      'draft_model',
+      'generate_report',
+      'run_analysis',
+      'validate_model',
+    ]);
+    expect([...tooling.tools.map((tool) => tool.id)].sort()).toEqual([
+      'draft_model',
+      'generate_report',
+      'run_analysis',
+      'validate_model',
+    ]);
+    expect(tooling.skillIdsByToolId.draft_model).toEqual(['generic']);
   });
 });

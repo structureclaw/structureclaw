@@ -196,6 +196,44 @@ describe('AgentService orchestration', () => {
     expect(calls.some((item) => item.client === 'codeCheck' && item.path === '/code-check')).toBe(false);
   });
 
+  test('should honor disabledToolIds and skip code-check plus report even when requested', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+    const calls = stubExecutionClients(svc, {
+      codeCheck: async () => {
+        throw new Error('code-check should be disabled by context');
+      },
+    });
+
+    const result = await svc.run({
+      message: '请静力分析并规范校核并生成报告',
+      mode: 'tool',
+      context: {
+        skillIds: ['code-check-gb50017'],
+        disabledToolIds: ['run_code_check', 'generate_report'],
+        model: {
+          schema_version: '1.0.0',
+          nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
+          elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
+          materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
+          sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } }],
+          load_cases: [],
+          load_combinations: [],
+        },
+        autoAnalyze: true,
+        autoCodeCheck: true,
+        includeReport: true,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls.some((c) => c.tool === 'analyze')).toBe(true);
+    expect(result.toolCalls.some((c) => c.tool === 'code-check')).toBe(false);
+    expect(result.toolCalls.some((c) => c.tool === 'report')).toBe(false);
+    expect(calls.some((item) => item.client === 'codeCheck' && item.path === '/code-check')).toBe(false);
+    expect(result.report).toBeUndefined();
+  });
+
   test('should clear stored conversation sessions', async () => {
     const svc = createServiceWithDefaultSkills();
     const deletedKeys = [];
@@ -353,6 +391,21 @@ describe('AgentService orchestration', () => {
     expect(result.response).toContain('Please confirm the following parameters first');
     expect(result.clarification?.missingFields).toContain('Span length per bay for the portal frame or double-span beam (m)');
     expect(result.clarification?.missingFields).toContain('Portal-frame column height (m)');
+  });
+
+  test('should not prefer tool invocation when run_analysis is disabled for auto routing', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const shouldInvoke = await svc.shouldPreferToolInvocation('请开始分析这个模型', {
+      locale: 'zh',
+      skillIds: ['generic'],
+      enabledToolIds: ['validate_model'],
+      disabledToolIds: ['run_analysis'],
+      hasModel: true,
+    });
+
+    expect(shouldInvoke).toBe(false);
   });
 
   test('should merge rule-extracted numeric follow-up when llm extraction is partial', async () => {

@@ -41,6 +41,7 @@ import { createLocalAnalysisEngineClient } from './analysis-execution.js';
 import { createLocalCodeCheckClient } from './code-check-execution.js';
 import { createLocalStructureProtocolClient } from './structure-protocol-execution.js';
 import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
+import { listBuiltinToolManifests, resolveCanonicalToolId } from '../agent-runtime/tool-registry.js';
 
 export type AgentToolName = 'text-to-model-draft' | 'convert' | 'validate' | 'analyze' | 'code-check' | 'report';
 export type AgentRunMode = 'conversation' | 'tool' | 'auto';
@@ -100,6 +101,8 @@ interface PersistedMessageDebugDetails {
   toolCalls: AgentToolCall[];
 }
 
+type ActiveToolSet = Set<string> | undefined;
+
 export interface AgentResolvedRouting {
   selectedSkillIds: string[];
   structuralSkillId?: string;
@@ -143,6 +146,8 @@ export interface AgentRunParams {
   context?: {
     locale?: AppLocale;
     skillIds?: string[];
+    enabledToolIds?: string[];
+    disabledToolIds?: string[];
     model?: Record<string, unknown>;
     modelFormat?: string;
     analysisType?: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
@@ -161,6 +166,7 @@ export interface AgentRunParams {
 }
 
 export interface AgentToolSpec {
+  id: string;
   name: AgentToolName;
   description: string;
   inputSchema: Record<string, unknown>;
@@ -276,16 +282,23 @@ export class AgentService {
     locale?: AppLocale;
     conversationId?: string;
     skillIds?: string[];
+    enabledToolIds?: string[];
+    disabledToolIds?: string[];
     hasModel?: boolean;
   }): Promise<boolean> {
     const locale = this.resolveInteractionLocale(options?.locale);
     const sessionKey = options?.conversationId?.trim();
     const session = await this.getInteractionSession(sessionKey);
+    const activeToolIds = await this.resolveActiveToolIds(options?.skillIds, {
+      enabledToolIds: options?.enabledToolIds,
+      disabledToolIds: options?.disabledToolIds,
+    });
     return this.shouldPreferToolInvocationForState(message, {
       locale,
       skillIds: options?.skillIds,
       hasModel: Boolean(options?.hasModel),
       session,
+      activeToolIds,
     });
   }
 
@@ -294,12 +307,16 @@ export class AgentService {
     skillIds?: string[];
     hasModel: boolean;
     session?: InteractionSession;
+    activeToolIds?: ActiveToolSet;
   }): Promise<boolean> {
-    if (inferCodeCheckIntent(this.policy, message) || inferReportIntent(this.policy, message) === true) {
+    const wantsCodeCheck = inferCodeCheckIntent(this.policy, message);
+    const wantsReport = inferReportIntent(this.policy, message) === true;
+    if ((wantsCodeCheck && this.hasActiveTool(options.activeToolIds, 'run_code_check'))
+      || (wantsReport && this.hasActiveTool(options.activeToolIds, 'generate_report'))) {
       return true;
     }
 
-    if (this.policy.inferExecutionIntent(message)) {
+    if (this.policy.inferExecutionIntent(message) && this.hasActiveTool(options.activeToolIds, 'run_analysis')) {
       return true;
     }
 
@@ -311,7 +328,7 @@ export class AgentService {
       const assessment = await this.assessInteractionNeeds(options.session, options.locale, options.skillIds, 'conversation');
       const readyForExecution = assessment.criticalMissing.length === 0
         && (assessment.nonCriticalMissing.length === 0 || Boolean(options.session.userApprovedAutoDecide));
-      if (readyForExecution && options.hasModel && this.policy.inferProceedIntent(message)) {
+      if (readyForExecution && options.hasModel && this.policy.inferProceedIntent(message) && this.hasActiveTool(options.activeToolIds, 'run_analysis')) {
         return true;
       }
 
@@ -334,6 +351,62 @@ export class AgentService {
     }
 
     return false;
+  }
+
+  private async resolveActiveToolIds(
+    skillIds?: string[],
+    options?: { enabledToolIds?: string[]; disabledToolIds?: string[] },
+  ): Promise<ActiveToolSet> {
+    const active = new Set(listBuiltinToolManifests().map((tool) => tool.id));
+    if (this.isNoSkillMode(skillIds)) {
+      return this.applyToolSelection(active, options);
+    }
+    const tooling = await this.skillRuntime.resolveSkillTooling(skillIds);
+    for (const tool of tooling.tools) {
+      active.add(tool.id);
+    }
+    return this.applyToolSelection(active, options);
+  }
+
+  private applyToolSelection(
+    active: Set<string>,
+    options?: { enabledToolIds?: string[]; disabledToolIds?: string[] },
+  ): Set<string> {
+    const enabledToolIds = Array.isArray(options?.enabledToolIds)
+      ? options?.enabledToolIds.map((toolId) => resolveCanonicalToolId(toolId)).filter((toolId): toolId is string => Boolean(toolId))
+      : undefined;
+    const disabledToolIds = Array.isArray(options?.disabledToolIds)
+      ? options?.disabledToolIds.map((toolId) => resolveCanonicalToolId(toolId)).filter((toolId): toolId is string => Boolean(toolId))
+      : [];
+
+    const selected = enabledToolIds ? new Set(enabledToolIds.filter((toolId) => active.has(toolId))) : new Set(active);
+    for (const toolId of disabledToolIds) {
+      selected.delete(toolId);
+    }
+    return selected;
+  }
+
+  private hasActiveTool(activeToolIds: ActiveToolSet, toolId: string): boolean {
+    return !activeToolIds || activeToolIds.has(toolId);
+  }
+
+  private buildDisabledToolMessage(toolId: string, locale: AppLocale): string {
+    switch (toolId) {
+      case 'draft_model':
+        return this.localize(locale, '当前能力集中未启用建模 tool，无法从对话直接生成结构模型。', 'The current capability set does not enable the model-drafting tool, so a structural model cannot be generated directly from conversation.');
+      case 'convert_model':
+        return this.localize(locale, '当前能力集中未启用模型转换 tool。', 'The current capability set does not enable the model-conversion tool.');
+      case 'validate_model':
+        return this.localize(locale, '当前能力集中未启用模型校验 tool。', 'The current capability set does not enable the model-validation tool.');
+      case 'run_analysis':
+        return this.localize(locale, '当前能力集中未启用分析 tool。', 'The current capability set does not enable the analysis tool.');
+      case 'run_code_check':
+        return this.localize(locale, '当前能力集中未启用规范校核 tool。', 'The current capability set does not enable the code-check tool.');
+      case 'generate_report':
+        return this.localize(locale, '当前能力集中未启用报告生成 tool。', 'The current capability set does not enable the report-generation tool.');
+      default:
+        return this.localize(locale, '当前能力集中未启用所需 tool。', 'The current capability set does not enable the required tool.');
+    }
   }
 
   async getConversationSessionSnapshot(
@@ -403,6 +476,14 @@ export class AgentService {
       'ANALYSIS_EXECUTION_FAILED',
       'AGENT_MISSING_MODEL_INPUT',
     ];
+    const tools = listBuiltinToolManifests().map((tool) => ({
+      id: tool.id,
+      name: (tool.runtimeName ?? tool.id) as AgentToolName,
+      description: tool.description.en,
+      inputSchema: tool.inputSchema || { type: 'object' },
+      outputSchema: tool.outputSchema || { type: 'object' },
+      errorCodes: Array.isArray(tool.errorCodes) ? tool.errorCodes : [],
+    }));
 
     return {
       version: '2.0.0',
@@ -419,8 +500,10 @@ export class AgentService {
             properties: {
             skillIds: { type: 'array', items: { type: 'string' } },
             engineId: { type: 'string' },
-            model: { type: 'object' },
+              model: { type: 'object' },
               modelFormat: { type: 'string' },
+              enabledToolIds: { type: 'array', items: { type: 'string' } },
+              disabledToolIds: { type: 'array', items: { type: 'string' } },
               analysisType: { enum: ['static', 'dynamic', 'seismic', 'nonlinear'] },
               parameters: { type: 'object' },
               autoAnalyze: { type: 'boolean' },
@@ -548,140 +631,7 @@ export class AgentService {
           },
         ],
       },
-      tools: [
-        {
-          name: 'text-to-model-draft',
-          description: '从自然语言生成最小可计算 StructureModel v1 草案（LLM+规则混合）',
-          inputSchema: {
-            type: 'object',
-            required: ['message'],
-            properties: {
-              message: { type: 'string' },
-            },
-          },
-          outputSchema: {
-            type: 'object',
-            properties: {
-              inferredType: { type: 'string' },
-              missingFields: { type: 'array', items: { type: 'string' } },
-              extractionMode: { enum: ['llm', 'rule-based'] },
-              model: { type: 'object' },
-            },
-          },
-          errorCodes: ['AGENT_MISSING_MODEL_INPUT'],
-        },
-        {
-          name: 'convert',
-          description: '模型格式转换，统一转为 structuremodel-v1 或导出到目标格式',
-          inputSchema: {
-            type: 'object',
-            required: ['model'],
-            properties: {
-              model: { type: 'object' },
-              source_format: { type: 'string' },
-              target_format: { type: 'string' },
-              target_schema_version: { type: 'string' },
-            },
-          },
-          outputSchema: {
-            type: 'object',
-            properties: {
-              sourceFormat: { type: 'string' },
-              targetFormat: { type: 'string' },
-              sourceSchemaVersion: { type: 'string' },
-              targetSchemaVersion: { type: 'string' },
-              model: { type: 'object' },
-            },
-          },
-          errorCodes: ['UNSUPPORTED_SOURCE_FORMAT', 'UNSUPPORTED_TARGET_FORMAT', 'INVALID_STRUCTURE_MODEL'],
-        },
-        {
-          name: 'validate',
-          description: '校验结构模型字段合法性与引用完整性',
-          inputSchema: {
-            type: 'object',
-            required: ['model'],
-            properties: {
-              model: { type: 'object' },
-            },
-          },
-          outputSchema: {
-            type: 'object',
-            properties: {
-              valid: { type: 'boolean' },
-              schemaVersion: { type: 'string' },
-              stats: { type: 'object' },
-            },
-          },
-          errorCodes: ['INVALID_STRUCTURE_MODEL'],
-        },
-        {
-          name: 'analyze',
-          description: '执行结构分析（static/dynamic/seismic/nonlinear）',
-          inputSchema: {
-            type: 'object',
-            required: ['type', 'model', 'parameters'],
-            properties: {
-              type: { enum: ['static', 'dynamic', 'seismic', 'nonlinear'] },
-              model: { type: 'object' },
-              parameters: { type: 'object' },
-            },
-          },
-          outputSchema: {
-            type: 'object',
-            properties: {
-              schema_version: { type: 'string' },
-              analysis_type: { type: 'string' },
-              success: { type: 'boolean' },
-              error_code: { type: ['string', 'null'] },
-              message: { type: 'string' },
-              data: { type: 'object' },
-              meta: { type: 'object' },
-            },
-          },
-          errorCodes: ['INVALID_ANALYSIS_TYPE', 'ANALYSIS_EXECUTION_FAILED'],
-        },
-        {
-          name: 'code-check',
-          description: '结构规范校核（最小规则集）',
-          inputSchema: {
-            type: 'object',
-            required: ['code', 'elements'],
-            properties: {
-              modelId: { type: 'string' },
-              code: { type: 'string' },
-              elements: { type: 'array', items: { type: 'string' } },
-            },
-          },
-          outputSchema: {
-            type: 'object',
-          },
-          errorCodes: [],
-        },
-        {
-          name: 'report',
-          description: '将模型、分析与校核结果汇总为可读报告',
-          inputSchema: {
-            type: 'object',
-            required: ['message', 'analysis'],
-            properties: {
-              message: { type: 'string' },
-              analysis: { type: 'object' },
-              codeCheck: { type: 'object' },
-              format: { enum: ['json', 'markdown', 'both'] },
-            },
-          },
-          outputSchema: {
-            type: 'object',
-            properties: {
-              summary: { type: 'string' },
-              json: { type: 'object' },
-              markdown: { type: 'string' },
-            },
-          },
-          errorCodes: [],
-        },
-      ],
+      tools,
       errorCodes: commonErrorCodes,
     };
   }
@@ -738,6 +688,10 @@ export class AgentService {
     const providedValues = params.context?.providedValues || {};
     const skillIds = params.context?.skillIds;
     const noSkillMode = this.isNoSkillMode(skillIds);
+    const activeToolIds = await this.resolveActiveToolIds(skillIds, {
+      enabledToolIds: params.context?.enabledToolIds,
+      disabledToolIds: params.context?.disabledToolIds,
+    });
 
     const plan: string[] = [];
     const toolCalls: AgentToolCall[] = [];
@@ -770,6 +724,7 @@ export class AgentService {
         skillIds,
         hasModel: Boolean(modelInput),
         session: workingSession,
+        activeToolIds,
       }))
         ? 'tool'
         : 'conversation')
@@ -792,6 +747,24 @@ export class AgentService {
 
     let normalizedModel = modelInput;
     if (!normalizedModel) {
+      if (!this.hasActiveTool(activeToolIds, 'draft_model')) {
+        const response = this.buildDisabledToolMessage('draft_model', locale);
+        const result: AgentRunResult = {
+          traceId,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          durationMs: Date.now() - startedAtMs,
+          success: false,
+          mode,
+          needsModelInput: true,
+          plan,
+          toolCalls,
+          metrics: this.buildMetrics(toolCalls),
+          interaction: this.buildToolInteraction('blocked', locale),
+          response,
+        };
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
+      }
       plan.push(this.localize(locale, '从自然语言生成结构模型草案（支持会话级补数）', 'Generate a structural model draft from natural language with session carry-over'));
       const draftCall = this.startToolCall('text-to-model-draft', { message: params.message, conversationId: sessionKey });
       toolCalls.push(draftCall);
@@ -912,6 +885,25 @@ export class AgentService {
     const resolvedReportOutput = workingSession.resolved?.reportOutput || params.context?.reportOutput || 'inline';
 
     if (sourceFormat !== 'structuremodel-v1') {
+      if (!this.hasActiveTool(activeToolIds, 'convert_model')) {
+        const response = this.buildDisabledToolMessage('convert_model', locale);
+        const result: AgentRunResult = {
+          traceId,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          durationMs: Date.now() - startedAtMs,
+          success: false,
+          mode,
+          needsModelInput: false,
+          plan,
+          toolCalls,
+          model: normalizedModel,
+          metrics: this.buildMetrics(toolCalls),
+          interaction: this.buildToolInteraction('blocked', locale),
+          response,
+        };
+        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
+      }
       plan.push(this.localize(locale, `将输入模型从 ${sourceFormat} 转为 structuremodel-v1`, `Convert the input model from ${sourceFormat} to structuremodel-v1`));
       const convertInput = {
         model: modelInput,
@@ -947,6 +939,26 @@ export class AgentService {
     }
 
     let validationWarning: string | undefined;
+
+    if (!this.hasActiveTool(activeToolIds, 'validate_model')) {
+      const response = this.buildDisabledToolMessage('validate_model', locale);
+      const result: AgentRunResult = {
+        traceId,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedAtMs,
+        success: false,
+        mode,
+        needsModelInput: false,
+        plan,
+        toolCalls,
+        model: normalizedModel,
+        metrics: this.buildMetrics(toolCalls),
+        interaction: this.buildToolInteraction('blocked', locale),
+        response,
+      };
+      return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
+    }
 
     plan.push(this.localize(locale, '校验模型字段与引用完整性', 'Validate model fields and references'));
     const validateInput = { model: normalizedModel };
@@ -1037,6 +1049,26 @@ export class AgentService {
       return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
     }
 
+    if (!this.hasActiveTool(activeToolIds, 'run_analysis')) {
+      const response = this.buildDisabledToolMessage('run_analysis', locale);
+      const result: AgentRunResult = {
+        traceId,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedAtMs,
+        success: false,
+        mode,
+        needsModelInput: false,
+        plan,
+        toolCalls,
+        model: normalizedModel,
+        metrics: this.buildMetrics(toolCalls),
+        interaction: this.buildToolInteraction('blocked', locale),
+        response,
+      };
+      return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
+    }
+
     plan.push(this.localize(locale, `执行 ${resolvedAnalysisType} 分析并返回摘要`, `Run ${resolvedAnalysisType} analysis and return a summary`));
     const analyzeInput = {
       type: resolvedAnalysisType,
@@ -1057,7 +1089,7 @@ export class AgentService {
       const analysisSuccess = Boolean(analyzed.data?.success);
       let codeCheckResult: unknown;
 
-      if (analysisSuccess && resolvedAutoCodeCheck && resolvedDesignCode) {
+      if (analysisSuccess && resolvedAutoCodeCheck && resolvedDesignCode && this.hasActiveTool(activeToolIds, 'run_code_check')) {
         plan.push(this.localize(locale, `执行 ${resolvedDesignCode} 规范校核`, `Run ${resolvedDesignCode} code checks`));
         const codeCheckInput = buildCodeCheckInput({
           traceId,
@@ -1098,7 +1130,7 @@ export class AgentService {
 
       let report: AgentRunResult['report'];
       let artifacts: AgentRunResult['artifacts'];
-      if (analysisSuccess && resolvedIncludeReport) {
+      if (analysisSuccess && resolvedIncludeReport && this.hasActiveTool(activeToolIds, 'generate_report')) {
         plan.push(this.localize(locale, '生成可读计算与校核报告', 'Generate a readable analysis and code-check report'));
         const reportCall = this.startToolCall('report', {
           message: params.message,
@@ -1487,6 +1519,7 @@ export class AgentService {
     nonCriticalMissing: string[];
     defaultProposals: InteractionDefaultProposal[];
   }> {
+    const activeToolIds = await this.resolveActiveToolIds(skillIds);
     const structural = await this.skillRuntime.assessDraft(
       session.draft,
       locale,
@@ -1497,16 +1530,16 @@ export class AgentService {
     const nonCriticalMissing: string[] = [...structural.optionalMissing];
     const resolved = session.resolved || {};
 
-    if (!resolved.analysisType) {
+    if (!resolved.analysisType && this.hasActiveTool(activeToolIds, 'run_analysis')) {
       nonCriticalMissing.push('analysisType');
     }
-    if (resolved.includeReport === undefined) {
+    if (resolved.includeReport === undefined && this.hasActiveTool(activeToolIds, 'generate_report')) {
       nonCriticalMissing.push('includeReport');
     }
-    if (resolved.includeReport === true && !resolved.reportFormat) {
+    if (resolved.includeReport === true && !resolved.reportFormat && this.hasActiveTool(activeToolIds, 'generate_report')) {
       nonCriticalMissing.push('reportFormat');
     }
-    if (resolved.includeReport === true && !resolved.reportOutput) {
+    if (resolved.includeReport === true && !resolved.reportOutput && this.hasActiveTool(activeToolIds, 'generate_report')) {
       nonCriticalMissing.push('reportOutput');
     }
 

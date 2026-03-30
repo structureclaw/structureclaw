@@ -624,6 +624,7 @@ async function validateAgentToolsContract(context) {
   const payload = response.json();
   assert(payload.version === "2.0.0", "protocol version should be 2.0.0");
   assert(Array.isArray(payload.tools), "tools should be array");
+  assert(payload.tools.every((tool) => typeof tool.id === "string" && tool.id.length > 0), "tool specs should expose canonical ids");
 
   const toolNames = payload.tools.map((tool) => tool.name);
   for (const requiredTool of ["text-to-model-draft", "convert", "validate", "analyze", "code-check", "report"]) {
@@ -632,6 +633,8 @@ async function validateAgentToolsContract(context) {
 
   const requestContext = payload.runRequestSchema?.properties?.context?.properties || {};
   assert(payload.runRequestSchema?.properties?.traceId?.type === "string", "runRequestSchema should include traceId");
+  assert(requestContext.enabledToolIds?.type === "array", "runRequestSchema should include enabledToolIds");
+  assert(requestContext.disabledToolIds?.type === "array", "runRequestSchema should include disabledToolIds");
   assert(requestContext.reportOutput?.enum?.includes("file"), "runRequestSchema should include reportOutput=file");
   assert(requestContext.reportFormat?.enum?.includes("both"), "runRequestSchema should include reportFormat=both");
 
@@ -866,16 +869,21 @@ async function validateAgentCapabilityMatrix(context) {
   const payload = response.json();
   assert(typeof payload.generatedAt === "string", "payload.generatedAt should be present");
   assert(Array.isArray(payload.skills), "payload.skills should be an array");
+  assert(Array.isArray(payload.tools), "payload.tools should be an array");
   assert(Array.isArray(payload.engines), "payload.engines should be an array");
   assert(Array.isArray(payload.domainSummaries), "payload.domainSummaries should be an array");
   assert(payload.validEngineIdsBySkill && typeof payload.validEngineIdsBySkill === "object", "validEngineIdsBySkill should be an object");
   assert(payload.filteredEngineReasonsBySkill && typeof payload.filteredEngineReasonsBySkill === "object", "filteredEngineReasonsBySkill should be an object");
   assert(payload.validSkillIdsByEngine && typeof payload.validSkillIdsByEngine === "object", "validSkillIdsByEngine should be an object");
   assert(payload.skillDomainById && typeof payload.skillDomainById === "object", "skillDomainById should be an object");
+  assert(payload.enabledToolIdsBySkill && typeof payload.enabledToolIdsBySkill === "object", "enabledToolIdsBySkill should be an object");
+  assert(payload.providedToolIdsBySkill && typeof payload.providedToolIdsBySkill === "object", "providedToolIdsBySkill should be an object");
+  assert(payload.skillIdsByToolId && typeof payload.skillIdsByToolId === "object", "skillIdsByToolId should be an object");
   assert(payload.analysisStrategyCompatibility && typeof payload.analysisStrategyCompatibility === "object", "analysisStrategyCompatibility should be an object");
 
   const engineIds = new Set(payload.engines.map((engine) => engine.id));
   const skillIds = new Set(payload.skills.map((skill) => skill.id));
+  const toolIds = new Set(payload.tools.map((tool) => tool.id));
 
   for (const skillId of skillIds) {
     assert(Array.isArray(payload.validEngineIdsBySkill[skillId]), `validEngineIdsBySkill should include array for ${skillId}`);
@@ -890,6 +898,11 @@ async function validateAgentCapabilityMatrix(context) {
   const trussEngines = payload.validEngineIdsBySkill.truss || [];
   assert(payload.skillDomainById.beam === "structure-type", "beam should have structure-type domain mapping");
   assert(payload.skillDomainById.truss === "structure-type", "truss should have structure-type domain mapping");
+  assert(toolIds.has("draft_model"), "capability matrix should expose draft_model tool");
+  assert(toolIds.has("run_analysis"), "capability matrix should expose run_analysis tool");
+  assert(Array.isArray(payload.enabledToolIdsBySkill.beam), "beam should expose enabled tools array");
+  assert(payload.enabledToolIdsBySkill.beam.includes("draft_model"), "beam should enable draft_model");
+  assert(payload.enabledToolIdsBySkill.beam.includes("run_analysis"), "beam should enable run_analysis");
   assert(beamEngines.includes("engine-frame-a"), "beam should include frame-compatible engine");
   assert(beamEngines.includes("engine-generic"), "beam should include generic engine");
   assert(!beamEngines.includes("engine-disabled"), "beam should not include disabled engine");

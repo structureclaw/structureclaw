@@ -182,12 +182,16 @@ export interface ToolManifest {
   enabledByDefault: boolean;
   displayName: LocalizedText;
   description: LocalizedText;
+  runtimeName?: string;
+  aliases?: string[];
+  category?: 'modeling' | 'analysis' | 'code-check' | 'report' | 'utility';
   providedBySkillId?: string;
   requiresSkills?: string[];
   requiresTools?: string[];
   tags?: string[];
   inputSchema?: Record<string, unknown>;
   outputSchema?: Record<string, unknown>;
+  errorCodes?: string[];
 }
 
 export interface SkillDetectionInput {
