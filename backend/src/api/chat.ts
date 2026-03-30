@@ -1,12 +1,12 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { ChatService } from '../services/chat.js';
+import { ConversationService } from '../services/chat.js';
 import { AgentService } from '../services/agent.js';
 import { config } from '../config/index.js';
 import { isLlmTimeoutError, toLlmApiError } from '../utils/llm-error.js';
 import { prisma } from '../utils/database.js';
 
-const chatService = new ChatService();
+const conversationService = new ConversationService();
 const agentService = new AgentService();
 
 const optionalIdSchema = z.preprocess((value) => {
@@ -158,7 +158,7 @@ async function persistLatestConversationResult(params: {
         ? (params.latestResult as Record<string, unknown>)
         : { response: String(params.latestResult ?? ''), success: false };
 
-    await chatService.saveConversationSnapshot({
+    await conversationService.saveConversationSnapshot({
       conversationId: conversation.id,
       latestResult,
     });
@@ -225,7 +225,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     const body = createConversationSchema.parse(request.body);
     const userId = request.user?.id;
 
-    const conversation = await chatService.createConversation({
+    const conversation = await conversationService.createConversation({
       title: body.title,
       type: body.type,
       userId,
@@ -246,13 +246,13 @@ export async function chatRoutes(fastify: FastifyInstance) {
     const query = conversationDetailQuerySchema.parse(request.query);
     const userId = request.user?.id;
 
-    const conversation = await chatService.getConversation(id, userId);
+    const conversation = await conversationService.getConversation(id, userId);
     if (!conversation) {
       return reply.send(conversation);
     }
 
     const session = await agentService.getConversationSessionSnapshot(id, query.locale || 'en');
-    const snapshots = await chatService.getConversationSnapshot(id);
+    const snapshots = await conversationService.getConversationSnapshot(id);
     return reply.send({
       ...conversation,
       session,
@@ -268,7 +268,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     },
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = request.user?.id;
-    const conversations = await chatService.getUserConversations(userId);
+    const conversations = await conversationService.getUserConversations(userId);
     return reply.send(conversations);
   });
 
@@ -281,7 +281,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     const { id } = request.params;
     const userId = request.user?.id;
 
-    const deleted = await chatService.deleteConversation(id, userId);
+    const deleted = await conversationService.deleteConversation(id, userId);
     if (!deleted) {
       return reply.code(404).send({
         error: 'Conversation not found',
@@ -320,7 +320,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       return reply.code(404).send({ error: 'Conversation not found' });
     }
 
-    await chatService.saveConversationSnapshot({
+    await conversationService.saveConversationSnapshot({
       conversationId: id,
       modelSnapshot: body.modelSnapshot,
       resultSnapshot: body.resultSnapshot,

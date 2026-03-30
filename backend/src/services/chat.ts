@@ -105,7 +105,7 @@ export interface StreamChunk {
   retriable?: boolean;
 }
 
-export class ChatService {
+export class PlainChatService {
   private llm: ChatOpenAI | null;
   private memories: Map<string, BufferMemory>;
 
@@ -309,6 +309,63 @@ export class ChatService {
     }
   }
 
+  private getMemory(conversationId: string): BufferMemory {
+    if (!this.memories.has(conversationId)) {
+      this.memories.set(
+        conversationId,
+        new BufferMemory({
+          returnMessages: true,
+          memoryKey: 'chat_history',
+        })
+      );
+    }
+    return this.memories.get(conversationId)!;
+  }
+
+  private async getProjectContext(projectId: string, locale: AppLocale): Promise<string> {
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: {
+        models: {
+          include: {
+            analyses: {
+              take: 5,
+              orderBy: { createdAt: 'desc' },
+            },
+          },
+        },
+      },
+    });
+
+    if (!project) return '';
+
+    const analysisCount = project.models.reduce((count: number, model: { analyses: unknown[] }) => {
+      return count + model.analyses.length;
+    }, 0);
+
+    const projectSettings = (project.settings || {}) as { designCode?: string };
+
+    if (locale === 'zh') {
+      return `
+项目名称: ${project.name}
+项目类型: ${project.type}
+设计规范: ${projectSettings.designCode || '未指定'}
+模型数量: ${project.models?.length || 0}
+分析任务: ${analysisCount}
+      `.trim();
+    }
+
+    return `
+Project Name: ${project.name}
+Project Type: ${project.type}
+Design Code: ${projectSettings.designCode || 'Not specified'}
+Model Count: ${project.models?.length || 0}
+Analysis Runs: ${analysisCount}
+    `.trim();
+  }
+}
+
+export class ConversationService {
   async createConversation(params: { title?: string; type: string; userId?: string; locale?: AppLocale }) {
     const locale = resolveLocale(params.locale);
     return prisma.conversation.create({
@@ -409,59 +466,6 @@ export class ChatService {
       latestResult: conversation.latestResult,
     };
   }
-
-  private getMemory(conversationId: string): BufferMemory {
-    if (!this.memories.has(conversationId)) {
-      this.memories.set(
-        conversationId,
-        new BufferMemory({
-          returnMessages: true,
-          memoryKey: 'chat_history',
-        })
-      );
-    }
-    return this.memories.get(conversationId)!;
-  }
-
-  private async getProjectContext(projectId: string, locale: AppLocale): Promise<string> {
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      include: {
-        models: {
-          include: {
-            analyses: {
-              take: 5,
-              orderBy: { createdAt: 'desc' },
-            },
-          },
-        },
-      },
-    });
-
-    if (!project) return '';
-
-    const analysisCount = project.models.reduce((count: number, model: { analyses: unknown[] }) => {
-      return count + model.analyses.length;
-    }, 0);
-
-    const projectSettings = (project.settings || {}) as { designCode?: string };
-
-    if (locale === 'zh') {
-      return `
-项目名称: ${project.name}
-项目类型: ${project.type}
-设计规范: ${projectSettings.designCode || '未指定'}
-模型数量: ${project.models?.length || 0}
-分析任务: ${analysisCount}
-      `.trim();
-    }
-
-    return `
-Project Name: ${project.name}
-Project Type: ${project.type}
-Design Code: ${projectSettings.designCode || 'Not specified'}
-Model Count: ${project.models?.length || 0}
-Analysis Runs: ${analysisCount}
-    `.trim();
-  }
 }
+
+export class ChatService extends PlainChatService {}

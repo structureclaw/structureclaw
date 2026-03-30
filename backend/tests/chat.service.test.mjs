@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, test } from '@jest/globals';
-import { ChatService } from '../dist/services/chat.js';
+import { ConversationService, PlainChatService } from '../dist/services/chat.js';
 import { prisma } from '../dist/utils/database.js';
 
-describe('ChatService locale handling', () => {
+describe('PlainChatService locale handling', () => {
   beforeEach(() => {
     prisma.conversation.create = async ({ data }) => ({
       id: 'conv-1',
@@ -17,7 +17,7 @@ describe('ChatService locale handling', () => {
   });
 
   test('returns English fallback text when locale=en', async () => {
-    const svc = new ChatService();
+    const svc = new PlainChatService();
     svc.llm = null;
 
     const result = await svc.sendMessage({
@@ -30,7 +30,7 @@ describe('ChatService locale handling', () => {
   });
 
   test('streams Chinese fallback text when locale=zh', async () => {
-    const svc = new ChatService();
+    const svc = new PlainChatService();
     svc.llm = null;
 
     const chunks = [];
@@ -46,8 +46,21 @@ describe('ChatService locale handling', () => {
     expect(chunks[chunks.length - 1].type).toBe('done');
   });
 
+});
+
+describe('ConversationService locale handling', () => {
+  beforeEach(() => {
+    prisma.conversation.create = async ({ data }) => ({
+      id: 'conv-1',
+      ...data,
+      messages: [],
+    });
+    prisma.conversation.findFirst = async () => null;
+    prisma.conversation.delete = async ({ where }) => ({ id: where.id });
+  });
+
   test('creates localized default conversation titles', async () => {
-    const svc = new ChatService();
+    const svc = new ConversationService();
 
     const english = await svc.createConversation({ type: 'analysis', locale: 'en' });
     const chinese = await svc.createConversation({ type: 'analysis', locale: 'zh' });
@@ -58,7 +71,7 @@ describe('ChatService locale handling', () => {
 
   test('deletes an existing conversation', async () => {
     prisma.conversation.findFirst = async () => ({ id: 'conv-delete' });
-    const svc = new ChatService();
+    const svc = new ConversationService();
 
     const deleted = await svc.deleteConversation('conv-delete');
 
@@ -67,7 +80,7 @@ describe('ChatService locale handling', () => {
 
   test('returns null when deleting a missing conversation', async () => {
     prisma.conversation.findFirst = async () => null;
-    const svc = new ChatService();
+    const svc = new ConversationService();
 
     const deleted = await svc.deleteConversation('conv-missing');
 
