@@ -15,8 +15,6 @@ function titleize(value: string): string {
 export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
   {
     id: 'draft_model',
-    // Compatibility bridge for the legacy local runtime action name.
-    runtimeName: 'text-to-model-draft',
     source: 'builtin',
     enabledByDefault: false,
     category: 'modeling',
@@ -45,8 +43,6 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
   },
   {
     id: 'convert_model',
-    // Compatibility bridge for the legacy local runtime action name.
-    runtimeName: 'convert',
     source: 'builtin',
     enabledByDefault: false,
     category: 'modeling',
@@ -77,8 +73,6 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
   },
   {
     id: 'validate_model',
-    // Compatibility bridge for the legacy local runtime action name.
-    runtimeName: 'validate',
     source: 'builtin',
     enabledByDefault: false,
     category: 'modeling',
@@ -104,8 +98,6 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
   },
   {
     id: 'run_analysis',
-    // Compatibility bridge for the legacy local runtime action name.
-    runtimeName: 'analyze',
     source: 'builtin',
     enabledByDefault: false,
     category: 'analysis',
@@ -137,8 +129,6 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
   },
   {
     id: 'run_code_check',
-    // Compatibility bridge for the legacy local runtime action name.
-    runtimeName: 'code-check',
     source: 'builtin',
     enabledByDefault: false,
     category: 'code-check',
@@ -161,8 +151,6 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
   },
   {
     id: 'generate_report',
-    // Compatibility bridge for the legacy local runtime action name.
-    runtimeName: 'report',
     source: 'builtin',
     enabledByDefault: false,
     category: 'report',
@@ -200,27 +188,6 @@ export interface ResolvedTooling {
 
 export function listBuiltinToolManifests(): ToolManifest[] {
   return BUILTIN_TOOL_MANIFESTS.map((tool) => ({ ...tool }));
-}
-
-export function resolveCanonicalToolId(toolId: string | undefined): string | undefined {
-  if (typeof toolId !== 'string') {
-    return undefined;
-  }
-  const normalized = toolId.trim();
-  if (!normalized) {
-    return undefined;
-  }
-
-  for (const tool of BUILTIN_TOOL_MANIFESTS) {
-    if (tool.id === normalized) {
-      return tool.id;
-    }
-    if (tool.runtimeName === normalized) {
-      return tool.id;
-    }
-  }
-
-  return normalized;
 }
 
 function inferEnabledToolsFromManifest(manifest: SkillManifest): string[] {

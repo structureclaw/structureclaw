@@ -41,7 +41,7 @@ import { createLocalAnalysisEngineClient } from './analysis-execution.js';
 import { createLocalCodeCheckClient } from './code-check-execution.js';
 import { createLocalStructureProtocolClient } from './structure-protocol-execution.js';
 import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
-import { listBuiltinToolManifests, resolveCanonicalToolId } from '../agent-runtime/tool-registry.js';
+import { listBuiltinToolManifests } from '../agent-runtime/tool-registry.js';
 
 export type AgentToolName = 'draft_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'rule-based' | 'llm-assisted';
@@ -547,10 +547,14 @@ export class AgentService {
     options?: { enabledToolIds?: string[]; disabledToolIds?: string[] },
   ): Set<string> {
     const enabledToolIds = Array.isArray(options?.enabledToolIds)
-      ? options?.enabledToolIds.map((toolId) => resolveCanonicalToolId(toolId)).filter((toolId): toolId is string => Boolean(toolId))
+      ? options.enabledToolIds
+        .map((toolId) => (typeof toolId === 'string' ? toolId.trim() : ''))
+        .filter((toolId): toolId is string => toolId.length > 0)
       : undefined;
     const disabledToolIds = Array.isArray(options?.disabledToolIds)
-      ? options?.disabledToolIds.map((toolId) => resolveCanonicalToolId(toolId)).filter((toolId): toolId is string => Boolean(toolId))
+      ? options.disabledToolIds
+        .map((toolId) => (typeof toolId === 'string' ? toolId.trim() : ''))
+        .filter((toolId): toolId is string => toolId.length > 0)
       : [];
 
     const selected = enabledToolIds ? new Set(enabledToolIds.filter((toolId) => active.has(toolId))) : new Set(active);
