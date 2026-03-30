@@ -116,8 +116,6 @@ const streamMessageSchema = z.object({
 type SendMessageBody = z.infer<typeof sendMessageSchema>;
 type StreamMessageBody = z.infer<typeof streamMessageSchema>;
 type ToolCallBody = z.infer<typeof toolCallSchema>;
-type ChatRequestBody = SendMessageBody | StreamMessageBody;
-type ChatRequestedStep = 'conversation' | 'tool_call';
 
 function setSseCorsHeaders(request: FastifyRequest, reply: FastifyReply) {
   const origin = request.headers.origin;
@@ -169,16 +167,25 @@ async function persistLatestConversationResult(params: {
   }
 }
 
-async function resolveRequestedStep(body: ChatRequestBody): Promise<ChatRequestedStep> {
-  const shouldInvokeTool = await agentService.shouldPreferToolInvocation(body.message, {
-    locale: body.context?.locale,
-    conversationId: body.conversationId,
-    skillIds: body.context?.skillIds,
-    enabledToolIds: body.context?.enabledToolIds,
-    disabledToolIds: body.context?.disabledToolIds,
-    hasModel: Boolean(body.context?.model),
+async function ensureConversationId(params: {
+  conversationId?: string;
+  message: string;
+  userId?: string;
+  locale?: 'en' | 'zh';
+}): Promise<string> {
+  const conversationId = params.conversationId?.trim();
+  if (conversationId) {
+    return conversationId;
+  }
+
+  const conversation = await chatService.createConversation({
+    title: params.message.slice(0, 50),
+    type: 'general',
+    userId: params.userId,
+    locale: params.locale,
   });
-  return shouldInvokeTool ? 'tool_call' : 'conversation';
+
+  return conversation.id;
 }
 
 export async function chatRoutes(fastify: FastifyInstance) {
@@ -202,26 +209,27 @@ export async function chatRoutes(fastify: FastifyInstance) {
     try {
       const body = sendMessageSchema.parse(request.body);
       const userId = request.user?.id;
-      const requestedStep = await resolveRequestedStep(body);
-
-      if (requestedStep === 'tool_call') {
-        const result = await agentService.runToolCall(body);
-        await persistLatestConversationResult({
-          conversationId: body.conversationId,
-          userId,
-          latestResult: result,
-        });
-        return reply.send({ result });
-      }
-
-      const result = await chatService.sendMessage({
-        message: body.message,
+      const conversationId = await ensureConversationId({
         conversationId: body.conversationId,
+        message: body.message,
         userId,
-        context: body.context,
+        locale: body.context?.locale,
       });
-
-      return reply.send({ result });
+      const result = await agentService.run({
+        ...body,
+        conversationId,
+      });
+      await persistLatestConversationResult({
+        conversationId,
+        userId,
+        latestResult: result,
+      });
+      return reply.send({
+        result: {
+          ...result,
+          conversationId,
+        },
+      });
     } catch (error) {
       const mappedError = toLlmApiError(error);
       if (isLlmTimeoutError(error)) {
@@ -362,7 +370,12 @@ export async function chatRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest<{ Body: z.infer<typeof streamMessageSchema> }>, reply: FastifyReply) => {
     const body = streamMessageSchema.parse(request.body);
     const userId = request.user?.id;
-    let streamConversationId = body.conversationId;
+    let streamConversationId = await ensureConversationId({
+      conversationId: body.conversationId,
+      message: body.message,
+      userId,
+      locale: body.context?.locale,
+    });
 
     reply.hijack();
     setSseCorsHeaders(request, reply);
@@ -372,51 +385,32 @@ export async function chatRoutes(fastify: FastifyInstance) {
     reply.raw.setHeader('X-Accel-Buffering', 'no');
     reply.raw.flushHeaders?.();
 
-    const requestedStep = await resolveRequestedStep(body);
-
     try {
-      if (requestedStep === 'tool_call') {
-        const stream = agentService.runToolCallStream(body);
-
-        for await (const chunk of stream) {
-          if (
-            chunk
-            && typeof chunk === 'object'
-            && (chunk as { type?: string }).type === 'start'
-            && (chunk as { content?: { conversationId?: string } }).content?.conversationId
-          ) {
-            streamConversationId = (chunk as { content: { conversationId: string } }).content.conversationId;
-          }
-          if (
-            chunk
-            && typeof chunk === 'object'
-            && (chunk as { type?: string }).type === 'result'
-          ) {
-            await persistLatestConversationResult({
-              conversationId: streamConversationId,
-              userId,
-              latestResult: (chunk as { content?: unknown }).content,
-            });
-          }
-          reply.raw.write(`data: ${JSON.stringify(normalizePublicStreamChunk(chunk))}\n\n`);
-        }
-        reply.raw.write('data: [DONE]\n\n');
-        reply.raw.end();
-        return;
-      }
-
-      const stream = await chatService.streamMessage({
-        message: body.message,
-        conversationId: body.conversationId,
-        userId,
-        context: {
-          locale: body.context?.locale,
-          projectId: body.context?.projectId,
-          analysisType: body.context?.analysisType,
-        },
+      const stream = agentService.runStream({
+        ...body,
+        conversationId: streamConversationId,
       });
 
       for await (const chunk of stream) {
+        if (
+          chunk
+          && typeof chunk === 'object'
+          && (chunk as { type?: string }).type === 'start'
+          && (chunk as { content?: { conversationId?: string } }).content?.conversationId
+        ) {
+          streamConversationId = (chunk as { content: { conversationId: string } }).content.conversationId;
+        }
+        if (
+          chunk
+          && typeof chunk === 'object'
+          && (chunk as { type?: string }).type === 'result'
+        ) {
+          await persistLatestConversationResult({
+            conversationId: streamConversationId,
+            userId,
+            latestResult: (chunk as { content?: unknown }).content,
+          });
+        }
         reply.raw.write(`data: ${JSON.stringify(normalizePublicStreamChunk(chunk))}\n\n`);
       }
 
@@ -437,13 +431,22 @@ export async function chatRoutes(fastify: FastifyInstance) {
   const toolCallHandler = async (request: FastifyRequest<{ Body: z.infer<typeof toolCallSchema> }>, reply: FastifyReply) => {
     const body = toolCallSchema.parse(request.body);
     const userId = request.user?.id;
-    const result = await agentService.runToolCall(body);
-    await persistLatestConversationResult({
+    const conversationId = await ensureConversationId({
       conversationId: body.conversationId,
+      message: body.message,
+      userId,
+      locale: body.context?.locale,
+    });
+    const result = await agentService.runToolCall({
+      ...body,
+      conversationId,
+    });
+    await persistLatestConversationResult({
+      conversationId,
       userId,
       latestResult: result,
     });
-    return reply.send({ ...result, conversationId: body.conversationId });
+    return reply.send({ ...result, conversationId });
   };
 
   fastify.post('/tool-call', {
