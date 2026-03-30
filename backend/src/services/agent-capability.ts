@@ -38,7 +38,7 @@ interface DomainSummary {
 
 interface CapabilityTool {
   id: string;
-  runtimeName?: string;
+  compatibilityRuntimeName?: string;
   source: ToolManifest['source'];
   category?: ToolManifest['category'];
   enabledByDefault: boolean;
@@ -183,7 +183,7 @@ export class AgentCapabilityService {
     const skills: CapabilitySkill[] = [...structuralAndGeneralSkills, ...analysisSkills];
     const tools: CapabilityTool[] = tooling.tools.map((tool) => ({
       id: tool.id,
-      runtimeName: tool.runtimeName,
+      compatibilityRuntimeName: tool.runtimeName,
       source: tool.source,
       category: tool.category,
       enabledByDefault: tool.enabledByDefault,
