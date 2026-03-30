@@ -21,12 +21,10 @@ const optionalIdSchema = z.preprocess((value) => {
 }, z.string().optional());
 
 const localeSchema = z.enum(['en', 'zh']).optional();
-const agentModeSchema = z.enum(['conversation', 'tool', 'auto']).optional();
 
 // 请求验证
 const sendMessageSchema = z.object({
   message: z.string().min(1).max(10000),
-  mode: agentModeSchema,
   conversationId: optionalIdSchema,
   traceId: optionalIdSchema,
   context: z.object({
@@ -90,7 +88,6 @@ const toolCallSchema = z.object({
 
 const streamMessageSchema = z.object({
   message: z.string().min(1).max(10000),
-  mode: agentModeSchema,
   conversationId: optionalIdSchema,
   traceId: optionalIdSchema,
   context: z.object({
@@ -116,7 +113,6 @@ const streamMessageSchema = z.object({
   }).optional(),
 });
 
-type ChatAgentMode = z.infer<typeof agentModeSchema>;
 type SendMessageBody = z.infer<typeof sendMessageSchema>;
 type StreamMessageBody = z.infer<typeof streamMessageSchema>;
 type ToolCallBody = z.infer<typeof toolCallSchema>;
@@ -174,14 +170,6 @@ async function persistLatestConversationResult(params: {
 }
 
 async function resolveRequestedStep(body: ChatRequestBody): Promise<ChatRequestedStep> {
-  const mode = body.mode || 'auto';
-  if (mode === 'conversation') {
-    return 'conversation';
-  }
-  if (mode === 'tool') {
-    return 'tool_call';
-  }
-
   const shouldInvokeTool = await agentService.shouldPreferToolInvocation(body.message, {
     locale: body.context?.locale,
     conversationId: body.conversationId,
@@ -193,7 +181,7 @@ async function resolveRequestedStep(body: ChatRequestBody): Promise<ChatRequeste
   return shouldInvokeTool ? 'tool_call' : 'conversation';
 }
 
-function buildAgentRunPayload(body: ChatRequestBody | ToolCallBody, mode: Exclude<ChatAgentMode, 'auto'>) {
+function buildAgentRunPayload(body: ChatRequestBody | ToolCallBody, mode: 'conversation' | 'tool') {
   return {
     message: body.message,
     mode,
@@ -252,23 +240,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
           userId,
           latestResult: result,
         });
-        return reply.send({
-          mode: 'tool',
-          result,
-        });
-      }
-
-      if (body.mode === 'conversation') {
-        const result = await agentService.run(buildAgentRunPayload(body, 'conversation'));
-        await persistLatestConversationResult({
-          conversationId: body.conversationId,
-          userId,
-          latestResult: result,
-        });
-        return reply.send({
-          mode: 'conversation',
-          result,
-        });
+        return reply.send({ result });
       }
 
       const result = await chatService.sendMessage({
@@ -278,10 +250,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         context: body.context,
       });
 
-      return reply.send({
-        mode: 'conversation',
-        result,
-      });
+      return reply.send({ result });
     } catch (error) {
       const mappedError = toLlmApiError(error);
       if (isLlmTimeoutError(error)) {
@@ -458,39 +427,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
               latestResult: (chunk as { content?: unknown }).content,
             });
           }
-          reply.raw.write(`data: ${JSON.stringify(normalizeStreamChunkError(chunk))}\n\n`);
+          reply.raw.write(`data: ${JSON.stringify(normalizePublicStreamChunk(chunk))}\n\n`);
         }
-        reply.raw.write('data: [DONE]\n\n');
-        reply.raw.end();
-        return;
-      }
-
-      if (body.mode === 'conversation') {
-        const stream = agentService.runStream(buildAgentRunPayload(body, 'conversation'));
-
-        for await (const chunk of stream) {
-          if (
-            chunk
-            && typeof chunk === 'object'
-            && (chunk as { type?: string }).type === 'start'
-            && (chunk as { content?: { conversationId?: string } }).content?.conversationId
-          ) {
-            streamConversationId = (chunk as { content: { conversationId: string } }).content.conversationId;
-          }
-          if (
-            chunk
-            && typeof chunk === 'object'
-            && (chunk as { type?: string }).type === 'result'
-          ) {
-            await persistLatestConversationResult({
-              conversationId: streamConversationId,
-              userId,
-              latestResult: (chunk as { content?: unknown }).content,
-            });
-          }
-          reply.raw.write(`data: ${JSON.stringify(normalizeStreamChunkError(chunk))}\n\n`);
-        }
-
         reply.raw.write('data: [DONE]\n\n');
         reply.raw.end();
         return;
@@ -508,7 +446,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       });
 
       for await (const chunk of stream) {
-        reply.raw.write(`data: ${JSON.stringify(normalizeStreamChunkError(chunk))}\n\n`);
+        reply.raw.write(`data: ${JSON.stringify(normalizePublicStreamChunk(chunk))}\n\n`);
       }
 
       reply.raw.write('data: [DONE]\n\n');
@@ -559,14 +497,23 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
 }
 
-function normalizeStreamChunkError(chunk: unknown): unknown {
+function normalizePublicStreamChunk(chunk: unknown): unknown {
   if (!chunk || typeof chunk !== 'object') {
     return chunk;
   }
 
-  const value = chunk as { type?: string; error?: string; code?: string; retriable?: boolean };
+  const raw = chunk as { type?: string; error?: string; code?: string; retriable?: boolean; content?: unknown };
+  const value = raw.type && raw.content && typeof raw.content === 'object' && !Array.isArray(raw.content)
+    ? {
+      ...raw,
+      content: Object.fromEntries(
+        Object.entries(raw.content as Record<string, unknown>).filter(([key]) => key !== 'mode'),
+      ),
+    }
+    : raw;
+
   if (value.type !== 'error' || !value.error) {
-    return chunk;
+    return value;
   }
 
   if (isLlmTimeoutError(value.error)) {

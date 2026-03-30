@@ -2321,7 +2321,6 @@ export function AIConsole() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: trimmedInput,
-          mode: 'auto',
           conversationId: nextConversationId,
           context: contextPayload,
         }),

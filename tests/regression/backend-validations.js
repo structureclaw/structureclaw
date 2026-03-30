@@ -1326,8 +1326,7 @@ async function validateChatStreamContract(context) {
     url: "/api/v1/chat/stream",
     headers: { origin: "http://localhost:30000" },
     payload: {
-      message: "stream contract test",
-      mode: "tool",
+      message: "analyze this model",
       traceId: "trace-stream-request-1",
       context: { model: { schema_version: "1.0.0" } },
     },
@@ -1359,8 +1358,7 @@ async function validateChatStreamContract(context) {
     url: "/api/v1/chat/stream",
     headers: { origin: "http://evil.example.com" },
     payload: {
-      message: "stream contract test",
-      mode: "tool",
+      message: "analyze this model",
       traceId: "trace-stream-request-2",
       context: { model: { schema_version: "1.0.0" } },
     },
@@ -1415,7 +1413,6 @@ async function validateChatMessageRouting(context) {
     url: "/api/v1/chat/message",
     payload: {
       message: "auto without model",
-      mode: "auto",
       context: {
         skillIds: ["beam"],
       },
@@ -1423,7 +1420,6 @@ async function validateChatMessageRouting(context) {
   });
   assert(autoChatResp.statusCode === 200, "auto conversation response should be 200");
   const autoChatPayload = autoChatResp.json();
-  assert(autoChatPayload.mode === "conversation", "auto without model should route to conversation");
   assert(autoChatPayload.result?.response === "chat-ok", "conversation result should be returned");
 
   const autoConversationWithModelResp = await app.inject({
@@ -1431,14 +1427,12 @@ async function validateChatMessageRouting(context) {
     url: "/api/v1/chat/message",
     payload: {
       message: "auto with model but no execution intent",
-      mode: "auto",
       traceId: "trace-route-auto-1",
       context: { model: { schema_version: "1.0.0" } },
     },
   });
   assert(autoConversationWithModelResp.statusCode === 200, "auto conversation-with-model response should be 200");
   const autoConversationWithModelPayload = autoConversationWithModelResp.json();
-  assert(autoConversationWithModelPayload.mode === "conversation", "auto with model but no intent should stay in conversation");
   assert(autoConversationWithModelPayload.result?.response === "chat-ok", "conversation with model should still return chat result");
 
   const autoToolResp = await app.inject({
@@ -1446,14 +1440,12 @@ async function validateChatMessageRouting(context) {
     url: "/api/v1/chat/message",
     payload: {
       message: "analyze this model",
-      mode: "auto",
       traceId: "trace-route-auto-tool-1",
       context: { model: { schema_version: "1.0.0" } },
     },
   });
   assert(autoToolResp.statusCode === 200, "auto tool response should be 200");
   const autoToolPayload = autoToolResp.json();
-  assert(autoToolPayload.mode === "tool", "auto with model and execution intent should route to tool invocation");
   assert(autoToolPayload.result?.traceId === "trace-route-001", "tool result should be returned");
 
   const autoIntentExecResp = await app.inject({
@@ -1461,31 +1453,24 @@ async function validateChatMessageRouting(context) {
     url: "/api/v1/chat/message",
     payload: {
       message: "请帮我做结构设计验算",
-      mode: "auto",
       traceId: "trace-route-auto-intent-1",
     },
   });
   assert(autoIntentExecResp.statusCode === 200, "auto intent tool response should be 200");
-  const autoIntentExecPayload = autoIntentExecResp.json();
-  assert(autoIntentExecPayload.mode === "tool", "auto with design/check intent should route to tool invocation");
-
   const forceExecResp = await app.inject({
     method: "POST",
-    url: "/api/v1/chat/message",
+    url: "/api/v1/chat/tool-call",
     payload: {
       message: "force tool",
-      mode: "tool",
       traceId: "trace-route-tool-1",
     },
   });
-  assert(forceExecResp.statusCode === 200, "tool response should be 200");
-  const forceExecPayload = forceExecResp.json();
-  assert(forceExecPayload.mode === "tool", "mode=tool should route to tool invocation");
+  assert(forceExecResp.statusCode === 200, "tool-call response should be 200");
 
   assert(agentRunCount === 3, "agent run should be called three times");
   assert(capturedTraceIds.includes("trace-route-auto-tool-1"), "auto tool invocation should pass traceId");
   assert(capturedTraceIds.includes("trace-route-auto-intent-1"), "auto intent tool invocation should pass traceId");
-  assert(capturedTraceIds.includes("trace-route-tool-1"), "forced tool invocation should pass traceId");
+  assert(capturedTraceIds.includes("trace-route-tool-1"), "tool-call invocation should pass traceId");
   assert(chatSendCount === 2, "conversation send should be called twice");
 
   await app.close();

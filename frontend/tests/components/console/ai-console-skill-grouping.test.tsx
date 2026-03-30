@@ -289,7 +289,7 @@ describe('AIConsole grouped skill picker', () => {
     expect(streamCall).toBeTruthy()
     const requestInit = streamCall?.[1] as RequestInit | undefined
     const body = JSON.parse(String(requestInit?.body || '{}')) as { mode?: string; context?: { analysisType?: string } }
-    expect(body.mode).toBe('auto')
+    expect(body.mode).toBeUndefined()
     expect(body.context?.analysisType).toBeUndefined()
   })
 })

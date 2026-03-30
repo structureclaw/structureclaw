@@ -55,6 +55,12 @@
 - `POST /api/v1/chat/stream`
 - `POST /api/v1/chat/tool-call`
 
+说明：
+
+- `chat/message` 与 `chat/stream` 不再接收公开 `mode` 字段。
+- chat 请求统一为单入口，由后端自行决定本轮继续对话还是触发 tool。
+- `chat/tool-call` 仍作为显式高级入口，用于直接触发 tool 执行链。
+
 典型流式事件顺序：
 
 1. `start`
