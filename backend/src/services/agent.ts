@@ -51,7 +51,7 @@ export type AgentReportOutput = 'inline' | 'file';
 export type AgentUserDecision = 'provide_values' | 'confirm_all' | 'allow_auto_decide' | 'revise';
 export type AgentInteractionState = 'collecting' | 'confirming' | 'ready' | 'executing' | 'completed' | 'blocked';
 export type AgentInteractionStage = 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';
-export type AgentInteractionRouteHint = 'prefer_conversation' | 'prefer_tool';
+export type AgentInteractionRouteHint = 'prefer_interactive' | 'prefer_tool';
 
 interface InteractionSession {
   draft: DraftState;
@@ -105,7 +105,7 @@ interface PersistedMessageDebugDetails {
 type ActiveToolSet = Set<string> | undefined;
 
 type AgentPlanKind = 'reply' | 'ask' | 'tool_call';
-type AgentPlanningDirective = 'auto' | 'force_conversation' | 'force_tool';
+type AgentPlanningDirective = 'auto' | 'force_interactive' | 'force_tool';
 
 interface AgentNextStepPlan {
   kind: AgentPlanKind;
@@ -190,7 +190,7 @@ export interface AgentInteraction {
   routeReason?: string;
   detectedScenario?: string;
   detectedScenarioLabel?: string;
-  conversationStage?: string;
+  interactionStageLabel?: string;
   missingCritical?: string[];
   missingOptional?: string[];
   fallbackSupportNote?: string;
@@ -434,7 +434,7 @@ export class AgentService {
     session?: InteractionSession;
     activeToolIds?: ActiveToolSet;
   }): Promise<AgentNextStepPlan> {
-    if (options.planningDirective === 'force_conversation') {
+    if (options.planningDirective === 'force_interactive') {
       return {
         kind: await this.resolveInteractivePlanKind(options),
         planningDirective: options.planningDirective,
@@ -793,11 +793,11 @@ export class AgentService {
               state: { enum: ['collecting', 'confirming', 'ready', 'executing', 'completed', 'blocked'] },
               stage: { enum: ['intent', 'model', 'loads', 'analysis', 'code_check', 'report'] },
               turnId: { type: 'string' },
-              routeHint: { enum: ['prefer_conversation', 'prefer_tool'] },
+              routeHint: { enum: ['prefer_interactive', 'prefer_tool'] },
               routeReason: { type: 'string' },
               detectedScenario: { type: 'string' },
               detectedScenarioLabel: { type: 'string' },
-              conversationStage: { type: 'string' },
+              interactionStageLabel: { type: 'string' },
               missingCritical: { type: 'array', items: { type: 'string' } },
               missingOptional: { type: 'array', items: { type: 'string' } },
               fallbackSupportNote: { type: 'string' },
@@ -868,8 +868,8 @@ export class AgentService {
     return this.runWithDirective(input, 'auto');
   }
 
-  async runConversation(input: AgentRunInput): Promise<AgentRunResult> {
-    return this.runWithDirective(input, 'force_conversation');
+  async runInteractive(input: AgentRunInput): Promise<AgentRunResult> {
+    return this.runWithDirective(input, 'force_interactive');
   }
 
   async runToolCall(input: AgentRunInput): Promise<AgentRunResult> {
@@ -880,8 +880,8 @@ export class AgentService {
     yield* this.runStreamWithDirective(input, 'auto');
   }
 
-  async *runConversationStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
-    yield* this.runStreamWithDirective(input, 'force_conversation');
+  async *runInteractiveStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
+    yield* this.runStreamWithDirective(input, 'force_interactive');
   }
 
   async *runToolCallStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
@@ -1345,8 +1345,8 @@ export class AgentService {
     if (interaction.detectedScenarioLabel) {
       lines.push(this.localize(locale, `识别场景：${interaction.detectedScenarioLabel}`, `Detected scenario: ${interaction.detectedScenarioLabel}`));
     }
-    if (interaction.conversationStage) {
-      lines.push(this.localize(locale, `当前阶段：${interaction.conversationStage}`, `Current stage: ${interaction.conversationStage}`));
+    if (interaction.interactionStageLabel) {
+      lines.push(this.localize(locale, `当前阶段：${interaction.interactionStageLabel}`, `Current stage: ${interaction.interactionStageLabel}`));
     }
     if (interaction.fallbackSupportNote) {
       lines.push(interaction.fallbackSupportNote);
@@ -2245,7 +2245,7 @@ export class AgentService {
       state: 'ready',
       stage: 'model',
       turnId: randomUUID(),
-      routeHint: this.hasActiveTool(activeToolIds, 'run_analysis') ? 'prefer_tool' : 'prefer_conversation',
+      routeHint: this.hasActiveTool(activeToolIds, 'run_analysis') ? 'prefer_tool' : 'prefer_interactive',
       routeReason: this.hasActiveTool(activeToolIds, 'run_analysis')
         ? this.localize(
           locale,
@@ -2261,7 +2261,7 @@ export class AgentService {
           '当前已能生成结构模型，但当前能力集中未启用分析 tool。',
           'A structural model is ready, but the current capability set does not enable the analysis tool.',
         ),
-      conversationStage: this.getStageLabel('model', locale),
+      interactionStageLabel: this.getStageLabel('model', locale),
       missingCritical: [],
       missingOptional: [],
       questions: [],
@@ -2355,13 +2355,13 @@ export class AgentService {
       state: 'confirming',
       stage: 'model',
       turnId: randomUUID(),
-      routeHint: 'prefer_conversation',
+      routeHint: 'prefer_interactive',
       routeReason: this.localize(
         locale,
         '当前仍缺少关键建模参数，请先补充后再触发工具。',
         'Critical modeling parameters are still missing. Please provide them before invoking tools.',
       ),
-      conversationStage: this.getStageLabel('model', locale),
+      interactionStageLabel: this.getStageLabel('model', locale),
       missingCritical: missingFields,
       missingOptional: [],
       questions: [{
@@ -2808,7 +2808,7 @@ export class AgentService {
       routeReason: route.routeReason,
       detectedScenario: session.scenario?.key,
       detectedScenarioLabel: session.scenario ? await this.getScenarioLabel(session.scenario.key, locale) : undefined,
-      conversationStage: this.getStageLabel(stage, locale),
+      interactionStageLabel: this.getStageLabel(stage, locale),
       missingCritical,
       missingOptional,
       fallbackSupportNote: session.scenario?.supportNote,
@@ -2834,7 +2834,7 @@ export class AgentService {
     if (assessment.criticalMissing.length > 0) {
       if (stage === 'intent' || stage === 'model' || stage === 'loads') {
       return {
-        routeHint: 'prefer_conversation',
+        routeHint: 'prefer_interactive',
         routeReason: this.localize(
           locale,
           '当前仍缺少关键建模参数，建议继续对话补参后再触发工具。',
@@ -2843,7 +2843,7 @@ export class AgentService {
       };
     }
     return {
-      routeHint: 'prefer_conversation',
+      routeHint: 'prefer_interactive',
       routeReason: this.localize(
         locale,
         '仍有关键参数待确认，建议先完成参数补充。',
@@ -2854,7 +2854,7 @@ export class AgentService {
 
   if (assessment.nonCriticalMissing.length > 0 && !session.userApprovedAutoDecide) {
     return {
-      routeHint: 'prefer_conversation',
+      routeHint: 'prefer_interactive',
       routeReason: this.localize(
         locale,
         '分析、校核或报告偏好尚未确认，建议先确认策略再触发工具。',
@@ -2865,7 +2865,7 @@ export class AgentService {
 
   if (!this.hasActiveTool(activeToolIds, 'run_analysis')) {
     return {
-      routeHint: 'prefer_conversation',
+      routeHint: 'prefer_interactive',
       routeReason: this.localize(
         locale,
         '当前能力集中未启用分析 tool，建议先继续对话或调整能力集。',
