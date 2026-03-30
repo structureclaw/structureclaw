@@ -104,7 +104,7 @@ interface PersistedMessageDebugDetails {
 
 type ActiveToolSet = Set<string> | undefined;
 
-type AgentPlanKind = 'ask' | 'interactive_ready' | 'tool_call';
+type AgentPlanKind = 'reply' | 'ask' | 'interactive_ready' | 'tool_call';
 type AgentPlanningDirective = 'auto' | 'force_conversation' | 'force_tool';
 
 interface AgentNextStepPlan {
@@ -461,9 +461,13 @@ export class AgentService {
     skillIds?: string[];
     hasModel: boolean;
     session?: InteractionSession;
+    activeToolIds?: ActiveToolSet;
   }): Promise<Exclude<AgentPlanKind, 'tool_call'>> {
     if (options.hasModel) {
       return 'interactive_ready';
+    }
+    if (this.isNoSkillMode(options.skillIds) && !this.hasActiveTool(options.activeToolIds, 'draft_model')) {
+      return 'reply';
     }
     if (!options.session || options.session.draft.inferredType === 'unknown') {
       return 'ask';
@@ -958,6 +962,7 @@ export class AgentService {
 
     if (nextPlan.kind !== 'tool_call') {
       return this.handleConversationMode({
+        nextPlan,
         params,
         traceId,
         startedAt,
@@ -1380,6 +1385,7 @@ export class AgentService {
   }
 
   private async handleConversationMode(args: {
+    nextPlan: AgentNextStepPlan;
     params: AgentRunInput;
     traceId: string;
     startedAt: string;
@@ -1392,8 +1398,25 @@ export class AgentService {
     workingSession: InteractionSession;
     activeToolIds?: ActiveToolSet;
   }): Promise<AgentRunResult> {
-    const { params, traceId, startedAt, startedAtMs, locale, orchestrationMode, toolCalls, plan, sessionKey, workingSession, activeToolIds } = args;
+    const { nextPlan, params, traceId, startedAt, startedAtMs, locale, orchestrationMode, toolCalls, plan, sessionKey, workingSession, activeToolIds } = args;
     const noSkillMode = this.isNoSkillMode(params.context?.skillIds);
+
+    if (nextPlan.kind === 'reply') {
+      return this.buildReplyConversationResult({
+        params,
+        traceId,
+        startedAt,
+        startedAtMs,
+        locale,
+        orchestrationMode,
+        skillIds: params.context?.skillIds,
+        plan,
+        toolCalls,
+        sessionKey,
+        workingSession,
+      });
+    }
+
     const { draft, noSkillEquivalentDraft } = await this.draftConversationState({
       params,
       traceId,
@@ -1412,6 +1435,7 @@ export class AgentService {
 
     if (noSkillEquivalentDraft) {
       return this.buildGenericConversationResult({
+        nextPlan,
         params,
         traceId,
         startedAt,
@@ -1436,6 +1460,7 @@ export class AgentService {
       workingSession,
     });
     return this.buildStructuredConversationResult({
+      nextPlan,
       params,
       traceId,
       startedAt,
@@ -2049,7 +2074,137 @@ export class AgentService {
     return { draft, noSkillEquivalentDraft };
   }
 
+  private async buildReplyConversationResult(args: {
+    params: AgentRunInput;
+    traceId: string;
+    startedAt: string;
+    startedAtMs: number;
+    locale: AppLocale;
+    orchestrationMode: AgentOrchestrationMode;
+    skillIds?: string[];
+    plan: string[];
+    toolCalls: AgentToolCall[];
+    sessionKey?: string;
+    workingSession: InteractionSession;
+  }): Promise<AgentRunResult> {
+    const {
+      params,
+      traceId,
+      startedAt,
+      startedAtMs,
+      locale,
+      orchestrationMode,
+      skillIds,
+      plan,
+      toolCalls,
+      sessionKey,
+      workingSession,
+    } = args;
+
+    plan.push(this.localize(
+      locale,
+      '当前未启用工程技能或建模 tool，回退为普通对话回复',
+      'No engineering skills or drafting tools are enabled, so the agent falls back to a plain chat reply',
+    ));
+
+    const fallback = this.localize(
+      locale,
+      '当前未启用结构技能或建模 tool。我可以先按普通对话协助你梳理需求；如果需要建模、分析或校核，请启用相应能力。',
+      'Structural skills or drafting tools are not enabled right now. I can still help as a plain chat assistant; enable the relevant capabilities when you want modeling, analysis, or code checks.',
+    );
+    const response = await this.renderSummary(params.message, fallback, locale, undefined, sessionKey);
+
+    return this.finalizeRunResult(traceId, sessionKey, params.message, {
+      traceId,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAtMs,
+      success: true,
+      orchestrationMode,
+      needsModelInput: false,
+      plan,
+      toolCalls,
+      metrics: this.buildMetrics(toolCalls),
+      response,
+    }, skillIds, workingSession);
+  }
+
   private async buildGenericConversationResult(args: {
+    nextPlan: AgentNextStepPlan;
+    params: AgentRunInput;
+    traceId: string;
+    startedAt: string;
+    startedAtMs: number;
+    locale: AppLocale;
+    orchestrationMode: AgentOrchestrationMode;
+    skillIds?: string[];
+    noSkillMode: boolean;
+    activeToolIds?: ActiveToolSet;
+    plan: string[];
+    toolCalls: AgentToolCall[];
+    sessionKey?: string;
+    workingSession: InteractionSession;
+    draft: DraftResult;
+  }): Promise<AgentRunResult> {
+    const {
+      nextPlan,
+      params,
+      traceId,
+      startedAt,
+      startedAtMs,
+      locale,
+      orchestrationMode,
+      skillIds,
+      noSkillMode,
+      activeToolIds,
+      plan,
+      toolCalls,
+      sessionKey,
+      workingSession,
+      draft,
+    } = args;
+
+    if (sessionKey) {
+      await this.setInteractionSession(sessionKey, workingSession);
+    }
+
+    if (draft.model && nextPlan.kind !== 'ask') {
+      return this.buildGenericInteractiveReadyResult({
+        params,
+        traceId,
+        startedAt,
+        startedAtMs,
+        locale,
+        orchestrationMode,
+        skillIds,
+        noSkillMode,
+        activeToolIds,
+        plan,
+        toolCalls,
+        sessionKey,
+        workingSession,
+        draft,
+      });
+    }
+
+    return this.buildGenericAskResult({
+      params,
+      traceId,
+      startedAt,
+      startedAtMs,
+      locale,
+      orchestrationMode,
+      skillIds,
+      noSkillMode,
+      plan,
+      toolCalls,
+      sessionKey,
+      workingSession,
+      draft,
+    });
+  }
+
+  private async buildGenericInteractiveReadyResult(args: {
     params: AgentRunInput;
     traceId: string;
     startedAt: string;
@@ -2082,80 +2237,106 @@ export class AgentService {
       draft,
     } = args;
 
-    if (sessionKey) {
-      await this.setInteractionSession(sessionKey, workingSession);
-    }
+    const interaction: AgentInteraction = {
+      state: 'ready',
+      stage: 'model',
+      turnId: randomUUID(),
+      routeHint: this.hasActiveTool(activeToolIds, 'run_analysis') ? 'prefer_tool' : 'prefer_conversation',
+      routeReason: this.hasActiveTool(activeToolIds, 'run_analysis')
+        ? this.localize(
+          locale,
+          noSkillMode
+            ? '未启用技能，但当前输入已可直接生成结构模型。'
+            : '所选技能未匹配场景，但当前输入已可直接生成结构模型。',
+          noSkillMode
+            ? 'No skills are enabled, but the current input is sufficient to build a structural model directly.'
+            : 'The selected skill did not match, but the current input is sufficient to build a structural model directly.',
+        )
+        : this.localize(
+          locale,
+          '当前已能生成结构模型，但当前能力集中未启用分析 tool。',
+          'A structural model is ready, but the current capability set does not enable the analysis tool.',
+        ),
+      conversationStage: this.getStageLabel('model', locale),
+      missingCritical: [],
+      missingOptional: [],
+      questions: [],
+      pending: {
+        criticalMissing: [],
+        nonCriticalMissing: [],
+      },
+      proposedDefaults: [],
+      nextActions: ['confirm_all'],
+      recommendedNextStep: this.hasActiveTool(activeToolIds, 'run_analysis')
+        ? this.localize(
+          locale,
+          '可以直接让我开始分析，或继续补充更细的建模参数。',
+          'You can ask me to start the analysis now, or continue refining modeling parameters.',
+        )
+        : this.localize(
+          locale,
+          '可以继续补充更细的建模参数，或启用分析 tool 后再执行。',
+          'You can keep refining modeling parameters, or enable the analysis tool before execution.',
+        ),
+    };
 
-    if (draft.model) {
-      const interaction: AgentInteraction = {
-        state: 'ready',
-        stage: 'model',
-        turnId: randomUUID(),
-        routeHint: this.hasActiveTool(activeToolIds, 'run_analysis') ? 'prefer_tool' : 'prefer_conversation',
-        routeReason: this.hasActiveTool(activeToolIds, 'run_analysis')
-          ? this.localize(
-            locale,
-            noSkillMode
-              ? '未启用技能，但当前输入已可直接生成结构模型。'
-              : '所选技能未匹配场景，但当前输入已可直接生成结构模型。',
-            noSkillMode
-              ? 'No skills are enabled, but the current input is sufficient to build a structural model directly.'
-              : 'The selected skill did not match, but the current input is sufficient to build a structural model directly.',
-          )
-          : this.localize(
-            locale,
-            '当前已能生成结构模型，但当前能力集中未启用分析 tool。',
-            'A structural model is ready, but the current capability set does not enable the analysis tool.',
-          ),
-        conversationStage: this.getStageLabel('model', locale),
-        missingCritical: [],
-        missingOptional: [],
-        questions: [],
-        pending: {
-          criticalMissing: [],
-          nonCriticalMissing: [],
-        },
-        proposedDefaults: [],
-        nextActions: ['confirm_all'],
-        recommendedNextStep: this.hasActiveTool(activeToolIds, 'run_analysis')
-          ? this.localize(
-            locale,
-            '可以直接让我开始分析，或继续补充更细的建模参数。',
-            'You can ask me to start the analysis now, or continue refining modeling parameters.',
-          )
-          : this.localize(
-            locale,
-            '可以继续补充更细的建模参数，或启用分析 tool 后再执行。',
-            'You can keep refining modeling parameters, or enable the analysis tool before execution.',
-          ),
-      };
+    const response = this.localize(
+      locale,
+      noSkillMode
+        ? '已根据当前输入直接生成结构模型 JSON，可直接触发分析工具。'
+        : '所选技能未匹配场景，已回退到通用建模并生成结构模型 JSON，可直接触发分析工具。',
+      noSkillMode
+        ? 'A structural model JSON has been generated directly from your input and is ready for analysis tools.'
+        : 'The selected skill did not match, so I fell back to generic modeling and generated a structural model JSON ready for analysis tools.',
+    );
 
-      const response = this.localize(
-        locale,
-        noSkillMode
-          ? '已根据当前输入直接生成结构模型 JSON，可直接触发分析工具。'
-          : '所选技能未匹配场景，已回退到通用建模并生成结构模型 JSON，可直接触发分析工具。',
-        noSkillMode
-          ? 'A structural model JSON has been generated directly from your input and is ready for analysis tools.'
-          : 'The selected skill did not match, so I fell back to generic modeling and generated a structural model JSON ready for analysis tools.',
-      );
+    return this.finalizeRunResult(traceId, sessionKey, params.message, {
+      traceId,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAtMs,
+      success: true,
+      orchestrationMode,
+      needsModelInput: false,
+      plan,
+      toolCalls,
+      metrics: this.buildMetrics(toolCalls),
+      model: draft.model,
+      interaction,
+      response,
+    }, skillIds, workingSession);
+  }
 
-      return this.finalizeRunResult(traceId, sessionKey, params.message, {
-        traceId,
-        startedAt,
-        completedAt: new Date().toISOString(),
-        durationMs: Date.now() - startedAtMs,
-        success: true,
-        orchestrationMode,
-        needsModelInput: false,
-        plan,
-        toolCalls,
-        metrics: this.buildMetrics(toolCalls),
-        model: draft.model,
-        interaction,
-        response,
-      }, skillIds, workingSession);
-    }
+  private async buildGenericAskResult(args: {
+    params: AgentRunInput;
+    traceId: string;
+    startedAt: string;
+    startedAtMs: number;
+    locale: AppLocale;
+    orchestrationMode: AgentOrchestrationMode;
+    skillIds?: string[];
+    noSkillMode: boolean;
+    plan: string[];
+    toolCalls: AgentToolCall[];
+    sessionKey?: string;
+    workingSession: InteractionSession;
+    draft: DraftResult;
+  }): Promise<AgentRunResult> {
+    const {
+      params,
+      traceId,
+      startedAt,
+      startedAtMs,
+      locale,
+      orchestrationMode,
+      skillIds,
+      noSkillMode,
+      plan,
+      toolCalls,
+      sessionKey,
+      workingSession,
+      draft,
+    } = args;
 
     const missingFields = draft.missingFields.length > 0
       ? draft.missingFields
@@ -2246,6 +2427,126 @@ export class AgentService {
   }
 
   private async buildStructuredConversationResult(args: {
+    nextPlan: AgentNextStepPlan;
+    params: AgentRunInput;
+    traceId: string;
+    startedAt: string;
+    startedAtMs: number;
+    locale: AppLocale;
+    orchestrationMode: AgentOrchestrationMode;
+    skillIds?: string[];
+    plan: string[];
+    toolCalls: AgentToolCall[];
+    sessionKey?: string;
+    workingSession: InteractionSession;
+    draft: DraftResult;
+    resolved: ResolvedConversationAssessment;
+  }): Promise<AgentRunResult> {
+    const {
+      nextPlan,
+      params,
+      traceId,
+      startedAt,
+      startedAtMs,
+      locale,
+      orchestrationMode,
+      skillIds,
+      plan,
+      toolCalls,
+      sessionKey,
+      workingSession,
+      draft,
+      resolved,
+    } = args;
+
+    if (sessionKey) {
+      await this.setInteractionSession(sessionKey, workingSession);
+    }
+
+    if (resolved.state === 'ready' && nextPlan.kind !== 'ask') {
+      return this.buildStructuredInteractiveReadyResult({
+        params,
+        traceId,
+        startedAt,
+        startedAtMs,
+        locale,
+        orchestrationMode,
+        skillIds,
+        plan,
+        toolCalls,
+        sessionKey,
+        workingSession,
+        draft,
+        resolved,
+      });
+    }
+
+    return this.buildStructuredAskResult({
+      params,
+      traceId,
+      startedAt,
+      startedAtMs,
+      locale,
+      orchestrationMode,
+      skillIds,
+      plan,
+      toolCalls,
+      sessionKey,
+      workingSession,
+      draft,
+      resolved,
+    });
+  }
+
+  private async buildStructuredInteractiveReadyResult(args: {
+    params: AgentRunInput;
+    traceId: string;
+    startedAt: string;
+    startedAtMs: number;
+    locale: AppLocale;
+    orchestrationMode: AgentOrchestrationMode;
+    skillIds?: string[];
+    plan: string[];
+    toolCalls: AgentToolCall[];
+    sessionKey?: string;
+    workingSession: InteractionSession;
+    draft: DraftResult;
+    resolved: ResolvedConversationAssessment;
+  }): Promise<AgentRunResult> {
+    const {
+      params,
+      traceId,
+      startedAt,
+      startedAtMs,
+      orchestrationMode,
+      skillIds,
+      plan,
+      toolCalls,
+      sessionKey,
+      workingSession,
+      draft,
+      resolved,
+    } = args;
+
+    const response = this.buildChatModeResponse(resolved.interaction, this.resolveInteractionLocale(params.context?.locale));
+    return this.finalizeRunResult(traceId, sessionKey, params.message, {
+      traceId,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAtMs,
+      success: true,
+      orchestrationMode,
+      needsModelInput: false,
+      plan,
+      toolCalls,
+      metrics: this.buildMetrics(toolCalls),
+      model: draft.model ?? undefined,
+      interaction: resolved.interaction,
+      response,
+    }, skillIds, workingSession);
+  }
+
+  private async buildStructuredAskResult(args: {
     params: AgentRunInput;
     traceId: string;
     startedAt: string;
@@ -2275,10 +2576,6 @@ export class AgentService {
       draft,
       resolved,
     } = args;
-
-    if (sessionKey) {
-      await this.setInteractionSession(sessionKey, workingSession);
-    }
 
     const response = this.buildChatModeResponse(resolved.interaction, locale);
     return this.finalizeRunResult(traceId, sessionKey, params.message, {

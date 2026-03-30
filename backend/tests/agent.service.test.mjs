@@ -642,6 +642,26 @@ describe('AgentService orchestration', () => {
     expect(result.model).toBeUndefined();
   });
 
+  test('should fall back to plain reply when no skill and draft tool are both unavailable', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const result = await svc.runConversation({
+      message: '先帮我梳理一下我要做什么结构分析',
+      context: {
+        locale: 'zh',
+        skillIds: [],
+        disabledToolIds: ['draft_model', 'run_analysis', 'validate_model', 'convert_model', 'run_code_check', 'generate_report'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.needsModelInput).toBe(false);
+    expect(result.interaction).toBeUndefined();
+    expect(result.toolCalls).toEqual([]);
+    expect(result.response).toContain('普通对话');
+  });
+
   test('should keep inferredType unknown in no-skill mode even when llm extraction suggests template type', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
