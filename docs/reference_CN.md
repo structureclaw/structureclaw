@@ -7,8 +7,14 @@
 ## 2. Agent 执行契约
 
 - 入口：`POST /api/v1/agent/run`
-- 模式：`chat`、`execute`、`auto`
+- 当前内部运行模式：`conversation`、`tool`、`auto`
 - 执行链路：`text-to-model-draft -> convert -> validate -> analyze -> code-check -> report`
+
+架构方向：
+
+- 对外产品交互应收口为单一 chat-first 请求形态
+- skill 与 tool 都是可选能力层
+- 目标能力驱动设计见 `docs/agent-architecture_CN.md`
 
 结果侧关键可观测字段：
 
@@ -47,7 +53,7 @@
 
 - `POST /api/v1/chat/message`
 - `POST /api/v1/chat/stream`
-- `POST /api/v1/chat/execute`
+- `POST /api/v1/chat/tool-call`
 
 典型流式事件顺序：
 
@@ -160,7 +166,9 @@ Chat 与消息：
 ## 8. 相关文档
 
 - 操作手册：`docs/handbook_CN.md`
+- Agent 架构：`docs/agent-architecture_CN.md`
 - 英文操作手册：`docs/handbook.md`
 - 英文协议参考：`docs/reference.md`
 - 技能加载机制：`docs/schema/skill-loading_CN.md`
 - 技能加载机制（英文）：`docs/schema/skill-loading.md`
+- 英文 Agent 架构：`docs/agent-architecture.md`

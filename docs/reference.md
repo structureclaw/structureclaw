@@ -7,8 +7,14 @@ Protocol and contract quick reference for API integration, troubleshooting, and 
 ## 2. Agent Run Contract
 
 - Endpoint: `POST /api/v1/agent/run`
-- Modes: `chat`, `execute`, `auto`
+- Current internal run modes: `conversation`, `tool`, `auto`
 - Execution chain: `text-to-model-draft -> convert -> validate -> analyze -> code-check -> report`
+
+Architecture direction:
+
+- public product interaction should converge on a single chat-first request shape
+- skills and tools are optional capability layers
+- see `docs/agent-architecture.md` for the target capability-driven design
 
 Key result observability fields:
 
@@ -47,7 +53,7 @@ Endpoints:
 
 - `POST /api/v1/chat/message`
 - `POST /api/v1/chat/stream`
-- `POST /api/v1/chat/execute`
+- `POST /api/v1/chat/tool-call`
 
 Typical stream event sequence:
 
@@ -160,7 +166,9 @@ Regression entrypoints:
 ## 8. Related Docs
 
 - Operational guide: `docs/handbook.md`
+- Agent architecture: `docs/agent-architecture.md`
 - Chinese operational guide: `docs/handbook_CN.md`
 - Chinese protocol reference: `docs/reference_CN.md`
 - Skill loading mechanism: `docs/schema/skill-loading.md`
 - Skill loading mechanism (Chinese): `docs/schema/skill-loading_CN.md`
+- Chinese agent architecture: `docs/agent-architecture_CN.md`

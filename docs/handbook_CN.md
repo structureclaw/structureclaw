@@ -4,7 +4,7 @@
 
 本文档用于指导 StructureClaw 的运行、开发、验证与扩展。
 
-日常工程协作请以本文档为主；协议字段与契约细节请参考 `docs/reference_CN.md`。
+日常工程协作请以本文档为主；协议字段与契约细节请参考 `docs/reference_CN.md`，目标 Agent 架构请参考 `docs/agent-architecture_CN.md`。
 
 ## 2. 项目范围
 
@@ -136,12 +136,18 @@ node .\sclaw stop
 
 - `POST /api/v1/chat/message`
 - `POST /api/v1/chat/stream`
-- `POST /api/v1/chat/execute`
+- `POST /api/v1/chat/tool-call`
 - `POST /api/v1/agent/run`
 
-执行链路：
+当前执行链路：
 
 `text-to-model-draft -> convert -> validate -> analyze -> code-check -> report`
+
+架构说明：
+
+- 对外产品交互应继续收口到单一 chat-first 入口。
+- Skill 与 Tool 都属于可选能力层。
+- 目标能力驱动架构见 `docs/agent-architecture_CN.md`。
 
 ### 7.2 Backend 托管分析运行时
 
@@ -161,8 +167,10 @@ node .\sclaw stop
 
 ## 9. Skill 与 no-skill 策略
 
-- Skill 是增强层，不是唯一执行路径。
-- 已选技能未匹配场景时，回退到通用 no-skill 建模。
+- Skill 与 Tool 都是可选能力层，不是基础聊天的硬依赖。
+- 当没有启用任何 skill 和 tool 时，StructureClaw 应退化为普通对话模型。
+- `structure-type` 是工程入口技能域。
+- 目标架构中会在该域内内置 `structure-type/generic` 兜底 skill。
 - 所有新增用户可见文案必须同时支持中文和英文。
 
 内置技能域（位于 `backend/src/agent-skills/`）：
@@ -235,7 +243,9 @@ node tests/runner.mjs backend-regression
 ## 13. 相关文档
 
 - 协议参考：`docs/reference_CN.md`
+- Agent 架构：`docs/agent-architecture_CN.md`
 - 英文手册：`docs/handbook.md`
 - 英文协议参考：`docs/reference.md`
+- 英文 Agent 架构：`docs/agent-architecture.md`
 - 中文总览：`README_CN.md`
 - 英文总览：`README.md`

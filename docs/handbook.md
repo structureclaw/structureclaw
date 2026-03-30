@@ -4,7 +4,7 @@
 
 This handbook is the practical guide for running, developing, validating, and extending StructureClaw.
 
-Use this file for day-to-day engineering work. Use `docs/reference.md` for protocol-level details.
+Use this file for day-to-day engineering work. Use `docs/reference.md` for protocol-level details and `docs/agent-architecture.md` for the target agent architecture.
 
 ## 2. Project Scope
 
@@ -136,12 +136,18 @@ Main backend endpoints:
 
 - `POST /api/v1/chat/message`
 - `POST /api/v1/chat/stream`
-- `POST /api/v1/chat/execute`
+- `POST /api/v1/chat/tool-call`
 - `POST /api/v1/agent/run`
 
-Execution chain:
+Current execution chain:
 
 `text-to-model-draft -> convert -> validate -> analyze -> code-check -> report`
+
+Architecture note:
+
+- Public product interaction should converge on a single chat-first entry.
+- Skills and tools are optional capability layers.
+- See `docs/agent-architecture.md` for the target capability-driven design.
 
 ### 7.2 Backend-hosted analysis runtime
 
@@ -161,8 +167,10 @@ Compatibility endpoints exposed by backend:
 
 ## 9. Skill and No-Skill Behavior
 
-- Skills are enhancement layers, not a hard dependency for the full workflow.
-- If selected skills do not match the request, fallback uses generic no-skill modeling.
+- Skills and tools are optional capability layers, not a hard dependency for base chat.
+- If no skills and no tools are enabled, StructureClaw should behave like a normal conversational model.
+- `structure-type` is the engineering entry skill domain.
+- The target architecture includes a built-in `structure-type/generic` fallback skill inside that domain.
 - New user-visible copy must be provided in both English and Chinese.
 
 Built-in skill domains under `backend/src/agent-skills/`:
@@ -235,7 +243,9 @@ Contribution details: `CONTRIBUTING.md`.
 ## 13. Related Documents
 
 - Protocol reference: `docs/reference.md`
+- Agent architecture: `docs/agent-architecture.md`
 - Chinese handbook: `docs/handbook_CN.md`
 - Chinese protocol reference: `docs/reference_CN.md`
+- Chinese agent architecture: `docs/agent-architecture_CN.md`
 - English overview: `README.md`
 - Chinese overview: `README_CN.md`
