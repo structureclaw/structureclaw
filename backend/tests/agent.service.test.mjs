@@ -408,6 +408,34 @@ describe('AgentService orchestration', () => {
     expect(shouldInvoke).toBe(false);
   });
 
+  test('should keep conversation route when analysis tool is disabled even after parameters are ready', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const result = await svc.run({
+      message: '先聊需求',
+      mode: 'conversation',
+      context: {
+        locale: 'zh',
+        disabledToolIds: ['run_analysis'],
+        providedValues: {
+          inferredType: 'beam',
+          lengthM: 10,
+          supportType: 'simply-supported',
+          loadKN: 10,
+          loadType: 'point',
+          loadPosition: 'midspan',
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.interaction?.state).toBe('ready');
+    expect(result.interaction?.routeHint).toBe('prefer_conversation');
+    expect(result.interaction?.routeReason).toContain('未启用分析 tool');
+    expect(result.interaction?.recommendedNextStep).toContain('未启用分析 tool');
+  });
+
   test('should merge rule-extracted numeric follow-up when llm extraction is partial', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;

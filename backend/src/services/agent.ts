@@ -429,12 +429,13 @@ export class AgentService {
     }
 
     const assessment = await this.assessInteractionNeeds(session, locale, skillIds, 'conversation');
+    const activeToolIds = await this.resolveActiveToolIds(skillIds);
     const state = assessment.criticalMissing.length > 0
       ? 'collecting'
       : assessment.nonCriticalMissing.length > 0
         ? 'confirming'
         : 'ready';
-    const interaction = await this.buildInteractionPayload(assessment, session, state, locale, skillIds);
+    const interaction = await this.buildInteractionPayload(assessment, session, state, locale, skillIds, activeToolIds);
     const model = assessment.criticalMissing.length === 0
       ? await this.skillRuntime.buildModel(session.draft, skillIds)
       : undefined;
@@ -742,6 +743,7 @@ export class AgentService {
         plan,
         sessionKey,
         workingSession,
+        activeToolIds,
       });
     }
 
@@ -1227,6 +1229,7 @@ export class AgentService {
     assessment: { criticalMissing: string[]; nonCriticalMissing: string[]; defaultProposals: InteractionDefaultProposal[] },
     interaction: AgentInteraction,
     locale: AppLocale,
+    activeToolIds?: ActiveToolSet,
   ): string {
     if (assessment.criticalMissing.length > 0) {
       const nextLabel = interaction.questions?.[0]?.label || this.localize(locale, '关键参数', 'the key parameter');
@@ -1237,6 +1240,13 @@ export class AgentService {
         locale,
         '关键参数已基本齐备，继续确认分析类型、规范和报告偏好。',
         'Primary geometry and loading are mostly ready; continue by confirming analysis, code-check, and report preferences.'
+      );
+    }
+    if (!this.hasActiveTool(activeToolIds, 'run_analysis')) {
+      return this.localize(
+        locale,
+        '当前能力集中未启用分析 tool，可继续细化参数，或启用分析能力后再执行。',
+        'The current capability set does not enable the analysis tool. Keep refining the inputs, or enable analysis capability before execution.'
       );
     }
     return this.localize(
@@ -1305,8 +1315,9 @@ export class AgentService {
     plan: string[];
     sessionKey?: string;
     workingSession: InteractionSession;
+    activeToolIds?: ActiveToolSet;
   }): Promise<AgentRunResult> {
-    const { params, traceId, startedAt, startedAtMs, locale, mode, toolCalls, plan, sessionKey, workingSession } = args;
+    const { params, traceId, startedAt, startedAtMs, locale, mode, toolCalls, plan, sessionKey, workingSession, activeToolIds } = args;
     const noSkillMode = this.isNoSkillMode(params.context?.skillIds);
 
     plan.push(noSkillMode
@@ -1346,16 +1357,22 @@ export class AgentService {
           state: 'ready',
           stage: 'model',
           turnId: randomUUID(),
-          routeHint: 'prefer_tool',
-          routeReason: this.localize(
-            locale,
-            noSkillMode
-              ? '未启用技能，但当前输入已可直接生成结构模型。'
-              : '所选技能未匹配场景，但当前输入已可直接生成结构模型。',
-            noSkillMode
-              ? 'No skills are enabled, but the current input is sufficient to build a structural model directly.'
-              : 'The selected skill did not match, but the current input is sufficient to build a structural model directly.',
-          ),
+          routeHint: this.hasActiveTool(activeToolIds, 'run_analysis') ? 'prefer_tool' : 'prefer_conversation',
+          routeReason: this.hasActiveTool(activeToolIds, 'run_analysis')
+            ? this.localize(
+              locale,
+              noSkillMode
+                ? '未启用技能，但当前输入已可直接生成结构模型。'
+                : '所选技能未匹配场景，但当前输入已可直接生成结构模型。',
+              noSkillMode
+                ? 'No skills are enabled, but the current input is sufficient to build a structural model directly.'
+                : 'The selected skill did not match, but the current input is sufficient to build a structural model directly.',
+            )
+            : this.localize(
+              locale,
+              '当前已能生成结构模型，但当前能力集中未启用分析 tool。',
+              'A structural model is ready, but the current capability set does not enable the analysis tool.',
+            ),
           conversationStage: this.getStageLabel('model', locale),
           missingCritical: [],
           missingOptional: [],
@@ -1366,11 +1383,17 @@ export class AgentService {
           },
           proposedDefaults: [],
           nextActions: ['confirm_all'],
-          recommendedNextStep: this.localize(
-            locale,
-            '可以直接让我开始分析，或继续补充更细的建模参数。',
-            'You can ask me to start the analysis now, or continue refining modeling parameters.',
-          ),
+          recommendedNextStep: this.hasActiveTool(activeToolIds, 'run_analysis')
+            ? this.localize(
+              locale,
+              '可以直接让我开始分析，或继续补充更细的建模参数。',
+              'You can ask me to start the analysis now, or continue refining modeling parameters.',
+            )
+            : this.localize(
+              locale,
+              '可以继续补充更细的建模参数，或启用分析 tool 后再执行。',
+              'You can keep refining modeling parameters, or enable the analysis tool before execution.',
+            ),
         };
 
         const response = this.localize(
@@ -1476,8 +1499,8 @@ export class AgentService {
       : assessment.nonCriticalMissing.length > 0
         ? 'collecting'
         : 'ready';
-    const interaction = await this.buildInteractionPayload(assessment, workingSession, state, locale, params.context?.skillIds);
-    interaction.recommendedNextStep = this.buildRecommendedNextStep(assessment, interaction, locale);
+    const interaction = await this.buildInteractionPayload(assessment, workingSession, state, locale, params.context?.skillIds, activeToolIds);
+    interaction.recommendedNextStep = this.buildRecommendedNextStep(assessment, interaction, locale, activeToolIds);
 
     if (sessionKey) {
       await this.setInteractionSession(sessionKey, workingSession);
@@ -1696,13 +1719,14 @@ export class AgentService {
     state: AgentInteractionState,
     locale: AppLocale,
     skillIds?: string[],
+    activeToolIds?: ActiveToolSet,
   ): Promise<AgentInteraction> {
     const missingKeys = [...assessment.criticalMissing, ...assessment.nonCriticalMissing];
     const questions = await this.buildInteractionQuestions(missingKeys, assessment.criticalMissing, session, locale, skillIds);
     const stage = await this.resolveInteractionStage(missingKeys, session.draft, skillIds);
     const missingCritical = await this.mapMissingFieldLabels(assessment.criticalMissing, locale, session.draft, skillIds);
     const missingOptional = await this.mapMissingFieldLabels(assessment.nonCriticalMissing, locale, session.draft, skillIds);
-    const route = this.buildInteractionRouteHint(assessment, stage, session, locale);
+    const route = this.buildInteractionRouteHint(assessment, stage, session, locale, activeToolIds);
     return {
       state,
       stage,
@@ -1732,6 +1756,7 @@ export class AgentService {
     stage: AgentInteractionStage,
     session: InteractionSession,
     locale: AppLocale,
+    activeToolIds?: ActiveToolSet,
   ): { routeHint: AgentInteractionRouteHint; routeReason: string } {
     if (assessment.criticalMissing.length > 0) {
       if (stage === 'intent' || stage === 'model' || stage === 'loads') {
@@ -1761,6 +1786,17 @@ export class AgentService {
         locale,
         '分析、校核或报告偏好尚未确认，建议先确认策略再触发工具。',
         'Analysis, code-check, or reporting preferences are pending; confirm strategy before invoking tools.',
+      ),
+    };
+  }
+
+  if (!this.hasActiveTool(activeToolIds, 'run_analysis')) {
+    return {
+      routeHint: 'prefer_conversation',
+      routeReason: this.localize(
+        locale,
+        '当前能力集中未启用分析 tool，建议先继续对话或调整能力集。',
+        'The current capability set does not enable the analysis tool, so continue in conversation or adjust the capability set first.',
       ),
     };
   }
