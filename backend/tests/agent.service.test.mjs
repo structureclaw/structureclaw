@@ -134,7 +134,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '请静力分析并规范校核',
-      requestedStep: 'tool_call',
+      planningOverride: 'tool_call',
       context: {
         skillIds: [],
         model: {
@@ -173,7 +173,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '请静力分析并规范校核',
-      requestedStep: 'tool_call',
+      planningOverride: 'tool_call',
       context: {
         skillIds: [],
         model: {
@@ -207,7 +207,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '请静力分析并规范校核并生成报告',
-      requestedStep: 'tool_call',
+      planningOverride: 'tool_call',
       context: {
         skillIds: ['code-check-gb50017'],
         disabledToolIds: ['run_code_check', 'generate_report'],
@@ -279,7 +279,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '请静力分析并规范校核',
-      requestedStep: 'tool_call',
+      planningOverride: 'tool_call',
       context: {
         model: {
           schema_version: '1.0.0',
@@ -316,7 +316,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '请静力分析并规范校核',
-      requestedStep: 'tool_call',
+      planningOverride: 'tool_call',
       context: {
         model: {
           schema_version: '1.0.0',
@@ -346,7 +346,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '请静力分析并规范校核并导出报告',
-      requestedStep: 'tool_call',
+      planningOverride: 'tool_call',
       context: {
         model: {
           schema_version: '1.0.0',
@@ -380,7 +380,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: 'Analyze a portal frame',
-      requestedStep: 'tool_call',
+      planningOverride: 'tool_call',
       conversationId: 'conv-en',
       context: {
         locale: 'en',
@@ -414,7 +414,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '先聊需求',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'zh',
         disabledToolIds: ['run_analysis'],
@@ -444,7 +444,7 @@ describe('AgentService orchestration', () => {
     const result = await svc.run({
       conversationId: 'conv-rule-fallback-zh',
       message: '跨度10m',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'zh',
         providedValues: {
@@ -466,7 +466,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-chat-beam-span-zh',
       message: '我想设计一个梁',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -477,7 +477,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-chat-beam-span-zh',
       message: '跨度10m',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -496,7 +496,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-chat-span-zh',
       message: '先聊需求，我要做一个门式刚架',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -507,7 +507,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-chat-span-zh',
       message: '跨度10m',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -527,7 +527,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-chat-span-en',
       message: 'Discuss a portal frame first',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'en',
       },
@@ -538,7 +538,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-chat-span-en',
       message: 'span 10m',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'en',
       },
@@ -560,7 +560,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-chat-load-detail-zh',
       message: '我想设计一个简支梁，跨度10m',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -573,7 +573,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-chat-load-detail-zh',
       message: '20kN均布荷载，全跨布置',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -604,7 +604,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '我希望生成一个跨度10m的简支梁，荷载在4m处，一个集中荷载10kN',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'zh',
         skillIds: [],
@@ -624,7 +624,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '门式刚架，跨度10m，10kN集中荷载在4m处',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'zh',
         skillIds: [],
@@ -794,7 +794,7 @@ describe('AgentService orchestration', () => {
 
     await svc.run({
       message: '继续',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       conversationId,
       context: {
         locale: 'zh',
@@ -838,7 +838,7 @@ describe('AgentService orchestration', () => {
 
     await svc.run({
       message: '先按框架场景保存会话',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       conversationId,
       context: {
         locale: 'zh',
@@ -856,7 +856,7 @@ describe('AgentService orchestration', () => {
 
     const switched = await svc.run({
       message: '切到通用模式继续',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       conversationId,
       context: {
         locale: 'zh',
@@ -945,7 +945,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '按3m悬臂梁端部10kN点荷载做静力分析',
-      requestedStep: 'tool_call',
+      planningOverride: 'tool_call',
       context: {
         locale: 'zh',
         skillIds: [],
@@ -980,7 +980,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '按3m悬臂梁端部10kN点荷载做静力分析',
-      requestedStep: 'tool_call',
+      planningOverride: 'tool_call',
       context: {
         locale: 'zh',
         skillIds: [],
@@ -1008,7 +1008,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '请自动校核并生成报告',
-      requestedStep: 'tool_call',
+      planningOverride: 'tool_call',
       context: {
         locale: 'zh',
         model: {
@@ -1069,7 +1069,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '请做静力分析',
-      requestedStep: 'tool_call',
+      planningOverride: 'tool_call',
       context: {
         locale: 'zh',
         model: {
@@ -1107,7 +1107,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '请做静力分析',
-      requestedStep: 'tool_call',
+      planningOverride: 'tool_call',
       context: {
         locale: 'zh',
         model: {
@@ -1137,7 +1137,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: 'Run a static analysis and code check',
-      requestedStep: 'tool_call',
+      planningOverride: 'tool_call',
       context: {
         locale: 'en',
         model: {
@@ -1170,7 +1170,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: 'Help me size a steel frame for static analysis',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'en',
       },
@@ -1191,7 +1191,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '请帮我分析一个桥梁模型，跨度 30m',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -1268,7 +1268,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-frame-generic-horizontal-3d',
       message: '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1277,7 +1277,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-frame-generic-horizontal-3d',
       message: '水平方向荷载都是18kN',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1505,7 +1505,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-frame-upgrade-3d',
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1515,7 +1515,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-frame-upgrade-3d',
       message: '每层竖向荷载120kN，x、y向水平荷载都是500kN',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1532,7 +1532,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-frame-natural-followup',
       message: '我想设计一个三层框架，x方向4跨，间隔3m，y方向3跨间隔也是3m',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1542,7 +1542,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-frame-natural-followup',
       message: '每层3m',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1552,7 +1552,7 @@ describe('AgentService orchestration', () => {
     const third = await svc.run({
       conversationId: 'conv-frame-natural-followup',
       message: '各层竖向荷载都是1000kN，横向荷载都是500kN',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1568,7 +1568,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-frame-merge-2d-loads',
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1579,7 +1579,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-frame-merge-2d-loads',
       message: '每层水平荷载30kN',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1597,7 +1597,7 @@ describe('AgentService orchestration', () => {
     const first = await svc.run({
       conversationId: 'conv-frame-merge-3d-loads',
       message: '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN，x向水平荷载18kN',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1608,7 +1608,7 @@ describe('AgentService orchestration', () => {
     const second = await svc.run({
       conversationId: 'conv-frame-merge-3d-loads',
       message: 'y向水平荷载12kN',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1627,7 +1627,7 @@ describe('AgentService orchestration', () => {
     await svc.run({
       conversationId: 'conv-session-snapshot',
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: { locale: 'zh' },
     });
 
@@ -1657,7 +1657,7 @@ describe('AgentService orchestration', () => {
       await svc.run({
         conversationId: 'conv-persist-history',
         message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
-        requestedStep: 'conversation',
+        planningOverride: 'conversation',
         context: { locale: 'zh' },
       });
     } finally {
@@ -1678,7 +1678,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: '请先聊一个框架',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -1697,7 +1697,7 @@ describe('AgentService orchestration', () => {
 
     const result = await svc.run({
       message: 'Portal frame, each span 6 m and column height 4 m',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'en',
       },
@@ -1717,7 +1717,7 @@ describe('AgentService orchestration', () => {
 
     const collecting = await svc.run({
       message: '简支梁，跨度6m，20kN跨中点荷载',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -1731,7 +1731,7 @@ describe('AgentService orchestration', () => {
 
     const incomplete = await svc.run({
       message: '我想设计一个梁',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'zh',
       },
@@ -1748,7 +1748,7 @@ describe('AgentService orchestration', () => {
 
     const collecting = await svc.run({
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
-      requestedStep: 'conversation',
+      planningOverride: 'conversation',
       context: {
         locale: 'zh',
       },
