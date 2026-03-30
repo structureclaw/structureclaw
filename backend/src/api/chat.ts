@@ -181,10 +181,10 @@ async function resolveRequestedStep(body: ChatRequestBody): Promise<ChatRequeste
   return shouldInvokeTool ? 'tool_call' : 'conversation';
 }
 
-function buildAgentRunPayload(body: ChatRequestBody | ToolCallBody, requestedStep: 'conversation' | 'tool_call') {
+function buildAgentRunPayload(body: ChatRequestBody | ToolCallBody, planningOverride: 'conversation' | 'tool_call') {
   return {
     message: body.message,
-    requestedStep,
+    planningOverride,
     conversationId: body.conversationId,
     traceId: body.traceId,
     context: {
@@ -468,7 +468,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     const userId = request.user?.id;
     const result = await agentService.run({
       ...body,
-      requestedStep: 'tool_call',
+      planningOverride: 'tool_call',
     });
     await persistLatestConversationResult({
       conversationId: body.conversationId,

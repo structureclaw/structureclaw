@@ -44,7 +44,6 @@ import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.j
 import { listBuiltinToolManifests, resolveCanonicalToolId } from '../agent-runtime/tool-registry.js';
 
 export type AgentToolName = 'text-to-model-draft' | 'convert' | 'validate' | 'analyze' | 'code-check' | 'report';
-export type AgentRequestedStep = 'conversation' | 'tool_call' | 'auto';
 export type AgentOrchestrationMode = 'rule-based' | 'llm-assisted';
 export type AgentInteractionPhase = 'interactive' | 'execution';
 export type AgentReportFormat = 'json' | 'markdown' | 'both';
@@ -107,6 +106,12 @@ type ActiveToolSet = Set<string> | undefined;
 
 type AgentNextStep = 'conversation' | 'tool_call';
 type AgentPlanningDirective = 'auto' | 'force_conversation' | 'force_tool';
+
+interface AgentNextStepPlan {
+  nextStep: AgentNextStep;
+  directive: AgentPlanningDirective;
+  source: 'override' | 'policy';
+}
 
 interface ResolvedExecutionConfig {
   analysisType: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
@@ -207,7 +212,7 @@ export interface AgentConversationSessionSnapshot {
 
 export interface AgentRunParams {
   message: string;
-  requestedStep?: AgentRequestedStep;
+  planningOverride?: AgentNextStep | 'auto';
   conversationId?: string;
   traceId?: string;
   context?: {
@@ -367,7 +372,7 @@ export class AgentService {
       hasModel: Boolean(options?.hasModel),
       session,
       activeToolIds,
-    })) === 'tool_call';
+    })).nextStep === 'tool_call';
   }
 
   private async shouldPlanToolCallForState(message: string, options: {
@@ -428,15 +433,15 @@ export class AgentService {
     hasModel: boolean;
     session?: InteractionSession;
     activeToolIds?: ActiveToolSet;
-  }): Promise<AgentNextStep> {
+  }): Promise<AgentNextStepPlan> {
     if (options.planningDirective === 'force_conversation') {
-      return 'conversation';
+      return { nextStep: 'conversation', directive: options.planningDirective, source: 'override' };
     }
     if (options.planningDirective === 'force_tool') {
-      return 'tool_call';
+      return { nextStep: 'tool_call', directive: options.planningDirective, source: 'override' };
     }
 
-    return (await this.shouldPlanToolCallForState(message, {
+    const nextStep = (await this.shouldPlanToolCallForState(message, {
       locale: options.locale,
       skillIds: options.skillIds,
       hasModel: options.hasModel,
@@ -445,13 +450,14 @@ export class AgentService {
     }))
       ? 'tool_call'
       : 'conversation';
+    return { nextStep, directive: options.planningDirective, source: 'policy' };
   }
 
-  private normalizePlanningDirective(requestedStep: AgentRequestedStep | string | undefined): AgentPlanningDirective {
-    if (requestedStep === 'conversation') {
+  private normalizePlanningDirective(planningOverride: AgentNextStep | 'auto' | string | undefined): AgentPlanningDirective {
+    if (planningOverride === 'conversation') {
       return 'force_conversation';
     }
-    if (requestedStep === undefined || requestedStep === 'auto') {
+    if (planningOverride === undefined || planningOverride === 'auto') {
       return 'auto';
     }
     return 'force_tool';
@@ -459,7 +465,7 @@ export class AgentService {
 
   private async prepareRunContext(params: AgentRunParams): Promise<PreparedRunContext> {
     const locale = this.resolveInteractionLocale(params.context?.locale);
-    const planningDirective = this.normalizePlanningDirective(params.requestedStep);
+    const planningDirective = this.normalizePlanningDirective(params.planningOverride);
     const skillIds = params.context?.skillIds;
     const noSkillMode = this.isNoSkillMode(skillIds);
     const activeToolIds = await this.resolveActiveToolIds(skillIds, {
@@ -902,7 +908,7 @@ export class AgentService {
       toolCalls,
     } = prepared;
 
-    const nextStep = await this.planNextStep(params.message, {
+    const nextPlan = await this.planNextStep(params.message, {
       planningDirective,
       locale,
       skillIds,
@@ -911,7 +917,7 @@ export class AgentService {
       activeToolIds,
     });
 
-    if (nextStep === 'conversation') {
+    if (nextPlan.nextStep === 'conversation') {
       return this.handleConversationMode({
         params,
         traceId,
