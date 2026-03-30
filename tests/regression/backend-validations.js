@@ -984,8 +984,8 @@ async function validateAgentCapabilityMatrix(context) {
   assert(toolIds.has("draft_model"), "capability matrix should expose draft_model tool");
   assert(toolIds.has("run_analysis"), "capability matrix should expose run_analysis tool");
   const draftTool = payload.tools.find((tool) => tool.id === "draft_model");
-  assert(draftTool?.compatibilityRuntimeName === "text-to-model-draft", "capability matrix should expose compatibility runtime name separately");
-  assert(!Object.prototype.hasOwnProperty.call(draftTool || {}, "runtimeName"), "capability matrix should not expose runtimeName as the primary field");
+  assert(!Object.prototype.hasOwnProperty.call(draftTool || {}, "runtimeName"), "capability matrix should not expose runtimeName");
+  assert(!Object.prototype.hasOwnProperty.call(draftTool || {}, "compatibilityRuntimeName"), "capability matrix should not expose compatibility runtime aliases");
   assert(Array.isArray(payload.enabledToolIdsBySkill.beam), "beam should expose enabled tools array");
   assert(payload.enabledToolIdsBySkill.beam.includes("draft_model"), "beam should enable draft_model");
   assert(payload.enabledToolIdsBySkill.beam.includes("run_analysis"), "beam should enable run_analysis");

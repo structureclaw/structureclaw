@@ -17,7 +17,6 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
     id: 'draft_model',
     // Compatibility bridge for the legacy local runtime action name.
     runtimeName: 'text-to-model-draft',
-    aliases: ['text-to-model-draft'],
     source: 'builtin',
     enabledByDefault: false,
     category: 'modeling',
@@ -48,7 +47,6 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
     id: 'convert_model',
     // Compatibility bridge for the legacy local runtime action name.
     runtimeName: 'convert',
-    aliases: ['convert'],
     source: 'builtin',
     enabledByDefault: false,
     category: 'modeling',
@@ -81,7 +79,6 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
     id: 'validate_model',
     // Compatibility bridge for the legacy local runtime action name.
     runtimeName: 'validate',
-    aliases: ['validate'],
     source: 'builtin',
     enabledByDefault: false,
     category: 'modeling',
@@ -109,7 +106,6 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
     id: 'run_analysis',
     // Compatibility bridge for the legacy local runtime action name.
     runtimeName: 'analyze',
-    aliases: ['analyze'],
     source: 'builtin',
     enabledByDefault: false,
     category: 'analysis',
@@ -143,7 +139,6 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
     id: 'run_code_check',
     // Compatibility bridge for the legacy local runtime action name.
     runtimeName: 'code-check',
-    aliases: ['code-check'],
     source: 'builtin',
     enabledByDefault: false,
     category: 'code-check',
@@ -168,7 +163,6 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
     id: 'generate_report',
     // Compatibility bridge for the legacy local runtime action name.
     runtimeName: 'report',
-    aliases: ['report'],
     source: 'builtin',
     enabledByDefault: false,
     category: 'report',
@@ -222,9 +216,6 @@ export function resolveCanonicalToolId(toolId: string | undefined): string | und
       return tool.id;
     }
     if (tool.runtimeName === normalized) {
-      return tool.id;
-    }
-    if (Array.isArray(tool.aliases) && tool.aliases.includes(normalized)) {
       return tool.id;
     }
   }

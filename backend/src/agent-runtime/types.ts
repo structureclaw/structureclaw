@@ -183,7 +183,6 @@ export interface ToolManifest {
   displayName: LocalizedText;
   description: LocalizedText;
   runtimeName?: string;
-  aliases?: string[];
   category?: 'modeling' | 'analysis' | 'code-check' | 'report' | 'utility';
   providedBySkillId?: string;
   requiresSkills?: string[];
