@@ -157,6 +157,11 @@ interface ResolvedConversationAssessment {
   interaction: AgentInteraction;
 }
 
+interface PreparedExecutionModel {
+  normalizedModel: Record<string, unknown>;
+  validationWarning?: string;
+}
+
 export interface AgentResolvedRouting {
   selectedSkillIds: string[];
   structuralSkillId?: string;
@@ -875,146 +880,27 @@ export class AgentService {
     if (!executableModel.ok) {
       return executableModel.result;
     }
-    let normalizedModel = executableModel.model;
-
     const executionConfig = this.resolveExecutionConfig(workingSession, params, skillIds);
-
-    if (sourceFormat !== 'structuremodel-v1') {
-      if (!this.hasActiveTool(activeToolIds, 'convert_model')) {
-        const response = this.buildDisabledToolMessage('convert_model', locale);
-        const result: AgentRunResult = {
-          traceId,
-          startedAt,
-          completedAt: new Date().toISOString(),
-          durationMs: Date.now() - startedAtMs,
-          success: false,
-          mode,
-          needsModelInput: false,
-          plan,
-          toolCalls,
-          model: normalizedModel,
-          metrics: this.buildMetrics(toolCalls),
-          interaction: this.buildToolInteraction('blocked', locale),
-          response,
-        };
-        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
-      }
-      plan.push(this.localize(locale, `将输入模型从 ${sourceFormat} 转为 structuremodel-v1`, `Convert the input model from ${sourceFormat} to structuremodel-v1`));
-      const convertInput = {
-        model: modelInput,
-        source_format: sourceFormat,
-        target_format: 'structuremodel-v1',
-        target_schema_version: '1.0.0',
-      };
-      const convertCall = this.startToolCall('convert', convertInput);
-      toolCalls.push(convertCall);
-
-      try {
-        const converted = await this.structureProtocolClient.post('/convert', convertInput);
-        this.completeToolCallSuccess(convertCall, converted.data);
-        normalizedModel = (converted.data?.model ?? {}) as Record<string, unknown>;
-      } catch (error: any) {
-        this.completeToolCallError(convertCall, error);
-        const result: AgentRunResult = {
-          traceId,
-          startedAt,
-          completedAt: new Date().toISOString(),
-          durationMs: Date.now() - startedAtMs,
-          success: false,
-          mode,
-          needsModelInput: false,
-          plan,
-          toolCalls,
-          metrics: this.buildMetrics(toolCalls),
-            interaction: this.buildToolInteraction('blocked', locale),
-            response: this.localize(locale, `模型格式转换失败：${convertCall.error}`, `Model conversion failed: ${convertCall.error}`),
-          };
-        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
-      }
-    }
-
-    let validationWarning: string | undefined;
-
-    if (!this.hasActiveTool(activeToolIds, 'validate_model')) {
-      const response = this.buildDisabledToolMessage('validate_model', locale);
-      const result: AgentRunResult = {
-        traceId,
-        startedAt,
-        completedAt: new Date().toISOString(),
-        durationMs: Date.now() - startedAtMs,
-        success: false,
-        mode,
-        needsModelInput: false,
-        plan,
-        toolCalls,
-        model: normalizedModel,
-        metrics: this.buildMetrics(toolCalls),
-        interaction: this.buildToolInteraction('blocked', locale),
-        response,
-      };
-      return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
-    }
-
-    plan.push(this.localize(locale, '校验模型字段与引用完整性', 'Validate model fields and references'));
-    const validateInput = { model: normalizedModel };
-    const validateCall = this.startToolCall('validate', validateInput);
-    toolCalls.push(validateCall);
-
-    try {
-      const validated = await this.structureProtocolClient.post('/validate', {
-        ...validateInput,
-        engineId: params.context?.engineId,
-      });
-      this.completeToolCallSuccess(validateCall, validated.data);
-      if (validated.data?.valid === false) {
-        validateCall.status = 'error';
-        validateCall.errorCode = validated.data?.errorCode || 'INVALID_STRUCTURE_MODEL';
-        validateCall.error = validated.data?.message || this.localize(locale, '模型校验失败', 'Model validation failed');
-        const result: AgentRunResult = {
-          traceId,
-          startedAt,
-          completedAt: new Date().toISOString(),
-          durationMs: Date.now() - startedAtMs,
-          success: false,
-          mode,
-          needsModelInput: false,
-          plan,
-          toolCalls,
-          model: normalizedModel,
-          metrics: this.buildMetrics(toolCalls),
-          interaction: this.buildToolInteraction('blocked', locale),
-          response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
-        };
-        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
-      }
-    } catch (error: any) {
-      this.completeToolCallError(validateCall, error);
-      if (autoAnalyze && this.shouldBypassValidateFailure(error)) {
-        validationWarning = this.localize(
-          locale,
-          `模型校验服务暂时不可用，已跳过校验并继续分析：${validateCall.error}`,
-          `The model validation service is temporarily unavailable. Validation was skipped and analysis will continue: ${validateCall.error}`,
-        );
-        plan.push(this.localize(locale, '校验服务不可用，跳过校验并继续分析', 'Validation service unavailable; skip validation and continue to analysis'));
-        logger.warn({ traceId, validationError: validateCall.error }, 'Validate call failed with upstream error; continuing to analyze');
-      } else {
-        const result: AgentRunResult = {
-          traceId,
-          startedAt,
-          completedAt: new Date().toISOString(),
-          durationMs: Date.now() - startedAtMs,
-          success: false,
-          mode,
-          needsModelInput: false,
-          plan,
-          toolCalls,
-          model: normalizedModel,
-          metrics: this.buildMetrics(toolCalls),
-          interaction: this.buildToolInteraction('blocked', locale),
-          response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
-        };
-        return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
-      }
+    const preparedExecutionModel = await this.prepareExecutionModel({
+      params,
+      traceId,
+      startedAt,
+      startedAtMs,
+      locale,
+      mode,
+      skillIds,
+      activeToolIds,
+      plan,
+      toolCalls,
+      sessionKey,
+      workingSession,
+      executableModel: executableModel.model,
+      modelInput,
+      sourceFormat,
+      autoAnalyze,
+    });
+    if (!preparedExecutionModel.ok) {
+      return preparedExecutionModel.result;
     }
 
     return this.runExecutionPipeline({
@@ -1030,11 +916,11 @@ export class AgentService {
       toolCalls,
       sessionKey,
       workingSession,
-      normalizedModel,
+      normalizedModel: preparedExecutionModel.value.normalizedModel,
       analysisParameters,
       autoAnalyze,
       executionConfig,
-      validationWarning,
+      validationWarning: preparedExecutionModel.value.validationWarning,
     });
   }
 
@@ -1067,6 +953,271 @@ export class AgentService {
       '当前参数已足够进入执行阶段，可以直接让我开始分析，或继续微调参数。',
       'The current parameters are sufficient to proceed. You can ask me to start the analysis now, or keep refining the inputs.'
     );
+  }
+
+  private async prepareExecutionModel(args: {
+    params: AgentRunParams;
+    traceId: string;
+    startedAt: string;
+    startedAtMs: number;
+    locale: AppLocale;
+    mode: 'rule-based' | 'llm-assisted';
+    skillIds?: string[];
+    activeToolIds?: ActiveToolSet;
+    plan: string[];
+    toolCalls: AgentToolCall[];
+    sessionKey?: string;
+    workingSession: InteractionSession;
+    executableModel: Record<string, unknown>;
+    modelInput?: Record<string, unknown>;
+    sourceFormat: string;
+    autoAnalyze: boolean;
+  }): Promise<
+    | { ok: true; value: PreparedExecutionModel }
+    | { ok: false; result: AgentRunResult }
+  > {
+    const normalized = await this.normalizeExecutionModel(args);
+    if (!normalized.ok) {
+      return normalized;
+    }
+    return this.validateExecutionModel({
+      ...args,
+      normalizedModel: normalized.value.normalizedModel,
+    });
+  }
+
+  private async normalizeExecutionModel(args: {
+    params: AgentRunParams;
+    traceId: string;
+    startedAt: string;
+    startedAtMs: number;
+    locale: AppLocale;
+    mode: 'rule-based' | 'llm-assisted';
+    skillIds?: string[];
+    activeToolIds?: ActiveToolSet;
+    plan: string[];
+    toolCalls: AgentToolCall[];
+    sessionKey?: string;
+    workingSession: InteractionSession;
+    executableModel: Record<string, unknown>;
+    modelInput?: Record<string, unknown>;
+    sourceFormat: string;
+  }): Promise<
+    | { ok: true; value: Pick<PreparedExecutionModel, 'normalizedModel'> }
+    | { ok: false; result: AgentRunResult }
+  > {
+    const {
+      params,
+      traceId,
+      startedAt,
+      startedAtMs,
+      locale,
+      mode,
+      skillIds,
+      activeToolIds,
+      plan,
+      toolCalls,
+      sessionKey,
+      workingSession,
+      executableModel,
+      modelInput,
+      sourceFormat,
+    } = args;
+
+    if (sourceFormat === 'structuremodel-v1') {
+      return { ok: true, value: { normalizedModel: executableModel } };
+    }
+
+    if (!this.hasActiveTool(activeToolIds, 'convert_model')) {
+      const response = this.buildDisabledToolMessage('convert_model', locale);
+      return {
+        ok: false,
+        result: await this.finalizeRunResult(traceId, sessionKey, params.message, {
+          traceId,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          durationMs: Date.now() - startedAtMs,
+          success: false,
+          mode,
+          needsModelInput: false,
+          plan,
+          toolCalls,
+          model: executableModel,
+          metrics: this.buildMetrics(toolCalls),
+          interaction: this.buildToolInteraction('blocked', locale),
+          response,
+        }, skillIds, workingSession),
+      };
+    }
+
+    plan.push(this.localize(locale, `将输入模型从 ${sourceFormat} 转为 structuremodel-v1`, `Convert the input model from ${sourceFormat} to structuremodel-v1`));
+    const convertInput = {
+      model: modelInput,
+      source_format: sourceFormat,
+      target_format: 'structuremodel-v1',
+      target_schema_version: '1.0.0',
+    };
+    const convertCall = this.startToolCall('convert', convertInput);
+    toolCalls.push(convertCall);
+
+    try {
+      const converted = await this.structureProtocolClient.post('/convert', convertInput);
+      this.completeToolCallSuccess(convertCall, converted.data);
+      return {
+        ok: true,
+        value: {
+          normalizedModel: (converted.data?.model ?? {}) as Record<string, unknown>,
+        },
+      };
+    } catch (error: any) {
+      this.completeToolCallError(convertCall, error);
+      return {
+        ok: false,
+        result: await this.finalizeRunResult(traceId, sessionKey, params.message, {
+          traceId,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          durationMs: Date.now() - startedAtMs,
+          success: false,
+          mode,
+          needsModelInput: false,
+          plan,
+          toolCalls,
+          metrics: this.buildMetrics(toolCalls),
+          interaction: this.buildToolInteraction('blocked', locale),
+          response: this.localize(locale, `模型格式转换失败：${convertCall.error}`, `Model conversion failed: ${convertCall.error}`),
+        }, skillIds, workingSession),
+      };
+    }
+  }
+
+  private async validateExecutionModel(args: {
+    params: AgentRunParams;
+    traceId: string;
+    startedAt: string;
+    startedAtMs: number;
+    locale: AppLocale;
+    mode: 'rule-based' | 'llm-assisted';
+    skillIds?: string[];
+    activeToolIds?: ActiveToolSet;
+    plan: string[];
+    toolCalls: AgentToolCall[];
+    sessionKey?: string;
+    workingSession: InteractionSession;
+    normalizedModel: Record<string, unknown>;
+    autoAnalyze: boolean;
+  }): Promise<
+    | { ok: true; value: PreparedExecutionModel }
+    | { ok: false; result: AgentRunResult }
+  > {
+    const {
+      params,
+      traceId,
+      startedAt,
+      startedAtMs,
+      locale,
+      mode,
+      skillIds,
+      activeToolIds,
+      plan,
+      toolCalls,
+      sessionKey,
+      workingSession,
+      normalizedModel,
+      autoAnalyze,
+    } = args;
+
+    if (!this.hasActiveTool(activeToolIds, 'validate_model')) {
+      const response = this.buildDisabledToolMessage('validate_model', locale);
+      return {
+        ok: false,
+        result: await this.finalizeRunResult(traceId, sessionKey, params.message, {
+          traceId,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          durationMs: Date.now() - startedAtMs,
+          success: false,
+          mode,
+          needsModelInput: false,
+          plan,
+          toolCalls,
+          model: normalizedModel,
+          metrics: this.buildMetrics(toolCalls),
+          interaction: this.buildToolInteraction('blocked', locale),
+          response,
+        }, skillIds, workingSession),
+      };
+    }
+
+    plan.push(this.localize(locale, '校验模型字段与引用完整性', 'Validate model fields and references'));
+    const validateInput = { model: normalizedModel };
+    const validateCall = this.startToolCall('validate', validateInput);
+    toolCalls.push(validateCall);
+
+    try {
+      const validated = await this.structureProtocolClient.post('/validate', {
+        ...validateInput,
+        engineId: params.context?.engineId,
+      });
+      this.completeToolCallSuccess(validateCall, validated.data);
+      if (validated.data?.valid === false) {
+        validateCall.status = 'error';
+        validateCall.errorCode = validated.data?.errorCode || 'INVALID_STRUCTURE_MODEL';
+        validateCall.error = validated.data?.message || this.localize(locale, '模型校验失败', 'Model validation failed');
+        return {
+          ok: false,
+          result: await this.finalizeRunResult(traceId, sessionKey, params.message, {
+            traceId,
+            startedAt,
+            completedAt: new Date().toISOString(),
+            durationMs: Date.now() - startedAtMs,
+            success: false,
+            mode,
+            needsModelInput: false,
+            plan,
+            toolCalls,
+            model: normalizedModel,
+            metrics: this.buildMetrics(toolCalls),
+            interaction: this.buildToolInteraction('blocked', locale),
+            response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
+          }, skillIds, workingSession),
+        };
+      }
+      return { ok: true, value: { normalizedModel } };
+    } catch (error: any) {
+      this.completeToolCallError(validateCall, error);
+      if (autoAnalyze && this.shouldBypassValidateFailure(error)) {
+        const validationWarning = this.localize(
+          locale,
+          `模型校验服务暂时不可用，已跳过校验并继续分析：${validateCall.error}`,
+          `The model validation service is temporarily unavailable. Validation was skipped and analysis will continue: ${validateCall.error}`,
+        );
+        plan.push(this.localize(locale, '校验服务不可用，跳过校验并继续分析', 'Validation service unavailable; skip validation and continue to analysis'));
+        logger.warn({ traceId, validationError: validateCall.error }, 'Validate call failed with upstream error; continuing to analyze');
+        return {
+          ok: true,
+          value: { normalizedModel, validationWarning },
+        };
+      }
+      return {
+        ok: false,
+        result: await this.finalizeRunResult(traceId, sessionKey, params.message, {
+          traceId,
+          startedAt,
+          completedAt: new Date().toISOString(),
+          durationMs: Date.now() - startedAtMs,
+          success: false,
+          mode,
+          needsModelInput: false,
+          plan,
+          toolCalls,
+          model: normalizedModel,
+          metrics: this.buildMetrics(toolCalls),
+          interaction: this.buildToolInteraction('blocked', locale),
+          response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
+        }, skillIds, workingSession),
+      };
+    }
   }
 
   private buildChatModeResponse(interaction: AgentInteraction, locale: AppLocale): string {
