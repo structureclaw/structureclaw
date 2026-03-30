@@ -53,35 +53,37 @@ async function validateAgentOrchestration(context) {
   const withDefaultSkills = (svc) => {
     const defaultSkillIds = svc.listSkills().map((skill) => skill.id);
 
-    const originalRun = svc.run.bind(svc);
-    svc.run = async (params, options) => {
+    const applyDefaultSkills = (params) => {
       const currentContext = params?.context || {};
       if (currentContext.skillIds !== undefined) {
-        return originalRun(params, options);
+        return params;
       }
-      return originalRun({
+      return {
         ...params,
         context: {
           ...currentContext,
           skillIds: defaultSkillIds,
         },
-      }, options);
+      };
     };
 
+    const originalRun = svc.run.bind(svc);
+    svc.run = async (params) => originalRun(applyDefaultSkills(params));
+
+    const originalRunConversation = svc.runConversation.bind(svc);
+    svc.runConversation = async (params) => originalRunConversation(applyDefaultSkills(params));
+
+    const originalRunToolCall = svc.runToolCall.bind(svc);
+    svc.runToolCall = async (params) => originalRunToolCall(applyDefaultSkills(params));
+
     const originalRunStream = svc.runStream.bind(svc);
-    svc.runStream = (params) => {
-      const currentContext = params?.context || {};
-      if (currentContext.skillIds !== undefined) {
-        return originalRunStream(params);
-      }
-      return originalRunStream({
-        ...params,
-        context: {
-          ...currentContext,
-          skillIds: defaultSkillIds,
-        },
-      });
-    };
+    svc.runStream = (params) => originalRunStream(applyDefaultSkills(params));
+
+    const originalRunConversationStream = svc.runConversationStream.bind(svc);
+    svc.runConversationStream = (params) => originalRunConversationStream(applyDefaultSkills(params));
+
+    const originalRunToolCallStream = svc.runToolCallStream.bind(svc);
+    svc.runToolCallStream = (params) => originalRunToolCallStream(applyDefaultSkills(params));
 
     return svc;
   };
@@ -171,7 +173,7 @@ async function validateAgentOrchestration(context) {
     assert(result.interaction?.state === "confirming", "auto mode should return clarification interaction");
     assert(result.needsModelInput === true, "auto mode should still require model input");
 
-    const toolResult = await svc.run({ message: "帮我算一下门式刚架"}, { planningOverride: "tool_call" });
+    const toolResult = await svc.runToolCall({ message: "帮我算一下门式刚架" });
     assert(toolResult.success === false, "tool mode should block when model details are missing");
     assert(toolResult.needsModelInput === true, "tool mode should require model input");
     console.log("[ok] agent missing-model clarification");
@@ -187,12 +189,12 @@ async function validateAgentOrchestration(context) {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: "做静力分析",
       context: {
         model: { schema_version: "1.0.0" },
       },
-    }, { planningOverride: "tool_call" });
+    });
     assert(result.success === false, "validate failure should fail");
     assert(result.response.includes("模型校验失败"), "validate failure response should be surfaced");
     assert(result.toolCalls.some((call) => call.tool === "validate" && call.error), "validate error trace should exist");
@@ -203,7 +205,7 @@ async function validateAgentOrchestration(context) {
     const svc = withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: "静力分析这个模型",
       context: {
         model: {
@@ -236,10 +238,10 @@ async function validateAgentOrchestration(context) {
     const events = [];
     let streamTraceId;
     let resultTraceId;
-    for await (const chunk of svc.runStream({
+    for await (const chunk of svc.runToolCallStream({
       message: "stream test",
       context: { model: { schema_version: "1.0.0" } },
-    }, { planningOverride: "tool_call" })) {
+    })) {
       events.push(chunk.type);
       if (chunk.type === "start") {
         streamTraceId = chunk.content.traceId;
@@ -261,14 +263,14 @@ async function validateAgentOrchestration(context) {
     const svc = withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: "请按一个3m悬臂梁，端部10kN竖向荷载做静力分析",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
         includeReport: false,
       },
-    }, { planningOverride: "tool_call" });
+    });
 
     assert(result.success === true, "text draft orchestration should succeed");
     assert(result.toolCalls.some((call) => call.tool === "text-to-model-draft"), "text draft tool should be called");
@@ -281,14 +283,14 @@ async function validateAgentOrchestration(context) {
     const svc = withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
-    const first = await svc.run({
+    const first = await svc.runToolCall({
       conversationId: "conv-clarify-1",
       message: "请帮我算一个门式刚架",
-    }, { planningOverride: "tool_call" });
+    });
     assert(first.success === false, "first turn should request clarification");
     assert(first.needsModelInput === true, "first turn should require model input");
 
-    const second = await svc.run({
+    const second = await svc.runToolCall({
       conversationId: "conv-clarify-1",
       message: "跨度6m，柱高4m，竖向荷载20kN，做静力分析",
       context: {
@@ -296,7 +298,7 @@ async function validateAgentOrchestration(context) {
         autoCodeCheck: false,
         includeReport: false,
       },
-    }, { planningOverride: "tool_call" });
+    });
     assert(second.success === true, "second turn should complete using persisted draft state");
     assert(second.toolCalls.some((call) => call.tool === "text-to-model-draft"), "second turn should still draft model");
     console.log("[ok] conversation-level clarification carry-over");
@@ -305,24 +307,24 @@ async function validateAgentOrchestration(context) {
   {
     const svc = withDefaultSkills(new AgentService());
 
-    const collecting = await svc.run({
+    const collecting = await svc.runConversation({
       conversationId: "conv-conversation-complete-model",
       message: "3m悬臂梁，端部10kN点荷载",
       context: {
         locale: "zh",
       },
-    }, { planningOverride: "conversation" });
+    });
     assert(collecting.success === true, "conversation complete-model turn should succeed");
     assert(collecting.interaction?.state === "ready", `expected ready state, got ${collecting.interaction?.state}`);
     assert(collecting.model && Array.isArray(collecting.model.nodes), "conversation complete-model turn should return synchronized model");
 
-    const incomplete = await svc.run({
+    const incomplete = await svc.runConversation({
       conversationId: "conv-conversation-incomplete-model",
       message: "帮我设计一个梁",
       context: {
         locale: "zh",
       },
-    }, { planningOverride: "conversation" });
+    });
     assert(incomplete.success === true, "incomplete conversation turn should succeed");
     assert(incomplete.interaction?.state !== "ready", "incomplete conversation turn should not be ready");
     assert(incomplete.model === undefined, "incomplete conversation turn should not return synchronized model");
@@ -331,19 +333,19 @@ async function validateAgentOrchestration(context) {
 
   {
     const svc = withDefaultSkills(new AgentService());
-    const first = await svc.run({
+    const first = await svc.runConversation({
       conversationId: "conv-conversation-followup-1",
       message: "先聊需求，我要做一个门式刚架",
-    }, { planningOverride: "conversation" });
+    });
     assert(
       first.interaction?.missingCritical?.includes("门式刚架或双跨每跨跨度（m）"),
       "first conversation turn should ask for portal-frame span",
     );
 
-    const second = await svc.run({
+    const second = await svc.runConversation({
       conversationId: "conv-conversation-followup-1",
       message: "跨度10m",
-    }, { planningOverride: "conversation" });
+    });
     assert(second.success === true, "second conversation turn should still succeed");
     assert(second.interaction?.detectedScenario === "portal-frame", "conversation follow-up should keep portal-frame scenario");
     assert(
@@ -360,16 +362,16 @@ async function validateAgentOrchestration(context) {
   {
     const svc = withDefaultSkills(new AgentService());
 
-    const first = await svc.run({
+    const first = await svc.runConversation({
       conversationId: "conv-conversation-followup-beam-1",
       message: "我想设计一个梁",
-    }, { planningOverride: "conversation" });
+    });
     assert(first.interaction?.missingCritical?.includes("跨度/长度（m）"), "first beam conversation turn should ask for span");
 
-    const second = await svc.run({
+    const second = await svc.runConversation({
       conversationId: "conv-conversation-followup-beam-1",
       message: "跨度10m",
-    }, { planningOverride: "conversation" });
+    });
     assert(second.success === true, "second beam conversation turn should still succeed");
     assert(second.interaction?.detectedScenario === "beam", "beam follow-up should keep beam scenario");
     assert(
@@ -393,10 +395,10 @@ async function validateAgentOrchestration(context) {
       "second beam conversation turn should not require load position before support type is known",
     );
 
-    const third = await svc.run({
+    const third = await svc.runConversation({
       conversationId: "conv-conversation-followup-beam-1",
       message: "简支",
-    }, { planningOverride: "conversation" });
+    });
     assert(third.success === true, "third beam conversation turn should still succeed");
     assert(
       !third.interaction?.missingCritical?.includes("支座/边界条件（悬臂/简支/两端固结/固铰）"),
@@ -421,25 +423,25 @@ async function validateAgentOrchestration(context) {
     const svc = withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
-    const beam = await svc.run({
+    const beam = await svc.runConversation({
       message: "按双跨梁建模，每跨4m，中跨节点施加12kN竖向荷载做静力分析",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
         includeReport: false,
       },
-    }, { planningOverride: "tool_call" });
+    });
     assert(beam.success === true, "double-span beam draft should succeed");
     assert(Array.isArray(beam.model?.elements) && beam.model.elements.length === 2, "double-span beam should have 2 elements");
 
-    const truss = await svc.run({
+    const truss = await svc.runToolCall({
       message: "建立一个平面桁架，长度5m，10kN轴向荷载并计算",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
         includeReport: false,
       },
-    }, { planningOverride: "tool_call" });
+    });
     assert(truss.success === true, "planar truss draft should succeed");
     assert(Array.isArray(truss.model?.elements) && truss.model.elements[0]?.type === "truss", "truss draft should produce truss element");
     console.log("[ok] draft type coverage");
@@ -483,7 +485,7 @@ async function validateAgentOrchestration(context) {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: "请对该模型做静力分析并按GB50017做规范校核并出报告",
       context: {
         model: {
@@ -512,7 +514,7 @@ async function validateAgentOrchestration(context) {
         reportFormat: "both",
         reportOutput: "file",
       },
-    }, { planningOverride: "tool_call" });
+    });
 
     assert(result.success === true, "closed loop should succeed");
     assert(result.toolCalls.some((call) => call.tool === "code-check"), "code-check should be called");
@@ -554,17 +556,17 @@ async function validateAgentNoSkillFallback(context) {
   const AgentService = await importBackendAgentService(context.rootDir);
   const svc = new AgentService();
 
-  const chatResult = await svc.run({
+  const chatResult = await svc.runToolCall({
     conversationId: "conv-no-skill-chat",
     message: "先聊需求，我要算一个门式刚架",
     context: {
       skillIds: [],
       locale: "zh",
     },
-  }, { planningOverride: "conversation" });
+  });
   assert(hasDeterministicOutcome(chatResult), "conversation mode with empty skillIds should return deterministic outcome");
 
-  const toolResult = await svc.run({
+  const toolResult = await svc.runToolCall({
     conversationId: "conv-no-skill-exec",
     message: "按3m悬臂梁端部10kN点荷载做静力分析",
     context: {
@@ -574,7 +576,7 @@ async function validateAgentNoSkillFallback(context) {
       userDecision: "allow_auto_decide",
       locale: "zh",
     },
-  }, { planningOverride: "tool_call" });
+  });
   assert(hasDeterministicOutcome(toolResult), "tool mode with empty skillIds should return deterministic outcome");
 
   const autoResult = await svc.run({
@@ -584,7 +586,7 @@ async function validateAgentNoSkillFallback(context) {
       skillIds: [],
       locale: "zh",
     },
-  }, { planningOverride: "auto" });
+  });
   assert(hasDeterministicOutcome(autoResult), "auto mode with empty skillIds should return deterministic outcome");
 
   console.log("[ok] no-skill fallback contract");
@@ -642,8 +644,8 @@ async function validateAgentApiContract(context) {
   const Fastify = backendRequire(context.rootDir)("fastify");
   const AgentService = await importBackendAgentService(context.rootDir);
   const captured = [];
-  AgentService.prototype.run = async function mockRun(params, options) {
-    captured.push({ ...params, ...(options || {}) });
+  const mockRun = async function mockRun(params) {
+    captured.push(params);
     return {
       traceId: "trace-api-contract",
       startedAt: "2026-03-09T00:00:00.000Z",
@@ -674,6 +676,8 @@ async function validateAgentApiContract(context) {
       },
     };
   };
+  AgentService.prototype.run = mockRun;
+  AgentService.prototype.runToolCall = mockRun;
 
   const { agentRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "agent.js")).href);
   const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
@@ -1230,7 +1234,7 @@ async function validateAgentSkillhubRepositoryDown(context) {
     throw new Error(`unexpected analysis path ${targetPath}`);
   };
 
-  const result = await svc.run({
+  const result = await svc.runToolCall({
     message: "按3m悬臂梁端部10kN点荷载做静力分析",
     context: {
       skillIds: [],
@@ -1252,7 +1256,7 @@ async function validateAgentSkillhubRepositoryDown(context) {
       includeReport: false,
       locale: "zh",
     },
-  }, { planningOverride: "tool_call" });
+  });
 
   assert(result.success === true, "baseline tool invocation should still succeed when repository is down");
   assert(result.toolCalls.some((item) => item.tool === "analyze" && item.status === "success"), "analyze should still run in baseline mode");
@@ -1268,8 +1272,8 @@ async function validateChatStreamContract(context) {
   const AgentService = await importBackendAgentService(context.rootDir);
 
   let capturedTraceId;
-  AgentService.prototype.runStream = async function* mockRunStream(params, options) {
-    const request = { ...params, ...(options || {}) };
+  const mockRunStream = async function* mockRunStream(params) {
+    const request = params;
     capturedTraceId = request.traceId;
     const traceId = "stream-trace-001";
     yield { type: "start", content: { traceId, startedAt: "2026-03-09T00:00:00.000Z" } };
@@ -1290,6 +1294,8 @@ async function validateChatStreamContract(context) {
     };
     yield { type: "done" };
   };
+  AgentService.prototype.runStream = mockRunStream;
+  AgentService.prototype.runToolCallStream = mockRunStream;
 
   const parseSseEvents = (raw) =>
     raw
@@ -1361,8 +1367,8 @@ async function validateChatMessageRouting(context) {
   let chatSendCount = 0;
   const capturedTraceIds = [];
 
-  AgentService.prototype.run = async function mockAgentRun(params, options) {
-    const request = { ...params, ...(options || {}) };
+  const mockAgentRun = async function mockAgentRun(params) {
+    const request = params;
     agentRunCount += 1;
     capturedTraceIds.push(request.traceId);
     return {
@@ -1378,6 +1384,8 @@ async function validateChatMessageRouting(context) {
       response: "tool-ok",
     };
   };
+  AgentService.prototype.run = mockAgentRun;
+  AgentService.prototype.runToolCall = mockAgentRun;
 
   ChatService.prototype.sendMessage = async function mockSendMessage() {
     chatSendCount += 1;
@@ -1546,7 +1554,7 @@ async function validateReportTemplateContract(context) {
     },
   };
 
-  const result = await svc.run({
+  const result = await svc.runToolCall({
     message: "请分析并按规范校核后出报告",
     context: {
       model: {
@@ -1568,7 +1576,7 @@ async function validateReportTemplateContract(context) {
       reportFormat: "both",
       reportOutput: "inline",
     },
-  }, { planningOverride: "tool_call" });
+  });
 
   assert(result.success === true, "run should succeed");
   assert(result.report?.json?.reportSchemaVersion === "1.0.0", "report json should include schema version");

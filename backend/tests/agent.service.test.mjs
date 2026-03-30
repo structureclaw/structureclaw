@@ -8,19 +8,42 @@ function createServiceWithDefaultSkills() {
   const svc = new AgentService();
   const defaultSkillIds = svc.listSkills().map((skill) => skill.id);
 
-  const originalRun = svc.run.bind(svc);
-  svc.run = async (params, options) => {
+  const applyDefaultSkills = (params) => {
     const context = params?.context || {};
     if (context.skillIds !== undefined) {
-      return originalRun(params, options);
+      return params;
     }
-    return originalRun({
+    return {
       ...params,
       context: {
         ...context,
         skillIds: defaultSkillIds,
       },
-    }, options);
+    };
+  };
+
+  const originalRun = svc.run.bind(svc);
+  svc.run = async (params) => originalRun(applyDefaultSkills(params));
+
+  const originalRunConversation = svc.runConversation.bind(svc);
+  svc.runConversation = async (params) => originalRunConversation(applyDefaultSkills(params));
+
+  const originalRunToolCall = svc.runToolCall.bind(svc);
+  svc.runToolCall = async (params) => originalRunToolCall(applyDefaultSkills(params));
+
+  const originalRunStream = svc.runStream.bind(svc);
+  svc.runStream = async function* (params) {
+    yield* originalRunStream(applyDefaultSkills(params));
+  };
+
+  const originalRunConversationStream = svc.runConversationStream.bind(svc);
+  svc.runConversationStream = async function* (params) {
+    yield* originalRunConversationStream(applyDefaultSkills(params));
+  };
+
+  const originalRunToolCallStream = svc.runToolCallStream.bind(svc);
+  svc.runToolCallStream = async function* (params) {
+    yield* originalRunToolCallStream(applyDefaultSkills(params));
   };
 
   const originalTextToModelDraft = svc.textToModelDraft.bind(svc);
@@ -132,7 +155,7 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: '请静力分析并规范校核',
       context: {
         skillIds: [],
@@ -151,7 +174,7 @@ describe('AgentService orchestration', () => {
         includeReport: true,
         reportFormat: 'both',
       },
-    }, { planningOverride: 'tool_call' });
+    });
 
     expect(result.success).toBe(true);
     expect(result.toolCalls.some((c) => c.tool === 'analyze')).toBe(true);
@@ -170,7 +193,7 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: '请静力分析并规范校核',
       context: {
         skillIds: [],
@@ -186,7 +209,7 @@ describe('AgentService orchestration', () => {
         autoAnalyze: true,
         includeReport: false,
       },
-    }, { planningOverride: 'tool_call' });
+    });
 
     expect(result.success).toBe(true);
     expect(result.toolCalls.some((c) => c.tool === 'analyze')).toBe(true);
@@ -203,7 +226,7 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: '请静力分析并规范校核并生成报告',
       context: {
         skillIds: ['code-check-gb50017'],
@@ -221,7 +244,7 @@ describe('AgentService orchestration', () => {
         autoCodeCheck: true,
         includeReport: true,
       },
-    }, { planningOverride: 'tool_call' });
+    });
 
     expect(result.success).toBe(true);
     expect(result.toolCalls.some((c) => c.tool === 'analyze')).toBe(true);
@@ -274,7 +297,7 @@ describe('AgentService orchestration', () => {
       }),
     });
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: '请静力分析并规范校核',
       context: {
         model: {
@@ -291,7 +314,7 @@ describe('AgentService orchestration', () => {
         autoAnalyze: true,
         autoCodeCheck: true,
       },
-    }, { planningOverride: 'tool_call' });
+    });
 
     expect(result.success).toBe(true);
     expect(calls.find((item) => item.client === 'structureProtocol' && item.path === '/validate')?.payload.engineId).toBe('builtin-opensees');
@@ -310,7 +333,7 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: '请静力分析并规范校核',
       context: {
         model: {
@@ -326,7 +349,7 @@ describe('AgentService orchestration', () => {
         autoAnalyze: true,
         autoCodeCheck: true,
       },
-    }, { planningOverride: 'tool_call' });
+    });
 
     expect(result.success).toBe(false);
     const codeCheckCall = result.toolCalls.find((c) => c.tool === 'code-check');
@@ -339,7 +362,7 @@ describe('AgentService orchestration', () => {
     svc.llm = null;
     stubExecutionClients(svc);
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: '请静力分析并规范校核并导出报告',
       context: {
         model: {
@@ -357,7 +380,7 @@ describe('AgentService orchestration', () => {
         reportFormat: 'both',
         reportOutput: 'file',
       },
-    }, { planningOverride: 'tool_call' });
+    });
 
     expect(result.success).toBe(true);
     expect(Array.isArray(result.artifacts)).toBe(true);
@@ -372,13 +395,13 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: 'Analyze a portal frame',
       conversationId: 'conv-en',
       context: {
         locale: 'en',
       },
-    }, { planningOverride: 'tool_call' });
+    });
 
     expect(result.success).toBe(false);
     expect(result.response).toContain('Please confirm the following parameters first');
@@ -405,7 +428,7 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runConversation({
       message: '先聊需求',
       context: {
         locale: 'zh',
@@ -419,7 +442,7 @@ describe('AgentService orchestration', () => {
           loadPosition: 'midspan',
         },
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(result.success).toBe(true);
     expect(result.interaction?.state).toBe('ready');
@@ -433,7 +456,7 @@ describe('AgentService orchestration', () => {
     svc.llm = null;
     svc.tryLlmExtract = async () => ({ inferredType: 'beam' });
 
-    const result = await svc.run({
+    const result = await svc.runConversation({
       conversationId: 'conv-rule-fallback-zh',
       message: '跨度10m',
       context: {
@@ -442,7 +465,7 @@ describe('AgentService orchestration', () => {
           inferredType: 'beam',
         },
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(result.interaction?.detectedScenario).toBe('beam');
     expect(result.interaction?.missingCritical).not.toContain('跨度/长度（m）');
@@ -454,23 +477,23 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runConversation({
       conversationId: 'conv-chat-beam-span-zh',
       message: '我想设计一个梁',
       context: {
         locale: 'zh',
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(first.interaction?.missingCritical).toContain('跨度/长度（m）');
 
-    const second = await svc.run({
+    const second = await svc.runConversation({
       conversationId: 'conv-chat-beam-span-zh',
       message: '跨度10m',
       context: {
         locale: 'zh',
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(second.interaction?.detectedScenario).toBe('beam');
     expect(second.interaction?.missingCritical).not.toContain('跨度/长度（m）');
@@ -482,23 +505,23 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runConversation({
       conversationId: 'conv-chat-span-zh',
       message: '先聊需求，我要做一个门式刚架',
       context: {
         locale: 'zh',
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(first.interaction?.missingCritical).toContain('门式刚架或双跨每跨跨度（m）');
 
-    const second = await svc.run({
+    const second = await svc.runConversation({
       conversationId: 'conv-chat-span-zh',
       message: '跨度10m',
       context: {
         locale: 'zh',
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(second.interaction?.detectedScenario).toBe('portal-frame');
     expect(second.interaction?.missingCritical).not.toContain('门式刚架或双跨每跨跨度（m）');
@@ -511,23 +534,23 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runConversation({
       conversationId: 'conv-chat-span-en',
       message: 'Discuss a portal frame first',
       context: {
         locale: 'en',
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(first.interaction?.missingCritical).toContain('Span length per bay for the portal frame or double-span beam (m)');
 
-    const second = await svc.run({
+    const second = await svc.runConversation({
       conversationId: 'conv-chat-span-en',
       message: 'span 10m',
       context: {
         locale: 'en',
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(second.interaction?.detectedScenario).toBe('portal-frame');
     expect(second.interaction?.missingCritical).not.toContain('Span length per bay for the portal frame or double-span beam (m)');
@@ -542,25 +565,25 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runConversation({
       conversationId: 'conv-chat-load-detail-zh',
       message: '我想设计一个简支梁，跨度10m',
       context: {
         locale: 'zh',
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(first.interaction?.missingCritical).toContain('荷载大小（kN）');
     expect(first.interaction?.missingCritical).toContain('荷载形式（点荷载/均布荷载）');
     expect(first.interaction?.missingCritical).toContain('荷载位置（按当前结构模板）');
 
-    const second = await svc.run({
+    const second = await svc.runConversation({
       conversationId: 'conv-chat-load-detail-zh',
       message: '20kN均布荷载，全跨布置',
       context: {
         locale: 'zh',
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(second.interaction?.detectedScenario).toBe('beam');
     expect(second.interaction?.missingCritical).not.toContain('荷载大小（kN）');
@@ -585,13 +608,13 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runConversation({
       message: '我希望生成一个跨度10m的简支梁，荷载在4m处，一个集中荷载10kN',
       context: {
         locale: 'zh',
         skillIds: [],
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(result.success).toBe(true);
     expect(result.needsModelInput).toBe(true);
@@ -604,13 +627,13 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runConversation({
       message: '门式刚架，跨度10m，10kN集中荷载在4m处',
       context: {
         locale: 'zh',
         skillIds: [],
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(result.success).toBe(true);
     expect(result.needsModelInput).toBe(true);
@@ -773,7 +796,7 @@ describe('AgentService orchestration', () => {
     const conversationId = 'conv-no-skill-provided-values-sanitize';
     await svc.clearConversationSession(conversationId);
 
-    await svc.run({
+    await svc.runConversation({
       message: '继续',
       conversationId,
       context: {
@@ -792,7 +815,7 @@ describe('AgentService orchestration', () => {
           loadPositionM: 3,
         },
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     const snapshot = await svc.getConversationSessionSnapshot(conversationId, 'zh', []);
 
@@ -816,7 +839,7 @@ describe('AgentService orchestration', () => {
     const conversationId = 'conv-switch-skill-to-no-skill';
     await svc.clearConversationSession(conversationId);
 
-    await svc.run({
+    await svc.runConversation({
       message: '先按框架场景保存会话',
       conversationId,
       context: {
@@ -831,16 +854,16 @@ describe('AgentService orchestration', () => {
           lengthM: 12,
         },
       },
-    }, { planningOverride: 'conversation' });
+    });
 
-    const switched = await svc.run({
+    const switched = await svc.runConversation({
       message: '切到通用模式继续',
       conversationId,
       context: {
         locale: 'zh',
         skillIds: [],
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(switched.interaction?.detectedScenario).toBeUndefined();
     expect(switched.interaction?.detectedScenarioLabel).toBeUndefined();
@@ -921,7 +944,7 @@ describe('AgentService orchestration', () => {
     svc.llm = null;
     stubExecutionClients(svc);
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: '按3m悬臂梁端部10kN点荷载做静力分析',
       context: {
         locale: 'zh',
@@ -945,7 +968,7 @@ describe('AgentService orchestration', () => {
         autoCodeCheck: false,
         includeReport: false,
       },
-    }, { planningOverride: 'tool_call' });
+    });
 
     expect(result.success).toBe(true);
     expect(result.toolCalls.some((item) => item.tool === 'analyze' && item.status === 'success')).toBe(true);
@@ -955,7 +978,7 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: '按3m悬臂梁端部10kN点荷载做静力分析',
       context: {
         locale: 'zh',
@@ -964,7 +987,7 @@ describe('AgentService orchestration', () => {
         autoCodeCheck: false,
         includeReport: false,
       },
-    }, { planningOverride: 'tool_call' });
+    });
 
     expect(result.success).toBe(false);
     expect(result.needsModelInput).toBe(true);
@@ -982,7 +1005,7 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: '请自动校核并生成报告',
       context: {
         locale: 'zh',
@@ -1008,7 +1031,7 @@ describe('AgentService orchestration', () => {
         includeReport: true,
         reportFormat: 'both',
       },
-    }, { planningOverride: 'tool_call' });
+    });
 
     expect(result.success).toBe(true);
     expect(result.toolCalls.find((call) => call.tool === 'validate')?.status).toBe('error');
@@ -1042,7 +1065,7 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: '请做静力分析',
       context: {
         locale: 'zh',
@@ -1059,7 +1082,7 @@ describe('AgentService orchestration', () => {
         autoCodeCheck: false,
         includeReport: false,
       },
-    }, { planningOverride: 'tool_call' });
+    });
 
     expect(result.success).toBe(true);
     expect(analyzeAttempts).toBe(2);
@@ -1079,7 +1102,7 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: '请做静力分析',
       context: {
         locale: 'zh',
@@ -1096,7 +1119,7 @@ describe('AgentService orchestration', () => {
         autoCodeCheck: false,
         includeReport: false,
       },
-    }, { planningOverride: 'tool_call' });
+    });
 
     expect(result.success).toBe(false);
     expect(analyzeAttempts).toBe(3);
@@ -1108,7 +1131,7 @@ describe('AgentService orchestration', () => {
     svc.llm = null;
     stubExecutionClients(svc);
 
-    const result = await svc.run({
+    const result = await svc.runToolCall({
       message: 'Run a static analysis and code check',
       context: {
         locale: 'en',
@@ -1127,7 +1150,7 @@ describe('AgentService orchestration', () => {
         includeReport: true,
         reportFormat: 'both',
       },
-    }, { planningOverride: 'tool_call' });
+    });
 
     expect(result.success).toBe(true);
     expect(result.response).toContain('Analysis finished.');
@@ -1145,7 +1168,7 @@ describe('AgentService orchestration', () => {
       context: {
         locale: 'en',
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(result.success).toBe(true);
     expect(result.interaction?.detectedScenario).toBe('steel-frame');
@@ -1160,12 +1183,12 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runConversation({
       message: '请帮我分析一个桥梁模型，跨度 30m',
       context: {
         locale: 'zh',
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(result.success).toBe(true);
     expect(result.interaction?.detectedScenario).not.toBe('beam');
@@ -1235,19 +1258,19 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runConversation({
       conversationId: 'conv-frame-generic-horizontal-3d',
       message: '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN',
       context: { locale: 'zh' },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(first.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
 
-    const second = await svc.run({
+    const second = await svc.runConversation({
       conversationId: 'conv-frame-generic-horizontal-3d',
       message: '水平方向荷载都是18kN',
       context: { locale: 'zh' },
-    }, { planningOverride: 'conversation' });
+    });
 
     const loads = second.model?.load_cases?.[0]?.loads ?? [];
     expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
@@ -1470,20 +1493,20 @@ describe('AgentService orchestration', () => {
       },
     };
 
-    const first = await svc.run({
+    const first = await svc.runConversation({
       conversationId: 'conv-frame-upgrade-3d',
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
       context: { locale: 'zh' },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(first.interaction?.detectedScenario).toBe('frame');
     expect(first.model?.metadata?.inferredType).toBe('frame');
 
-    const second = await svc.run({
+    const second = await svc.runConversation({
       conversationId: 'conv-frame-upgrade-3d',
       message: '每层竖向荷载120kN，x、y向水平荷载都是500kN',
       context: { locale: 'zh' },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(second.interaction?.detectedScenario).toBe('frame');
     expect(second.interaction?.missingCritical).toContain('X向跨数');
@@ -1495,29 +1518,29 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runConversation({
       conversationId: 'conv-frame-natural-followup',
       message: '我想设计一个三层框架，x方向4跨，间隔3m，y方向3跨间隔也是3m',
       context: { locale: 'zh' },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(first.interaction?.missingCritical).toContain('各层层高（m）');
     expect(first.interaction?.missingCritical).toContain('各层节点荷载（kN）');
 
-    const second = await svc.run({
+    const second = await svc.runConversation({
       conversationId: 'conv-frame-natural-followup',
       message: '每层3m',
       context: { locale: 'zh' },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(second.interaction?.missingCritical).not.toContain('各层层高（m）');
     expect(second.interaction?.missingCritical).toContain('各层节点荷载（kN）');
 
-    const third = await svc.run({
+    const third = await svc.runConversation({
       conversationId: 'conv-frame-natural-followup',
       message: '各层竖向荷载都是1000kN，横向荷载都是500kN',
       context: { locale: 'zh' },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(third.interaction?.missingCritical).not.toContain('各层层高（m）');
     expect(third.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
@@ -1528,21 +1551,21 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runConversation({
       conversationId: 'conv-frame-merge-2d-loads',
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN',
       context: { locale: 'zh' },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(first.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
     expect(first.model?.load_cases?.[0]?.loads).toHaveLength(6);
     expect(first.model?.load_cases?.[0]?.loads.every((load) => typeof load.fy === 'number' && load.fx === undefined)).toBe(true);
 
-    const second = await svc.run({
+    const second = await svc.runConversation({
       conversationId: 'conv-frame-merge-2d-loads',
       message: '每层水平荷载30kN',
       context: { locale: 'zh' },
-    }, { planningOverride: 'conversation' });
+    });
 
     const loads = second.model?.load_cases?.[0]?.loads ?? [];
     expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
@@ -1555,21 +1578,21 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runConversation({
       conversationId: 'conv-frame-merge-3d-loads',
       message: '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN，x向水平荷载18kN',
       context: { locale: 'zh' },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(first.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
     expect(first.model?.load_cases?.[0]?.loads).toHaveLength(12);
     expect(first.model?.load_cases?.[0]?.loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number' && load.fz === undefined)).toBe(true);
 
-    const second = await svc.run({
+    const second = await svc.runConversation({
       conversationId: 'conv-frame-merge-3d-loads',
       message: 'y向水平荷载12kN',
       context: { locale: 'zh' },
-    }, { planningOverride: 'conversation' });
+    });
 
     const loads = second.model?.load_cases?.[0]?.loads ?? [];
     expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
@@ -1583,11 +1606,11 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    await svc.run({
+    await svc.runConversation({
       conversationId: 'conv-session-snapshot',
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
       context: { locale: 'zh' },
-    }, { planningOverride: 'conversation' });
+    });
 
     const snapshot = await svc.getConversationSessionSnapshot('conv-session-snapshot', 'zh');
 
@@ -1612,11 +1635,11 @@ describe('AgentService orchestration', () => {
     };
 
     try {
-      await svc.run({
+      await svc.runConversation({
         conversationId: 'conv-persist-history',
         message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
         context: { locale: 'zh' },
-      }, { planningOverride: 'conversation' });
+      });
     } finally {
       prisma.conversation.findUnique = originalFindUnique;
       prisma.message.createMany = originalCreateMany;
@@ -1633,12 +1656,12 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runConversation({
       message: '请先聊一个框架',
       context: {
         locale: 'zh',
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(result.success).toBe(true);
     expect(result.interaction?.detectedScenario).toBe('frame');
@@ -1651,12 +1674,12 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runConversation({
       message: 'Portal frame, each span 6 m and column height 4 m',
       context: {
         locale: 'en',
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(result.success).toBe(true);
     expect(result.interaction?.detectedScenario).toBe('portal-frame');
@@ -1670,12 +1693,12 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const collecting = await svc.run({
+    const collecting = await svc.runConversation({
       message: '简支梁，跨度6m，20kN跨中点荷载',
       context: {
         locale: 'zh',
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(collecting.success).toBe(true);
     expect(collecting.interaction?.state).toBe('ready');
@@ -1683,12 +1706,12 @@ describe('AgentService orchestration', () => {
     expect(collecting.model?.schema_version).toBe('1.0.0');
     expect(Array.isArray(collecting.model?.nodes)).toBe(true);
 
-    const incomplete = await svc.run({
+    const incomplete = await svc.runConversation({
       message: '我想设计一个梁',
       context: {
         locale: 'zh',
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(incomplete.success).toBe(true);
     expect(incomplete.interaction?.state).toBe('confirming');
@@ -1699,12 +1722,12 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const collecting = await svc.run({
+    const collecting = await svc.runConversation({
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
       context: {
         locale: 'zh',
       },
-    }, { planningOverride: 'conversation' });
+    });
 
     expect(collecting.success).toBe(true);
     expect(collecting.interaction?.detectedScenario).toBe('frame');
