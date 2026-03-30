@@ -213,6 +213,7 @@ export interface AgentRunInput {
   message: string;
   conversationId?: string;
   traceId?: string;
+  userId?: string;
   context?: {
     locale?: AppLocale;
     skillIds?: string[];
@@ -267,6 +268,7 @@ export interface AgentToolCall {
 
 export interface AgentRunResult {
   traceId: string;
+  conversationId?: string;
   startedAt: string;
   completedAt: string;
   durationMs: number;
@@ -887,14 +889,16 @@ export class AgentService {
   }
 
   private async runWithDirective(input: AgentRunInput, planningDirective: AgentPlanningDirective): Promise<AgentRunResult> {
+    const preparedInput = await this.ensureConversationRecord(input);
     const traceId = input.traceId || randomUUID();
-    return this.runInternal(input, traceId, planningDirective);
+    return this.runInternal(preparedInput, traceId, planningDirective);
   }
 
   private async *runStreamWithDirective(
     input: AgentRunInput,
     planningDirective: AgentPlanningDirective,
   ): AsyncGenerator<AgentStreamChunk> {
+    const preparedInput = await this.ensureConversationRecord(input);
     const traceId = randomUUID();
     const startedAt = new Date().toISOString();
     try {
@@ -902,12 +906,12 @@ export class AgentService {
         type: 'start',
         content: {
           traceId,
-          conversationId: input.conversationId,
+          conversationId: preparedInput.conversationId,
           startedAt,
         },
       };
 
-      const result = await this.runInternal({ ...input, traceId }, traceId, planningDirective);
+      const result = await this.runInternal({ ...preparedInput, traceId }, traceId, planningDirective);
       if (result.interaction && result.interaction.state !== 'completed') {
         yield {
           type: 'interaction_update',
@@ -3384,10 +3388,37 @@ export class AgentService {
     skillIds?: string[],
     session?: InteractionSession,
   ): Promise<AgentRunResult> {
+    result.conversationId = conversationId;
     result.routing = this.buildResolvedRouting(result, skillIds, session);
     await this.persistConversationMessages(conversationId, userMessage, result, skillIds);
     this.logRunResult(traceId, conversationId, result);
     return result;
+  }
+
+  private async ensureConversationRecord(input: AgentRunInput): Promise<AgentRunInput> {
+    const conversationId = input.conversationId?.trim();
+    if (conversationId) {
+      return {
+        ...input,
+        conversationId,
+      };
+    }
+
+    const conversation = await prisma.conversation.create({
+      data: {
+        title: input.message.slice(0, 50),
+        type: 'general',
+        userId: input.userId,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    return {
+      ...input,
+      conversationId: conversation.id,
+    };
   }
 
   private buildResolvedRouting(

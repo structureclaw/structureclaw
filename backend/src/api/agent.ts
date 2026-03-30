@@ -176,7 +176,10 @@ export async function agentRoutes(fastify: FastifyInstance) {
     },
   }, async (request: FastifyRequest<{ Body: z.infer<typeof agentRunSchema> }>, reply: FastifyReply) => {
     const body = agentRunSchema.parse(request.body);
-    const result = await agentService.run(body);
+    const result = await agentService.run({
+      ...body,
+      userId: request.user?.id,
+    });
     return reply.send(result);
   });
 }

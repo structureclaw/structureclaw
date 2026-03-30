@@ -1270,18 +1270,18 @@ async function validateChatStreamContract(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
   const AgentService = await importBackendAgentService(context.rootDir);
-  const { ChatService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "chat.js")).href);
 
   let capturedTraceId;
   const mockRunStream = async function* mockRunStream(params) {
     const request = params;
     capturedTraceId = request.traceId;
     const traceId = "stream-trace-001";
-    yield { type: "start", content: { traceId, startedAt: "2026-03-09T00:00:00.000Z" } };
+    yield { type: "start", content: { traceId, conversationId: "conv-stream-001", startedAt: "2026-03-09T00:00:00.000Z" } };
     yield {
       type: "result",
       content: {
         traceId,
+        conversationId: "conv-stream-001",
         startedAt: "2026-03-09T00:00:00.000Z",
         completedAt: "2026-03-09T00:00:00.008Z",
         durationMs: 8,
@@ -1297,9 +1297,6 @@ async function validateChatStreamContract(context) {
   };
   AgentService.prototype.runStream = mockRunStream;
   AgentService.prototype.runToolCallStream = mockRunStream;
-  ChatService.prototype.createConversation = async function mockCreateConversation() {
-    return { id: "conv-stream-001" };
-  };
 
   const parseSseEvents = (raw) =>
     raw
@@ -1365,7 +1362,6 @@ async function validateChatMessageRouting(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
   const AgentService = await importBackendAgentService(context.rootDir);
-  const { ChatService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "chat.js")).href);
 
   let agentRunCount = 0;
   let agentToolRunCount = 0;
@@ -1380,6 +1376,7 @@ async function validateChatMessageRouting(context) {
     capturedRunMessages.push(request.message);
     return {
       traceId: "trace-route-001",
+      conversationId: "conv-route-001",
       startedAt: "2026-03-09T00:00:00.000Z",
       completedAt: "2026-03-09T00:00:00.006Z",
       durationMs: 6,
@@ -1397,6 +1394,7 @@ async function validateChatMessageRouting(context) {
     capturedToolTraceIds.push(request.traceId);
     return {
       traceId: "trace-route-001",
+      conversationId: "conv-route-001",
       startedAt: "2026-03-09T00:00:00.000Z",
       completedAt: "2026-03-09T00:00:00.006Z",
       durationMs: 6,
@@ -1410,11 +1408,6 @@ async function validateChatMessageRouting(context) {
   };
   AgentService.prototype.run = mockAgentRun;
   AgentService.prototype.runToolCall = mockAgentToolRun;
-  ChatService.prototype.createConversation = async function mockCreateConversation() {
-    return {
-      id: "conv-route-001",
-    };
-  };
 
   const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
   const app = Fastify();

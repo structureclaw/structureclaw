@@ -167,27 +167,6 @@ async function persistLatestConversationResult(params: {
   }
 }
 
-async function ensureConversationId(params: {
-  conversationId?: string;
-  message: string;
-  userId?: string;
-  locale?: 'en' | 'zh';
-}): Promise<string> {
-  const conversationId = params.conversationId?.trim();
-  if (conversationId) {
-    return conversationId;
-  }
-
-  const conversation = await chatService.createConversation({
-    title: params.message.slice(0, 50),
-    type: 'general',
-    userId: params.userId,
-    locale: params.locale,
-  });
-
-  return conversation.id;
-}
-
 export async function chatRoutes(fastify: FastifyInstance) {
   // 发送消息
   fastify.post('/message', {
@@ -209,27 +188,16 @@ export async function chatRoutes(fastify: FastifyInstance) {
     try {
       const body = sendMessageSchema.parse(request.body);
       const userId = request.user?.id;
-      const conversationId = await ensureConversationId({
-        conversationId: body.conversationId,
-        message: body.message,
-        userId,
-        locale: body.context?.locale,
-      });
       const result = await agentService.run({
         ...body,
-        conversationId,
+        userId,
       });
       await persistLatestConversationResult({
-        conversationId,
+        conversationId: result.conversationId,
         userId,
         latestResult: result,
       });
-      return reply.send({
-        result: {
-          ...result,
-          conversationId,
-        },
-      });
+      return reply.send({ result });
     } catch (error) {
       const mappedError = toLlmApiError(error);
       if (isLlmTimeoutError(error)) {
@@ -370,12 +338,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest<{ Body: z.infer<typeof streamMessageSchema> }>, reply: FastifyReply) => {
     const body = streamMessageSchema.parse(request.body);
     const userId = request.user?.id;
-    let streamConversationId = await ensureConversationId({
-      conversationId: body.conversationId,
-      message: body.message,
-      userId,
-      locale: body.context?.locale,
-    });
+    let streamConversationId = body.conversationId;
 
     reply.hijack();
     setSseCorsHeaders(request, reply);
@@ -388,7 +351,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     try {
       const stream = agentService.runStream({
         ...body,
-        conversationId: streamConversationId,
+        userId,
       });
 
       for await (const chunk of stream) {
@@ -431,22 +394,16 @@ export async function chatRoutes(fastify: FastifyInstance) {
   const toolCallHandler = async (request: FastifyRequest<{ Body: z.infer<typeof toolCallSchema> }>, reply: FastifyReply) => {
     const body = toolCallSchema.parse(request.body);
     const userId = request.user?.id;
-    const conversationId = await ensureConversationId({
-      conversationId: body.conversationId,
-      message: body.message,
-      userId,
-      locale: body.context?.locale,
-    });
     const result = await agentService.runToolCall({
       ...body,
-      conversationId,
+      userId,
     });
     await persistLatestConversationResult({
-      conversationId,
+      conversationId: result.conversationId,
       userId,
       latestResult: result,
     });
-    return reply.send({ ...result, conversationId });
+    return reply.send(result);
   };
 
   fastify.post('/tool-call', {
