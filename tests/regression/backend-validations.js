@@ -592,6 +592,103 @@ async function validateAgentNoSkillFallback(context) {
   console.log("[ok] no-skill fallback contract");
 }
 
+async function validateAgentCapabilityModes(context) {
+  await runBackendBuildOnce(context);
+  clearProviderEnv();
+
+  const AgentService = await importBackendAgentService(context.rootDir);
+  const svc = new AgentService();
+  const defaultSkillIds = svc.listSkills().map((skill) => skill.id);
+
+  svc.structureProtocolClient = {
+    post: async (targetPath, payload) => {
+      if (targetPath === "/validate") {
+        return { data: { valid: true, schemaVersion: "1.0.0" } };
+      }
+      if (targetPath === "/convert") {
+        return { data: { model: payload?.model ?? {} } };
+      }
+      throw new Error(`unexpected structure protocol path ${targetPath}`);
+    },
+  };
+  svc.engineClient.post = async (targetPath, payload) => {
+    if (targetPath === "/analyze") {
+      return {
+        data: {
+          schema_version: "1.0.0",
+          analysis_type: payload.type,
+          success: true,
+          error_code: null,
+          message: "ok",
+          data: {},
+          meta: {},
+        },
+      };
+    }
+    throw new Error(`unexpected analysis path ${targetPath}`);
+  };
+  svc.codeCheckClient = {
+    post: async (targetPath, payload) => {
+      if (targetPath === "/code-check") {
+        return {
+          data: {
+            code: payload.code,
+            status: "success",
+            summary: { total: payload.elements.length, passed: payload.elements.length, failed: 0, warnings: 0 },
+            details: [],
+          },
+        };
+      }
+      throw new Error(`unexpected code-check path ${targetPath}`);
+    },
+  };
+
+  const baseChat = await svc.runConversation({
+    conversationId: "conv-capability-base-chat",
+    message: "先聊一下需求",
+    context: {
+      locale: "zh",
+      skillIds: [],
+      disabledToolIds: ["draft_model", "run_analysis", "validate_model", "convert_model", "run_code_check", "generate_report"],
+    },
+  });
+  assert(baseChat.success === true, "base chat should succeed");
+  assert(!baseChat.interaction, "base chat should not return engineering interaction payload");
+  assert(Array.isArray(baseChat.toolCalls) && baseChat.toolCalls.length === 0, "base chat should not invoke tools");
+
+  const skilledChat = await svc.runConversation({
+    conversationId: "conv-capability-skilled-chat",
+    message: "我想设计一个门式刚架",
+    context: {
+      locale: "zh",
+      skillIds: defaultSkillIds,
+      disabledToolIds: ["run_analysis", "validate_model", "convert_model", "run_code_check", "generate_report"],
+    },
+  });
+  assert(skilledChat.success === true, "skilled chat should succeed");
+  assert(skilledChat.interaction?.detectedScenario === "portal-frame", "skilled chat should keep structural interaction guidance");
+  assert(!skilledChat.toolCalls.some((call) => call.tool === "analyze"), "skilled chat should not execute analyze");
+  assert(!skilledChat.toolCalls.some((call) => call.tool === "code-check"), "skilled chat should not execute code-check");
+  assert(!skilledChat.toolCalls.some((call) => call.tool === "report"), "skilled chat should not execute report");
+
+  const fullAgent = await svc.runToolCall({
+    conversationId: "conv-capability-full-agent",
+    message: "请按3m悬臂梁端部10kN点荷载做静力分析",
+    context: {
+      locale: "zh",
+      skillIds: defaultSkillIds,
+      userDecision: "allow_auto_decide",
+      autoCodeCheck: false,
+      includeReport: false,
+    },
+  });
+  assert(fullAgent.success === true, "full agent should succeed");
+  assert(fullAgent.toolCalls.some((call) => call.tool === "analyze"), "full agent should execute analyze");
+  assert(fullAgent.model && typeof fullAgent.model === "object", "full agent should return model artifact");
+
+  console.log("[ok] capability-mode contract");
+}
+
 async function validateAgentToolsContract(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
@@ -1692,6 +1789,7 @@ async function validateDevStartupGuards(context) {
 const BACKEND_VALIDATIONS = {
   "validate-agent-orchestration": validateAgentOrchestration,
   "validate-agent-no-skill-fallback": validateAgentNoSkillFallback,
+  "validate-agent-capability-modes": validateAgentCapabilityModes,
   "validate-agent-tools-contract": validateAgentToolsContract,
   "validate-agent-api-contract": validateAgentApiContract,
   "validate-agent-capability-matrix": validateAgentCapabilityMatrix,

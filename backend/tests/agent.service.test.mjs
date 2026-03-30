@@ -662,6 +662,50 @@ describe('AgentService orchestration', () => {
     expect(result.response).toContain('普通对话');
   });
 
+  test('should behave like skilled-chat when skills are enabled but execution tools are disabled', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const result = await svc.runConversation({
+      conversationId: 'conv-skilled-chat-shape',
+      message: '我想设计一个门式刚架',
+      context: {
+        locale: 'zh',
+        disabledToolIds: ['run_analysis', 'validate_model', 'convert_model', 'run_code_check', 'generate_report'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.interaction?.detectedScenario).toBe('portal-frame');
+    expect(result.interaction?.state).not.toBe('completed');
+    expect(result.response.length).toBeGreaterThan(0);
+    expect(result.toolCalls.some((call) => call.tool === 'analyze')).toBe(false);
+    expect(result.toolCalls.some((call) => call.tool === 'code-check')).toBe(false);
+    expect(result.toolCalls.some((call) => call.tool === 'report')).toBe(false);
+  });
+
+  test('should behave like a full agent when skills and execution tools are available', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+    stubExecutionClients(svc);
+
+    const result = await svc.runToolCall({
+      conversationId: 'conv-full-agent-shape',
+      message: '请按3m悬臂梁端部10kN点荷载做静力分析',
+      context: {
+        locale: 'zh',
+        userDecision: 'allow_auto_decide',
+        autoCodeCheck: false,
+        includeReport: false,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls.some((call) => call.tool === 'analyze')).toBe(true);
+    expect(result.model).toBeTruthy();
+    expect(result.response.length).toBeGreaterThan(0);
+  });
+
   test('should keep inferredType unknown in no-skill mode even when llm extraction suggests template type', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
