@@ -437,23 +437,32 @@ export class AgentService {
     hasModel: boolean;
     session?: InteractionSession;
     activeToolIds?: ActiveToolSet;
+    allowedKinds?: AgentPlanKind[];
   }): Promise<AgentNextStepPlan> {
     if (!this.llm) {
       throw new Error('LLM_PLANNER_UNAVAILABLE');
     }
 
     const snapshot = await this.buildPlannerContextSnapshot(options);
+    const allowedKinds = Array.isArray(options.allowedKinds) && options.allowedKinds.length > 0
+      ? options.allowedKinds
+      : ['reply', 'ask', 'tool_call'];
+    const allowToolCall = allowedKinds.includes('tool_call');
     const prompt = [
       'You are the planning layer for StructureClaw.',
       'Decide the single best next step for the latest user message.',
       'Available skills and tools constrain what can be invoked, but they do not force invocation.',
       'If the user is greeting, chatting casually, or asking a non-execution question, choose reply.',
-      'Do not choose tool_call just because drafting or analysis tools are available.',
+      allowToolCall
+        ? 'Do not choose tool_call just because drafting or analysis tools are available.'
+        : 'Tool invocation is not allowed in this planning mode. Choose only reply or ask.',
       'Choose ask when the user is pursuing an engineering task but key information is still missing.',
-      'Choose tool_call only when the user is clearly asking to execute or continue execution now.',
+      allowToolCall
+        ? 'Choose tool_call only when the user is clearly asking to execute or continue execution now.'
+        : 'Choose ask when more engineering details are needed before the next turn can proceed.',
       'Use replyMode=structured only when a structural model already exists or the engineering draft is already ready and the best next step is to explain/summarize rather than ask or execute.',
       'Return strict JSON only with this schema:',
-      '{"kind":"reply|ask|tool_call","replyMode":"plain|structured|null","reason":"short reason"}',
+      `{"kind":"${allowedKinds.join('|')}","replyMode":"plain|structured|null","reason":"short reason"}`,
       `Locale: ${options.locale}`,
       `User message: ${message}`,
       `Planner context: ${JSON.stringify(snapshot)}`,
@@ -469,14 +478,15 @@ export class AgentService {
         throw new Error('LLM_PLANNER_INVALID_RESPONSE');
       }
       const parsed = JSON.parse(jsonText) as { kind?: unknown; replyMode?: unknown; reason?: unknown };
-      if (parsed.kind !== 'reply' && parsed.kind !== 'ask' && parsed.kind !== 'tool_call') {
+      if (typeof parsed.kind !== 'string' || !allowedKinds.includes(parsed.kind as AgentPlanKind)) {
         throw new Error('LLM_PLANNER_INVALID_RESPONSE');
       }
+      const kind = parsed.kind as AgentPlanKind;
       const replyMode = parsed.kind === 'reply'
         ? (parsed.replyMode === 'structured' ? 'structured' : 'plain')
         : undefined;
       return {
-        kind: parsed.kind,
+        kind,
         replyMode,
         planningDirective: 'auto',
         rationale: 'llm',
@@ -495,6 +505,20 @@ export class AgentService {
     activeToolIds?: ActiveToolSet;
   }): Promise<AgentNextStepPlan> {
     if (options.planningDirective === 'force_interactive') {
+      if (this.llm) {
+        return {
+          ...(await this.planNextStepWithLlm(message, {
+            locale: options.locale,
+            skillIds: options.skillIds,
+            hasModel: options.hasModel,
+            session: options.session,
+            activeToolIds: options.activeToolIds,
+            allowedKinds: ['reply', 'ask'],
+          })),
+          planningDirective: options.planningDirective,
+        };
+      }
+
       const snapshot = await this.buildPlannerContextSnapshot(options);
       return {
         kind: await this.resolveInteractivePlanKind(options),

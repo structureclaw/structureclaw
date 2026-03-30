@@ -408,7 +408,15 @@ describe('AgentService orchestration', () => {
 
   test('should not prefer tool invocation when run_analysis is disabled for auto routing', async () => {
     const svc = createServiceWithDefaultSkills();
-    svc.llm = null;
+    svc.llm = {
+      invoke: async () => ({
+        content: JSON.stringify({
+          kind: 'reply',
+          replyMode: 'structured',
+          reason: 'analysis tool unavailable',
+        }),
+      }),
+    };
 
     const shouldInvoke = await svc.shouldPreferToolInvocation('请开始分析这个模型', {
       locale: 'zh',
@@ -680,6 +688,40 @@ describe('AgentService orchestration', () => {
     const result = await svc.run({
       message: '你好',
       conversationId: 'conv-casual-opensees-static',
+      context: {
+        locale: 'zh',
+        skillIds: ['opensees-static'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls).toEqual([]);
+    expect(result.model).toBeUndefined();
+    expect(result.interaction).toBeUndefined();
+    expect(result.response).toContain('你好');
+  });
+
+  test('should let interactive routing reply directly to casual chat without drafting', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          return {
+            content: JSON.stringify({
+              kind: 'reply',
+              replyMode: 'plain',
+              reason: 'casual greeting in interactive mode',
+            }),
+          };
+        }
+        return { content: '你好，我在。' };
+      },
+    };
+
+    const result = await svc.runInteractive({
+      message: '你好',
+      conversationId: 'conv-interactive-casual-opensees-static',
       context: {
         locale: 'zh',
         skillIds: ['opensees-static'],
@@ -1571,6 +1613,15 @@ describe('AgentService orchestration', () => {
     svc.llm = {
       invoke: async (prompt) => {
         const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          return {
+            content: JSON.stringify({
+              kind: 'ask',
+              replyMode: null,
+              reason: 'collect structured frame details',
+            }),
+          };
+        }
         if (text.includes('每层竖向荷载120kN，水平荷载30kN')) {
           return {
             content: JSON.stringify({
