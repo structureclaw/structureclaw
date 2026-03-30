@@ -567,17 +567,17 @@ export class AgentService {
   private buildDisabledToolMessage(toolId: string, locale: AppLocale): string {
     switch (toolId) {
       case 'draft_model':
-        return this.localize(locale, '当前能力集中未启用建模 tool，无法从对话直接生成结构模型。', 'The current capability set does not enable the model-drafting tool, so a structural model cannot be generated directly from conversation.');
+        return this.localize(locale, '当前能力集中未启用 `draft_model`，无法从对话直接生成结构模型。', 'The current capability set does not enable `draft_model`, so a structural model cannot be generated directly from conversation.');
       case 'convert_model':
-        return this.localize(locale, '当前能力集中未启用模型转换 tool。', 'The current capability set does not enable the model-conversion tool.');
+        return this.localize(locale, '当前能力集中未启用 `convert_model`。', 'The current capability set does not enable `convert_model`.');
       case 'validate_model':
-        return this.localize(locale, '当前能力集中未启用模型校验 tool。', 'The current capability set does not enable the model-validation tool.');
+        return this.localize(locale, '当前能力集中未启用 `validate_model`。', 'The current capability set does not enable `validate_model`.');
       case 'run_analysis':
-        return this.localize(locale, '当前能力集中未启用分析 tool。', 'The current capability set does not enable the analysis tool.');
+        return this.localize(locale, '当前能力集中未启用 `run_analysis`。', 'The current capability set does not enable `run_analysis`.');
       case 'run_code_check':
-        return this.localize(locale, '当前能力集中未启用规范校核 tool。', 'The current capability set does not enable the code-check tool.');
+        return this.localize(locale, '当前能力集中未启用 `run_code_check`。', 'The current capability set does not enable `run_code_check`.');
       case 'generate_report':
-        return this.localize(locale, '当前能力集中未启用报告生成 tool。', 'The current capability set does not enable the report-generation tool.');
+        return this.localize(locale, '当前能力集中未启用 `generate_report`。', 'The current capability set does not enable `generate_report`.');
       default:
         return this.localize(locale, '当前能力集中未启用所需 tool。', 'The current capability set does not enable the required tool.');
     }
@@ -1309,11 +1309,11 @@ export class AgentService {
       if (autoAnalyze && this.shouldBypassValidateFailure(error)) {
         const validationWarning = this.localize(
           locale,
-          `模型校验服务暂时不可用，已跳过校验并继续分析：${validateCall.error}`,
-          `The model validation service is temporarily unavailable. Validation was skipped and analysis will continue: ${validateCall.error}`,
+          `模型校验服务暂时不可用，已跳过 \`validate_model\` 并继续执行 \`run_analysis\`：${validateCall.error}`,
+          `The model validation service is temporarily unavailable. \`validate_model\` was skipped and \`run_analysis\` will continue: ${validateCall.error}`,
         );
-        plan.push(this.localize(locale, '校验服务不可用，跳过校验并继续分析', 'Validation service unavailable; skip validation and continue to analysis'));
-        logger.warn({ traceId, validationError: validateCall.error }, 'Validate call failed with upstream error; continuing to analyze');
+        plan.push(this.localize(locale, '校验服务不可用，跳过 `validate_model` 并继续执行 `run_analysis`', 'Validation service unavailable; skip `validate_model` and continue with `run_analysis`'));
+        logger.warn({ traceId, validationError: validateCall.error }, '`validate_model` failed with an upstream error; continuing with `run_analysis`');
         return {
           ok: true,
           value: { normalizedModel, validationWarning },
@@ -2279,8 +2279,8 @@ export class AgentService {
         )
         : this.localize(
           locale,
-          '可以继续补充更细的建模参数，或启用分析 tool 后再执行。',
-          'You can keep refining modeling parameters, or enable the analysis tool before execution.',
+          '可以继续补充更细的建模参数，或启用 `run_analysis` 后再执行。',
+          'You can keep refining modeling parameters, or enable `run_analysis` before execution.',
         ),
     };
 
@@ -2759,7 +2759,7 @@ export class AgentService {
     if (typeof values.analysisType === 'string') {
       session.resolved.analysisType = normalizePolicyAnalysisType(this.policy, values.analysisType);
     }
-    // Keep the raw designCode as a compatibility bridge for legacy callers and custom-code-check flows.
+    // Keep the raw designCode as a compatibility bridge for existing callers and custom run_code_check flows.
     if (typeof values.designCode === 'string' && values.designCode.trim()) {
       session.resolved.designCode = values.designCode.trim().toUpperCase();
     }

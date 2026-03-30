@@ -15,6 +15,7 @@ function titleize(value: string): string {
 export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
   {
     id: 'draft_model',
+    // Compatibility bridge for the legacy local runtime action name.
     runtimeName: 'text-to-model-draft',
     aliases: ['text-to-model-draft'],
     source: 'builtin',
@@ -45,6 +46,7 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
   },
   {
     id: 'convert_model',
+    // Compatibility bridge for the legacy local runtime action name.
     runtimeName: 'convert',
     aliases: ['convert'],
     source: 'builtin',
@@ -77,6 +79,7 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
   },
   {
     id: 'validate_model',
+    // Compatibility bridge for the legacy local runtime action name.
     runtimeName: 'validate',
     aliases: ['validate'],
     source: 'builtin',
@@ -104,6 +107,7 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
   },
   {
     id: 'run_analysis',
+    // Compatibility bridge for the legacy local runtime action name.
     runtimeName: 'analyze',
     aliases: ['analyze'],
     source: 'builtin',
@@ -137,6 +141,7 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
   },
   {
     id: 'run_code_check',
+    // Compatibility bridge for the legacy local runtime action name.
     runtimeName: 'code-check',
     aliases: ['code-check'],
     source: 'builtin',
@@ -161,13 +166,14 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
   },
   {
     id: 'generate_report',
+    // Compatibility bridge for the legacy local runtime action name.
     runtimeName: 'report',
     aliases: ['report'],
     source: 'builtin',
     enabledByDefault: false,
     category: 'report',
     displayName: localize('生成报告', 'Generate Report'),
-    description: localize('将模型、分析与校核结果汇总为可读报告。', 'Assemble inputs, analysis, and code-check outputs into a readable report.'),
+    description: localize('将模型、分析与规范校核结果汇总为可读报告。', 'Assemble inputs, analysis, and run_code_check outputs into a readable report.'),
     tags: ['report', 'artifact'],
     inputSchema: {
       type: 'object',
