@@ -255,6 +255,8 @@ Agent 只能在“当前启用 skill 集 + 当前启用 tool 集”内做决策�
   skill 域、manifest、handler、draft state 与 runtime 类型
 - [backend/src/agent-runtime/index.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/agent-runtime/index.ts)
   skill runtime 协调，以及以 `structure-type` 为入口的 draft 处理
+- [backend/src/services/conversation.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/services/conversation.ts)
+  会话 CRUD 与 snapshot 持久化
 - [backend/src/services/agent.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/services/agent.ts)
   agent 编排与当前 tool 执行链
 - [backend/src/api/chat.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/api/chat.ts)
@@ -331,4 +333,3 @@ Agent 只能在“当前启用 skill 集 + 当前启用 tool 集”内做决策�
 - 14 类 skill 体系保持稳定
 - `structure-type` 能可靠引导后续工程流程
 - skill 与 tool 都是模块化且可配置的
-

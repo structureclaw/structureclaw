@@ -254,6 +254,8 @@ Primary files and responsibilities:
   skill domains, manifests, handlers, draft state, runtime types
 - [backend/src/agent-runtime/index.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/agent-runtime/index.ts)
   skill runtime coordination and structure-type-led draft handling
+- [backend/src/services/conversation.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/services/conversation.ts)
+  conversation CRUD and snapshot persistence
 - [backend/src/services/agent.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/services/agent.ts)
   agent orchestration and current tool execution chain
 - [backend/src/api/chat.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/api/chat.ts)
@@ -327,4 +329,3 @@ After the refactor:
 - the 14-skill taxonomy remains stable
 - `structure-type` reliably guides downstream engineering behavior
 - skills and tools become modular and configurable
-

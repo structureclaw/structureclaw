@@ -7,7 +7,7 @@
 ## 2. Agent 执行契约
 
 - 入口：`POST /api/v1/agent/run`
-- 当前内部运行模式：`conversation`、`tool`、`auto`
+- 当前内部编排已切换为能力驱动，planner 结果收敛为 `reply`、`ask` 和 `tool_call`
 - 执行链路：`text-to-model-draft -> convert -> validate -> analyze -> code-check -> report`
 
 架构方向：

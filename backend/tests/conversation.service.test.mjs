@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, test } from '@jest/globals';
-import { ConversationService } from '../dist/services/chat.js';
+import { ConversationService } from '../dist/services/conversation.js';
 import { prisma } from '../dist/utils/database.js';
 
 describe('ConversationService locale handling', () => {

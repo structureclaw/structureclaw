@@ -7,7 +7,7 @@ Protocol and contract quick reference for API integration, troubleshooting, and 
 ## 2. Agent Run Contract
 
 - Endpoint: `POST /api/v1/agent/run`
-- Current internal run modes: `conversation`, `tool`, `auto`
+- Current orchestration is capability-driven; planner outcomes converge on `reply`, `ask`, and `tool_call`
 - Execution chain: `text-to-model-draft -> convert -> validate -> analyze -> code-check -> report`
 
 Architecture direction:
