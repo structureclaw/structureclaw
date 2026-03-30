@@ -116,6 +116,13 @@ const streamMessageSchema = z.object({
   }).optional(),
 });
 
+type ChatAgentMode = z.infer<typeof agentModeSchema>;
+type SendMessageBody = z.infer<typeof sendMessageSchema>;
+type StreamMessageBody = z.infer<typeof streamMessageSchema>;
+type ToolCallBody = z.infer<typeof toolCallSchema>;
+type ChatRequestBody = SendMessageBody | StreamMessageBody;
+type ChatRequestedStep = 'conversation' | 'tool_call';
+
 function setSseCorsHeaders(request: FastifyRequest, reply: FastifyReply) {
   const origin = request.headers.origin;
 
@@ -166,6 +173,55 @@ async function persistLatestConversationResult(params: {
   }
 }
 
+async function resolveRequestedStep(body: ChatRequestBody): Promise<ChatRequestedStep> {
+  const mode = body.mode || 'auto';
+  if (mode === 'conversation') {
+    return 'conversation';
+  }
+  if (mode === 'tool') {
+    return 'tool_call';
+  }
+
+  const shouldInvokeTool = await agentService.shouldPreferToolInvocation(body.message, {
+    locale: body.context?.locale,
+    conversationId: body.conversationId,
+    skillIds: body.context?.skillIds,
+    enabledToolIds: body.context?.enabledToolIds,
+    disabledToolIds: body.context?.disabledToolIds,
+    hasModel: Boolean(body.context?.model),
+  });
+  return shouldInvokeTool ? 'tool_call' : 'conversation';
+}
+
+function buildAgentRunPayload(body: ChatRequestBody | ToolCallBody, mode: Exclude<ChatAgentMode, 'auto'>) {
+  return {
+    message: body.message,
+    mode,
+    conversationId: body.conversationId,
+    traceId: body.traceId,
+    context: {
+      locale: body.context?.locale,
+      skillIds: body.context?.skillIds,
+      enabledToolIds: body.context?.enabledToolIds,
+      disabledToolIds: body.context?.disabledToolIds,
+      engineId: body.context?.engineId,
+      model: body.context?.model,
+      modelFormat: body.context?.modelFormat,
+      analysisType: body.context?.analysisType,
+      parameters: body.context?.parameters,
+      autoAnalyze: body.context?.autoAnalyze,
+      autoCodeCheck: body.context?.autoCodeCheck,
+      designCode: body.context?.designCode,
+      codeCheckElements: body.context?.codeCheckElements,
+      includeReport: body.context?.includeReport,
+      reportFormat: body.context?.reportFormat,
+      reportOutput: body.context?.reportOutput,
+      userDecision: body.context?.userDecision,
+      providedValues: body.context?.providedValues,
+    },
+  };
+}
+
 export async function chatRoutes(fastify: FastifyInstance) {
   // 发送消息
   fastify.post('/message', {
@@ -187,45 +243,10 @@ export async function chatRoutes(fastify: FastifyInstance) {
     try {
       const body = sendMessageSchema.parse(request.body);
       const userId = request.user?.id;
-      const mode = body.mode || 'auto';
+      const requestedStep = await resolveRequestedStep(body);
 
-      const shouldInvokeTool = mode === 'tool'
-        || (mode === 'auto' && await agentService.shouldPreferToolInvocation(body.message, {
-          locale: body.context?.locale,
-          conversationId: body.conversationId,
-          skillIds: body.context?.skillIds,
-          enabledToolIds: body.context?.enabledToolIds,
-          disabledToolIds: body.context?.disabledToolIds,
-          hasModel: Boolean(body.context?.model),
-        }));
-
-      if (shouldInvokeTool) {
-        const result = await agentService.run({
-          message: body.message,
-          mode: 'tool',
-          conversationId: body.conversationId,
-          traceId: body.traceId,
-          context: {
-            locale: body.context?.locale,
-            skillIds: body.context?.skillIds,
-            enabledToolIds: body.context?.enabledToolIds,
-            disabledToolIds: body.context?.disabledToolIds,
-            engineId: body.context?.engineId,
-            model: body.context?.model,
-            modelFormat: body.context?.modelFormat,
-            analysisType: body.context?.analysisType,
-            parameters: body.context?.parameters,
-            autoAnalyze: body.context?.autoAnalyze,
-            autoCodeCheck: body.context?.autoCodeCheck,
-            designCode: body.context?.designCode,
-            codeCheckElements: body.context?.codeCheckElements,
-            includeReport: body.context?.includeReport,
-            reportFormat: body.context?.reportFormat,
-            reportOutput: body.context?.reportOutput,
-            userDecision: body.context?.userDecision,
-            providedValues: body.context?.providedValues,
-          },
-        });
+      if (requestedStep === 'tool_call') {
+        const result = await agentService.run(buildAgentRunPayload(body, 'tool'));
         await persistLatestConversationResult({
           conversationId: body.conversationId,
           userId,
@@ -237,33 +258,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
         });
       }
 
-      if (mode === 'conversation') {
-        const result = await agentService.run({
-          message: body.message,
-          mode: 'conversation',
-          conversationId: body.conversationId,
-          traceId: body.traceId,
-          context: {
-            locale: body.context?.locale,
-            skillIds: body.context?.skillIds,
-            enabledToolIds: body.context?.enabledToolIds,
-            disabledToolIds: body.context?.disabledToolIds,
-            engineId: body.context?.engineId,
-            model: body.context?.model,
-            modelFormat: body.context?.modelFormat,
-            analysisType: body.context?.analysisType,
-            parameters: body.context?.parameters,
-            autoAnalyze: body.context?.autoAnalyze,
-            autoCodeCheck: body.context?.autoCodeCheck,
-            designCode: body.context?.designCode,
-            codeCheckElements: body.context?.codeCheckElements,
-            includeReport: body.context?.includeReport,
-            reportFormat: body.context?.reportFormat,
-            reportOutput: body.context?.reportOutput,
-            userDecision: body.context?.userDecision,
-            providedValues: body.context?.providedValues,
-          },
-        });
+      if (body.mode === 'conversation') {
+        const result = await agentService.run(buildAgentRunPayload(body, 'conversation'));
         await persistLatestConversationResult({
           conversationId: body.conversationId,
           userId,
@@ -426,7 +422,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest<{ Body: z.infer<typeof streamMessageSchema> }>, reply: FastifyReply) => {
     const body = streamMessageSchema.parse(request.body);
     const userId = request.user?.id;
-    const mode = body.mode || 'auto';
     let streamConversationId = body.conversationId;
 
     reply.hijack();
@@ -437,44 +432,11 @@ export async function chatRoutes(fastify: FastifyInstance) {
     reply.raw.setHeader('X-Accel-Buffering', 'no');
     reply.raw.flushHeaders?.();
 
-    const shouldInvokeTool = mode === 'tool'
-      || (mode === 'auto' && await agentService.shouldPreferToolInvocation(body.message, {
-        locale: body.context?.locale,
-        conversationId: body.conversationId,
-        skillIds: body.context?.skillIds,
-        enabledToolIds: body.context?.enabledToolIds,
-        disabledToolIds: body.context?.disabledToolIds,
-        hasModel: Boolean(body.context?.model),
-      }));
+    const requestedStep = await resolveRequestedStep(body);
 
     try {
-      if (shouldInvokeTool) {
-        const stream = agentService.runStream({
-          message: body.message,
-          mode: 'tool',
-          conversationId: body.conversationId,
-          traceId: body.traceId,
-          context: {
-            locale: body.context?.locale,
-            skillIds: body.context?.skillIds,
-            enabledToolIds: body.context?.enabledToolIds,
-            disabledToolIds: body.context?.disabledToolIds,
-            engineId: body.context?.engineId,
-            model: body.context?.model,
-            modelFormat: body.context?.modelFormat,
-            analysisType: body.context?.analysisType,
-            parameters: body.context?.parameters,
-            autoAnalyze: body.context?.autoAnalyze,
-            autoCodeCheck: body.context?.autoCodeCheck,
-            designCode: body.context?.designCode,
-            codeCheckElements: body.context?.codeCheckElements,
-            includeReport: body.context?.includeReport,
-            reportFormat: body.context?.reportFormat,
-            reportOutput: body.context?.reportOutput,
-            userDecision: body.context?.userDecision,
-            providedValues: body.context?.providedValues,
-          },
-        });
+      if (requestedStep === 'tool_call') {
+        const stream = agentService.runStream(buildAgentRunPayload(body, 'tool'));
 
         for await (const chunk of stream) {
           if (
@@ -503,33 +465,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
         return;
       }
 
-      if (mode === 'conversation') {
-        const stream = agentService.runStream({
-          message: body.message,
-          mode: 'conversation',
-          conversationId: body.conversationId,
-          traceId: body.traceId,
-          context: {
-            locale: body.context?.locale,
-            skillIds: body.context?.skillIds,
-            enabledToolIds: body.context?.enabledToolIds,
-            disabledToolIds: body.context?.disabledToolIds,
-            engineId: body.context?.engineId,
-            model: body.context?.model,
-            modelFormat: body.context?.modelFormat,
-            analysisType: body.context?.analysisType,
-            parameters: body.context?.parameters,
-            autoAnalyze: body.context?.autoAnalyze,
-            autoCodeCheck: body.context?.autoCodeCheck,
-            designCode: body.context?.designCode,
-            codeCheckElements: body.context?.codeCheckElements,
-            includeReport: body.context?.includeReport,
-            reportFormat: body.context?.reportFormat,
-            reportOutput: body.context?.reportOutput,
-            userDecision: body.context?.userDecision,
-            providedValues: body.context?.providedValues,
-          },
-        });
+      if (body.mode === 'conversation') {
+        const stream = agentService.runStream(buildAgentRunPayload(body, 'conversation'));
 
         for await (const chunk of stream) {
           if (
