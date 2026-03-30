@@ -30,7 +30,6 @@
 ```json
 {
   "message": "执行静力分析并生成报告",
-  "mode": "auto",
   "context": {
     "modelFormat": "structuremodel-v1",
     "model": {

@@ -171,7 +171,7 @@ async function validateAgentOrchestration(context) {
     assert(result.interaction?.state === "confirming", "auto mode should return clarification interaction");
     assert(result.needsModelInput === true, "auto mode should still require model input");
 
-    const toolResult = await svc.run({ message: "帮我算一下门式刚架", mode: "tool" });
+    const toolResult = await svc.run({ message: "帮我算一下门式刚架", requestedStep: "tool_call" });
     assert(toolResult.success === false, "tool mode should block when model details are missing");
     assert(toolResult.needsModelInput === true, "tool mode should require model input");
     console.log("[ok] agent missing-model clarification");
@@ -189,7 +189,7 @@ async function validateAgentOrchestration(context) {
 
     const result = await svc.run({
       message: "做静力分析",
-      mode: "tool",
+      requestedStep: "tool_call",
       context: {
         model: { schema_version: "1.0.0" },
       },
@@ -239,7 +239,7 @@ async function validateAgentOrchestration(context) {
     let resultTraceId;
     for await (const chunk of svc.runStream({
       message: "stream test",
-      mode: "tool",
+      requestedStep: "tool_call",
       context: { model: { schema_version: "1.0.0" } },
     })) {
       events.push(chunk.type);
@@ -265,7 +265,7 @@ async function validateAgentOrchestration(context) {
 
     const result = await svc.run({
       message: "请按一个3m悬臂梁，端部10kN竖向荷载做静力分析",
-      mode: "tool",
+      requestedStep: "tool_call",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
@@ -287,7 +287,7 @@ async function validateAgentOrchestration(context) {
     const first = await svc.run({
       conversationId: "conv-clarify-1",
       message: "请帮我算一个门式刚架",
-      mode: "tool",
+      requestedStep: "tool_call",
     });
     assert(first.success === false, "first turn should request clarification");
     assert(first.needsModelInput === true, "first turn should require model input");
@@ -295,7 +295,7 @@ async function validateAgentOrchestration(context) {
     const second = await svc.run({
       conversationId: "conv-clarify-1",
       message: "跨度6m，柱高4m，竖向荷载20kN，做静力分析",
-      mode: "tool",
+      requestedStep: "tool_call",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
@@ -313,7 +313,7 @@ async function validateAgentOrchestration(context) {
     const collecting = await svc.run({
       conversationId: "conv-conversation-complete-model",
       message: "3m悬臂梁，端部10kN点荷载",
-      mode: "conversation",
+      requestedStep: "conversation",
       context: {
         locale: "zh",
       },
@@ -325,7 +325,7 @@ async function validateAgentOrchestration(context) {
     const incomplete = await svc.run({
       conversationId: "conv-conversation-incomplete-model",
       message: "帮我设计一个梁",
-      mode: "conversation",
+      requestedStep: "conversation",
       context: {
         locale: "zh",
       },
@@ -341,7 +341,7 @@ async function validateAgentOrchestration(context) {
     const first = await svc.run({
       conversationId: "conv-conversation-followup-1",
       message: "先聊需求，我要做一个门式刚架",
-      mode: "conversation",
+      requestedStep: "conversation",
     });
     assert(
       first.interaction?.missingCritical?.includes("门式刚架或双跨每跨跨度（m）"),
@@ -351,7 +351,7 @@ async function validateAgentOrchestration(context) {
     const second = await svc.run({
       conversationId: "conv-conversation-followup-1",
       message: "跨度10m",
-      mode: "conversation",
+      requestedStep: "conversation",
     });
     assert(second.success === true, "second conversation turn should still succeed");
     assert(second.interaction?.detectedScenario === "portal-frame", "conversation follow-up should keep portal-frame scenario");
@@ -372,14 +372,14 @@ async function validateAgentOrchestration(context) {
     const first = await svc.run({
       conversationId: "conv-conversation-followup-beam-1",
       message: "我想设计一个梁",
-      mode: "conversation",
+      requestedStep: "conversation",
     });
     assert(first.interaction?.missingCritical?.includes("跨度/长度（m）"), "first beam conversation turn should ask for span");
 
     const second = await svc.run({
       conversationId: "conv-conversation-followup-beam-1",
       message: "跨度10m",
-      mode: "conversation",
+      requestedStep: "conversation",
     });
     assert(second.success === true, "second beam conversation turn should still succeed");
     assert(second.interaction?.detectedScenario === "beam", "beam follow-up should keep beam scenario");
@@ -407,7 +407,7 @@ async function validateAgentOrchestration(context) {
     const third = await svc.run({
       conversationId: "conv-conversation-followup-beam-1",
       message: "简支",
-      mode: "conversation",
+      requestedStep: "conversation",
     });
     assert(third.success === true, "third beam conversation turn should still succeed");
     assert(
@@ -435,7 +435,7 @@ async function validateAgentOrchestration(context) {
 
     const beam = await svc.run({
       message: "按双跨梁建模，每跨4m，中跨节点施加12kN竖向荷载做静力分析",
-      mode: "tool",
+      requestedStep: "tool_call",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
@@ -447,7 +447,7 @@ async function validateAgentOrchestration(context) {
 
     const truss = await svc.run({
       message: "建立一个平面桁架，长度5m，10kN轴向荷载并计算",
-      mode: "tool",
+      requestedStep: "tool_call",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
@@ -499,7 +499,7 @@ async function validateAgentOrchestration(context) {
 
     const result = await svc.run({
       message: "请对该模型做静力分析并按GB50017做规范校核并出报告",
-      mode: "tool",
+      requestedStep: "tool_call",
       context: {
         model: {
           schema_version: "1.0.0",
@@ -572,7 +572,7 @@ async function validateAgentNoSkillFallback(context) {
   const chatResult = await svc.run({
     conversationId: "conv-no-skill-chat",
     message: "先聊需求，我要算一个门式刚架",
-    mode: "conversation",
+    requestedStep: "conversation",
     context: {
       skillIds: [],
       locale: "zh",
@@ -583,7 +583,7 @@ async function validateAgentNoSkillFallback(context) {
   const toolResult = await svc.run({
     conversationId: "conv-no-skill-exec",
     message: "按3m悬臂梁端部10kN点荷载做静力分析",
-    mode: "tool",
+    requestedStep: "tool_call",
     context: {
       skillIds: [],
       autoCodeCheck: false,
@@ -597,7 +597,7 @@ async function validateAgentNoSkillFallback(context) {
   const autoResult = await svc.run({
     conversationId: "conv-no-skill-auto",
     message: "帮我做一个规则框架静力分析",
-    mode: "auto",
+    requestedStep: "auto",
     context: {
       skillIds: [],
       locale: "zh",
@@ -668,7 +668,7 @@ async function validateAgentApiContract(context) {
       completedAt: "2026-03-09T00:00:00.012Z",
       durationMs: 12,
       success: true,
-      mode: "rule-based",
+      orchestrationMode: "rule-based",
       needsModelInput: false,
       plan: ["validate", "analyze", "report"],
       toolCalls: [
@@ -1250,7 +1250,7 @@ async function validateAgentSkillhubRepositoryDown(context) {
 
   const result = await svc.run({
     message: "按3m悬臂梁端部10kN点荷载做静力分析",
-    mode: "tool",
+    requestedStep: "tool_call",
     context: {
       skillIds: [],
       model: {
@@ -1290,7 +1290,7 @@ async function validateChatStreamContract(context) {
   AgentService.prototype.runStream = async function* mockRunStream(params) {
     capturedTraceId = params.traceId;
     const traceId = "stream-trace-001";
-    yield { type: "start", content: { traceId, mode: "tool", startedAt: "2026-03-09T00:00:00.000Z" } };
+    yield { type: "start", content: { traceId, startedAt: "2026-03-09T00:00:00.000Z" } };
     yield {
       type: "result",
       content: {
@@ -1299,7 +1299,7 @@ async function validateChatStreamContract(context) {
         completedAt: "2026-03-09T00:00:00.008Z",
         durationMs: 8,
         success: true,
-        mode: "rule-based",
+        orchestrationMode: "rule-based",
         needsModelInput: false,
         plan: ["validate", "analyze", "report"],
         toolCalls: [],
@@ -1388,7 +1388,7 @@ async function validateChatMessageRouting(context) {
       completedAt: "2026-03-09T00:00:00.006Z",
       durationMs: 6,
       success: true,
-      mode: "rule-based",
+      orchestrationMode: "rule-based",
       needsModelInput: false,
       plan: ["validate", "analyze"],
       toolCalls: [],
@@ -1565,7 +1565,7 @@ async function validateReportTemplateContract(context) {
 
   const result = await svc.run({
     message: "请分析并按规范校核后出报告",
-    mode: "tool",
+    requestedStep: "tool_call",
     context: {
       model: {
         schema_version: "1.0.0",

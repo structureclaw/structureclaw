@@ -30,7 +30,6 @@ Minimal request example:
 ```json
 {
   "message": "Run static analysis and generate report",
-  "mode": "auto",
   "context": {
     "modelFormat": "structuremodel-v1",
     "model": {
