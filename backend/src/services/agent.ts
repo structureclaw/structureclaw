@@ -123,7 +123,7 @@ interface ResolvedExecutionConfig {
 }
 
 interface ExecutionPipelineArgs {
-  params: AgentRunRequest;
+  params: AgentRunInput;
   traceId: string;
   startedAt: string;
   startedAtMs: number;
@@ -144,7 +144,6 @@ interface ExecutionPipelineArgs {
 
 interface PreparedRunContext {
   locale: AppLocale;
-  planningDirective: AgentPlanningDirective;
   orchestrationMode: AgentOrchestrationMode;
   modelInput?: Record<string, unknown>;
   sourceFormat: string;
@@ -235,12 +234,6 @@ export interface AgentRunInput {
     providedValues?: Record<string, unknown>;
   };
 }
-
-interface AgentRunOptions {
-  planningDirective?: AgentPlanningDirective;
-}
-
-interface AgentRunRequest extends AgentRunInput, AgentRunOptions {}
 
 export interface AgentToolSpec {
   id: string;
@@ -458,9 +451,8 @@ export class AgentService {
     return { nextStep, directive: options.planningDirective, source: 'policy' };
   }
 
-  private async prepareRunContext(params: AgentRunRequest): Promise<PreparedRunContext> {
+  private async prepareRunContext(params: AgentRunInput): Promise<PreparedRunContext> {
     const locale = this.resolveInteractionLocale(params.context?.locale);
-    const planningDirective = params.planningDirective ?? 'auto';
     const skillIds = params.context?.skillIds;
     const noSkillMode = this.isNoSkillMode(skillIds);
     const activeToolIds = await this.resolveActiveToolIds(skillIds, {
@@ -491,7 +483,6 @@ export class AgentService {
 
     return {
       locale,
-      planningDirective,
       orchestrationMode: this.llm ? 'llm-assisted' : 'rule-based',
       modelInput: params.context?.model,
       sourceFormat: params.context?.modelFormat || 'structuremodel-v1',
@@ -564,7 +555,7 @@ export class AgentService {
   }
 
   private async finalizeBlockedRunResult(args: {
-    params: AgentRunRequest;
+    params: AgentRunInput;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -869,16 +860,14 @@ export class AgentService {
   }
 
   private async runWithDirective(input: AgentRunInput, planningDirective: AgentPlanningDirective): Promise<AgentRunResult> {
-    const params: AgentRunRequest = { ...input, planningDirective };
-    const traceId = params.traceId || randomUUID();
-    return this.runInternal(params, traceId);
+    const traceId = input.traceId || randomUUID();
+    return this.runInternal(input, traceId, planningDirective);
   }
 
   private async *runStreamWithDirective(
     input: AgentRunInput,
     planningDirective: AgentPlanningDirective,
   ): AsyncGenerator<AgentStreamChunk> {
-    const params: AgentRunRequest = { ...input, planningDirective };
     const traceId = randomUUID();
     const startedAt = new Date().toISOString();
     try {
@@ -886,12 +875,12 @@ export class AgentService {
         type: 'start',
         content: {
           traceId,
-          conversationId: params.conversationId,
+          conversationId: input.conversationId,
           startedAt,
         },
       };
 
-      const result = await this.runInternal({ ...params, traceId }, traceId);
+      const result = await this.runInternal({ ...input, traceId }, traceId, planningDirective);
       if (result.interaction && result.interaction.state !== 'completed') {
         yield {
           type: 'interaction_update',
@@ -911,13 +900,16 @@ export class AgentService {
     }
   }
 
-  private async runInternal(params: AgentRunRequest, traceId: string): Promise<AgentRunResult> {
+  private async runInternal(
+    params: AgentRunInput,
+    traceId: string,
+    planningDirective: AgentPlanningDirective,
+  ): Promise<AgentRunResult> {
     const startedAtMs = Date.now();
     const startedAt = new Date(startedAtMs).toISOString();
     const prepared = await this.prepareRunContext(params);
     const {
       locale,
-      planningDirective,
       orchestrationMode,
       modelInput,
       sourceFormat,
@@ -1052,7 +1044,7 @@ export class AgentService {
   }
 
   private async prepareExecutionModel(args: {
-    params: AgentRunRequest;
+    params: AgentRunInput;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -1083,7 +1075,7 @@ export class AgentService {
   }
 
   private async normalizeExecutionModel(args: {
-    params: AgentRunRequest;
+    params: AgentRunInput;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -1188,7 +1180,7 @@ export class AgentService {
   }
 
   private async validateExecutionModel(args: {
-    params: AgentRunRequest;
+    params: AgentRunInput;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -1365,7 +1357,7 @@ export class AgentService {
   }
 
   private async handleConversationMode(args: {
-    params: AgentRunRequest;
+    params: AgentRunInput;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -1439,7 +1431,7 @@ export class AgentService {
 
   private resolveExecutionConfig(
     workingSession: InteractionSession,
-    params: AgentRunRequest,
+    params: AgentRunInput,
     skillIds?: string[],
   ): ResolvedExecutionConfig {
     const codeFromSkills = resolveCodeCheckDesignCodeFromSkillIds(skillIds);
@@ -1456,7 +1448,7 @@ export class AgentService {
   }
 
   private async ensureExecutableModel(args: {
-    params: AgentRunRequest;
+    params: AgentRunInput;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -1976,7 +1968,7 @@ export class AgentService {
   }
 
   private async draftConversationState(args: {
-    params: AgentRunRequest;
+    params: AgentRunInput;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -2035,7 +2027,7 @@ export class AgentService {
   }
 
   private async buildGenericConversationResult(args: {
-    params: AgentRunRequest;
+    params: AgentRunInput;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -2231,7 +2223,7 @@ export class AgentService {
   }
 
   private async buildStructuredConversationResult(args: {
-    params: AgentRunRequest;
+    params: AgentRunInput;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -2363,7 +2355,7 @@ export class AgentService {
     session.updatedAt = Date.now();
   }
 
-  private applyResolvedConfigFromContext(session: InteractionSession, context: AgentRunRequest['context'] | undefined): void {
+  private applyResolvedConfigFromContext(session: InteractionSession, context: AgentRunInput['context'] | undefined): void {
     if (!context) {
       return;
     }
