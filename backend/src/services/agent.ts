@@ -237,7 +237,7 @@ export interface AgentRunInput {
 }
 
 interface AgentRunOptions {
-  planningOverride?: AgentNextStep | 'auto';
+  planningDirective?: AgentPlanningDirective;
 }
 
 interface AgentRunRequest extends AgentRunInput, AgentRunOptions {}
@@ -458,19 +458,9 @@ export class AgentService {
     return { nextStep, directive: options.planningDirective, source: 'policy' };
   }
 
-  private normalizePlanningDirective(planningOverride: AgentNextStep | 'auto' | string | undefined): AgentPlanningDirective {
-    if (planningOverride === 'conversation') {
-      return 'force_conversation';
-    }
-    if (planningOverride === undefined || planningOverride === 'auto') {
-      return 'auto';
-    }
-    return 'force_tool';
-  }
-
   private async prepareRunContext(params: AgentRunRequest): Promise<PreparedRunContext> {
     const locale = this.resolveInteractionLocale(params.context?.locale);
-    const planningDirective = this.normalizePlanningDirective(params.planningOverride);
+    const planningDirective = params.planningDirective ?? 'auto';
     const skillIds = params.context?.skillIds;
     const noSkillMode = this.isNoSkillMode(skillIds);
     const activeToolIds = await this.resolveActiveToolIds(skillIds, {
@@ -854,14 +844,41 @@ export class AgentService {
     };
   }
 
-  async run(input: AgentRunInput, options?: AgentRunOptions): Promise<AgentRunResult> {
-    const params: AgentRunRequest = { ...input, ...options };
+  async run(input: AgentRunInput): Promise<AgentRunResult> {
+    return this.runWithDirective(input, 'auto');
+  }
+
+  async runConversation(input: AgentRunInput): Promise<AgentRunResult> {
+    return this.runWithDirective(input, 'force_conversation');
+  }
+
+  async runToolCall(input: AgentRunInput): Promise<AgentRunResult> {
+    return this.runWithDirective(input, 'force_tool');
+  }
+
+  async *runStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
+    yield* this.runStreamWithDirective(input, 'auto');
+  }
+
+  async *runConversationStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
+    yield* this.runStreamWithDirective(input, 'force_conversation');
+  }
+
+  async *runToolCallStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
+    yield* this.runStreamWithDirective(input, 'force_tool');
+  }
+
+  private async runWithDirective(input: AgentRunInput, planningDirective: AgentPlanningDirective): Promise<AgentRunResult> {
+    const params: AgentRunRequest = { ...input, planningDirective };
     const traceId = params.traceId || randomUUID();
     return this.runInternal(params, traceId);
   }
 
-  async *runStream(input: AgentRunInput, options?: AgentRunOptions): AsyncGenerator<AgentStreamChunk> {
-    const params: AgentRunRequest = { ...input, ...options };
+  private async *runStreamWithDirective(
+    input: AgentRunInput,
+    planningDirective: AgentPlanningDirective,
+  ): AsyncGenerator<AgentStreamChunk> {
+    const params: AgentRunRequest = { ...input, planningDirective };
     const traceId = randomUUID();
     const startedAt = new Date().toISOString();
     try {

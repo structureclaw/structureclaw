@@ -205,7 +205,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const requestedStep = await resolveRequestedStep(body);
 
       if (requestedStep === 'tool_call') {
-        const result = await agentService.run(body, { planningOverride: 'tool_call' });
+        const result = await agentService.runToolCall(body);
         await persistLatestConversationResult({
           conversationId: body.conversationId,
           userId,
@@ -376,7 +376,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
     try {
       if (requestedStep === 'tool_call') {
-        const stream = agentService.runStream(body, { planningOverride: 'tool_call' });
+        const stream = agentService.runToolCallStream(body);
 
         for await (const chunk of stream) {
           if (
@@ -437,7 +437,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
   const toolCallHandler = async (request: FastifyRequest<{ Body: z.infer<typeof toolCallSchema> }>, reply: FastifyReply) => {
     const body = toolCallSchema.parse(request.body);
     const userId = request.user?.id;
-    const result = await agentService.run(body, { planningOverride: 'tool_call' });
+    const result = await agentService.runToolCall(body);
     await persistLatestConversationResult({
       conversationId: body.conversationId,
       userId,
