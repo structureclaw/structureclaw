@@ -103,7 +103,8 @@ interface PersistedMessageDebugDetails {
 
 type ActiveToolSet = Set<string> | undefined;
 
-type AgentNextStep = 'conversation' | 'tool';
+type RequestedAgentStep = 'conversation' | 'tool_call' | 'auto';
+type AgentNextStep = 'conversation' | 'tool_call';
 
 interface ResolvedExecutionConfig {
   analysisType: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
@@ -136,7 +137,7 @@ interface ExecutionPipelineArgs {
 
 interface PreparedRunContext {
   locale: AppLocale;
-  requestedMode: AgentRunMode | string;
+  requestedStep: RequestedAgentStep;
   mode: 'rule-based' | 'llm-assisted';
   modelInput?: Record<string, unknown>;
   sourceFormat: string;
@@ -358,16 +359,16 @@ export class AgentService {
       disabledToolIds: options?.disabledToolIds,
     });
     return (await this.planNextStep(message, {
-      requestedMode: 'auto',
+      requestedStep: 'auto',
       locale,
       skillIds: options?.skillIds,
       hasModel: Boolean(options?.hasModel),
       session,
       activeToolIds,
-    })) === 'tool';
+    })) === 'tool_call';
   }
 
-  private async shouldPreferToolInvocationForState(message: string, options: {
+  private async shouldPlanToolCallForState(message: string, options: {
     locale: AppLocale;
     skillIds?: string[];
     hasModel: boolean;
@@ -419,38 +420,44 @@ export class AgentService {
   }
 
   private async planNextStep(message: string, options: {
-    requestedMode: AgentRunMode | string;
+    requestedStep: RequestedAgentStep;
     locale: AppLocale;
     skillIds?: string[];
     hasModel: boolean;
     session?: InteractionSession;
     activeToolIds?: ActiveToolSet;
   }): Promise<AgentNextStep> {
-    if (options.requestedMode === 'conversation') {
+    if (options.requestedStep === 'conversation') {
       return 'conversation';
     }
-    if (options.requestedMode !== 'auto') {
-      return 'tool';
+    if (options.requestedStep !== 'auto') {
+      return 'tool_call';
     }
 
-    return (await this.shouldPreferToolInvocationForState(message, {
+    return (await this.shouldPlanToolCallForState(message, {
       locale: options.locale,
       skillIds: options.skillIds,
       hasModel: options.hasModel,
       session: options.session,
       activeToolIds: options.activeToolIds,
     }))
-      ? 'tool'
+      ? 'tool_call'
       : 'conversation';
   }
 
-  private normalizeRequestedMode(mode: AgentRunMode | string | undefined): AgentRunMode | string {
-    return mode || 'auto';
+  private normalizeRequestedStep(mode: AgentRunMode | string | undefined): RequestedAgentStep {
+    if (mode === 'conversation') {
+      return 'conversation';
+    }
+    if (mode === undefined || mode === 'auto') {
+      return 'auto';
+    }
+    return 'tool_call';
   }
 
   private async prepareRunContext(params: AgentRunParams): Promise<PreparedRunContext> {
     const locale = this.resolveInteractionLocale(params.context?.locale);
-    const requestedMode = this.normalizeRequestedMode(params.mode);
+    const requestedStep = this.normalizeRequestedStep(params.mode);
     const skillIds = params.context?.skillIds;
     const noSkillMode = this.isNoSkillMode(skillIds);
     const activeToolIds = await this.resolveActiveToolIds(skillIds, {
@@ -481,7 +488,7 @@ export class AgentService {
 
     return {
       locale,
-      requestedMode,
+      requestedStep,
       mode: this.llm ? 'llm-assisted' : 'rule-based',
       modelInput: params.context?.model,
       sourceFormat: params.context?.modelFormat || 'structuremodel-v1',
@@ -881,7 +888,7 @@ export class AgentService {
     const prepared = await this.prepareRunContext(params);
     const {
       locale,
-      requestedMode,
+      requestedStep,
       mode,
       modelInput,
       sourceFormat,
@@ -897,7 +904,7 @@ export class AgentService {
     } = prepared;
 
     const nextStep = await this.planNextStep(params.message, {
-      requestedMode,
+      requestedStep,
       locale,
       skillIds,
       hasModel: Boolean(modelInput),
