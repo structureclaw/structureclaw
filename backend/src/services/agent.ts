@@ -548,6 +548,61 @@ export class AgentService {
     }
   }
 
+  private async finalizeBlockedRunResult(args: {
+    params: AgentRunParams;
+    traceId: string;
+    startedAt: string;
+    startedAtMs: number;
+    locale: AppLocale;
+    mode: 'rule-based' | 'llm-assisted';
+    skillIds?: string[];
+    plan: string[];
+    toolCalls: AgentToolCall[];
+    sessionKey?: string;
+    workingSession: InteractionSession;
+    response: string;
+    model?: Record<string, unknown>;
+    needsModelInput?: boolean;
+    clarification?: AgentRunResult['clarification'];
+    interaction?: AgentInteraction;
+  }): Promise<AgentRunResult> {
+    const {
+      params,
+      traceId,
+      startedAt,
+      startedAtMs,
+      locale,
+      mode,
+      skillIds,
+      plan,
+      toolCalls,
+      sessionKey,
+      workingSession,
+      response,
+      model,
+      needsModelInput = false,
+      clarification,
+      interaction,
+    } = args;
+
+    return this.finalizeRunResult(traceId, sessionKey, params.message, {
+      traceId,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      durationMs: Date.now() - startedAtMs,
+      success: false,
+      mode,
+      needsModelInput,
+      plan,
+      toolCalls,
+      model,
+      metrics: this.buildMetrics(toolCalls),
+      interaction: interaction || this.buildToolInteraction('blocked', locale),
+      clarification,
+      response,
+    }, skillIds, workingSession);
+  }
+
   async getConversationSessionSnapshot(
     conversationId: string | undefined,
     locale: AppLocale,
@@ -1032,21 +1087,21 @@ export class AgentService {
       const response = this.buildDisabledToolMessage('convert_model', locale);
       return {
         ok: false,
-        result: await this.finalizeRunResult(traceId, sessionKey, params.message, {
+        result: await this.finalizeBlockedRunResult({
+          params,
           traceId,
           startedAt,
-          completedAt: new Date().toISOString(),
-          durationMs: Date.now() - startedAtMs,
-          success: false,
+          startedAtMs,
+          locale,
           mode,
-          needsModelInput: false,
+          skillIds,
           plan,
           toolCalls,
-          model: executableModel,
-          metrics: this.buildMetrics(toolCalls),
-          interaction: this.buildToolInteraction('blocked', locale),
+          sessionKey,
+          workingSession,
           response,
-        }, skillIds, workingSession),
+          model: executableModel,
+        }),
       };
     }
 
@@ -1073,20 +1128,20 @@ export class AgentService {
       this.completeToolCallError(convertCall, error);
       return {
         ok: false,
-        result: await this.finalizeRunResult(traceId, sessionKey, params.message, {
+        result: await this.finalizeBlockedRunResult({
+          params,
           traceId,
           startedAt,
-          completedAt: new Date().toISOString(),
-          durationMs: Date.now() - startedAtMs,
-          success: false,
+          startedAtMs,
+          locale,
           mode,
-          needsModelInput: false,
+          skillIds,
           plan,
           toolCalls,
-          metrics: this.buildMetrics(toolCalls),
-          interaction: this.buildToolInteraction('blocked', locale),
+          sessionKey,
+          workingSession,
           response: this.localize(locale, `模型格式转换失败：${convertCall.error}`, `Model conversion failed: ${convertCall.error}`),
-        }, skillIds, workingSession),
+        }),
       };
     }
   }
@@ -1131,21 +1186,21 @@ export class AgentService {
       const response = this.buildDisabledToolMessage('validate_model', locale);
       return {
         ok: false,
-        result: await this.finalizeRunResult(traceId, sessionKey, params.message, {
+        result: await this.finalizeBlockedRunResult({
+          params,
           traceId,
           startedAt,
-          completedAt: new Date().toISOString(),
-          durationMs: Date.now() - startedAtMs,
-          success: false,
+          startedAtMs,
+          locale,
           mode,
-          needsModelInput: false,
+          skillIds,
           plan,
           toolCalls,
-          model: normalizedModel,
-          metrics: this.buildMetrics(toolCalls),
-          interaction: this.buildToolInteraction('blocked', locale),
+          sessionKey,
+          workingSession,
           response,
-        }, skillIds, workingSession),
+          model: normalizedModel,
+        }),
       };
     }
 
@@ -1166,21 +1221,21 @@ export class AgentService {
         validateCall.error = validated.data?.message || this.localize(locale, '模型校验失败', 'Model validation failed');
         return {
           ok: false,
-          result: await this.finalizeRunResult(traceId, sessionKey, params.message, {
+          result: await this.finalizeBlockedRunResult({
+            params,
             traceId,
             startedAt,
-            completedAt: new Date().toISOString(),
-            durationMs: Date.now() - startedAtMs,
-            success: false,
+            startedAtMs,
+            locale,
             mode,
-            needsModelInput: false,
+            skillIds,
             plan,
             toolCalls,
-            model: normalizedModel,
-            metrics: this.buildMetrics(toolCalls),
-            interaction: this.buildToolInteraction('blocked', locale),
+            sessionKey,
+            workingSession,
             response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
-          }, skillIds, workingSession),
+            model: normalizedModel,
+          }),
         };
       }
       return { ok: true, value: { normalizedModel } };
@@ -1201,21 +1256,21 @@ export class AgentService {
       }
       return {
         ok: false,
-        result: await this.finalizeRunResult(traceId, sessionKey, params.message, {
+        result: await this.finalizeBlockedRunResult({
+          params,
           traceId,
           startedAt,
-          completedAt: new Date().toISOString(),
-          durationMs: Date.now() - startedAtMs,
-          success: false,
+          startedAtMs,
+          locale,
           mode,
-          needsModelInput: false,
+          skillIds,
           plan,
           toolCalls,
-          model: normalizedModel,
-          metrics: this.buildMetrics(toolCalls),
-          interaction: this.buildToolInteraction('blocked', locale),
+          sessionKey,
+          workingSession,
           response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
-        }, skillIds, workingSession),
+          model: normalizedModel,
+        }),
       };
     }
   }
@@ -1403,20 +1458,21 @@ export class AgentService {
       const response = this.buildDisabledToolMessage('draft_model', locale);
       return {
         ok: false,
-        result: await this.finalizeRunResult(traceId, sessionKey, params.message, {
+        result: await this.finalizeBlockedRunResult({
+          params,
           traceId,
           startedAt,
-          completedAt: new Date().toISOString(),
-          durationMs: Date.now() - startedAtMs,
-          success: false,
+          startedAtMs,
+          locale,
           mode,
-          needsModelInput: true,
+          skillIds,
           plan,
           toolCalls,
-          metrics: this.buildMetrics(toolCalls),
-          interaction: this.buildToolInteraction('blocked', locale),
+          sessionKey,
+          workingSession,
           response,
-        }, skillIds, workingSession),
+          needsModelInput: true,
+        }),
       };
     }
 
@@ -1475,24 +1531,25 @@ export class AgentService {
         );
         return {
           ok: false,
-          result: await this.finalizeRunResult(traceId, sessionKey, params.message, {
+          result: await this.finalizeBlockedRunResult({
+            params,
             traceId,
             startedAt,
-            completedAt: new Date().toISOString(),
-            durationMs: Date.now() - startedAtMs,
-            success: false,
+            startedAtMs,
+            locale,
             mode,
-            needsModelInput: true,
+            skillIds,
             plan,
             toolCalls,
-            metrics: this.buildMetrics(toolCalls),
-            interaction: this.buildToolInteraction('blocked', locale),
+            sessionKey,
+            workingSession,
+            response: question,
+            needsModelInput: true,
             clarification: {
               missingFields,
               question,
             },
-            response: question,
-          }, skillIds, workingSession),
+          }),
         };
       }
 
@@ -1581,21 +1638,21 @@ export class AgentService {
 
     if (!this.hasActiveTool(activeToolIds, 'run_analysis')) {
       const response = this.buildDisabledToolMessage('run_analysis', locale);
-      return this.finalizeRunResult(traceId, sessionKey, params.message, {
+      return this.finalizeBlockedRunResult({
+        params,
         traceId,
         startedAt,
-        completedAt: new Date().toISOString(),
-        durationMs: Date.now() - startedAtMs,
-        success: false,
+        startedAtMs,
+        locale,
         mode,
-        needsModelInput: false,
+        skillIds,
         plan,
         toolCalls,
-        model: normalizedModel,
-        metrics: this.buildMetrics(toolCalls),
-        interaction: this.buildToolInteraction('blocked', locale),
+        sessionKey,
+        workingSession,
         response,
-      }, skillIds, workingSession);
+        model: normalizedModel,
+      });
     }
 
     plan.push(this.localize(locale, `执行 ${executionConfig.analysisType} 分析并返回摘要`, `Run ${executionConfig.analysisType} analysis and return a summary`));
@@ -1637,22 +1694,21 @@ export class AgentService {
           codeCheckResult = codeChecked;
         } catch (error: any) {
           this.completeToolCallError(codeCheckCall, error);
-          return this.finalizeRunResult(traceId, sessionKey, params.message, {
+          return this.finalizeBlockedRunResult({
+            params,
             traceId,
             startedAt,
-            completedAt: new Date().toISOString(),
-            durationMs: Date.now() - startedAtMs,
-            success: false,
+            startedAtMs,
+            locale,
             mode,
-            needsModelInput: false,
+            skillIds,
             plan,
             toolCalls,
-            model: normalizedModel,
-            analysis: analyzed.data,
-            metrics: this.buildMetrics(toolCalls),
-            interaction: this.buildToolInteraction('blocked', locale),
+            sessionKey,
+            workingSession,
             response: this.localize(locale, `规范校核失败：${codeCheckCall.error}`, `Code check failed: ${codeCheckCall.error}`),
-          }, skillIds, workingSession);
+            model: normalizedModel,
+          });
         }
       }
 
@@ -1726,19 +1782,18 @@ export class AgentService {
     } catch (error: any) {
       this.completeToolCallError(analyzeCall, error);
       const transientUpstreamFailure = this.shouldRetryEngineCall(error);
-      return this.finalizeRunResult(traceId, sessionKey, params.message, {
+      return this.finalizeBlockedRunResult({
+        params,
         traceId,
         startedAt,
-        completedAt: new Date().toISOString(),
-        durationMs: Date.now() - startedAtMs,
-        success: false,
+        startedAtMs,
+        locale,
         mode,
-        needsModelInput: false,
+        skillIds,
         plan,
         toolCalls,
-        model: normalizedModel,
-        metrics: this.buildMetrics(toolCalls),
-        interaction: this.buildToolInteraction('blocked', locale),
+        sessionKey,
+        workingSession,
         response: transientUpstreamFailure
           ? this.localize(
             locale,
@@ -1746,7 +1801,8 @@ export class AgentService {
             `The analysis engine is temporarily unavailable and still failed after retry: ${analyzeCall.error}`,
           )
           : this.localize(locale, `分析执行失败：${analyzeCall.error}`, `Analysis execution failed: ${analyzeCall.error}`),
-      }, skillIds, workingSession);
+        model: normalizedModel,
+      });
     }
   }
 
