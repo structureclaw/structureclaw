@@ -154,8 +154,8 @@ export const handler: SkillHandler = {
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toDoubleSpanPatch(patch), 'double-span-beam', 'double-span-beam');
   },
-  computeMissing(state, mode) {
-    return computeLegacyMissing({ ...state, inferredType: 'double-span-beam' }, mode, [...ALLOWED_KEYS]);
+  computeMissing(state, phase) {
+    return computeLegacyMissing({ ...state, inferredType: 'double-span-beam' }, phase, [...ALLOWED_KEYS]);
   },
   mapLabels(keys, locale) {
     return buildLegacyLabels(keys, locale);

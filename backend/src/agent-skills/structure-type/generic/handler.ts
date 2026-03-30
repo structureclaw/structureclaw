@@ -153,14 +153,14 @@ export const handler: SkillHandler = {
       updatedAt: Date.now(),
     };
   },
-  computeMissing(state, mode) {
+  computeMissing(state, phase) {
     if (state.inferredType === 'unknown') {
       return {
         critical: ['inferredType'],
         optional: [],
       };
     }
-    return computeLegacyMissing(state, mode, [...GENERIC_ALLOWED_KEYS]);
+    return computeLegacyMissing(state, phase, [...GENERIC_ALLOWED_KEYS]);
   },
   mapLabels(keys, locale) {
     return buildLegacyLabels(keys, locale);

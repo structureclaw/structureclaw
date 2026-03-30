@@ -29,7 +29,7 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
       properties: {
         message: { type: 'string' },
         conversationId: { type: 'string' },
-        mode: { enum: ['conversation', 'tool'] },
+        phase: { enum: ['interactive', 'execution'] },
       },
     },
     outputSchema: {

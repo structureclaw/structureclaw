@@ -44,7 +44,9 @@ import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.j
 import { listBuiltinToolManifests, resolveCanonicalToolId } from '../agent-runtime/tool-registry.js';
 
 export type AgentToolName = 'text-to-model-draft' | 'convert' | 'validate' | 'analyze' | 'code-check' | 'report';
-export type AgentRunMode = 'conversation' | 'tool' | 'auto';
+export type AgentRequestedStep = 'conversation' | 'tool_call' | 'auto';
+export type AgentOrchestrationMode = 'rule-based' | 'llm-assisted';
+export type AgentInteractionPhase = 'interactive' | 'execution';
 export type AgentReportFormat = 'json' | 'markdown' | 'both';
 export type AgentReportOutput = 'inline' | 'file';
 export type AgentUserDecision = 'provide_values' | 'confirm_all' | 'allow_auto_decide' | 'revise';
@@ -103,7 +105,6 @@ interface PersistedMessageDebugDetails {
 
 type ActiveToolSet = Set<string> | undefined;
 
-type RequestedAgentStep = 'conversation' | 'tool_call' | 'auto';
 type AgentNextStep = 'conversation' | 'tool_call';
 
 interface ResolvedExecutionConfig {
@@ -121,7 +122,7 @@ interface ExecutionPipelineArgs {
   startedAt: string;
   startedAtMs: number;
   locale: AppLocale;
-  mode: 'rule-based' | 'llm-assisted';
+  orchestrationMode: AgentOrchestrationMode;
   skillIds?: string[];
   activeToolIds?: ActiveToolSet;
   plan: string[];
@@ -137,8 +138,8 @@ interface ExecutionPipelineArgs {
 
 interface PreparedRunContext {
   locale: AppLocale;
-  requestedStep: RequestedAgentStep;
-  mode: 'rule-based' | 'llm-assisted';
+  requestedStep: AgentRequestedStep;
+  orchestrationMode: AgentOrchestrationMode;
   modelInput?: Record<string, unknown>;
   sourceFormat: string;
   autoAnalyze: boolean;
@@ -205,7 +206,7 @@ export interface AgentConversationSessionSnapshot {
 
 export interface AgentRunParams {
   message: string;
-  mode?: AgentRunMode;
+  requestedStep?: AgentRequestedStep;
   conversationId?: string;
   traceId?: string;
   context?: {
@@ -266,7 +267,7 @@ export interface AgentRunResult {
   completedAt: string;
   durationMs: number;
   success: boolean;
-  mode: 'rule-based' | 'llm-assisted';
+  orchestrationMode: AgentOrchestrationMode;
   needsModelInput: boolean;
   plan: string[];
   toolCalls: AgentToolCall[];
@@ -391,7 +392,7 @@ export class AgentService {
     }
 
     if (options.session.draft && options.session.draft.inferredType !== 'unknown') {
-      const assessment = await this.assessInteractionNeeds(options.session, options.locale, options.skillIds, 'conversation');
+      const assessment = await this.assessInteractionNeeds(options.session, options.locale, options.skillIds, 'interactive');
       const readyForExecution = assessment.criticalMissing.length === 0
         && (assessment.nonCriticalMissing.length === 0 || Boolean(options.session.userApprovedAutoDecide));
       if (readyForExecution && options.hasModel && this.policy.inferProceedIntent(message) && this.hasActiveTool(options.activeToolIds, 'run_analysis')) {
@@ -420,7 +421,7 @@ export class AgentService {
   }
 
   private async planNextStep(message: string, options: {
-    requestedStep: RequestedAgentStep;
+    requestedStep: AgentRequestedStep;
     locale: AppLocale;
     skillIds?: string[];
     hasModel: boolean;
@@ -445,11 +446,11 @@ export class AgentService {
       : 'conversation';
   }
 
-  private normalizeRequestedStep(mode: AgentRunMode | string | undefined): RequestedAgentStep {
-    if (mode === 'conversation') {
+  private normalizeRequestedStep(requestedStep: AgentRequestedStep | string | undefined): AgentRequestedStep {
+    if (requestedStep === 'conversation') {
       return 'conversation';
     }
-    if (mode === undefined || mode === 'auto') {
+    if (requestedStep === undefined || requestedStep === 'auto') {
       return 'auto';
     }
     return 'tool_call';
@@ -457,7 +458,7 @@ export class AgentService {
 
   private async prepareRunContext(params: AgentRunParams): Promise<PreparedRunContext> {
     const locale = this.resolveInteractionLocale(params.context?.locale);
-    const requestedStep = this.normalizeRequestedStep(params.mode);
+    const requestedStep = this.normalizeRequestedStep(params.requestedStep);
     const skillIds = params.context?.skillIds;
     const noSkillMode = this.isNoSkillMode(skillIds);
     const activeToolIds = await this.resolveActiveToolIds(skillIds, {
@@ -489,7 +490,7 @@ export class AgentService {
     return {
       locale,
       requestedStep,
-      mode: this.llm ? 'llm-assisted' : 'rule-based',
+      orchestrationMode: this.llm ? 'llm-assisted' : 'rule-based',
       modelInput: params.context?.model,
       sourceFormat: params.context?.modelFormat || 'structuremodel-v1',
       autoAnalyze: params.context?.autoAnalyze ?? true,
@@ -566,7 +567,7 @@ export class AgentService {
     startedAt: string;
     startedAtMs: number;
     locale: AppLocale;
-    mode: 'rule-based' | 'llm-assisted';
+    orchestrationMode: AgentOrchestrationMode;
     skillIds?: string[];
     plan: string[];
     toolCalls: AgentToolCall[];
@@ -584,7 +585,7 @@ export class AgentService {
       startedAt,
       startedAtMs,
       locale,
-      mode,
+      orchestrationMode,
       skillIds,
       plan,
       toolCalls,
@@ -603,7 +604,7 @@ export class AgentService {
       completedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAtMs,
       success: false,
-      mode,
+      orchestrationMode,
       needsModelInput,
       plan,
       toolCalls,
@@ -634,7 +635,7 @@ export class AgentService {
       }
     }
 
-    const assessment = await this.assessInteractionNeeds(session, locale, skillIds, 'conversation');
+    const assessment = await this.assessInteractionNeeds(session, locale, skillIds, 'interactive');
     const activeToolIds = await this.resolveActiveToolIds(skillIds);
     const state = assessment.criticalMissing.length > 0
       ? 'collecting'
@@ -699,7 +700,6 @@ export class AgentService {
         required: ['message'],
         properties: {
           message: { type: 'string' },
-          mode: { enum: ['conversation', 'tool', 'auto'] },
           conversationId: { type: 'string' },
           traceId: { type: 'string' },
           context: {
@@ -728,14 +728,14 @@ export class AgentService {
       },
       runResultSchema: {
         type: 'object',
-        required: ['traceId', 'startedAt', 'completedAt', 'durationMs', 'success', 'mode', 'needsModelInput', 'plan', 'toolCalls', 'response'],
+        required: ['traceId', 'startedAt', 'completedAt', 'durationMs', 'success', 'orchestrationMode', 'needsModelInput', 'plan', 'toolCalls', 'response'],
         properties: {
           success: { type: 'boolean' },
           traceId: { type: 'string' },
           startedAt: { type: 'string' },
           completedAt: { type: 'string' },
           durationMs: { type: 'number' },
-          mode: { enum: ['rule-based', 'llm-assisted'] },
+          orchestrationMode: { enum: ['rule-based', 'llm-assisted'] },
           needsModelInput: { type: 'boolean' },
           plan: { type: 'array', items: { type: 'string' } },
           toolCalls: { type: 'array', items: { type: 'object' } },
@@ -799,7 +799,6 @@ export class AgentService {
                 type: 'object',
                 properties: {
                   traceId: { type: 'string' },
-                  mode: { enum: ['conversation', 'tool', 'auto'] },
                   conversationId: { type: 'string' },
                   startedAt: { type: 'string' },
                 },
@@ -856,7 +855,6 @@ export class AgentService {
         type: 'start',
         content: {
           traceId,
-          mode: params.mode || 'auto',
           conversationId: params.conversationId,
           startedAt,
         },
@@ -889,7 +887,7 @@ export class AgentService {
     const {
       locale,
       requestedStep,
-      mode,
+      orchestrationMode,
       modelInput,
       sourceFormat,
       autoAnalyze,
@@ -919,7 +917,7 @@ export class AgentService {
         startedAt,
         startedAtMs,
         locale,
-        mode,
+        orchestrationMode,
         toolCalls,
         plan,
         sessionKey,
@@ -934,7 +932,7 @@ export class AgentService {
       startedAt,
       startedAtMs,
       locale,
-      mode,
+      orchestrationMode,
       skillIds,
       noSkillMode,
       activeToolIds,
@@ -954,7 +952,7 @@ export class AgentService {
       startedAt,
       startedAtMs,
       locale,
-      mode,
+      orchestrationMode,
       skillIds,
       activeToolIds,
       plan,
@@ -976,7 +974,7 @@ export class AgentService {
       startedAt,
       startedAtMs,
       locale,
-      mode,
+      orchestrationMode,
       skillIds,
       activeToolIds,
       plan,
@@ -1028,7 +1026,7 @@ export class AgentService {
     startedAt: string;
     startedAtMs: number;
     locale: AppLocale;
-    mode: 'rule-based' | 'llm-assisted';
+    orchestrationMode: AgentOrchestrationMode;
     skillIds?: string[];
     activeToolIds?: ActiveToolSet;
     plan: string[];
@@ -1059,7 +1057,7 @@ export class AgentService {
     startedAt: string;
     startedAtMs: number;
     locale: AppLocale;
-    mode: 'rule-based' | 'llm-assisted';
+    orchestrationMode: AgentOrchestrationMode;
     skillIds?: string[];
     activeToolIds?: ActiveToolSet;
     plan: string[];
@@ -1079,7 +1077,7 @@ export class AgentService {
       startedAt,
       startedAtMs,
       locale,
-      mode,
+      orchestrationMode,
       skillIds,
       activeToolIds,
       plan,
@@ -1105,7 +1103,7 @@ export class AgentService {
           startedAt,
           startedAtMs,
           locale,
-          mode,
+          orchestrationMode,
           skillIds,
           plan,
           toolCalls,
@@ -1146,7 +1144,7 @@ export class AgentService {
           startedAt,
           startedAtMs,
           locale,
-          mode,
+          orchestrationMode,
           skillIds,
           plan,
           toolCalls,
@@ -1164,7 +1162,7 @@ export class AgentService {
     startedAt: string;
     startedAtMs: number;
     locale: AppLocale;
-    mode: 'rule-based' | 'llm-assisted';
+    orchestrationMode: AgentOrchestrationMode;
     skillIds?: string[];
     activeToolIds?: ActiveToolSet;
     plan: string[];
@@ -1183,7 +1181,7 @@ export class AgentService {
       startedAt,
       startedAtMs,
       locale,
-      mode,
+      orchestrationMode,
       skillIds,
       activeToolIds,
       plan,
@@ -1204,7 +1202,7 @@ export class AgentService {
           startedAt,
           startedAtMs,
           locale,
-          mode,
+          orchestrationMode,
           skillIds,
           plan,
           toolCalls,
@@ -1239,7 +1237,7 @@ export class AgentService {
             startedAt,
             startedAtMs,
             locale,
-            mode,
+            orchestrationMode,
             skillIds,
             plan,
             toolCalls,
@@ -1274,7 +1272,7 @@ export class AgentService {
           startedAt,
           startedAtMs,
           locale,
-          mode,
+          orchestrationMode,
           skillIds,
           plan,
           toolCalls,
@@ -1341,14 +1339,14 @@ export class AgentService {
     startedAt: string;
     startedAtMs: number;
     locale: AppLocale;
-    mode: 'rule-based' | 'llm-assisted';
+    orchestrationMode: AgentOrchestrationMode;
     toolCalls: AgentToolCall[];
     plan: string[];
     sessionKey?: string;
     workingSession: InteractionSession;
     activeToolIds?: ActiveToolSet;
   }): Promise<AgentRunResult> {
-    const { params, traceId, startedAt, startedAtMs, locale, mode, toolCalls, plan, sessionKey, workingSession, activeToolIds } = args;
+    const { params, traceId, startedAt, startedAtMs, locale, orchestrationMode, toolCalls, plan, sessionKey, workingSession, activeToolIds } = args;
     const noSkillMode = this.isNoSkillMode(params.context?.skillIds);
     const { draft, noSkillEquivalentDraft } = await this.draftConversationState({
       params,
@@ -1356,7 +1354,7 @@ export class AgentService {
       startedAt,
       startedAtMs,
       locale,
-      mode,
+      orchestrationMode,
       skillIds: params.context?.skillIds,
       noSkillMode,
       activeToolIds,
@@ -1373,7 +1371,7 @@ export class AgentService {
         startedAt,
         startedAtMs,
         locale,
-        mode,
+        orchestrationMode,
         skillIds: params.context?.skillIds,
         noSkillMode,
         activeToolIds,
@@ -1397,7 +1395,7 @@ export class AgentService {
       startedAt,
       startedAtMs,
       locale,
-      mode,
+      orchestrationMode,
       skillIds: params.context?.skillIds,
       plan,
       toolCalls,
@@ -1432,7 +1430,7 @@ export class AgentService {
     startedAt: string;
     startedAtMs: number;
     locale: AppLocale;
-    mode: 'rule-based' | 'llm-assisted';
+    orchestrationMode: AgentOrchestrationMode;
     skillIds?: string[];
     noSkillMode: boolean;
     activeToolIds?: ActiveToolSet;
@@ -1451,7 +1449,7 @@ export class AgentService {
       startedAt,
       startedAtMs,
       locale,
-      mode,
+      orchestrationMode,
       skillIds,
       noSkillMode,
       activeToolIds,
@@ -1476,7 +1474,7 @@ export class AgentService {
           startedAt,
           startedAtMs,
           locale,
-          mode,
+          orchestrationMode,
           skillIds,
           plan,
           toolCalls,
@@ -1489,7 +1487,7 @@ export class AgentService {
     }
 
     plan.push(this.localize(locale, '从自然语言生成结构模型草案（支持会话级补数）', 'Generate a structural model draft from natural language with session carry-over'));
-    const draftCall = this.startToolCall('text-to-model-draft', { message: params.message, conversationId: sessionKey });
+    const draftCall = this.startToolCall('text-to-model-draft', { message: params.message, conversationId: sessionKey, phase: 'execution' });
     toolCalls.push(draftCall);
 
     const draft = await this.textToModelDraft(params.message, workingSession.draft, locale, skillIds);
@@ -1549,7 +1547,7 @@ export class AgentService {
             startedAt,
             startedAtMs,
             locale,
-            mode,
+            orchestrationMode,
             skillIds,
             plan,
             toolCalls,
@@ -1582,7 +1580,7 @@ export class AgentService {
           completedAt: new Date().toISOString(),
           durationMs: Date.now() - startedAtMs,
           success: false,
-          mode,
+          orchestrationMode,
           needsModelInput: finalAssessment.criticalMissing.length > 0,
           plan,
           toolCalls,
@@ -1607,7 +1605,7 @@ export class AgentService {
       startedAt,
       startedAtMs,
       locale,
-      mode,
+      orchestrationMode,
       skillIds,
       activeToolIds,
       plan,
@@ -1633,7 +1631,7 @@ export class AgentService {
         completedAt: new Date().toISOString(),
         durationMs: Date.now() - startedAtMs,
         success: true,
-        mode,
+        orchestrationMode,
         needsModelInput: false,
         plan,
         toolCalls,
@@ -1656,7 +1654,7 @@ export class AgentService {
         startedAt,
         startedAtMs,
         locale,
-        mode,
+        orchestrationMode,
         skillIds,
         plan,
         toolCalls,
@@ -1704,7 +1702,7 @@ export class AgentService {
       startedAt,
       startedAtMs,
       locale,
-      mode,
+      orchestrationMode,
       skillIds,
       plan,
       toolCalls,
@@ -1744,7 +1742,7 @@ export class AgentService {
           startedAt,
           startedAtMs,
           locale,
-          mode,
+          orchestrationMode,
           skillIds,
           plan,
           toolCalls,
@@ -1773,7 +1771,7 @@ export class AgentService {
       startedAt,
       startedAtMs,
       locale,
-      mode,
+      orchestrationMode,
       skillIds,
       activeToolIds,
       plan,
@@ -1817,7 +1815,7 @@ export class AgentService {
           startedAt,
           startedAtMs,
           locale,
-          mode,
+          orchestrationMode,
           skillIds,
           plan,
           toolCalls,
@@ -1890,7 +1888,7 @@ export class AgentService {
       startedAt,
       startedAtMs,
       locale,
-      mode,
+      orchestrationMode,
       skillIds,
       plan,
       toolCalls,
@@ -1931,7 +1929,7 @@ export class AgentService {
       completedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAtMs,
       success: Boolean(analyzed?.success),
-      mode,
+      orchestrationMode,
       needsModelInput: false,
       plan,
       toolCalls,
@@ -1952,7 +1950,7 @@ export class AgentService {
     startedAt: string;
     startedAtMs: number;
     locale: AppLocale;
-    mode: 'rule-based' | 'llm-assisted';
+    orchestrationMode: AgentOrchestrationMode;
     skillIds?: string[];
     noSkillMode: boolean;
     activeToolIds?: ActiveToolSet;
@@ -1980,7 +1978,7 @@ export class AgentService {
       : this.localize(locale, '识别结构场景并匹配对话模板', 'Identify the structural scenario and select the matching dialogue template'));
     plan.push(this.localize(locale, '按当前阶段补齐关键工程参数', 'Collect the key engineering parameters for the current stage'));
 
-    const draftCall = this.startToolCall('text-to-model-draft', { message: params.message, conversationId: sessionKey, mode: 'conversation' });
+    const draftCall = this.startToolCall('text-to-model-draft', { message: params.message, conversationId: sessionKey, phase: 'interactive' });
     toolCalls.push(draftCall);
 
     const draft = await this.textToModelDraft(params.message, workingSession.draft, locale, skillIds);
@@ -2011,7 +2009,7 @@ export class AgentService {
     startedAt: string;
     startedAtMs: number;
     locale: AppLocale;
-    mode: 'rule-based' | 'llm-assisted';
+    orchestrationMode: AgentOrchestrationMode;
     skillIds?: string[];
     noSkillMode: boolean;
     activeToolIds?: ActiveToolSet;
@@ -2027,7 +2025,7 @@ export class AgentService {
       startedAt,
       startedAtMs,
       locale,
-      mode,
+      orchestrationMode,
       skillIds,
       noSkillMode,
       activeToolIds,
@@ -2102,7 +2100,7 @@ export class AgentService {
         completedAt: new Date().toISOString(),
         durationMs: Date.now() - startedAtMs,
         success: true,
-        mode,
+        orchestrationMode,
         needsModelInput: false,
         plan,
         toolCalls,
@@ -2156,7 +2154,7 @@ export class AgentService {
       completedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAtMs,
       success: true,
-      mode,
+      orchestrationMode,
       needsModelInput: true,
       plan,
       toolCalls,
@@ -2178,7 +2176,7 @@ export class AgentService {
   }): Promise<ResolvedConversationAssessment> {
     const { locale, skillIds, activeToolIds, workingSession } = args;
 
-    let assessment = await this.assessInteractionNeeds(workingSession, locale, skillIds, 'conversation');
+    let assessment = await this.assessInteractionNeeds(workingSession, locale, skillIds, 'interactive');
 
     // When all critical (structural) parameters are present, auto-apply defaults
     // for non-critical parameters (includeReport, reportFormat, reportOutput, etc.)
@@ -2187,7 +2185,7 @@ export class AgentService {
     // new non-critical parameters (e.g. reportFormat, reportOutput).
     while (assessment.criticalMissing.length === 0 && assessment.nonCriticalMissing.length > 0) {
       this.applyNonCriticalDefaults(workingSession, assessment.defaultProposals);
-      assessment = await this.assessInteractionNeeds(workingSession, locale, skillIds, 'conversation');
+      assessment = await this.assessInteractionNeeds(workingSession, locale, skillIds, 'interactive');
     }
 
     const state: AgentInteractionState = assessment.criticalMissing.length > 0
@@ -2207,7 +2205,7 @@ export class AgentService {
     startedAt: string;
     startedAtMs: number;
     locale: AppLocale;
-    mode: 'rule-based' | 'llm-assisted';
+    orchestrationMode: AgentOrchestrationMode;
     skillIds?: string[];
     plan: string[];
     toolCalls: AgentToolCall[];
@@ -2222,7 +2220,7 @@ export class AgentService {
       startedAt,
       startedAtMs,
       locale,
-      mode,
+      orchestrationMode,
       skillIds,
       plan,
       toolCalls,
@@ -2243,7 +2241,7 @@ export class AgentService {
       completedAt: new Date().toISOString(),
       durationMs: Date.now() - startedAtMs,
       success: true,
-      mode,
+      orchestrationMode,
       needsModelInput: resolved.assessment.criticalMissing.length > 0,
       plan,
       toolCalls,
@@ -2264,7 +2262,7 @@ export class AgentService {
     session: InteractionSession,
     locale: AppLocale,
     skillIds?: string[],
-    mode: Exclude<AgentRunMode, 'auto'> = 'tool'
+    phase: AgentInteractionPhase = 'execution'
   ): Promise<{
     criticalMissing: string[];
     nonCriticalMissing: string[];
@@ -2274,7 +2272,7 @@ export class AgentService {
     const structural = await this.skillRuntime.assessDraft(
       session.draft,
       locale,
-      mode,
+      phase,
       skillIds,
     );
     const criticalMissing = [...structural.criticalMissing];
@@ -3234,7 +3232,7 @@ export class AgentService {
       traceId,
       conversationId,
       success: result.success,
-      mode: result.mode,
+      orchestrationMode: result.orchestrationMode,
       durationMs: result.durationMs,
       metrics: result.metrics,
       toolCalls: result.toolCalls.map((call) => ({

@@ -160,8 +160,8 @@ export const handler: SkillHandler = {
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toPortalFramePatch(patch), 'portal-frame', 'portal-frame');
   },
-  computeMissing(state, mode) {
-    return computeLegacyMissing({ ...state, inferredType: 'portal-frame' }, mode, [...ALLOWED_KEYS]);
+  computeMissing(state, phase) {
+    return computeLegacyMissing({ ...state, inferredType: 'portal-frame' }, phase, [...ALLOWED_KEYS]);
   },
   mapLabels(keys, locale) {
     return buildLegacyLabels(keys, locale);

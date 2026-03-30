@@ -237,7 +237,7 @@ export interface SkillHandler {
   parseProvidedValues(values: Record<string, unknown>): DraftExtraction;
   extractDraft(input: SkillDraftContext): DraftExtraction;
   mergeState(existing: DraftState | undefined, patch: DraftExtraction): DraftState;
-  computeMissing(state: DraftState, mode: 'conversation' | 'tool'): SkillMissingResult;
+  computeMissing(state: DraftState, phase: 'interactive' | 'execution'): SkillMissingResult;
   mapLabels(keys: string[], locale: AppLocale): string[];
   buildQuestions(keys: string[], criticalMissing: string[], state: DraftState, locale: AppLocale): InteractionQuestion[];
   buildDefaultProposals?(keys: string[], state: DraftState, locale: AppLocale): SkillDefaultProposal[];

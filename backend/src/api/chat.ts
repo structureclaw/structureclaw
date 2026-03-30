@@ -181,10 +181,10 @@ async function resolveRequestedStep(body: ChatRequestBody): Promise<ChatRequeste
   return shouldInvokeTool ? 'tool_call' : 'conversation';
 }
 
-function buildAgentRunPayload(body: ChatRequestBody | ToolCallBody, mode: 'conversation' | 'tool') {
+function buildAgentRunPayload(body: ChatRequestBody | ToolCallBody, requestedStep: 'conversation' | 'tool_call') {
   return {
     message: body.message,
-    mode,
+    requestedStep,
     conversationId: body.conversationId,
     traceId: body.traceId,
     context: {
@@ -234,7 +234,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const requestedStep = await resolveRequestedStep(body);
 
       if (requestedStep === 'tool_call') {
-        const result = await agentService.run(buildAgentRunPayload(body, 'tool'));
+        const result = await agentService.run(buildAgentRunPayload(body, 'tool_call'));
         await persistLatestConversationResult({
           conversationId: body.conversationId,
           userId,
@@ -405,7 +405,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
     try {
       if (requestedStep === 'tool_call') {
-        const stream = agentService.runStream(buildAgentRunPayload(body, 'tool'));
+        const stream = agentService.runStream(buildAgentRunPayload(body, 'tool_call'));
 
         for await (const chunk of stream) {
           if (
@@ -468,7 +468,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     const userId = request.user?.id;
     const result = await agentService.run({
       ...body,
-      mode: 'tool',
+      requestedStep: 'tool_call',
     });
     await persistLatestConversationResult({
       conversationId: body.conversationId,
@@ -504,12 +504,7 @@ function normalizePublicStreamChunk(chunk: unknown): unknown {
 
   const raw = chunk as { type?: string; error?: string; code?: string; retriable?: boolean; content?: unknown };
   const value = raw.type && raw.content && typeof raw.content === 'object' && !Array.isArray(raw.content)
-    ? {
-      ...raw,
-      content: Object.fromEntries(
-        Object.entries(raw.content as Record<string, unknown>).filter(([key]) => key !== 'mode'),
-      ),
-    }
+    ? raw
     : raw;
 
   if (value.type !== 'error' || !value.error) {

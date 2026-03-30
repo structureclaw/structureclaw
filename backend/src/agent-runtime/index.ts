@@ -177,7 +177,7 @@ export class AgentSkillRuntime {
       scenario,
     });
     const nextState = withScenarioState(plugin.handler.mergeState(existingState, patch), scenario);
-    const missing = plugin.handler.computeMissing(nextState, 'tool');
+    const missing = plugin.handler.computeMissing(nextState, 'execution');
     const model = missing.critical.length === 0 ? plugin.handler.buildModel(nextState) : undefined;
     return {
       inferredType: nextState.inferredType,
@@ -192,7 +192,7 @@ export class AgentSkillRuntime {
   async assessDraft(
     state: DraftState,
     locale: AppLocale,
-    mode: 'conversation' | 'tool',
+    phase: 'interactive' | 'execution',
     skillIds?: string[],
   ): Promise<{ criticalMissing: string[]; optionalMissing: string[] }> {
     const plugin = await this.registry.resolvePluginForState(state, skillIds);
@@ -202,7 +202,7 @@ export class AgentSkillRuntime {
     if (state.inferredType === 'unknown' && state.skillId !== plugin.id) {
       return { criticalMissing: ['inferredType'], optionalMissing: [] };
     }
-    const missing = plugin.handler.computeMissing(state, mode);
+    const missing = plugin.handler.computeMissing(state, phase);
     return {
       criticalMissing: missing.critical,
       optionalMissing: missing.optional,

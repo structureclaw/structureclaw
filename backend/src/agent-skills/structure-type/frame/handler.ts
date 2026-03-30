@@ -1048,12 +1048,12 @@ export const handler: SkillHandler = {
     };
   },
 
-  computeMissing(state, mode) {
+  computeMissing(state, phase) {
     // Material/section auto-fill from defaults in buildFrameLocalModel, so they are
     // never critical blockers. Only geometry + load keys are checked here.
     return computeLegacyMissing(
       { ...state, inferredType: 'frame' },
-      mode,
+      phase,
       [...REQUIRED_KEYS],
     );
   },
