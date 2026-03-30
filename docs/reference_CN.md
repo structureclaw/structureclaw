@@ -8,7 +8,7 @@
 
 - 入口：`POST /api/v1/agent/run`
 - 当前内部编排已切换为能力驱动，planner 结果收敛为 `reply`、`ask` 和 `tool_call`
-- 执行链路：`text-to-model-draft -> convert -> validate -> analyze -> code-check -> report`
+- 执行链路：`draft_model -> convert_model -> validate_model -> run_analysis -> run_code_check -> generate_report`
 
 架构方向：
 
@@ -100,7 +100,7 @@
 
 - 字段名必须严格匹配。
 - 单元引用必须与节点/材料/截面 ID 对齐。
-- 建议先校验再分析。
+- 建议优先执行 `validate_model` 再执行 `run_analysis`。
 
 ## 6. SkillHub 契约
 

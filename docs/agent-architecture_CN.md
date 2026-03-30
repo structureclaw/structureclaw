@@ -177,15 +177,9 @@ Tool 是 agent 可调用的动作接口。
 - `generate_visualization`
 - `persist_artifact`
 
-当前运行时仍使用较旧的 tool id：
+当前运行时已经在 agent 协议与 tool trace 中统一暴露 canonical tool id。
 
-- `text-to-model-draft`
-- `validate`
-- `analyze`
-- `code-check`
-- `report`
-
-这些可以在后续重构中逐步映射到上面的目标动作原语。
+底层 backend 兼容执行端点，如 `/validate`、`/convert`、`/analyze`、`/code-check`，仍保留在 canonical tool id 之后。
 
 ## 8. Skill 与 Tool 的关系
 

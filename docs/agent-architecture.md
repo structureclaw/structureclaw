@@ -177,15 +177,9 @@ Suggested stable built-in tool concepts:
 - `generate_visualization`
 - `persist_artifact`
 
-The current runtime still uses older tool ids such as:
+The current runtime now exposes canonical tool ids through the agent protocol and tool-call traces.
 
-- `text-to-model-draft`
-- `validate`
-- `analyze`
-- `code-check`
-- `report`
-
-These map naturally to the target built-in tool concepts above and can be renamed gradually during refactor.
+Backend-hosted compatibility endpoints such as `/validate`, `/convert`, `/analyze`, and `/code-check` remain in place behind those canonical tool ids.
 
 ## 8. Skill and Tool Relationship
 

@@ -8,7 +8,7 @@ Protocol and contract quick reference for API integration, troubleshooting, and 
 
 - Endpoint: `POST /api/v1/agent/run`
 - Current orchestration is capability-driven; planner outcomes converge on `reply`, `ask`, and `tool_call`
-- Execution chain: `text-to-model-draft -> convert -> validate -> analyze -> code-check -> report`
+- Execution chain: `draft_model -> convert_model -> validate_model -> run_analysis -> run_code_check -> generate_report`
 
 Architecture direction:
 
@@ -100,7 +100,7 @@ Practical rules:
 
 - Keep strict field names.
 - Keep element references aligned with node/material/section IDs.
-- Validate before analysis when possible.
+- Prefer `validate_model` before `run_analysis` when possible.
 
 ## 6. SkillHub Contract
 

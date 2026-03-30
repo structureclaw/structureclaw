@@ -16,7 +16,7 @@ StructureClaw 是一个 AI 协同结构工程平台，采用单仓多服务架�
 主流程：
 
 ```text
-自然语言需求 -> 建模草案 -> 校验 -> 分析 -> 校核 -> 报告
+自然语言需求 -> draft_model -> validate_model -> run_analysis -> run_code_check -> generate_report
 ```
 
 ## 3. 环境要求
@@ -141,7 +141,7 @@ node .\sclaw stop
 
 当前执行链路：
 
-`text-to-model-draft -> convert -> validate -> analyze -> code-check -> report`
+`draft_model -> convert_model -> validate_model -> run_analysis -> run_code_check -> generate_report`
 
 架构说明：
 
@@ -163,7 +163,7 @@ node .\sclaw stop
 
 - 必须使用 `schema_version: "1.0.0"`
 - 节点/单元/材料/截面/荷载字段命名必须严格一致
-- 建议先 `validate` 再 `analyze` 与 `code-check`
+- 建议先执行 `validate_model`，再执行 `run_analysis` 与 `run_code_check`
 
 ## 9. Skill 与 no-skill 策略
 

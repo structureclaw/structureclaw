@@ -16,7 +16,7 @@ StructureClaw is an AI-assisted structural engineering platform with a monorepo 
 Primary workflow:
 
 ```text
-natural language -> draft model -> validate -> analyze -> code-check -> report
+natural language -> draft_model -> validate_model -> run_analysis -> run_code_check -> generate_report
 ```
 
 ## 3. Prerequisites
@@ -141,7 +141,7 @@ Main backend endpoints:
 
 Current execution chain:
 
-`text-to-model-draft -> convert -> validate -> analyze -> code-check -> report`
+`draft_model -> convert_model -> validate_model -> run_analysis -> run_code_check -> generate_report`
 
 Architecture note:
 
@@ -163,7 +163,7 @@ Compatibility endpoints exposed by backend:
 
 - Required baseline: `schema_version: "1.0.0"`
 - Keep strict field naming for nodes/elements/materials/sections/loads
-- Always validate models before analyze/code-check where possible
+- Always run `validate_model` before `run_analysis` / `run_code_check` where possible
 
 ## 9. Skill and No-Skill Behavior
 
