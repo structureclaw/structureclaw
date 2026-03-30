@@ -123,7 +123,7 @@ interface ResolvedExecutionConfig {
 }
 
 interface ExecutionPipelineArgs {
-  params: AgentRunParams;
+  params: AgentRunRequest;
   traceId: string;
   startedAt: string;
   startedAtMs: number;
@@ -210,9 +210,8 @@ export interface AgentConversationSessionSnapshot {
   updatedAt: number;
 }
 
-export interface AgentRunParams {
+export interface AgentRunInput {
   message: string;
-  planningOverride?: AgentNextStep | 'auto';
   conversationId?: string;
   traceId?: string;
   context?: {
@@ -236,6 +235,12 @@ export interface AgentRunParams {
     providedValues?: Record<string, unknown>;
   };
 }
+
+interface AgentRunOptions {
+  planningOverride?: AgentNextStep | 'auto';
+}
+
+interface AgentRunRequest extends AgentRunInput, AgentRunOptions {}
 
 export interface AgentToolSpec {
   id: string;
@@ -463,7 +468,7 @@ export class AgentService {
     return 'force_tool';
   }
 
-  private async prepareRunContext(params: AgentRunParams): Promise<PreparedRunContext> {
+  private async prepareRunContext(params: AgentRunRequest): Promise<PreparedRunContext> {
     const locale = this.resolveInteractionLocale(params.context?.locale);
     const planningDirective = this.normalizePlanningDirective(params.planningOverride);
     const skillIds = params.context?.skillIds;
@@ -569,7 +574,7 @@ export class AgentService {
   }
 
   private async finalizeBlockedRunResult(args: {
-    params: AgentRunParams;
+    params: AgentRunRequest;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -849,12 +854,14 @@ export class AgentService {
     };
   }
 
-  async run(params: AgentRunParams): Promise<AgentRunResult> {
+  async run(input: AgentRunInput, options?: AgentRunOptions): Promise<AgentRunResult> {
+    const params: AgentRunRequest = { ...input, ...options };
     const traceId = params.traceId || randomUUID();
     return this.runInternal(params, traceId);
   }
 
-  async *runStream(params: AgentRunParams): AsyncGenerator<AgentStreamChunk> {
+  async *runStream(input: AgentRunInput, options?: AgentRunOptions): AsyncGenerator<AgentStreamChunk> {
+    const params: AgentRunRequest = { ...input, ...options };
     const traceId = randomUUID();
     const startedAt = new Date().toISOString();
     try {
@@ -887,7 +894,7 @@ export class AgentService {
     }
   }
 
-  private async runInternal(params: AgentRunParams, traceId: string): Promise<AgentRunResult> {
+  private async runInternal(params: AgentRunRequest, traceId: string): Promise<AgentRunResult> {
     const startedAtMs = Date.now();
     const startedAt = new Date(startedAtMs).toISOString();
     const prepared = await this.prepareRunContext(params);
@@ -1028,7 +1035,7 @@ export class AgentService {
   }
 
   private async prepareExecutionModel(args: {
-    params: AgentRunParams;
+    params: AgentRunRequest;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -1059,7 +1066,7 @@ export class AgentService {
   }
 
   private async normalizeExecutionModel(args: {
-    params: AgentRunParams;
+    params: AgentRunRequest;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -1164,7 +1171,7 @@ export class AgentService {
   }
 
   private async validateExecutionModel(args: {
-    params: AgentRunParams;
+    params: AgentRunRequest;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -1341,7 +1348,7 @@ export class AgentService {
   }
 
   private async handleConversationMode(args: {
-    params: AgentRunParams;
+    params: AgentRunRequest;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -1415,7 +1422,7 @@ export class AgentService {
 
   private resolveExecutionConfig(
     workingSession: InteractionSession,
-    params: AgentRunParams,
+    params: AgentRunRequest,
     skillIds?: string[],
   ): ResolvedExecutionConfig {
     const codeFromSkills = resolveCodeCheckDesignCodeFromSkillIds(skillIds);
@@ -1432,7 +1439,7 @@ export class AgentService {
   }
 
   private async ensureExecutableModel(args: {
-    params: AgentRunParams;
+    params: AgentRunRequest;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -1952,7 +1959,7 @@ export class AgentService {
   }
 
   private async draftConversationState(args: {
-    params: AgentRunParams;
+    params: AgentRunRequest;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -2011,7 +2018,7 @@ export class AgentService {
   }
 
   private async buildGenericConversationResult(args: {
-    params: AgentRunParams;
+    params: AgentRunRequest;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -2207,7 +2214,7 @@ export class AgentService {
   }
 
   private async buildStructuredConversationResult(args: {
-    params: AgentRunParams;
+    params: AgentRunRequest;
     traceId: string;
     startedAt: string;
     startedAtMs: number;
@@ -2339,7 +2346,7 @@ export class AgentService {
     session.updatedAt = Date.now();
   }
 
-  private applyResolvedConfigFromContext(session: InteractionSession, context: AgentRunParams['context'] | undefined): void {
+  private applyResolvedConfigFromContext(session: InteractionSession, context: AgentRunRequest['context'] | undefined): void {
     if (!context) {
       return;
     }
