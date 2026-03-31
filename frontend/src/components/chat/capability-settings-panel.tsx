@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -144,6 +144,9 @@ export function CapabilitySettingsPanel() {
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
   const [selectedToolIds, setSelectedToolIds] = useState<string[]>([])
   const [skillDomainView, setSkillDomainView] = useState<SkillDomain>('structure-type')
+  const preferencesHydratedRef = useRef(false)
+  const [skillsLoaded, setSkillsLoaded] = useState(false)
+  const [capabilityMatrixLoaded, setCapabilityMatrixLoaded] = useState(false)
 
   const skillDomainById = useMemo<Record<string, SkillDomain>>(() => {
     const map: Record<string, SkillDomain> = {}
@@ -183,15 +186,22 @@ export function CapabilitySettingsPanel() {
 
     async function loadSkills() {
       const response = await fetch(`${API_BASE}/api/v1/agent/skills`)
-      if (!response.ok) return
+      if (!response.ok) {
+        if (active) setSkillsLoaded(true)
+        return
+      }
       const payload = await response.json()
       if (active && Array.isArray(payload)) {
         setAvailableSkills(payload as AgentSkillSummary[])
+        setSkillsLoaded(true)
       }
     }
 
     void loadSkills().catch(() => {
-      if (active) setAvailableSkills([])
+      if (active) {
+        setAvailableSkills([])
+        setSkillsLoaded(true)
+      }
     })
 
     return () => {
@@ -204,15 +214,22 @@ export function CapabilitySettingsPanel() {
 
     async function loadCapabilityMatrix() {
       const response = await fetch(`${API_BASE}/api/v1/agent/capability-matrix`)
-      if (!response.ok) return
+      if (!response.ok) {
+        if (active) setCapabilityMatrixLoaded(true)
+        return
+      }
       const payload = await response.json()
       if (active && payload && typeof payload === 'object') {
         setCapabilityMatrix(payload as CapabilityMatrixPayload)
+        setCapabilityMatrixLoaded(true)
       }
     }
 
     void loadCapabilityMatrix().catch(() => {
-      if (active) setCapabilityMatrix(null)
+      if (active) {
+        setCapabilityMatrix(null)
+        setCapabilityMatrixLoaded(true)
+      }
     })
 
     return () => {
@@ -221,7 +238,10 @@ export function CapabilitySettingsPanel() {
   }, [])
 
   useEffect(() => {
-    if (availableSkills.length === 0 && availableTools.length === 0) {
+    if (preferencesHydratedRef.current) {
+      return
+    }
+    if (!skillsLoaded || !capabilityMatrixLoaded) {
       return
     }
     const stored = loadCapabilityPreferences()
@@ -230,21 +250,25 @@ export function CapabilitySettingsPanel() {
       const validToolIds = stored.toolIds.filter((toolId) => availableTools.some((tool) => tool.id === toolId))
       setSelectedSkillIds(validSkillIds)
       setSelectedToolIds(validToolIds)
-      return
+    } else {
+      setSelectedSkillIds(defaultSelectedSkillIds)
+      setSelectedToolIds(defaultSelectedToolIds)
     }
-    setSelectedSkillIds(defaultSelectedSkillIds)
-    setSelectedToolIds(defaultSelectedToolIds)
-  }, [availableSkills, availableTools, defaultSelectedSkillIds, defaultSelectedToolIds])
+    preferencesHydratedRef.current = true
+  }, [availableSkills, availableTools, capabilityMatrixLoaded, defaultSelectedSkillIds, defaultSelectedToolIds, skillsLoaded])
 
   useEffect(() => {
-    if (availableSkills.length === 0 && availableTools.length === 0) {
+    if (!preferencesHydratedRef.current) {
+      return
+    }
+    if (!skillsLoaded || !capabilityMatrixLoaded) {
       return
     }
     saveCapabilityPreferences({
       skillIds: selectedSkillIds,
       toolIds: selectedToolIds,
     })
-  }, [availableSkills.length, availableTools.length, selectedSkillIds, selectedToolIds])
+  }, [capabilityMatrixLoaded, selectedSkillIds, selectedToolIds, skillsLoaded])
 
   const groupedSkills = useMemo(() => {
     const bucket = new Map<SkillDomain, AgentSkillSummary[]>()

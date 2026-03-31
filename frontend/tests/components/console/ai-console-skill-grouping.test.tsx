@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AIConsole } from '@/components/chat/ai-console'
 import { CapabilitySettingsPanel } from '@/components/chat/capability-settings-panel'
@@ -419,5 +419,93 @@ describe('Capability settings and console integration', () => {
     const requestInit = streamCall?.[1] as RequestInit | undefined
     const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { enabledToolIds?: string[] } }
     expect(body.context?.enabledToolIds).toEqual(['draft_model'])
+  })
+
+  it('does not overwrite default tool selection before the capability matrix finishes loading', async () => {
+    let resolveMatrix: ((value: Response) => void) | null = null
+
+    vi.restoreAllMocks()
+    window.localStorage.clear()
+    vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+
+      if (url === `${API_BASE}/api/v1/agent/skills`) {
+        return {
+          ok: true,
+          json: async () => ([
+            {
+              id: 'generic',
+              name: { zh: '通用结构类型', en: 'Generic Structure Type' },
+              description: { zh: 'generic', en: 'generic' },
+              autoLoadByDefault: true,
+            },
+            {
+              id: 'opensees-static',
+              name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' },
+              description: { zh: 'static', en: 'static' },
+              autoLoadByDefault: true,
+            },
+          ]),
+        } as Response
+      }
+
+      if (url.startsWith(`${API_BASE}/api/v1/agent/capability-matrix`)) {
+        return await new Promise<Response>((resolve) => {
+          resolveMatrix = resolve
+        })
+      }
+
+      return {
+        ok: true,
+        json: async () => ([]),
+      } as Response
+    })
+
+    render(<CapabilitySettingsPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
+    })
+
+    expect(window.localStorage.getItem(CAPABILITY_PREFERENCE_STORAGE_KEY)).toBeNull()
+
+    await act(async () => {
+      resolveMatrix?.({
+        ok: true,
+        json: async () => ({
+          skills: [
+            { id: 'generic', domain: 'structure-type' },
+            { id: 'opensees-static', domain: 'analysis-strategy' },
+          ],
+          tools: [
+            {
+              id: 'draft_model',
+              category: 'modeling',
+              displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' },
+              description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
+            },
+            {
+              id: 'run_analysis',
+              category: 'analysis',
+              displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' },
+              description: { zh: '执行分析求解', en: 'Execute analysis' },
+            },
+          ],
+          skillDomainById: {
+            generic: 'structure-type',
+            'opensees-static': 'analysis-strategy',
+          },
+          domainSummaries: [
+            { domain: 'structure-type', skillIds: ['generic'] },
+            { domain: 'analysis-strategy', skillIds: ['opensees-static'] },
+          ],
+        }),
+      } as Response)
+    })
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(CAPABILITY_PREFERENCE_STORAGE_KEY) || '{}') as { toolIds?: string[] }
+      expect(stored.toolIds).toEqual(['draft_model', 'run_analysis'])
+    })
   })
 })

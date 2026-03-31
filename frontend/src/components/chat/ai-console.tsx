@@ -1245,6 +1245,8 @@ export function AIConsole() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const shouldStickToBottomRef = useRef(true)
   const capabilityPreferencesHydratedRef = useRef(false)
+  const [skillsLoaded, setSkillsLoaded] = useState(false)
+  const [capabilityMatrixLoaded, setCapabilityMatrixLoaded] = useState(false)
   // 追踪最后有效的结果用于持久化（不会被引擎切换清除）
   const lastValidResultRef = useRef<AgentResult | null>(null)
   const lastValidResultVisualizationRef = useRef<VisualizationSnapshot | null>(null)
@@ -1445,6 +1447,9 @@ export function AIConsole() {
       try {
         const response = await fetch(`${API_BASE}/api/v1/agent/skills`)
         if (!response.ok) {
+          if (active) {
+            setSkillsLoaded(true)
+          }
           return
         }
         const payload = await response.json()
@@ -1453,9 +1458,11 @@ export function AIConsole() {
         }
         const skills = payload as AgentSkillSummary[]
         setAvailableSkills(skills)
+        setSkillsLoaded(true)
       } catch {
         if (active) {
           setAvailableSkills([])
+          setSkillsLoaded(true)
         }
       }
     }
@@ -1471,7 +1478,7 @@ export function AIConsole() {
     if (capabilityPreferencesHydratedRef.current) {
       return
     }
-    if (availableSkills.length === 0 && availableTools.length === 0) {
+    if (!skillsLoaded || !capabilityMatrixLoaded) {
       return
     }
 
@@ -1487,7 +1494,7 @@ export function AIConsole() {
     setHasExplicitSkillSelection(true)
     setHasExplicitToolSelection(true)
     capabilityPreferencesHydratedRef.current = true
-  }, [availableSkills, availableTools, defaultSelectedSkillIds, defaultSelectedToolIds])
+  }, [availableSkills, availableTools, capabilityMatrixLoaded, defaultSelectedSkillIds, defaultSelectedToolIds, skillsLoaded])
 
   useEffect(() => {
     let active = true
@@ -1496,6 +1503,9 @@ export function AIConsole() {
       try {
         const response = await fetch(`${API_BASE}/api/v1/agent/capability-matrix`)
         if (!response.ok) {
+          if (active) {
+            setCapabilityMatrixLoaded(true)
+          }
           return
         }
         const payload = await response.json()
@@ -1503,9 +1513,11 @@ export function AIConsole() {
           return
         }
         setCapabilityMatrix(payload as CapabilityMatrixPayload)
+        setCapabilityMatrixLoaded(true)
       } catch {
         if (active) {
           setCapabilityMatrix(null)
+          setCapabilityMatrixLoaded(true)
         }
       }
     }
@@ -1521,7 +1533,7 @@ export function AIConsole() {
     if (!capabilityPreferencesHydratedRef.current) {
       return
     }
-    if (availableSkills.length === 0 && availableTools.length === 0) {
+    if (!skillsLoaded || !capabilityMatrixLoaded) {
       return
     }
 
@@ -1529,7 +1541,7 @@ export function AIConsole() {
       skillIds: selectedSkillIds,
       toolIds: selectedToolIds,
     })
-  }, [availableSkills.length, availableTools.length, selectedSkillIds, selectedToolIds])
+  }, [capabilityMatrixLoaded, selectedSkillIds, selectedToolIds, skillsLoaded])
 
   // Auto-load latest model from database when conversation changes and model is empty
   useEffect(() => {
