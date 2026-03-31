@@ -1526,6 +1526,25 @@ export class AgentService {
         validateCall.status = 'error';
         validateCall.errorCode = validated.data?.errorCode || 'INVALID_STRUCTURE_MODEL';
         validateCall.error = validated.data?.message || this.localize(locale, '模型校验失败', 'Model validation failed');
+        if (this.wasGeneratedThisTurn(toolCalls)) {
+          return {
+            ok: false,
+            result: await this.buildGeneratedModelValidationClarification({
+              params,
+              traceId,
+              startedAt,
+              startedAtMs,
+              locale,
+              orchestrationMode,
+              skillIds,
+              plan,
+              toolCalls,
+              sessionKey,
+              workingSession,
+              validationError: validateCall.error || this.localize(locale, '模型校验失败', 'Model validation failed'),
+            }),
+          };
+        }
         return {
           ok: false,
           result: await this.finalizeBlockedRunResult({
@@ -1561,6 +1580,25 @@ export class AgentService {
           value: { normalizedModel, validationWarning },
         };
       }
+      if (this.wasGeneratedThisTurn(toolCalls)) {
+        return {
+          ok: false,
+          result: await this.buildGeneratedModelValidationClarification({
+            params,
+            traceId,
+            startedAt,
+            startedAtMs,
+            locale,
+            orchestrationMode,
+            skillIds,
+            plan,
+            toolCalls,
+            sessionKey,
+            workingSession,
+            validationError: validateCall.error || this.localize(locale, '模型校验失败', 'Model validation failed'),
+          }),
+        };
+      }
       return {
         ok: false,
         result: await this.finalizeBlockedRunResult({
@@ -1580,6 +1618,95 @@ export class AgentService {
         }),
       };
     }
+  }
+
+  private wasGeneratedThisTurn(toolCalls: AgentToolCall[]): boolean {
+    return toolCalls.some((call) => call.tool === 'draft_model' || call.tool === 'update_model');
+  }
+
+  private async buildGeneratedModelValidationClarification(args: {
+    params: AgentRunInput;
+    traceId: string;
+    startedAt: string;
+    startedAtMs: number;
+    locale: AppLocale;
+    orchestrationMode: AgentOrchestrationMode;
+    skillIds?: string[];
+    plan: string[];
+    toolCalls: AgentToolCall[];
+    sessionKey?: string;
+    workingSession: InteractionSession;
+    validationError: string;
+  }): Promise<AgentRunResult> {
+    const {
+      params,
+      traceId,
+      startedAt,
+      startedAtMs,
+      locale,
+      orchestrationMode,
+      skillIds,
+      plan,
+      toolCalls,
+      sessionKey,
+      workingSession,
+      validationError,
+    } = args;
+    const assessment = await this.assessInteractionNeeds(workingSession, locale, skillIds);
+    const interaction = await this.buildInteractionPayload(
+      assessment,
+      workingSession,
+      assessment.criticalMissing.length > 0 ? 'confirming' : 'collecting',
+      locale,
+      skillIds,
+    );
+    const missingFields = await this.mapMissingFieldLabels(
+      assessment.criticalMissing,
+      locale,
+      workingSession.draft || { inferredType: 'unknown', updatedAt: workingSession.updatedAt },
+      skillIds,
+    );
+    const fieldsToConfirm = missingFields.length > 0
+      ? missingFields
+      : [
+        this.localize(locale, '材料', 'material'),
+        this.localize(locale, '截面', 'section'),
+        this.localize(locale, '荷载', 'loads'),
+        this.localize(locale, '边界条件', 'boundary conditions'),
+      ];
+    const question = this.localize(
+      locale,
+      `当前生成的结构模型还不满足 StructureModel 校验，先不要执行。请补充或确认：${fieldsToConfirm.join('、')}。如果你已经有完整合法模型，也可以直接贴 JSON。`,
+      `The generated structural model does not yet satisfy StructureModel validation, so execution will stop here. Please provide or confirm: ${fieldsToConfirm.join(', ')}. If you already have a complete valid model, you can paste the JSON directly.`
+    );
+
+    return this.finalizeBlockedRunResult({
+      params,
+      traceId,
+      startedAt,
+      startedAtMs,
+      locale,
+      orchestrationMode,
+      skillIds,
+      plan,
+      toolCalls,
+      sessionKey,
+      workingSession,
+      response: question,
+      needsModelInput: true,
+      clarification: {
+        missingFields: fieldsToConfirm,
+        question,
+      },
+      interaction: {
+        ...interaction,
+        fallbackSupportNote: this.localize(
+          locale,
+          `当前生成的模型未通过 StructureModel 校验：${validationError}`,
+          `The generated model did not pass StructureModel validation: ${validationError}`
+        ),
+      },
+    });
   }
 
   private buildChatModeResponse(interaction: AgentInteraction, locale: AppLocale): string {
