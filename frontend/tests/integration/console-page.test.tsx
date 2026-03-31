@@ -342,27 +342,27 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.queryByText('Selected skills 2')).not.toBeInTheDocument()
     expect(screen.queryByText('Beam Helper')).not.toBeInTheDocument()
     expect(screen.queryByText('Frame Checker')).not.toBeInTheDocument()
-    expect(screen.queryByText('Choose which local Markdown skills the agent may use. If no skills are selected, the console falls back to direct LLM conversation.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Choose which skills the model may use for engineering understanding and guidance. Skills only expose capability; the model still decides whether to use them.')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Expand Skills' }))
 
     expect(screen.getByRole('button', { name: 'Collapse Skills' })).toBeInTheDocument()
-    expect(screen.getByText('Choose which local Markdown skills the agent may use. If no skills are selected, the console falls back to direct LLM conversation.')).toBeInTheDocument()
+    expect(screen.getByText('Choose which skills the model may use for engineering understanding and guidance. Skills only expose capability; the model still decides whether to use them.')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Collapse Skills' }))
 
     expect(screen.getByRole('button', { name: 'Expand Skills' })).toBeInTheDocument()
-    expect(screen.queryByText('Choose which local Markdown skills the agent may use. If no skills are selected, the console falls back to direct LLM conversation.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Choose which skills the model may use for engineering understanding and guidance. Skills only expose capability; the model still decides whether to use them.')).not.toBeInTheDocument()
   })
 
   it('hides composer help in the default collapsed state', async () => {
     await renderConsolePage()
 
-    expect(screen.queryByText('Choose which local Markdown skills the agent may use. If no skills are selected, the console falls back to direct LLM conversation.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Choose which skills the model may use for engineering understanding and guidance. Skills only expose capability; the model still decides whether to use them.')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Skills|展开技能/ }))
 
-    expect(screen.getByText('Choose which local Markdown skills the agent may use. If no skills are selected, the console falls back to direct LLM conversation.')).toBeInTheDocument()
+    expect(screen.getByText('Choose which skills the model may use for engineering understanding and guidance. Skills only expose capability; the model still decides whether to use them.')).toBeInTheDocument()
   })
 
   it('keeps only the model section inside the engineering context panel', async () => {

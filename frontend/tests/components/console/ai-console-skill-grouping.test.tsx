@@ -76,6 +76,20 @@ describe('AIConsole grouped skill picker', () => {
               { id: 'opensees-static', domain: 'analysis-strategy' },
               { id: 'opensees-nonlinear', domain: 'analysis-strategy' },
             ],
+            tools: [
+              {
+                id: 'draft_model',
+                category: 'modeling',
+                displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' },
+                description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
+              },
+              {
+                id: 'run_analysis',
+                category: 'analysis',
+                displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' },
+                description: { zh: '执行分析求解', en: 'Execute analysis' },
+              },
+            ],
             domainSummaries: [
               {
                 domain: 'structure-type',
@@ -186,22 +200,11 @@ describe('AIConsole grouped skill picker', () => {
 
     await user.click(screen.getByRole('button', { name: /expand skills/i }))
 
-    await waitFor(() => {
-      expect(screen.getByLabelText(/category view/i)).toBeInTheDocument()
-      expect(screen.getAllByText(/structure-type skills/i).length).toBeGreaterThan(0)
-      // Auto-loaded skills may fully preselect the domain; UI shows Clear Category instead of Select Category.
-      expect(screen.getByRole('button', { name: /select category|clear category/i })).toBeInTheDocument()
-    })
+    expect(await screen.findByLabelText(/category view/i)).toBeInTheDocument()
+    expect(screen.getAllByText(/structure-type skills/i).length).toBeGreaterThan(0)
 
     await user.click(screen.getByRole('button', { name: 'Beam' }))
-
-    await waitFor(() => {
-      const enabledSelectButtons = screen.getAllByRole('button', { name: /select category/i }).filter((button) => !button.hasAttribute('disabled'))
-      expect(enabledSelectButtons.length).toBeGreaterThan(0)
-    })
-
-    const enabledSelectButtons = screen.getAllByRole('button', { name: /select category/i }).filter((button) => !button.hasAttribute('disabled'))
-    await user.click(enabledSelectButtons[0])
+    await user.click(screen.getAllByRole('button', { name: /select category/i })[0])
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /clear category/i })).toBeInTheDocument()
@@ -248,8 +251,9 @@ describe('AIConsole grouped skill picker', () => {
     })
   })
 
-  it('preselects only the OpenSees static analysis skill for a new conversation', async () => {
+  it('keeps skill and tool selection implicit until the user makes an explicit choice', async () => {
     const user = userEvent.setup()
+    const fetchMock = vi.mocked(global.fetch)
     render(<AIConsole />)
 
     await waitFor(() => {
@@ -258,15 +262,23 @@ describe('AIConsole grouped skill picker', () => {
 
     await user.click(screen.getByRole('button', { name: /expand skills/i }))
     await user.selectOptions(screen.getByLabelText(/category view/i), 'analysis')
+    const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
+    await user.type(composer, 'hello')
+    await user.click(screen.getByRole('button', { name: /send/i }))
 
     await waitFor(() => {
-      const staticSkillButton = screen.getByRole('button', { name: 'OpenSees Static Analysis' })
-      const nonlinearSkillButton = screen.getByRole('button', { name: 'Nonlinear Policy' })
-      const seismicSkillButton = screen.getByRole('button', { name: 'Seismic Policy' })
-      expect(staticSkillButton.className).toContain('border-cyan-300/50')
-      expect(nonlinearSkillButton.className).not.toContain('border-cyan-300/50')
-      expect(seismicSkillButton.className).not.toContain('border-cyan-300/50')
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${API_BASE}/api/v1/chat/stream`,
+        expect.objectContaining({ method: 'POST' })
+      )
     })
+
+    const streamCall = fetchMock.mock.calls.find(([input]) => String(input) === `${API_BASE}/api/v1/chat/stream`)
+    expect(streamCall).toBeTruthy()
+    const requestInit = streamCall?.[1] as RequestInit | undefined
+    const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { skillIds?: string[]; enabledToolIds?: string[] } }
+    expect(body.context?.skillIds).toBeUndefined()
+    expect(body.context?.enabledToolIds).toBeUndefined()
   })
 
   it('does not send analysis type from frontend when executing with selected analysis skills', async () => {
@@ -291,5 +303,43 @@ describe('AIConsole grouped skill picker', () => {
     const body = JSON.parse(String(requestInit?.body || '{}')) as { mode?: string; context?: { analysisType?: string } }
     expect(body.mode).toBeUndefined()
     expect(body.context?.analysisType).toBeUndefined()
+  })
+
+  it('surfaces callable tools and sends explicit tool ids once selected', async () => {
+    const user = userEvent.setup()
+    const fetchMock = vi.mocked(global.fetch)
+    render(<AIConsole />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /expand skills/i })).toBeInTheDocument()
+    })
+
+    await user.click(screen.getByRole('button', { name: /expand skills/i }))
+    expect(await screen.findByRole('button', { name: 'Run Structural Analysis' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Run Structural Analysis' })).toBeInTheDocument()
+
+    const skillHelpChip = screen.getByRole('button', { name: 'Skill' })
+    const toolHelpChip = screen.getByRole('button', { name: 'Tool' })
+    expect(skillHelpChip).toHaveAttribute('title', expect.stringMatching(/domain understanding/i))
+    expect(toolHelpChip).toHaveAttribute('title', expect.stringMatching(/executable action/i))
+
+    await user.click(screen.getByRole('button', { name: 'Run Structural Analysis' }))
+
+    const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
+    await user.type(composer, 'run it when ready')
+    await user.click(screen.getByRole('button', { name: /send/i }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${API_BASE}/api/v1/chat/stream`,
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
+
+    const streamCall = fetchMock.mock.calls.findLast(([input]) => String(input) === `${API_BASE}/api/v1/chat/stream`)
+    expect(streamCall).toBeTruthy()
+    const requestInit = streamCall?.[1] as RequestInit | undefined
+    const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { enabledToolIds?: string[] } }
+    expect(body.context?.enabledToolIds).toEqual(['run_analysis'])
   })
 })
