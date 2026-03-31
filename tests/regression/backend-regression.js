@@ -47,12 +47,12 @@ async function runBackendRegression(rootDir) {
   await runLoggedStep("Backend test", async () => {
     await runBackendCommand(context, ["run", "db:generate", "--prefix", context.paths.backendDir]);
     await runBackendCommand(context, ["run", "build", "--prefix", context.paths.backendDir]);
-    // cwd must be backend so Jest loads jest.config.cjs; from repo root it matches frontend/**/*.test.tsx.
+    // Run Jest directly in backend cwd to avoid npm prefix/env exit-code inconsistencies.
     await runtime.runCommand(runtime.getNpmCommand(), ["exec", "jest", "--", "--passWithNoTests", "--runInBand"], {
       cwd: context.paths.backendDir,
       env: {
         ...process.env,
-        ...context.env,
+        DATABASE_URL: context.env.DATABASE_URL,
         NODE_OPTIONS: "--experimental-vm-modules",
       },
       stdio: "inherit",

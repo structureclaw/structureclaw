@@ -463,6 +463,8 @@ async function ensureAnalysisPython(rootDir, env) {
     return currentPython;
   }
 
+  runtime.requireCommand("python", "Install Python 3.12+ and retry.");
+
   await ensureUv(rootDir);
 
   const pythonVersion =
