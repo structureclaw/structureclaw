@@ -287,9 +287,10 @@ describe('Capability settings and console integration', () => {
     const streamCall = fetchMock.mock.calls.find(([input]) => String(input) === `${API_BASE}/api/v1/chat/stream`)
     expect(streamCall).toBeTruthy()
     const requestInit = streamCall?.[1] as RequestInit | undefined
-    const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { skillIds?: string[]; enabledToolIds?: string[] } }
+    const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { skillIds?: string[]; enabledToolIds?: string[]; model?: unknown } }
     expect(body.context?.skillIds).toEqual(['opensees-static', 'generic'])
     expect([...(body.context?.enabledToolIds ?? [])].sort()).toEqual(['draft_model', 'run_analysis', 'update_model'])
+    expect(body.context?.model).toBeUndefined()
   })
 
   it('does not send analysis type from frontend when executing with selected analysis skills', async () => {
