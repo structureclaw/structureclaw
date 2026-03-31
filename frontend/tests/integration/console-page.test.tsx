@@ -1484,6 +1484,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Preview Model|预览模型/ })).toBeEnabled()
     })
+    expect(screen.queryByText(/Current result is missing a model snapshot|当前结果缺少模型快照/)).not.toBeInTheDocument()
   })
 
   it('renders guided discuss-first state in Chinese', async () => {
