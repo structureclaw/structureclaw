@@ -46,10 +46,10 @@ export default function ConsoleLayout({
               </Link>
             </div>
             <Link
-              href="/"
+              href="/console"
               className="rounded-full border border-border bg-background/70 px-4 py-2 text-sm text-foreground transition hover:bg-accent/10 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
             >
-              {t('backHome')}
+              {t('console')}
             </Link>
             <LanguageToggle />
             <ThemeToggle />
