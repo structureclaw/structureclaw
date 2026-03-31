@@ -1089,9 +1089,63 @@ describe('AgentService orchestration', () => {
     expect(draft.structuralTypeMatch?.skillId).toBe('generic');
     expect(draft.stateToPersist?.skillId).toBe('generic');
     expect(draft.stateToPersist?.supportLevel).toBe('fallback');
-    expect(draft.extractionMode).toBe('deterministic');
+    expect(draft.extractionMode).toBe('llm');
     expect(draft.model).toBeUndefined();
     expect(draft.missingFields).toEqual(['inferredType']);
+  });
+
+  test('should not let generic infer structural type deterministically when llm is unavailable', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft(
+      '我想设计一个三维框架结构，3层每层3m，x方向4跨，y方向3跨',
+      undefined,
+      'zh',
+      ['generic'],
+    );
+
+    expect(draft.structuralTypeMatch?.skillId).toBe('generic');
+    expect(draft.inferredType).toBe('unknown');
+    expect(draft.stateToPersist?.inferredType).toBe('unknown');
+    expect(draft.stateToPersist?.skillId).toBe('generic');
+    expect(draft.model).toBeUndefined();
+    expect(draft.missingFields).toEqual(['inferredType']);
+  });
+
+  test('should let generic upgrade draft state only from llm patch output', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = {
+      invoke: async () => ({
+        content: JSON.stringify({
+          inferredType: 'frame',
+          draftPatch: {
+            inferredType: 'frame',
+            frameDimension: '3d',
+            storyCount: 3,
+            storyHeightsM: [3, 3, 3],
+            bayCountX: 4,
+            bayCountY: 3,
+            bayWidthsXM: [5, 5, 5, 5],
+            bayWidthsYM: [3, 3, 3],
+          },
+        }),
+      }),
+    };
+
+    const draft = await svc.textToModelDraft(
+      '我想设计一个三维框架结构，3层每层3m，x方向4跨跨度5m，y方向3跨跨度3m',
+      undefined,
+      'zh',
+      ['generic'],
+    );
+
+    expect(draft.extractionMode).toBe('llm');
+    expect(draft.inferredType).toBe('frame');
+    expect(draft.stateToPersist?.frameDimension).toBe('3d');
+    expect(draft.stateToPersist?.storyCount).toBe(3);
+    expect(draft.stateToPersist?.bayCountX).toBe(4);
+    expect(draft.stateToPersist?.bayCountY).toBe(3);
   });
 
   test('should execute analyze in no-skill mode when computable model is provided', async () => {

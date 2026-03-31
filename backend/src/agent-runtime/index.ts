@@ -183,7 +183,7 @@ export class AgentSkillRuntime {
       inferredType: nextState.inferredType,
       missingFields: missing.critical,
       model,
-      extractionMode: execution.draftPatch ? 'llm' : 'deterministic',
+      extractionMode: plugin.id === 'generic' || execution.draftPatch ? 'llm' : 'deterministic',
       stateToPersist: nextState,
       structuralTypeMatch,
     };

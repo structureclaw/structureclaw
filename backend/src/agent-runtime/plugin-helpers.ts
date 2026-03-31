@@ -25,11 +25,16 @@ export function buildStructuralTypeMatch(
 }
 
 export function withStructuralTypeState(state: DraftState, structuralTypeMatch: StructuralTypeMatch): DraftState {
+  const preserveInferredType = structuralTypeMatch.mappedType === 'unknown' && state.inferredType && state.inferredType !== 'unknown';
+  const inferredType = preserveInferredType ? state.inferredType : structuralTypeMatch.mappedType;
+  const structuralTypeKey = preserveInferredType
+    ? (state.structuralTypeKey ?? state.inferredType)
+    : structuralTypeMatch.key;
   return {
     ...state,
-    inferredType: structuralTypeMatch.mappedType,
+    inferredType,
     skillId: structuralTypeMatch.skillId,
-    structuralTypeKey: structuralTypeMatch.key,
+    structuralTypeKey,
     supportLevel: structuralTypeMatch.supportLevel,
     supportNote: structuralTypeMatch.supportNote,
     updatedAt: Date.now(),
