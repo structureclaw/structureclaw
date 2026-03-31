@@ -8,7 +8,7 @@ import {
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
 import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
-import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
+import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../../agent-runtime/fallback.js';
 import { buildDefaultReportNarrative } from '../../../agent-runtime/report-template.js';
 import type { AppLocale } from '../../../services/locale.js';
@@ -142,19 +142,19 @@ function buildBeamReportNarrative(input: SkillReportNarrativeInput): string {
 }
 
 export const handler: SkillHandler = {
-  detectScenario({ message, locale }) {
+  detectStructuralType({ message, locale }) {
     const text = message.toLowerCase();
     if (text.includes('portal frame') || text.includes('门式刚架') || text.includes('桁架') || text.includes('truss') || text.includes('双跨梁') || text.includes('double-span')) {
       return null;
     }
     if (text.includes('girder') || text.includes('主梁') || text.includes('大梁')) {
-      return buildScenarioMatch('girder', 'beam', 'beam', 'fallback', locale, {
+      return buildStructuralTypeMatch('girder', 'beam', 'beam', 'fallback', locale, {
         zh: '已将“主梁/大梁”先按梁模板处理；若实际是连续梁或更复杂体系，请继续说明。',
         en: '“Girder” has been normalized to the beam template for now. If the actual system is continuous or more complex, please clarify further.',
       });
     }
     if (text.includes('beam') || text.includes('梁') || text.includes('悬臂')) {
-      return buildScenarioMatch('beam', 'beam', 'beam', 'supported', locale);
+      return buildStructuralTypeMatch('beam', 'beam', 'beam', 'supported', locale);
     }
     return null;
   },

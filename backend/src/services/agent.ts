@@ -14,8 +14,8 @@ import {
   AgentSkillRuntime,
   type DraftResult,
   type DraftState,
-  type ScenarioMatch,
-  type ScenarioTemplateKey,
+  type StructuralTypeMatch,
+  type StructuralTypeKey,
 } from '../agent-runtime/index.js';
 import {
   buildCodeCheckInput,
@@ -55,7 +55,7 @@ export type AgentInteractionRouteHint = 'prefer_interactive' | 'prefer_tool';
 
 interface InteractionSession {
   draft: DraftState;
-  scenario?: ScenarioMatch;
+  structuralTypeMatch?: StructuralTypeMatch;
   userApprovedAutoDecide?: boolean;
   resolved?: {
     analysisType?: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
@@ -170,7 +170,7 @@ interface PlannerContextSnapshot {
   hasActiveSession: boolean;
   hasModel: boolean;
   inferredType: DraftState['inferredType'];
-  scenarioKey?: string;
+  structuralTypeKey?: string;
   criticalMissing: string[];
   nonCriticalMissing: string[];
   readyForExecution: boolean;
@@ -359,8 +359,8 @@ export class AgentService {
     return this.policy.getStageLabel(stage, locale);
   }
 
-  private async getScenarioLabel(key: ScenarioTemplateKey, locale: AppLocale): Promise<string> {
-    return this.skillRuntime.getScenarioLabel(key, locale);
+  private async getStructuralTypeLabel(key: StructuralTypeKey, locale: AppLocale): Promise<string> {
+    return this.skillRuntime.getStructuralTypeLabel(key, locale);
   }
 
   async shouldPreferToolInvocation(message: string, options?: {
@@ -433,7 +433,7 @@ export class AgentService {
       hasActiveSession: Boolean(options.session),
       hasModel: options.hasModel,
       inferredType: options.session?.draft.inferredType ?? 'unknown',
-      scenarioKey: options.session?.draft.scenarioKey,
+      structuralTypeKey: options.session?.draft.structuralTypeKey,
       criticalMissing: assessment?.criticalMissing ?? [],
       nonCriticalMissing: assessment?.nonCriticalMissing ?? [],
       readyForExecution,
@@ -613,7 +613,7 @@ export class AgentService {
 
     if (noSkillMode) {
       workingSession.draft = normalizeNoSkillDraftState(workingSession.draft);
-      workingSession.scenario = undefined;
+      workingSession.structuralTypeMatch = undefined;
     }
 
     this.applyResolvedConfigFromContext(workingSession, params.context);
@@ -769,7 +769,7 @@ export class AgentService {
 
     if (this.isNoSkillMode(skillIds)) {
       session.draft = normalizeNoSkillDraftState(session.draft);
-      session.scenario = undefined;
+      session.structuralTypeMatch = undefined;
       session.updatedAt = Date.now();
       if (conversationId?.trim()) {
         await this.setInteractionSession(conversationId.trim(), session);
@@ -1525,7 +1525,7 @@ export class AgentService {
     if (this.isNoSkillMode(skillIds)) {
       return true;
     }
-    return draft.inferredType === 'unknown' && !draft.scenario;
+    return draft.inferredType === 'unknown' && !draft.structuralTypeMatch;
   }
 
   private buildGenericModelingIntro(locale: AppLocale, noSkillMode: boolean): string {
@@ -1739,10 +1739,10 @@ export class AgentService {
     if (draft.stateToPersist) {
       workingSession.draft = draft.stateToPersist;
     }
-    if (draft.scenario) {
-      workingSession.scenario = draft.scenario;
+    if (draft.structuralTypeMatch) {
+      workingSession.structuralTypeMatch = draft.structuralTypeMatch;
     } else if (noSkillEquivalentDraft) {
-      workingSession.scenario = undefined;
+      workingSession.structuralTypeMatch = undefined;
     }
     workingSession.updatedAt = Date.now();
     this.applyInferredNonCriticalFromMessage(workingSession, params.message);
@@ -2230,10 +2230,10 @@ export class AgentService {
     if (draft.stateToPersist) {
       workingSession.draft = draft.stateToPersist;
     }
-    if (draft.scenario) {
-      workingSession.scenario = draft.scenario;
+    if (draft.structuralTypeMatch) {
+      workingSession.structuralTypeMatch = draft.structuralTypeMatch;
     } else if (noSkillEquivalentDraft) {
-      workingSession.scenario = undefined;
+      workingSession.structuralTypeMatch = undefined;
     }
     workingSession.updatedAt = Date.now();
     this.applyInferredNonCriticalFromMessage(workingSession, params.message);
@@ -2971,12 +2971,12 @@ export class AgentService {
     }
     if (this.isNoSkillMode(skillIds)) {
       session.draft = normalizeNoSkillDraftState(session.draft);
-      session.scenario = undefined;
+      session.structuralTypeMatch = undefined;
     } else {
       session.draft = await this.skillRuntime.applyProvidedValues(session.draft, values, locale, skillIds);
-      if (session.draft.scenarioKey) {
-        session.scenario = {
-          key: session.draft.scenarioKey,
+      if (session.draft.structuralTypeKey) {
+        session.structuralTypeMatch = {
+          key: session.draft.structuralTypeKey,
           mappedType: session.draft.inferredType,
           skillId: session.draft.skillId,
           supportLevel: session.draft.supportLevel || 'supported',
@@ -3038,7 +3038,7 @@ export class AgentService {
       interactionStageLabel: this.getStageLabel(stage, locale),
       missingCritical,
       missingOptional,
-      fallbackSupportNote: session.scenario?.supportNote,
+      fallbackSupportNote: session.structuralTypeMatch?.supportNote,
       questions,
       pending: {
         criticalMissing: missingCritical,
@@ -3327,7 +3327,7 @@ export class AgentService {
       return this.textToModelDraftWithoutSkills(message, existingState, locale);
     }
     const skillDraft = await this.skillRuntime.textToModelDraft(this.llm, message, existingState, locale, skillIds);
-    if (skillDraft.model || skillDraft.inferredType !== 'unknown' || skillDraft.scenario?.skillId) {
+    if (skillDraft.model || skillDraft.inferredType !== 'unknown' || skillDraft.structuralTypeMatch?.skillId) {
       return skillDraft;
     }
 
@@ -3661,7 +3661,7 @@ export class AgentService {
       selectedSkillIds,
     };
 
-    const structuralSkillId = session?.scenario?.skillId || session?.draft?.skillId;
+    const structuralSkillId = session?.structuralTypeMatch?.skillId || session?.draft?.skillId;
     if (structuralSkillId) {
       routing.structuralSkillId = structuralSkillId;
     }

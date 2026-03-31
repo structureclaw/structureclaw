@@ -14,7 +14,7 @@ export const manifest: SkillManifest = {
   triggers: ['frame', '框架', 'steel frame', '钢框架', 'moment frame', '刚接框架'],
   stages: ['intent', 'draft', 'analysis', 'design'],
   autoLoadByDefault: true,
-  scenarioKeys: ['frame', 'steel-frame'],
+  structuralTypeKeys: ['frame', 'steel-frame'],
   domain: 'structure-type',
   requires: [],
   conflicts: [],

@@ -14,7 +14,7 @@ export const manifest: SkillManifest = {
   triggers: ['beam', '梁', '悬臂', 'girder', '主梁', '大梁'],
   stages: ['intent', 'draft', 'analysis', 'design'],
   autoLoadByDefault: true,
-  scenarioKeys: ['beam', 'girder'],
+  structuralTypeKeys: ['beam', 'girder'],
   domain: 'structure-type',
   requires: [],
   conflicts: [],

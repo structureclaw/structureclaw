@@ -1,9 +1,9 @@
 import type { AppLocale } from '../services/locale.js';
 import { listStructureModelingProviders } from '../agent-skills/structure-type/registry.js';
 import { AgentSkillLoader } from './loader.js';
-import { buildUnknownScenario, detectUnsupportedScenarioByRules } from './fallback.js';
+import { buildUnknownStructuralType, detectUnsupportedStructuralTypeByRules } from './fallback.js';
 import { localize } from './plugin-helpers.js';
-import type { AgentSkillBundle, AgentSkillPlugin, DraftState, InferredModelType, ScenarioMatch, ScenarioTemplateKey } from './types.js';
+import type { AgentSkillBundle, AgentSkillPlugin, DraftState, InferredModelType, StructuralTypeMatch, StructuralTypeKey } from './types.js';
 
 export class AgentSkillRegistry {
   constructor(private readonly loader = new AgentSkillLoader()) {}
@@ -53,13 +53,13 @@ export class AgentSkillRegistry {
     return skills.find((skill) => skill.id === identifier || skill.structureType === identifier) || null;
   }
 
-  async detectScenario(
+  async detectStructuralType(
     message: string,
     locale: AppLocale,
     currentState?: DraftState,
     skillIds?: string[],
-  ): Promise<ScenarioMatch> {
-    const unsupported = detectUnsupportedScenarioByRules(message, locale);
+  ): Promise<StructuralTypeMatch> {
+    const unsupported = detectUnsupportedStructuralTypeByRules(message, locale);
     if (unsupported) {
       return unsupported;
     }
@@ -69,7 +69,7 @@ export class AgentSkillRegistry {
       if (plugin.id === 'generic') {
         continue;
       }
-      const matched = plugin.handler.detectScenario({
+      const matched = plugin.handler.detectStructuralType({
         message,
         locale,
         currentState,
@@ -82,7 +82,7 @@ export class AgentSkillRegistry {
     const currentPlugin = await this.resolvePluginForState(currentState, skillIds);
     if (currentPlugin && currentState?.inferredType && currentState.inferredType !== 'unknown') {
       return {
-        key: (currentState.scenarioKey ?? currentPlugin.id) as ScenarioTemplateKey,
+        key: (currentState.structuralTypeKey ?? currentPlugin.id) as StructuralTypeKey,
         mappedType: currentState.inferredType,
         skillId: currentPlugin.id,
         supportLevel: currentState.supportLevel ?? 'supported',
@@ -92,7 +92,7 @@ export class AgentSkillRegistry {
 
     const genericPlugin = plugins.find((plugin) => plugin.id === 'generic');
     if (genericPlugin) {
-      const matched = genericPlugin.handler.detectScenario({
+      const matched = genericPlugin.handler.detectStructuralType({
         message,
         locale,
         currentState,
@@ -102,19 +102,19 @@ export class AgentSkillRegistry {
       }
     }
 
-    return buildUnknownScenario(locale);
+    return buildUnknownStructuralType(locale);
   }
 
-  async getScenarioLabel(key: string, locale: AppLocale, skillIds?: string[]): Promise<string> {
+  async getStructuralTypeLabel(key: string, locale: AppLocale, skillIds?: string[]): Promise<string> {
     if (key === 'steel-frame') {
       return localize(locale, '钢框架', 'Steel Frame');
     }
     const bundles = await this.resolveEnabledPlugins(skillIds);
-    const matched = bundles.find((bundle) => bundle.id === key || bundle.structureType === key || bundle.manifest.scenarioKeys.includes(key as ScenarioTemplateKey));
+    const matched = bundles.find((bundle) => bundle.id === key || bundle.structureType === key || bundle.manifest.structuralTypeKeys.includes(key as StructuralTypeKey));
     if (matched) {
       return locale === 'zh' ? matched.name.zh : matched.name.en;
     }
-    switch (key as InferredModelType | ScenarioTemplateKey) {
+    switch (key as InferredModelType | StructuralTypeKey) {
       case 'portal':
         return localize(locale, '门架/刚架', 'Portal Structure');
       case 'girder':

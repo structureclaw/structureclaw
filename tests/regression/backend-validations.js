@@ -356,7 +356,7 @@ async function validateAgentOrchestration(context) {
       message: "跨度10m",
     });
     assert(second.success === true, "second conversation turn should still succeed");
-    assert(second.interaction?.detectedScenario === "portal-frame", "conversation follow-up should keep portal-frame scenario");
+    assert(second.interaction?.detectedStructuralType === "portal-frame", "conversation follow-up should keep the portal-frame structural type");
     assert(
       !second.interaction?.missingCritical?.includes("门式刚架或双跨每跨跨度（m）"),
       "second conversation turn should not ask for span again",
@@ -382,7 +382,7 @@ async function validateAgentOrchestration(context) {
       message: "跨度10m",
     });
     assert(second.success === true, "second beam conversation turn should still succeed");
-    assert(second.interaction?.detectedScenario === "beam", "beam follow-up should keep beam scenario");
+    assert(second.interaction?.detectedStructuralType === "beam", "beam follow-up should keep the beam structural type");
     assert(
       !second.interaction?.missingCritical?.includes("跨度/长度（m）"),
       "second beam conversation turn should not ask for span again",
@@ -675,7 +675,7 @@ async function validateAgentCapabilityModes(context) {
     },
   });
   assert(skilledChat.success === true, "skilled chat should succeed");
-  assert(skilledChat.interaction?.detectedScenario === "portal-frame", "skilled chat should keep structural interaction guidance");
+  assert(skilledChat.interaction?.detectedStructuralType === "portal-frame", "skilled chat should keep structural interaction guidance");
   assert(!skilledChat.toolCalls.some((call) => call.tool === "run_analysis"), "skilled chat should not execute run_analysis");
   assert(!skilledChat.toolCalls.some((call) => call.tool === "run_code_check"), "skilled chat should not execute run_code_check");
   assert(!skilledChat.toolCalls.some((call) => call.tool === "generate_report"), "skilled chat should not execute generate_report");
@@ -857,7 +857,7 @@ async function validateAgentCapabilityMatrix(context) {
         triggers: ["beam"],
         stages: ["intent", "draft", "analysis", "design"],
         autoLoadByDefault: true,
-        scenarioKeys: ["beam"],
+        structuralTypeKeys: ["beam"],
         requires: [],
         conflicts: [],
         capabilities: ["intent-detection"],
@@ -876,7 +876,7 @@ async function validateAgentCapabilityMatrix(context) {
         triggers: ["truss"],
         stages: ["intent", "draft", "analysis", "design"],
         autoLoadByDefault: true,
-        scenarioKeys: ["truss"],
+        structuralTypeKeys: ["truss"],
         requires: [],
         conflicts: [],
         capabilities: ["intent-detection"],
@@ -895,7 +895,7 @@ async function validateAgentCapabilityMatrix(context) {
         triggers: ["analysis"],
         stages: ["analysis"],
         autoLoadByDefault: true,
-        scenarioKeys: ["beam"],
+        structuralTypeKeys: ["beam"],
         requires: [],
         conflicts: [],
         capabilities: ["analysis-policy"],

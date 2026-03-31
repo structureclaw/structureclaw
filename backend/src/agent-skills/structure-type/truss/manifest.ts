@@ -14,7 +14,7 @@ export const manifest: SkillManifest = {
   triggers: ['truss', '桁架'],
   stages: ['intent', 'draft', 'analysis', 'design'],
   autoLoadByDefault: true,
-  scenarioKeys: ['truss'],
+  structuralTypeKeys: ['truss'],
   domain: 'structure-type',
   requires: [],
   conflicts: [],

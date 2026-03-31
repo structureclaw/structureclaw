@@ -8,7 +8,7 @@ import {
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
 import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
-import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
+import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../../agent-runtime/fallback.js';
 import { buildDefaultReportNarrative } from '../../../agent-runtime/report-template.js';
 import type { AppLocale } from '../../../services/locale.js';
@@ -129,10 +129,10 @@ function buildTrussReportNarrative(input: SkillReportNarrativeInput): string {
 }
 
 export const handler: SkillHandler = {
-  detectScenario({ message, locale }) {
+  detectStructuralType({ message, locale }) {
     const text = message.toLowerCase();
     if (text.includes('truss') || text.includes('桁架')) {
-      return buildScenarioMatch('truss', 'truss', 'truss', 'supported', locale);
+      return buildStructuralTypeMatch('truss', 'truss', 'truss', 'supported', locale);
     }
     return null;
   },

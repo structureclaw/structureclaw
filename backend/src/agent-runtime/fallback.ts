@@ -12,8 +12,8 @@ import type {
   FrameDimension,
   InferredModelType,
   InteractionQuestion,
-  ScenarioMatch,
-  ScenarioTemplateKey,
+  StructuralTypeMatch,
+  StructuralTypeKey,
 } from './types.js';
 
 function localize(locale: AppLocale, zh: string, en: string): string {
@@ -491,12 +491,12 @@ export function normalizeFloorLoads(value: unknown): DraftFloorLoad[] | undefine
   return filtered.length > 0 ? filtered : undefined;
 }
 
-export function buildUnsupportedScenario(
+export function buildUnsupportedStructuralType(
   locale: AppLocale,
-  key: ScenarioTemplateKey,
+  key: StructuralTypeKey,
   noteZh: string,
   noteEn: string,
-): ScenarioMatch {
+): StructuralTypeMatch {
   return {
     key,
     mappedType: 'unknown',
@@ -505,19 +505,19 @@ export function buildUnsupportedScenario(
   };
 }
 
-export function buildUnknownScenario(locale: AppLocale): ScenarioMatch {
-  return buildUnsupportedScenario(
+export function buildUnknownStructuralType(locale: AppLocale): StructuralTypeMatch {
+  return buildUnsupportedStructuralType(
     locale,
     'unknown',
-    '我还没有从当前描述中稳定识别出可直接补参的结构场景。请先说明它更接近梁、桁架、门式刚架还是规则框架。',
-    'I have not yet identified a stable structural scenario from the current description. Please tell me whether it is closer to a beam, truss, portal frame, or regular frame.'
+    '我还没有从当前描述中稳定识别出可直接补参的结构类型。请先说明它更接近梁、桁架、门式刚架还是规则框架。',
+    'I have not yet identified a stable structural type from the current description. Please tell me whether it is closer to a beam, truss, portal frame, or regular frame.'
   );
 }
 
-export function detectUnsupportedScenarioByRules(message: string, locale: AppLocale): ScenarioMatch | null {
+export function detectUnsupportedStructuralTypeByRules(message: string, locale: AppLocale): StructuralTypeMatch | null {
   const text = message.toLowerCase();
   if (text.includes('space frame') || text.includes('网架')) {
-    return buildUnsupportedScenario(
+    return buildUnsupportedStructuralType(
       locale,
       'space-frame',
       '当前对话补参链路还不直接支持空间网架；如果你愿意，可先收敛成梁、桁架、门式刚架或规则框架进行澄清。',
@@ -525,7 +525,7 @@ export function detectUnsupportedScenarioByRules(message: string, locale: AppLoc
     );
   }
   if (text.includes('slab') || text.includes('plate') || text.includes('楼板') || text.includes('板')) {
-    return buildUnsupportedScenario(
+    return buildUnsupportedStructuralType(
       locale,
       'plate-slab',
       '当前补参链路还不直接支持板/楼板模型；请先确认是否可以简化为梁系、框架或桁架问题。',
@@ -533,7 +533,7 @@ export function detectUnsupportedScenarioByRules(message: string, locale: AppLoc
     );
   }
   if (text.includes('shell') || text.includes('壳')) {
-    return buildUnsupportedScenario(
+    return buildUnsupportedStructuralType(
       locale,
       'shell',
       '当前补参链路还不直接支持壳体模型；请先说明是否可以收敛到梁、桁架或规则框架的近似模型。',
@@ -541,7 +541,7 @@ export function detectUnsupportedScenarioByRules(message: string, locale: AppLoc
     );
   }
   if (text.includes('tower') || text.includes('塔')) {
-    return buildUnsupportedScenario(
+    return buildUnsupportedStructuralType(
       locale,
       'tower',
       '当前补参链路还不直接支持塔架专用模板；如果只是杆系近似，可先按桁架继续澄清。',
@@ -549,7 +549,7 @@ export function detectUnsupportedScenarioByRules(message: string, locale: AppLoc
     );
   }
   if (text.includes('bridge') || text.includes('桥')) {
-    return buildUnsupportedScenario(
+    return buildUnsupportedStructuralType(
       locale,
       'bridge',
       '当前补参链路还不直接支持桥梁专用模板；若你只想先讨论主梁近似，可收敛到梁模板。',
@@ -1201,7 +1201,7 @@ export function buildInteractionQuestions(
   });
 }
 
-export function getScenarioLabel(key: ScenarioTemplateKey, locale: AppLocale, bundles: AgentSkillBundle[]): string {
+export function getStructuralTypeLabel(key: StructuralTypeKey, locale: AppLocale, bundles: AgentSkillBundle[]): string {
   const matched = bundles.find((bundle) => bundle.id === key || bundle.structureType === key);
   if (matched) {
     return locale === 'zh' ? matched.name.zh : matched.name.en;

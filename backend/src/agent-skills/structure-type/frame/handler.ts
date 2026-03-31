@@ -8,7 +8,7 @@ import {
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
 import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
-import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
+import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import { buildInteractionQuestions, computeMissingCriticalKeys, normalizeNumber, normalizePositiveInteger } from '../../../agent-runtime/fallback.js';
 import { buildDefaultReportNarrative } from '../../../agent-runtime/report-template.js';
 import type { AppLocale } from '../../../services/locale.js';
@@ -17,7 +17,7 @@ import type {
   DraftFloorLoad,
   DraftState,
   InteractionQuestion,
-  ScenarioMatch,
+  StructuralTypeMatch,
   SkillDefaultProposal,
   SkillHandler,
   SkillReportNarrativeInput,
@@ -988,28 +988,28 @@ function buildFrameReportNarrative(input: SkillReportNarrativeInput): string {
 // ─── Skill handler export ────────────────────────────────────────────────────
 
 export const handler: SkillHandler = {
-  detectScenario({ message, locale, currentState }) {
+  detectStructuralType({ message, locale, currentState }) {
     const text = message.toLowerCase();
     if (
       (text.includes('frame') || text.includes('框架') || text.includes('钢框架'))
       && (text.includes('irregular') || text.includes('不规则') || text.includes('退台') || text.includes('缺跨'))
     ) {
-      return buildScenarioMatch('frame', 'unknown', 'frame', 'unsupported', locale, {
+      return buildStructuralTypeMatch('frame', 'unknown', 'frame', 'unsupported', locale, {
         zh: '当前 frame skill 只支持规则楼层和规则轴网框架。若结构存在退台、缺跨或明显不规则，请直接提供 JSON 或更具体的节点构件描述。',
         en: 'The current frame skill only supports regular stories and regular grids. If the structure has setbacks, missing bays, or strong irregularities, please provide JSON or a more explicit node/member description.',
       });
     }
     if (text.includes('steel frame') || text.includes('钢框架')) {
-      return buildScenarioMatch('steel-frame', 'frame', 'frame', 'supported', locale);
+      return buildStructuralTypeMatch('steel-frame', 'frame', 'frame', 'supported', locale);
     }
     if (text.includes('frame') || text.includes('框架')) {
-      return buildScenarioMatch('frame', 'frame', 'frame', 'supported', locale);
+      return buildStructuralTypeMatch('frame', 'frame', 'frame', 'supported', locale);
     }
-    // Sticky: maintain the active frame scenario for follow-up messages that lack
+    // Sticky: maintain the active frame structural type for follow-up messages that lack
     // an explicit frame keyword (e.g. "层高3.6m" as a second turn).
     if (currentState?.inferredType === 'frame' && currentState.supportLevel !== 'unsupported') {
-      const key = (currentState.scenarioKey === 'steel-frame' ? 'steel-frame' : 'frame') as ScenarioMatch['key'];
-      return buildScenarioMatch(key, 'frame', 'frame', 'supported', locale);
+      const key = (currentState.structuralTypeKey === 'steel-frame' ? 'steel-frame' : 'frame') as StructuralTypeMatch['key'];
+      return buildStructuralTypeMatch(key, 'frame', 'frame', 'supported', locale);
     }
     return null;
   },

@@ -7,7 +7,7 @@ export function normalizeNoSkillDraftState(_state: DraftState): DraftState {
   return {
     inferredType: 'unknown',
     skillId: undefined,
-    scenarioKey: undefined,
+    structuralTypeKey: undefined,
     supportLevel: undefined,
     supportNote: undefined,
     skillState: undefined,

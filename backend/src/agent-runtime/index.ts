@@ -4,17 +4,17 @@ import { AgentSkillRegistry } from './registry.js';
 import { AgentSkillExecutor } from './executor.js';
 import { listBuiltinToolManifests, resolveToolingForSkillManifests } from './tool-registry.js';
 import { buildDefaultReportNarrative } from './report-template.js';
-import { localize, withScenarioState } from './plugin-helpers.js';
+import { localize, withStructuralTypeState } from './plugin-helpers.js';
 import type {
   AgentSkillBundle,
   DraftResult,
   DraftState,
   InteractionQuestion,
   SkillDefaultProposal,
-  ScenarioMatch,
+  StructuralTypeMatch,
   SkillReportNarrativeInput,
-  ScenarioSupportLevel,
-  ScenarioTemplateKey,
+  StructuralTypeSupportLevel,
+  StructuralTypeKey,
   SkillManifest,
   ToolManifest,
 } from './types.js';
@@ -33,9 +33,9 @@ export type {
   FrameDimension,
   InferredModelType,
   InteractionQuestion,
-  ScenarioMatch,
-  ScenarioTemplateKey,
-  ScenarioSupportLevel,
+  StructuralTypeMatch,
+  StructuralTypeKey,
+  StructuralTypeSupportLevel,
   SkillDefaultProposal,
   SkillHandler,
   SkillManifest,
@@ -73,8 +73,8 @@ export class AgentSkillRuntime {
     return resolveToolingForSkillManifests(manifests, skillIds);
   }
 
-  async detectScenario(message: string, locale: AppLocale, currentState?: DraftState, skillIds?: string[]): Promise<ScenarioMatch> {
-    return this.registry.detectScenario(message, locale, currentState, skillIds);
+  async detectStructuralType(message: string, locale: AppLocale, currentState?: DraftState, skillIds?: string[]): Promise<StructuralTypeMatch> {
+    return this.registry.detectStructuralType(message, locale, currentState, skillIds);
   }
 
   async shouldPreferToolInvocation(
@@ -83,15 +83,15 @@ export class AgentSkillRuntime {
     currentState?: DraftState,
     skillIds?: string[],
   ): Promise<boolean> {
-    const scenario = await this.registry.detectScenario(message, locale, currentState, skillIds);
-    if (scenario.supportLevel === 'unsupported') {
+    const structuralTypeMatch = await this.registry.detectStructuralType(message, locale, currentState, skillIds);
+    if (structuralTypeMatch.supportLevel === 'unsupported') {
       return false;
     }
-    return scenario.mappedType !== 'unknown';
+    return structuralTypeMatch.mappedType !== 'unknown';
   }
 
-  async getScenarioLabel(key: string, locale: AppLocale, skillIds?: string[]): Promise<string> {
-    return this.registry.getScenarioLabel(key, locale, skillIds);
+  async getStructuralTypeLabel(key: string, locale: AppLocale, skillIds?: string[]): Promise<string> {
+    return this.registry.getStructuralTypeLabel(key, locale, skillIds);
   }
 
   async applyProvidedValues(
@@ -120,8 +120,8 @@ export class AgentSkillRuntime {
     return {
       ...merged,
       skillId: plugin.id,
-      scenarioKey: (merged.scenarioKey ?? plugin.id) as ScenarioTemplateKey,
-      supportLevel: (merged.supportLevel ?? 'supported') as ScenarioSupportLevel,
+      structuralTypeKey: (merged.structuralTypeKey ?? plugin.id) as StructuralTypeKey,
+      supportLevel: (merged.supportLevel ?? 'supported') as StructuralTypeSupportLevel,
       updatedAt: Date.now(),
     };
   }
@@ -133,13 +133,13 @@ export class AgentSkillRuntime {
     locale: AppLocale,
     skillIds?: string[]
   ): Promise<DraftResult> {
-    const scenario = await this.registry.detectScenario(message, locale, existingState, skillIds);
-    if (!scenario.skillId) {
+    const structuralTypeMatch = await this.registry.detectStructuralType(message, locale, existingState, skillIds);
+    if (!structuralTypeMatch.skillId) {
       const stateToPersist: DraftState = {
         ...(existingState || { inferredType: 'unknown' }),
-        scenarioKey: scenario.key,
-        supportLevel: scenario.supportLevel,
-        supportNote: scenario.supportNote,
+        structuralTypeKey: structuralTypeMatch.key,
+        supportLevel: structuralTypeMatch.supportLevel,
+        supportNote: structuralTypeMatch.supportNote,
         updatedAt: Date.now(),
       };
       return {
@@ -147,18 +147,18 @@ export class AgentSkillRuntime {
         missingFields: ['inferredType'],
         extractionMode: 'deterministic',
         stateToPersist,
-        scenario,
+        structuralTypeMatch,
       };
     }
 
-    const plugin = await this.registry.resolvePluginForIdentifier(scenario.skillId, skillIds);
+    const plugin = await this.registry.resolvePluginForIdentifier(structuralTypeMatch.skillId, skillIds);
     if (!plugin) {
       return {
         inferredType: existingState?.inferredType || 'unknown',
         missingFields: ['inferredType'],
         extractionMode: 'deterministic',
         stateToPersist: existingState,
-        scenario,
+        structuralTypeMatch,
       };
     }
 
@@ -174,9 +174,9 @@ export class AgentSkillRuntime {
       locale,
       currentState: existingState,
       llmDraftPatch: execution.draftPatch,
-      scenario,
+      structuralTypeMatch,
     });
-    const nextState = withScenarioState(plugin.handler.mergeState(existingState, patch), scenario);
+    const nextState = withStructuralTypeState(plugin.handler.mergeState(existingState, patch), structuralTypeMatch);
     const missing = plugin.handler.computeMissing(nextState, 'execution');
     const model = missing.critical.length === 0 ? plugin.handler.buildModel(nextState) : undefined;
     return {
@@ -185,7 +185,7 @@ export class AgentSkillRuntime {
       model,
       extractionMode: execution.draftPatch ? 'llm' : 'deterministic',
       stateToPersist: nextState,
-      scenario,
+      structuralTypeMatch,
     };
   }
 

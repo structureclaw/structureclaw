@@ -14,7 +14,7 @@ export const manifest: SkillManifest = {
   triggers: ['portal frame', '门式刚架', 'portal', '门架', '刚架'],
   stages: ['intent', 'draft', 'analysis', 'design'],
   autoLoadByDefault: true,
-  scenarioKeys: ['portal-frame', 'portal'],
+  structuralTypeKeys: ['portal-frame', 'portal'],
   domain: 'structure-type',
   requires: [],
   conflicts: [],

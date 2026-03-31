@@ -14,7 +14,7 @@ export const manifest: SkillManifest = {
   triggers: ['double-span', '双跨梁'],
   stages: ['intent', 'draft', 'analysis', 'design'],
   autoLoadByDefault: true,
-  scenarioKeys: ['double-span-beam'],
+  structuralTypeKeys: ['double-span-beam'],
   domain: 'structure-type',
   requires: [],
   conflicts: [],

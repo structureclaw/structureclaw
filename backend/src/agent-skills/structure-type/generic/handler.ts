@@ -13,7 +13,7 @@ import {
   extractDraftByRules,
   mergeDraftState,
 } from '../../../agent-runtime/fallback.js';
-import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
+import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import { buildDefaultReportNarrative } from '../../../agent-runtime/report-template.js';
 import type {
   DraftExtraction,
@@ -71,7 +71,7 @@ function buildGenericPatch(
       return {
         ...merged,
         inferredType: 'frame',
-        scenarioKey: 'steel-frame',
+        structuralTypeKey: 'steel-frame',
       };
     }
     if (
@@ -85,28 +85,28 @@ function buildGenericPatch(
       return {
         ...merged,
         inferredType: 'frame',
-        scenarioKey: 'frame',
+        structuralTypeKey: 'frame',
       };
     }
     if (normalizedMessage.includes('portal frame') || message.includes('门式刚架') || message.includes('门架') || message.includes('刚架')) {
       return {
         ...merged,
         inferredType: 'portal-frame',
-        scenarioKey: 'portal-frame',
+        structuralTypeKey: 'portal-frame',
       };
     }
     if (normalizedMessage.includes('truss') || message.includes('桁架')) {
       return {
         ...merged,
         inferredType: 'truss',
-        scenarioKey: 'truss',
+        structuralTypeKey: 'truss',
       };
     }
     if (normalizedMessage.includes('beam') || normalizedMessage.includes('girder') || message.includes('梁')) {
       return {
         ...merged,
         inferredType: 'beam',
-        scenarioKey: 'beam',
+        structuralTypeKey: 'beam',
       };
     }
   }
@@ -152,14 +152,14 @@ function buildGenericQuestions(
 }
 
 export const handler: SkillHandler = {
-  detectScenario({ message, locale, currentState }) {
+  detectStructuralType({ message, locale, currentState }) {
     if (currentState?.skillId === 'generic') {
       const upgradedDraft = buildGenericPatch(message, null);
       const upgradedInferredType = upgradedDraft.inferredType ?? 'unknown';
-      const upgradedScenarioKey = upgradedDraft.scenarioKey ?? (upgradedInferredType === 'unknown' ? 'unknown' : upgradedInferredType);
+      const upgradedScenarioKey = upgradedDraft.structuralTypeKey ?? (upgradedInferredType === 'unknown' ? 'unknown' : upgradedInferredType);
       const canUpgradeCurrentUnknown = currentState.inferredType === 'unknown' && upgradedInferredType !== 'unknown';
-      return buildScenarioMatch(
-        canUpgradeCurrentUnknown ? upgradedScenarioKey : (currentState.scenarioKey ?? 'unknown'),
+      return buildStructuralTypeMatch(
+        canUpgradeCurrentUnknown ? upgradedScenarioKey : (currentState.structuralTypeKey ?? 'unknown'),
         canUpgradeCurrentUnknown ? upgradedInferredType : currentState.inferredType,
         'generic',
         currentState.supportLevel ?? 'fallback',
@@ -182,8 +182,8 @@ export const handler: SkillHandler = {
 
     const draft = buildGenericPatch(message, null);
     const inferred = draft.inferredType ?? 'unknown';
-    const key = draft.scenarioKey ?? (inferred === 'unknown' ? 'unknown' : inferred);
-    return buildScenarioMatch(key, inferred, 'generic', 'fallback', locale, {
+    const key = draft.structuralTypeKey ?? (inferred === 'unknown' ? 'unknown' : inferred);
+    return buildStructuralTypeMatch(key, inferred, 'generic', 'fallback', locale, {
       zh: inferred === 'unknown'
         ? '已切换到通用结构类型 skill，先接住当前问题并继续补参。'
         : '未命中更专门的结构类型 skill，已切换到通用结构类型 skill 继续处理。',
@@ -205,7 +205,7 @@ export const handler: SkillHandler = {
       ...merged,
       inferredType,
       skillId: 'generic',
-      scenarioKey: (patch.scenarioKey ?? existing?.scenarioKey ?? (inferredType === 'unknown' ? 'unknown' : inferredType)) as DraftState['scenarioKey'],
+      structuralTypeKey: (patch.structuralTypeKey ?? existing?.structuralTypeKey ?? (inferredType === 'unknown' ? 'unknown' : inferredType)) as DraftState['structuralTypeKey'],
       supportLevel: patch.supportLevel ?? existing?.supportLevel ?? 'fallback',
       supportNote: patch.supportNote ?? existing?.supportNote,
       updatedAt: Date.now(),

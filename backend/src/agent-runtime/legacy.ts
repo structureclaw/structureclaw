@@ -135,7 +135,7 @@ export function mergeLegacyState(existing: DraftState | undefined, patch: DraftE
     ...merged,
     inferredType,
     skillId,
-    scenarioKey: (merged.scenarioKey ?? skillId) as DraftState['scenarioKey'],
+    structuralTypeKey: (merged.structuralTypeKey ?? skillId) as DraftState['structuralTypeKey'],
     updatedAt: Date.now(),
   };
 }
