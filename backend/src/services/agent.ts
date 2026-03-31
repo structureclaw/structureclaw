@@ -1981,6 +1981,9 @@ export class AgentService {
     if (draft.stateToPersist) {
       workingSession.draft = draft.stateToPersist;
     }
+    if (draft.model) {
+      workingSession.latestModel = draft.model;
+    }
     if (draft.structuralTypeMatch) {
       workingSession.structuralTypeMatch = draft.structuralTypeMatch;
     } else if (noSkillEquivalentDraft) {
@@ -2186,6 +2189,9 @@ export class AgentService {
     const noSkillEquivalentDraft = this.isNoSkillEquivalentDraft(skillIds, draft);
     if (draft.stateToPersist) {
       workingSession.draft = draft.stateToPersist;
+    }
+    if (draft.model) {
+      workingSession.latestModel = draft.model;
     }
     if (draft.structuralTypeMatch) {
       workingSession.structuralTypeMatch = draft.structuralTypeMatch;
@@ -2645,6 +2651,9 @@ export class AgentService {
     if (draft.stateToPersist) {
       workingSession.draft = draft.stateToPersist;
     }
+    if (draft.model) {
+      workingSession.latestModel = draft.model;
+    }
     if (draft.structuralTypeMatch) {
       workingSession.structuralTypeMatch = draft.structuralTypeMatch;
     } else if (noSkillEquivalentDraft) {
@@ -3067,6 +3076,12 @@ export class AgentService {
       draft,
     } = args;
 
+    const synchronizedModel = draft.model ?? workingSession.latestModel ?? undefined;
+    if (synchronizedModel) {
+      workingSession.latestModel = synchronizedModel;
+      workingSession.updatedAt = Date.now();
+    }
+
     const missingFields = draft.missingFields.length > 0
       ? draft.missingFields
       : [this.localize(locale, '关键结构参数', 'key structural parameters')];
@@ -3123,6 +3138,7 @@ export class AgentService {
       plan,
       toolCalls,
       metrics: this.buildMetrics(toolCalls),
+      model: synchronizedModel,
       interaction,
       clarification: {
         missingFields,
@@ -3265,10 +3281,12 @@ export class AgentService {
       resolved,
     } = args;
 
-    if (draft.model) {
-      workingSession.latestModel = draft.model;
-      workingSession.updatedAt = Date.now();
-    }
+    const synchronizedModel = await this.resolveConversationModel({
+      draft,
+      workingSession,
+      skillIds,
+      allowBuildFromDraft: true,
+    });
     const fallback = this.buildChatModeResponse(resolved.interaction, this.resolveInteractionLocale(params.context?.locale));
     const response = await this.renderInteractionResponse(
       params.message,
@@ -3289,7 +3307,7 @@ export class AgentService {
       plan,
       toolCalls,
       metrics: this.buildMetrics(toolCalls),
-      model: draft.model ?? undefined,
+      model: synchronizedModel,
       interaction: resolved.interaction,
       response,
     }, skillIds, workingSession);
@@ -3326,6 +3344,12 @@ export class AgentService {
       resolved,
     } = args;
 
+    const synchronizedModel = await this.resolveConversationModel({
+      draft,
+      workingSession,
+      skillIds,
+      allowBuildFromDraft: resolved.assessment.criticalMissing.length === 0,
+    });
     const fallback = this.buildChatModeResponse(resolved.interaction, locale);
     const response = await this.renderInteractionResponse(
       params.message,
@@ -3346,7 +3370,7 @@ export class AgentService {
       plan,
       toolCalls,
       metrics: this.buildMetrics(toolCalls),
-      model: draft.model ?? undefined,
+      model: synchronizedModel,
       interaction: resolved.interaction,
       clarification: resolved.interaction.questions?.length
         ? {
@@ -3407,6 +3431,30 @@ export class AgentService {
       nonCriticalMissing,
       defaultProposals: uniqueDefaults,
     };
+  }
+
+  private async resolveConversationModel(args: {
+    draft: DraftResult;
+    workingSession: InteractionSession;
+    skillIds?: string[];
+    allowBuildFromDraft: boolean;
+  }): Promise<Record<string, unknown> | undefined> {
+    const { draft, workingSession, skillIds, allowBuildFromDraft } = args;
+
+    let synchronizedModel = draft.model ?? workingSession.latestModel ?? undefined;
+    if (!synchronizedModel && allowBuildFromDraft && workingSession.draft) {
+      try {
+        synchronizedModel = await this.skillRuntime.buildModel(workingSession.draft, skillIds);
+      } catch {
+        synchronizedModel = undefined;
+      }
+    }
+
+    if (synchronizedModel) {
+      workingSession.latestModel = synchronizedModel;
+      workingSession.updatedAt = Date.now();
+    }
+    return synchronizedModel;
   }
 
   private applyNonCriticalDefaults(session: InteractionSession, defaults: InteractionDefaultProposal[]): void {

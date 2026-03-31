@@ -1176,6 +1176,106 @@ describe('AgentService orchestration', () => {
     expect(result.response).not.toContain('请先确认以下参数');
   });
 
+  test('should keep returning the latest model during ready follow-up turns', async () => {
+    const svc = createServiceWithDefaultSkills();
+    let draftCallCount = 0;
+    const beamModel = {
+      schema_version: '1.0.0',
+      unit_system: 'SI',
+      nodes: [
+        { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
+        { id: '2', x: 10000, y: 0, z: 0, restraints: [false, true, true, false, false, false] },
+      ],
+      elements: [
+        { id: 'E1', type: 'beam', nodes: ['1', '2'], material: 'STEEL', section: 'B1' },
+      ],
+      materials: [{ id: 'STEEL', name: 'Q355', E: 206000, nu: 0.3, rho: 7850, fy: 355 }],
+      sections: [{ id: 'B1', name: 'Beam', type: 'rect', properties: { A: 0.01, Iz: 0.0001, Iy: 0.0001, J: 0.00001 } }],
+      load_cases: [{ id: 'LC1', type: 'other', loads: [{ node: '2', fy: -1 }] }],
+      load_combinations: [],
+    };
+
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          return {
+            content: JSON.stringify({
+              kind: 'reply',
+              replyMode: 'structured',
+              toolId: null,
+              reason: 'the model is ready and the user is confirming the next step',
+            }),
+          };
+        }
+        if (text.includes('工程对话 Agent') || text.includes('engineering conversation agent')) {
+          return { content: '模型参数已齐备，可以继续分析。' };
+        }
+        return { content: 'ok' };
+      },
+    };
+
+    svc.textToModelDraft = async () => {
+      draftCallCount += 1;
+      if (draftCallCount === 1) {
+        return {
+          inferredType: 'beam',
+          missingFields: [],
+          extractionMode: 'llm',
+          model: beamModel,
+          stateToPersist: {
+            inferredType: 'beam',
+            skillId: 'generic',
+            structuralTypeKey: 'beam',
+            supportType: 'simply-supported',
+            lengthM: 10,
+            loadKN: 1,
+            updatedAt: Date.now(),
+          },
+        };
+      }
+      return {
+        inferredType: 'beam',
+        missingFields: [],
+        extractionMode: 'llm',
+        model: undefined,
+        stateToPersist: {
+          inferredType: 'beam',
+          skillId: 'generic',
+          structuralTypeKey: 'beam',
+          supportType: 'simply-supported',
+          lengthM: 10,
+          loadKN: 1,
+          updatedAt: Date.now(),
+        },
+      };
+    };
+
+    const first = await svc.runInteractive({
+      conversationId: 'conv-ready-follow-up-model-sync',
+      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model', 'run_analysis'],
+      },
+    });
+    const second = await svc.runInteractive({
+      conversationId: 'conv-ready-follow-up-model-sync',
+      message: '继续',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model', 'run_analysis'],
+      },
+    });
+
+    expect(first.model).toEqual(beamModel);
+    expect(second.success).toBe(true);
+    expect(second.model).toEqual(beamModel);
+    expect(second.response).toContain('模型参数已齐备');
+  });
+
   test('should keep inferredType unknown in no-skill mode even when llm extraction suggests template type', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
