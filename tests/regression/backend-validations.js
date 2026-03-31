@@ -717,7 +717,7 @@ async function validateAgentToolsContract(context) {
   assert(payload.tools.every((tool) => typeof tool.id === "string" && tool.id.length > 0), "tool specs should expose canonical ids");
 
   const toolNames = payload.tools.map((tool) => tool.name);
-  for (const requiredTool of ["draft_model", "convert_model", "validate_model", "run_analysis", "run_code_check", "generate_report"]) {
+  for (const requiredTool of ["draft_model", "update_model", "convert_model", "validate_model", "run_analysis", "run_code_check", "generate_report"]) {
     assert(toolNames.includes(requiredTool), `missing required tool: ${requiredTool}`);
   }
 
@@ -991,12 +991,14 @@ async function validateAgentCapabilityMatrix(context) {
   assert(payload.skillDomainById.beam === "structure-type", "beam should have structure-type domain mapping");
   assert(payload.skillDomainById.truss === "structure-type", "truss should have structure-type domain mapping");
   assert(toolIds.has("draft_model"), "capability matrix should expose draft_model tool");
+  assert(toolIds.has("update_model"), "capability matrix should expose update_model tool");
   assert(toolIds.has("run_analysis"), "capability matrix should expose run_analysis tool");
   const draftTool = payload.tools.find((tool) => tool.id === "draft_model");
   assert(!Object.prototype.hasOwnProperty.call(draftTool || {}, "runtimeName"), "capability matrix should not expose runtimeName");
   assert(!Object.prototype.hasOwnProperty.call(draftTool || {}, "compatibilityRuntimeName"), "capability matrix should not expose compatibility runtime aliases");
   assert(Array.isArray(payload.enabledToolIdsBySkill.beam), "beam should expose enabled tools array");
   assert(payload.enabledToolIdsBySkill.beam.includes("draft_model"), "beam should enable draft_model");
+  assert(payload.enabledToolIdsBySkill.beam.includes("update_model"), "beam should enable update_model");
   assert(payload.enabledToolIdsBySkill.beam.includes("run_analysis"), "beam should enable run_analysis");
   assert(beamEngines.includes("engine-frame-a"), "beam should include frame-compatible engine");
   assert(beamEngines.includes("engine-generic"), "beam should include generic engine");

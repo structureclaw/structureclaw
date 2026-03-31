@@ -43,7 +43,7 @@ import { createLocalStructureProtocolClient } from './structure-protocol-executi
 import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
 import { listBuiltinToolManifests } from '../agent-runtime/tool-registry.js';
 
-export type AgentToolName = 'draft_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
+export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'directed' | 'llm-planned';
 export type AgentInteractionPhase = 'interactive' | 'execution';
 export type AgentReportFormat = 'json' | 'markdown' | 'both';
@@ -56,6 +56,7 @@ export type AgentInteractionRouteHint = 'prefer_interactive' | 'prefer_tool';
 interface InteractionSession {
   draft: DraftState;
   structuralTypeMatch?: StructuralTypeMatch;
+  latestModel?: Record<string, unknown>;
   userApprovedAutoDecide?: boolean;
   resolved?: {
     analysisType?: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
@@ -111,6 +112,7 @@ type AgentReplyMode = 'plain' | 'structured';
 interface AgentNextStepPlan {
   kind: AgentPlanKind;
   replyMode?: AgentReplyMode;
+  toolId?: AgentToolName;
   planningDirective: AgentPlanningDirective;
   rationale: 'override' | 'llm';
 }
@@ -153,6 +155,7 @@ interface PreparedRunContext {
   analysisParameters: Record<string, unknown>;
   skillIds?: string[];
   noSkillMode: boolean;
+  hadExistingSession: boolean;
   activeToolIds?: ActiveToolSet;
   sessionKey?: string;
   workingSession: InteractionSession;
@@ -478,6 +481,9 @@ export class AgentService {
       ? options.allowedKinds
       : ['reply', 'ask', 'tool_call'];
     const allowToolCall = allowedKinds.includes('tool_call');
+    const availableToolIds = snapshot.availableToolIds.filter((toolId): toolId is AgentToolName => (
+      ['draft_model', 'update_model', 'convert_model', 'validate_model', 'run_analysis', 'run_code_check', 'generate_report'] as string[]
+    ).includes(toolId));
     const prompt = [
       'You are the planning layer for StructureClaw.',
       'Decide the single best next step for the latest user message.',
@@ -490,6 +496,9 @@ export class AgentService {
       'In that situation, choose ask so the structured engineering session continues, unless the information is now complete enough that a structured reply is clearly better.',
       'Treat short parameter fragments such as "钢框架结构体系", "每层3m", "x方向4跨", "Q355", or similar engineering increments as continuation turns, not casual chat.',
       'If the previous assistant message was asking for engineering parameters and the latest user message answers that request, continue the structured engineering session.',
+      'If the user changes previously confirmed geometry, loads, supports, material, or section values, treat that as a model update request rather than a plain question.',
+      'If there is an existing engineering session or model and the user says things like "改成", "改为", "change to", "update", or modifies previously analyzed values, prefer tool_call with toolId=update_model when tool invocation is allowed.',
+      'After a model update request, prefer tool_call when the user expects the updated model to be used immediately for analysis or refreshed engineering results.',
       'Use replyMode=plain only for casual chat, greetings, meta questions, or clearly non-engineering turns.',
       'Use replyMode=structured for engineering follow-ups that should stay grounded in the current structural context without immediately invoking tools.',
       'Choose ask when the user is pursuing an engineering task but key information is still missing.',
@@ -498,8 +507,11 @@ export class AgentService {
         : 'Choose ask when more engineering details are needed before the next turn can proceed.',
       'If the user message looks like a parameter fragment or engineering follow-up, plain reply is almost always wrong.',
       'Use replyMode=structured only when a structural model already exists or the engineering draft is already ready and the best next step is to explain, summarize, or confirm readiness rather than ask or execute.',
+      allowToolCall
+        ? `When kind=tool_call, toolId must be one of: ${availableToolIds.join(', ') || 'none'}. Use update_model for modification requests, draft_model for first-time model creation from conversation, run_analysis for direct execution on an already-ready model, run_code_check for explicit code checks, and generate_report for explicit report generation.`
+        : 'When tool invocation is not allowed, toolId must be null.',
       'Return strict JSON only with this schema:',
-      `{"kind":"${allowedKinds.join('|')}","replyMode":"plain|structured|null","reason":"short reason"}`,
+      `{"kind":"${allowedKinds.join('|')}","replyMode":"plain|structured|null","toolId":"${availableToolIds.join('|') || 'null'}|null","reason":"short reason"}`,
       `Locale: ${options.locale}`,
       `User message: ${message}`,
       `Planner context: ${JSON.stringify(snapshot)}`,
@@ -514,7 +526,7 @@ export class AgentService {
       if (!jsonText) {
         throw new Error('LLM_PLANNER_INVALID_RESPONSE');
       }
-      const parsed = JSON.parse(jsonText) as { kind?: unknown; replyMode?: unknown; reason?: unknown };
+      const parsed = JSON.parse(jsonText) as { kind?: unknown; replyMode?: unknown; toolId?: unknown; reason?: unknown };
       if (typeof parsed.kind !== 'string' || !allowedKinds.includes(parsed.kind as AgentPlanKind)) {
         throw new Error('LLM_PLANNER_INVALID_RESPONSE');
       }
@@ -522,9 +534,16 @@ export class AgentService {
       const replyMode = parsed.kind === 'reply'
         ? (parsed.replyMode === 'structured' ? 'structured' : 'plain')
         : undefined;
+      const toolId = parsed.kind === 'tool_call'
+        ? (typeof parsed.toolId === 'string' ? parsed.toolId : '')
+        : undefined;
+      if (kind === 'tool_call' && (!toolId || !availableToolIds.includes(toolId as AgentToolName))) {
+        throw new Error('LLM_PLANNER_INVALID_RESPONSE');
+      }
       return {
         kind,
         replyMode,
+        toolId: kind === 'tool_call' ? toolId as AgentToolName : undefined,
         planningDirective: 'auto',
         rationale: 'llm',
       };
@@ -628,12 +647,13 @@ export class AgentService {
     return {
       locale,
       orchestrationMode: 'directed',
-      modelInput: params.context?.model,
+      modelInput: params.context?.model || session?.latestModel,
       sourceFormat: params.context?.modelFormat || 'structuremodel-v1',
       autoAnalyze: params.context?.autoAnalyze ?? true,
       analysisParameters: params.context?.parameters || {},
       skillIds,
       noSkillMode,
+      hadExistingSession: Boolean(session),
       activeToolIds,
       sessionKey,
       workingSession,
@@ -687,6 +707,8 @@ export class AgentService {
     switch (toolId) {
       case 'draft_model':
         return this.localize(locale, '当前能力集中未启用 `draft_model`，无法从对话直接生成结构模型。', 'The current capability set does not enable `draft_model`, so a structural model cannot be generated directly from conversation.');
+      case 'update_model':
+        return this.localize(locale, '当前能力集中未启用 `update_model`，无法基于现有模型继续修改。', 'The current capability set does not enable `update_model`, so the existing structural model cannot be updated.');
       case 'convert_model':
         return this.localize(locale, '当前能力集中未启用 `convert_model`。', 'The current capability set does not enable `convert_model`.');
       case 'validate_model':
@@ -785,7 +807,7 @@ export class AgentService {
         : 'ready';
     const interaction = await this.buildInteractionPayload(assessment, session, state, locale, skillIds, activeToolIds);
     const model = assessment.criticalMissing.length === 0
-      ? await this.skillRuntime.buildModel(session.draft, skillIds)
+      ? (session.latestModel || await this.skillRuntime.buildModel(session.draft, skillIds))
       : undefined;
 
     return {
@@ -1065,6 +1087,7 @@ export class AgentService {
       analysisParameters,
       skillIds,
       noSkillMode,
+      hadExistingSession,
       activeToolIds,
       sessionKey,
       workingSession,
@@ -1146,6 +1169,8 @@ export class AgentService {
       sessionKey,
       workingSession,
       modelInput,
+      hadExistingSession,
+      nextPlan,
     });
     if (!executableModel.ok) {
       return executableModel.result;
@@ -1683,6 +1708,8 @@ export class AgentService {
     sessionKey?: string;
     workingSession: InteractionSession;
     modelInput?: Record<string, unknown>;
+    hadExistingSession: boolean;
+    nextPlan: AgentNextStepPlan;
   }): Promise<
     | { ok: true; model: Record<string, unknown> }
     | { ok: false; result: AgentRunResult }
@@ -1702,7 +1729,28 @@ export class AgentService {
       sessionKey,
       workingSession,
       modelInput,
+      hadExistingSession,
+      nextPlan,
     } = args;
+
+    if (nextPlan.toolId === 'update_model') {
+      return this.updateExecutableModel({
+        params,
+        traceId,
+        startedAt,
+        startedAtMs,
+        locale,
+        orchestrationMode,
+        skillIds,
+        activeToolIds,
+        plan,
+        toolCalls,
+        sessionKey,
+        workingSession,
+        modelInput,
+        hadExistingSession,
+      });
+    }
 
     if (modelInput) {
       return { ok: true, model: modelInput };
@@ -1842,6 +1890,167 @@ export class AgentService {
     return { ok: true, model: availableModel };
   }
 
+  private async updateExecutableModel(args: {
+    params: AgentRunInput;
+    traceId: string;
+    startedAt: string;
+    startedAtMs: number;
+    locale: AppLocale;
+    orchestrationMode: AgentOrchestrationMode;
+    skillIds?: string[];
+    activeToolIds?: ActiveToolSet;
+    plan: string[];
+    toolCalls: AgentToolCall[];
+    sessionKey?: string;
+    workingSession: InteractionSession;
+    modelInput?: Record<string, unknown>;
+    hadExistingSession: boolean;
+  }): Promise<
+    | { ok: true; model: Record<string, unknown> }
+    | { ok: false; result: AgentRunResult }
+  > {
+    const {
+      params,
+      traceId,
+      startedAt,
+      startedAtMs,
+      locale,
+      orchestrationMode,
+      skillIds,
+      activeToolIds,
+      plan,
+      toolCalls,
+      sessionKey,
+      workingSession,
+      modelInput,
+      hadExistingSession,
+    } = args;
+
+    if (!this.hasActiveTool(activeToolIds, 'update_model')) {
+      const response = this.buildDisabledToolMessage('update_model', locale);
+      return {
+        ok: false,
+        result: await this.finalizeBlockedRunResult({
+          params,
+          traceId,
+          startedAt,
+          startedAtMs,
+          locale,
+          orchestrationMode,
+          skillIds,
+          plan,
+          toolCalls,
+          sessionKey,
+          workingSession,
+          response,
+          model: modelInput,
+          needsModelInput: true,
+        }),
+      };
+    }
+
+    if (!hadExistingSession && !modelInput && !workingSession.latestModel) {
+      const response = this.localize(
+        locale,
+        '当前没有可修改的现有模型或会话上下文。请先建立结构模型，或直接提供完整模型后再修改。',
+        'There is no existing model or engineering session to update. Build a structural model first, or provide a complete model before requesting updates.',
+      );
+      return {
+        ok: false,
+        result: await this.finalizeBlockedRunResult({
+          params,
+          traceId,
+          startedAt,
+          startedAtMs,
+          locale,
+          orchestrationMode,
+          skillIds,
+          plan,
+          toolCalls,
+          sessionKey,
+          workingSession,
+          response,
+          model: modelInput || workingSession.latestModel,
+          needsModelInput: true,
+        }),
+      };
+    }
+
+    plan.push(this.localize(locale, '根据当前会话上下文增量更新结构模型', 'Update the structural model incrementally using the current session context'));
+    const updateCall = this.startToolCall('update_model', { message: params.message, conversationId: sessionKey, phase: 'execution' });
+    toolCalls.push(updateCall);
+
+    const draft = await this.textToModelDraft(params.message, workingSession.draft, locale, skillIds);
+    const noSkillEquivalentDraft = this.isNoSkillEquivalentDraft(skillIds, draft);
+    if (draft.stateToPersist) {
+      workingSession.draft = draft.stateToPersist;
+    }
+    if (draft.structuralTypeMatch) {
+      workingSession.structuralTypeMatch = draft.structuralTypeMatch;
+    } else if (noSkillEquivalentDraft) {
+      workingSession.structuralTypeMatch = undefined;
+    }
+    workingSession.updatedAt = Date.now();
+    this.applyInferredNonCriticalFromMessage(workingSession, params.message);
+
+    this.completeToolCallSuccess(updateCall, {
+      inferredType: draft.inferredType,
+      missingFields: draft.missingFields,
+      extractionMode: draft.extractionMode,
+      modelUpdated: Boolean(draft.model),
+    });
+
+    const availableModel = draft.model;
+    const finalAssessment = (noSkillEquivalentDraft && availableModel)
+      ? { criticalMissing: [], nonCriticalMissing: [], defaultProposals: [] }
+      : await this.assessInteractionNeeds(workingSession, locale, skillIds);
+    if (finalAssessment.criticalMissing.length > 0 || finalAssessment.nonCriticalMissing.length > 0 || !availableModel) {
+      if (sessionKey) {
+        await this.setInteractionSession(sessionKey, workingSession);
+      }
+
+      const missingFields = await this.mapMissingFieldLabels(finalAssessment.criticalMissing, locale, workingSession.draft, skillIds);
+      const response = finalAssessment.criticalMissing.length > 0
+        ? this.localize(
+          locale,
+          `模型修改请求已识别，但还缺少这些关键参数：${missingFields.join('、')}。`,
+          `The model update request was recognized, but these key parameters are still missing: ${missingFields.join(', ')}.`,
+        )
+        : this.localize(
+          locale,
+          '模型修改请求已识别，但当前更新结果还不足以形成可执行模型。请继续补充参数。',
+          'The model update request was recognized, but the current update is still insufficient to form an executable model. Please continue providing details.',
+        );
+      return {
+        ok: false,
+        result: await this.finalizeBlockedRunResult({
+          params,
+          traceId,
+          startedAt,
+          startedAtMs,
+          locale,
+          orchestrationMode,
+          skillIds,
+          plan,
+          toolCalls,
+          sessionKey,
+          workingSession,
+          response,
+          model: availableModel || modelInput || workingSession.latestModel,
+          needsModelInput: true,
+          clarification: missingFields.length > 0
+            ? {
+              missingFields,
+              question: response,
+            }
+            : undefined,
+        }),
+      };
+    }
+
+    return { ok: true, model: availableModel };
+  }
+
   private async runExecutionPipeline(args: ExecutionPipelineArgs): Promise<AgentRunResult> {
     const {
       params,
@@ -1885,7 +2094,9 @@ export class AgentService {
         response,
       };
       if (sessionKey) {
-        await this.clearInteractionSession(sessionKey);
+        workingSession.latestModel = normalizedModel;
+        workingSession.updatedAt = Date.now();
+        await this.setInteractionSession(sessionKey, workingSession);
       }
       return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
     }
@@ -2165,7 +2376,9 @@ export class AgentService {
     );
 
     if (sessionKey) {
-      await this.clearInteractionSession(sessionKey);
+      workingSession.latestModel = normalizedModel;
+      workingSession.updatedAt = Date.now();
+      await this.setInteractionSession(sessionKey, workingSession);
     }
     return this.finalizeRunResult(traceId, sessionKey, params.message, {
       traceId,
@@ -2523,6 +2736,10 @@ export class AgentService {
         : 'The selected skills did not match a more specific structural skill, so I fell back to generic modeling and generated a structural model JSON ready for analysis tools.',
     );
 
+    if (draft.model) {
+      workingSession.latestModel = draft.model;
+      workingSession.updatedAt = Date.now();
+    }
     return this.finalizeRunResult(traceId, sessionKey, params.message, {
       traceId,
       startedAt,
@@ -2761,6 +2978,10 @@ export class AgentService {
       resolved,
     } = args;
 
+    if (draft.model) {
+      workingSession.latestModel = draft.model;
+      workingSession.updatedAt = Date.now();
+    }
     const response = this.buildChatModeResponse(resolved.interaction, this.resolveInteractionLocale(params.context?.locale));
     return this.finalizeRunResult(traceId, sessionKey, params.message, {
       traceId,

@@ -166,12 +166,14 @@ describe('shared skill package metadata', () => {
       'draft_model',
       'generate_report',
       'run_analysis',
+      'update_model',
       'validate_model',
     ]);
     expect([...tooling.tools.map((tool) => tool.id)].sort()).toEqual([
       'draft_model',
       'generate_report',
       'run_analysis',
+      'update_model',
       'validate_model',
     ]);
     expect(tooling.skillIdsByToolId.draft_model).toEqual(['generic']);

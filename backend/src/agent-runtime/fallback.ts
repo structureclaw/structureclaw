@@ -49,9 +49,13 @@ function extractInteger(text: string, patterns: RegExp[], groups: number[] = [1]
 function extractDirectionalLoadNumber(text: string, axis: 'x' | 'y'): number | undefined {
   const axisToken = axis === 'x' ? 'x' : 'y';
   return extractNumber(text, [
+    new RegExp(`(?:水平|横向|侧向)?${axisToken}(?:方向|向)\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
     new RegExp(`${axisToken}向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`${axisToken}方向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
     new RegExp(`(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?[^\\n]{0,24}?${axisToken}向\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?[^\\n]{0,24}?${axisToken}方向\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
     new RegExp(`${axisToken}向\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`${axisToken}方向\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
     new RegExp(`lateral\\s*(?:load\\s*)?(?:in\\s*)?${axisToken}\\s*(?:direction)?\\s*(?:is|=)?\\s*(\\d+(?:\\.\\d+)?)\\s*kn`, 'i'),
   ]);
 }
@@ -573,10 +577,12 @@ export function extractDraftByRules(message: string): DraftExtraction {
   ]);
   const bayCountX = extractInteger(text, [
     /x向\s*(\d+)\s*跨/i,
+    /x方向\s*(\d+)\s*跨/i,
     /(\d+)\s*bays?\s*in\s*x/i,
   ]);
   const bayCountY = extractInteger(text, [
     /y向\s*(\d+)\s*跨/i,
+    /y方向\s*(\d+)\s*跨/i,
     /(\d+)\s*bays?\s*in\s*y/i,
   ]);
   const scalarHeight = extractNumber(text, [
@@ -591,11 +597,19 @@ export function extractDraftByRules(message: string): DraftExtraction {
   const scalarBayWidthX = extractNumber(text, [
     /x向.*?每跨\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
     /x向(?:每跨)?\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
+    /x向.*?(?:跨度|间隔)\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
+    /x方向.*?每跨\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
+    /x方向.*?(?:跨度|间隔)\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
+    /x方向(?:每跨|跨度|间隔)?\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
     /x\s*(?:bay width)?\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*m/i,
   ]);
   const scalarBayWidthY = extractNumber(text, [
     /y向.*?每跨\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
     /y向(?:每跨)?\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
+    /y向.*?(?:跨度|间隔)\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
+    /y方向.*?每跨\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
+    /y方向.*?(?:跨度|间隔)\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
+    /y方向(?:每跨|跨度|间隔)?\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
     /y\s*(?:bay width)?\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*m/i,
   ]);
   const spanLengthM = extractNumber(text, [
@@ -731,7 +745,16 @@ function inferFrameDimension(text: string, inferredType: InferredModelType): Fra
   if (inferredType !== 'frame') {
     return undefined;
   }
-  if (text.includes('3d') || text.includes('三维') || text.includes('空间框架') || text.includes('space frame') || text.includes('x向') && text.includes('y向')) {
+  if (
+    text.includes('3d')
+    || text.includes('三维')
+    || text.includes('空间框架')
+    || text.includes('space frame')
+    || (text.includes('x向') && text.includes('y向'))
+    || (text.includes('x方向') && text.includes('y方向'))
+    || (text.includes('x方向') && text.includes('y向'))
+    || (text.includes('x向') && text.includes('y方向'))
+  ) {
     return '3d';
   }
   return '2d';

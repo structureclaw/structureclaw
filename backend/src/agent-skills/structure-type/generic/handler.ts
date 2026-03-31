@@ -46,6 +46,98 @@ const GENERIC_ALLOWED_KEYS = [
   'loadPositionM',
 ] as const;
 
+function extractNumber(text: string, patterns: RegExp[]): number | undefined {
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match?.[1]) {
+      continue;
+    }
+    const parsed = Number.parseFloat(match[1]);
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return undefined;
+}
+
+function extractDirectionalLoadNumber(text: string, axis: 'x' | 'y'): number | undefined {
+  const axisToken = axis === 'x' ? 'x' : 'y';
+  return extractNumber(text, [
+    new RegExp(`(?:水平|横向|侧向)?${axisToken}(?:方向|向)\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`${axisToken}向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是|改成)?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`${axisToken}方向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是|改成)?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是|改成)?[^\\n]{0,24}?${axisToken}向\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是|改成)?[^\\n]{0,24}?${axisToken}方向\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`${axisToken}向\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`${axisToken}方向\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
+  ]);
+}
+
+function shouldMirrorHorizontalLoadToBothAxes(
+  text: string,
+  frameDimension: DraftState['frameDimension'] | undefined,
+): boolean {
+  if (frameDimension !== '3d') {
+    return false;
+  }
+  return (
+    text.includes('水平方向荷载')
+    || text.includes('水平荷载都是')
+    || text.includes('水平荷载均为')
+    || text.includes('横向荷载两个方向')
+    || text.includes('侧向荷载两个方向')
+    || text.includes('两个方向都是')
+    || text.includes('horizontal loads')
+  );
+}
+
+function buildCarryoverFloorLoads(
+  message: string,
+  currentState: DraftState | undefined,
+): DraftExtraction['floorLoads'] {
+  if (currentState?.inferredType !== 'frame') {
+    return undefined;
+  }
+  const storyCount = currentState.storyCount ?? currentState.storyHeightsM?.length;
+  if (!storyCount || storyCount <= 0) {
+    return undefined;
+  }
+  const text = message.toLowerCase();
+  const dualLateralLoadKN = extractNumber(text, [
+    /x(?:、|\/|和|及)\s*y向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|为|是|改成)?\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
+  ]);
+  const verticalLoadKN = extractNumber(text, [
+    /(?:每层|各层)(?:节点)?(?:竖向)?荷载(?:都?是|均为|为|是|改成)?\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
+    /(?:每层|各层)竖向(?:都?是|均为|为|是|改成)?\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
+  ]);
+  const extractedLateralX = dualLateralLoadKN ?? extractNumber(text, [
+    /(?:横向|侧向|水平)(?:方向)?荷载(?:两个方向)?(?:都?是|均为|都为|为|是|改成)?\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
+    /水平方向荷载(?:都?是|均为|为|是|改成)?\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
+    /(?:横向|侧向|水平)荷载(?:都?是|均为|为|是|改成)?\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
+  ]) ?? extractDirectionalLoadNumber(text, 'x');
+  const extractedLateralY = dualLateralLoadKN ?? extractDirectionalLoadNumber(text, 'y');
+  const isReplacementUpdate = /改成|改为|调整为|更新为|改到/.test(message);
+  const mentionsXDirection = /x方向|x向/i.test(text);
+  const mentionsYDirection = /y方向|y向/i.test(text);
+  const mirroredY = shouldMirrorHorizontalLoadToBothAxes(text, currentState.frameDimension) ? extractedLateralX : undefined;
+  const lateralY = extractedLateralY
+    ?? mirroredY
+    ?? (isReplacementUpdate && mentionsXDirection && !mentionsYDirection && currentState.frameDimension === '3d' ? 0 : undefined);
+  const lateralX = extractedLateralX
+    ?? (isReplacementUpdate && mentionsYDirection && !mentionsXDirection ? 0 : undefined);
+
+  if (verticalLoadKN === undefined && lateralX === undefined && lateralY === undefined) {
+    return undefined;
+  }
+
+  return Array.from({ length: storyCount }, (_, index) => ({
+    story: index + 1,
+    verticalKN: verticalLoadKN,
+    lateralXKN: lateralX,
+    lateralYKN: currentState.frameDimension === '3d' ? lateralY : undefined,
+  }));
+}
+
 function hasStructuralIntent(text: string): boolean {
   if (/(beam|truss|frame|portal|girder|cantilever|support|span|bay|story|load|model|analysis|design|member|node|element|structure)/i.test(text)) {
     return true;
@@ -59,12 +151,32 @@ function hasStructuralIntent(text: string): boolean {
 function buildGenericPatch(
   message: string,
   llmDraftPatch?: Record<string, unknown> | null,
+  currentState?: DraftState,
 ): DraftExtraction {
   const merged = mergeLegacyDraftPatchLlmFirst(
     normalizeLegacyDraftPatch(llmDraftPatch),
     extractDraftByRules(message),
   );
   const normalizedMessage = message.toLowerCase();
+
+  if (currentState?.inferredType === 'frame') {
+    const floorLoads = merged.floorLoads ?? buildCarryoverFloorLoads(message, currentState);
+    return {
+      ...merged,
+      inferredType: 'frame',
+      structuralTypeKey: currentState.structuralTypeKey ?? 'frame',
+      frameDimension: merged.frameDimension ?? currentState.frameDimension,
+      storyCount: merged.storyCount ?? currentState.storyCount,
+      storyHeightsM: merged.storyHeightsM ?? currentState.storyHeightsM,
+      bayCount: merged.bayCount ?? currentState.bayCount,
+      bayCountX: merged.bayCountX ?? currentState.bayCountX,
+      bayCountY: merged.bayCountY ?? currentState.bayCountY,
+      bayWidthsM: merged.bayWidthsM ?? currentState.bayWidthsM,
+      bayWidthsXM: merged.bayWidthsXM ?? currentState.bayWidthsXM,
+      bayWidthsYM: merged.bayWidthsYM ?? currentState.bayWidthsYM,
+      floorLoads,
+    };
+  }
 
   if (!merged.inferredType || merged.inferredType === 'unknown') {
     if (normalizedMessage.includes('steel frame') || message.includes('钢框架')) {
@@ -154,7 +266,7 @@ function buildGenericQuestions(
 export const handler: SkillHandler = {
   detectStructuralType({ message, locale, currentState }) {
     if (currentState?.skillId === 'generic') {
-      const upgradedDraft = buildGenericPatch(message, null);
+      const upgradedDraft = buildGenericPatch(message, null, currentState);
       const upgradedInferredType = upgradedDraft.inferredType ?? 'unknown';
       const upgradedScenarioKey = upgradedDraft.structuralTypeKey ?? (upgradedInferredType === 'unknown' ? 'unknown' : upgradedInferredType);
       const canUpgradeCurrentUnknown = currentState.inferredType === 'unknown' && upgradedInferredType !== 'unknown';
@@ -195,8 +307,8 @@ export const handler: SkillHandler = {
   parseProvidedValues(values) {
     return normalizeLegacyDraftPatch(values);
   },
-  extractDraft({ message, llmDraftPatch }) {
-    return buildGenericPatch(message, llmDraftPatch);
+  extractDraft({ message, llmDraftPatch, currentState }) {
+    return buildGenericPatch(message, llmDraftPatch, currentState);
   },
   mergeState(existing, patch) {
     const merged = mergeDraftState(existing, patch);

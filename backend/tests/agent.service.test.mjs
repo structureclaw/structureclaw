@@ -1839,6 +1839,75 @@ describe('AgentService orchestration', () => {
     }
   });
 
+  test('should update the existing model and rerun analysis when the user modifies prior loads', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+    stubExecutionClients(svc);
+
+    const first = await svc.runInteractive({
+      conversationId: 'conv-frame-update-loads',
+      message: '3层每层3m，x方向4跨跨度5m，y方向3跨跨度3m，一个钢框架结构体系，每层x方向水平荷载30kN，每层y方向水平荷载30kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['opensees-static', 'generic'],
+        enabledToolIds: ['draft_model', 'update_model', 'validate_model', 'run_analysis', 'generate_report'],
+      },
+    });
+
+    expect(first.success).toBe(true);
+    expect(first.model).toBeDefined();
+
+    const computed = await svc.runToolCall({
+      conversationId: 'conv-frame-update-loads',
+      message: '计算',
+      context: {
+        locale: 'zh',
+        skillIds: ['opensees-static', 'generic'],
+        enabledToolIds: ['draft_model', 'update_model', 'validate_model', 'run_analysis', 'generate_report'],
+      },
+    });
+
+    expect(computed.toolCalls.some((call) => call.tool === 'run_analysis')).toBe(true);
+
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          expect(text).toContain('User message: 好的，现在荷载改成每层都是水平x方向10kN');
+          return {
+            content: JSON.stringify({
+              kind: 'tool_call',
+              replyMode: null,
+              toolId: 'update_model',
+              reason: 'the user is modifying the current frame loads and expects updated engineering results',
+            }),
+          };
+        }
+        return { content: 'ok' };
+      },
+    };
+
+    const updated = await svc.run({
+      conversationId: 'conv-frame-update-loads',
+      message: '好的，现在荷载改成每层都是水平x方向10kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['opensees-static', 'generic'],
+        enabledToolIds: ['draft_model', 'update_model', 'validate_model', 'run_analysis', 'generate_report'],
+      },
+    });
+
+    expect(updated.success).toBe(true);
+    expect(updated.toolCalls.some((call) => call.tool === 'update_model')).toBe(true);
+    expect(updated.toolCalls.some((call) => call.tool === 'run_analysis')).toBe(true);
+    const loadCases = updated.model?.load_cases;
+    expect(Array.isArray(loadCases)).toBe(true);
+    const nodalLoads = loadCases?.flatMap((loadCase) => Array.isArray(loadCase.loads) ? loadCase.loads : []) || [];
+    expect(nodalLoads.some((load) => load.fx === 0.5)).toBe(true);
+    expect(nodalLoads.some((load) => load.fx === 1.5)).toBe(false);
+    expect(nodalLoads.some((load) => load.fz === 1.5)).toBe(false);
+  });
+
   test('should merge 2d frame vertical and lateral loads across chat turns', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
