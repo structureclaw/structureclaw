@@ -43,7 +43,7 @@ function buildBeamDefaultReason(paramKey: string, locale: AppLocale): string {
     case 'loadType':
       return locale === 'zh'
         ? '默认按均布荷载建模，更贴近梁构件常见受力工况。'
-        : 'Default to a distributed load, which better matches common beam loading scenarios.';
+        : 'Default to a distributed load, which better matches common beam loading patterns.';
     case 'loadPosition':
       return locale === 'zh'
         ? '均布荷载默认作用于全跨，便于获得连续响应包络。'

@@ -976,8 +976,8 @@ function buildFrameReportNarrative(input: SkillReportNarrativeInput): string {
     '',
     input.locale === 'zh' ? '## 框架专项说明' : '## Frame-Specific Notes',
     input.locale === 'zh'
-      ? '- 本报告按规则轴网框架场景生成，建议结合实际结构布置复核边界条件与荷载路径。'
-      : '- This report is generated for regular-grid frame scenarios; verify boundary conditions and load paths against the actual structural layout.',
+      ? '- 本报告按规则轴网框架草稿生成，建议结合实际结构布置复核边界条件与荷载路径。'
+      : '- This report is generated from a regular-grid frame draft; verify boundary conditions and load paths against the actual structural layout.',
     input.locale === 'zh'
       ? '- 对于退台、缺跨或明显不规则框架，建议补充更细化模型后重新分析与校核。'
       : '- For setbacks, missing bays, or strongly irregular frames, refine the model and rerun analysis/code checks.',

@@ -123,7 +123,7 @@ function buildTrussReportNarrative(input: SkillReportNarrativeInput): string {
       : '- For trusses, prioritize nodal loads and pin-joint idealization; verify tension/compression distribution across members.',
     input.locale === 'zh'
       ? '- 若节点偏心、次杆参与受力或连接刚度不可忽略，建议升级为更细化杆系/实体模型。'
-      : '- If joint eccentricity, secondary members, or connection stiffness are non-negligible, upgrade to a refined truss/solid model.',
+      : '- If joint eccentricity, secondary members, or connection stiffness are non-negligible, switch to a more refined truss/solid model.',
   ];
   return [base, ...trussSpecificNotes].join('\n');
 }

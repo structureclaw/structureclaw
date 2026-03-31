@@ -513,8 +513,8 @@ export function buildUnknownStructuralType(locale: AppLocale): StructuralTypeMat
   return buildUnsupportedStructuralType(
     locale,
     'unknown',
-    '我还没有从当前描述中稳定识别出可直接补参的结构类型。请先说明它更接近梁、桁架、门式刚架还是规则框架。',
-    'I have not yet identified a stable structural type from the current description. Please tell me whether it is closer to a beam, truss, portal frame, or regular frame.'
+    '我还没有从当前描述中稳定细化出可直接补参的结构草稿。请先说明你希望按梁、桁架、门式刚架还是规则框架这类结构继续处理。',
+    'I have not yet refined the current description into a stable structural draft for follow-up guidance. Please tell me whether you want to proceed as a beam, truss, portal frame, or regular frame.'
   );
 }
 
