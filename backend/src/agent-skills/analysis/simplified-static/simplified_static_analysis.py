@@ -319,7 +319,13 @@ class StaticAnalyzer:
         if z_range > tolerance:
             return 'xz'
 
-        # Model is 1D (all nodes on x-axis). Determine plane based on load direction.
+        # Model is 1D (all nodes on x-axis).
+        # For 1D beam models, always default to xz plane for compatibility with
+        # restraint format and load mapping. Load handling maps fy to fz for xz plane.
+        # However, certain load patterns cannot be represented correctly by 2D solver:
+        # - torsional moment mx (2D solver ignores torsion)
+        # - simultaneous nonzero xy-plane (fy/mz/wy) and xz-plane (fz/my/wz) components
+        # In those cases we must fall back to 3D solver (return None).
         has_xy_load = False
         has_xz_load = False
         for load in self._collect_nodal_loads(parameters):
@@ -334,18 +340,25 @@ class StaticAnalyzer:
 
             fy = self._to_float(load.get('fy', 0.0), 0.0)
             fz = self._to_float(load.get('fz', 0.0), 0.0)
+            mx = self._to_float(load.get('mx', load.get('momentX', 0.0)), 0.0)
             my = self._to_float(load.get('my', load.get('momentY', 0.0)), 0.0)
             mz = self._to_float(load.get('mz', load.get('momentZ', 0.0)), 0.0)
+
+            # Any torsional load about x-axis requires 3D; 2D solver ignores mx.
+            if abs(mx) > tolerance:
+                return None
 
             if abs(fy) > tolerance or abs(mz) > tolerance:
                 has_xy_load = True
             if abs(fz) > tolerance or abs(my) > tolerance:
                 has_xz_load = True
 
-        # Use xy plane for xy-direction loads, xz for xz-direction or mixed loads.
-        # Mixed loads (both planes) now use xz as default instead of rejecting.
-        if has_xy_load and not has_xz_load:
-            return 'xy'
+        # Mixed-plane loads cannot be accurately represented in 2D (would drop components)
+        if has_xy_load and has_xz_load:
+            return None
+
+        # For 1D models, always use x-z plane; load handling maps fy to fz.
+        # This aligns with restraint interpretation and fixes the instability issue from #83.
         return 'xz'
 
     def _can_run_3d_truss_solver(self) -> bool:
