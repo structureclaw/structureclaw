@@ -141,18 +141,22 @@ def validate_opensees_runtime_and_routing():
         cantilever_result = run_request(cantilever)
         assert_true(cantilever_result["success"] is True, f"Cantilever OpenSees analysis failed: {cantilever_result['message']}")
         assert_true(cantilever_result["data"]["analysisMode"] == "opensees_2d_frame", f"Unexpected cantilever analysisMode: {cantilever_result['data']['analysisMode']}")
-        assert_true(cantilever_result["data"].get("plane") == "xy", f"Unexpected cantilever plane: {cantilever_result['data'].get('plane')}")
-        tip_uy = float(cantilever_result["data"]["displacements"]["3"]["uy"])
-        assert_true(math.isfinite(tip_uy) and tip_uy < 0.0, f"Cantilever tip displacement invalid: {tip_uy}")
+        # 1D beam models now use xz plane to align with restraint format interpretation (Issue #83 fix)
+        assert_true(cantilever_result["data"].get("plane") == "xz", f"Unexpected cantilever plane: {cantilever_result['data'].get('plane')}")
+        # In xz plane, transverse displacement is uz (fy loads map to fz)
+        tip_uz = float(cantilever_result["data"]["displacements"]["3"]["uz"])
+        assert_true(math.isfinite(tip_uz) and tip_uz < 0.0, f"Cantilever tip displacement invalid: {tip_uz}")
         assert_true("1" in cantilever_result["data"]["reactions"], "Cantilever reactions missing at fixed support")
         print("[ok] cantilever beam solves with builtin-opensees")
 
         simply_supported_result = run_request(simply_supported)
         assert_true(simply_supported_result["success"] is True, f"Simply-supported OpenSees analysis failed: {simply_supported_result['message']}")
         assert_true(simply_supported_result["data"]["analysisMode"] == "opensees_2d_frame", f"Unexpected simply-supported analysisMode: {simply_supported_result['data']['analysisMode']}")
-        assert_true(simply_supported_result["data"].get("plane") == "xy", f"Unexpected simply-supported plane: {simply_supported_result['data'].get('plane')}")
-        midspan_uy = float(simply_supported_result["data"]["displacements"]["2"]["uy"])
-        assert_true(math.isfinite(midspan_uy) and midspan_uy < 0.0, f"Simply-supported midspan displacement invalid: {midspan_uy}")
+        # 1D beam models now use xz plane to align with restraint format interpretation (Issue #83 fix)
+        assert_true(simply_supported_result["data"].get("plane") == "xz", f"Unexpected simply-supported plane: {simply_supported_result['data'].get('plane')}")
+        # In xz plane, transverse displacement is uz (fy loads map to fz)
+        midspan_uz = float(simply_supported_result["data"]["displacements"]["2"]["uz"])
+        assert_true(math.isfinite(midspan_uz) and midspan_uz < 0.0, f"Simply-supported midspan displacement invalid: {midspan_uz}")
         print("[ok] simply-supported beam solves with builtin-opensees")
 
         portal_result = run_request(portal_frame)
@@ -375,14 +379,16 @@ def validate_analyze_contract():
     simplified_data = simplified_planar_result.get("data", {})
     if simplified_data.get("analysisMode") != "linear_2d_frame":
         raise SystemExit(f"Expected simplified planar beam analysisMode=linear_2d_frame, got {simplified_data.get('analysisMode')}")
-    if simplified_data.get("plane") != "xy":
-        raise SystemExit(f"Expected simplified planar beam plane=xy, got {simplified_data.get('plane')}")
+    # 1D beam models now use xz plane to align with restraint format interpretation (Issue #83 fix)
+    if simplified_data.get("plane") != "xz":
+        raise SystemExit(f"Expected simplified planar beam plane=xz, got {simplified_data.get('plane')}")
     tip_disp = simplified_data.get("displacements", {}).get("3", {})
-    if abs(float(tip_disp.get("uy", 0.0))) <= 0.0:
-        raise SystemExit(f"Expected non-zero simplified planar beam uy displacement, got {tip_disp}")
-    if abs(float(tip_disp.get("uz", 0.0))) > 1e-9:
-        raise SystemExit(f"Expected near-zero simplified planar beam uz displacement, got {tip_disp}")
-    print("[ok] analyze simplified planar beam routes to 2d xy frame")
+    # In xz plane, transverse displacement is uz (fy loads map to fz)
+    if abs(float(tip_disp.get("uz", 0.0))) <= 0.0:
+        raise SystemExit(f"Expected non-zero simplified planar beam uz displacement, got {tip_disp}")
+    if abs(float(tip_disp.get("uy", 0.0))) > 1e-9:
+        raise SystemExit(f"Expected near-zero simplified planar beam uy displacement, got {tip_disp}")
+    print("[ok] analyze simplified planar beam routes to 2d xz frame")
 
     bad_request = AnalysisRequest(type="unknown", model=model, parameters={})
     try:
