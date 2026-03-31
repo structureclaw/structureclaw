@@ -2200,6 +2200,7 @@ export function AIConsole() {
             })
             receivedResult = true
             setLatestResult(result)
+            setLatestModelVisualizationSnapshot(modelSnapshot)
             setLatestResultVisualizationSnapshot(visualizationSnapshot)
             persistConversationSnapshotsToArchive(activeConversationId || nextConversationId, {
               latestResult: result,
