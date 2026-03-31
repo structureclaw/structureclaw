@@ -193,7 +193,6 @@ interface ExecutionArtifacts {
 export interface AgentResolvedRouting {
   selectedSkillIds: string[];
   structuralSkillId?: string;
-  structuralScenarioKey?: string;
   analysisSkillId?: string;
   analysisSkillIds?: string[];
 }
@@ -204,8 +203,6 @@ export interface AgentInteraction {
   turnId: string;
   routeHint?: AgentInteractionRouteHint;
   routeReason?: string;
-  detectedScenario?: string;
-  detectedScenarioLabel?: string;
   interactionStageLabel?: string;
   missingCritical?: string[];
   missingOptional?: string[];
@@ -917,8 +914,6 @@ export class AgentService {
               turnId: { type: 'string' },
               routeHint: { enum: ['prefer_interactive', 'prefer_tool'] },
               routeReason: { type: 'string' },
-              detectedScenario: { type: 'string' },
-              detectedScenarioLabel: { type: 'string' },
               interactionStageLabel: { type: 'string' },
               missingCritical: { type: 'array', items: { type: 'string' } },
               missingOptional: { type: 'array', items: { type: 'string' } },
@@ -1497,9 +1492,6 @@ export class AgentService {
 
   private buildChatModeResponse(interaction: AgentInteraction, locale: AppLocale): string {
     const lines: string[] = [];
-    if (interaction.detectedScenarioLabel) {
-      lines.push(this.localize(locale, `识别场景：${interaction.detectedScenarioLabel}`, `Detected scenario: ${interaction.detectedScenarioLabel}`));
-    }
     if (interaction.interactionStageLabel) {
       lines.push(this.localize(locale, `当前阶段：${interaction.interactionStageLabel}`, `Current stage: ${interaction.interactionStageLabel}`));
     }
@@ -1540,7 +1532,7 @@ export class AgentService {
     if (noSkillMode) {
       return this.localize(locale, '当前未启用技能。我会走通用建模能力。', 'No skills are enabled. I will use generic modeling capability.');
     }
-    return this.localize(locale, '当前所选技能未匹配到适用场景。我会回退到通用建模能力。', 'The selected skill did not match an applicable scenario. I will fall back to generic modeling capability.');
+    return this.localize(locale, '当前所选技能未命中更具体的结构技能。我会回退到通用建模能力。', 'The selected skills did not match a more specific structural skill. I will fall back to generic modeling capability.');
   }
 
   private async handleConversationMode(args: {
@@ -2227,7 +2219,7 @@ export class AgentService {
 
     plan.push(noSkillMode
       ? this.localize(locale, '按通用规则提取可计算结构参数', 'Extract computable structural parameters using generic rules')
-      : this.localize(locale, '识别结构场景并匹配对话模板', 'Identify the structural scenario and select the matching dialogue template'));
+      : this.localize(locale, '识别结构类型并选择可用技能路径', 'Identify the structural type and choose the available skill path'));
     plan.push(this.localize(locale, '按当前阶段补齐关键工程参数', 'Collect the key engineering parameters for the current stage'));
 
     const draftCall = this.startToolCall('draft_model', { message: params.message, conversationId: sessionKey, phase: 'interactive' });
@@ -2488,10 +2480,10 @@ export class AgentService {
           locale,
           noSkillMode
             ? '未启用技能，但当前输入已可直接生成结构模型。'
-            : '所选技能未匹配场景，但当前输入已可直接生成结构模型。',
+            : '所选技能未命中更具体的结构技能，但当前输入已可直接生成结构模型。',
           noSkillMode
             ? 'No skills are enabled, but the current input is sufficient to build a structural model directly.'
-            : 'The selected skill did not match, but the current input is sufficient to build a structural model directly.',
+            : 'The selected skills did not match a more specific structural skill, but the current input is sufficient to build a structural model directly.',
         )
         : this.localize(
           locale,
@@ -2525,10 +2517,10 @@ export class AgentService {
       locale,
       noSkillMode
         ? '已根据当前输入直接生成结构模型 JSON，可直接触发分析工具。'
-        : '所选技能未匹配场景，已回退到通用建模并生成结构模型 JSON，可直接触发分析工具。',
+        : '所选技能未命中更具体的结构技能，已回退到通用建模并生成结构模型 JSON，可直接触发分析工具。',
       noSkillMode
         ? 'A structural model JSON has been generated directly from your input and is ready for analysis tools.'
-        : 'The selected skill did not match, so I fell back to generic modeling and generated a structural model JSON ready for analysis tools.',
+        : 'The selected skills did not match a more specific structural skill, so I fell back to generic modeling and generated a structural model JSON ready for analysis tools.',
     );
 
     return this.finalizeRunResult(traceId, sessionKey, params.message, {
@@ -3043,8 +3035,6 @@ export class AgentService {
       turnId: randomUUID(),
       routeHint: route.routeHint,
       routeReason: route.routeReason,
-      detectedScenario: session.scenario?.key,
-      detectedScenarioLabel: session.scenario ? await this.getScenarioLabel(session.scenario.key, locale) : undefined,
       interactionStageLabel: this.getStageLabel(stage, locale),
       missingCritical,
       missingOptional,
@@ -3676,11 +3666,6 @@ export class AgentService {
       routing.structuralSkillId = structuralSkillId;
     }
 
-    const structuralScenarioKey = session?.scenario?.key || session?.draft?.scenarioKey;
-    if (structuralScenarioKey) {
-      routing.structuralScenarioKey = structuralScenarioKey;
-    }
-
     const analysisRecord = result.analysis && typeof result.analysis === 'object'
       ? result.analysis as Record<string, unknown>
       : undefined;
@@ -3699,7 +3684,6 @@ export class AgentService {
     if (
       routing.selectedSkillIds.length === 0
       && !routing.structuralSkillId
-      && !routing.structuralScenarioKey
       && !routing.analysisSkillId
       && (!routing.analysisSkillIds || routing.analysisSkillIds.length === 0)
     ) {

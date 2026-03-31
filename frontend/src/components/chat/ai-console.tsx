@@ -55,7 +55,6 @@ type MessageDebugDetails = {
   routing?: {
     selectedSkillIds: string[]
     structuralSkillId?: string
-    structuralScenarioKey?: string
     analysisSkillId?: string
     analysisSkillIds?: string[]
   }
@@ -69,8 +68,6 @@ type MessageMetadata = {
 }
 
 type AgentInteraction = {
-  detectedScenario?: string
-  detectedScenarioLabel?: string
   conversationStage?: string
   missingCritical?: string[]
   missingOptional?: string[]
@@ -390,7 +387,6 @@ function parsePersistedDebugDetails(metadata: unknown): MessageDebugDetails | un
           ? routingRecord.selectedSkillIds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
           : skillIds,
         structuralSkillId: typeof routingRecord.structuralSkillId === 'string' ? routingRecord.structuralSkillId : undefined,
-        structuralScenarioKey: typeof routingRecord.structuralScenarioKey === 'string' ? routingRecord.structuralScenarioKey : undefined,
         analysisSkillId: typeof routingRecord.analysisSkillId === 'string' ? routingRecord.analysisSkillId : undefined,
         analysisSkillIds: Array.isArray(routingRecord.analysisSkillIds)
           ? routingRecord.analysisSkillIds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
@@ -569,16 +565,12 @@ function buildInteractionMessage(
   locale: AppLocale
 ) {
   const questions = payload.content?.questions || []
-  const detectedScenario = payload.content?.detectedScenarioLabel
   const conversationStage = payload.content?.conversationStage
   const fallbackSupportNote = payload.content?.fallbackSupportNote
   const recommendedNextStep = payload.content?.recommendedNextStep
   const criticalMissing = payload.content?.pending?.criticalMissing || []
   const lines: string[] = []
 
-  if (detectedScenario) {
-    lines.push(`${t('guidanceDetectedScenario')}: ${detectedScenario}`)
-  }
   if (conversationStage) {
     lines.push(`${t('guidanceCurrentStage')}: ${conversationStage}`)
   }
@@ -1083,12 +1075,6 @@ function AnalysisPanel({
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid gap-3 md:grid-cols-2">
-                    {guidance.detectedScenarioLabel && (
-                      <div className="rounded-2xl border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
-                        <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('guidanceDetectedScenario')}</div>
-                        <div className="mt-2 text-base font-semibold text-foreground">{guidance.detectedScenarioLabel}</div>
-                      </div>
-                    )}
                     {guidance.conversationStage && (
                       <div className="rounded-2xl border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
                         <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('guidanceCurrentStage')}</div>
@@ -2590,14 +2576,6 @@ export function AIConsole() {
                                     <span className="font-medium text-foreground">{t('promptThinkingStructuralSkill')}</span>
                                     <Badge variant="outline" className="text-[10px]">
                                       {message.debugDetails.routing.structuralSkillId}
-                                    </Badge>
-                                  </div>
-                                ) : null}
-                                {message.debugDetails.routing.structuralScenarioKey ? (
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="font-medium text-foreground">{t('promptThinkingScenario')}</span>
-                                    <Badge variant="outline" className="text-[10px]">
-                                      {message.debugDetails.routing.structuralScenarioKey}
                                     </Badge>
                                   </div>
                                 ) : null}
