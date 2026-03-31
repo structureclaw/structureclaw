@@ -250,7 +250,6 @@ export interface AgentSkillPlugin extends AgentSkillBundle {
 }
 
 export interface SkillExecutionResult {
-  detectedStructuralType?: StructuralTypeKey;
   inferredType?: InferredModelType;
   draftPatch?: DraftExtraction;
   missingCritical?: string[];
