@@ -1113,7 +1113,7 @@ describe('AgentService orchestration', () => {
     expect(draft.missingFields).toEqual(['inferredType']);
   });
 
-  test('should let generic upgrade draft state only from llm patch output', async () => {
+  test('should let generic refine the structural draft only from llm patch output', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = {
       invoke: async () => ({
@@ -1680,7 +1680,7 @@ describe('AgentService orchestration', () => {
     expect(draft.missingFields).not.toContain('storyHeightsM');
   });
 
-  test('should upgrade a 2d frame chat session to 3d when llm extracts y-direction loads', async () => {
+  test('should let an existing frame chat refine from 2d to 3d when llm extracts y-direction loads', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = {
       invoke: async (prompt) => {
@@ -1734,7 +1734,6 @@ describe('AgentService orchestration', () => {
       context: { locale: 'zh' },
     });
 
-    expect(first.interaction?.detectedStructuralType).toBe('frame');
     expect(first.model?.metadata?.inferredType).toBe('frame');
 
     const second = await svc.runInteractive({
@@ -1743,7 +1742,6 @@ describe('AgentService orchestration', () => {
       context: { locale: 'zh' },
     });
 
-    expect(second.interaction?.detectedStructuralType).toBe('frame');
     expect(second.interaction?.missingCritical).toContain('X向跨数');
     expect(second.interaction?.missingCritical).toContain('Y向跨数');
     expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');

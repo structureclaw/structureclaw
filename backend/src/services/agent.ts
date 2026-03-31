@@ -2432,7 +2432,7 @@ export class AgentService {
 
     plan.push(noSkillMode
       ? this.localize(locale, '按通用规则提取可计算结构参数', 'Extract computable structural parameters using generic rules')
-      : this.localize(locale, '识别结构类型并选择可用技能路径', 'Identify the structural type and choose the available skill path'));
+      : this.localize(locale, '由当前可用 skill 理解请求并细化结构草稿', 'Use the current available skills to understand the request and refine the structural draft'));
     plan.push(this.localize(locale, '按当前阶段补齐关键工程参数', 'Collect the key engineering parameters for the current stage'));
 
     const draftCall = this.startToolCall('draft_model', { message: params.message, conversationId: sessionKey, phase: 'interactive' });
