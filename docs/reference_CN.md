@@ -164,3 +164,5 @@ Chat 与消息：
 - 英文协议参考：`docs/reference.md`
 - 技能加载机制：`docs/schema/skill-loading_CN.md`
 - 技能加载机制（英文）：`docs/schema/skill-loading.md`
+- 引擎映射（V2 Schema → 分析引擎）：`docs/schema/engine-mapping_CN.md`
+- 引擎映射（英文）：`docs/schema/engine-mapping.md`

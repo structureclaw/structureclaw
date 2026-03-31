@@ -73,3 +73,5 @@ API endpoints:
 - README: https://github.com/structureclaw/structureclaw/blob/master/README.md
 - Handbook: https://github.com/structureclaw/structureclaw/blob/master/docs/handbook.md
 - Reference: https://github.com/structureclaw/structureclaw/blob/master/docs/reference.md
+- Skill loading mechanism: https://github.com/structureclaw/structureclaw/blob/master/docs/schema/skill-loading.md
+- Engine mapping (V2 Schema → analysis engines): https://github.com/structureclaw/structureclaw/blob/master/docs/schema/engine-mapping.md

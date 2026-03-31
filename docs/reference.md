@@ -164,3 +164,5 @@ Regression entrypoints:
 - Chinese protocol reference: `docs/reference_CN.md`
 - Skill loading mechanism: `docs/schema/skill-loading.md`
 - Skill loading mechanism (Chinese): `docs/schema/skill-loading_CN.md`
+- Engine mapping (V2 Schema → analysis engines): `docs/schema/engine-mapping.md`
+- Engine mapping (Chinese): `docs/schema/engine-mapping_CN.md`

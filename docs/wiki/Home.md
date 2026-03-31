@@ -10,6 +10,12 @@ This wiki mirrors the current repository documentation and gives a stable landin
 - [Chinese Handbook](https://github.com/structureclaw/structureclaw/blob/master/docs/handbook_CN.md)
 - [Reference](https://github.com/structureclaw/structureclaw/blob/master/docs/reference.md)
 - [Chinese Reference](https://github.com/structureclaw/structureclaw/blob/master/docs/reference_CN.md)
+- [Skill Loading Mechanism](https://github.com/structureclaw/structureclaw/blob/master/docs/schema/skill-loading.md)
+- [技能加载机制](https://github.com/structureclaw/structureclaw/blob/master/docs/schema/skill-loading_CN.md)
+- [Engine Mapping (V2 Schema → Analysis Engines)](https://github.com/structureclaw/structureclaw/blob/master/docs/schema/engine-mapping.md)
+- [引擎映射（V2 Schema → 分析引擎）](https://github.com/structureclaw/structureclaw/blob/master/docs/schema/engine-mapping_CN.md)
+- [E2E Test Plan](https://github.com/structureclaw/structureclaw/blob/master/docs/e2e-test-plan_EN.md)
+- [端到端测试方案](https://github.com/structureclaw/structureclaw/blob/master/docs/e2e-test-plan.md)
 - [Contributing Guide](https://github.com/structureclaw/structureclaw/blob/master/CONTRIBUTING.md)
 - [Chinese Contributing Guide](https://github.com/structureclaw/structureclaw/blob/master/CONTRIBUTING_CN.md)
 

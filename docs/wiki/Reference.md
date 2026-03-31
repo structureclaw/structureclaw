@@ -96,3 +96,5 @@ All run via `node tests/runner.mjs validate <name>`. Full list: `node tests/runn
 
 - Full reference: https://github.com/structureclaw/structureclaw/blob/master/docs/reference.md
 - Handbook: https://github.com/structureclaw/structureclaw/blob/master/docs/handbook.md
+- Skill loading mechanism: https://github.com/structureclaw/structureclaw/blob/master/docs/schema/skill-loading.md
+- Engine mapping (V2 Schema → analysis engines): https://github.com/structureclaw/structureclaw/blob/master/docs/schema/engine-mapping.md

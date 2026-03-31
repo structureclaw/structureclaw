@@ -96,3 +96,5 @@
 
 - 完整参考文档：https://github.com/structureclaw/structureclaw/blob/master/docs/reference_CN.md
 - 使用手册：https://github.com/structureclaw/structureclaw/blob/master/docs/handbook_CN.md
+- 技能加载机制：https://github.com/structureclaw/structureclaw/blob/master/docs/schema/skill-loading_CN.md
+- 引擎映射（V2 Schema → 分析引擎）：https://github.com/structureclaw/structureclaw/blob/master/docs/schema/engine-mapping_CN.md
