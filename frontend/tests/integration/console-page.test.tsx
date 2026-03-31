@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import ConsolePage from '../../src/app/(console)/console/page'
 import type { VisualizationSnapshot } from '../../src/components/visualization'
+import { CAPABILITY_PREFERENCE_STORAGE_KEY } from '@/lib/capability-preference'
 import { clearLocaleCookie, LOCALE_STORAGE_KEY, normalizeLocale } from '@/lib/locale-preference'
 import { AppStoreProvider } from '@/lib/stores/context'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
@@ -319,12 +320,14 @@ describe('ConsolePage Integration (CONS-13)', () => {
     return view
   }
 
-  async function selectSkill(name: RegExp | string) {
-    fireEvent.click(screen.getByRole('button', { name: /Expand Skills|展开技能/ }))
-    if (!screen.queryByRole('button', { name })) {
-      fireEvent.change(screen.getByLabelText(/Category View|分类视图/), { target: { value: 'unknown' } })
-    }
-    fireEvent.click(await screen.findByRole('button', { name }))
+  function setCapabilityPreferences(skillIds: string[], toolIds: string[] = ['draft_model', 'validate_model', 'run_analysis', 'run_code_check', 'generate_report']) {
+    window.localStorage.setItem(
+      CAPABILITY_PREFERENCE_STORAGE_KEY,
+      JSON.stringify({
+        skillIds,
+        toolIds,
+      })
+    )
   }
 
   it('renders the active AI console shell', async () => {
@@ -339,7 +342,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     expect(screen.getByPlaceholderText(/Describe your structural goal/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Expand Skills' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Manage Capabilities' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Expand Engineering Context' })).toBeInTheDocument()
     expect(screen.getByText('Database tools')).toBeInTheDocument()
     expect(screen.getByText(/Review SQLite file health/i)).toBeInTheDocument()
@@ -372,33 +375,21 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getAllByRole('button', { name: 'Expand Engineering Context' })).toHaveLength(1)
   })
 
-  it('keeps loaded skills collapsed by default and toggles the list', async () => {
+  it('shows a compact capability summary and a link to the settings page', async () => {
     await renderConsolePage()
 
-    expect(screen.queryByText('Selected skills 2')).not.toBeInTheDocument()
+    expect(screen.getByText('Current capabilities')).toBeInTheDocument()
+    expect(screen.getByText('Capability selection moved into a dedicated settings page so the chat workspace stays focused on conversation and results.')).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Manage Capabilities' })).toHaveAttribute('href', '/console/capabilities')
     expect(screen.queryByText('Beam Helper')).not.toBeInTheDocument()
     expect(screen.queryByText('Frame Checker')).not.toBeInTheDocument()
-    expect(screen.queryByText('Choose which built-in skills the model may use for engineering understanding and guidance. Checked skills stay in the callable list; unchecked skills are excluded.')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Expand Skills' }))
-
-    expect(screen.getByRole('button', { name: 'Collapse Skills' })).toBeInTheDocument()
-    expect(screen.getByText('Choose which built-in skills the model may use for engineering understanding and guidance. Checked skills stay in the callable list; unchecked skills are excluded.')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Collapse Skills' }))
-
-    expect(screen.getByRole('button', { name: 'Expand Skills' })).toBeInTheDocument()
-    expect(screen.queryByText('Choose which built-in skills the model may use for engineering understanding and guidance. Checked skills stay in the callable list; unchecked skills are excluded.')).not.toBeInTheDocument()
   })
 
-  it('hides composer help in the default collapsed state', async () => {
+  it('removes the old in-page skill picker from the console surface', async () => {
     await renderConsolePage()
 
+    expect(screen.queryByRole('button', { name: /Expand Skills|展开技能/ })).not.toBeInTheDocument()
     expect(screen.queryByText('Choose which built-in skills the model may use for engineering understanding and guidance. Checked skills stay in the callable list; unchecked skills are excluded.')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /Expand Skills|展开技能/ }))
-
-    expect(screen.getByText('Choose which built-in skills the model may use for engineering understanding and guidance. Checked skills stay in the callable list; unchecked skills are excluded.')).toBeInTheDocument()
   })
 
   it('keeps only the model section inside the engineering context panel', async () => {
@@ -1101,7 +1092,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     expect(screen.getByText('历史会话')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '发送' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '展开技能' })).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: '管理能力' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '展开工程上下文' })).toBeInTheDocument()
     expect(screen.queryByText('计算引擎 自动选择')).not.toBeInTheDocument()
     expect(screen.queryByText('已选择技能')).not.toBeInTheDocument()
@@ -1194,8 +1185,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
+    setCapabilityPreferences(['generic', 'beam', 'opensees-static'])
     await renderConsolePage()
-    await selectSkill(/梁助手|Beam Helper/)
 
     fireEvent.change(screen.getByPlaceholderText(/描述你的结构目标/i), {
       target: { value: '请分析这个模型' },
@@ -1308,8 +1299,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
+    setCapabilityPreferences(['generic', 'beam', 'opensees-static'])
     await renderConsolePage()
-    await selectSkill(/Beam Helper|梁助手/)
     fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
       target: { value: 'Analyze this model' },
     })
@@ -1613,8 +1604,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
+    setCapabilityPreferences(['generic', 'beam', 'opensees-static'])
     await renderConsolePage()
-    await selectSkill(/Beam Helper|梁助手/)
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
     fireEvent.change(screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/), {
@@ -1698,11 +1689,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
+    setCapabilityPreferences(['generic', 'opensees-static', 'code-check-gb50017'])
     await renderConsolePage()
-
-    fireEvent.click(screen.getByRole('button', { name: /Expand Skills|展开技能/ }))
-    fireEvent.change(screen.getByLabelText(/Category View|分类视图/), { target: { value: 'code-check' } })
-    fireEvent.click(screen.getByRole('button', { name: /Code Check GB50017|规范校核 GB50017/ }))
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
     fireEvent.change(screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/), {
       target: { value: sampleModelJson },
@@ -1772,8 +1760,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
+    setCapabilityPreferences(['generic', 'beam', 'opensees-static'])
     await renderConsolePage()
-    await selectSkill(/Beam Helper|梁助手/)
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
     fireEvent.change(screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/), {

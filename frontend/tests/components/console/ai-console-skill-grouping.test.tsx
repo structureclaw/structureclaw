@@ -2,7 +2,9 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AIConsole } from '@/components/chat/ai-console'
+import { CapabilitySettingsPanel } from '@/components/chat/capability-settings-panel'
 import { API_BASE } from '@/lib/api-base'
+import { CAPABILITY_PREFERENCE_STORAGE_KEY } from '@/lib/capability-preference'
 
 function createSseResponse(events: unknown[]) {
   const encoder = new TextEncoder()
@@ -20,9 +22,10 @@ function createSseResponse(events: unknown[]) {
   } as unknown as Response
 }
 
-describe('AIConsole grouped skill picker', () => {
+describe('Capability settings and console integration', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    window.localStorage.clear()
     vi.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input)
 
@@ -200,13 +203,11 @@ describe('AIConsole grouped skill picker', () => {
 
   it('supports category-level select and clear actions', async () => {
     const user = userEvent.setup()
-    render(<AIConsole />)
+    render(<CapabilitySettingsPanel />)
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /expand engineering context/i })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
     })
-
-    await user.click(screen.getByRole('button', { name: /expand skills/i }))
 
     expect(await screen.findByLabelText(/category view/i)).toBeInTheDocument()
     expect(screen.getAllByText(/structure-type skills/i).length).toBeGreaterThan(0)
@@ -221,13 +222,11 @@ describe('AIConsole grouped skill picker', () => {
 
   it('allows switching among all fourteen domain groups', async () => {
     const user = userEvent.setup()
-    render(<AIConsole />)
+    render(<CapabilitySettingsPanel />)
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /expand engineering context/i })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
     })
-
-    await user.click(screen.getByRole('button', { name: /expand skills/i }))
 
     await waitFor(() => {
       const selector = screen.getByLabelText(/category view/i)
@@ -259,17 +258,15 @@ describe('AIConsole grouped skill picker', () => {
     })
   })
 
-  it('keeps skill and tool selection implicit until the user makes an explicit choice', async () => {
+  it('sends the explicit default skill and tool selection from the console', async () => {
     const user = userEvent.setup()
     const fetchMock = vi.mocked(global.fetch)
     render(<AIConsole />)
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /expand skills/i })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /manage capabilities/i })).toBeInTheDocument()
     })
 
-    await user.click(screen.getByRole('button', { name: /expand skills/i }))
-    await user.selectOptions(screen.getByLabelText(/category view/i), 'analysis')
     const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
     await user.type(composer, 'hello')
     await user.click(screen.getByRole('button', { name: /send/i }))
@@ -315,14 +312,12 @@ describe('AIConsole grouped skill picker', () => {
 
   it('surfaces callable tools and sends the remaining tool ids after the user deselects one', async () => {
     const user = userEvent.setup()
-    const fetchMock = vi.mocked(global.fetch)
-    render(<AIConsole />)
+    const view = render(<CapabilitySettingsPanel />)
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /expand skills/i })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
     })
 
-    await user.click(screen.getByRole('button', { name: /expand skills/i }))
     expect(await screen.findByRole('button', { name: 'Run Structural Analysis' })).toBeInTheDocument()
     expect(await screen.findByRole('button', { name: 'Run Structural Analysis' })).toBeInTheDocument()
 
@@ -333,18 +328,93 @@ describe('AIConsole grouped skill picker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Run Structural Analysis' }))
 
+    const stored = JSON.parse(window.localStorage.getItem(CAPABILITY_PREFERENCE_STORAGE_KEY) || '{}') as { skillIds?: string[]; toolIds?: string[] }
+    expect(stored.toolIds).toEqual(['draft_model'])
+
+    view.unmount()
+
+    vi.restoreAllMocks()
+    vi.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      if (url === `${API_BASE}/api/v1/agent/skills`) {
+        return {
+          ok: true,
+          json: async () => ([
+            {
+              id: 'generic',
+              name: { zh: '通用结构类型', en: 'Generic Structure Type' },
+              description: { zh: 'generic', en: 'generic' },
+              autoLoadByDefault: true,
+            },
+            {
+              id: 'opensees-static',
+              name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' },
+              description: { zh: 'static', en: 'static' },
+              autoLoadByDefault: true,
+            },
+          ]),
+        } as Response
+      }
+      if (url.startsWith(`${API_BASE}/api/v1/agent/capability-matrix`)) {
+        return {
+          ok: true,
+          json: async () => ({
+            skills: [
+              { id: 'generic', domain: 'structure-type' },
+              { id: 'opensees-static', domain: 'analysis-strategy' },
+            ],
+            tools: [
+              {
+                id: 'draft_model',
+                category: 'modeling',
+                displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' },
+                description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
+              },
+              {
+                id: 'run_analysis',
+                category: 'analysis',
+                displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' },
+                description: { zh: '执行分析求解', en: 'Execute analysis' },
+              },
+            ],
+            skillDomainById: { generic: 'structure-type', 'opensees-static': 'analysis-strategy' },
+            domainSummaries: [
+              { domain: 'structure-type', skillIds: ['generic'] },
+              { domain: 'analysis-strategy', skillIds: ['opensees-static'] },
+            ],
+          }),
+        } as Response
+      }
+      if (url === `${API_BASE}/api/v1/chat/conversations`) {
+        return { ok: true, json: async () => [] } as Response
+      }
+      if (url === `${API_BASE}/api/v1/chat/conversation` && init?.method === 'POST') {
+        return { ok: true, json: async () => ({ id: 'conv-tools', title: 'Tools', type: 'general' }) } as Response
+      }
+      if (url === `${API_BASE}/api/v1/chat/stream`) {
+        return createSseResponse([{ type: 'result', content: { response: 'ok', success: true } }])
+      }
+      if (url === `${API_BASE}/api/v1/models/latest`) {
+        return { ok: true, json: async () => ({ model: null }) } as Response
+      }
+      return { ok: true, json: async () => ({}) } as Response
+    })
+
+    render(<AIConsole />)
     const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
     await user.type(composer, 'run it when ready')
     await user.click(screen.getByRole('button', { name: /send/i }))
 
+    const sendFetchMock = vi.mocked(global.fetch)
+
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
+      expect(sendFetchMock).toHaveBeenCalledWith(
         `${API_BASE}/api/v1/chat/stream`,
         expect.objectContaining({ method: 'POST' })
       )
     })
 
-    const streamCall = fetchMock.mock.calls.findLast(([input]) => String(input) === `${API_BASE}/api/v1/chat/stream`)
+    const streamCall = sendFetchMock.mock.calls.findLast(([input]) => String(input) === `${API_BASE}/api/v1/chat/stream`)
     expect(streamCall).toBeTruthy()
     const requestInit = streamCall?.[1] as RequestInit | undefined
     const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { enabledToolIds?: string[] } }
