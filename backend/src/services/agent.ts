@@ -463,6 +463,79 @@ export class AgentService {
     return candidate.slice(start, end + 1);
   }
 
+  private parsePlannerResponse(
+    raw: string,
+    allowedKinds: AgentPlanKind[],
+    availableToolIds: AgentToolName[],
+  ): Pick<AgentNextStepPlan, 'kind' | 'replyMode' | 'toolId'> | null {
+    const jsonText = this.extractJsonObject(raw);
+    if (!jsonText) {
+      return null;
+    }
+
+    const parsed = JSON.parse(jsonText) as {
+      kind?: unknown;
+      replyMode?: unknown;
+      toolId?: unknown;
+      decision?: { kind?: unknown; replyMode?: unknown; toolId?: unknown };
+    };
+    const payload = typeof parsed.decision === 'object' && parsed.decision !== null ? parsed.decision : parsed;
+
+    if (typeof payload.kind !== 'string' || !allowedKinds.includes(payload.kind as AgentPlanKind)) {
+      return null;
+    }
+
+    const kind = payload.kind as AgentPlanKind;
+    const replyMode = kind === 'reply'
+      ? (payload.replyMode === 'structured' ? 'structured' : 'plain')
+      : undefined;
+    const toolId = kind === 'tool_call'
+      ? (typeof payload.toolId === 'string' ? payload.toolId : '')
+      : undefined;
+
+    if (kind === 'tool_call' && (!toolId || !availableToolIds.includes(toolId as AgentToolName))) {
+      return null;
+    }
+
+    return {
+      kind,
+      replyMode,
+      toolId: kind === 'tool_call' ? toolId as AgentToolName : undefined,
+    };
+  }
+
+  private async repairPlannerResponse(raw: string, options: {
+    locale: AppLocale;
+    allowedKinds: AgentPlanKind[];
+    availableToolIds: AgentToolName[];
+  }): Promise<Pick<AgentNextStepPlan, 'kind' | 'replyMode' | 'toolId'> | null> {
+    if (!this.llm) {
+      return null;
+    }
+
+    const prompt = [
+      'Normalize the following StructureClaw planner output into strict JSON.',
+      'Do not add commentary. Return JSON only.',
+      'Preserve the original intent. Only fix formatting or minor schema issues.',
+      `Allowed kinds: ${options.allowedKinds.join(', ')}`,
+      `Allowed toolIds when kind=tool_call: ${options.availableToolIds.join(', ') || 'none'}`,
+      'Output schema:',
+      `{"kind":"${options.allowedKinds.join('|')}","replyMode":"plain|structured|null","toolId":"${options.availableToolIds.join('|') || 'null'}|null","reason":"short reason"}`,
+      `Locale: ${options.locale}`,
+      `Planner output to normalize:\n${raw}`,
+    ].join('\n');
+
+    try {
+      const repaired = await this.llm.invoke(prompt);
+      const repairedRaw = typeof repaired.content === 'string'
+        ? repaired.content
+        : JSON.stringify(repaired.content);
+      return this.parsePlannerResponse(repairedRaw, options.allowedKinds, options.availableToolIds);
+    } catch {
+      return null;
+    }
+  }
+
   private async planNextStepWithLlm(message: string, options: {
     locale: AppLocale;
     skillIds?: string[];
@@ -477,7 +550,7 @@ export class AgentService {
     }
 
     const snapshot = await this.buildPlannerContextSnapshot(options);
-    const allowedKinds = Array.isArray(options.allowedKinds) && options.allowedKinds.length > 0
+    const allowedKinds: AgentPlanKind[] = Array.isArray(options.allowedKinds) && options.allowedKinds.length > 0
       ? options.allowedKinds
       : ['reply', 'ask', 'tool_call'];
     const allowToolCall = allowedKinds.includes('tool_call');
@@ -499,11 +572,13 @@ export class AgentService {
       'If the user changes previously confirmed geometry, loads, supports, material, or section values, treat that as a model update request rather than a plain question.',
       'If there is an existing engineering session or model and the user says things like "改成", "改为", "change to", "update", or modifies previously analyzed values, prefer tool_call with toolId=update_model when tool invocation is allowed.',
       'After a model update request, prefer tool_call when the user expects the updated model to be used immediately for analysis or refreshed engineering results.',
+      'If the user explicitly asks to build, model, generate, or revise a structural model now, that can also justify tool_call even if the request is not yet an analysis execution request.',
+      'For requests like "建模一个简支梁，跨度10m，均布荷载1kN/m，可以用10个单元建模", prefer tool_call with toolId=draft_model when the information is sufficient to attempt a first structural model draft.',
       'Use replyMode=plain only for casual chat, greetings, meta questions, or clearly non-engineering turns.',
       'Use replyMode=structured for engineering follow-ups that should stay grounded in the current structural context without immediately invoking tools.',
       'Choose ask when the user is pursuing an engineering task but key information is still missing.',
       allowToolCall
-        ? 'Choose tool_call only when the user is clearly asking to execute or continue execution now.'
+        ? 'Choose tool_call when the user is clearly asking to create/update a model now, or to execute/continue engineering execution now.'
         : 'Choose ask when more engineering details are needed before the next turn can proceed.',
       'If the user message looks like a parameter fragment or engineering follow-up, plain reply is almost always wrong.',
       'Use replyMode=structured only when a structural model already exists or the engineering draft is already ready and the best next step is to explain, summarize, or confirm readiness rather than ask or execute.',
@@ -522,28 +597,19 @@ export class AgentService {
       const raw = typeof aiMessage.content === 'string'
         ? aiMessage.content
         : JSON.stringify(aiMessage.content);
-      const jsonText = this.extractJsonObject(raw);
-      if (!jsonText) {
-        throw new Error('LLM_PLANNER_INVALID_RESPONSE');
-      }
-      const parsed = JSON.parse(jsonText) as { kind?: unknown; replyMode?: unknown; toolId?: unknown; reason?: unknown };
-      if (typeof parsed.kind !== 'string' || !allowedKinds.includes(parsed.kind as AgentPlanKind)) {
-        throw new Error('LLM_PLANNER_INVALID_RESPONSE');
-      }
-      const kind = parsed.kind as AgentPlanKind;
-      const replyMode = parsed.kind === 'reply'
-        ? (parsed.replyMode === 'structured' ? 'structured' : 'plain')
-        : undefined;
-      const toolId = parsed.kind === 'tool_call'
-        ? (typeof parsed.toolId === 'string' ? parsed.toolId : '')
-        : undefined;
-      if (kind === 'tool_call' && (!toolId || !availableToolIds.includes(toolId as AgentToolName))) {
+      const normalized = this.parsePlannerResponse(raw, allowedKinds, availableToolIds)
+        || await this.repairPlannerResponse(raw, {
+          locale: options.locale,
+          allowedKinds,
+          availableToolIds,
+        });
+      if (!normalized) {
         throw new Error('LLM_PLANNER_INVALID_RESPONSE');
       }
       return {
-        kind,
-        replyMode,
-        toolId: kind === 'tool_call' ? toolId as AgentToolName : undefined,
+        kind: normalized.kind,
+        replyMode: normalized.replyMode,
+        toolId: normalized.toolId,
         planningDirective: 'auto',
         rationale: 'llm',
       };

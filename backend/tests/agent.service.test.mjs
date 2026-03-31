@@ -790,6 +790,79 @@ describe('AgentService orchestration', () => {
     expect(result.response.length).toBeGreaterThan(0);
   });
 
+  test('should repair malformed planner output and still let generic call draft_model', async () => {
+    const svc = createServiceWithDefaultSkills();
+    let plannerAttemptCount = 0;
+
+    svc.textToModelDraft = async (_message, existingState) => ({
+      inferredType: 'unknown',
+      missingFields: [],
+      extractionMode: 'llm',
+      model: {
+        schema_version: '1.0.0',
+        unit_system: 'SI',
+        nodes: [],
+        elements: [],
+        materials: [],
+        sections: [],
+        load_cases: [],
+        load_combinations: [],
+      },
+      stateToPersist: {
+        ...(existingState || { inferredType: 'unknown' }),
+        inferredType: 'unknown',
+        updatedAt: Date.now(),
+      },
+    });
+
+    svc.structureProtocolClient = {
+      post: async (route) => {
+        if (route === '/validate') {
+          return { data: { valid: true } };
+        }
+        throw new Error(`unexpected structure protocol route: ${route}`);
+      },
+    };
+
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Normalize the following StructureClaw planner output')) {
+          return {
+            content: JSON.stringify({
+              kind: 'tool_call',
+              replyMode: null,
+              toolId: 'draft_model',
+              reason: 'the user is explicitly asking to build a structural model now',
+            }),
+          };
+        }
+        if (text.includes('Return strict JSON only')) {
+          plannerAttemptCount += 1;
+          return { content: 'I would use draft_model for this modeling request.' };
+        }
+        return { content: '模型已生成。' };
+      },
+    };
+
+    const result = await svc.run({
+      conversationId: 'conv-planner-repair-draft-model',
+      message: '我想建模一个简支梁，跨度10m，均布荷载1kN/m，可以用10个单元建模',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model'],
+        autoAnalyze: false,
+      },
+    });
+
+    expect(plannerAttemptCount).toBe(1);
+    expect(result.success).toBe(true);
+    expect(result.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+    expect(result.model).toBeDefined();
+    expect(result.response).not.toContain('当前无法可靠解析大模型的下一步决策结果');
+  });
+
   test('should keep inferredType unknown in no-skill mode even when llm extraction suggests template type', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
