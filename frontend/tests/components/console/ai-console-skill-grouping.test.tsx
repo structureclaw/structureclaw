@@ -94,6 +94,12 @@ describe('Capability settings and console integration', () => {
                 description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
               },
               {
+                id: 'update_model',
+                category: 'modeling',
+                displayName: { zh: '更新结构模型', en: 'Update Structural Model' },
+                description: { zh: '根据当前会话更新模型', en: 'Update the model from session context' },
+              },
+              {
                 id: 'run_analysis',
                 category: 'analysis',
                 displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' },
@@ -283,7 +289,7 @@ describe('Capability settings and console integration', () => {
     const requestInit = streamCall?.[1] as RequestInit | undefined
     const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { skillIds?: string[]; enabledToolIds?: string[] } }
     expect(body.context?.skillIds).toEqual(['opensees-static', 'generic'])
-    expect(body.context?.enabledToolIds).toEqual(['draft_model', 'run_analysis'])
+    expect([...(body.context?.enabledToolIds ?? [])].sort()).toEqual(['draft_model', 'run_analysis', 'update_model'])
   })
 
   it('does not send analysis type from frontend when executing with selected analysis skills', async () => {
@@ -329,7 +335,7 @@ describe('Capability settings and console integration', () => {
     await user.click(screen.getByRole('button', { name: 'Run Structural Analysis' }))
 
     const stored = JSON.parse(window.localStorage.getItem(CAPABILITY_PREFERENCE_STORAGE_KEY) || '{}') as { skillIds?: string[]; toolIds?: string[] }
-    expect(stored.toolIds).toEqual(['draft_model'])
+    expect([...(stored.toolIds ?? [])].sort()).toEqual(['draft_model', 'update_model'])
 
     view.unmount()
 
@@ -369,6 +375,12 @@ describe('Capability settings and console integration', () => {
                 category: 'modeling',
                 displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' },
                 description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
+              },
+              {
+                id: 'update_model',
+                category: 'modeling',
+                displayName: { zh: '更新结构模型', en: 'Update Structural Model' },
+                description: { zh: '根据当前会话更新模型', en: 'Update the model from session context' },
               },
               {
                 id: 'run_analysis',
@@ -418,7 +430,7 @@ describe('Capability settings and console integration', () => {
     expect(streamCall).toBeTruthy()
     const requestInit = streamCall?.[1] as RequestInit | undefined
     const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { enabledToolIds?: string[] } }
-    expect(body.context?.enabledToolIds).toEqual(['draft_model'])
+    expect([...(body.context?.enabledToolIds ?? [])].sort()).toEqual(['draft_model', 'update_model'])
   })
 
   it('does not overwrite default tool selection before the capability matrix finishes loading', async () => {
@@ -485,6 +497,12 @@ describe('Capability settings and console integration', () => {
               description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
             },
             {
+              id: 'update_model',
+              category: 'modeling',
+              displayName: { zh: '更新结构模型', en: 'Update Structural Model' },
+              description: { zh: '根据当前会话更新模型', en: 'Update the model from session context' },
+            },
+            {
               id: 'run_analysis',
               category: 'analysis',
               displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' },
@@ -505,7 +523,7 @@ describe('Capability settings and console integration', () => {
 
     await waitFor(() => {
       const stored = JSON.parse(window.localStorage.getItem(CAPABILITY_PREFERENCE_STORAGE_KEY) || '{}') as { toolIds?: string[] }
-      expect(stored.toolIds).toEqual(['draft_model', 'run_analysis'])
+      expect([...(stored.toolIds ?? [])].sort()).toEqual(['draft_model', 'run_analysis', 'update_model'])
     })
   })
 })

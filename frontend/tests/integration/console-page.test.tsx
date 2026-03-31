@@ -177,6 +177,7 @@ function mockConsoleSupportRequest(url: string) {
         ],
         tools: [
           { id: 'draft_model', category: 'modeling' },
+          { id: 'update_model', category: 'modeling' },
           { id: 'validate_model', category: 'modeling' },
           { id: 'run_analysis', category: 'analysis' },
           { id: 'run_code_check', category: 'checking' },
@@ -247,6 +248,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
             ],
             tools: [
               { id: 'draft_model', category: 'modeling' },
+              { id: 'update_model', category: 'modeling' },
               { id: 'validate_model', category: 'modeling' },
               { id: 'run_analysis', category: 'analysis' },
               { id: 'run_code_check', category: 'checking' },
@@ -320,7 +322,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     return view
   }
 
-  function setCapabilityPreferences(skillIds: string[], toolIds: string[] = ['draft_model', 'validate_model', 'run_analysis', 'run_code_check', 'generate_report']) {
+  function setCapabilityPreferences(skillIds: string[], toolIds: string[] = ['draft_model', 'update_model', 'validate_model', 'run_analysis', 'run_code_check', 'generate_report']) {
     window.localStorage.setItem(
       CAPABILITY_PREFERENCE_STORAGE_KEY,
       JSON.stringify({
@@ -1328,16 +1330,15 @@ describe('ConsolePage Integration (CONS-13)', () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
     let streamPayload: Record<string, unknown> | null = null
     const interaction = {
-      detectedScenario: 'steel-frame',
-      detectedScenarioLabel: 'Steel Frame',
-      conversationStage: 'Intent',
-      missingCritical: ['Structure type (portal frame / double-span beam / beam / truss)'],
+      detectedStructuralType: 'unknown',
+      interactionStageLabel: 'Intent',
+      missingCritical: ['Structural system / topology description (any type, or provide computable model JSON directly)'],
       missingOptional: ['Whether to generate a report'],
-      fallbackSupportNote: '“Steel frame” has been narrowed to the portal-frame template for now.',
-      recommendedNextStep: 'Fill in Structure type first.',
-      questions: [{ question: 'Please confirm the structure type (portal frame / double-span beam / beam / truss).' }],
+      fallbackSupportNote: 'Continue with the generic structure skill and keep collecting key engineering parameters.',
+      recommendedNextStep: 'Fill in the structural system first.',
+      questions: [{ question: 'Please first describe the structural system, member connectivity, and main loads.' }],
       pending: {
-        criticalMissing: ['Structure type (portal frame / double-span beam / beam / truss)'],
+        criticalMissing: ['Structural system / topology description (any type, or provide computable model JSON directly)'],
         nonCriticalMissing: ['Whether to generate a report'],
       },
     }
@@ -1374,7 +1375,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
         streamPayload = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>
         return createSseResponse([
           { type: 'interaction_update', content: interaction },
-          { type: 'result', content: { response: 'Detected scenario: Steel Frame', success: true, interaction } },
+          { type: 'result', content: { response: 'Using the generic structure skill to continue collecting parameters.', success: true, interaction } },
         ])
       }
 
@@ -1396,8 +1397,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
       ?? null) as Record<string, unknown> | null
     expect(streamContext?.locale).toBe('en')
     expect(screen.getByText('Conversation Guidance')).toBeInTheDocument()
-    expect(screen.getByText('Steel Frame')).toBeInTheDocument()
-    expect(screen.getByText('Fill in Structure type first.')).toBeInTheDocument()
+    expect(screen.getByText('Continue with the generic structure skill and keep collecting key engineering parameters.')).toBeInTheDocument()
+    expect(screen.getByText('Fill in the structural system first.')).toBeInTheDocument()
   })
 
   it('synchronizes model json from a collecting chat result once the structural model is complete', async () => {
@@ -1488,16 +1489,15 @@ describe('ConsolePage Integration (CONS-13)', () => {
   it('renders guided discuss-first state in Chinese', async () => {
     window.localStorage.setItem(LOCALE_STORAGE_KEY, 'zh')
     const interaction = {
-      detectedScenario: 'bridge',
-      detectedScenarioLabel: '桥梁',
-      conversationStage: '需求识别',
-      missingCritical: ['结构类型（门式刚架/双跨梁/梁/平面桁架）'],
+      detectedStructuralType: 'unknown',
+      interactionStageLabel: '需求识别',
+      missingCritical: ['结构体系/构件拓扑描述（不限类型，可直接给结构模型JSON）'],
       missingOptional: ['是否生成报告'],
-      fallbackSupportNote: '当前补参链路还不直接支持桥梁专用模板；若你只想先讨论单梁主梁近似，可收敛到梁模板。',
-      recommendedNextStep: '先补齐结构类型。',
-      questions: [{ question: '请确认结构类型（门式刚架/双跨梁/梁/平面桁架）。' }],
+      fallbackSupportNote: '继续使用通用结构类型 skill 处理当前对话，并继续补齐关键工程参数。',
+      recommendedNextStep: '先补齐结构体系。',
+      questions: [{ question: '请先描述结构体系、构件连接关系和主要荷载；如果你已经有可计算结构模型，也可以直接贴 JSON。' }],
       pending: {
-        criticalMissing: ['结构类型（门式刚架/双跨梁/梁/平面桁架）'],
+        criticalMissing: ['结构体系/构件拓扑描述（不限类型，可直接给结构模型JSON）'],
         nonCriticalMissing: ['是否生成报告'],
       },
     }
@@ -1533,7 +1533,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
       if (url.includes('/api/v1/chat/stream')) {
         return createSseResponse([
           { type: 'interaction_update', content: interaction },
-          { type: 'result', content: { response: '识别场景：桥梁', success: true, interaction } },
+          { type: 'result', content: { response: '继续使用通用结构类型 skill 处理当前对话。', success: true, interaction } },
         ])
       }
 
@@ -1552,8 +1552,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
 
     expect(screen.getByText('对话引导')).toBeInTheDocument()
-    expect(screen.getByText('桥梁')).toBeInTheDocument()
-    expect(screen.getByText('先补齐结构类型。')).toBeInTheDocument()
+    expect(screen.getAllByText('继续使用通用结构类型 skill 处理当前对话。').length).toBeGreaterThan(0)
+    expect(screen.getByText('先补齐结构体系。')).toBeInTheDocument()
   })
 
   it('opens the structural visualization modal after a successful execute run with model JSON', async () => {
