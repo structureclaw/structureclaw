@@ -1728,6 +1728,119 @@ describe('AgentService orchestration', () => {
     expect(third.interaction?.state).toBe('ready');
   });
 
+  test('should keep engineering follow-up turns in structured context instead of forgetting prior frame intent', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+    const originalFindMany = prisma.message.findMany;
+    let historyTurn = 0;
+
+    prisma.message.findMany = async ({ where }) => {
+      if (where?.conversationId !== 'conv-frame-followup-llm-planner') {
+        return [];
+      }
+      if (historyTurn === 0) {
+        return [];
+      }
+      if (historyTurn === 1) {
+        return [
+          { role: 'assistant', content: '请先描述结构体系、构件连接关系和主要荷载。' },
+          { role: 'user', content: '我想设计一个三维框架结构' },
+        ];
+      }
+      return [
+        { role: 'assistant', content: '请继续补充几层几跨、柱网尺寸和平面形状。' },
+        { role: 'user', content: '一个钢框架结构体系' },
+        { role: 'assistant', content: '请先描述结构体系、构件连接关系和主要荷载。' },
+        { role: 'user', content: '我想设计一个三维框架结构' },
+      ];
+    };
+
+    try {
+      const first = await svc.runInteractive({
+        conversationId: 'conv-frame-followup-llm-planner',
+        message: '我想设计一个三维框架结构',
+        context: {
+          locale: 'zh',
+          skillIds: ['opensees-static', 'generic'],
+          enabledToolIds: ['draft_model', 'validate_model', 'run_analysis', 'generate_report'],
+        },
+      });
+
+      expect(first.interaction?.detectedScenario === 'generic' || first.interaction?.detectedScenario === 'frame').toBe(true);
+      expect((first.interaction?.missingCritical ?? []).some((item) => item.includes('层'))).toBe(true);
+
+      historyTurn = 1;
+      svc.llm = {
+        invoke: async (prompt) => {
+          const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+          if (text.includes('Return strict JSON only')) {
+            if (text.includes('User message: 一个钢框架结构体系')) {
+              expect(text).toContain('assistant: 请先描述结构体系、构件连接关系和主要荷载。');
+              expect(text).toContain('我想设计一个三维框架结构');
+              return {
+                content: JSON.stringify({
+                  kind: 'ask',
+                  replyMode: null,
+                  reason: 'engineering follow-up answering the previous missing parameter request',
+                }),
+              };
+            }
+            if (text.includes('User message: 3层每层3m，x方向4跨，跨度5m，y方向3跨，跨度3m')) {
+              expect(text).toContain('一个钢框架结构体系');
+              expect(text).toContain('请继续补充几层几跨、柱网尺寸和平面形状。');
+              return {
+                content: JSON.stringify({
+                  kind: 'ask',
+                  replyMode: null,
+                  reason: 'continue collecting frame geometry instead of resetting the session',
+                }),
+              };
+            }
+            return {
+              content: JSON.stringify({
+                kind: 'reply',
+                replyMode: 'plain',
+                reason: 'default test fallback',
+              }),
+            };
+          }
+          return { content: '好的。' };
+        },
+      };
+
+      const second = await svc.runInteractive({
+        conversationId: 'conv-frame-followup-llm-planner',
+        message: '一个钢框架结构体系',
+        context: {
+          locale: 'zh',
+          skillIds: ['opensees-static', 'generic'],
+          enabledToolIds: ['draft_model', 'validate_model', 'run_analysis', 'generate_report'],
+        },
+      });
+
+      expect(second.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+      expect((second.interaction?.missingCritical ?? []).some((item) => item.includes('结构体系'))).toBe(false);
+      expect(second.interaction?.detectedScenario === 'generic' || second.interaction?.detectedScenario === 'frame' || second.interaction?.detectedScenario === 'steel-frame').toBe(true);
+
+      historyTurn = 2;
+      const third = await svc.runInteractive({
+        conversationId: 'conv-frame-followup-llm-planner',
+        message: '3层每层3m，x方向4跨，跨度5m，y方向3跨，跨度3m',
+        context: {
+          locale: 'zh',
+          skillIds: ['opensees-static', 'generic'],
+          enabledToolIds: ['draft_model', 'validate_model', 'run_analysis', 'generate_report'],
+        },
+      });
+
+      expect(third.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+      expect((third.interaction?.missingCritical ?? []).some((item) => item.includes('结构体系'))).toBe(false);
+      expect(third.response).not.toContain('请先补齐 结构体系');
+    } finally {
+      prisma.message.findMany = originalFindMany;
+    }
+  });
+
   test('should merge 2d frame vertical and lateral loads across chat turns', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;

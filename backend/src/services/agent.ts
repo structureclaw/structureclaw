@@ -167,6 +167,7 @@ interface ResolvedConversationAssessment {
 }
 
 interface PlannerContextSnapshot {
+  hasActiveSession: boolean;
   hasModel: boolean;
   inferredType: DraftState['inferredType'];
   scenarioKey?: string;
@@ -175,6 +176,8 @@ interface PlannerContextSnapshot {
   readyForExecution: boolean;
   availableToolIds: string[];
   skillIds: string[];
+  recentConversation: string[];
+  lastAssistantMessage?: string;
 }
 
 interface PreparedExecutionModel {
@@ -385,6 +388,7 @@ export class AgentService {
       hasModel: Boolean(options?.hasModel),
       session,
       activeToolIds,
+      conversationId: sessionKey,
     })).kind === 'tool_call';
   }
 
@@ -394,16 +398,42 @@ export class AgentService {
     hasModel: boolean;
     session?: InteractionSession;
     activeToolIds?: ActiveToolSet;
+    conversationId?: string;
   }): Promise<PlannerContextSnapshot> {
     const assessment = options.session
       ? await this.assessInteractionNeeds(options.session, options.locale, options.skillIds, 'interactive')
       : undefined;
+    let recentConversation: string[] = [];
+    let lastAssistantMessage: string | undefined;
+
+    if (options.conversationId) {
+      try {
+        const recentMessages = await prisma.message.findMany({
+          where: { conversationId: options.conversationId },
+          orderBy: { createdAt: 'desc' },
+          take: 6,
+          select: { role: true, content: true },
+        });
+        if (recentMessages.length > 0) {
+          const orderedMessages = recentMessages.reverse();
+          recentConversation = orderedMessages
+            .map((message: { role: string; content: string }) => `${message.role}: ${message.content.slice(0, 240)}`);
+          const assistantMessages = orderedMessages.filter((message) => message.role === 'assistant');
+          lastAssistantMessage = assistantMessages.at(-1)?.content.slice(0, 320);
+        }
+      } catch {
+        recentConversation = [];
+        lastAssistantMessage = undefined;
+      }
+    }
+
     const readyForExecution = Boolean(
       assessment
       && assessment.criticalMissing.length === 0
       && (assessment.nonCriticalMissing.length === 0 || Boolean(options.session?.userApprovedAutoDecide)),
     );
     return {
+      hasActiveSession: Boolean(options.session),
       hasModel: options.hasModel,
       inferredType: options.session?.draft.inferredType ?? 'unknown',
       scenarioKey: options.session?.draft.scenarioKey,
@@ -412,6 +442,8 @@ export class AgentService {
       readyForExecution,
       availableToolIds: [...(options.activeToolIds ?? new Set<string>())].sort(),
       skillIds: Array.isArray(options.skillIds) ? [...options.skillIds] : [],
+      recentConversation,
+      lastAssistantMessage,
     };
   }
 
@@ -438,6 +470,7 @@ export class AgentService {
     session?: InteractionSession;
     activeToolIds?: ActiveToolSet;
     allowedKinds?: AgentPlanKind[];
+    conversationId?: string;
   }): Promise<AgentNextStepPlan> {
     if (!this.llm) {
       throw new Error('LLM_PLANNER_UNAVAILABLE');
@@ -456,11 +489,18 @@ export class AgentService {
       allowToolCall
         ? 'Do not choose tool_call just because drafting or analysis tools are available.'
         : 'Tool invocation is not allowed in this planning mode. Choose only reply or ask.',
+      'When there is an active engineering session with missing parameters, and the latest user message adds structure type, geometry, topology, material, section, load, support, or report details, do not choose a plain reply.',
+      'In that situation, choose ask so the structured engineering session continues, unless the information is now complete enough that a structured reply is clearly better.',
+      'Treat short parameter fragments such as "钢框架结构体系", "每层3m", "x方向4跨", "Q355", or similar engineering increments as continuation turns, not casual chat.',
+      'If the previous assistant message was asking for engineering parameters and the latest user message answers that request, continue the structured engineering session.',
+      'Use replyMode=plain only for casual chat, greetings, meta questions, or clearly non-engineering turns.',
+      'Use replyMode=structured for engineering follow-ups that should stay grounded in the current structural context without immediately invoking tools.',
       'Choose ask when the user is pursuing an engineering task but key information is still missing.',
       allowToolCall
         ? 'Choose tool_call only when the user is clearly asking to execute or continue execution now.'
         : 'Choose ask when more engineering details are needed before the next turn can proceed.',
-      'Use replyMode=structured only when a structural model already exists or the engineering draft is already ready and the best next step is to explain/summarize rather than ask or execute.',
+      'If the user message looks like a parameter fragment or engineering follow-up, plain reply is almost always wrong.',
+      'Use replyMode=structured only when a structural model already exists or the engineering draft is already ready and the best next step is to explain, summarize, or confirm readiness rather than ask or execute.',
       'Return strict JSON only with this schema:',
       `{"kind":"${allowedKinds.join('|')}","replyMode":"plain|structured|null","reason":"short reason"}`,
       `Locale: ${options.locale}`,
@@ -503,6 +543,7 @@ export class AgentService {
     hasModel: boolean;
     session?: InteractionSession;
     activeToolIds?: ActiveToolSet;
+    conversationId?: string;
   }): Promise<AgentNextStepPlan> {
     if (options.planningDirective === 'force_interactive') {
       if (this.llm) {
@@ -514,6 +555,7 @@ export class AgentService {
             session: options.session,
             activeToolIds: options.activeToolIds,
             allowedKinds: ['reply', 'ask'],
+            conversationId: options.conversationId,
           })),
           planningDirective: options.planningDirective,
         };
@@ -1045,6 +1087,7 @@ export class AgentService {
         hasModel: Boolean(modelInput),
         session: workingSession,
         activeToolIds,
+        conversationId: sessionKey,
       });
     } catch (error: any) {
       const plannerErrorCode = typeof error?.message === 'string' ? error.message : 'LLM_PLANNER_UNAVAILABLE';

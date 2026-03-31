@@ -14,7 +14,7 @@ export const manifest: SkillManifest = {
   triggers: ['structure', 'model', 'analysis', 'design', '结构', '模型', '分析', '设计', '荷载', 'load'],
   stages: ['intent', 'draft', 'analysis', 'design'],
   autoLoadByDefault: true,
-  scenarioKeys: ['unknown', 'beam', 'truss', 'portal-frame', 'double-span-beam', 'frame'],
+  scenarioKeys: ['unknown', 'beam', 'truss', 'portal-frame', 'double-span-beam', 'frame', 'steel-frame'],
   domain: 'structure-type',
   requires: [],
   conflicts: [],

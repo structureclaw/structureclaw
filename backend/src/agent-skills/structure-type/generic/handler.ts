@@ -60,10 +60,58 @@ function buildGenericPatch(
   message: string,
   llmDraftPatch?: Record<string, unknown> | null,
 ): DraftExtraction {
-  return mergeLegacyDraftPatchLlmFirst(
+  const merged = mergeLegacyDraftPatchLlmFirst(
     normalizeLegacyDraftPatch(llmDraftPatch),
     extractDraftByRules(message),
   );
+  const normalizedMessage = message.toLowerCase();
+
+  if (!merged.inferredType || merged.inferredType === 'unknown') {
+    if (normalizedMessage.includes('steel frame') || message.includes('钢框架')) {
+      return {
+        ...merged,
+        inferredType: 'frame',
+        scenarioKey: 'steel-frame',
+      };
+    }
+    if (
+      normalizedMessage.includes('3d frame')
+      || normalizedMessage.includes('space frame')
+      || message.includes('三维框架')
+      || message.includes('空间框架')
+      || normalizedMessage.includes('frame')
+      || message.includes('框架')
+    ) {
+      return {
+        ...merged,
+        inferredType: 'frame',
+        scenarioKey: 'frame',
+      };
+    }
+    if (normalizedMessage.includes('portal frame') || message.includes('门式刚架') || message.includes('门架') || message.includes('刚架')) {
+      return {
+        ...merged,
+        inferredType: 'portal-frame',
+        scenarioKey: 'portal-frame',
+      };
+    }
+    if (normalizedMessage.includes('truss') || message.includes('桁架')) {
+      return {
+        ...merged,
+        inferredType: 'truss',
+        scenarioKey: 'truss',
+      };
+    }
+    if (normalizedMessage.includes('beam') || normalizedMessage.includes('girder') || message.includes('梁')) {
+      return {
+        ...merged,
+        inferredType: 'beam',
+        scenarioKey: 'beam',
+      };
+    }
+  }
+
+  return merged;
 }
 
 function buildGenericDefaultProposals(
@@ -106,15 +154,24 @@ function buildGenericQuestions(
 export const handler: SkillHandler = {
   detectScenario({ message, locale, currentState }) {
     if (currentState?.skillId === 'generic') {
+      const upgradedDraft = buildGenericPatch(message, null);
+      const upgradedInferredType = upgradedDraft.inferredType ?? 'unknown';
+      const upgradedScenarioKey = upgradedDraft.scenarioKey ?? (upgradedInferredType === 'unknown' ? 'unknown' : upgradedInferredType);
+      const canUpgradeCurrentUnknown = currentState.inferredType === 'unknown' && upgradedInferredType !== 'unknown';
       return buildScenarioMatch(
-        currentState.scenarioKey ?? 'unknown',
-        currentState.inferredType,
+        canUpgradeCurrentUnknown ? upgradedScenarioKey : (currentState.scenarioKey ?? 'unknown'),
+        canUpgradeCurrentUnknown ? upgradedInferredType : currentState.inferredType,
         'generic',
         currentState.supportLevel ?? 'fallback',
         locale,
         {
-          zh: '继续使用通用结构类型 skill 处理当前对话。',
-          en: 'Continue using the generic structure-type skill for the current conversation.',
+          zh: canUpgradeCurrentUnknown
+            ? '继续使用通用结构类型 skill 处理当前对话，并根据新补充的信息更新结构类型。'
+            : '继续使用通用结构类型 skill 处理当前对话。'
+            ,
+          en: canUpgradeCurrentUnknown
+            ? 'Continue using the generic structure-type skill and upgrade the structural type with the newly provided details.'
+            : 'Continue using the generic structure-type skill for the current conversation.',
         },
       );
     }
@@ -123,8 +180,9 @@ export const handler: SkillHandler = {
       return null;
     }
 
-    const inferred = extractDraftByRules(message).inferredType ?? 'unknown';
-    const key = inferred === 'unknown' ? 'unknown' : inferred;
+    const draft = buildGenericPatch(message, null);
+    const inferred = draft.inferredType ?? 'unknown';
+    const key = draft.scenarioKey ?? (inferred === 'unknown' ? 'unknown' : inferred);
     return buildScenarioMatch(key, inferred, 'generic', 'fallback', locale, {
       zh: inferred === 'unknown'
         ? '已切换到通用结构类型 skill，先接住当前问题并继续补参。'
