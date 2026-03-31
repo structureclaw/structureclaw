@@ -129,8 +129,7 @@ describe('AIConsole prompt and thinking details', () => {
     render(<AIConsole />)
 
     const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
-    await user.click(screen.getByRole('button', { name: /expand skills/i }))
-    await user.click(screen.getByRole('button', { name: 'Beam' }))
+    await user.click(screen.getByRole('button', { name: /expand engineering context/i }))
     await user.type(composer, 'Run static beam check for prompt debug test')
     await user.click(screen.getByRole('button', { name: /send/i }))
 
