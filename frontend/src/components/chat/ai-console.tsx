@@ -1325,6 +1325,11 @@ export function AIConsole() {
     [selectedSkillIds, skillDomainById]
   )
 
+  const defaultSelectedSkillIds = useMemo(() => {
+    const available = new Set(availableSkills.map((skill) => skill.id))
+    return ['opensees-static', 'generic'].filter((skillId) => available.has(skillId))
+  }, [availableSkills])
+
   const groupedSkills = useMemo(() => {
     const domainOrder = new Map<string, number>()
     ALL_SKILL_DOMAINS.forEach((domain, index) => {
@@ -1472,6 +1477,11 @@ export function AIConsole() {
       .sort((a, b) => a.label.localeCompare(b.label))
   }, [availableTools, locale, selectedToolIds])
 
+  const defaultSelectedToolIds = useMemo(
+    () => availableTools.map((tool) => tool.id),
+    [availableTools]
+  )
+
   useEffect(() => {
     if (!groupedSkills.some((group) => group.domain === skillDomainView)) {
       setSkillDomainView('structure-type')
@@ -1606,6 +1616,20 @@ export function AIConsole() {
       active = false
     }
   }, [])
+
+  useEffect(() => {
+    if (hasExplicitSkillSelection || selectedSkillIds.length > 0 || defaultSelectedSkillIds.length === 0) {
+      return
+    }
+    setSelectedSkillIds(defaultSelectedSkillIds)
+  }, [defaultSelectedSkillIds, hasExplicitSkillSelection, selectedSkillIds.length])
+
+  useEffect(() => {
+    if (hasExplicitToolSelection || selectedToolIds.length > 0 || defaultSelectedToolIds.length === 0) {
+      return
+    }
+    setSelectedToolIds(defaultSelectedToolIds)
+  }, [defaultSelectedToolIds, hasExplicitToolSelection, selectedToolIds.length])
 
   useEffect(() => {
     let active = true
@@ -2004,13 +2028,13 @@ export function AIConsole() {
   }
 
   function resetSkillSelectionToDefault() {
-    setSelectedSkillIds([])
-    setHasExplicitSkillSelection(false)
+    setSelectedSkillIds(defaultSelectedSkillIds)
+    setHasExplicitSkillSelection(true)
   }
 
   function resetToolSelectionToDefault() {
-    setSelectedToolIds([])
-    setHasExplicitToolSelection(false)
+    setSelectedToolIds(defaultSelectedToolIds)
+    setHasExplicitToolSelection(true)
   }
 
   async function runSkillHubAction(skillId: string, action: 'install' | 'enable' | 'disable' | 'uninstall') {
@@ -2217,8 +2241,8 @@ export function AIConsole() {
       setModelText(nextModelText)
       setSelectedSkillIds(nextSelectedSkillIds)
       setSelectedToolIds(nextSelectedToolIds)
-      setHasExplicitSkillSelection(archived?.hasExplicitSkillSelection ?? nextSelectedSkillIds.length > 0)
-      setHasExplicitToolSelection(archived?.hasExplicitToolSelection ?? nextSelectedToolIds.length > 0)
+      setHasExplicitSkillSelection(archived?.hasExplicitSkillSelection ?? true)
+      setHasExplicitToolSelection(archived?.hasExplicitToolSelection ?? true)
       setModelSyncMessage(nextModelSyncMessage)
       setLatestResult(nextLatestResult)
       setLatestModelVisualizationSnapshot(nextModelSnapshot)
@@ -2237,8 +2261,8 @@ export function AIConsole() {
         )
         setSelectedSkillIds(archived.selectedSkillIds?.length ? archived.selectedSkillIds : [])
         setSelectedToolIds(archived.selectedToolIds?.length ? archived.selectedToolIds : [])
-        setHasExplicitSkillSelection(archived.hasExplicitSkillSelection ?? Boolean(archived.selectedSkillIds?.length))
-        setHasExplicitToolSelection(archived.hasExplicitToolSelection ?? Boolean(archived.selectedToolIds?.length))
+        setHasExplicitSkillSelection(archived.hasExplicitSkillSelection ?? true)
+        setHasExplicitToolSelection(archived.hasExplicitToolSelection ?? true)
         setModelSyncMessage(archived.modelSyncMessage || '')
         const archivedLatestResult = normalizeAgentResultPayload(archived.latestResult || null)
         setLatestResult(archivedLatestResult)
@@ -2266,10 +2290,10 @@ export function AIConsole() {
     setConversationId('')
     setMessages([initialAssistantMessage])
     setModelText('')
-    setSelectedSkillIds([])
-    setSelectedToolIds([])
-    setHasExplicitSkillSelection(false)
-    setHasExplicitToolSelection(false)
+    setSelectedSkillIds(defaultSelectedSkillIds)
+    setSelectedToolIds(defaultSelectedToolIds)
+    setHasExplicitSkillSelection(true)
+    setHasExplicitToolSelection(true)
     setModelSyncMessage('')
     setLatestResult(null)
     setLatestModelVisualizationSnapshot(null)
@@ -2427,12 +2451,10 @@ export function AIConsole() {
     try {
       const nextConversationId = await ensureConversation(trimmedInput)
       activeConversationId = nextConversationId
-      const explicitSkillIds = hasExplicitSkillSelection ? selectedSkillIds : undefined
-      const explicitToolIds = hasExplicitToolSelection ? selectedToolIds : undefined
       const contextPayload = {
         locale,
-        skillIds: explicitSkillIds,
-        enabledToolIds: explicitToolIds,
+        skillIds: selectedSkillIds,
+        enabledToolIds: selectedToolIds,
         model: contextModel,
         modelFormat: contextModel ? 'structuremodel-v1' : undefined,
         autoCodeCheck: hasSelectedCodeCheckSkill || undefined,
