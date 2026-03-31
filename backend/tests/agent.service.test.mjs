@@ -417,7 +417,8 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.response).toContain('Please confirm the following parameters first');
+    expect(result.response).toContain('Please confirm');
+    expect(result.response).not.toContain('allow_auto_decide');
     expect(result.clarification?.missingFields).toContain('Span length per bay for the portal frame or double-span beam (m)');
     expect(result.clarification?.missingFields).toContain('Portal-frame column height (m)');
   });
@@ -1052,6 +1053,127 @@ describe('AgentService orchestration', () => {
     expect(result.response).toContain('材料');
     expect(result.response).toContain('荷载');
     expect(result.model).toBeUndefined();
+  });
+
+  test('should not block model drafting on report preferences when a valid model is ready', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          return {
+            content: JSON.stringify({
+              kind: 'tool_call',
+              replyMode: null,
+              toolId: 'draft_model',
+              reason: 'the user is asking to build a model now',
+            }),
+          };
+        }
+        return { content: 'ok' };
+      },
+    };
+
+    svc.textToModelDraft = async () => ({
+      inferredType: 'beam',
+      missingFields: [],
+      extractionMode: 'llm',
+      model: {
+        schema_version: '1.0.0',
+        unit_system: 'SI',
+        nodes: [
+          { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
+          { id: '2', x: 10000, y: 0, z: 0, restraints: [false, true, true, false, false, false] },
+          { id: '3', x: 5000, y: 0, z: 0 },
+        ],
+        elements: [
+          { id: 'E1', type: 'beam', nodes: ['1', '3'], material: 'STEEL', section: 'B1' },
+          { id: 'E2', type: 'beam', nodes: ['3', '2'], material: 'STEEL', section: 'B1' },
+        ],
+        materials: [{ id: 'STEEL', name: 'Q355', E: 206000, nu: 0.3, rho: 7850, fy: 355 }],
+        sections: [{ id: 'B1', name: 'Beam', type: 'rect', properties: { A: 0.01, Iz: 0.0001, Iy: 0.0001, J: 0.00001 } }],
+        load_cases: [{ id: 'MID', type: 'other', loads: [{ node: '3', fy: -1 }] }],
+        load_combinations: [],
+      },
+      stateToPersist: {
+        inferredType: 'beam',
+        updatedAt: Date.now(),
+      },
+    });
+
+    svc.structureProtocolClient = {
+      post: async (route) => {
+        if (route === '/validate') {
+          return { data: { valid: true } };
+        }
+        throw new Error(`unexpected structure protocol route: ${route}`);
+      },
+    };
+
+    const result = await svc.run({
+      conversationId: 'conv-draft-ignores-report-pref-block',
+      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model', 'generate_report'],
+        autoAnalyze: false,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.model).toBeDefined();
+    expect(result.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+    expect(result.response).not.toContain('请先确认以下参数');
+    expect(result.response).not.toContain('allow_auto_decide');
+  });
+
+  test('should render interactive clarification through llm instead of returning a template string', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.textToModelDraft = async () => ({
+      inferredType: 'unknown',
+      missingFields: ['跨度', '荷载'],
+      extractionMode: 'llm',
+      model: undefined,
+      stateToPersist: {
+        inferredType: 'unknown',
+        updatedAt: Date.now(),
+      },
+    });
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          return {
+            content: JSON.stringify({
+              kind: 'ask',
+              replyMode: 'structured',
+              toolId: null,
+              reason: 'more modeling details are needed',
+            }),
+          };
+        }
+        if (text.includes('工程对话 Agent') || text.includes('engineering conversation agent')) {
+          return { content: '先告诉我梁的跨度和荷载形式，我再继续建模。' };
+        }
+        return { content: 'ok' };
+      },
+    };
+
+    const result = await svc.runInteractive({
+      conversationId: 'conv-llm-interaction-render',
+      message: '帮我建一个梁',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.needsModelInput).toBe(true);
+    expect(result.response).toBe('先告诉我梁的跨度和荷载形式，我再继续建模。');
+    expect(result.response).not.toContain('请先确认以下参数');
   });
 
   test('should keep inferredType unknown in no-skill mode even when llm extraction suggests template type', async () => {
