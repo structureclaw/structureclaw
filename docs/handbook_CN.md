@@ -124,7 +124,7 @@ node .\sclaw stop
 
 说明：
 
-- `DATABASE_URL` 默认指向 `.runtime/data` 下的本地 SQLite 文件。
+- `./sclaw start` 和 `./sclaw restart` 默认使用 `.runtime/data/structureclaw.start.db`；`./sclaw doctor` 使用 `.runtime/data/structureclaw.doctor.db`，确保启动预检与实际运行库隔离。
 - `REDIS_URL=disabled` 时后端使用内存降级缓存。
 - `ANALYSIS_PYTHON_BIN` 默认指向 `backend/.venv/bin/python`。
 

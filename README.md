@@ -54,7 +54,7 @@ Recommended local flow:
 
 Notes:
 
-- SQLite is now the default local database. A fresh setup writes to `.runtime/data/structureclaw.db`.
+- SQLite is now the default local database. `./sclaw start` uses `.runtime/data/structureclaw.start.db`, and `./sclaw doctor` uses `.runtime/data/structureclaw.doctor.db` so preflight checks do not touch the active local runtime database.
 - `./sclaw doctor` no longer requires a preinstalled system Python 3.12. It will ensure `uv` and prepare `backend/.venv` with Python 3.12 automatically when needed. On Windows, this automatic setup currently requires `winget`; if `winget` is unavailable, install `uv` manually before running `./sclaw doctor`.
 - If your old local `.env` still points `DATABASE_URL` at a local PostgreSQL instance, `./sclaw doctor` and `./sclaw start` will auto-migrate that data into SQLite, rewrite `.env` to the SQLite default, and keep the original PostgreSQL URL in `POSTGRES_SOURCE_DATABASE_URL`.
 - That first auto-migration also creates a local backup file like `.env.pre-sqlite-migration.<timestamp>.bak`.

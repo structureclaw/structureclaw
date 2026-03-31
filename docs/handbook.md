@@ -124,7 +124,7 @@ Important variables:
 
 Notes:
 
-- `DATABASE_URL` defaults to a local SQLite file under `.runtime/data`.
+- `./sclaw start` and `./sclaw restart` default to `.runtime/data/structureclaw.start.db`; `./sclaw doctor` uses `.runtime/data/structureclaw.doctor.db` so startup checks stay isolated from the active local runtime database.
 - `REDIS_URL=disabled` enables in-memory fallback mode in backend.
 - `ANALYSIS_PYTHON_BIN` defaults to `backend/.venv/bin/python`.
 
