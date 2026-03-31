@@ -113,10 +113,6 @@ const streamMessageSchema = z.object({
   }).optional(),
 });
 
-type SendMessageBody = z.infer<typeof sendMessageSchema>;
-type StreamMessageBody = z.infer<typeof streamMessageSchema>;
-type ToolCallBody = z.infer<typeof toolCallSchema>;
-
 function setSseCorsHeaders(request: FastifyRequest, reply: FastifyReply) {
   const origin = request.headers.origin;
 

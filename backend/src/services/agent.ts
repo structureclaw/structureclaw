@@ -25,7 +25,6 @@ import {
 } from '../agent-skills/code-check/entry.js';
 import {
   inferAnalysisType,
-  inferCodeCheckIntent,
   inferReportIntent,
   normalizePolicyAnalysisType,
   normalizePolicyReportFormat,
@@ -418,7 +417,9 @@ export class AgentService {
           const orderedMessages = recentMessages.reverse();
           recentConversation = orderedMessages
             .map((message: { role: string; content: string }) => `${message.role}: ${message.content.slice(0, 240)}`);
-          const assistantMessages = orderedMessages.filter((message) => message.role === 'assistant');
+          const assistantMessages = orderedMessages.filter(
+            (message: { role: string; content: string }) => message.role === 'assistant',
+          );
           lastAssistantMessage = assistantMessages.at(-1)?.content.slice(0, 320);
         }
       } catch {
@@ -1147,7 +1148,6 @@ export class AgentService {
     const prepared = await this.prepareRunContext(params);
     const {
       locale,
-      orchestrationMode: _preparedOrchestrationMode,
       modelInput,
       sourceFormat,
       autoAnalyze,
@@ -2274,10 +2274,7 @@ export class AgentService {
       sessionKey,
       workingSession,
       normalizedModel,
-      analysisParameters,
       autoAnalyze,
-      executionConfig,
-      validationWarning,
     } = args;
 
     if (!autoAnalyze) {
