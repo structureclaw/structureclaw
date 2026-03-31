@@ -879,6 +879,102 @@ describe('AgentService orchestration', () => {
     expect(result.response).not.toContain('当前无法可靠解析大模型的下一步决策结果');
   });
 
+  test('should prefer a new draft_model over a stale context model when llm requests new modeling', async () => {
+    const svc = createServiceWithDefaultSkills();
+    let validatedModel = null;
+    const staleModel = {
+      schema_version: '1.0.0',
+      unit_system: 'SI',
+      nodes: [{ id: 'old-1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] }],
+      elements: [],
+      materials: [],
+      sections: [],
+      load_cases: [],
+      load_combinations: [],
+      metadata: { name: 'stale-frame-model' },
+    };
+    const draftedModel = {
+      schema_version: '1.0.0',
+      unit_system: 'SI',
+      nodes: [
+        { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
+        { id: '2', x: 10000, y: 0, z: 0, restraints: [false, true, true, false, false, false] },
+        { id: '3', x: 5000, y: 0, z: 0 },
+      ],
+      elements: [
+        { id: 'E1', type: 'beam', nodes: ['1', '3'], material: 'STEEL', section: 'B1' },
+        { id: 'E2', type: 'beam', nodes: ['3', '2'], material: 'STEEL', section: 'B1' },
+      ],
+      materials: [{ id: 'STEEL', name: 'Q355', E: 206000, nu: 0.3, rho: 7850, fy: 355 }],
+      sections: [{ id: 'B1', name: 'Beam', type: 'rect', properties: { A: 0.01, Iz: 0.0001, Iy: 0.0001, J: 0.00001 } }],
+      load_cases: [{ id: 'MID', type: 'other', loads: [{ node: '3', fy: -1 }] }],
+      load_combinations: [],
+      metadata: { name: 'new-beam-model' },
+    };
+
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          expect(text).toContain('User message: 设计一个简支梁，跨度10m，梁中间荷载1kN');
+          expect(text).toContain('"hasModel":true');
+          return {
+            content: JSON.stringify({
+              kind: 'tool_call',
+              replyMode: null,
+              toolId: 'draft_model',
+              reason: 'the user is clearly asking to build a new simply supported beam model',
+            }),
+          };
+        }
+        return { content: 'ok' };
+      },
+    };
+
+    svc.textToModelDraft = async () => ({
+      inferredType: 'beam',
+      missingFields: [],
+      extractionMode: 'llm',
+      model: draftedModel,
+      stateToPersist: {
+        inferredType: 'beam',
+        updatedAt: Date.now(),
+      },
+    });
+    svc.assessInteractionNeeds = async () => ({
+      criticalMissing: [],
+      nonCriticalMissing: [],
+      defaultProposals: [],
+    });
+
+    svc.structureProtocolClient = {
+      post: async (route, payload) => {
+        if (route === '/validate') {
+          validatedModel = payload.model;
+          return { data: { valid: true } };
+        }
+        throw new Error(`unexpected structure protocol route: ${route}`);
+      },
+    };
+
+    const result = await svc.run({
+      conversationId: 'conv-stale-context-model-new-draft',
+      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model'],
+        autoAnalyze: false,
+        model: staleModel,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+    expect(validatedModel?.metadata?.name).toBe('new-beam-model');
+    expect(result.model?.metadata?.name).toBe('new-beam-model');
+  });
+
   test('should keep inferredType unknown in no-skill mode even when llm extraction suggests template type', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;

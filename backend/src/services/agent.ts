@@ -573,6 +573,8 @@ export class AgentService {
       'If there is an existing engineering session or model and the user says things like "改成", "改为", "change to", "update", or modifies previously analyzed values, prefer tool_call with toolId=update_model when tool invocation is allowed.',
       'After a model update request, prefer tool_call when the user expects the updated model to be used immediately for analysis or refreshed engineering results.',
       'If the user explicitly asks to build, model, generate, or revise a structural model now, that can also justify tool_call even if the request is not yet an analysis execution request.',
+      'An existing context model is only reusable context. It must not override the latest user request by itself.',
+      'If the latest message clearly asks for a new or different structural model, choose draft_model even when an older context model already exists.',
       'For requests like "建模一个简支梁，跨度10m，均布荷载1kN/m，可以用10个单元建模", prefer tool_call with toolId=draft_model when the information is sufficient to attempt a first structural model draft.',
       'Use replyMode=plain only for casual chat, greetings, meta questions, or clearly non-engineering turns.',
       'Use replyMode=structured for engineering follow-ups that should stay grounded in the current structural context without immediately invoking tools.',
@@ -1817,7 +1819,7 @@ export class AgentService {
       });
     }
 
-    if (modelInput) {
+    if (modelInput && nextPlan.toolId !== 'draft_model') {
       return { ok: true, model: modelInput };
     }
 
