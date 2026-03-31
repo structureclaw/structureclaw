@@ -31,6 +31,12 @@ describe('AIConsole grouped skill picker', () => {
           ok: true,
           json: async () => ([
             {
+              id: 'generic',
+              name: { zh: '通用结构类型', en: 'Generic Structure Type' },
+              description: { zh: 'generic', en: 'generic' },
+              autoLoadByDefault: true,
+            },
+            {
               id: 'beam',
               name: { zh: '梁', en: 'Beam' },
               description: { zh: 'beam', en: 'beam' },
@@ -70,6 +76,7 @@ describe('AIConsole grouped skill picker', () => {
           json: async () => ({
             generatedAt: '2026-03-17T00:00:00.000Z',
             skills: [
+              { id: 'generic', domain: 'structure-type' },
               { id: 'beam', domain: 'structure-type' },
               { id: 'truss', domain: 'structure-type' },
               { id: 'seismic-policy', domain: 'analysis-strategy' },
@@ -93,8 +100,8 @@ describe('AIConsole grouped skill picker', () => {
             domainSummaries: [
               {
                 domain: 'structure-type',
-                skillIds: ['beam', 'truss'],
-                autoLoadSkillIds: ['beam', 'truss'],
+                skillIds: ['generic', 'beam', 'truss'],
+                autoLoadSkillIds: ['generic', 'beam', 'truss'],
               },
               {
                 domain: 'analysis-strategy',
@@ -103,6 +110,7 @@ describe('AIConsole grouped skill picker', () => {
               },
             ],
             skillDomainById: {
+              generic: 'structure-type',
               beam: 'structure-type',
               truss: 'structure-type',
               'seismic-policy': 'analysis-strategy',
@@ -207,7 +215,7 @@ describe('AIConsole grouped skill picker', () => {
     await user.click(screen.getAllByRole('button', { name: /select category/i })[0])
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /clear category/i })).toBeInTheDocument()
+      expect(screen.getAllByRole('button', { name: /clear category/i }).length).toBeGreaterThan(0)
     })
   })
 
@@ -277,8 +285,8 @@ describe('AIConsole grouped skill picker', () => {
     expect(streamCall).toBeTruthy()
     const requestInit = streamCall?.[1] as RequestInit | undefined
     const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { skillIds?: string[]; enabledToolIds?: string[] } }
-    expect(body.context?.skillIds).toBeUndefined()
-    expect(body.context?.enabledToolIds).toBeUndefined()
+    expect(body.context?.skillIds).toEqual(['opensees-static', 'generic'])
+    expect(body.context?.enabledToolIds).toEqual(['draft_model', 'run_analysis'])
   })
 
   it('does not send analysis type from frontend when executing with selected analysis skills', async () => {
@@ -305,7 +313,7 @@ describe('AIConsole grouped skill picker', () => {
     expect(body.context?.analysisType).toBeUndefined()
   })
 
-  it('surfaces callable tools and sends explicit tool ids once selected', async () => {
+  it('surfaces callable tools and sends the remaining tool ids after the user deselects one', async () => {
     const user = userEvent.setup()
     const fetchMock = vi.mocked(global.fetch)
     render(<AIConsole />)
@@ -340,6 +348,6 @@ describe('AIConsole grouped skill picker', () => {
     expect(streamCall).toBeTruthy()
     const requestInit = streamCall?.[1] as RequestInit | undefined
     const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { enabledToolIds?: string[] } }
-    expect(body.context?.enabledToolIds).toEqual(['run_analysis'])
+    expect(body.context?.enabledToolIds).toEqual(['draft_model'])
   })
 })

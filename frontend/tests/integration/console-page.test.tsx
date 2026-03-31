@@ -9,6 +9,18 @@ import type { AppLocale } from '@/lib/stores/slices/preferences'
 
 const mockSkills = [
   {
+    id: 'generic',
+    name: { en: 'Generic Structure Type', zh: '通用结构类型' },
+    description: { en: 'Generic structure workflow', zh: '通用结构工作流' },
+    autoLoadByDefault: true,
+  },
+  {
+    id: 'opensees-static',
+    name: { en: 'OpenSees Static Analysis', zh: 'OpenSees 静力分析' },
+    description: { en: 'OpenSees static workflow', zh: 'OpenSees 静力分析工作流' },
+    autoLoadByDefault: true,
+  },
+  {
     id: 'beam',
     name: { en: 'Beam Helper', zh: '梁助手' },
     description: { en: 'Beam workflow', zh: '梁工作流' },
@@ -156,17 +168,29 @@ function mockConsoleSupportRequest(url: string) {
       ok: true,
       json: vi.fn().mockResolvedValue({
         skills: [
+          { id: 'generic', domain: 'structure-type' },
+          { id: 'opensees-static', domain: 'analysis' },
           { id: 'beam', domain: 'structure-type' },
           { id: 'frame', domain: 'structure-type' },
           { id: 'code-check-gb50017', domain: 'code-check' },
         ],
+        tools: [
+          { id: 'draft_model', category: 'modeling' },
+          { id: 'validate_model', category: 'modeling' },
+          { id: 'run_analysis', category: 'analysis' },
+          { id: 'run_code_check', category: 'checking' },
+          { id: 'generate_report', category: 'reporting' },
+        ],
         skillDomainById: {
+          generic: 'structure-type',
+          'opensees-static': 'analysis',
           beam: 'structure-type',
           frame: 'structure-type',
           'code-check-gb50017': 'code-check',
         },
         domainSummaries: [
-          { domain: 'structure-type', skillIds: ['beam', 'frame'] },
+          { domain: 'structure-type', skillIds: ['generic', 'beam', 'frame'] },
+          { domain: 'analysis', skillIds: ['opensees-static'] },
           { domain: 'code-check', skillIds: ['code-check-gb50017'] },
         ],
       }),
@@ -214,17 +238,29 @@ describe('ConsolePage Integration (CONS-13)', () => {
           ok: true,
           json: vi.fn().mockResolvedValue({
             skills: [
+              { id: 'generic', domain: 'structure-type' },
+              { id: 'opensees-static', domain: 'analysis' },
               { id: 'beam', domain: 'structure-type' },
               { id: 'frame', domain: 'structure-type' },
               { id: 'code-check-gb50017', domain: 'code-check' },
             ],
+            tools: [
+              { id: 'draft_model', category: 'modeling' },
+              { id: 'validate_model', category: 'modeling' },
+              { id: 'run_analysis', category: 'analysis' },
+              { id: 'run_code_check', category: 'checking' },
+              { id: 'generate_report', category: 'reporting' },
+            ],
             skillDomainById: {
+              generic: 'structure-type',
+              'opensees-static': 'analysis',
               beam: 'structure-type',
               frame: 'structure-type',
               'code-check-gb50017': 'code-check',
             },
             domainSummaries: [
-              { domain: 'structure-type', skillIds: ['beam', 'frame'] },
+              { domain: 'structure-type', skillIds: ['generic', 'beam', 'frame'] },
+              { domain: 'analysis', skillIds: ['opensees-static'] },
               { domain: 'code-check', skillIds: ['code-check-gb50017'] },
             ],
           }),
@@ -342,27 +378,27 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.queryByText('Selected skills 2')).not.toBeInTheDocument()
     expect(screen.queryByText('Beam Helper')).not.toBeInTheDocument()
     expect(screen.queryByText('Frame Checker')).not.toBeInTheDocument()
-    expect(screen.queryByText('Choose which skills the model may use for engineering understanding and guidance. Skills only expose capability; the model still decides whether to use them.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Choose which built-in skills the model may use for engineering understanding and guidance. Checked skills stay in the callable list; unchecked skills are excluded.')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Expand Skills' }))
 
     expect(screen.getByRole('button', { name: 'Collapse Skills' })).toBeInTheDocument()
-    expect(screen.getByText('Choose which skills the model may use for engineering understanding and guidance. Skills only expose capability; the model still decides whether to use them.')).toBeInTheDocument()
+    expect(screen.getByText('Choose which built-in skills the model may use for engineering understanding and guidance. Checked skills stay in the callable list; unchecked skills are excluded.')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Collapse Skills' }))
 
     expect(screen.getByRole('button', { name: 'Expand Skills' })).toBeInTheDocument()
-    expect(screen.queryByText('Choose which skills the model may use for engineering understanding and guidance. Skills only expose capability; the model still decides whether to use them.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Choose which built-in skills the model may use for engineering understanding and guidance. Checked skills stay in the callable list; unchecked skills are excluded.')).not.toBeInTheDocument()
   })
 
   it('hides composer help in the default collapsed state', async () => {
     await renderConsolePage()
 
-    expect(screen.queryByText('Choose which skills the model may use for engineering understanding and guidance. Skills only expose capability; the model still decides whether to use them.')).not.toBeInTheDocument()
+    expect(screen.queryByText('Choose which built-in skills the model may use for engineering understanding and guidance. Checked skills stay in the callable list; unchecked skills are excluded.')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Skills|展开技能/ }))
 
-    expect(screen.getByText('Choose which skills the model may use for engineering understanding and guidance. Skills only expose capability; the model still decides whether to use them.')).toBeInTheDocument()
+    expect(screen.getByText('Choose which built-in skills the model may use for engineering understanding and guidance. Checked skills stay in the callable list; unchecked skills are excluded.')).toBeInTheDocument()
   })
 
   it('keeps only the model section inside the engineering context panel', async () => {
