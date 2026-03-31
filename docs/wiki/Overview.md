@@ -14,7 +14,7 @@ StructureClaw is an AI-assisted structural engineering workspace for AEC workflo
 Skills are discovered and loaded from `backend/src/agent-skills/` using a two-layer architecture:
 
 - **Markdown intent layer**: `.md` files with YAML frontmatter defining triggers, stages, and metadata
-- **TypeScript handler layer**: `manifest.ts` + `handler.ts` pairs implementing scenario detection, draft extraction, and model building
+- **TypeScript handler layer**: `manifest.ts` + `handler.ts` pairs implementing structural-type detection, draft extraction, and model building
 
 Built-in skill domains:
 

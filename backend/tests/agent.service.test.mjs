@@ -995,7 +995,7 @@ describe('AgentService orchestration', () => {
     await svc.clearConversationSession(conversationId);
 
     await svc.runInteractive({
-      message: '先按框架场景保存会话',
+      message: '先按框架结构类型保存会话',
       conversationId,
       context: {
         locale: 'zh',
@@ -1331,7 +1331,7 @@ describe('AgentService orchestration', () => {
     expect(result.interaction?.interactionStageLabel).toBe('Geometry');
     expect(result.interaction?.fallbackSupportNote).toBeUndefined();
     expect(result.interaction?.missingCritical).toContain('Story count');
-    expect(result.response).not.toContain('Detected scenario');
+    expect(result.response).not.toContain('Detected structural type');
   });
 
   test('should block auto routing when the llm planner is unavailable', async () => {
@@ -1365,7 +1365,7 @@ describe('AgentService orchestration', () => {
     expect(result.success).toBe(true);
     expect(result.interaction?.detectedStructuralType).not.toBe('beam');
     expect(result.interaction?.fallbackSupportNote).toBeUndefined();
-    expect(result.response).toContain('当前所选技能未匹配到适用场景');
+    expect(result.response).toContain('当前所选技能未命中更具体的结构技能');
     expect(result.response).toContain('回退到通用建模能力');
   });
 
@@ -1941,7 +1941,7 @@ describe('AgentService orchestration', () => {
     expect(recorded[0]?.conversationId).toBe('conv-persist-history');
     expect(recorded[0]?.role).toBe('user');
     expect(recorded[1]?.role).toBe('assistant');
-    expect(recorded[1]?.content).toContain('识别场景');
+    expect(recorded[1]?.content).toContain('当前阶段');
   });
 
   test('should keep regular frame chat in model stage until frame geometry is complete', async () => {

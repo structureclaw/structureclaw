@@ -14,7 +14,7 @@ StructureClaw 是一个面向 AEC 工作流的 AI 协同结构工程工作台。
 技能从 `backend/src/agent-skills/` 自动发现和加载，采用双层架构：
 
 - **Markdown 意图层**：含 YAML frontmatter 的 `.md` 文件，定义触发条件、阶段和元数据
-- **TypeScript 处理层**：`manifest.ts` + `handler.ts` 对，实现场景检测、草案提取和模型构建
+- **TypeScript 处理层**：`manifest.ts` + `handler.ts` 对，实现结构类型识别、草案提取和模型构建
 
 内置技能域：
 
