@@ -85,9 +85,9 @@ def validate_opensees_runtime_and_routing():
     simply_supported = {
         "schema_version": "1.0.0",
         "nodes": [
-            {"id": "1", "x": 0.0, "y": 0.0, "z": 0.0, "restraints": [True, True, True, True, True, False]},
+            {"id": "1", "x": 0.0, "y": 0.0, "z": 0.0, "restraints": [True, True, True, True, False, False]},
             {"id": "2", "x": 3.0, "y": 0.0, "z": 0.0},
-            {"id": "3", "x": 6.0, "y": 0.0, "z": 0.0, "restraints": [False, True, True, True, True, False]},
+            {"id": "3", "x": 6.0, "y": 0.0, "z": 0.0, "restraints": [False, True, True, True, False, False]},
         ],
         "elements": [
             {"id": "1", "type": "beam", "nodes": ["1", "2"], "material": "1", "section": "1"},
