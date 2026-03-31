@@ -51,6 +51,7 @@ type AgentToolCall = {
 type MessageDebugDetails = {
   promptSnapshot: string
   skillIds: string[]
+  toolIds?: string[]
   routing?: {
     selectedSkillIds: string[]
     structuralSkillId?: string
@@ -176,6 +177,9 @@ type PersistedConversation = ConversationSummary & {
   modelText?: string
   designCode?: string
   selectedSkillIds?: string[]
+  selectedToolIds?: string[]
+  hasExplicitSkillSelection?: boolean
+  hasExplicitToolSelection?: boolean
   modelSyncMessage?: string
   activePanel?: PanelTab
   latestResult?: AgentResult | null
@@ -233,6 +237,16 @@ type CapabilitySkillSummary = {
   domain?: SkillDomain
 }
 
+type ToolCategory = 'modeling' | 'analysis' | 'code-check' | 'report' | 'utility'
+
+type CapabilityToolSummary = {
+  id: string
+  category?: ToolCategory
+  source?: 'builtin' | 'skill'
+  displayName?: { zh?: string; en?: string }
+  description?: { zh?: string; en?: string }
+}
+
 type CapabilityDomainSummary = {
   domain: SkillDomain
   skillIds?: string[]
@@ -241,6 +255,7 @@ type CapabilityDomainSummary = {
 
 type CapabilityMatrixPayload = {
   skills?: CapabilitySkillSummary[]
+  tools?: CapabilityToolSummary[]
   domainSummaries?: CapabilityDomainSummary[]
   skillDomainById?: Record<string, SkillDomain>
   validEngineIdsBySkill?: Record<string, string[]>
@@ -302,7 +317,7 @@ function resolveSkillDomainLabel(domain: SkillDomain, t: (key: MessageKey) => st
 }
 
 const STORAGE_KEY = 'structureclaw.console.conversations'
-const DEFAULT_PRELOADED_SKILL_IDS = ['opensees-static'] as const
+const ALL_TOOL_CATEGORIES: ToolCategory[] = ['modeling', 'analysis', 'code-check', 'report', 'utility']
 
 function createId(prefix: string) {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
@@ -313,6 +328,33 @@ function createId(prefix: string) {
 
 function buildPromptSnapshot(message: string, context: Record<string, unknown>) {
   return JSON.stringify({ message, context }, null, 2)
+}
+
+function normalizeToolCategory(value: unknown): ToolCategory {
+  if (value === 'modeling' || value === 'analysis' || value === 'code-check' || value === 'report' || value === 'utility') {
+    return value
+  }
+  return 'utility'
+}
+
+function resolveToolCategoryLabel(category: ToolCategory, t: (key: MessageKey) => string) {
+  if (category === 'modeling') return t('toolCategoryModeling')
+  if (category === 'analysis') return t('toolCategoryAnalysis')
+  if (category === 'code-check') return t('toolCategoryCodeCheck')
+  if (category === 'report') return t('toolCategoryReport')
+  return t('toolCategoryUtility')
+}
+
+function resolveToolLabel(tool: CapabilityToolSummary, locale: AppLocale) {
+  const localized = locale === 'zh' ? (tool.displayName?.zh || tool.id) : (tool.displayName?.en || tool.id)
+  if (localized && localized !== tool.id) {
+    return localized
+  }
+  return tool.id
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 function toObjectRecord(value: unknown): Record<string, unknown> | undefined {
@@ -352,6 +394,9 @@ function parsePersistedDebugDetails(metadata: unknown): MessageDebugDetails | un
   const skillIds = Array.isArray(debugRecord.skillIds)
     ? debugRecord.skillIds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
     : []
+  const toolIds = Array.isArray(debugRecord.toolIds)
+    ? debugRecord.toolIds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : []
 
   const responseSummary = typeof debugRecord.responseSummary === 'string' ? debugRecord.responseSummary : ''
   const plan = Array.isArray(debugRecord.plan) ? debugRecord.plan.filter((item): item is string => typeof item === 'string') : []
@@ -371,13 +416,14 @@ function parsePersistedDebugDetails(metadata: unknown): MessageDebugDetails | un
       }
     : undefined
 
-  if (!promptSnapshot && skillIds.length === 0 && !routing && !responseSummary && plan.length === 0 && toolCalls.length === 0) {
+  if (!promptSnapshot && skillIds.length === 0 && toolIds.length === 0 && !routing && !responseSummary && plan.length === 0 && toolCalls.length === 0) {
     return undefined
   }
 
   return {
     promptSnapshot,
     skillIds,
+    toolIds,
     routing,
     responseSummary,
     plan,
@@ -385,12 +431,13 @@ function parsePersistedDebugDetails(metadata: unknown): MessageDebugDetails | un
   }
 }
 
-function buildMessageDebugDetails(promptSnapshot: string, skillIds: string[], result: AgentResult): MessageDebugDetails {
+function buildMessageDebugDetails(promptSnapshot: string, skillIds: string[], toolIds: string[], result: AgentResult): MessageDebugDetails {
   const safeToolCalls = normalizeToolCalls(result.toolCalls)
 
   return {
     promptSnapshot,
     skillIds,
+    toolIds,
     routing: result.routing,
     responseSummary: result.response || '',
     plan: Array.isArray(result.plan) ? result.plan : [],
@@ -1208,6 +1255,9 @@ export function AIConsole() {
   const [skillHubActionById, setSkillHubActionById] = useState<Record<string, string>>({})
   const [capabilityMatrix, setCapabilityMatrix] = useState<CapabilityMatrixPayload | null>(null)
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
+  const [selectedToolIds, setSelectedToolIds] = useState<string[]>([])
+  const [hasExplicitSkillSelection, setHasExplicitSkillSelection] = useState(false)
+  const [hasExplicitToolSelection, setHasExplicitToolSelection] = useState(false)
   const [skillDomainView, setSkillDomainView] = useState<SkillDomain>('structure-type')
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
   const [latestModelVisualizationSnapshot, setLatestModelVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
@@ -1221,7 +1271,6 @@ export function AIConsole() {
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const shouldStickToBottomRef = useRef(true)
-  const seededDefaultAnalysisStrategySkillsRef = useRef(false)
   // 追踪最后有效的结果用于持久化（不会被引擎切换清除）
   const lastValidResultRef = useRef<AgentResult | null>(null)
   const lastValidResultVisualizationRef = useRef<VisualizationSnapshot | null>(null)
@@ -1274,13 +1323,6 @@ export function AIConsole() {
   const hasSelectedCodeCheckSkill = useMemo(
     () => selectedSkillIds.some((skillId) => skillDomainById[skillId] === 'code-check'),
     [selectedSkillIds, skillDomainById]
-  )
-
-  const defaultSelectedSkillIds = useMemo(
-    () => availableSkills
-      .map((skill) => skill.id)
-      .filter((skillId) => DEFAULT_PRELOADED_SKILL_IDS.includes(skillId as typeof DEFAULT_PRELOADED_SKILL_IDS[number])),
-    [availableSkills]
   )
 
   const groupedSkills = useMemo(() => {
@@ -1340,6 +1382,38 @@ export function AIConsole() {
       })
   }, [availableSkills, capabilityMatrix, locale, selectedSkillIds, skillDomainById, t])
 
+  const availableTools = useMemo(() => {
+    const matrixTools = Array.isArray(capabilityMatrix?.tools) ? capabilityMatrix.tools : []
+    return [...matrixTools].sort((a, b) => {
+      const left = resolveToolLabel(a, locale)
+      const right = resolveToolLabel(b, locale)
+      return left.localeCompare(right)
+    })
+  }, [capabilityMatrix, locale])
+
+  const groupedTools = useMemo(() => {
+    const bucket = new Map<ToolCategory, CapabilityToolSummary[]>()
+    availableTools.forEach((tool) => {
+      const category = normalizeToolCategory(tool.category)
+      const list = bucket.get(category) || []
+      list.push(tool)
+      bucket.set(category, list)
+    })
+
+    return ALL_TOOL_CATEGORIES.map((category) => {
+      const tools = bucket.get(category) || []
+      const toolIds = tools.map((tool) => tool.id)
+      const selectedCount = toolIds.filter((toolId) => selectedToolIds.includes(toolId)).length
+      return {
+        category,
+        label: resolveToolCategoryLabel(category, t),
+        tools,
+        toolIds,
+        selectedCount,
+      }
+    }).filter((group) => group.tools.length > 0)
+  }, [availableTools, selectedToolIds, t])
+
   const visibleGroupedSkills = useMemo(() => {
     return groupedSkills.filter((group) => group.domain === skillDomainView)
   }, [groupedSkills, skillDomainView])
@@ -1386,6 +1460,17 @@ export function AIConsole() {
       return a.label.localeCompare(b.label)
     })
   }, [availableSkills, locale, selectedSkillIds, skillDomainById, skillHubCatalogById, skillHubInstalledById])
+
+  const loadedTools = useMemo(() => {
+    return availableTools
+      .filter((tool) => selectedToolIds.includes(tool.id))
+      .map((tool) => ({
+        id: tool.id,
+        category: normalizeToolCategory(tool.category),
+        label: resolveToolLabel(tool, locale),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [availableTools, locale, selectedToolIds])
 
   useEffect(() => {
     if (!groupedSkills.some((group) => group.domain === skillDomainView)) {
@@ -1508,10 +1593,6 @@ export function AIConsole() {
         }
         const skills = payload as AgentSkillSummary[]
         setAvailableSkills(skills)
-        const defaultSkillIds = skills
-          .map((skill) => skill.id)
-          .filter((skillId) => DEFAULT_PRELOADED_SKILL_IDS.includes(skillId as typeof DEFAULT_PRELOADED_SKILL_IDS[number]))
-        setSelectedSkillIds((current) => (current.length > 0 ? current : defaultSkillIds))
       } catch {
         if (active) {
           setAvailableSkills([])
@@ -1525,15 +1606,6 @@ export function AIConsole() {
       active = false
     }
   }, [])
-
-  useEffect(() => {
-    if (conversationId || seededDefaultAnalysisStrategySkillsRef.current || selectedSkillIds.length > 0 || defaultSelectedSkillIds.length === 0) {
-      return
-    }
-    // Transitional default: preselect installed analysis skills for new conversations.
-    setSelectedSkillIds(defaultSelectedSkillIds)
-    seededDefaultAnalysisStrategySkillsRef.current = true
-  }, [conversationId, defaultSelectedSkillIds, selectedSkillIds.length])
 
   useEffect(() => {
     let active = true
@@ -1809,6 +1881,9 @@ export function AIConsole() {
         messages,
         modelText,
         selectedSkillIds,
+        selectedToolIds,
+        hasExplicitSkillSelection,
+        hasExplicitToolSelection,
         modelSyncMessage,
         activePanel,
         // Preserve persisted result/model snapshots during transient null states (e.g. refresh restore sequence).
@@ -1834,6 +1909,9 @@ export function AIConsole() {
     modelSyncMessage,
     modelText,
     selectedSkillIds,
+    selectedToolIds,
+    hasExplicitSkillSelection,
+    hasExplicitToolSelection,
     conversationActivityAt,
     serverConversations,
     t,
@@ -1880,6 +1958,7 @@ export function AIConsole() {
   }
 
   function toggleSkill(skillId: string) {
+    setHasExplicitSkillSelection(true)
     setSelectedSkillIds((current) => (
       current.includes(skillId)
         ? current.filter((item) => item !== skillId)
@@ -1891,6 +1970,7 @@ export function AIConsole() {
     if (skillIds.length === 0) {
       return
     }
+    setHasExplicitSkillSelection(true)
     setSelectedSkillIds((current) => {
       const allSelected = skillIds.every((skillId) => current.includes(skillId))
       if (allSelected) {
@@ -1898,6 +1978,39 @@ export function AIConsole() {
       }
       return Array.from(new Set([...current, ...skillIds]))
     })
+  }
+
+  function toggleTool(toolId: string) {
+    setHasExplicitToolSelection(true)
+    setSelectedToolIds((current) => (
+      current.includes(toolId)
+        ? current.filter((item) => item !== toolId)
+        : [...current, toolId]
+    ))
+  }
+
+  function toggleToolCategory(toolIds: string[]) {
+    if (toolIds.length === 0) {
+      return
+    }
+    setHasExplicitToolSelection(true)
+    setSelectedToolIds((current) => {
+      const allSelected = toolIds.every((toolId) => current.includes(toolId))
+      if (allSelected) {
+        return current.filter((toolId) => !toolIds.includes(toolId))
+      }
+      return Array.from(new Set([...current, ...toolIds]))
+    })
+  }
+
+  function resetSkillSelectionToDefault() {
+    setSelectedSkillIds([])
+    setHasExplicitSkillSelection(false)
+  }
+
+  function resetToolSelectionToDefault() {
+    setSelectedToolIds([])
+    setHasExplicitToolSelection(false)
   }
 
   async function runSkillHubAction(skillId: string, action: 'install' | 'enable' | 'disable' | 'uninstall') {
@@ -2013,6 +2126,9 @@ export function AIConsole() {
           messages: existing?.messages || messages,
           modelText: existing?.modelText ?? modelText,
           selectedSkillIds: existing?.selectedSkillIds || selectedSkillIds,
+          selectedToolIds: existing?.selectedToolIds || selectedToolIds,
+          hasExplicitSkillSelection: existing?.hasExplicitSkillSelection ?? hasExplicitSkillSelection,
+          hasExplicitToolSelection: existing?.hasExplicitToolSelection ?? hasExplicitToolSelection,
           modelSyncMessage: existing?.modelSyncMessage || modelSyncMessage,
           activePanel: existing?.activePanel || activePanel,
           latestResult: latestResultValue,
@@ -2067,6 +2183,7 @@ export function AIConsole() {
       const archivedUpdatedAt = archived?.updatedAt || archived?.createdAt || ''
       const preferArchiveState = Boolean(archived && archivedUpdatedAt > backendUpdatedAt)
       const nextSelectedSkillIds = archived?.selectedSkillIds?.length ? archived.selectedSkillIds : []
+      const nextSelectedToolIds = archived?.selectedToolIds?.length ? archived.selectedToolIds : []
       const nextLatestResult = preferArchiveState
         ? pickPreferredLatestResult(archived?.latestResult, backendSnapshots?.latestResult)
         : pickPreferredLatestResult(backendSnapshots?.latestResult, archived?.latestResult)
@@ -2099,6 +2216,9 @@ export function AIConsole() {
       setMessages(nextMessages)
       setModelText(nextModelText)
       setSelectedSkillIds(nextSelectedSkillIds)
+      setSelectedToolIds(nextSelectedToolIds)
+      setHasExplicitSkillSelection(archived?.hasExplicitSkillSelection ?? nextSelectedSkillIds.length > 0)
+      setHasExplicitToolSelection(archived?.hasExplicitToolSelection ?? nextSelectedToolIds.length > 0)
       setModelSyncMessage(nextModelSyncMessage)
       setLatestResult(nextLatestResult)
       setLatestModelVisualizationSnapshot(nextModelSnapshot)
@@ -2116,6 +2236,9 @@ export function AIConsole() {
           || ''
         )
         setSelectedSkillIds(archived.selectedSkillIds?.length ? archived.selectedSkillIds : [])
+        setSelectedToolIds(archived.selectedToolIds?.length ? archived.selectedToolIds : [])
+        setHasExplicitSkillSelection(archived.hasExplicitSkillSelection ?? Boolean(archived.selectedSkillIds?.length))
+        setHasExplicitToolSelection(archived.hasExplicitToolSelection ?? Boolean(archived.selectedToolIds?.length))
         setModelSyncMessage(archived.modelSyncMessage || '')
         const archivedLatestResult = normalizeAgentResultPayload(archived.latestResult || null)
         setLatestResult(archivedLatestResult)
@@ -2140,12 +2263,13 @@ export function AIConsole() {
   }
 
   function resetConsoleState() {
-    const nextDefaultSelectedSkillIds = defaultSelectedSkillIds
     setConversationId('')
     setMessages([initialAssistantMessage])
     setModelText('')
-    setSelectedSkillIds(nextDefaultSelectedSkillIds)
-    seededDefaultAnalysisStrategySkillsRef.current = nextDefaultSelectedSkillIds.length > 0
+    setSelectedSkillIds([])
+    setSelectedToolIds([])
+    setHasExplicitSkillSelection(false)
+    setHasExplicitToolSelection(false)
     setModelSyncMessage('')
     setLatestResult(null)
     setLatestModelVisualizationSnapshot(null)
@@ -2303,10 +2427,12 @@ export function AIConsole() {
     try {
       const nextConversationId = await ensureConversation(trimmedInput)
       activeConversationId = nextConversationId
-      const explicitSkillIds = selectedSkillIds.length > 0 ? selectedSkillIds : undefined
+      const explicitSkillIds = hasExplicitSkillSelection ? selectedSkillIds : undefined
+      const explicitToolIds = hasExplicitToolSelection ? selectedToolIds : undefined
       const contextPayload = {
         locale,
         skillIds: explicitSkillIds,
+        enabledToolIds: explicitToolIds,
         model: contextModel,
         modelFormat: contextModel ? 'structuremodel-v1' : undefined,
         autoCodeCheck: hasSelectedCodeCheckSkill || undefined,
@@ -2314,6 +2440,9 @@ export function AIConsole() {
       const promptSnapshot = buildPromptSnapshot(trimmedInput, contextPayload as Record<string, unknown>)
       const debugSkillIds = Array.isArray((contextPayload as Record<string, unknown>).skillIds)
         ? ((contextPayload as Record<string, unknown>).skillIds as string[])
+        : []
+      const debugToolIds = Array.isArray((contextPayload as Record<string, unknown>).enabledToolIds)
+        ? ((contextPayload as Record<string, unknown>).enabledToolIds as string[])
         : []
 
       const response = await fetch(`${API_BASE}/api/v1/chat/stream`, {
@@ -2393,7 +2522,7 @@ export function AIConsole() {
             const result = {
               ...(payload.content as AgentResult),
             }
-            const debugDetails = buildMessageDebugDetails(promptSnapshot, debugSkillIds, result)
+            const debugDetails = buildMessageDebugDetails(promptSnapshot, debugSkillIds, debugToolIds, result)
             if (result.model && typeof result.model === 'object' && !Array.isArray(result.model)) {
               applySynchronizedModel(result.model, result.analysis ? 'tool' : 'conversation')
             }
@@ -2865,7 +2994,23 @@ export function AIConsole() {
                 <div className="mb-2 rounded-[18px] border border-border/70 bg-card/60 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground">{t('skillSelectionLabel')}</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-medium text-foreground">{t('skillSelectionLabel')}</p>
+                        <button
+                          type="button"
+                          title={t('skillVsToolSkillHelp')}
+                          className="rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground dark:border-white/10 dark:bg-white/5"
+                        >
+                          {t('skillShortLabel')}
+                        </button>
+                        <button
+                          type="button"
+                          title={t('skillVsToolToolHelp')}
+                          className="rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground dark:border-white/10 dark:bg-white/5"
+                        >
+                          {t('toolShortLabel')}
+                        </button>
+                      </div>
                       {skillsOpen && (
                         <p className="text-xs leading-5 text-muted-foreground">
                           {t('skillSelectionHelp')}
@@ -2884,15 +3029,27 @@ export function AIConsole() {
                   {skillsOpen && (
                     <div className="mt-3 max-h-[min(48vh,32rem)] space-y-3 overflow-y-auto pr-1 overscroll-contain">
                       <p className="text-xs text-muted-foreground">{t('skillSelectionCatalogHint')}</p>
+                      <p className="text-xs text-muted-foreground">{t('capabilitySelectionDefaultNotice')}</p>
                       <div className="rounded-2xl border border-border/70 bg-background/60 p-2.5 dark:border-white/10 dark:bg-slate-950/30">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                           <div>
-                            <p className="text-xs font-medium text-foreground">{t('loadedModulesTitle')}</p>
-                            <p className="text-xs text-muted-foreground">{t('loadedModulesHint')}</p>
+                            <p className="text-xs font-medium text-foreground">{t('loadedSkillsTitle')}</p>
+                            <p className="text-xs text-muted-foreground">{t('loadedSkillsHint')}</p>
                           </div>
-                          <Badge variant="outline" className="text-[10px]">
-                            {loadedModules.length}
-                          </Badge>
+                          <div className="flex items-center gap-2">
+                            {hasExplicitSkillSelection && (
+                              <button
+                                type="button"
+                                onClick={resetSkillSelectionToDefault}
+                                className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground transition hover:text-foreground dark:border-white/10 dark:bg-white/5"
+                              >
+                                {t('useDefaultSkillSelection')}
+                              </button>
+                            )}
+                            <Badge variant="outline" className="text-[10px]">
+                              {loadedModules.length}
+                            </Badge>
+                          </div>
                         </div>
                         {loadedModules.length === 0 ? (
                           <p className="text-xs text-muted-foreground">{t('loadedModulesEmpty')}</p>
@@ -2908,6 +3065,43 @@ export function AIConsole() {
                                 <Badge variant="outline" className="text-[10px]">
                                   {module.source === 'local' ? t('loadedModulesSourceLocal') : t('loadedModulesSourceSkillHub')}
                                 </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="rounded-2xl border border-border/70 bg-background/60 p-2.5 dark:border-white/10 dark:bg-slate-950/30">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-medium text-foreground">{t('loadedToolsTitle')}</p>
+                            <p className="text-xs text-muted-foreground">{t('loadedToolsHint')}</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {hasExplicitToolSelection && (
+                              <button
+                                type="button"
+                                onClick={resetToolSelectionToDefault}
+                                className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground transition hover:text-foreground dark:border-white/10 dark:bg-white/5"
+                              >
+                                {t('useDefaultToolSelection')}
+                              </button>
+                            )}
+                            <Badge variant="outline" className="text-[10px]">
+                              {loadedTools.length}
+                            </Badge>
+                          </div>
+                        </div>
+                        {loadedTools.length === 0 ? (
+                          <p className="text-xs text-muted-foreground">{t('loadedToolsEmpty')}</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {loadedTools.map((tool) => (
+                              <div
+                                key={tool.id}
+                                className="flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-3 py-1.5 text-xs dark:border-white/10 dark:bg-black/20"
+                              >
+                                <span className="font-medium text-foreground">{tool.label}</span>
+                                <span className="text-muted-foreground">{resolveToolCategoryLabel(tool.category, t)}</span>
                               </div>
                             ))}
                           </div>
@@ -2971,6 +3165,64 @@ export function AIConsole() {
                           </div>
                         )
                       })}
+
+                      <div className="rounded-2xl border border-border/70 bg-background/60 p-2.5 dark:border-white/10 dark:bg-slate-950/30">
+                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-xs font-medium text-foreground">{t('toolSelectionLabel')}</p>
+                            <p className="text-xs text-muted-foreground">{t('toolSelectionHelp')}</p>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          {groupedTools.length === 0 && (
+                            <p className="text-xs text-muted-foreground">{t('toolSelectionEmpty')}</p>
+                          )}
+                          {groupedTools.map((group) => {
+                            const allSelected = group.tools.length > 0 && group.selectedCount === group.tools.length
+                            return (
+                              <div key={group.category} className="rounded-xl border border-border/70 bg-background/70 p-2.5 dark:border-white/10 dark:bg-black/20">
+                                <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                                  <p className="text-xs font-medium text-foreground">
+                                    {group.label}
+                                    <span className="ml-2 text-muted-foreground">{group.selectedCount}/{group.tools.length}</span>
+                                  </p>
+                                  <button
+                                    type="button"
+                                    onClick={() => toggleToolCategory(group.toolIds)}
+                                    disabled={group.toolIds.length === 0}
+                                    className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground transition hover:text-foreground dark:border-white/10 dark:bg-white/5"
+                                  >
+                                    {allSelected ? t('toolClearCategorySelection') : t('toolSelectCategorySelection')}
+                                  </button>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                  {group.tools.map((tool) => {
+                                    const label = resolveToolLabel(tool, locale)
+                                    const selected = selectedToolIds.includes(tool.id)
+                                    const description = locale === 'zh' ? tool.description?.zh : tool.description?.en
+                                    return (
+                                      <button
+                                        key={tool.id}
+                                        type="button"
+                                        title={description || tool.id}
+                                        onClick={() => toggleTool(tool.id)}
+                                        className={cn(
+                                          'rounded-full border px-3 py-1.5 text-sm transition',
+                                          selected
+                                            ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
+                                            : 'border-border/70 bg-background/70 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
+                                        )}
+                                      >
+                                        {label}
+                                      </button>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
 
                       <div className="rounded-2xl border border-border/70 bg-background/60 p-2.5 dark:border-white/10 dark:bg-slate-950/30">
                         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">

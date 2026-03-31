@@ -44,6 +44,14 @@ interface CapabilityTool {
   providedBySkillId?: string;
   requiresSkills: string[];
   tags: string[];
+  displayName?: {
+    zh?: string;
+    en?: string;
+  };
+  description?: {
+    zh?: string;
+    en?: string;
+  };
 }
 
 interface CapabilityEngine {
@@ -188,6 +196,14 @@ export class AgentCapabilityService {
       providedBySkillId: tool.providedBySkillId,
       requiresSkills: Array.isArray(tool.requiresSkills) ? [...tool.requiresSkills] : [],
       tags: Array.isArray(tool.tags) ? [...tool.tags] : [],
+      displayName: {
+        zh: tool.displayName?.zh,
+        en: tool.displayName?.en,
+      },
+      description: {
+        zh: tool.description?.zh,
+        en: tool.description?.en,
+      },
     }));
 
     const enginePayload = await this.engineCatalog.listEngines();
