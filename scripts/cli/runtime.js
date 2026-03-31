@@ -197,11 +197,31 @@ function normalizeSqliteFileUrl(rootDir, databaseUrl) {
   return `file:${normalizedPath.replace(/\\/gu, "/")}${query}`;
 }
 
-function ensureLocalSqliteConfig(rootDir, env, logger = () => {}) {
+function buildScopedSqliteDatabaseUrl(rootDir, profileName = "start") {
+  const safeProfile = String(profileName || "start")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/gu, "-")
+    .replace(/-+/gu, "-")
+    .replace(/^-|-$/gu, "") || "start";
+  const sqlitePath = path.join(rootDir, ".runtime", "data", `structureclaw.${safeProfile}.db`);
+  return `file:${sqlitePath.replace(/\\/gu, "/")}`;
+}
+
+function ensureLocalSqliteConfig(rootDir, env, logger = () => {}, options = {}) {
+  const profileName = options.profileName || "start";
+  const targetDatabaseUrl = buildScopedSqliteDatabaseUrl(rootDir, profileName);
   const currentDatabaseUrl =
     env.DATABASE_URL || "file:../../.runtime/data/structureclaw.db";
+
   if (currentDatabaseUrl.startsWith("file:")) {
-    env.DATABASE_URL = normalizeSqliteFileUrl(rootDir, currentDatabaseUrl);
+    const normalizedCurrent = normalizeSqliteFileUrl(rootDir, currentDatabaseUrl);
+    env.DATABASE_URL = targetDatabaseUrl;
+    if (normalizedCurrent !== targetDatabaseUrl) {
+      logger(
+        `Using isolated SQLite DATABASE_URL for ${profileName}: ${env.DATABASE_URL}`,
+      );
+    }
     return env.DATABASE_URL;
   }
 
@@ -215,8 +235,7 @@ function ensureLocalSqliteConfig(rootDir, env, logger = () => {}) {
     );
   }
 
-  const sqlitePath = path.join(rootDir, ".runtime", "data", "structureclaw.db");
-  env.DATABASE_URL = `file:${sqlitePath.replace(/\\/gu, "/")}`;
+  env.DATABASE_URL = targetDatabaseUrl;
   if (!env.POSTGRES_SOURCE_DATABASE_URL) {
     env.POSTGRES_SOURCE_DATABASE_URL = currentDatabaseUrl;
   }
@@ -560,6 +579,7 @@ module.exports = {
   DEFAULT_FRONTEND_PORT,
   appendSessionHeader,
   assertSqliteDatabaseUrl,
+  buildScopedSqliteDatabaseUrl,
   buildAnalysisEnvironment,
   ensureDirectory,
   ensureFileFromExample,

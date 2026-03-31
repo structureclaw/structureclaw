@@ -631,6 +631,14 @@ async function invokeDbInit(rootDir, env) {
   );
 }
 
+async function invokeScopedDbInit(rootDir, env, profileName) {
+  const scopedEnv = {
+    ...env,
+  };
+  runtime.ensureLocalSqliteConfig(rootDir, scopedEnv, log, { profileName });
+  await invokeDbInit(rootDir, scopedEnv);
+}
+
 function getServiceCommand(name, frontendPort) {
   if (name === "backend") {
     return {
@@ -852,7 +860,7 @@ async function invokeLocalUp(rootDir, env, options = {}) {
   const context = runtime.loadProjectEnvironment(rootDir);
   const { paths } = context;
 
-  runtime.ensureLocalSqliteConfig(rootDir, env, log);
+  runtime.ensureLocalSqliteConfig(rootDir, env, log, { profileName: "start" });
   runtime.assertSqliteDatabaseUrl(env);
   await ensureNpmDependencies(paths.backendDir, "backend", ["prisma", "@prisma/client"]);
   await ensureNpmDependencies(paths.frontendDir, "frontend", ["next"]);
@@ -877,7 +885,7 @@ async function invokeLocalUp(rootDir, env, options = {}) {
   }
 
   if (!options.skipDbInit) {
-    await invokeDbInit(rootDir, env);
+    await invokeScopedDbInit(rootDir, env, "start");
   }
 
   startTrackedService(paths, env, "backend", env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT);
@@ -892,7 +900,8 @@ async function invokeLocalUp(rootDir, env, options = {}) {
 async function invokeDoctor(rootDir, env) {
   runtime.requireCommand("node", "Install Node.js 18+ and retry.");
   runtime.requireCommand("npm", "Install npm and retry.");
-  runtime.ensureLocalSqliteConfig(rootDir, env, log);
+  runtime.requireCommand("python", "Install Python 3.12+ and retry.");
+  runtime.ensureLocalSqliteConfig(rootDir, env, log, { profileName: "doctor" });
   runtime.assertSqliteDatabaseUrl(env);
 
   const { paths } = runtime.loadProjectEnvironment(rootDir);
@@ -900,7 +909,7 @@ async function invokeDoctor(rootDir, env) {
   await ensureNpmDependencies(paths.frontendDir, "frontend", ["next"]);
   await ensureAnalysisPython(rootDir, env);
   await ensureOpenSeesRuntime(rootDir, env);
-  await invokeDbInit(rootDir, env);
+  await invokeScopedDbInit(rootDir, env, "doctor");
   log("Local startup checks passed.");
 }
 
