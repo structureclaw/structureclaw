@@ -2007,10 +2007,10 @@ export class AgentService {
     }
 
     const availableModel = draft.model;
-    const finalAssessment = (noSkillEquivalentDraft && availableModel)
+    const finalAssessment = availableModel
       ? { criticalMissing: [], nonCriticalMissing: [], defaultProposals: [] }
       : await this.assessInteractionNeeds(workingSession, locale, skillIds);
-    if (finalAssessment.criticalMissing.length > 0 || finalAssessment.nonCriticalMissing.length > 0 || !availableModel) {
+    if (finalAssessment.criticalMissing.length > 0 || !availableModel) {
       if (sessionKey) {
         await this.setInteractionSession(sessionKey, workingSession);
       }
@@ -2057,7 +2057,15 @@ export class AgentService {
         skillIds,
       );
       const missingFields = await this.mapMissingFieldLabels(finalAssessment.criticalMissing, locale, workingSession.draft || { inferredType: 'unknown', updatedAt: workingSession.updatedAt }, skillIds);
-      const question = this.buildInteractionQuestion(interaction, locale);
+      const fallback = this.buildInteractionQuestion(interaction, locale);
+      const question = await this.renderInteractionResponse(
+        params.message,
+        interaction,
+        fallback,
+        locale,
+        sessionKey,
+        skillIds,
+      );
       return {
         ok: false,
         result: await this.finalizeRunResult(traceId, sessionKey, params.message, {
@@ -2195,10 +2203,10 @@ export class AgentService {
     });
 
     const availableModel = draft.model;
-    const finalAssessment = (noSkillEquivalentDraft && availableModel)
+    const finalAssessment = availableModel
       ? { criticalMissing: [], nonCriticalMissing: [], defaultProposals: [] }
       : await this.assessInteractionNeeds(workingSession, locale, skillIds);
-    if (finalAssessment.criticalMissing.length > 0 || finalAssessment.nonCriticalMissing.length > 0 || !availableModel) {
+    if (finalAssessment.criticalMissing.length > 0 || !availableModel) {
       if (sessionKey) {
         await this.setInteractionSession(sessionKey, workingSession);
       }
@@ -2720,6 +2728,75 @@ export class AgentService {
     }
   }
 
+  private async renderInteractionResponse(
+    message: string,
+    interaction: AgentInteraction,
+    fallback: string,
+    locale: AppLocale,
+    conversationId?: string,
+    skillIds?: string[],
+  ): Promise<string> {
+    if (!this.llm) {
+      return fallback;
+    }
+
+    try {
+      let conversationContext = '';
+      if (conversationId) {
+        try {
+          const recentMessages = await prisma.message.findMany({
+            where: { conversationId },
+            orderBy: { createdAt: 'desc' },
+            take: 6,
+            select: { role: true, content: true },
+          });
+          if (recentMessages.length > 0) {
+            conversationContext = recentMessages
+              .reverse()
+              .map((m: { role: string; content: string }) => `${m.role}: ${m.content.slice(0, 200)}`)
+              .join('\n');
+          }
+        } catch {
+          // Non-blocking: proceed without conversation context.
+        }
+      }
+
+      const promptParts = [
+        this.localize(
+          locale,
+          '你是 StructureClaw 的工程对话 Agent。请根据当前交互状态，直接生成这一轮要发给用户的自然语言回复。',
+          'You are the engineering conversation agent for StructureClaw. Generate the natural-language reply for this turn from the current interaction state.',
+        ),
+        this.localize(
+          locale,
+          '回复要求：1. 不要输出模板化标题、列表前缀或内部字段名；2. 不要提 allow_auto_decide、routeHint、interaction、skill id、tool id；3. 如果当前需要补参，只问最关键的下一步；4. 如果模型已准备好，就自然说明可以继续分析或继续微调；5. 保持简洁，中文不超过120字，英文不超过90 words。',
+          'Requirements: 1. Do not output templated headings, list prefixes, or internal field names. 2. Do not mention allow_auto_decide, routeHint, interaction, skill ids, or tool ids. 3. If clarification is needed, ask only the single most important next question. 4. If the model is ready, explain naturally that analysis can continue or parameters can still be refined. 5. Keep it concise: under 120 Chinese characters or under 90 English words.',
+        ),
+        this.localize(
+          locale,
+          `当前启用技能：${JSON.stringify(Array.isArray(skillIds) ? skillIds : [])}`,
+          `Active skills: ${JSON.stringify(Array.isArray(skillIds) ? skillIds : [])}`,
+        ),
+      ];
+      if (conversationContext) {
+        promptParts.push(this.localize(locale, `对话上下文：\n${conversationContext}`, `Conversation context:\n${conversationContext}`));
+      }
+      promptParts.push(
+        this.localize(locale, `用户本轮消息：${message}`, `Latest user message: ${message}`),
+        this.localize(locale, `交互状态：${JSON.stringify(interaction)}`, `Interaction state: ${JSON.stringify(interaction)}`),
+        this.localize(locale, `兜底回复：${fallback}`, `Fallback reply: ${fallback}`),
+      );
+
+      const aiMessage = await this.llm.invoke(promptParts.join('\n'));
+      const content = typeof aiMessage.content === 'string'
+        ? aiMessage.content
+        : JSON.stringify(aiMessage.content);
+      return content || fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
   private async buildDirectReplyConversationResult(args: {
     params: AgentRunInput;
     traceId: string;
@@ -2920,7 +2997,7 @@ export class AgentService {
         ),
     };
 
-    const response = this.localize(
+    const fallback = this.localize(
       locale,
       noSkillMode
         ? '已根据当前输入直接生成结构模型 JSON，可直接触发分析工具。'
@@ -2928,6 +3005,14 @@ export class AgentService {
       noSkillMode
         ? 'A structural model JSON has been generated directly from your input and is ready for analysis tools.'
         : 'The selected skills did not match a more specific structural skill, so I fell back to generic modeling and generated a structural model JSON ready for analysis tools.',
+    );
+    const response = await this.renderInteractionResponse(
+      params.message,
+      interaction,
+      fallback,
+      locale,
+      sessionKey,
+      skillIds,
     );
 
     if (draft.model) {
@@ -2986,7 +3071,7 @@ export class AgentService {
       ? draft.missingFields
       : [this.localize(locale, '关键结构参数', 'key structural parameters')];
     const intro = this.buildGenericModelingIntro(locale, noSkillMode);
-    const question = this.localize(
+    const fallback = this.localize(
       locale,
       `${intro.replace(/。$/, '')}，请先补充：${missingFields.join('、')}。`,
       `${intro.replace(/\.$/, '')}. Please provide: ${missingFields.join(', ')}.`,
@@ -3007,7 +3092,7 @@ export class AgentService {
       questions: [{
         paramKey: 'genericModeling',
         label: this.localize(locale, '关键参数', 'Key parameters'),
-        question,
+        question: fallback,
         required: true,
         critical: true,
       }],
@@ -3018,6 +3103,14 @@ export class AgentService {
       proposedDefaults: [],
       nextActions: ['provide_values', 'revise'],
     };
+    const response = await this.renderInteractionResponse(
+      params.message,
+      interaction,
+      fallback,
+      locale,
+      sessionKey,
+      skillIds,
+    );
 
     return this.finalizeRunResult(traceId, sessionKey, params.message, {
       traceId,
@@ -3033,9 +3126,9 @@ export class AgentService {
       interaction,
       clarification: {
         missingFields,
-        question,
+        question: response,
       },
-      response: question,
+      response,
     }, skillIds, workingSession);
   }
 
@@ -3176,7 +3269,15 @@ export class AgentService {
       workingSession.latestModel = draft.model;
       workingSession.updatedAt = Date.now();
     }
-    const response = this.buildChatModeResponse(resolved.interaction, this.resolveInteractionLocale(params.context?.locale));
+    const fallback = this.buildChatModeResponse(resolved.interaction, this.resolveInteractionLocale(params.context?.locale));
+    const response = await this.renderInteractionResponse(
+      params.message,
+      resolved.interaction,
+      fallback,
+      this.resolveInteractionLocale(params.context?.locale),
+      sessionKey,
+      skillIds,
+    );
     return this.finalizeRunResult(traceId, sessionKey, params.message, {
       traceId,
       startedAt,
@@ -3225,7 +3326,15 @@ export class AgentService {
       resolved,
     } = args;
 
-    const response = this.buildChatModeResponse(resolved.interaction, locale);
+    const fallback = this.buildChatModeResponse(resolved.interaction, locale);
+    const response = await this.renderInteractionResponse(
+      params.message,
+      resolved.interaction,
+      fallback,
+      locale,
+      sessionKey,
+      skillIds,
+    );
     return this.finalizeRunResult(traceId, sessionKey, params.message, {
       traceId,
       startedAt,
@@ -3242,7 +3351,7 @@ export class AgentService {
       clarification: resolved.interaction.questions?.length
         ? {
           missingFields: resolved.interaction.missingCritical || [],
-          question: resolved.interaction.questions[0]?.question || response,
+          question: response,
         }
         : undefined,
       response,
@@ -3544,11 +3653,8 @@ export class AgentService {
       if (structuralQuestion) {
         return structuralQuestion;
       }
-      const policyQuestion = this.policy.buildNonStructuralInteractionQuestion(paramKey, locale, critical);
-      if (policyQuestion) {
-        return policyQuestion;
-      }
-      return { paramKey, label: paramKey, question: this.localize(locale, `请确认参数 ${paramKey}。`, `Please confirm parameter ${paramKey}.`), required: true, critical };
+      const label = this.policy.mapNonStructuralMissingFieldLabel(paramKey, locale) || paramKey;
+      return { paramKey, label, question: '', required: true, critical };
     });
   }
 
@@ -3558,12 +3664,16 @@ export class AgentService {
   }
 
   private buildInteractionQuestion(interaction: AgentInteraction, locale: AppLocale): string {
+    const primaryQuestion = interaction.questions?.find((item) => typeof item.question === 'string' && item.question.trim().length > 0)?.question?.trim();
+    if (primaryQuestion) {
+      return primaryQuestion;
+    }
     const questionSummary = interaction.questions?.map((item) => item.label).join(locale === 'zh' ? '、' : ', ')
       || this.localize(locale, '必要参数', 'required parameters');
     return this.localize(
       locale,
-      `请先确认以下参数：${questionSummary}。若希望我按保守值自动决策，请回复“你决定”并触发 allow_auto_decide。`,
-      `Please confirm the following parameters first: ${questionSummary}. If you want me to choose conservative defaults automatically, reply with "you decide" and trigger allow_auto_decide.`
+      `请确认：${questionSummary}。`,
+      `Please confirm: ${questionSummary}.`
     );
   }
 
