@@ -319,35 +319,8 @@ class StaticAnalyzer:
         if z_range > tolerance:
             return 'xz'
 
-        has_xy_load = False
-        has_xz_load = False
-        for load in self._collect_nodal_loads(parameters):
-            if str(load.get('type', '')) == 'distributed':
-                wy = self._to_float(load.get('wy', 0.0), 0.0)
-                wz = self._to_float(load.get('wz', 0.0), 0.0)
-                if abs(wy) > tolerance:
-                    has_xy_load = True
-                if abs(wz) > tolerance:
-                    has_xz_load = True
-                continue
-
-            fy = self._to_float(load.get('fy', 0.0), 0.0)
-            fz = self._to_float(load.get('fz', 0.0), 0.0)
-            mx = self._to_float(load.get('mx', load.get('momentX', 0.0)), 0.0)
-            my = self._to_float(load.get('my', load.get('momentY', 0.0)), 0.0)
-            mz = self._to_float(load.get('mz', load.get('momentZ', 0.0)), 0.0)
-
-            if abs(mx) > tolerance:
-                return None
-            if abs(fy) > tolerance or abs(mz) > tolerance:
-                has_xy_load = True
-            if abs(fz) > tolerance or abs(my) > tolerance:
-                has_xz_load = True
-
-        if has_xy_load and has_xz_load:
-            return None
-        if has_xy_load:
-            return 'xy'
+        # When model is 1D (all nodes on x-axis), default to xz plane for compatibility
+        # with existing restraint format. The load handling will map fy loads to fz.
         return 'xz'
 
     def _can_run_3d_truss_solver(self) -> bool:
