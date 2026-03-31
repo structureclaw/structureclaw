@@ -135,6 +135,22 @@ function stubExecutionClients(svc, handlers = {}) {
 }
 
 describe('AgentService orchestration', () => {
+  test('should not seed an empty interaction session with a default unknown draft', async () => {
+    const svc = createServiceWithDefaultSkills();
+
+    const snapshot = await svc.buildPlannerContextSnapshot({
+      locale: 'zh',
+      skillIds: ['generic'],
+      hasModel: false,
+      session: undefined,
+      activeToolIds: new Set(['draft_model']),
+      conversationId: undefined,
+    });
+
+    expect(snapshot.hasActiveSession).toBe(false);
+    expect(snapshot.inferredType).toBeNull();
+  });
+
   test('should execute analyze -> code-check -> report closed loop', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;

@@ -54,7 +54,7 @@ export type AgentInteractionStage = 'intent' | 'model' | 'loads' | 'analysis' | 
 export type AgentInteractionRouteHint = 'prefer_interactive' | 'prefer_tool';
 
 interface InteractionSession {
-  draft: DraftState;
+  draft?: DraftState;
   structuralTypeMatch?: StructuralTypeMatch;
   latestModel?: Record<string, unknown>;
   userApprovedAutoDecide?: boolean;
@@ -172,7 +172,7 @@ interface ResolvedConversationAssessment {
 interface PlannerContextSnapshot {
   hasActiveSession: boolean;
   hasModel: boolean;
-  inferredType: DraftState['inferredType'];
+  inferredType: DraftState['inferredType'] | null;
   structuralTypeKey?: string;
   criticalMissing: string[];
   nonCriticalMissing: string[];
@@ -435,8 +435,8 @@ export class AgentService {
     return {
       hasActiveSession: Boolean(options.session),
       hasModel: options.hasModel,
-      inferredType: options.session?.draft.inferredType ?? 'unknown',
-      structuralTypeKey: options.session?.draft.structuralTypeKey,
+      inferredType: options.session?.draft?.inferredType ?? null,
+      structuralTypeKey: options.session?.draft?.structuralTypeKey,
       criticalMissing: assessment?.criticalMissing ?? [],
       nonCriticalMissing: assessment?.nonCriticalMissing ?? [],
       readyForExecution,
@@ -671,7 +671,7 @@ export class AgentService {
     if (this.isNoSkillMode(options.skillIds) && !this.hasActiveTool(options.activeToolIds, 'draft_model')) {
       return 'reply';
     }
-    if (!options.session || options.session.draft.inferredType === 'unknown') {
+    if (!options.session?.draft || options.session.draft.inferredType === 'unknown') {
       return 'ask';
     }
     const assessment = await this.assessInteractionNeeds(options.session, options.locale, options.skillIds, 'interactive');
@@ -691,13 +691,12 @@ export class AgentService {
     const sessionKey = params.conversationId?.trim();
     const session = await this.getInteractionSession(sessionKey);
     const workingSession: InteractionSession = session || {
-      draft: { inferredType: 'unknown', updatedAt: Date.now() },
       updatedAt: Date.now(),
       resolved: {},
     };
 
     if (noSkillMode) {
-      workingSession.draft = normalizeNoSkillDraftState(workingSession.draft);
+      workingSession.draft = normalizeNoSkillDraftState(workingSession.draft || { inferredType: 'unknown', updatedAt: Date.now() });
       workingSession.structuralTypeMatch = undefined;
     }
 
@@ -856,7 +855,7 @@ export class AgentService {
     }
 
     if (this.isNoSkillMode(skillIds)) {
-      session.draft = normalizeNoSkillDraftState(session.draft);
+      session.draft = normalizeNoSkillDraftState(session.draft || { inferredType: 'unknown', updatedAt: Date.now() });
       session.structuralTypeMatch = undefined;
       session.updatedAt = Date.now();
       if (conversationId?.trim()) {
@@ -872,12 +871,12 @@ export class AgentService {
         ? 'confirming'
         : 'ready';
     const interaction = await this.buildInteractionPayload(assessment, session, state, locale, skillIds, activeToolIds);
-    const model = assessment.criticalMissing.length === 0
+    const model = assessment.criticalMissing.length === 0 && session.draft
       ? (session.latestModel || await this.skillRuntime.buildModel(session.draft, skillIds))
       : undefined;
 
     return {
-      draft: session.draft,
+      draft: session.draft || { inferredType: 'unknown', updatedAt: session.updatedAt },
       resolved: session.resolved,
       interaction,
       model,
@@ -1928,7 +1927,7 @@ export class AgentService {
         locale,
         skillIds,
       );
-      const missingFields = await this.mapMissingFieldLabels(finalAssessment.criticalMissing, locale, workingSession.draft, skillIds);
+      const missingFields = await this.mapMissingFieldLabels(finalAssessment.criticalMissing, locale, workingSession.draft || { inferredType: 'unknown', updatedAt: workingSession.updatedAt }, skillIds);
       const question = this.buildInteractionQuestion(interaction, locale);
       return {
         ok: false,
@@ -2075,7 +2074,7 @@ export class AgentService {
         await this.setInteractionSession(sessionKey, workingSession);
       }
 
-      const missingFields = await this.mapMissingFieldLabels(finalAssessment.criticalMissing, locale, workingSession.draft, skillIds);
+      const missingFields = await this.mapMissingFieldLabels(finalAssessment.criticalMissing, locale, workingSession.draft || { inferredType: 'unknown', updatedAt: workingSession.updatedAt }, skillIds);
       const response = finalAssessment.criticalMissing.length > 0
         ? this.localize(
           locale,
@@ -3133,7 +3132,7 @@ export class AgentService {
   }> {
     const activeToolIds = await this.resolveActiveToolIds(skillIds);
     const structural = await this.skillRuntime.assessDraft(
-      session.draft,
+      session.draft || { inferredType: 'unknown', updatedAt: session.updatedAt },
       locale,
       phase,
       skillIds,
@@ -3157,7 +3156,7 @@ export class AgentService {
 
     const structuralDefaults = await this.skillRuntime.buildStructuralDefaultProposals(
       structural.optionalMissing,
-      session.draft,
+      session.draft || { inferredType: 'unknown', updatedAt: session.updatedAt },
       locale,
       skillIds,
     );
@@ -3257,7 +3256,7 @@ export class AgentService {
       return;
     }
     if (this.isNoSkillMode(skillIds)) {
-      session.draft = normalizeNoSkillDraftState(session.draft);
+      session.draft = normalizeNoSkillDraftState(session.draft || { inferredType: 'unknown', updatedAt: Date.now() });
       session.structuralTypeMatch = undefined;
     } else {
       session.draft = await this.skillRuntime.applyProvidedValues(session.draft, values, locale, skillIds);
@@ -3311,10 +3310,11 @@ export class AgentService {
     activeToolIds?: ActiveToolSet,
   ): Promise<AgentInteraction> {
     const missingKeys = [...assessment.criticalMissing, ...assessment.nonCriticalMissing];
+    const draft = session.draft || { inferredType: 'unknown', updatedAt: session.updatedAt };
     const questions = await this.buildInteractionQuestions(missingKeys, assessment.criticalMissing, session, locale, skillIds);
-    const stage = await this.resolveInteractionStage(missingKeys, session.draft, skillIds);
-    const missingCritical = await this.mapMissingFieldLabels(assessment.criticalMissing, locale, session.draft, skillIds);
-    const missingOptional = await this.mapMissingFieldLabels(assessment.nonCriticalMissing, locale, session.draft, skillIds);
+    const stage = await this.resolveInteractionStage(missingKeys, draft, skillIds);
+    const missingCritical = await this.mapMissingFieldLabels(assessment.criticalMissing, locale, draft, skillIds);
+    const missingOptional = await this.mapMissingFieldLabels(assessment.nonCriticalMissing, locale, draft, skillIds);
     const route = this.buildInteractionRouteHint(assessment, stage, session, locale, activeToolIds);
     return {
       state,
@@ -3406,7 +3406,7 @@ export class AgentService {
     skillIds?: string[],
   ): Promise<InteractionQuestion[]> {
     const structuralQuestions = new Map(
-      (await this.skillRuntime.buildInteractionQuestions(missingKeys, criticalMissing, session.draft, locale, skillIds))
+      (await this.skillRuntime.buildInteractionQuestions(missingKeys, criticalMissing, session.draft || { inferredType: 'unknown', updatedAt: session.updatedAt }, locale, skillIds))
         .map((question) => [question.paramKey, question])
     );
     return missingKeys.map((paramKey) => {
