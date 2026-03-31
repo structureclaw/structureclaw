@@ -15,7 +15,6 @@ import { buildVisualizationSnapshot } from '@/components/visualization/adapter'
 import type { VisualizationSnapshot } from '@/components/visualization/types'
 import { useI18n, type MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
-import { fetchLatestModel, type LatestModelResponse } from '@/lib/api'
 import { API_BASE } from '@/lib/api-base'
 import { loadCapabilityPreferences, saveCapabilityPreferences } from '@/lib/capability-preference'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
@@ -1211,7 +1210,6 @@ export function AIConsole() {
   const [contextOpen, setContextOpen] = useState(false)
   const [modelText, setModelText] = useState('')
   const [modelSyncMessage, setModelSyncMessage] = useState('')
-  const [isAutoLoadingModel, setIsAutoLoadingModel] = useState(false)
   const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([])
   const [capabilityMatrix, setCapabilityMatrix] = useState<CapabilityMatrixPayload | null>(null)
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
@@ -1528,56 +1526,6 @@ export function AIConsole() {
       toolIds: selectedToolIds,
     })
   }, [capabilityMatrixLoaded, selectedSkillIds, selectedToolIds, skillsLoaded])
-
-  // Auto-load latest model from database when conversation changes and model is empty
-  useEffect(() => {
-    let active = true
-
-    async function loadLatestModel() {
-      // Keep existing conversations stable; auto-load is only for new empty drafts.
-      if (conversationId) {
-        return
-      }
-      // Only auto-load if current modelText is empty
-      if (modelText) return
-
-      setIsAutoLoadingModel(true)
-      try {
-        const result = await fetchLatestModel()
-        if (!active || !result?.model) {
-          setIsAutoLoadingModel(false)
-          return
-        }
-
-        const modelJson = result.model as Record<string, unknown>
-        const modelJsonText = JSON.stringify(modelJson, null, 2)
-
-        // Set the model text, then stop loading after a small delay
-        setModelText(modelJsonText)
-        const modelAutoLoadedLabel = t('modelAutoLoaded')
-        setModelSyncMessage(
-          modelAutoLoadedLabel.includes('{modelName}')
-            ? modelAutoLoadedLabel.split('{modelName}').join(result.name)
-            : `${modelAutoLoadedLabel} ${result.name}`
-        )
-
-        // Stop loading after model is set
-        setTimeout(() => {
-          if (!active) return
-          setIsAutoLoadingModel(false)
-        }, 100)
-      } catch (error) {
-        console.error('[AI Console] Failed to auto-load model:', error)
-        setIsAutoLoadingModel(false)
-      }
-    }
-
-    void loadLatestModel()
-
-    return () => {
-      active = false
-    }
-  }, [conversationId, modelText, t])
 
   useEffect(() => {
     let cancelled = false
@@ -2812,12 +2760,7 @@ export function AIConsole() {
                           setModelSyncMessage('')
                         }}
                       />
-                      {isAutoLoadingModel ? (
-                        <div className="text-xs text-muted-foreground flex items-center gap-2">
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          {t('loadingModel')}
-                        </div>
-                      ) : modelSyncMessage ? (
+                      {modelSyncMessage ? (
                         <div className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-xs leading-5 text-cyan-900 dark:text-cyan-100">
                           {modelSyncMessage}
                         </div>
