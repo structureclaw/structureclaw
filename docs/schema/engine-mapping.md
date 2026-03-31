@@ -135,7 +135,8 @@ PKPM 通过 `APIPyInterface` 模块提供 Python API，数据模型基于**标�
 ## Versioning & Compatibility Strategy
 
 - **Schema version**: Semantic versioning (`MAJOR.MINOR.PATCH`)
-- **V1 → V2 migration**: V1 payloads can be migrated to V2 via helpers in `structure_protocol.migrations` (`migrate_structure_model_v1`); see that module for the current migration entrypoints and supported source versions — new fields typically default to `None`/empty
+- **V1 patch migration**: Currently only V1 Schema patch-level migration between `1.0.0`/`1.0.1` is supported, via `structure_protocol.migrations.migrate_structure_model_v1(model, target_schema_version=...)`; this function adjusts versions within V1 only and does not produce a `2.0.0` `StructureModelV2`
+- **V1 → V2 conversion**: For upgrading from V1 to V2, refer to `structure_protocol.migrations` and related documentation for available conversion entrypoints and supported source versions — new fields not present in the source data typically default to `None`/empty
 - **Forward compatibility**: Unknown fields in `extensions` and `extra` dicts are preserved without validation
 - **Breaking changes**: Only in `MAJOR` version bumps
 

@@ -135,6 +135,7 @@ PKPM 通过 `APIPyInterface` 模块提供 Python API，数据模型基于**标�
 ## 版本与兼容性策略
 
 - **Schema 版本**：语义化版本号（`主版本.次版本.修订号`）
-- **V1 → V2 迁移**：V1 载荷可通过 `structure_protocol.migrations` 中的辅助函数迁移到 V2（`migrate_structure_model_v1`）；参见该模块获取当前迁移入口和支持的源版本——新字段通常默认为 `None`/空
+- **V1 补丁迁移**：目前仅提供 V1 Schema 在 `1.0.0`/`1.0.1` 之间的补丁迁移能力，入口为 `structure_protocol.migrations.migrate_structure_model_v1(model, target_schema_version=...)`；该函数只在 V1 内部调整版本，不会生成 `2.0.0` 的 `StructureModelV2`
+- **V1 → V2 转换**：如需从 V1 升级到 V2，请参阅 `structure_protocol.migrations` 模块及相关文档，以获取当前可用的转换入口和支持的源版本——未在源数据中出现的新字段通常默认为 `None`/空
 - **前向兼容**：`extensions` 和 `extra` 字典中的未知字段会被保留，不做校验
 - **破坏性变更**：仅在 `主版本` 号变更时引入

@@ -1,84 +1,84 @@
-# StructureClaw 端到端测试方案
+# StructureClaw End-to-End Test Plan
 
-## 目标
+## Goal
 
-在干净环境（含 Windows）上验证安装、`sclaw` 与 Docker Compose 相关流程是否可用。
+Verify that installation, `sclaw`, and Docker Compose workflows work correctly on clean environments (including Windows).
 
 ---
 
-## 方案 1: GitHub Actions（推荐，与仓库 CI 一致）
+## Option 1: GitHub Actions (Recommended — aligned with repo CI)
 
-仓库通过 [`.github/workflows/install-smoke.yml`](../.github/workflows/install-smoke.yml) 在 CI 中执行：
+The repository runs tests via [`.github/workflows/install-smoke.yml`](../.github/workflows/install-smoke.yml):
 
-- **`smoke-native`**：`node tests/runner.mjs smoke-native`（Ubuntu 与 `windows-latest` 矩阵，等价 `npm ci` + 构建）。
-- **`smoke-docker`**：`node tests/runner.mjs smoke-docker`（Linux；另有自托管 Windows job 在 Docker 就绪后跑同一命令）。
+- **`smoke-native`**: `node tests/runner.mjs smoke-native` (Ubuntu + `windows-latest` matrix, equivalent to `npm ci` + build).
+- **`smoke-docker`**: `node tests/runner.mjs smoke-docker` (Linux; a self-hosted Windows job runs the same command once Docker is ready).
 
-与本地/文档对齐的命令：
+Commands aligned with local/docs:
 
 ```bash
 node tests/runner.mjs smoke-native
 node tests/runner.mjs smoke-docker
 ```
 
-根目录 `package.json` 也提供别名：`npm run smoke:native`、`npm run smoke:docker`。
+The root `package.json` also provides aliases: `npm run smoke:native`, `npm run smoke:docker`.
 
-### 限制
+### Limitations
 
-- GitHub 托管的 Windows runner 已预装 Docker Desktop；无法覆盖「机器上尚未安装 Docker」的首次安装体验。
-- Windows 自托管 runner 需自行保证 Docker 可用。
+- GitHub-hosted Windows runners come with Docker Desktop pre-installed; this cannot cover the first-time experience of a machine without Docker.
+- Self-hosted Windows runners must ensure Docker is available independently.
 
 ---
 
-## 方案 2: Windows Sandbox（本地测试）
+## Option 2: Windows Sandbox (Local Testing)
 
-### 优点
+### Advantages
 
-- 轻量级，每次都是干净环境
-- 支持 Windows 10/11 Pro/Enterprise
-- 可以完全控制安装过程
+- Lightweight; starts from a clean environment every time
+- Supports Windows 10/11 Pro/Enterprise
+- Full control over the installation process
 
-### 实现步骤
+### Steps
 
-1. 创建 `test-sandbox.wsb`，将仓库映射进沙箱（按需修改 `HostFolder`）。
-2. 在沙箱内克隆或映射代码后，在 PowerShell 中执行与 CI 相同的校验，例如：
+1. Create a `test-sandbox.wsb` that maps the repository into the sandbox (adjust `HostFolder` as needed).
+2. After cloning or mapping the code inside the sandbox, run the same validation commands as CI in PowerShell:
 
 ```powershell
 Set-Location C:\path\to\structureclaw
 node tests\runner.mjs smoke-native
-# 若已安装 Docker：
+# If Docker is installed:
 node tests\runner.mjs smoke-docker
 ```
 
-### 限制
+### Limitations
 
-- 需要 Windows Pro/Enterprise
-- 需要在 BIOS 中启用虚拟化
-- 沙箱内若未预装 Docker，需先安装再跑 `smoke-docker`
+- Requires Windows Pro/Enterprise
+- Virtualization must be enabled in BIOS
+- If Docker is not pre-installed inside the sandbox, install it first before running `smoke-docker`
 
 ---
 
-## 方案 3: Hyper-V 虚拟机（完整测试）
+## Option 3: Hyper-V Virtual Machine (Full Testing)
 
-### 优点
+### Advantages
 
-- 完全控制测试环境
-- 可以测试所有场景（包括无 Docker）
-- 可以创建快照回滚
+- Complete control over the test environment
+- Can test all scenarios (including no Docker)
+- Supports snapshot-based rollback
 
-### 实现步骤
+### Steps
 
-1. 创建 Windows 11 VM 模板
-2. 安装 PowerShell 7 与 Node.js
-3. 在 VM 内执行与方案 1 相同的 `node tests/runner.mjs smoke-native` / `smoke-docker`，或使用下列示例在 VM 内直接演练 `sclaw docker-install`：
+1. Create a Windows 11 VM template.
+2. Install PowerShell 7 and Node.js.
+3. Inside the VM, run the same `node tests/runner.mjs smoke-native` / `smoke-docker` commands as in Option 1, or use the following example to exercise `sclaw docker-install` directly inside the VM:
 
 ```powershell
-# test-vm.ps1（示例片段）
+# test-vm.ps1 (sample snippet)
 param(
   [string]$VMName = "StructureClaw-Test"
 )
 
 Checkpoint-VM -Name $VMName -SnapshotName "BeforeTest"
-# … 将仓库同步到 VM 后 …
+# ... after syncing the repository into the VM ...
 Invoke-Command -VMName $VMName -ScriptBlock {
   Set-Location C:\Test
   node .\sclaw docker-install --non-interactive --llm-provider openai --llm-base-url https://api.openai.com/v1 --llm-api-key test-key --llm-model gpt-4.1 --skip-api-test
@@ -88,9 +88,9 @@ Restore-VMSnapshot -VMName $VMName -Name "BeforeTest"
 
 ---
 
-## 方案 4: 回归与契约校验（代码层面）
+## Option 4: Regression & Contract Validation (Code Level)
 
-CLI 与后端的深度校验通过 `tests/runner.mjs` 完成，例如：
+CLI and backend deep validation is performed via `tests/runner.mjs`:
 
 ```bash
 node tests/runner.mjs analysis-regression
@@ -98,22 +98,22 @@ node tests/runner.mjs check backend-regression
 node tests/runner.mjs validate --list
 ```
 
-详见根目录 [AGENTS.md](../AGENTS.md) 中的 **Build, Run, and Verify**。
+See the **Build, Run, and Verify** section in root [AGENTS.md](../AGENTS.md) for details.
 
 ---
 
-## 推荐的组合策略
+## Recommended Combination Strategy
 
-| 测试类型 | 工具 | 触发条件 | 目的 |
-|---------|------|---------|------|
-| 安装与构建冒烟 | `install-smoke.yml` / `smoke-native` | PR / Push（路径触发） | 验证多平台 `npm ci` + 构建 |
-| Docker 冒烟 | `install-smoke.yml` / `smoke-docker` | PR / Push | 验证 Compose 与栈启停 |
-| 回归与契约 | `tests/runner.mjs` | 本地或对应 workflow | 分析运行时、API 契约等 |
-| 端到端（可选） | Windows Sandbox / Hyper-V | 发布前或重大安装改动 | 接近真实用户环境 |
+| Test Type | Tool | Trigger | Purpose |
+|-----------|------|---------|---------|
+| Install & build smoke | `install-smoke.yml` / `smoke-native` | PR / Push (path-triggered) | Verify cross-platform `npm ci` + build |
+| Docker smoke | `install-smoke.yml` / `smoke-docker` | PR / Push | Verify Compose and stack start/stop |
+| Regression & contract | `tests/runner.mjs` | Local or corresponding workflow | Analysis runtime, API contracts, etc. |
+| End-to-end (optional) | Windows Sandbox / Hyper-V | Before release or major install changes | Close to real user environment |
 
 ---
 
-## 下一步行动（可选）
+## Next Steps (Optional)
 
-1. 在自托管 Windows runner 上保持 Docker 与 Node 版本与文档一致。
-2. 需要时补充 `tests/README.md` 或本仓库其它文档中的 smoke 与回归入口说明。
+1. Keep Docker and Node versions on self-hosted Windows runners consistent with documentation.
+2. When needed, supplement `tests/README.md` or other documentation in the repository with smoke and regression entry-point descriptions.
