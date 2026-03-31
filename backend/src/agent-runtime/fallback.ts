@@ -1295,6 +1295,7 @@ function buildBeamLoads(
   loadType: DraftLoadType | undefined,
   loadPosition: DraftLoadPosition | undefined,
   pointNodeId: string,
+  endNodeId: string,
 ) {
   if (loadType === 'distributed' || loadPosition === 'full-span') {
     return [
@@ -1303,7 +1304,8 @@ function buildBeamLoads(
     ];
   }
 
-  return [{ node: pointNodeId, fy: -loadKN }];
+  const targetNodeId = loadPosition === 'end' ? endNodeId : pointNodeId;
+  return [{ node: targetNodeId, fy: -loadKN }];
 }
 
 export function buildModel(state: DraftState): Record<string, unknown> {
@@ -1409,7 +1411,7 @@ export function buildModel(state: DraftState): Record<string, unknown> {
   const load = state.loadKN!;
   const supportType = state.supportType || 'cantilever';
   const beamNodes = buildBeamNodes(length, supportType, state.loadPositionM);
-  const beamLoads = buildBeamLoads(load, state.loadType, state.loadPosition, beamNodes.pointNodeId);
+  const beamLoads = buildBeamLoads(load, state.loadType, state.loadPosition, beamNodes.pointNodeId, beamNodes.endNodeId);
   return {
     schema_version: '1.0.0',
     unit_system: 'SI',

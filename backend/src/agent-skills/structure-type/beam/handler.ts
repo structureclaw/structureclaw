@@ -22,7 +22,7 @@ import type {
 } from '../../../agent-runtime/types.js';
 
 const GEOMETRY_KEYS = ['lengthM'] as const;
-const LOAD_BOUNDARY_KEYS = ['supportType', 'loadKN', 'loadType', 'loadPosition'] as const;
+const LOAD_BOUNDARY_KEYS = ['supportType', 'loadKN', 'loadType', 'loadPosition', 'loadPositionM'] as const;
 const ALLOWED_KEYS = combineDomainKeys(GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS);
 
 function toBeamPatch(patch: DraftExtraction): DraftExtraction {
