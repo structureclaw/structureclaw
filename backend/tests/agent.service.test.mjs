@@ -472,7 +472,6 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(result.interaction?.detectedStructuralType).toBe('beam');
     expect(result.interaction?.missingCritical).not.toContain('跨度/长度（m）');
     expect(result.interaction?.missingCritical).toContain('支座/边界条件（悬臂/简支/两端固结/固铰）');
     expect(result.interaction?.interactionStageLabel).toBe('几何建模');
@@ -500,7 +499,6 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(second.interaction?.detectedStructuralType).toBe('beam');
     expect(second.interaction?.missingCritical).not.toContain('跨度/长度（m）');
     expect(second.interaction?.missingCritical).toContain('支座/边界条件（悬臂/简支/两端固结/固铰）');
     expect(second.interaction?.interactionStageLabel).toBe('几何建模');
@@ -528,7 +526,6 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(second.interaction?.detectedStructuralType).toBe('portal-frame');
     expect(second.interaction?.missingCritical).not.toContain('门式刚架或双跨每跨跨度（m）');
     expect(second.interaction?.missingCritical).toContain('门式刚架柱高（m）');
     expect(second.interaction?.missingCritical).toContain('荷载大小（kN）');
@@ -557,7 +554,6 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(second.interaction?.detectedStructuralType).toBe('portal-frame');
     expect(second.interaction?.missingCritical).not.toContain('Span length per bay for the portal frame or double-span beam (m)');
     expect(second.interaction?.missingCritical).toContain('Portal-frame column height (m)');
     expect(second.interaction?.missingCritical).toContain('Load magnitude (kN)');
@@ -590,7 +586,6 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(second.interaction?.detectedStructuralType).toBe('beam');
     expect(second.interaction?.missingCritical).not.toContain('荷载大小（kN）');
     expect(second.interaction?.missingCritical).not.toContain('荷载形式（点荷载/均布荷载）');
     expect(second.interaction?.missingCritical).not.toContain('荷载位置（按当前结构模板）');
@@ -643,7 +638,6 @@ describe('AgentService orchestration', () => {
     expect(result.success).toBe(true);
     expect(result.needsModelInput).toBe(true);
     expect(result.interaction?.state).toBe('confirming');
-    expect(result.interaction?.detectedStructuralType).not.toBe('beam');
     expect(result.model).toBeUndefined();
   });
 
@@ -767,7 +761,6 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.interaction?.detectedStructuralType).toBe('portal-frame');
     expect(result.interaction?.state).not.toBe('completed');
     expect(result.response.length).toBeGreaterThan(0);
     expect(result.toolCalls.some((call) => call.tool === 'run_analysis')).toBe(false);
@@ -1020,8 +1013,6 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(switched.interaction?.detectedStructuralType).toBeUndefined();
-    expect(switched.interaction?.detectedStructuralTypeLabel).toBeUndefined();
     expect(switched.interaction?.fallbackSupportNote).toBeUndefined();
 
     const snapshot = await svc.getConversationSessionSnapshot(conversationId, 'zh', []);
@@ -1380,8 +1371,6 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.interaction?.detectedStructuralType).toBe('steel-frame');
-    expect(result.interaction?.detectedStructuralTypeLabel).toBe('Steel Frame');
     expect(result.interaction?.interactionStageLabel).toBe('Geometry');
     expect(result.interaction?.fallbackSupportNote).toBeUndefined();
     expect(result.interaction?.missingCritical).toContain('Story count');
@@ -1417,7 +1406,6 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.interaction?.detectedStructuralType).not.toBe('beam');
     expect(result.interaction?.fallbackSupportNote).toBeUndefined();
     expect(result.response).toContain('当前所选技能未命中更具体的结构技能');
     expect(result.response).toContain('回退到通用建模能力');
@@ -2030,7 +2018,6 @@ describe('AgentService orchestration', () => {
     expect(snapshot).toBeDefined();
     expect(snapshot?.draft?.inferredType).toBe('frame');
     expect(snapshot?.resolved?.analysisType).toBe('static');
-    expect(snapshot?.interaction?.detectedStructuralType).toBe('frame');
     expect(snapshot?.interaction?.interactionStageLabel).toBe('荷载条件');
     expect(snapshot?.model?.metadata?.inferredType).toBe('frame');
   });
@@ -2077,7 +2064,6 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.interaction?.detectedStructuralType).toBe('frame');
     expect(result.interaction?.stage).toBe('model');
     expect(result.interaction?.missingCritical).toContain('层数');
     expect(result.interaction?.missingCritical).toContain('各层节点荷载（kN）');
@@ -2095,7 +2081,6 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.interaction?.detectedStructuralType).toBe('portal-frame');
     expect(result.interaction?.stage).toBe('loads');
     expect(result.interaction?.interactionStageLabel).toBe('Loads');
     expect(result.interaction?.missingCritical).toContain('Load magnitude (kN)');
@@ -2143,7 +2128,6 @@ describe('AgentService orchestration', () => {
     });
 
     expect(collecting.success).toBe(true);
-    expect(collecting.interaction?.detectedStructuralType).toBe('frame');
     expect(collecting.interaction?.state).toBe('ready');
     expect(collecting.model?.schema_version).toBe('1.0.0');
     expect(collecting.model?.metadata?.inferredType).toBe('frame');

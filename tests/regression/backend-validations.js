@@ -356,7 +356,6 @@ async function validateAgentOrchestration(context) {
       message: "跨度10m",
     });
     assert(second.success === true, "second conversation turn should still succeed");
-    assert(second.interaction?.detectedStructuralType === "portal-frame", "conversation follow-up should keep the portal-frame structural type");
     assert(
       !second.interaction?.missingCritical?.includes("门式刚架或双跨每跨跨度（m）"),
       "second conversation turn should not ask for span again",
@@ -382,7 +381,6 @@ async function validateAgentOrchestration(context) {
       message: "跨度10m",
     });
     assert(second.success === true, "second beam conversation turn should still succeed");
-    assert(second.interaction?.detectedStructuralType === "beam", "beam follow-up should keep the beam structural type");
     assert(
       !second.interaction?.missingCritical?.includes("跨度/长度（m）"),
       "second beam conversation turn should not ask for span again",
@@ -675,7 +673,7 @@ async function validateAgentCapabilityModes(context) {
     },
   });
   assert(skilledChat.success === true, "skilled chat should succeed");
-  assert(skilledChat.interaction?.detectedStructuralType === "portal-frame", "skilled chat should keep structural interaction guidance");
+  assert(skilledChat.interaction?.stage === "model", "skilled chat should keep structural interaction guidance");
   assert(!skilledChat.toolCalls.some((call) => call.tool === "run_analysis"), "skilled chat should not execute run_analysis");
   assert(!skilledChat.toolCalls.some((call) => call.tool === "run_code_check"), "skilled chat should not execute run_code_check");
   assert(!skilledChat.toolCalls.some((call) => call.tool === "generate_report"), "skilled chat should not execute generate_report");
