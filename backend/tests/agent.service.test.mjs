@@ -975,6 +975,85 @@ describe('AgentService orchestration', () => {
     expect(result.model?.metadata?.name).toBe('new-beam-model');
   });
 
+  test('should ask for clarification instead of returning an invalid drafted model', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          return {
+            content: JSON.stringify({
+              kind: 'tool_call',
+              replyMode: null,
+              toolId: 'draft_model',
+              reason: 'the user is asking to build a model now',
+            }),
+          };
+        }
+        return { content: 'ok' };
+      },
+    };
+
+    svc.textToModelDraft = async () => ({
+      inferredType: 'beam',
+      missingFields: [],
+      extractionMode: 'llm',
+      model: {
+        schema_version: '1.0.0',
+        unit_system: 'SI',
+        nodes: [
+          { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
+          { id: '2', x: 10000, y: 0, z: 0, restraints: [false, true, true, false, false, false] },
+        ],
+        elements: [
+          { id: 'E1', type: 'beam', nodes: ['1', '2'], material: 'C30', section: 'B1' },
+        ],
+        materials: [{ id: 'C30', name: 'Concrete C30', E: 30000, nu: 0.2, rho: 2500, fy: 0 }],
+        sections: [{ id: 'B1', name: 'Beam', type: 'rect', properties: { A: 0.18, Iz: 0.0054, Iy: 0.00135, G: 12500000, J: 0.0008 } }],
+        load_cases: [],
+        load_combinations: [],
+      },
+      stateToPersist: {
+        inferredType: 'beam',
+        updatedAt: Date.now(),
+      },
+    });
+    svc.assessInteractionNeeds = async () => ({
+      criticalMissing: [],
+      nonCriticalMissing: [],
+      defaultProposals: [],
+    });
+
+    svc.structureProtocolClient = {
+      post: async (route) => {
+        if (route === '/validate') {
+          return { data: { valid: false, message: 'Validation failed' } };
+        }
+        throw new Error(`unexpected structure protocol route: ${route}`);
+      },
+    };
+
+    const result = await svc.run({
+      conversationId: 'conv-invalid-drafted-model-asks',
+      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model'],
+        autoAnalyze: false,
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.needsModelInput).toBe(true);
+    expect(result.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+    expect(result.toolCalls.some((call) => call.tool === 'validate_model')).toBe(true);
+    expect(result.response).toContain('还不满足 StructureModel 校验');
+    expect(result.response).toContain('材料');
+    expect(result.response).toContain('荷载');
+    expect(result.model).toBeUndefined();
+  });
+
   test('should keep inferredType unknown in no-skill mode even when llm extraction suggests template type', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
