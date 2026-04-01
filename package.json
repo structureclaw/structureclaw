@@ -19,7 +19,7 @@
     "sclaw",
     "scripts/cli/**/*.js"
   ],
-  "dependencies": {
-    "typescript": "^5.9.3"
+  "devDependencies": {
+    "typescript": "^6.0.2"
   }
 }
