@@ -52,13 +52,12 @@
 
 - `POST /api/v1/chat/message`
 - `POST /api/v1/chat/stream`
-- `POST /api/v1/chat/tool-call`
 
 说明：
 
 - `chat/message` 与 `chat/stream` 不再接收公开 `mode` 字段。
 - chat 请求统一为单入口，由后端自行决定本轮继续对话还是触发 tool。
-- `chat/tool-call` 仍作为显式高级入口，用于直接触发 tool 执行链。
+- 当调用方需要显式要求本轮直接进入 tool 执行链时，可在 `chat/message` 或 `chat/stream` 的 `context.executionMode` 传入 `"force_tool"`。
 
 典型流式事件顺序：
 

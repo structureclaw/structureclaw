@@ -819,19 +819,26 @@ async function validateAgentApiContract(context) {
 
   const toolCallResponse = await app.inject({
     method: "POST",
-    url: "/api/v1/chat/tool-call",
-    payload: requestBody,
+    url: "/api/v1/chat/message",
+    payload: {
+      ...requestBody,
+      context: {
+        ...requestBody.context,
+        executionMode: "force_tool",
+      },
+    },
   });
-  assert(toolCallResponse.statusCode === 200, "chat/tool-call should return 200");
+  assert(toolCallResponse.statusCode === 200, "chat/message force_tool should return 200");
   const toolCallPayload = toolCallResponse.json();
-  assert(toolCallPayload.traceId === "trace-api-contract", "chat/tool-call should proxy agent result");
-  assert(toolCallPayload.artifacts?.[0]?.path === "/tmp/report.json", "chat/tool-call should return artifacts");
+  assert(toolCallPayload.result?.traceId === "trace-api-contract", "chat/message force_tool should proxy agent result");
+  assert(toolCallPayload.result?.artifacts?.[0]?.path === "/tmp/report.json", "chat/message force_tool should return artifacts");
 
   assert(captured.length >= 2, "agent run should be called for both endpoints");
   assert(captured[0]?.traceId === "trace-request-001", "agent/run should pass traceId");
-  assert(captured[1]?.traceId === "trace-request-001", "chat/tool-call should pass traceId");
+  assert(captured[1]?.traceId === "trace-request-001", "chat/message force_tool should pass traceId");
   assert(captured[0]?.context?.reportOutput === "file", "agent/run should pass reportOutput context");
-  assert(captured[1]?.context?.reportFormat === "both", "chat/tool-call should pass reportFormat context");
+  assert(captured[1]?.context?.reportFormat === "both", "chat/message force_tool should pass reportFormat context");
+  assert(captured[1]?.context?.executionMode === "force_tool", "chat/message force_tool should pass executionMode context");
 
   await app.close();
   console.log("[ok] agent api contract regression");
@@ -1574,20 +1581,23 @@ async function validateChatMessageRouting(context) {
   assert(autoIntentExecResp.statusCode === 200, "auto intent tool response should be 200");
   const forceExecResp = await app.inject({
     method: "POST",
-    url: "/api/v1/chat/tool-call",
+    url: "/api/v1/chat/message",
     payload: {
       message: "force tool",
       traceId: "trace-route-tool-1",
+      context: {
+        executionMode: "force_tool",
+      },
     },
   });
-  assert(forceExecResp.statusCode === 200, "tool-call response should be 200");
+  assert(forceExecResp.statusCode === 200, "chat/message force_tool response should be 200");
 
-  assert(agentRunCount === 4, "agent run should be called for every /chat/message request");
-  assert(agentToolRunCount === 1, "explicit /chat/tool-call should still use tool-call entrypoint");
+  assert(agentRunCount === 4, "agent run should be called for auto /chat/message requests");
+  assert(agentToolRunCount === 1, "chat/message force_tool should still use tool-call entrypoint");
   assert(capturedRunTraceIds.includes("trace-route-auto-1"), "agent-first message route should pass traceId for non-execution message");
   assert(capturedRunTraceIds.includes("trace-route-auto-tool-1"), "auto tool invocation should pass traceId");
   assert(capturedRunTraceIds.includes("trace-route-auto-intent-1"), "auto intent invocation should pass traceId");
-  assert(capturedToolTraceIds.includes("trace-route-tool-1"), "tool-call invocation should pass traceId");
+  assert(capturedToolTraceIds.includes("trace-route-tool-1"), "force_tool invocation should pass traceId");
   assert(capturedRunMessages.includes("auto without model"), "plain chat-like requests should now route through agent");
 
   await app.close();

@@ -136,7 +136,6 @@ Main backend endpoints:
 
 - `POST /api/v1/chat/message`
 - `POST /api/v1/chat/stream`
-- `POST /api/v1/chat/tool-call`
 - `POST /api/v1/agent/run`
 
 Current execution chain:

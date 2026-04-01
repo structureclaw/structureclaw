@@ -21,6 +21,7 @@ const optionalIdSchema = z.preprocess((value) => {
 }, z.string().optional());
 
 const localeSchema = z.enum(['en', 'zh']).optional();
+const executionModeSchema = z.enum(['auto', 'force_tool']).optional();
 
 // 请求验证
 const sendMessageSchema = z.object({
@@ -45,6 +46,7 @@ const sendMessageSchema = z.object({
     includeReport: z.boolean().optional(),
     reportFormat: z.enum(['json', 'markdown', 'both']).optional(),
     reportOutput: z.enum(['inline', 'file']).optional(),
+    executionMode: executionModeSchema,
     userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
     providedValues: z.record(z.any()).optional(),
   }).optional(),
@@ -58,32 +60,6 @@ const createConversationSchema = z.object({
 
 const conversationDetailQuerySchema = z.object({
   locale: localeSchema,
-});
-
-const toolCallSchema = z.object({
-  message: z.string().min(1).max(10000),
-  conversationId: optionalIdSchema,
-  traceId: optionalIdSchema,
-  context: z.object({
-    locale: localeSchema,
-    skillIds: z.array(z.string()).optional(),
-    enabledToolIds: z.array(z.string()).optional(),
-    disabledToolIds: z.array(z.string()).optional(),
-    engineId: z.string().optional(),
-    model: z.record(z.any()).optional(),
-    modelFormat: z.string().optional(),
-    analysisType: z.enum(['static', 'dynamic', 'seismic', 'nonlinear']).optional(),
-    parameters: z.record(z.any()).optional(),
-    autoAnalyze: z.boolean().optional(),
-    autoCodeCheck: z.boolean().optional(),
-    designCode: z.string().optional(),
-    codeCheckElements: z.array(z.string()).optional(),
-    includeReport: z.boolean().optional(),
-    reportFormat: z.enum(['json', 'markdown', 'both']).optional(),
-    reportOutput: z.enum(['inline', 'file']).optional(),
-    userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
-    providedValues: z.record(z.any()).optional(),
-  }).optional(),
 });
 
 const streamMessageSchema = z.object({
@@ -108,6 +84,7 @@ const streamMessageSchema = z.object({
     includeReport: z.boolean().optional(),
     reportFormat: z.enum(['json', 'markdown', 'both']).optional(),
     reportOutput: z.enum(['inline', 'file']).optional(),
+    executionMode: executionModeSchema,
     userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
     providedValues: z.record(z.any()).optional(),
   }).optional(),
@@ -184,10 +161,16 @@ export async function chatRoutes(fastify: FastifyInstance) {
     try {
       const body = sendMessageSchema.parse(request.body);
       const userId = request.user?.id;
-      const result = await agentService.run({
-        ...body,
-        userId,
-      });
+      const executionMode = body.context?.executionMode ?? 'auto';
+      const result = executionMode === 'force_tool'
+        ? await agentService.runToolCall({
+          ...body,
+          userId,
+        })
+        : await agentService.run({
+          ...body,
+          userId,
+        });
       await persistLatestConversationResult({
         conversationId: result.conversationId,
         userId,
@@ -345,10 +328,16 @@ export async function chatRoutes(fastify: FastifyInstance) {
     reply.raw.flushHeaders?.();
 
     try {
-      const stream = agentService.runStream({
-        ...body,
-        userId,
-      });
+      const executionMode = body.context?.executionMode ?? 'auto';
+      const stream = executionMode === 'force_tool'
+        ? agentService.runToolCallStream({
+          ...body,
+          userId,
+        })
+        : agentService.runStream({
+          ...body,
+          userId,
+        });
 
       for await (const chunk of stream) {
         if (
@@ -385,39 +374,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
       reply.raw.end();
     }
   });
-
-  // Tool 调用入口：复用 Agent 工具编排链路
-  const toolCallHandler = async (request: FastifyRequest<{ Body: z.infer<typeof toolCallSchema> }>, reply: FastifyReply) => {
-    const body = toolCallSchema.parse(request.body);
-    const userId = request.user?.id;
-    const result = await agentService.runToolCall({
-      ...body,
-      userId,
-    });
-    await persistLatestConversationResult({
-      conversationId: result.conversationId,
-      userId,
-      latestResult: result,
-    });
-    return reply.send(result);
-  };
-
-  fastify.post('/tool-call', {
-    schema: {
-      tags: ['Chat'],
-      summary: '触发 Agent tool/skill 调用链路',
-      body: {
-        type: 'object',
-        required: ['message'],
-        properties: {
-          message: { type: 'string' },
-          conversationId: { type: 'string' },
-          traceId: { type: 'string' },
-          context: { type: 'object' },
-        },
-      },
-    },
-  }, toolCallHandler);
 
 }
 

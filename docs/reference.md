@@ -52,13 +52,12 @@ Endpoints:
 
 - `POST /api/v1/chat/message`
 - `POST /api/v1/chat/stream`
-- `POST /api/v1/chat/tool-call`
 
 Notes:
 
 - `chat/message` and `chat/stream` no longer accept a public `mode` field.
 - chat requests are always single-entry; the backend decides whether the turn remains conversational or invokes tools.
-- `chat/tool-call` remains the explicit advanced entry for direct tool-chain execution.
+- use `context.executionMode = "force_tool"` in `chat/message` or `chat/stream` when the caller explicitly requests immediate tool-chain execution.
 
 Typical stream event sequence:
 
