@@ -1,8 +1,5 @@
 import {
   buildModel as buildRuntimeModel,
-  computeMissingCriticalKeys,
-  computeMissingLoadDetailKeys,
-  mapMissingFieldLabels,
   mergeDraftState,
   normalizeFloorLoads,
   normalizeFrameBaseSupportType,
@@ -16,6 +13,11 @@ import {
   normalizePositiveInteger,
   normalizeSupportType,
 } from '../../../agent-runtime/fallback.js';
+import {
+  computeMissingCriticalKeys,
+  computeMissingLoadDetailKeys,
+  mapMissingFieldLabels,
+} from '../../../agent-runtime/draft-guidance.js';
 import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import type {
   DraftExtraction,
