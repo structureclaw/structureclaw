@@ -8,6 +8,7 @@ on:
       - 'scripts/cli/**'
       - 'tests/**'
       - 'sclaw'
+      - 'sclaw_cn'
       - 'package.json'
       - '.github/workflows/analysis-regression.yml'
   push:
@@ -18,6 +19,7 @@ on:
       - 'scripts/cli/**'
       - 'tests/**'
       - 'sclaw'
+      - 'sclaw_cn'
       - 'package.json'
       - '.github/workflows/analysis-regression.yml'
 
