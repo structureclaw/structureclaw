@@ -866,17 +866,6 @@ function resolveMirrorValueSource(key, env, dotEnv, paths) {
     if (key === "APT_MIRROR" && env[key] === runtime.CN_DEFAULT_APT_MIRROR) {
       return "sclaw_cn default";
     }
-
-    // Keep source reporting aligned with docker-compose.cn.yml build-arg defaults.
-    if (
-      key === "APT_MIRROR" &&
-      !String(env[key] || "").trim() &&
-      paths &&
-      paths.dockerComposeCnFile &&
-      runtime.pathExists(paths.dockerComposeCnFile)
-    ) {
-      return "docker-compose.cn.yml default";
-    }
   }
 
   return "unset";

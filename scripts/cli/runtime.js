@@ -169,6 +169,52 @@ function resolvePaths(rootDir) {
   };
 }
 
+function normalizeDockerRegistryMirror(rawValue) {
+  const trimmed = String(rawValue || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  let normalized = trimmed
+    .replace(/^https?:\/\//iu, "")
+    .replace(/^\/+/u, "")
+    .replace(/\s+/gu, "");
+
+  if (!normalized) {
+    throw new Error("DOCKER_REGISTRY_MIRROR is invalid after normalization.");
+  }
+
+  if (!normalized.endsWith("/")) {
+    normalized = `${normalized}/`;
+  }
+
+  return normalized;
+}
+
+function normalizeAptMirror(rawValue) {
+  const trimmed = String(rawValue || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const normalized = trimmed
+    .replace(/^https?:\/\//iu, "")
+    .replace(/^\/+/u, "")
+    .replace(/\/+$/u, "");
+
+  if (!normalized) {
+    throw new Error("APT_MIRROR is invalid after normalization.");
+  }
+
+  if (/\s/u.test(normalized) || /\//u.test(normalized)) {
+    throw new Error(
+      "APT_MIRROR must be host[:port] without scheme or path, e.g. mirrors.tuna.tsinghua.edu.cn",
+    );
+  }
+
+  return normalized;
+}
+
 function applyCnProfileDefaults(env, dotEnv) {
   if (String(env.SCLAW_PROFILE || "").toLowerCase() !== "cn") {
     return;
@@ -208,6 +254,8 @@ function loadProjectEnvironment(rootDir, logger = () => {}, options = {}) {
     SCLAW_PROGRAM_NAME: programName,
   };
   applyCnProfileDefaults(env, dotEnv);
+  env.DOCKER_REGISTRY_MIRROR = normalizeDockerRegistryMirror(env.DOCKER_REGISTRY_MIRROR);
+  env.APT_MIRROR = normalizeAptMirror(env.APT_MIRROR);
   env.FRONTEND_PORT = env.FRONTEND_PORT || DEFAULT_FRONTEND_PORT;
   env.PORT = env.PORT || DEFAULT_BACKEND_PORT;
   return { paths, dotEnv, env };
@@ -613,6 +661,8 @@ module.exports = {
   loadProjectEnvironment,
   logFilePath,
   normalizeSqliteFileUrl,
+  normalizeAptMirror,
+  normalizeDockerRegistryMirror,
   parseDotEnv,
   pathExists,
   pidFilePath,
