@@ -1127,7 +1127,7 @@ describe('AgentService orchestration', () => {
             content: JSON.stringify({
               kind: 'tool_call',
               replyMode: null,
-              reason: 'planner should not run in force_tool mode',
+              reason: 'planner should not run during forced execution',
             }),
           };
         }
