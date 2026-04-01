@@ -61,6 +61,8 @@ type CapabilityMatrixPayload = {
   tools?: CapabilityToolSummary[]
   domainSummaries?: CapabilityDomainSummary[]
   skillDomainById?: Record<string, SkillDomain>
+  foundationToolIds?: string[]
+  enabledToolIdsBySkill?: Record<string, string[]>
 }
 
 const ALL_SKILL_DOMAINS: SkillDomain[] = [
@@ -139,6 +141,29 @@ function resolveToolLabel(tool: CapabilityToolSummary, locale: AppLocale) {
     .join(' ')
 }
 
+function resolveCallableTools(matrix: CapabilityMatrixPayload | null, selectedSkillIds: string[]) {
+  const matrixTools = Array.isArray(matrix?.tools) ? matrix.tools : []
+  const foundationToolIds = new Set(Array.isArray(matrix?.foundationToolIds) ? matrix.foundationToolIds : [])
+  const enabledToolIdsBySkill = matrix?.enabledToolIdsBySkill && typeof matrix.enabledToolIdsBySkill === 'object'
+    ? matrix.enabledToolIdsBySkill
+    : {}
+  const callableToolIds = new Set<string>(foundationToolIds)
+
+  selectedSkillIds.forEach((skillId) => {
+    const toolIds = enabledToolIdsBySkill[skillId]
+    if (!Array.isArray(toolIds)) {
+      return
+    }
+    toolIds.forEach((toolId) => {
+      if (typeof toolId === 'string' && toolId.trim().length > 0) {
+        callableToolIds.add(toolId)
+      }
+    })
+  })
+
+  return matrixTools.filter((tool) => callableToolIds.has(tool.id))
+}
+
 export function CapabilitySettingsPanel() {
   const { t, locale } = useI18n()
   const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([])
@@ -172,9 +197,9 @@ export function CapabilitySettingsPanel() {
   }, [availableSkills, capabilityMatrix])
 
   const availableTools = useMemo(() => {
-    const matrixTools = Array.isArray(capabilityMatrix?.tools) ? capabilityMatrix.tools : []
-    return [...matrixTools].sort((a, b) => resolveToolLabel(a, locale).localeCompare(resolveToolLabel(b, locale)))
-  }, [capabilityMatrix, locale])
+    return [...resolveCallableTools(capabilityMatrix, selectedSkillIds)]
+      .sort((a, b) => resolveToolLabel(a, locale).localeCompare(resolveToolLabel(b, locale)))
+  }, [capabilityMatrix, locale, selectedSkillIds])
 
   const defaultSelectedSkillIds = useMemo(() => {
     const available = new Set(availableSkills.map((skill) => skill.id))
@@ -248,8 +273,9 @@ export function CapabilitySettingsPanel() {
     }
     const stored = loadCapabilityPreferences()
     if (stored) {
+      const resolvedTools = resolveCallableTools(capabilityMatrix, stored.skillIds)
       const validSkillIds = stored.skillIds.filter((skillId) => availableSkills.some((skill) => skill.id === skillId))
-      const validToolIds = stored.toolIds.filter((toolId) => availableTools.some((tool) => tool.id === toolId))
+      const validToolIds = stored.toolIds.filter((toolId) => resolvedTools.some((tool) => tool.id === toolId))
       setSelectedSkillIds(validSkillIds)
       setSelectedToolIds(validToolIds)
     } else {

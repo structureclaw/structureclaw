@@ -1045,6 +1045,7 @@ async function validateAgentCapabilityMatrix(context) {
   assert(payload.filteredEngineReasonsBySkill && typeof payload.filteredEngineReasonsBySkill === "object", "filteredEngineReasonsBySkill should be an object");
   assert(payload.validSkillIdsByEngine && typeof payload.validSkillIdsByEngine === "object", "validSkillIdsByEngine should be an object");
   assert(payload.skillDomainById && typeof payload.skillDomainById === "object", "skillDomainById should be an object");
+  assert(Array.isArray(payload.foundationToolIds), "foundationToolIds should be an array");
   assert(payload.enabledToolIdsBySkill && typeof payload.enabledToolIdsBySkill === "object", "enabledToolIdsBySkill should be an object");
   assert(payload.providedToolIdsBySkill && typeof payload.providedToolIdsBySkill === "object", "providedToolIdsBySkill should be an object");
   assert(payload.skillIdsByToolId && typeof payload.skillIdsByToolId === "object", "skillIdsByToolId should be an object");
@@ -1074,7 +1075,9 @@ async function validateAgentCapabilityMatrix(context) {
   assert(payload.skillDomainById.truss === "structure-type", "truss should have structure-type domain mapping");
   assert(toolIds.has("draft_model"), "capability matrix should expose draft_model tool");
   assert(toolIds.has("update_model"), "capability matrix should expose update_model tool");
+  assert(toolIds.has("convert_model"), "capability matrix should expose convert_model tool");
   assert(toolIds.has("run_analysis"), "capability matrix should expose run_analysis tool");
+  assert(payload.foundationToolIds.includes("convert_model"), "foundation tool list should include convert_model");
   const draftTool = payload.tools.find((tool) => tool.id === "draft_model");
   assert(!Object.prototype.hasOwnProperty.call(draftTool || {}, "runtimeName"), "capability matrix should not expose runtimeName");
   assert(!Object.prototype.hasOwnProperty.call(draftTool || {}, "compatibilityRuntimeName"), "capability matrix should not expose compatibility runtime aliases");

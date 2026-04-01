@@ -89,6 +89,7 @@ type CapabilityReasonCode =
 type CapabilityAnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear';
 
 const ANALYSIS_TYPES: CapabilityAnalysisType[] = ['static', 'dynamic', 'seismic', 'nonlinear'];
+const FOUNDATION_TOOL_IDS = ['convert_model'] as const;
 
 function normalizeModelFamilies(value: unknown): string[] {
   if (!Array.isArray(value)) {
@@ -154,7 +155,50 @@ export class AgentCapabilityService {
 
   async getCapabilityMatrix(options?: { analysisType?: CapabilityAnalysisType }) {
     const manifests = await this.skillRuntime.listSkillManifests();
-    const tooling = await this.skillRuntime.resolveSkillTooling();
+    const tooling = await this.skillRuntime.resolveSkillTooling(manifests.map((manifest) => manifest.id));
+    const builtinTools = this.skillRuntime.listBuiltinToolManifests();
+    const toolById = new Map<string, CapabilityTool>();
+
+    for (const tool of builtinTools) {
+      toolById.set(tool.id, {
+        id: tool.id,
+        source: tool.source,
+        category: tool.category,
+        enabledByDefault: tool.enabledByDefault,
+        providedBySkillId: tool.providedBySkillId,
+        requiresSkills: Array.isArray(tool.requiresSkills) ? [...tool.requiresSkills] : [],
+        tags: Array.isArray(tool.tags) ? [...tool.tags] : [],
+        displayName: {
+          zh: tool.displayName?.zh,
+          en: tool.displayName?.en,
+        },
+        description: {
+          zh: tool.description?.zh,
+          en: tool.description?.en,
+        },
+      });
+    }
+
+    for (const tool of tooling.tools) {
+      toolById.set(tool.id, {
+        id: tool.id,
+        source: tool.source,
+        category: tool.category,
+        enabledByDefault: tool.enabledByDefault,
+        providedBySkillId: tool.providedBySkillId,
+        requiresSkills: Array.isArray(tool.requiresSkills) ? [...tool.requiresSkills] : [],
+        tags: Array.isArray(tool.tags) ? [...tool.tags] : [],
+        displayName: {
+          zh: tool.displayName?.zh,
+          en: tool.displayName?.en,
+        },
+        description: {
+          zh: tool.description?.zh,
+          en: tool.description?.en,
+        },
+      });
+    }
+
     const structuralAndGeneralSkills: CapabilitySkill[] = manifests.map((manifest: SkillManifest) => {
       const pkg = normalizeBuiltInManifestToSkillPackage(manifest);
       return {
@@ -184,23 +228,7 @@ export class AgentCapabilityService {
       };
     });
     const skills: CapabilitySkill[] = structuralAndGeneralSkills;
-    const tools: CapabilityTool[] = tooling.tools.map((tool) => ({
-      id: tool.id,
-      source: tool.source,
-      category: tool.category,
-      enabledByDefault: tool.enabledByDefault,
-      providedBySkillId: tool.providedBySkillId,
-      requiresSkills: Array.isArray(tool.requiresSkills) ? [...tool.requiresSkills] : [],
-      tags: Array.isArray(tool.tags) ? [...tool.tags] : [],
-      displayName: {
-        zh: tool.displayName?.zh,
-        en: tool.displayName?.en,
-      },
-      description: {
-        zh: tool.description?.zh,
-        en: tool.description?.en,
-      },
-    }));
+    const tools: CapabilityTool[] = Array.from(toolById.values()).sort((a, b) => a.id.localeCompare(b.id));
 
     const enginePayload = await this.engineCatalog.listEngines();
     const rawEngines = Array.isArray(enginePayload?.engines) ? enginePayload.engines.map((engine) => engine as unknown as Record<string, unknown>) : [];
@@ -324,6 +352,7 @@ export class AgentCapabilityService {
       filteredEngineReasonsBySkill,
       validSkillIdsByEngine,
       skillDomainById,
+      foundationToolIds: [...FOUNDATION_TOOL_IDS],
       enabledToolIdsBySkill: tooling.enabledToolIdsBySkill,
       providedToolIdsBySkill: tooling.providedToolIdsBySkill,
       skillIdsByToolId: tooling.skillIdsByToolId,

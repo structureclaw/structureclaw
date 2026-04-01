@@ -256,8 +256,33 @@ type CapabilityMatrixPayload = {
   tools?: CapabilityToolSummary[]
   domainSummaries?: CapabilityDomainSummary[]
   skillDomainById?: Record<string, SkillDomain>
+  foundationToolIds?: string[]
+  enabledToolIdsBySkill?: Record<string, string[]>
   validEngineIdsBySkill?: Record<string, string[]>
   filteredEngineReasonsBySkill?: Record<string, Record<string, string[]>>
+}
+
+function resolveCallableTools(matrix: CapabilityMatrixPayload | null, selectedSkillIds: string[]) {
+  const matrixTools = Array.isArray(matrix?.tools) ? matrix.tools : []
+  const foundationToolIds = new Set(Array.isArray(matrix?.foundationToolIds) ? matrix.foundationToolIds : [])
+  const enabledToolIdsBySkill = matrix?.enabledToolIdsBySkill && typeof matrix.enabledToolIdsBySkill === 'object'
+    ? matrix.enabledToolIdsBySkill
+    : {}
+  const callableToolIds = new Set<string>(foundationToolIds)
+
+  selectedSkillIds.forEach((skillId) => {
+    const toolIds = enabledToolIdsBySkill[skillId]
+    if (!Array.isArray(toolIds)) {
+      return
+    }
+    toolIds.forEach((toolId) => {
+      if (typeof toolId === 'string' && toolId.trim().length > 0) {
+        callableToolIds.add(toolId)
+      }
+    })
+  })
+
+  return matrixTools.filter((tool) => callableToolIds.has(tool.id))
 }
 
 function normalizeSkillDomain(value: unknown): SkillDomain {
@@ -1293,13 +1318,12 @@ export function AIConsole() {
   }, [availableSkills])
 
   const availableTools = useMemo(() => {
-    const matrixTools = Array.isArray(capabilityMatrix?.tools) ? capabilityMatrix.tools : []
-    return [...matrixTools].sort((a, b) => {
+    return [...resolveCallableTools(capabilityMatrix, selectedSkillIds)].sort((a, b) => {
       const left = resolveToolLabel(a, locale)
       const right = resolveToolLabel(b, locale)
       return left.localeCompare(right)
     })
-  }, [capabilityMatrix, locale])
+  }, [capabilityMatrix, locale, selectedSkillIds])
 
   const loadedModules = useMemo(() => {
     return availableSkills
@@ -1470,8 +1494,9 @@ export function AIConsole() {
 
     const storedPreferences = loadCapabilityPreferences()
     if (storedPreferences) {
+      const resolvedTools = resolveCallableTools(capabilityMatrix, storedPreferences.skillIds)
       setSelectedSkillIds(storedPreferences.skillIds.filter((skillId) => availableSkills.some((skill) => skill.id === skillId)))
-      setSelectedToolIds(storedPreferences.toolIds.filter((toolId) => availableTools.some((tool) => tool.id === toolId)))
+      setSelectedToolIds(storedPreferences.toolIds.filter((toolId) => resolvedTools.some((tool) => tool.id === toolId)))
     } else {
       setSelectedSkillIds(defaultSelectedSkillIds)
       setSelectedToolIds(defaultSelectedToolIds)
