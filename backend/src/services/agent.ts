@@ -120,7 +120,6 @@ type AgentReplyMode = 'plain' | 'structured';
 interface AgentNextStepPlan {
   kind: AgentPlanKind;
   replyMode?: AgentReplyMode;
-  toolId?: AgentToolName;
   planningDirective: AgentPlanningDirective;
   rationale: 'override' | 'llm';
 }
@@ -1374,10 +1373,7 @@ export class AgentService {
         needsModelInput: !modelInput && !workingSession.latestModel,
       });
     }
-    nextPlan = {
-      ...nextPlan,
-      toolId: skillDrivenToolDecision.toolId,
-    };
+    const selectedToolId = skillDrivenToolDecision.toolId;
     plan.push(skillDrivenToolDecision.reason);
 
     const executableModel = await this.ensureExecutableModel({
@@ -1396,7 +1392,7 @@ export class AgentService {
       workingSession,
       modelInput,
       hadExistingSession,
-      nextPlan,
+      selectedToolId,
       prefetchedDraft,
     });
     if (!executableModel.ok) {
@@ -2065,7 +2061,7 @@ export class AgentService {
     workingSession: InteractionSession;
     modelInput?: Record<string, unknown>;
     hadExistingSession: boolean;
-    nextPlan: AgentNextStepPlan;
+    selectedToolId: AgentToolName;
     prefetchedDraft?: SkillFirstDraftSnapshot;
   }): Promise<
     | { ok: true; model: Record<string, unknown> }
@@ -2087,11 +2083,11 @@ export class AgentService {
       workingSession,
       modelInput,
       hadExistingSession,
-      nextPlan,
+      selectedToolId,
       prefetchedDraft,
     } = args;
 
-    if (nextPlan.toolId === 'update_model') {
+    if (selectedToolId === 'update_model') {
       return this.updateExecutableModel({
         params,
         traceId,
@@ -2111,7 +2107,7 @@ export class AgentService {
     }
 
     const candidateModel = modelInput || prefetchedDraft?.draft.model || workingSession.latestModel;
-    if (candidateModel && nextPlan.toolId !== 'draft_model') {
+    if (candidateModel && selectedToolId !== 'draft_model') {
       return { ok: true, model: candidateModel };
     }
 

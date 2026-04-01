@@ -2476,6 +2476,7 @@ describe('AgentService orchestration', () => {
         const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
         if (text.includes('Return strict JSON only')) {
           expect(text).toContain('User message: 好的，现在荷载改成每层都是水平x方向10kN');
+          expect(text).not.toContain('"toolId"');
           return {
             content: JSON.stringify({
               kind: 'tool_call',
