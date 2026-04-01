@@ -142,7 +142,11 @@ function resolveToolLabel(tool: CapabilityToolSummary, locale: AppLocale) {
     .join(' ')
 }
 
-function resolveCallableTools(matrix: CapabilityMatrixPayload | null, selectedSkillIds: string[]) {
+function resolveCallableTools(
+  matrix: CapabilityMatrixPayload | null,
+  selectedSkillIds: string[],
+  skillDomainById: Record<string, SkillDomain>,
+) {
   const matrixTools = Array.isArray(matrix?.tools) ? matrix.tools : []
   const foundationToolIds = new Set(Array.isArray(matrix?.foundationToolIds) ? matrix.foundationToolIds : [])
   const enabledToolIdsBySkill = matrix?.enabledToolIdsBySkill && typeof matrix.enabledToolIdsBySkill === 'object'
@@ -153,6 +157,9 @@ function resolveCallableTools(matrix: CapabilityMatrixPayload | null, selectedSk
   selectedSkillIds.forEach((skillId) => {
     const toolIds = enabledToolIdsBySkill[skillId]
     if (!Array.isArray(toolIds)) {
+      if (skillDomainById[skillId] === 'structure-type') {
+        callableToolIds.add('validate_model')
+      }
       return
     }
     toolIds.forEach((toolId) => {
@@ -160,6 +167,9 @@ function resolveCallableTools(matrix: CapabilityMatrixPayload | null, selectedSk
         callableToolIds.add(toolId)
       }
     })
+    if (skillDomainById[skillId] === 'structure-type') {
+      callableToolIds.add('validate_model')
+    }
   })
 
   const toolById = new Map(matrixTools.map((tool) => [tool.id, tool]))
@@ -183,32 +193,6 @@ function resolveCallableTools(matrix: CapabilityMatrixPayload | null, selectedSk
   }
 
   return matrixTools.filter((tool) => callableToolIds.has(tool.id))
-}
-
-function normalizeSelectedToolIds(selectedToolIds: string[], availableTools: CapabilityToolSummary[]) {
-  const availableToolMap = new Map(availableTools.map((tool) => [tool.id, tool]))
-  const normalized = new Set(selectedToolIds.filter((toolId) => availableToolMap.has(toolId)))
-  const queue = [...normalized]
-
-  while (queue.length > 0) {
-    const toolId = queue.shift()
-    if (!toolId) {
-      continue
-    }
-    const tool = availableToolMap.get(toolId)
-    if (!tool || !Array.isArray(tool.requiresTools)) {
-      continue
-    }
-    tool.requiresTools.forEach((requiredToolId) => {
-      if (!availableToolMap.has(requiredToolId) || normalized.has(requiredToolId)) {
-        return
-      }
-      normalized.add(requiredToolId)
-      queue.push(requiredToolId)
-    })
-  }
-
-  return Array.from(normalized)
 }
 
 export function CapabilitySettingsPanel() {
@@ -244,9 +228,9 @@ export function CapabilitySettingsPanel() {
   }, [availableSkills, capabilityMatrix])
 
   const availableTools = useMemo(() => {
-    return [...resolveCallableTools(capabilityMatrix, selectedSkillIds)]
+    return [...resolveCallableTools(capabilityMatrix, selectedSkillIds, skillDomainById)]
       .sort((a, b) => resolveToolLabel(a, locale).localeCompare(resolveToolLabel(b, locale)))
-  }, [capabilityMatrix, locale, selectedSkillIds])
+  }, [capabilityMatrix, locale, selectedSkillIds, skillDomainById])
 
   const defaultSelectedSkillIds = useMemo(() => {
     const available = new Set(availableSkills.map((skill) => skill.id))
@@ -320,30 +304,17 @@ export function CapabilitySettingsPanel() {
     }
     const stored = loadCapabilityPreferences()
     if (stored) {
-      const resolvedTools = resolveCallableTools(capabilityMatrix, stored.skillIds)
+      const resolvedTools = resolveCallableTools(capabilityMatrix, stored.skillIds, skillDomainById)
       const validSkillIds = stored.skillIds.filter((skillId) => availableSkills.some((skill) => skill.id === skillId))
       const validToolIds = stored.toolIds.filter((toolId) => resolvedTools.some((tool) => tool.id === toolId))
       setSelectedSkillIds(validSkillIds)
-      setSelectedToolIds(normalizeSelectedToolIds(validToolIds, resolvedTools))
+      setSelectedToolIds(validToolIds)
     } else {
       setSelectedSkillIds(defaultSelectedSkillIds)
-      setSelectedToolIds(normalizeSelectedToolIds(defaultSelectedToolIds, availableTools))
+      setSelectedToolIds(defaultSelectedToolIds)
     }
     preferencesHydratedRef.current = true
-  }, [availableSkills, availableTools, capabilityMatrixLoaded, defaultSelectedSkillIds, defaultSelectedToolIds, skillsLoaded])
-
-  useEffect(() => {
-    if (!preferencesHydratedRef.current) {
-      return
-    }
-    setSelectedToolIds((current) => {
-      const normalized = normalizeSelectedToolIds(current, availableTools)
-      if (normalized.length === current.length && normalized.every((toolId) => current.includes(toolId))) {
-        return current
-      }
-      return normalized
-    })
-  }, [availableTools])
+  }, [availableSkills, availableTools, capabilityMatrixLoaded, defaultSelectedSkillIds, defaultSelectedToolIds, skillDomainById, skillsLoaded])
 
   useEffect(() => {
     if (!preferencesHydratedRef.current) {
@@ -443,22 +414,20 @@ export function CapabilitySettingsPanel() {
   }
 
   function toggleTool(toolId: string) {
-    setSelectedToolIds((current) => {
-      const next = current.includes(toolId)
+    setSelectedToolIds((current) => (
+      current.includes(toolId)
         ? current.filter((item) => item !== toolId)
         : [...current, toolId]
-      return normalizeSelectedToolIds(next, availableTools)
-    })
+    ))
   }
 
   function toggleToolCategory(toolIds: string[]) {
     if (toolIds.length === 0) return
     setSelectedToolIds((current) => {
       const allSelected = toolIds.every((toolId) => current.includes(toolId))
-      const next = allSelected
+      return allSelected
         ? current.filter((toolId) => !toolIds.includes(toolId))
         : Array.from(new Set([...current, ...toolIds]))
-      return normalizeSelectedToolIds(next, availableTools)
     })
   }
 

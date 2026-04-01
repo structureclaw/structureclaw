@@ -263,7 +263,11 @@ type CapabilityMatrixPayload = {
   filteredEngineReasonsBySkill?: Record<string, Record<string, string[]>>
 }
 
-function resolveCallableTools(matrix: CapabilityMatrixPayload | null, selectedSkillIds: string[]) {
+function resolveCallableTools(
+  matrix: CapabilityMatrixPayload | null,
+  selectedSkillIds: string[],
+  skillDomainById: Record<string, SkillDomain>,
+) {
   const matrixTools = Array.isArray(matrix?.tools) ? matrix.tools : []
   const foundationToolIds = new Set(Array.isArray(matrix?.foundationToolIds) ? matrix.foundationToolIds : [])
   const enabledToolIdsBySkill = matrix?.enabledToolIdsBySkill && typeof matrix.enabledToolIdsBySkill === 'object'
@@ -274,6 +278,9 @@ function resolveCallableTools(matrix: CapabilityMatrixPayload | null, selectedSk
   selectedSkillIds.forEach((skillId) => {
     const toolIds = enabledToolIdsBySkill[skillId]
     if (!Array.isArray(toolIds)) {
+      if (skillDomainById[skillId] === 'structure-type') {
+        callableToolIds.add('validate_model')
+      }
       return
     }
     toolIds.forEach((toolId) => {
@@ -281,6 +288,9 @@ function resolveCallableTools(matrix: CapabilityMatrixPayload | null, selectedSk
         callableToolIds.add(toolId)
       }
     })
+    if (skillDomainById[skillId] === 'structure-type') {
+      callableToolIds.add('validate_model')
+    }
   })
 
   const toolById = new Map(matrixTools.map((tool) => [tool.id, tool]))
@@ -304,32 +314,6 @@ function resolveCallableTools(matrix: CapabilityMatrixPayload | null, selectedSk
   }
 
   return matrixTools.filter((tool) => callableToolIds.has(tool.id))
-}
-
-function normalizeSelectedToolIds(selectedToolIds: string[], availableTools: CapabilityToolSummary[]) {
-  const availableToolMap = new Map(availableTools.map((tool) => [tool.id, tool]))
-  const normalized = new Set(selectedToolIds.filter((toolId) => availableToolMap.has(toolId)))
-  const queue = [...normalized]
-
-  while (queue.length > 0) {
-    const toolId = queue.shift()
-    if (!toolId) {
-      continue
-    }
-    const tool = availableToolMap.get(toolId)
-    if (!tool || !Array.isArray(tool.requiresTools)) {
-      continue
-    }
-    tool.requiresTools.forEach((requiredToolId) => {
-      if (!availableToolMap.has(requiredToolId) || normalized.has(requiredToolId)) {
-        return
-      }
-      normalized.add(requiredToolId)
-      queue.push(requiredToolId)
-    })
-  }
-
-  return Array.from(normalized)
 }
 
 function normalizeSkillDomain(value: unknown): SkillDomain {
@@ -1365,12 +1349,12 @@ export function AIConsole() {
   }, [availableSkills])
 
   const availableTools = useMemo(() => {
-    return [...resolveCallableTools(capabilityMatrix, selectedSkillIds)].sort((a, b) => {
+    return [...resolveCallableTools(capabilityMatrix, selectedSkillIds, skillDomainById)].sort((a, b) => {
       const left = resolveToolLabel(a, locale)
       const right = resolveToolLabel(b, locale)
       return left.localeCompare(right)
     })
-  }, [capabilityMatrix, locale, selectedSkillIds])
+  }, [capabilityMatrix, locale, selectedSkillIds, skillDomainById])
 
   const loadedModules = useMemo(() => {
     return availableSkills
@@ -1541,34 +1525,18 @@ export function AIConsole() {
 
     const storedPreferences = loadCapabilityPreferences()
     if (storedPreferences) {
-      const resolvedTools = resolveCallableTools(capabilityMatrix, storedPreferences.skillIds)
+      const resolvedTools = resolveCallableTools(capabilityMatrix, storedPreferences.skillIds, skillDomainById)
       setSelectedSkillIds(storedPreferences.skillIds.filter((skillId) => availableSkills.some((skill) => skill.id === skillId)))
-      setSelectedToolIds(normalizeSelectedToolIds(
-        storedPreferences.toolIds.filter((toolId) => resolvedTools.some((tool) => tool.id === toolId)),
-        resolvedTools,
-      ))
+      setSelectedToolIds(storedPreferences.toolIds.filter((toolId) => resolvedTools.some((tool) => tool.id === toolId)))
     } else {
       setSelectedSkillIds(defaultSelectedSkillIds)
-      setSelectedToolIds(normalizeSelectedToolIds(defaultSelectedToolIds, availableTools))
+      setSelectedToolIds(defaultSelectedToolIds)
     }
 
     setHasExplicitSkillSelection(true)
     setHasExplicitToolSelection(true)
     capabilityPreferencesHydratedRef.current = true
-  }, [availableSkills, availableTools, capabilityMatrixLoaded, defaultSelectedSkillIds, defaultSelectedToolIds, skillsLoaded])
-
-  useEffect(() => {
-    if (!capabilityPreferencesHydratedRef.current) {
-      return
-    }
-    setSelectedToolIds((current) => {
-      const normalized = normalizeSelectedToolIds(current, availableTools)
-      if (normalized.length === current.length && normalized.every((toolId) => current.includes(toolId))) {
-        return current
-      }
-      return normalized
-    })
-  }, [availableTools])
+  }, [availableSkills, availableTools, capabilityMatrixLoaded, defaultSelectedSkillIds, defaultSelectedToolIds, skillDomainById, skillsLoaded])
 
   useEffect(() => {
     let active = true
