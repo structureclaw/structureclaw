@@ -1,11 +1,9 @@
 import type { ToolManifest } from '../../agent-runtime/types.js';
-import { buildCodeCheckInput, executeCodeCheckDomain } from '../../agent-skills/code-check/entry.js';
 import type { AppLocale } from '../../services/locale.js';
 import type { AgentRunResult, AgentToolCall, AgentToolName } from '../../services/agent.js';
 import { localize } from './shared.js';
 
 export async function executeRunCodeCheck(args: {
-  codeCheckClient: unknown;
   traceId: string;
   designCode: string;
   model: Record<string, unknown>;
@@ -13,20 +11,9 @@ export async function executeRunCodeCheck(args: {
   analysisParameters: Record<string, unknown>;
   codeCheckElements?: string[];
   engineId?: string;
+  runCodeCheck: () => Promise<{ input: Record<string, unknown>; result: unknown }>;
 }): Promise<{ input: Record<string, unknown>; result: unknown }> {
-  const input = buildCodeCheckInput({
-    traceId: args.traceId,
-    designCode: args.designCode,
-    model: args.model,
-    analysis: args.analysis,
-    analysisParameters: args.analysisParameters,
-    codeCheckElements: args.codeCheckElements,
-  });
-  const result = await executeCodeCheckDomain(args.codeCheckClient as any, input, args.engineId);
-  return {
-    input,
-    result,
-  };
+  return args.runCodeCheck();
 }
 
 export async function executeRunCodeCheckStep(args: {
@@ -38,7 +25,6 @@ export async function executeRunCodeCheckStep(args: {
   completeToolCallSuccess: (call: AgentToolCall, output?: unknown) => void;
   completeToolCallError: (call: AgentToolCall, error: unknown) => void;
   buildBlockedResult: (response: string) => Promise<AgentRunResult>;
-  codeCheckClient: unknown;
   traceId: string;
   designCode: string;
   model: Record<string, unknown>;
@@ -46,6 +32,7 @@ export async function executeRunCodeCheckStep(args: {
   analysisParameters: Record<string, unknown>;
   codeCheckElements?: string[];
   engineId?: string;
+  runCodeCheck: () => Promise<{ input: Record<string, unknown>; result: unknown }>;
 }): Promise<{ ok: true; value: unknown } | { ok: false; result: AgentRunResult }> {
   args.plan.push(args.localize(args.locale, `执行 ${args.designCode} 规范校核`, `Run ${args.designCode} code checks`));
   const codeCheckCall = args.startToolCall('run_code_check', {
@@ -60,7 +47,6 @@ export async function executeRunCodeCheckStep(args: {
 
   try {
     const codeCheckExecution = await executeRunCodeCheck({
-      codeCheckClient: args.codeCheckClient,
       traceId: args.traceId,
       designCode: args.designCode,
       model: args.model,
@@ -68,6 +54,7 @@ export async function executeRunCodeCheckStep(args: {
       analysisParameters: args.analysisParameters,
       codeCheckElements: args.codeCheckElements,
       engineId: args.engineId,
+      runCodeCheck: args.runCodeCheck,
     });
     codeCheckCall.input = codeCheckExecution.input;
     const codeChecked = codeCheckExecution.result;

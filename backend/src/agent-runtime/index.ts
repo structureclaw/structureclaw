@@ -1,5 +1,19 @@
 import { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from '../services/locale.js';
+import {
+  buildCodeCheckInput,
+  executeCodeCheckDomain,
+  listCodeCheckRuleProviders,
+  resolveCodeCheckDesignCodeFromSkillIds,
+  resolveCodeCheckSkillIdForDesignCode,
+} from '../agent-skills/code-check/entry.js';
+import {
+  getBuiltinAnalysisSkill,
+  listBuiltinAnalysisSkills,
+  resolvePreferredBuiltinAnalysisSkill,
+} from '../agent-skills/analysis/entry.js';
+import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
+import type { CodeCheckClient } from '../agent-skills/code-check/rule.js';
 import { AgentSkillRegistry } from './registry.js';
 import { AgentSkillExecutor } from './executor.js';
 import { listBuiltinToolManifests, resolveToolingForSkillManifests } from './tool-registry.js';
@@ -76,6 +90,149 @@ export class AgentSkillRuntime {
   async resolveSkillTooling(skillIds?: string[]) {
     const manifests = await this.listSkillManifests();
     return resolveToolingForSkillManifests(manifests, skillIds);
+  }
+
+  listAnalysisSkillIds(): string[] {
+    return listBuiltinAnalysisSkills().map((skill) => skill.id);
+  }
+
+  listCodeCheckSkillIds(): string[] {
+    return listCodeCheckRuleProviders().map((provider) => provider.id);
+  }
+
+  isAnalysisSkillId(skillId: string | undefined): boolean {
+    return typeof skillId === 'string' && this.listAnalysisSkillIds().includes(skillId);
+  }
+
+  isCodeCheckSkillId(skillId: string | undefined): boolean {
+    return typeof skillId === 'string' && this.listCodeCheckSkillIds().includes(skillId);
+  }
+
+  resolveCodeCheckDesignCodeFromSkillIds(skillIds?: string[]): string | undefined {
+    return resolveCodeCheckDesignCodeFromSkillIds(skillIds);
+  }
+
+  resolveCodeCheckSkillId(designCode: string | undefined): string | undefined {
+    return resolveCodeCheckSkillIdForDesignCode(designCode);
+  }
+
+  resolvePreferredAnalysisSkill(options?: {
+    analysisType?: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+    engineId?: string;
+    skillIds?: string[];
+    supportedModelFamilies?: string[];
+  }) {
+    return resolvePreferredBuiltinAnalysisSkill(options);
+  }
+
+  async executeAnalysisSkill(options: {
+    traceId: string;
+    analysisType: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+    engineId?: string;
+    model: Record<string, unknown>;
+    parameters: Record<string, unknown>;
+    analysisSkillId?: string;
+    skillIds?: string[];
+    supportedModelFamilies?: string[];
+    postToEngineWithRetry: (
+      path: string,
+      input: Record<string, unknown>,
+      retryOptions: { retries: number; traceId: string; tool: 'run_analysis' },
+    ) => Promise<{ data: unknown }>;
+  }): Promise<{
+    input: {
+      type: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+      engineId?: string;
+      model: Record<string, unknown>;
+      parameters: Record<string, unknown>;
+    };
+    result: Record<string, unknown>;
+    skillId?: string;
+  }> {
+    const selectedSkill = (typeof options.analysisSkillId === 'string' && options.analysisSkillId.trim().length > 0)
+      ? getBuiltinAnalysisSkill(options.analysisSkillId)
+      : resolvePreferredBuiltinAnalysisSkill({
+        analysisType: options.analysisType,
+        engineId: options.engineId,
+        skillIds: options.skillIds,
+        supportedModelFamilies: options.supportedModelFamilies,
+      });
+
+    const input = {
+      type: options.analysisType,
+      engineId: options.engineId,
+      model: options.model,
+      parameters: options.parameters,
+    };
+    const analyzed = await options.postToEngineWithRetry('/analyze', input, {
+      retries: 2,
+      traceId: options.traceId,
+      tool: 'run_analysis',
+    });
+    const result = (analyzed?.data ?? {}) as Record<string, unknown>;
+    const existingMeta = result.meta && typeof result.meta === 'object'
+      ? result.meta as Record<string, unknown>
+      : {};
+    if (selectedSkill) {
+      result.meta = {
+        ...existingMeta,
+        analysisSkillId: selectedSkill.id,
+        analysisSkillIds: [selectedSkill.id],
+        analysisAdapterKey: selectedSkill.adapterKey,
+        analysisType: options.analysisType,
+      };
+    } else if (result.meta === undefined && Object.keys(existingMeta).length > 0) {
+      result.meta = existingMeta;
+    }
+    return {
+      input,
+      result,
+      skillId: selectedSkill?.id,
+    };
+  }
+
+  async executeCodeCheckSkill(options: {
+    codeCheckClient: CodeCheckClient | unknown;
+    traceId: string;
+    designCode: string;
+    model: Record<string, unknown>;
+    analysis: unknown;
+    analysisParameters: Record<string, unknown>;
+    codeCheckElements?: string[];
+    engineId?: string;
+    codeCheckSkillId?: string;
+  }): Promise<{
+    input: Record<string, unknown>;
+    result: unknown;
+    skillId?: string;
+  }> {
+    const skillId = (typeof options.codeCheckSkillId === 'string' && options.codeCheckSkillId.trim().length > 0)
+      ? options.codeCheckSkillId
+      : resolveCodeCheckSkillIdForDesignCode(options.designCode);
+    const input = buildCodeCheckInput({
+      traceId: options.traceId,
+      designCode: options.designCode,
+      model: options.model,
+      analysis: options.analysis,
+      analysisParameters: options.analysisParameters,
+      codeCheckElements: options.codeCheckElements,
+    });
+    const result = await executeCodeCheckDomain(options.codeCheckClient as CodeCheckClient, input, options.engineId);
+    if (result && typeof result === 'object' && skillId) {
+      const payload = result as Record<string, unknown>;
+      const existingMeta = payload.meta && typeof payload.meta === 'object'
+        ? payload.meta as Record<string, unknown>
+        : {};
+      payload.meta = {
+        ...existingMeta,
+        codeCheckSkillId: skillId,
+      };
+    }
+    return {
+      input,
+      result,
+      skillId,
+    };
   }
 
   async detectStructuralType(message: string, locale: AppLocale, currentState?: DraftState, skillIds?: string[]): Promise<StructuralTypeMatch> {

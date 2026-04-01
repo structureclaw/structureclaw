@@ -212,6 +212,8 @@ describe('AgentService orchestration', () => {
     expect(result.toolCalls.find((c) => c.tool === 'run_analysis')?.authorizedBySkillIds).toEqual(['opensees-static']);
     expect(result.toolCalls.find((c) => c.tool === 'run_code_check')?.authorizedBySkillIds).toEqual(['code-check-gb50017']);
     expect(result.toolCalls.find((c) => c.tool === 'generate_report')?.authorizedBySkillIds).toEqual(['report-export-builtin']);
+    expect(result.analysis?.meta?.analysisSkillId).toBe('opensees-static');
+    expect(result.codeCheck?.meta?.codeCheckSkillId).toBe('code-check-gb50017');
     expect(result.codeCheck?.code).toBe('GB50017');
     expect(typeof result.report?.markdown).toBe('string');
   });
@@ -245,6 +247,7 @@ describe('AgentService orchestration', () => {
     expect(result.routing?.analysisSkillIds).toEqual(['opensees-static']);
     expect(result.routing?.activatedSkillIds?.filter((skillId) => skillId.endsWith('-static'))).toEqual(['opensees-static']);
     expect(result.toolCalls.find((c) => c.tool === 'run_analysis')?.authorizedBySkillIds).toEqual(['opensees-static']);
+    expect(result.analysis?.meta?.analysisSkillId).toBe('opensees-static');
   });
 
   test('should honor engineId when selecting the preferred analysis skill', async () => {
@@ -276,6 +279,7 @@ describe('AgentService orchestration', () => {
     expect(result.routing?.analysisSkillId).toBe('simplified-static');
     expect(result.routing?.analysisSkillIds).toEqual(['simplified-static']);
     expect(result.toolCalls.find((c) => c.tool === 'run_analysis')?.authorizedBySkillIds).toEqual(['simplified-static']);
+    expect(result.analysis?.meta?.analysisSkillId).toBe('simplified-static');
   });
 
   test('should not run code-check when structural execution is enabled without a code-check skill or designCode', async () => {

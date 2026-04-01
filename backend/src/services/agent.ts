@@ -19,9 +19,6 @@ import {
 } from '../agent-runtime/index.js';
 import {
   buildCodeCheckSummaryText,
-  listCodeCheckRuleProviders,
-  resolveCodeCheckDesignCodeFromSkillIds,
-  resolveCodeCheckSkillIdForDesignCode,
 } from '../agent-skills/code-check/entry.js';
 import {
   inferCodeCheckIntent,
@@ -35,10 +32,6 @@ import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.
 import { createLocalAnalysisEngineClient } from './analysis-execution.js';
 import { createLocalCodeCheckClient } from './code-check-execution.js';
 import { createLocalStructureProtocolClient } from './structure-protocol-execution.js';
-import {
-  listBuiltinAnalysisSkills,
-  resolvePreferredBuiltinAnalysisSkill,
-} from '../agent-skills/analysis/entry.js';
 import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
 import { listBuiltinToolManifests } from '../agent-runtime/tool-registry.js';
 import type { ToolManifest } from '../agent-runtime/types.js';
@@ -845,14 +838,14 @@ export class AgentService {
     const explicitDesignCode = args.workingSession.resolved?.designCode
       || args.context?.designCode
       || this.policy.inferDesignCode(args.message);
-    const designCode = explicitDesignCode || resolveCodeCheckDesignCodeFromSkillIds(selectedSkillIds);
+    const designCode = explicitDesignCode || this.skillRuntime.resolveCodeCheckDesignCodeFromSkillIds(selectedSkillIds);
     const shouldActivateValidation = hasStructuralContext || hasExecutionIntent || inferCodeCheckIntent(this.policy, args.message) || inferReportIntent(this.policy, args.message) === true;
     if (shouldActivateValidation) {
       activatedSkillIds.add('validation-structure-model');
     }
 
     if (hasStructuralContext || hasExecutionIntent || args.context?.autoAnalyze === true) {
-      const preferredAnalysisSkill = resolvePreferredBuiltinAnalysisSkill({
+      const preferredAnalysisSkill = this.skillRuntime.resolvePreferredAnalysisSkill({
         analysisType,
         engineId: args.context?.engineId,
         skillIds: selectedSkillIds,
@@ -873,7 +866,7 @@ export class AgentService {
       ?? true
     );
     if (shouldActivateCodeCheck) {
-      const codeCheckSkillId = resolveCodeCheckSkillIdForDesignCode(designCode);
+      const codeCheckSkillId = this.skillRuntime.resolveCodeCheckSkillId(designCode);
       if (codeCheckSkillId) {
         activatedSkillIds.add(codeCheckSkillId);
       }
@@ -2290,7 +2283,7 @@ export class AgentService {
     params: AgentRunInput,
     skillIds?: string[],
   ): ResolvedExecutionConfig {
-    const codeFromSkills = resolveCodeCheckDesignCodeFromSkillIds(skillIds);
+    const codeFromSkills = this.skillRuntime.resolveCodeCheckDesignCodeFromSkillIds(skillIds);
     return {
       analysisType: workingSession.resolved?.analysisType || params.context?.analysisType || inferAnalysisType(this.policy, params.message),
       designCode: workingSession.resolved?.designCode || params.context?.designCode || codeFromSkills,
@@ -2797,7 +2790,32 @@ export class AgentService {
       completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
       completeToolCallError: this.completeToolCallError.bind(this),
       shouldRetryEngineCall: this.shouldRetryEngineCall.bind(this),
-      postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
+      runAnalysis: async (input) => {
+        const analysisSkillId = this.skillRuntime.resolvePreferredAnalysisSkill({
+          analysisType: executionConfig.analysisType,
+          engineId: input.engineId,
+          skillIds: activeSkillIds ?? skillIds,
+          supportedModelFamilies: this.resolvePreferredAnalysisModelFamilies({
+            workingSession,
+            modelInput: normalizedModel,
+          }),
+        })?.id;
+        const execution = await this.skillRuntime.executeAnalysisSkill({
+          traceId,
+          analysisType: executionConfig.analysisType,
+          engineId: input.engineId,
+          model: input.model,
+          parameters: input.parameters,
+          analysisSkillId,
+          skillIds: activeSkillIds ?? skillIds,
+          supportedModelFamilies: this.resolvePreferredAnalysisModelFamilies({
+            workingSession,
+            modelInput: normalizedModel,
+          }),
+          postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
+        });
+        return execution.result;
+      },
       buildBlockedResult: async (response) => this.finalizeBlockedRunResult({
         params,
         traceId,
@@ -2849,6 +2867,7 @@ export class AgentService {
     if (!analysisSuccess || !executionConfig.autoCodeCheck || !executionConfig.designCode || !this.hasActiveTool(activeToolIds, 'run_code_check')) {
       return { ok: true, value: undefined };
     }
+    const designCode = executionConfig.designCode;
 
     return executeRunCodeCheckStep({
       locale,
@@ -2858,14 +2877,24 @@ export class AgentService {
       startToolCall: this.startToolCall.bind(this),
       completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
       completeToolCallError: this.completeToolCallError.bind(this),
-      codeCheckClient: this.codeCheckClient,
       traceId,
-      designCode: executionConfig.designCode,
+      designCode,
       model: normalizedModel,
       analysis: analyzed,
       analysisParameters,
       codeCheckElements: params.context?.codeCheckElements,
       engineId: params.context?.engineId,
+      runCodeCheck: async () => this.skillRuntime.executeCodeCheckSkill({
+        codeCheckClient: this.codeCheckClient,
+        traceId,
+        designCode,
+        model: normalizedModel,
+        analysis: analyzed,
+        analysisParameters,
+        codeCheckElements: params.context?.codeCheckElements,
+        engineId: params.context?.engineId,
+        codeCheckSkillId: this.skillRuntime.resolveCodeCheckSkillId(designCode),
+      }),
       buildBlockedResult: async (response) => this.finalizeBlockedRunResult({
         params,
         traceId,
@@ -3932,7 +3961,7 @@ export class AgentService {
     }
     if (context.autoCodeCheck !== undefined) {
       session.resolved.autoCodeCheck = context.autoCodeCheck;
-    } else if (resolveCodeCheckDesignCodeFromSkillIds(context.skillIds)) {
+    } else if (this.skillRuntime.resolveCodeCheckDesignCodeFromSkillIds(context.skillIds)) {
       session.resolved.autoCodeCheck = true;
     }
     if (context.includeReport !== undefined) {
@@ -4692,10 +4721,8 @@ export class AgentService {
     const selectedSkillIds = this.normalizeSkillIds(skillIds);
     const activatedSkillIds = this.normalizeSkillIds(activeSkillIds);
     const activeSkillSet = new Set(activatedSkillIds);
-    const builtinAnalysisSkillIds = new Set(listBuiltinAnalysisSkills().map((skill) => skill.id));
-    const builtinCodeCheckSkillIds = new Set(listCodeCheckRuleProviders().map((provider) => provider.id));
-    const activeAnalysisSkillIds = activatedSkillIds.filter((skillId) => builtinAnalysisSkillIds.has(skillId));
-    const activeCodeCheckSkillIds = activatedSkillIds.filter((skillId) => builtinCodeCheckSkillIds.has(skillId));
+    const activeAnalysisSkillIds = activatedSkillIds.filter((skillId) => this.skillRuntime.isAnalysisSkillId(skillId));
+    const activeCodeCheckSkillIds = activatedSkillIds.filter((skillId) => this.skillRuntime.isCodeCheckSkillId(skillId));
 
     const routing: AgentResolvedRouting = {
       selectedSkillIds,
@@ -4715,6 +4742,12 @@ export class AgentService {
     const analysisMeta = analysisRecord?.meta && typeof analysisRecord.meta === 'object'
       ? analysisRecord.meta as Record<string, unknown>
       : undefined;
+    const codeCheckRecord = result.codeCheck && typeof result.codeCheck === 'object'
+      ? result.codeCheck as Record<string, unknown>
+      : undefined;
+    const codeCheckMeta = codeCheckRecord?.meta && typeof codeCheckRecord.meta === 'object'
+      ? codeCheckRecord.meta as Record<string, unknown>
+      : undefined;
 
     if (typeof analysisMeta?.analysisSkillId === 'string' && analysisMeta.analysisSkillId.trim().length > 0) {
       routing.analysisSkillId = analysisMeta.analysisSkillId;
@@ -4729,8 +4762,11 @@ export class AgentService {
     if ((!routing.analysisSkillIds || routing.analysisSkillIds.length === 0) && activeAnalysisSkillIds.length > 0) {
       routing.analysisSkillIds = activeAnalysisSkillIds;
     }
+    if (typeof codeCheckMeta?.codeCheckSkillId === 'string' && codeCheckMeta.codeCheckSkillId.trim().length > 0) {
+      routing.codeCheckSkillId = codeCheckMeta.codeCheckSkillId;
+    }
     if (activeCodeCheckSkillIds.length > 0) {
-      routing.codeCheckSkillId = activeCodeCheckSkillIds[0];
+      routing.codeCheckSkillId = routing.codeCheckSkillId || activeCodeCheckSkillIds[0];
     }
     if (activeSkillSet.has('validation-structure-model')) {
       routing.validationSkillId = 'validation-structure-model';

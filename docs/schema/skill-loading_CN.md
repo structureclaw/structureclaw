@@ -86,6 +86,8 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 - `code-check` 域按 `designCode` 选出一个对应的规范 skill。
 - `validation` 和 `report-export` 由当前上下文按需激活内置 domain manifest。
 
+当前实现里，`analysis` 与 `code-check` 的实际执行入口也已经通过 `AgentSkillRuntime` 统一封装：Agent 不再直接拼接各域 registry 细节，而是通过 runtime 选择 skill、执行 domain、并把选中的 skill id 回写到结果 `meta` 与 tool trace。
+
 ## 3. 外部 / SkillHub 技能打包与加载
 
 ### 3.1 包元数据

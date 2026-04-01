@@ -3,30 +3,18 @@ import type { AppLocale } from '../../services/locale.js';
 import type { AgentRunResult, AgentToolCall, AgentToolName } from '../../services/agent.js';
 import { localize } from './shared.js';
 
-type PostToEngineWithRetry = (
-  path: string,
-  input: Record<string, unknown>,
-  options: { retries: number; traceId: string; tool: 'run_analysis' },
-) => Promise<{ data: any }>;
-
 export async function executeRunAnalysis(
-  postToEngineWithRetry: PostToEngineWithRetry,
   args: {
-    traceId: string;
     input: {
       type: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
       engineId?: string;
       model: Record<string, unknown>;
       parameters: Record<string, unknown>;
     };
+    runAnalysis: () => Promise<Record<string, unknown>>;
   },
 ): Promise<Record<string, unknown>> {
-  const analyzed = await postToEngineWithRetry('/analyze', args.input, {
-    retries: 2,
-    traceId: args.traceId,
-    tool: 'run_analysis',
-  });
-  return (analyzed?.data ?? {}) as Record<string, unknown>;
+  return args.runAnalysis();
 }
 
 export async function executeRunAnalysisStep(args: {
@@ -44,7 +32,12 @@ export async function executeRunAnalysisStep(args: {
   completeToolCallError: (call: AgentToolCall, error: unknown) => void;
   shouldRetryEngineCall: (error: unknown) => boolean;
   buildBlockedResult: (response: string) => Promise<AgentRunResult>;
-  postToEngineWithRetry: PostToEngineWithRetry;
+  runAnalysis: (input: {
+    type: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+    engineId?: string;
+    model: Record<string, unknown>;
+    parameters: Record<string, unknown>;
+  }) => Promise<Record<string, unknown>>;
 }): Promise<{ ok: true; data: Record<string, unknown> } | { ok: false; result: AgentRunResult }> {
   args.plan.push(args.localize(args.locale, `执行 ${args.analysisType} 分析并返回摘要`, `Run ${args.analysisType} analysis and return a summary`));
   const analyzeInput = {
@@ -57,9 +50,9 @@ export async function executeRunAnalysisStep(args: {
   args.toolCalls.push(analyzeCall);
 
   try {
-    const analyzed = await executeRunAnalysis(args.postToEngineWithRetry, {
-      traceId: args.traceId,
+    const analyzed = await executeRunAnalysis({
       input: analyzeInput,
+      runAnalysis: () => args.runAnalysis(analyzeInput),
     });
     args.completeToolCallSuccess(analyzeCall, analyzed);
     return { ok: true, data: analyzed };
