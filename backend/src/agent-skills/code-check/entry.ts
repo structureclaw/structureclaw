@@ -6,7 +6,11 @@ import type { CodeCheckDomainInput } from './types.js';
 import type { CodeCheckClient } from './rule.js';
 
 export type { CodeCheckDomainInput } from './types.js';
-export { listCodeCheckRuleProviders, resolveCodeCheckDesignCodeFromSkillIds } from './registry.js';
+export {
+  listCodeCheckRuleProviders,
+  resolveCodeCheckDesignCodeFromSkillIds,
+  resolveCodeCheckSkillIdForDesignCode,
+} from './registry.js';
 
 export function extractElementIds(model: Record<string, unknown> | undefined): string[] {
   if (!model) {

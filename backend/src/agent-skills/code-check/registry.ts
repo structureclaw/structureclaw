@@ -111,3 +111,24 @@ export function resolveCodeCheckDesignCodeFromSkillIds(
 
   return undefined;
 }
+
+export function resolveCodeCheckSkillIdForDesignCode(
+  code: string | undefined,
+  options?: {
+    externalProviders?: CodeCheckRuleProvider[];
+  },
+): string | undefined {
+  if (typeof code !== 'string' || code.trim().length === 0) {
+    return undefined;
+  }
+
+  const normalized = code.trim().toUpperCase();
+  const providers = listCodeCheckRuleProviders(options);
+  for (const provider of providers) {
+    if (provider.rule.matches(normalized)) {
+      return provider.id;
+    }
+  }
+
+  return undefined;
+}

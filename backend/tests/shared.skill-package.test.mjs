@@ -21,7 +21,7 @@ describe('shared skill package metadata', () => {
       manifest: 'manifest',
       handler: 'handler',
     });
-    expect(pkg.enabledTools).toEqual([]);
+    expect(pkg.enabledTools).toEqual(['draft_model', 'update_model']);
     expect(pkg.providedTools).toEqual([]);
     expect(pkg.enabledByDefault).toBe(true);
     expect(pkg.priority).toBe(70);
@@ -164,17 +164,11 @@ describe('shared skill package metadata', () => {
 
     expect([...tooling.enabledToolIdsBySkill.generic].sort()).toEqual([
       'draft_model',
-      'generate_report',
-      'run_analysis',
       'update_model',
-      'validate_model',
     ]);
     expect([...tooling.tools.map((tool) => tool.id)].sort()).toEqual([
       'draft_model',
-      'generate_report',
-      'run_analysis',
       'update_model',
-      'validate_model',
     ]);
     expect(tooling.skillIdsByToolId.draft_model).toEqual(['generic']);
   });

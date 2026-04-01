@@ -73,6 +73,13 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 - `report-export`
 - `validation`
 
+当前内置 `structure-type` skill manifest 只直接授权建模相关 tool：
+
+- `draft_model`
+- `update_model`
+
+`validate_model`、`run_analysis`、`run_code_check`、`generate_report` 这些执行链 tool 不再由 `structure-type` manifest 直接放行，而是由本轮激活的下游 domain manifests 统一授权。
+
 ## 3. 外部 / SkillHub 技能打包与加载
 
 ### 3.1 包元数据

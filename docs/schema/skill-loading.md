@@ -73,6 +73,13 @@ In the current implementation, `AgentSkillRuntime.listSkillManifests()` exposes 
 - `report-export`
 - `validation`
 
+Builtin `structure-type` manifests now directly authorize modeling tools only:
+
+- `draft_model`
+- `update_model`
+
+Execution-chain tools such as `validate_model`, `run_analysis`, `run_code_check`, and `generate_report` are no longer granted directly by `structure-type` manifests. They are authorized through the downstream domain manifests activated for the current turn.
+
 ## 3. External / SkillHub Skill Packaging and Loading
 
 ### 3.1 Package Metadata

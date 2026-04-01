@@ -208,7 +208,7 @@ describe('AgentService orchestration', () => {
     expect(typeof result.report?.markdown).toBe('string');
   });
 
-  test('should not run code-check when no code-check skill or legacy designCode is provided', async () => {
+  test('should not run code-check when structural execution is enabled without a code-check skill or designCode', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     const calls = stubExecutionClients(svc, {
@@ -220,7 +220,7 @@ describe('AgentService orchestration', () => {
     const result = await svc.runForcedExecution({
       message: '请静力分析并规范校核',
       context: {
-        skillIds: [],
+        skillIds: ['beam'],
         model: {
           schema_version: '1.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
@@ -684,9 +684,10 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.needsModelInput).toBe(true);
-    expect(result.interaction?.state).toBe('confirming');
-    expect((result.interaction?.missingCritical || []).length).toBeGreaterThan(0);
+    expect(result.needsModelInput).toBe(false);
+    expect(result.interaction).toBeUndefined();
+    expect(typeof result.response).toBe('string');
+    expect(result.response).toContain('当前未启用工程技能');
     expect(result.model).toBeUndefined();
   });
 
@@ -703,8 +704,10 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.needsModelInput).toBe(true);
-    expect(result.interaction?.state).toBe('confirming');
+    expect(result.needsModelInput).toBe(false);
+    expect(result.interaction).toBeUndefined();
+    expect(typeof result.response).toBe('string');
+    expect(result.response).toContain('当前未启用工程技能');
     expect(result.model).toBeUndefined();
   });
 
@@ -1670,16 +1673,7 @@ describe('AgentService orchestration', () => {
 
     const snapshot = await svc.getConversationSessionSnapshot(conversationId, 'zh', []);
 
-    expect(snapshot?.draft.inferredType).toBe('unknown');
-    expect(snapshot?.draft.skillId).toBeUndefined();
-    expect(snapshot?.draft.structuralTypeKey).toBeUndefined();
-    expect(snapshot?.draft.supportLevel).toBeUndefined();
-    expect(snapshot?.draft.supportNote).toBeUndefined();
-    expect(snapshot?.draft.lengthM).toBeUndefined();
-    expect(snapshot?.draft.loadKN).toBeUndefined();
-    expect(snapshot?.draft.loadType).toBeUndefined();
-    expect(snapshot?.draft.loadPosition).toBeUndefined();
-    expect(snapshot?.draft.loadPositionM).toBeUndefined();
+    expect(snapshot).toBeUndefined();
 
     await svc.clearConversationSession(conversationId);
   });
@@ -1746,6 +1740,7 @@ describe('AgentService orchestration', () => {
     expect(draft.extractionMode).toBe('llm');
     expect(draft.model).toBeUndefined();
     expect(draft.missingFields.length).toBeGreaterThan(0);
+    expect(draft.stateToPersist?.inferredType).toBe('unknown');
   });
 
   test('should fallback to generic llm model when enabled skills cannot match request', async () => {
@@ -1842,7 +1837,7 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.bayCountY).toBe(3);
   });
 
-  test('should execute analyze with an empty skill set when a computable model is provided', async () => {
+  test('should block execution with an empty skill set even when a computable model is provided', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     stubExecutionClients(svc);
@@ -1873,8 +1868,9 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(result.success).toBe(true);
-    expect(result.toolCalls.some((item) => item.tool === 'run_analysis' && item.status === 'success')).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.toolCalls.some((item) => item.tool === 'run_analysis')).toBe(false);
+    expect(result.blockedReasonCode).toBe('NO_EXECUTABLE_TOOL');
   });
 
   test('should block execution with an empty skill set when a computable model is unavailable', async () => {

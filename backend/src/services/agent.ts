@@ -20,8 +20,10 @@ import {
 import {
   buildCodeCheckSummaryText,
   resolveCodeCheckDesignCodeFromSkillIds,
+  resolveCodeCheckSkillIdForDesignCode,
 } from '../agent-skills/code-check/entry.js';
 import {
+  inferCodeCheckIntent,
   inferAnalysisType,
   inferReportIntent,
   normalizePolicyAnalysisType,
@@ -98,6 +100,7 @@ interface InteractionDefaultProposal {
 interface PersistedMessageDebugDetails {
   promptSnapshot: string;
   skillIds: string[];
+  activatedSkillIds: string[];
   routing?: AgentResolvedRouting;
   responseSummary: string;
   plan: string[];
@@ -149,6 +152,7 @@ interface ExecutionPipelineArgs {
   locale: AppLocale;
   orchestrationMode: AgentOrchestrationMode;
   skillIds?: string[];
+  activeSkillIds?: string[];
   activeToolIds?: ActiveToolSet;
   plan: string[];
   toolCalls: AgentToolCall[];
@@ -169,6 +173,7 @@ interface PreparedRunContext {
   autoAnalyze: boolean;
   analysisParameters: Record<string, unknown>;
   skillIds?: string[];
+  activeSkillIds?: string[];
   noSkillMode: boolean;
   hadExistingSession: boolean;
   activeToolIds?: ActiveToolSet;
@@ -215,6 +220,7 @@ interface ExecutionArtifacts {
 
 export interface AgentResolvedRouting {
   selectedSkillIds: string[];
+  activatedSkillIds?: string[];
   structuralSkillId?: string;
   analysisSkillId?: string;
   analysisSkillIds?: string[];
@@ -401,7 +407,7 @@ export class AgentService {
     const locale = this.resolveInteractionLocale(options?.locale);
     const sessionKey = options?.conversationId?.trim();
     const session = await this.getInteractionSession(sessionKey);
-    const activeToolIds = await this.resolveActiveToolIds(options?.skillIds, {
+    const activeToolIds = await this.resolveActiveToolIds(options?.skillIds, options?.skillIds, {
       enabledToolIds: options?.enabledToolIds,
       disabledToolIds: options?.disabledToolIds,
     });
@@ -710,10 +716,6 @@ export class AgentService {
     const locale = this.resolveInteractionLocale(params.context?.locale);
     const skillIds = params.context?.skillIds;
     const noSkillMode = this.hasEmptySkillSelection(skillIds);
-    const activeToolIds = await this.resolveActiveToolIds(skillIds, {
-      enabledToolIds: params.context?.enabledToolIds,
-      disabledToolIds: params.context?.disabledToolIds,
-    });
     const sessionKey = params.conversationId?.trim();
     const session = await this.getInteractionSession(sessionKey);
     const workingSession: InteractionSession = session || {
@@ -735,15 +737,28 @@ export class AgentService {
     } else if (userDecision === 'revise') {
       workingSession.userApprovedAutoDecide = false;
     }
+    const modelInput = params.context?.model || session?.latestModel;
+    const activeSkillIds = await this.resolveActiveDomainSkillIds({
+      selectedSkillIds: skillIds,
+      workingSession,
+      modelInput,
+      message: params.message,
+      context: params.context,
+    });
+    const activeToolIds = await this.resolveActiveToolIds(skillIds, activeSkillIds, {
+      enabledToolIds: params.context?.enabledToolIds,
+      disabledToolIds: params.context?.disabledToolIds,
+    });
 
     return {
       locale,
       orchestrationMode: 'directed',
-      modelInput: params.context?.model || session?.latestModel,
+      modelInput,
       sourceFormat: params.context?.modelFormat || 'structuremodel-v1',
       autoAnalyze: params.context?.autoAnalyze ?? true,
       analysisParameters: params.context?.parameters || {},
       skillIds,
+      activeSkillIds,
       noSkillMode,
       hadExistingSession: Boolean(session),
       activeToolIds,
@@ -754,8 +769,132 @@ export class AgentService {
     };
   }
 
+  private normalizeSkillIds(skillIds?: string[]): string[] {
+    return Array.isArray(skillIds)
+      ? skillIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+      : [];
+  }
+
+  private async resolveActiveDomainSkillIds(args: {
+    selectedSkillIds?: string[];
+    workingSession: InteractionSession;
+    modelInput?: Record<string, unknown>;
+    message: string;
+    context?: AgentRunInput['context'];
+  }): Promise<string[] | undefined> {
+    if (this.hasEmptySkillSelection(args.selectedSkillIds)) {
+      return [];
+    }
+
+    const selectedSkillIds = this.normalizeSkillIds(args.selectedSkillIds);
+    const manifests = await this.skillRuntime.listSkillManifests();
+    const activatedSkillIds = new Set<string>(selectedSkillIds);
+    const selectedSkillSet = new Set(selectedSkillIds);
+    const structuralSkillId = args.workingSession.structuralTypeMatch?.skillId
+      || args.workingSession.draft?.skillId
+      || manifests.find((manifest) => manifest.domain === 'structure-type' && selectedSkillSet.has(manifest.id))?.id;
+    if (structuralSkillId) {
+      activatedSkillIds.add(structuralSkillId);
+    }
+
+    const hasStructuralContext = Boolean(structuralSkillId || args.workingSession.draft || args.modelInput || args.workingSession.latestModel);
+    const hasExecutionIntent = this.policy.inferExecutionIntent(args.message) || this.policy.inferProceedIntent(args.message);
+    const analysisType = args.workingSession.resolved?.analysisType
+      || args.context?.analysisType
+      || inferAnalysisType(this.policy, args.message);
+    const explicitDesignCode = args.workingSession.resolved?.designCode
+      || args.context?.designCode
+      || this.policy.inferDesignCode(args.message);
+    const designCode = explicitDesignCode || resolveCodeCheckDesignCodeFromSkillIds(selectedSkillIds);
+    const shouldActivateValidation = hasStructuralContext || hasExecutionIntent || inferCodeCheckIntent(this.policy, args.message) || inferReportIntent(this.policy, args.message) === true;
+    if (shouldActivateValidation) {
+      activatedSkillIds.add('validation-structure-model');
+    }
+
+    if (hasStructuralContext || hasExecutionIntent || args.context?.autoAnalyze === true) {
+      for (const manifest of manifests) {
+        if (manifest.domain !== 'analysis') {
+          continue;
+        }
+        if (Array.isArray(manifest.supportedAnalysisTypes) && manifest.supportedAnalysisTypes.length > 0 && !manifest.supportedAnalysisTypes.includes(analysisType)) {
+          continue;
+        }
+        activatedSkillIds.add(manifest.id);
+      }
+    }
+
+    const shouldActivateCodeCheck = Boolean(designCode) && (
+      args.workingSession.resolved?.autoCodeCheck
+      ?? args.context?.autoCodeCheck
+      ?? inferCodeCheckIntent(this.policy, args.message)
+      ?? true
+    );
+    if (shouldActivateCodeCheck) {
+      const codeCheckSkillId = resolveCodeCheckSkillIdForDesignCode(designCode);
+      if (codeCheckSkillId) {
+        activatedSkillIds.add(codeCheckSkillId);
+      }
+    }
+
+    const shouldActivateReport = (
+      args.workingSession.resolved?.includeReport
+      ?? args.context?.includeReport
+      ?? true
+    ) && (hasStructuralContext || hasExecutionIntent || inferReportIntent(this.policy, args.message) === true);
+    if (shouldActivateReport) {
+      activatedSkillIds.add('report-export-builtin');
+    }
+
+    if (activatedSkillIds.size === 0) {
+      return args.selectedSkillIds === undefined ? undefined : [];
+    }
+
+    return Array.from(activatedSkillIds).sort();
+  }
+
+  private async resolveAvailableTooling(
+    selectedSkillIds?: string[],
+    activeSkillIds?: string[],
+  ): Promise<{ tools: ToolManifest[]; skillIdsByToolId: Record<string, string[]> }> {
+    const toolMap = new Map<string, ToolManifest>();
+    const ownerMap = new Map<string, Set<string>>();
+    const keyCache = new Set<string>();
+    const toolingInputs: Array<string[] | undefined> = [selectedSkillIds, activeSkillIds];
+
+    for (const skillIds of toolingInputs) {
+      const cacheKey = skillIds === undefined ? '__AUTO__' : JSON.stringify(this.normalizeSkillIds(skillIds));
+      if (keyCache.has(cacheKey)) {
+        continue;
+      }
+      keyCache.add(cacheKey);
+      const tooling = await this.skillRuntime.resolveSkillTooling(skillIds);
+      for (const tool of tooling.tools) {
+        if (!toolMap.has(tool.id)) {
+          toolMap.set(tool.id, tool);
+        }
+      }
+      for (const [toolId, skillOwners] of Object.entries(tooling.skillIdsByToolId)) {
+        if (!ownerMap.has(toolId)) {
+          ownerMap.set(toolId, new Set());
+        }
+        for (const skillId of skillOwners) {
+          ownerMap.get(toolId)!.add(skillId);
+        }
+      }
+    }
+
+    return {
+      tools: Array.from(toolMap.values()).sort((left, right) => left.id.localeCompare(right.id)),
+      skillIdsByToolId: Array.from(ownerMap.entries()).reduce<Record<string, string[]>>((acc, [toolId, skillOwners]) => {
+        acc[toolId] = Array.from(skillOwners).sort();
+        return acc;
+      }, {}),
+    };
+  }
+
   private async resolveActiveToolIds(
-    skillIds?: string[],
+    selectedSkillIds?: string[],
+    activeSkillIds?: string[],
     options?: { enabledToolIds?: string[]; disabledToolIds?: string[] },
   ): Promise<ActiveToolSet> {
     const builtinCatalog = new Set(listBuiltinToolManifests().map((tool) => tool.id));
@@ -767,7 +906,7 @@ export class AgentService {
       }
     }
 
-    const tooling = await this.skillRuntime.resolveSkillTooling(skillIds);
+    const tooling = await this.resolveAvailableTooling(selectedSkillIds, activeSkillIds);
     for (const tool of tooling.tools) {
       active.add(tool.id);
     }
@@ -806,7 +945,7 @@ export class AgentService {
     if (builtin) {
       return builtin;
     }
-    const tooling = await this.skillRuntime.resolveSkillTooling(skillIds);
+    const tooling = await this.resolveAvailableTooling(undefined, skillIds);
     return tooling.tools.find((tool) => tool.id === toolId);
   }
 
@@ -976,6 +1115,7 @@ export class AgentService {
     locale: AppLocale;
     orchestrationMode: AgentOrchestrationMode;
     skillIds?: string[];
+    selectedSkillIds?: string[];
     plan: string[];
     toolCalls: AgentToolCall[];
     sessionKey?: string;
@@ -995,6 +1135,7 @@ export class AgentService {
       locale,
       orchestrationMode,
       skillIds,
+      selectedSkillIds,
       plan,
       toolCalls,
       sessionKey,
@@ -1023,7 +1164,7 @@ export class AgentService {
       interaction: interaction || this.buildToolInteraction('blocked', locale),
       clarification,
       response,
-    }, skillIds, workingSession);
+    }, skillIds, workingSession, selectedSkillIds);
   }
 
   async getConversationSessionSnapshot(
@@ -1321,6 +1462,7 @@ export class AgentService {
       autoAnalyze,
       analysisParameters,
       skillIds,
+      activeSkillIds,
       noSkillMode,
       hadExistingSession,
       activeToolIds,
@@ -1441,11 +1583,11 @@ export class AgentService {
     const selectedToolId = skillDrivenToolDecision.toolId;
     plan.push(skillDrivenToolDecision.reason);
 
-    const selectedToolManifest = await this.resolveSelectedToolManifest(selectedToolId, skillIds);
+    const selectedToolManifest = await this.resolveSelectedToolManifest(selectedToolId, activeSkillIds);
     if (selectedToolManifest) {
       const { missingSkills, missingTools } = this.buildMissingToolRequirements({
         manifest: selectedToolManifest,
-        skillIds,
+        skillIds: activeSkillIds,
         activeToolIds,
       });
       if (missingSkills.length > 0 || missingTools.length > 0) {
@@ -1495,7 +1637,7 @@ export class AgentService {
     if (!executableModel.ok) {
       return executableModel.result;
     }
-    const executionConfig = this.resolveExecutionConfig(workingSession, params, skillIds);
+    const executionConfig = this.resolveExecutionConfig(workingSession, params, activeSkillIds);
     const preparedExecutionModel = await this.prepareExecutionModel({
       params,
       traceId,
@@ -1504,6 +1646,7 @@ export class AgentService {
       locale,
       orchestrationMode,
       skillIds,
+      activeSkillIds,
       activeToolIds,
       plan,
       toolCalls,
@@ -1526,6 +1669,7 @@ export class AgentService {
       locale,
       orchestrationMode,
       skillIds,
+      activeSkillIds,
       activeToolIds,
       plan,
       toolCalls,
@@ -1578,6 +1722,7 @@ export class AgentService {
     locale: AppLocale;
     orchestrationMode: AgentOrchestrationMode;
     skillIds?: string[];
+    activeSkillIds?: string[];
     activeToolIds?: ActiveToolSet;
     plan: string[];
     toolCalls: AgentToolCall[];
@@ -1609,6 +1754,7 @@ export class AgentService {
     locale: AppLocale;
     orchestrationMode: AgentOrchestrationMode;
     skillIds?: string[];
+    activeSkillIds?: string[];
     activeToolIds?: ActiveToolSet;
     plan: string[];
     toolCalls: AgentToolCall[];
@@ -1629,6 +1775,7 @@ export class AgentService {
       locale,
       orchestrationMode,
       skillIds,
+      activeSkillIds,
       activeToolIds,
       plan,
       toolCalls,
@@ -1654,7 +1801,8 @@ export class AgentService {
           startedAtMs,
           locale,
           orchestrationMode,
-          skillIds,
+          skillIds: activeSkillIds ?? skillIds,
+          selectedSkillIds: skillIds,
           plan,
           toolCalls,
           sessionKey,
@@ -1684,7 +1832,8 @@ export class AgentService {
         startedAtMs,
         locale,
         orchestrationMode,
-        skillIds,
+        skillIds: activeSkillIds ?? skillIds,
+        selectedSkillIds: skillIds,
         plan,
         toolCalls,
         sessionKey,
@@ -1711,6 +1860,7 @@ export class AgentService {
     locale: AppLocale;
     orchestrationMode: AgentOrchestrationMode;
     skillIds?: string[];
+    activeSkillIds?: string[];
     activeToolIds?: ActiveToolSet;
     plan: string[];
     toolCalls: AgentToolCall[];
@@ -1730,6 +1880,7 @@ export class AgentService {
       locale,
       orchestrationMode,
       skillIds,
+      activeSkillIds,
       activeToolIds,
       plan,
       toolCalls,
@@ -1750,7 +1901,8 @@ export class AgentService {
           startedAtMs,
           locale,
           orchestrationMode,
-          skillIds,
+          skillIds: activeSkillIds ?? skillIds,
+          selectedSkillIds: skillIds,
           plan,
           toolCalls,
           sessionKey,
@@ -1783,7 +1935,8 @@ export class AgentService {
         startedAtMs,
         locale,
         orchestrationMode,
-        skillIds,
+        skillIds: activeSkillIds ?? skillIds,
+        selectedSkillIds: skillIds,
         plan,
         toolCalls,
         sessionKey,
@@ -1799,6 +1952,7 @@ export class AgentService {
         locale,
         orchestrationMode,
         skillIds,
+        activeSkillIds,
         plan,
         toolCalls,
         sessionKey,
@@ -1837,6 +1991,7 @@ export class AgentService {
     locale: AppLocale;
     orchestrationMode: AgentOrchestrationMode;
     skillIds?: string[];
+    activeSkillIds?: string[];
     plan: string[];
     toolCalls: AgentToolCall[];
     sessionKey?: string;
@@ -1851,25 +2006,27 @@ export class AgentService {
       locale,
       orchestrationMode,
       skillIds,
+      activeSkillIds,
       plan,
       toolCalls,
       sessionKey,
       workingSession,
       validationError,
     } = args;
-    const assessment = await this.assessInteractionNeeds(workingSession, locale, skillIds);
+    const effectiveSkillIds = activeSkillIds ?? skillIds;
+    const assessment = await this.assessInteractionNeeds(workingSession, locale, effectiveSkillIds);
     const interaction = await this.buildInteractionPayload(
       assessment,
       workingSession,
       assessment.criticalMissing.length > 0 ? 'confirming' : 'collecting',
       locale,
-      skillIds,
+      effectiveSkillIds,
     );
     const missingFields = await this.mapMissingFieldLabels(
       assessment.criticalMissing,
       locale,
       workingSession.draft || { inferredType: 'unknown', updatedAt: workingSession.updatedAt },
-      skillIds,
+      effectiveSkillIds,
     );
     const fieldsToConfirm = missingFields.length > 0
       ? missingFields
@@ -1892,7 +2049,8 @@ export class AgentService {
       startedAtMs,
       locale,
       orchestrationMode,
-      skillIds,
+      skillIds: effectiveSkillIds,
+      selectedSkillIds: skillIds,
       plan,
       toolCalls,
       sessionKey,
@@ -2313,6 +2471,7 @@ export class AgentService {
     locale: AppLocale;
     orchestrationMode: AgentOrchestrationMode;
     skillIds?: string[];
+    activeSkillIds?: string[];
     activeToolIds?: ActiveToolSet;
     plan: string[];
     toolCalls: AgentToolCall[];
@@ -2332,6 +2491,7 @@ export class AgentService {
       locale,
       orchestrationMode,
       skillIds,
+      activeSkillIds,
       activeToolIds,
       plan,
       toolCalls,
@@ -2352,7 +2512,8 @@ export class AgentService {
           startedAtMs,
           locale,
           orchestrationMode,
-          skillIds,
+          skillIds: activeSkillIds ?? skillIds,
+          selectedSkillIds: skillIds,
           plan,
           toolCalls,
           sessionKey,
@@ -2380,7 +2541,8 @@ export class AgentService {
           startedAtMs,
           locale,
           orchestrationMode,
-          skillIds,
+          skillIds: activeSkillIds ?? skillIds,
+          selectedSkillIds: skillIds,
           plan,
           toolCalls,
           sessionKey,
@@ -2438,7 +2600,8 @@ export class AgentService {
           startedAtMs,
           locale,
           orchestrationMode,
-          skillIds,
+          skillIds: activeSkillIds ?? skillIds,
+          selectedSkillIds: skillIds,
           plan,
           toolCalls,
           sessionKey,
@@ -2468,6 +2631,7 @@ export class AgentService {
       locale,
       orchestrationMode,
       skillIds,
+      activeSkillIds,
       activeToolIds,
       plan,
       toolCalls,
@@ -2503,7 +2667,7 @@ export class AgentService {
         workingSession.updatedAt = Date.now();
         await this.setInteractionSession(sessionKey, workingSession);
       }
-      return this.finalizeRunResult(traceId, sessionKey, params.message, result, skillIds, workingSession);
+      return this.finalizeRunResult(traceId, sessionKey, params.message, result, activeSkillIds ?? skillIds, workingSession, skillIds);
     }
 
     if (!this.hasActiveTool(activeToolIds, 'run_analysis')) {
@@ -2515,7 +2679,8 @@ export class AgentService {
         startedAtMs,
         locale,
         orchestrationMode,
-        skillIds,
+        skillIds: activeSkillIds ?? skillIds,
+        selectedSkillIds: skillIds,
         plan,
         toolCalls,
         sessionKey,
@@ -2565,6 +2730,7 @@ export class AgentService {
       locale,
       orchestrationMode,
       skillIds,
+      activeSkillIds,
       plan,
       toolCalls,
       sessionKey,
@@ -2596,7 +2762,8 @@ export class AgentService {
         startedAtMs,
         locale,
         orchestrationMode,
-        skillIds,
+        skillIds: activeSkillIds ?? skillIds,
+        selectedSkillIds: skillIds,
         plan,
         toolCalls,
         sessionKey,
@@ -2623,6 +2790,7 @@ export class AgentService {
       locale,
       orchestrationMode,
       skillIds,
+      activeSkillIds,
       activeToolIds,
       plan,
       toolCalls,
@@ -2662,7 +2830,8 @@ export class AgentService {
         startedAtMs,
         locale,
         orchestrationMode,
-        skillIds,
+        skillIds: activeSkillIds ?? skillIds,
+        selectedSkillIds: skillIds,
         plan,
         toolCalls,
         sessionKey,
@@ -2682,6 +2851,7 @@ export class AgentService {
       traceId,
       locale,
       skillIds,
+      activeSkillIds,
       activeToolIds,
       plan,
       toolCalls,
@@ -2704,7 +2874,7 @@ export class AgentService {
       format: executionConfig.reportFormat,
       reportOutput: executionConfig.reportOutput,
       draft: workingSession.draft,
-      skillIds,
+      skillIds: activeSkillIds ?? skillIds,
       traceId,
       plan,
       toolCalls,
@@ -2730,6 +2900,7 @@ export class AgentService {
       locale,
       orchestrationMode,
       skillIds,
+      activeSkillIds,
       plan,
       toolCalls,
       sessionKey,
@@ -2783,7 +2954,7 @@ export class AgentService {
       metrics: this.buildMetrics(toolCalls),
       interaction: this.buildToolInteraction('completed', locale),
       response: validationWarning ? `${validationWarning}\n\n${response}` : response,
-    }, skillIds, workingSession);
+    }, activeSkillIds ?? skillIds, workingSession, skillIds);
   }
 
   private async draftConversationState(args: {
@@ -4123,6 +4294,18 @@ export class AgentService {
   }
 
   private async textToModelDraft(message: string, existingState?: DraftState, locale: AppLocale = 'en', skillIds?: string[]): Promise<DraftResult> {
+    if (this.hasEmptySkillSelection(skillIds)) {
+      return {
+        inferredType: 'unknown',
+        missingFields: ['inferredType'],
+        extractionMode: this.llm ? 'llm' : 'deterministic',
+        stateToPersist: {
+          inferredType: 'unknown',
+          updatedAt: Date.now(),
+        },
+      };
+    }
+
     const skillDraft = await this.skillRuntime.textToModelDraft(this.llm, message, existingState, locale, skillIds);
     if (skillDraft.model || skillDraft.inferredType !== 'unknown' || skillDraft.structuralTypeMatch?.skillId) {
       return skillDraft;
@@ -4379,11 +4562,12 @@ export class AgentService {
     result: AgentRunResult,
     skillIds?: string[],
     session?: InteractionSession,
+    selectedSkillIds?: string[],
   ): Promise<AgentRunResult> {
     result.conversationId = conversationId;
-    result.routing = this.buildResolvedRouting(result, skillIds, session);
+    result.routing = this.buildResolvedRouting(result, selectedSkillIds, session, skillIds);
     await this.annotateToolCalls(result.toolCalls, skillIds, result.routing);
-    await this.persistConversationMessages(conversationId, userMessage, result, skillIds);
+    await this.persistConversationMessages(conversationId, userMessage, result, selectedSkillIds, skillIds);
     this.logRunResult(traceId, conversationId, result);
     return result;
   }
@@ -4398,8 +4582,8 @@ export class AgentService {
     }
 
     const builtinById = new Map(listBuiltinToolManifests().map((tool) => [tool.id, tool] as const));
-    const tooling = await this.skillRuntime.resolveSkillTooling(skillIds);
-    const selectedSkillIds = new Set(routing?.selectedSkillIds || []);
+    const tooling = await this.resolveAvailableTooling(routing?.selectedSkillIds, skillIds);
+    const activatedSkillIds = new Set(routing?.activatedSkillIds || []);
     const preferredAuthorizers = [
       routing?.structuralSkillId,
       routing?.analysisSkillId,
@@ -4415,7 +4599,7 @@ export class AgentService {
         const owners = [...(tooling.skillIdsByToolId[call.tool] || [])];
         const authorizedBySkillIds = preferredAuthorizers
           .filter((skillId) => owners.includes(skillId))
-          .concat(owners.filter((skillId) => selectedSkillIds.has(skillId) && !preferredAuthorizers.includes(skillId)));
+          .concat(owners.filter((skillId) => activatedSkillIds.has(skillId) && !preferredAuthorizers.includes(skillId)));
         if (authorizedBySkillIds.length > 0) {
           call.authorizedBySkillIds = Array.from(new Set(authorizedBySkillIds));
         }
@@ -4457,14 +4641,17 @@ export class AgentService {
     result: AgentRunResult,
     skillIds?: string[],
     session?: InteractionSession,
+    activeSkillIds?: string[],
   ): AgentResolvedRouting | undefined {
-    const selectedSkillIds = Array.isArray(skillIds)
-      ? skillIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
-      : [];
+    const selectedSkillIds = this.normalizeSkillIds(skillIds);
+    const activatedSkillIds = this.normalizeSkillIds(activeSkillIds);
 
     const routing: AgentResolvedRouting = {
       selectedSkillIds,
     };
+    if (activatedSkillIds.length > 0) {
+      routing.activatedSkillIds = activatedSkillIds;
+    }
 
     const structuralSkillId = session?.structuralTypeMatch?.skillId || session?.draft?.skillId;
     if (structuralSkillId) {
@@ -4488,6 +4675,7 @@ export class AgentService {
 
     if (
       routing.selectedSkillIds.length === 0
+      && (!routing.activatedSkillIds || routing.activatedSkillIds.length === 0)
       && !routing.structuralSkillId
       && !routing.analysisSkillId
       && (!routing.analysisSkillIds || routing.analysisSkillIds.length === 0)
@@ -4502,19 +4690,23 @@ export class AgentService {
     userMessage: string,
     result: AgentRunResult,
     skillIds?: string[],
+    activatedSkillIds?: string[],
   ): PersistedMessageDebugDetails {
-    const safeSkillIds = Array.isArray(skillIds) ? skillIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0) : [];
+    const safeSkillIds = this.normalizeSkillIds(skillIds);
+    const safeActivatedSkillIds = this.normalizeSkillIds(activatedSkillIds);
     const promptSnapshot = JSON.stringify({
       message: userMessage,
       context: {
         traceId: result.traceId,
         skillIds: safeSkillIds,
+        activatedSkillIds: safeActivatedSkillIds,
       },
     }, null, 2);
 
     return {
       promptSnapshot,
       skillIds: safeSkillIds,
+      activatedSkillIds: safeActivatedSkillIds,
       routing: result.routing,
       responseSummary: result.response || '',
       plan: Array.isArray(result.plan) ? result.plan : [],
@@ -4527,13 +4719,14 @@ export class AgentService {
     userMessage: string,
     result: AgentRunResult,
     skillIds?: string[],
+    activatedSkillIds?: string[],
   ): Promise<void> {
     const assistantMessage = result.response;
     if (!conversationId || !userMessage.trim() || !assistantMessage?.trim()) {
       return;
     }
 
-    const debugDetails = this.buildPersistedDebugDetails(userMessage, result, skillIds);
+    const debugDetails = this.buildPersistedDebugDetails(userMessage, result, skillIds, activatedSkillIds);
 
     try {
       const conversation = await prisma.conversation.findUnique({
