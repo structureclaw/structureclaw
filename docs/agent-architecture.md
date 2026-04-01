@@ -205,9 +205,36 @@ Each tool should declare:
 
 ### 8.3 Agent Rule
 
-The agent must make decisions only within the currently enabled skill set and currently enabled tool set.
+The agent must make decisions only within the currently available tool set.
+
+The currently available tool set is composed of:
+
+- a platform foundation tool allowlist (always-on platform tools)
+- domain tools granted by currently enabled and matched skills
 
 It must not assume the full platform capability set is always available.
+
+### 8.4 Layered Tool Authorization Model
+
+To avoid both extremes ("everything is always available" vs. "even platform basics must be skill-granted"), adopt a layered authorization model.
+
+1. Platform Foundation Tools
+
+- Purpose: runtime foundation capabilities such as context I/O, artifact persistence, general conversion, and protocol-level operations.
+- Policy: may be always-on via a platform allowlist; no per-skill grant is required.
+- Constraint: must not carry domain decisions and must not bypass domain guards to change engineering semantics.
+
+2. Domain Decision Tools
+
+- Purpose: tools that change engineering semantics or trigger engineering execution chains, such as drafting, model updates, analysis, design, code checks, and reporting.
+- Policy: must be granted by matched skills and current capability state before invocation.
+- Constraint: each invocation must pass guard checks (prerequisites, sequencing, dependencies).
+
+3. Agent Selection Rule
+
+- Agent tool selection scope = platform foundation allowlist + domain tools granted by current skills.
+- If a required domain tool is not granted by current skills, the agent must return blocked or continue clarification; it must not implicitly allow execution.
+- Platform foundation tools cannot substitute domain tools for skill-led decision actions.
 
 ## 9. Full Structural Engineering Workflow
 
