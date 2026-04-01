@@ -41,6 +41,7 @@ import { createLocalCodeCheckClient } from './code-check-execution.js';
 import { createLocalStructureProtocolClient } from './structure-protocol-execution.js';
 import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
 import { listBuiltinToolManifests } from '../agent-runtime/tool-registry.js';
+import type { ToolManifest } from '../agent-runtime/types.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'directed' | 'llm-planned';
@@ -788,6 +789,56 @@ export class AgentService {
     return !activeToolIds || activeToolIds.has(toolId);
   }
 
+  private async resolveSelectedToolManifest(toolId: string, skillIds?: string[]): Promise<ToolManifest | undefined> {
+    const builtin = listBuiltinToolManifests().find((tool) => tool.id === toolId);
+    if (builtin) {
+      return builtin;
+    }
+    const tooling = await this.skillRuntime.resolveSkillTooling(skillIds);
+    return tooling.tools.find((tool) => tool.id === toolId);
+  }
+
+  private buildMissingToolRequirements(args: {
+    manifest: ToolManifest;
+    skillIds?: string[];
+    activeToolIds?: ActiveToolSet;
+  }): { missingSkills: string[]; missingTools: string[] } {
+    const selectedSkillIds = new Set(Array.isArray(args.skillIds) ? args.skillIds : []);
+    const missingSkills = Array.isArray(args.manifest.requiresSkills)
+      ? args.manifest.requiresSkills.filter((skillId) => !selectedSkillIds.has(skillId))
+      : [];
+    const missingTools = Array.isArray(args.manifest.requiresTools)
+      ? args.manifest.requiresTools.filter((toolId) => !this.hasActiveTool(args.activeToolIds, toolId))
+      : [];
+    return { missingSkills, missingTools };
+  }
+
+  private buildToolRequirementMessage(args: {
+    locale: AppLocale;
+    toolId: string;
+    missingSkills: string[];
+    missingTools: string[];
+  }): string {
+    if (args.locale === 'zh') {
+      const parts: string[] = [];
+      if (args.missingSkills.length > 0) {
+        parts.push(`缺少能力集: ${args.missingSkills.join(', ')}`);
+      }
+      if (args.missingTools.length > 0) {
+        parts.push(`缺少依赖工具: ${args.missingTools.join(', ')}`);
+      }
+      return `无法执行 ${args.toolId}，${parts.join('；')}。`;
+    }
+    const parts: string[] = [];
+    if (args.missingSkills.length > 0) {
+      parts.push(`missing skills: ${args.missingSkills.join(', ')}`);
+    }
+    if (args.missingTools.length > 0) {
+      parts.push(`missing prerequisite tools: ${args.missingTools.join(', ')}`);
+    }
+    return `Cannot execute ${args.toolId}: ${parts.join('; ')}.`;
+  }
+
   private inferSkillDrivenToolDecision(args: {
     message: string;
     locale: AppLocale;
@@ -1383,6 +1434,37 @@ export class AgentService {
     }
     const selectedToolId = skillDrivenToolDecision.toolId;
     plan.push(skillDrivenToolDecision.reason);
+
+    const selectedToolManifest = await this.resolveSelectedToolManifest(selectedToolId, skillIds);
+    if (selectedToolManifest) {
+      const { missingSkills, missingTools } = this.buildMissingToolRequirements({
+        manifest: selectedToolManifest,
+        skillIds,
+        activeToolIds,
+      });
+      if (missingSkills.length > 0 || missingTools.length > 0) {
+        return this.finalizeBlockedRunResult({
+          params,
+          traceId,
+          startedAt,
+          startedAtMs,
+          locale,
+          orchestrationMode,
+          skillIds,
+          plan,
+          toolCalls,
+          sessionKey,
+          workingSession,
+          response: this.buildToolRequirementMessage({
+            locale,
+            toolId: selectedToolId,
+            missingSkills,
+            missingTools,
+          }),
+          needsModelInput: !modelInput && !workingSession.latestModel,
+        });
+      }
+    }
 
     const executableModel = await this.ensureExecutableModel({
       params,

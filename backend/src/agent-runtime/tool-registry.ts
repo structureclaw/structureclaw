@@ -153,6 +153,7 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
         meta: { type: 'object' },
       },
     },
+    requiresTools: ['validate_model'],
     errorCodes: ['INVALID_ANALYSIS_TYPE', 'ANALYSIS_EXECUTION_FAILED'],
   },
   {
@@ -175,6 +176,7 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
     outputSchema: {
       type: 'object',
     },
+    requiresTools: ['run_analysis'],
     errorCodes: ['CODE_CHECK_EXECUTION_FAILED'],
   },
   {
@@ -203,6 +205,7 @@ export const BUILTIN_TOOL_MANIFESTS: ToolManifest[] = [
         markdown: { type: 'string' },
       },
     },
+    requiresTools: ['run_analysis'],
     errorCodes: [],
   },
 ];

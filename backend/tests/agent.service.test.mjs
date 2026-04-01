@@ -233,6 +233,31 @@ describe('AgentService orchestration', () => {
     expect(calls.some((item) => item.client === 'codeCheck' && item.path === '/code-check')).toBe(false);
   });
 
+  test('should block tool execution when prerequisite tools are disabled', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const result = await svc.runToolCall({
+      message: '请直接分析这个模型',
+      context: {
+        disabledToolIds: ['validate_model'],
+        model: {
+          schema_version: '1.0.0',
+          nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
+          elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
+          materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
+          sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } }],
+          load_cases: [],
+          load_combinations: [],
+        },
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.response).toContain('validate_model');
+    expect(result.toolCalls.length).toBe(0);
+  });
+
   test('should honor disabledToolIds and skip code-check plus report even when requested', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
