@@ -167,7 +167,7 @@ Execution endpoints exposed by backend:
 ## 9. Skill and No-Skill Behavior
 
 - Skills and tools are optional capability layers, not a hard dependency for base chat.
-- If no skills and no tools are enabled, StructureClaw should behave like a normal conversational model.
+- If no engineering skills are enabled, StructureClaw should stay on the base chat path.
 - `structure-type` is the engineering entry skill domain.
 - The target architecture includes a built-in `structure-type/generic` fallback skill inside that domain.
 - New user-visible copy must be provided in both English and Chinese.

@@ -7,7 +7,7 @@ StructureClaw skills are modular, detachable plugins that extend the agent's str
 - **Builtin skills** — shipped with the codebase, discovered at startup from the filesystem.
 - **External / SkillHub skills** — installed from the SkillHub marketplace at runtime.
 
-The system is designed around a **no-skill fallback principle**: even when zero skills are loaded, the agent remains functional through LLM-based generic model generation.
+The system is designed around a **base-chat fallback principle**: when zero engineering skills are loaded, the agent remains available as a normal conversational assistant, but it does not enter drafting, analysis, or code-check execution.
 
 ## 2. Builtin Skill Discovery and Registration
 
@@ -52,13 +52,19 @@ Structure-type skills live under `backend/src/agent-skills/structure-type/`. Eac
 
 | Domain | Location | Registration |
 |--------|----------|-------------|
+| `analysis` | `agent-skills/analysis/` | Filesystem discovery + manifest normalization |
 | `code-check` | `agent-skills/code-check/` | Provider registry with filter/finalize callbacks |
-| `material-constitutive` | `agent-skills/material/` | Plugin manifest |
+| `data-input` | `agent-skills/data-input/` | Plugin manifest |
+| `design` | `agent-skills/design/` | Plugin manifest |
+| `drawing` | `agent-skills/drawing/` | Plugin manifest |
+| `general` | `agent-skills/general/` | Plugin manifest |
 | `load-boundary` | `agent-skills/load-boundary/` | Plugin manifest |
-| `geometry-input` | `agent-skills/data-input/` | Plugin manifest |
+| `material` | `agent-skills/material/` | Plugin manifest |
 | `visualization` | `agent-skills/visualization/` | Plugin manifest |
 | `result-postprocess` | `agent-skills/result-postprocess/` | Plugin manifest |
 | `report-export` | `agent-skills/report-export/` | Plugin manifest |
+| `section` | `agent-skills/section/` | Plugin manifest |
+| `validation` | `agent-skills/validation/` | Plugin manifest |
 
 ## 3. External / SkillHub Skill Packaging and Loading
 
@@ -220,17 +226,14 @@ When a SkillHub skill fails integrity verification (checksum or signature mismat
 - `integrityStatus` is set to `'rejected'`.
 - `fallbackBehavior` is set to `'baseline_only'`.
 
-### 5.4 No-Skill Fallback Mode
+### 5.4 Zero-Skill Behavior
 
-When zero skills are loaded (`skillIds` is empty or absent), the system enters **no-skill mode** (`no-skill-runtime.ts`):
+When zero skills are loaded (`skillIds` is an empty array), the system stays on the **base chat path**:
 
-1. **Draft state reset**: All skill-specific state is cleared via `normalizeNoSkillDraftState()`.
-2. **Missing fields guidance**: Returns a prompt for the user to provide a complete structural description.
-3. **LLM-based model generation**: `tryNoSkillLlmBuildGenericModel()` attempts to generate a StructureModel v1 JSON directly from the user's natural language input using the LLM.
-   - Two attempts with retry logic.
-   - Validates the output has `nodes`, `elements`, `load_cases` arrays and valid `schema_version`/`unit_system`.
-   - Supports both Chinese and English prompts based on locale.
-4. If all attempts fail, returns `undefined` and the agent reports that it cannot proceed.
+1. **Engineering session reset**: Skill-specific draft state, structural-type carry-over, and cached engineering model state are cleared.
+2. **Conversation-only response**: The agent can still clarify the user's needs in plain language.
+3. **No implicit execution**: External tools such as `draft_model`, `run_analysis`, `run_code_check`, and `generate_report` are not callable until an enabled skill authorizes them.
+4. If the caller forces tool execution while no skills are enabled, the request is blocked with `NO_EXECUTABLE_TOOL`.
 
 ### 5.5 Failure Strategy Summary
 
@@ -243,7 +246,7 @@ When zero skills are loaded (`skillIds` is empty or absent), the system enters *
 | Dependency `conflicts` detected | Provider excluded from loaded set | System continues without it |
 | Version incompatible | Installed but not enabled | Visible in installed list |
 | Integrity check failed | Installation rejected | Not recorded as installed |
-| All skills unavailable | No-skill fallback: LLM generates model | Reduced accuracy, still functional |
+| All skills unavailable | Stay on base chat path | Conversation remains available, but engineering execution is blocked |
 
 ## 6. Related Files
 
@@ -255,4 +258,3 @@ When zero skills are loaded (`skillIds` is empty or absent), the system enters *
 | `backend/src/agent-skills/analysis/registry.ts` | Analysis skill filesystem discovery |
 | `backend/src/agent-skills/structure-type/registry.ts` | Structure-type provider registry |
 | `backend/src/services/agent-skillhub.ts` | SkillHub install/enable/disable/uninstall service |
-| `backend/src/agent-runtime/generic-support/no-skill-runtime.ts` | No-skill conversational guidance fallback |

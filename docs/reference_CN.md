@@ -129,7 +129,7 @@
 Agent 编排与协议：
 
 - `node tests/runner.mjs validate validate-agent-orchestration`
-- `node tests/runner.mjs validate validate-agent-no-skill-fallback`
+- `node tests/runner.mjs validate validate-agent-base-chat-fallback`
 - `node tests/runner.mjs validate validate-agent-tools-contract`
 - `node tests/runner.mjs validate validate-agent-api-contract`
 - `node tests/runner.mjs validate validate-agent-capability-matrix`

@@ -134,9 +134,9 @@ Examples of concrete skills inside `structure-type` include:
 - `frame`
 - `portal-frame`
 - `double-span-beam`
-- `steel-frame`
+- `generic`
 
-These are treated as concrete skills inside the `structure-type` domain, not as a separate platform layer.
+`steel-frame` is currently handled as a structure-type key routed through the `frame` skill family, not as a standalone skill manifest.
 
 ## 6. Built-in Generic Structure-Type Skill
 
@@ -164,18 +164,15 @@ This skill is the minimum engineering capability package, not the base chat mode
 
 A tool is an invokable action interface available to the agent.
 
-Suggested stable built-in tool concepts:
+The currently governed canonical tool ids are:
 
-- `load_context`
+- `convert_model`
 - `draft_model`
 - `update_model`
 - `validate_model`
 - `run_analysis`
 - `run_code_check`
-- `run_design`
 - `generate_report`
-- `generate_visualization`
-- `persist_artifact`
 
 The current runtime now exposes canonical tool ids through the agent protocol and tool-call traces.
 
@@ -247,12 +244,12 @@ To align platform governance with ecosystem extensibility, both skills and tools
 
 2. Tool categories
 
-- Built-in tools: platform-owned foundation and core execution action interfaces.
+- Built-in tools: platform-owned foundation action interfaces. The currently active built-in foundation tool is `convert_model`.
 - External tools: action interfaces provided by external skills or extensions.
 
 3. Authorization rules
 
-- Built-in tools do not require skill grants; the agent may invoke them when prerequisites are satisfied.
+- Built-in tools do not require skill grants, but they must not take over domain decision-making.
 - External tools must be explicitly granted by currently matched skills before invocation.
 - External tool calls must also pass dependency and sequencing guards.
 - User manual toggles (skill/tool enable/disable) have the highest priority and override automatic activation, platform default allowlists, and policy suggestions.
@@ -261,7 +258,7 @@ To align platform governance with ecosystem extensibility, both skills and tools
 
 For each turn, the available tool set is defined as:
 
-- all built-in tools (still constrained by platform guards)
+- platform foundation built-in tools (currently `convert_model`, still constrained by platform guards)
 - external tools explicitly granted by currently active skills
 
 The final usable set must be intersected with the user-enabled set; any skill or tool manually disabled by the user must become immediately unavailable.
@@ -298,8 +295,8 @@ To avoid confusion between the target architecture and the current implementatio
 
 2. Current tool status
 
-- In the current production governance model, tools are managed uniformly as external tools.
-- Built-in tools are defined as platform foundation actions (for example, read/write style basic I/O capabilities); this channel is reserved and not yet enabled as an independent runtime branch.
+- In the current production governance model, every canonical tool except `convert_model` is managed as an external tool.
+- `convert_model` is the active platform foundation built-in tool; all other canonical tools must be skill-granted before invocation.
 
 3. Effective authorization rule for this phase
 

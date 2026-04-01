@@ -164,10 +164,10 @@ node .\sclaw stop
 - 节点/单元/材料/截面/荷载字段命名必须严格一致
 - 建议先执行 `validate_model`，再执行 `run_analysis` 与 `run_code_check`
 
-## 9. Skill 与 no-skill 策略
+## 9. Skill 与 base chat 策略
 
 - Skill 与 Tool 都是可选能力层，不是基础聊天的硬依赖。
-- 当没有启用任何 skill 和 tool 时，StructureClaw 应退化为普通对话模型。
+- 当没有启用任何工程 skill 时，StructureClaw 应停留在 base chat 路径。
 - `structure-type` 是工程入口技能域。
 - 目标架构中会在该域内内置 `structure-type/generic` 兜底 skill。
 - 所有新增用户可见文案必须同时支持中文和英文。

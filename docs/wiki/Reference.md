@@ -54,7 +54,7 @@ All run via `node tests/runner.mjs validate <name>`. Full list: `node tests/runn
 ### Agent orchestration and protocol
 
 - `validate-agent-orchestration`
-- `validate-agent-no-skill-fallback`
+- `validate-agent-base-chat-fallback`
 - `validate-agent-tools-contract`
 - `validate-agent-api-contract`
 - `validate-agent-capability-matrix`

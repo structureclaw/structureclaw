@@ -52,13 +52,19 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 
 | 域 | 位置 | 注册方式 |
 |----|------|----------|
+| `analysis` | `agent-skills/analysis/` | 文件系统发现 + manifest 归一化 |
 | `code-check` | `agent-skills/code-check/` | 提供者注册表，带 filter/finalize 回调 |
-| `material-constitutive` | `agent-skills/material/` | 插件清单 |
+| `data-input` | `agent-skills/data-input/` | 插件清单 |
+| `design` | `agent-skills/design/` | 插件清单 |
+| `drawing` | `agent-skills/drawing/` | 插件清单 |
+| `general` | `agent-skills/general/` | 插件清单 |
 | `load-boundary` | `agent-skills/load-boundary/` | 插件清单 |
-| `geometry-input` | `agent-skills/data-input/` | 插件清单 |
+| `material` | `agent-skills/material/` | 插件清单 |
 | `visualization` | `agent-skills/visualization/` | 插件清单 |
 | `result-postprocess` | `agent-skills/result-postprocess/` | 插件清单 |
 | `report-export` | `agent-skills/report-export/` | 插件清单 |
+| `section` | `agent-skills/section/` | 插件清单 |
+| `validation` | `agent-skills/validation/` | 插件清单 |
 
 ## 3. 外部 / SkillHub 技能打包与加载
 
@@ -220,17 +226,14 @@ interface SkillLoadSummary {
 - `integrityStatus` 设为 `'rejected'`。
 - `fallbackBehavior` 设为 `'baseline_only'`。
 
-### 5.4 无技能回退模式
+### 5.4 空技能集合行为
 
-当没有加载任何技能（`skillIds` 为空或未提供）时，系统进入**无技能模式**（`no-skill-runtime.ts`）：
+当没有加载任何技能（`skillIds` 明确为空数组）时，系统停留在 **base chat 路径**：
 
-1. **草稿状态重置**：通过 `normalizeNoSkillDraftState()` 清除所有技能相关状态。
-2. **缺失字段引导**：返回提示，请用户提供完整的结构描述。
-3. **LLM 模型生成**：`tryNoSkillLlmBuildGenericModel()` 尝试使用 LLM 从用户自然语言输入直接生成 StructureModel v1 JSON。
-   - 带重试逻辑的两次尝试。
-   - 验证输出是否包含 `nodes`、`elements`、`load_cases` 数组及有效的 `schema_version`/`unit_system`。
-   - 根据区域设置支持中文和英文提示。
-4. 如果所有尝试均失败，返回 `undefined`，Agent 报告无法继续。
+1. **工程会话状态重置**：清空 skill 相关草稿、结构类型 carry-over 和缓存模型状态。
+2. **仅保留对话能力**：Agent 仍可用普通对话方式帮助用户澄清需求。
+3. **不再隐式执行工程工具**：`draft_model`、`run_analysis`、`run_code_check`、`generate_report` 等外接 tool 必须先由已启用 skill 授权。
+4. 如果调用方强制要求执行 tool，而当前没有启用 skill，请求会以 `NO_EXECUTABLE_TOOL` 阻断。
 
 ### 5.5 失败策略汇总
 
@@ -243,7 +246,7 @@ interface SkillLoadSummary {
 | 依赖 `conflicts` 检测到 | 从加载集中排除 | 系统继续运行 |
 | 版本不兼容 | 已安装但不启用 | 在已安装列表中可见 |
 | 完整性检查失败 | 安装被拒绝 | 不记录为已安装 |
-| 所有技能不可用 | 无技能回退：LLM 生成模型 | 精度降低，但仍可用 |
+| 所有技能不可用 | 停留在 base chat 路径 | 仍可对话，但工程执行被阻断 |
 
 ## 6. 相关文件
 
@@ -255,4 +258,3 @@ interface SkillLoadSummary {
 | `backend/src/agent-skills/analysis/registry.ts` | 分析技能文件系统发现 |
 | `backend/src/agent-skills/structure-type/registry.ts` | 结构类型提供者注册表 |
 | `backend/src/services/agent-skillhub.ts` | SkillHub 安装/启用/禁用/卸载服务 |
-| `backend/src/agent-runtime/generic-support/no-skill-runtime.ts` | 无技能对话引导回退 |

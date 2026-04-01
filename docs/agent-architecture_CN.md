@@ -134,9 +134,9 @@ Skill 的职责是理解、补参、建议和解释，而不是直接执行动�
 - `frame`
 - `portal-frame`
 - `double-span-beam`
-- `steel-frame`
+- `generic`
 
-这些都作为 `structure-type` 域下的具体技能存在，不再额外抽象成平台外部独立层。
+其中 `steel-frame` 当前作为 `frame` 技能族下的结构类型 key 兼容处理，不是单独的独立 skill manifest。
 
 ## 6. 默认内置通用结构类型技能
 
@@ -164,18 +164,15 @@ StructureClaw 应默认内置一个通用的结构类型技能：
 
 Tool 是 agent 可调用的动作接口。
 
-建议的稳定内置 tool 语义包括：
+当前正式暴露并受治理的 canonical tool id 包括：
 
-- `load_context`
+- `convert_model`
 - `draft_model`
 - `update_model`
 - `validate_model`
 - `run_analysis`
 - `run_code_check`
-- `run_design`
 - `generate_report`
-- `generate_visualization`
-- `persist_artifact`
 
 当前运行时已经在 agent 协议与 tool trace 中统一暴露 canonical tool id。
 
@@ -248,12 +245,12 @@ Agent 只能在“当前可用 tool 集”内做决策。
 
 2. Tool 分类
 
-- 内置 tool：平台基础与核心执行工具，属于平台自有动作接口。
+- 内置 tool：平台基础动作接口。当前正式内置并常开的基础工具为 `convert_model`。
 - 外接 tool：由外接 skill 或外部扩展提供的动作接口。
 
 3. 权限原则
 
-- 内置 tool 不要求 skill 授权，agent 可在前置条件满足时直接调用。
+- 内置 tool 不要求 skill 授权，但不得承担领域决策。
 - 外接 tool 必须由当前已命中的 skill 显式授权后方可调用。
 - 外接 tool 的调用同时需要通过依赖与顺序护栏校验。
 - 用户手动开关（skill/tool enable/disable）优先级最高，覆盖自动激活、平台默认白名单与策略建议。
@@ -262,7 +259,7 @@ Agent 只能在“当前可用 tool 集”内做决策。
 
 当前轮次可用工具集合定义为：
 
-- 全部内置 tool（受平台护栏约束）
+- 平台基础内置 tool（当前为 `convert_model`，受平台护栏约束）
 - 当前激活 skill 显式授权的外接 tool
 
 最终可用集合需再与“用户手动开启集合”求交集；被用户手动关闭的 skill 或 tool 必须立即失效。
@@ -299,8 +296,8 @@ Agent 只能在“当前可用 tool 集”内做决策。
 
 2. tool 现状
 
-- 当前线上治理口径中，tool 统一按外接 tool 管理。
-- 内置 tool 定义为平台基础动作（例如 read/write 等基础读写能力）；该通道当前预留，尚未作为独立运行分支启用。
+- 当前线上治理口径中，除 `convert_model` 外，其余 canonical tool 均按外接 tool 管理。
+- `convert_model` 作为平台基础内置 tool，可在平台护栏下直接调用；其它 tool 必须由 skill 授权。
 
 3. 当前有效授权规则
 

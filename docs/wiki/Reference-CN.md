@@ -54,7 +54,7 @@
 ### Agent 编排与协议
 
 - `validate-agent-orchestration`
-- `validate-agent-no-skill-fallback`
+- `validate-agent-base-chat-fallback`
 - `validate-agent-tools-contract`
 - `validate-agent-api-contract`
 - `validate-agent-capability-matrix`
