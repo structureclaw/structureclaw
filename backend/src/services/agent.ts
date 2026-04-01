@@ -466,10 +466,6 @@ export class AgentService {
     };
   }
 
-  private inferDirectedReplyMode(snapshot: PlannerContextSnapshot): AgentReplyMode {
-    return snapshot.hasModel || snapshot.readyForExecution ? 'structured' : 'plain';
-  }
-
   private extractJsonObject(raw: string): string | null {
     const trimmed = raw.trim();
     const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -651,10 +647,9 @@ export class AgentService {
         };
       }
 
-      const snapshot = await this.buildPlannerContextSnapshot(options);
       return {
         kind: await this.resolveInteractivePlanKind(options),
-        replyMode: this.inferDirectedReplyMode(snapshot),
+        replyMode: options.hasModel ? 'structured' : 'plain',
         planningDirective: options.planningDirective,
         rationale: 'override',
       };
