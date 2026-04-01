@@ -1515,7 +1515,7 @@ describe('AgentService orchestration', () => {
     expect(draft.inferredType).toBe('unknown');
   });
 
-  test('should constrain no-skill prompt load case types to core enum values', async () => {
+  test('should keep no-skill mode as plain chat guidance without model-building prompt', async () => {
     const svc = createServiceWithDefaultSkills();
     const prompts = [];
     svc.llm = {
@@ -1529,8 +1529,7 @@ describe('AgentService orchestration', () => {
 
     await svc.textToModelDraft('10m beam with dead load', undefined, 'en', []);
 
-    expect(prompts).toHaveLength(1);
-    expect(prompts[0]).toContain('type must be one of dead, live, wind, seismic, other');
+    expect(prompts).toHaveLength(0);
   });
 
   test('should ignore template support fields in no-skill state even when llm extraction returns them', async () => {
@@ -1745,7 +1744,8 @@ describe('AgentService orchestration', () => {
     const draft = await svc.textToModelDraft('给我一个可计算结构模型', undefined, 'zh', []);
 
     expect(draft.extractionMode).toBe('llm');
-    expect(draft.model).toBeDefined();
+    expect(draft.model).toBeUndefined();
+    expect(draft.missingFields.length).toBeGreaterThan(0);
   });
 
   test('should fallback to generic llm model when enabled skills cannot match request', async () => {
@@ -1763,7 +1763,6 @@ describe('AgentService orchestration', () => {
       ['frame'],
     );
 
-    expect(draft.inferredType).toBe('unknown');
     expect(draft.extractionMode).toBe('llm');
     expect(draft.model).toBeDefined();
     expect(draft.missingFields).toEqual([]);
@@ -2110,9 +2109,9 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.interaction?.fallbackSupportNote).toBeUndefined();
-    expect(result.response).toContain('当前所选技能未命中更具体的结构技能');
-    expect(result.response).toContain('回退到通用建模能力');
+    expect(typeof result.interaction?.fallbackSupportNote).toBe('string');
+    expect(result.response).toContain('请描述结构体系与构件连接关系');
+    expect(result.response).toContain('可计算的结构模型 JSON');
   });
 
   test('should build a complete 2d frame model from regular frame parameters', async () => {

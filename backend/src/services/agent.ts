@@ -32,7 +32,6 @@ import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.
 import {
   computeNoSkillMissingFields,
   normalizeNoSkillDraftState,
-  tryNoSkillLlmBuildGenericModel,
 } from './agent-noskill-runtime.js';
 import { createLocalAnalysisEngineClient } from './analysis-execution.js';
 import { createLocalCodeCheckClient } from './code-check-execution.js';
@@ -4134,7 +4133,7 @@ export class AgentService {
       return skillDraft;
     }
 
-    const genericDraft = await this.textToModelDraftWithoutSkills(message, existingState, locale);
+    const genericDraft = await this.skillRuntime.textToModelDraft(this.llm, message, existingState, locale, ['generic']);
     return genericDraft;
   }
 
@@ -4147,29 +4146,15 @@ export class AgentService {
     existingState: DraftState | undefined,
     locale: AppLocale,
   ): Promise<DraftResult> {
+    void message;
     const noSkillState = normalizeNoSkillDraftState(existingState || { inferredType: 'unknown', updatedAt: Date.now() });
-
-    if (!this.llm) {
-      const configError = locale === 'zh'
-        ? 'LLM 尚未配置。请在 .env 文件中设置 LLM_API_KEY、LLM_MODEL 和 LLM_BASE_URL。'
-        : 'LLM is not configured. Please set LLM_API_KEY, LLM_MODEL, and LLM_BASE_URL in your .env file.';
-      return {
-        inferredType: noSkillState.inferredType,
-        missingFields: [configError],
-        extractionMode: 'llm',
-        model: undefined,
-        stateToPersist: noSkillState,
-      };
-    }
-
-    const model = await tryNoSkillLlmBuildGenericModel(this.llm, message, noSkillState, locale);
-    const missingFields = model ? [] : computeNoSkillMissingFields();
+    const missingFields = computeNoSkillMissingFields(locale);
 
     return {
       inferredType: noSkillState.inferredType,
       missingFields,
       extractionMode: 'llm',
-      model,
+      model: undefined,
       stateToPersist: noSkillState,
     };
   }

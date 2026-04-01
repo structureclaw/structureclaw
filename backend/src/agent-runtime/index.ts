@@ -4,6 +4,7 @@ import { AgentSkillRegistry } from './registry.js';
 import { AgentSkillExecutor } from './executor.js';
 import { listBuiltinToolManifests, resolveToolingForSkillManifests } from './tool-registry.js';
 import { buildDefaultReportNarrative } from './report-template.js';
+import { tryBuildGenericModelWithLlm } from '../agent-skills/structure-type/generic/llm-model-builder.js';
 import { localize, withStructuralTypeState } from './plugin-helpers.js';
 import type {
   AgentSkillBundle,
@@ -165,10 +166,18 @@ export class AgentSkillRuntime {
     });
     const nextState = withStructuralTypeState(plugin.handler.mergeState(existingState, patch), structuralTypeMatch);
     const missing = plugin.handler.computeMissing(nextState, 'execution');
-    const model = missing.critical.length === 0 ? plugin.handler.buildModel(nextState) : undefined;
+    let model = missing.critical.length === 0 ? plugin.handler.buildModel(nextState) : undefined;
+    let missingFields = [...missing.critical];
+    if (!model && plugin.id === 'generic') {
+      const llmBuiltModel = await tryBuildGenericModelWithLlm(llm, message, nextState, locale);
+      if (llmBuiltModel) {
+        model = llmBuiltModel;
+        missingFields = [];
+      }
+    }
     return {
       inferredType: nextState.inferredType,
-      missingFields: missing.critical,
+      missingFields,
       model,
       extractionMode: plugin.id === 'generic' || execution.draftPatch ? 'llm' : 'deterministic',
       stateToPersist: nextState,
