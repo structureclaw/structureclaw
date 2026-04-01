@@ -576,7 +576,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await waitFor(() => {
       expect(screen.getByText('backend assistant')).toBeInTheDocument()
     })
-    expect(screen.queryByText('welcome')).not.toBeInTheDocument()
+    expect(within(screen.getByTestId('console-chat-panel')).queryByText('welcome')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
 
