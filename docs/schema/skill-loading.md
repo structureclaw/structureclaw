@@ -80,6 +80,12 @@ Builtin `structure-type` manifests now directly authorize modeling tools only:
 
 Execution-chain tools such as `validate_model`, `run_analysis`, `run_code_check`, and `generate_report` are no longer granted directly by `structure-type` manifests. They are authorized through the downstream domain manifests activated for the current turn.
 
+Before entering the execution chain, the agent now derives the downstream domain skill set explicitly for the current turn:
+
+- The `analysis` domain selects one preferred analysis skill based on `analysisType`, `engineId`, structural model family, and any explicit skill selection.
+- The `code-check` domain selects one matching standard skill from `designCode`.
+- `validation` and `report-export` are activated on demand through builtin domain manifests.
+
 ## 3. External / SkillHub Skill Packaging and Loading
 
 ### 3.1 Package Metadata

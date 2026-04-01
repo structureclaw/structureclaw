@@ -201,11 +201,81 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
+    expect(result.routing?.analysisSkillId).toBe('opensees-static');
+    expect(result.routing?.analysisSkillIds).toEqual(['opensees-static']);
+    expect(result.routing?.codeCheckSkillId).toBe('code-check-gb50017');
+    expect(result.routing?.validationSkillId).toBe('validation-structure-model');
+    expect(result.routing?.reportSkillId).toBe('report-export-builtin');
     expect(result.toolCalls.some((c) => c.tool === 'run_analysis')).toBe(true);
     expect(result.toolCalls.some((c) => c.tool === 'run_code_check')).toBe(true);
     expect(result.toolCalls.some((c) => c.tool === 'generate_report')).toBe(true);
+    expect(result.toolCalls.find((c) => c.tool === 'run_analysis')?.authorizedBySkillIds).toEqual(['opensees-static']);
+    expect(result.toolCalls.find((c) => c.tool === 'run_code_check')?.authorizedBySkillIds).toEqual(['code-check-gb50017']);
+    expect(result.toolCalls.find((c) => c.tool === 'generate_report')?.authorizedBySkillIds).toEqual(['report-export-builtin']);
     expect(result.codeCheck?.code).toBe('GB50017');
     expect(typeof result.report?.markdown).toBe('string');
+  });
+
+  test('should select a single preferred builtin analysis skill for the active turn', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+    stubExecutionClients(svc);
+
+    const result = await svc.runForcedExecution({
+      message: '请静力分析这个模型',
+      context: {
+        analysisType: 'static',
+        skillIds: ['beam'],
+        model: {
+          schema_version: '1.0.0',
+          nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
+          elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
+          materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
+          sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } }],
+          load_cases: [],
+          load_combinations: [],
+        },
+        autoAnalyze: true,
+        includeReport: false,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.routing?.analysisSkillId).toBe('opensees-static');
+    expect(result.routing?.analysisSkillIds).toEqual(['opensees-static']);
+    expect(result.routing?.activatedSkillIds?.filter((skillId) => skillId.endsWith('-static'))).toEqual(['opensees-static']);
+    expect(result.toolCalls.find((c) => c.tool === 'run_analysis')?.authorizedBySkillIds).toEqual(['opensees-static']);
+  });
+
+  test('should honor engineId when selecting the preferred analysis skill', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+    stubExecutionClients(svc);
+
+    const result = await svc.runForcedExecution({
+      message: '请静力分析这个模型',
+      context: {
+        analysisType: 'static',
+        skillIds: ['beam'],
+        engineId: 'builtin-simplified',
+        model: {
+          schema_version: '1.0.0',
+          nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
+          elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
+          materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
+          sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } }],
+          load_cases: [],
+          load_combinations: [],
+        },
+        autoAnalyze: true,
+        includeReport: false,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.routing?.analysisSkillId).toBe('simplified-static');
+    expect(result.routing?.analysisSkillIds).toEqual(['simplified-static']);
+    expect(result.toolCalls.find((c) => c.tool === 'run_analysis')?.authorizedBySkillIds).toEqual(['simplified-static']);
   });
 
   test('should not run code-check when structural execution is enabled without a code-check skill or designCode', async () => {

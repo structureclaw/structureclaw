@@ -240,6 +240,47 @@ export function getBuiltinAnalysisSkill(id: string): AnalysisSkillManifest | und
   return BUILTIN_ANALYSIS_SKILLS.find((skill) => skill.id === id);
 }
 
+export function resolvePreferredBuiltinAnalysisSkill(options?: {
+  analysisType?: AnalysisSkillManifest['analysisType'];
+  engineId?: string;
+  skillIds?: string[];
+  supportedModelFamilies?: string[];
+}): AnalysisSkillManifest | undefined {
+  const selectedSkillIds = new Set(
+    Array.isArray(options?.skillIds)
+      ? options.skillIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+      : [],
+  );
+  const supportedFamilies = Array.isArray(options?.supportedModelFamilies)
+    ? options.supportedModelFamilies
+      .filter((family): family is string => typeof family === 'string' && family.trim().length > 0)
+      .map((family) => family.trim().toLowerCase())
+    : [];
+
+  const matchesContext = (skill: AnalysisSkillManifest): boolean => {
+    if (options?.analysisType && skill.analysisType !== options.analysisType) {
+      return false;
+    }
+    if (typeof options?.engineId === 'string' && options.engineId.trim().length > 0 && skill.engineId !== options.engineId.trim()) {
+      return false;
+    }
+    if (supportedFamilies.length > 0) {
+      const skillFamilies = skill.supportedModelFamilies.map((family) => family.trim().toLowerCase());
+      if (!skillFamilies.some((family) => supportedFamilies.includes(family))) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const matchedSelected = BUILTIN_ANALYSIS_SKILLS.filter((skill) => selectedSkillIds.has(skill.id) && matchesContext(skill));
+  if (matchedSelected.length > 0) {
+    return matchedSelected[0];
+  }
+
+  return BUILTIN_ANALYSIS_SKILLS.find((skill) => matchesContext(skill));
+}
+
 export function listBuiltinAnalysisEngines(): AnalysisEngineDefinition[] {
   return [...BUILTIN_ANALYSIS_ENGINES];
 }

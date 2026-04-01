@@ -19,6 +19,7 @@ import {
 } from '../agent-runtime/index.js';
 import {
   buildCodeCheckSummaryText,
+  listCodeCheckRuleProviders,
   resolveCodeCheckDesignCodeFromSkillIds,
   resolveCodeCheckSkillIdForDesignCode,
 } from '../agent-skills/code-check/entry.js';
@@ -34,6 +35,10 @@ import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.
 import { createLocalAnalysisEngineClient } from './analysis-execution.js';
 import { createLocalCodeCheckClient } from './code-check-execution.js';
 import { createLocalStructureProtocolClient } from './structure-protocol-execution.js';
+import {
+  listBuiltinAnalysisSkills,
+  resolvePreferredBuiltinAnalysisSkill,
+} from '../agent-skills/analysis/entry.js';
 import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
 import { listBuiltinToolManifests } from '../agent-runtime/tool-registry.js';
 import type { ToolManifest } from '../agent-runtime/types.js';
@@ -224,6 +229,9 @@ export interface AgentResolvedRouting {
   structuralSkillId?: string;
   analysisSkillId?: string;
   analysisSkillIds?: string[];
+  codeCheckSkillId?: string;
+  validationSkillId?: string;
+  reportSkillId?: string;
 }
 
 export interface AgentInteraction {
@@ -775,6 +783,38 @@ export class AgentService {
       : [];
   }
 
+  private resolvePreferredAnalysisModelFamilies(args: {
+    workingSession: InteractionSession;
+    modelInput?: Record<string, unknown>;
+  }): string[] {
+    const structuralType = args.workingSession.structuralTypeMatch?.key
+      || args.workingSession.draft?.structuralTypeKey
+      || args.workingSession.draft?.inferredType;
+    if (structuralType === 'truss') {
+      return ['truss', 'generic'];
+    }
+    if (
+      structuralType === 'beam'
+      || structuralType === 'frame'
+      || structuralType === 'portal-frame'
+      || structuralType === 'double-span-beam'
+    ) {
+      return ['frame', 'generic'];
+    }
+
+    const modelElements = args.modelInput?.elements;
+    if (Array.isArray(modelElements) && modelElements.some((element) => {
+      if (!element || typeof element !== 'object') {
+        return false;
+      }
+      return (element as Record<string, unknown>).type === 'truss';
+    })) {
+      return ['truss', 'generic'];
+    }
+
+    return ['generic'];
+  }
+
   private async resolveActiveDomainSkillIds(args: {
     selectedSkillIds?: string[];
     workingSession: InteractionSession;
@@ -812,14 +852,17 @@ export class AgentService {
     }
 
     if (hasStructuralContext || hasExecutionIntent || args.context?.autoAnalyze === true) {
-      for (const manifest of manifests) {
-        if (manifest.domain !== 'analysis') {
-          continue;
-        }
-        if (Array.isArray(manifest.supportedAnalysisTypes) && manifest.supportedAnalysisTypes.length > 0 && !manifest.supportedAnalysisTypes.includes(analysisType)) {
-          continue;
-        }
-        activatedSkillIds.add(manifest.id);
+      const preferredAnalysisSkill = resolvePreferredBuiltinAnalysisSkill({
+        analysisType,
+        engineId: args.context?.engineId,
+        skillIds: selectedSkillIds,
+        supportedModelFamilies: this.resolvePreferredAnalysisModelFamilies({
+          workingSession: args.workingSession,
+          modelInput: args.modelInput,
+        }),
+      });
+      if (preferredAnalysisSkill) {
+        activatedSkillIds.add(preferredAnalysisSkill.id);
       }
     }
 
@@ -4587,6 +4630,9 @@ export class AgentService {
     const preferredAuthorizers = [
       routing?.structuralSkillId,
       routing?.analysisSkillId,
+      routing?.codeCheckSkillId,
+      routing?.validationSkillId,
+      routing?.reportSkillId,
     ].filter((skillId): skillId is string => typeof skillId === 'string' && skillId.length > 0);
 
     for (const call of toolCalls) {
@@ -4645,6 +4691,11 @@ export class AgentService {
   ): AgentResolvedRouting | undefined {
     const selectedSkillIds = this.normalizeSkillIds(skillIds);
     const activatedSkillIds = this.normalizeSkillIds(activeSkillIds);
+    const activeSkillSet = new Set(activatedSkillIds);
+    const builtinAnalysisSkillIds = new Set(listBuiltinAnalysisSkills().map((skill) => skill.id));
+    const builtinCodeCheckSkillIds = new Set(listCodeCheckRuleProviders().map((provider) => provider.id));
+    const activeAnalysisSkillIds = activatedSkillIds.filter((skillId) => builtinAnalysisSkillIds.has(skillId));
+    const activeCodeCheckSkillIds = activatedSkillIds.filter((skillId) => builtinCodeCheckSkillIds.has(skillId));
 
     const routing: AgentResolvedRouting = {
       selectedSkillIds,
@@ -4672,12 +4723,30 @@ export class AgentService {
       routing.analysisSkillIds = analysisMeta.analysisSkillIds
         .filter((item): item is string => typeof item === 'string' && item.trim().length > 0);
     }
+    if (!routing.analysisSkillId && activeAnalysisSkillIds.length > 0) {
+      routing.analysisSkillId = activeAnalysisSkillIds[0];
+    }
+    if ((!routing.analysisSkillIds || routing.analysisSkillIds.length === 0) && activeAnalysisSkillIds.length > 0) {
+      routing.analysisSkillIds = activeAnalysisSkillIds;
+    }
+    if (activeCodeCheckSkillIds.length > 0) {
+      routing.codeCheckSkillId = activeCodeCheckSkillIds[0];
+    }
+    if (activeSkillSet.has('validation-structure-model')) {
+      routing.validationSkillId = 'validation-structure-model';
+    }
+    if (activeSkillSet.has('report-export-builtin')) {
+      routing.reportSkillId = 'report-export-builtin';
+    }
 
     if (
       routing.selectedSkillIds.length === 0
       && (!routing.activatedSkillIds || routing.activatedSkillIds.length === 0)
       && !routing.structuralSkillId
       && !routing.analysisSkillId
+      && !routing.codeCheckSkillId
+      && !routing.validationSkillId
+      && !routing.reportSkillId
       && (!routing.analysisSkillIds || routing.analysisSkillIds.length === 0)
     ) {
       return undefined;

@@ -7,7 +7,7 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 - **内置技能**（Builtin）— 随代码库一起分发，启动时从文件系统自动发现。
 - **外部 / SkillHub 技能** — 运行时从 SkillHub 市场安装。
 
-系统遵循 **无技能回退原则**：即使没有加载任何技能，Agent 仍可通过 LLM 直接生成通用模型来工作。
+系统遵循 **base-chat 回退原则**：即使没有加载任何工程技能，Agent 仍可作为普通对话助手存在，但不会进入建模、分析或规范校核执行链。
 
 ## 2. 内置技能发现与注册
 
@@ -79,6 +79,12 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 - `update_model`
 
 `validate_model`、`run_analysis`、`run_code_check`、`generate_report` 这些执行链 tool 不再由 `structure-type` manifest 直接放行，而是由本轮激活的下游 domain manifests 统一授权。
+
+当前 agent 在进入执行链前，会先显式推导本轮激活的下游 domain skill：
+
+- `analysis` 域按 `analysisType`、`engineId`、结构模型族和显式选择结果选出一个首选 analysis skill。
+- `code-check` 域按 `designCode` 选出一个对应的规范 skill。
+- `validation` 和 `report-export` 由当前上下文按需激活内置 domain manifest。
 
 ## 3. 外部 / SkillHub 技能打包与加载
 
