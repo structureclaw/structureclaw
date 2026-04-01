@@ -127,6 +127,7 @@ type AgentReplyMode = 'plain' | 'structured';
 
 interface AgentRunStrategy {
   planningDirective: AgentPlanningDirective;
+  allowToolCall: boolean;
 }
 
 interface AgentNextStepPlan {
@@ -412,7 +413,7 @@ export class AgentService {
     });
     return (await this.planNextStep(message, {
       planningDirective: 'auto',
-      interactiveOnly: false,
+      allowToolCall: true,
       locale,
       skillIds: options?.skillIds,
       hasModel: Boolean(options?.hasModel),
@@ -637,7 +638,7 @@ export class AgentService {
 
   private async planNextStep(message: string, options: {
     planningDirective: AgentPlanningDirective;
-    interactiveOnly: boolean;
+    allowToolCall: boolean;
     locale: AppLocale;
     skillIds?: string[];
     hasModel: boolean;
@@ -645,7 +646,7 @@ export class AgentService {
     activeToolIds?: ActiveToolSet;
     conversationId?: string;
   }): Promise<AgentNextStepPlan> {
-    if (options.interactiveOnly) {
+    if (!options.allowToolCall) {
       if (this.llm) {
         return {
           ...(await this.planNextStepWithLlm(message, {
@@ -1248,43 +1249,41 @@ export class AgentService {
   }
 
   async run(input: AgentRunInput): Promise<AgentRunResult> {
-    return this.runWithStrategy(input, { planningDirective: 'auto' });
+    return this.runWithStrategy(input, { planningDirective: 'auto', allowToolCall: true });
   }
 
   async runInteractive(input: AgentRunInput): Promise<AgentRunResult> {
-    return this.runWithStrategy(input, { planningDirective: 'auto' }, true);
+    return this.runWithStrategy(input, { planningDirective: 'auto', allowToolCall: false });
   }
 
   async runToolCall(input: AgentRunInput): Promise<AgentRunResult> {
-    return this.runWithStrategy(input, { planningDirective: 'force_tool' });
+    return this.runWithStrategy(input, { planningDirective: 'force_tool', allowToolCall: true });
   }
 
   async *runStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
-    yield* this.runStreamWithStrategy(input, { planningDirective: 'auto' });
+    yield* this.runStreamWithStrategy(input, { planningDirective: 'auto', allowToolCall: true });
   }
 
   async *runInteractiveStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
-    yield* this.runStreamWithStrategy(input, { planningDirective: 'auto' }, true);
+    yield* this.runStreamWithStrategy(input, { planningDirective: 'auto', allowToolCall: false });
   }
 
   async *runToolCallStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
-    yield* this.runStreamWithStrategy(input, { planningDirective: 'force_tool' });
+    yield* this.runStreamWithStrategy(input, { planningDirective: 'force_tool', allowToolCall: true });
   }
 
   private async runWithStrategy(
     input: AgentRunInput,
     strategy: AgentRunStrategy,
-    interactiveOnly = false,
   ): Promise<AgentRunResult> {
     const preparedInput = await this.ensureConversationRecord(input);
     const traceId = input.traceId || randomUUID();
-    return this.runInternal(preparedInput, traceId, strategy, interactiveOnly);
+    return this.runInternal(preparedInput, traceId, strategy);
   }
 
   private async *runStreamWithStrategy(
     input: AgentRunInput,
     strategy: AgentRunStrategy,
-    interactiveOnly = false,
   ): AsyncGenerator<AgentStreamChunk> {
     const preparedInput = await this.ensureConversationRecord(input);
     const traceId = randomUUID();
@@ -1299,7 +1298,7 @@ export class AgentService {
         },
       };
 
-      const result = await this.runInternal({ ...preparedInput, traceId }, traceId, strategy, interactiveOnly);
+      const result = await this.runInternal({ ...preparedInput, traceId }, traceId, strategy);
       if (result.interaction && result.interaction.state !== 'completed') {
         yield {
           type: 'interaction_update',
@@ -1323,7 +1322,6 @@ export class AgentService {
     params: AgentRunInput,
     traceId: string,
     strategy: AgentRunStrategy,
-    interactiveOnly: boolean,
   ): Promise<AgentRunResult> {
     const startedAtMs = Date.now();
     const startedAt = new Date(startedAtMs).toISOString();
@@ -1343,8 +1341,8 @@ export class AgentService {
       plan,
       toolCalls,
     } = prepared;
-    const { planningDirective } = strategy;
-    const orchestrationMode: AgentOrchestrationMode = planningDirective === 'force_tool' || interactiveOnly
+    const { planningDirective, allowToolCall } = strategy;
+    const orchestrationMode: AgentOrchestrationMode = planningDirective === 'force_tool'
       ? 'directed'
       : 'llm-planned';
 
@@ -1352,7 +1350,7 @@ export class AgentService {
       params,
       locale,
       planningDirective,
-      interactiveOnly,
+      allowToolCall,
       skillIds,
       activeToolIds,
       modelInput,
@@ -1364,7 +1362,7 @@ export class AgentService {
     try {
       nextPlan = await this.planNextStep(params.message, {
         planningDirective,
-        interactiveOnly,
+        allowToolCall,
         locale,
         skillIds,
         hasModel: Boolean(modelInput || prefetchedDraft?.draft.model || workingSession.latestModel),
@@ -2940,7 +2938,7 @@ export class AgentService {
     params: AgentRunInput;
     locale: AppLocale;
     planningDirective: AgentPlanningDirective;
-    interactiveOnly: boolean;
+    allowToolCall: boolean;
     skillIds?: string[];
     activeToolIds?: ActiveToolSet;
     modelInput?: Record<string, unknown>;
@@ -2951,14 +2949,14 @@ export class AgentService {
       params,
       locale,
       planningDirective,
-      interactiveOnly,
+      allowToolCall,
       skillIds,
       activeToolIds,
       modelInput,
       plan,
       workingSession,
     } = args;
-    if (interactiveOnly) {
+    if (!allowToolCall) {
       return undefined;
     }
     if (modelInput) {
