@@ -42,9 +42,9 @@ import { listBuiltinToolManifests } from '../agent-runtime/tool-registry.js';
 import type { ToolManifest } from '../agent-runtime/types.js';
 import { executeConvertModel } from '../agent-tools/builtin/convert-model.js';
 import { executeDraftModel } from '../agent-tools/builtin/draft-model.js';
-import { executeGenerateReport } from '../agent-tools/builtin/generate-report.js';
-import { executeRunAnalysis } from '../agent-tools/builtin/run-analysis.js';
-import { executeRunCodeCheck } from '../agent-tools/builtin/run-code-check.js';
+import { executeGenerateReportStep } from '../agent-tools/builtin/generate-report.js';
+import { executeRunAnalysisStep } from '../agent-tools/builtin/run-analysis.js';
+import { executeRunCodeCheckStep } from '../agent-tools/builtin/run-code-check.js';
 import { executeUpdateModel } from '../agent-tools/builtin/update-model.js';
 import { executeValidateModel } from '../agent-tools/builtin/validate-model.js';
 
@@ -2637,51 +2637,41 @@ export class AgentService {
       executionConfig,
     } = args;
 
-    plan.push(this.localize(locale, `执行 ${executionConfig.analysisType} 分析并返回摘要`, `Run ${executionConfig.analysisType} analysis and return a summary`));
-    const analyzeInput = {
-      type: executionConfig.analysisType,
+    const result = await executeRunAnalysisStep({
+      traceId,
+      locale,
+      analysisType: executionConfig.analysisType,
       engineId: params.context?.engineId,
       model: normalizedModel,
       parameters: this.buildAnalysisParameters(analysisParameters, normalizedModel),
-    };
-    const analyzeCall = this.startToolCall('run_analysis', analyzeInput);
-    toolCalls.push(analyzeCall);
-
-    try {
-      const analyzed = await executeRunAnalysis(this.postToEngineWithRetry.bind(this), {
+      plan,
+      toolCalls,
+      localize: this.localize.bind(this),
+      startToolCall: this.startToolCall.bind(this),
+      completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
+      completeToolCallError: this.completeToolCallError.bind(this),
+      shouldRetryEngineCall: this.shouldRetryEngineCall.bind(this),
+      postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
+      buildBlockedResult: async (response) => this.finalizeBlockedRunResult({
+        params,
         traceId,
-        input: analyzeInput,
-      });
-      this.completeToolCallSuccess(analyzeCall, analyzed);
-      return { ok: true, value: { data: analyzed } };
-    } catch (error: any) {
-      this.completeToolCallError(analyzeCall, error);
-      const transientUpstreamFailure = this.shouldRetryEngineCall(error);
-      return {
-        ok: false,
-        result: await this.finalizeBlockedRunResult({
-          params,
-          traceId,
-          startedAt,
-          startedAtMs,
-          locale,
-          orchestrationMode,
-          skillIds,
-          plan,
-          toolCalls,
-          sessionKey,
-          workingSession,
-          response: transientUpstreamFailure
-            ? this.localize(
-              locale,
-              `分析引擎服务暂时不可用，重试后仍失败：${analyzeCall.error}`,
-              `The analysis engine is temporarily unavailable and still failed after retry: ${analyzeCall.error}`,
-            )
-            : this.localize(locale, `分析执行失败：${analyzeCall.error}`, `Analysis execution failed: ${analyzeCall.error}`),
-          model: normalizedModel,
-        }),
-      };
+        startedAt,
+        startedAtMs,
+        locale,
+        orchestrationMode,
+        skillIds,
+        plan,
+        toolCalls,
+        sessionKey,
+        workingSession,
+        response,
+        model: normalizedModel,
+      }),
+    });
+    if (!result.ok) {
+      return result;
     }
+    return { ok: true, value: { data: result.data } };
   }
 
   private async runCodeCheckStep(args: ExecutionPipelineArgs & { analyzed: any }): Promise<
@@ -2712,53 +2702,38 @@ export class AgentService {
       return { ok: true, value: undefined };
     }
 
-    plan.push(this.localize(locale, `执行 ${executionConfig.designCode} 规范校核`, `Run ${executionConfig.designCode} code checks`));
-    const codeCheckCall = this.startToolCall('run_code_check', {
+    return executeRunCodeCheckStep({
+      locale,
+      localize: this.localize.bind(this),
+      plan,
+      toolCalls,
+      startToolCall: this.startToolCall.bind(this),
+      completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
+      completeToolCallError: this.completeToolCallError.bind(this),
+      codeCheckClient: this.codeCheckClient,
       traceId,
       designCode: executionConfig.designCode,
       model: normalizedModel,
       analysis: analyzed,
       analysisParameters,
       codeCheckElements: params.context?.codeCheckElements,
-    });
-    toolCalls.push(codeCheckCall);
-
-    try {
-      const codeCheckExecution = await executeRunCodeCheck({
-        codeCheckClient: this.codeCheckClient,
+      engineId: params.context?.engineId,
+      buildBlockedResult: async (response) => this.finalizeBlockedRunResult({
+        params,
         traceId,
-        designCode: executionConfig.designCode,
+        startedAt,
+        startedAtMs,
+        locale,
+        orchestrationMode,
+        skillIds,
+        plan,
+        toolCalls,
+        sessionKey,
+        workingSession,
+        response,
         model: normalizedModel,
-        analysis: analyzed,
-        analysisParameters,
-        codeCheckElements: params.context?.codeCheckElements,
-        engineId: params.context?.engineId,
-      });
-      codeCheckCall.input = codeCheckExecution.input;
-      const codeChecked = codeCheckExecution.result;
-      this.completeToolCallSuccess(codeCheckCall, codeChecked);
-      return { ok: true, value: codeChecked };
-    } catch (error: any) {
-      this.completeToolCallError(codeCheckCall, error);
-      return {
-        ok: false,
-        result: await this.finalizeBlockedRunResult({
-          params,
-          traceId,
-          startedAt,
-          startedAtMs,
-          locale,
-          orchestrationMode,
-          skillIds,
-          plan,
-          toolCalls,
-          sessionKey,
-          workingSession,
-          response: this.localize(locale, `规范校核失败：${codeCheckCall.error}`, `Code check failed: ${codeCheckCall.error}`),
-          model: normalizedModel,
-        }),
-      };
-    }
+      }),
+    });
   }
 
   private async runReportStep(args: ExecutionPipelineArgs & {
@@ -2783,30 +2758,25 @@ export class AgentService {
       return {};
     }
 
-    plan.push(this.localize(locale, '生成可读计算与规范校核报告', 'Generate a readable analysis and run_code_check report'));
-    const reportCall = this.startToolCall('generate_report', {
+    return executeGenerateReportStep({
       message: params.message,
-      analysis: analyzed,
-      codeCheck: codeCheckResult,
-      format: executionConfig.reportFormat,
-    });
-    toolCalls.push(reportCall);
-
-    const report = await executeGenerateReport(this.generateReport.bind(this), {
-      message: params.message,
+      locale,
       analysisType: executionConfig.analysisType,
       analysis: analyzed,
       codeCheck: codeCheckResult,
       format: executionConfig.reportFormat,
-      locale,
+      reportOutput: executionConfig.reportOutput,
       draft: workingSession.draft,
       skillIds,
+      traceId,
+      plan,
+      toolCalls,
+      localize: this.localize.bind(this),
+      startToolCall: this.startToolCall.bind(this),
+      completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
+      generateReport: this.generateReport.bind(this),
+      persistReportArtifacts: this.persistReportArtifacts.bind(this),
     });
-    const artifacts = report && executionConfig.reportOutput === 'file'
-      ? await this.persistReportArtifacts(traceId, report, executionConfig.reportFormat)
-      : undefined;
-    this.completeToolCallSuccess(reportCall, report);
-    return { report, artifacts };
   }
 
   private async finalizeExecutionSuccess(args: ExecutionPipelineArgs & {
