@@ -5,8 +5,6 @@ import {
   normalizeLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
 import {
-  buildModel as buildFallbackModel,
-  computeMissingCriticalKeys,
   mergeDraftState,
 } from '../../../agent-runtime/fallback.js';
 import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
@@ -244,8 +242,8 @@ export const handler: SkillHandler = {
     if (state.inferredType === 'unknown') {
       return undefined;
     }
-    const criticalMissing = computeMissingCriticalKeys(state);
-    return criticalMissing.length === 0 ? buildLegacyModel(state) ?? buildFallbackModel(state) : undefined;
+    const missing = computeLegacyMissing(state, 'execution', [...GENERIC_ALLOWED_KEYS]);
+    return missing.critical.length === 0 ? buildLegacyModel(state) : undefined;
   },
   resolveStage(missingKeys, state) {
     if (state.inferredType === 'unknown') {
