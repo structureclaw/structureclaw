@@ -12,6 +12,7 @@ const DEFAULT_BACKEND_PORT = "8000";
 const CN_DEFAULT_PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple";
 const CN_DEFAULT_NPM_REGISTRY = "https://registry.npmmirror.com";
 const CN_DEFAULT_DOCKER_REGISTRY_MIRROR = "docker.m.daocloud.io/";
+const CN_DEFAULT_APT_MIRROR = "mirrors.tuna.tsinghua.edu.cn";
 
 function isWindows() {
   return process.platform === "win32";
@@ -184,6 +185,9 @@ function applyCnProfileDefaults(env, dotEnv) {
     !String(process.env.DOCKER_REGISTRY_MIRROR || "").trim()
   ) {
     env.DOCKER_REGISTRY_MIRROR = CN_DEFAULT_DOCKER_REGISTRY_MIRROR;
+  }
+  if (!String(dotEnv.APT_MIRROR || "").trim() && !String(process.env.APT_MIRROR || "").trim()) {
+    env.APT_MIRROR = CN_DEFAULT_APT_MIRROR;
   }
 }
 
@@ -584,6 +588,7 @@ function quoteShellArgument(rawValue) {
 }
 
 module.exports = {
+  CN_DEFAULT_APT_MIRROR,
   CN_DEFAULT_DOCKER_REGISTRY_MIRROR,
   CN_DEFAULT_NPM_REGISTRY,
   CN_DEFAULT_PIP_INDEX_URL,
