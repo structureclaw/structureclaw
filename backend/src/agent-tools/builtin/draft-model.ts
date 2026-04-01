@@ -3,6 +3,10 @@ import type { DraftResult, DraftState } from '../../agent-runtime/index.js';
 import type { AppLocale } from '../../services/locale.js';
 import { localize } from './shared.js';
 
+function localeText(locale: AppLocale, zh: string, en: string): string {
+  return locale === 'zh' ? zh : en;
+}
+
 export async function executeDraftModel(args: {
   message: string;
   locale: AppLocale;
@@ -20,6 +24,92 @@ export async function executeDraftModel(args: {
     draft,
     noSkillEquivalentDraft,
   };
+}
+
+export async function executeDraftModelInteractiveStep(args: {
+  message: string;
+  locale: AppLocale;
+  skillIds?: string[];
+  noSkillMode: boolean;
+  sessionKey?: string;
+  plan: string[];
+  toolCalls: any[];
+  prefetchedDraft?: DraftResult;
+  workingSession: { draft?: DraftState; updatedAt: number };
+  startToolCall: (tool: 'draft_model', input: Record<string, unknown>) => any;
+  completeToolCallSuccess: (call: any, output: Record<string, unknown>) => void;
+  textToModelDraft: (message: string, existingState: DraftState | undefined, locale: AppLocale, skillIds?: string[]) => Promise<DraftResult>;
+  isNoSkillEquivalentDraft: (skillIds: string[] | undefined, draft: DraftResult) => boolean;
+  applyDraftToSession: (workingSession: any, draft: DraftResult, noSkillEquivalentDraft: boolean, message: string) => void;
+}): Promise<{ draft: DraftResult; noSkillEquivalentDraft: boolean }> {
+  args.plan.push(args.noSkillMode
+    ? localeText(args.locale, '按通用规则提取可计算结构参数', 'Extract computable structural parameters using generic rules')
+    : localeText(args.locale, '由当前可用 skill 理解请求并细化结构草稿', 'Use the current available skills to understand the request and refine the structural draft'));
+  args.plan.push(localeText(args.locale, '按当前阶段补齐关键工程参数', 'Collect the key engineering parameters for the current stage'));
+
+  const draftCall = args.startToolCall('draft_model', { message: args.message, conversationId: args.sessionKey, phase: 'interactive' });
+  args.toolCalls.push(draftCall);
+
+  const execution = await executeDraftModel({
+    message: args.message,
+    locale: args.locale,
+    skillIds: args.skillIds,
+    prefetchedDraft: args.prefetchedDraft,
+    workingSession: args.workingSession,
+    textToModelDraft: args.textToModelDraft,
+    isNoSkillEquivalentDraft: args.isNoSkillEquivalentDraft,
+    applyDraftToSession: args.applyDraftToSession,
+  });
+
+  args.completeToolCallSuccess(draftCall, {
+    inferredType: execution.draft.inferredType,
+    missingFields: execution.draft.missingFields,
+    extractionMode: execution.draft.extractionMode,
+    modelGenerated: Boolean(execution.draft.model),
+  });
+
+  return execution;
+}
+
+export async function executeDraftModelExecutionStep(args: {
+  message: string;
+  locale: AppLocale;
+  skillIds?: string[];
+  sessionKey?: string;
+  plan: string[];
+  toolCalls: any[];
+  prefetchedDraft?: DraftResult;
+  workingSession: { draft?: DraftState; updatedAt: number };
+  startToolCall: (tool: 'draft_model', input: Record<string, unknown>) => any;
+  completeToolCallSuccess: (call: any, output: Record<string, unknown>) => void;
+  textToModelDraft: (message: string, existingState: DraftState | undefined, locale: AppLocale, skillIds?: string[]) => Promise<DraftResult>;
+  isNoSkillEquivalentDraft: (skillIds: string[] | undefined, draft: DraftResult) => boolean;
+  applyDraftToSession: (workingSession: any, draft: DraftResult, noSkillEquivalentDraft: boolean, message: string) => void;
+}): Promise<{ draft: DraftResult; noSkillEquivalentDraft: boolean }> {
+  args.plan.push(localeText(args.locale, '从自然语言生成结构模型草案（支持会话级补数）', 'Generate a structural model draft from natural language with session carry-over'));
+
+  const draftCall = args.startToolCall('draft_model', { message: args.message, conversationId: args.sessionKey, phase: 'execution' });
+  args.toolCalls.push(draftCall);
+
+  const execution = await executeDraftModel({
+    message: args.message,
+    locale: args.locale,
+    skillIds: args.skillIds,
+    prefetchedDraft: args.prefetchedDraft,
+    workingSession: args.workingSession,
+    textToModelDraft: args.textToModelDraft,
+    isNoSkillEquivalentDraft: args.isNoSkillEquivalentDraft,
+    applyDraftToSession: args.applyDraftToSession,
+  });
+
+  args.completeToolCallSuccess(draftCall, {
+    inferredType: execution.draft.inferredType,
+    missingFields: execution.draft.missingFields,
+    extractionMode: execution.draft.extractionMode,
+    modelGenerated: Boolean(execution.draft.model),
+  });
+
+  return execution;
 }
 
 export const DRAFT_MODEL_TOOL_MANIFEST: ToolManifest = {

@@ -3,6 +3,10 @@ import type { DraftResult, DraftState, StructuralTypeMatch } from '../../agent-r
 import type { AppLocale } from '../../services/locale.js';
 import { localize } from './shared.js';
 
+function localeText(locale: AppLocale, zh: string, en: string): string {
+  return locale === 'zh' ? zh : en;
+}
+
 interface UpdateToolSession {
   draft?: DraftState;
   structuralTypeMatch?: StructuralTypeMatch;
@@ -40,6 +44,45 @@ export async function executeUpdateModel(args: {
     draft,
     noSkillEquivalentDraft,
   };
+}
+
+export async function executeUpdateModelExecutionStep(args: {
+  message: string;
+  locale: AppLocale;
+  skillIds?: string[];
+  sessionKey?: string;
+  plan: string[];
+  toolCalls: any[];
+  workingSession: UpdateToolSession;
+  startToolCall: (tool: 'update_model', input: Record<string, unknown>) => any;
+  completeToolCallSuccess: (call: any, output: Record<string, unknown>) => void;
+  textToModelDraft: (message: string, existingState: DraftState | undefined, locale: AppLocale, skillIds?: string[]) => Promise<DraftResult>;
+  isNoSkillEquivalentDraft: (skillIds: string[] | undefined, draft: DraftResult) => boolean;
+  applyInferredNonCriticalFromMessage: (workingSession: UpdateToolSession, message: string) => void;
+}): Promise<{ draft: DraftResult; noSkillEquivalentDraft: boolean }> {
+  args.plan.push(localeText(args.locale, '根据当前会话上下文增量更新结构模型', 'Update the structural model incrementally using the current session context'));
+
+  const updateCall = args.startToolCall('update_model', { message: args.message, conversationId: args.sessionKey, phase: 'execution' });
+  args.toolCalls.push(updateCall);
+
+  const execution = await executeUpdateModel({
+    message: args.message,
+    locale: args.locale,
+    skillIds: args.skillIds,
+    workingSession: args.workingSession,
+    textToModelDraft: args.textToModelDraft,
+    isNoSkillEquivalentDraft: args.isNoSkillEquivalentDraft,
+    applyInferredNonCriticalFromMessage: args.applyInferredNonCriticalFromMessage,
+  });
+
+  args.completeToolCallSuccess(updateCall, {
+    inferredType: execution.draft.inferredType,
+    missingFields: execution.draft.missingFields,
+    extractionMode: execution.draft.extractionMode,
+    modelUpdated: Boolean(execution.draft.model),
+  });
+
+  return execution;
 }
 
 export const UPDATE_MODEL_TOOL_MANIFEST: ToolManifest = {

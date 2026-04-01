@@ -41,11 +41,11 @@ import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.j
 import { listBuiltinToolManifests } from '../agent-runtime/tool-registry.js';
 import type { ToolManifest } from '../agent-runtime/types.js';
 import { executeConvertModelStep } from '../agent-tools/builtin/convert-model.js';
-import { executeDraftModel } from '../agent-tools/builtin/draft-model.js';
+import { executeDraftModelExecutionStep, executeDraftModelInteractiveStep } from '../agent-tools/builtin/draft-model.js';
 import { executeGenerateReportStep } from '../agent-tools/builtin/generate-report.js';
 import { executeRunAnalysisStep } from '../agent-tools/builtin/run-analysis.js';
 import { executeRunCodeCheckStep } from '../agent-tools/builtin/run-code-check.js';
-import { executeUpdateModel } from '../agent-tools/builtin/update-model.js';
+import { executeUpdateModelExecutionStep } from '../agent-tools/builtin/update-model.js';
 import { executeValidateModelStep } from '../agent-tools/builtin/validate-model.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
@@ -2191,29 +2191,23 @@ export class AgentService {
       };
     }
 
-    plan.push(this.localize(locale, '从自然语言生成结构模型草案（支持会话级补数）', 'Generate a structural model draft from natural language with session carry-over'));
-    const draftCall = this.startToolCall('draft_model', { message: params.message, conversationId: sessionKey, phase: 'execution' });
-    toolCalls.push(draftCall);
-
-    const draftExecution = await executeDraftModel({
+    const draftExecution = await executeDraftModelExecutionStep({
       message: params.message,
       locale,
       skillIds,
+      sessionKey,
+      plan,
+      toolCalls,
       prefetchedDraft: prefetchedDraft?.draft,
       workingSession,
+      startToolCall: this.startToolCall.bind(this),
+      completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
       textToModelDraft: this.textToModelDraft.bind(this),
       isNoSkillEquivalentDraft: this.isNoSkillEquivalentDraft.bind(this),
       applyDraftToSession: this.applyDraftToSession.bind(this),
     });
     const draft = draftExecution.draft;
     const noSkillEquivalentDraft = prefetchedDraft?.noSkillEquivalentDraft ?? draftExecution.noSkillEquivalentDraft;
-
-    this.completeToolCallSuccess(draftCall, {
-      inferredType: draft.inferredType,
-      missingFields: draft.missingFields,
-      extractionMode: draft.extractionMode,
-      modelGenerated: Boolean(draft.model),
-    });
 
     if (workingSession.userApprovedAutoDecide) {
       for (let i = 0; i < 3; i += 1) {
@@ -2397,28 +2391,22 @@ export class AgentService {
       };
     }
 
-    plan.push(this.localize(locale, '根据当前会话上下文增量更新结构模型', 'Update the structural model incrementally using the current session context'));
-    const updateCall = this.startToolCall('update_model', { message: params.message, conversationId: sessionKey, phase: 'execution' });
-    toolCalls.push(updateCall);
-
-    const updateExecution = await executeUpdateModel({
+    const updateExecution = await executeUpdateModelExecutionStep({
       message: params.message,
       locale,
       skillIds,
+      sessionKey,
+      plan,
+      toolCalls,
       workingSession,
+      startToolCall: this.startToolCall.bind(this),
+      completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
       textToModelDraft: this.textToModelDraft.bind(this),
       isNoSkillEquivalentDraft: this.isNoSkillEquivalentDraft.bind(this),
       applyInferredNonCriticalFromMessage: this.applyInferredNonCriticalFromMessage.bind(this),
     });
     const draft = updateExecution.draft;
     const noSkillEquivalentDraft = updateExecution.noSkillEquivalentDraft;
-
-    this.completeToolCallSuccess(updateCall, {
-      inferredType: draft.inferredType,
-      missingFields: draft.missingFields,
-      extractionMode: draft.extractionMode,
-      modelUpdated: Boolean(draft.model),
-    });
 
     const availableModel = draft.model;
     const finalAssessment = availableModel
@@ -2828,25 +2816,22 @@ export class AgentService {
       prefetchedDraft,
     } = args;
 
-    plan.push(noSkillMode
-      ? this.localize(locale, '按通用规则提取可计算结构参数', 'Extract computable structural parameters using generic rules')
-      : this.localize(locale, '由当前可用 skill 理解请求并细化结构草稿', 'Use the current available skills to understand the request and refine the structural draft'));
-    plan.push(this.localize(locale, '按当前阶段补齐关键工程参数', 'Collect the key engineering parameters for the current stage'));
-
-    const draftCall = this.startToolCall('draft_model', { message: params.message, conversationId: sessionKey, phase: 'interactive' });
-    toolCalls.push(draftCall);
-
-    const draft = prefetchedDraft?.draft ?? await this.textToModelDraft(params.message, workingSession.draft, locale, skillIds);
-    const noSkillEquivalentDraft = prefetchedDraft?.noSkillEquivalentDraft ?? this.isNoSkillEquivalentDraft(skillIds, draft);
-    this.applyDraftToSession(workingSession, draft, noSkillEquivalentDraft, params.message);
-    this.completeToolCallSuccess(draftCall, {
-      inferredType: draft.inferredType,
-      missingFields: draft.missingFields,
-      extractionMode: draft.extractionMode,
-      modelGenerated: Boolean(draft.model),
+    return executeDraftModelInteractiveStep({
+      message: params.message,
+      locale,
+      skillIds,
+      noSkillMode,
+      sessionKey,
+      plan,
+      toolCalls,
+      prefetchedDraft: prefetchedDraft?.draft,
+      workingSession,
+      startToolCall: this.startToolCall.bind(this),
+      completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
+      textToModelDraft: this.textToModelDraft.bind(this),
+      isNoSkillEquivalentDraft: this.isNoSkillEquivalentDraft.bind(this),
+      applyDraftToSession: this.applyDraftToSession.bind(this),
     });
-
-    return { draft, noSkillEquivalentDraft };
   }
 
   private applyDraftToSession(
