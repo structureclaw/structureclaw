@@ -845,7 +845,7 @@ async function validateAgentApiContract(context) {
   assert(captured[1]?.traceId === "trace-request-001", "chat/message force_tool should pass traceId");
   assert(captured[0]?.context?.reportOutput === "file", "agent/run should pass reportOutput context");
   assert(captured[1]?.context?.reportFormat === "both", "chat/message force_tool should pass reportFormat context");
-  assert(captured[1]?.context?.executionMode === "force_tool", "chat/message force_tool should pass executionMode context");
+  assert(captured[1]?.context?.executionMode === undefined, "chat/message force_tool should not forward executionMode into agent context");
 
   await app.close();
   console.log("[ok] agent api contract regression");

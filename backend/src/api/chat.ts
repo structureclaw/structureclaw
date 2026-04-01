@@ -90,6 +90,16 @@ const streamMessageSchema = z.object({
   }).optional(),
 });
 
+function stripExecutionModeFromContext(
+  context: z.infer<typeof sendMessageSchema>['context'] | z.infer<typeof streamMessageSchema>['context'],
+) {
+  if (!context) {
+    return undefined;
+  }
+  const { executionMode: _executionMode, ...rest } = context;
+  return rest;
+}
+
 function setSseCorsHeaders(request: FastifyRequest, reply: FastifyReply) {
   const origin = request.headers.origin;
 
@@ -162,13 +172,16 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const body = sendMessageSchema.parse(request.body);
       const userId = request.user?.id;
       const executionMode = body.context?.executionMode ?? 'auto';
+      const context = stripExecutionModeFromContext(body.context);
       const result = executionMode === 'force_tool'
         ? await agentService.runToolCall({
           ...body,
+          context,
           userId,
         })
         : await agentService.run({
           ...body,
+          context,
           userId,
         });
       await persistLatestConversationResult({
@@ -329,13 +342,16 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
     try {
       const executionMode = body.context?.executionMode ?? 'auto';
+      const context = stripExecutionModeFromContext(body.context);
       const stream = executionMode === 'force_tool'
         ? agentService.runToolCallStream({
           ...body,
+          context,
           userId,
         })
         : agentService.runStream({
           ...body,
+          context,
           userId,
         });
 
