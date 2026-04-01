@@ -976,6 +976,88 @@ describe('AgentService orchestration', () => {
     expect(result.model?.metadata?.name).toBe('new-beam-model');
   });
 
+  test('should prefetch skill draft before planner and expose hasModel=true in planner context', async () => {
+    const svc = createServiceWithDefaultSkills();
+    let plannerCalled = 0;
+
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          plannerCalled += 1;
+          expect(text).toContain('User message: 设计一个简支梁，跨度10m，梁中间荷载1kN');
+          expect(text).toContain('"hasModel":true');
+          return {
+            content: JSON.stringify({
+              kind: 'tool_call',
+              replyMode: null,
+              toolId: 'draft_model',
+              reason: 'model draft is already prepared and should continue through tool pipeline',
+            }),
+          };
+        }
+        return { content: 'ok' };
+      },
+    };
+
+    svc.textToModelDraft = async () => ({
+      inferredType: 'beam',
+      missingFields: [],
+      extractionMode: 'llm',
+      model: {
+        schema_version: '1.0.0',
+        unit_system: 'SI',
+        nodes: [
+          { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
+          { id: '2', x: 10000, y: 0, z: 0, restraints: [false, true, true, false, false, false] },
+          { id: '3', x: 5000, y: 0, z: 0 },
+        ],
+        elements: [
+          { id: 'E1', type: 'beam', nodes: ['1', '3'], material: 'STEEL', section: 'B1' },
+          { id: 'E2', type: 'beam', nodes: ['3', '2'], material: 'STEEL', section: 'B1' },
+        ],
+        materials: [{ id: 'STEEL', name: 'Q355', E: 206000, nu: 0.3, rho: 7850, fy: 355 }],
+        sections: [{ id: 'B1', name: 'Beam', type: 'rect', properties: { A: 0.01, Iz: 0.0001, Iy: 0.0001, J: 0.00001 } }],
+        load_cases: [{ id: 'MID', type: 'other', loads: [{ node: '3', fy: -1 }] }],
+        load_combinations: [],
+      },
+      stateToPersist: {
+        inferredType: 'beam',
+        updatedAt: Date.now(),
+      },
+    });
+    svc.assessInteractionNeeds = async () => ({
+      criticalMissing: [],
+      nonCriticalMissing: [],
+      defaultProposals: [],
+    });
+
+    svc.structureProtocolClient = {
+      post: async (route) => {
+        if (route === '/validate') {
+          return { data: { valid: true } };
+        }
+        throw new Error(`unexpected structure protocol route: ${route}`);
+      },
+    };
+
+    const result = await svc.run({
+      conversationId: 'conv-prefetch-before-planner',
+      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model'],
+        autoAnalyze: false,
+      },
+    });
+
+    expect(plannerCalled).toBe(1);
+    expect(result.success).toBe(true);
+    expect(result.model).toBeDefined();
+    expect(result.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+  });
+
   test('should ask for clarification instead of returning an invalid drafted model', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = {
