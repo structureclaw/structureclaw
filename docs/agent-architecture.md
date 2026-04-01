@@ -199,7 +199,7 @@ Each skill may declare:
 Each tool should declare:
 
 - whether it is enabled by default
-- whether it is built-in or skill-provided
+- whether it is built-in or external
 - its input and output contract
 - any required guards or prerequisites
 
@@ -391,7 +391,7 @@ The runtime has already aligned key orchestration behavior with the target desig
 ### Stage 2: Add Skill and Tool Registration Metadata
 
 - extend skill manifests with enablement and tool-binding metadata
-- introduce a tool manifest model for built-in and skill-provided tools
+- introduce a tool manifest model for built-in and external tools
 - make the runtime compute the active capability set per request or session
 
 ### Stage 3: Make `structure-type` the Stable First Step

@@ -58,7 +58,7 @@ function inferEnabledToolsFromManifest(manifest: SkillManifest): string[] {
 function createSkillProvidedTool(toolId: string, skillId: string): ToolManifest {
   return {
     id: toolId,
-    source: 'skill',
+    source: 'external',
     enabledByDefault: false,
     displayName: {
       zh: titleize(toolId),
@@ -70,7 +70,7 @@ function createSkillProvidedTool(toolId: string, skillId: string): ToolManifest 
     },
     providedBySkillId: skillId,
     requiresSkills: [skillId],
-    tags: ['skill-provided'],
+    tags: ['external-provided'],
     errorCodes: [],
   };
 }

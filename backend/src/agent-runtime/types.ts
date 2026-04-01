@@ -7,7 +7,7 @@ export type FrameDimension = '2d' | '3d';
 export type FrameBaseSupportType = 'fixed' | 'pinned';
 export type AgentAnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear';
 export type MaterialFamily = 'steel' | 'concrete' | 'composite' | 'timber' | 'masonry' | 'generic';
-export type AgentToolSource = 'builtin' | 'skill';
+export type AgentToolSource = 'builtin' | 'external';
 
 export interface DraftFloorLoad {
   story: number;
