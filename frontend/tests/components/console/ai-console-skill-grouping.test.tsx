@@ -765,4 +765,103 @@ describe('Capability settings and console integration', () => {
       expect([...(stored.toolIds ?? [])].sort()).toEqual(['convert_model', 'draft_model', 'run_analysis', 'update_model'])
     })
   })
+
+  it('does not treat duplicated stored skill ids as the default skill set during repair', async () => {
+    vi.restoreAllMocks()
+    window.localStorage.setItem(CAPABILITY_PREFERENCE_STORAGE_KEY, JSON.stringify({
+      skillIds: ['generic', 'generic'],
+      toolIds: ['convert_model'],
+    }))
+
+    vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+
+      if (url === `${API_BASE}/api/v1/agent/skills`) {
+        return {
+          ok: true,
+          json: async () => ([
+            {
+              id: 'generic',
+              name: { zh: '通用结构类型', en: 'Generic Structure Type' },
+              description: { zh: 'generic', en: 'generic' },
+              autoLoadByDefault: true,
+            },
+            {
+              id: 'opensees-static',
+              name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' },
+              description: { zh: 'static', en: 'static' },
+              autoLoadByDefault: true,
+            },
+          ]),
+        } as Response
+      }
+
+      if (url.startsWith(`${API_BASE}/api/v1/agent/capability-matrix`)) {
+        return {
+          ok: true,
+          json: async () => ({
+            skills: [
+              { id: 'generic', domain: 'structure-type' },
+              { id: 'opensees-static', domain: 'analysis-strategy' },
+            ],
+            tools: [
+              {
+                id: 'convert_model',
+                category: 'modeling',
+                displayName: { zh: '转换结构模型', en: 'Convert Structural Model' },
+                description: { zh: '转换模型格式', en: 'Convert model formats' },
+              },
+              {
+                id: 'draft_model',
+                category: 'modeling',
+                displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' },
+                description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
+              },
+              {
+                id: 'update_model',
+                category: 'modeling',
+                displayName: { zh: '更新结构模型', en: 'Update Structural Model' },
+                description: { zh: '根据当前会话更新模型', en: 'Update the model from session context' },
+              },
+              {
+                id: 'run_analysis',
+                category: 'analysis',
+                displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' },
+                description: { zh: '执行分析求解', en: 'Execute analysis' },
+              },
+            ],
+            foundationToolIds: ['convert_model'],
+            enabledToolIdsBySkill: {
+              generic: ['draft_model', 'update_model'],
+              'opensees-static': ['run_analysis'],
+            },
+            skillDomainById: {
+              generic: 'structure-type',
+              'opensees-static': 'analysis-strategy',
+            },
+            domainSummaries: [
+              { domain: 'structure-type', skillIds: ['generic'] },
+              { domain: 'analysis-strategy', skillIds: ['opensees-static'] },
+            ],
+          }),
+        } as Response
+      }
+
+      return {
+        ok: true,
+        json: async () => ([]),
+      } as Response
+    })
+
+    render(<CapabilitySettingsPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
+    })
+
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem(CAPABILITY_PREFERENCE_STORAGE_KEY) || '{}') as { toolIds?: string[] }
+      expect(stored.toolIds).toEqual(['convert_model'])
+    })
+  })
 })

@@ -203,12 +203,19 @@ function toToolIdList(tools: CapabilityToolSummary[]) {
 }
 
 function hasSameIds(left: string[], right: string[]) {
-  if (left.length !== right.length) {
+  const leftSet = new Set(left)
+  const rightSet = new Set(right)
+  if (leftSet.size !== rightSet.size) {
     return false
   }
 
-  const rightSet = new Set(right)
-  return left.every((item) => rightSet.has(item))
+  for (const item of leftSet) {
+    if (!rightSet.has(item)) {
+      return false
+    }
+  }
+
+  return true
 }
 
 export function CapabilitySettingsPanel() {
