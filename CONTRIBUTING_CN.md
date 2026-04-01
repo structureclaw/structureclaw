@@ -17,6 +17,14 @@
 ./sclaw status
 ```
 
+如果你在中国大陆网络环境下开发，可使用默认启用国内镜像的入口（子命令完全一致）：
+
+```bash
+./sclaw_cn doctor
+./sclaw_cn start
+./sclaw_cn status
+```
+
 3. 如果你的改动涉及 chat、agent orchestration、report、converter 或 schema，请在开始前先用 `node tests/runner.mjs validate --list` 确认对应校验项。
 
 ## 核心协作原则

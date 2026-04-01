@@ -17,6 +17,14 @@ It is written for typical open source collaboration through a fork-and-pull-requ
 ./sclaw status
 ```
 
+If you work behind mainland China network constraints, use the mirror-enabled entrypoint with the same subcommands:
+
+```bash
+./sclaw_cn doctor
+./sclaw_cn start
+./sclaw_cn status
+```
+
 3. If your change touches chat, agent orchestration, reports, converters, or schema behavior, identify the matching validator with `node tests/runner.mjs validate --list` before you start.
 
 ## Contribution Rules

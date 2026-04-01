@@ -111,6 +111,24 @@ Manage installable skills from the command line:
 ./sclaw skill uninstall <skill-id>          # uninstall a skill
 ```
 
+### 5.6 China mirror CLI entrypoint
+
+`sclaw_cn` keeps the same subcommands as `sclaw` and applies mirror defaults when not set explicitly.
+
+```bash
+./sclaw_cn doctor
+./sclaw_cn setup-analysis-python
+./sclaw_cn docker-start
+```
+
+Default mirror values in `sclaw_cn`:
+
+- `PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`
+- `NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`
+- `DOCKER_REGISTRY_MIRROR=docker.m.daocloud.io/`
+
+You can override any of them in `.env` or shell environment variables.
+
 ## 6. Environment and Configuration
 
 Start with `.env.example`.

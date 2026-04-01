@@ -111,6 +111,24 @@ node .\sclaw stop
 ./sclaw skill uninstall <skill-id>          # 卸载技能
 ```
 
+### 5.6 国内镜像 CLI 入口
+
+`sclaw_cn` 与 `sclaw` 使用同一套子命令，并在未显式配置时自动使用国内镜像默认值。
+
+```bash
+./sclaw_cn doctor
+./sclaw_cn setup-analysis-python
+./sclaw_cn docker-start
+```
+
+`sclaw_cn` 默认镜像配置：
+
+- `PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`
+- `NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`
+- `DOCKER_REGISTRY_MIRROR=docker.m.daocloud.io/`
+
+以上变量都可在 `.env` 或 shell 环境变量中覆盖。
+
 ## 6. 环境变量与配置
 
 请基于 `.env.example` 配置。
