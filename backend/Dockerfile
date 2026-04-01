@@ -29,8 +29,7 @@ ARG PIP_INDEX_URL=https://pypi.org/simple
 ENV PIP_INDEX_URL=${PIP_INDEX_URL}
 
 # Install system dependencies for backend and embedded Python analysis runtime
-RUN apt-get update && \
-    sed -i "s|deb.debian.org|${APT_MIRROR}|g; s|security.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources && \
+RUN sed -i "s|deb.debian.org|${APT_MIRROR}|g; s|security.debian.org|${APT_MIRROR}|g" /etc/apt/sources.list.d/debian.sources && \
     apt-get update && \
     apt-get install -y wget openssl python3 python3-pip python3-venv && \
     rm -rf /var/lib/apt/lists/*
