@@ -498,6 +498,25 @@ describe('AgentService orchestration', () => {
     expect(result.interaction?.recommendedNextStep).toContain('未启用 `run_analysis`');
   });
 
+  test('should block force_tool when drafting is not granted in skill mode and no model exists', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const result = await svc.runToolCall({
+      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        disabledToolIds: ['draft_model'],
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.interaction?.state).toBe('blocked');
+    expect(result.toolCalls).toEqual([]);
+    expect(result.response).toContain('无法为本轮请求选择可执行工具');
+  });
+
   test('should merge rule-extracted numeric follow-up when llm extraction is partial', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
