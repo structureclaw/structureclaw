@@ -22,6 +22,32 @@ const BACKEND_STEPS = [
   ["Report narrative contract", "validate-report-narrative-contract"],
 ];
 
+const JEST_ENV_FORWARD_KEYS = [
+  "REDIS_URL",
+  "LLM_PROVIDER",
+  "LLM_API_KEY",
+  "LLM_MODEL",
+  "LLM_BASE_URL",
+  "LLM_TIMEOUT_MS",
+  "LLM_MAX_RETRIES",
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "OPENAI_MODEL",
+  "ANALYSIS_ENGINE_URL",
+  "ANALYSIS_ENGINE_MANIFEST_PATH",
+  "ZAI_API_KEY",
+];
+
+function pickJestForwardEnv(context) {
+  const forwarded = {};
+  for (const key of JEST_ENV_FORWARD_KEYS) {
+    if (context.env[key] !== undefined) {
+      forwarded[key] = context.env[key];
+    }
+  }
+  return forwarded;
+}
+
 async function runBackendRegression(rootDir) {
   const context = resolveRegressionContext(rootDir);
   ensureRegressionSqliteDatabaseUrl(context);
@@ -52,6 +78,7 @@ async function runBackendRegression(rootDir) {
       cwd: context.paths.backendDir,
       env: {
         ...process.env,
+        ...pickJestForwardEnv(context),
         DATABASE_URL: context.env.DATABASE_URL,
         NODE_OPTIONS: "--experimental-vm-modules",
       },

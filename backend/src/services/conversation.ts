@@ -1,9 +1,14 @@
 import { prisma } from '../utils/database.js';
+import { Prisma } from '@prisma/client';
 import type { JsonValue } from '../utils/json.js';
 import { resolveLocale, type AppLocale } from './locale.js';
 
 function getDefaultConversationTitle(locale: AppLocale): string {
   return locale === 'zh' ? '新对话' : 'New Conversation';
+}
+
+function toNullableJsonInput(value: Record<string, unknown> | null): Prisma.NullableJsonNullValueInput | Prisma.InputJsonValue {
+  return value === null ? Prisma.JsonNull : value as Prisma.InputJsonValue;
 }
 
 export class ConversationService {
@@ -67,16 +72,16 @@ export class ConversationService {
     resultSnapshot?: Record<string, unknown> | null;
     latestResult?: Record<string, unknown> | null;
   }): Promise<void> {
-    const updateData: any = { updatedAt: new Date() };
+    const updateData: Prisma.ConversationUpdateInput = { updatedAt: new Date() };
 
     if (params.modelSnapshot !== undefined) {
-      updateData.modelSnapshot = params.modelSnapshot;
+      updateData.modelSnapshot = toNullableJsonInput(params.modelSnapshot);
     }
     if (params.resultSnapshot !== undefined) {
-      updateData.resultSnapshot = params.resultSnapshot;
+      updateData.resultSnapshot = toNullableJsonInput(params.resultSnapshot);
     }
     if (params.latestResult !== undefined) {
-      updateData.latestResult = params.latestResult;
+      updateData.latestResult = toNullableJsonInput(params.latestResult);
     }
 
     await prisma.conversation.update({
