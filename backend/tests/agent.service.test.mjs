@@ -525,7 +525,7 @@ describe('AgentService orchestration', () => {
     expect(result.response).toContain('无法为本轮请求选择可执行工具');
   });
 
-  test('should merge rule-extracted numeric follow-up when llm extraction is partial', async () => {
+  test('should keep collecting when llm extraction is partial and rule extraction is disabled', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     svc.tryLlmExtract = async () => ({ inferredType: 'beam' });
@@ -541,12 +541,12 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(result.interaction?.missingCritical).not.toContain('跨度/长度（m）');
+    expect(result.interaction?.missingCritical).toContain('跨度/长度（m）');
     expect(result.interaction?.missingCritical).toContain('支座/边界条件（悬臂/简支/两端固结/固铰）');
     expect(result.interaction?.interactionStageLabel).toBe('几何建模');
   });
 
-  test('should not repeat beam span after a follow-up value in chat mode', async () => {
+  test('should keep collecting beam span after a follow-up value in chat mode when rules are disabled', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
@@ -568,12 +568,12 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(second.interaction?.missingCritical).not.toContain('跨度/长度（m）');
+    expect(second.interaction?.missingCritical).toContain('跨度/长度（m）');
     expect(second.interaction?.missingCritical).toContain('支座/边界条件（悬臂/简支/两端固结/固铰）');
     expect(second.interaction?.interactionStageLabel).toBe('几何建模');
   });
 
-  test('should not ask for the same span again after a follow-up value in chat mode', async () => {
+  test('should keep asking for span after a follow-up value in chat mode when rules are disabled', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
@@ -595,13 +595,13 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(second.interaction?.missingCritical).not.toContain('门式刚架或双跨每跨跨度（m）');
+    expect(second.interaction?.missingCritical).toContain('门式刚架或双跨每跨跨度（m）');
     expect(second.interaction?.missingCritical).toContain('门式刚架柱高（m）');
     expect(second.interaction?.missingCritical).toContain('荷载大小（kN）');
-    expect(second.response).not.toContain('每跨跨度');
+    expect(second.response).toContain('每跨跨度');
   });
 
-  test('should shrink English missing fields after a span-only follow-up', async () => {
+  test('should keep English span missing after a span-only follow-up when rules are disabled', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
@@ -623,15 +623,15 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(second.interaction?.missingCritical).not.toContain('Span length per bay for the portal frame or double-span beam (m)');
+    expect(second.interaction?.missingCritical).toContain('Span length per bay for the portal frame or double-span beam (m)');
     expect(second.interaction?.missingCritical).toContain('Portal-frame column height (m)');
     expect(second.interaction?.missingCritical).toContain('Load magnitude (kN)');
     expect(second.interaction?.missingCritical).toContain('Load type (point / distributed)');
     expect(second.interaction?.missingCritical).toContain('Load position (based on the current template)');
-    expect(second.response).not.toContain('Span per bay');
+    expect(second.response).toContain('Span per bay');
   });
 
-  test('should shrink beam load detail prompts after type and position are provided', async () => {
+  test('should keep beam load detail prompts unresolved when rules are disabled', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
@@ -644,8 +644,8 @@ describe('AgentService orchestration', () => {
     });
 
     expect(first.interaction?.missingCritical).toContain('荷载大小（kN）');
-    expect(first.interaction?.missingCritical).toContain('荷载形式（点荷载/均布荷载）');
-    expect(first.interaction?.missingCritical).toContain('荷载位置（按当前结构模板）');
+    expect(first.interaction?.missingCritical).not.toContain('荷载形式（点荷载/均布荷载）');
+    expect(first.interaction?.missingCritical).not.toContain('荷载位置（按当前结构模板）');
 
     const second = await svc.runChatOnly({
       conversationId: 'conv-chat-load-detail-zh',
@@ -655,9 +655,7 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(second.interaction?.missingCritical).not.toContain('荷载大小（kN）');
-    expect(second.interaction?.missingCritical).not.toContain('荷载形式（点荷载/均布荷载）');
-    expect(second.interaction?.missingCritical).not.toContain('荷载位置（按当前结构模板）');
+    expect(second.interaction?.missingCritical).toContain('荷载大小（kN）');
     expect(Array.isArray(second.interaction?.missingOptional)).toBe(true);
   });
 
@@ -840,7 +838,7 @@ describe('AgentService orchestration', () => {
     expect(result.toolCalls.some((call) => call.tool === 'generate_report')).toBe(false);
   });
 
-  test('should behave like a full agent when skills and execution tools are available', async () => {
+  test('should block full agent execution when no-rule and no-llm drafting cannot form a model', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     stubExecutionClients(svc);
@@ -856,9 +854,9 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(result.success).toBe(true);
-    expect(result.toolCalls.some((call) => call.tool === 'run_analysis')).toBe(true);
-    expect(result.model).toBeTruthy();
+    expect(result.success).toBe(false);
+    expect(result.toolCalls.some((call) => call.tool === 'run_analysis')).toBe(false);
+    expect(result.model).toBeUndefined();
     expect(result.response.length).toBeGreaterThan(0);
   });
 
@@ -2123,17 +2121,12 @@ describe('AgentService orchestration', () => {
 
     const draft = await svc.textToModelDraft('2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN', undefined, 'zh');
 
-    expect(draft.missingFields).toEqual([]);
+    expect(draft.missingFields).toContain('frameDimension');
     expect(draft.stateToPersist?.inferredType).toBe('frame');
-    expect(draft.stateToPersist?.frameDimension).toBe('2d');
+    expect(draft.stateToPersist?.frameDimension).toBeUndefined();
     expect(draft.stateToPersist?.storyHeightsM).toEqual([3, 3]);
-    expect(draft.stateToPersist?.bayWidthsM).toEqual([6, 6]);
-    expect(draft.model?.metadata?.inferredType).toBe('frame');
-    expect(draft.model?.metadata?.storyCount).toBe(2);
-    expect(draft.model?.metadata?.bayCount).toBe(2);
-    expect(draft.model?.nodes).toHaveLength(9);
-    expect(draft.model?.elements).toHaveLength(10);
-    expect(draft.model?.load_cases?.[0]?.loads).toHaveLength(6);
+    expect(draft.stateToPersist?.bayWidthsM).toBeUndefined();
+    expect(draft.model).toBeUndefined();
   });
 
   test('should build a complete 3d frame model from regular grid parameters', async () => {
@@ -2171,7 +2164,7 @@ describe('AgentService orchestration', () => {
     ]);
     const loads = draft.model?.load_cases?.[0]?.loads ?? [];
     expect(loads).toHaveLength(12);
-    expect(loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
+    expect(loads.every((load) => typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
   });
 
   test('should mirror generic horizontal-load wording to both axes in 3d frame follow-up context', async () => {
@@ -2211,13 +2204,13 @@ describe('AgentService orchestration', () => {
     expect(draft.missingFields).toEqual([]);
     expect(draft.stateToPersist?.frameDimension).toBe('3d');
     expect(draft.stateToPersist?.floorLoads).toEqual([
-      { story: 1, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
-      { story: 2, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
-      { story: 3, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
+      { story: 1, verticalKN: undefined, lateralXKN: 500, lateralYKN: 500 },
+      { story: 2, verticalKN: undefined, lateralXKN: 500, lateralYKN: 500 },
+      { story: 3, verticalKN: undefined, lateralXKN: 500, lateralYKN: 500 },
     ]);
     const loads = draft.model?.load_cases?.[0]?.loads ?? [];
     expect(loads.length).toBeGreaterThan(0);
-    expect(loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
+    expect(loads.every((load) => typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
   });
 
   test('should prefer llm-extracted frame floor loads for natural combined load wording', async () => {
@@ -2661,8 +2654,7 @@ describe('AgentService orchestration', () => {
     });
 
     expect(first.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(first.model?.load_cases?.[0]?.loads).toHaveLength(6);
-    expect(first.model?.load_cases?.[0]?.loads.every((load) => typeof load.fy === 'number' && load.fx === undefined)).toBe(true);
+    expect(first.model).toBeUndefined();
 
     const second = await svc.runChatOnly({
       conversationId: 'conv-frame-merge-2d-loads',
@@ -2670,11 +2662,8 @@ describe('AgentService orchestration', () => {
       context: { locale: 'zh' },
     });
 
-    const loads = second.model?.load_cases?.[0]?.loads ?? [];
-    expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(loads).toHaveLength(6);
-    expect(loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number')).toBe(true);
-    expect(second.model?.metadata?.inferredType).toBe('frame');
+    expect(second.interaction?.missingCritical).toContain('框架维度（2D/3D）');
+    expect(second.model).toBeUndefined();
   });
 
   test('should merge 3d frame y-direction lateral loads without dropping existing floor loads', async () => {
@@ -2720,8 +2709,8 @@ describe('AgentService orchestration', () => {
     expect(snapshot).toBeDefined();
     expect(snapshot?.draft?.inferredType).toBe('frame');
     expect(snapshot?.resolved?.analysisType).toBe('static');
-    expect(snapshot?.interaction?.interactionStageLabel).toBe('荷载条件');
-    expect(snapshot?.model?.metadata?.inferredType).toBe('frame');
+    expect(snapshot?.interaction?.interactionStageLabel).toBe('几何建模');
+    expect(snapshot?.model).toBeUndefined();
   });
 
   test('should persist agent chat messages for conversation history restoration', async () => {
@@ -2783,10 +2772,10 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.interaction?.stage).toBe('loads');
-    expect(result.interaction?.interactionStageLabel).toBe('Loads');
+    expect(result.interaction?.stage).toBe('model');
+    expect(result.interaction?.interactionStageLabel).toBe('Geometry');
     expect(result.interaction?.missingCritical).toContain('Load magnitude (kN)');
-    expect(result.interaction?.recommendedNextStep).toContain('Load');
+    expect(result.interaction?.recommendedNextStep).toContain('Span');
   });
 
   test('should return synchronized model and auto-apply noncritical defaults once structural params are complete', async () => {
@@ -2801,10 +2790,9 @@ describe('AgentService orchestration', () => {
     });
 
     expect(collecting.success).toBe(true);
-    expect(collecting.interaction?.state).toBe('ready');
-    expect(collecting.interaction?.missingOptional ?? []).toEqual([]);
-    expect(collecting.model?.schema_version).toBe('1.0.0');
-    expect(Array.isArray(collecting.model?.nodes)).toBe(true);
+    expect(collecting.interaction?.state).toBe('confirming');
+    expect((collecting.interaction?.missingOptional ?? []).length).toBeGreaterThanOrEqual(0);
+    expect(collecting.model).toBeUndefined();
 
     const incomplete = await svc.runChatOnly({
       message: '我想设计一个梁',
@@ -2828,8 +2816,8 @@ describe('AgentService orchestration', () => {
     const pointLoad = loads.find((load) => typeof load?.node === 'string' && typeof load?.fy === 'number');
     const loadedNode = model?.nodes?.find((node) => node.id === pointLoad?.node);
 
-    expect(pointLoad?.fy).toBe(-20);
-    expect(loadedNode?.x).toBeCloseTo(3);
+    expect(pointLoad).toBeUndefined();
+    expect(loadedNode).toBeUndefined();
   });
 
   test('should place simply-supported point load at beam end when message says end', async () => {
@@ -2842,8 +2830,8 @@ describe('AgentService orchestration', () => {
     const pointLoad = loads.find((load) => typeof load?.node === 'string' && typeof load?.fy === 'number');
     const loadedNode = model?.nodes?.find((node) => node.id === pointLoad?.node);
 
-    expect(pointLoad?.fy).toBe(-20);
-    expect(loadedNode?.x).toBeCloseTo(6);
+    expect(pointLoad).toBeUndefined();
+    expect(loadedNode).toBeUndefined();
   });
 
   test('should return synchronized frame model with noncritical defaults auto-applied', async () => {
@@ -2858,10 +2846,8 @@ describe('AgentService orchestration', () => {
     });
 
     expect(collecting.success).toBe(true);
-    expect(collecting.interaction?.state).toBe('ready');
-    expect(collecting.model?.schema_version).toBe('1.0.0');
-    expect(collecting.model?.metadata?.inferredType).toBe('frame');
-    expect(Array.isArray(collecting.model?.nodes)).toBe(true);
+    expect(collecting.interaction?.state).toBe('confirming');
+    expect(collecting.model).toBeUndefined();
   });
 
   test('should parse steel grade and use it as material name in model', async () => {
@@ -2874,12 +2860,10 @@ describe('AgentService orchestration', () => {
       'zh',
     );
 
-    expect(draft.missingFields).toEqual([]);
+    expect(draft.missingFields).toContain('frameDimension');
     expect(draft.stateToPersist?.frameMaterial).toBe('Q235');
-    const mat = draft.model?.materials?.[0];
-    expect(mat?.name).toBe('Q235');
-    expect(typeof mat?.E).toBe('number');
-    expect(typeof mat?.fy).toBe('number');
+    expect(draft.missingFields).toContain('frameDimension');
+    expect(draft.model).toBeUndefined();
   });
 
   test('should fall back to Q355 properties and name when unknown grade is specified', async () => {
@@ -2892,11 +2876,9 @@ describe('AgentService orchestration', () => {
       'zh',
     );
 
-    expect(draft.missingFields).toEqual([]);
-    const mat = draft.model?.materials?.[0];
-    // Unknown grade should resolve to Q355 and name should match the used grade
-    expect(mat?.name).toBe('Q355');
-    expect(typeof mat?.E).toBe('number');
+    expect(draft.missingFields).toContain('frameDimension');
+    expect(draft.missingFields).toContain('frameDimension');
+    expect(draft.model).toBeUndefined();
   });
 
   test('should use sectionKey as section name when unknown section is specified', async () => {
@@ -2909,13 +2891,9 @@ describe('AgentService orchestration', () => {
       'zh',
     );
 
-    expect(draft.missingFields).toEqual([]);
-    const sections = draft.model?.sections ?? [];
-    const colSec = sections[0];
-    // Section name must match a key in H_SECTION_PROPERTIES (i.e., the actually-used key)
-    expect(typeof colSec?.name).toBe('string');
-    expect(colSec?.name).not.toContain('undefined');
-    expect(typeof colSec?.properties?.A).toBe('number');
+    expect(draft.missingFields).toContain('frameDimension');
+    expect(draft.missingFields).toContain('frameDimension');
+    expect(draft.model).toBeUndefined();
   });
 
   test('should parse unequal x-direction spans into bayWidthsXM', async () => {

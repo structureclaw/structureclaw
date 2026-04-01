@@ -1008,9 +1008,9 @@ export function buildModel(state: DraftState): Record<string, unknown> {
 }
 
 export function buildDraftResult(message: string, existingState: DraftState | undefined, llmExtraction: DraftExtraction | null): DraftResult {
-  const ruleExtraction = extractDraftByRules(message);
+  void message;
   const extractionMode: 'llm' | 'deterministic' = llmExtraction ? 'llm' : 'deterministic';
-  const mergedExtraction = mergeDraftExtraction(llmExtraction, ruleExtraction);
+  const mergedExtraction = llmExtraction ?? {};
   const mergedState = mergeDraftState(existingState, mergedExtraction);
   const missingFields = computeMissingFields(mergedState);
   if (missingFields.length > 0) {

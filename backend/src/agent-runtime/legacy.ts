@@ -1,5 +1,4 @@
 import {
-  extractDraftByRules,
   mergeDraftState,
   normalizeFloorLoads,
   normalizeFrameBaseSupportType,
@@ -109,12 +108,10 @@ export function mergeLegacyDraftPatchLlmFirst(
 }
 
 export function buildLegacyDraftPatchLlmFirst(
-  message: string,
+  _message: string,
   llmDraftPatch: Record<string, unknown> | null | undefined,
 ): DraftExtraction {
-  const normalizedLlmPatch = normalizeLegacyDraftPatch(llmDraftPatch);
-  const rulePatch = extractDraftByRules(message);
-  return mergeLegacyDraftPatchLlmFirst(normalizedLlmPatch, rulePatch);
+  return normalizeLegacyDraftPatch(llmDraftPatch);
 }
 
 export function restrictLegacyDraftPatch(
