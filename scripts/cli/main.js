@@ -236,7 +236,7 @@ async function collectDockerInstallConfig(rawArgs, env) {
   const defaults = {
     provider: String(flags.get("llm-provider") || env.LLM_PROVIDER || "openai"),
     baseUrl: String(flags.get("llm-base-url") || env.LLM_BASE_URL || ""),
-    apiKey: String(flags.get("llm-api-key") || env.LLM_API_KEY || env.OPENAI_API_KEY || env.ZAI_API_KEY || ""),
+    apiKey: String(flags.get("llm-api-key") || env.LLM_API_KEY || ""),
     model: String(flags.get("llm-model") || env.LLM_MODEL || ""),
   };
   const nonInteractive =
@@ -842,7 +842,7 @@ function resolveApiBase(env) {
   return `http://localhost:${env.PORT || runtime.DEFAULT_BACKEND_PORT}`;
 }
 
-function resolveMirrorValueSource(key, env, dotEnv) {
+function resolveMirrorValueSource(key, env, dotEnv, paths) {
   if (String(process.env[key] || "").trim()) {
     return "process.env";
   }
@@ -863,25 +863,39 @@ function resolveMirrorValueSource(key, env, dotEnv) {
     ) {
       return "sclaw_cn default";
     }
+    if (key === "APT_MIRROR" && env[key] === runtime.CN_DEFAULT_APT_MIRROR) {
+      return "sclaw_cn default";
+    }
+
+    // Keep source reporting aligned with docker-compose.cn.yml build-arg defaults.
+    if (
+      key === "APT_MIRROR" &&
+      !String(env[key] || "").trim() &&
+      paths &&
+      paths.dockerComposeCnFile &&
+      runtime.pathExists(paths.dockerComposeCnFile)
+    ) {
+      return "docker-compose.cn.yml default";
+    }
   }
 
   return "unset";
 }
 
-function showMirrorStatus(env, dotEnv) {
+function showMirrorStatus(env, dotEnv, paths) {
   const rows = [
-    ["PIP_INDEX_URL", env.PIP_INDEX_URL || "", resolveMirrorValueSource("PIP_INDEX_URL", env, dotEnv)],
+    ["PIP_INDEX_URL", env.PIP_INDEX_URL || "", resolveMirrorValueSource("PIP_INDEX_URL", env, dotEnv, paths)],
     [
       "NPM_CONFIG_REGISTRY",
       env.NPM_CONFIG_REGISTRY || "",
-      resolveMirrorValueSource("NPM_CONFIG_REGISTRY", env, dotEnv),
+      resolveMirrorValueSource("NPM_CONFIG_REGISTRY", env, dotEnv, paths),
     ],
     [
       "DOCKER_REGISTRY_MIRROR",
       env.DOCKER_REGISTRY_MIRROR || "",
-      resolveMirrorValueSource("DOCKER_REGISTRY_MIRROR", env, dotEnv),
+      resolveMirrorValueSource("DOCKER_REGISTRY_MIRROR", env, dotEnv, paths),
     ],
-    ["APT_MIRROR", env.APT_MIRROR || "", resolveMirrorValueSource("APT_MIRROR", env, dotEnv)],
+    ["APT_MIRROR", env.APT_MIRROR || "", resolveMirrorValueSource("APT_MIRROR", env, dotEnv, paths)],
   ];
 
   log(`Mirror configuration (profile: ${env.SCLAW_PROFILE || "default"}):`);
@@ -1032,7 +1046,7 @@ async function dispatch(commandName, rawArgs, rootDir) {
       await ensureAnalysisPython(rootDir, env);
       return;
     case "mirror-status":
-      showMirrorStatus(env, dotEnv);
+      showMirrorStatus(env, dotEnv, paths);
       return;
     case "dev-backend":
       await runtime.runCommand(runtime.getNpmCommand(), ["run", "dev", "--prefix", paths.backendDir], {

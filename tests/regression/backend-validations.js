@@ -23,8 +23,6 @@ function backendRequire(rootDir) {
 
 function clearProviderEnv() {
   process.env.LLM_API_KEY = "";
-  process.env.OPENAI_API_KEY = "";
-  process.env.ZAI_API_KEY = "";
   process.env.LLM_PROVIDER = "openai";
 }
 
@@ -557,8 +555,6 @@ async function validateAgentNoSkillFallback(context) {
   };
 
   process.env.LLM_API_KEY = process.env.LLM_API_KEY || "";
-  process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-  process.env.ZAI_API_KEY = process.env.ZAI_API_KEY || "";
 
   const AgentService = await importBackendAgentService(context.rootDir);
   const svc = new AgentService();
