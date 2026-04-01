@@ -42,6 +42,8 @@ describe('visualization-adapter', () => {
     expect(snapshot?.source).toBe('result')
     expect(snapshot?.dimension).toBe(2)
     expect(snapshot?.plane).toBe('xz')
+    expect(snapshot?.loads[0]?.vector).toEqual({ x: 0, y: 0, z: -10 })
+    expect(snapshot?.cases.find((item) => item.id === 'result')?.nodeResults['1']?.reaction).toMatchObject({ fy: 0, fz: 10 })
     expect(snapshot?.elements[0]?.nodeIds).toEqual(['1', '2'])
     expect(snapshot?.cases.find((item) => item.id === 'result')?.elementResults.E1?.moment).toBe(20)
     expect(snapshot?.cases.find((item) => item.id === 'envelope')?.nodeResults['2']?.envelope?.maxAbsDisplacement).toBe(0.02)
@@ -89,6 +91,33 @@ describe('visualization-adapter', () => {
     expect(snapshot?.dimension).toBe(3)
     expect(snapshot?.cases.map((item) => item.id)).toContain('W')
     expect(snapshot?.cases.find((item) => item.id === 'W')?.elementResults.E1?.axial).toBe(8)
+  })
+
+  it('keeps 3D load directions unchanged', () => {
+    const snapshot = buildVisualizationSnapshot({
+      title: '3D Load Directions',
+      mode: 'analysis-result',
+      model: {
+        schema_version: '1.0.0',
+        nodes: [
+          { id: '1', x: 0, y: 0, z: 0 },
+          { id: '2', x: 4, y: 2, z: 3 },
+        ],
+        elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: 'M1', section: 'S1' }],
+        load_cases: [{ id: 'L1', loads: [{ node: '2', fy: -5, fz: -3 }] }],
+      },
+      analysis: {
+        data: {
+          displacements: {
+            '2': { ux: 0.001, uy: -0.002, uz: -0.003 },
+          },
+        },
+      },
+    })
+
+    expect(snapshot).not.toBeNull()
+    expect(snapshot?.dimension).toBe(3)
+    expect(snapshot?.loads[0]?.vector).toEqual({ x: 0, y: -5, z: -3 })
   })
 
   it('returns null when required model geometry is missing', () => {

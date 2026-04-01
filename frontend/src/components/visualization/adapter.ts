@@ -9,6 +9,7 @@ import type {
   VisualizationSnapshot,
   VisualizationViewMode,
 } from './types'
+import { normalizeVisualizationSnapshot } from './normalization'
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
@@ -598,7 +599,7 @@ export function buildVisualizationSnapshot(params: {
   const dimension = deriveDimension(nodes, baseDisplacements)
   const plane = derivePlane(nodes, baseDisplacements, loads)
 
-  return {
+  return normalizeVisualizationSnapshot({
     version: 1,
     title: params.title,
     source,
@@ -623,5 +624,5 @@ export function buildVisualizationSnapshot(params: {
     cases,
     summary: asRecord(data?.summary) || undefined,
     statusMessage: params.statusMessage,
-  }
+  })
 }
