@@ -65,6 +65,37 @@ StructureClaw 保留现有 14 类顶层 skill 域：
 
 这 14 类 skill 域继续作为平台稳定的能力分类体系。
 
+### 3.2.1 Domain Taxonomy 与 Runtime Participation
+
+需要明确区分两个层面：
+
+1. `Domain Taxonomy`
+
+- 用于定义系统承认哪些能力域存在。
+- 作用是统一术语、组织 skill、规划扩展方向，并对外描述平台能力版图。
+- 该层是稳定的能力分类体系，通常不随单个版本的实现进度频繁变化。
+
+2. `Runtime Participation`
+
+- 用于描述某个 domain 在当前版本中是否已经进入 agent 运行时主流程。
+- 只有进入 runtime participation 的 domain，才会参与 skill 发现、激活、tool 授权、执行、trace 归因与结果回写。
+- 该层描述的是实现态，会随着版本演进逐步变化。
+
+因此，某个 domain 被纳入 taxonomy，并不意味着它已经接入当前主编排；文档中的 domain 列表应理解为平台能力地图，而不是“当前全部已落地执行域清单”。
+
+为避免把能力分类与实现成熟度混为一谈，每个 domain 在实现说明中应额外标记 `runtimeStatus`：
+
+- `active`
+  已接入主编排，参与激活、授权、执行与 trace。
+- `partial`
+  已接入 runtime，但仍由平台托管，或尚未形成完整的一等 skill 包。
+- `discoverable`
+  已纳入 taxonomy，具备目录、清单或注册信息，但尚未参与主编排。
+- `reserved`
+  仅保留架构位点，当前未提供实际运行时能力。
+
+架构中的 14 个 domain 是稳定的能力分类体系；当前版本真正参与 agent 主流程的 domain 子集，由 `runtimeStatus` 定义。
+
 ### 3.3 Tool Layer
 
 Tool 是可选启用的动作执行层。

@@ -65,6 +65,37 @@ StructureClaw keeps the existing 14 top-level skill domains:
 
 These skill domains remain the stable taxonomy of the platform.
 
+### 3.2.1 Domain Taxonomy vs Runtime Participation
+
+Two different layers must be kept distinct:
+
+1. `Domain Taxonomy`
+
+- Defines which capability domains the system recognizes.
+- Provides stable terminology, skill organization, extension planning, and the outward-facing capability map of the platform.
+- This layer is intentionally stable and should not change frequently with each implementation milestone.
+
+2. `Runtime Participation`
+
+- Describes whether a domain is actually connected to the current agent runtime flow.
+- Only domains that participate in runtime are involved in skill discovery, activation, tool authorization, execution, trace attribution, and result write-back.
+- This layer describes implementation status and can evolve across versions.
+
+Therefore, inclusion in the taxonomy does not imply that a domain is already wired into the main orchestration path. The domain list in this document should be read as the platform capability map, not as a claim that every domain is already fully executable in the current runtime.
+
+To avoid mixing capability classification with implementation maturity, each domain should also carry a `runtimeStatus` in implementation-oriented documentation:
+
+- `active`
+  Participates in main orchestration, activation, authorization, execution, and trace.
+- `partial`
+  Connected to runtime, but still platform-managed or not yet packaged as a full first-class skill.
+- `discoverable`
+  Present in the taxonomy with directory, manifest, or registry visibility, but not yet part of the main orchestration flow.
+- `reserved`
+  Kept as an architectural slot without actual runtime capability in the current version.
+
+The 14 domains define the stable capability taxonomy; the subset that actually participates in the current agent flow is defined by `runtimeStatus`.
+
 ### 3.3 Tool Layer
 
 Tools are optional, invokable action interfaces.
