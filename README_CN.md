@@ -55,6 +55,7 @@ powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
 补充说明：
 
 - 本地默认数据库现在是 SQLite，默认文件位置是 `.runtime/data/structureclaw.db`。
+- `./sclaw doctor` 不再要求你预先安装系统级 Python 3.12。缺失时会先确保 `uv` 可用，并自动准备带 Python 3.12 的 `backend/.venv`。
 - 如果你原来的本地 `.env` 还把 `DATABASE_URL` 指向本地 PostgreSQL，`./sclaw doctor` 和 `./sclaw start` 会先自动迁移到 SQLite，再把 `.env` 改写成 SQLite 默认配置，同时把原 PostgreSQL 地址保留到 `POSTGRES_SOURCE_DATABASE_URL`。
 - 第一次自动迁移时，还会生成一个类似 `.env.pre-sqlite-migration.<timestamp>.bak` 的本地备份文件。
 

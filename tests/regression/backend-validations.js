@@ -1621,6 +1621,10 @@ async function validateDevStartupGuards(context) {
     "missing analysis Python guard in unified CLI",
   );
   assert(
+    !cliMainContent.includes("runtime.requireCommand(\"python\""),
+    "doctor path should not hard-require system python before uv provisioning",
+  );
+  assert(
     cliMainContent.includes("appendSessionHeader"),
     "missing log session isolation hook in unified CLI",
   );

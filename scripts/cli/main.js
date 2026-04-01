@@ -453,8 +453,6 @@ async function ensureNpmDependencies(projectDir, projectName, packageNames = [])
 }
 
 async function ensureAnalysisPython(rootDir, env) {
-  runtime.requireCommand("python", "Install Python 3.12+ and retry.");
-
   const { paths } = runtime.loadProjectEnvironment(rootDir);
   if (!runtime.pathExists(paths.analysisRequirementsFile)) {
     throw new Error(`Analysis requirements file not found: ${paths.analysisRequirementsFile}`);
@@ -894,7 +892,6 @@ async function invokeLocalUp(rootDir, env, options = {}) {
 async function invokeDoctor(rootDir, env) {
   runtime.requireCommand("node", "Install Node.js 18+ and retry.");
   runtime.requireCommand("npm", "Install npm and retry.");
-  runtime.requireCommand("python", "Install Python 3.12+ and retry.");
   runtime.ensureLocalSqliteConfig(rootDir, env, log);
   runtime.assertSqliteDatabaseUrl(env);
 
