@@ -274,7 +274,7 @@ The runtime has already aligned key orchestration behavior with the target desig
 - internal planning directives are now simplified to `auto` and `force_tool`
 - planner output no longer decides concrete `toolId`; concrete tool selection is runtime-owned and skill-driven
 - `force_tool` bypasses planner branching and enters the skill-first execution path
-- `runInteractive` and `runInteractiveStream` remain as compatibility wrappers over `auto` with interactive-only behavior
+- service entrypoints are now consolidated to `run` and `runStream`; interactive/tool-call compatibility wrappers are removed
 - in skill-enabled flows, drafting tools are no longer globally default-enabled and must come from skill capability grants; the core execution pipeline tools remain platform-provided
 
 ## 12. Staged Refactor Plan

@@ -1253,24 +1253,8 @@ export class AgentService {
     return this.runWithStrategy(input, { planningDirective: 'auto', allowToolCall: true });
   }
 
-  async runInteractive(input: AgentRunInput): Promise<AgentRunResult> {
-    return this.runWithStrategy(input, { planningDirective: 'auto', allowToolCall: false });
-  }
-
-  async runToolCall(input: AgentRunInput): Promise<AgentRunResult> {
-    return this.runWithStrategy(input, { planningDirective: 'force_tool', allowToolCall: true });
-  }
-
   async *runStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
     yield* this.runStreamWithStrategy(input, { planningDirective: 'auto', allowToolCall: true });
-  }
-
-  async *runInteractiveStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
-    yield* this.runStreamWithStrategy(input, { planningDirective: 'auto', allowToolCall: false });
-  }
-
-  async *runToolCallStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
-    yield* this.runStreamWithStrategy(input, { planningDirective: 'force_tool', allowToolCall: true });
   }
 
   private async runWithStrategy(

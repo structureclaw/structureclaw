@@ -70,20 +70,28 @@ async function validateAgentOrchestration(context) {
     const originalRun = svc.run.bind(svc);
     svc.run = async (params) => originalRun(applyDefaultSkills(params));
 
-    const originalRunConversation = svc.runInteractive.bind(svc);
-    svc.runInteractive = async (params) => originalRunConversation(applyDefaultSkills(params));
-
-    const originalRunToolCall = svc.runToolCall.bind(svc);
-    svc.runToolCall = async (params) => originalRunToolCall(applyDefaultSkills(params));
+    const runWithStrategy = svc.runWithStrategy.bind(svc);
+    svc.runInteractive = async (params) => runWithStrategy(
+      applyDefaultSkills(params),
+      { planningDirective: "auto", allowToolCall: false },
+    );
+    svc.runToolCall = async (params) => runWithStrategy(
+      applyDefaultSkills(params),
+      { planningDirective: "force_tool", allowToolCall: true },
+    );
 
     const originalRunStream = svc.runStream.bind(svc);
     svc.runStream = (params) => originalRunStream(applyDefaultSkills(params));
 
-    const originalRunConversationStream = svc.runInteractiveStream.bind(svc);
-    svc.runInteractiveStream = (params) => originalRunConversationStream(applyDefaultSkills(params));
-
-    const originalRunToolCallStream = svc.runToolCallStream.bind(svc);
-    svc.runToolCallStream = (params) => originalRunToolCallStream(applyDefaultSkills(params));
+    const runStreamWithStrategy = svc.runStreamWithStrategy.bind(svc);
+    svc.runInteractiveStream = (params) => runStreamWithStrategy(
+      applyDefaultSkills(params),
+      { planningDirective: "auto", allowToolCall: false },
+    );
+    svc.runToolCallStream = (params) => runStreamWithStrategy(
+      applyDefaultSkills(params),
+      { planningDirective: "force_tool", allowToolCall: true },
+    );
 
     return svc;
   };

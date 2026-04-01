@@ -25,25 +25,33 @@ function createServiceWithDefaultSkills() {
   const originalRun = svc.run.bind(svc);
   svc.run = async (params) => originalRun(applyDefaultSkills(params));
 
-  const originalRunConversation = svc.runInteractive.bind(svc);
-  svc.runInteractive = async (params) => originalRunConversation(applyDefaultSkills(params));
-
-  const originalRunToolCall = svc.runToolCall.bind(svc);
-  svc.runToolCall = async (params) => originalRunToolCall(applyDefaultSkills(params));
+  const runWithStrategy = svc.runWithStrategy.bind(svc);
+  svc.runInteractive = async (params) => runWithStrategy(
+    applyDefaultSkills(params),
+    { planningDirective: 'auto', allowToolCall: false },
+  );
+  svc.runToolCall = async (params) => runWithStrategy(
+    applyDefaultSkills(params),
+    { planningDirective: 'force_tool', allowToolCall: true },
+  );
 
   const originalRunStream = svc.runStream.bind(svc);
   svc.runStream = async function* (params) {
     yield* originalRunStream(applyDefaultSkills(params));
   };
 
-  const originalRunConversationStream = svc.runInteractiveStream.bind(svc);
+  const runStreamWithStrategy = svc.runStreamWithStrategy.bind(svc);
   svc.runInteractiveStream = async function* (params) {
-    yield* originalRunConversationStream(applyDefaultSkills(params));
+    yield* runStreamWithStrategy(
+      applyDefaultSkills(params),
+      { planningDirective: 'auto', allowToolCall: false },
+    );
   };
-
-  const originalRunToolCallStream = svc.runToolCallStream.bind(svc);
   svc.runToolCallStream = async function* (params) {
-    yield* originalRunToolCallStream(applyDefaultSkills(params));
+    yield* runStreamWithStrategy(
+      applyDefaultSkills(params),
+      { planningDirective: 'force_tool', allowToolCall: true },
+    );
   };
 
   const originalTextToModelDraft = svc.textToModelDraft.bind(svc);
@@ -726,12 +734,15 @@ describe('AgentService orchestration', () => {
     const svc = new AgentService();
     svc.llm = null;
 
-    const result = await svc.runInteractive({
-      message: '帮我分析一个结构，跨度10m，荷载10kN',
-      context: {
-        locale: 'zh',
+    const result = await svc.runWithStrategy(
+      {
+        message: '帮我分析一个结构，跨度10m，荷载10kN',
+        context: {
+          locale: 'zh',
+        },
       },
-    });
+      { planningDirective: 'auto', allowToolCall: false },
+    );
 
     expect(result.success).toBe(true);
     expect(result.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
