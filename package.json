@@ -7,7 +7,8 @@
     "node": ">=18"
   },
   "bin": {
-    "sclaw": "./sclaw"
+    "sclaw": "./sclaw",
+    "sclaw_cn": "./sclaw_cn"
   },
   "scripts": {
     "regression:backend": "node tests/runner.mjs backend-regression",
@@ -17,6 +18,7 @@
   },
   "files": [
     "sclaw",
+    "sclaw_cn",
     "scripts/cli/**/*.js"
   ],
   "dependencies": {

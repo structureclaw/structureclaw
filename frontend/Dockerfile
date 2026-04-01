@@ -1,9 +1,12 @@
 # StructureClaw Frontend Dockerfile
-FROM node:20-alpine AS builder
+ARG NODE_IMAGE_REGISTRY_MIRROR=
+FROM ${NODE_IMAGE_REGISTRY_MIRROR}node:20-alpine AS builder
 
 WORKDIR /app
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org
+ENV npm_config_registry=${NPM_CONFIG_REGISTRY}
 
 # Copy package files
 COPY package*.json ./
@@ -18,7 +21,8 @@ COPY . .
 RUN npm run build
 
 # Production image
-FROM node:20-alpine AS runner
+ARG NODE_IMAGE_REGISTRY_MIRROR=
+FROM ${NODE_IMAGE_REGISTRY_MIRROR}node:20-alpine AS runner
 
 WORKDIR /app
 
