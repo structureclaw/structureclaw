@@ -1906,11 +1906,81 @@ describe('AgentService orchestration', () => {
     );
 
     expect(draft.extractionMode).toBe('llm');
-    expect(draft.inferredType).toBe('frame');
+    expect(draft.inferredType).toBe('unknown');
+    expect(draft.stateToPersist?.inferredType).toBe('unknown');
     expect(draft.stateToPersist?.frameDimension).toBe('3d');
     expect(draft.stateToPersist?.storyCount).toBe(3);
     expect(draft.stateToPersist?.bayCountX).toBe(4);
     expect(draft.stateToPersist?.bayCountY).toBe(3);
+    expect(draft.model).toBeUndefined();
+  });
+
+  test('should let generic keep unknown draft type and still return a full llm-built beam model', async () => {
+    const svc = createServiceWithDefaultSkills();
+    let callCount = 0;
+    svc.llm = {
+      invoke: async () => {
+        callCount += 1;
+        if (callCount === 1) {
+          return {
+            content: JSON.stringify({
+              inferredType: 'beam',
+              draftPatch: {
+                inferredType: 'beam',
+                lengthM: 10,
+                supportType: 'simply-supported',
+                loadKN: 1,
+                loadType: 'point',
+                loadPositionM: 5,
+              },
+            }),
+          };
+        }
+        return {
+          content: JSON.stringify({
+            schema_version: '1.0.0',
+            unit_system: 'SI',
+            nodes: Array.from({ length: 11 }, (_, index) => ({
+              id: `N${index + 1}`,
+              x: index,
+              y: 0,
+              z: 0,
+              ...(index === 0
+                ? { restraints: [true, true, true, true, true, false] }
+                : index === 10
+                  ? { restraints: [false, true, true, true, true, false] }
+                  : {}),
+            })),
+            elements: Array.from({ length: 10 }, (_, index) => ({
+              id: `E${index + 1}`,
+              type: 'beam',
+              nodes: [`N${index + 1}`, `N${index + 2}`],
+              material: 'MAT1',
+              section: 'SEC1',
+            })),
+            materials: [{ id: 'MAT1', name: 'Steel_Q235', E: 206000, nu: 0.3, rho: 7850 }],
+            sections: [{ id: 'SEC1', name: 'Rect_200x400', type: 'rectangular', properties: { A: 0.08, Iy: 0.000266667, Iz: 0.001066667 } }],
+            load_cases: [{ id: 'LC1', type: 'other', loads: [{ type: 'nodal_force', node: 'N6', fx: 0, fy: -1, fz: 0, mx: 0, my: 0, mz: 0 }] }],
+            load_combinations: [{ id: 'COMB1', factors: { LC1: 1 } }],
+          }),
+        };
+      },
+    };
+
+    const draft = await svc.textToModelDraft(
+      '设计一个简支梁，跨度10m，梁中间荷载1kN，用10个单元来建模',
+      undefined,
+      'zh',
+      ['generic'],
+    );
+
+    expect(callCount).toBe(2);
+    expect(draft.inferredType).toBe('unknown');
+    expect(draft.stateToPersist?.inferredType).toBe('unknown');
+    expect(draft.stateToPersist?.skillId).toBe('generic');
+    expect(draft.model?.elements).toHaveLength(10);
+    expect(draft.model?.nodes).toHaveLength(11);
+    expect(draft.missingFields).toEqual([]);
   });
 
   test('should block execution with an empty skill set even when a computable model is provided', async () => {

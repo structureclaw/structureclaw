@@ -4,7 +4,6 @@ import {
   normalizeFloorLoads,
   normalizeFrameBaseSupportType,
   normalizeFrameDimension,
-  normalizeInferredType,
   normalizeLoadPosition,
   normalizeLoadPositionM,
   normalizeLoadType,
@@ -105,7 +104,6 @@ function normalizeGenericDraftPatch(patch: Record<string, unknown> | null | unde
   }
 
   return {
-    inferredType: normalizeInferredType(patch.inferredType),
     skillId: typeof patch.skillId === 'string' ? patch.skillId : undefined,
     lengthM: normalizeNumber(patch.lengthM),
     spanLengthM: normalizeNumber(patch.spanLengthM),
