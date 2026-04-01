@@ -1,11 +1,20 @@
 import {
-  buildLegacyLabels,
-  buildLegacyModel,
-  computeLegacyMissing,
-  normalizeLegacyDraftPatch,
-} from '../../../agent-runtime/legacy.js';
-import {
+  buildModel as buildRuntimeModel,
+  computeMissingCriticalKeys,
+  computeMissingLoadDetailKeys,
+  mapMissingFieldLabels,
   mergeDraftState,
+  normalizeFloorLoads,
+  normalizeFrameBaseSupportType,
+  normalizeFrameDimension,
+  normalizeInferredType,
+  normalizeLoadPosition,
+  normalizeLoadPositionM,
+  normalizeLoadType,
+  normalizeNumber,
+  normalizeNumberArray,
+  normalizePositiveInteger,
+  normalizeSupportType,
 } from '../../../agent-runtime/fallback.js';
 import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import type {
@@ -54,7 +63,7 @@ function buildGenericPatch(
   llmDraftPatch?: Record<string, unknown> | null,
   currentState?: DraftState,
 ): DraftExtraction {
-  const merged = normalizeLegacyDraftPatch(llmDraftPatch) || {};
+  const merged = normalizeGenericDraftPatch(llmDraftPatch) || {};
   const normalizedMessage = message.toLowerCase();
   const isReplacementUpdate = /改成|改为|调整为|更新为|改到|change to|update/i.test(message);
   const mentionsXDirection = /x方向|x向/i.test(normalizedMessage);
@@ -86,6 +95,50 @@ function buildGenericPatch(
     ...merged,
     floorLoads: normalizedFloorLoads,
   };
+}
+
+function normalizeGenericDraftPatch(patch: Record<string, unknown> | null | undefined): DraftExtraction {
+  if (!patch) {
+    return {};
+  }
+
+  return {
+    inferredType: normalizeInferredType(patch.inferredType),
+    skillId: typeof patch.skillId === 'string' ? patch.skillId : undefined,
+    lengthM: normalizeNumber(patch.lengthM),
+    spanLengthM: normalizeNumber(patch.spanLengthM),
+    heightM: normalizeNumber(patch.heightM),
+    supportType: normalizeSupportType(patch.supportType),
+    frameDimension: normalizeFrameDimension(patch.frameDimension),
+    storyCount: normalizePositiveInteger(patch.storyCount),
+    bayCount: normalizePositiveInteger(patch.bayCount),
+    bayCountX: normalizePositiveInteger(patch.bayCountX),
+    bayCountY: normalizePositiveInteger(patch.bayCountY),
+    storyHeightsM: normalizeNumberArray(patch.storyHeightsM),
+    bayWidthsM: normalizeNumberArray(patch.bayWidthsM),
+    bayWidthsXM: normalizeNumberArray(patch.bayWidthsXM),
+    bayWidthsYM: normalizeNumberArray(patch.bayWidthsYM),
+    floorLoads: normalizeFloorLoads(patch.floorLoads),
+    frameBaseSupportType: normalizeFrameBaseSupportType(patch.frameBaseSupportType),
+    loadKN: normalizeNumber(patch.loadKN),
+    loadType: normalizeLoadType(patch.loadType),
+    loadPosition: normalizeLoadPosition(patch.loadPosition),
+    loadPositionM: normalizeLoadPositionM(patch.loadPositionM),
+  };
+}
+
+function computeGenericMissing(
+  state: DraftState,
+  phase: 'interactive' | 'execution',
+  allowedKeys: readonly string[],
+): { critical: string[]; optional: string[] } {
+  const allowed = new Set(allowedKeys);
+  const critical = computeMissingCriticalKeys(state).filter((key) => allowed.has(key));
+  if (phase === 'interactive') {
+    const loadDetails = computeMissingLoadDetailKeys(state).filter((key) => allowed.has(key) && !critical.includes(key));
+    critical.push(...loadDetails);
+  }
+  return { critical, optional: [] };
 }
 
 function buildGenericDefaultProposals(
@@ -123,7 +176,7 @@ function buildGenericQuestions(
     }));
   }
 
-  const labels = buildLegacyLabels(keys, locale);
+  const labels = mapMissingFieldLabels(keys, locale);
   return keys.map((paramKey, index) => {
     const label = labels[index] || paramKey;
     return {
@@ -199,7 +252,7 @@ export const handler: SkillHandler = {
     });
   },
   parseProvidedValues(values) {
-    return normalizeLegacyDraftPatch(values);
+    return normalizeGenericDraftPatch(values);
   },
   extractDraft({ message, llmDraftPatch, currentState }) {
     return buildGenericPatch(message, llmDraftPatch, currentState);
@@ -224,10 +277,10 @@ export const handler: SkillHandler = {
         optional: [],
       };
     }
-    return computeLegacyMissing(state, phase, [...GENERIC_ALLOWED_KEYS]);
+    return computeGenericMissing(state, phase, GENERIC_ALLOWED_KEYS);
   },
   mapLabels(keys, locale) {
-    return buildLegacyLabels(keys, locale);
+    return mapMissingFieldLabels(keys, locale);
   },
   buildQuestions(keys, criticalMissing, state, locale) {
     return buildGenericQuestions(keys, criticalMissing, state, locale);
@@ -242,8 +295,8 @@ export const handler: SkillHandler = {
     if (state.inferredType === 'unknown') {
       return undefined;
     }
-    const missing = computeLegacyMissing(state, 'execution', [...GENERIC_ALLOWED_KEYS]);
-    return missing.critical.length === 0 ? buildLegacyModel(state) : undefined;
+    const missing = computeGenericMissing(state, 'execution', GENERIC_ALLOWED_KEYS);
+    return missing.critical.length === 0 ? buildRuntimeModel(state) : undefined;
   },
   resolveStage(missingKeys, state) {
     if (state.inferredType === 'unknown') {
