@@ -105,16 +105,22 @@ interface PersistedMessageDebugDetails {
 
 type ActiveToolSet = Set<string> | undefined;
 
-const CORE_ALWAYS_ENABLED_TOOL_IDS: AgentToolName[] = [
-  'draft_model',
+// Platform foundation tools are runtime-level capabilities and can stay always available.
+const PLATFORM_FOUNDATION_TOOL_IDS: AgentToolName[] = [
   'convert_model',
+];
+
+// Domain baseline tools for no-skill mode keep legacy direct execution available.
+const DOMAIN_BASELINE_TOOL_IDS_NO_SKILL: AgentToolName[] = [
+  'draft_model',
   'validate_model',
   'run_analysis',
   'run_code_check',
   'generate_report',
 ];
 
-const CORE_EXECUTION_TOOL_IDS: AgentToolName[] = [
+// Domain execution baseline with skills enabled. Drafting remains skill-gated.
+const DOMAIN_BASELINE_TOOL_IDS_WITH_SKILL: AgentToolName[] = [
   'validate_model',
   'run_analysis',
   'run_code_check',
@@ -754,8 +760,14 @@ export class AgentService {
     const builtinCatalog = new Set(listBuiltinToolManifests().map((tool) => tool.id));
     const active = new Set<string>();
 
+    for (const toolId of PLATFORM_FOUNDATION_TOOL_IDS) {
+      if (builtinCatalog.has(toolId)) {
+        active.add(toolId);
+      }
+    }
+
     if (this.isNoSkillMode(skillIds)) {
-      for (const toolId of CORE_ALWAYS_ENABLED_TOOL_IDS) {
+      for (const toolId of DOMAIN_BASELINE_TOOL_IDS_NO_SKILL) {
         if (builtinCatalog.has(toolId)) {
           active.add(toolId);
         }
@@ -763,7 +775,7 @@ export class AgentService {
       return this.applyToolSelection(active, options);
     }
 
-    for (const toolId of CORE_EXECUTION_TOOL_IDS) {
+    for (const toolId of DOMAIN_BASELINE_TOOL_IDS_WITH_SKILL) {
       if (builtinCatalog.has(toolId)) {
         active.add(toolId);
       }
