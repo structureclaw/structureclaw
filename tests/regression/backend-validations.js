@@ -833,6 +833,13 @@ async function validateAgentApiContract(context) {
   assert(toolCallPayload.result?.traceId === "trace-api-contract", "chat/message force_tool should proxy agent result");
   assert(toolCallPayload.result?.artifacts?.[0]?.path === "/tmp/report.json", "chat/message force_tool should return artifacts");
 
+  const legacyToolCallResponse = await app.inject({
+    method: "POST",
+    url: "/api/v1/chat/tool-call",
+    payload: requestBody,
+  });
+  assert(legacyToolCallResponse.statusCode === 404, "chat/tool-call should no longer be exposed");
+
   assert(captured.length >= 2, "agent run should be called for both endpoints");
   assert(captured[0]?.traceId === "trace-request-001", "agent/run should pass traceId");
   assert(captured[1]?.traceId === "trace-request-001", "chat/message force_tool should pass traceId");
@@ -1599,6 +1606,16 @@ async function validateChatMessageRouting(context) {
   assert(capturedRunTraceIds.includes("trace-route-auto-intent-1"), "auto intent invocation should pass traceId");
   assert(capturedToolTraceIds.includes("trace-route-tool-1"), "force_tool invocation should pass traceId");
   assert(capturedRunMessages.includes("auto without model"), "plain chat-like requests should now route through agent");
+
+  const legacyToolCallResp = await app.inject({
+    method: "POST",
+    url: "/api/v1/chat/tool-call",
+    payload: {
+      message: "legacy force tool",
+      traceId: "trace-route-tool-legacy-1",
+    },
+  });
+  assert(legacyToolCallResp.statusCode === 404, "legacy /chat/tool-call endpoint should not be available");
 
   await app.close();
   console.log("[ok] chat message routing contract");
