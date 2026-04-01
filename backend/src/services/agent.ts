@@ -120,7 +120,6 @@ type AgentReplyMode = 'plain' | 'structured';
 
 interface AgentRunStrategy {
   planningDirective: AgentPlanningDirective;
-  interactiveOnly: boolean;
 }
 
 interface AgentNextStepPlan {
@@ -1236,38 +1235,43 @@ export class AgentService {
   }
 
   async run(input: AgentRunInput): Promise<AgentRunResult> {
-    return this.runWithStrategy(input, { planningDirective: 'auto', interactiveOnly: false });
+    return this.runWithStrategy(input, { planningDirective: 'auto' });
   }
 
   async runInteractive(input: AgentRunInput): Promise<AgentRunResult> {
-    return this.runWithStrategy(input, { planningDirective: 'auto', interactiveOnly: true });
+    return this.runWithStrategy(input, { planningDirective: 'auto' }, true);
   }
 
   async runToolCall(input: AgentRunInput): Promise<AgentRunResult> {
-    return this.runWithStrategy(input, { planningDirective: 'force_tool', interactiveOnly: false });
+    return this.runWithStrategy(input, { planningDirective: 'force_tool' });
   }
 
   async *runStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
-    yield* this.runStreamWithStrategy(input, { planningDirective: 'auto', interactiveOnly: false });
+    yield* this.runStreamWithStrategy(input, { planningDirective: 'auto' });
   }
 
   async *runInteractiveStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
-    yield* this.runStreamWithStrategy(input, { planningDirective: 'auto', interactiveOnly: true });
+    yield* this.runStreamWithStrategy(input, { planningDirective: 'auto' }, true);
   }
 
   async *runToolCallStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
-    yield* this.runStreamWithStrategy(input, { planningDirective: 'force_tool', interactiveOnly: false });
+    yield* this.runStreamWithStrategy(input, { planningDirective: 'force_tool' });
   }
 
-  private async runWithStrategy(input: AgentRunInput, strategy: AgentRunStrategy): Promise<AgentRunResult> {
+  private async runWithStrategy(
+    input: AgentRunInput,
+    strategy: AgentRunStrategy,
+    interactiveOnly = false,
+  ): Promise<AgentRunResult> {
     const preparedInput = await this.ensureConversationRecord(input);
     const traceId = input.traceId || randomUUID();
-    return this.runInternal(preparedInput, traceId, strategy);
+    return this.runInternal(preparedInput, traceId, strategy, interactiveOnly);
   }
 
   private async *runStreamWithStrategy(
     input: AgentRunInput,
     strategy: AgentRunStrategy,
+    interactiveOnly = false,
   ): AsyncGenerator<AgentStreamChunk> {
     const preparedInput = await this.ensureConversationRecord(input);
     const traceId = randomUUID();
@@ -1282,7 +1286,7 @@ export class AgentService {
         },
       };
 
-      const result = await this.runInternal({ ...preparedInput, traceId }, traceId, strategy);
+      const result = await this.runInternal({ ...preparedInput, traceId }, traceId, strategy, interactiveOnly);
       if (result.interaction && result.interaction.state !== 'completed') {
         yield {
           type: 'interaction_update',
@@ -1306,6 +1310,7 @@ export class AgentService {
     params: AgentRunInput,
     traceId: string,
     strategy: AgentRunStrategy,
+    interactiveOnly: boolean,
   ): Promise<AgentRunResult> {
     const startedAtMs = Date.now();
     const startedAt = new Date(startedAtMs).toISOString();
@@ -1325,7 +1330,7 @@ export class AgentService {
       plan,
       toolCalls,
     } = prepared;
-    const { planningDirective, interactiveOnly } = strategy;
+    const { planningDirective } = strategy;
     const orchestrationMode: AgentOrchestrationMode = planningDirective === 'force_tool' || interactiveOnly
       ? 'directed'
       : 'llm-planned';
