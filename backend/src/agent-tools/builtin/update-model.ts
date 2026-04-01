@@ -1,5 +1,46 @@
 import type { ToolManifest } from '../../agent-runtime/types.js';
+import type { DraftResult, DraftState, StructuralTypeMatch } from '../../agent-runtime/index.js';
+import type { AppLocale } from '../../services/locale.js';
 import { localize } from './shared.js';
+
+interface UpdateToolSession {
+  draft?: DraftState;
+  structuralTypeMatch?: StructuralTypeMatch;
+  latestModel?: Record<string, unknown>;
+  updatedAt: number;
+}
+
+export async function executeUpdateModel(args: {
+  message: string;
+  locale: AppLocale;
+  skillIds?: string[];
+  workingSession: UpdateToolSession;
+  textToModelDraft: (message: string, existingState: DraftState | undefined, locale: AppLocale, skillIds?: string[]) => Promise<DraftResult>;
+  isNoSkillEquivalentDraft: (skillIds: string[] | undefined, draft: DraftResult) => boolean;
+  applyInferredNonCriticalFromMessage: (workingSession: UpdateToolSession, message: string) => void;
+}): Promise<{ draft: DraftResult; noSkillEquivalentDraft: boolean }> {
+  const draft = await args.textToModelDraft(args.message, args.workingSession.draft, args.locale, args.skillIds);
+  const noSkillEquivalentDraft = args.isNoSkillEquivalentDraft(args.skillIds, draft);
+
+  if (draft.stateToPersist) {
+    args.workingSession.draft = draft.stateToPersist;
+  }
+  if (draft.model) {
+    args.workingSession.latestModel = draft.model;
+  }
+  if (draft.structuralTypeMatch) {
+    args.workingSession.structuralTypeMatch = draft.structuralTypeMatch;
+  } else if (noSkillEquivalentDraft) {
+    args.workingSession.structuralTypeMatch = undefined;
+  }
+  args.workingSession.updatedAt = Date.now();
+  args.applyInferredNonCriticalFromMessage(args.workingSession, args.message);
+
+  return {
+    draft,
+    noSkillEquivalentDraft,
+  };
+}
 
 export const UPDATE_MODEL_TOOL_MANIFEST: ToolManifest = {
   id: 'update_model',

@@ -41,9 +41,11 @@ import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.j
 import { listBuiltinToolManifests } from '../agent-runtime/tool-registry.js';
 import type { ToolManifest } from '../agent-runtime/types.js';
 import { executeConvertModel } from '../agent-tools/builtin/convert-model.js';
+import { executeDraftModel } from '../agent-tools/builtin/draft-model.js';
 import { executeGenerateReport } from '../agent-tools/builtin/generate-report.js';
 import { executeRunAnalysis } from '../agent-tools/builtin/run-analysis.js';
 import { executeRunCodeCheck } from '../agent-tools/builtin/run-code-check.js';
+import { executeUpdateModel } from '../agent-tools/builtin/update-model.js';
 import { executeValidateModel } from '../agent-tools/builtin/validate-model.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
@@ -2245,9 +2247,18 @@ export class AgentService {
     const draftCall = this.startToolCall('draft_model', { message: params.message, conversationId: sessionKey, phase: 'execution' });
     toolCalls.push(draftCall);
 
-    const draft = prefetchedDraft?.draft ?? await this.textToModelDraft(params.message, workingSession.draft, locale, skillIds);
-    const noSkillEquivalentDraft = prefetchedDraft?.noSkillEquivalentDraft ?? this.isNoSkillEquivalentDraft(skillIds, draft);
-    this.applyDraftToSession(workingSession, draft, noSkillEquivalentDraft, params.message);
+    const draftExecution = await executeDraftModel({
+      message: params.message,
+      locale,
+      skillIds,
+      prefetchedDraft: prefetchedDraft?.draft,
+      workingSession,
+      textToModelDraft: this.textToModelDraft.bind(this),
+      isNoSkillEquivalentDraft: this.isNoSkillEquivalentDraft.bind(this),
+      applyDraftToSession: this.applyDraftToSession.bind(this),
+    });
+    const draft = draftExecution.draft;
+    const noSkillEquivalentDraft = prefetchedDraft?.noSkillEquivalentDraft ?? draftExecution.noSkillEquivalentDraft;
 
     this.completeToolCallSuccess(draftCall, {
       inferredType: draft.inferredType,
@@ -2442,21 +2453,17 @@ export class AgentService {
     const updateCall = this.startToolCall('update_model', { message: params.message, conversationId: sessionKey, phase: 'execution' });
     toolCalls.push(updateCall);
 
-    const draft = await this.textToModelDraft(params.message, workingSession.draft, locale, skillIds);
-    const noSkillEquivalentDraft = this.isNoSkillEquivalentDraft(skillIds, draft);
-    if (draft.stateToPersist) {
-      workingSession.draft = draft.stateToPersist;
-    }
-    if (draft.model) {
-      workingSession.latestModel = draft.model;
-    }
-    if (draft.structuralTypeMatch) {
-      workingSession.structuralTypeMatch = draft.structuralTypeMatch;
-    } else if (noSkillEquivalentDraft) {
-      workingSession.structuralTypeMatch = undefined;
-    }
-    workingSession.updatedAt = Date.now();
-    this.applyInferredNonCriticalFromMessage(workingSession, params.message);
+    const updateExecution = await executeUpdateModel({
+      message: params.message,
+      locale,
+      skillIds,
+      workingSession,
+      textToModelDraft: this.textToModelDraft.bind(this),
+      isNoSkillEquivalentDraft: this.isNoSkillEquivalentDraft.bind(this),
+      applyInferredNonCriticalFromMessage: this.applyInferredNonCriticalFromMessage.bind(this),
+    });
+    const draft = updateExecution.draft;
+    const noSkillEquivalentDraft = updateExecution.noSkillEquivalentDraft;
 
     this.completeToolCallSuccess(updateCall, {
       inferredType: draft.inferredType,
