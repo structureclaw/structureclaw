@@ -114,8 +114,13 @@ const CORE_ALWAYS_ENABLED_TOOL_IDS: AgentToolName[] = [
 ];
 
 type AgentPlanKind = 'reply' | 'ask' | 'tool_call';
-type AgentPlanningDirective = 'auto' | 'force_interactive' | 'force_tool';
+type AgentPlanningDirective = 'auto' | 'force_tool';
 type AgentReplyMode = 'plain' | 'structured';
+
+interface AgentRunStrategy {
+  planningDirective: AgentPlanningDirective;
+  interactiveOnly: boolean;
+}
 
 interface AgentNextStepPlan {
   kind: AgentPlanKind;
@@ -400,6 +405,7 @@ export class AgentService {
     });
     return (await this.planNextStep(message, {
       planningDirective: 'auto',
+      interactiveOnly: false,
       locale,
       skillIds: options?.skillIds,
       hasModel: Boolean(options?.hasModel),
@@ -624,6 +630,7 @@ export class AgentService {
 
   private async planNextStep(message: string, options: {
     planningDirective: AgentPlanningDirective;
+    interactiveOnly: boolean;
     locale: AppLocale;
     skillIds?: string[];
     hasModel: boolean;
@@ -631,7 +638,7 @@ export class AgentService {
     activeToolIds?: ActiveToolSet;
     conversationId?: string;
   }): Promise<AgentNextStepPlan> {
-    if (options.planningDirective === 'force_interactive') {
+    if (options.interactiveOnly) {
       if (this.llm) {
         return {
           ...(await this.planNextStepWithLlm(message, {
@@ -654,6 +661,7 @@ export class AgentService {
         rationale: 'override',
       };
     }
+
     if (options.planningDirective === 'force_tool') {
       return { kind: 'tool_call', planningDirective: options.planningDirective, rationale: 'override' };
     }
@@ -1177,38 +1185,38 @@ export class AgentService {
   }
 
   async run(input: AgentRunInput): Promise<AgentRunResult> {
-    return this.runWithDirective(input, 'auto');
+    return this.runWithStrategy(input, { planningDirective: 'auto', interactiveOnly: false });
   }
 
   async runInteractive(input: AgentRunInput): Promise<AgentRunResult> {
-    return this.runWithDirective(input, 'force_interactive');
+    return this.runWithStrategy(input, { planningDirective: 'auto', interactiveOnly: true });
   }
 
   async runToolCall(input: AgentRunInput): Promise<AgentRunResult> {
-    return this.runWithDirective(input, 'force_tool');
+    return this.runWithStrategy(input, { planningDirective: 'force_tool', interactiveOnly: false });
   }
 
   async *runStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
-    yield* this.runStreamWithDirective(input, 'auto');
+    yield* this.runStreamWithStrategy(input, { planningDirective: 'auto', interactiveOnly: false });
   }
 
   async *runInteractiveStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
-    yield* this.runStreamWithDirective(input, 'force_interactive');
+    yield* this.runStreamWithStrategy(input, { planningDirective: 'auto', interactiveOnly: true });
   }
 
   async *runToolCallStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
-    yield* this.runStreamWithDirective(input, 'force_tool');
+    yield* this.runStreamWithStrategy(input, { planningDirective: 'force_tool', interactiveOnly: false });
   }
 
-  private async runWithDirective(input: AgentRunInput, planningDirective: AgentPlanningDirective): Promise<AgentRunResult> {
+  private async runWithStrategy(input: AgentRunInput, strategy: AgentRunStrategy): Promise<AgentRunResult> {
     const preparedInput = await this.ensureConversationRecord(input);
     const traceId = input.traceId || randomUUID();
-    return this.runInternal(preparedInput, traceId, planningDirective);
+    return this.runInternal(preparedInput, traceId, strategy);
   }
 
-  private async *runStreamWithDirective(
+  private async *runStreamWithStrategy(
     input: AgentRunInput,
-    planningDirective: AgentPlanningDirective,
+    strategy: AgentRunStrategy,
   ): AsyncGenerator<AgentStreamChunk> {
     const preparedInput = await this.ensureConversationRecord(input);
     const traceId = randomUUID();
@@ -1223,7 +1231,7 @@ export class AgentService {
         },
       };
 
-      const result = await this.runInternal({ ...preparedInput, traceId }, traceId, planningDirective);
+      const result = await this.runInternal({ ...preparedInput, traceId }, traceId, strategy);
       if (result.interaction && result.interaction.state !== 'completed') {
         yield {
           type: 'interaction_update',
@@ -1246,7 +1254,7 @@ export class AgentService {
   private async runInternal(
     params: AgentRunInput,
     traceId: string,
-    planningDirective: AgentPlanningDirective,
+    strategy: AgentRunStrategy,
   ): Promise<AgentRunResult> {
     const startedAtMs = Date.now();
     const startedAt = new Date(startedAtMs).toISOString();
@@ -1266,12 +1274,16 @@ export class AgentService {
       plan,
       toolCalls,
     } = prepared;
-    const orchestrationMode: AgentOrchestrationMode = planningDirective === 'auto' ? 'llm-planned' : 'directed';
+    const { planningDirective, interactiveOnly } = strategy;
+    const orchestrationMode: AgentOrchestrationMode = planningDirective === 'force_tool' || interactiveOnly
+      ? 'directed'
+      : 'llm-planned';
 
     const prefetchedDraft = await this.prefetchSkillFirstDraftForPlanning({
       params,
       locale,
       planningDirective,
+      interactiveOnly,
       skillIds,
       activeToolIds,
       modelInput,
@@ -1283,6 +1295,7 @@ export class AgentService {
     try {
       nextPlan = await this.planNextStep(params.message, {
         planningDirective,
+        interactiveOnly,
         locale,
         skillIds,
         hasModel: Boolean(modelInput || prefetchedDraft?.draft.model || workingSession.latestModel),
@@ -2827,6 +2840,7 @@ export class AgentService {
     params: AgentRunInput;
     locale: AppLocale;
     planningDirective: AgentPlanningDirective;
+    interactiveOnly: boolean;
     skillIds?: string[];
     activeToolIds?: ActiveToolSet;
     modelInput?: Record<string, unknown>;
@@ -2837,13 +2851,14 @@ export class AgentService {
       params,
       locale,
       planningDirective,
+      interactiveOnly,
       skillIds,
       activeToolIds,
       modelInput,
       plan,
       workingSession,
     } = args;
-    if (planningDirective === 'force_interactive') {
+    if (interactiveOnly) {
       return undefined;
     }
     if (modelInput) {
