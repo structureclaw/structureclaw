@@ -236,6 +236,81 @@ To avoid both extremes ("everything is always available" vs. "even platform basi
 - If a required domain tool is not granted by current skills, the agent must return blocked or continue clarification; it must not implicitly allow execution.
 - Platform foundation tools cannot substitute domain tools for skill-led decision actions.
 
+### 8.5 Built-in vs External Capability Quadrants
+
+To align platform governance with ecosystem extensibility, both skills and tools are split into built-in and external categories.
+
+1. Skill categories
+
+- Built-in skills: capabilities shipped by the platform and directly routable by the agent orchestrator.
+- External skills: plugin or third-party capabilities registered by manifest and enabled by policy.
+
+2. Tool categories
+
+- Built-in tools: platform-owned foundation and core execution action interfaces.
+- External tools: action interfaces provided by external skills or extensions.
+
+3. Authorization rules
+
+- Built-in tools do not require skill grants; the agent may invoke them when prerequisites are satisfied.
+- External tools must be explicitly granted by currently matched skills before invocation.
+- External tool calls must also pass dependency and sequencing guards.
+- User manual toggles (skill/tool enable/disable) have the highest priority and override automatic activation, platform default allowlists, and policy suggestions.
+
+4. Available tool set
+
+For each turn, the available tool set is defined as:
+
+- all built-in tools (still constrained by platform guards)
+- external tools explicitly granted by currently active skills
+
+The final usable set must be intersected with the user-enabled set; any skill or tool manually disabled by the user must become immediately unavailable.
+
+The orchestrator must not invoke tools outside this set.
+
+5. Audit requirements
+
+Every tool invocation should record:
+
+- tool source (built-in or external)
+- for external tools, the granting skill id
+- if blocked, a stable blocked-reason code
+
+### 8.6 Invocation Matrix
+
+To prevent ambiguity, the invocation matrix is fixed as follows:
+
+- Built-in skill -> built-in tool: allowed
+- Built-in skill -> external tool: allowed only when the external tool is granted by the currently active skills
+- External skill -> built-in tool: allowed
+- External skill -> external tool: allowed only when explicitly granted by that external skill or the current active skill set
+
+Any implicit allow path for ungranted external tools is prohibited.
+
+### 8.7 Current-Phase Operating Constraints (2026-04)
+
+To avoid confusion between the target architecture and the current implementation phase, the following constraints apply now:
+
+1. Current skill status
+
+- All currently shipped skills are treated as built-in skills.
+- External skills refer to SkillHub packages; this channel is reserved and not yet enabled for production runtime.
+
+2. Current tool status
+
+- In the current production governance model, tools are managed uniformly as external tools.
+- Built-in tools are defined as platform foundation actions (for example, read/write style basic I/O capabilities); this channel is reserved and not yet enabled as an independent runtime branch.
+
+3. Effective authorization rule for this phase
+
+- During this phase, tool invocation must pass current-skill grants and guard checks.
+- Any skill or tool manually disabled by the user must become immediately unavailable.
+
+4. Priority rule
+
+- User manual toggles (skill/tool enable/disable) have the highest priority.
+- Manual toggles must override automatic activation, default sets, and policy suggestions.
+
 ## 9. Full Structural Engineering Workflow
 
 The intended end-to-end workflow is:

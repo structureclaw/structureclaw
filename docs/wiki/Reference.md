@@ -34,6 +34,19 @@ Stream events: `start` → `interaction_update` (optional) → `result` → `don
 - `POST /api/v1/agent/skillhub/disable`
 - `POST /api/v1/agent/skillhub/uninstall`
 
+### Current-Phase Capability Boundary (2026-04)
+
+- Current skills: all shipped skills run as built-in skills.
+- External skills: SkillHub packages; this channel is reserved and not yet active in production execution chains.
+- Current tools: managed uniformly as external tools.
+- Built-in tools: platform foundation capabilities (for example, read/write); this channel is currently reserved.
+
+Priority rule:
+
+- User manual toggles (skill/tool enable/disable) have the highest priority.
+- Manual toggles override automatic activation, default sets, and policy suggestions.
+- Any skill or tool manually disabled by the user must become immediately unavailable to the orchestrator.
+
 ## Validation Commands
 
 All run via `node tests/runner.mjs validate <name>`. Full list: `node tests/runner.mjs validate --list`.
