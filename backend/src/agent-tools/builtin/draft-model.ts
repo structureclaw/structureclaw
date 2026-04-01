@@ -114,7 +114,7 @@ export async function executeDraftModelExecutionStep(args: {
 
 export const DRAFT_MODEL_TOOL_MANIFEST: ToolManifest = {
   id: 'draft_model',
-  source: 'builtin',
+  source: 'external',
   enabledByDefault: false,
   category: 'modeling',
   displayName: localize('草拟结构模型', 'Draft Structural Model'),

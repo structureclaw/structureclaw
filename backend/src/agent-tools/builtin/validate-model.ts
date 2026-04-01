@@ -108,7 +108,7 @@ export async function executeValidateModelStep(args: {
 
 export const VALIDATE_MODEL_TOOL_MANIFEST: ToolManifest = {
   id: 'validate_model',
-  source: 'builtin',
+  source: 'external',
   enabledByDefault: false,
   category: 'modeling',
   displayName: localize('校验结构模型', 'Validate Structural Model'),
