@@ -186,13 +186,13 @@ async function validateAgentOrchestration(context) {
       }),
     };
     const result = await svc.run({ message: "帮我算一下门式刚架" });
-    assert(result.success === true, "auto mode should follow the llm planner into clarification when model details are missing");
-    assert(result.interaction?.state === "confirming", "auto mode should return clarification interaction when the planner selects ask");
-    assert(result.needsModelInput === true, "auto mode should still require model input");
+    assert(result.success === true, "auto routing should follow the llm planner into clarification when model details are missing");
+    assert(result.interaction?.state === "confirming", "auto routing should return clarification interaction when the planner selects ask");
+    assert(result.needsModelInput === true, "auto routing should still require model input");
 
     const toolResult = await svc.runForcedExecution({ message: "帮我算一下门式刚架" });
-    assert(toolResult.success === false, "tool mode should block when model details are missing");
-    assert(toolResult.needsModelInput === true, "tool mode should require model input");
+    assert(toolResult.success === false, "forced execution should block when model details are missing");
+    assert(toolResult.needsModelInput === true, "forced execution should require model input");
     console.log("[ok] agent missing-model clarification");
   }
 
@@ -592,7 +592,7 @@ async function validateAgentNoSkillFallback(context) {
       locale: "zh",
     },
   });
-  assert(hasDeterministicOutcome(toolResult), "tool mode with empty skillIds should return deterministic outcome");
+  assert(hasDeterministicOutcome(toolResult), "forced execution with empty skillIds should return deterministic outcome");
 
   const autoResult = await svc.run({
     conversationId: "conv-no-skill-auto",
@@ -602,7 +602,7 @@ async function validateAgentNoSkillFallback(context) {
       locale: "zh",
     },
   });
-  assert(hasDeterministicOutcome(autoResult), "auto mode with empty skillIds should return deterministic outcome");
+  assert(hasDeterministicOutcome(autoResult), "auto routing with empty skillIds should return deterministic outcome");
 
   console.log("[ok] no-skill fallback contract");
 }
