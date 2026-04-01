@@ -276,6 +276,7 @@ Agent 只能在“当前启用 skill 集 + 当前启用 tool 集”内做决策�
 - planner 输出不再决定具体 `toolId`，具体工具选择改为 runtime 基于 skill 状态驱动
 - `force_tool` 会绕过 planner 分支决策并进入 skill-first 执行路径
 - `runInteractive` 与 `runInteractiveStream` 继续保留为兼容入口，本质上是 `auto` + interactive-only 行为
+- 在启用 skill 的场景下，建模工具不再默认全开，需由 skill capability 显式授予；执行链核心工具由平台统一提供
 
 ## 12. 分阶段重构计划
 
