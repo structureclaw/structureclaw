@@ -18,9 +18,6 @@ import {
   type StructuralTypeKey,
 } from '../agent-runtime/index.js';
 import {
-  buildCodeCheckSummaryText,
-} from '../agent-skills/code-check/entry.js';
-import {
   inferCodeCheckIntent,
   inferAnalysisType,
   inferReportIntent,
@@ -28,7 +25,6 @@ import {
   normalizePolicyReportFormat,
   normalizePolicyReportOutput,
 } from '../agent-skills/design/entry.js';
-import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.js';
 import { createLocalAnalysisEngineClient } from './analysis-execution.js';
 import { createLocalCodeCheckClient } from './code-check-execution.js';
 import { createLocalStructureProtocolClient } from './structure-protocol-execution.js';
@@ -1995,8 +1991,12 @@ export class AgentService {
         workingSession,
         validationError,
       }),
-      structureProtocolClient: this.structureProtocolClient,
       traceId,
+      runValidate: async () => this.skillRuntime.executeValidationSkill({
+        model: normalizedModel,
+        engineId: params.context?.engineId,
+        structureProtocolClient: this.structureProtocolClient,
+      }),
     });
 
     if (!step.ok) {
@@ -2953,7 +2953,19 @@ export class AgentService {
       localize: this.localize.bind(this),
       startToolCall: this.startToolCall.bind(this),
       completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
-      generateReport: this.generateReport.bind(this),
+      generateReport: async () => {
+        const execution = await this.skillRuntime.executeReportSkill({
+          message: params.message,
+          analysisType: executionConfig.analysisType,
+          analysis: analyzed,
+          codeCheck: codeCheckResult,
+          format: executionConfig.reportFormat,
+          locale,
+          draft: workingSession.draft,
+          skillIds: activeSkillIds ?? skillIds,
+        });
+        return execution.report;
+      },
       persistReportArtifacts: this.persistReportArtifacts.bind(this),
     });
   }
@@ -4204,74 +4216,6 @@ export class AgentService {
         ? this.localize(locale, '工具调用已完成。', 'Tool invocation completed.')
         : this.localize(locale, '工具调用已触发，但被下游工具或校验失败阻断。', 'Tool invocation was attempted but blocked by downstream tool or validation failure.'),
       nextActions: state === 'completed' ? [] : ['revise'],
-    };
-  }
-
-  private async generateReport(params: {
-    message: string;
-    analysisType: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
-    analysis: unknown;
-    codeCheck?: unknown;
-    format: AgentReportFormat;
-    locale: AppLocale;
-    draft?: DraftState;
-    skillIds?: string[];
-  }): Promise<AgentRunResult['report']> {
-    const analysisSuccess = Boolean((params.analysis as any)?.success);
-    const codeCheckText = buildCodeCheckSummaryText({
-      codeCheck: params.codeCheck,
-      locale: params.locale,
-      localize: (locale, zh, en) => this.localize(locale, zh, en),
-    });
-    const summary = this.localize(
-      params.locale,
-      `分析类型 ${params.analysisType}，分析${analysisSuccess ? '成功' : '失败'}，${codeCheckText}。`,
-      `Analysis type ${params.analysisType}; analysis ${analysisSuccess ? 'succeeded' : 'failed'}; ${codeCheckText}.`
-    );
-    const {
-      keyMetrics,
-      clauseTraceability,
-      controllingCases,
-      visualizationHints,
-    } = buildReportDomainArtifacts(params.analysis, params.codeCheck);
-    const jsonReport: Record<string, unknown> = {
-      reportSchemaVersion: '1.0.0',
-      intent: params.message,
-      analysisType: params.analysisType,
-      summary,
-      keyMetrics,
-      clauseTraceability,
-      controllingCases,
-      visualizationHints,
-      analysis: params.analysis,
-      codeCheck: params.codeCheck,
-      generatedAt: new Date().toISOString(),
-    };
-
-    if (params.format === 'json') {
-      return {
-        summary,
-        json: jsonReport,
-      };
-    }
-
-    const markdown = await this.skillRuntime.buildReportNarrative({
-      message: params.message,
-      analysisType: params.analysisType,
-      analysisSuccess,
-      codeCheckText,
-      summary,
-      keyMetrics,
-      clauseTraceability,
-      controllingCases,
-      visualizationHints,
-      locale: params.locale,
-    }, params.draft, params.skillIds);
-
-    return {
-      summary,
-      json: jsonReport,
-      markdown: params.format === 'both' || params.format === 'markdown' ? markdown : undefined,
     };
   }
 

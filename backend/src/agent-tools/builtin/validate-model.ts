@@ -3,22 +3,12 @@ import type { AppLocale } from '../../services/locale.js';
 import type { AgentRunResult, AgentToolCall, AgentToolName } from '../../services/agent.js';
 import { localize } from './shared.js';
 
-type StructureProtocolClientLike = {
-  post: (path: string, payload: Record<string, unknown>) => Promise<{ data: any }>;
-};
-
 export async function executeValidateModel(
-  client: StructureProtocolClientLike,
   input: {
-    model: Record<string, unknown>;
-    engineId?: string;
+    runValidate: () => Promise<Record<string, unknown>>;
   },
 ): Promise<Record<string, unknown>> {
-  const validated = await client.post('/validate', {
-    model: input.model,
-    engineId: input.engineId,
-  });
-  return (validated?.data ?? {}) as Record<string, unknown>;
+  return input.runValidate();
 }
 
 export async function executeValidateModelStep(args: {
@@ -37,8 +27,8 @@ export async function executeValidateModelStep(args: {
   shouldBypassValidateFailure: (error: unknown) => boolean;
   buildBlockedResult: (response: string) => Promise<AgentRunResult>;
   buildGeneratedModelValidationClarification: (validationError: string) => Promise<AgentRunResult>;
-  structureProtocolClient: StructureProtocolClientLike;
   traceId: string;
+  runValidate: () => Promise<{ input: { model: Record<string, unknown> }; result: Record<string, unknown> }>;
 }): Promise<{ ok: true; normalizedModel: Record<string, unknown>; validationWarning?: string } | { ok: false; result: AgentRunResult }> {
   args.plan.push(args.localize(args.locale, '校验模型字段与引用完整性', 'Validate model fields and references'));
   const validateInput = { model: args.model };
@@ -46,16 +36,19 @@ export async function executeValidateModelStep(args: {
   args.toolCalls.push(validateCall);
 
   try {
-    const validated = await executeValidateModel(args.structureProtocolClient, {
-      model: validateInput.model,
-      engineId: args.engineId,
+    const validationExecution = await executeValidateModel({
+      runValidate: async () => {
+        const result = await args.runValidate();
+        validateCall.input = result.input;
+        return result.result;
+      },
     });
-    args.completeToolCallSuccess(validateCall, validated);
-    if (validated?.valid === false) {
+    args.completeToolCallSuccess(validateCall, validationExecution);
+    if (validationExecution?.valid === false) {
       validateCall.status = 'error';
-      validateCall.errorCode = typeof validated?.errorCode === 'string' ? validated.errorCode : 'INVALID_STRUCTURE_MODEL';
-      validateCall.error = typeof validated?.message === 'string'
-        ? validated.message
+      validateCall.errorCode = typeof validationExecution?.errorCode === 'string' ? validationExecution.errorCode : 'INVALID_STRUCTURE_MODEL';
+      validateCall.error = typeof validationExecution?.message === 'string'
+        ? validationExecution.message
         : args.localize(args.locale, '模型校验失败', 'Model validation failed');
       if (args.wasGeneratedThisTurn) {
         return {

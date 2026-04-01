@@ -86,7 +86,7 @@ Before entering the execution chain, the agent now derives the downstream domain
 - The `code-check` domain selects one matching standard skill from `designCode`.
 - `validation` and `report-export` are activated on demand through builtin domain manifests.
 
-In the current implementation, the actual `analysis` and `code-check` execution entrypoints are also wrapped by `AgentSkillRuntime`: the agent no longer assembles those domain registries directly, and the selected downstream skill id is written back into result `meta` and tool-trace attribution.
+In the current implementation, the actual `validation`, `analysis`, `code-check`, and `report-export` execution entrypoints are wrapped by `AgentSkillRuntime`: the agent no longer assembles those domain registries or report-domain details directly, and the selected downstream skill id is written back into result `meta` and tool-trace attribution.
 
 ## 3. External / SkillHub Skill Packaging and Loading
 

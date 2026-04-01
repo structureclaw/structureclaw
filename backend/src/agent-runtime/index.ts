@@ -1,5 +1,6 @@
 import { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from '../services/locale.js';
+import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.js';
 import {
   buildCodeCheckInput,
   executeCodeCheckDomain,
@@ -232,6 +233,108 @@ export class AgentSkillRuntime {
       input,
       result,
       skillId,
+    };
+  }
+
+  async executeValidationSkill(options: {
+    model: Record<string, unknown>;
+    engineId?: string;
+    structureProtocolClient: {
+      post: (path: string, payload: Record<string, unknown>) => Promise<{ data: unknown }>;
+    };
+  }): Promise<{
+    input: { model: Record<string, unknown> };
+    result: Record<string, unknown>;
+    skillId: 'validation-structure-model';
+  }> {
+    const input = { model: options.model };
+    const validated = await options.structureProtocolClient.post('/validate', {
+      model: options.model,
+      engineId: options.engineId,
+    });
+    return {
+      input,
+      result: (validated?.data ?? {}) as Record<string, unknown>,
+      skillId: 'validation-structure-model',
+    };
+  }
+
+  async executeReportSkill(options: {
+    message: string;
+    analysisType: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+    analysis: unknown;
+    codeCheck?: unknown;
+    format: 'json' | 'markdown' | 'both';
+    locale: AppLocale;
+    draft?: DraftState;
+    skillIds?: string[];
+  }): Promise<{
+    report: { summary: string; json: Record<string, unknown>; markdown?: string };
+    skillId: 'report-export-builtin';
+  }> {
+    const analysisSuccess = Boolean((options.analysis as { success?: unknown } | undefined)?.success);
+    const codeCheckSummary = (options.codeCheck as { summary?: Record<string, unknown> } | undefined)?.summary;
+    const codeCheckText = codeCheckSummary
+      ? (options.locale === 'zh'
+        ? `校核通过 ${String(codeCheckSummary.passed ?? 0)} / ${String(codeCheckSummary.total ?? 0)}`
+        : `Code checks passed ${String(codeCheckSummary.passed ?? 0)} / ${String(codeCheckSummary.total ?? 0)}`)
+      : (options.locale === 'zh' ? '未执行规范校核' : 'No code checks were executed');
+    const summary = options.locale === 'zh'
+      ? `分析类型 ${options.analysisType}，分析${analysisSuccess ? '成功' : '失败'}，${codeCheckText}。`
+      : `Analysis type ${options.analysisType}; analysis ${analysisSuccess ? 'succeeded' : 'failed'}; ${codeCheckText}.`;
+    const {
+      keyMetrics,
+      clauseTraceability,
+      controllingCases,
+      visualizationHints,
+    } = buildReportDomainArtifacts(options.analysis, options.codeCheck);
+    const jsonReport: Record<string, unknown> = {
+      reportSchemaVersion: '1.0.0',
+      intent: options.message,
+      analysisType: options.analysisType,
+      summary,
+      keyMetrics,
+      clauseTraceability,
+      controllingCases,
+      visualizationHints,
+      analysis: options.analysis,
+      codeCheck: options.codeCheck,
+      generatedAt: new Date().toISOString(),
+      meta: {
+        reportSkillId: 'report-export-builtin',
+      },
+    };
+
+    if (options.format === 'json') {
+      return {
+        report: {
+          summary,
+          json: jsonReport,
+        },
+        skillId: 'report-export-builtin',
+      };
+    }
+
+    const markdown = await this.buildReportNarrative({
+      message: options.message,
+      analysisType: options.analysisType,
+      analysisSuccess,
+      codeCheckText,
+      summary,
+      keyMetrics,
+      clauseTraceability,
+      controllingCases,
+      visualizationHints,
+      locale: options.locale,
+    }, options.draft, options.skillIds);
+
+    return {
+      report: {
+        summary,
+        json: jsonReport,
+        markdown: options.format === 'both' || options.format === 'markdown' ? markdown : undefined,
+      },
+      skillId: 'report-export-builtin',
     };
   }
 

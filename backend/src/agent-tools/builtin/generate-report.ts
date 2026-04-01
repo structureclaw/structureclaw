@@ -4,31 +4,12 @@ import type { DraftState } from '../../agent-runtime/index.js';
 import type { AgentToolCall, AgentToolName } from '../../services/agent.js';
 import { localize } from './shared.js';
 
-type GenerateReportFn = (params: {
-  message: string;
-  analysisType: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
-  analysis: any;
-  codeCheck?: unknown;
-  format: 'json' | 'markdown' | 'both';
-  locale: AppLocale;
-  draft?: DraftState;
-  skillIds?: string[];
-}) => Promise<{ summary: string; json: Record<string, unknown>; markdown?: string } | undefined>;
-
 export async function executeGenerateReport(
-  generateReport: GenerateReportFn,
   params: {
-    message: string;
-    analysisType: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
-    analysis: any;
-    codeCheck?: unknown;
-    format: 'json' | 'markdown' | 'both';
-    locale: AppLocale;
-    draft?: DraftState;
-    skillIds?: string[];
+    runGenerateReport: () => Promise<{ summary: string; json: Record<string, unknown>; markdown?: string } | undefined>;
   },
 ): Promise<{ summary: string; json: Record<string, unknown>; markdown?: string } | undefined> {
-  return generateReport(params);
+  return params.runGenerateReport();
 }
 
 export async function executeGenerateReportStep(args: {
@@ -47,7 +28,7 @@ export async function executeGenerateReportStep(args: {
   localize: (locale: AppLocale, zh: string, en: string) => string;
   startToolCall: (tool: AgentToolName, input: Record<string, unknown>) => AgentToolCall;
   completeToolCallSuccess: (call: AgentToolCall, output?: unknown) => void;
-  generateReport: GenerateReportFn;
+  generateReport: () => Promise<{ summary: string; json: Record<string, unknown>; markdown?: string } | undefined>;
   persistReportArtifacts: (traceId: string, report: { summary: string; json: Record<string, unknown>; markdown?: string }, reportFormat: 'json' | 'markdown' | 'both') => Promise<Array<{ type: 'report'; format: 'json' | 'markdown'; path: string }> | undefined>;
 }): Promise<{ report?: { summary: string; json: Record<string, unknown>; markdown?: string }; artifacts?: Array<{ type: 'report'; format: 'json' | 'markdown'; path: string }> }> {
   args.plan.push(args.localize(args.locale, '生成可读计算与规范校核报告', 'Generate a readable analysis and run_code_check report'));
@@ -59,15 +40,8 @@ export async function executeGenerateReportStep(args: {
   });
   args.toolCalls.push(reportCall);
 
-  const report = await executeGenerateReport(args.generateReport, {
-    message: args.message,
-    analysisType: args.analysisType,
-    analysis: args.analysis,
-    codeCheck: args.codeCheck,
-    format: args.format,
-    locale: args.locale,
-    draft: args.draft,
-    skillIds: args.skillIds,
+  const report = await executeGenerateReport({
+    runGenerateReport: args.generateReport,
   });
   const artifacts = report && args.reportOutput === 'file'
     ? await args.persistReportArtifacts(args.traceId, report, args.format)

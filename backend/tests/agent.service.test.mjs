@@ -209,11 +209,13 @@ describe('AgentService orchestration', () => {
     expect(result.toolCalls.some((c) => c.tool === 'run_analysis')).toBe(true);
     expect(result.toolCalls.some((c) => c.tool === 'run_code_check')).toBe(true);
     expect(result.toolCalls.some((c) => c.tool === 'generate_report')).toBe(true);
+    expect(result.toolCalls.find((c) => c.tool === 'validate_model')?.authorizedBySkillIds).toEqual(['validation-structure-model']);
     expect(result.toolCalls.find((c) => c.tool === 'run_analysis')?.authorizedBySkillIds).toEqual(['opensees-static']);
     expect(result.toolCalls.find((c) => c.tool === 'run_code_check')?.authorizedBySkillIds).toEqual(['code-check-gb50017']);
     expect(result.toolCalls.find((c) => c.tool === 'generate_report')?.authorizedBySkillIds).toEqual(['report-export-builtin']);
     expect(result.analysis?.meta?.analysisSkillId).toBe('opensees-static');
     expect(result.codeCheck?.meta?.codeCheckSkillId).toBe('code-check-gb50017');
+    expect(result.report?.json?.meta?.reportSkillId).toBe('report-export-builtin');
     expect(result.codeCheck?.code).toBe('GB50017');
     expect(typeof result.report?.markdown).toBe('string');
   });
