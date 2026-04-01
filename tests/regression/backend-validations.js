@@ -71,11 +71,11 @@ async function validateAgentOrchestration(context) {
     svc.run = async (params) => originalRun(applyDefaultSkills(params));
 
     const runWithStrategy = svc.runWithStrategy.bind(svc);
-    svc.runInteractive = async (params) => runWithStrategy(
+    svc.runChatOnly = async (params) => runWithStrategy(
       applyDefaultSkills(params),
       { planningDirective: "auto", allowToolCall: false },
     );
-    svc.runToolCall = async (params) => runWithStrategy(
+    svc.runForcedExecution = async (params) => runWithStrategy(
       applyDefaultSkills(params),
       { planningDirective: "force_tool", allowToolCall: true },
     );
@@ -84,11 +84,11 @@ async function validateAgentOrchestration(context) {
     svc.runStream = (params) => originalRunStream(applyDefaultSkills(params));
 
     const runStreamWithStrategy = svc.runStreamWithStrategy.bind(svc);
-    svc.runInteractiveStream = (params) => runStreamWithStrategy(
+    svc.runChatOnlyStream = (params) => runStreamWithStrategy(
       applyDefaultSkills(params),
       { planningDirective: "auto", allowToolCall: false },
     );
-    svc.runToolCallStream = (params) => runStreamWithStrategy(
+    svc.runForcedExecutionStream = (params) => runStreamWithStrategy(
       applyDefaultSkills(params),
       { planningDirective: "force_tool", allowToolCall: true },
     );
@@ -190,7 +190,7 @@ async function validateAgentOrchestration(context) {
     assert(result.interaction?.state === "confirming", "auto mode should return clarification interaction when the planner selects ask");
     assert(result.needsModelInput === true, "auto mode should still require model input");
 
-    const toolResult = await svc.runToolCall({ message: "帮我算一下门式刚架" });
+    const toolResult = await svc.runForcedExecution({ message: "帮我算一下门式刚架" });
     assert(toolResult.success === false, "tool mode should block when model details are missing");
     assert(toolResult.needsModelInput === true, "tool mode should require model input");
     console.log("[ok] agent missing-model clarification");
@@ -206,7 +206,7 @@ async function validateAgentOrchestration(context) {
       },
     });
 
-    const result = await svc.runToolCall({
+    const result = await svc.runForcedExecution({
       message: "做静力分析",
       context: {
         model: { schema_version: "1.0.0" },
@@ -222,7 +222,7 @@ async function validateAgentOrchestration(context) {
     const svc = withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
-    const result = await svc.runToolCall({
+    const result = await svc.runForcedExecution({
       message: "静力分析这个模型",
       context: {
         model: {
@@ -255,7 +255,7 @@ async function validateAgentOrchestration(context) {
     const events = [];
     let streamTraceId;
     let resultTraceId;
-    for await (const chunk of svc.runToolCallStream({
+    for await (const chunk of svc.runForcedExecutionStream({
       message: "stream test",
       context: { model: { schema_version: "1.0.0" } },
     })) {
@@ -280,7 +280,7 @@ async function validateAgentOrchestration(context) {
     const svc = withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
-    const result = await svc.runToolCall({
+    const result = await svc.runForcedExecution({
       message: "请按一个3m悬臂梁，端部10kN竖向荷载做静力分析",
       context: {
         userDecision: "allow_auto_decide",
@@ -300,14 +300,14 @@ async function validateAgentOrchestration(context) {
     const svc = withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
-    const first = await svc.runToolCall({
+    const first = await svc.runForcedExecution({
       conversationId: "conv-clarify-1",
       message: "请帮我算一个门式刚架",
     });
     assert(first.success === false, "first turn should request clarification");
     assert(first.needsModelInput === true, "first turn should require model input");
 
-    const second = await svc.runToolCall({
+    const second = await svc.runForcedExecution({
       conversationId: "conv-clarify-1",
       message: "跨度6m，柱高4m，竖向荷载20kN，做静力分析",
       context: {
@@ -324,7 +324,7 @@ async function validateAgentOrchestration(context) {
   {
     const svc = withDefaultSkills(new AgentService());
 
-    const collecting = await svc.runInteractive({
+    const collecting = await svc.runChatOnly({
       conversationId: "conv-conversation-complete-model",
       message: "3m悬臂梁，端部10kN点荷载",
       context: {
@@ -335,7 +335,7 @@ async function validateAgentOrchestration(context) {
     assert(collecting.interaction?.state === "ready", `expected ready state, got ${collecting.interaction?.state}`);
     assert(collecting.model && Array.isArray(collecting.model.nodes), "conversation complete-model turn should return synchronized model");
 
-    const incomplete = await svc.runInteractive({
+    const incomplete = await svc.runChatOnly({
       conversationId: "conv-conversation-incomplete-model",
       message: "帮我设计一个梁",
       context: {
@@ -350,7 +350,7 @@ async function validateAgentOrchestration(context) {
 
   {
     const svc = withDefaultSkills(new AgentService());
-    const first = await svc.runInteractive({
+    const first = await svc.runChatOnly({
       conversationId: "conv-conversation-followup-1",
       message: "先聊需求，我要做一个门式刚架",
     });
@@ -359,7 +359,7 @@ async function validateAgentOrchestration(context) {
       "first conversation turn should ask for portal-frame span",
     );
 
-    const second = await svc.runInteractive({
+    const second = await svc.runChatOnly({
       conversationId: "conv-conversation-followup-1",
       message: "跨度10m",
     });
@@ -378,13 +378,13 @@ async function validateAgentOrchestration(context) {
   {
     const svc = withDefaultSkills(new AgentService());
 
-    const first = await svc.runInteractive({
+    const first = await svc.runChatOnly({
       conversationId: "conv-conversation-followup-beam-1",
       message: "我想设计一个梁",
     });
     assert(first.interaction?.missingCritical?.includes("跨度/长度（m）"), "first beam conversation turn should ask for span");
 
-    const second = await svc.runInteractive({
+    const second = await svc.runChatOnly({
       conversationId: "conv-conversation-followup-beam-1",
       message: "跨度10m",
     });
@@ -410,7 +410,7 @@ async function validateAgentOrchestration(context) {
       "second beam conversation turn should not require load position before support type is known",
     );
 
-    const third = await svc.runInteractive({
+    const third = await svc.runChatOnly({
       conversationId: "conv-conversation-followup-beam-1",
       message: "简支",
     });
@@ -438,7 +438,7 @@ async function validateAgentOrchestration(context) {
     const svc = withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
-    const beam = await svc.runInteractive({
+    const beam = await svc.runChatOnly({
       message: "按双跨梁建模，每跨4m，中跨节点施加12kN竖向荷载做静力分析",
       context: {
         userDecision: "allow_auto_decide",
@@ -449,7 +449,7 @@ async function validateAgentOrchestration(context) {
     assert(beam.success === true, "double-span beam draft should succeed");
     assert(Array.isArray(beam.model?.elements) && beam.model.elements.length === 2, "double-span beam should have 2 elements");
 
-    const truss = await svc.runToolCall({
+    const truss = await svc.runForcedExecution({
       message: "建立一个平面桁架，长度5m，10kN轴向荷载并计算",
       context: {
         userDecision: "allow_auto_decide",
@@ -500,7 +500,7 @@ async function validateAgentOrchestration(context) {
       },
     });
 
-    const result = await svc.runToolCall({
+    const result = await svc.runForcedExecution({
       message: "请对该模型做静力分析并按GB50017做规范校核并出报告",
       context: {
         model: {
@@ -571,7 +571,7 @@ async function validateAgentNoSkillFallback(context) {
   const AgentService = await importBackendAgentService(context.rootDir);
   const svc = new AgentService();
 
-  const chatResult = await svc.runToolCall({
+  const chatResult = await svc.runForcedExecution({
     conversationId: "conv-no-skill-chat",
     message: "先聊需求，我要算一个门式刚架",
     context: {
@@ -581,7 +581,7 @@ async function validateAgentNoSkillFallback(context) {
   });
   assert(hasDeterministicOutcome(chatResult), "conversation mode with empty skillIds should return deterministic outcome");
 
-  const toolResult = await svc.runToolCall({
+  const toolResult = await svc.runForcedExecution({
     conversationId: "conv-no-skill-exec",
     message: "按3m悬臂梁端部10kN点荷载做静力分析",
     context: {
@@ -658,7 +658,7 @@ async function validateAgentCapabilityModes(context) {
     },
   };
 
-  const baseChat = await svc.runInteractive({
+  const baseChat = await svc.runChatOnly({
     conversationId: "conv-capability-base-chat",
     message: "先聊一下需求",
     context: {
@@ -671,7 +671,7 @@ async function validateAgentCapabilityModes(context) {
   assert(!baseChat.interaction, "base chat should not return engineering interaction payload");
   assert(Array.isArray(baseChat.toolCalls) && baseChat.toolCalls.length === 0, "base chat should not invoke tools");
 
-  const skilledChat = await svc.runInteractive({
+  const skilledChat = await svc.runChatOnly({
     conversationId: "conv-capability-skilled-chat",
     message: "我想设计一个门式刚架",
     context: {
@@ -686,7 +686,7 @@ async function validateAgentCapabilityModes(context) {
   assert(!skilledChat.toolCalls.some((call) => call.tool === "run_code_check"), "skilled chat should not execute run_code_check");
   assert(!skilledChat.toolCalls.some((call) => call.tool === "generate_report"), "skilled chat should not execute generate_report");
 
-  const fullAgent = await svc.runToolCall({
+  const fullAgent = await svc.runForcedExecution({
     conversationId: "conv-capability-full-agent",
     message: "请按3m悬臂梁端部10kN点荷载做静力分析",
     context: {
@@ -1357,7 +1357,7 @@ async function validateAgentSkillhubRepositoryDown(context) {
     throw new Error(`unexpected analysis path ${targetPath}`);
   };
 
-  const result = await svc.runToolCall({
+  const result = await svc.runForcedExecution({
     message: "按3m悬臂梁端部10kN点荷载做静力分析",
     context: {
       skillIds: [],
@@ -1419,7 +1419,7 @@ async function validateChatStreamContract(context) {
     yield { type: "done" };
   };
   AgentService.prototype.runStream = mockRunStream;
-  AgentService.prototype.runToolCallStream = mockRunStream;
+  AgentService.prototype.runForcedExecutionStream = mockRunStream;
 
   const parseSseEvents = (raw) =>
     raw
@@ -1671,7 +1671,7 @@ async function validateReportTemplateContract(context) {
     },
   };
 
-  const result = await svc.runToolCall({
+  const result = await svc.runForcedExecution({
     message: "请分析并按规范校核后出报告",
     context: {
       model: {
