@@ -396,14 +396,14 @@ export class AgentService {
     return this.skillRuntime.getStructuralTypeLabel(key, locale);
   }
 
-  async shouldPreferToolInvocation(message: string, options?: {
+  async assessAutoRouteKind(message: string, options?: {
     locale?: AppLocale;
     conversationId?: string;
     skillIds?: string[];
     enabledToolIds?: string[];
     disabledToolIds?: string[];
     hasModel?: boolean;
-  }): Promise<boolean> {
+  }): Promise<AgentPlanKind> {
     const locale = this.resolveInteractionLocale(options?.locale);
     const sessionKey = options?.conversationId?.trim();
     const session = await this.getInteractionSession(sessionKey);
@@ -411,7 +411,7 @@ export class AgentService {
       enabledToolIds: options?.enabledToolIds,
       disabledToolIds: options?.disabledToolIds,
     });
-    return (await this.planNextStep(message, {
+    const nextPlan = await this.planNextStep(message, {
       planningDirective: 'auto',
       allowToolCall: true,
       locale,
@@ -420,7 +420,20 @@ export class AgentService {
       session,
       activeToolIds,
       conversationId: sessionKey,
-    })).kind === 'tool_call';
+    });
+    return nextPlan.kind;
+  }
+
+  // Backward-compatible alias. Prefer assessAutoRouteKind for new call sites.
+  async shouldPreferToolInvocation(message: string, options?: {
+    locale?: AppLocale;
+    conversationId?: string;
+    skillIds?: string[];
+    enabledToolIds?: string[];
+    disabledToolIds?: string[];
+    hasModel?: boolean;
+  }): Promise<boolean> {
+    return (await this.assessAutoRouteKind(message, options)) === 'tool_call';
   }
 
   private async buildPlannerContextSnapshot(options: {

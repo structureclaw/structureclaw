@@ -7,14 +7,13 @@
 
 ### Agent Run
 
-- `POST /api/v1/agent/run` — modes: `chat`, `execute`, `auto`
+- `POST /api/v1/agent/run` — chat-first orchestration entry
 - Chain: `text-to-model-draft -> convert -> validate -> analyze -> code-check -> report`
 
 ### Chat and Streaming
 
 - `POST /api/v1/chat/message`
 - `POST /api/v1/chat/stream`
-- `POST /api/v1/chat/execute`
 
 Stream events: `start` → `interaction_update` (optional) → `result` → `done` (or `error`).
 

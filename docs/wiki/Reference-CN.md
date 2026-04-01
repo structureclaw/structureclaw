@@ -7,14 +7,13 @@
 
 ### Agent 执行
 
-- `POST /api/v1/agent/run` — 模式：`chat`、`execute`、`auto`
+- `POST /api/v1/agent/run` — chat-first 编排入口
 - 链路：`text-to-model-draft -> convert -> validate -> analyze -> code-check -> report`
 
 ### Chat 与流式
 
 - `POST /api/v1/chat/message`
 - `POST /api/v1/chat/stream`
-- `POST /api/v1/chat/execute`
 
 流式事件：`start` → `interaction_update`（可选）→ `result` → `done`（或 `error`）。
 

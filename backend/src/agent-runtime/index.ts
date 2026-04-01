@@ -77,19 +77,6 @@ export class AgentSkillRuntime {
     return this.registry.detectStructuralType(message, locale, currentState, skillIds);
   }
 
-  async shouldPreferToolInvocation(
-    message: string,
-    locale: AppLocale,
-    currentState?: DraftState,
-    skillIds?: string[],
-  ): Promise<boolean> {
-    const structuralTypeMatch = await this.registry.detectStructuralType(message, locale, currentState, skillIds);
-    if (structuralTypeMatch.supportLevel === 'unsupported') {
-      return false;
-    }
-    return structuralTypeMatch.mappedType !== 'unknown';
-  }
-
   async getStructuralTypeLabel(key: string, locale: AppLocale, skillIds?: string[]): Promise<string> {
     return this.registry.getStructuralTypeLabel(key, locale, skillIds);
   }

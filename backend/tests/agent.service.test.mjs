@@ -448,7 +448,7 @@ describe('AgentService orchestration', () => {
     expect(result.clarification?.missingFields).toContain('Portal-frame column height (m)');
   });
 
-  test('should not prefer tool invocation when run_analysis is disabled for auto routing', async () => {
+  test('should keep auto routing in reply mode when run_analysis is disabled', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = {
       invoke: async () => ({
@@ -460,7 +460,7 @@ describe('AgentService orchestration', () => {
       }),
     };
 
-    const shouldInvoke = await svc.shouldPreferToolInvocation('请开始分析这个模型', {
+    const routeKind = await svc.assessAutoRouteKind('请开始分析这个模型', {
       locale: 'zh',
       skillIds: ['generic'],
       enabledToolIds: ['validate_model'],
@@ -468,7 +468,7 @@ describe('AgentService orchestration', () => {
       hasModel: true,
     });
 
-    expect(shouldInvoke).toBe(false);
+    expect(routeKind).toBe('reply');
   });
 
   test('should keep conversation route when analysis tool is disabled even after parameters are ready', async () => {
