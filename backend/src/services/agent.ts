@@ -18,9 +18,7 @@ import {
   type StructuralTypeKey,
 } from '../agent-runtime/index.js';
 import {
-  buildCodeCheckInput,
   buildCodeCheckSummaryText,
-  executeCodeCheckDomain,
   resolveCodeCheckDesignCodeFromSkillIds,
 } from '../agent-skills/code-check/entry.js';
 import {
@@ -42,6 +40,11 @@ import { createLocalStructureProtocolClient } from './structure-protocol-executi
 import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
 import { listBuiltinToolManifests } from '../agent-runtime/tool-registry.js';
 import type { ToolManifest } from '../agent-runtime/types.js';
+import { executeConvertModel } from '../agent-tools/builtin/convert-model.js';
+import { executeGenerateReport } from '../agent-tools/builtin/generate-report.js';
+import { executeRunAnalysis } from '../agent-tools/builtin/run-analysis.js';
+import { executeRunCodeCheck } from '../agent-tools/builtin/run-code-check.js';
+import { executeValidateModel } from '../agent-tools/builtin/validate-model.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'directed' | 'llm-planned';
@@ -1682,12 +1685,12 @@ export class AgentService {
     toolCalls.push(convertCall);
 
     try {
-      const converted = await this.structureProtocolClient.post('/convert', convertInput);
-      this.completeToolCallSuccess(convertCall, converted.data);
+      const converted = await executeConvertModel(this.structureProtocolClient, convertInput);
+      this.completeToolCallSuccess(convertCall, converted);
       return {
         ok: true,
         value: {
-          normalizedModel: (converted.data?.model ?? {}) as Record<string, unknown>,
+          normalizedModel: (converted?.model ?? {}) as Record<string, unknown>,
         },
       };
     } catch (error: any) {
@@ -1776,15 +1779,17 @@ export class AgentService {
     toolCalls.push(validateCall);
 
     try {
-      const validated = await this.structureProtocolClient.post('/validate', {
-        ...validateInput,
+      const validated = await executeValidateModel(this.structureProtocolClient, {
+        model: validateInput.model,
         engineId: params.context?.engineId,
       });
-      this.completeToolCallSuccess(validateCall, validated.data);
-      if (validated.data?.valid === false) {
+      this.completeToolCallSuccess(validateCall, validated);
+      if (validated?.valid === false) {
         validateCall.status = 'error';
-        validateCall.errorCode = validated.data?.errorCode || 'INVALID_STRUCTURE_MODEL';
-        validateCall.error = validated.data?.message || this.localize(locale, '模型校验失败', 'Model validation failed');
+        validateCall.errorCode = typeof validated?.errorCode === 'string' ? validated.errorCode : 'INVALID_STRUCTURE_MODEL';
+        validateCall.error = typeof validated?.message === 'string'
+          ? validated.message
+          : this.localize(locale, '模型校验失败', 'Model validation failed');
         if (this.wasGeneratedThisTurn(toolCalls)) {
           return {
             ok: false,
@@ -2636,13 +2641,12 @@ export class AgentService {
     toolCalls.push(analyzeCall);
 
     try {
-      const analyzed = await this.postToEngineWithRetry('/analyze', analyzeInput, {
-        retries: 2,
+      const analyzed = await executeRunAnalysis(this.postToEngineWithRetry.bind(this), {
         traceId,
-        tool: 'run_analysis',
+        input: analyzeInput,
       });
-      this.completeToolCallSuccess(analyzeCall, analyzed.data);
-      return { ok: true, value: { data: analyzed.data } };
+      this.completeToolCallSuccess(analyzeCall, analyzed);
+      return { ok: true, value: { data: analyzed } };
     } catch (error: any) {
       this.completeToolCallError(analyzeCall, error);
       const transientUpstreamFailure = this.shouldRetryEngineCall(error);
@@ -2702,7 +2706,7 @@ export class AgentService {
     }
 
     plan.push(this.localize(locale, `执行 ${executionConfig.designCode} 规范校核`, `Run ${executionConfig.designCode} code checks`));
-    const codeCheckInput = buildCodeCheckInput({
+    const codeCheckCall = this.startToolCall('run_code_check', {
       traceId,
       designCode: executionConfig.designCode,
       model: normalizedModel,
@@ -2710,11 +2714,21 @@ export class AgentService {
       analysisParameters,
       codeCheckElements: params.context?.codeCheckElements,
     });
-    const codeCheckCall = this.startToolCall('run_code_check', codeCheckInput);
     toolCalls.push(codeCheckCall);
 
     try {
-      const codeChecked = await executeCodeCheckDomain(this.codeCheckClient, codeCheckInput, params.context?.engineId);
+      const codeCheckExecution = await executeRunCodeCheck({
+        codeCheckClient: this.codeCheckClient,
+        traceId,
+        designCode: executionConfig.designCode,
+        model: normalizedModel,
+        analysis: analyzed,
+        analysisParameters,
+        codeCheckElements: params.context?.codeCheckElements,
+        engineId: params.context?.engineId,
+      });
+      codeCheckCall.input = codeCheckExecution.input;
+      const codeChecked = codeCheckExecution.result;
       this.completeToolCallSuccess(codeCheckCall, codeChecked);
       return { ok: true, value: codeChecked };
     } catch (error: any) {
@@ -2771,7 +2785,7 @@ export class AgentService {
     });
     toolCalls.push(reportCall);
 
-    const report = await this.generateReport({
+    const report = await executeGenerateReport(this.generateReport.bind(this), {
       message: params.message,
       analysisType: executionConfig.analysisType,
       analysis: analyzed,
