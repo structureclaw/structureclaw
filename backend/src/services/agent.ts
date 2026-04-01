@@ -40,13 +40,13 @@ import { createLocalStructureProtocolClient } from './structure-protocol-executi
 import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
 import { listBuiltinToolManifests } from '../agent-runtime/tool-registry.js';
 import type { ToolManifest } from '../agent-runtime/types.js';
-import { executeConvertModel } from '../agent-tools/builtin/convert-model.js';
+import { executeConvertModelStep } from '../agent-tools/builtin/convert-model.js';
 import { executeDraftModel } from '../agent-tools/builtin/draft-model.js';
 import { executeGenerateReportStep } from '../agent-tools/builtin/generate-report.js';
 import { executeRunAnalysisStep } from '../agent-tools/builtin/run-analysis.js';
 import { executeRunCodeCheckStep } from '../agent-tools/builtin/run-code-check.js';
 import { executeUpdateModel } from '../agent-tools/builtin/update-model.js';
-import { executeValidateModel } from '../agent-tools/builtin/validate-model.js';
+import { executeValidateModel, executeValidateModelStep } from '../agent-tools/builtin/validate-model.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'directed' | 'llm-planned';
@@ -596,7 +596,7 @@ export class AgentService {
         : 'Tool invocation is not allowed in this planning mode. Choose only reply or ask.',
       'When there is an active engineering session with missing parameters, and the latest user message adds structure type, geometry, topology, material, section, load, support, or report details, do not choose a plain reply.',
       'In that situation, choose ask so the structured engineering session continues, unless the information is now complete enough that a structured reply is clearly better.',
-      'Treat short parameter fragments such as "钢框架结构体系", "每层3m", "x方向4跨", "Q355", or similar engineering increments as continuation turns, not casual chat.',
+      'Treat short parameter fragments such as "钢框架结构体系", "每层3m", "x方 向4跨", "Q355", or similar engineering increments as continuation turns, not casual chat.',
       'If the previous assistant message was asking for engineering parameters and the latest user message answers that request, continue the structured engineering session.',
       'If the user changes previously confirmed geometry, loads, supports, material, or section values, treat that as a model update request rather than a plain question.',
       'If there is an existing engineering session or model and the user says things like "改成", "改为", "change to", "update", or modifies previously analyzed values, prefer tool_call when tool invocation is allowed.',
@@ -1676,45 +1676,41 @@ export class AgentService {
       };
     }
 
-    plan.push(this.localize(locale, `将输入模型从 ${sourceFormat} 转为 structuremodel-v1`, `Convert the input model from ${sourceFormat} to structuremodel-v1`));
-    const convertInput = {
-      model: modelInput,
-      source_format: sourceFormat,
-      target_format: 'structuremodel-v1',
-      target_schema_version: '1.0.0',
-    };
-    const convertCall = this.startToolCall('convert_model', convertInput);
-    toolCalls.push(convertCall);
-
-    try {
-      const converted = await executeConvertModel(this.structureProtocolClient, convertInput);
-      this.completeToolCallSuccess(convertCall, converted);
-      return {
-        ok: true,
-        value: {
-          normalizedModel: (converted?.model ?? {}) as Record<string, unknown>,
-        },
-      };
-    } catch (error: any) {
-      this.completeToolCallError(convertCall, error);
-      return {
-        ok: false,
-        result: await this.finalizeBlockedRunResult({
-          params,
-          traceId,
-          startedAt,
-          startedAtMs,
-          locale,
-          orchestrationMode,
-          skillIds,
-          plan,
-          toolCalls,
-          sessionKey,
-          workingSession,
-          response: this.localize(locale, `模型格式转换失败：${convertCall.error}`, `Model conversion failed: ${convertCall.error}`),
-        }),
-      };
+    const result = await executeConvertModelStep({
+      locale,
+      sourceFormat,
+      modelInput,
+      plan,
+      toolCalls,
+      localize: this.localize.bind(this),
+      startToolCall: this.startToolCall.bind(this),
+      completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
+      completeToolCallError: this.completeToolCallError.bind(this),
+      structureProtocolClient: this.structureProtocolClient,
+      buildBlockedResult: async (response) => this.finalizeBlockedRunResult({
+        params,
+        traceId,
+        startedAt,
+        startedAtMs,
+        locale,
+        orchestrationMode,
+        skillIds,
+        plan,
+        toolCalls,
+        sessionKey,
+        workingSession,
+        response,
+      }),
+    });
+    if (!result.ok) {
+      return result;
     }
+    return {
+      ok: true,
+      value: {
+        normalizedModel: result.normalizedModel,
+      },
+    };
   }
 
   private async validateExecutionModel(args: {

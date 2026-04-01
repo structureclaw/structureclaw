@@ -1,4 +1,6 @@
 import type { ToolManifest } from '../../agent-runtime/types.js';
+import type { AppLocale } from '../../services/locale.js';
+import type { AgentRunResult, AgentToolCall, AgentToolName } from '../../services/agent.js';
 import { localize } from './shared.js';
 
 type StructureProtocolClientLike = {
@@ -17,6 +19,91 @@ export async function executeValidateModel(
     engineId: input.engineId,
   });
   return (validated?.data ?? {}) as Record<string, unknown>;
+}
+
+export async function executeValidateModelStep(args: {
+  locale: AppLocale;
+  model: Record<string, unknown>;
+  engineId?: string;
+  autoAnalyze: boolean;
+  wasGeneratedThisTurn: boolean;
+  plan: string[];
+  toolCalls: AgentToolCall[];
+  localize: (locale: AppLocale, zh: string, en: string) => string;
+  loggerWarn: (meta: Record<string, unknown>, message: string) => void;
+  startToolCall: (tool: AgentToolName, input: Record<string, unknown>) => AgentToolCall;
+  completeToolCallSuccess: (call: AgentToolCall, output?: unknown) => void;
+  completeToolCallError: (call: AgentToolCall, error: unknown) => void;
+  shouldBypassValidateFailure: (error: unknown) => boolean;
+  buildBlockedResult: (response: string) => Promise<AgentRunResult>;
+  buildGeneratedModelValidationClarification: (validationError: string) => Promise<AgentRunResult>;
+  structureProtocolClient: StructureProtocolClientLike;
+  traceId: string;
+}): Promise<{ ok: true; normalizedModel: Record<string, unknown>; validationWarning?: string } | { ok: false; result: AgentRunResult }> {
+  args.plan.push(args.localize(args.locale, '校验模型字段与引用完整性', 'Validate model fields and references'));
+  const validateInput = { model: args.model };
+  const validateCall = args.startToolCall('validate_model', validateInput);
+  args.toolCalls.push(validateCall);
+
+  try {
+    const validated = await executeValidateModel(args.structureProtocolClient, {
+      model: validateInput.model,
+      engineId: args.engineId,
+    });
+    args.completeToolCallSuccess(validateCall, validated);
+    if (validated?.valid === false) {
+      validateCall.status = 'error';
+      validateCall.errorCode = typeof validated?.errorCode === 'string' ? validated.errorCode : 'INVALID_STRUCTURE_MODEL';
+      validateCall.error = typeof validated?.message === 'string'
+        ? validated.message
+        : args.localize(args.locale, '模型校验失败', 'Model validation failed');
+      if (args.wasGeneratedThisTurn) {
+        return {
+          ok: false,
+          result: await args.buildGeneratedModelValidationClarification(
+            validateCall.error || args.localize(args.locale, '模型校验失败', 'Model validation failed'),
+          ),
+        };
+      }
+      return {
+        ok: false,
+        result: await args.buildBlockedResult(
+          args.localize(args.locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
+        ),
+      };
+    }
+    return { ok: true, normalizedModel: args.model };
+  } catch (error: any) {
+    args.completeToolCallError(validateCall, error);
+    if (args.autoAnalyze && args.shouldBypassValidateFailure(error)) {
+      const validationWarning = args.localize(
+        args.locale,
+        `模型校验服务暂时不可用，已跳过 \`validate_model\` 并继续执行 \`run_analysis\`：${validateCall.error}`,
+        `The model validation service is temporarily unavailable. \`validate_model\` was skipped and \`run_analysis\` will continue: ${validateCall.error}`,
+      );
+      args.plan.push(args.localize(args.locale, '校验服务不可用，跳过 `validate_model` 并继续执行 `run_analysis`', 'Validation service unavailable; skip `validate_model` and continue with `run_analysis`'));
+      args.loggerWarn({ traceId: args.traceId, validationError: validateCall.error }, '`validate_model` failed with an upstream error; continuing with `run_analysis`');
+      return {
+        ok: true,
+        normalizedModel: args.model,
+        validationWarning,
+      };
+    }
+    if (args.wasGeneratedThisTurn) {
+      return {
+        ok: false,
+        result: await args.buildGeneratedModelValidationClarification(
+          validateCall.error || args.localize(args.locale, '模型校验失败', 'Model validation failed'),
+        ),
+      };
+    }
+    return {
+      ok: false,
+      result: await args.buildBlockedResult(
+        args.localize(args.locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
+      ),
+    };
+  }
 }
 
 export const VALIDATE_MODEL_TOOL_MANIFEST: ToolManifest = {
