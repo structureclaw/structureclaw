@@ -62,9 +62,16 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 | `material` | `agent-skills/material/` | 插件清单 |
 | `visualization` | `agent-skills/visualization/` | 插件清单 |
 | `result-postprocess` | `agent-skills/result-postprocess/` | 插件清单 |
-| `report-export` | `agent-skills/report-export/` | 插件清单 |
+| `report-export` | `agent-skills/report-export/` | 运行时生成内置 manifest |
 | `section` | `agent-skills/section/` | 插件清单 |
-| `validation` | `agent-skills/validation/` | 插件清单 |
+| `validation` | `agent-skills/validation/` | 运行时生成内置 manifest |
+
+当前实现里，`AgentSkillRuntime.listSkillManifests()` 会把 `structure-type` 插件 manifest 与一组内置 domain manifest 合并后统一暴露给能力矩阵和 tool 授权层。这组运行时生成的 manifest 当前覆盖：
+
+- `analysis`
+- `code-check`
+- `report-export`
+- `validation`
 
 ## 3. 外部 / SkillHub 技能打包与加载
 

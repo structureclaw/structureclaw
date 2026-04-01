@@ -74,10 +74,6 @@ interface InteractionSession {
   updatedAt: number;
 }
 
-function hasExplicitCodeCheckSkill(skillIds: string[] | undefined): boolean {
-  return Array.isArray(skillIds) && skillIds.some((skillId) => skillId.startsWith('code-check-'));
-}
-
 interface InteractionQuestion {
   paramKey: string;
   label: string;
@@ -774,9 +770,6 @@ export class AgentService {
     const tooling = await this.skillRuntime.resolveSkillTooling(skillIds);
     for (const tool of tooling.tools) {
       active.add(tool.id);
-    }
-    if (hasExplicitCodeCheckSkill(skillIds) && builtinCatalog.has('run_code_check')) {
-      active.add('run_code_check');
     }
 
     return this.applyToolSelection(active, options);
@@ -3725,7 +3718,7 @@ export class AgentService {
     }
     if (context.autoCodeCheck !== undefined) {
       session.resolved.autoCodeCheck = context.autoCodeCheck;
-    } else if (hasExplicitCodeCheckSkill(context.skillIds)) {
+    } else if (resolveCodeCheckDesignCodeFromSkillIds(context.skillIds)) {
       session.resolved.autoCodeCheck = true;
     }
     if (context.includeReport !== undefined) {
@@ -4420,13 +4413,6 @@ export class AgentService {
 
       if (manifest?.source === 'external') {
         const owners = [...(tooling.skillIdsByToolId[call.tool] || [])];
-        if (call.tool === 'run_code_check' && Array.isArray(skillIds)) {
-          for (const skillId of skillIds) {
-            if (skillId.startsWith('code-check-')) {
-              owners.push(skillId);
-            }
-          }
-        }
         const authorizedBySkillIds = preferredAuthorizers
           .filter((skillId) => owners.includes(skillId))
           .concat(owners.filter((skillId) => selectedSkillIds.has(skillId) && !preferredAuthorizers.includes(skillId)));

@@ -62,9 +62,16 @@ Structure-type skills live under `backend/src/agent-skills/structure-type/`. Eac
 | `material` | `agent-skills/material/` | Plugin manifest |
 | `visualization` | `agent-skills/visualization/` | Plugin manifest |
 | `result-postprocess` | `agent-skills/result-postprocess/` | Plugin manifest |
-| `report-export` | `agent-skills/report-export/` | Plugin manifest |
+| `report-export` | `agent-skills/report-export/` | Runtime-generated builtin manifest |
 | `section` | `agent-skills/section/` | Plugin manifest |
-| `validation` | `agent-skills/validation/` | Plugin manifest |
+| `validation` | `agent-skills/validation/` | Runtime-generated builtin manifest |
+
+In the current implementation, `AgentSkillRuntime.listSkillManifests()` exposes a unified manifest inventory by merging `structure-type` plugin manifests with a set of builtin domain manifests. The runtime-generated manifests currently cover:
+
+- `analysis`
+- `code-check`
+- `report-export`
+- `validation`
 
 ## 3. External / SkillHub Skill Packaging and Loading
 

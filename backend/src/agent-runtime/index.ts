@@ -3,6 +3,7 @@ import type { AppLocale } from '../services/locale.js';
 import { AgentSkillRegistry } from './registry.js';
 import { AgentSkillExecutor } from './executor.js';
 import { listBuiltinToolManifests, resolveToolingForSkillManifests } from './tool-registry.js';
+import { listBuiltinDomainSkillManifests } from './builtin-domain-manifests.js';
 import { buildDefaultReportNarrative } from './report-template.js';
 import { tryBuildGenericModelWithLlm } from '../agent-skills/structure-type/generic/llm-model-builder.js';
 import { localize, withStructuralTypeState } from './plugin-helpers.js';
@@ -57,7 +58,10 @@ export class AgentSkillRuntime {
 
   async listSkillManifests(): Promise<SkillManifest[]> {
     const plugins = await this.registry.listPlugins();
-    return plugins.map((plugin) => plugin.manifest);
+    return [
+      ...plugins.map((plugin) => plugin.manifest),
+      ...listBuiltinDomainSkillManifests(),
+    ];
   }
 
   listBuiltinToolManifests(): ToolManifest[] {

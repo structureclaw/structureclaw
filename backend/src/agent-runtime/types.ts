@@ -175,6 +175,7 @@ export interface SkillManifest extends AgentSkillMetadata {
   enabledTools?: string[];
   providedTools?: string[];
   supportedAnalysisTypes?: AgentAnalysisType[];
+  supportedModelFamilies?: string[];
   materialFamilies?: MaterialFamily[];
   priority: number;
   compatibility: SkillCompatibility;

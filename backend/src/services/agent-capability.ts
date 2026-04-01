@@ -1,6 +1,5 @@
 import { AnalysisEngineCatalogService } from './analysis-engine.js';
 import { AgentSkillRuntime } from '../agent-runtime/index.js';
-import { listBuiltinAnalysisSkills } from '../agent-skills/analysis/entry.js';
 import { normalizeAnalysisTypes as normalizeDomainAnalysisTypes } from '../agent-skills/design/entry.js';
 import { normalizeMaterialFamilies as normalizeDomainMaterialFamilies } from '../agent-skills/material/entry.js';
 import { normalizeBuiltInManifestToSkillPackage } from '../skill-shared/package.js';
@@ -150,7 +149,9 @@ export class AgentCapabilityService {
         conflicts: Array.isArray(pkg.conflicts) ? pkg.conflicts : [],
         capabilities: Array.isArray(pkg.capabilities) ? pkg.capabilities : [],
         supportedAnalysisTypes: normalizeDomainAnalysisTypes(pkg.supportedAnalysisTypes),
-        supportedModelFamilies: resolveSkillModelFamilies(manifest.structureType),
+        supportedModelFamilies: Array.isArray(manifest.supportedModelFamilies) && manifest.supportedModelFamilies.length > 0
+          ? [...manifest.supportedModelFamilies]
+          : resolveSkillModelFamilies(manifest.structureType),
         materialFamilies: normalizeDomainMaterialFamilies(pkg.materialFamilies),
         priority: pkg.priority ?? 0,
         compatibility: {
@@ -165,29 +166,7 @@ export class AgentCapabilityService {
         },
       };
     });
-    const analysisSkills: CapabilitySkill[] = listBuiltinAnalysisSkills().map((skill) => ({
-      id: skill.id,
-      structureType: undefined,
-      domain: 'analysis',
-      requires: [],
-      conflicts: [],
-      capabilities: [...skill.capabilities],
-      supportedAnalysisTypes: [skill.analysisType],
-      supportedModelFamilies: [...skill.supportedModelFamilies],
-      materialFamilies: [],
-      priority: skill.priority,
-      compatibility: {
-        minRuntimeVersion: '0.1.0',
-        skillApiVersion: 'v1',
-      },
-      autoLoadByDefault: skill.autoLoadByDefault,
-      stages: [...skill.stages],
-      name: {
-        zh: skill.name.zh,
-        en: skill.name.en,
-      },
-    }));
-    const skills: CapabilitySkill[] = [...structuralAndGeneralSkills, ...analysisSkills];
+    const skills: CapabilitySkill[] = structuralAndGeneralSkills;
     const tools: CapabilityTool[] = tooling.tools.map((tool) => ({
       id: tool.id,
       source: tool.source,
