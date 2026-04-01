@@ -88,6 +88,13 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 
 当前实现里，`validation`、`analysis`、`code-check`、`report-export` 的实际执行入口都已经通过 `AgentSkillRuntime` 统一封装：Agent 不再直接拼接这些域的 registry / artifact 细节，而是通过 runtime 选择 skill、执行 domain，并把选中的 skill id 回写到结果 `meta` 与 tool trace。
 
+当前 `/api/v1/agent/capability-matrix` 还会为每个 skill 和每个 domain summary 暴露 `runtimeStatus`，用于区分“稳定 taxonomy”与“当前运行时接入状态”：
+
+- `active`：已进入主编排，参与激活、授权、执行与 trace。
+- `partial`：已接入 runtime，但仍属于平台托管或非完整一等 skill 包。
+- `discoverable`：已纳入 taxonomy，但当前尚未进入主编排。
+- `reserved`：仅保留架构位点，当前未提供实际运行时能力。
+
 ## 3. 外部 / SkillHub 技能打包与加载
 
 ### 3.1 包元数据

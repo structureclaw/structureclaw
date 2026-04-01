@@ -1053,6 +1053,11 @@ async function validateAgentCapabilityMatrix(context) {
   const engineIds = new Set(payload.engines.map((engine) => engine.id));
   const skillIds = new Set(payload.skills.map((skill) => skill.id));
   const toolIds = new Set(payload.tools.map((tool) => tool.id));
+  const domainSummaryById = Object.fromEntries(payload.domainSummaries.map((summary) => [summary.domain, summary]));
+
+  assert(payload.skills.every((skill) => typeof skill.runtimeStatus === "string"), "skills should expose runtimeStatus");
+  assert(payload.domainSummaries.every((summary) => typeof summary.runtimeStatus === "string"), "domain summaries should expose runtimeStatus");
+  assert(payload.domainSummaries.length >= 14, "domain summaries should cover the full domain taxonomy");
 
   for (const skillId of skillIds) {
     assert(Array.isArray(payload.validEngineIdsBySkill[skillId]), `validEngineIdsBySkill should include array for ${skillId}`);
@@ -1090,6 +1095,14 @@ async function validateAgentCapabilityMatrix(context) {
   assert(payload.analysisCompatibility.dynamic.skillIds.includes("analysis-baseline"), "dynamic analysis compatibility should include baseline analysis skill");
   assert(!payload.analysisCompatibility.seismic.skillIds.includes("analysis-baseline"), "seismic analysis compatibility should exclude unsupported analysis skill");
   assert(payload.analysisCompatibility.static.baselinePolicyAvailable === true, "baseline policy should be available for static");
+  assert(payload.skills.find((skill) => skill.id === "beam")?.runtimeStatus === "active", "beam should be marked active");
+  assert(payload.skills.find((skill) => skill.id === "analysis-baseline")?.runtimeStatus === "active", "analysis skill should be marked active");
+  assert(domainSummaryById["structure-type"]?.runtimeStatus === "active", "structure-type domain should be active");
+  assert(domainSummaryById["analysis"]?.runtimeStatus === "active", "analysis domain should be active");
+  assert(domainSummaryById["validation"]?.runtimeStatus === "partial", "validation domain should be partial");
+  assert(domainSummaryById["report-export"]?.runtimeStatus === "partial", "report-export domain should be partial");
+  assert(domainSummaryById["design"]?.runtimeStatus === "discoverable", "design domain should be discoverable");
+  assert(Array.isArray(domainSummaryById["design"]?.skillIds), "design domain summary should exist even without runtime skills");
 
   const responseDynamic = await app.inject({ method: "GET", url: "/api/v1/agent/capability-matrix?analysisType=dynamic" });
   assert(responseDynamic.statusCode === 200, "analysisType-specific capability matrix route should return 200");

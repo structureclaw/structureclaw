@@ -3,12 +3,27 @@ import { AgentSkillRuntime } from '../agent-runtime/index.js';
 import { normalizeAnalysisTypes as normalizeDomainAnalysisTypes } from '../agent-skills/design/entry.js';
 import { normalizeMaterialFamilies as normalizeDomainMaterialFamilies } from '../agent-skills/material/entry.js';
 import { normalizeBuiltInManifestToSkillPackage } from '../skill-shared/package.js';
-import type { AgentAnalysisType, SkillDomain, SkillManifest, ToolManifest } from '../agent-runtime/types.js';
+import { ALL_SKILL_DOMAINS } from '../agent-runtime/types.js';
+import type { AgentAnalysisType, SkillDomain, SkillManifest, SkillRuntimeStatus, ToolManifest } from '../agent-runtime/types.js';
+
+const ACTIVE_RUNTIME_DOMAINS = new Set<SkillDomain>(['structure-type', 'analysis', 'code-check']);
+const PARTIAL_RUNTIME_DOMAINS = new Set<SkillDomain>(['validation', 'report-export']);
+
+function resolveDomainRuntimeStatus(domain: SkillDomain): SkillRuntimeStatus {
+  if (ACTIVE_RUNTIME_DOMAINS.has(domain)) {
+    return 'active';
+  }
+  if (PARTIAL_RUNTIME_DOMAINS.has(domain)) {
+    return 'partial';
+  }
+  return 'discoverable';
+}
 
 interface CapabilitySkill {
   id: string;
   structureType?: string;
   domain: SkillDomain;
+  runtimeStatus: SkillRuntimeStatus;
   requires: string[];
   conflicts: string[];
   capabilities: string[];
@@ -30,6 +45,7 @@ interface CapabilitySkill {
 
 interface DomainSummary {
   domain: SkillDomain;
+  runtimeStatus: SkillRuntimeStatus;
   skillIds: string[];
   autoLoadSkillIds: string[];
   capabilities: string[];
@@ -145,6 +161,7 @@ export class AgentCapabilityService {
         id: pkg.id,
         structureType: manifest.structureType,
         domain: pkg.domain,
+        runtimeStatus: resolveDomainRuntimeStatus(pkg.domain),
         requires: Array.isArray(pkg.requires) ? pkg.requires : [],
         conflicts: Array.isArray(pkg.conflicts) ? pkg.conflicts : [],
         capabilities: Array.isArray(pkg.capabilities) ? pkg.capabilities : [],
@@ -234,16 +251,18 @@ export class AgentCapabilityService {
         .map((skill) => skill.id);
     }
 
-    const domainSummaryMap = new Map<SkillDomain, DomainSummary>();
+    const domainSummaryMap = new Map<SkillDomain, DomainSummary>(
+      ALL_SKILL_DOMAINS.map((domain) => [domain, {
+        domain,
+        runtimeStatus: resolveDomainRuntimeStatus(domain),
+        skillIds: [],
+        autoLoadSkillIds: [],
+        capabilities: [],
+      }]),
+    );
     for (const skill of skills) {
       const existing = domainSummaryMap.get(skill.domain);
       if (!existing) {
-        domainSummaryMap.set(skill.domain, {
-          domain: skill.domain,
-          skillIds: [skill.id],
-          autoLoadSkillIds: skill.autoLoadByDefault ? [skill.id] : [],
-          capabilities: [...skill.capabilities],
-        });
         continue;
       }
       existing.skillIds.push(skill.id);

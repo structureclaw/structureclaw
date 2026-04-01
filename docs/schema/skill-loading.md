@@ -88,6 +88,13 @@ Before entering the execution chain, the agent now derives the downstream domain
 
 In the current implementation, the actual `validation`, `analysis`, `code-check`, and `report-export` execution entrypoints are wrapped by `AgentSkillRuntime`: the agent no longer assembles those domain registries or report-domain details directly, and the selected downstream skill id is written back into result `meta` and tool-trace attribution.
 
+The current `/api/v1/agent/capability-matrix` also exposes `runtimeStatus` for each skill and each domain summary so the stable taxonomy can be distinguished from actual runtime wiring:
+
+- `active`: participates in main orchestration, activation, authorization, execution, and trace.
+- `partial`: connected to runtime, but still platform-managed or not yet packaged as a full first-class skill.
+- `discoverable`: present in the taxonomy, but not yet part of the main orchestration flow.
+- `reserved`: kept as an architectural slot without current runtime capability.
+
 ## 3. External / SkillHub Skill Packaging and Loading
 
 ### 3.1 Package Metadata

@@ -161,6 +161,25 @@ export type SkillDomain =
   | 'validation'
   | 'visualization';
 
+export type SkillRuntimeStatus = 'active' | 'partial' | 'discoverable' | 'reserved';
+
+export const ALL_SKILL_DOMAINS: SkillDomain[] = [
+  'structure-type',
+  'analysis',
+  'code-check',
+  'data-input',
+  'design',
+  'drawing',
+  'general',
+  'load-boundary',
+  'material',
+  'report-export',
+  'result-postprocess',
+  'section',
+  'validation',
+  'visualization',
+];
+
 export interface SkillCompatibility {
   minRuntimeVersion: string;
   skillApiVersion: string;

@@ -231,6 +231,7 @@ const ALL_SKILL_DOMAINS: SkillDomain[] = [
 type CapabilitySkillSummary = {
   id: string
   domain?: SkillDomain
+  runtimeStatus?: 'active' | 'partial' | 'discoverable' | 'reserved'
 }
 
 type ToolCategory = 'modeling' | 'analysis' | 'code-check' | 'report' | 'utility'
@@ -245,6 +246,7 @@ type CapabilityToolSummary = {
 
 type CapabilityDomainSummary = {
   domain: SkillDomain
+  runtimeStatus?: 'active' | 'partial' | 'discoverable' | 'reserved'
   skillIds?: string[]
   autoLoadSkillIds?: string[]
 }
