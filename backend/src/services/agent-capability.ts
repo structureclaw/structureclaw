@@ -58,6 +58,7 @@ interface CapabilityTool {
   enabledByDefault: boolean;
   providedBySkillId?: string;
   requiresSkills: string[];
+  requiresTools: string[];
   tags: string[];
   displayName?: {
     zh?: string;
@@ -167,6 +168,7 @@ export class AgentCapabilityService {
         enabledByDefault: tool.enabledByDefault,
         providedBySkillId: tool.providedBySkillId,
         requiresSkills: Array.isArray(tool.requiresSkills) ? [...tool.requiresSkills] : [],
+        requiresTools: Array.isArray(tool.requiresTools) ? [...tool.requiresTools] : [],
         tags: Array.isArray(tool.tags) ? [...tool.tags] : [],
         displayName: {
           zh: tool.displayName?.zh,
@@ -187,6 +189,7 @@ export class AgentCapabilityService {
         enabledByDefault: tool.enabledByDefault,
         providedBySkillId: tool.providedBySkillId,
         requiresSkills: Array.isArray(tool.requiresSkills) ? [...tool.requiresSkills] : [],
+        requiresTools: Array.isArray(tool.requiresTools) ? [...tool.requiresTools] : [],
         tags: Array.isArray(tool.tags) ? [...tool.tags] : [],
         displayName: {
           zh: tool.displayName?.zh,

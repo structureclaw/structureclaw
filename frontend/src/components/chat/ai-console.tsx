@@ -240,6 +240,7 @@ type CapabilityToolSummary = {
   id: string
   category?: ToolCategory
   source?: 'builtin' | 'skill'
+  requiresTools?: string[]
   displayName?: { zh?: string; en?: string }
   description?: { zh?: string; en?: string }
 }
@@ -282,7 +283,53 @@ function resolveCallableTools(matrix: CapabilityMatrixPayload | null, selectedSk
     })
   })
 
+  const toolById = new Map(matrixTools.map((tool) => [tool.id, tool]))
+  const queue = [...callableToolIds]
+  while (queue.length > 0) {
+    const toolId = queue.shift()
+    if (!toolId) {
+      continue
+    }
+    const tool = toolById.get(toolId)
+    if (!tool || !Array.isArray(tool.requiresTools)) {
+      continue
+    }
+    tool.requiresTools.forEach((requiredToolId) => {
+      if (typeof requiredToolId !== 'string' || requiredToolId.trim().length === 0 || callableToolIds.has(requiredToolId)) {
+        return
+      }
+      callableToolIds.add(requiredToolId)
+      queue.push(requiredToolId)
+    })
+  }
+
   return matrixTools.filter((tool) => callableToolIds.has(tool.id))
+}
+
+function normalizeSelectedToolIds(selectedToolIds: string[], availableTools: CapabilityToolSummary[]) {
+  const availableToolMap = new Map(availableTools.map((tool) => [tool.id, tool]))
+  const normalized = new Set(selectedToolIds.filter((toolId) => availableToolMap.has(toolId)))
+  const queue = [...normalized]
+
+  while (queue.length > 0) {
+    const toolId = queue.shift()
+    if (!toolId) {
+      continue
+    }
+    const tool = availableToolMap.get(toolId)
+    if (!tool || !Array.isArray(tool.requiresTools)) {
+      continue
+    }
+    tool.requiresTools.forEach((requiredToolId) => {
+      if (!availableToolMap.has(requiredToolId) || normalized.has(requiredToolId)) {
+        return
+      }
+      normalized.add(requiredToolId)
+      queue.push(requiredToolId)
+    })
+  }
+
+  return Array.from(normalized)
 }
 
 function normalizeSkillDomain(value: unknown): SkillDomain {
@@ -1496,16 +1543,32 @@ export function AIConsole() {
     if (storedPreferences) {
       const resolvedTools = resolveCallableTools(capabilityMatrix, storedPreferences.skillIds)
       setSelectedSkillIds(storedPreferences.skillIds.filter((skillId) => availableSkills.some((skill) => skill.id === skillId)))
-      setSelectedToolIds(storedPreferences.toolIds.filter((toolId) => resolvedTools.some((tool) => tool.id === toolId)))
+      setSelectedToolIds(normalizeSelectedToolIds(
+        storedPreferences.toolIds.filter((toolId) => resolvedTools.some((tool) => tool.id === toolId)),
+        resolvedTools,
+      ))
     } else {
       setSelectedSkillIds(defaultSelectedSkillIds)
-      setSelectedToolIds(defaultSelectedToolIds)
+      setSelectedToolIds(normalizeSelectedToolIds(defaultSelectedToolIds, availableTools))
     }
 
     setHasExplicitSkillSelection(true)
     setHasExplicitToolSelection(true)
     capabilityPreferencesHydratedRef.current = true
   }, [availableSkills, availableTools, capabilityMatrixLoaded, defaultSelectedSkillIds, defaultSelectedToolIds, skillsLoaded])
+
+  useEffect(() => {
+    if (!capabilityPreferencesHydratedRef.current) {
+      return
+    }
+    setSelectedToolIds((current) => {
+      const normalized = normalizeSelectedToolIds(current, availableTools)
+      if (normalized.length === current.length && normalized.every((toolId) => current.includes(toolId))) {
+        return current
+      }
+      return normalized
+    })
+  }, [availableTools])
 
   useEffect(() => {
     let active = true

@@ -45,6 +45,7 @@ type CapabilityToolSummary = {
   id: string
   category?: ToolCategory
   source?: 'builtin' | 'skill'
+  requiresTools?: string[]
   displayName?: { zh?: string; en?: string }
   description?: { zh?: string; en?: string }
 }
@@ -161,7 +162,53 @@ function resolveCallableTools(matrix: CapabilityMatrixPayload | null, selectedSk
     })
   })
 
+  const toolById = new Map(matrixTools.map((tool) => [tool.id, tool]))
+  const queue = [...callableToolIds]
+  while (queue.length > 0) {
+    const toolId = queue.shift()
+    if (!toolId) {
+      continue
+    }
+    const tool = toolById.get(toolId)
+    if (!tool || !Array.isArray(tool.requiresTools)) {
+      continue
+    }
+    tool.requiresTools.forEach((requiredToolId) => {
+      if (typeof requiredToolId !== 'string' || requiredToolId.trim().length === 0 || callableToolIds.has(requiredToolId)) {
+        return
+      }
+      callableToolIds.add(requiredToolId)
+      queue.push(requiredToolId)
+    })
+  }
+
   return matrixTools.filter((tool) => callableToolIds.has(tool.id))
+}
+
+function normalizeSelectedToolIds(selectedToolIds: string[], availableTools: CapabilityToolSummary[]) {
+  const availableToolMap = new Map(availableTools.map((tool) => [tool.id, tool]))
+  const normalized = new Set(selectedToolIds.filter((toolId) => availableToolMap.has(toolId)))
+  const queue = [...normalized]
+
+  while (queue.length > 0) {
+    const toolId = queue.shift()
+    if (!toolId) {
+      continue
+    }
+    const tool = availableToolMap.get(toolId)
+    if (!tool || !Array.isArray(tool.requiresTools)) {
+      continue
+    }
+    tool.requiresTools.forEach((requiredToolId) => {
+      if (!availableToolMap.has(requiredToolId) || normalized.has(requiredToolId)) {
+        return
+      }
+      normalized.add(requiredToolId)
+      queue.push(requiredToolId)
+    })
+  }
+
+  return Array.from(normalized)
 }
 
 export function CapabilitySettingsPanel() {
@@ -277,13 +324,26 @@ export function CapabilitySettingsPanel() {
       const validSkillIds = stored.skillIds.filter((skillId) => availableSkills.some((skill) => skill.id === skillId))
       const validToolIds = stored.toolIds.filter((toolId) => resolvedTools.some((tool) => tool.id === toolId))
       setSelectedSkillIds(validSkillIds)
-      setSelectedToolIds(validToolIds)
+      setSelectedToolIds(normalizeSelectedToolIds(validToolIds, resolvedTools))
     } else {
       setSelectedSkillIds(defaultSelectedSkillIds)
-      setSelectedToolIds(defaultSelectedToolIds)
+      setSelectedToolIds(normalizeSelectedToolIds(defaultSelectedToolIds, availableTools))
     }
     preferencesHydratedRef.current = true
   }, [availableSkills, availableTools, capabilityMatrixLoaded, defaultSelectedSkillIds, defaultSelectedToolIds, skillsLoaded])
+
+  useEffect(() => {
+    if (!preferencesHydratedRef.current) {
+      return
+    }
+    setSelectedToolIds((current) => {
+      const normalized = normalizeSelectedToolIds(current, availableTools)
+      if (normalized.length === current.length && normalized.every((toolId) => current.includes(toolId))) {
+        return current
+      }
+      return normalized
+    })
+  }, [availableTools])
 
   useEffect(() => {
     if (!preferencesHydratedRef.current) {
@@ -383,21 +443,22 @@ export function CapabilitySettingsPanel() {
   }
 
   function toggleTool(toolId: string) {
-    setSelectedToolIds((current) => (
-      current.includes(toolId)
+    setSelectedToolIds((current) => {
+      const next = current.includes(toolId)
         ? current.filter((item) => item !== toolId)
         : [...current, toolId]
-    ))
+      return normalizeSelectedToolIds(next, availableTools)
+    })
   }
 
   function toggleToolCategory(toolIds: string[]) {
     if (toolIds.length === 0) return
     setSelectedToolIds((current) => {
       const allSelected = toolIds.every((toolId) => current.includes(toolId))
-      if (allSelected) {
-        return current.filter((toolId) => !toolIds.includes(toolId))
-      }
-      return Array.from(new Set([...current, ...toolIds]))
+      const next = allSelected
+        ? current.filter((toolId) => !toolIds.includes(toolId))
+        : Array.from(new Set([...current, ...toolIds]))
+      return normalizeSelectedToolIds(next, availableTools)
     })
   }
 
