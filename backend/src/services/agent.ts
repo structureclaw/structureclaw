@@ -114,6 +114,13 @@ const CORE_ALWAYS_ENABLED_TOOL_IDS: AgentToolName[] = [
   'generate_report',
 ];
 
+const CORE_EXECUTION_TOOL_IDS: AgentToolName[] = [
+  'validate_model',
+  'run_analysis',
+  'run_code_check',
+  'generate_report',
+];
+
 type AgentPlanKind = 'reply' | 'ask' | 'tool_call';
 type AgentPlanningDirective = 'auto' | 'force_tool';
 type AgentReplyMode = 'plain' | 'structured';
@@ -744,14 +751,20 @@ export class AgentService {
   ): Promise<ActiveToolSet> {
     const builtinCatalog = new Set(listBuiltinToolManifests().map((tool) => tool.id));
     const active = new Set<string>();
-    for (const toolId of CORE_ALWAYS_ENABLED_TOOL_IDS) {
+
+    if (this.isNoSkillMode(skillIds)) {
+      for (const toolId of CORE_ALWAYS_ENABLED_TOOL_IDS) {
+        if (builtinCatalog.has(toolId)) {
+          active.add(toolId);
+        }
+      }
+      return this.applyToolSelection(active, options);
+    }
+
+    for (const toolId of CORE_EXECUTION_TOOL_IDS) {
       if (builtinCatalog.has(toolId)) {
         active.add(toolId);
       }
-    }
-
-    if (this.isNoSkillMode(skillIds)) {
-      return this.applyToolSelection(active, options);
     }
 
     const tooling = await this.skillRuntime.resolveSkillTooling(skillIds);
