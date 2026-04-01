@@ -18,10 +18,10 @@ describe('visualization-adapter', () => {
       analysis: {
         data: {
           displacements: {
-            '2': { ux: 0.01, uz: -0.02, ry: 0.003 },
+            '2': { ux: 0.01, uy: 0, uz: -0.02, ry: 0.003, rz: 0 },
           },
           reactions: {
-            '1': { fy: 10 },
+            '1': { fx: 0, fy: 10, fz: 0, my: 0, mz: 0 },
           },
           forces: {
             E1: { axial: 2, n1: { M: 20, V: 10 }, n2: { M: 0, V: 10 } },
@@ -43,6 +43,7 @@ describe('visualization-adapter', () => {
     expect(snapshot?.dimension).toBe(2)
     expect(snapshot?.plane).toBe('xz')
     expect(snapshot?.loads[0]?.vector).toEqual({ x: 0, y: 0, z: -10 })
+    expect(snapshot?.cases.find((item) => item.id === 'result')?.nodeResults['2']?.displacement).toMatchObject({ uy: 0, uz: -0.02 })
     expect(snapshot?.cases.find((item) => item.id === 'result')?.nodeResults['1']?.reaction).toMatchObject({ fy: 0, fz: 10 })
     expect(snapshot?.elements[0]?.nodeIds).toEqual(['1', '2'])
     expect(snapshot?.cases.find((item) => item.id === 'result')?.elementResults.E1?.moment).toBe(20)

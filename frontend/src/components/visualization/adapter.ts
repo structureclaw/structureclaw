@@ -112,6 +112,16 @@ function vectorMagnitude(values: Array<number | null | undefined>) {
   return Math.sqrt(filtered.reduce((sum, value) => sum + value ** 2, 0))
 }
 
+function hasSignificantComponent(entries: Array<Record<string, unknown> | null>, key: string, threshold = 1e-12) {
+  return entries.some((entry) => {
+    if (!entry) {
+      return false
+    }
+    const value = asNumber(entry[key])
+    return value !== null && Math.abs(value) > threshold
+  })
+}
+
 function compactNumberRecord<T extends string>(entries: Array<[T, number | null]>) {
   return Object.fromEntries(entries.filter(([, value]) => value !== null)) as Partial<Record<T, number>>
 }
@@ -368,8 +378,8 @@ function deriveDimension(nodes: VisualizationNode[], displacements: Record<strin
   const ySpread = new Set(nodes.map((node) => node.position.y.toFixed(6))).size
   const zSpread = new Set(nodes.map((node) => node.position.z.toFixed(6))).size
   const displacementEntries = Object.values(displacements || {}).map((value) => asRecord(value))
-  const hasUy = displacementEntries.some((entry) => entry && asNumber(entry.uy) !== null)
-  const hasUz = displacementEntries.some((entry) => entry && asNumber(entry.uz) !== null)
+  const hasUy = hasSignificantComponent(displacementEntries, 'uy')
+  const hasUz = hasSignificantComponent(displacementEntries, 'uz')
 
   if ((ySpread > 1 && zSpread > 1) || (hasUy && hasUz)) {
     return 3 as const
@@ -385,8 +395,8 @@ function derivePlane(
   const zSpread = new Set(nodes.map((node) => node.position.z.toFixed(6))).size
   const ySpread = new Set(nodes.map((node) => node.position.y.toFixed(6))).size
   const displacementEntries = Object.values(displacements || {}).map((value) => asRecord(value))
-  const hasUz = displacementEntries.some((entry) => entry && asNumber(entry.uz) !== null)
-  const hasRy = displacementEntries.some((entry) => entry && asNumber(entry.ry) !== null)
+  const hasUz = hasSignificantComponent(displacementEntries, 'uz')
+  const hasRy = hasSignificantComponent(displacementEntries, 'ry')
   const hasUyLoad = loads.some((load) => Math.abs(load.vector.y) > 1e-12)
   const hasUzLoad = loads.some((load) => Math.abs(load.vector.z) > 1e-12)
 
