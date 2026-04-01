@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { buildVisualizationSnapshot } from '@/components/visualization/adapter'
+import { normalizeVisualizationSnapshot } from '@/components/visualization/normalization'
+import type { VisualizationSnapshot } from '@/components/visualization/types'
 
 describe('visualization-adapter', () => {
   it('maps a 2D beam model and analysis payload into a visualization snapshot', () => {
@@ -152,5 +154,67 @@ describe('visualization-adapter', () => {
     expect(snapshot?.defaultCaseId).toBe('model')
     expect(snapshot?.plane).toBe('xy')
     expect(snapshot?.loads[0]?.vector.y).toBe(-5)
+  })
+
+  it('preserves undefined 2d result fields when normalizing planes', () => {
+    const snapshot: VisualizationSnapshot = {
+      version: 1,
+      title: 'XZ Semantics',
+      source: 'result',
+      dimension: 2,
+      plane: 'xz',
+      availableViews: ['model', 'deformed', 'reactions'],
+      defaultCaseId: 'result',
+      nodes: [{ id: '1', position: { x: 0, y: 0, z: 0 } }],
+      elements: [],
+      loads: [],
+      unsupportedElementTypes: [],
+      cases: [{
+        id: 'result',
+        label: 'Result',
+        kind: 'result',
+        nodeResults: {
+          '1': {
+            displacement: { ux: 0, uy: -0.02 },
+            reaction: { fy: 10 },
+          },
+        },
+        elementResults: {},
+      }],
+    }
+
+    const normalized = normalizeVisualizationSnapshot(snapshot)
+    expect(normalized.cases[0]?.nodeResults['1']?.displacement).toEqual({ ux: 0, uy: 0, uz: -0.02 })
+    expect(normalized.cases[0]?.nodeResults['1']?.reaction).toEqual({ fy: 0, fz: 10 })
+  })
+
+  it('returns the original snapshot reference when no normalization is needed', () => {
+    const snapshot: VisualizationSnapshot = {
+      version: 1,
+      title: 'Already Normalized',
+      source: 'result',
+      dimension: 2,
+      plane: 'xz',
+      availableViews: ['model', 'deformed'],
+      defaultCaseId: 'result',
+      nodes: [{ id: '1', position: { x: 0, y: 0, z: 0 } }],
+      elements: [],
+      loads: [{ nodeId: '1', vector: { x: 0, y: 0, z: -5 }, kind: 'nodal' }],
+      unsupportedElementTypes: [],
+      cases: [{
+        id: 'result',
+        label: 'Result',
+        kind: 'result',
+        nodeResults: {
+          '1': {
+            displacement: { ux: 0, uy: 0, uz: -0.02 },
+            reaction: { fy: 0, fz: 10 },
+          },
+        },
+        elementResults: {},
+      }],
+    }
+
+    expect(normalizeVisualizationSnapshot(snapshot)).toBe(snapshot)
   })
 })
