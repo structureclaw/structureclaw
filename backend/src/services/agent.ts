@@ -46,7 +46,7 @@ import { executeGenerateReportStep } from '../agent-tools/builtin/generate-repor
 import { executeRunAnalysisStep } from '../agent-tools/builtin/run-analysis.js';
 import { executeRunCodeCheckStep } from '../agent-tools/builtin/run-code-check.js';
 import { executeUpdateModel } from '../agent-tools/builtin/update-model.js';
-import { executeValidateModel, executeValidateModelStep } from '../agent-tools/builtin/validate-model.js';
+import { executeValidateModelStep } from '../agent-tools/builtin/validate-model.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'directed' | 'llm-planned';
@@ -1771,115 +1771,67 @@ export class AgentService {
       };
     }
 
-    plan.push(this.localize(locale, '校验模型字段与引用完整性', 'Validate model fields and references'));
-    const validateInput = { model: normalizedModel };
-    const validateCall = this.startToolCall('validate_model', validateInput);
-    toolCalls.push(validateCall);
+    const step = await executeValidateModelStep({
+      locale,
+      model: normalizedModel,
+      engineId: params.context?.engineId,
+      autoAnalyze,
+      wasGeneratedThisTurn: this.wasGeneratedThisTurn(toolCalls),
+      plan,
+      toolCalls,
+      localize: this.localize.bind(this),
+      loggerWarn: (meta, message) => logger.warn(meta, message),
+      startToolCall: this.startToolCall.bind(this),
+      completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
+      completeToolCallError: this.completeToolCallError.bind(this),
+      shouldBypassValidateFailure: this.shouldBypassValidateFailure.bind(this),
+      buildBlockedResult: async (response) => this.finalizeBlockedRunResult({
+        params,
+        traceId,
+        startedAt,
+        startedAtMs,
+        locale,
+        orchestrationMode,
+        skillIds,
+        plan,
+        toolCalls,
+        sessionKey,
+        workingSession,
+        response,
+        model: normalizedModel,
+      }),
+      buildGeneratedModelValidationClarification: async (validationError) => this.buildGeneratedModelValidationClarification({
+        params,
+        traceId,
+        startedAt,
+        startedAtMs,
+        locale,
+        orchestrationMode,
+        skillIds,
+        plan,
+        toolCalls,
+        sessionKey,
+        workingSession,
+        validationError,
+      }),
+      structureProtocolClient: this.structureProtocolClient,
+      traceId,
+    });
 
-    try {
-      const validated = await executeValidateModel(this.structureProtocolClient, {
-        model: validateInput.model,
-        engineId: params.context?.engineId,
-      });
-      this.completeToolCallSuccess(validateCall, validated);
-      if (validated?.valid === false) {
-        validateCall.status = 'error';
-        validateCall.errorCode = typeof validated?.errorCode === 'string' ? validated.errorCode : 'INVALID_STRUCTURE_MODEL';
-        validateCall.error = typeof validated?.message === 'string'
-          ? validated.message
-          : this.localize(locale, '模型校验失败', 'Model validation failed');
-        if (this.wasGeneratedThisTurn(toolCalls)) {
-          return {
-            ok: false,
-            result: await this.buildGeneratedModelValidationClarification({
-              params,
-              traceId,
-              startedAt,
-              startedAtMs,
-              locale,
-              orchestrationMode,
-              skillIds,
-              plan,
-              toolCalls,
-              sessionKey,
-              workingSession,
-              validationError: validateCall.error || this.localize(locale, '模型校验失败', 'Model validation failed'),
-            }),
-          };
-        }
-        return {
-          ok: false,
-          result: await this.finalizeBlockedRunResult({
-            params,
-            traceId,
-            startedAt,
-            startedAtMs,
-            locale,
-            orchestrationMode,
-            skillIds,
-            plan,
-            toolCalls,
-            sessionKey,
-            workingSession,
-            response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
-            model: normalizedModel,
-          }),
-        };
-      }
-      return { ok: true, value: { normalizedModel } };
-    } catch (error: any) {
-      this.completeToolCallError(validateCall, error);
-      if (autoAnalyze && this.shouldBypassValidateFailure(error)) {
-        const validationWarning = this.localize(
-          locale,
-          `模型校验服务暂时不可用，已跳过 \`validate_model\` 并继续执行 \`run_analysis\`：${validateCall.error}`,
-          `The model validation service is temporarily unavailable. \`validate_model\` was skipped and \`run_analysis\` will continue: ${validateCall.error}`,
-        );
-        plan.push(this.localize(locale, '校验服务不可用，跳过 `validate_model` 并继续执行 `run_analysis`', 'Validation service unavailable; skip `validate_model` and continue with `run_analysis`'));
-        logger.warn({ traceId, validationError: validateCall.error }, '`validate_model` failed with an upstream error; continuing with `run_analysis`');
-        return {
-          ok: true,
-          value: { normalizedModel, validationWarning },
-        };
-      }
-      if (this.wasGeneratedThisTurn(toolCalls)) {
-        return {
-          ok: false,
-          result: await this.buildGeneratedModelValidationClarification({
-            params,
-            traceId,
-            startedAt,
-            startedAtMs,
-            locale,
-            orchestrationMode,
-            skillIds,
-            plan,
-            toolCalls,
-            sessionKey,
-            workingSession,
-            validationError: validateCall.error || this.localize(locale, '模型校验失败', 'Model validation failed'),
-          }),
-        };
-      }
+    if (!step.ok) {
       return {
         ok: false,
-        result: await this.finalizeBlockedRunResult({
-          params,
-          traceId,
-          startedAt,
-          startedAtMs,
-          locale,
-          orchestrationMode,
-          skillIds,
-          plan,
-          toolCalls,
-          sessionKey,
-          workingSession,
-          response: this.localize(locale, `模型校验失败：${validateCall.error}`, `Model validation failed: ${validateCall.error}`),
-          model: normalizedModel,
-        }),
+        result: step.result,
       };
     }
+
+    return {
+      ok: true,
+      value: {
+        normalizedModel: step.normalizedModel,
+        validationWarning: step.validationWarning,
+      },
+    };
   }
 
   private wasGeneratedThisTurn(toolCalls: AgentToolCall[]): boolean {
