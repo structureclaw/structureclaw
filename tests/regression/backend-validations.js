@@ -781,7 +781,6 @@ async function validateAgentApiContract(context) {
     };
   };
   AgentService.prototype.run = mockRun;
-  AgentService.prototype.runToolCall = mockRun;
 
   const { agentRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "agent.js")).href);
   const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
@@ -817,21 +816,15 @@ async function validateAgentApiContract(context) {
   assert(runPayload.metrics?.toolCount === 3, "agent/run should include metrics");
   assert(runPayload.metrics?.maxToolDurationMs === 5, "agent/run should include expanded metrics");
 
-  const toolCallResponse = await app.inject({
+  const chatMessageResponse = await app.inject({
     method: "POST",
     url: "/api/v1/chat/message",
-    payload: {
-      ...requestBody,
-      context: {
-        ...requestBody.context,
-        executionMode: "force_tool",
-      },
-    },
+    payload: requestBody,
   });
-  assert(toolCallResponse.statusCode === 200, "chat/message force_tool should return 200");
-  const toolCallPayload = toolCallResponse.json();
-  assert(toolCallPayload.result?.traceId === "trace-api-contract", "chat/message force_tool should proxy agent result");
-  assert(toolCallPayload.result?.artifacts?.[0]?.path === "/tmp/report.json", "chat/message force_tool should return artifacts");
+  assert(chatMessageResponse.statusCode === 200, "chat/message should return 200");
+  const chatMessagePayload = chatMessageResponse.json();
+  assert(chatMessagePayload.result?.traceId === "trace-api-contract", "chat/message should proxy agent result");
+  assert(chatMessagePayload.result?.artifacts?.[0]?.path === "/tmp/report.json", "chat/message should return artifacts");
 
   const legacyToolCallResponse = await app.inject({
     method: "POST",
@@ -842,10 +835,9 @@ async function validateAgentApiContract(context) {
 
   assert(captured.length >= 2, "agent run should be called for both endpoints");
   assert(captured[0]?.traceId === "trace-request-001", "agent/run should pass traceId");
-  assert(captured[1]?.traceId === "trace-request-001", "chat/message force_tool should pass traceId");
+  assert(captured[1]?.traceId === "trace-request-001", "chat/message should pass traceId");
   assert(captured[0]?.context?.reportOutput === "file", "agent/run should pass reportOutput context");
-  assert(captured[1]?.context?.reportFormat === "both", "chat/message force_tool should pass reportFormat context");
-  assert(captured[1]?.context?.executionMode === undefined, "chat/message force_tool should not forward executionMode into agent context");
+  assert(captured[1]?.context?.reportFormat === "both", "chat/message should pass reportFormat context");
 
   await app.close();
   console.log("[ok] agent api contract regression");
@@ -1487,9 +1479,7 @@ async function validateChatMessageRouting(context) {
   const AgentService = await importBackendAgentService(context.rootDir);
 
   let agentRunCount = 0;
-  let agentToolRunCount = 0;
   const capturedRunTraceIds = [];
-  const capturedToolTraceIds = [];
   const capturedRunMessages = [];
 
   const mockAgentRun = async function mockAgentRun(params) {
@@ -1511,26 +1501,7 @@ async function validateChatMessageRouting(context) {
       response: "tool-ok",
     };
   };
-  const mockAgentToolRun = async function mockAgentToolRun(params) {
-    const request = params;
-    agentToolRunCount += 1;
-    capturedToolTraceIds.push(request.traceId);
-    return {
-      traceId: "trace-route-001",
-      conversationId: "conv-route-001",
-      startedAt: "2026-03-09T00:00:00.000Z",
-      completedAt: "2026-03-09T00:00:00.006Z",
-      durationMs: 6,
-      success: true,
-      orchestrationMode: "directed",
-      needsModelInput: false,
-      plan: ["validate_model", "run_analysis"],
-      toolCalls: [],
-      response: "tool-ok",
-    };
-  };
   AgentService.prototype.run = mockAgentRun;
-  AgentService.prototype.runToolCall = mockAgentToolRun;
 
   const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
   const app = Fastify();
@@ -1586,25 +1557,10 @@ async function validateChatMessageRouting(context) {
     },
   });
   assert(autoIntentExecResp.statusCode === 200, "auto intent tool response should be 200");
-  const forceExecResp = await app.inject({
-    method: "POST",
-    url: "/api/v1/chat/message",
-    payload: {
-      message: "force tool",
-      traceId: "trace-route-tool-1",
-      context: {
-        executionMode: "force_tool",
-      },
-    },
-  });
-  assert(forceExecResp.statusCode === 200, "chat/message force_tool response should be 200");
-
   assert(agentRunCount === 4, "agent run should be called for auto /chat/message requests");
-  assert(agentToolRunCount === 1, "chat/message force_tool should still use tool-call entrypoint");
   assert(capturedRunTraceIds.includes("trace-route-auto-1"), "agent-first message route should pass traceId for non-execution message");
   assert(capturedRunTraceIds.includes("trace-route-auto-tool-1"), "auto tool invocation should pass traceId");
   assert(capturedRunTraceIds.includes("trace-route-auto-intent-1"), "auto intent invocation should pass traceId");
-  assert(capturedToolTraceIds.includes("trace-route-tool-1"), "force_tool invocation should pass traceId");
   assert(capturedRunMessages.includes("auto without model"), "plain chat-like requests should now route through agent");
 
   const legacyToolCallResp = await app.inject({

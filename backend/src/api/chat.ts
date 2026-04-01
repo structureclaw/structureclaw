@@ -21,7 +21,6 @@ const optionalIdSchema = z.preprocess((value) => {
 }, z.string().optional());
 
 const localeSchema = z.enum(['en', 'zh']).optional();
-const executionModeSchema = z.enum(['auto', 'force_tool']).optional();
 
 // 请求验证
 const sendMessageSchema = z.object({
@@ -46,7 +45,6 @@ const sendMessageSchema = z.object({
     includeReport: z.boolean().optional(),
     reportFormat: z.enum(['json', 'markdown', 'both']).optional(),
     reportOutput: z.enum(['inline', 'file']).optional(),
-    executionMode: executionModeSchema,
     userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
     providedValues: z.record(z.any()).optional(),
   }).optional(),
@@ -84,21 +82,10 @@ const streamMessageSchema = z.object({
     includeReport: z.boolean().optional(),
     reportFormat: z.enum(['json', 'markdown', 'both']).optional(),
     reportOutput: z.enum(['inline', 'file']).optional(),
-    executionMode: executionModeSchema,
     userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
     providedValues: z.record(z.any()).optional(),
   }).optional(),
 });
-
-function stripExecutionModeFromContext(
-  context: z.infer<typeof sendMessageSchema>['context'] | z.infer<typeof streamMessageSchema>['context'],
-) {
-  if (!context) {
-    return undefined;
-  }
-  const { executionMode: _executionMode, ...rest } = context;
-  return rest;
-}
 
 function setSseCorsHeaders(request: FastifyRequest, reply: FastifyReply) {
   const origin = request.headers.origin;
@@ -171,19 +158,10 @@ export async function chatRoutes(fastify: FastifyInstance) {
     try {
       const body = sendMessageSchema.parse(request.body);
       const userId = request.user?.id;
-      const executionMode = body.context?.executionMode ?? 'auto';
-      const context = stripExecutionModeFromContext(body.context);
-      const result = executionMode === 'force_tool'
-        ? await agentService.runToolCall({
-          ...body,
-          context,
-          userId,
-        })
-        : await agentService.run({
-          ...body,
-          context,
-          userId,
-        });
+      const result = await agentService.run({
+        ...body,
+        userId,
+      });
       await persistLatestConversationResult({
         conversationId: result.conversationId,
         userId,
@@ -341,19 +319,10 @@ export async function chatRoutes(fastify: FastifyInstance) {
     reply.raw.flushHeaders?.();
 
     try {
-      const executionMode = body.context?.executionMode ?? 'auto';
-      const context = stripExecutionModeFromContext(body.context);
-      const stream = executionMode === 'force_tool'
-        ? agentService.runToolCallStream({
-          ...body,
-          context,
-          userId,
-        })
-        : agentService.runStream({
-          ...body,
-          context,
-          userId,
-        });
+      const stream = agentService.runStream({
+        ...body,
+        userId,
+      });
 
       for await (const chunk of stream) {
         if (

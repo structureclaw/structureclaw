@@ -57,7 +57,6 @@ Notes:
 
 - `chat/message` and `chat/stream` no longer accept a public `mode` field.
 - chat requests are always single-entry; the backend decides whether the turn remains conversational or invokes tools.
-- use `context.executionMode = "force_tool"` in `chat/message` or `chat/stream` when the caller explicitly requests immediate tool-chain execution.
 
 Typical stream event sequence:
 

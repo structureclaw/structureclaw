@@ -57,7 +57,6 @@
 
 - `chat/message` 与 `chat/stream` 不再接收公开 `mode` 字段。
 - chat 请求统一为单入口，由后端自行决定本轮继续对话还是触发 tool。
-- 当调用方需要显式要求本轮直接进入 tool 执行链时，可在 `chat/message` 或 `chat/stream` 的 `context.executionMode` 传入 `"force_tool"`。
 
 典型流式事件顺序：
 
