@@ -21,64 +21,6 @@ function localize(locale: AppLocale, zh: string, en: string): string {
   return locale === 'zh' ? zh : en;
 }
 
-function extractNumber(text: string, patterns: RegExp[], groups: number[] = [1]): number | undefined {
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (!match) {
-      continue;
-    }
-    for (const group of groups) {
-      const value = match[group];
-      const parsed = Number.parseFloat(value);
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    }
-  }
-  return undefined;
-}
-
-function extractInteger(text: string, patterns: RegExp[], groups: number[] = [1]): number | undefined {
-  const value = extractNumber(text, patterns, groups);
-  if (value === undefined) {
-    return undefined;
-  }
-  const rounded = Math.round(value);
-  return rounded > 0 ? rounded : undefined;
-}
-
-function extractDirectionalLoadNumber(text: string, axis: 'x' | 'y'): number | undefined {
-  const axisToken = axis === 'x' ? 'x' : 'y';
-  return extractNumber(text, [
-    new RegExp(`(?:水平|横向|侧向)?${axisToken}(?:方向|向)\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
-    new RegExp(`${axisToken}向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
-    new RegExp(`${axisToken}方向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
-    new RegExp(`(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?[^\\n]{0,24}?${axisToken}向\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
-    new RegExp(`(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?[^\\n]{0,24}?${axisToken}方向\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
-    new RegExp(`${axisToken}向\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
-    new RegExp(`${axisToken}方向\\s*(\\d+(?:\\.\\d+)?)\\s*(?:kn|千牛)`, 'i'),
-    new RegExp(`lateral\\s*(?:load\\s*)?(?:in\\s*)?${axisToken}\\s*(?:direction)?\\s*(?:is|=)?\\s*(\\d+(?:\\.\\d+)?)\\s*kn`, 'i'),
-  ]);
-}
-
-function shouldMirrorHorizontalLoadToBothAxes(
-  text: string,
-  frameDimension: FrameDimension | undefined,
-): boolean {
-  if (frameDimension !== '3d') {
-    return false;
-  }
-  return (
-    text.includes('水平方向荷载')
-    || text.includes('水平荷载都是')
-    || text.includes('水平荷载均为')
-    || text.includes('横向荷载两个方向')
-    || text.includes('侧向荷载两个方向')
-    || text.includes('两个方向都是')
-    || text.includes('horizontal loads')
-  );
-}
-
 function repeatValue(count: number | undefined, value: number | undefined): number[] | undefined {
   if (!count || !value || count <= 0 || value <= 0) {
     return undefined;
@@ -313,165 +255,6 @@ export function detectUnsupportedStructuralTypeByRules(message: string, locale: 
   return null;
 }
 
-function extractDraftByRules(message: string): DraftExtraction {
-  const text = message.toLowerCase();
-  const inferredType = inferDraftType(text);
-
-  const storyCount = extractInteger(text, [
-    /(\d+)\s*层/i,
-    /(\d+)\s*stories?/i,
-  ]);
-  const bayCount = extractInteger(text, [
-    /(?<!x向|y向)(\d+)\s*跨/i,
-    /(\d+)\s*bays?(?!\s*in\s*[xy])/i,
-  ]);
-  const bayCountX = extractInteger(text, [
-    /x向\s*(\d+)\s*跨/i,
-    /x方向\s*(\d+)\s*跨/i,
-    /(\d+)\s*bays?\s*in\s*x/i,
-  ]);
-  const bayCountY = extractInteger(text, [
-    /y向\s*(\d+)\s*跨/i,
-    /y方向\s*(\d+)\s*跨/i,
-    /(\d+)\s*bays?\s*in\s*y/i,
-  ]);
-  const scalarHeight = extractNumber(text, [
-    /层高\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /每层\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /story height\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*m/i,
-  ]);
-  const scalarBayWidth = extractNumber(text, [
-    /每跨\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /bay width\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*m/i,
-  ]);
-  const scalarBayWidthX = extractNumber(text, [
-    /x向.*?每跨\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /x向(?:每跨)?\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /x向.*?(?:跨度|间隔)\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /x方向.*?每跨\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /x方向.*?(?:跨度|间隔)\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /x方向(?:每跨|跨度|间隔)?\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /x\s*(?:bay width)?\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*m/i,
-  ]);
-  const scalarBayWidthY = extractNumber(text, [
-    /y向.*?每跨\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /y向(?:每跨)?\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /y向.*?(?:跨度|间隔)\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /y方向.*?每跨\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /y方向.*?(?:跨度|间隔)\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /y方向(?:每跨|跨度|间隔)?\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /y\s*(?:bay width)?\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*m/i,
-  ]);
-  const spanLengthM = extractNumber(text, [
-    /双跨[^\d]*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /per span\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*m/i,
-  ]);
-  const lengthM = extractNumber(text, [
-    /(跨度|跨长|长度|长)\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /(span|length)\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*m/i,
-  ], [2, 1]);
-  const heightM = extractNumber(text, [
-    /(柱高|高度|高)\s*(\d+(?:\.\d+)?)\s*(?:m|米)/i,
-    /(height|column height)\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*m/i,
-  ], [2]);
-  const loadKN = extractNumber(text, [
-    /(\d+(?:\.\d+)?)\s*(?:kn|千牛)\s*\/\s*(?:m|米)/i,
-    /(\d+(?:\.\d+)?)\s*(?:kn|千牛)(?!\s*\/\s*m)/i,
-  ]);
-  const verticalLoadKN = extractNumber(text, [
-    /竖向荷载\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
-    /每层竖向荷载\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
-    // Short-form without 荷载 keyword: "每层竖向100kN"
-    /(?:每层|各层)竖向\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
-    /vertical load\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
-  ]);
-  const extractedLateralXLoadKN = extractNumber(text, [
-    /(?:横向|侧向|水平)(?:方向)?荷载(?:两个方向)?(?:都?是|均为|都为|为|是)?\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
-    /水平方向荷载(?:都?是|均为|为|是)?\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
-    /水平荷载\s*(\d+(?:\.\d+)?)\s*(?:kn|千牛)/i,
-    /lateral x load\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
-    /horizontal load\s*(?:is|=)?\s*(\d+(?:\.\d+)?)\s*kn/i,
-  ]) ?? extractDirectionalLoadNumber(text, 'x');
-  const extractedLateralYLoadKN = extractDirectionalLoadNumber(text, 'y');
-
-  const frameDimension = inferFrameDimension(text, inferredType);
-  const mirrorHorizontalLoad = shouldMirrorHorizontalLoadToBothAxes(text, frameDimension);
-  const lateralXLoadKN = extractedLateralXLoadKN;
-  const lateralYLoadKN = extractedLateralYLoadKN ?? (mirrorHorizontalLoad ? extractedLateralXLoadKN : undefined);
-  const normalizedStoryCount = storyCount;
-  const storyHeightsM = frameDimension
-    ? repeatValue(normalizedStoryCount, scalarHeight)
-    : undefined;
-  const bayWidthsM = frameDimension === '2d'
-    ? repeatValue(bayCount, scalarBayWidth ?? lengthM)
-    : undefined;
-  const bayWidthsXM = frameDimension === '3d'
-    ? repeatValue(bayCountX, scalarBayWidthX ?? scalarBayWidth)
-    : undefined;
-  const bayWidthsYM = frameDimension === '3d'
-    ? repeatValue(bayCountY, scalarBayWidthY)
-    : undefined;
-  const floorLoads = frameDimension
-    ? buildUniformFloorLoads(
-        normalizedStoryCount,
-        verticalLoadKN,
-        lateralXLoadKN,
-        frameDimension === '3d' ? lateralYLoadKN : undefined,
-      )
-    : undefined;
-
-  const supportType = extractSupportType(text);
-  const loadType = extractLoadType(text);
-  const loadPosition = extractLoadPosition(text, inferredType, loadType);
-  const loadPositionM = extractLoadPositionOffsetM(text);
-  const frameBaseSupportType = extractFrameBaseSupport(text);
-
-  return {
-    inferredType,
-    lengthM: lengthM ?? undefined,
-    spanLengthM: spanLengthM ?? undefined,
-    heightM: heightM ?? undefined,
-    supportType,
-    frameDimension,
-    storyCount: normalizedStoryCount,
-    bayCount: bayCount ?? undefined,
-    bayCountX: bayCountX ?? undefined,
-    bayCountY: bayCountY ?? undefined,
-    storyHeightsM,
-    bayWidthsM,
-    bayWidthsXM,
-    bayWidthsYM,
-    floorLoads,
-    frameBaseSupportType,
-    loadKN: loadKN ?? undefined,
-    loadType,
-    loadPosition,
-    loadPositionM,
-  };
-}
-
-function extractLoadPositionOffsetM(text: string): number | undefined {
-  const patterns: RegExp[] = [
-    /荷载[\s\S]{0,20}?(?:在|距(?:离)?(?:左端|左支座|左侧)?|离(?:左端|左支座)?)\s*(\d+(?:\.\d+)?)\s*(?:m|米)(?:处|位置|点)?/i,
-    /(?:point load|concentrated load)[\s\S]{0,20}?(?:at|@|from(?: the)? left(?: end| support)?(?: by)?)\s*(\d+(?:\.\d+)?)\s*m/i,
-    /at\s*(\d+(?:\.\d+)?)\s*m\s*(?:from\s*(?:the\s*)?(?:left|start))/i,
-  ];
-
-  for (const pattern of patterns) {
-    const match = text.match(pattern);
-    if (!match) {
-      continue;
-    }
-    const value = normalizeNumber(match[1]);
-    if (value !== undefined && value >= 0) {
-      return value;
-    }
-  }
-
-  return undefined;
-}
-
 export function inferDraftType(text: string): InferredModelType {
   if (text.includes('门式刚架') || text.includes('portal frame')) {
     return 'portal-frame';
@@ -489,25 +272,6 @@ export function inferDraftType(text: string): InferredModelType {
     return 'beam';
   }
   return 'unknown';
-}
-
-function inferFrameDimension(text: string, inferredType: InferredModelType): FrameDimension | undefined {
-  if (inferredType !== 'frame') {
-    return undefined;
-  }
-  if (
-    text.includes('3d')
-    || text.includes('三维')
-    || text.includes('空间框架')
-    || text.includes('space frame')
-    || (text.includes('x向') && text.includes('y向'))
-    || (text.includes('x方向') && text.includes('y方向'))
-    || (text.includes('x方向') && text.includes('y向'))
-    || (text.includes('x向') && text.includes('y方向'))
-  ) {
-    return '3d';
-  }
-  return '2d';
 }
 
 export function extractLoadType(text: string): DraftLoadType | undefined {
@@ -549,16 +313,6 @@ export function extractSupportType(text: string): DraftSupportType | undefined {
   }
   if (text.includes('cantilever') || text.includes('悬臂')) {
     return 'cantilever';
-  }
-  return undefined;
-}
-
-function extractFrameBaseSupport(text: string): FrameBaseSupportType | undefined {
-  if (text.includes('柱脚铰接') || text.includes('base pinned') || text.includes('pinned base')) {
-    return 'pinned';
-  }
-  if (text.includes('柱脚固结') || text.includes('柱脚固定') || text.includes('fixed base')) {
-    return 'fixed';
   }
   return undefined;
 }

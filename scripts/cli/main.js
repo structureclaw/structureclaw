@@ -463,8 +463,6 @@ async function ensureAnalysisPython(rootDir, env) {
     return currentPython;
   }
 
-  runtime.requireCommand("python", "Install Python 3.12+ and retry.");
-
   await ensureUv(rootDir);
 
   const pythonVersion =
@@ -902,7 +900,6 @@ async function invokeLocalUp(rootDir, env, options = {}) {
 async function invokeDoctor(rootDir, env) {
   runtime.requireCommand("node", "Install Node.js 18+ and retry.");
   runtime.requireCommand("npm", "Install npm and retry.");
-  runtime.requireCommand("python", "Install Python 3.12+ and retry.");
   runtime.ensureLocalSqliteConfig(rootDir, env, log, { profileName: "doctor" });
   runtime.assertSqliteDatabaseUrl(env);
 

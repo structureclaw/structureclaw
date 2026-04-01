@@ -273,6 +273,9 @@ function resolveCallableTools(
   const enabledToolIdsBySkill = matrix?.enabledToolIdsBySkill && typeof matrix.enabledToolIdsBySkill === 'object'
     ? matrix.enabledToolIdsBySkill
     : {}
+  if (Object.keys(enabledToolIdsBySkill).length === 0) {
+    return matrixTools
+  }
   const callableToolIds = new Set<string>(foundationToolIds)
 
   selectedSkillIds.forEach((skillId) => {

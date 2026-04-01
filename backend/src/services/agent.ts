@@ -1429,8 +1429,24 @@ export class AgentService {
     return this.runWithStrategy(input, { planningDirective: 'auto', allowToolCall: true });
   }
 
+  async runChatOnly(input: AgentRunInput): Promise<AgentRunResult> {
+    return this.runWithStrategy(input, { planningDirective: 'auto', allowToolCall: false });
+  }
+
+  async runForcedExecution(input: AgentRunInput): Promise<AgentRunResult> {
+    return this.runWithStrategy(input, { planningDirective: 'force_tool', allowToolCall: true });
+  }
+
   async *runStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
     yield* this.runStreamWithStrategy(input, { planningDirective: 'auto', allowToolCall: true });
+  }
+
+  async *runChatOnlyStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
+    yield* this.runStreamWithStrategy(input, { planningDirective: 'auto', allowToolCall: false });
+  }
+
+  async *runForcedExecutionStream(input: AgentRunInput): AsyncGenerator<AgentStreamChunk> {
+    yield* this.runStreamWithStrategy(input, { planningDirective: 'force_tool', allowToolCall: true });
   }
 
   private async runWithStrategy(
@@ -3122,10 +3138,8 @@ export class AgentService {
     const {
       params,
       locale,
-      planningDirective,
       allowToolCall,
       skillIds,
-      activeToolIds,
       modelInput,
       plan,
       workingSession,

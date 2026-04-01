@@ -13,7 +13,6 @@ import {
   listBuiltinAnalysisSkills,
   resolvePreferredBuiltinAnalysisSkill,
 } from '../agent-skills/analysis/entry.js';
-import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
 import type { CodeCheckClient } from '../agent-skills/code-check/rule.js';
 import { AgentSkillRegistry } from './registry.js';
 import { AgentSkillExecutor } from './executor.js';
