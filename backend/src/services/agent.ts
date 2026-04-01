@@ -424,18 +424,6 @@ export class AgentService {
     return nextPlan.kind;
   }
 
-  // Backward-compatible alias. Prefer assessAutoRouteKind for new call sites.
-  async shouldPreferToolInvocation(message: string, options?: {
-    locale?: AppLocale;
-    conversationId?: string;
-    skillIds?: string[];
-    enabledToolIds?: string[];
-    disabledToolIds?: string[];
-    hasModel?: boolean;
-  }): Promise<boolean> {
-    return (await this.assessAutoRouteKind(message, options)) === 'tool_call';
-  }
-
   private async buildPlannerContextSnapshot(options: {
     locale: AppLocale;
     skillIds?: string[];
