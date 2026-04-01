@@ -1659,6 +1659,196 @@ async function validateDevStartupGuards(context) {
   console.log("[ok] unified startup and docker command guards are present");
 }
 
+async function validateStructureJsonSkill(context) {
+  await runBackendBuildOnce(context);
+
+  // Test 1: Verify skill is discoverable via registry
+  const {
+    getBuiltinValidationSkill,
+    listBuiltinValidationSkills,
+    findValidationSkillsByTrigger,
+  } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "validation", "registry.js")).href);
+
+  const allSkills = listBuiltinValidationSkills();
+  const skill = getBuiltinValidationSkill("structure-json-validation");
+  assert(skill !== undefined, "structure-json-validation skill should be registered");
+  assert(skill.id === "structure-json-validation", "skill id should match");
+  assert(skill.domain === "validation", "skill domain should be validation");
+  assert(skill.triggers.includes("validate"), "skill should have 'validate' trigger");
+  assert(skill.triggers.includes("验证"), "skill should have Chinese '验证' trigger");
+  assert(skill.autoLoadByDefault === true, "skill should auto-load by default");
+  assert(skill.priority === 100, "skill priority should be 100");
+
+  // Test trigger-based lookup
+  const foundByTrigger = findValidationSkillsByTrigger("json check");
+  assert(foundByTrigger.some((s) => s.id === "structure-json-validation"), "skill should be found by trigger");
+  console.log("[ok] skill registry integration");
+
+  // Test 2: Test Python runtime directly via CLI
+  const runtimePath = path.join(
+    context.rootDir,
+    "backend",
+    "src",
+    "agent-skills",
+    "validation",
+    "structure-json",
+    "runtime.py"
+  );
+
+  // Helper to run Python validation
+  const runPythonValidation = (jsonData, args = []) =>
+    new Promise((resolve, reject) => {
+      const proc = execFile(
+        "python",
+        [runtimePath, "--schema-version", "2.0.0", ...args, "-"],
+        { encoding: "utf8" },
+        (error, stdout, stderr) => {
+          if (error && !stdout) {
+            reject(new Error(`Python execution failed: ${stderr || error.message}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(stdout));
+          } catch (e) {
+            reject(new Error(`Failed to parse Python output: ${e.message}\nOutput: ${stdout}`));
+          }
+        }
+      );
+      proc.stdin.write(typeof jsonData === "string" ? jsonData : JSON.stringify(jsonData));
+      proc.stdin.end();
+    });
+
+  // Check if Python and schema validation are available
+  let pythonAvailable = false;
+  let schemaValidationAvailable = false;
+  try {
+    const checkResult = await runPythonValidation('{"test": true}', ["--no-semantic"]);
+    pythonAvailable = true;
+    schemaValidationAvailable = !checkResult.issues.some(i => i.code === "SCHEMA_VALIDATION_ERROR" && i.message.includes("not available"));
+  } catch (e) {
+    console.log(`[warn] Python runtime not available: ${e.message}`);
+  }
+
+  if (!pythonAvailable) {
+    console.log("[skip] Python runtime tests (python not available)");
+  } else if (!schemaValidationAvailable) {
+    console.log("[skip] Schema validation tests (StructureModelV2 not available, install structure_protocol)");
+  }
+
+  if (!pythonAvailable || !schemaValidationAvailable) {
+    console.log("[ok] validation skill tests completed with limitations");
+    return;
+  }
+
+  // Test 2a: Valid minimal structure JSON
+  const validModel = {
+    schema_version: "2.0.0",
+    nodes: [
+      { id: "1", x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
+      { id: "2", x: 3, y: 0, z: 0 },
+    ],
+    elements: [{ id: "E1", type: "beam", nodes: ["1", "2"], material: "M1", section: "S1" }],
+    materials: [{ id: "M1", type: "steel", E: 205000, nu: 0.3, rho: 7850 }],
+    sections: [{ id: "S1", type: "rectangular", width: 0.3, height: 0.6 }],
+    load_cases: [],
+    load_combinations: [],
+  };
+
+  const validResult = await runPythonValidation(validModel);
+  assert(validResult.valid === true, "valid model should pass validation");
+  assert(validResult.summary.error_count === 0, "valid model should have no errors");
+  assert(validResult.validated_model !== undefined, "valid model should return validated_model");
+  console.log("[ok] python runtime validates correct model");
+
+  // Test 2b: Invalid JSON syntax
+  const invalidJsonResult = await runPythonValidation('{"invalid json');
+  assert(invalidJsonResult.valid === false, "invalid JSON should fail");
+  assert(invalidJsonResult.summary.error_count > 0, "invalid JSON should have errors");
+  assert(invalidJsonResult.issues.some((i) => i.code === "JSON_SYNTAX_ERROR"), "should report JSON_SYNTAX_ERROR");
+  console.log("[ok] python runtime detects syntax errors");
+
+  // Test 2c: Schema validation errors (missing required fields)
+  const incompleteModel = {
+    schema_version: "2.0.0",
+    nodes: [{ id: "1", x: 0, y: 0 }], // Missing z coordinate
+  };
+  const incompleteResult = await runPythonValidation(incompleteModel);
+  assert(incompleteResult.valid === false, "incomplete model should fail validation");
+  assert(incompleteResult.issues.length > 0, "incomplete model should have issues");
+  console.log("[ok] python runtime detects schema errors");
+
+  // Test 2d: Semantic validation errors (invalid references)
+  const badRefModel = {
+    schema_version: "2.0.0",
+    nodes: [
+      { id: "1", x: 0, y: 0, z: 0 },
+      { id: "2", x: 3, y: 0, z: 0 },
+    ],
+    elements: [{ id: "E1", type: "beam", nodes: ["1", "999"], material: "M1", section: "S1" }], // Node 999 doesn't exist
+    materials: [{ id: "M1", type: "steel", E: 205000, nu: 0.3, rho: 7850 }],
+    sections: [{ id: "S1", type: "rectangular", width: 0.3, height: 0.6 }],
+    load_cases: [],
+    load_combinations: [],
+  };
+  const badRefResult = await runPythonValidation(badRefModel);
+  assert(badRefResult.valid === false, "model with bad references should fail");
+  assert(
+    badRefResult.issues.some((i) => i.code === "SEMANTIC_INVALID_REFERENCE"),
+    "should report SEMANTIC_INVALID_REFERENCE"
+  );
+  console.log("[ok] python runtime detects semantic errors");
+
+  // Test 2e: Duplicate ID detection
+  const dupIdModel = {
+    schema_version: "2.0.0",
+    nodes: [
+      { id: "1", x: 0, y: 0, z: 0 },
+      { id: "1", x: 3, y: 0, z: 0 }, // Duplicate ID
+    ],
+  };
+  const dupIdResult = await runPythonValidation(dupIdModel);
+  assert(dupIdResult.issues.some((i) => i.code === "SEMANTIC_DUPLICATE_ID"), "should report SEMANTIC_DUPLICATE_ID");
+  console.log("[ok] python runtime detects duplicate IDs");
+
+  // Test 2f: Material property validation
+  const badMaterialModel = {
+    schema_version: "2.0.0",
+    nodes: [
+      { id: "1", x: 0, y: 0, z: 0 },
+      { id: "2", x: 3, y: 0, z: 0 },
+    ],
+    elements: [{ id: "E1", type: "beam", nodes: ["1", "2"], material: "M1", section: "S1" }],
+    materials: [{ id: "M1", type: "steel", E: -1000, nu: 0.3, rho: 7850 }], // Negative E
+    sections: [{ id: "S1", type: "rectangular", width: 0.3, height: 0.6 }],
+    load_cases: [],
+    load_combinations: [],
+  };
+  const badMatResult = await runPythonValidation(badMaterialModel);
+  assert(
+    badMatResult.issues.some((i) => i.code === "SEMANTIC_INVALID_VALUE" && i.path.includes("materials")),
+    "should report invalid material value"
+  );
+  console.log("[ok] python runtime validates material properties");
+
+  // Test 2g: Options - skip semantic validation
+  const skipSemanticResult = await runPythonValidation(badRefModel, ["--no-semantic"]);
+  assert(skipSemanticResult.valid === true, "model with bad refs should pass when semantic is skipped");
+  console.log("[ok] python runtime respects --no-semantic flag");
+
+  // Test 2h: Options - stop on first error
+  const stopOnFirstResult = await runPythonValidation(incompleteModel, ["--stop-on-first-error"]);
+  assert(stopOnFirstResult.issues.length <= 2, "should stop after first error");
+  console.log("[ok] python runtime respects --stop-on-first-error flag");
+
+  // Test 3: Verify TypeScript types are exported correctly
+  const entryModule = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "validation", "entry.js")).href
+  );
+  assert(typeof entryModule.listBuiltinValidationSkills === "function", "entry should export listBuiltinValidationSkills");
+  assert(typeof entryModule.getBuiltinValidationSkill === "function", "entry should export getBuiltinValidationSkill");
+  console.log("[ok] validation module entry exports");
+}
+
 const BACKEND_VALIDATIONS = {
   "validate-agent-orchestration": validateAgentOrchestration,
   "validate-agent-no-skill-fallback": validateAgentNoSkillFallback,
@@ -1672,6 +1862,7 @@ const BACKEND_VALIDATIONS = {
   "validate-chat-message-routing": validateChatMessageRouting,
   "validate-report-template-contract": validateReportTemplateContract,
   "validate-dev-startup-guards": validateDevStartupGuards,
+  "validate-structure-json-skill": validateStructureJsonSkill,
 };
 
 async function runBackendValidation(name, context) {
