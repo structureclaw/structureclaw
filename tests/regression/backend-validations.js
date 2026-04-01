@@ -819,6 +819,7 @@ async function validateAgentApiContract(context) {
   const Fastify = backendRequire(context.rootDir)("fastify");
   const AgentService = await importBackendAgentService(context.rootDir);
   const captured = [];
+  const originalRun = AgentService.prototype.run;
   const mockRun = async function mockRun(params) {
     captured.push(params);
     return {
@@ -853,65 +854,72 @@ async function validateAgentApiContract(context) {
   };
   AgentService.prototype.run = mockRun;
 
-  const { agentRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "agent.js")).href);
-  const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
+  let app;
+  try {
+    const { agentRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "agent.js")).href);
+    const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
 
-  const app = Fastify();
-  await app.register(agentRoutes, { prefix: "/api/v1/agent" });
-  await app.register(chatRoutes, { prefix: "/api/v1/chat" });
+    app = Fastify();
+    await app.register(agentRoutes, { prefix: "/api/v1/agent" });
+    await app.register(chatRoutes, { prefix: "/api/v1/chat" });
 
-  const requestBody = {
-    message: "请分析并导出报告",
-    conversationId: "conv-api-1",
-    traceId: "trace-request-001",
-    context: {
-      autoAnalyze: true,
-      autoCodeCheck: true,
-      includeReport: true,
-      reportFormat: "both",
-      reportOutput: "file",
-    },
-  };
+    const requestBody = {
+      message: "请分析并导出报告",
+      conversationId: "conv-api-1",
+      traceId: "trace-request-001",
+      context: {
+        autoAnalyze: true,
+        autoCodeCheck: true,
+        includeReport: true,
+        reportFormat: "both",
+        reportOutput: "file",
+      },
+    };
 
-  const runResponse = await app.inject({
-    method: "POST",
-    url: "/api/v1/agent/run",
-    payload: requestBody,
-  });
-  assert(runResponse.statusCode === 200, "agent/run should return 200");
-  const runPayload = runResponse.json();
-  assert(runPayload.traceId === "trace-api-contract", "agent/run should return traceId");
-  assert(typeof runPayload.startedAt === "string", "agent/run should return startedAt");
-  assert(typeof runPayload.completedAt === "string", "agent/run should return completedAt");
-  assert(Array.isArray(runPayload.toolCalls), "agent/run should include toolCalls");
-  assert(runPayload.metrics?.toolCount === 3, "agent/run should include metrics");
-  assert(runPayload.metrics?.maxToolDurationMs === 5, "agent/run should include expanded metrics");
+    const runResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/agent/run",
+      payload: requestBody,
+    });
+    assert(runResponse.statusCode === 200, "agent/run should return 200");
+    const runPayload = runResponse.json();
+    assert(runPayload.traceId === "trace-api-contract", "agent/run should return traceId");
+    assert(typeof runPayload.startedAt === "string", "agent/run should return startedAt");
+    assert(typeof runPayload.completedAt === "string", "agent/run should return completedAt");
+    assert(Array.isArray(runPayload.toolCalls), "agent/run should include toolCalls");
+    assert(runPayload.metrics?.toolCount === 3, "agent/run should include metrics");
+    assert(runPayload.metrics?.maxToolDurationMs === 5, "agent/run should include expanded metrics");
 
-  const chatMessageResponse = await app.inject({
-    method: "POST",
-    url: "/api/v1/chat/message",
-    payload: requestBody,
-  });
-  assert(chatMessageResponse.statusCode === 200, "chat/message should return 200");
-  const chatMessagePayload = chatMessageResponse.json();
-  assert(chatMessagePayload.result?.traceId === "trace-api-contract", "chat/message should proxy agent result");
-  assert(chatMessagePayload.result?.artifacts?.[0]?.path === "/tmp/report.json", "chat/message should return artifacts");
+    const chatMessageResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/chat/message",
+      payload: requestBody,
+    });
+    assert(chatMessageResponse.statusCode === 200, "chat/message should return 200");
+    const chatMessagePayload = chatMessageResponse.json();
+    assert(chatMessagePayload.result?.traceId === "trace-api-contract", "chat/message should proxy agent result");
+    assert(chatMessagePayload.result?.artifacts?.[0]?.path === "/tmp/report.json", "chat/message should return artifacts");
 
-  const legacyToolCallResponse = await app.inject({
-    method: "POST",
-    url: "/api/v1/chat/tool-call",
-    payload: requestBody,
-  });
-  assert(legacyToolCallResponse.statusCode === 404, "chat/tool-call should no longer be exposed");
+    const legacyToolCallResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/chat/tool-call",
+      payload: requestBody,
+    });
+    assert(legacyToolCallResponse.statusCode === 404, "chat/tool-call should no longer be exposed");
 
-  assert(captured.length >= 2, "agent run should be called for both endpoints");
-  assert(captured[0]?.traceId === "trace-request-001", "agent/run should pass traceId");
-  assert(captured[1]?.traceId === "trace-request-001", "chat/message should pass traceId");
-  assert(captured[0]?.context?.reportOutput === "file", "agent/run should pass reportOutput context");
-  assert(captured[1]?.context?.reportFormat === "both", "chat/message should pass reportFormat context");
+    assert(captured.length >= 2, "agent run should be called for both endpoints");
+    assert(captured[0]?.traceId === "trace-request-001", "agent/run should pass traceId");
+    assert(captured[1]?.traceId === "trace-request-001", "chat/message should pass traceId");
+    assert(captured[0]?.context?.reportOutput === "file", "agent/run should pass reportOutput context");
+    assert(captured[1]?.context?.reportFormat === "both", "chat/message should pass reportFormat context");
 
-  await app.close();
-  console.log("[ok] agent api contract regression");
+    console.log("[ok] agent api contract regression");
+  } finally {
+    AgentService.prototype.run = originalRun;
+    if (app) {
+      await app.close();
+    }
+  }
 }
 
 async function validateAgentCapabilityMatrix(context) {
@@ -920,6 +928,8 @@ async function validateAgentCapabilityMatrix(context) {
 
   const { AnalysisEngineCatalogService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "analysis-engine.js")).href);
   const { AgentSkillRuntime } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-runtime", "index.js")).href);
+  const originalListSkillManifests = AgentSkillRuntime.prototype.listSkillManifests;
+  const originalListEngines = AnalysisEngineCatalogService.prototype.listEngines;
 
   AgentSkillRuntime.prototype.listSkillManifests = async function mockListSkillManifests() {
     return [
@@ -1029,36 +1039,38 @@ async function validateAgentCapabilityMatrix(context) {
     };
   };
 
-  const { agentRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "agent.js")).href);
-  const app = Fastify();
-  await app.register(agentRoutes, { prefix: "/api/v1/agent" });
+  let app;
+  try {
+    const { agentRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "agent.js")).href);
+    app = Fastify();
+    await app.register(agentRoutes, { prefix: "/api/v1/agent" });
 
-  const response = await app.inject({ method: "GET", url: "/api/v1/agent/capability-matrix" });
-  assert(response.statusCode === 200, "capability matrix route should return 200");
-  const payload = response.json();
-  assert(typeof payload.generatedAt === "string", "payload.generatedAt should be present");
-  assert(Array.isArray(payload.skills), "payload.skills should be an array");
-  assert(Array.isArray(payload.tools), "payload.tools should be an array");
-  assert(Array.isArray(payload.engines), "payload.engines should be an array");
-  assert(Array.isArray(payload.domainSummaries), "payload.domainSummaries should be an array");
-  assert(payload.validEngineIdsBySkill && typeof payload.validEngineIdsBySkill === "object", "validEngineIdsBySkill should be an object");
-  assert(payload.filteredEngineReasonsBySkill && typeof payload.filteredEngineReasonsBySkill === "object", "filteredEngineReasonsBySkill should be an object");
-  assert(payload.validSkillIdsByEngine && typeof payload.validSkillIdsByEngine === "object", "validSkillIdsByEngine should be an object");
-  assert(payload.skillDomainById && typeof payload.skillDomainById === "object", "skillDomainById should be an object");
-  assert(Array.isArray(payload.foundationToolIds), "foundationToolIds should be an array");
-  assert(payload.enabledToolIdsBySkill && typeof payload.enabledToolIdsBySkill === "object", "enabledToolIdsBySkill should be an object");
-  assert(payload.providedToolIdsBySkill && typeof payload.providedToolIdsBySkill === "object", "providedToolIdsBySkill should be an object");
-  assert(payload.skillIdsByToolId && typeof payload.skillIdsByToolId === "object", "skillIdsByToolId should be an object");
-  assert(payload.analysisCompatibility && typeof payload.analysisCompatibility === "object", "analysisCompatibility should be an object");
+    const response = await app.inject({ method: "GET", url: "/api/v1/agent/capability-matrix" });
+    assert(response.statusCode === 200, "capability matrix route should return 200");
+    const payload = response.json();
+    assert(typeof payload.generatedAt === "string", "payload.generatedAt should be present");
+    assert(Array.isArray(payload.skills), "payload.skills should be an array");
+    assert(Array.isArray(payload.tools), "payload.tools should be an array");
+    assert(Array.isArray(payload.engines), "payload.engines should be an array");
+    assert(Array.isArray(payload.domainSummaries), "payload.domainSummaries should be an array");
+    assert(payload.validEngineIdsBySkill && typeof payload.validEngineIdsBySkill === "object", "validEngineIdsBySkill should be an object");
+    assert(payload.filteredEngineReasonsBySkill && typeof payload.filteredEngineReasonsBySkill === "object", "filteredEngineReasonsBySkill should be an object");
+    assert(payload.validSkillIdsByEngine && typeof payload.validSkillIdsByEngine === "object", "validSkillIdsByEngine should be an object");
+    assert(payload.skillDomainById && typeof payload.skillDomainById === "object", "skillDomainById should be an object");
+    assert(Array.isArray(payload.foundationToolIds), "foundationToolIds should be an array");
+    assert(payload.enabledToolIdsBySkill && typeof payload.enabledToolIdsBySkill === "object", "enabledToolIdsBySkill should be an object");
+    assert(payload.providedToolIdsBySkill && typeof payload.providedToolIdsBySkill === "object", "providedToolIdsBySkill should be an object");
+    assert(payload.skillIdsByToolId && typeof payload.skillIdsByToolId === "object", "skillIdsByToolId should be an object");
+    assert(payload.analysisCompatibility && typeof payload.analysisCompatibility === "object", "analysisCompatibility should be an object");
 
-  const engineIds = new Set(payload.engines.map((engine) => engine.id));
-  const skillIds = new Set(payload.skills.map((skill) => skill.id));
-  const toolIds = new Set(payload.tools.map((tool) => tool.id));
-  const domainSummaryById = Object.fromEntries(payload.domainSummaries.map((summary) => [summary.domain, summary]));
+    const engineIds = new Set(payload.engines.map((engine) => engine.id));
+    const skillIds = new Set(payload.skills.map((skill) => skill.id));
+    const toolIds = new Set(payload.tools.map((tool) => tool.id));
+    const domainSummaryById = Object.fromEntries(payload.domainSummaries.map((summary) => [summary.domain, summary]));
 
-  assert(payload.skills.every((skill) => typeof skill.runtimeStatus === "string"), "skills should expose runtimeStatus");
-  assert(payload.domainSummaries.every((summary) => typeof summary.runtimeStatus === "string"), "domain summaries should expose runtimeStatus");
-  assert(payload.domainSummaries.length >= 14, "domain summaries should cover the full domain taxonomy");
+    assert(payload.skills.every((skill) => typeof skill.runtimeStatus === "string"), "skills should expose runtimeStatus");
+    assert(payload.domainSummaries.every((summary) => typeof summary.runtimeStatus === "string"), "domain summaries should expose runtimeStatus");
+    assert(payload.domainSummaries.length >= 14, "domain summaries should cover the full domain taxonomy");
 
   for (const skillId of skillIds) {
     assert(Array.isArray(payload.validEngineIdsBySkill[skillId]), `validEngineIdsBySkill should include array for ${skillId}`);
@@ -1110,14 +1122,20 @@ async function validateAgentCapabilityMatrix(context) {
   assert(domainSummaryById["design"]?.runtimeStatus === "discoverable", "design domain should be discoverable");
   assert(Array.isArray(domainSummaryById["design"]?.skillIds), "design domain summary should exist even without runtime skills");
 
-  const responseDynamic = await app.inject({ method: "GET", url: "/api/v1/agent/capability-matrix?analysisType=dynamic" });
-  assert(responseDynamic.statusCode === 200, "analysisType-specific capability matrix route should return 200");
-  const dynamicPayload = responseDynamic.json();
-  assert(dynamicPayload.appliedAnalysisType === "dynamic", "payload should echo applied analysis type");
-  assert(dynamicPayload.filteredEngineReasonsBySkill.truss["engine-truss-a"].includes("analysis_type_mismatch"), "dynamic matrix should mark analysis type mismatch for static-only truss engine");
+    const responseDynamic = await app.inject({ method: "GET", url: "/api/v1/agent/capability-matrix?analysisType=dynamic" });
+    assert(responseDynamic.statusCode === 200, "analysisType-specific capability matrix route should return 200");
+    const dynamicPayload = responseDynamic.json();
+    assert(dynamicPayload.appliedAnalysisType === "dynamic", "payload should echo applied analysis type");
+    assert(dynamicPayload.filteredEngineReasonsBySkill.truss["engine-truss-a"].includes("analysis_type_mismatch"), "dynamic matrix should mark analysis type mismatch for static-only truss engine");
 
-  await app.close();
-  console.log("[ok] agent capability matrix contract");
+    console.log("[ok] agent capability matrix contract");
+  } finally {
+    AgentSkillRuntime.prototype.listSkillManifests = originalListSkillManifests;
+    AnalysisEngineCatalogService.prototype.listEngines = originalListEngines;
+    if (app) {
+      await app.close();
+    }
+  }
 }
 
 async function validateAgentSkillhubContract(context) {
@@ -1479,6 +1497,8 @@ async function validateChatStreamContract(context) {
   const AgentService = await importBackendAgentService(context.rootDir);
 
   let capturedTraceId;
+  const originalRunStream = AgentService.prototype.runStream;
+  const originalRunForcedExecutionStream = AgentService.prototype.runForcedExecutionStream;
   const mockRunStream = async function* mockRunStream(params) {
     const request = params;
     capturedTraceId = request.traceId;
@@ -1513,56 +1533,64 @@ async function validateChatStreamContract(context) {
       .filter((chunk) => chunk.startsWith("data: "))
       .map((chunk) => chunk.slice("data: ".length));
 
-  const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
-  const app = Fastify();
-  await app.register(chatRoutes, { prefix: "/api/v1/chat" });
+  let app;
+  try {
+    const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
+    app = Fastify();
+    await app.register(chatRoutes, { prefix: "/api/v1/chat" });
 
-  const response = await app.inject({
-    method: "POST",
-    url: "/api/v1/chat/stream",
-    headers: { origin: "http://localhost:30000" },
-    payload: {
-      message: "analyze this model",
-      traceId: "trace-stream-request-1",
-      context: { model: { schema_version: "1.0.0" } },
-    },
-  });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/chat/stream",
+      headers: { origin: "http://localhost:30000" },
+      payload: {
+        message: "analyze this model",
+        traceId: "trace-stream-request-1",
+        context: { model: { schema_version: "1.0.0" } },
+      },
+    });
 
-  assert(response.statusCode === 200, "chat/stream should return 200");
-  assert(response.headers["access-control-allow-origin"] === "http://localhost:30000", "chat/stream should include access-control-allow-origin for allowed origin");
-  assert(response.headers["access-control-allow-credentials"] === "true", "chat/stream should include access-control-allow-credentials for allowed origin");
-  assert(String(response.headers.vary || "").includes("Origin"), "chat/stream should include Vary: Origin for allowed origin");
-  const events = parseSseEvents(response.body);
-  assert(events.length >= 4, "stream should include events and done marker");
-  assert(events[events.length - 1] === "[DONE]", "stream should end with [DONE]");
+    assert(response.statusCode === 200, "chat/stream should return 200");
+    assert(response.headers["access-control-allow-origin"] === "http://localhost:30000", "chat/stream should include access-control-allow-origin for allowed origin");
+    assert(response.headers["access-control-allow-credentials"] === "true", "chat/stream should include access-control-allow-credentials for allowed origin");
+    assert(String(response.headers.vary || "").includes("Origin"), "chat/stream should include Vary: Origin for allowed origin");
+    const events = parseSseEvents(response.body);
+    assert(events.length >= 4, "stream should include events and done marker");
+    assert(events[events.length - 1] === "[DONE]", "stream should end with [DONE]");
 
-  const chunks = events
-    .filter((item) => item !== "[DONE]")
-    .map((item) => JSON.parse(item));
-  assert(chunks[0].type === "start", "first chunk should be start");
-  assert(chunks.some((chunk) => chunk.type === "result"), "stream should contain result chunk");
-  assert(chunks[chunks.length - 1].type === "done", "last chunk before [DONE] should be done");
-  assert(capturedTraceId === "trace-stream-request-1", "chat/stream should pass traceId to agent stream");
+    const chunks = events
+      .filter((item) => item !== "[DONE]")
+      .map((item) => JSON.parse(item));
+    assert(chunks[0].type === "start", "first chunk should be start");
+    assert(chunks.some((chunk) => chunk.type === "result"), "stream should contain result chunk");
+    assert(chunks[chunks.length - 1].type === "done", "last chunk before [DONE] should be done");
+    assert(capturedTraceId === "trace-stream-request-1", "chat/stream should pass traceId to agent stream");
 
-  const startTrace = chunks.find((chunk) => chunk.type === "start")?.content?.traceId;
-  const resultTrace = chunks.find((chunk) => chunk.type === "result")?.content?.traceId;
-  assert(startTrace && resultTrace && startTrace === resultTrace, "traceId should match between start and result");
-  assert(typeof chunks.find((chunk) => chunk.type === "start")?.content?.startedAt === "string", "start event should include startedAt");
+    const startTrace = chunks.find((chunk) => chunk.type === "start")?.content?.traceId;
+    const resultTrace = chunks.find((chunk) => chunk.type === "result")?.content?.traceId;
+    assert(startTrace && resultTrace && startTrace === resultTrace, "traceId should match between start and result");
+    assert(typeof chunks.find((chunk) => chunk.type === "start")?.content?.startedAt === "string", "start event should include startedAt");
 
-  const disallowedResponse = await app.inject({
-    method: "POST",
-    url: "/api/v1/chat/stream",
-    headers: { origin: "http://evil.example.com" },
-    payload: {
-      message: "analyze this model",
-      traceId: "trace-stream-request-2",
-      context: { model: { schema_version: "1.0.0" } },
-    },
-  });
-  assert(disallowedResponse.headers["access-control-allow-origin"] === undefined, "chat/stream should omit access-control-allow-origin for disallowed origin");
+    const disallowedResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/chat/stream",
+      headers: { origin: "http://evil.example.com" },
+      payload: {
+        message: "analyze this model",
+        traceId: "trace-stream-request-2",
+        context: { model: { schema_version: "1.0.0" } },
+      },
+    });
+    assert(disallowedResponse.headers["access-control-allow-origin"] === undefined, "chat/stream should omit access-control-allow-origin for disallowed origin");
 
-  await app.close();
-  console.log("[ok] chat stream contract regression");
+    console.log("[ok] chat stream contract regression");
+  } finally {
+    AgentService.prototype.runStream = originalRunStream;
+    AgentService.prototype.runForcedExecutionStream = originalRunForcedExecutionStream;
+    if (app) {
+      await app.close();
+    }
+  }
 }
 
 async function validateChatMessageRouting(context) {
@@ -1573,6 +1601,7 @@ async function validateChatMessageRouting(context) {
   let agentRunCount = 0;
   const capturedRunTraceIds = [];
   const capturedRunMessages = [];
+  const originalRun = AgentService.prototype.run;
 
   const mockAgentRun = async function mockAgentRun(params) {
     const request = params;
@@ -1595,24 +1624,26 @@ async function validateChatMessageRouting(context) {
   };
   AgentService.prototype.run = mockAgentRun;
 
-  const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
-  const app = Fastify();
-  await app.register(chatRoutes, { prefix: "/api/v1/chat" });
+  let app;
+  try {
+    const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
+    app = Fastify();
+    await app.register(chatRoutes, { prefix: "/api/v1/chat" });
 
-  const autoChatResp = await app.inject({
-    method: "POST",
-    url: "/api/v1/chat/message",
-    payload: {
-      message: "auto without model",
-      context: {
-        skillIds: ["beam"],
+    const autoChatResp = await app.inject({
+      method: "POST",
+      url: "/api/v1/chat/message",
+      payload: {
+        message: "auto without model",
+        context: {
+          skillIds: ["beam"],
+        },
       },
-    },
-  });
-  assert(autoChatResp.statusCode === 200, "auto conversation response should be 200");
-  const autoChatPayload = autoChatResp.json();
-  assert(autoChatPayload.result?.response === "tool-ok", "agent-first conversation result should be returned");
-  assert(autoChatPayload.result?.conversationId === "conv-route-001", "message response should include created conversationId");
+    });
+    assert(autoChatResp.statusCode === 200, "auto conversation response should be 200");
+    const autoChatPayload = autoChatResp.json();
+    assert(autoChatPayload.result?.response === "tool-ok", "agent-first conversation result should be returned");
+    assert(autoChatPayload.result?.conversationId === "conv-route-001", "message response should include created conversationId");
 
   const autoConversationWithModelResp = await app.inject({
     method: "POST",
@@ -1655,18 +1686,23 @@ async function validateChatMessageRouting(context) {
   assert(capturedRunTraceIds.includes("trace-route-auto-intent-1"), "auto intent invocation should pass traceId");
   assert(capturedRunMessages.includes("auto without model"), "plain chat-like requests should now route through agent");
 
-  const legacyToolCallResp = await app.inject({
-    method: "POST",
-    url: "/api/v1/chat/tool-call",
-    payload: {
-      message: "legacy force tool",
-      traceId: "trace-route-tool-legacy-1",
-    },
-  });
-  assert(legacyToolCallResp.statusCode === 404, "legacy /chat/tool-call endpoint should not be available");
+    const legacyToolCallResp = await app.inject({
+      method: "POST",
+      url: "/api/v1/chat/tool-call",
+      payload: {
+        message: "legacy force tool",
+        traceId: "trace-route-tool-legacy-1",
+      },
+    });
+    assert(legacyToolCallResp.statusCode === 404, "legacy /chat/tool-call endpoint should not be available");
 
-  await app.close();
-  console.log("[ok] chat message routing contract");
+    console.log("[ok] chat message routing contract");
+  } finally {
+    AgentService.prototype.run = originalRun;
+    if (app) {
+      await app.close();
+    }
+  }
 }
 
 async function validateReportNarrativeContract(context) {
