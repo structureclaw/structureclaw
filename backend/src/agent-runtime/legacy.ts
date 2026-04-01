@@ -1,9 +1,6 @@
 import {
   buildModel,
-  computeMissingCriticalKeys,
-  computeMissingLoadDetailKeys,
   extractDraftByRules,
-  mapMissingFieldLabels,
   mergeDraftState,
   normalizeFloorLoads,
   normalizeFrameBaseSupportType,
@@ -17,6 +14,11 @@ import {
   normalizePositiveInteger,
   normalizeSupportType,
 } from './fallback.js';
+import {
+  computeMissingCriticalKeys,
+  computeMissingLoadDetailKeys,
+  mapMissingFieldLabels,
+} from './draft-guidance.js';
 import type { AppLocale } from '../services/locale.js';
 import type { DraftExtraction, DraftFloorLoad, DraftState, InferredModelType } from './types.js';
 

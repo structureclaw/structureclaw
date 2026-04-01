@@ -9,7 +9,8 @@ import {
 } from '../../../agent-runtime/legacy.js';
 import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
 import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
-import { buildInteractionQuestions, computeMissingCriticalKeys, normalizeNumber, normalizePositiveInteger } from '../../../agent-runtime/fallback.js';
+import { buildInteractionQuestions, normalizeNumber, normalizePositiveInteger } from '../../../agent-runtime/fallback.js';
+import { computeMissingCriticalKeys } from '../../../agent-runtime/draft-guidance.js';
 import { buildDefaultReportNarrative } from '../../../agent-runtime/report-template.js';
 import type { AppLocale } from '../../../services/locale.js';
 import type {
