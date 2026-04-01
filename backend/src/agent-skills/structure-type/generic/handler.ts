@@ -5,7 +5,6 @@ import {
   normalizeLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
 import {
-  buildInteractionQuestions as buildFallbackInteractionQuestions,
   buildModel as buildFallbackModel,
   computeMissingCriticalKeys,
   mergeDraftState,
@@ -126,7 +125,20 @@ function buildGenericQuestions(
       critical: criticalMissing.includes(paramKey),
     }));
   }
-  return buildFallbackInteractionQuestions(keys, criticalMissing, state, locale);
+
+  const labels = buildLegacyLabels(keys, locale);
+  return keys.map((paramKey, index) => {
+    const label = labels[index] || paramKey;
+    return {
+      paramKey,
+      label,
+      question: locale === 'zh'
+        ? `请补充${label}。`
+        : `Please provide ${label}.`,
+      required: true,
+      critical: criticalMissing.includes(paramKey),
+    };
+  });
 }
 
 export const handler: SkillHandler = {
