@@ -806,7 +806,6 @@ export class AgentService {
     modelInput?: Record<string, unknown>;
     prefetchedDraft?: SkillFirstDraftSnapshot;
     workingSession: InteractionSession;
-    plannerToolId?: AgentToolName;
   }): SkillDrivenToolDecision | null {
     const {
       message,
@@ -815,21 +814,14 @@ export class AgentService {
       modelInput,
       prefetchedDraft,
       workingSession,
-      plannerToolId,
     } = args;
     const hasModel = Boolean(modelInput || prefetchedDraft?.draft.model || workingSession.latestModel);
     const asksUpdate = /(改成|改为|修改|更新|change\s+to|update|revise)/i.test(message);
-    const asksModeling = /(建模|模型|model|draft)/i.test(message);
+    const asksModeling = /(设计|建模|模型|model|draft|design)/i.test(message);
+    const asksFreshModel = /(重新|重建|从头|新建|全新|new|fresh|scratch|from\s+scratch)/i.test(message);
     const asksRunAnalysis = /(分析|analysis|analy[sz]e|analyze|验算|计算)/i.test(message);
     const asksCodeCheck = /(规范|校核|code\s*check|compliance)/i.test(message);
     const asksReport = /(报告|report|导出|export)/i.test(message);
-
-    if (plannerToolId && this.hasActiveTool(activeToolIds, plannerToolId)) {
-      return {
-        toolId: plannerToolId,
-        reason: this.localize(locale, '沿用规划器工具建议（已通过能力约束校验）', 'Keep planner tool hint after capability guard validation'),
-      };
-    }
 
     if (hasModel && asksUpdate && this.hasActiveTool(activeToolIds, 'update_model')) {
       return {
@@ -838,10 +830,30 @@ export class AgentService {
       };
     }
 
-    if (!hasModel && this.hasActiveTool(activeToolIds, 'draft_model')) {
+    if (prefetchedDraft?.draft.model && this.hasActiveTool(activeToolIds, 'draft_model')) {
       return {
         toolId: 'draft_model',
-        reason: this.localize(locale, '当前无可执行模型，先生成结构草稿', 'No executable model exists, so draft_model is selected first'),
+        reason: this.localize(
+          locale,
+          '本轮已完成结构草稿预解析，沿用 draft_model 作为执行入口',
+          'A structural draft was prefetched in this turn; keep draft_model as execution entrypoint',
+        ),
+      };
+    }
+
+    if ((asksFreshModel || !hasModel || (asksModeling && !asksRunAnalysis && !asksReport && !asksCodeCheck))
+      && this.hasActiveTool(activeToolIds, 'draft_model')) {
+      return {
+        toolId: 'draft_model',
+        reason: this.localize(
+          locale,
+          asksFreshModel
+            ? '命中新建模型意图，优先重新草拟结构模型'
+            : '优先通过 draft_model 建立本轮结构模型',
+          asksFreshModel
+            ? 'Detected fresh-model intent; prefer re-drafting the structural model'
+            : 'Prefer draft_model to establish the structural model for this turn',
+        ),
       };
     }
 
@@ -1352,7 +1364,6 @@ export class AgentService {
       modelInput,
       prefetchedDraft,
       workingSession,
-      plannerToolId: nextPlan.toolId,
     });
     if (!skillDrivenToolDecision) {
       const response = this.localize(
