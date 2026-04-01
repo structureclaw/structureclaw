@@ -2480,7 +2480,7 @@ describe('AgentService orchestration', () => {
             content: JSON.stringify({
               kind: 'tool_call',
               replyMode: null,
-              toolId: 'update_model',
+              toolId: 'generate_report',
               reason: 'the user is modifying the current frame loads and expects updated engineering results',
             }),
           };

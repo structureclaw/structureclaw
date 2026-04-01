@@ -486,8 +486,7 @@ export class AgentService {
   private parsePlannerResponse(
     raw: string,
     allowedKinds: AgentPlanKind[],
-    availableToolIds: AgentToolName[],
-  ): Pick<AgentNextStepPlan, 'kind' | 'replyMode' | 'toolId'> | null {
+  ): Pick<AgentNextStepPlan, 'kind' | 'replyMode'> | null {
     const jsonText = this.extractJsonObject(raw);
     if (!jsonText) {
       return null;
@@ -496,8 +495,7 @@ export class AgentService {
     const parsed = JSON.parse(jsonText) as {
       kind?: unknown;
       replyMode?: unknown;
-      toolId?: unknown;
-      decision?: { kind?: unknown; replyMode?: unknown; toolId?: unknown };
+      decision?: { kind?: unknown; replyMode?: unknown };
     };
     const payload = typeof parsed.decision === 'object' && parsed.decision !== null ? parsed.decision : parsed;
 
@@ -509,18 +507,9 @@ export class AgentService {
     const replyMode = kind === 'reply'
       ? (payload.replyMode === 'structured' ? 'structured' : 'plain')
       : undefined;
-    const toolId = kind === 'tool_call'
-      ? (typeof payload.toolId === 'string' ? payload.toolId : '')
-      : undefined;
-
-    if (kind === 'tool_call' && toolId && !availableToolIds.includes(toolId as AgentToolName)) {
-      return null;
-    }
-
     return {
       kind,
       replyMode,
-      toolId: kind === 'tool_call' && toolId ? toolId as AgentToolName : undefined,
     };
   }
 
@@ -528,7 +517,7 @@ export class AgentService {
     locale: AppLocale;
     allowedKinds: AgentPlanKind[];
     availableToolIds: AgentToolName[];
-  }): Promise<Pick<AgentNextStepPlan, 'kind' | 'replyMode' | 'toolId'> | null> {
+  }): Promise<Pick<AgentNextStepPlan, 'kind' | 'replyMode'> | null> {
     if (!this.llm) {
       return null;
     }
@@ -538,9 +527,8 @@ export class AgentService {
       'Do not add commentary. Return JSON only.',
       'Preserve the original intent. Only fix formatting or minor schema issues.',
       `Allowed kinds: ${options.allowedKinds.join(', ')}`,
-      `Allowed toolIds when kind=tool_call (optional): ${options.availableToolIds.join(', ') || 'none'}`,
       'Output schema:',
-      `{"kind":"${options.allowedKinds.join('|')}","replyMode":"plain|structured|null","toolId":"${options.availableToolIds.join('|') || 'null'}|null(optional)","reason":"short reason"}`,
+      `{"kind":"${options.allowedKinds.join('|')}","replyMode":"plain|structured|null","reason":"short reason"}`,
       `Locale: ${options.locale}`,
       `Planner output to normalize:\n${raw}`,
     ].join('\n');
@@ -550,7 +538,7 @@ export class AgentService {
       const repairedRaw = typeof repaired.content === 'string'
         ? repaired.content
         : JSON.stringify(repaired.content);
-      return this.parsePlannerResponse(repairedRaw, options.allowedKinds, options.availableToolIds);
+      return this.parsePlannerResponse(repairedRaw, options.allowedKinds);
     } catch {
       return null;
     }
@@ -606,9 +594,9 @@ export class AgentService {
       'Use replyMode=structured only when a structural model already exists or the engineering draft is already ready and the best next step is to explain, summarize, or confirm readiness rather than ask or execute.',
       allowToolCall
         ? `When kind=tool_call, do not choose concrete tools. The runtime will select tools from enabled capabilities: ${availableToolIds.join(', ') || 'none'}.`
-        : 'When tool invocation is not allowed, toolId must be null.',
+        : 'When tool invocation is not allowed, choose only reply or ask.',
       'Return strict JSON only with this schema:',
-      `{"kind":"${allowedKinds.join('|')}","replyMode":"plain|structured|null","toolId":"${availableToolIds.join('|') || 'null'}|null(optional)","reason":"short reason"}`,
+      `{"kind":"${allowedKinds.join('|')}","replyMode":"plain|structured|null","reason":"short reason"}`,
       `Locale: ${options.locale}`,
       `User message: ${message}`,
       `Planner context: ${JSON.stringify(snapshot)}`,
@@ -619,7 +607,7 @@ export class AgentService {
       const raw = typeof aiMessage.content === 'string'
         ? aiMessage.content
         : JSON.stringify(aiMessage.content);
-      const normalized = this.parsePlannerResponse(raw, allowedKinds, availableToolIds)
+      const normalized = this.parsePlannerResponse(raw, allowedKinds)
         || await this.repairPlannerResponse(raw, {
           locale: options.locale,
           allowedKinds,
@@ -631,7 +619,6 @@ export class AgentService {
       return {
         kind: normalized.kind,
         replyMode: normalized.replyMode,
-        toolId: normalized.toolId,
         planningDirective: 'auto',
         rationale: 'llm',
       };
