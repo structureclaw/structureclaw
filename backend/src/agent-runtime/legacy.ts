@@ -1,5 +1,4 @@
 import {
-  buildModel,
   extractDraftByRules,
   mergeDraftState,
   normalizeFloorLoads,
@@ -14,6 +13,7 @@ import {
   normalizePositiveInteger,
   normalizeSupportType,
 } from './fallback.js';
+import { buildModel } from './model-builder.js';
 import {
   computeMissingCriticalKeys,
   computeMissingLoadDetailKeys,

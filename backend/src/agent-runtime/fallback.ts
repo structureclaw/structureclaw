@@ -15,6 +15,7 @@ import type {
   StructuralTypeMatch,
   StructuralTypeKey,
 } from './types.js';
+import { buildModel as buildDraftModel } from './model-builder.js';
 
 function localize(locale: AppLocale, zh: string, en: string): string {
   return locale === 'zh' ? zh : en;
@@ -1309,126 +1310,7 @@ function buildBeamLoads(
 }
 
 export function buildModel(state: DraftState): Record<string, unknown> {
-  const metadata = {
-    source: 'markdown-skill-draft',
-    inferredType: state.inferredType,
-  };
-  if (state.inferredType === 'frame') {
-    if (state.frameDimension === '3d') {
-      return buildFrame3dModel(state, metadata);
-    }
-    return buildFrame2dModel(state, metadata);
-  }
-  if (state.inferredType === 'truss') {
-    const length = state.lengthM!;
-    const load = state.loadKN!;
-    return {
-      schema_version: '1.0.0',
-      unit_system: 'SI',
-      nodes: [
-        { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
-        { id: '2', x: length, y: 0, z: 0, restraints: [false, true, true, true, true, true] },
-      ],
-      elements: [
-        { id: '1', type: 'truss', nodes: ['1', '2'], material: '1', section: '1' },
-      ],
-      materials: [
-        { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
-      ],
-      sections: [
-        { id: '1', name: 'T1', type: 'rod', properties: { A: 0.01 } },
-      ],
-      load_cases: [
-        { id: 'LC1', type: 'other', loads: [{ node: '2', fx: load }] },
-      ],
-      load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
-      metadata,
-    };
-  }
-  if (state.inferredType === 'double-span-beam') {
-    const span = state.spanLengthM!;
-    const load = state.loadKN!;
-    return {
-      schema_version: '1.0.0',
-      unit_system: 'SI',
-      nodes: [
-        { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
-        { id: '2', x: span, y: 0, z: 0 },
-        { id: '3', x: span * 2, y: 0, z: 0, restraints: [false, true, true, true, true, true] },
-      ],
-      elements: [
-        { id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' },
-        { id: '2', type: 'beam', nodes: ['2', '3'], material: '1', section: '1' },
-      ],
-      materials: [
-        { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
-      ],
-      sections: [
-        { id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001, Iz: 0.0001, J: 0.0001, G: 79000 } },
-      ],
-      load_cases: [
-        { id: 'LC1', type: 'other', loads: [{ node: '2', fy: -load }] },
-      ],
-      load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
-      metadata,
-    };
-  }
-  if (state.inferredType === 'portal-frame') {
-    const span = state.spanLengthM!;
-    const height = state.heightM!;
-    const load = state.loadKN!;
-    return {
-      schema_version: '1.0.0',
-      unit_system: 'SI',
-      nodes: [
-        { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
-        { id: '2', x: span, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
-        { id: '3', x: 0, y: height, z: 0 },
-        { id: '4', x: span, y: height, z: 0 },
-      ],
-      elements: [
-        { id: '1', type: 'beam', nodes: ['1', '3'], material: '1', section: '1' },
-        { id: '2', type: 'beam', nodes: ['3', '4'], material: '1', section: '1' },
-        { id: '3', type: 'beam', nodes: ['4', '2'], material: '1', section: '1' },
-      ],
-      materials: [
-        { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
-      ],
-      sections: [
-        { id: '1', name: 'PF1', type: 'beam', properties: { A: 0.02, Iy: 0.0002, Iz: 0.0002, J: 0.0002, G: 79000 } },
-      ],
-      load_cases: [
-        { id: 'LC1', type: 'other', loads: [
-          { type: 'nodal', node: '3', forces: [0, -load / 2, 0, 0, 0, 0] },
-          { type: 'nodal', node: '4', forces: [0, -load / 2, 0, 0, 0, 0] },
-        ] },
-      ],
-      load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
-      metadata,
-    };
-  }
-  const length = state.lengthM!;
-  const load = state.loadKN!;
-  const supportType = state.supportType || 'cantilever';
-  const beamNodes = buildBeamNodes(length, supportType, state.loadPositionM);
-  const beamLoads = buildBeamLoads(load, state.loadType, state.loadPosition, beamNodes.pointNodeId, beamNodes.endNodeId);
-  return {
-    schema_version: '1.0.0',
-    unit_system: 'SI',
-    nodes: beamNodes.nodes,
-    elements: beamNodes.elements,
-    materials: [
-      { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
-    ],
-    sections: [
-      { id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001, Iz: 0.0001, J: 0.0001, G: 79000 } },
-    ],
-    load_cases: [
-      { id: 'LC1', type: 'other', loads: beamLoads },
-    ],
-    load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
-    metadata: { ...metadata, supportType, loadPositionM: state.loadPositionM },
-  };
+  return buildDraftModel(state);
 }
 
 export function buildDraftResult(message: string, existingState: DraftState | undefined, llmExtraction: DraftExtraction | null): DraftResult {
