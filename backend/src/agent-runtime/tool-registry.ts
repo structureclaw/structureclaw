@@ -21,38 +21,10 @@ export function listBuiltinToolManifests(): ToolManifest[] {
 }
 
 function inferEnabledToolsFromManifest(manifest: SkillManifest): string[] {
-  if (Array.isArray(manifest.enabledTools) && manifest.enabledTools.length > 0) {
-    return [...manifest.enabledTools];
+  if (!Array.isArray(manifest.enabledTools) || manifest.enabledTools.length === 0) {
+    return [];
   }
-
-  const enabled = new Set<string>();
-  if (manifest.domain === 'structure-type') {
-    enabled.add('draft_model');
-    enabled.add('update_model');
-    enabled.add('validate_model');
-    enabled.add('run_analysis');
-  }
-  if (manifest.domain === 'analysis-strategy' || manifest.capabilities.includes('analyze')) {
-    enabled.add('run_analysis');
-  }
-  if (manifest.domain === 'code-check' || manifest.capabilities.includes('code-check')) {
-    enabled.add('run_code_check');
-  }
-  if (
-    manifest.domain === 'report-export'
-    || manifest.capabilities.includes('report-export')
-    || manifest.capabilities.includes('report-narrative')
-  ) {
-    enabled.add('generate_report');
-  }
-  if (manifest.domain === 'generic-fallback') {
-    enabled.add('draft_model');
-    enabled.add('update_model');
-    enabled.add('validate_model');
-    enabled.add('run_analysis');
-    enabled.add('generate_report');
-  }
-  return [...enabled];
+  return [...manifest.enabledTools];
 }
 
 function createSkillProvidedTool(toolId: string, skillId: string): ToolManifest {

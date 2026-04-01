@@ -63,7 +63,7 @@ export async function executeConvertModelStep(args: {
 
 export const CONVERT_MODEL_TOOL_MANIFEST: ToolManifest = {
   id: 'convert_model',
-  source: 'external',
+  source: 'builtin',
   enabledByDefault: false,
   category: 'modeling',
   displayName: localize('转换结构模型', 'Convert Structural Model'),

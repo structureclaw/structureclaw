@@ -168,7 +168,7 @@ export class AgentCapabilityService {
     const analysisSkills: CapabilitySkill[] = listBuiltinAnalysisSkills().map((skill) => ({
       id: skill.id,
       structureType: undefined,
-      domain: 'analysis-strategy',
+      domain: 'analysis',
       requires: [],
       conflicts: [],
       capabilities: [...skill.capabilities],
@@ -288,13 +288,13 @@ export class AgentCapabilityService {
       return acc;
     }, {});
 
-    const analysisStrategySkills = skills.filter((skill) => skill.domain === 'analysis-strategy');
-    const analysisStrategyCompatibility = ANALYSIS_TYPES.reduce<Record<CapabilityAnalysisType, {
-      strategySkillIds: string[];
+    const analysisSkillsByType = skills.filter((skill) => skill.domain === 'analysis');
+    const analysisCompatibility = ANALYSIS_TYPES.reduce<Record<CapabilityAnalysisType, {
+      skillIds: string[];
       compatibleEngineIds: string[];
       baselinePolicyAvailable: boolean;
     }>>((acc, analysisType) => {
-      const strategySkillIds = analysisStrategySkills
+      const skillIds = analysisSkillsByType
         .filter((skill) => skill.supportedAnalysisTypes.length === 0 || skill.supportedAnalysisTypes.includes(analysisType))
         .map((skill) => skill.id)
         .sort();
@@ -304,16 +304,16 @@ export class AgentCapabilityService {
         .sort();
 
       acc[analysisType] = {
-        strategySkillIds,
+        skillIds,
         compatibleEngineIds,
         baselinePolicyAvailable: true,
       };
       return acc;
     }, {
-      static: { strategySkillIds: [], compatibleEngineIds: [], baselinePolicyAvailable: true },
-      dynamic: { strategySkillIds: [], compatibleEngineIds: [], baselinePolicyAvailable: true },
-      seismic: { strategySkillIds: [], compatibleEngineIds: [], baselinePolicyAvailable: true },
-      nonlinear: { strategySkillIds: [], compatibleEngineIds: [], baselinePolicyAvailable: true },
+      static: { skillIds: [], compatibleEngineIds: [], baselinePolicyAvailable: true },
+      dynamic: { skillIds: [], compatibleEngineIds: [], baselinePolicyAvailable: true },
+      seismic: { skillIds: [], compatibleEngineIds: [], baselinePolicyAvailable: true },
+      nonlinear: { skillIds: [], compatibleEngineIds: [], baselinePolicyAvailable: true },
     });
 
     return {
@@ -329,7 +329,7 @@ export class AgentCapabilityService {
       enabledToolIdsBySkill: tooling.enabledToolIdsBySkill,
       providedToolIdsBySkill: tooling.providedToolIdsBySkill,
       skillIdsByToolId: tooling.skillIdsByToolId,
-      analysisStrategyCompatibility,
+      analysisCompatibility,
       appliedAnalysisType: options?.analysisType,
     };
   }

@@ -240,6 +240,8 @@ async function validateAgentOrchestration(context) {
     assert(result.toolCalls.some((call) => call.tool === "validate_model"), "validate_model should be called");
     assert(result.toolCalls.some((call) => call.tool === "run_analysis"), "run_analysis should be called");
     assert(result.toolCalls.some((call) => call.tool === "generate_report"), "generate_report should be generated");
+    assert(result.toolCalls.some((call) => call.tool === "run_analysis" && call.source === "external"), "run_analysis should expose external source");
+    assert(result.toolCalls.some((call) => call.tool === "run_analysis" && Array.isArray(call.authorizedBySkillIds) && call.authorizedBySkillIds.length > 0), "run_analysis should expose authorized skill ids");
     assert(result.report && result.report.summary, "report payload should exist");
     assert(result.metrics?.toolCount >= 2, "tool metrics should be present");
     assert(typeof result.startedAt === "string" && typeof result.completedAt === "string", "run timestamps should be present");
@@ -281,11 +283,19 @@ async function validateAgentOrchestration(context) {
     stubExecutionClients(svc);
 
     const result = await svc.runForcedExecution({
-      message: "请按一个3m悬臂梁，端部10kN竖向荷载做静力分析",
+      message: "按3m悬臂梁端部10kN点荷载做静力分析",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
         includeReport: false,
+        providedValues: {
+          skillId: "beam",
+          lengthM: 3,
+          supportType: "cantilever",
+          loadKN: 10,
+          loadType: "point",
+          loadPosition: "end",
+        },
       },
     });
 
@@ -293,6 +303,7 @@ async function validateAgentOrchestration(context) {
     assert(result.toolCalls.some((call) => call.tool === "draft_model"), "draft_model should be called");
     assert(result.toolCalls.some((call) => call.tool === "validate_model"), "validate_model should be called after draft");
     assert(result.toolCalls.some((call) => call.tool === "run_analysis"), "run_analysis should be called after draft");
+    assert(result.toolCalls.some((call) => call.tool === "draft_model" && Array.isArray(call.authorizedBySkillIds) && call.authorizedBySkillIds.length > 0), "draft_model should expose authorized skill ids");
     console.log("[ok] agent text-to-model draft orchestration");
   }
 
@@ -314,6 +325,13 @@ async function validateAgentOrchestration(context) {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
         includeReport: false,
+        providedValues: {
+          skillId: "portal-frame",
+          lengthM: 6,
+          heightM: 4,
+          loadKN: 20,
+          loadType: "point",
+        },
       },
     });
     assert(second.success === true, "second turn should complete using persisted draft state");
@@ -329,6 +347,14 @@ async function validateAgentOrchestration(context) {
       message: "3m悬臂梁，端部10kN点荷载",
       context: {
         locale: "zh",
+        providedValues: {
+          skillId: "beam",
+          lengthM: 3,
+          supportType: "cantilever",
+          loadKN: 10,
+          loadType: "point",
+          loadPosition: "end",
+        },
       },
     });
     assert(collecting.success === true, "conversation complete-model turn should succeed");
@@ -362,6 +388,11 @@ async function validateAgentOrchestration(context) {
     const second = await svc.runChatOnly({
       conversationId: "conv-conversation-followup-1",
       message: "跨度10m",
+      context: {
+        providedValues: {
+          lengthM: 10,
+        },
+      },
     });
     assert(second.success === true, "second conversation turn should still succeed");
     assert(
@@ -387,6 +418,11 @@ async function validateAgentOrchestration(context) {
     const second = await svc.runChatOnly({
       conversationId: "conv-conversation-followup-beam-1",
       message: "跨度10m",
+      context: {
+        providedValues: {
+          lengthM: 10,
+        },
+      },
     });
     assert(second.success === true, "second beam conversation turn should still succeed");
     assert(
@@ -413,6 +449,11 @@ async function validateAgentOrchestration(context) {
     const third = await svc.runChatOnly({
       conversationId: "conv-conversation-followup-beam-1",
       message: "简支",
+      context: {
+        providedValues: {
+          supportType: "simply-supported",
+        },
+      },
     });
     assert(third.success === true, "third beam conversation turn should still succeed");
     assert(
@@ -444,6 +485,13 @@ async function validateAgentOrchestration(context) {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
         includeReport: false,
+        providedValues: {
+          skillId: "double-span-beam",
+          spanLengthM: 4,
+          loadKN: 12,
+          loadType: "point",
+          loadPosition: "middle-joint",
+        },
       },
     });
     assert(beam.success === true, "double-span beam draft should succeed");
@@ -455,6 +503,13 @@ async function validateAgentOrchestration(context) {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
         includeReport: false,
+        providedValues: {
+          skillId: "truss",
+          lengthM: 5,
+          loadKN: 10,
+          loadType: "point",
+          loadPosition: "middle-joint",
+        },
       },
     });
     assert(truss.success === true, "planar truss draft should succeed");
@@ -503,6 +558,7 @@ async function validateAgentOrchestration(context) {
     const result = await svc.runForcedExecution({
       message: "请对该模型做静力分析并按GB50017做规范校核并出报告",
       context: {
+        skillIds: [...svc.listSkills().map((skill) => skill.id), "code-check-gb50017"],
         model: {
           schema_version: "1.0.0",
           nodes: [
@@ -548,7 +604,7 @@ async function validateAgentOrchestration(context) {
   }
 }
 
-async function validateAgentNoSkillFallback(context) {
+async function validateAgentBaseChatFallback(context) {
   await runBackendBuildOnce(context);
 
   const hasDeterministicOutcome = (result) => {
@@ -570,9 +626,10 @@ async function validateAgentNoSkillFallback(context) {
 
   const AgentService = await importBackendAgentService(context.rootDir);
   const svc = new AgentService();
+  const runForcedExecution = (params) => svc.runWithStrategy(params, { planningDirective: "force_tool", allowToolCall: true });
 
-  const chatResult = await svc.runForcedExecution({
-    conversationId: "conv-no-skill-chat",
+  const chatResult = await runForcedExecution({
+    conversationId: "conv-empty-skill-chat",
     message: "先聊需求，我要算一个门式刚架",
     context: {
       skillIds: [],
@@ -580,9 +637,10 @@ async function validateAgentNoSkillFallback(context) {
     },
   });
   assert(hasDeterministicOutcome(chatResult), "conversation mode with empty skillIds should return deterministic outcome");
+  assert(Array.isArray(chatResult.toolCalls) && chatResult.toolCalls.length === 0, "empty-skill chat should not invoke tools");
 
-  const toolResult = await svc.runForcedExecution({
-    conversationId: "conv-no-skill-exec",
+  const toolResult = await runForcedExecution({
+    conversationId: "conv-empty-skill-exec",
     message: "按3m悬臂梁端部10kN点荷载做静力分析",
     context: {
       skillIds: [],
@@ -593,9 +651,12 @@ async function validateAgentNoSkillFallback(context) {
     },
   });
   assert(hasDeterministicOutcome(toolResult), "forced execution with empty skillIds should return deterministic outcome");
+  assert(toolResult.success === false, "forced execution with empty skillIds should now be blocked");
+  assert(toolResult.blockedReasonCode === "NO_EXECUTABLE_TOOL", "empty-skill forced execution should report blocked reason");
+  assert(Array.isArray(toolResult.toolCalls) && toolResult.toolCalls.length === 0, "empty-skill forced execution should not invoke tools");
 
   const autoResult = await svc.run({
-    conversationId: "conv-no-skill-auto",
+    conversationId: "conv-empty-skill-auto",
     message: "帮我做一个规则框架静力分析",
     context: {
       skillIds: [],
@@ -603,8 +664,10 @@ async function validateAgentNoSkillFallback(context) {
     },
   });
   assert(hasDeterministicOutcome(autoResult), "auto routing with empty skillIds should return deterministic outcome");
+  assert(autoResult.success === true, "auto routing with empty skillIds should stay on base chat");
+  assert(Array.isArray(autoResult.toolCalls) && autoResult.toolCalls.length === 0, "empty-skill auto routing should not invoke tools");
 
-  console.log("[ok] no-skill fallback contract");
+  console.log("[ok] base-chat fallback contract");
 }
 
 async function validateAgentCapabilityModes(context) {
@@ -873,6 +936,7 @@ async function validateAgentCapabilityMatrix(context) {
         requires: [],
         conflicts: [],
         capabilities: ["intent-detection"],
+        enabledTools: ["draft_model", "update_model", "validate_model", "run_analysis", "generate_report"],
         priority: 10,
         compatibility: {
           minRuntimeVersion: "0.1.0",
@@ -892,6 +956,7 @@ async function validateAgentCapabilityMatrix(context) {
         requires: [],
         conflicts: [],
         capabilities: ["intent-detection"],
+        enabledTools: ["draft_model", "update_model", "validate_model", "run_analysis", "generate_report"],
         priority: 20,
         compatibility: {
           minRuntimeVersion: "0.1.0",
@@ -899,11 +964,11 @@ async function validateAgentCapabilityMatrix(context) {
         },
       },
       {
-        id: "analysis-strategy-baseline",
+        id: "analysis-baseline",
         structureType: "beam",
-        domain: "analysis-strategy",
-        name: { zh: "分析策略基线", en: "Analysis Strategy Baseline" },
-        description: { zh: "analysis strategy", en: "analysis strategy" },
+        domain: "analysis",
+        name: { zh: "分析基线", en: "Analysis Baseline" },
+        description: { zh: "analysis", en: "analysis" },
         triggers: ["analysis"],
         stages: ["analysis"],
         autoLoadByDefault: true,
@@ -983,7 +1048,7 @@ async function validateAgentCapabilityMatrix(context) {
   assert(payload.enabledToolIdsBySkill && typeof payload.enabledToolIdsBySkill === "object", "enabledToolIdsBySkill should be an object");
   assert(payload.providedToolIdsBySkill && typeof payload.providedToolIdsBySkill === "object", "providedToolIdsBySkill should be an object");
   assert(payload.skillIdsByToolId && typeof payload.skillIdsByToolId === "object", "skillIdsByToolId should be an object");
-  assert(payload.analysisStrategyCompatibility && typeof payload.analysisStrategyCompatibility === "object", "analysisStrategyCompatibility should be an object");
+  assert(payload.analysisCompatibility && typeof payload.analysisCompatibility === "object", "analysisCompatibility should be an object");
 
   const engineIds = new Set(payload.engines.map((engine) => engine.id));
   const skillIds = new Set(payload.skills.map((skill) => skill.id));
@@ -1020,11 +1085,11 @@ async function validateAgentCapabilityMatrix(context) {
   assert(payload.filteredEngineReasonsBySkill.beam["engine-truss-a"].includes("model_family_mismatch"), "beam should mark truss engine as family mismatch");
   assert(payload.filteredEngineReasonsBySkill.beam["engine-disabled"].includes("engine_disabled"), "beam should mark disabled engine reason");
   assert(payload.filteredEngineReasonsBySkill.truss["engine-frame-a"].includes("model_family_mismatch"), "truss should mark frame engine as family mismatch");
-  assert(Array.isArray(payload.analysisStrategyCompatibility.static.strategySkillIds), "static strategy skill IDs should be an array");
-  assert(payload.analysisStrategyCompatibility.static.strategySkillIds.includes("analysis-strategy-baseline"), "static strategy should include baseline strategy skill");
-  assert(payload.analysisStrategyCompatibility.dynamic.strategySkillIds.includes("analysis-strategy-baseline"), "dynamic strategy should include baseline strategy skill");
-  assert(!payload.analysisStrategyCompatibility.seismic.strategySkillIds.includes("analysis-strategy-baseline"), "seismic strategy should exclude unsupported strategy skill");
-  assert(payload.analysisStrategyCompatibility.static.baselinePolicyAvailable === true, "baseline policy should be available for static");
+  assert(Array.isArray(payload.analysisCompatibility.static.skillIds), "static analysis skill IDs should be an array");
+  assert(payload.analysisCompatibility.static.skillIds.includes("analysis-baseline"), "static analysis compatibility should include baseline analysis skill");
+  assert(payload.analysisCompatibility.dynamic.skillIds.includes("analysis-baseline"), "dynamic analysis compatibility should include baseline analysis skill");
+  assert(!payload.analysisCompatibility.seismic.skillIds.includes("analysis-baseline"), "seismic analysis compatibility should exclude unsupported analysis skill");
+  assert(payload.analysisCompatibility.static.baselinePolicyAvailable === true, "baseline policy should be available for static");
 
   const responseDynamic = await app.inject({ method: "GET", url: "/api/v1/agent/capability-matrix?analysisType=dynamic" });
   assert(responseDynamic.statusCode === 200, "analysisType-specific capability matrix route should return 200");
@@ -1360,7 +1425,7 @@ async function validateAgentSkillhubRepositoryDown(context) {
   const result = await svc.runForcedExecution({
     message: "按3m悬臂梁端部10kN点荷载做静力分析",
     context: {
-      skillIds: [],
+      skillIds: ["beam"],
       model: {
         schema_version: "1.0.0",
         unit_system: "SI",
@@ -1381,8 +1446,8 @@ async function validateAgentSkillhubRepositoryDown(context) {
     },
   });
 
-  assert(result.success === true, "baseline tool invocation should still succeed when repository is down");
-  assert(result.toolCalls.some((item) => item.tool === "run_analysis" && item.status === "success"), "run_analysis should still run in baseline mode");
+  assert(result.success === true, "built-in skill execution should still succeed when repository is down");
+  assert(result.toolCalls.some((item) => item.tool === "run_analysis" && item.status === "success"), "run_analysis should still run when a built-in skill authorizes it");
 
   await app.close();
   process.env.SCLAW_SKILLHUB_FORCE_DOWN = "false";
@@ -1795,7 +1860,7 @@ async function validateDevStartupGuards(context) {
 
 const BACKEND_VALIDATIONS = {
   "validate-agent-orchestration": validateAgentOrchestration,
-  "validate-agent-no-skill-fallback": validateAgentNoSkillFallback,
+  "validate-agent-base-chat-fallback": validateAgentBaseChatFallback,
   "validate-agent-capability-modes": validateAgentCapabilityModes,
   "validate-agent-tools-contract": validateAgentToolsContract,
   "validate-agent-api-contract": validateAgentApiContract,

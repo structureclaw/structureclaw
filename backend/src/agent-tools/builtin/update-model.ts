@@ -20,11 +20,11 @@ export async function executeUpdateModel(args: {
   skillIds?: string[];
   workingSession: UpdateToolSession;
   textToModelDraft: (message: string, existingState: DraftState | undefined, locale: AppLocale, skillIds?: string[]) => Promise<DraftResult>;
-  isNoSkillEquivalentDraft: (skillIds: string[] | undefined, draft: DraftResult) => boolean;
+  isGenericFallbackDraft: (draft: DraftResult) => boolean;
   applyInferredNonCriticalFromMessage: (workingSession: UpdateToolSession, message: string) => void;
-}): Promise<{ draft: DraftResult; noSkillEquivalentDraft: boolean }> {
+}): Promise<{ draft: DraftResult; genericFallbackDraft: boolean }> {
   const draft = await args.textToModelDraft(args.message, args.workingSession.draft, args.locale, args.skillIds);
-  const noSkillEquivalentDraft = args.isNoSkillEquivalentDraft(args.skillIds, draft);
+  const genericFallbackDraft = args.isGenericFallbackDraft(draft);
 
   if (draft.stateToPersist) {
     args.workingSession.draft = draft.stateToPersist;
@@ -34,7 +34,7 @@ export async function executeUpdateModel(args: {
   }
   if (draft.structuralTypeMatch) {
     args.workingSession.structuralTypeMatch = draft.structuralTypeMatch;
-  } else if (noSkillEquivalentDraft) {
+  } else if (genericFallbackDraft) {
     args.workingSession.structuralTypeMatch = undefined;
   }
   args.workingSession.updatedAt = Date.now();
@@ -42,7 +42,7 @@ export async function executeUpdateModel(args: {
 
   return {
     draft,
-    noSkillEquivalentDraft,
+    genericFallbackDraft,
   };
 }
 
@@ -57,9 +57,9 @@ export async function executeUpdateModelExecutionStep(args: {
   startToolCall: (tool: 'update_model', input: Record<string, unknown>) => any;
   completeToolCallSuccess: (call: any, output: Record<string, unknown>) => void;
   textToModelDraft: (message: string, existingState: DraftState | undefined, locale: AppLocale, skillIds?: string[]) => Promise<DraftResult>;
-  isNoSkillEquivalentDraft: (skillIds: string[] | undefined, draft: DraftResult) => boolean;
+  isGenericFallbackDraft: (draft: DraftResult) => boolean;
   applyInferredNonCriticalFromMessage: (workingSession: UpdateToolSession, message: string) => void;
-}): Promise<{ draft: DraftResult; noSkillEquivalentDraft: boolean }> {
+}): Promise<{ draft: DraftResult; genericFallbackDraft: boolean }> {
   args.plan.push(localeText(args.locale, '根据当前会话上下文增量更新结构模型', 'Update the structural model incrementally using the current session context'));
 
   const updateCall = args.startToolCall('update_model', { message: args.message, conversationId: args.sessionKey, phase: 'execution' });
@@ -71,7 +71,7 @@ export async function executeUpdateModelExecutionStep(args: {
     skillIds: args.skillIds,
     workingSession: args.workingSession,
     textToModelDraft: args.textToModelDraft,
-    isNoSkillEquivalentDraft: args.isNoSkillEquivalentDraft,
+    isGenericFallbackDraft: args.isGenericFallbackDraft,
     applyInferredNonCriticalFromMessage: args.applyInferredNonCriticalFromMessage,
   });
 

@@ -163,9 +163,9 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
   buildCatalogEntry({
     id: 'skillhub.seismic-simplified-policy',
     version: '1.0.0',
-    domain: 'analysis-strategy',
+    domain: 'analysis',
     entrypoints: {
-      analysisStrategy: 'dist/analysis-strategy.js',
+      analysis: 'dist/analysis.js',
     },
     name: {
       zh: '抗震简化策略',
@@ -184,9 +184,9 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
   buildCatalogEntry({
     id: 'skillhub.future-runtime-only',
     version: '1.0.0',
-    domain: 'analysis-strategy',
+    domain: 'analysis',
     entrypoints: {
-      analysisStrategy: 'dist/analysis-strategy.js',
+      analysis: 'dist/analysis.js',
     },
     name: {
       zh: '未来运行时策略包',

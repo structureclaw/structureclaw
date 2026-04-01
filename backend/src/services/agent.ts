@@ -29,10 +29,6 @@ import {
   normalizePolicyReportOutput,
 } from '../agent-skills/design/entry.js';
 import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.js';
-import {
-  computeNoSkillMissingFields,
-  normalizeNoSkillDraftState,
-} from '../agent-runtime/generic-support/no-skill-runtime.js';
 import { createLocalAnalysisEngineClient } from './analysis-execution.js';
 import { createLocalCodeCheckClient } from './code-check-execution.js';
 import { createLocalStructureProtocolClient } from './structure-protocol-execution.js';
@@ -53,6 +49,11 @@ export type AgentInteractionPhase = 'interactive' | 'execution';
 export type AgentReportFormat = 'json' | 'markdown' | 'both';
 export type AgentReportOutput = 'inline' | 'file';
 export type AgentUserDecision = 'provide_values' | 'confirm_all' | 'allow_auto_decide' | 'revise';
+export type AgentBlockedReasonCode =
+  | 'NO_EXECUTABLE_TOOL'
+  | 'TOOL_DISABLED'
+  | 'TOOL_REQUIRES_SKILL'
+  | 'TOOL_REQUIRES_TOOL';
 export type AgentInteractionState = 'collecting' | 'confirming' | 'ready' | 'executing' | 'completed' | 'blocked';
 export type AgentInteractionStage = 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';
 export type AgentInteractionRouteHint = 'prefer_interactive' | 'prefer_tool';
@@ -112,23 +113,6 @@ type ActiveToolSet = Set<string> | undefined;
 // Platform foundation tools are runtime-level capabilities and can stay always available.
 const PLATFORM_FOUNDATION_TOOL_IDS: AgentToolName[] = [
   'convert_model',
-];
-
-// Domain baseline tools for no-skill mode keep legacy direct execution available.
-const DOMAIN_BASELINE_TOOL_IDS_NO_SKILL: AgentToolName[] = [
-  'draft_model',
-  'validate_model',
-  'run_analysis',
-  'run_code_check',
-  'generate_report',
-];
-
-// Domain execution baseline with skills enabled. Drafting remains skill-gated.
-const DOMAIN_BASELINE_TOOL_IDS_WITH_SKILL: AgentToolName[] = [
-  'validate_model',
-  'run_analysis',
-  'run_code_check',
-  'generate_report',
 ];
 
 type AgentPlanKind = 'reply' | 'ask' | 'tool_call';
@@ -312,6 +296,8 @@ export interface AgentProtocol {
 
 export interface AgentToolCall {
   tool: AgentToolName;
+  source?: ToolManifest['source'];
+  authorizedBySkillIds?: string[];
   input: Record<string, unknown>;
   status: 'success' | 'error';
   startedAt: string;
@@ -320,6 +306,7 @@ export interface AgentToolCall {
   output?: unknown;
   error?: string;
   errorCode?: string;
+  blockedReasonCode?: AgentBlockedReasonCode | string;
 }
 
 export interface AgentRunResult {
@@ -331,6 +318,7 @@ export interface AgentRunResult {
   success: boolean;
   orchestrationMode: AgentOrchestrationMode;
   needsModelInput: boolean;
+  blockedReasonCode?: AgentBlockedReasonCode | string;
   plan: string[];
   toolCalls: AgentToolCall[];
   model?: Record<string, unknown>;
@@ -657,6 +645,15 @@ export class AgentService {
     activeToolIds?: ActiveToolSet;
     conversationId?: string;
   }): Promise<AgentNextStepPlan> {
+    if (this.hasEmptySkillSelection(options.skillIds) && options.planningDirective !== 'force_tool') {
+      return {
+        kind: 'reply',
+        replyMode: 'plain',
+        planningDirective: options.planningDirective,
+        rationale: 'override',
+      };
+    }
+
     if (!options.allowToolCall) {
       if (this.llm) {
         return {
@@ -698,7 +695,7 @@ export class AgentService {
     if (options.hasModel) {
       return 'reply';
     }
-    if (this.isNoSkillMode(options.skillIds) && !this.hasActiveTool(options.activeToolIds, 'draft_model')) {
+    if (this.hasEmptySkillSelection(options.skillIds) && !this.hasActiveTool(options.activeToolIds, 'draft_model')) {
       return 'reply';
     }
     if (!options.session?.draft || options.session.draft.inferredType === 'unknown') {
@@ -707,13 +704,16 @@ export class AgentService {
     const assessment = await this.assessInteractionNeeds(options.session, options.locale, options.skillIds, 'interactive');
     const readyForExecution = assessment.criticalMissing.length === 0
       && (assessment.nonCriticalMissing.length === 0 || Boolean(options.session.userApprovedAutoDecide));
+    if (!options.hasModel) {
+      return 'ask';
+    }
     return readyForExecution ? 'reply' : 'ask';
   }
 
   private async prepareRunContext(params: AgentRunInput): Promise<PreparedRunContext> {
     const locale = this.resolveInteractionLocale(params.context?.locale);
     const skillIds = params.context?.skillIds;
-    const noSkillMode = this.isNoSkillMode(skillIds);
+    const noSkillMode = this.hasEmptySkillSelection(skillIds);
     const activeToolIds = await this.resolveActiveToolIds(skillIds, {
       enabledToolIds: params.context?.enabledToolIds,
       disabledToolIds: params.context?.disabledToolIds,
@@ -726,8 +726,9 @@ export class AgentService {
     };
 
     if (noSkillMode) {
-      workingSession.draft = normalizeNoSkillDraftState(workingSession.draft || { inferredType: 'unknown', updatedAt: Date.now() });
+      workingSession.draft = undefined;
       workingSession.structuralTypeMatch = undefined;
+      workingSession.latestModel = undefined;
     }
 
     this.applyResolvedConfigFromContext(workingSession, params.context);
@@ -770,24 +771,12 @@ export class AgentService {
       }
     }
 
-    if (this.isNoSkillMode(skillIds)) {
-      for (const toolId of DOMAIN_BASELINE_TOOL_IDS_NO_SKILL) {
-        if (builtinCatalog.has(toolId)) {
-          active.add(toolId);
-        }
-      }
-      return this.applyToolSelection(active, options);
-    }
-
-    for (const toolId of DOMAIN_BASELINE_TOOL_IDS_WITH_SKILL) {
-      if (builtinCatalog.has(toolId)) {
-        active.add(toolId);
-      }
-    }
-
     const tooling = await this.skillRuntime.resolveSkillTooling(skillIds);
     for (const tool of tooling.tools) {
       active.add(tool.id);
+    }
+    if (hasExplicitCodeCheckSkill(skillIds) && builtinCatalog.has('run_code_check')) {
+      active.add('run_code_check');
     }
 
     return this.applyToolSelection(active, options);
@@ -999,6 +988,7 @@ export class AgentService {
     sessionKey?: string;
     workingSession: InteractionSession;
     response: string;
+    blockedReasonCode?: AgentBlockedReasonCode | string;
     model?: Record<string, unknown>;
     needsModelInput?: boolean;
     clarification?: AgentRunResult['clarification'];
@@ -1017,6 +1007,7 @@ export class AgentService {
       sessionKey,
       workingSession,
       response,
+      blockedReasonCode,
       model,
       needsModelInput = false,
       clarification,
@@ -1031,6 +1022,7 @@ export class AgentService {
       success: false,
       orchestrationMode,
       needsModelInput,
+      blockedReasonCode,
       plan,
       toolCalls,
       model,
@@ -1051,9 +1043,10 @@ export class AgentService {
       return undefined;
     }
 
-    if (this.isNoSkillMode(skillIds)) {
-      session.draft = normalizeNoSkillDraftState(session.draft || { inferredType: 'unknown', updatedAt: Date.now() });
+    if (this.hasEmptySkillSelection(skillIds)) {
+      session.draft = undefined;
       session.structuralTypeMatch = undefined;
+      session.latestModel = undefined;
       session.updatedAt = Date.now();
       if (conversationId?.trim()) {
         await this.setInteractionSession(conversationId.trim(), session);
@@ -1162,6 +1155,7 @@ export class AgentService {
           durationMs: { type: 'number' },
           orchestrationMode: { enum: ['directed', 'llm-planned'] },
           needsModelInput: { type: 'boolean' },
+          blockedReasonCode: { type: 'string' },
           plan: { type: 'array', items: { type: 'string' } },
           toolCalls: { type: 'array', items: { type: 'object' } },
           model: { type: 'object' },
@@ -1397,6 +1391,7 @@ export class AgentService {
         sessionKey,
         workingSession,
         response: plannerResponse,
+        blockedReasonCode: 'NO_EXECUTABLE_TOOL',
         needsModelInput: false,
       });
     }
@@ -1446,6 +1441,7 @@ export class AgentService {
         sessionKey,
         workingSession,
         response,
+        blockedReasonCode: 'NO_EXECUTABLE_TOOL',
         needsModelInput: !modelInput && !workingSession.latestModel,
       });
     }
@@ -1478,6 +1474,7 @@ export class AgentService {
             missingSkills,
             missingTools,
           }),
+          blockedReasonCode: missingSkills.length > 0 ? 'TOOL_REQUIRES_SKILL' : 'TOOL_REQUIRES_TOOL',
           needsModelInput: !modelInput && !workingSession.latestModel,
         });
       }
@@ -1670,6 +1667,7 @@ export class AgentService {
           sessionKey,
           workingSession,
           response,
+          blockedReasonCode: 'TOOL_DISABLED',
           model: executableModel,
         }),
       };
@@ -1765,6 +1763,7 @@ export class AgentService {
           sessionKey,
           workingSession,
           response,
+          blockedReasonCode: 'TOOL_DISABLED',
           model: normalizedModel,
         }),
       };
@@ -1953,17 +1952,12 @@ export class AgentService {
     return lines.join('\n');
   }
 
-  private isNoSkillEquivalentDraft(skillIds: string[] | undefined, draft: DraftResult): boolean {
-    if (this.isNoSkillMode(skillIds)) {
-      return true;
-    }
+  private isGenericFallbackDraft(draft: DraftResult): boolean {
     return draft.inferredType === 'unknown' && !draft.structuralTypeMatch;
   }
 
   private buildGenericModelingIntro(locale: AppLocale, noSkillMode: boolean): string {
-    if (noSkillMode) {
-      return this.localize(locale, '当前未启用技能。我会走通用建模能力。', 'No skills are enabled. I will use generic modeling capability.');
-    }
+    void noSkillMode;
     return this.localize(locale, '当前所选技能未命中更具体的结构技能。我会回退到通用建模能力。', 'The selected skills did not match a more specific structural skill. I will fall back to generic modeling capability.');
   }
 
@@ -1983,7 +1977,33 @@ export class AgentService {
     prefetchedDraft?: SkillFirstDraftSnapshot;
   }): Promise<AgentRunResult> {
     const { nextPlan, params, traceId, startedAt, startedAtMs, locale, orchestrationMode, toolCalls, plan, sessionKey, workingSession, activeToolIds, prefetchedDraft } = args;
-    const noSkillMode = this.isNoSkillMode(params.context?.skillIds);
+    const noSkillMode = this.hasEmptySkillSelection(params.context?.skillIds);
+
+    if (noSkillMode) {
+      return this.buildDirectReplyConversationResult({
+        params,
+        traceId,
+        startedAt,
+        startedAtMs,
+        locale,
+        orchestrationMode,
+        skillIds: params.context?.skillIds,
+        plan,
+        toolCalls,
+        sessionKey,
+        workingSession,
+        fallback: this.localize(
+          locale,
+          '当前未启用工程技能。我可以先按普通对话帮你梳理需求；如果需要建模、分析或校核，请先启用相应 skill。',
+          'Engineering skills are not enabled right now. I can still help in plain conversation; enable the relevant skills first when you want modeling, analysis, or code checks.',
+        ),
+        planNote: this.localize(
+          locale,
+          '当前未启用工程技能，按 base chat 路径直接回复',
+          'No engineering skills are enabled, so this turn stays on the base chat path',
+        ),
+      });
+    }
 
     if (nextPlan.kind === 'reply' && nextPlan.replyMode === 'plain') {
       return this.buildDirectReplyConversationResult({
@@ -1998,32 +2018,20 @@ export class AgentService {
         toolCalls,
         sessionKey,
         workingSession,
-        fallback: noSkillMode && !this.hasActiveTool(activeToolIds, 'draft_model')
-          ? this.localize(
-            locale,
-            '当前未启用结构技能或建模 tool。我可以先按普通对话协助你梳理需求；如果需要建模、分析或校核，请启用相应能力。',
-            'Structural skills or drafting tools are not enabled right now. I can still help as a plain chat assistant; enable the relevant capabilities when you want modeling, analysis, or code checks.',
-          )
-          : this.localize(
-            locale,
-            '你好，我在。你可以直接告诉我你的结构问题、建模需求，或者只是继续聊天。',
-            'Hello, I am here. You can tell me your structural question, modeling goal, or just keep chatting.',
-          ),
-        planNote: noSkillMode && !this.hasActiveTool(activeToolIds, 'draft_model')
-          ? this.localize(
-            locale,
-            '当前未启用工程技能或建模 tool，回退为普通对话回复',
-            'No engineering skills or drafting tools are enabled, so the agent falls back to a plain chat reply',
-          )
-          : this.localize(
-            locale,
-            '当前轮次由模型判定为直接回复，不触发工程建模或执行工具',
-            'The model decided to reply directly for this turn, without triggering engineering drafting or execution tools',
-          ),
+        fallback: this.localize(
+          locale,
+          '你好，我在。你可以直接告诉我你的结构问题、建模需求，或者只是继续聊天。',
+          'Hello, I am here. You can tell me your structural question, modeling goal, or just keep chatting.',
+        ),
+        planNote: this.localize(
+          locale,
+          '当前轮次由模型判定为直接回复，不触发工程建模或执行工具',
+          'The model decided to reply directly for this turn, without triggering engineering drafting or execution tools',
+        ),
       });
     }
 
-    const { draft, noSkillEquivalentDraft } = await this.draftConversationState({
+    const { draft, genericFallbackDraft } = await this.draftConversationState({
       params,
       traceId,
       startedAt,
@@ -2031,7 +2039,6 @@ export class AgentService {
       locale,
       orchestrationMode,
       skillIds: params.context?.skillIds,
-      noSkillMode,
       activeToolIds,
       plan,
       toolCalls,
@@ -2040,7 +2047,7 @@ export class AgentService {
       prefetchedDraft,
     });
 
-    if (noSkillEquivalentDraft) {
+    if (genericFallbackDraft) {
       return this.buildGenericConversationResult({
         nextPlan,
         params,
@@ -2050,7 +2057,7 @@ export class AgentService {
         locale,
         orchestrationMode,
         skillIds: params.context?.skillIds,
-        noSkillMode,
+        noSkillMode: false,
         activeToolIds,
         plan,
         toolCalls,
@@ -2185,6 +2192,7 @@ export class AgentService {
           sessionKey,
           workingSession,
           response,
+          blockedReasonCode: 'TOOL_DISABLED',
           needsModelInput: true,
         }),
       };
@@ -2202,11 +2210,11 @@ export class AgentService {
       startToolCall: this.startToolCall.bind(this),
       completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
       textToModelDraft: this.textToModelDraft.bind(this),
-      isNoSkillEquivalentDraft: this.isNoSkillEquivalentDraft.bind(this),
+      isGenericFallbackDraft: this.isGenericFallbackDraft.bind(this),
       applyDraftToSession: this.applyDraftToSession.bind(this),
     });
     const draft = draftExecution.draft;
-    const noSkillEquivalentDraft = prefetchedDraft?.noSkillEquivalentDraft ?? draftExecution.noSkillEquivalentDraft;
+    const genericFallbackDraft = prefetchedDraft?.noSkillEquivalentDraft ?? draftExecution.genericFallbackDraft;
 
     if (workingSession.userApprovedAutoDecide) {
       for (let i = 0; i < 3; i += 1) {
@@ -2227,7 +2235,7 @@ export class AgentService {
         await this.setInteractionSession(sessionKey, workingSession);
       }
 
-      if (noSkillEquivalentDraft) {
+      if (genericFallbackDraft) {
         const missingFields = draft.missingFields.length > 0
           ? draft.missingFields
           : [this.localize(locale, '关键结构参数', 'key structural parameters')];
@@ -2357,6 +2365,7 @@ export class AgentService {
           sessionKey,
           workingSession,
           response,
+          blockedReasonCode: 'TOOL_DISABLED',
           model: modelInput,
           needsModelInput: true,
         }),
@@ -2401,11 +2410,10 @@ export class AgentService {
       startToolCall: this.startToolCall.bind(this),
       completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
       textToModelDraft: this.textToModelDraft.bind(this),
-      isNoSkillEquivalentDraft: this.isNoSkillEquivalentDraft.bind(this),
+      isGenericFallbackDraft: this.isGenericFallbackDraft.bind(this),
       applyInferredNonCriticalFromMessage: this.applyInferredNonCriticalFromMessage.bind(this),
     });
     const draft = updateExecution.draft;
-    const noSkillEquivalentDraft = updateExecution.noSkillEquivalentDraft;
 
     const availableModel = draft.model;
     const finalAssessment = availableModel
@@ -2520,6 +2528,7 @@ export class AgentService {
         sessionKey,
         workingSession,
         response,
+        blockedReasonCode: 'TOOL_DISABLED',
         model: normalizedModel,
       });
     }
@@ -2792,7 +2801,6 @@ export class AgentService {
     locale: AppLocale;
     orchestrationMode: AgentOrchestrationMode;
     skillIds?: string[];
-    noSkillMode: boolean;
     activeToolIds?: ActiveToolSet;
     plan: string[];
     toolCalls: AgentToolCall[];
@@ -2801,7 +2809,7 @@ export class AgentService {
     prefetchedDraft?: SkillFirstDraftSnapshot;
   }): Promise<{
     draft: DraftResult;
-    noSkillEquivalentDraft: boolean;
+    genericFallbackDraft: boolean;
   }> {
     const {
       params,
@@ -2811,7 +2819,6 @@ export class AgentService {
       toolCalls,
       sessionKey,
       workingSession,
-      noSkillMode,
       prefetchedDraft,
     } = args;
 
@@ -2819,7 +2826,6 @@ export class AgentService {
       message: params.message,
       locale,
       skillIds,
-      noSkillMode,
       sessionKey,
       plan,
       toolCalls,
@@ -2828,7 +2834,7 @@ export class AgentService {
       startToolCall: this.startToolCall.bind(this),
       completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
       textToModelDraft: this.textToModelDraft.bind(this),
-      isNoSkillEquivalentDraft: this.isNoSkillEquivalentDraft.bind(this),
+      isGenericFallbackDraft: this.isGenericFallbackDraft.bind(this),
       applyDraftToSession: this.applyDraftToSession.bind(this),
     });
   }
@@ -2836,7 +2842,7 @@ export class AgentService {
   private applyDraftToSession(
     workingSession: InteractionSession,
     draft: DraftResult,
-    noSkillEquivalentDraft: boolean,
+    genericFallbackDraft: boolean,
     message: string,
   ): void {
     if (draft.stateToPersist) {
@@ -2847,7 +2853,7 @@ export class AgentService {
     }
     if (draft.structuralTypeMatch) {
       workingSession.structuralTypeMatch = draft.structuralTypeMatch;
-    } else if (noSkillEquivalentDraft) {
+    } else if (genericFallbackDraft) {
       workingSession.structuralTypeMatch = undefined;
     }
     workingSession.updatedAt = Date.now();
@@ -2879,6 +2885,9 @@ export class AgentService {
     if (!allowToolCall) {
       return undefined;
     }
+    if (this.hasEmptySkillSelection(skillIds)) {
+      return undefined;
+    }
     if (modelInput) {
       return undefined;
     }
@@ -2889,9 +2898,9 @@ export class AgentService {
       'Run structure skill parsing before planner tool selection for this turn',
     ));
     const draft = await this.textToModelDraft(params.message, workingSession.draft, locale, skillIds);
-    const noSkillEquivalentDraft = this.isNoSkillEquivalentDraft(skillIds, draft);
-    this.applyDraftToSession(workingSession, draft, noSkillEquivalentDraft, params.message);
-    return { draft, noSkillEquivalentDraft };
+    const genericFallbackDraft = this.isGenericFallbackDraft(draft);
+    this.applyDraftToSession(workingSession, draft, genericFallbackDraft, params.message);
+    return { draft, noSkillEquivalentDraft: genericFallbackDraft };
   }
 
   private async renderDirectReply(
@@ -3764,9 +3773,10 @@ export class AgentService {
     if (!values || typeof values !== 'object') {
       return;
     }
-    if (this.isNoSkillMode(skillIds)) {
-      session.draft = normalizeNoSkillDraftState(session.draft || { inferredType: 'unknown', updatedAt: Date.now() });
+    if (this.hasEmptySkillSelection(skillIds)) {
+      session.draft = undefined;
       session.structuralTypeMatch = undefined;
+      session.latestModel = undefined;
     } else {
       session.draft = await this.skillRuntime.applyProvidedValues(session.draft, values, locale, skillIds);
       if (session.draft.structuralTypeKey) {
@@ -4120,9 +4130,6 @@ export class AgentService {
   }
 
   private async textToModelDraft(message: string, existingState?: DraftState, locale: AppLocale = 'en', skillIds?: string[]): Promise<DraftResult> {
-    if (this.isNoSkillMode(skillIds)) {
-      return this.textToModelDraftWithoutSkills(message, existingState, locale);
-    }
     const skillDraft = await this.skillRuntime.textToModelDraft(this.llm, message, existingState, locale, skillIds);
     if (skillDraft.model || skillDraft.inferredType !== 'unknown' || skillDraft.structuralTypeMatch?.skillId) {
       return skillDraft;
@@ -4137,26 +4144,8 @@ export class AgentService {
     return genericDraft;
   }
 
-  private isNoSkillMode(skillIds?: string[]): boolean {
+  private hasEmptySkillSelection(skillIds?: string[]): boolean {
     return Array.isArray(skillIds) && skillIds.length === 0;
-  }
-
-  private async textToModelDraftWithoutSkills(
-    message: string,
-    existingState: DraftState | undefined,
-    locale: AppLocale,
-  ): Promise<DraftResult> {
-    void message;
-    const noSkillState = normalizeNoSkillDraftState(existingState || { inferredType: 'unknown', updatedAt: Date.now() });
-    const missingFields = computeNoSkillMissingFields(locale);
-
-    return {
-      inferredType: noSkillState.inferredType,
-      missingFields,
-      extractionMode: 'llm',
-      model: undefined,
-      stateToPersist: noSkillState,
-    };
   }
 
   private buildAnalysisParameters(
@@ -4400,9 +4389,56 @@ export class AgentService {
   ): Promise<AgentRunResult> {
     result.conversationId = conversationId;
     result.routing = this.buildResolvedRouting(result, skillIds, session);
+    await this.annotateToolCalls(result.toolCalls, skillIds, result.routing);
     await this.persistConversationMessages(conversationId, userMessage, result, skillIds);
     this.logRunResult(traceId, conversationId, result);
     return result;
+  }
+
+  private async annotateToolCalls(
+    toolCalls: AgentToolCall[],
+    skillIds?: string[],
+    routing?: AgentResolvedRouting,
+  ): Promise<void> {
+    if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
+      return;
+    }
+
+    const builtinById = new Map(listBuiltinToolManifests().map((tool) => [tool.id, tool] as const));
+    const tooling = await this.skillRuntime.resolveSkillTooling(skillIds);
+    const selectedSkillIds = new Set(routing?.selectedSkillIds || []);
+    const preferredAuthorizers = [
+      routing?.structuralSkillId,
+      routing?.analysisSkillId,
+    ].filter((skillId): skillId is string => typeof skillId === 'string' && skillId.length > 0);
+
+    for (const call of toolCalls) {
+      const manifest = builtinById.get(call.tool) || tooling.tools.find((tool) => tool.id === call.tool);
+      if (manifest) {
+        call.source = manifest.source;
+      }
+
+      if (manifest?.source === 'external') {
+        const owners = [...(tooling.skillIdsByToolId[call.tool] || [])];
+        if (call.tool === 'run_code_check' && Array.isArray(skillIds)) {
+          for (const skillId of skillIds) {
+            if (skillId.startsWith('code-check-')) {
+              owners.push(skillId);
+            }
+          }
+        }
+        const authorizedBySkillIds = preferredAuthorizers
+          .filter((skillId) => owners.includes(skillId))
+          .concat(owners.filter((skillId) => selectedSkillIds.has(skillId) && !preferredAuthorizers.includes(skillId)));
+        if (authorizedBySkillIds.length > 0) {
+          call.authorizedBySkillIds = Array.from(new Set(authorizedBySkillIds));
+        }
+      }
+
+      if (!call.blockedReasonCode && call.status === 'error' && typeof call.errorCode === 'string' && call.errorCode.length > 0) {
+        call.blockedReasonCode = call.errorCode;
+      }
+    }
   }
 
   private async ensureConversationRecord(input: AgentRunInput): Promise<AgentRunInput> {

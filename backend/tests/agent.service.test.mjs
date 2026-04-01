@@ -660,7 +660,7 @@ describe('AgentService orchestration', () => {
   });
 
 
-  test('should not synthesize template model in no-skill mode when llm is unavailable', async () => {
+  test('should not synthesize template model with an empty skill set when llm is unavailable', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
@@ -671,7 +671,7 @@ describe('AgentService orchestration', () => {
     expect(draft.missingFields.length).toBeGreaterThan(0);
   });
 
-  test('should stay in collecting state in no-skill mode when llm is unavailable', async () => {
+  test('should stay in collecting state with an empty skill set when llm is unavailable', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
@@ -690,7 +690,7 @@ describe('AgentService orchestration', () => {
     expect(result.model).toBeUndefined();
   });
 
-  test('should keep no-skill chat generic even when message contains template keywords', async () => {
+  test('should keep empty-skill chat generic even when message contains template keywords', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
@@ -708,7 +708,7 @@ describe('AgentService orchestration', () => {
     expect(result.model).toBeUndefined();
   });
 
-  test('should fall back to plain reply when no skill and draft tool are both unavailable', async () => {
+  test('should fall back to plain reply when the skill set is empty and draft tool is unavailable', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
@@ -1494,7 +1494,7 @@ describe('AgentService orchestration', () => {
     expect(second.response).toContain('模型参数已齐备');
   });
 
-  test('should keep inferredType unknown in no-skill mode even when llm extraction suggests template type', async () => {
+  test('should keep inferredType unknown with an empty skill set even when llm extraction suggests template type', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
     svc.llm = {
@@ -1515,7 +1515,7 @@ describe('AgentService orchestration', () => {
     expect(draft.inferredType).toBe('unknown');
   });
 
-  test('should keep no-skill mode as plain chat guidance without model-building prompt', async () => {
+  test('should keep the empty-skill path as plain chat guidance without model-building prompt', async () => {
     const svc = createServiceWithDefaultSkills();
     const prompts = [];
     svc.llm = {
@@ -1532,7 +1532,7 @@ describe('AgentService orchestration', () => {
     expect(prompts).toHaveLength(0);
   });
 
-  test('should ignore template support fields in no-skill state even when llm extraction returns them', async () => {
+  test('should ignore template support fields in empty-skill state even when llm extraction returns them', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
     svc.llm = {
@@ -1556,7 +1556,7 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.inferredType).toBe('unknown');
   });
 
-  test('should ignore categorical loadPosition in no-skill state', async () => {
+  test('should ignore categorical loadPosition in empty-skill state', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
     svc.llm = {
@@ -1580,7 +1580,7 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.inferredType).toBe('unknown');
   });
 
-  test('should ignore categorical loadType in no-skill state', async () => {
+  test('should ignore categorical loadType in empty-skill state', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
     svc.llm = {
@@ -1604,7 +1604,7 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.inferredType).toBe('unknown');
   });
 
-  test('should strip skill metadata from no-skill state normalization', async () => {
+  test('should strip skill metadata from empty-skill state normalization', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
@@ -1641,10 +1641,10 @@ describe('AgentService orchestration', () => {
     expect(Object.prototype.hasOwnProperty.call(draft.stateToPersist ?? {}, 'loadPosition')).toBe(false);
   });
 
-  test('should sanitize providedValues in no-skill mode without structural-type carry-over', async () => {
+  test('should sanitize providedValues with an empty skill set without structural-type carry-over', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
-    const conversationId = 'conv-no-skill-provided-values-sanitize';
+    const conversationId = 'conv-empty-skill-provided-values-sanitize';
     await svc.clearConversationSession(conversationId);
 
     await svc.runChatOnly({
@@ -1684,10 +1684,10 @@ describe('AgentService orchestration', () => {
     await svc.clearConversationSession(conversationId);
   });
 
-  test('should clear structural-type carry-over when switching an existing conversation to no-skill mode', async () => {
+  test('should clear structural-type carry-over when switching an existing conversation to an empty skill set', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
-    const conversationId = 'conv-switch-skill-to-no-skill';
+    const conversationId = 'conv-switch-skill-to-empty-skill';
     await svc.clearConversationSession(conversationId);
 
     await svc.runChatOnly({
@@ -1726,7 +1726,7 @@ describe('AgentService orchestration', () => {
     await svc.clearConversationSession(conversationId);
   });
 
-  test('should keep llm extractionMode in no-skill when llm extraction falls back', async () => {
+  test('should keep llm extractionMode with an empty skill set when llm extraction falls back', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
     svc.llm = {
@@ -1842,7 +1842,7 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.bayCountY).toBe(3);
   });
 
-  test('should execute analyze in no-skill mode when computable model is provided', async () => {
+  test('should execute analyze with an empty skill set when a computable model is provided', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     stubExecutionClients(svc);
@@ -1877,7 +1877,7 @@ describe('AgentService orchestration', () => {
     expect(result.toolCalls.some((item) => item.tool === 'run_analysis' && item.status === 'success')).toBe(true);
   });
 
-  test('should block no-skill execute when computable model is unavailable', async () => {
+  test('should block execution with an empty skill set when a computable model is unavailable', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 

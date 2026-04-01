@@ -126,7 +126,7 @@ function toAnalysisSkillManifest(skillDir: string): AnalysisSkillManifest | null
 
   return {
     id,
-    domain: 'analysis-strategy',
+    domain: 'analysis',
     name: {
       zh: assertString(metadata.zhName, id),
       en: assertString(metadata.enName, id),

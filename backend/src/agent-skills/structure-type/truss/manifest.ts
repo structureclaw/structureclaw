@@ -19,6 +19,7 @@ export const manifest: SkillManifest = {
   requires: [],
   conflicts: [],
   capabilities: ['intent-detection', 'draft-extraction', 'interaction-questions', 'model-build', 'report-narrative'],
+  enabledTools: ['draft_model', 'update_model', 'validate_model', 'run_analysis', 'generate_report'],
   priority: 80,
   compatibility: {
     minRuntimeVersion: '0.1.0',

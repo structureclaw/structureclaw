@@ -147,15 +147,19 @@ export interface AgentSkillBundle extends AgentSkillMetadata {
 
 export type SkillDomain =
   | 'structure-type'
-  | 'material-constitutive'
-  | 'geometry-input'
-  | 'load-boundary'
-  | 'analysis-strategy'
+  | 'analysis'
   | 'code-check'
+  | 'data-input'
+  | 'design'
+  | 'drawing'
+  | 'general'
+  | 'load-boundary'
+  | 'material'
   | 'result-postprocess'
-  | 'visualization'
   | 'report-export'
-  | 'generic-fallback';
+  | 'section'
+  | 'validation'
+  | 'visualization';
 
 export interface SkillCompatibility {
   minRuntimeVersion: string;

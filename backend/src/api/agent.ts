@@ -51,15 +51,19 @@ const capabilityMatrixQuerySchema = z.object({
 
 const skillHubDomainSchema = z.enum([
   'structure-type',
-  'material-constitutive',
-  'geometry-input',
+  'analysis',
   'load-boundary',
-  'analysis-strategy',
   'code-check',
+  'data-input',
+  'design',
+  'drawing',
+  'general',
+  'material',
   'result-postprocess',
-  'visualization',
   'report-export',
-  'generic-fallback',
+  'section',
+  'validation',
+  'visualization',
 ] as const);
 
 const skillHubSearchQuerySchema = z.object({

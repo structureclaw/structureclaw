@@ -14,15 +14,15 @@ export async function executeDraftModel(args: {
   prefetchedDraft?: DraftResult;
   workingSession: { draft?: DraftState; updatedAt: number };
   textToModelDraft: (message: string, existingState: DraftState | undefined, locale: AppLocale, skillIds?: string[]) => Promise<DraftResult>;
-  isNoSkillEquivalentDraft: (skillIds: string[] | undefined, draft: DraftResult) => boolean;
-  applyDraftToSession: (workingSession: any, draft: DraftResult, noSkillEquivalentDraft: boolean, message: string) => void;
-}): Promise<{ draft: DraftResult; noSkillEquivalentDraft: boolean }> {
+  isGenericFallbackDraft: (draft: DraftResult) => boolean;
+  applyDraftToSession: (workingSession: any, draft: DraftResult, genericFallbackDraft: boolean, message: string) => void;
+}): Promise<{ draft: DraftResult; genericFallbackDraft: boolean }> {
   const draft = args.prefetchedDraft ?? await args.textToModelDraft(args.message, args.workingSession.draft, args.locale, args.skillIds);
-  const noSkillEquivalentDraft = args.isNoSkillEquivalentDraft(args.skillIds, draft);
-  args.applyDraftToSession(args.workingSession, draft, noSkillEquivalentDraft, args.message);
+  const genericFallbackDraft = args.isGenericFallbackDraft(draft);
+  args.applyDraftToSession(args.workingSession, draft, genericFallbackDraft, args.message);
   return {
     draft,
-    noSkillEquivalentDraft,
+    genericFallbackDraft,
   };
 }
 
@@ -30,7 +30,6 @@ export async function executeDraftModelInteractiveStep(args: {
   message: string;
   locale: AppLocale;
   skillIds?: string[];
-  noSkillMode: boolean;
   sessionKey?: string;
   plan: string[];
   toolCalls: any[];
@@ -39,12 +38,10 @@ export async function executeDraftModelInteractiveStep(args: {
   startToolCall: (tool: 'draft_model', input: Record<string, unknown>) => any;
   completeToolCallSuccess: (call: any, output: Record<string, unknown>) => void;
   textToModelDraft: (message: string, existingState: DraftState | undefined, locale: AppLocale, skillIds?: string[]) => Promise<DraftResult>;
-  isNoSkillEquivalentDraft: (skillIds: string[] | undefined, draft: DraftResult) => boolean;
-  applyDraftToSession: (workingSession: any, draft: DraftResult, noSkillEquivalentDraft: boolean, message: string) => void;
-}): Promise<{ draft: DraftResult; noSkillEquivalentDraft: boolean }> {
-  args.plan.push(args.noSkillMode
-    ? localeText(args.locale, '按通用规则提取可计算结构参数', 'Extract computable structural parameters using generic rules')
-    : localeText(args.locale, '由当前可用 skill 理解请求并细化结构草稿', 'Use the current available skills to understand the request and refine the structural draft'));
+  isGenericFallbackDraft: (draft: DraftResult) => boolean;
+  applyDraftToSession: (workingSession: any, draft: DraftResult, genericFallbackDraft: boolean, message: string) => void;
+}): Promise<{ draft: DraftResult; genericFallbackDraft: boolean }> {
+  args.plan.push(localeText(args.locale, '由当前可用 skill 理解请求并细化结构草稿', 'Use the current available skills to understand the request and refine the structural draft'));
   args.plan.push(localeText(args.locale, '按当前阶段补齐关键工程参数', 'Collect the key engineering parameters for the current stage'));
 
   const draftCall = args.startToolCall('draft_model', { message: args.message, conversationId: args.sessionKey, phase: 'interactive' });
@@ -57,7 +54,7 @@ export async function executeDraftModelInteractiveStep(args: {
     prefetchedDraft: args.prefetchedDraft,
     workingSession: args.workingSession,
     textToModelDraft: args.textToModelDraft,
-    isNoSkillEquivalentDraft: args.isNoSkillEquivalentDraft,
+    isGenericFallbackDraft: args.isGenericFallbackDraft,
     applyDraftToSession: args.applyDraftToSession,
   });
 
@@ -83,9 +80,9 @@ export async function executeDraftModelExecutionStep(args: {
   startToolCall: (tool: 'draft_model', input: Record<string, unknown>) => any;
   completeToolCallSuccess: (call: any, output: Record<string, unknown>) => void;
   textToModelDraft: (message: string, existingState: DraftState | undefined, locale: AppLocale, skillIds?: string[]) => Promise<DraftResult>;
-  isNoSkillEquivalentDraft: (skillIds: string[] | undefined, draft: DraftResult) => boolean;
-  applyDraftToSession: (workingSession: any, draft: DraftResult, noSkillEquivalentDraft: boolean, message: string) => void;
-}): Promise<{ draft: DraftResult; noSkillEquivalentDraft: boolean }> {
+  isGenericFallbackDraft: (draft: DraftResult) => boolean;
+  applyDraftToSession: (workingSession: any, draft: DraftResult, genericFallbackDraft: boolean, message: string) => void;
+}): Promise<{ draft: DraftResult; genericFallbackDraft: boolean }> {
   args.plan.push(localeText(args.locale, '从自然语言生成结构模型草案（支持会话级补数）', 'Generate a structural model draft from natural language with session carry-over'));
 
   const draftCall = args.startToolCall('draft_model', { message: args.message, conversationId: args.sessionKey, phase: 'execution' });
@@ -98,7 +95,7 @@ export async function executeDraftModelExecutionStep(args: {
     prefetchedDraft: args.prefetchedDraft,
     workingSession: args.workingSession,
     textToModelDraft: args.textToModelDraft,
-    isNoSkillEquivalentDraft: args.isNoSkillEquivalentDraft,
+    isGenericFallbackDraft: args.isGenericFallbackDraft,
     applyDraftToSession: args.applyDraftToSession,
   });
 
