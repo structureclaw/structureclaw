@@ -222,7 +222,7 @@ When a SkillHub skill fails integrity verification (checksum or signature mismat
 
 ### 5.4 No-Skill Fallback Mode
 
-When zero skills are loaded (`skillIds` is empty or absent), the system enters **no-skill mode** (`agent-noskill-runtime.ts`):
+When zero skills are loaded (`skillIds` is empty or absent), the system enters **no-skill mode** (`no-skill-runtime.ts`):
 
 1. **Draft state reset**: All skill-specific state is cleared via `normalizeNoSkillDraftState()`.
 2. **Missing fields guidance**: Returns a prompt for the user to provide a complete structural description.
@@ -255,4 +255,4 @@ When zero skills are loaded (`skillIds` is empty or absent), the system enters *
 | `backend/src/agent-skills/analysis/registry.ts` | Analysis skill filesystem discovery |
 | `backend/src/agent-skills/structure-type/registry.ts` | Structure-type provider registry |
 | `backend/src/services/agent-skillhub.ts` | SkillHub install/enable/disable/uninstall service |
-| `backend/src/services/agent-noskill-runtime.ts` | No-skill fallback LLM model generation |
+| `backend/src/agent-runtime/generic-support/no-skill-runtime.ts` | No-skill conversational guidance fallback |

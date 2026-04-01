@@ -19,7 +19,7 @@ const BACKEND_STEPS = [
   ["Agent SkillHub repository-down fallback contract", "validate-agent-skillhub-repository-down"],
   ["Chat stream contract regression", "validate-chat-stream-contract"],
   ["Chat message routing contract", "validate-chat-message-routing"],
-  ["Report template contract", "validate-report-template-contract"],
+  ["Report narrative contract", "validate-report-narrative-contract"],
 ];
 
 async function runBackendRegression(rootDir) {

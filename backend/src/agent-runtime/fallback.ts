@@ -313,7 +313,7 @@ export function detectUnsupportedStructuralTypeByRules(message: string, locale: 
   return null;
 }
 
-export function extractDraftByRules(message: string): DraftExtraction {
+function extractDraftByRules(message: string): DraftExtraction {
   const text = message.toLowerCase();
   const inferredType = inferDraftType(text);
 

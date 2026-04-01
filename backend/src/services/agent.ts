@@ -32,7 +32,7 @@ import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.
 import {
   computeNoSkillMissingFields,
   normalizeNoSkillDraftState,
-} from './agent-noskill-runtime.js';
+} from '../agent-runtime/generic-support/no-skill-runtime.js';
 import { createLocalAnalysisEngineClient } from './analysis-execution.js';
 import { createLocalCodeCheckClient } from './code-check-execution.js';
 import { createLocalStructureProtocolClient } from './structure-protocol-execution.js';

@@ -73,7 +73,7 @@
 ### 校核、报告与 Schema
 
 - `validate-code-check-traceability`
-- `validate-report-template-contract`
+- `validate-report-narrative-contract`
 - `validate-schema-migration`
 
 ### 回归

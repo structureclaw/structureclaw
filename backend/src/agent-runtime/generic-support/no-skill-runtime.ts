@@ -1,5 +1,5 @@
-import type { AppLocale } from './locale.js';
-import type { DraftState } from '../agent-runtime/index.js';
+import type { AppLocale } from '../../services/locale.js';
+import type { DraftState } from '../index.js';
 
 export function normalizeNoSkillDraftState(_state: DraftState): DraftState {
   return {

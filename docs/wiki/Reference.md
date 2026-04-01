@@ -73,7 +73,7 @@ All run via `node tests/runner.mjs validate <name>`. Full list: `node tests/runn
 ### Code-check, report and schema
 
 - `validate-code-check-traceability`
-- `validate-report-template-contract`
+- `validate-report-narrative-contract`
 - `validate-schema-migration`
 
 ### Regression

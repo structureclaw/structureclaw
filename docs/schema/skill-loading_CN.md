@@ -222,7 +222,7 @@ interface SkillLoadSummary {
 
 ### 5.4 无技能回退模式
 
-当没有加载任何技能（`skillIds` 为空或未提供）时，系统进入**无技能模式**（`agent-noskill-runtime.ts`）：
+当没有加载任何技能（`skillIds` 为空或未提供）时，系统进入**无技能模式**（`no-skill-runtime.ts`）：
 
 1. **草稿状态重置**：通过 `normalizeNoSkillDraftState()` 清除所有技能相关状态。
 2. **缺失字段引导**：返回提示，请用户提供完整的结构描述。
@@ -255,4 +255,4 @@ interface SkillLoadSummary {
 | `backend/src/agent-skills/analysis/registry.ts` | 分析技能文件系统发现 |
 | `backend/src/agent-skills/structure-type/registry.ts` | 结构类型提供者注册表 |
 | `backend/src/services/agent-skillhub.ts` | SkillHub 安装/启用/禁用/卸载服务 |
-| `backend/src/services/agent-noskill-runtime.ts` | 无技能回退 LLM 模型生成 |
+| `backend/src/agent-runtime/generic-support/no-skill-runtime.ts` | 无技能对话引导回退 |

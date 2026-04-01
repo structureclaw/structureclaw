@@ -148,7 +148,7 @@ Chat 与消息：
 校核、报告与 Schema：
 
 - `node tests/runner.mjs validate validate-code-check-traceability`
-- `node tests/runner.mjs validate validate-report-template-contract`
+- `node tests/runner.mjs validate validate-report-narrative-contract`
 - `node tests/runner.mjs validate validate-schema-migration`
 
 回归：

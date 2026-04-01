@@ -1585,7 +1585,7 @@ async function validateChatMessageRouting(context) {
   console.log("[ok] chat message routing contract");
 }
 
-async function validateReportTemplateContract(context) {
+async function validateReportNarrativeContract(context) {
   context.backendBuildReady = false;
   await runBackendBuildOnce(context);
   clearProviderEnv();
@@ -1671,7 +1671,7 @@ async function validateReportTemplateContract(context) {
     },
   };
 
-  const result = await svc.runForcedExecution({
+  const result = await svc.runWithStrategy({
     message: "请分析并按规范校核后出报告",
     context: {
       model: {
@@ -1693,6 +1693,10 @@ async function validateReportTemplateContract(context) {
       reportFormat: "both",
       reportOutput: "inline",
     },
+  }, {
+    planningDirective: "force_tool",
+    orchestrationMode: "directed",
+    allowToolCall: true,
   });
 
   assert(result.success === true, "run should succeed");
@@ -1707,7 +1711,7 @@ async function validateReportTemplateContract(context) {
   assert(result.report.markdown.includes("## 关键指标"), "report markdown should include key metrics section");
   assert(result.report.markdown.includes("## 条文追溯"), "report markdown should include traceability section");
   assert(result.report.markdown.includes("## 控制工况"), "report markdown should include controlling cases section");
-  console.log("[ok] report template contract");
+  console.log("[ok] report narrative contract");
 }
 
 async function validateDevStartupGuards(context) {
@@ -1801,7 +1805,7 @@ const BACKEND_VALIDATIONS = {
   "validate-agent-skillhub-repository-down": validateAgentSkillhubRepositoryDown,
   "validate-chat-stream-contract": validateChatStreamContract,
   "validate-chat-message-routing": validateChatMessageRouting,
-  "validate-report-template-contract": validateReportTemplateContract,
+  "validate-report-narrative-contract": validateReportNarrativeContract,
   "validate-dev-startup-guards": validateDevStartupGuards,
 };
 

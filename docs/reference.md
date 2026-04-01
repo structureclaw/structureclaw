@@ -148,7 +148,7 @@ Converter:
 Code-check, report and schema:
 
 - `node tests/runner.mjs validate validate-code-check-traceability`
-- `node tests/runner.mjs validate validate-report-template-contract`
+- `node tests/runner.mjs validate validate-report-narrative-contract`
 - `node tests/runner.mjs validate validate-schema-migration`
 
 Regression:
