@@ -267,6 +267,15 @@ The target refactor is:
 - public `mode` concepts are removed from product-facing interaction
 - orchestration becomes capability-driven instead of mode-driven
 
+### Current Implementation Status (2026-04)
+
+The runtime has already aligned key orchestration behavior with the target design:
+
+- internal planning directives are now simplified to `auto` and `force_tool`
+- planner output no longer decides concrete `toolId`; concrete tool selection is runtime-owned and skill-driven
+- `force_tool` bypasses planner branching and enters the skill-first execution path
+- `runInteractive` and `runInteractiveStream` remain as compatibility wrappers over `auto` with interactive-only behavior
+
 ## 12. Staged Refactor Plan
 
 ### Stage 1: Freeze Vocabulary and Contracts

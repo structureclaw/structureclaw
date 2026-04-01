@@ -268,6 +268,15 @@ Agent 只能在“当前启用 skill 集 + 当前启用 tool 集”内做决策�
 - 产品侧不再暴露 `mode` 语义
 - 整体从“模式驱动”改为“能力集驱动”
 
+### 当前实现状态（2026-04）
+
+当前运行时已经在关键编排行为上与目标设计对齐：
+
+- 内部 planning directive 已收敛为 `auto` 和 `force_tool`
+- planner 输出不再决定具体 `toolId`，具体工具选择改为 runtime 基于 skill 状态驱动
+- `force_tool` 会绕过 planner 分支决策并进入 skill-first 执行路径
+- `runInteractive` 与 `runInteractiveStream` 继续保留为兼容入口，本质上是 `auto` + interactive-only 行为
+
 ## 12. 分阶段重构计划
 
 ### 阶段 1：冻结术语和契约
