@@ -23,7 +23,6 @@ import { tryBuildGenericModelWithLlm } from '../agent-skills/structure-type/gene
 import { localize, withStructuralTypeState } from './plugin-helpers.js';
 import type {
   AgentSkillBundle,
-  AgentSkillPlugin,
   DraftParameterExtractionResult,
   DraftResult,
   DraftState,

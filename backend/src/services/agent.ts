@@ -7,7 +7,7 @@ import type { InputJsonValue } from '../utils/json.js';
 import { createChatModel } from '../utils/llm.js';
 import { prisma } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
-import { redis } from '../utils/redis.js';
+// redis is now accessed via agent-session.ts
 import { type AppLocale } from './locale.js';
 import { AgentPolicyService } from './agent-policy.js';
 import {
@@ -37,12 +37,10 @@ import { executeGenerateReportStep } from '../agent-tools/builtin/generate-repor
 import { executeRunAnalysisStep } from '../agent-tools/builtin/run-analysis.js';
 import { executeRunCodeCheckStep } from '../agent-tools/builtin/run-code-check.js';
 import { executeUpdateModelExecutionStep } from '../agent-tools/builtin/update-model.js';
-import { executeValidateModelStep } from '../agent-tools/builtin/validate-model.js';
-import { buildTurnContext, type TurnContext, type HandlerDeps, type RouteDecision } from './agent-context.js';
-import { handleChat, handleCollect, handleDraft } from './agent-handlers/index.js';
+// executeValidateModelStep is now accessed via agent-validation.ts
+import { buildTurnContext, type HandlerDeps, type RouteDecision } from './agent-context.js';
+import { handleChat } from './agent-handlers/index.js';
 import {
-  getSessionState,
-  transitionSession,
   getInteractionSession as getInteractionSessionFromStore,
   setInteractionSession as setInteractionSessionToStore,
   clearInteractionSession as clearInteractionSessionFromStore,

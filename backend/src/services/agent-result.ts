@@ -6,8 +6,6 @@ import type {
   AgentRunResult,
   AgentToolCall,
   AgentInteraction,
-  AgentInteractionState,
-  AgentInteractionStage,
   ActiveToolSet,
   InteractionDefaultProposal,
 } from './agent.js';

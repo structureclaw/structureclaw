@@ -1,11 +1,8 @@
 import type { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from './locale.js';
-import type { DraftState } from '../agent-runtime/index.js';
-import type { SessionState } from './agent-context.js';
 import type {
   AgentPlanKind,
   AgentPlanningDirective,
-  AgentReplyMode,
   AgentNextStepPlan,
   PlannerContextSnapshot,
   InteractionSession,
