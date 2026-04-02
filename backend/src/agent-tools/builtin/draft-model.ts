@@ -11,13 +11,12 @@ export async function executeDraftModel(args: {
   message: string;
   locale: AppLocale;
   skillIds?: string[];
-  prefetchedDraft?: DraftResult;
   workingSession: { draft?: DraftState; updatedAt: number };
   textToModelDraft: (message: string, existingState: DraftState | undefined, locale: AppLocale, skillIds?: string[]) => Promise<DraftResult>;
   isGenericFallbackDraft: (draft: DraftResult) => boolean;
   applyDraftToSession: (workingSession: any, draft: DraftResult, genericFallbackDraft: boolean, message: string) => void;
 }): Promise<{ draft: DraftResult; genericFallbackDraft: boolean }> {
-  const draft = args.prefetchedDraft ?? await args.textToModelDraft(args.message, args.workingSession.draft, args.locale, args.skillIds);
+  const draft = await args.textToModelDraft(args.message, args.workingSession.draft, args.locale, args.skillIds);
   const genericFallbackDraft = args.isGenericFallbackDraft(draft);
   args.applyDraftToSession(args.workingSession, draft, genericFallbackDraft, args.message);
   return {
@@ -33,7 +32,6 @@ export async function executeDraftModelInteractiveStep(args: {
   sessionKey?: string;
   plan: string[];
   toolCalls: any[];
-  prefetchedDraft?: DraftResult;
   workingSession: { draft?: DraftState; updatedAt: number };
   startToolCall: (tool: 'draft_model', input: Record<string, unknown>) => any;
   completeToolCallSuccess: (call: any, output: Record<string, unknown>) => void;
@@ -51,7 +49,6 @@ export async function executeDraftModelInteractiveStep(args: {
     message: args.message,
     locale: args.locale,
     skillIds: args.skillIds,
-    prefetchedDraft: args.prefetchedDraft,
     workingSession: args.workingSession,
     textToModelDraft: args.textToModelDraft,
     isGenericFallbackDraft: args.isGenericFallbackDraft,
@@ -75,7 +72,6 @@ export async function executeDraftModelExecutionStep(args: {
   sessionKey?: string;
   plan: string[];
   toolCalls: any[];
-  prefetchedDraft?: DraftResult;
   workingSession: { draft?: DraftState; updatedAt: number };
   startToolCall: (tool: 'draft_model', input: Record<string, unknown>) => any;
   completeToolCallSuccess: (call: any, output: Record<string, unknown>) => void;
@@ -92,7 +88,6 @@ export async function executeDraftModelExecutionStep(args: {
     message: args.message,
     locale: args.locale,
     skillIds: args.skillIds,
-    prefetchedDraft: args.prefetchedDraft,
     workingSession: args.workingSession,
     textToModelDraft: args.textToModelDraft,
     isGenericFallbackDraft: args.isGenericFallbackDraft,

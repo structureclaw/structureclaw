@@ -202,11 +202,6 @@ interface PreparedExecutionModel {
   validationWarning?: string;
 }
 
-interface SkillFirstDraftSnapshot {
-  draft: DraftResult;
-  noSkillEquivalentDraft: boolean;
-}
-
 interface ExecutionArtifacts {
   report?: AgentRunResult['report'];
   artifacts?: AgentRunResult['artifacts'];
@@ -1027,7 +1022,6 @@ export class AgentService {
     locale: AppLocale;
     activeToolIds?: ActiveToolSet;
     modelInput?: Record<string, unknown>;
-    prefetchedDraft?: SkillFirstDraftSnapshot;
     workingSession: InteractionSession;
   }): SkillDrivenToolDecision | null {
     const {
@@ -1035,10 +1029,9 @@ export class AgentService {
       locale,
       activeToolIds,
       modelInput,
-      prefetchedDraft,
       workingSession,
     } = args;
-    const hasModel = Boolean(modelInput || prefetchedDraft?.draft.model || workingSession.latestModel);
+    const hasModel = Boolean(modelInput || workingSession.latestModel);
     const asksUpdate = /(改成|改为|修改|更新|change\s+to|update|revise)/i.test(message);
     const asksModeling = /(设计|建模|模型|model|draft|design)/i.test(message);
     const asksFreshModel = /(重新|重建|从头|新建|全新|new|fresh|scratch|from\s+scratch)/i.test(message);
@@ -1050,17 +1043,6 @@ export class AgentService {
       return {
         toolId: 'update_model',
         reason: this.localize(locale, '命中模型修改意图，优先走 update_model', 'Detected model-update intent; prefer update_model'),
-      };
-    }
-
-    if (prefetchedDraft?.draft.model && this.hasActiveTool(activeToolIds, 'draft_model')) {
-      return {
-        toolId: 'draft_model',
-        reason: this.localize(
-          locale,
-          '本轮已完成结构草稿预解析，沿用 draft_model 作为执行入口',
-          'A structural draft was prefetched in this turn; keep draft_model as execution entrypoint',
-        ),
       };
     }
 
@@ -1524,18 +1506,6 @@ export class AgentService {
       ? 'directed'
       : 'llm-planned';
 
-    const prefetchedDraft = await this.prefetchSkillFirstDraftForPlanning({
-      params,
-      locale,
-      planningDirective,
-      allowToolCall,
-      skillIds,
-      activeToolIds,
-      modelInput,
-      plan,
-      workingSession,
-    });
-
     let nextPlan: AgentNextStepPlan;
     try {
       nextPlan = await this.planNextStep(params.message, {
@@ -1543,7 +1513,7 @@ export class AgentService {
         allowToolCall,
         locale,
         skillIds,
-        hasModel: Boolean(modelInput || prefetchedDraft?.draft.model || workingSession.latestModel),
+        hasModel: Boolean(modelInput || workingSession.latestModel),
         session: workingSession,
         activeToolIds,
         conversationId: sessionKey,
@@ -1593,7 +1563,6 @@ export class AgentService {
         sessionKey,
         workingSession,
         activeToolIds,
-        prefetchedDraft,
       });
     }
 
@@ -1602,7 +1571,6 @@ export class AgentService {
       locale,
       activeToolIds,
       modelInput,
-      prefetchedDraft,
       workingSession,
     });
     if (!skillDrivenToolDecision) {
@@ -1680,7 +1648,6 @@ export class AgentService {
       modelInput,
       hadExistingSession,
       selectedToolId,
-      prefetchedDraft,
     });
     if (!executableModel.ok) {
       return executableModel.result;
@@ -2177,9 +2144,8 @@ export class AgentService {
     sessionKey?: string;
     workingSession: InteractionSession;
     activeToolIds?: ActiveToolSet;
-    prefetchedDraft?: SkillFirstDraftSnapshot;
   }): Promise<AgentRunResult> {
-    const { nextPlan, params, traceId, startedAt, startedAtMs, locale, orchestrationMode, toolCalls, plan, sessionKey, workingSession, activeToolIds, prefetchedDraft } = args;
+    const { nextPlan, params, traceId, startedAt, startedAtMs, locale, orchestrationMode, toolCalls, plan, sessionKey, workingSession, activeToolIds } = args;
     const noSkillMode = this.hasEmptySkillSelection(params.context?.skillIds);
 
     if (noSkillMode) {
@@ -2247,7 +2213,6 @@ export class AgentService {
       toolCalls,
       sessionKey,
       workingSession,
-      prefetchedDraft,
     });
 
     if (genericFallbackDraft) {
@@ -2329,7 +2294,6 @@ export class AgentService {
     modelInput?: Record<string, unknown>;
     hadExistingSession: boolean;
     selectedToolId: AgentToolName;
-    prefetchedDraft?: SkillFirstDraftSnapshot;
   }): Promise<
     | { ok: true; model: Record<string, unknown> }
     | { ok: false; result: AgentRunResult }
@@ -2351,7 +2315,6 @@ export class AgentService {
       modelInput,
       hadExistingSession,
       selectedToolId,
-      prefetchedDraft,
     } = args;
 
     if (selectedToolId === 'update_model') {
@@ -2373,7 +2336,7 @@ export class AgentService {
       });
     }
 
-    const candidateModel = modelInput || prefetchedDraft?.draft.model || workingSession.latestModel;
+    const candidateModel = modelInput || workingSession.latestModel;
     if (candidateModel && selectedToolId !== 'draft_model') {
       return { ok: true, model: candidateModel };
     }
@@ -2408,7 +2371,6 @@ export class AgentService {
       sessionKey,
       plan,
       toolCalls,
-      prefetchedDraft: prefetchedDraft?.draft,
       workingSession,
       startToolCall: this.startToolCall.bind(this),
       completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
@@ -2417,7 +2379,7 @@ export class AgentService {
       applyDraftToSession: this.applyDraftToSession.bind(this),
     });
     const draft = draftExecution.draft;
-    const genericFallbackDraft = prefetchedDraft?.noSkillEquivalentDraft ?? draftExecution.genericFallbackDraft;
+    const genericFallbackDraft = draftExecution.genericFallbackDraft;
 
     if (workingSession.userApprovedAutoDecide) {
       for (let i = 0; i < 3; i += 1) {
@@ -3070,7 +3032,6 @@ export class AgentService {
     toolCalls: AgentToolCall[];
     sessionKey?: string;
     workingSession: InteractionSession;
-    prefetchedDraft?: SkillFirstDraftSnapshot;
   }): Promise<{
     draft: DraftResult;
     genericFallbackDraft: boolean;
@@ -3083,7 +3044,6 @@ export class AgentService {
       toolCalls,
       sessionKey,
       workingSession,
-      prefetchedDraft,
     } = args;
 
     return executeDraftModelInteractiveStep({
@@ -3093,7 +3053,6 @@ export class AgentService {
       sessionKey,
       plan,
       toolCalls,
-      prefetchedDraft: prefetchedDraft?.draft,
       workingSession,
       startToolCall: this.startToolCall.bind(this),
       completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
@@ -3122,47 +3081,6 @@ export class AgentService {
     }
     workingSession.updatedAt = Date.now();
     this.applyInferredNonCriticalFromMessage(workingSession, message);
-  }
-
-  private async prefetchSkillFirstDraftForPlanning(args: {
-    params: AgentRunInput;
-    locale: AppLocale;
-    planningDirective: AgentPlanningDirective;
-    allowToolCall: boolean;
-    skillIds?: string[];
-    activeToolIds?: ActiveToolSet;
-    modelInput?: Record<string, unknown>;
-    plan: string[];
-    workingSession: InteractionSession;
-  }): Promise<SkillFirstDraftSnapshot | undefined> {
-    const {
-      params,
-      locale,
-      allowToolCall,
-      skillIds,
-      modelInput,
-      plan,
-      workingSession,
-    } = args;
-    if (!allowToolCall) {
-      return undefined;
-    }
-    if (this.hasEmptySkillSelection(skillIds)) {
-      return undefined;
-    }
-    if (modelInput) {
-      return undefined;
-    }
-
-    plan.push(this.localize(
-      locale,
-      '先由结构 skill 预解析本轮输入，再决定后续执行工具',
-      'Run structure skill parsing before planner tool selection for this turn',
-    ));
-    const draft = await this.textToModelDraft(params.message, workingSession.draft, locale, skillIds);
-    const genericFallbackDraft = this.isGenericFallbackDraft(draft);
-    this.applyDraftToSession(workingSession, draft, genericFallbackDraft, params.message);
-    return { draft, noSkillEquivalentDraft: genericFallbackDraft };
   }
 
   private async renderDirectReply(
