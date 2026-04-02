@@ -23,6 +23,8 @@ import { tryBuildGenericModelWithLlm } from '../agent-skills/structure-type/gene
 import { localize, withStructuralTypeState } from './plugin-helpers.js';
 import type {
   AgentSkillBundle,
+  AgentSkillPlugin,
+  DraftParameterExtractionResult,
   DraftResult,
   DraftState,
   InteractionQuestion,
@@ -42,6 +44,7 @@ export type {
   DraftFloorLoad,
   DraftLoadPosition,
   DraftLoadType,
+  DraftParameterExtractionResult,
   DraftResult,
   DraftState,
   DraftSupportType,
@@ -377,13 +380,13 @@ export class AgentSkillRuntime {
     };
   }
 
-  async textToModelDraft(
+  async extractDraftParameters(
     llm: ChatOpenAI | null,
     message: string,
     existingState: DraftState | undefined,
     locale: AppLocale,
-    skillIds?: string[]
-  ): Promise<DraftResult> {
+    skillIds?: string[],
+  ): Promise<DraftParameterExtractionResult> {
     const structuralTypeMatch = await this.registry.detectStructuralType(message, locale, existingState, skillIds);
     if (!structuralTypeMatch.skillId) {
       const stateToPersist: DraftState = {
@@ -394,22 +397,22 @@ export class AgentSkillRuntime {
         updatedAt: Date.now(),
       };
       return {
-        inferredType: 'unknown',
-        missingFields: ['inferredType'],
-        extractionMode: 'deterministic',
-        stateToPersist,
+        nextState: stateToPersist,
+        missing: { critical: ['inferredType'], optional: [] },
         structuralTypeMatch,
+        plugin: undefined,
+        extractionMode: 'deterministic',
       };
     }
 
     const plugin = await this.registry.resolvePluginForIdentifier(structuralTypeMatch.skillId, skillIds);
     if (!plugin) {
       return {
-        inferredType: existingState?.inferredType || 'unknown',
-        missingFields: ['inferredType'],
-        extractionMode: 'deterministic',
-        stateToPersist: existingState,
+        nextState: existingState || { inferredType: 'unknown', updatedAt: Date.now() },
+        missing: { critical: ['inferredType'], optional: [] },
         structuralTypeMatch,
+        plugin: undefined,
+        extractionMode: 'deterministic',
       };
     }
 
@@ -429,9 +432,27 @@ export class AgentSkillRuntime {
     });
     const nextState = withStructuralTypeState(plugin.handler.mergeState(existingState, patch), structuralTypeMatch);
     const missing = plugin.handler.computeMissing(nextState, 'execution');
-    let model = missing.critical.length === 0 ? plugin.handler.buildModel(nextState) : undefined;
+    return {
+      nextState,
+      missing,
+      structuralTypeMatch,
+      plugin,
+      extractionMode: plugin.id === 'generic' || execution.draftPatch ? 'llm' : 'deterministic',
+    };
+  }
+
+  async buildModelFromDraft(
+    llm: ChatOpenAI | null,
+    message: string,
+    extraction: DraftParameterExtractionResult,
+    locale: AppLocale,
+  ): Promise<DraftResult> {
+    const { nextState, missing, structuralTypeMatch, plugin, extractionMode } = extraction;
+    let model = missing.critical.length === 0 && plugin
+      ? plugin.handler.buildModel(nextState)
+      : undefined;
     let missingFields = [...missing.critical];
-    if (!model && plugin.id === 'generic') {
+    if (!model && plugin?.id === 'generic') {
       const llmBuiltModel = await tryBuildGenericModelWithLlm(llm, message, nextState, locale);
       if (llmBuiltModel) {
         model = llmBuiltModel;
@@ -442,10 +463,21 @@ export class AgentSkillRuntime {
       inferredType: nextState.inferredType,
       missingFields,
       model,
-      extractionMode: plugin.id === 'generic' || execution.draftPatch ? 'llm' : 'deterministic',
+      extractionMode,
       stateToPersist: nextState,
       structuralTypeMatch,
     };
+  }
+
+  async textToModelDraft(
+    llm: ChatOpenAI | null,
+    message: string,
+    existingState: DraftState | undefined,
+    locale: AppLocale,
+    skillIds?: string[]
+  ): Promise<DraftResult> {
+    const extraction = await this.extractDraftParameters(llm, message, existingState, locale, skillIds);
+    return this.buildModelFromDraft(llm, message, extraction, locale);
   }
 
   async assessDraft(
