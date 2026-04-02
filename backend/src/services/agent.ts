@@ -48,6 +48,7 @@ import {
   clearInteractionSession as clearInteractionSessionFromStore,
   buildInteractionSessionKey as buildSessionKey,
 } from './agent-session.js';
+import { validateWithRetry } from './agent-validation.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'directed' | 'llm-planned';
@@ -1979,58 +1980,61 @@ export class AgentService {
       };
     }
 
-    const step = await executeValidateModelStep({
-      locale,
-      model: normalizedModel,
-      engineId: params.context?.engineId,
-      autoAnalyze,
-      wasGeneratedThisTurn: this.wasGeneratedThisTurn(toolCalls),
-      plan,
-      toolCalls,
-      localize: this.localize.bind(this),
-      loggerWarn: (meta, message) => logger.warn(meta, message),
-      startToolCall: this.startToolCall.bind(this),
-      completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
-      completeToolCallError: this.completeToolCallError.bind(this),
-      shouldBypassValidateFailure: this.shouldBypassValidateFailure.bind(this),
-      buildBlockedResult: async (response) => this.finalizeBlockedRunResult({
-        params,
-        traceId,
-        startedAt,
-        startedAtMs,
+    const step = await validateWithRetry(
+      normalizedModel,
+      this.wasGeneratedThisTurn(toolCalls),
+      {
         locale,
-        orchestrationMode,
-        skillIds: activeSkillIds ?? skillIds,
-        selectedSkillIds: skillIds,
-        plan,
-        toolCalls,
-        sessionKey,
-        workingSession,
-        response,
-        model: normalizedModel,
-      }),
-      buildGeneratedModelValidationClarification: async (validationError) => this.buildGeneratedModelValidationClarification({
-        params,
-        traceId,
-        startedAt,
-        startedAtMs,
-        locale,
-        orchestrationMode,
-        skillIds,
-        activeSkillIds,
-        plan,
-        toolCalls,
-        sessionKey,
-        workingSession,
-        validationError,
-      }),
-      traceId,
-      runValidate: async () => this.skillRuntime.executeValidationSkill({
-        model: normalizedModel,
         engineId: params.context?.engineId,
-        structureProtocolClient: this.structureProtocolClient,
-      }),
-    });
+        autoAnalyze,
+        plan,
+        toolCalls,
+        traceId,
+        llm: this.llm,
+        localize: this.localize.bind(this),
+        loggerWarn: (meta, message) => logger.warn(meta, message),
+        startToolCall: this.startToolCall.bind(this),
+        completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
+        completeToolCallError: this.completeToolCallError.bind(this),
+        shouldBypassValidateFailure: this.shouldBypassValidateFailure.bind(this),
+        buildBlockedResult: async (response) => this.finalizeBlockedRunResult({
+          params,
+          traceId,
+          startedAt,
+          startedAtMs,
+          locale,
+          orchestrationMode,
+          skillIds: activeSkillIds ?? skillIds,
+          selectedSkillIds: skillIds,
+          plan,
+          toolCalls,
+          sessionKey,
+          workingSession,
+          response,
+          model: normalizedModel,
+        }),
+        buildGeneratedModelValidationClarification: async (validationError) => this.buildGeneratedModelValidationClarification({
+          params,
+          traceId,
+          startedAt,
+          startedAtMs,
+          locale,
+          orchestrationMode,
+          skillIds,
+          activeSkillIds,
+          plan,
+          toolCalls,
+          sessionKey,
+          workingSession,
+          validationError,
+        }),
+        runValidate: (model) => this.skillRuntime.executeValidationSkill({
+          model,
+          engineId: params.context?.engineId,
+          structureProtocolClient: this.structureProtocolClient,
+        }),
+      },
+    );
 
     if (!step.ok) {
       return {
@@ -2042,8 +2046,8 @@ export class AgentService {
     return {
       ok: true,
       value: {
-        normalizedModel: step.normalizedModel,
-        validationWarning: step.validationWarning,
+        normalizedModel: step.model,
+        validationWarning: step.warning,
       },
     };
   }
