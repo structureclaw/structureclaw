@@ -40,6 +40,14 @@ import { executeUpdateModelExecutionStep } from '../agent-tools/builtin/update-m
 import { executeValidateModelStep } from '../agent-tools/builtin/validate-model.js';
 import { buildTurnContext, type TurnContext, type HandlerDeps, type RouteDecision } from './agent-context.js';
 import { handleChat, handleCollect, handleDraft } from './agent-handlers/index.js';
+import {
+  getSessionState,
+  transitionSession,
+  getInteractionSession as getInteractionSessionFromStore,
+  setInteractionSession as setInteractionSessionToStore,
+  clearInteractionSession as clearInteractionSessionFromStore,
+  buildInteractionSessionKey as buildSessionKey,
+} from './agent-session.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'directed' | 'llm-planned';
@@ -57,10 +65,14 @@ export type AgentInteractionStage = 'intent' | 'model' | 'loads' | 'analysis' | 
 export type AgentInteractionRouteHint = 'prefer_interactive' | 'prefer_tool';
 
 export interface InteractionSession {
+  state?: import('./agent-context.js').SessionState;
+  stateReason?: string;
   draft?: DraftState;
   structuralTypeMatch?: StructuralTypeMatch;
   latestModel?: Record<string, unknown>;
   userApprovedAutoDecide?: boolean;
+  validationAttempts?: number;
+  lastValidationError?: string;
   resolved?: {
     analysisType?: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
     designCode?: string;
@@ -197,6 +209,7 @@ export interface PlannerContextSnapshot {
   skillIds: string[];
   recentConversation: string[];
   lastAssistantMessage?: string;
+  sessionState?: import('./agent-context.js').SessionState;
 }
 
 interface PreparedExecutionModel {
@@ -506,6 +519,7 @@ export class AgentService {
       skillIds: Array.isArray(options.skillIds) ? [...options.skillIds] : [],
       recentConversation,
       lastAssistantMessage,
+      sessionState: options.session?.state,
     };
   }
 
@@ -4804,47 +4818,19 @@ export class AgentService {
   }
 
   private buildInteractionSessionKey(conversationId: string): string {
-    return `agent:interaction-session:${conversationId}`;
+    return buildSessionKey(conversationId);
   }
 
   private async getInteractionSession(conversationId: string | undefined): Promise<InteractionSession | undefined> {
-    if (!conversationId) {
-      return undefined;
-    }
-
-    try {
-      const raw = await redis.get(this.buildInteractionSessionKey(conversationId));
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === 'object' && parsed.draft) {
-          return parsed as InteractionSession;
-        }
-      }
-    } catch {
-      return undefined;
-    }
-
-    return undefined;
+    return getInteractionSessionFromStore(conversationId);
   }
 
   private async setInteractionSession(conversationId: string, session: InteractionSession): Promise<void> {
-    try {
-      await redis.setex(
-        this.buildInteractionSessionKey(conversationId),
-        AgentService.draftStateTtlSeconds,
-        JSON.stringify(session),
-      );
-    } catch {
-      // Keep non-blocking behavior for session persistence.
-    }
+    return setInteractionSessionToStore(conversationId, session);
   }
 
   private async clearInteractionSession(conversationId: string): Promise<void> {
-    try {
-      await redis.del(this.buildInteractionSessionKey(conversationId));
-    } catch {
-      // Keep non-blocking behavior for session cleanup.
-    }
+    return clearInteractionSessionFromStore(conversationId);
   }
 
   private logRunResult(traceId: string, conversationId: string | undefined, result: AgentRunResult): void {
