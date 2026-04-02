@@ -37,8 +37,8 @@ test.describe('Database admin page', () => {
 
   test('shows file path', async ({ page }) => {
     await dbPage.goto();
-    // Check that a path is displayed (the exact path depends on CI env)
-    await expect(page.getByText(/test-e2e\.db/)).toBeVisible();
+    // Check that a path is displayed (matches the mocked filePath)
+    await expect(page.getByText(/test-e2e\//)).toBeVisible();
   });
 
   test('handles API error gracefully', async ({ page }) => {
