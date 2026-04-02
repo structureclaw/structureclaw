@@ -415,6 +415,15 @@ export class AgentSkillRuntime {
       };
     }
 
+    if (plugin.id === 'generic' && existingState?.inferredType && existingState.inferredType !== 'unknown') {
+      const nextState = withStructuralTypeState(
+        plugin.handler.mergeState(existingState, {}),
+        structuralTypeMatch,
+      );
+      const missing = plugin.handler.computeMissing(nextState, 'execution');
+      return { nextState, missing, structuralTypeMatch, plugin, extractionMode: 'deterministic' };
+    }
+
     const executor = new AgentSkillExecutor(llm);
     const execution = await executor.execute({
       message,

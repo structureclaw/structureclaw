@@ -35,11 +35,11 @@ const INTENT_CONFIGS: Record<GenericModelPromptIntent, PromptIntentConfig> = {
         lines.push(locale === 'zh' ? `对话历史:\n${conversationHistory}` : `Conversation history:\n${conversationHistory}`);
       }
       if (locale === 'zh') {
-        lines.push(`已有草模信息: ${stateHint}`);
-        lines.push(`用户输入: ${message}`);
+        lines.push(`已确认参数: ${stateHint}`);
+        lines.push(`用户最新输入: ${message}`);
       } else {
-        lines.push(`Current draft hints: ${stateHint}`);
-        lines.push(`User request: ${message}`);
+        lines.push(`Confirmed parameters: ${stateHint}`);
+        lines.push(`Latest user message: ${message}`);
       }
       return lines;
     },
