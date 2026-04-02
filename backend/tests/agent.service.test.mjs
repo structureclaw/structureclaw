@@ -1877,7 +1877,7 @@ describe('AgentService orchestration', () => {
     expect(draft.missingFields).toEqual(['inferredType']);
   });
 
-  test('should let generic refine the structural draft only from llm patch output', async () => {
+  test('should let generic extract only inferredType from llm patch output (metadata-only)', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = {
       invoke: async () => ({
@@ -1905,13 +1905,13 @@ describe('AgentService orchestration', () => {
     );
 
     expect(draft.extractionMode).toBe('llm');
-    expect(draft.inferredType).toBe('unknown');
-    expect(draft.stateToPersist?.inferredType).toBe('unknown');
-    expect(draft.stateToPersist?.frameDimension).toBe('3d');
-    expect(draft.stateToPersist?.storyCount).toBe(3);
-    expect(draft.stateToPersist?.bayCountX).toBe(4);
-    expect(draft.stateToPersist?.bayCountY).toBe(3);
-    expect(draft.model).toBeUndefined();
+    expect(draft.inferredType).toBe('frame');
+    expect(draft.stateToPersist?.inferredType).toBe('frame');
+    expect(draft.stateToPersist?.skillId).toBe('generic');
+    expect(draft.stateToPersist?.frameDimension).toBeUndefined();
+    expect(draft.stateToPersist?.storyCount).toBeUndefined();
+    expect(draft.stateToPersist?.bayCountX).toBeUndefined();
+    expect(draft.stateToPersist?.bayCountY).toBeUndefined();
   });
 
   test('should let generic keep unknown draft type and still return a full llm-built beam model', async () => {
@@ -1974,8 +1974,8 @@ describe('AgentService orchestration', () => {
     );
 
     expect(callCount).toBe(2);
-    expect(draft.inferredType).toBe('unknown');
-    expect(draft.stateToPersist?.inferredType).toBe('unknown');
+    expect(draft.inferredType).toBe('beam');
+    expect(draft.stateToPersist?.inferredType).toBe('beam');
     expect(draft.stateToPersist?.skillId).toBe('generic');
     expect(draft.model?.elements).toHaveLength(10);
     expect(draft.model?.nodes).toHaveLength(11);
