@@ -1,9 +1,6 @@
 import type { AppLocale } from '../services/locale.js';
 import type { DraftState } from './types.js';
-
-function localize(locale: AppLocale, zh: string, en: string): string {
-  return locale === 'zh' ? zh : en;
-}
+import { localize } from './plugin-helpers.js';
 
 export function computeMissingCriticalKeys(state: DraftState): string[] {
   const missing: string[] = [];

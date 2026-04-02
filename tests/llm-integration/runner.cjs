@@ -104,24 +104,45 @@ async function runExtractionTest(runtime, llm, testCase) {
   }
 
   if (expected.draftPatch) {
-    const state = result.stateToPersist || {};
-    for (const [key, expectedValue] of Object.entries(expected.draftPatch)) {
-      const actualValue = state[key];
-      if (expectedValue === null || expectedValue === undefined) continue;
+    assertDraftPatch(result.stateToPersist || {}, expected.draftPatch);
+  }
+}
 
-      if (typeof expectedValue === "object" && expectedValue.value !== undefined) {
-        // Numeric with tolerance
-        assert(typeof actualValue === "number", `expected ${key} to be a number, got ${typeof actualValue}: ${actualValue}`);
-        const tolerance = expectedValue.tolerance || 0.05;
-        const diff = Math.abs(actualValue - expectedValue.value) / Math.abs(expectedValue.value || 1);
-        assert(diff <= tolerance, `expected ${key}=${expectedValue.value} (±${(tolerance * 100).toFixed(0)}%), got ${actualValue}`);
+/**
+ * Assert draftPatch fields against expected values.
+ * Supports: { value: number, tolerance } for scalars,
+ *           { value: number[], tolerance } for arrays,
+ *           exact string/number match otherwise.
+ */
+function assertDraftPatch(state, expectedPatch) {
+  for (const [key, expectedValue] of Object.entries(expectedPatch)) {
+    const actualValue = state[key];
+    if (expectedValue === null || expectedValue === undefined) continue;
+
+    if (typeof expectedValue === "object" && expectedValue.value !== undefined) {
+      const tolerance = expectedValue.tolerance || 0.05;
+      const expected = expectedValue.value;
+
+      if (Array.isArray(expected)) {
+        // Array with tolerance: compare element-wise
+        assert(Array.isArray(actualValue), `expected ${key} to be an array, got ${typeof actualValue}: ${actualValue}`);
+        assert(actualValue.length === expected.length, `expected ${key} length ${expected.length}, got ${actualValue.length}`);
+        for (let i = 0; i < expected.length; i++) {
+          const diff = Math.abs(actualValue[i] - expected[i]) / Math.abs(expected[i] || 1);
+          assert(diff <= tolerance, `expected ${key}[${i}]=${expected[i]} (±${(tolerance * 100).toFixed(0)}%), got ${actualValue[i]}`);
+        }
       } else {
-        // Exact match
-        assert(
-          actualValue === expectedValue,
-          `expected ${key}="${expectedValue}", got "${actualValue}"`
-        );
+        // Scalar number with tolerance
+        assert(typeof actualValue === "number", `expected ${key} to be a number, got ${typeof actualValue}: ${actualValue}`);
+        const diff = Math.abs(actualValue - expected) / Math.abs(expected || 1);
+        assert(diff <= tolerance, `expected ${key}=${expected} (±${(tolerance * 100).toFixed(0)}%), got ${actualValue}`);
       }
+    } else {
+      // Exact match (string, number, etc.)
+      assert(
+        actualValue === expectedValue,
+        `expected ${key}="${expectedValue}", got "${actualValue}"`
+      );
     }
   }
 }
@@ -196,20 +217,7 @@ async function runClarificationTest(runtime, llm, testCase) {
       }
     }
     if (expected.draftPatch) {
-      const state = result.stateToPersist || {};
-      for (const [key, expectedValue] of Object.entries(expected.draftPatch)) {
-        const actualValue = state[key];
-        if (expectedValue === null || expectedValue === undefined) continue;
-
-        if (typeof expectedValue === "object" && expectedValue.value !== undefined) {
-          assert(typeof actualValue === "number", `expected ${key} to be a number, got ${typeof actualValue}: ${actualValue}`);
-          const tolerance = expectedValue.tolerance || 0.05;
-          const diff = Math.abs(actualValue - expectedValue.value) / Math.abs(expectedValue.value || 1);
-          assert(diff <= tolerance, `expected ${key}=${expectedValue.value} (±${(tolerance * 100).toFixed(0)}%), got ${actualValue}`);
-        } else {
-          assert(actualValue === expectedValue, `expected ${key}="${expectedValue}", got "${actualValue}"`);
-        }
-      }
+      assertDraftPatch(result.stateToPersist || {}, expected.draftPatch);
     }
   }
 }
@@ -221,6 +229,14 @@ async function runClarificationTest(runtime, llm, testCase) {
 async function runLlmIntegrationTests(rootDir, args) {
   const maxAttempts = 4; // 1 initial + 3 retries
   const context = resolveIntegrationContext(rootDir);
+
+  // Inject LLM env vars into process.env BEFORE importing backend modules.
+  // The backend config module reads process.env at import time.
+  for (const [k, v] of Object.entries(context.env)) {
+    if (v !== undefined && v !== "") {
+      process.env[k] = v;
+    }
+  }
 
   // Ensure backend is built
   const { runBackendBuildOnce } = require("../regression/shared.js");

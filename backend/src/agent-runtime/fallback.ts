@@ -16,10 +16,7 @@ import type {
   StructuralTypeKey,
 } from './types.js';
 import { buildModel as buildDraftModel } from './model-builder.js';
-
-function localize(locale: AppLocale, zh: string, en: string): string {
-  return locale === 'zh' ? zh : en;
-}
+import { localize } from './plugin-helpers.js';
 
 function repeatValue(count: number | undefined, value: number | undefined): number[] | undefined {
   if (!count || !value || count <= 0 || value <= 0) {
@@ -187,7 +184,7 @@ export function normalizeFloorLoads(value: unknown): DraftFloorLoad[] | undefine
   return filtered.length > 0 ? filtered : undefined;
 }
 
-export function buildUnsupportedStructuralType(
+function buildUnsupportedStructuralType(
   locale: AppLocale,
   key: StructuralTypeKey,
   noteZh: string,
@@ -255,7 +252,7 @@ export function detectUnsupportedStructuralTypeByRules(message: string, locale: 
   return null;
 }
 
-export function inferDraftType(text: string): InferredModelType {
+function inferDraftType(text: string): InferredModelType {
   if (text.includes('门式刚架') || text.includes('portal frame')) {
     return 'portal-frame';
   }
@@ -274,7 +271,7 @@ export function inferDraftType(text: string): InferredModelType {
   return 'unknown';
 }
 
-export function extractLoadType(text: string): DraftLoadType | undefined {
+function extractLoadType(text: string): DraftLoadType | undefined {
   if (text.includes('均布') || text.includes('distributed') || text.includes('uniform') || text.includes('udl')) {
     return 'distributed';
   }
@@ -287,7 +284,7 @@ export function extractLoadType(text: string): DraftLoadType | undefined {
   return undefined;
 }
 
-export function extractSupportType(text: string): DraftSupportType | undefined {
+function extractSupportType(text: string): DraftSupportType | undefined {
   if (
     text.includes('fixed-pinned')
     || text.includes('fixed pinned')
@@ -317,7 +314,7 @@ export function extractSupportType(text: string): DraftSupportType | undefined {
   return undefined;
 }
 
-export function extractLoadPosition(
+function extractLoadPosition(
   text: string,
   inferredType: InferredModelType,
   loadType: DraftLoadType | undefined,
@@ -348,7 +345,7 @@ export function extractLoadPosition(
   return undefined;
 }
 
-export function mergeDraftExtraction(preferred: DraftExtraction | null, fallback: DraftExtraction): DraftExtraction {
+function mergeDraftExtraction(preferred: DraftExtraction | null, fallback: DraftExtraction): DraftExtraction {
   return {
     inferredType: preferred?.inferredType && preferred.inferredType !== 'unknown' ? preferred.inferredType : fallback.inferredType,
     lengthM: preferred?.lengthM ?? fallback.lengthM,
@@ -421,7 +418,7 @@ export function mergeDraftState(existing: DraftState | undefined, patch: DraftEx
   };
 }
 
-export function computeMissingFields(state: DraftState): string[] {
+function computeMissingFields(state: DraftState): string[] {
   const missing: string[] = [];
   if (state.inferredType === 'unknown') {
     missing.push('结构体系/构件拓扑描述（不限类型，可直接给结构模型JSON）');
@@ -496,7 +493,7 @@ export function computeMissingFields(state: DraftState): string[] {
   return missing;
 }
 
-export function computeMissingCriticalKeys(state: DraftState): string[] {
+function computeMissingCriticalKeys(state: DraftState): string[] {
   const missing: string[] = [];
   if (state.inferredType === 'unknown') {
     missing.push('inferredType');
@@ -571,7 +568,7 @@ export function computeMissingCriticalKeys(state: DraftState): string[] {
   return missing;
 }
 
-export function computeMissingLoadDetailKeys(state: DraftState): string[] {
+function computeMissingLoadDetailKeys(state: DraftState): string[] {
   if (state.inferredType === 'unknown' || state.inferredType === 'frame') {
     return [];
   }
@@ -588,7 +585,7 @@ export function computeMissingLoadDetailKeys(state: DraftState): string[] {
   return missing;
 }
 
-export function mapMissingFieldLabels(missing: string[], locale: AppLocale): string[] {
+function mapMissingFieldLabels(missing: string[], locale: AppLocale): string[] {
   return missing.map((key) => {
     switch (key) {
       case 'inferredType':
@@ -633,7 +630,7 @@ export function mapMissingFieldLabels(missing: string[], locale: AppLocale): str
   });
 }
 
-export function buildSupportTypeQuestion(locale: AppLocale): string {
+function buildSupportTypeQuestion(locale: AppLocale): string {
   return localize(
     locale,
     '请确认支座/边界条件（悬臂、简支、两端固结或固铰）。',
@@ -641,7 +638,7 @@ export function buildSupportTypeQuestion(locale: AppLocale): string {
   );
 }
 
-export function buildLoadTypeQuestion(type: InferredModelType, locale: AppLocale): string {
+function buildLoadTypeQuestion(type: InferredModelType, locale: AppLocale): string {
   switch (type) {
     case 'beam':
       return localize(locale, '请确认荷载形式（点荷载或均布荷载）。', 'Please confirm the load type (point or distributed).');
@@ -656,7 +653,7 @@ export function buildLoadTypeQuestion(type: InferredModelType, locale: AppLocale
   }
 }
 
-export function buildLoadPositionQuestion(type: InferredModelType, locale: AppLocale): string {
+function buildLoadPositionQuestion(type: InferredModelType, locale: AppLocale): string {
   switch (type) {
     case 'beam':
       return localize(locale, '请确认荷载位置（可说端部/跨中/全跨，也可直接给距左端 x m）。', 'Please confirm the load position (end / midspan / full span), or provide an offset x m from the left end.');
@@ -728,7 +725,7 @@ export function buildInteractionQuestions(
   });
 }
 
-export function getStructuralTypeLabel(key: StructuralTypeKey, locale: AppLocale, bundles: AgentSkillBundle[]): string {
+function getStructuralTypeLabel(key: StructuralTypeKey, locale: AppLocale, bundles: AgentSkillBundle[]): string {
   const matched = bundles.find((bundle) => bundle.id === key || bundle.structureType === key);
   if (matched) {
     return locale === 'zh' ? matched.name.zh : matched.name.en;
@@ -761,7 +758,7 @@ export function buildModel(state: DraftState): Record<string, unknown> {
   return buildDraftModel(state);
 }
 
-export function buildDraftResult(message: string, existingState: DraftState | undefined, llmExtraction: DraftExtraction | null): DraftResult {
+function buildDraftResult(message: string, existingState: DraftState | undefined, llmExtraction: DraftExtraction | null): DraftResult {
   void message;
   const extractionMode: 'llm' | 'deterministic' = llmExtraction ? 'llm' : 'deterministic';
   const mergedExtraction = llmExtraction ?? {};
