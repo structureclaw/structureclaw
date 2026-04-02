@@ -194,6 +194,7 @@ type AgentSkillSummary = SkillMetadataLike & {
   stages?: string[]
   triggers?: string[]
   autoLoadByDefault?: boolean
+  domain?: string
 }
 
 type CapabilitySkillSummary = {
