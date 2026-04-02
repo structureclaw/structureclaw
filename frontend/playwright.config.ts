@@ -26,7 +26,7 @@ export default defineConfig({
     {
       command: 'cd ../backend && npm run db:deploy && npm run build && node dist/index.js',
       port: 30010,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: true,
       timeout: 60_000,
       env: {
         PORT: '30010',
@@ -40,7 +40,7 @@ export default defineConfig({
     {
       command: 'npx next dev -p 30000',
       port: 30000,
-      reuseExistingServer: !process.env.CI,
+      reuseExistingServer: true,
       timeout: 60_000,
       env: {
         NEXT_PUBLIC_API_URL: 'http://localhost:30010',
