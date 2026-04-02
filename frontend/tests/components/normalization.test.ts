@@ -783,7 +783,7 @@ describe('normalizeVisualizationSnapshot', () => {
   // xz displacement with uy undefined (branch coverage)
   // -------------------------------------------------------------------------
   describe('xz displacement with uy undefined', () => {
-    it('sets uy to undefined when original uy was undefined', () => {
+    it('returns unchanged snapshot when uy is undefined and uz is insignificant', () => {
       const nodeResults = {
         n1: { displacement: { ux: 1, uz: 0 } as any },
       }
@@ -806,7 +806,7 @@ describe('normalizeVisualizationSnapshot', () => {
   // xy displacement with uz undefined (branch coverage)
   // -------------------------------------------------------------------------
   describe('xy displacement with uz undefined', () => {
-    it('handles xy displacement swap when uz is undefined', () => {
+    it('returns unchanged snapshot when uz is undefined and uy is insignificant', () => {
       const nodeResults = {
         n1: { displacement: { ux: 1, uy: 0 } as any },
       }

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from '@jest/globals';
+import { afterAll, beforeAll, describe, expect, test, jest } from '@jest/globals';
 import Fastify from 'fastify';
 
 describe('project routes', () => {
@@ -40,34 +40,34 @@ describe('project routes', () => {
   beforeAll(async () => {
     const { ProjectService } = await import('../dist/services/project.js');
 
-    ProjectService.prototype.createProject = async function mockCreateProject(params) {
+    jest.spyOn(ProjectService.prototype, 'createProject').mockImplementation(async function (params) {
       return { ...mockProject, name: params.name, type: params.type, ownerId: params.ownerId };
-    };
+    });
 
-    ProjectService.prototype.listProjects = async function mockListProjects(userId, filters) {
+    jest.spyOn(ProjectService.prototype, 'listProjects').mockImplementation(async function (userId, filters) {
       return [{ ...mockProject, ownerId: userId, ...(filters.status && { status: filters.status }) }];
-    };
+    });
 
-    ProjectService.prototype.getProject = async function mockGetProject(id) {
+    jest.spyOn(ProjectService.prototype, 'getProject').mockImplementation(async function (id) {
       if (id === 'not-found') return null;
       return { ...mockProjectDetail, id };
-    };
+    });
 
-    ProjectService.prototype.updateProject = async function mockUpdateProject(id, data) {
+    jest.spyOn(ProjectService.prototype, 'updateProject').mockImplementation(async function (id, data) {
       return { ...mockProject, id, ...data };
-    };
+    });
 
-    ProjectService.prototype.deleteProject = async function mockDeleteProject(id) {
+    jest.spyOn(ProjectService.prototype, 'deleteProject').mockImplementation(async function (id) {
       return { ...mockProject, id };
-    };
+    });
 
-    ProjectService.prototype.addMember = async function mockAddMember(projectId, userId, role) {
+    jest.spyOn(ProjectService.prototype, 'addMember').mockImplementation(async function (projectId, userId, role) {
       return { ...mockMember, projectId, userId, role };
-    };
+    });
 
-    ProjectService.prototype.getProjectStats = async function mockGetProjectStats(id) {
+    jest.spyOn(ProjectService.prototype, 'getProjectStats').mockImplementation(async function (id) {
       return { ...mockStats, projectId: id };
-    };
+    });
 
     const { projectRoutes } = await import('../dist/api/project.js');
 
@@ -76,6 +76,7 @@ describe('project routes', () => {
   });
 
   afterAll(async () => {
+    jest.restoreAllMocks();
     await app.close();
   });
 

@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test } from '@jest/globals';
+import { afterAll, beforeAll, describe, expect, test, jest } from '@jest/globals';
 import Fastify from 'fastify';
 
 describe('user routes', () => {
@@ -13,6 +13,19 @@ describe('user routes', () => {
     avatar: null,
     bio: null,
     expertise: ['structural', 'concrete'],
+    createdAt: '2025-01-01T00:00:00.000Z',
+    updatedAt: '2025-01-01T00:00:00.000Z',
+  };
+
+  const mockDemoUser = {
+    id: 'demo-user-1',
+    email: 'demo@structureclaw.local',
+    name: 'Demo User',
+    organization: 'StructureClaw',
+    title: 'Demo Engineer',
+    avatar: null,
+    bio: 'Automatically created local demo user.',
+    expertise: ['structural-analysis', 'community'],
     createdAt: '2025-01-01T00:00:00.000Z',
     updatedAt: '2025-01-01T00:00:00.000Z',
   };
@@ -53,7 +66,7 @@ describe('user routes', () => {
   beforeAll(async () => {
     const { UserService } = await import('../dist/services/user.js');
 
-    UserService.prototype.register = async function mockRegister(params) {
+    jest.spyOn(UserService.prototype, 'register').mockImplementation(async function (params) {
       return {
         token: `dev-token-${params.email}`,
         user: {
@@ -65,38 +78,40 @@ describe('user routes', () => {
           createdAt: '2025-01-01T00:00:00.000Z',
         },
       };
-    };
+    });
 
-    UserService.prototype.login = async function mockLogin(params) {
+    jest.spyOn(UserService.prototype, 'login').mockImplementation(async function (params) {
       if (params.email === 'notfound@example.com') {
         throw new Error('邮箱或密码错误');
       }
       return { ...mockTokenResponse, token: `dev-token-${params.email}` };
-    };
+    });
 
-    UserService.prototype.getUserById = async function mockGetUserById(userId) {
-      if (!userId) return null;
+    jest.spyOn(UserService.prototype, 'getUserById').mockImplementation(async function (userId) {
+      // Matches actual service behavior: ensureUserId falls back to demo user
+      // when userId is undefined (unauthenticated request)
+      if (!userId) return mockDemoUser;
       return { ...mockUser, id: userId };
-    };
+    });
 
-    UserService.prototype.updateProfile = async function mockUpdateProfile(userId, data) {
+    jest.spyOn(UserService.prototype, 'updateProfile').mockImplementation(async function (userId, data) {
       return { ...mockUser, id: userId, ...data };
-    };
+    });
 
-    UserService.prototype.getPublicProfile = async function mockGetPublicProfile(id) {
+    jest.spyOn(UserService.prototype, 'getPublicProfile').mockImplementation(async function (id) {
       if (id === 'not-found') return null;
       return { ...mockPublicProfile, id };
-    };
+    });
 
-    UserService.prototype.getUserSkills = async function mockGetUserSkills(id) {
+    jest.spyOn(UserService.prototype, 'getUserSkills').mockImplementation(async function (id) {
       if (id === 'empty-user') return [];
       return mockSkills;
-    };
+    });
 
-    UserService.prototype.getUserProjects = async function mockGetUserProjects(id) {
+    jest.spyOn(UserService.prototype, 'getUserProjects').mockImplementation(async function (id) {
       if (id === 'empty-user') return [];
       return mockProjects;
-    };
+    });
 
     const { userRoutes } = await import('../dist/api/user.js');
 
@@ -105,6 +120,7 @@ describe('user routes', () => {
   });
 
   afterAll(async () => {
+    jest.restoreAllMocks();
     await app.close();
   });
 
@@ -268,14 +284,19 @@ describe('user routes', () => {
 
   // --- GET /me ---
   describe('GET /me', () => {
-    test('returns null when no user is authenticated', async () => {
+    test('returns demo user when no user is authenticated', async () => {
       const response = await app.inject({
         method: 'GET',
         url: '/me',
       });
 
       expect(response.statusCode).toBe(200);
-      expect(response.json()).toBeNull();
+      const body = response.json();
+      // Actual behavior: getUserById(undefined) calls ensureUserId which
+      // resolves to the demo user
+      expect(body).toBeDefined();
+      expect(body.id).toBe('demo-user-1');
+      expect(body.email).toBe('demo@structureclaw.local');
     });
   });
 

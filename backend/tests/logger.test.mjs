@@ -4,56 +4,53 @@ import { describe, expect, test, jest } from '@jest/globals';
  * logger.ts creates a pino logger instance configured based on config.
  * We mock both `pino` and `../dist/config/index.js` to verify the
  * configuration is wired correctly without actually creating log transports.
+ *
+ * NOTE: jest.unstable_mockModule must be called at the top level (not inside
+ * test blocks) for ESM mocks to take effect. We use jest.isolateModulesAsync
+ * for tests that need different mock configurations.
  */
-
-// ── Mocks ───────────────────────────────────────────────────────────────────
-
-const mockPinoInstance = {
-  info: jest.fn(),
-  error: jest.fn(),
-  warn: jest.fn(),
-  debug: jest.fn(),
-  trace: jest.fn(),
-  fatal: jest.fn(),
-  level: 'info',
-};
-
-const mockPino = jest.fn().mockReturnValue(mockPinoInstance);
-
-jest.unstable_mockModule('pino', () => ({
-  default: mockPino,
-}));
 
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 describe('logger configuration', () => {
   test('should create a pino instance with the configured log level', async () => {
-    // Mock config for non-development environment
-    jest.unstable_mockModule('../dist/config/index.js', () => ({
-      config: {
-        logLevel: 'debug',
-        nodeEnv: 'production',
-      },
-    }));
+    await jest.isolateModulesAsync(async () => {
+      const mockPinoInstance = {
+        info: jest.fn(),
+        error: jest.fn(),
+        warn: jest.fn(),
+        debug: jest.fn(),
+        trace: jest.fn(),
+        fatal: jest.fn(),
+        level: 'info',
+      };
 
-    mockPino.mockClear();
+      const mockPino = jest.fn().mockReturnValue(mockPinoInstance);
 
-    // Dynamic re-import is not straightforward with jest module caching,
-    // so we verify the import succeeded and pino was called.
-    // Since the module is already cached from prior imports in other tests,
-    // we test the mock setup indirectly.
+      jest.unstable_mockModule('pino', () => ({
+        default: mockPino,
+      }));
 
-    const { logger } = await import('../dist/utils/logger.js');
+      jest.unstable_mockModule('../dist/config/index.js', () => ({
+        config: {
+          logLevel: 'debug',
+          nodeEnv: 'production',
+        },
+      }));
 
-    expect(logger).toBeDefined();
-    expect(typeof logger.info).toBe('function');
-    expect(typeof logger.error).toBe('function');
-    expect(typeof logger.warn).toBe('function');
+      const { logger } = await import('../dist/utils/logger.js');
+
+      // Verify pino was called with the correct log level
+      expect(mockPino).toHaveBeenCalledWith(
+        expect.objectContaining({ level: 'debug' }),
+      );
+
+      // Verify the exported logger is the mock instance
+      expect(logger).toBe(mockPinoInstance);
+    });
   });
 
   test('should export a logger object with standard pino log methods', async () => {
-    // The actual module may have been imported already; verify the shape.
-    // We re-import from the compiled dist output.
     const { logger } = await import('../dist/utils/logger.js');
 
     expect(typeof logger).toBe('object');
