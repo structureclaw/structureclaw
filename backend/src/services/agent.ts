@@ -2425,7 +2425,7 @@ export class AgentService {
         if (assessment.nonCriticalMissing.length === 0) {
           break;
         }
-        this.applyNonCriticalDefaults(workingSession, assessment.defaultProposals);
+        await this.applyNonCriticalDefaults(workingSession, assessment.defaultProposals, locale, skillIds);
       }
     }
 
@@ -3272,8 +3272,8 @@ export class AgentService {
         ),
         this.localize(
           locale,
-          '回复要求：1. 不要输出模板化标题、列表前缀或内部字段名；2. 不要提 allow_auto_decide、routeHint、interaction、skill id、tool id；3. 如果当前需要补参，只问最关键的下一步；4. 如果模型已准备好，就自然说明可以继续分析或继续微调；5. 保持简洁，中文不超过120字，英文不超过90 words。',
-          'Requirements: 1. Do not output templated headings, list prefixes, or internal field names. 2. Do not mention allow_auto_decide, routeHint, interaction, skill ids, or tool ids. 3. If clarification is needed, ask only the single most important next question. 4. If the model is ready, explain naturally that analysis can continue or parameters can still be refined. 5. Keep it concise: under 120 Chinese characters or under 90 English words.',
+          '回复要求：1. 不要输出模板化标题、列表前缀或内部字段名；2. 不要提 allow_auto_decide、routeHint、interaction、skill id、tool id；3. 如果当前需要补参，只问最关键的下一步；4. 如果交互状态中存在 missingCritical、missingFields 或 state 为 confirming/collecting，说明模型尚未建立成功，绝对不能说"模型已建立"或"参数已齐备"，应直接告诉用户还需要补充哪些参数；5. 只有当交互状态明确为 completed 且无 missingFields 时，才可以说明模型已就绪可继续分析；6. 保持简洁，中文不超过120字，英文不超过90 words。',
+          'Requirements: 1. Do not output templated headings, list prefixes, or internal field names. 2. Do not mention allow_auto_decide, routeHint, interaction, skill ids, or tool ids. 3. If clarification is needed, ask only the single most important next question. 4. If the interaction state contains missingCritical, missingFields, or state is confirming/collecting, the model has NOT been built yet — never claim the model is ready or parameters are complete; instead tell the user which parameters are still needed. 5. Only when the interaction state is explicitly completed with no missingFields may you state the model is ready for analysis. 6. Keep it concise: under 120 Chinese characters or under 90 English words.',
         ),
         this.localize(
           locale,
@@ -3658,7 +3658,7 @@ export class AgentService {
     // Loop because applying one default (e.g. includeReport=true) may reveal
     // new non-critical parameters (e.g. reportFormat, reportOutput).
     while (assessment.criticalMissing.length === 0 && assessment.nonCriticalMissing.length > 0) {
-      this.applyNonCriticalDefaults(workingSession, assessment.defaultProposals);
+      await this.applyNonCriticalDefaults(workingSession, assessment.defaultProposals, locale, skillIds);
       assessment = await this.assessInteractionNeeds(workingSession, locale, skillIds, 'interactive');
     }
 
@@ -3951,8 +3951,12 @@ export class AgentService {
     return synchronizedModel;
   }
 
-  private applyNonCriticalDefaults(session: InteractionSession, defaults: InteractionDefaultProposal[]): void {
+  private async applyNonCriticalDefaults(session: InteractionSession, defaults: InteractionDefaultProposal[], locale?: AppLocale, skillIds?: string[]): Promise<void> {
     session.resolved = session.resolved || {};
+    // Separate structural defaults from non-structural ones.
+    // Structural defaults (frameMaterial, frameColumnSection, etc.) need to go
+    // through applyProvidedValuesToSession to reach the skill handler.
+    const structuralDefaults: Record<string, unknown> = {};
     for (const proposal of defaults) {
       switch (proposal.paramKey) {
         case 'analysisType':
@@ -3968,8 +3972,14 @@ export class AgentService {
           session.resolved.reportOutput = proposal.value as AgentReportOutput;
           break;
         default:
+          // Collect structural defaults for batch application via skill handler
+          structuralDefaults[proposal.paramKey] = proposal.value;
           break;
       }
+    }
+    // Apply structural defaults through the skill runtime if any were collected
+    if (Object.keys(structuralDefaults).length > 0 && locale) {
+      await this.applyProvidedValuesToSession(session, structuralDefaults, locale, skillIds);
     }
     session.updatedAt = Date.now();
   }

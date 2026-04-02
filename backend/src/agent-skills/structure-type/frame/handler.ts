@@ -196,9 +196,9 @@ function extractScalar(text: string, patterns: RegExp[]): number | undefined {
 function extractDirectionalLoadScalar(text: string, axis: 'x' | 'y'): number | undefined {
   const axisToken = axis;
   return extractScalar(text, [
-    new RegExp(`${axisToken}向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
-    new RegExp(`(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?[^\\n]{0,24}?${axisToken}向\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
-    new RegExp(`${axisToken}向\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`${axisToken}(?:方)?向(?:水平|横向|侧向)?(?:总)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`(?:水平|横向|侧向)?(?:总)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?[^\\n]{0,24}?${axisToken}(?:方)?向\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`${axisToken}(?:方)?向\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
   ]);
 }
 
@@ -216,6 +216,8 @@ function shouldMirrorHorizontalLoadToBothAxes(
     || text.includes('侧向荷载两个方向')
     || text.includes('两个方向都是')
     || text.includes('horizontal loads')
+    || text.includes('水平总荷载')
+    || /x(?:、|\/|和|及)\s*y(?:方)?向.{0,5}各/.test(text)
   );
 }
 
@@ -383,19 +385,24 @@ function normalizeFrameNaturalPatch(message: string, existingState: DraftState |
     /间隔(?:都?是|也是|为)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
   ]);
 
-  // Vertical load — with or without 荷载 keyword
+  // Vertical load — with or without 荷载 keyword; 竖直=竖向=垂直
   const verticalLoadKN = extractScalar(text, [
-    /(?:每层|各层)(?:节点)?(?:竖向)?荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
-    /(?:每层|各层)竖向\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:每层|各层)(?:节点)?(?:竖向|垂直|竖直|总)?(?:方向)?荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:每层|各层)(?:竖向|垂直|竖直)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:竖向|垂直|竖直)荷载[^0-9]{0,10}(?:每层|各层)[^0-9]{0,5}([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:竖向|垂直|竖直)(?:方向)?(?:都?是|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
   ]);
 
   const dualLateralLoadKN = extractScalar(text, [
-    /x(?:、|\/|和|及)\s*y向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /x(?:、|\/|和|及)\s*y(?:方)?向(?:水平|横向|侧向)?(?:总)?荷载(?:都?是|均为|各为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /水平(?:总)?荷载[^0-9]{0,24}?x(?:方)?向(?:和|\/|、|及)\s*y(?:方)?向(?:都?是|均为|各为|各|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /水平(?:总)?荷载x(?:、|\/|和|及)\s*y(?:方)?向(?:水平|横向|侧向)?(?:都?是|均为|各为|各|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /x(?:方)?向(?:和|\/|、|及)\s*y(?:方)?向(?:都?是|均为|各为|分别为|分别取|各为|为|是)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
   ]);
   const extractedLateralXLoadKN = dualLateralLoadKN ?? extractScalar(text, [
-    /(?:横向|侧向|水平)(?:方向)?荷载(?:两个方向)?(?:都?是|均为|都为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
-    /水平方向荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
-    /(?:横向|侧向|水平)荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:横向|侧向|水平)(?:总)?(?:方向)?荷载(?:两个方向)?(?:都?是|均为|都为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /水平(?:总)?方向荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:横向|侧向|水平)(?:总)?荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
   ]) ?? extractDirectionalLoadScalar(text, 'x');
   const extractedLateralYLoadKN = dualLateralLoadKN ?? extractDirectionalLoadScalar(text, 'y');
 
@@ -519,16 +526,17 @@ function coerceFrameDimension(
     || text.includes('三维')
   );
   const nextPatch: DraftExtraction = { ...patch };
+  // Explicit 3D/三维 in user message overrides any LLM default (which may be '2d')
+  if (mentions3dDirections) {
+    nextPatch.frameDimension = '3d';
+    return nextPatch;
+  }
   if (nextPatch.frameDimension !== undefined) return nextPatch;
-  if (nextPatch.frameDimension === '3d' || hasLateralYFloorLoad(nextPatch.floorLoads)) {
+  if (hasLateralYFloorLoad(nextPatch.floorLoads)) {
     nextPatch.frameDimension = '3d';
     return nextPatch;
   }
-  if (existingState?.frameDimension === '2d' && mentions3dDirections) {
-    nextPatch.frameDimension = '3d';
-    return nextPatch;
-  }
-  if (!nextPatch.frameDimension && existingState?.frameDimension) {
+  if (existingState?.frameDimension) {
     nextPatch.frameDimension = existingState.frameDimension;
   }
   return nextPatch;
@@ -923,8 +931,8 @@ function buildFrameQuestions(
       return {
         ...question,
         question: locale === 'zh'
-          ? `请确认各层节点荷载（单位 kN）。${loadHint}`
-          : `Please confirm per-story nodal loads (kN). ${loadHint}`,
+          ? `请确认各层总荷载（单位 kN）。${loadHint}`
+          : `Please confirm per-story total load (kN). ${loadHint}`,
       };
     }
     if (question.paramKey === 'frameMaterial') {
