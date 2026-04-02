@@ -32,12 +32,13 @@ test.describe('Database admin page', () => {
 
   test('shows SQLite as provider', async ({ page }) => {
     await dbPage.goto();
-    await expect(page.locator('text=sqlite')).toBeVisible();
+    await expect(page.getByText('sqlite', { exact: true }).nth(0)).toBeVisible();
   });
 
   test('shows file path', async ({ page }) => {
     await dbPage.goto();
-    await expect(page.locator('text=/tmp/test-e2e/structureclaw.db')).toBeVisible();
+    // Check that a path is displayed (the exact path depends on CI env)
+    await expect(page.getByText(/test-e2e\.db/)).toBeVisible();
   });
 
   test('handles API error gracefully', async ({ page }) => {

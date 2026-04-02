@@ -23,7 +23,7 @@ export class ConsolePage {
     this.outputPanel = page.locator('[data-testid="console-output-panel"]');
     this.newConversationButton = page.locator('button:has-text("New"), button:has-text("新建")');
     this.messageInput = page.locator('[data-testid="console-composer"] textarea, textarea[placeholder]');
-    this.sendButton = page.locator('[data-testid="console-composer"] button[type="submit"], button:has(svg)');
+    this.sendButton = page.getByRole('button', { name: 'Send' });
     this.quickPrompts = page.locator('[data-testid="console-chat-panel"] button');
     this.conversationItems = page.locator('[data-testid="console-history-scroll"] > *');
     this.streamingIndicator = page.locator('.animate-pulse, [class*="streaming"]');
