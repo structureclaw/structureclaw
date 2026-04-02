@@ -49,6 +49,23 @@ import {
   buildInteractionSessionKey as buildSessionKey,
 } from './agent-session.js';
 import { validateWithRetry } from './agent-validation.js';
+import {
+  planNextStep as routerPlanNextStep,
+  buildPlannerContextSnapshot as routerBuildPlannerContextSnapshot,
+  extractJsonObject as routerExtractJsonObject,
+  parsePlannerResponse as routerParsePlannerResponse,
+  repairPlannerResponse as routerRepairPlannerResponse,
+  resolveInteractivePlanKind as routerResolveInteractivePlanKind,
+} from './agent-router.js';
+import {
+  buildMetrics as resultBuildMetrics,
+  buildInteractionQuestion as resultBuildInteractionQuestion,
+  buildToolInteraction as resultBuildToolInteraction,
+  buildRecommendedNextStep as resultBuildRecommendedNextStep,
+  buildGenericModelingIntro as resultBuildGenericModelingIntro,
+  buildChatModeResponse as resultBuildChatModeResponse,
+  renderSummary as resultRenderSummary,
+} from './agent-result.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'directed' | 'llm-planned';
@@ -474,96 +491,18 @@ export class AgentService {
     activeToolIds?: ActiveToolSet;
     conversationId?: string;
   }): Promise<PlannerContextSnapshot> {
-    const assessment = options.session
-      ? await this.assessInteractionNeeds(options.session, options.locale, options.skillIds, 'interactive')
-      : undefined;
-    let recentConversation: string[] = [];
-    let lastAssistantMessage: string | undefined;
-
-    if (options.conversationId) {
-      try {
-        const recentMessages = await prisma.message.findMany({
-          where: { conversationId: options.conversationId },
-          orderBy: { createdAt: 'desc' },
-          take: 6,
-          select: { role: true, content: true },
-        });
-        if (recentMessages.length > 0) {
-          const orderedMessages = recentMessages.reverse();
-          recentConversation = orderedMessages
-            .map((message: { role: string; content: string }) => `${message.role}: ${message.content.slice(0, 240)}`);
-          const assistantMessages = orderedMessages.filter(
-            (message: { role: string; content: string }) => message.role === 'assistant',
-          );
-          lastAssistantMessage = assistantMessages.at(-1)?.content.slice(0, 320);
-        }
-      } catch {
-        recentConversation = [];
-        lastAssistantMessage = undefined;
-      }
-    }
-
-    const readyForExecution = Boolean(
-      assessment
-      && assessment.criticalMissing.length === 0
-      && (assessment.nonCriticalMissing.length === 0 || Boolean(options.session?.userApprovedAutoDecide)),
-    );
-    return {
-      hasActiveSession: Boolean(options.session),
-      hasModel: options.hasModel,
-      inferredType: options.session?.draft?.inferredType ?? null,
-      structuralTypeKey: options.session?.draft?.structuralTypeKey,
-      criticalMissing: assessment?.criticalMissing ?? [],
-      nonCriticalMissing: assessment?.nonCriticalMissing ?? [],
-      readyForExecution,
-      availableToolIds: [...(options.activeToolIds ?? new Set<string>())].sort(),
-      skillIds: Array.isArray(options.skillIds) ? [...options.skillIds] : [],
-      recentConversation,
-      lastAssistantMessage,
-      sessionState: options.session?.state,
-    };
+    return routerBuildPlannerContextSnapshot(options, this.assessInteractionNeeds.bind(this));
   }
 
   private extractJsonObject(raw: string): string | null {
-    const trimmed = raw.trim();
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    const candidate = fenced?.[1]?.trim() || trimmed;
-    const start = candidate.indexOf('{');
-    const end = candidate.lastIndexOf('}');
-    if (start === -1 || end === -1 || end < start) {
-      return null;
-    }
-    return candidate.slice(start, end + 1);
+    return routerExtractJsonObject(raw);
   }
 
   private parsePlannerResponse(
     raw: string,
     allowedKinds: AgentPlanKind[],
   ): Pick<AgentNextStepPlan, 'kind' | 'replyMode'> | null {
-    const jsonText = this.extractJsonObject(raw);
-    if (!jsonText) {
-      return null;
-    }
-
-    const parsed = JSON.parse(jsonText) as {
-      kind?: unknown;
-      replyMode?: unknown;
-      decision?: { kind?: unknown; replyMode?: unknown };
-    };
-    const payload = typeof parsed.decision === 'object' && parsed.decision !== null ? parsed.decision : parsed;
-
-    if (typeof payload.kind !== 'string' || !allowedKinds.includes(payload.kind as AgentPlanKind)) {
-      return null;
-    }
-
-    const kind = payload.kind as AgentPlanKind;
-    const replyMode = kind === 'reply'
-      ? (payload.replyMode === 'structured' ? 'structured' : 'plain')
-      : undefined;
-    return {
-      kind,
-      replyMode,
-    };
+    return routerParsePlannerResponse(raw, allowedKinds);
   }
 
   private async repairPlannerResponse(raw: string, options: {
@@ -571,30 +510,7 @@ export class AgentService {
     allowedKinds: AgentPlanKind[];
     availableToolIds: AgentToolName[];
   }): Promise<Pick<AgentNextStepPlan, 'kind' | 'replyMode'> | null> {
-    if (!this.llm) {
-      return null;
-    }
-
-    const prompt = [
-      'Normalize the following StructureClaw planner output into strict JSON.',
-      'Do not add commentary. Return JSON only.',
-      'Preserve the original intent. Only fix formatting or minor schema issues.',
-      `Allowed kinds: ${options.allowedKinds.join(', ')}`,
-      'Output schema:',
-      `{"kind":"${options.allowedKinds.join('|')}","replyMode":"plain|structured|null","reason":"short reason"}`,
-      `Locale: ${options.locale}`,
-      `Planner output to normalize:\n${raw}`,
-    ].join('\n');
-
-    try {
-      const repaired = await this.llm.invoke(prompt);
-      const repairedRaw = typeof repaired.content === 'string'
-        ? repaired.content
-        : JSON.stringify(repaired.content);
-      return this.parsePlannerResponse(repairedRaw, options.allowedKinds);
-    } catch {
-      return null;
-    }
+    return routerRepairPlannerResponse(this.llm, raw, options);
   }
 
   private async planNextStepWithLlm(message: string, options: {
@@ -606,78 +522,11 @@ export class AgentService {
     allowedKinds?: AgentPlanKind[];
     conversationId?: string;
   }): Promise<AgentNextStepPlan> {
-    if (!this.llm) {
-      throw new Error('LLM_PLANNER_UNAVAILABLE');
-    }
-
-    const snapshot = await this.buildPlannerContextSnapshot(options);
-    const allowedKinds: AgentPlanKind[] = Array.isArray(options.allowedKinds) && options.allowedKinds.length > 0
-      ? options.allowedKinds
-      : ['reply', 'ask', 'tool_call'];
-    const allowToolCall = allowedKinds.includes('tool_call');
-    const availableToolIds = snapshot.availableToolIds.filter((toolId): toolId is AgentToolName => (
-      ['draft_model', 'update_model', 'convert_model', 'validate_model', 'run_analysis', 'run_code_check', 'generate_report'] as string[]
-    ).includes(toolId));
-    const prompt = [
-      'You are the planning layer for StructureClaw.',
-      'Decide the single best next step for the latest user message.',
-      'Available skills and tools constrain what can be invoked, but they do not force invocation.',
-      'If the user is greeting, chatting casually, or asking a non-execution question, choose reply.',
-      allowToolCall
-        ? 'Do not choose tool_call just because drafting or analysis tools are available.'
-        : 'Tool invocation is not allowed in this planning mode. Choose only reply or ask.',
-      'When there is an active engineering session with missing parameters, and the latest user message adds structure type, geometry, topology, material, section, load, support, or report details, do not choose a plain reply.',
-      'In that situation, choose ask so the structured engineering session continues, unless the information is now complete enough that a structured reply is clearly better.',
-      'Treat short parameter fragments such as "钢框架结构体系", "每层3m", "x方 向4跨", "Q355", or similar engineering increments as continuation turns, not casual chat.',
-      'If the previous assistant message was asking for engineering parameters and the latest user message answers that request, continue the structured engineering session.',
-      'If the user changes previously confirmed geometry, loads, supports, material, or section values, treat that as a model update request rather than a plain question.',
-      'If there is an existing engineering session or model and the user says things like "改成", "改为", "change to", "update", or modifies previously analyzed values, prefer tool_call when tool invocation is allowed.',
-      'After a model update request, prefer tool_call when the user expects the updated model to be used immediately for analysis or refreshed engineering results.',
-      'If the user explicitly asks to build, model, generate, or revise a structural model now, that can also justify tool_call even if the request is not yet an analysis execution request.',
-      'An existing context model is only reusable context. It must not override the latest user request by itself.',
-      'If the latest message clearly asks for a new or different structural model, choose tool_call even when an older context model already exists.',
-      'For requests like "建模一个简支梁，跨度10m，均布荷载1kN/m，可以用10个单元建模", prefer tool_call when the information is sufficient to attempt a first structural model draft.',
-      'Use replyMode=plain only for casual chat, greetings, meta questions, or clearly non-engineering turns.',
-      'Use replyMode=structured for engineering follow-ups that should stay grounded in the current structural context without immediately invoking tools.',
-      'Choose ask when the user is pursuing an engineering task but key information is still missing.',
-      allowToolCall
-        ? 'Choose tool_call when the user is clearly asking to create/update a model now, or to execute/continue engineering execution now.'
-        : 'Choose ask when more engineering details are needed before the next turn can proceed.',
-      'If the user message looks like a parameter fragment or engineering follow-up, plain reply is almost always wrong.',
-      'Use replyMode=structured only when a structural model already exists or the engineering draft is already ready and the best next step is to explain, summarize, or confirm readiness rather than ask or execute.',
-      allowToolCall
-        ? `When kind=tool_call, do not choose concrete tools. The runtime will select tools from enabled capabilities: ${availableToolIds.join(', ') || 'none'}.`
-        : 'When tool invocation is not allowed, choose only reply or ask.',
-      'Return strict JSON only with this schema:',
-      `{"kind":"${allowedKinds.join('|')}","replyMode":"plain|structured|null","reason":"short reason"}`,
-      `Locale: ${options.locale}`,
-      `User message: ${message}`,
-      `Planner context: ${JSON.stringify(snapshot)}`,
-    ].join('\n');
-
-    try {
-      const aiMessage = await this.llm.invoke(prompt);
-      const raw = typeof aiMessage.content === 'string'
-        ? aiMessage.content
-        : JSON.stringify(aiMessage.content);
-      const normalized = this.parsePlannerResponse(raw, allowedKinds)
-        || await this.repairPlannerResponse(raw, {
-          locale: options.locale,
-          allowedKinds,
-          availableToolIds,
-        });
-      if (!normalized) {
-        throw new Error('LLM_PLANNER_INVALID_RESPONSE');
-      }
-      return {
-        kind: normalized.kind,
-        replyMode: normalized.replyMode,
-        planningDirective: 'auto',
-        rationale: 'llm',
-      };
-    } catch {
-      throw new Error('LLM_PLANNER_INVALID_RESPONSE');
-    }
+    return routerPlanNextStep(this.llm, message, {
+      ...options,
+      planningDirective: 'auto',
+      allowToolCall: true,
+    }, this.assessInteractionNeeds.bind(this), this.hasEmptySkillSelection.bind(this));
   }
 
   private async planNextStep(message: string, options: {
@@ -690,44 +539,7 @@ export class AgentService {
     activeToolIds?: ActiveToolSet;
     conversationId?: string;
   }): Promise<AgentNextStepPlan> {
-    if (this.hasEmptySkillSelection(options.skillIds) && options.planningDirective !== 'force_tool') {
-      return {
-        kind: 'reply',
-        replyMode: 'plain',
-        planningDirective: options.planningDirective,
-        rationale: 'override',
-      };
-    }
-
-    if (!options.allowToolCall) {
-      if (this.llm) {
-        return {
-          ...(await this.planNextStepWithLlm(message, {
-            locale: options.locale,
-            skillIds: options.skillIds,
-            hasModel: options.hasModel,
-            session: options.session,
-            activeToolIds: options.activeToolIds,
-            allowedKinds: ['reply', 'ask'],
-            conversationId: options.conversationId,
-          })),
-          planningDirective: options.planningDirective,
-        };
-      }
-
-      return {
-        kind: await this.resolveInteractivePlanKind(options),
-        replyMode: options.hasModel ? 'structured' : 'plain',
-        planningDirective: options.planningDirective,
-        rationale: 'override',
-      };
-    }
-
-    if (options.planningDirective === 'force_tool') {
-      return { kind: 'tool_call', planningDirective: options.planningDirective, rationale: 'override' };
-    }
-
-    return this.planNextStepWithLlm(message, options);
+    return routerPlanNextStep(this.llm, message, options, this.assessInteractionNeeds.bind(this), this.hasEmptySkillSelection.bind(this));
   }
 
   private async resolveInteractivePlanKind(options: {
@@ -737,22 +549,12 @@ export class AgentService {
     session?: InteractionSession;
     activeToolIds?: ActiveToolSet;
   }): Promise<Exclude<AgentPlanKind, 'tool_call'>> {
-    if (options.hasModel) {
-      return 'reply';
-    }
-    if (this.hasEmptySkillSelection(options.skillIds) && !this.hasActiveTool(options.activeToolIds, 'draft_model')) {
-      return 'reply';
-    }
-    if (!options.session?.draft || options.session.draft.inferredType === 'unknown') {
-      return 'ask';
-    }
-    const assessment = await this.assessInteractionNeeds(options.session, options.locale, options.skillIds, 'interactive');
-    const readyForExecution = assessment.criticalMissing.length === 0
-      && (assessment.nonCriticalMissing.length === 0 || Boolean(options.session.userApprovedAutoDecide));
-    if (!options.hasModel) {
-      return 'ask';
-    }
-    return readyForExecution ? 'reply' : 'ask';
+    return routerResolveInteractivePlanKind(
+      options,
+      this.assessInteractionNeeds.bind(this),
+      this.hasEmptySkillSelection.bind(this),
+      this.hasActiveTool.bind(this),
+    );
   }
 
   private async prepareRunContext(params: AgentRunInput): Promise<PreparedRunContext> {
@@ -1755,29 +1557,7 @@ export class AgentService {
     locale: AppLocale,
     activeToolIds?: ActiveToolSet,
   ): string {
-    if (assessment.criticalMissing.length > 0) {
-      const nextLabel = interaction.questions?.[0]?.label || this.localize(locale, '关键参数', 'the key parameter');
-      return this.localize(locale, `先补齐 ${nextLabel}。`, `Fill in ${nextLabel} first.`);
-    }
-    if (assessment.nonCriticalMissing.length > 0) {
-      return this.localize(
-        locale,
-        '关键参数已基本齐备，继续确认 `run_analysis`、`run_code_check` 和 `generate_report` 的偏好。',
-        'Primary geometry and loading are mostly ready; continue by confirming preferences for `run_analysis`, `run_code_check`, and `generate_report`.'
-      );
-    }
-    if (!this.hasActiveTool(activeToolIds, 'run_analysis')) {
-      return this.localize(
-        locale,
-        '当前能力集中未启用 `run_analysis`，可继续细化参数，或启用分析能力后再执行。',
-        'The current capability set does not enable `run_analysis`. Keep refining the inputs, or enable analysis capability before execution.'
-      );
-    }
-    return this.localize(
-      locale,
-      '当前参数已足够进入执行阶段，可以直接让我开始分析，或继续微调参数。',
-      'The current parameters are sufficient to proceed. You can ask me to start the analysis now, or keep refining the inputs.'
-    );
+    return resultBuildRecommendedNextStep(assessment, interaction, locale, activeToolIds);
   }
 
   private async prepareExecutionModel(args: {
@@ -2146,34 +1926,7 @@ export class AgentService {
   }
 
   private buildChatModeResponse(interaction: AgentInteraction, locale: AppLocale): string {
-    const lines: string[] = [];
-    if (interaction.interactionStageLabel) {
-      lines.push(this.localize(locale, `当前阶段：${interaction.interactionStageLabel}`, `Current stage: ${interaction.interactionStageLabel}`));
-    }
-    if (interaction.fallbackSupportNote) {
-      lines.push(interaction.fallbackSupportNote);
-    }
-    if (interaction.missingCritical?.length) {
-      lines.push(this.localize(
-        locale,
-        `待补关键参数：${interaction.missingCritical.join('、')}`,
-        `Critical parameters still needed: ${interaction.missingCritical.join(', ')}`
-      ));
-    }
-    if (interaction.missingOptional?.length) {
-      lines.push(this.localize(
-        locale,
-        `后续建议确认：${interaction.missingOptional.join('、')}`,
-        `Recommended to confirm next: ${interaction.missingOptional.join(', ')}`
-      ));
-    }
-    if (interaction.recommendedNextStep) {
-      lines.push(this.localize(locale, `下一步：${interaction.recommendedNextStep}`, `Next step: ${interaction.recommendedNextStep}`));
-    }
-    if (interaction.questions?.length) {
-      lines.push(this.localize(locale, `优先问题：${interaction.questions[0]?.question}`, `Priority question: ${interaction.questions[0]?.question}`));
-    }
-    return lines.join('\n');
+    return resultBuildChatModeResponse(interaction, locale);
   }
 
   private isGenericFallbackDraft(draft: DraftResult): boolean {
@@ -2181,8 +1934,7 @@ export class AgentService {
   }
 
   private buildGenericModelingIntro(locale: AppLocale, noSkillMode: boolean): string {
-    void noSkillMode;
-    return this.localize(locale, '当前所选技能未命中更具体的结构技能。我会回退到通用建模能力。', 'The selected skills did not match a more specific structural skill. I will fall back to generic modeling capability.');
+    return resultBuildGenericModelingIntro(locale, noSkillMode);
   }
 
   private resolveRouteDecision(nextPlan: AgentNextStepPlan, noSkillMode: boolean): RouteDecision {
@@ -4206,30 +3958,11 @@ export class AgentService {
   }
 
   private buildInteractionQuestion(interaction: AgentInteraction, locale: AppLocale): string {
-    const primaryQuestion = interaction.questions?.find((item) => typeof item.question === 'string' && item.question.trim().length > 0)?.question?.trim();
-    if (primaryQuestion) {
-      return primaryQuestion;
-    }
-    const questionSummary = interaction.questions?.map((item) => item.label).join(locale === 'zh' ? '、' : ', ')
-      || this.localize(locale, '必要参数', 'required parameters');
-    return this.localize(
-      locale,
-      `请确认：${questionSummary}。`,
-      `Please confirm: ${questionSummary}.`
-    );
+    return resultBuildInteractionQuestion(interaction, locale);
   }
 
   private buildToolInteraction(state: 'completed' | 'blocked', locale: AppLocale): AgentInteraction {
-    return {
-      state,
-      stage: 'report',
-      turnId: randomUUID(),
-      routeHint: 'prefer_tool',
-      routeReason: state === 'completed'
-        ? this.localize(locale, '工具调用已完成。', 'Tool invocation completed.')
-        : this.localize(locale, '工具调用已触发，但被下游工具或校验失败阻断。', 'Tool invocation was attempted but blocked by downstream tool or validation failure.'),
-      nextActions: state === 'completed' ? [] : ['revise'],
-    };
+    return resultBuildToolInteraction(state, locale);
   }
 
   private async persistReportArtifacts(
@@ -4263,63 +3996,7 @@ export class AgentService {
   }
 
   private async renderSummary(message: string, fallback: string, locale: AppLocale, analysisData?: unknown, conversationId?: string): Promise<string> {
-    if (!this.llm) {
-      return fallback;
-    }
-
-    try {
-      const hasData = analysisData && typeof analysisData === 'object';
-      let conversationContext = '';
-      if (conversationId) {
-        try {
-          const recentMessages = await prisma.message.findMany({
-            where: { conversationId },
-            orderBy: { createdAt: 'desc' },
-            take: 6,
-            select: { role: true, content: true },
-          });
-          if (recentMessages.length > 0) {
-            conversationContext = recentMessages
-              .reverse()
-              .map((m: { role: string; content: string }) => `${m.role}: ${m.content.slice(0, 200)}`)
-              .join('\n');
-          }
-        } catch {
-          // Non-blocking: proceed without conversation context.
-        }
-      }
-      const promptParts = [
-        this.localize(locale, '你是结构工程 Agent 的结果解释器。', 'You explain results produced by the structural engineering agent.'),
-        hasData
-          ? this.localize(locale, '请用中文在 250 字以内，根据用户意图从分析数据中提取用户关心的结果并回答。只引用数据中存在的数值，不要杜撰。若用户询问的数据未在当前分析数据中提供，请明确说明，并引导用户查看结构化数据结果与可视化界面。', 'Respond in English within 250 words. Extract and present the results the user cares about from the analysis data. Only cite values present in the data; do not invent data. If the requested value is not available in the current analysis data, say so clearly and direct the user to the structured results and visualization view.')
-          : this.localize(locale, '请用中文在 80 字以内给出结论，不要杜撰未出现的数据。', 'Respond in English within 80 words and do not invent data that was not provided.'),
-      ];
-      if (conversationContext) {
-        promptParts.push(this.localize(locale, `对话上下文：\n${conversationContext}`, `Conversation context:\n${conversationContext}`));
-      }
-      promptParts.push(
-        this.localize(locale, `用户意图：${message}`, `User intent: ${message}`),
-        this.localize(locale, `系统结果：${fallback}`, `System result: ${fallback}`),
-      );
-      if (hasData) {
-        const dataObj = analysisData as Record<string, unknown>;
-        const compact = JSON.stringify({
-          analysisMode: dataObj['analysisMode'] ?? null,
-          plane: dataObj['plane'] ?? null,
-          summary: dataObj['summary'] ?? null,
-          envelope: dataObj['envelope'] ?? null,
-        });
-        promptParts.push(this.localize(locale, `分析数据：${compact}`, `Analysis data: ${compact}`));
-      }
-      const prompt = promptParts.join('\n');
-      const aiMessage = await this.llm.invoke(prompt);
-      const content = typeof aiMessage.content === 'string'
-        ? aiMessage.content
-        : JSON.stringify(aiMessage.content);
-      return content || fallback;
-    } catch {
-      return fallback;
-    }
+    return resultRenderSummary(this.llm, message, fallback, locale, analysisData, conversationId);
   }
 
   private async textToModelDraft(message: string, existingState?: DraftState, locale: AppLocale = 'en', skillIds?: string[]): Promise<DraftResult> {
@@ -4563,25 +4240,7 @@ export class AgentService {
   }
 
   private buildMetrics(toolCalls: AgentToolCall[]): NonNullable<AgentRunResult['metrics']> {
-    const durations = toolCalls
-      .map((call) => call.durationMs || 0)
-      .filter((duration) => Number.isFinite(duration) && duration >= 0);
-    const totalToolDurationMs = durations.reduce((sum, duration) => sum + duration, 0);
-    const maxToolDurationMs = durations.length > 0 ? Math.max(...durations) : 0;
-    const toolDurationMsByName: Record<string, number> = {};
-    for (const call of toolCalls) {
-      const duration = call.durationMs || 0;
-      toolDurationMsByName[call.tool] = (toolDurationMsByName[call.tool] || 0) + duration;
-    }
-
-    return {
-      toolCount: toolCalls.length,
-      failedToolCount: toolCalls.filter((call) => call.status === 'error').length,
-      totalToolDurationMs,
-      averageToolDurationMs: durations.length > 0 ? totalToolDurationMs / durations.length : 0,
-      maxToolDurationMs,
-      toolDurationMsByName,
-    };
+    return resultBuildMetrics(toolCalls);
   }
 
   private async finalizeRunResult(
