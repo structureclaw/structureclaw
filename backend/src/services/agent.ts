@@ -2186,7 +2186,8 @@ export class AgentService {
       workingSession,
       startToolCall: this.startToolCall.bind(this),
       completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
-      textToModelDraft: this.textToModelDraft.bind(this),
+      textToModelDraft: (msg: string, state: DraftState | undefined, loc: AppLocale, ids?: string[]) =>
+        this.textToModelDraft(msg, state, loc, ids, params.conversationId),
       isGenericFallbackDraft: this.isGenericFallbackDraft.bind(this),
       applyDraftToSession: this.applyDraftToSession.bind(this),
     });
@@ -2390,7 +2391,8 @@ export class AgentService {
       workingSession,
       startToolCall: this.startToolCall.bind(this),
       completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
-      textToModelDraft: this.textToModelDraft.bind(this),
+      textToModelDraft: (msg: string, state: DraftState | undefined, loc: AppLocale, ids?: string[]) =>
+        this.textToModelDraft(msg, state, loc, ids, params.conversationId),
       isGenericFallbackDraft: this.isGenericFallbackDraft.bind(this),
       applyInferredNonCriticalFromMessage: this.applyInferredNonCriticalFromMessage.bind(this),
     });
@@ -2862,7 +2864,8 @@ export class AgentService {
 
     const draftFn = collectOnly
       ? this.collectOnlyTextToModelDraft.bind(this)
-      : this.textToModelDraft.bind(this);
+      : (msg: string, state: DraftState | undefined, loc: AppLocale, ids?: string[]) =>
+          this.textToModelDraft(msg, state, loc, ids, params.conversationId);
 
     return executeDraftModelInteractiveStep({
       message: params.message,
@@ -3997,7 +4000,7 @@ export class AgentService {
     return resultRenderSummary(this.llm, message, fallback, locale, analysisData, conversationId);
   }
 
-  private async textToModelDraft(message: string, existingState?: DraftState, locale: AppLocale = 'en', skillIds?: string[]): Promise<DraftResult> {
+  private async textToModelDraft(message: string, existingState?: DraftState, locale: AppLocale = 'en', skillIds?: string[], conversationId?: string): Promise<DraftResult> {
     if (this.hasEmptySkillSelection(skillIds)) {
       return {
         inferredType: 'unknown',
@@ -4010,7 +4013,9 @@ export class AgentService {
       };
     }
 
-    const skillDraft = await this.skillRuntime.textToModelDraft(this.llm, message, existingState, locale, skillIds);
+    const conversationHistory = await this.loadConversationHistory(conversationId);
+
+    const skillDraft = await this.skillRuntime.textToModelDraft(this.llm, message, existingState, locale, skillIds, conversationHistory);
     if (skillDraft.model || skillDraft.inferredType !== 'unknown' || skillDraft.structuralTypeMatch?.skillId) {
       return skillDraft;
     }
@@ -4020,8 +4025,31 @@ export class AgentService {
       return skillDraft;
     }
 
-    const genericDraft = await this.skillRuntime.textToModelDraft(this.llm, message, existingState, locale, ['generic']);
+    const genericDraft = await this.skillRuntime.textToModelDraft(this.llm, message, existingState, locale, ['generic'], conversationHistory);
     return genericDraft;
+  }
+
+  private async loadConversationHistory(conversationId?: string): Promise<string | undefined> {
+    if (!conversationId) {
+      return undefined;
+    }
+    try {
+      const recentMessages = await prisma.message.findMany({
+        where: { conversationId },
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        select: { role: true, content: true },
+      });
+      if (recentMessages.length === 0) {
+        return undefined;
+      }
+      return recentMessages
+        .reverse()
+        .map((m: { role: string; content: string }) => `${m.role}: ${m.content.slice(0, 400)}`)
+        .join('\n');
+    } catch {
+      return undefined;
+    }
   }
 
   private hasEmptySkillSelection(skillIds?: string[]): boolean {

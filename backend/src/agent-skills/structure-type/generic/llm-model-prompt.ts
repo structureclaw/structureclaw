@@ -2,9 +2,14 @@ import type { AppLocale } from '../../../services/locale.js';
 import type { DraftState } from '../../../agent-runtime/types.js';
 import { composePromptByIntent } from './llm-model-prompt-intents.js';
 
-export function buildGenericModelPrompt(message: string, state: DraftState, locale: AppLocale): string {
+export function buildGenericModelPrompt(
+  message: string,
+  state: DraftState,
+  locale: AppLocale,
+  conversationHistory?: string,
+): string {
   const stateHint = JSON.stringify(state);
-  return composePromptByIntent('build-structure-model-v1', locale, stateHint, message);
+  return composePromptByIntent('build-structure-model-v1', locale, stateHint, message, conversationHistory);
 }
 
 export function buildRetrySuffix(locale: AppLocale): string {

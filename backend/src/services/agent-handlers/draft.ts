@@ -17,7 +17,7 @@ export async function handleDraft(
     workingSession: ctx.session,
     startToolCall: (tool: any, input: any) => deps.startToolCall(tool, input),
     completeToolCallSuccess: (call: any, output: any) => deps.completeToolCallSuccess(call, output),
-    textToModelDraft: (message: string, existingState: any, locale: any, skillIds?: string[]) => deps.textToModelDraft(message, existingState, locale, skillIds),
+    textToModelDraft: (message: string, existingState: any, locale: any, skillIds?: string[]) => deps.textToModelDraft(message, existingState, locale, skillIds, ctx.params.conversationId),
     isGenericFallbackDraft: (draft: any) => deps.isGenericFallbackDraft(draft),
     applyDraftToSession: (ws: any, draft: any, gfb: boolean, msg: string) => deps.applyDraftToSession(ws, draft, gfb, msg),
   });

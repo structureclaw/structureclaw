@@ -445,6 +445,7 @@ export class AgentSkillRuntime {
     message: string,
     extraction: DraftParameterExtractionResult,
     locale: AppLocale,
+    conversationHistory?: string,
   ): Promise<DraftResult> {
     const { nextState, missing, structuralTypeMatch, plugin, extractionMode } = extraction;
     let model = missing.critical.length === 0 && plugin
@@ -452,7 +453,7 @@ export class AgentSkillRuntime {
       : undefined;
     let missingFields = [...missing.critical];
     if (!model && plugin?.id === 'generic') {
-      const llmBuiltModel = await tryBuildGenericModelWithLlm(llm, message, nextState, locale);
+      const llmBuiltModel = await tryBuildGenericModelWithLlm(llm, message, nextState, locale, conversationHistory);
       if (llmBuiltModel) {
         model = llmBuiltModel;
         missingFields = [];
@@ -473,10 +474,11 @@ export class AgentSkillRuntime {
     message: string,
     existingState: DraftState | undefined,
     locale: AppLocale,
-    skillIds?: string[]
+    skillIds?: string[],
+    conversationHistory?: string,
   ): Promise<DraftResult> {
     const extraction = await this.extractDraftParameters(llm, message, existingState, locale, skillIds);
-    return this.buildModelFromDraft(llm, message, extraction, locale);
+    return this.buildModelFromDraft(llm, message, extraction, locale, conversationHistory);
   }
 
   async assessDraft(

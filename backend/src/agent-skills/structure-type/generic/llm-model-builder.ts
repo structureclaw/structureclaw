@@ -9,12 +9,13 @@ export async function tryBuildGenericModelWithLlm(
   message: string,
   state: DraftState,
   locale: AppLocale,
+  conversationHistory?: string,
 ): Promise<Record<string, unknown> | undefined> {
   if (!llm) {
     return undefined;
   }
 
-  const basePrompt = buildGenericModelPrompt(message, state, locale);
+  const basePrompt = buildGenericModelPrompt(message, state, locale, conversationHistory);
   const retrySuffix = buildRetrySuffix(locale);
   const stateHint = JSON.stringify(state);
 

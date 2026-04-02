@@ -102,12 +102,14 @@ export interface HandlerDeps {
     message: string,
     extraction: DraftParameterExtractionResult,
     locale: AppLocale,
+    conversationHistory?: string,
   ): Promise<DraftResult>;
   textToModelDraft(
     message: string,
     existingState: DraftState | undefined,
     locale: AppLocale,
     skillIds?: string[],
+    conversationId?: string,
   ): Promise<DraftResult>;
   isGenericFallbackDraft(draft: DraftResult): boolean;
   applyDraftToSession(
