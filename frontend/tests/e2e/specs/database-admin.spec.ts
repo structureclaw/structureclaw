@@ -6,20 +6,24 @@ test.describe('Database admin page', () => {
 
   test.beforeEach(async ({ page }) => {
     dbPage = new DatabasePage(page);
-    // Mock the database status API
+    // Mock the database status API to match actual response shape
     await page.route('**/api/v1/admin/database/status', (route) =>
       route.fulfill({
         status: 200,
         contentType: 'application/json',
         body: JSON.stringify({
-          status: 'enabled',
+          enabled: true,
           provider: 'sqlite',
-          mode: 'file',
-          filePath: '/tmp/test-e2e/structureclaw.db',
-          directory: '/tmp/test-e2e',
-          fileExists: true,
-          writable: true,
-          fileSize: 1024,
+          mode: 'local-file',
+          database: {
+            provider: 'sqlite',
+            databaseUrl: 'file:/tmp/test-e2e/structureclaw.db',
+            databasePath: '/tmp/test-e2e/structureclaw.db',
+            directoryPath: '/tmp/test-e2e',
+            exists: true,
+            writable: true,
+            sizeBytes: 1024,
+          },
         }),
       }),
     );
@@ -32,13 +36,14 @@ test.describe('Database admin page', () => {
 
   test('shows SQLite as provider', async ({ page }) => {
     await dbPage.goto();
-    await expect(page.getByText('sqlite', { exact: true }).nth(0)).toBeVisible();
+    // The provider label is rendered as uppercase in the Provider/Mode card
+    await expect(page.getByText('sqlite', { exact: true })).toBeVisible();
   });
 
   test('shows file path', async ({ page }) => {
     await dbPage.goto();
-    // Check that a path is displayed (matches the mocked filePath)
-    await expect(page.getByText(/test-e2e\//)).toBeVisible();
+    // Check that the database path is rendered
+    await expect(page.getByText('/tmp/test-e2e/structureclaw.db')).toBeVisible();
   });
 
   test('handles API error gracefully', async ({ page }) => {
