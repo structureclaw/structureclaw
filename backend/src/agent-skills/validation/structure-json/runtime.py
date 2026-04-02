@@ -306,12 +306,16 @@ def validate_semantic(
     """
     issues: List[ValidationIssue] = []
 
-    # Collect IDs for reference checking
-    node_ids = {n.get("id") for n in data.get("nodes", []) if n.get("id")}
-    material_ids = {m.get("id") for m in data.get("materials", []) if m.get("id")}
-    section_ids = {s.get("id") for s in data.get("sections", []) if s.get("id")}
-    story_ids = {s.get("id") for s in data.get("stories", []) if s.get("id")}
-    load_case_ids = {lc.get("id") for lc in data.get("load_cases", []) if lc.get("id")}
+    # Ensure data is a dictionary before proceeding
+    if not isinstance(data, dict):
+        return issues
+
+    # Collect IDs for reference checking with robustness against missing or malformed collections
+    node_ids = {n.get("id") for n in (data.get("nodes") or []) if isinstance(n, dict) and n.get("id")}
+    material_ids = {m.get("id") for m in (data.get("materials") or []) if isinstance(m, dict) and m.get("id")}
+    section_ids = {s.get("id") for s in (data.get("sections") or []) if isinstance(s, dict) and s.get("id")}
+    story_ids = {s.get("id") for s in (data.get("stories") or []) if isinstance(s, dict) and s.get("id")}
+    load_case_ids = {lc.get("id") for lc in (data.get("load_cases") or []) if isinstance(lc, dict) and lc.get("id")}
 
     # Check for duplicate IDs
     for collection_name, collection_items in [
