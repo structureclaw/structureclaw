@@ -715,7 +715,7 @@ export function buildInteractionQuestions(
       case 'bayWidthsYM':
         return { paramKey, label: localize(locale, 'Y向各跨跨度', 'Bay widths in Y'), question: localize(locale, '请确认 3D 框架 Y 向各跨跨度。', 'Please confirm the bay widths in the Y direction for the 3D frame.'), unit: 'm', required: true, critical };
       case 'floorLoads':
-        return { paramKey, label: localize(locale, '各层总荷载', 'Per-floor total load'), question: localize(locale, '请确认各层总荷载（至少给出每层竖向荷载；2D 框架可补水平荷载，3D 框架可补 X/Y 向水平荷载）。', 'Please confirm the per-floor total load. The value will be distributed equally across all nodes on that floor. At minimum provide the vertical load for each story; you may also add lateral loads in X for 2D or X/Y for 3D.'), unit: 'kN', required: true, critical };
+        return { paramKey, label: localize(locale, '各层总荷载', 'Per-floor total load'), question: localize(locale, '请确认各层总荷载（该总荷载将均匀分配到该层所有节点上；至少给出每层竖向荷载；2D 框架可补水平荷载，3D 框架可补 X/Y 向水平荷载）。', 'Please confirm the per-floor total load. The value will be distributed equally across all nodes on that floor. At minimum provide the vertical load for each story; you may also add lateral loads in X for 2D or X/Y for 3D.'), unit: 'kN', required: true, critical };
       case 'loadKN':
         return { paramKey, label: localize(locale, '荷载', 'Load'), question: localize(locale, '请确认控制荷载大小。', 'Please confirm the controlling load magnitude.'), unit: 'kN', required: true, critical };
       case 'loadType':

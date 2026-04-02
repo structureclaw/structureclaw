@@ -3272,8 +3272,8 @@ export class AgentService {
         ),
         this.localize(
           locale,
-          '回复要求：1. 不要输出模板化标题、列表前缀或内部字段名；2. 不要提 allow_auto_decide、routeHint、interaction、skill id、tool id；3. 如果当前需要补参，只问最关键的下一步；4. 如果交互状态中存在 missingCritical、missingFields 或 state 为 confirming/collecting，说明模型尚未建立成功，绝对不能说"模型已建立"或"参数已齐备"，应直接告诉用户还需要补充哪些参数；5. 只有当交互状态明确为 completed 且无 missingFields 时，才可以说明模型已就绪可继续分析；6. 保持简洁，中文不超过120字，英文不超过90 words。',
-          'Requirements: 1. Do not output templated headings, list prefixes, or internal field names. 2. Do not mention allow_auto_decide, routeHint, interaction, skill ids, or tool ids. 3. If clarification is needed, ask only the single most important next question. 4. If the interaction state contains missingCritical, missingFields, or state is confirming/collecting, the model has NOT been built yet — never claim the model is ready or parameters are complete; instead tell the user which parameters are still needed. 5. Only when the interaction state is explicitly completed with no missingFields may you state the model is ready for analysis. 6. Keep it concise: under 120 Chinese characters or under 90 English words.',
+          '回复要求：1. 不要输出模板化标题、列表前缀或内部字段名；2. 不要提 allow_auto_decide、routeHint、interaction、skill id、tool id；3. 如果当前需要补参，只问最关键的下一步；4. 如果交互状态中存在 missingCritical、missingOptional，或 state 为 confirming/collecting，说明模型尚未建立成功，绝对不能说"模型已建立"或"参数已齐备"，应直接告诉用户还需要补充哪些参数；5. 只有当交互状态明确为 completed 且 missingCritical 与 missingOptional 都为空时，才可以说明模型已就绪可继续分析；6. 保持简洁，中文不超过120字，英文不超过90 words。',
+          'Requirements: 1. Do not output templated headings, list prefixes, or internal field names. 2. Do not mention allow_auto_decide, routeHint, interaction, skill ids, or tool ids. 3. If clarification is needed, ask only the single most important next question. 4. If the interaction state contains missingCritical or missingOptional, or state is confirming/collecting, the model has NOT been built yet — never claim the model is ready or parameters are complete; instead tell the user which parameters are still needed. 5. Only when the interaction state is explicitly completed and both missingCritical and missingOptional are empty may you state the model is ready for analysis. 6. Keep it concise: under 120 Chinese characters or under 90 English words.',
         ),
         this.localize(
           locale,
@@ -3978,7 +3978,10 @@ export class AgentService {
       }
     }
     // Apply structural defaults through the skill runtime if any were collected
-    if (Object.keys(structuralDefaults).length > 0 && locale) {
+    if (Object.keys(structuralDefaults).length > 0) {
+      if (!locale) {
+        throw new Error('Locale is required to apply structural defaults.');
+      }
       await this.applyProvidedValuesToSession(session, structuralDefaults, locale, skillIds);
     }
     session.updatedAt = Date.now();

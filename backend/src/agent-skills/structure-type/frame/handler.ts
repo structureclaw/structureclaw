@@ -397,7 +397,7 @@ function normalizeFrameNaturalPatch(message: string, existingState: DraftState |
     /x(?:、|\/|和|及)\s*y(?:方)?向(?:水平|横向|侧向)?(?:总)?荷载(?:都?是|均为|各为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
     /水平(?:总)?荷载[^0-9]{0,24}?x(?:方)?向(?:和|\/|、|及)\s*y(?:方)?向(?:都?是|均为|各为|各|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
     /水平(?:总)?荷载x(?:、|\/|和|及)\s*y(?:方)?向(?:水平|横向|侧向)?(?:都?是|均为|各为|各|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
-    /x(?:方)?向(?:和|\/|、|及)\s*y(?:方)?向(?:都?是|均为|各为|分别为|分别取|各为|为|是)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /x(?:方)?向(?:和|\/|、|及)\s*y(?:方)?向(?:都?是|均为|各为|分别为|分别取|为|是)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
   ]);
   const extractedLateralXLoadKN = dualLateralLoadKN ?? extractScalar(text, [
     /(?:横向|侧向|水平)(?:总)?(?:方向)?荷载(?:两个方向)?(?:都?是|均为|都为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
@@ -931,8 +931,8 @@ function buildFrameQuestions(
       return {
         ...question,
         question: locale === 'zh'
-          ? `请确认各层总荷载（单位 kN）。${loadHint}`
-          : `Please confirm per-story total load (kN). ${loadHint}`,
+          ? `请确认各层总荷载（单位 kN）。该值为整层总荷载，程序会按该层节点数均匀分配到各节点。${loadHint}`
+          : `Please confirm per-story total load (kN). This is the total load on each story, and it will be distributed equally to all nodes on that floor. ${loadHint}`,
       };
     }
     if (question.paramKey === 'frameMaterial') {
