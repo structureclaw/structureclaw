@@ -31,14 +31,12 @@ const COMMON_CONSTRAINTS_EN = [
   'Output only the fields shown in the template. load_case.type must be dead, live, wind, seismic, or other.',
   'Prohibited alternate field names: material_id->material, section_id->section, coordinates->x/y/z, boundary_conditions->restraints, elastic_modulus->E, poisson_ratio->nu, density->rho, yield_strength->fy.',
   'For partial-span distributed loads, split the member into separate elements. Only use nodal_force and distributed as load types; do not use line_load, element_uniform_load, or uniform_load.',
-  'For large structures (multi-story multi-bay frames), generate a complete representative sub-structure (e.g. one floor, one bay) and note the repeatable pattern, to avoid output too large to complete.',
 ];
 
 const COMMON_CONSTRAINTS_ZH = [
   '严格输出模板中的字段和层级。load_case.type 只能是 dead/live/wind/seismic/other。',
   '禁止替代字段名：material_id->material, section_id->section, coordinates->x/y/z, boundary_conditions->restraints, elastic_modulus->E, poisson_ratio->nu, density->rho, yield_strength->fy。',
   '局部均布荷载不要在单元内设起止位置，应拆分单元后对目标单元施加 distributed 荷载。不要使用 line_load/element_uniform_load/uniform_load 等类型名。',
-  '若结构规模较大（如多层多跨框架），生成一层单跨的完整代表子结构并注释可扩展模式，避免输出过大导致超时。',
 ];
 
 export function getStructureModelTemplate(): string {
