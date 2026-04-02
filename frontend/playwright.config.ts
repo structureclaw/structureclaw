@@ -38,12 +38,11 @@ export default defineConfig({
       },
     },
     {
-      command: 'npm run dev',
+      command: 'npx next dev -p 30000',
       port: 30000,
       reuseExistingServer: !process.env.CI,
       timeout: 60_000,
       env: {
-        FRONTEND_PORT: '30000',
         NEXT_PUBLIC_API_URL: 'http://localhost:30010',
       },
     },

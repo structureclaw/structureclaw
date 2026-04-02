@@ -42,13 +42,13 @@ jobs:
       - name: Install backend dependencies
         run: npm ci --prefix backend
 
-      - name: Setup backend database
-        run: npm run db:deploy --prefix backend
+      - name: Setup backend database and build
+        run: |
+          mkdir -p .runtime/data
+          npm run db:deploy --prefix backend
+          npm run build --prefix backend
         env:
           DATABASE_URL: file:../../.runtime/data/test-e2e.db
-
-      - name: Build backend
-        run: npm run build --prefix backend
 
       - name: Install frontend dependencies
         run: npm ci --prefix frontend
@@ -67,15 +67,14 @@ jobs:
           REDIS_URL: disabled
 
       - name: Start frontend
-        run: npm run dev --prefix frontend &
+        run: cd frontend && npx next dev -p 30000 &
         env:
-          FRONTEND_PORT: 30000
           NEXT_PUBLIC_API_URL: http://localhost:30010
 
       - name: Wait for services
         run: |
           npx wait-on http://localhost:30010/api/v1 --timeout 30000
-          npx wait-on http://localhost:30000 --timeout 30000
+          npx wait-on http://localhost:30000 --timeout 60000
 
       - name: Run E2E tests
         run: npm run test:e2e --prefix frontend
