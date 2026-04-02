@@ -43,7 +43,7 @@ test.describe('Database admin page', () => {
   test('shows file path', async ({ page }) => {
     await dbPage.goto();
     // Check that the database path is rendered
-    await expect(page.getByText('/tmp/test-e2e/structureclaw.db')).toBeVisible();
+    await expect(page.getByText('/tmp/test-e2e/structureclaw.db', { exact: true })).toBeVisible();
   });
 
   test('handles API error gracefully', async ({ page }) => {
