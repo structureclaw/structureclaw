@@ -1249,6 +1249,7 @@ export class AgentService {
       stages: skill.stages,
       triggers: skill.triggers,
       autoLoadByDefault: skill.autoLoadByDefault,
+      domain: skill.domain,
     }));
   }
 

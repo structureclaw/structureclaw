@@ -192,6 +192,7 @@ export class AgentSkillLoader {
           triggers: assertStringArray(metadata.triggers),
           stages: assertStringArray(metadata.stages) as SkillStage[],
           autoLoadByDefault: Boolean(metadata.autoLoadByDefault ?? true),
+          domain: assertString(metadata.domain) as AgentSkillMetadata['domain'] || undefined,
           stage,
           markdown: body,
         };
@@ -215,6 +216,7 @@ export class AgentSkillLoader {
         triggers: file.triggers,
         stages: Array.from(new Set([...file.stages, file.stage])) as SkillStage[],
         autoLoadByDefault: file.autoLoadByDefault,
+        domain: file.domain,
         markdownByStage: {
           [file.stage]: file.markdown,
         },

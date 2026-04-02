@@ -192,6 +192,7 @@ type AgentSkillSummary = {
   stages?: string[]
   triggers?: string[]
   autoLoadByDefault?: boolean
+  domain?: string
 }
 
 type SkillDomain =
@@ -1350,6 +1351,10 @@ export function AIConsole() {
 
     availableSkills.forEach((skill) => {
       if (!map[skill.id]) {
+        if (skill.domain) {
+          map[skill.id] = normalizeSkillDomain(skill.domain)
+          return
+        }
         if (skill.id.startsWith('code-check-')) {
           map[skill.id] = 'code-check'
           return
