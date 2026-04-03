@@ -67,7 +67,14 @@ export async function handleCollect(
       `${intro.replace(/。$/, '')}，请先补充：${missingFields.join('、')}。`,
       `${intro.replace(/\.$/, '')}. Please provide: ${missingFields.join(', ')}.`,
     );
-    const interaction = deps.buildToolInteraction('collecting', ctx.locale);
+    const interaction = await deps.buildInteractionPayload(
+      assessment,
+      ctx.session,
+      assessment.criticalMissing.length > 0 ? 'confirming' : 'collecting',
+      ctx.locale,
+      ctx.skillIds,
+      ctx.activeToolIds,
+    );
     const response = await deps.renderInteractionResponse(
       ctx.params.message,
       interaction,

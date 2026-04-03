@@ -89,7 +89,8 @@ export interface HandlerDeps {
     locale: AppLocale,
     activeToolIds?: ActiveToolSet,
   ): string;
-  buildToolInteraction(state: AgentInteractionState | 'blocked' | 'completed', locale: AppLocale): AgentInteraction;
+  /** Terminal tool-run outcomes only. Use {@link buildInteractionPayload} for collecting, confirming, ready, etc. */
+  buildToolInteraction(state: 'blocked' | 'completed', locale: AppLocale): AgentInteraction;
   extractDraftParameters(
     llm: ChatOpenAI | null,
     message: string,

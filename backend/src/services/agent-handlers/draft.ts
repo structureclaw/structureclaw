@@ -28,9 +28,9 @@ export async function handleDraft(
     }
 
     if (draft.model && nextPlan.kind !== 'ask') {
-      return buildGenericReplyResult(ctx, deps, draft);
+      return await buildGenericReplyResult(ctx, deps, draft);
     }
-    return buildGenericAskResult(ctx, deps, draft);
+    return await buildGenericAskResult(ctx, deps, draft);
   }
 
   const resolved = await deps.resolveConversationAssessment({
@@ -55,7 +55,15 @@ async function buildGenericReplyResult(
   deps: HandlerDeps,
   draft: { model?: Record<string, unknown>; missingFields: string[] },
 ): Promise<AgentRunResult> {
-  const interaction = deps.buildToolInteraction('ready', ctx.locale);
+  const assessment = await deps.assessInteractionNeeds(ctx.session, ctx.locale, ctx.skillIds);
+  const interaction = await deps.buildInteractionPayload(
+    assessment,
+    ctx.session,
+    'ready',
+    ctx.locale,
+    ctx.skillIds,
+    ctx.activeToolIds,
+  );
   const fallback = deps.localize(
     ctx.locale,
     '已根据当前输入生成结构模型 JSON，可直接触发分析工具。',
@@ -102,6 +110,17 @@ async function buildGenericAskResult(
     ctx.session.updatedAt = Date.now();
   }
 
+  const assessment = await deps.assessInteractionNeeds(ctx.session, ctx.locale, ctx.skillIds);
+  const interactionState = assessment.criticalMissing.length > 0 ? 'confirming' : 'collecting';
+  const interaction = await deps.buildInteractionPayload(
+    assessment,
+    ctx.session,
+    interactionState,
+    ctx.locale,
+    ctx.skillIds,
+    ctx.activeToolIds,
+  );
+
   const missingFields = draft.missingFields.length > 0
     ? draft.missingFields
     : [deps.localize(ctx.locale, '关键结构参数', 'key structural parameters')];
@@ -111,7 +130,6 @@ async function buildGenericAskResult(
     `${intro.replace(/。$/, '')}，请先补充：${missingFields.join('、')}。`,
     `${intro.replace(/\.$/, '')}. Please provide: ${missingFields.join(', ')}.`,
   );
-  const interaction = deps.buildToolInteraction('collecting', ctx.locale);
   const response = await deps.renderInteractionResponse(
     ctx.params.message,
     interaction,
