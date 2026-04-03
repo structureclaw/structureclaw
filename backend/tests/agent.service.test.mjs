@@ -2235,7 +2235,7 @@ describe('AgentService orchestration', () => {
     expect(result.success).toBe(false);
     expect(result.orchestrationMode).toBe('llm-planned');
     expect(result.toolCalls).toEqual([]);
-    expect(result.response).toContain('LLM planner');
+    expect(result.response).toContain('LLM configuration error');
   });
 
   test('should block unsupported structural types from silently falling back to beam extraction', async () => {
