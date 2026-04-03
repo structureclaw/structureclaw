@@ -31,6 +31,55 @@ export type AssessInteractionNeedsFn = (
 export type HasEmptySkillSelectionFn = (skillIds?: string[]) => boolean;
 export type HasActiveToolFn = (activeToolIds: ActiveToolSet, toolId: string) => boolean;
 
+function localize(locale: AppLocale, zh: string, en: string): string {
+  return locale === 'zh' ? zh : en;
+}
+
+function extractHttpStatus(error: unknown): number | undefined {
+  const status = (error as any)?.response?.status;
+  return typeof status === 'number' ? status : undefined;
+}
+
+function stringifyError(error: unknown): string {
+  const unknownError = error as any;
+  const status = extractHttpStatus(error);
+  if (unknownError?.response?.data) {
+    const payload = typeof unknownError.response.data === 'string'
+      ? unknownError.response.data
+      : JSON.stringify(unknownError.response.data);
+    return status ? `HTTP ${status}: ${payload}` : payload;
+  }
+  if (unknownError?.message) {
+    return status ? `HTTP ${status}: ${String(unknownError.message)}` : String(unknownError.message);
+  }
+  return 'Unknown error';
+}
+
+function describeLlmPlannerError(error: unknown, locale: AppLocale): string {
+  const status = extractHttpStatus(error);
+  const raw = stringifyError(error);
+  const normalizedRaw = raw.replace(/^HTTP \d+:\s*/u, '').trim();
+  const lowerRaw = normalizedRaw.toLowerCase();
+
+  if (status === 403 && lowerRaw.includes('not available in your region')) {
+    return localize(locale, 'LLM 403 / 模型区域不可用', 'LLM 403 / model unavailable in your region');
+  }
+  if (status === 401) {
+    return localize(locale, 'LLM 401 / API Key 无效或未授权', 'LLM 401 / invalid or unauthorized API key');
+  }
+  if (status === 429) {
+    return localize(locale, 'LLM 429 / 请求限流或额度不足', 'LLM 429 / rate limited or quota exceeded');
+  }
+  if (typeof status === 'number') {
+    return localize(
+      locale,
+      `LLM ${status} / ${normalizedRaw || '请求失败'}`,
+      `LLM ${status} / ${normalizedRaw || 'request failed'}`,
+    );
+  }
+  return normalizedRaw || localize(locale, 'LLM 不可用', 'LLM unavailable');
+}
+
 // ---------------------------------------------------------------------------
 // extractJsonObject
 // ---------------------------------------------------------------------------
@@ -272,8 +321,11 @@ export async function planNextStepWithLlm(
       planningDirective: 'auto',
       rationale: 'llm',
     };
-  } catch {
-    throw new Error('LLM_PLANNER_INVALID_RESPONSE');
+  } catch (error) {
+    if (error instanceof Error && error.message === 'LLM_PLANNER_INVALID_RESPONSE') {
+      throw error;
+    }
+    throw new Error(`LLM_PLANNER_UNAVAILABLE:${describeLlmPlannerError(error, options.locale)}`);
   }
 }
 
