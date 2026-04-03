@@ -1,6 +1,7 @@
 from structure_protocol.migrations import (
     is_supported_target_schema_version,
     migrate_structure_model_v1,
+    migrate_v1_to_v2,
 )
 from structure_protocol.structure_model_v1 import (
     Element,
@@ -11,8 +12,30 @@ from structure_protocol.structure_model_v1 import (
     Section,
     StructureModelV1,
 )
+from structure_protocol.structure_model_v2 import (
+    AnalysisControl,
+    ElementV2,
+    FloorLoad,
+    LoadCaseV2,
+    LoadCombinationV2,
+    MaterialV2,
+    NodeV2,
+    ProjectInfo,
+    SECTION_SHAPE_KINDS,
+    SECTION_PURPOSE,
+    SectionShape,
+    SectionV2,
+    SiteSeismicParams,
+    SlabOpening,
+    StoryDef,
+    StructureModelV2,
+    StructureSystem,
+    WallOpening,
+    WindParams,
+)
 
 __all__ = [
+    # V1 models
     "Element",
     "LoadCase",
     "LoadCombination",
@@ -20,6 +43,28 @@ __all__ = [
     "Node",
     "Section",
     "StructureModelV1",
+    # V2 models
+    "AnalysisControl",
+    "ElementV2",
+    "FloorLoad",
+    "LoadCaseV2",
+    "LoadCombinationV2",
+    "MaterialV2",
+    "NodeV2",
+    "ProjectInfo",
+    "SECTION_SHAPE_KINDS",
+    "SECTION_PURPOSE",
+    "SectionShape",
+    "SectionV2",
+    "SiteSeismicParams",
+    "SlabOpening",
+    "StoryDef",
+    "StructureModelV2",
+    "StructureSystem",
+    "WallOpening",
+    "WindParams",
+    # Migrations
     "is_supported_target_schema_version",
     "migrate_structure_model_v1",
+    "migrate_v1_to_v2",
 ]
