@@ -243,7 +243,6 @@ async function runLlmIntegrationTests(rootDir, args) {
   await runBackendBuildOnce(context);
 
   // Ensure DB is ready
-  const backendRequire = createRequire(path.join(rootDir, "backend", "package.json"));
   const { execSync } = require("node:child_process");
   execSync("npx prisma db push --skip-generate --accept-data-loss", {
     cwd: path.join(rootDir, "backend"),
