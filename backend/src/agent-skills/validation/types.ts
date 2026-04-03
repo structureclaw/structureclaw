@@ -32,11 +32,11 @@ export interface ValidationIssue {
  */
 export interface ValidationSummary {
   /** Number of errors / 错误数量 */
-  errorCount: number;
+  error_count: number;
   /** Number of warnings / 警告数量 */
-  warningCount: number;
+  warning_count: number;
   /** Number of info messages / 信息数量 */
-  infoCount: number;
+  info_count: number;
 }
 
 /**

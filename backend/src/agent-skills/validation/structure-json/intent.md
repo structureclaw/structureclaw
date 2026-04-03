@@ -50,9 +50,9 @@ defaultSchemaVersion: "2.0.0"
 {
   "valid": boolean,
   "summary": {
-    "errorCount": number,
-    "warningCount": number,
-    "infoCount": number
+    "error_count": number,
+    "warning_count": number,
+    "info_count": number
   },
   "issues": [
     {
