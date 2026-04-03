@@ -317,13 +317,11 @@ def validate_semantic(
     story_ids = {s.get("id") for s in (data.get("stories") or []) if isinstance(s, dict) and s.get("id")}
     load_case_ids = {lc.get("id") for lc in (data.get("load_cases") or []) if isinstance(lc, dict) and lc.get("id")}
 
-    # Check for duplicate IDs
-    for collection_name, collection_items in [
-        ("nodes", data.get("nodes", [])),
-        ("materials", data.get("materials", [])),
-        ("sections", data.get("sections", [])),
-        ("elements", data.get("elements", [])),
-    ]:
+    # Check for duplicate IDs with robustness against null/malformed collections
+    for collection_name in ["nodes", "materials", "sections", "elements"]:
+        collection_items = data.get(collection_name)
+        if not isinstance(collection_items, list):
+            continue
         seen: Set[str] = set()
         for idx, item in enumerate(collection_items):
             item_id = item.get("id") if isinstance(item, dict) else None
