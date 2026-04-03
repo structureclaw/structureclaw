@@ -1748,8 +1748,8 @@ async function validateStructureJsonSkill(context) {
       { id: "2", x: 3, y: 0, z: 0 },
     ],
     elements: [{ id: "E1", type: "beam", nodes: ["1", "2"], material: "M1", section: "S1" }],
-    materials: [{ id: "M1", type: "steel", E: 205000, nu: 0.3, rho: 7850 }],
-    sections: [{ id: "S1", type: "rectangular", width: 0.3, height: 0.6 }],
+    materials: [{ id: "M1", name: "Steel", type: "steel", E: 205000, nu: 0.3, rho: 7850 }],
+    sections: [{ id: "S1", name: "Rectangular 0.3x0.6", type: "rectangular", width: 0.3, height: 0.6 }],
     load_cases: [],
     load_combinations: [],
   };
@@ -1785,8 +1785,8 @@ async function validateStructureJsonSkill(context) {
       { id: "2", x: 3, y: 0, z: 0 },
     ],
     elements: [{ id: "E1", type: "beam", nodes: ["1", "999"], material: "M1", section: "S1" }], // Node 999 doesn't exist
-    materials: [{ id: "M1", type: "steel", E: 205000, nu: 0.3, rho: 7850 }],
-    sections: [{ id: "S1", type: "rectangular", width: 0.3, height: 0.6 }],
+    materials: [{ id: "M1", name: "Steel", type: "steel", E: 205000, nu: 0.3, rho: 7850 }],
+    sections: [{ id: "S1", name: "Rectangular 0.3x0.6", type: "rectangular", width: 0.3, height: 0.6 }],
     load_cases: [],
     load_combinations: [],
   };
