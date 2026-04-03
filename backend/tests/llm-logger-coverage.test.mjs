@@ -393,9 +393,8 @@ describe('llmCallLogger.ensureStream error handling', () => {
 
   test('should gracefully handle directory creation failure', async () => {
     mockConfig.llmLogEnabled = true;
-    // Use /dev/null/impossible which fails immediately with ENOTDIR on Linux
-    // (unlike /proc paths which can hang with recursive mkdirSync)
-    mockConfig.llmLogDir = '/dev/null/impossible';
+    // Use a path with a null byte — mkdirSync rejects it on all platforms
+    mockConfig.llmLogDir = '/\x00invalid-path';
 
     await jest.isolateModulesAsync(async () => {
       setupLlmLoggerMocks();
@@ -428,7 +427,8 @@ describe('llmCallLogger.ensureStream error handling', () => {
 
   test('should log a warning via logger on stream error', async () => {
     mockConfig.llmLogEnabled = true;
-    mockConfig.llmLogDir = '/dev/null/impossible';
+    // Use a path with a null byte — mkdirSync rejects it on all platforms
+    mockConfig.llmLogDir = '/\x00invalid-path';
     mockLogger.warn.mockClear();
 
     await jest.isolateModulesAsync(async () => {
