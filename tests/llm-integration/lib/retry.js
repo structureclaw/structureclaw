@@ -5,17 +5,17 @@ const MAX_ATTEMPTS = 4; // 1 initial + 3 retries
  * Logs each retry attempt with the error message.
  * Returns the result on success; throws the last error on final failure.
  */
-async function withRetry(fn, label = "test") {
-  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+async function withRetry(fn, label = "test", maxAttempts = MAX_ATTEMPTS) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn();
     } catch (err) {
-      if (attempt === MAX_ATTEMPTS) {
+      if (attempt === maxAttempts) {
         throw err;
       }
       const msg = err instanceof Error ? err.message : String(err);
       process.stdout.write(
-        `  [RETRY] ${label} (attempt ${attempt}/${MAX_ATTEMPTS}) — ${msg}\n`
+        `  [RETRY] ${label} (attempt ${attempt}/${maxAttempts}) — ${msg}\n`
       );
     }
   }

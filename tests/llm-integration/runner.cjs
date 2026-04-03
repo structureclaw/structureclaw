@@ -245,7 +245,7 @@ async function runLlmIntegrationTests(rootDir, args) {
   // Ensure DB is ready
   const backendRequire = createRequire(path.join(rootDir, "backend", "package.json"));
   const { execSync } = require("node:child_process");
-  execSync("npx prisma db push --skip-generate", {
+  execSync("npx prisma db push --skip-generate --accept-data-loss", {
     cwd: path.join(rootDir, "backend"),
     env: { ...process.env, ...context.env },
     stdio: "pipe",
@@ -308,7 +308,7 @@ async function runLlmIntegrationTests(rootDir, args) {
           default:
             throw new Error(`Unknown test category: ${testCase.category}`);
         }
-      }, maxAttempts);
+      }, testCase.id, maxAttempts);
 
       const duration = Date.now() - caseStart;
       logResult("PASS", testCase.id, 1, maxAttempts, duration);
