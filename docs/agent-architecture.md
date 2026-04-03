@@ -372,18 +372,155 @@ The intended end-to-end workflow is:
 
 ## 10. Current Code Mapping
 
-Primary files and responsibilities:
+The agent orchestration layer is decomposed into the following modules.
 
-- [backend/src/agent-runtime/types.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/agent-runtime/types.ts)
-  skill domains, manifests, handlers, draft state, runtime types
-- [backend/src/agent-runtime/index.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/agent-runtime/index.ts)
-  skill runtime coordination and structure-type-led draft handling
-- [backend/src/services/conversation.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/services/conversation.ts)
-  conversation CRUD and snapshot persistence
-- [backend/src/services/agent.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/services/agent.ts)
-  agent orchestration and current tool execution chain
-- [backend/src/api/chat.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/api/chat.ts)
-  single public chat entrypoints
+### 10.1 Public Surface
+
+- [backend/src/api/chat.ts](backend/src/api/chat.ts)
+  Public HTTP endpoints for chat. Accepts user messages and delegates to the agent service.
+- [backend/src/services/agent.ts](backend/src/services/agent.ts)
+  `AgentService` class: public API (`run`, `runStream`), persistence helpers, execution pipeline, and orchestration shell. Delegates routing, planning, result building, session management, and validation to the modules below.
+
+### 10.2 Agent Orchestration Modules
+
+- [backend/src/services/agent-context.ts](backend/src/services/agent-context.ts)
+  Defines `TurnContext` (unified per-turn parameter object), `HandlerDeps` (dependency-injection interface for handlers), `RouteDecision`, and the `buildTurnContext()` factory.
+- [backend/src/services/agent-router.ts](backend/src/services/agent-router.ts)
+  Planner and routing logic extracted from `AgentService`: `planNextStep`, `planNextStepWithLlm`, `buildPlannerContextSnapshot`, `parsePlannerResponse`, `repairPlannerResponse`, `resolveInteractivePlanKind`, `extractJsonObject`.
+- [backend/src/services/agent-result.ts](backend/src/services/agent-result.ts)
+  Result builders and renderers extracted from `AgentService`: `buildMetrics`, `buildInteractionQuestion`, `buildToolInteraction`, `buildRecommendedNextStep`, `buildGenericModelingIntro`, `buildChatModeResponse`, `renderSummary`.
+- [backend/src/services/agent-session.ts](backend/src/services/agent-session.ts)
+  Session state machine and Redis persistence: `SessionState` type, `transitionSession` (enforces allowed transitions), `getSessionState`, `buildInteractionSessionKey`, `getInteractionSession`, `setInteractionSession`, `clearInteractionSession`.
+- [backend/src/services/agent-validation.ts](backend/src/services/agent-validation.ts)
+  Model validation with LLM auto-repair: `validateWithRetry` (wraps `executeValidateModelStep` with up to 2 repair attempts) and `tryRepairModel` (sends model + validation error to LLM for JSON-level repair).
+
+### 10.3 Route Handlers
+
+Each handler corresponds to a distinct conversation path dispatched by the router.
+
+- [backend/src/services/agent-handlers/chat.ts](backend/src/services/agent-handlers/chat.ts)
+  `handleChat` -- plain conversational reply path. No skill extraction or model building.
+- [backend/src/services/agent-handlers/collect.ts](backend/src/services/agent-handlers/collect.ts)
+  `handleCollect` -- lightweight parameter extraction path for the "ask" decision. Calls `extractDraftParameters` only; explicitly skips the expensive `tryBuildGenericModelWithLlm` model generation.
+- [backend/src/services/agent-handlers/draft.ts](backend/src/services/agent-handlers/draft.ts)
+  `handleDraft` -- full model drafting path. Calls the complete `textToModelDraft` pipeline including model building when sufficient parameters are available.
+- [backend/src/services/agent-handlers/execute.ts](backend/src/services/agent-handlers/execute.ts)
+  `handleExecute` -- stub. The execution pipeline (model preparation, analysis, code check, report generation) remains in `AgentService` and will be extracted in a future pass.
+- [backend/src/services/agent-handlers/index.ts](backend/src/services/agent-handlers/index.ts)
+  Barrel re-export for all handlers.
+
+### 10.4 Skill Runtime
+
+- [backend/src/agent-runtime/types.ts](backend/src/agent-runtime/types.ts)
+  Skill domains, manifests, handlers, draft state, runtime types, and `DraftParameterExtractionResult`.
+- [backend/src/agent-runtime/index.ts](backend/src/agent-runtime/index.ts)
+  `AgentSkillRuntime` class: skill discovery, structure-type detection, and draft handling. Exposes `extractDraftParameters` (parameter extraction without model building), `buildModelFromDraft` (model construction from extracted parameters), and `textToModelDraft` (composed pipeline for backward compatibility).
+
+### 10.5 Conversation Persistence
+
+- [backend/src/services/conversation.ts](backend/src/services/conversation.ts)
+  Conversation CRUD and snapshot persistence.
+
+## 10A. Multi-Round Conversation Architecture
+
+### 10A.1 Session State Machine
+
+Each conversation maintains an `InteractionSession` stored in Redis. The session carries a `state` field that tracks the conversation's position in the multi-round workflow.
+
+Defined states:
+
+- `idle` -- no active engineering interaction; starting point for new conversations.
+- `collecting` -- gathering parameters from the user via follow-up questions.
+- `drafted` -- a structural model draft has been produced.
+- `validating` -- the model is being validated.
+- `validation_failed` -- validation failed; the system may attempt auto-repair.
+- `ready` -- the model passed validation and is ready for execution.
+- `executing` -- the execution pipeline (analysis, code check, report) is running.
+- `completed` -- execution finished successfully.
+- `blocked` -- the system cannot proceed and needs user intervention.
+
+Allowed transitions are enforced by `transitionSession` in `agent-session.ts`. Sessions without a `state` field (created before this mechanism) default to `idle`.
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> collecting
+    idle --> drafted
+    idle --> executing
+    collecting --> collecting : user provides partial info
+    collecting --> drafted
+    collecting --> idle
+    drafted --> validating
+    drafted --> ready
+    drafted --> collecting
+    drafted --> idle
+    validating --> ready
+    validating --> validation_failed
+    validating --> blocked
+    validation_failed --> validating : auto-repair attempt
+    validation_failed --> collecting
+    validation_failed --> blocked
+    ready --> executing
+    ready --> collecting
+    ready --> idle
+    executing --> completed
+    executing --> blocked
+    completed --> idle
+    completed --> collecting
+    blocked --> idle
+    blocked --> collecting
+```
+
+### 10A.2 Route-Based Dispatch
+
+Each incoming user message follows a fixed dispatch sequence:
+
+1. **Build context**: `buildTurnContext` assembles the `TurnContext` object containing the message, locale, session state, active skills, and available tools.
+2. **Plan next step**: `planNextStep` calls the LLM planner to decide the best next action (`reply`, `ask`, or `tool_call`).
+3. **Resolve route**: the planner output is mapped to a `RouteDecision`:
+   - `kind: 'reply'` with `replyMode: 'plain'` maps to **chat**
+   - `kind: 'ask'` maps to **collect**
+   - `kind: 'reply'` with `replyMode: 'structured'` maps to **draft**
+   - `kind: 'tool_call'` maps to **execute**
+4. **Dispatch to handler**: the corresponding handler function runs.
+
+```mermaid
+flowchart TD
+    Msg[User message] --> BuildCtx[buildTurnContext]
+    BuildCtx --> Plan[planNextStep via LLM]
+    Plan --> Route{resolveRouteDecision}
+    Route -->|chat| Chat[handleChat]
+    Route -->|collect| Collect[handleCollect]
+    Route -->|draft| Draft[handleDraft]
+    Route -->|execute| Exec["execution pipeline<br/>(agent.ts)"]
+    Chat --> Result[Finalize result]
+    Collect --> Result
+    Draft --> Result
+    Exec --> Validate[validateWithRetry]
+    Validate --> Result
+```
+
+### 10A.3 Collect vs Draft Optimization
+
+A key performance optimization distinguishes the `collect` path from the `draft` path.
+
+When the planner decides to ask the user for more information, the system only needs to know which parameters are missing -- it does not need a complete structural model. The `collect` handler calls `extractDraftParameters` (which runs skill detection and parameter extraction) but explicitly skips `tryBuildGenericModelWithLlm` (an expensive LLM call that generates a full StructureModel JSON).
+
+This eliminates ~40 seconds of unnecessary model generation on the "ask" path while preserving the same interaction contract (tool call traces, question formatting, session updates).
+
+When sufficient parameters are available and the planner decides to reply with a structured result, the `draft` handler runs the full `textToModelDraft` pipeline including model building.
+
+### 10A.4 Validation with Auto-Repair
+
+When a structural model is generated during the current turn, the validation step uses `validateWithRetry` instead of a single pass:
+
+1. Run `executeValidateModelStep` on the model.
+2. If validation fails and the model was LLM-generated in this turn, call `tryRepairModel` -- an LLM call that receives the original model JSON and the validation error, and returns a repaired JSON.
+3. Re-validate the repaired model.
+4. Repeat up to `maxRetries` (default 2) times.
+5. If all repair attempts fail, transition the session to `blocked` and return a clarification response to the user.
+
+This mechanism recovers from common LLM generation errors (missing fields, type mismatches, invalid enum values) without requiring the user to re-enter information.
 
 ## 11. Refactor Direction
 
@@ -406,6 +543,16 @@ The runtime has already aligned key orchestration behavior with the target desig
 - `force_tool` bypasses planner branching and enters the skill-first execution path
 - service entrypoints are now consolidated to `run` and `runStream`; interactive/tool-call compatibility wrappers are removed
 - in skill-enabled flows, drafting tools are no longer globally default-enabled and must come from skill capability grants; the core execution pipeline tools remain platform-provided
+
+### Multi-Round Architecture Status (2026-04)
+
+The following orchestration improvements have been completed:
+
+- **Route-based dispatch** is live for chat, collect, and draft paths. The execute path remains in `AgentService` and will be extracted in a future pass.
+- **Session state machine** is live with explicit `SessionState` transitions enforced by `transitionSession`. Old sessions without a `state` field are backward-compatible (default to `idle`).
+- **Collect-only parameter extraction** eliminates wasteful model generation on the "ask" path, saving ~40 seconds per round when the planner decides to gather more information.
+- **Validation with auto-repair** is live. `validateWithRetry` attempts up to 2 LLM-driven repairs before blocking.
+- **File decomposition** has extracted planner logic, result builders, session management, and validation into separate modules. `agent.ts` has been reduced from ~4856 to ~4500 lines. Further slimming to the target ~800 lines depends on extracting the execution pipeline into `agent-handlers/execute.ts`.
 
 ## 12. Staged Refactor Plan
 

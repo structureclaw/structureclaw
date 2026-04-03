@@ -373,18 +373,155 @@ Agent 只能在“当前可用 tool 集”内做决策。
 
 ## 10. 当前代码职责映射
 
-主要文件与职责如下：
+Agent 编排层已拆分为以下模块。
 
-- [backend/src/agent-runtime/types.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/agent-runtime/types.ts)
-  skill 域、manifest、handler、draft state 与 runtime 类型
-- [backend/src/agent-runtime/index.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/agent-runtime/index.ts)
-  skill runtime 协调，以及以 `structure-type` 为入口的 draft 处理
-- [backend/src/services/conversation.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/services/conversation.ts)
-  会话 CRUD 与 snapshot 持久化
-- [backend/src/services/agent.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/services/agent.ts)
-  agent 编排与当前 tool 执行链
-- [backend/src/api/chat.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/api/chat.ts)
-  对外统一聊天入口
+### 10.1 对外接口
+
+- [backend/src/api/chat.ts](backend/src/api/chat.ts)
+  对外统一 HTTP 聊天入口，接收用户消息并委托 agent 服务处理。
+- [backend/src/services/agent.ts](backend/src/services/agent.ts)
+  `AgentService` 类：对外 API（`run`、`runStream`）、持久化、执行管线与编排壳。路由、规划、结果构建、会话管理与校验均委托至下列模块。
+
+### 10.2 Agent 编排模块
+
+- [backend/src/services/agent-context.ts](backend/src/services/agent-context.ts)
+  定义 `TurnContext`（每轮统一参数对象）、`HandlerDeps`（handler 依赖注入接口）、`RouteDecision`，以及 `buildTurnContext()` 工厂函数。
+- [backend/src/services/agent-router.ts](backend/src/services/agent-router.ts)
+  从 `AgentService` 中提取的规划与路由逻辑：`planNextStep`、`planNextStepWithLlm`、`buildPlannerContextSnapshot`、`parsePlannerResponse`、`repairPlannerResponse`、`resolveInteractivePlanKind`、`extractJsonObject`。
+- [backend/src/services/agent-result.ts](backend/src/services/agent-result.ts)
+  从 `AgentService` 中提取的结果构建与渲染函数：`buildMetrics`、`buildInteractionQuestion`、`buildToolInteraction`、`buildRecommendedNextStep`、`buildGenericModelingIntro`、`buildChatModeResponse`、`renderSummary`。
+- [backend/src/services/agent-session.ts](backend/src/services/agent-session.ts)
+  会话状态机与 Redis 持久化：`SessionState` 类型、`transitionSession`（强制合法转换）、`getSessionState`、`buildInteractionSessionKey`、`getInteractionSession`、`setInteractionSession`、`clearInteractionSession`。
+- [backend/src/services/agent-validation.ts](backend/src/services/agent-validation.ts)
+  带 LLM 自动修复的模型校验：`validateWithRetry`（包装 `executeValidateModelStep`，最多尝试 2 次修复）与 `tryRepairModel`（将模型 JSON 及校验错误发送给 LLM 进行 JSON 级别修复）。
+
+### 10.3 路由 Handler
+
+每个 handler 对应由 router 分发的一条独立会话路径。
+
+- [backend/src/services/agent-handlers/chat.ts](backend/src/services/agent-handlers/chat.ts)
+  `handleChat` —— 纯对话回复路径，不触发 skill 提取或建模。
+- [backend/src/services/agent-handlers/collect.ts](backend/src/services/agent-handlers/collect.ts)
+  `handleCollect` —— 轻量参数提取路径，对应 planner 的"追问"决策。仅调用 `extractDraftParameters`，显式跳过耗时的 `tryBuildGenericModelWithLlm` 模型生成。
+- [backend/src/services/agent-handlers/draft.ts](backend/src/services/agent-handlers/draft.ts)
+  `handleDraft` —— 完整建模路径。当参数充足时，调用完整的 `textToModelDraft` 管线（含模型构建）。
+- [backend/src/services/agent-handlers/execute.ts](backend/src/services/agent-handlers/execute.ts)
+  `handleExecute` —— 占位桩。执行管线（模型准备、分析、规范校核、报告生成）仍在 `AgentService` 中，将在后续阶段提取。
+- [backend/src/services/agent-handlers/index.ts](backend/src/services/agent-handlers/index.ts)
+  所有 handler 的统一导出桶文件。
+
+### 10.4 Skill Runtime
+
+- [backend/src/agent-runtime/types.ts](backend/src/agent-runtime/types.ts)
+  skill 域、manifest、handler、draft state、runtime 类型，以及 `DraftParameterExtractionResult`。
+- [backend/src/agent-runtime/index.ts](backend/src/agent-runtime/index.ts)
+  `AgentSkillRuntime` 类：skill 发现、structure-type 检测与 draft 处理。对外暴露 `extractDraftParameters`（仅参数提取，不构建模型）、`buildModelFromDraft`（从提取结果构建模型）、`textToModelDraft`（组合管线，向后兼容）。
+
+### 10.5 会话持久化
+
+- [backend/src/services/conversation.ts](backend/src/services/conversation.ts)
+  会话 CRUD 与 snapshot 持久化。
+
+## 10A. 多轮对话架构
+
+### 10A.1 会话状态机
+
+每个对话在 Redis 中维护一个 `InteractionSession`。会话携带 `state` 字段，用于跟踪当前在多轮流程中的位置。
+
+已定义的状态：
+
+- `idle` —— 无活跃工程交互；新对话的起始状态。
+- `collecting` —— 正在通过追问向用户收集参数。
+- `drafted` —— 已产出结构模型草稿。
+- `validating` —— 模型正在校验中。
+- `validation_failed` —— 校验失败；系统可能尝试自动修复。
+- `ready` —— 模型已通过校验，可以进入执行。
+- `executing` —— 执行管线（分析、规范校核、报告）正在运行。
+- `completed` —— 执行成功完成。
+- `blocked` —— 系统无法继续，需要用户干预。
+
+合法转换由 `agent-session.ts` 中的 `transitionSession` 强制执行。未携带 `state` 字段的旧会话（在此机制引入前创建）默认为 `idle`。
+
+```mermaid
+stateDiagram-v2
+    [*] --> idle
+    idle --> collecting
+    idle --> drafted
+    idle --> executing
+    collecting --> collecting : 用户提供部分信息
+    collecting --> drafted
+    collecting --> idle
+    drafted --> validating
+    drafted --> ready
+    drafted --> collecting
+    drafted --> idle
+    validating --> ready
+    validating --> validation_failed
+    validating --> blocked
+    validation_failed --> validating : 自动修复尝试
+    validation_failed --> collecting
+    validation_failed --> blocked
+    ready --> executing
+    ready --> collecting
+    ready --> idle
+    executing --> completed
+    executing --> blocked
+    completed --> idle
+    completed --> collecting
+    blocked --> idle
+    blocked --> collecting
+```
+
+### 10A.2 基于路由的分发
+
+每条用户消息遵循固定的分发流程：
+
+1. **构建上下文**：`buildTurnContext` 组装 `TurnContext` 对象，包含消息、locale、会话状态、活跃 skill 与可用 tool。
+2. **规划下一步**：`planNextStep` 调用 LLM planner 决定最优动作（`reply`、`ask` 或 `tool_call`）。
+3. **解析路由**：planner 输出映射为 `RouteDecision`：
+   - `kind: 'reply'` 且 `replyMode: 'plain'` 映射为 **chat**
+   - `kind: 'ask'` 映射为 **collect**
+   - `kind: 'reply'` 且 `replyMode: 'structured'` 映射为 **draft**
+   - `kind: 'tool_call'` 映射为 **execute**
+4. **分发至 handler**：执行对应的 handler 函数。
+
+```mermaid
+flowchart TD
+    Msg[用户消息] --> BuildCtx[buildTurnContext]
+    BuildCtx --> Plan[planNextStep via LLM]
+    Plan --> Route{resolveRouteDecision}
+    Route -->|chat| Chat[handleChat]
+    Route -->|collect| Collect[handleCollect]
+    Route -->|draft| Draft[handleDraft]
+    Route -->|execute| Exec["执行管线<br/>(agent.ts)"]
+    Chat --> Result[最终结果]
+    Collect --> Result
+    Draft --> Result
+    Exec --> Validate[validateWithRetry]
+    Validate --> Result
+```
+
+### 10A.3 Collect 与 Draft 路径优化
+
+一项关键性能优化将 `collect` 路径与 `draft` 路径区分开来。
+
+当 planner 决定向用户追问更多信息时，系统只需要知道哪些参数缺失——不需要构建完整的结构模型。`collect` handler 调用 `extractDraftParameters`（执行 skill 检测和参数提取），但显式跳过 `tryBuildGenericModelWithLlm`（一次耗时的 LLM 调用，用于生成完整的 StructureModel JSON）。
+
+这在"追问"路径上消除了约 40 秒的不必要模型生成，同时保持了相同的交互契约（tool call trace、问题格式、会话更新）。
+
+当参数充足且 planner 决定以结构化结果回复时，`draft` handler 运行完整的 `textToModelDraft` 管线（含模型构建）。
+
+### 10A.4 带自动修复的校验
+
+当当前轮次生成了结构模型时，校验步骤使用 `validateWithRetry` 代替单次校验：
+
+1. 对模型执行 `executeValidateModelStep`。
+2. 若校验失败且模型是本轮 LLM 生成的，则调用 `tryRepairModel` —— 一次 LLM 调用，接收原始模型 JSON 和校验错误，返回修复后的 JSON。
+3. 重新校验修复后的模型。
+4. 最多重复 `maxRetries`（默认 2）次。
+5. 若所有修复尝试均失败，将会话转换为 `blocked` 状态，并向用户返回澄清响应。
+
+此机制可自动恢复常见的 LLM 生成错误（缺失字段、类型不匹配、无效枚举值），无需用户重新输入信息。
 
 ## 11. 重构方向
 
@@ -407,6 +544,16 @@ Agent 只能在“当前可用 tool 集”内做决策。
 - `force_tool` 会绕过 planner 分支决策并进入 skill-first 执行路径
 - 服务入口已收敛为 `run` 与 `runStream`，不再保留 interactive/tool-call 兼容包装接口
 - 在启用 skill 的场景下，建模工具不再默认全开，需由 skill capability 显式授予；执行链核心工具由平台统一提供
+
+### 多轮架构实现状态（2026-04）
+
+以下编排改进已完成：
+
+- **基于路由的分发** 已在 chat、collect、draft 路径上线。execute 路径仍在 `AgentService` 中，将在后续阶段提取。
+- **会话状态机** 已上线，由 `transitionSession` 强制执行合法的 `SessionState` 转换。不含 `state` 字段的旧会话向后兼容（默认为 `idle`）。
+- **仅提取参数的 collect 路径** 消除了"追问"路径上不必要的模型生成，每轮节省约 40 秒。
+- **带自动修复的校验** 已上线。`validateWithRetry` 在阻塞前最多尝试 2 次 LLM 驱动的修复。
+- **文件拆分** 已将 planner 逻辑、结果构建器、会话管理与校验提取为独立模块。`agent.ts` 已从约 4856 行缩减至约 4500 行。进一步瘦身至目标约 800 行取决于将执行管线提取到 `agent-handlers/execute.ts`。
 
 ## 12. 分阶段重构计划
 

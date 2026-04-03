@@ -56,11 +56,28 @@ export class AgentSkillExecutor {
       if (!parsedJson) {
         return { parsed: null, draftPatch: null };
       }
-      const parsed = skillExecutionSchema.parse(parsedJson);
-      return {
-        parsed,
-        draftPatch: parsed.draftPatch ?? null,
-      };
+
+      const rawDraftPatch = (parsedJson.draftPatch && typeof parsedJson.draftPatch === 'object' && !Array.isArray(parsedJson.draftPatch))
+        ? parsedJson.draftPatch as Record<string, unknown>
+        : null;
+      const rawInferredType = typeof parsedJson.inferredType === 'string'
+        ? parsedJson.inferredType
+        : undefined;
+
+      try {
+        const parsed = skillExecutionSchema.parse(parsedJson);
+        return {
+          parsed,
+          draftPatch: parsed.draftPatch ?? rawDraftPatch,
+        };
+      } catch {
+        return {
+          parsed: rawInferredType
+            ? { inferredType: rawInferredType, draftPatch: rawDraftPatch ?? undefined } as SkillExecutionPayload
+            : null,
+          draftPatch: rawDraftPatch,
+        };
+      }
     } catch {
       return { parsed: null, draftPatch: null };
     }

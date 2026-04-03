@@ -1108,7 +1108,7 @@ describe('AgentService orchestration', () => {
     expect(result.model?.metadata?.name).toBe('new-beam-model');
   });
 
-  test('should prefetch skill draft before planner and expose hasModel=true in planner context', async () => {
+  test('should run planner first then draft model via skill extraction on tool_call path', async () => {
     const svc = createServiceWithDefaultSkills();
     let plannerCalled = 0;
 
@@ -1118,13 +1118,12 @@ describe('AgentService orchestration', () => {
         if (text.includes('Return strict JSON only')) {
           plannerCalled += 1;
           expect(text).toContain('User message: 设计一个简支梁，跨度10m，梁中间荷载1kN');
-          expect(text).toContain('"hasModel":true');
+          expect(text).toContain('"hasModel":false');
           return {
             content: JSON.stringify({
               kind: 'tool_call',
               replyMode: null,
-              toolId: 'draft_model',
-              reason: 'model draft is already prepared and should continue through tool pipeline',
+              reason: 'user explicitly asked to design a beam with sufficient parameters',
             }),
           };
         }
@@ -1174,7 +1173,7 @@ describe('AgentService orchestration', () => {
     };
 
     const result = await svc.run({
-      conversationId: 'conv-prefetch-before-planner',
+      conversationId: 'conv-planner-first-then-draft',
       message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
       context: {
         locale: 'zh',
@@ -1878,7 +1877,7 @@ describe('AgentService orchestration', () => {
     expect(draft.missingFields).toEqual(['inferredType']);
   });
 
-  test('should let generic refine the structural draft only from llm patch output', async () => {
+  test('should let generic extract only inferredType from llm patch output (metadata-only)', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = {
       invoke: async () => ({
@@ -1906,13 +1905,13 @@ describe('AgentService orchestration', () => {
     );
 
     expect(draft.extractionMode).toBe('llm');
-    expect(draft.inferredType).toBe('unknown');
-    expect(draft.stateToPersist?.inferredType).toBe('unknown');
-    expect(draft.stateToPersist?.frameDimension).toBe('3d');
-    expect(draft.stateToPersist?.storyCount).toBe(3);
-    expect(draft.stateToPersist?.bayCountX).toBe(4);
-    expect(draft.stateToPersist?.bayCountY).toBe(3);
-    expect(draft.model).toBeUndefined();
+    expect(draft.inferredType).toBe('frame');
+    expect(draft.stateToPersist?.inferredType).toBe('frame');
+    expect(draft.stateToPersist?.skillId).toBe('generic');
+    expect(draft.stateToPersist?.frameDimension).toBeUndefined();
+    expect(draft.stateToPersist?.storyCount).toBeUndefined();
+    expect(draft.stateToPersist?.bayCountX).toBeUndefined();
+    expect(draft.stateToPersist?.bayCountY).toBeUndefined();
   });
 
   test('should let generic keep unknown draft type and still return a full llm-built beam model', async () => {
@@ -1975,8 +1974,8 @@ describe('AgentService orchestration', () => {
     );
 
     expect(callCount).toBe(2);
-    expect(draft.inferredType).toBe('unknown');
-    expect(draft.stateToPersist?.inferredType).toBe('unknown');
+    expect(draft.inferredType).toBe('beam');
+    expect(draft.stateToPersist?.inferredType).toBe('beam');
     expect(draft.stateToPersist?.skillId).toBe('generic');
     expect(draft.model?.elements).toHaveLength(10);
     expect(draft.model?.nodes).toHaveLength(11);

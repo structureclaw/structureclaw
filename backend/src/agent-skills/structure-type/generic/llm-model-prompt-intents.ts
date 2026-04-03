@@ -5,7 +5,7 @@ export type GenericModelPromptIntent = 'build-structure-model-v1';
 
 type PromptIntentConfig = {
   opening: (locale: AppLocale) => string[];
-  closing: (locale: AppLocale, stateHint: string, message: string) => string[];
+  closing: (locale: AppLocale, stateHint: string, message: string, conversationHistory?: string) => string[];
 };
 
 const INTENT_CONFIGS: Record<GenericModelPromptIntent, PromptIntentConfig> = {
@@ -29,17 +29,19 @@ const INTENT_CONFIGS: Record<GenericModelPromptIntent, PromptIntentConfig> = {
         `Template:\n${template}`,
       ];
     },
-    closing: (locale, stateHint, message) => {
-      if (locale === 'zh') {
-        return [
-          `已有草模信息: ${stateHint}`,
-          `用户输入: ${message}`,
-        ];
+    closing: (locale, stateHint, message, conversationHistory) => {
+      const lines: string[] = [];
+      if (conversationHistory) {
+        lines.push(locale === 'zh' ? `对话历史:\n${conversationHistory}` : `Conversation history:\n${conversationHistory}`);
       }
-      return [
-        `Current draft hints: ${stateHint}`,
-        `User request: ${message}`,
-      ];
+      if (locale === 'zh') {
+        lines.push(`已确认参数: ${stateHint}`);
+        lines.push(`用户最新输入: ${message}`);
+      } else {
+        lines.push(`Confirmed parameters: ${stateHint}`);
+        lines.push(`Latest user message: ${message}`);
+      }
+      return lines;
     },
   },
 };
@@ -49,10 +51,11 @@ export function composePromptByIntent(
   locale: AppLocale,
   stateHint: string,
   message: string,
+  conversationHistory?: string,
 ): string {
   const config = INTENT_CONFIGS[intent];
   const opening = config.opening(locale);
   const constraints = getCommonConstraints(locale);
-  const closing = config.closing(locale, stateHint, message);
+  const closing = config.closing(locale, stateHint, message, conversationHistory);
   return [...opening, ...constraints, ...closing].join('\n');
 }
