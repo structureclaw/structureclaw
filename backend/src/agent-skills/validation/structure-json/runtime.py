@@ -754,7 +754,13 @@ def validate_structure_json(
         missing_issues = check_missing_fields(parsed_data)
         all_issues.extend(missing_issues)
 
-    # Calculate summary
+    # Filter issues by severity if needed (before calculating summary)
+    if not include_warnings:
+        all_issues = [i for i in all_issues if i.severity != "warning"]
+    if not include_info:
+        all_issues = [i for i in all_issues if i.severity != "info"]
+
+    # Calculate summary after filtering for consistent results
     error_count = len([i for i in all_issues if i.severity == "error"])
     warning_count = len([i for i in all_issues if i.severity == "warning"])
     info_count = len([i for i in all_issues if i.severity == "info"])
@@ -764,12 +770,6 @@ def validate_structure_json(
         warning_count=warning_count,
         info_count=info_count,
     )
-
-    # Filter issues by severity if needed
-    if not include_warnings:
-        all_issues = [i for i in all_issues if i.severity != "warning"]
-    if not include_info:
-        all_issues = [i for i in all_issues if i.severity != "info"]
 
     # Valid if no errors
     is_valid_result = error_count == 0
