@@ -125,6 +125,7 @@ class ErrorCode:
     # Info
     FIELD_AUTO_FILLED = "FIELD_AUTO_FILLED"
     SCHEMA_VERSION_INFO = "SCHEMA_VERSION_INFO"
+    ORPHANED_NODE_DETECTED = "ORPHANED_NODE_DETECTED"
 
 
 # -----------------------------------------------------------------------------
@@ -551,10 +552,16 @@ def validate_semantic(
     all_node_ids = {n.get("id") for n in data.get("nodes", []) if n.get("id")}
     orphaned_nodes = all_node_ids - referenced_nodes
     if orphaned_nodes and len(data.get("elements", [])) > 0:
+        # Take first 5 without materializing entire set for large models
+        sample = []
+        for i, node_id in enumerate(orphaned_nodes):
+            if i >= 5:
+                break
+            sample.append(node_id)
         issues.append(ValidationIssue(
             severity="info",
-            code=ErrorCode.FIELD_AUTO_FILLED,
-            message=f"Found {len(orphaned_nodes)} orphaned node(s) not connected to any element: {list(orphaned_nodes)[:5]}",
+            code=ErrorCode.ORPHANED_NODE_DETECTED,
+            message=f"Found {len(orphaned_nodes)} orphaned node(s) not connected to any element: {sample}",
             path="nodes",
             suggestion="These nodes are not part of any structural element",
         ))
