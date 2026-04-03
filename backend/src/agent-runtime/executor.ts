@@ -32,8 +32,8 @@ export class AgentSkillExecutor {
         ? '不要输出 markdown，不要解释，只输出一个 JSON 对象。缺失字段可以省略。'
         : 'Do not return markdown or explanations. Return one JSON object only. Omit fields that are unavailable.',
       input.locale === 'zh'
-        ? 'JSON 字段允许：detectedScenario, inferredType, draftPatch, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote。'
-        : 'Allowed JSON fields: detectedScenario, inferredType, draftPatch, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote.',
+        ? 'JSON 字段允许：inferredType, draftPatch, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote。'
+        : 'Allowed JSON fields: inferredType, draftPatch, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote.',
       input.locale === 'zh'
         ? 'draftPatch 允许字段：inferredType,lengthM,spanLengthM,heightM,supportType,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,frameBaseSupportType,loadKN,loadType,loadPosition,loadPositionM,frameMaterial,frameColumnSection,frameBeamSection。'
         : 'draftPatch allowed fields: inferredType,lengthM,spanLengthM,heightM,supportType,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,frameBaseSupportType,loadKN,loadType,loadPosition,loadPositionM,frameMaterial,frameColumnSection,frameBeamSection.',
@@ -41,8 +41,8 @@ export class AgentSkillExecutor {
         ? 'loadPositionM 表示距左端位置（m）；若用户明确“4m处”这类位置，优先输出数值。'
         : 'loadPositionM means offset from left end in meters; if user specifies locations like 4m, provide numeric value.',
       input.locale === 'zh'
-        ? '示例：{"detectedScenario":"beam","inferredType":"beam","draftPatch":{"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPosition":"free-joint","loadPositionM":4}}'
-        : 'Example: {"detectedScenario":"beam","inferredType":"beam","draftPatch":{"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPosition":"free-joint","loadPositionM":4}}',
+        ? '示例：{"inferredType":"beam","draftPatch":{"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPosition":"free-joint","loadPositionM":4}}'
+        : 'Example: {"inferredType":"beam","draftPatch":{"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPosition":"free-joint","loadPositionM":4}}',
       `Known draft state: ${JSON.stringify(input.existingState || {})}`,
       `User message: ${input.message}`,
       'Markdown skill:',
@@ -56,11 +56,28 @@ export class AgentSkillExecutor {
       if (!parsedJson) {
         return { parsed: null, draftPatch: null };
       }
-      const parsed = skillExecutionSchema.parse(parsedJson);
-      return {
-        parsed,
-        draftPatch: parsed.draftPatch ?? null,
-      };
+
+      const rawDraftPatch = (parsedJson.draftPatch && typeof parsedJson.draftPatch === 'object' && !Array.isArray(parsedJson.draftPatch))
+        ? parsedJson.draftPatch as Record<string, unknown>
+        : null;
+      const rawInferredType = typeof parsedJson.inferredType === 'string'
+        ? parsedJson.inferredType
+        : undefined;
+
+      try {
+        const parsed = skillExecutionSchema.parse(parsedJson);
+        return {
+          parsed,
+          draftPatch: parsed.draftPatch ?? rawDraftPatch,
+        };
+      } catch {
+        return {
+          parsed: rawInferredType
+            ? { inferredType: rawInferredType, draftPatch: rawDraftPatch ?? undefined } as SkillExecutionPayload
+            : null,
+          draftPatch: rawDraftPatch,
+        };
+      }
     } catch {
       return { parsed: null, draftPatch: null };
     }

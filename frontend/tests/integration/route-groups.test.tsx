@@ -38,13 +38,13 @@ describe('Route Groups (LAYT-03)', () => {
       expect(existsSync(layoutPath)).toBe(true)
     })
 
-    it('console layout links back to home', () => {
+    it('console layout brand links back to home', () => {
       render(
         <ConsoleLayout>
           <div>Console Content</div>
         </ConsoleLayout>
       )
-      expect(screen.getByRole('link', { name: 'Back Home' })).toHaveAttribute('href', '/')
+      expect(screen.getByRole('link', { name: /structureclaw conversational engineering ai/i })).toHaveAttribute('href', '/')
     })
 
     it('console layout includes language toggle', () => {

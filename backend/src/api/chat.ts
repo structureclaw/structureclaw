@@ -1,12 +1,12 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { ChatService } from '../services/chat.js';
+import { ConversationService } from '../services/conversation.js';
 import { AgentService } from '../services/agent.js';
 import { config } from '../config/index.js';
 import { isLlmTimeoutError, toLlmApiError } from '../utils/llm-error.js';
 import { prisma } from '../utils/database.js';
 
-const chatService = new ChatService();
+const conversationService = new ConversationService();
 const agentService = new AgentService();
 
 const optionalIdSchema = z.preprocess((value) => {
@@ -25,13 +25,14 @@ const localeSchema = z.enum(['en', 'zh']).optional();
 // 请求验证
 const sendMessageSchema = z.object({
   message: z.string().min(1).max(10000),
-  mode: z.enum(['chat', 'execute', 'auto']).optional(),
   conversationId: optionalIdSchema,
   traceId: optionalIdSchema,
   context: z.object({
     locale: localeSchema,
     projectId: z.string().optional(),
     skillIds: z.array(z.string()).optional(),
+    enabledToolIds: z.array(z.string()).optional(),
+    disabledToolIds: z.array(z.string()).optional(),
     engineId: z.string().optional(),
     model: z.record(z.any()).optional(),
     modelFormat: z.string().optional(),
@@ -59,39 +60,16 @@ const conversationDetailQuerySchema = z.object({
   locale: localeSchema,
 });
 
-const executeSchema = z.object({
-  message: z.string().min(1).max(10000),
-  conversationId: optionalIdSchema,
-  traceId: optionalIdSchema,
-  context: z.object({
-    locale: localeSchema,
-    skillIds: z.array(z.string()).optional(),
-    engineId: z.string().optional(),
-    model: z.record(z.any()).optional(),
-    modelFormat: z.string().optional(),
-    analysisType: z.enum(['static', 'dynamic', 'seismic', 'nonlinear']).optional(),
-    parameters: z.record(z.any()).optional(),
-    autoAnalyze: z.boolean().optional(),
-    autoCodeCheck: z.boolean().optional(),
-    designCode: z.string().optional(),
-    codeCheckElements: z.array(z.string()).optional(),
-    includeReport: z.boolean().optional(),
-    reportFormat: z.enum(['json', 'markdown', 'both']).optional(),
-    reportOutput: z.enum(['inline', 'file']).optional(),
-    userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
-    providedValues: z.record(z.any()).optional(),
-  }).optional(),
-});
-
 const streamMessageSchema = z.object({
   message: z.string().min(1).max(10000),
-  mode: z.enum(['chat', 'execute', 'auto']).optional(),
   conversationId: optionalIdSchema,
   traceId: optionalIdSchema,
   context: z.object({
     locale: localeSchema,
     projectId: z.string().optional(),
     skillIds: z.array(z.string()).optional(),
+    enabledToolIds: z.array(z.string()).optional(),
+    disabledToolIds: z.array(z.string()).optional(),
     engineId: z.string().optional(),
     model: z.record(z.any()).optional(),
     modelFormat: z.string().optional(),
@@ -150,7 +128,7 @@ async function persistLatestConversationResult(params: {
         ? (params.latestResult as Record<string, unknown>)
         : { response: String(params.latestResult ?? ''), success: false };
 
-    await chatService.saveConversationSnapshot({
+    await conversationService.saveConversationSnapshot({
       conversationId: conversation.id,
       latestResult,
     });
@@ -180,99 +158,16 @@ export async function chatRoutes(fastify: FastifyInstance) {
     try {
       const body = sendMessageSchema.parse(request.body);
       const userId = request.user?.id;
-      const mode = body.mode || 'auto';
-
-      const shouldExecute = mode === 'execute'
-        || (mode === 'auto' && await agentService.shouldPreferExecute(body.message, {
-          locale: body.context?.locale,
-          conversationId: body.conversationId,
-          skillIds: body.context?.skillIds,
-          hasModel: Boolean(body.context?.model),
-        }));
-
-      if (shouldExecute) {
-        const result = await agentService.run({
-          message: body.message,
-          mode: 'execute',
-          conversationId: body.conversationId,
-          traceId: body.traceId,
-          context: {
-            locale: body.context?.locale,
-            skillIds: body.context?.skillIds,
-            engineId: body.context?.engineId,
-            model: body.context?.model,
-            modelFormat: body.context?.modelFormat,
-            analysisType: body.context?.analysisType,
-            parameters: body.context?.parameters,
-            autoAnalyze: body.context?.autoAnalyze,
-            autoCodeCheck: body.context?.autoCodeCheck,
-            designCode: body.context?.designCode,
-            codeCheckElements: body.context?.codeCheckElements,
-            includeReport: body.context?.includeReport,
-            reportFormat: body.context?.reportFormat,
-            reportOutput: body.context?.reportOutput,
-            userDecision: body.context?.userDecision,
-            providedValues: body.context?.providedValues,
-          },
-        });
-        await persistLatestConversationResult({
-          conversationId: body.conversationId,
-          userId,
-          latestResult: result,
-        });
-        return reply.send({
-          mode: 'execute',
-          result,
-        });
-      }
-
-      if (mode === 'chat') {
-        const result = await agentService.run({
-          message: body.message,
-          mode: 'chat',
-          conversationId: body.conversationId,
-          traceId: body.traceId,
-          context: {
-            locale: body.context?.locale,
-            skillIds: body.context?.skillIds,
-            engineId: body.context?.engineId,
-            model: body.context?.model,
-            modelFormat: body.context?.modelFormat,
-            analysisType: body.context?.analysisType,
-            parameters: body.context?.parameters,
-            autoAnalyze: body.context?.autoAnalyze,
-            autoCodeCheck: body.context?.autoCodeCheck,
-            designCode: body.context?.designCode,
-            codeCheckElements: body.context?.codeCheckElements,
-            includeReport: body.context?.includeReport,
-            reportFormat: body.context?.reportFormat,
-            reportOutput: body.context?.reportOutput,
-            userDecision: body.context?.userDecision,
-            providedValues: body.context?.providedValues,
-          },
-        });
-        await persistLatestConversationResult({
-          conversationId: body.conversationId,
-          userId,
-          latestResult: result,
-        });
-        return reply.send({
-          mode: 'chat',
-          result,
-        });
-      }
-
-      const result = await chatService.sendMessage({
-        message: body.message,
-        conversationId: body.conversationId,
+      const result = await agentService.run({
+        ...body,
         userId,
-        context: body.context,
       });
-
-      return reply.send({
-        mode: 'chat',
-        result,
+      await persistLatestConversationResult({
+        conversationId: result.conversationId,
+        userId,
+        latestResult: result,
       });
+      return reply.send({ result });
     } catch (error) {
       const mappedError = toLlmApiError(error);
       if (isLlmTimeoutError(error)) {
@@ -300,7 +195,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     const body = createConversationSchema.parse(request.body);
     const userId = request.user?.id;
 
-    const conversation = await chatService.createConversation({
+    const conversation = await conversationService.createConversation({
       title: body.title,
       type: body.type,
       userId,
@@ -321,13 +216,13 @@ export async function chatRoutes(fastify: FastifyInstance) {
     const query = conversationDetailQuerySchema.parse(request.query);
     const userId = request.user?.id;
 
-    const conversation = await chatService.getConversation(id, userId);
+    const conversation = await conversationService.getConversation(id, userId);
     if (!conversation) {
       return reply.send(conversation);
     }
 
     const session = await agentService.getConversationSessionSnapshot(id, query.locale || 'en');
-    const snapshots = await chatService.getConversationSnapshot(id);
+    const snapshots = await conversationService.getConversationSnapshot(id);
     return reply.send({
       ...conversation,
       session,
@@ -343,7 +238,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     },
   }, async (request: FastifyRequest, reply: FastifyReply) => {
     const userId = request.user?.id;
-    const conversations = await chatService.getUserConversations(userId);
+    const conversations = await conversationService.getUserConversations(userId);
     return reply.send(conversations);
   });
 
@@ -356,7 +251,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     const { id } = request.params;
     const userId = request.user?.id;
 
-    const deleted = await chatService.deleteConversation(id, userId);
+    const deleted = await conversationService.deleteConversation(id, userId);
     if (!deleted) {
       return reply.code(404).send({
         error: 'Conversation not found',
@@ -395,7 +290,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       return reply.code(404).send({ error: 'Conversation not found' });
     }
 
-    await chatService.saveConversationSnapshot({
+    await conversationService.saveConversationSnapshot({
       conversationId: id,
       modelSnapshot: body.modelSnapshot,
       resultSnapshot: body.resultSnapshot,
@@ -413,7 +308,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest<{ Body: z.infer<typeof streamMessageSchema> }>, reply: FastifyReply) => {
     const body = streamMessageSchema.parse(request.body);
     const userId = request.user?.id;
-    const mode = body.mode || 'auto';
     let streamConversationId = body.conversationId;
 
     reply.hijack();
@@ -424,135 +318,33 @@ export async function chatRoutes(fastify: FastifyInstance) {
     reply.raw.setHeader('X-Accel-Buffering', 'no');
     reply.raw.flushHeaders?.();
 
-    const shouldExecute = mode === 'execute'
-      || (mode === 'auto' && await agentService.shouldPreferExecute(body.message, {
-        locale: body.context?.locale,
-        conversationId: body.conversationId,
-        skillIds: body.context?.skillIds,
-        hasModel: Boolean(body.context?.model),
-      }));
-
     try {
-      if (shouldExecute) {
-        const stream = agentService.runStream({
-          message: body.message,
-          mode: 'execute',
-          conversationId: body.conversationId,
-          traceId: body.traceId,
-          context: {
-            locale: body.context?.locale,
-            skillIds: body.context?.skillIds,
-            engineId: body.context?.engineId,
-            model: body.context?.model,
-            modelFormat: body.context?.modelFormat,
-            analysisType: body.context?.analysisType,
-            parameters: body.context?.parameters,
-            autoAnalyze: body.context?.autoAnalyze,
-            autoCodeCheck: body.context?.autoCodeCheck,
-            designCode: body.context?.designCode,
-            codeCheckElements: body.context?.codeCheckElements,
-            includeReport: body.context?.includeReport,
-            reportFormat: body.context?.reportFormat,
-            reportOutput: body.context?.reportOutput,
-            userDecision: body.context?.userDecision,
-            providedValues: body.context?.providedValues,
-          },
-        });
-
-        for await (const chunk of stream) {
-          if (
-            chunk
-            && typeof chunk === 'object'
-            && (chunk as { type?: string }).type === 'start'
-            && (chunk as { content?: { conversationId?: string } }).content?.conversationId
-          ) {
-            streamConversationId = (chunk as { content: { conversationId: string } }).content.conversationId;
-          }
-          if (
-            chunk
-            && typeof chunk === 'object'
-            && (chunk as { type?: string }).type === 'result'
-          ) {
-            await persistLatestConversationResult({
-              conversationId: streamConversationId,
-              userId,
-              latestResult: (chunk as { content?: unknown }).content,
-            });
-          }
-          reply.raw.write(`data: ${JSON.stringify(normalizeStreamChunkError(chunk))}\n\n`);
-        }
-        reply.raw.write('data: [DONE]\n\n');
-        reply.raw.end();
-        return;
-      }
-
-      if (mode === 'chat') {
-        const stream = agentService.runStream({
-          message: body.message,
-          mode: 'chat',
-          conversationId: body.conversationId,
-          traceId: body.traceId,
-          context: {
-            locale: body.context?.locale,
-            skillIds: body.context?.skillIds,
-            engineId: body.context?.engineId,
-            model: body.context?.model,
-            modelFormat: body.context?.modelFormat,
-            analysisType: body.context?.analysisType,
-            parameters: body.context?.parameters,
-            autoAnalyze: body.context?.autoAnalyze,
-            autoCodeCheck: body.context?.autoCodeCheck,
-            designCode: body.context?.designCode,
-            codeCheckElements: body.context?.codeCheckElements,
-            includeReport: body.context?.includeReport,
-            reportFormat: body.context?.reportFormat,
-            reportOutput: body.context?.reportOutput,
-            userDecision: body.context?.userDecision,
-            providedValues: body.context?.providedValues,
-          },
-        });
-
-        for await (const chunk of stream) {
-          if (
-            chunk
-            && typeof chunk === 'object'
-            && (chunk as { type?: string }).type === 'start'
-            && (chunk as { content?: { conversationId?: string } }).content?.conversationId
-          ) {
-            streamConversationId = (chunk as { content: { conversationId: string } }).content.conversationId;
-          }
-          if (
-            chunk
-            && typeof chunk === 'object'
-            && (chunk as { type?: string }).type === 'result'
-          ) {
-            await persistLatestConversationResult({
-              conversationId: streamConversationId,
-              userId,
-              latestResult: (chunk as { content?: unknown }).content,
-            });
-          }
-          reply.raw.write(`data: ${JSON.stringify(normalizeStreamChunkError(chunk))}\n\n`);
-        }
-
-        reply.raw.write('data: [DONE]\n\n');
-        reply.raw.end();
-        return;
-      }
-
-      const stream = await chatService.streamMessage({
-        message: body.message,
-        conversationId: body.conversationId,
+      const stream = agentService.runStream({
+        ...body,
         userId,
-        context: {
-          locale: body.context?.locale,
-          projectId: body.context?.projectId,
-          analysisType: body.context?.analysisType,
-        },
       });
 
       for await (const chunk of stream) {
-        reply.raw.write(`data: ${JSON.stringify(normalizeStreamChunkError(chunk))}\n\n`);
+        if (
+          chunk
+          && typeof chunk === 'object'
+          && (chunk as { type?: string }).type === 'start'
+          && (chunk as { content?: { conversationId?: string } }).content?.conversationId
+        ) {
+          streamConversationId = (chunk as { content: { conversationId: string } }).content.conversationId;
+        }
+        if (
+          chunk
+          && typeof chunk === 'object'
+          && (chunk as { type?: string }).type === 'result'
+        ) {
+          await persistLatestConversationResult({
+            conversationId: streamConversationId,
+            userId,
+            latestResult: (chunk as { content?: unknown }).content,
+          });
+        }
+        reply.raw.write(`data: ${JSON.stringify(normalizePublicStreamChunk(chunk))}\n\n`);
       }
 
       reply.raw.write('data: [DONE]\n\n');
@@ -568,43 +360,20 @@ export async function chatRoutes(fastify: FastifyInstance) {
     }
   });
 
-  // 执行模式：复用 Agent 工具编排链路
-  fastify.post('/execute', {
-    schema: {
-      tags: ['Chat'],
-      summary: '执行结构化任务（Agent 工具编排）',
-      body: {
-        type: 'object',
-        required: ['message'],
-        properties: {
-          message: { type: 'string' },
-          conversationId: { type: 'string' },
-          traceId: { type: 'string' },
-          context: { type: 'object' },
-        },
-      },
-    },
-  }, async (request: FastifyRequest<{ Body: z.infer<typeof executeSchema> }>, reply: FastifyReply) => {
-    const body = executeSchema.parse(request.body);
-    const userId = request.user?.id;
-    const result = await agentService.run(body);
-    await persistLatestConversationResult({
-      conversationId: body.conversationId,
-      userId,
-      latestResult: result,
-    });
-    return reply.send({ ...result, conversationId: body.conversationId });
-  });
 }
 
-function normalizeStreamChunkError(chunk: unknown): unknown {
+function normalizePublicStreamChunk(chunk: unknown): unknown {
   if (!chunk || typeof chunk !== 'object') {
     return chunk;
   }
 
-  const value = chunk as { type?: string; error?: string; code?: string; retriable?: boolean };
+  const raw = chunk as { type?: string; error?: string; code?: string; retriable?: boolean; content?: unknown };
+  const value = raw.type && raw.content && typeof raw.content === 'object' && !Array.isArray(raw.content)
+    ? raw
+    : raw;
+
   if (value.type !== 'error' || !value.error) {
-    return chunk;
+    return value;
   }
 
   if (isLlmTimeoutError(value.error)) {

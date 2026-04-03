@@ -15,7 +15,7 @@ export default function ConsoleLayout({
   return (
     <div className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.18),transparent_20%),radial-gradient(circle_at_80%_20%,rgba(249,115,22,0.1),transparent_20%),linear-gradient(180deg,rgba(248,250,252,0.98)_0%,rgba(241,245,249,0.95)_55%,rgba(226,232,240,0.92)_100%)] text-foreground dark:bg-[radial-gradient(circle_at_top,rgba(34,211,238,0.15),transparent_22%),radial-gradient(circle_at_80%_20%,rgba(249,115,22,0.12),transparent_20%),linear-gradient(180deg,#020617_0%,#06101f_55%,#030712_100%)] dark:text-foreground">
       <header className="sticky top-0 z-20 border-b border-border/60 bg-background/80 backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/70">
-        <div className="mx-auto flex max-w-[1600px] items-center justify-between gap-4 px-4 py-4 sm:px-6">
+        <div className="flex w-full items-center justify-between gap-4 px-4 py-4 sm:px-6 xl:px-8 2xl:px-10">
           <div className="flex items-center gap-4">
             <Link href="/" className="inline-flex items-center gap-3">
               <span className="flex h-10 w-10 items-center justify-center rounded-2xl border border-cyan-400/20 bg-cyan-400/10 text-cyan-700 dark:text-cyan-200">
@@ -28,24 +28,35 @@ export default function ConsoleLayout({
             </Link>
           </div>
           <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 rounded-[20px] border border-border/70 bg-background/70 px-2 py-2 dark:border-white/10 dark:bg-white/5">
+              <span className="px-2 text-xs uppercase tracking-[0.22em] text-muted-foreground">
+                {t('settingsNav')}
+              </span>
+              <Link
+                href="/console/capabilities"
+                className="rounded-full border border-cyan-300/35 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-800 transition hover:bg-cyan-300/20 dark:text-cyan-100"
+              >
+                {t('capabilitySettingsNav')}
+              </Link>
+              <Link
+                href="/console/database"
+                className="rounded-full border border-cyan-300/35 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-800 transition hover:bg-cyan-300/20 dark:text-cyan-100"
+              >
+                {t('databaseAdminNav')}
+              </Link>
+            </div>
             <Link
-              href="/console/database"
-              className="rounded-full border border-cyan-300/35 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-800 transition hover:bg-cyan-300/20 dark:text-cyan-100"
-            >
-              {t('databaseAdminNav')}
-            </Link>
-            <Link
-              href="/"
+              href="/console"
               className="rounded-full border border-border bg-background/70 px-4 py-2 text-sm text-foreground transition hover:bg-accent/10 dark:border-white/10 dark:bg-white/5 dark:text-slate-200 dark:hover:bg-white/10"
             >
-              {t('backHome')}
+              {t('console')}
             </Link>
             <LanguageToggle />
             <ThemeToggle />
           </div>
         </div>
       </header>
-      <main className="mx-auto max-w-[1600px] px-4 py-4 sm:px-6 sm:py-6">
+      <main className="w-full px-4 py-4 sm:px-6 sm:py-6 xl:px-8 2xl:px-10">
         {children}
       </main>
     </div>

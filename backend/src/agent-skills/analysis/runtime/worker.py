@@ -11,11 +11,13 @@ from fastapi import HTTPException
 from pydantic import ValidationError
 
 CURRENT_DIR = Path(__file__).resolve().parent
+ANALYSIS_ROOT = CURRENT_DIR.parent
 AGENT_SKILLS_ROOT = CURRENT_DIR.parents[1]
 SRC_ROOT = CURRENT_DIR.parents[2]
 
 for path in (
     CURRENT_DIR,
+    ANALYSIS_ROOT,
     SRC_ROOT / "skill-shared" / "python",
     AGENT_SKILLS_ROOT / "data-input",
     AGENT_SKILLS_ROOT / "code-check",

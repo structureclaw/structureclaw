@@ -23,8 +23,6 @@ function backendRequire(rootDir) {
 
 function clearProviderEnv() {
   process.env.LLM_API_KEY = "";
-  process.env.OPENAI_API_KEY = "";
-  process.env.ZAI_API_KEY = "";
   process.env.LLM_PROVIDER = "openai";
 }
 
@@ -53,35 +51,45 @@ async function validateAgentOrchestration(context) {
   const withDefaultSkills = (svc) => {
     const defaultSkillIds = svc.listSkills().map((skill) => skill.id);
 
-    const originalRun = svc.run.bind(svc);
-    svc.run = async (params) => {
+    const applyDefaultSkills = (params) => {
       const currentContext = params?.context || {};
       if (currentContext.skillIds !== undefined) {
-        return originalRun(params);
+        return params;
       }
-      return originalRun({
+      return {
         ...params,
         context: {
           ...currentContext,
           skillIds: defaultSkillIds,
         },
-      });
+      };
     };
 
+    const originalRun = svc.run.bind(svc);
+    svc.run = async (params) => originalRun(applyDefaultSkills(params));
+
+    const runWithStrategy = svc.runWithStrategy.bind(svc);
+    svc.runChatOnly = async (params) => runWithStrategy(
+      applyDefaultSkills(params),
+      { planningDirective: "auto", allowToolCall: false },
+    );
+    svc.runForcedExecution = async (params) => runWithStrategy(
+      applyDefaultSkills(params),
+      { planningDirective: "force_tool", allowToolCall: true },
+    );
+
     const originalRunStream = svc.runStream.bind(svc);
-    svc.runStream = (params) => {
-      const currentContext = params?.context || {};
-      if (currentContext.skillIds !== undefined) {
-        return originalRunStream(params);
-      }
-      return originalRunStream({
-        ...params,
-        context: {
-          ...currentContext,
-          skillIds: defaultSkillIds,
-        },
-      });
-    };
+    svc.runStream = (params) => originalRunStream(applyDefaultSkills(params));
+
+    const runStreamWithStrategy = svc.runStreamWithStrategy.bind(svc);
+    svc.runChatOnlyStream = (params) => runStreamWithStrategy(
+      applyDefaultSkills(params),
+      { planningDirective: "auto", allowToolCall: false },
+    );
+    svc.runForcedExecutionStream = (params) => runStreamWithStrategy(
+      applyDefaultSkills(params),
+      { planningDirective: "force_tool", allowToolCall: true },
+    );
 
     return svc;
   };
@@ -158,7 +166,7 @@ async function validateAgentOrchestration(context) {
     assert(protocol.runRequestSchema?.type === "object", "runRequestSchema should be json schema object");
     assert(protocol.runResultSchema?.type === "object", "runResultSchema should be json schema object");
     assert(Array.isArray(protocol.streamEventSchema?.oneOf), "streamEventSchema should include oneOf");
-    assert(protocol.tools.some((tool) => tool.name === "analyze"), "analyze tool spec should exist");
+    assert(protocol.tools.some((tool) => tool.name === "run_analysis"), "run_analysis tool spec should exist");
     assert(protocol.tools.every((tool) => tool.outputSchema && typeof tool.outputSchema === "object"), "tool outputSchema should exist");
     assert(protocol.tools.every((tool) => Array.isArray(tool.errorCodes)), "tool errorCodes should be array");
     console.log("[ok] agent protocol metadata");
@@ -166,9 +174,23 @@ async function validateAgentOrchestration(context) {
 
   {
     const svc = withDefaultSkills(new AgentService());
+    svc.llm = {
+      invoke: async () => ({
+        content: JSON.stringify({
+          kind: "ask",
+          replyMode: null,
+          reason: "missing structural details",
+        }),
+      }),
+    };
     const result = await svc.run({ message: "帮我算一下门式刚架" });
-    assert(result.success === false, "missing model should fail");
-    assert(result.needsModelInput === true, "missing model should require model input");
+    assert(result.success === true, "auto routing should follow the llm planner into clarification when model details are missing");
+    assert(result.interaction?.state === "confirming", "auto routing should return clarification interaction when the planner selects ask");
+    assert(result.needsModelInput === true, "auto routing should still require model input");
+
+    const toolResult = await svc.runForcedExecution({ message: "帮我算一下门式刚架" });
+    assert(toolResult.success === false, "forced execution should block when model details are missing");
+    assert(toolResult.needsModelInput === true, "forced execution should require model input");
     console.log("[ok] agent missing-model clarification");
   }
 
@@ -182,7 +204,7 @@ async function validateAgentOrchestration(context) {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runForcedExecution({
       message: "做静力分析",
       context: {
         model: { schema_version: "1.0.0" },
@@ -190,7 +212,7 @@ async function validateAgentOrchestration(context) {
     });
     assert(result.success === false, "validate failure should fail");
     assert(result.response.includes("模型校验失败"), "validate failure response should be surfaced");
-    assert(result.toolCalls.some((call) => call.tool === "validate" && call.error), "validate error trace should exist");
+    assert(result.toolCalls.some((call) => call.tool === "validate_model" && call.error), "validate trace should exist");
     console.log("[ok] agent validate-failure trace");
   }
 
@@ -198,7 +220,7 @@ async function validateAgentOrchestration(context) {
     const svc = withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
-    const result = await svc.run({
+    const result = await svc.runForcedExecution({
       message: "静力分析这个模型",
       context: {
         model: {
@@ -213,9 +235,11 @@ async function validateAgentOrchestration(context) {
     });
 
     assert(result.success === true, "successful orchestration should succeed");
-    assert(result.toolCalls.some((call) => call.tool === "validate"), "validate should be called");
-    assert(result.toolCalls.some((call) => call.tool === "analyze"), "analyze should be called");
-    assert(result.toolCalls.some((call) => call.tool === "report"), "report should be generated");
+    assert(result.toolCalls.some((call) => call.tool === "validate_model"), "validate_model should be called");
+    assert(result.toolCalls.some((call) => call.tool === "run_analysis"), "run_analysis should be called");
+    assert(result.toolCalls.some((call) => call.tool === "generate_report"), "generate_report should be generated");
+    assert(result.toolCalls.some((call) => call.tool === "run_analysis" && call.source === "external"), "run_analysis should expose external source");
+    assert(result.toolCalls.some((call) => call.tool === "run_analysis" && Array.isArray(call.authorizedBySkillIds) && call.authorizedBySkillIds.length > 0), "run_analysis should expose authorized skill ids");
     assert(result.report && result.report.summary, "report payload should exist");
     assert(result.metrics?.toolCount >= 2, "tool metrics should be present");
     assert(typeof result.startedAt === "string" && typeof result.completedAt === "string", "run timestamps should be present");
@@ -231,9 +255,8 @@ async function validateAgentOrchestration(context) {
     const events = [];
     let streamTraceId;
     let resultTraceId;
-    for await (const chunk of svc.runStream({
+    for await (const chunk of svc.runForcedExecutionStream({
       message: "stream test",
-      mode: "execute",
       context: { model: { schema_version: "1.0.0" } },
     })) {
       events.push(chunk.type);
@@ -257,20 +280,28 @@ async function validateAgentOrchestration(context) {
     const svc = withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
-    const result = await svc.run({
-      message: "请按一个3m悬臂梁，端部10kN竖向荷载做静力分析",
-      mode: "execute",
+    const result = await svc.runForcedExecution({
+      message: "按3m悬臂梁端部10kN点荷载做静力分析",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
         includeReport: false,
+        providedValues: {
+          skillId: "beam",
+          lengthM: 3,
+          supportType: "cantilever",
+          loadKN: 10,
+          loadType: "point",
+          loadPosition: "end",
+        },
       },
     });
 
     assert(result.success === true, "text draft orchestration should succeed");
-    assert(result.toolCalls.some((call) => call.tool === "text-to-model-draft"), "text draft tool should be called");
-    assert(result.toolCalls.some((call) => call.tool === "validate"), "validate should be called after draft");
-    assert(result.toolCalls.some((call) => call.tool === "analyze"), "analyze should be called after draft");
+    assert(result.toolCalls.some((call) => call.tool === "draft_model"), "draft_model should be called");
+    assert(result.toolCalls.some((call) => call.tool === "validate_model"), "validate_model should be called after draft");
+    assert(result.toolCalls.some((call) => call.tool === "run_analysis"), "run_analysis should be called after draft");
+    assert(result.toolCalls.some((call) => call.tool === "draft_model" && Array.isArray(call.authorizedBySkillIds) && call.authorizedBySkillIds.length > 0), "draft_model should expose authorized skill ids");
     console.log("[ok] agent text-to-model draft orchestration");
   }
 
@@ -278,174 +309,205 @@ async function validateAgentOrchestration(context) {
     const svc = withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
-    const first = await svc.run({
+    const first = await svc.runForcedExecution({
       conversationId: "conv-clarify-1",
       message: "请帮我算一个门式刚架",
-      mode: "execute",
     });
     assert(first.success === false, "first turn should request clarification");
     assert(first.needsModelInput === true, "first turn should require model input");
 
-    const second = await svc.run({
+    const second = await svc.runForcedExecution({
       conversationId: "conv-clarify-1",
       message: "跨度6m，柱高4m，竖向荷载20kN，做静力分析",
-      mode: "execute",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
         includeReport: false,
+        providedValues: {
+          skillId: "portal-frame",
+          lengthM: 6,
+          heightM: 4,
+          loadKN: 20,
+          loadType: "point",
+        },
       },
     });
     assert(second.success === true, "second turn should complete using persisted draft state");
-    assert(second.toolCalls.some((call) => call.tool === "text-to-model-draft"), "second turn should still draft model");
+    assert(second.toolCalls.some((call) => call.tool === "draft_model"), "second turn should still draft model");
     console.log("[ok] conversation-level clarification carry-over");
   }
 
   {
     const svc = withDefaultSkills(new AgentService());
 
-    const collecting = await svc.run({
-      conversationId: "conv-chat-complete-model",
+    const collecting = await svc.runChatOnly({
+      conversationId: "conv-conversation-complete-model",
       message: "3m悬臂梁，端部10kN点荷载",
-      mode: "chat",
       context: {
         locale: "zh",
+        providedValues: {
+          skillId: "beam",
+          lengthM: 3,
+          supportType: "cantilever",
+          loadKN: 10,
+          loadType: "point",
+          loadPosition: "end",
+        },
       },
     });
-    assert(collecting.success === true, "chat complete-model turn should succeed");
+    assert(collecting.success === true, "conversation complete-model turn should succeed");
     assert(collecting.interaction?.state === "ready", `expected ready state, got ${collecting.interaction?.state}`);
-    assert(collecting.model && Array.isArray(collecting.model.nodes), "chat complete-model turn should return synchronized model");
+    assert(collecting.model && Array.isArray(collecting.model.nodes), "conversation complete-model turn should return synchronized model");
 
-    const incomplete = await svc.run({
-      conversationId: "conv-chat-incomplete-model",
+    const incomplete = await svc.runChatOnly({
+      conversationId: "conv-conversation-incomplete-model",
       message: "帮我设计一个梁",
-      mode: "chat",
       context: {
         locale: "zh",
       },
     });
-    assert(incomplete.success === true, "incomplete chat turn should succeed");
-    assert(incomplete.interaction?.state !== "ready", "incomplete chat turn should not be ready");
-    assert(incomplete.model === undefined, "incomplete chat turn should not return synchronized model");
-    console.log("[ok] chat complete-model sync contract");
+    assert(incomplete.success === true, "incomplete conversation turn should succeed");
+    assert(incomplete.interaction?.state !== "ready", "incomplete conversation turn should not be ready");
+    assert(incomplete.model === undefined, "incomplete conversation turn should not return synchronized model");
+    console.log("[ok] conversation complete-model sync contract");
   }
 
   {
     const svc = withDefaultSkills(new AgentService());
-    const first = await svc.run({
-      conversationId: "conv-chat-followup-1",
+    const first = await svc.runChatOnly({
+      conversationId: "conv-conversation-followup-1",
       message: "先聊需求，我要做一个门式刚架",
-      mode: "chat",
     });
     assert(
       first.interaction?.missingCritical?.includes("门式刚架或双跨每跨跨度（m）"),
-      "first chat turn should ask for portal-frame span",
+      "first conversation turn should ask for portal-frame span",
     );
 
-    const second = await svc.run({
-      conversationId: "conv-chat-followup-1",
+    const second = await svc.runChatOnly({
+      conversationId: "conv-conversation-followup-1",
       message: "跨度10m",
-      mode: "chat",
+      context: {
+        providedValues: {
+          lengthM: 10,
+        },
+      },
     });
-    assert(second.success === true, "second chat turn should still succeed");
-    assert(second.interaction?.detectedScenario === "portal-frame", "chat follow-up should keep portal-frame scenario");
+    assert(second.success === true, "second conversation turn should still succeed");
     assert(
       !second.interaction?.missingCritical?.includes("门式刚架或双跨每跨跨度（m）"),
-      "second chat turn should not ask for span again",
+      "second conversation turn should not ask for span again",
     );
     assert(
       second.interaction?.missingCritical?.includes("门式刚架柱高（m）"),
-      "second chat turn should continue with height",
+      "second conversation turn should continue with height",
     );
-    console.log("[ok] chat clarification follow-up shrinkage");
+    console.log("[ok] conversation clarification follow-up shrinkage");
   }
 
   {
     const svc = withDefaultSkills(new AgentService());
 
-    const first = await svc.run({
-      conversationId: "conv-chat-followup-beam-1",
+    const first = await svc.runChatOnly({
+      conversationId: "conv-conversation-followup-beam-1",
       message: "我想设计一个梁",
-      mode: "chat",
     });
-    assert(first.interaction?.missingCritical?.includes("跨度/长度（m）"), "first beam chat turn should ask for span");
+    assert(first.interaction?.missingCritical?.includes("跨度/长度（m）"), "first beam conversation turn should ask for span");
 
-    const second = await svc.run({
-      conversationId: "conv-chat-followup-beam-1",
+    const second = await svc.runChatOnly({
+      conversationId: "conv-conversation-followup-beam-1",
       message: "跨度10m",
-      mode: "chat",
+      context: {
+        providedValues: {
+          lengthM: 10,
+        },
+      },
     });
-    assert(second.success === true, "second beam chat turn should still succeed");
-    assert(second.interaction?.detectedScenario === "beam", "beam follow-up should keep beam scenario");
+    assert(second.success === true, "second beam conversation turn should still succeed");
     assert(
       !second.interaction?.missingCritical?.includes("跨度/长度（m）"),
-      "second beam chat turn should not ask for span again",
+      "second beam conversation turn should not ask for span again",
     );
     assert(
       second.interaction?.missingCritical?.includes("荷载大小（kN）"),
-      "second beam chat turn should continue with load",
+      "second beam conversation turn should continue with load",
     );
     assert(
       second.interaction?.missingCritical?.includes("支座/边界条件（悬臂/简支/两端固结/固铰）"),
-      "second beam chat turn should require support type before load details",
+      "second beam conversation turn should require support type before load details",
     );
     assert(
       !second.interaction?.missingCritical?.includes("荷载形式（点荷载/均布荷载）"),
-      "second beam chat turn should not require load type before support type is known",
+      "second beam conversation turn should not require load type before support type is known",
     );
     assert(
       !second.interaction?.missingCritical?.includes("荷载位置（按当前结构模板）"),
-      "second beam chat turn should not require load position before support type is known",
+      "second beam conversation turn should not require load position before support type is known",
     );
 
-    const third = await svc.run({
-      conversationId: "conv-chat-followup-beam-1",
+    const third = await svc.runChatOnly({
+      conversationId: "conv-conversation-followup-beam-1",
       message: "简支",
-      mode: "chat",
+      context: {
+        providedValues: {
+          supportType: "simply-supported",
+        },
+      },
     });
-    assert(third.success === true, "third beam chat turn should still succeed");
+    assert(third.success === true, "third beam conversation turn should still succeed");
     assert(
       !third.interaction?.missingCritical?.includes("支座/边界条件（悬臂/简支/两端固结/固铰）"),
-      "third beam chat turn should not ask for support type again",
+      "third beam conversation turn should not ask for support type again",
     );
     assert(
       third.interaction?.missingCritical?.includes("荷载大小（kN）"),
-      "third beam chat turn should still require load magnitude",
+      "third beam conversation turn should still require load magnitude",
     );
     assert(
       third.interaction?.missingCritical?.includes("荷载形式（点荷载/均布荷载）"),
-      "third beam chat turn should require load type after support type is known",
+      "third beam conversation turn should require load type after support type is known",
     );
     assert(
       third.interaction?.missingCritical?.includes("荷载位置（按当前结构模板）"),
-      "third beam chat turn should require load position after support type is known",
+      "third beam conversation turn should require load position after support type is known",
     );
-    console.log("[ok] beam chat clarification follow-up shrinkage");
+    console.log("[ok] beam conversation clarification follow-up shrinkage");
   }
 
   {
     const svc = withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
-    const beam = await svc.run({
+    const beam = await svc.runChatOnly({
       message: "按双跨梁建模，每跨4m，中跨节点施加12kN竖向荷载做静力分析",
-      mode: "execute",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
         includeReport: false,
+        providedValues: {
+          skillId: "double-span-beam",
+          spanLengthM: 4,
+          loadKN: 12,
+          loadType: "point",
+          loadPosition: "middle-joint",
+        },
       },
     });
     assert(beam.success === true, "double-span beam draft should succeed");
     assert(Array.isArray(beam.model?.elements) && beam.model.elements.length === 2, "double-span beam should have 2 elements");
 
-    const truss = await svc.run({
+    const truss = await svc.runForcedExecution({
       message: "建立一个平面桁架，长度5m，10kN轴向荷载并计算",
-      mode: "execute",
       context: {
         userDecision: "allow_auto_decide",
         autoCodeCheck: false,
         includeReport: false,
+        providedValues: {
+          skillId: "truss",
+          lengthM: 5,
+          loadKN: 10,
+          loadType: "point",
+          loadPosition: "middle-joint",
+        },
       },
     });
     assert(truss.success === true, "planar truss draft should succeed");
@@ -491,10 +553,10 @@ async function validateAgentOrchestration(context) {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runForcedExecution({
       message: "请对该模型做静力分析并按GB50017做规范校核并出报告",
-      mode: "execute",
       context: {
+        skillIds: [...svc.listSkills().map((skill) => skill.id), "code-check-gb50017"],
         model: {
           schema_version: "1.0.0",
           nodes: [
@@ -524,8 +586,8 @@ async function validateAgentOrchestration(context) {
     });
 
     assert(result.success === true, "closed loop should succeed");
-    assert(result.toolCalls.some((call) => call.tool === "code-check"), "code-check should be called");
-    assert(result.toolCalls.some((call) => call.tool === "report"), "report should be called");
+    assert(result.toolCalls.some((call) => call.tool === "run_code_check"), "run_code_check should be called");
+    assert(result.toolCalls.some((call) => call.tool === "generate_report"), "generate_report should be called");
     assert(result.codeCheck?.code === "GB50017", "code-check output should exist");
     assert(capturedCodeCheckPayload?.context?.analysisSummary?.analysisType === "static", "analysis summary should be forwarded");
     assert(capturedCodeCheckPayload?.context?.utilizationByElement?.E1?.正应力 === 0.72, "utilization context should be forwarded");
@@ -540,7 +602,7 @@ async function validateAgentOrchestration(context) {
   }
 }
 
-async function validateAgentNoSkillFallback(context) {
+async function validateAgentBaseChatFallback(context) {
   await runBackendBuildOnce(context);
 
   const hasDeterministicOutcome = (result) => {
@@ -557,27 +619,25 @@ async function validateAgentNoSkillFallback(context) {
   };
 
   process.env.LLM_API_KEY = process.env.LLM_API_KEY || "";
-  process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || "";
-  process.env.ZAI_API_KEY = process.env.ZAI_API_KEY || "";
 
   const AgentService = await importBackendAgentService(context.rootDir);
   const svc = new AgentService();
+  const runForcedExecution = (params) => svc.runWithStrategy(params, { planningDirective: "force_tool", allowToolCall: true });
 
-  const chatResult = await svc.run({
-    conversationId: "conv-no-skill-chat",
+  const chatResult = await runForcedExecution({
+    conversationId: "conv-empty-skill-chat",
     message: "先聊需求，我要算一个门式刚架",
-    mode: "chat",
     context: {
       skillIds: [],
       locale: "zh",
     },
   });
-  assert(hasDeterministicOutcome(chatResult), "chat mode with empty skillIds should return deterministic outcome");
+  assert(hasDeterministicOutcome(chatResult), "conversation mode with empty skillIds should return deterministic outcome");
+  assert(Array.isArray(chatResult.toolCalls) && chatResult.toolCalls.length === 0, "empty-skill chat should not invoke tools");
 
-  const executeResult = await svc.run({
-    conversationId: "conv-no-skill-exec",
+  const toolResult = await runForcedExecution({
+    conversationId: "conv-empty-skill-exec",
     message: "按3m悬臂梁端部10kN点荷载做静力分析",
-    mode: "execute",
     context: {
       skillIds: [],
       autoCodeCheck: false,
@@ -586,20 +646,121 @@ async function validateAgentNoSkillFallback(context) {
       locale: "zh",
     },
   });
-  assert(hasDeterministicOutcome(executeResult), "execute mode with empty skillIds should return deterministic outcome");
+  assert(hasDeterministicOutcome(toolResult), "forced execution with empty skillIds should return deterministic outcome");
+  assert(toolResult.success === false, "forced execution with empty skillIds should now be blocked");
+  assert(toolResult.blockedReasonCode === "NO_EXECUTABLE_TOOL", "empty-skill forced execution should report blocked reason");
+  assert(Array.isArray(toolResult.toolCalls) && toolResult.toolCalls.length === 0, "empty-skill forced execution should not invoke tools");
 
   const autoResult = await svc.run({
-    conversationId: "conv-no-skill-auto",
+    conversationId: "conv-empty-skill-auto",
     message: "帮我做一个规则框架静力分析",
-    mode: "auto",
     context: {
       skillIds: [],
       locale: "zh",
     },
   });
-  assert(hasDeterministicOutcome(autoResult), "auto mode with empty skillIds should return deterministic outcome");
+  assert(hasDeterministicOutcome(autoResult), "auto routing with empty skillIds should return deterministic outcome");
+  assert(autoResult.success === true, "auto routing with empty skillIds should stay on base chat");
+  assert(Array.isArray(autoResult.toolCalls) && autoResult.toolCalls.length === 0, "empty-skill auto routing should not invoke tools");
 
-  console.log("[ok] no-skill fallback contract");
+  console.log("[ok] base-chat fallback contract");
+}
+
+async function validateAgentCapabilityModes(context) {
+  await runBackendBuildOnce(context);
+  clearProviderEnv();
+
+  const AgentService = await importBackendAgentService(context.rootDir);
+  const svc = new AgentService();
+  const defaultSkillIds = svc.listSkills().map((skill) => skill.id);
+
+  svc.structureProtocolClient = {
+    post: async (targetPath, payload) => {
+      if (targetPath === "/validate") {
+        return { data: { valid: true, schemaVersion: "1.0.0" } };
+      }
+      if (targetPath === "/convert") {
+        return { data: { model: payload?.model ?? {} } };
+      }
+      throw new Error(`unexpected structure protocol path ${targetPath}`);
+    },
+  };
+  svc.engineClient.post = async (targetPath, payload) => {
+    if (targetPath === "/analyze") {
+      return {
+        data: {
+          schema_version: "1.0.0",
+          analysis_type: payload.type,
+          success: true,
+          error_code: null,
+          message: "ok",
+          data: {},
+          meta: {},
+        },
+      };
+    }
+    throw new Error(`unexpected analysis path ${targetPath}`);
+  };
+  svc.codeCheckClient = {
+    post: async (targetPath, payload) => {
+      if (targetPath === "/code-check") {
+        return {
+          data: {
+            code: payload.code,
+            status: "success",
+            summary: { total: payload.elements.length, passed: payload.elements.length, failed: 0, warnings: 0 },
+            details: [],
+          },
+        };
+      }
+      throw new Error(`unexpected code-check path ${targetPath}`);
+    },
+  };
+
+  const baseChat = await svc.runChatOnly({
+    conversationId: "conv-capability-base-chat",
+    message: "先聊一下需求",
+    context: {
+      locale: "zh",
+      skillIds: [],
+      disabledToolIds: ["draft_model", "run_analysis", "validate_model", "convert_model", "run_code_check", "generate_report"],
+    },
+  });
+  assert(baseChat.success === true, "base chat should succeed");
+  assert(!baseChat.interaction, "base chat should not return engineering interaction payload");
+  assert(Array.isArray(baseChat.toolCalls) && baseChat.toolCalls.length === 0, "base chat should not invoke tools");
+
+  const skilledChat = await svc.runChatOnly({
+    conversationId: "conv-capability-skilled-chat",
+    message: "我想设计一个门式刚架",
+    context: {
+      locale: "zh",
+      skillIds: defaultSkillIds,
+      disabledToolIds: ["run_analysis", "validate_model", "convert_model", "run_code_check", "generate_report"],
+    },
+  });
+  assert(skilledChat.success === true, "skilled chat should succeed");
+  assert(skilledChat.interaction?.stage === "model", "skilled chat should keep structural interaction guidance");
+  assert(!skilledChat.toolCalls.some((call) => call.tool === "run_analysis"), "skilled chat should not execute run_analysis");
+  assert(!skilledChat.toolCalls.some((call) => call.tool === "run_code_check"), "skilled chat should not execute run_code_check");
+  assert(!skilledChat.toolCalls.some((call) => call.tool === "generate_report"), "skilled chat should not execute generate_report");
+
+  const fullAgent = await svc.runForcedExecution({
+    conversationId: "conv-capability-full-agent",
+    message: "请按3m悬臂梁端部10kN点荷载做静力分析",
+    context: {
+      locale: "zh",
+      skillIds: defaultSkillIds,
+      userDecision: "allow_auto_decide",
+      autoCodeCheck: false,
+      includeReport: false,
+    },
+  });
+  assert(fullAgent.success === true, "full agent should succeed");
+  assert(fullAgent.toolCalls.some((call) => call.tool === "run_analysis"), "full agent should execute run_analysis");
+  assert(fullAgent.model && typeof fullAgent.model === "object", "full agent should return model artifact");
+
+  console.log("[ok] capability-mode contract");
 }
 
 async function validateAgentToolsContract(context) {
@@ -618,18 +779,21 @@ async function validateAgentToolsContract(context) {
   const payload = response.json();
   assert(payload.version === "2.0.0", "protocol version should be 2.0.0");
   assert(Array.isArray(payload.tools), "tools should be array");
+  assert(payload.tools.every((tool) => typeof tool.id === "string" && tool.id.length > 0), "tool specs should expose canonical ids");
 
   const toolNames = payload.tools.map((tool) => tool.name);
-  for (const requiredTool of ["text-to-model-draft", "convert", "validate", "analyze", "code-check", "report"]) {
+  for (const requiredTool of ["draft_model", "update_model", "convert_model", "validate_model", "run_analysis", "run_code_check", "generate_report"]) {
     assert(toolNames.includes(requiredTool), `missing required tool: ${requiredTool}`);
   }
 
   const requestContext = payload.runRequestSchema?.properties?.context?.properties || {};
   assert(payload.runRequestSchema?.properties?.traceId?.type === "string", "runRequestSchema should include traceId");
+  assert(requestContext.enabledToolIds?.type === "array", "runRequestSchema should include enabledToolIds");
+  assert(requestContext.disabledToolIds?.type === "array", "runRequestSchema should include disabledToolIds");
   assert(requestContext.reportOutput?.enum?.includes("file"), "runRequestSchema should include reportOutput=file");
   assert(requestContext.reportFormat?.enum?.includes("both"), "runRequestSchema should include reportFormat=both");
 
-  const reportTool = payload.tools.find((tool) => tool.name === "report");
+  const reportTool = payload.tools.find((tool) => tool.name === "generate_report");
   assert(reportTool, "report tool spec should exist");
   assert(reportTool.inputSchema?.required?.includes("analysis"), "report tool input should require analysis");
   assert(reportTool.outputSchema?.properties?.json?.type === "object", "report output should include json object");
@@ -651,7 +815,8 @@ async function validateAgentApiContract(context) {
   const Fastify = backendRequire(context.rootDir)("fastify");
   const AgentService = await importBackendAgentService(context.rootDir);
   const captured = [];
-  AgentService.prototype.run = async function mockRun(params) {
+  const originalRun = AgentService.prototype.run;
+  const mockRun = async function mockRun(params) {
     captured.push(params);
     return {
       traceId: "trace-api-contract",
@@ -659,13 +824,13 @@ async function validateAgentApiContract(context) {
       completedAt: "2026-03-09T00:00:00.012Z",
       durationMs: 12,
       success: true,
-      mode: "rule-based",
+      orchestrationMode: "llm-planned",
       needsModelInput: false,
-      plan: ["validate", "analyze", "report"],
+      plan: ["validate_model", "run_analysis", "generate_report"],
       toolCalls: [
-        { tool: "validate", input: {}, status: "success", startedAt: new Date().toISOString() },
-        { tool: "analyze", input: {}, status: "success", startedAt: new Date().toISOString() },
-        { tool: "report", input: {}, status: "success", startedAt: new Date().toISOString() },
+        { tool: "validate_model", input: {}, status: "success", startedAt: new Date().toISOString() },
+        { tool: "run_analysis", input: {}, status: "success", startedAt: new Date().toISOString() },
+        { tool: "generate_report", input: {}, status: "success", startedAt: new Date().toISOString() },
       ],
       response: "ok",
       report: {
@@ -679,63 +844,78 @@ async function validateAgentApiContract(context) {
         totalToolDurationMs: 10,
         averageToolDurationMs: 3.3,
         maxToolDurationMs: 5,
-        toolDurationMsByName: { validate: 2, analyze: 3, report: 5 },
+        toolDurationMsByName: { validate_model: 2, run_analysis: 3, generate_report: 5 },
       },
     };
   };
+  AgentService.prototype.run = mockRun;
 
-  const { agentRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "agent.js")).href);
-  const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
+  let app;
+  try {
+    const { agentRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "agent.js")).href);
+    const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
 
-  const app = Fastify();
-  await app.register(agentRoutes, { prefix: "/api/v1/agent" });
-  await app.register(chatRoutes, { prefix: "/api/v1/chat" });
+    app = Fastify();
+    await app.register(agentRoutes, { prefix: "/api/v1/agent" });
+    await app.register(chatRoutes, { prefix: "/api/v1/chat" });
 
-  const requestBody = {
-    message: "请分析并导出报告",
-    conversationId: "conv-api-1",
-    traceId: "trace-request-001",
-    context: {
-      autoAnalyze: true,
-      autoCodeCheck: true,
-      includeReport: true,
-      reportFormat: "both",
-      reportOutput: "file",
-    },
-  };
+    const requestBody = {
+      message: "请分析并导出报告",
+      conversationId: "conv-api-1",
+      traceId: "trace-request-001",
+      context: {
+        autoAnalyze: true,
+        autoCodeCheck: true,
+        includeReport: true,
+        reportFormat: "both",
+        reportOutput: "file",
+      },
+    };
 
-  const runResponse = await app.inject({
-    method: "POST",
-    url: "/api/v1/agent/run",
-    payload: requestBody,
-  });
-  assert(runResponse.statusCode === 200, "agent/run should return 200");
-  const runPayload = runResponse.json();
-  assert(runPayload.traceId === "trace-api-contract", "agent/run should return traceId");
-  assert(typeof runPayload.startedAt === "string", "agent/run should return startedAt");
-  assert(typeof runPayload.completedAt === "string", "agent/run should return completedAt");
-  assert(Array.isArray(runPayload.toolCalls), "agent/run should include toolCalls");
-  assert(runPayload.metrics?.toolCount === 3, "agent/run should include metrics");
-  assert(runPayload.metrics?.maxToolDurationMs === 5, "agent/run should include expanded metrics");
+    const runResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/agent/run",
+      payload: requestBody,
+    });
+    assert(runResponse.statusCode === 200, "agent/run should return 200");
+    const runPayload = runResponse.json();
+    assert(runPayload.traceId === "trace-api-contract", "agent/run should return traceId");
+    assert(typeof runPayload.startedAt === "string", "agent/run should return startedAt");
+    assert(typeof runPayload.completedAt === "string", "agent/run should return completedAt");
+    assert(Array.isArray(runPayload.toolCalls), "agent/run should include toolCalls");
+    assert(runPayload.metrics?.toolCount === 3, "agent/run should include metrics");
+    assert(runPayload.metrics?.maxToolDurationMs === 5, "agent/run should include expanded metrics");
 
-  const executeResponse = await app.inject({
-    method: "POST",
-    url: "/api/v1/chat/execute",
-    payload: requestBody,
-  });
-  assert(executeResponse.statusCode === 200, "chat/execute should return 200");
-  const executePayload = executeResponse.json();
-  assert(executePayload.traceId === "trace-api-contract", "chat/execute should proxy agent result");
-  assert(executePayload.artifacts?.[0]?.path === "/tmp/report.json", "chat/execute should return artifacts");
+    const chatMessageResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/chat/message",
+      payload: requestBody,
+    });
+    assert(chatMessageResponse.statusCode === 200, "chat/message should return 200");
+    const chatMessagePayload = chatMessageResponse.json();
+    assert(chatMessagePayload.result?.traceId === "trace-api-contract", "chat/message should proxy agent result");
+    assert(chatMessagePayload.result?.artifacts?.[0]?.path === "/tmp/report.json", "chat/message should return artifacts");
 
-  assert(captured.length >= 2, "agent run should be called for both endpoints");
-  assert(captured[0]?.traceId === "trace-request-001", "agent/run should pass traceId");
-  assert(captured[1]?.traceId === "trace-request-001", "chat/execute should pass traceId");
-  assert(captured[0]?.context?.reportOutput === "file", "agent/run should pass reportOutput context");
-  assert(captured[1]?.context?.reportFormat === "both", "chat/execute should pass reportFormat context");
+    const legacyToolCallResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/chat/tool-call",
+      payload: requestBody,
+    });
+    assert(legacyToolCallResponse.statusCode === 404, "chat/tool-call should no longer be exposed");
 
-  await app.close();
-  console.log("[ok] agent api contract regression");
+    assert(captured.length >= 2, "agent run should be called for both endpoints");
+    assert(captured[0]?.traceId === "trace-request-001", "agent/run should pass traceId");
+    assert(captured[1]?.traceId === "trace-request-001", "chat/message should pass traceId");
+    assert(captured[0]?.context?.reportOutput === "file", "agent/run should pass reportOutput context");
+    assert(captured[1]?.context?.reportFormat === "both", "chat/message should pass reportFormat context");
+
+    console.log("[ok] agent api contract regression");
+  } finally {
+    AgentService.prototype.run = originalRun;
+    if (app) {
+      await app.close();
+    }
+  }
 }
 
 async function validateAgentCapabilityMatrix(context) {
@@ -744,6 +924,8 @@ async function validateAgentCapabilityMatrix(context) {
 
   const { AnalysisEngineCatalogService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "analysis-engine.js")).href);
   const { AgentSkillRuntime } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-runtime", "index.js")).href);
+  const originalListSkillManifests = AgentSkillRuntime.prototype.listSkillManifests;
+  const originalListEngines = AnalysisEngineCatalogService.prototype.listEngines;
 
   AgentSkillRuntime.prototype.listSkillManifests = async function mockListSkillManifests() {
     return [
@@ -756,10 +938,11 @@ async function validateAgentCapabilityMatrix(context) {
         triggers: ["beam"],
         stages: ["intent", "draft", "analysis", "design"],
         autoLoadByDefault: true,
-        scenarioKeys: ["beam"],
+        structuralTypeKeys: ["beam"],
         requires: [],
         conflicts: [],
         capabilities: ["intent-detection"],
+        enabledTools: ["draft_model", "update_model", "validate_model", "run_analysis", "generate_report"],
         priority: 10,
         compatibility: {
           minRuntimeVersion: "0.1.0",
@@ -775,10 +958,11 @@ async function validateAgentCapabilityMatrix(context) {
         triggers: ["truss"],
         stages: ["intent", "draft", "analysis", "design"],
         autoLoadByDefault: true,
-        scenarioKeys: ["truss"],
+        structuralTypeKeys: ["truss"],
         requires: [],
         conflicts: [],
         capabilities: ["intent-detection"],
+        enabledTools: ["draft_model", "update_model", "validate_model", "run_analysis", "generate_report"],
         priority: 20,
         compatibility: {
           minRuntimeVersion: "0.1.0",
@@ -786,15 +970,15 @@ async function validateAgentCapabilityMatrix(context) {
         },
       },
       {
-        id: "analysis-strategy-baseline",
+        id: "analysis-baseline",
         structureType: "beam",
-        domain: "analysis-strategy",
-        name: { zh: "分析策略基线", en: "Analysis Strategy Baseline" },
-        description: { zh: "analysis strategy", en: "analysis strategy" },
+        domain: "analysis",
+        name: { zh: "分析基线", en: "Analysis Baseline" },
+        description: { zh: "analysis", en: "analysis" },
         triggers: ["analysis"],
         stages: ["analysis"],
         autoLoadByDefault: true,
-        scenarioKeys: ["beam"],
+        structuralTypeKeys: ["beam"],
         requires: [],
         conflicts: [],
         capabilities: ["analysis-policy"],
@@ -851,25 +1035,38 @@ async function validateAgentCapabilityMatrix(context) {
     };
   };
 
-  const { agentRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "agent.js")).href);
-  const app = Fastify();
-  await app.register(agentRoutes, { prefix: "/api/v1/agent" });
+  let app;
+  try {
+    const { agentRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "agent.js")).href);
+    app = Fastify();
+    await app.register(agentRoutes, { prefix: "/api/v1/agent" });
 
-  const response = await app.inject({ method: "GET", url: "/api/v1/agent/capability-matrix" });
-  assert(response.statusCode === 200, "capability matrix route should return 200");
-  const payload = response.json();
-  assert(typeof payload.generatedAt === "string", "payload.generatedAt should be present");
-  assert(Array.isArray(payload.skills), "payload.skills should be an array");
-  assert(Array.isArray(payload.engines), "payload.engines should be an array");
-  assert(Array.isArray(payload.domainSummaries), "payload.domainSummaries should be an array");
-  assert(payload.validEngineIdsBySkill && typeof payload.validEngineIdsBySkill === "object", "validEngineIdsBySkill should be an object");
-  assert(payload.filteredEngineReasonsBySkill && typeof payload.filteredEngineReasonsBySkill === "object", "filteredEngineReasonsBySkill should be an object");
-  assert(payload.validSkillIdsByEngine && typeof payload.validSkillIdsByEngine === "object", "validSkillIdsByEngine should be an object");
-  assert(payload.skillDomainById && typeof payload.skillDomainById === "object", "skillDomainById should be an object");
-  assert(payload.analysisStrategyCompatibility && typeof payload.analysisStrategyCompatibility === "object", "analysisStrategyCompatibility should be an object");
+    const response = await app.inject({ method: "GET", url: "/api/v1/agent/capability-matrix" });
+    assert(response.statusCode === 200, "capability matrix route should return 200");
+    const payload = response.json();
+    assert(typeof payload.generatedAt === "string", "payload.generatedAt should be present");
+    assert(Array.isArray(payload.skills), "payload.skills should be an array");
+    assert(Array.isArray(payload.tools), "payload.tools should be an array");
+    assert(Array.isArray(payload.engines), "payload.engines should be an array");
+    assert(Array.isArray(payload.domainSummaries), "payload.domainSummaries should be an array");
+    assert(payload.validEngineIdsBySkill && typeof payload.validEngineIdsBySkill === "object", "validEngineIdsBySkill should be an object");
+    assert(payload.filteredEngineReasonsBySkill && typeof payload.filteredEngineReasonsBySkill === "object", "filteredEngineReasonsBySkill should be an object");
+    assert(payload.validSkillIdsByEngine && typeof payload.validSkillIdsByEngine === "object", "validSkillIdsByEngine should be an object");
+    assert(payload.skillDomainById && typeof payload.skillDomainById === "object", "skillDomainById should be an object");
+    assert(Array.isArray(payload.foundationToolIds), "foundationToolIds should be an array");
+    assert(payload.enabledToolIdsBySkill && typeof payload.enabledToolIdsBySkill === "object", "enabledToolIdsBySkill should be an object");
+    assert(payload.providedToolIdsBySkill && typeof payload.providedToolIdsBySkill === "object", "providedToolIdsBySkill should be an object");
+    assert(payload.skillIdsByToolId && typeof payload.skillIdsByToolId === "object", "skillIdsByToolId should be an object");
+    assert(payload.analysisCompatibility && typeof payload.analysisCompatibility === "object", "analysisCompatibility should be an object");
 
-  const engineIds = new Set(payload.engines.map((engine) => engine.id));
-  const skillIds = new Set(payload.skills.map((skill) => skill.id));
+    const engineIds = new Set(payload.engines.map((engine) => engine.id));
+    const skillIds = new Set(payload.skills.map((skill) => skill.id));
+    const toolIds = new Set(payload.tools.map((tool) => tool.id));
+    const domainSummaryById = Object.fromEntries(payload.domainSummaries.map((summary) => [summary.domain, summary]));
+
+    assert(payload.skills.every((skill) => typeof skill.runtimeStatus === "string"), "skills should expose runtimeStatus");
+    assert(payload.domainSummaries.every((summary) => typeof summary.runtimeStatus === "string"), "domain summaries should expose runtimeStatus");
+    assert(payload.domainSummaries.length >= 14, "domain summaries should cover the full domain taxonomy");
 
   for (const skillId of skillIds) {
     assert(Array.isArray(payload.validEngineIdsBySkill[skillId]), `validEngineIdsBySkill should include array for ${skillId}`);
@@ -884,6 +1081,21 @@ async function validateAgentCapabilityMatrix(context) {
   const trussEngines = payload.validEngineIdsBySkill.truss || [];
   assert(payload.skillDomainById.beam === "structure-type", "beam should have structure-type domain mapping");
   assert(payload.skillDomainById.truss === "structure-type", "truss should have structure-type domain mapping");
+  assert(toolIds.has("draft_model"), "capability matrix should expose draft_model tool");
+  assert(toolIds.has("update_model"), "capability matrix should expose update_model tool");
+  assert(toolIds.has("convert_model"), "capability matrix should expose convert_model tool");
+  assert(toolIds.has("run_analysis"), "capability matrix should expose run_analysis tool");
+  assert(payload.foundationToolIds.includes("convert_model"), "foundation tool list should include convert_model");
+  const draftTool = payload.tools.find((tool) => tool.id === "draft_model");
+  const analysisTool = payload.tools.find((tool) => tool.id === "run_analysis");
+  assert(!Object.prototype.hasOwnProperty.call(draftTool || {}, "runtimeName"), "capability matrix should not expose runtimeName");
+  assert(!Object.prototype.hasOwnProperty.call(draftTool || {}, "compatibilityRuntimeName"), "capability matrix should not expose compatibility runtime aliases");
+  assert(Array.isArray(analysisTool?.requiresTools), "run_analysis should expose requiresTools");
+  assert(analysisTool?.requiresTools.includes("validate_model"), "run_analysis should depend on validate_model");
+  assert(Array.isArray(payload.enabledToolIdsBySkill.beam), "beam should expose enabled tools array");
+  assert(payload.enabledToolIdsBySkill.beam.includes("draft_model"), "beam should enable draft_model");
+  assert(payload.enabledToolIdsBySkill.beam.includes("update_model"), "beam should enable update_model");
+  assert(payload.enabledToolIdsBySkill.beam.includes("run_analysis"), "beam should enable run_analysis");
   assert(beamEngines.includes("engine-frame-a"), "beam should include frame-compatible engine");
   assert(beamEngines.includes("engine-generic"), "beam should include generic engine");
   assert(!beamEngines.includes("engine-disabled"), "beam should not include disabled engine");
@@ -892,20 +1104,34 @@ async function validateAgentCapabilityMatrix(context) {
   assert(payload.filteredEngineReasonsBySkill.beam["engine-truss-a"].includes("model_family_mismatch"), "beam should mark truss engine as family mismatch");
   assert(payload.filteredEngineReasonsBySkill.beam["engine-disabled"].includes("engine_disabled"), "beam should mark disabled engine reason");
   assert(payload.filteredEngineReasonsBySkill.truss["engine-frame-a"].includes("model_family_mismatch"), "truss should mark frame engine as family mismatch");
-  assert(Array.isArray(payload.analysisStrategyCompatibility.static.strategySkillIds), "static strategy skill IDs should be an array");
-  assert(payload.analysisStrategyCompatibility.static.strategySkillIds.includes("analysis-strategy-baseline"), "static strategy should include baseline strategy skill");
-  assert(payload.analysisStrategyCompatibility.dynamic.strategySkillIds.includes("analysis-strategy-baseline"), "dynamic strategy should include baseline strategy skill");
-  assert(!payload.analysisStrategyCompatibility.seismic.strategySkillIds.includes("analysis-strategy-baseline"), "seismic strategy should exclude unsupported strategy skill");
-  assert(payload.analysisStrategyCompatibility.static.baselinePolicyAvailable === true, "baseline policy should be available for static");
+  assert(Array.isArray(payload.analysisCompatibility.static.skillIds), "static analysis skill IDs should be an array");
+  assert(payload.analysisCompatibility.static.skillIds.includes("analysis-baseline"), "static analysis compatibility should include baseline analysis skill");
+  assert(payload.analysisCompatibility.dynamic.skillIds.includes("analysis-baseline"), "dynamic analysis compatibility should include baseline analysis skill");
+  assert(!payload.analysisCompatibility.seismic.skillIds.includes("analysis-baseline"), "seismic analysis compatibility should exclude unsupported analysis skill");
+  assert(payload.analysisCompatibility.static.baselinePolicyAvailable === true, "baseline policy should be available for static");
+  assert(payload.skills.find((skill) => skill.id === "beam")?.runtimeStatus === "active", "beam should be marked active");
+  assert(payload.skills.find((skill) => skill.id === "analysis-baseline")?.runtimeStatus === "active", "analysis skill should be marked active");
+  assert(domainSummaryById["structure-type"]?.runtimeStatus === "active", "structure-type domain should be active");
+  assert(domainSummaryById["analysis"]?.runtimeStatus === "active", "analysis domain should be active");
+  assert(domainSummaryById["validation"]?.runtimeStatus === "partial", "validation domain should be partial");
+  assert(domainSummaryById["report-export"]?.runtimeStatus === "partial", "report-export domain should be partial");
+  assert(domainSummaryById["design"]?.runtimeStatus === "discoverable", "design domain should be discoverable");
+  assert(Array.isArray(domainSummaryById["design"]?.skillIds), "design domain summary should exist even without runtime skills");
 
-  const responseDynamic = await app.inject({ method: "GET", url: "/api/v1/agent/capability-matrix?analysisType=dynamic" });
-  assert(responseDynamic.statusCode === 200, "analysisType-specific capability matrix route should return 200");
-  const dynamicPayload = responseDynamic.json();
-  assert(dynamicPayload.appliedAnalysisType === "dynamic", "payload should echo applied analysis type");
-  assert(dynamicPayload.filteredEngineReasonsBySkill.truss["engine-truss-a"].includes("analysis_type_mismatch"), "dynamic matrix should mark analysis type mismatch for static-only truss engine");
+    const responseDynamic = await app.inject({ method: "GET", url: "/api/v1/agent/capability-matrix?analysisType=dynamic" });
+    assert(responseDynamic.statusCode === 200, "analysisType-specific capability matrix route should return 200");
+    const dynamicPayload = responseDynamic.json();
+    assert(dynamicPayload.appliedAnalysisType === "dynamic", "payload should echo applied analysis type");
+    assert(dynamicPayload.filteredEngineReasonsBySkill.truss["engine-truss-a"].includes("analysis_type_mismatch"), "dynamic matrix should mark analysis type mismatch for static-only truss engine");
 
-  await app.close();
-  console.log("[ok] agent capability matrix contract");
+    console.log("[ok] agent capability matrix contract");
+  } finally {
+    AgentSkillRuntime.prototype.listSkillManifests = originalListSkillManifests;
+    AnalysisEngineCatalogService.prototype.listEngines = originalListEngines;
+    if (app) {
+      await app.close();
+    }
+  }
 }
 
 async function validateAgentSkillhubContract(context) {
@@ -1229,11 +1455,10 @@ async function validateAgentSkillhubRepositoryDown(context) {
     throw new Error(`unexpected analysis path ${targetPath}`);
   };
 
-  const result = await svc.run({
+  const result = await svc.runForcedExecution({
     message: "按3m悬臂梁端部10kN点荷载做静力分析",
-    mode: "execute",
     context: {
-      skillIds: [],
+      skillIds: ["beam"],
       model: {
         schema_version: "1.0.0",
         unit_system: "SI",
@@ -1254,8 +1479,8 @@ async function validateAgentSkillhubRepositoryDown(context) {
     },
   });
 
-  assert(result.success === true, "baseline execute should still succeed when repository is down");
-  assert(result.toolCalls.some((item) => item.tool === "analyze" && item.status === "success"), "analyze should still run in baseline mode");
+  assert(result.success === true, "built-in skill execution should still succeed when repository is down");
+  assert(result.toolCalls.some((item) => item.tool === "run_analysis" && item.status === "success"), "run_analysis should still run when a built-in skill authorizes it");
 
   await app.close();
   process.env.SCLAW_SKILLHUB_FORCE_DOWN = "false";
@@ -1268,27 +1493,33 @@ async function validateChatStreamContract(context) {
   const AgentService = await importBackendAgentService(context.rootDir);
 
   let capturedTraceId;
-  AgentService.prototype.runStream = async function* mockRunStream(params) {
-    capturedTraceId = params.traceId;
+  const originalRunStream = AgentService.prototype.runStream;
+  const originalRunForcedExecutionStream = AgentService.prototype.runForcedExecutionStream;
+  const mockRunStream = async function* mockRunStream(params) {
+    const request = params;
+    capturedTraceId = request.traceId;
     const traceId = "stream-trace-001";
-    yield { type: "start", content: { traceId, mode: "execute", startedAt: "2026-03-09T00:00:00.000Z" } };
+    yield { type: "start", content: { traceId, conversationId: "conv-stream-001", startedAt: "2026-03-09T00:00:00.000Z" } };
     yield {
       type: "result",
       content: {
         traceId,
+        conversationId: "conv-stream-001",
         startedAt: "2026-03-09T00:00:00.000Z",
         completedAt: "2026-03-09T00:00:00.008Z",
         durationMs: 8,
         success: true,
-        mode: "rule-based",
+        orchestrationMode: "llm-planned",
         needsModelInput: false,
-        plan: ["validate", "analyze", "report"],
+        plan: ["validate_model", "run_analysis", "generate_report"],
         toolCalls: [],
         response: "ok",
       },
     };
     yield { type: "done" };
   };
+  AgentService.prototype.runStream = mockRunStream;
+  AgentService.prototype.runForcedExecutionStream = mockRunStream;
 
   const parseSseEvents = (raw) =>
     raw
@@ -1298,167 +1529,179 @@ async function validateChatStreamContract(context) {
       .filter((chunk) => chunk.startsWith("data: "))
       .map((chunk) => chunk.slice("data: ".length));
 
-  const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
-  const app = Fastify();
-  await app.register(chatRoutes, { prefix: "/api/v1/chat" });
+  let app;
+  try {
+    const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
+    app = Fastify();
+    await app.register(chatRoutes, { prefix: "/api/v1/chat" });
 
-  const response = await app.inject({
-    method: "POST",
-    url: "/api/v1/chat/stream",
-    headers: { origin: "http://localhost:30000" },
-    payload: {
-      message: "stream contract test",
-      mode: "execute",
-      traceId: "trace-stream-request-1",
-      context: { model: { schema_version: "1.0.0" } },
-    },
-  });
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/chat/stream",
+      headers: { origin: "http://localhost:30000" },
+      payload: {
+        message: "analyze this model",
+        traceId: "trace-stream-request-1",
+        context: { model: { schema_version: "1.0.0" } },
+      },
+    });
 
-  assert(response.statusCode === 200, "chat/stream should return 200");
-  assert(response.headers["access-control-allow-origin"] === "http://localhost:30000", "chat/stream should include access-control-allow-origin for allowed origin");
-  assert(response.headers["access-control-allow-credentials"] === "true", "chat/stream should include access-control-allow-credentials for allowed origin");
-  assert(String(response.headers.vary || "").includes("Origin"), "chat/stream should include Vary: Origin for allowed origin");
-  const events = parseSseEvents(response.body);
-  assert(events.length >= 4, "stream should include events and done marker");
-  assert(events[events.length - 1] === "[DONE]", "stream should end with [DONE]");
+    assert(response.statusCode === 200, "chat/stream should return 200");
+    assert(response.headers["access-control-allow-origin"] === "http://localhost:30000", "chat/stream should include access-control-allow-origin for allowed origin");
+    assert(response.headers["access-control-allow-credentials"] === "true", "chat/stream should include access-control-allow-credentials for allowed origin");
+    assert(String(response.headers.vary || "").includes("Origin"), "chat/stream should include Vary: Origin for allowed origin");
+    const events = parseSseEvents(response.body);
+    assert(events.length >= 4, "stream should include events and done marker");
+    assert(events[events.length - 1] === "[DONE]", "stream should end with [DONE]");
 
-  const chunks = events
-    .filter((item) => item !== "[DONE]")
-    .map((item) => JSON.parse(item));
-  assert(chunks[0].type === "start", "first chunk should be start");
-  assert(chunks.some((chunk) => chunk.type === "result"), "stream should contain result chunk");
-  assert(chunks[chunks.length - 1].type === "done", "last chunk before [DONE] should be done");
-  assert(capturedTraceId === "trace-stream-request-1", "chat/stream should pass traceId to agent stream");
+    const chunks = events
+      .filter((item) => item !== "[DONE]")
+      .map((item) => JSON.parse(item));
+    assert(chunks[0].type === "start", "first chunk should be start");
+    assert(chunks.some((chunk) => chunk.type === "result"), "stream should contain result chunk");
+    assert(chunks[chunks.length - 1].type === "done", "last chunk before [DONE] should be done");
+    assert(capturedTraceId === "trace-stream-request-1", "chat/stream should pass traceId to agent stream");
 
-  const startTrace = chunks.find((chunk) => chunk.type === "start")?.content?.traceId;
-  const resultTrace = chunks.find((chunk) => chunk.type === "result")?.content?.traceId;
-  assert(startTrace && resultTrace && startTrace === resultTrace, "traceId should match between start and result");
-  assert(typeof chunks.find((chunk) => chunk.type === "start")?.content?.startedAt === "string", "start event should include startedAt");
+    const startTrace = chunks.find((chunk) => chunk.type === "start")?.content?.traceId;
+    const resultTrace = chunks.find((chunk) => chunk.type === "result")?.content?.traceId;
+    assert(startTrace && resultTrace && startTrace === resultTrace, "traceId should match between start and result");
+    assert(typeof chunks.find((chunk) => chunk.type === "start")?.content?.startedAt === "string", "start event should include startedAt");
 
-  const disallowedResponse = await app.inject({
-    method: "POST",
-    url: "/api/v1/chat/stream",
-    headers: { origin: "http://evil.example.com" },
-    payload: {
-      message: "stream contract test",
-      mode: "execute",
-      traceId: "trace-stream-request-2",
-      context: { model: { schema_version: "1.0.0" } },
-    },
-  });
-  assert(disallowedResponse.headers["access-control-allow-origin"] === undefined, "chat/stream should omit access-control-allow-origin for disallowed origin");
+    const disallowedResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/chat/stream",
+      headers: { origin: "http://evil.example.com" },
+      payload: {
+        message: "analyze this model",
+        traceId: "trace-stream-request-2",
+        context: { model: { schema_version: "1.0.0" } },
+      },
+    });
+    assert(disallowedResponse.headers["access-control-allow-origin"] === undefined, "chat/stream should omit access-control-allow-origin for disallowed origin");
 
-  await app.close();
-  console.log("[ok] chat stream contract regression");
+    console.log("[ok] chat stream contract regression");
+  } finally {
+    AgentService.prototype.runStream = originalRunStream;
+    AgentService.prototype.runForcedExecutionStream = originalRunForcedExecutionStream;
+    if (app) {
+      await app.close();
+    }
+  }
 }
 
 async function validateChatMessageRouting(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
   const AgentService = await importBackendAgentService(context.rootDir);
-  const { ChatService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "chat.js")).href);
 
   let agentRunCount = 0;
-  let chatSendCount = 0;
-  const capturedTraceIds = [];
+  const capturedRunTraceIds = [];
+  const capturedRunMessages = [];
+  const originalRun = AgentService.prototype.run;
 
-  AgentService.prototype.run = async function mockAgentRun(params) {
+  const mockAgentRun = async function mockAgentRun(params) {
+    const request = params;
     agentRunCount += 1;
-    capturedTraceIds.push(params.traceId);
+    capturedRunTraceIds.push(request.traceId);
+    capturedRunMessages.push(request.message);
     return {
       traceId: "trace-route-001",
+      conversationId: "conv-route-001",
       startedAt: "2026-03-09T00:00:00.000Z",
       completedAt: "2026-03-09T00:00:00.006Z",
       durationMs: 6,
       success: true,
-      mode: "rule-based",
+      orchestrationMode: "llm-planned",
       needsModelInput: false,
-      plan: ["validate", "analyze"],
+      plan: ["validate_model", "run_analysis"],
       toolCalls: [],
-      response: "execute-ok",
+      response: "tool-ok",
     };
   };
+  AgentService.prototype.run = mockAgentRun;
 
-  ChatService.prototype.sendMessage = async function mockSendMessage() {
-    chatSendCount += 1;
-    return {
-      conversationId: "conv-route-001",
-      response: "chat-ok",
-    };
-  };
+  let app;
+  try {
+    const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
+    app = Fastify();
+    await app.register(chatRoutes, { prefix: "/api/v1/chat" });
 
-  const { chatRoutes } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "api", "chat.js")).href);
-  const app = Fastify();
-  await app.register(chatRoutes, { prefix: "/api/v1/chat" });
-
-  const autoChatResp = await app.inject({
-    method: "POST",
-    url: "/api/v1/chat/message",
-    payload: {
-      message: "auto without model",
-      mode: "auto",
-      context: {
-        skillIds: ["beam"],
+    const autoChatResp = await app.inject({
+      method: "POST",
+      url: "/api/v1/chat/message",
+      payload: {
+        message: "auto without model",
+        context: {
+          skillIds: ["beam"],
+        },
       },
-    },
-  });
-  assert(autoChatResp.statusCode === 200, "auto chat response should be 200");
-  const autoChatPayload = autoChatResp.json();
-  assert(autoChatPayload.mode === "chat", "auto without model should route to chat");
-  assert(autoChatPayload.result?.response === "chat-ok", "chat result should be returned");
+    });
+    assert(autoChatResp.statusCode === 200, "auto conversation response should be 200");
+    const autoChatPayload = autoChatResp.json();
+    assert(autoChatPayload.result?.response === "tool-ok", "agent-first conversation result should be returned");
+    assert(autoChatPayload.result?.conversationId === "conv-route-001", "message response should include created conversationId");
 
-  const autoExecResp = await app.inject({
+  const autoConversationWithModelResp = await app.inject({
     method: "POST",
     url: "/api/v1/chat/message",
     payload: {
-      message: "auto with model",
-      mode: "auto",
+      message: "auto with model but no execution intent",
       traceId: "trace-route-auto-1",
       context: { model: { schema_version: "1.0.0" } },
     },
   });
-  assert(autoExecResp.statusCode === 200, "auto execute response should be 200");
-  const autoExecPayload = autoExecResp.json();
-  assert(autoExecPayload.mode === "execute", "auto with model should route to execute");
-  assert(autoExecPayload.result?.traceId === "trace-route-001", "execute result should be returned");
+  assert(autoConversationWithModelResp.statusCode === 200, "auto conversation-with-model response should be 200");
+  const autoConversationWithModelPayload = autoConversationWithModelResp.json();
+  assert(autoConversationWithModelPayload.result?.response === "tool-ok", "conversation with model should still route through agent");
+
+  const autoToolResp = await app.inject({
+    method: "POST",
+    url: "/api/v1/chat/message",
+    payload: {
+      message: "analyze this model",
+      traceId: "trace-route-auto-tool-1",
+      context: { model: { schema_version: "1.0.0" } },
+    },
+  });
+  assert(autoToolResp.statusCode === 200, "auto tool response should be 200");
+  const autoToolPayload = autoToolResp.json();
+  assert(autoToolPayload.result?.traceId === "trace-route-001", "tool result should be returned");
 
   const autoIntentExecResp = await app.inject({
     method: "POST",
     url: "/api/v1/chat/message",
     payload: {
       message: "请帮我做结构设计验算",
-      mode: "auto",
       traceId: "trace-route-auto-intent-1",
     },
   });
-  assert(autoIntentExecResp.statusCode === 200, "auto intent execute response should be 200");
-  const autoIntentExecPayload = autoIntentExecResp.json();
-  assert(autoIntentExecPayload.mode === "execute", "auto with design/check intent should route to execute");
+  assert(autoIntentExecResp.statusCode === 200, "auto intent tool response should be 200");
+  assert(agentRunCount === 4, "agent run should be called for auto /chat/message requests");
+  assert(capturedRunTraceIds.includes("trace-route-auto-1"), "agent-first message route should pass traceId for non-execution message");
+  assert(capturedRunTraceIds.includes("trace-route-auto-tool-1"), "auto tool invocation should pass traceId");
+  assert(capturedRunTraceIds.includes("trace-route-auto-intent-1"), "auto intent invocation should pass traceId");
+  assert(capturedRunMessages.includes("auto without model"), "plain chat-like requests should now route through agent");
 
-  const forceExecResp = await app.inject({
-    method: "POST",
-    url: "/api/v1/chat/message",
-    payload: {
-      message: "force execute",
-      mode: "execute",
-      traceId: "trace-route-exec-1",
-    },
-  });
-  assert(forceExecResp.statusCode === 200, "execute response should be 200");
-  const forceExecPayload = forceExecResp.json();
-  assert(forceExecPayload.mode === "execute", "mode=execute should route to execute");
+    const legacyToolCallResp = await app.inject({
+      method: "POST",
+      url: "/api/v1/chat/tool-call",
+      payload: {
+        message: "legacy force tool",
+        traceId: "trace-route-tool-legacy-1",
+      },
+    });
+    assert(legacyToolCallResp.statusCode === 404, "legacy /chat/tool-call endpoint should not be available");
 
-  assert(agentRunCount === 3, "agent run should be called three times");
-  assert(capturedTraceIds.includes("trace-route-auto-1"), "auto execute should pass traceId");
-  assert(capturedTraceIds.includes("trace-route-auto-intent-1"), "auto intent execute should pass traceId");
-  assert(capturedTraceIds.includes("trace-route-exec-1"), "forced execute should pass traceId");
-  assert(chatSendCount === 1, "chat send should be called once");
-
-  await app.close();
-  console.log("[ok] chat message routing contract");
+    console.log("[ok] chat message routing contract");
+  } finally {
+    AgentService.prototype.run = originalRun;
+    if (app) {
+      await app.close();
+    }
+  }
 }
 
-async function validateReportTemplateContract(context) {
+async function validateReportNarrativeContract(context) {
   context.backendBuildReady = false;
   await runBackendBuildOnce(context);
   clearProviderEnv();
@@ -1544,9 +1787,8 @@ async function validateReportTemplateContract(context) {
     },
   };
 
-  const result = await svc.run({
+  const result = await svc.runWithStrategy({
     message: "请分析并按规范校核后出报告",
-    mode: "execute",
     context: {
       model: {
         schema_version: "1.0.0",
@@ -1567,6 +1809,10 @@ async function validateReportTemplateContract(context) {
       reportFormat: "both",
       reportOutput: "inline",
     },
+  }, {
+    planningDirective: "force_tool",
+    orchestrationMode: "directed",
+    allowToolCall: true,
   });
 
   assert(result.success === true, "run should succeed");
@@ -1581,7 +1827,7 @@ async function validateReportTemplateContract(context) {
   assert(result.report.markdown.includes("## 关键指标"), "report markdown should include key metrics section");
   assert(result.report.markdown.includes("## 条文追溯"), "report markdown should include traceability section");
   assert(result.report.markdown.includes("## 控制工况"), "report markdown should include controlling cases section");
-  console.log("[ok] report template contract");
+  console.log("[ok] report narrative contract");
 }
 
 async function validateDevStartupGuards(context) {
@@ -1619,6 +1865,10 @@ async function validateDevStartupGuards(context) {
   assert(
     cliMainContent.includes("ensureAnalysisPython"),
     "missing analysis Python guard in unified CLI",
+  );
+  assert(
+    !cliMainContent.includes("runtime.requireCommand(\"python\""),
+    "doctor path should not hard-require system python before uv provisioning",
   );
   assert(
     cliMainContent.includes("appendSessionHeader"),
@@ -1851,7 +2101,8 @@ async function validateStructureJsonSkill(context) {
 
 const BACKEND_VALIDATIONS = {
   "validate-agent-orchestration": validateAgentOrchestration,
-  "validate-agent-no-skill-fallback": validateAgentNoSkillFallback,
+  "validate-agent-base-chat-fallback": validateAgentBaseChatFallback,
+  "validate-agent-capability-modes": validateAgentCapabilityModes,
   "validate-agent-tools-contract": validateAgentToolsContract,
   "validate-agent-api-contract": validateAgentApiContract,
   "validate-agent-capability-matrix": validateAgentCapabilityMatrix,
@@ -1860,7 +2111,7 @@ const BACKEND_VALIDATIONS = {
   "validate-agent-skillhub-repository-down": validateAgentSkillhubRepositoryDown,
   "validate-chat-stream-contract": validateChatStreamContract,
   "validate-chat-message-routing": validateChatMessageRouting,
-  "validate-report-template-contract": validateReportTemplateContract,
+  "validate-report-narrative-contract": validateReportNarrativeContract,
   "validate-dev-startup-guards": validateDevStartupGuards,
   "validate-structure-json-skill": validateStructureJsonSkill,
 };

@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 from fastapi import HTTPException
 
+from contracts import AnalysisResult, EngineNotAvailableError
 from skill_loader import SkillNotLoadedError, build_missing_skill_detail, load_skill_symbol
 from structure_protocol.structure_model_v1 import StructureModelV1
 
@@ -243,22 +244,27 @@ class AnalysisEngineRegistry:
         analysis_type: str,
         model: StructureModelV1,
         parameters: Dict[str, Any],
-    ) -> Dict[str, Any]:
+    ) -> AnalysisResult:
         skill = self._resolve_builtin_skill(adapter_key, analysis_type)
         if skill is None:
             raise RuntimeError(
-                f"No installed analysis skill runtime found for adapter '{adapter_key}' and analysis type '{analysis_type}'"
+                f"No installed analysis skill runtime found for adapter '{adapter_key}'"
+                f" and analysis type '{analysis_type}'"
             )
 
         runtime_module = _load_runtime_module(skill["id"], Path(skill["runtimePath"]))
-        run_analysis = getattr(runtime_module, "run_analysis", None)
-        if run_analysis is None:
+        run_fn = getattr(runtime_module, "run_analysis", None)
+        if run_fn is None:
             raise RuntimeError(f"Analysis skill runtime '{skill['id']}' is missing run_analysis()")
-        result = run_analysis(model, parameters)
+
+        # Exceptions from skill run_analysis() propagate upward so that
+        # registry.run_analysis() can attempt a fallback engine before failing.
+        result: AnalysisResult = run_fn(model, parameters)
+
         if isinstance(result, dict):
-            meta = result.get("meta") if isinstance(result.get("meta"), dict) else {}
+            existing_meta = result.get("meta") if isinstance(result.get("meta"), dict) else {}
             result["meta"] = {
-                **meta,
+                **existing_meta,
                 "analysisSkillId": skill["id"],
                 "analysisSkillIds": [skill["id"]],
                 "analysisAdapterKey": adapter_key,

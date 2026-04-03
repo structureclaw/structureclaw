@@ -7,6 +7,7 @@ import { API_BASE } from '@/lib/api-base'
 describe('AIConsole SkillHub actions', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    window.localStorage.clear()
 
     let installed = false
     let enabled = false
@@ -23,6 +24,18 @@ describe('AIConsole SkillHub actions', () => {
               id: 'beam',
               name: { zh: '梁', en: 'Beam' },
               description: { zh: 'beam', en: 'beam' },
+              autoLoadByDefault: true,
+            },
+            {
+              id: 'generic',
+              name: { zh: '通用结构', en: 'Generic Structure Type' },
+              description: { zh: 'generic', en: 'generic' },
+              autoLoadByDefault: true,
+            },
+            {
+              id: 'opensees-static',
+              name: { zh: 'OpenSees 静力', en: 'OpenSees Static' },
+              description: { zh: 'static', en: 'static' },
               autoLoadByDefault: true,
             },
           ]),
@@ -135,41 +148,27 @@ describe('AIConsole SkillHub actions', () => {
 
   afterEach(() => {
     vi.restoreAllMocks()
+    window.localStorage.clear()
   })
 
-  it('runs install-disable-enable-uninstall lifecycle', async () => {
-    const user = userEvent.setup()
+  it('shows capability settings entrypoint in console', async () => {
     render(<AIConsole />)
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /expand skills/i })).toBeInTheDocument()
+      expect(screen.getByRole('link', { name: /manage capabilities/i })).toHaveAttribute('href', '/console/capabilities')
     })
+  })
 
-    await user.click(screen.getByRole('button', { name: /expand skills/i }))
+  it('moves capability editing out of inline console controls', async () => {
+    render(<AIConsole />)
 
     await waitFor(() => {
-      expect(screen.getByText(/skillhub extensions/i)).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Install' })).toBeInTheDocument()
+      expect(screen.getByText(/selected skills:/i)).toBeInTheDocument()
     })
 
-    await user.click(screen.getByRole('button', { name: 'Install' }))
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Disable' })).toBeInTheDocument()
-    })
-
-    await user.click(screen.getByRole('button', { name: 'Disable' }))
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Enable' })).toBeInTheDocument()
-    })
-
-    await user.click(screen.getByRole('button', { name: 'Enable' }))
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Disable' })).toBeInTheDocument()
-    })
-
-    await user.click(screen.getByRole('button', { name: 'Uninstall' }))
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: 'Install' })).toBeInTheDocument()
-    })
+    expect(screen.getByText(/selected tools:/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /expand engineering context/i })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /expand skills/i })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /expand skillhub/i })).not.toBeInTheDocument()
   })
 })

@@ -8,8 +8,9 @@ import {
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
 import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
-import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
-import { buildInteractionQuestions, computeMissingCriticalKeys, normalizeNumber, normalizePositiveInteger } from '../../../agent-runtime/fallback.js';
+import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
+import { buildInteractionQuestions, normalizeNumber, normalizePositiveInteger } from '../../../agent-runtime/fallback.js';
+import { computeMissingCriticalKeys } from '../../../agent-runtime/draft-guidance.js';
 import { buildDefaultReportNarrative } from '../../../agent-runtime/report-template.js';
 import type { AppLocale } from '../../../services/locale.js';
 import type {
@@ -17,7 +18,7 @@ import type {
   DraftFloorLoad,
   DraftState,
   InteractionQuestion,
-  ScenarioMatch,
+  StructuralTypeMatch,
   SkillDefaultProposal,
   SkillHandler,
   SkillReportNarrativeInput,
@@ -195,9 +196,9 @@ function extractScalar(text: string, patterns: RegExp[]): number | undefined {
 function extractDirectionalLoadScalar(text: string, axis: 'x' | 'y'): number | undefined {
   const axisToken = axis;
   return extractScalar(text, [
-    new RegExp(`${axisToken}向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
-    new RegExp(`(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?[^\\n]{0,24}?${axisToken}向\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
-    new RegExp(`${axisToken}向\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`${axisToken}(?:方)?向(?:水平|横向|侧向)?(?:总)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`(?:水平|横向|侧向)?(?:总)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?[^\\n]{0,24}?${axisToken}(?:方)?向\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`${axisToken}(?:方)?向\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
   ]);
 }
 
@@ -215,6 +216,8 @@ function shouldMirrorHorizontalLoadToBothAxes(
     || text.includes('侧向荷载两个方向')
     || text.includes('两个方向都是')
     || text.includes('horizontal loads')
+    || text.includes('水平总荷载')
+    || /x(?:、|\/|和|及)\s*y(?:方)?向.{0,5}各/.test(text)
   );
 }
 
@@ -382,19 +385,24 @@ function normalizeFrameNaturalPatch(message: string, existingState: DraftState |
     /间隔(?:都?是|也是|为)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
   ]);
 
-  // Vertical load — with or without 荷载 keyword
+  // Vertical load — with or without 荷载 keyword; 竖直=竖向=垂直
   const verticalLoadKN = extractScalar(text, [
-    /(?:每层|各层)(?:节点)?(?:竖向)?荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
-    /(?:每层|各层)竖向\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:每层|各层)(?:节点)?(?:竖向|垂直|竖直|总)?(?:方向)?荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:每层|各层)(?:竖向|垂直|竖直)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:竖向|垂直|竖直)荷载[^0-9]{0,10}(?:每层|各层)[^0-9]{0,5}([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:竖向|垂直|竖直)(?:方向)?(?:都?是|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
   ]);
 
   const dualLateralLoadKN = extractScalar(text, [
-    /x(?:、|\/|和|及)\s*y向(?:水平|横向|侧向)?荷载(?:都?是|均为|各为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /x(?:、|\/|和|及)\s*y(?:方)?向(?:水平|横向|侧向)?(?:总)?荷载(?:都?是|均为|各为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /水平(?:总)?荷载[^0-9]{0,24}?x(?:方)?向(?:和|\/|、|及)\s*y(?:方)?向(?:都?是|均为|各为|各|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /水平(?:总)?荷载x(?:、|\/|和|及)\s*y(?:方)?向(?:水平|横向|侧向)?(?:都?是|均为|各为|各|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /x(?:方)?向(?:和|\/|、|及)\s*y(?:方)?向(?:都?是|均为|各为|分别为|分别取|为|是)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
   ]);
   const extractedLateralXLoadKN = dualLateralLoadKN ?? extractScalar(text, [
-    /(?:横向|侧向|水平)(?:方向)?荷载(?:两个方向)?(?:都?是|均为|都为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
-    /水平方向荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
-    /(?:横向|侧向|水平)荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:横向|侧向|水平)(?:总)?(?:方向)?荷载(?:两个方向)?(?:都?是|均为|都为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /水平(?:总)?方向荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    /(?:横向|侧向|水平)(?:总)?荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
   ]) ?? extractDirectionalLoadScalar(text, 'x');
   const extractedLateralYLoadKN = dualLateralLoadKN ?? extractDirectionalLoadScalar(text, 'y');
 
@@ -518,16 +526,17 @@ function coerceFrameDimension(
     || text.includes('三维')
   );
   const nextPatch: DraftExtraction = { ...patch };
+  // Explicit 3D/三维 in user message overrides any LLM default (which may be '2d')
+  if (mentions3dDirections) {
+    nextPatch.frameDimension = '3d';
+    return nextPatch;
+  }
   if (nextPatch.frameDimension !== undefined) return nextPatch;
-  if (nextPatch.frameDimension === '3d' || hasLateralYFloorLoad(nextPatch.floorLoads)) {
+  if (hasLateralYFloorLoad(nextPatch.floorLoads)) {
     nextPatch.frameDimension = '3d';
     return nextPatch;
   }
-  if (existingState?.frameDimension === '2d' && mentions3dDirections) {
-    nextPatch.frameDimension = '3d';
-    return nextPatch;
-  }
-  if (!nextPatch.frameDimension && existingState?.frameDimension) {
+  if (existingState?.frameDimension) {
     nextPatch.frameDimension = existingState.frameDimension;
   }
   return nextPatch;
@@ -922,8 +931,8 @@ function buildFrameQuestions(
       return {
         ...question,
         question: locale === 'zh'
-          ? `请确认各层节点荷载（单位 kN）。${loadHint}`
-          : `Please confirm per-story nodal loads (kN). ${loadHint}`,
+          ? `请确认各层总荷载（单位 kN）。该值为整层总荷载，程序会按该层节点数均匀分配到各节点。${loadHint}`
+          : `Please confirm per-story total load (kN). This is the total load on each story, and it will be distributed equally to all nodes on that floor. ${loadHint}`,
       };
     }
     if (question.paramKey === 'frameMaterial') {
@@ -976,8 +985,8 @@ function buildFrameReportNarrative(input: SkillReportNarrativeInput): string {
     '',
     input.locale === 'zh' ? '## 框架专项说明' : '## Frame-Specific Notes',
     input.locale === 'zh'
-      ? '- 本报告按规则轴网框架场景生成，建议结合实际结构布置复核边界条件与荷载路径。'
-      : '- This report is generated for regular-grid frame scenarios; verify boundary conditions and load paths against the actual structural layout.',
+      ? '- 本报告按规则轴网框架草稿生成，建议结合实际结构布置复核边界条件与荷载路径。'
+      : '- This report is generated from a regular-grid frame draft; verify boundary conditions and load paths against the actual structural layout.',
     input.locale === 'zh'
       ? '- 对于退台、缺跨或明显不规则框架，建议补充更细化模型后重新分析与校核。'
       : '- For setbacks, missing bays, or strongly irregular frames, refine the model and rerun analysis/code checks.',
@@ -988,28 +997,28 @@ function buildFrameReportNarrative(input: SkillReportNarrativeInput): string {
 // ─── Skill handler export ────────────────────────────────────────────────────
 
 export const handler: SkillHandler = {
-  detectScenario({ message, locale, currentState }) {
+  detectStructuralType({ message, locale, currentState }) {
     const text = message.toLowerCase();
     if (
       (text.includes('frame') || text.includes('框架') || text.includes('钢框架'))
       && (text.includes('irregular') || text.includes('不规则') || text.includes('退台') || text.includes('缺跨'))
     ) {
-      return buildScenarioMatch('frame', 'unknown', 'frame', 'unsupported', locale, {
+      return buildStructuralTypeMatch('frame', 'unknown', 'frame', 'unsupported', locale, {
         zh: '当前 frame skill 只支持规则楼层和规则轴网框架。若结构存在退台、缺跨或明显不规则，请直接提供 JSON 或更具体的节点构件描述。',
         en: 'The current frame skill only supports regular stories and regular grids. If the structure has setbacks, missing bays, or strong irregularities, please provide JSON or a more explicit node/member description.',
       });
     }
     if (text.includes('steel frame') || text.includes('钢框架')) {
-      return buildScenarioMatch('steel-frame', 'frame', 'frame', 'supported', locale);
+      return buildStructuralTypeMatch('steel-frame', 'frame', 'frame', 'supported', locale);
     }
     if (text.includes('frame') || text.includes('框架')) {
-      return buildScenarioMatch('frame', 'frame', 'frame', 'supported', locale);
+      return buildStructuralTypeMatch('frame', 'frame', 'frame', 'supported', locale);
     }
-    // Sticky: maintain the active frame scenario for follow-up messages that lack
+    // Sticky: maintain the active frame structural type for follow-up messages that lack
     // an explicit frame keyword (e.g. "层高3.6m" as a second turn).
     if (currentState?.inferredType === 'frame' && currentState.supportLevel !== 'unsupported') {
-      const key = (currentState.scenarioKey === 'steel-frame' ? 'steel-frame' : 'frame') as ScenarioMatch['key'];
-      return buildScenarioMatch(key, 'frame', 'frame', 'supported', locale);
+      const key = (currentState.structuralTypeKey === 'steel-frame' ? 'steel-frame' : 'frame') as StructuralTypeMatch['key'];
+      return buildStructuralTypeMatch(key, 'frame', 'frame', 'supported', locale);
     }
     return null;
   },
@@ -1048,12 +1057,12 @@ export const handler: SkillHandler = {
     };
   },
 
-  computeMissing(state, mode) {
+  computeMissing(state, phase) {
     // Material/section auto-fill from defaults in buildFrameLocalModel, so they are
     // never critical blockers. Only geometry + load keys are checked here.
     return computeLegacyMissing(
       { ...state, inferredType: 'frame' },
-      mode,
+      phase,
       [...REQUIRED_KEYS],
     );
   },

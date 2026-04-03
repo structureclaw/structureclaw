@@ -1,12 +1,14 @@
 name: Backend Regression
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'backend/**'
       - 'scripts/cli/**'
       - 'tests/**'
       - 'sclaw'
+      - 'sclaw_cn'
       - 'package.json'
       - '.github/workflows/backend-regression.yml'
   push:
@@ -17,6 +19,7 @@ on:
       - 'scripts/cli/**'
       - 'tests/**'
       - 'sclaw'
+      - 'sclaw_cn'
       - 'package.json'
       - '.github/workflows/backend-regression.yml'
 

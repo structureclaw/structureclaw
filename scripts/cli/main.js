@@ -26,7 +26,7 @@ function ensureSupportedNodeVersion() {
     return;
   }
   throw new Error(
-    `sclaw requires Node.js v${MIN_NODE_MAJOR}+ (current: v${process.versions.node}).`,
+    `StructureClaw CLI requires Node.js v${MIN_NODE_MAJOR}+ (current: v${process.versions.node}).`,
   );
 }
 
@@ -40,7 +40,11 @@ function resolveCommandName(rawCommand) {
   return ALIAS_TO_COMMAND.get(rawCommand) || rawCommand;
 }
 
-function formatHelp(rootDir) {
+function formatCommandUsage(usage, programName) {
+  return usage.replace(/^sclaw\b/u, programName);
+}
+
+function formatHelp(rootDir, programName = "sclaw") {
   const { version } = getPackageMetadata(rootDir);
   const lines = [
     "StructureClaw CLI",
@@ -48,13 +52,13 @@ function formatHelp(rootDir) {
     `Version: ${version}`,
     "",
     "Usage:",
-    "  sclaw <command> [options]",
+    `  ${programName} <command> [options]`,
     "",
     "Commands:",
   ];
 
   for (const command of COMMANDS) {
-    lines.push(`  ${command.usage.padEnd(48)} ${command.description}`);
+    lines.push(`  ${formatCommandUsage(command.usage, programName).padEnd(48)} ${command.description}`);
   }
 
   lines.push("");
@@ -71,8 +75,28 @@ function log(message = "") {
 
 const docker = createDockerComposeRunner(log);
 
-function getCliEntryPath(rootDir) {
+function getCliEntryPath(rootDir, programName = "sclaw") {
+  const preferred = path.join(rootDir, programName);
+  if (runtime.pathExists(preferred)) {
+    return preferred;
+  }
   return path.join(rootDir, "sclaw");
+}
+
+function inferCliContext(options = {}) {
+  const inferredProgramName =
+    options.programName ||
+    process.env.SCLAW_PROGRAM_NAME ||
+    path.basename(process.argv[1] || "sclaw") ||
+    "sclaw";
+  const profile =
+    String(options.profile || process.env.SCLAW_PROFILE || (inferredProgramName === "sclaw_cn" ? "cn" : "default"))
+      .trim()
+      .toLowerCase();
+  return {
+    programName: inferredProgramName,
+    profile,
+  };
 }
 
 function parseCliOptions(args) {
@@ -212,7 +236,7 @@ async function collectDockerInstallConfig(rawArgs, env) {
   const defaults = {
     provider: String(flags.get("llm-provider") || env.LLM_PROVIDER || "openai"),
     baseUrl: String(flags.get("llm-base-url") || env.LLM_BASE_URL || ""),
-    apiKey: String(flags.get("llm-api-key") || env.LLM_API_KEY || env.OPENAI_API_KEY || env.ZAI_API_KEY || ""),
+    apiKey: String(flags.get("llm-api-key") || env.LLM_API_KEY || ""),
     model: String(flags.get("llm-model") || env.LLM_MODEL || ""),
   };
   const nonInteractive =
@@ -272,7 +296,7 @@ async function showDockerHealth(env) {
 
 async function showDockerStatus(paths, env) {
   await docker.ensureDockerReady();
-  const result = docker.readDockerCompose(paths, ["ps"]);
+  const result = docker.readDockerCompose(paths, ["ps"], { env });
   if (result.stdout.trim()) {
     process.stdout.write(`${result.stdout.trim()}${os.EOL}`);
   } else {
@@ -285,7 +309,7 @@ async function showDockerStatus(paths, env) {
   await showDockerHealth(env);
 }
 
-async function showDockerLogs(paths, args) {
+async function showDockerLogs(paths, args, env) {
   const { flags, positionals } = parseCliOptions(args);
   const target = positionals[0] || "all";
   const follow = flags.has("follow");
@@ -298,19 +322,23 @@ async function showDockerLogs(paths, args) {
     composeArgs.push(target);
   }
 
-  await docker.runDockerCompose(paths, composeArgs);
+  await docker.runDockerCompose(paths, composeArgs, { env });
 }
 
 async function invokeDockerStart(rootDir, env, options = {}) {
-  const { paths } = runtime.loadProjectEnvironment(rootDir, log);
+  const { paths } = runtime.loadProjectEnvironment(rootDir, log, {
+    profile: env.SCLAW_PROFILE,
+    programName: env.SCLAW_PROGRAM_NAME,
+  });
 
   if (!options.skipEnvCheck && !runtime.pathExists(paths.envFile)) {
+    const programName = env.SCLAW_PROGRAM_NAME || "sclaw";
     throw new Error(
-      `Missing ${paths.envFile}. Run \`sclaw docker-install\` first to configure the docker stack.`,
+      `Missing ${paths.envFile}. Run \`${programName} docker-install\` first to configure the docker stack.`,
     );
   }
 
-  const psResult = docker.readDockerCompose(paths, ["ps", "-q"]);
+  const psResult = docker.readDockerCompose(paths, ["ps", "-q"], { env });
   const hasExistingContainers = psResult.status === 0 && Boolean(psResult.stdout.trim());
   const composeArgs = options.build
     ? ["up", "--build", "-d"]
@@ -320,7 +348,10 @@ async function invokeDockerStart(rootDir, env, options = {}) {
 
   await docker.runDockerCompose(paths, composeArgs, { env });
 
-  const refreshed = runtime.loadProjectEnvironment(rootDir, log).env;
+  const refreshed = runtime.loadProjectEnvironment(rootDir, log, {
+    profile: env.SCLAW_PROFILE,
+    programName: env.SCLAW_PROGRAM_NAME,
+  }).env;
   if (options.waitForServices !== false) {
     log("Waiting for docker services... / 等待 Docker 服务启动...");
     const ready = await docker.waitForDockerServices(refreshed, options.timeoutMs || 180000);
@@ -334,13 +365,17 @@ async function invokeDockerStart(rootDir, env, options = {}) {
 }
 
 async function invokeDockerStop(rootDir) {
-  const { paths } = runtime.loadProjectEnvironment(rootDir, log);
-  await docker.runDockerCompose(paths, ["stop"]);
+  const context = runtime.loadProjectEnvironment(rootDir, log);
+  const { paths, env } = context;
+  await docker.runDockerCompose(paths, ["stop"], { env });
   log("Docker services stopped / Docker 服务已停止");
 }
 
 async function invokeDockerInstall(rootDir, env, rawArgs) {
-  const { paths } = runtime.loadProjectEnvironment(rootDir, log);
+  const { paths } = runtime.loadProjectEnvironment(rootDir, log, {
+    profile: env.SCLAW_PROFILE,
+    programName: env.SCLAW_PROGRAM_NAME,
+  });
   const config = await collectDockerInstallConfig(rawArgs, env);
 
   log("Saving docker configuration... / 正在写入 Docker 配置...");
@@ -453,9 +488,10 @@ async function ensureNpmDependencies(projectDir, projectName, packageNames = [])
 }
 
 async function ensureAnalysisPython(rootDir, env) {
-  runtime.requireCommand("python", "Install Python 3.12+ and retry.");
-
-  const { paths } = runtime.loadProjectEnvironment(rootDir);
+  const { paths } = runtime.loadProjectEnvironment(rootDir, () => {}, {
+    profile: env.SCLAW_PROFILE,
+    programName: env.SCLAW_PROGRAM_NAME,
+  });
   if (!runtime.pathExists(paths.analysisRequirementsFile)) {
     throw new Error(`Analysis requirements file not found: ${paths.analysisRequirementsFile}`);
   }
@@ -490,7 +526,9 @@ async function ensureAnalysisPython(rootDir, env) {
     "--link-mode=copy",
     "-r",
     paths.analysisRequirementsFile,
-  ]);
+  ], {
+    env,
+  });
 
   if (!(await runtime.pythonModuleExists(resolvedPython, "uvicorn"))) {
     throw new Error("backend/.venv is present but missing uvicorn.");
@@ -528,7 +566,10 @@ async function invokeConvertBatch(rootDir, env, rawArgs = []) {
 }
 
 async function invokePostgresImport(rootDir, env, rawArgs = []) {
-  const { paths } = runtime.loadProjectEnvironment(rootDir);
+  const { paths } = runtime.loadProjectEnvironment(rootDir, () => {}, {
+    profile: env.SCLAW_PROFILE,
+    programName: env.SCLAW_PROGRAM_NAME,
+  });
   runtime.ensureDirectory(paths.dataDir);
 
   const commandEnv = {
@@ -564,7 +605,10 @@ function createTimestampToken() {
 }
 
 async function invokeAutoMigrateLegacyPostgres(rootDir, env) {
-  const { paths } = runtime.loadProjectEnvironment(rootDir);
+  const { paths } = runtime.loadProjectEnvironment(rootDir, () => {}, {
+    profile: env.SCLAW_PROFILE,
+    programName: env.SCLAW_PROGRAM_NAME,
+  });
   if (!runtime.pathExists(paths.envFile)) {
     return;
   }
@@ -619,7 +663,10 @@ async function invokeAutoMigrateLegacyPostgres(rootDir, env) {
 }
 
 async function invokeDbInit(rootDir, env) {
-  const { paths } = runtime.loadProjectEnvironment(rootDir);
+  const { paths } = runtime.loadProjectEnvironment(rootDir, () => {}, {
+    profile: env.SCLAW_PROFILE,
+    programName: env.SCLAW_PROGRAM_NAME,
+  });
   runtime.ensureDirectory(paths.dataDir);
   runtime.ensureLocalSqliteConfig(rootDir, env, log);
   runtime.assertSqliteDatabaseUrl(env);
@@ -631,6 +678,14 @@ async function invokeDbInit(rootDir, env) {
       env,
     },
   );
+}
+
+async function invokeScopedDbInit(rootDir, env, profileName) {
+  const scopedEnv = {
+    ...env,
+  };
+  runtime.ensureLocalSqliteConfig(rootDir, scopedEnv, log, { profileName });
+  await invokeDbInit(rootDir, scopedEnv);
 }
 
 function getServiceCommand(name, frontendPort) {
@@ -761,18 +816,18 @@ async function showLogs(paths, args) {
   await runtime.runCommand("tail", ["-n", "80", "-f", ...existingFiles]);
 }
 
-async function installCli(rootDir, args) {
+async function installCli(rootDir, args, programName = "sclaw") {
   const force = args.includes("--force");
   const installDir = path.join(os.homedir(), ".local", "bin");
   runtime.ensureDirectory(installDir);
 
-  const entryPath = getCliEntryPath(rootDir);
-  const shellTarget = path.join(installDir, "sclaw");
-  const cmdTarget = path.join(installDir, "sclaw.cmd");
+  const entryPath = getCliEntryPath(rootDir, programName);
+  const shellTarget = path.join(installDir, programName);
+  const cmdTarget = path.join(installDir, `${programName}.cmd`);
 
   if (!force && (runtime.pathExists(shellTarget) || runtime.pathExists(cmdTarget))) {
     throw new Error(
-      `Target already exists in ${installDir}. Use \`sclaw install-cli --force\` to overwrite.`,
+      `Target already exists in ${installDir}. Use \`${programName} install-cli --force\` to overwrite.`,
     );
   }
 
@@ -784,7 +839,7 @@ async function installCli(rootDir, args) {
     fs.writeFileSync(cmdTarget, cmdScript);
   }
 
-  log(`Installed user-local sclaw launcher in ${installDir}`);
+  log(`Installed user-local ${programName} launcher in ${installDir}`);
   log("If the command is not found, add that directory to your PATH.");
 }
 
@@ -793,6 +848,57 @@ function resolveApiBase(env) {
     return env.SCLAW_API_BASE;
   }
   return `http://localhost:${env.PORT || runtime.DEFAULT_BACKEND_PORT}`;
+}
+
+function resolveMirrorValueSource(key, env, dotEnv, paths) {
+  if (String(process.env[key] || "").trim()) {
+    return "process.env";
+  }
+  if (String(dotEnv[key] || "").trim()) {
+    return ".env";
+  }
+
+  if (String(env.SCLAW_PROFILE || "").toLowerCase() === "cn") {
+    if (key === "PIP_INDEX_URL" && env[key] === runtime.CN_DEFAULT_PIP_INDEX_URL) {
+      return "sclaw_cn default";
+    }
+    if (key === "NPM_CONFIG_REGISTRY" && env[key] === runtime.CN_DEFAULT_NPM_REGISTRY) {
+      return "sclaw_cn default";
+    }
+    if (
+      key === "DOCKER_REGISTRY_MIRROR" &&
+      env[key] === runtime.CN_DEFAULT_DOCKER_REGISTRY_MIRROR
+    ) {
+      return "sclaw_cn default";
+    }
+    if (key === "APT_MIRROR" && env[key] === runtime.CN_DEFAULT_APT_MIRROR) {
+      return "sclaw_cn default";
+    }
+  }
+
+  return "unset";
+}
+
+function showMirrorStatus(env, dotEnv, paths) {
+  const rows = [
+    ["PIP_INDEX_URL", env.PIP_INDEX_URL || "", resolveMirrorValueSource("PIP_INDEX_URL", env, dotEnv, paths)],
+    [
+      "NPM_CONFIG_REGISTRY",
+      env.NPM_CONFIG_REGISTRY || "",
+      resolveMirrorValueSource("NPM_CONFIG_REGISTRY", env, dotEnv, paths),
+    ],
+    [
+      "DOCKER_REGISTRY_MIRROR",
+      env.DOCKER_REGISTRY_MIRROR || "",
+      resolveMirrorValueSource("DOCKER_REGISTRY_MIRROR", env, dotEnv, paths),
+    ],
+    ["APT_MIRROR", env.APT_MIRROR || "", resolveMirrorValueSource("APT_MIRROR", env, dotEnv, paths)],
+  ];
+
+  log(`Mirror configuration (profile: ${env.SCLAW_PROFILE || "default"}):`);
+  for (const [key, value, source] of rows) {
+    log(`- ${key}=${value || "<empty>"}  (source: ${source})`);
+  }
 }
 
 async function callJsonApi(url, options = {}) {
@@ -806,6 +912,7 @@ async function callJsonApi(url, options = {}) {
 
 async function runSkillCommand(env, args) {
   const apiBase = resolveApiBase(env);
+  const programName = env.SCLAW_PROGRAM_NAME || "sclaw";
   const subcommand = args[0];
 
   switch (subcommand) {
@@ -813,7 +920,7 @@ async function runSkillCommand(env, args) {
       const keyword = args[1];
       const domain = args[2];
       if (!keyword) {
-        throw new Error("Usage: sclaw skill search <keyword> [domain]");
+        throw new Error(`Usage: ${programName} skill search <keyword> [domain]`);
       }
       const searchUrl = new URL(`${apiBase}/api/v1/agent/skillhub/search`);
       searchUrl.searchParams.set("q", keyword);
@@ -829,7 +936,7 @@ async function runSkillCommand(env, args) {
     case "uninstall": {
       const skillId = args[1];
       if (!skillId) {
-        throw new Error(`Usage: sclaw skill ${subcommand} <skill-id>`);
+        throw new Error(`Usage: ${programName} skill ${subcommand} <skill-id>`);
       }
       await callJsonApi(`${apiBase}/api/v1/agent/skillhub/${subcommand}`, {
         method: "POST",
@@ -845,16 +952,19 @@ async function runSkillCommand(env, args) {
       return;
     default:
       throw new Error(
-        "Usage:\n  sclaw skill search <keyword> [domain]\n  sclaw skill install <skill-id>\n  sclaw skill enable <skill-id>\n  sclaw skill disable <skill-id>\n  sclaw skill uninstall <skill-id>\n  sclaw skill list",
+        `Usage:\n  ${programName} skill search <keyword> [domain]\n  ${programName} skill install <skill-id>\n  ${programName} skill enable <skill-id>\n  ${programName} skill disable <skill-id>\n  ${programName} skill uninstall <skill-id>\n  ${programName} skill list`,
       );
   }
 }
 
 async function invokeLocalUp(rootDir, env, options = {}) {
-  const context = runtime.loadProjectEnvironment(rootDir);
+  const context = runtime.loadProjectEnvironment(rootDir, () => {}, {
+    profile: env.SCLAW_PROFILE,
+    programName: env.SCLAW_PROGRAM_NAME,
+  });
   const { paths } = context;
 
-  runtime.ensureLocalSqliteConfig(rootDir, env, log);
+  runtime.ensureLocalSqliteConfig(rootDir, env, log, { profileName: "start" });
   runtime.assertSqliteDatabaseUrl(env);
   await ensureNpmDependencies(paths.backendDir, "backend", ["prisma", "@prisma/client"]);
   await ensureNpmDependencies(paths.frontendDir, "frontend", ["next"]);
@@ -867,9 +977,7 @@ async function invokeLocalUp(rootDir, env, options = {}) {
       "Install Docker Desktop and retry, or use `sclaw start` (alias: `local-up-noinfra`).",
     );
     await runtime.runCommand("docker", [
-      "compose",
-      "-f",
-      paths.dockerComposeFile,
+      ...docker.getDockerComposeArgs(paths, [], { env }),
       "up",
       "-d",
       "redis",
@@ -879,7 +987,7 @@ async function invokeLocalUp(rootDir, env, options = {}) {
   }
 
   if (!options.skipDbInit) {
-    await invokeDbInit(rootDir, env);
+    await invokeScopedDbInit(rootDir, env, "start");
   }
 
   startTrackedService(paths, env, "backend", env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT);
@@ -894,42 +1002,48 @@ async function invokeLocalUp(rootDir, env, options = {}) {
 async function invokeDoctor(rootDir, env) {
   runtime.requireCommand("node", "Install Node.js 18+ and retry.");
   runtime.requireCommand("npm", "Install npm and retry.");
-  runtime.requireCommand("python", "Install Python 3.12+ and retry.");
-  runtime.ensureLocalSqliteConfig(rootDir, env, log);
+  runtime.ensureLocalSqliteConfig(rootDir, env, log, { profileName: "doctor" });
   runtime.assertSqliteDatabaseUrl(env);
 
-  const { paths } = runtime.loadProjectEnvironment(rootDir);
+  const { paths } = runtime.loadProjectEnvironment(rootDir, () => {}, {
+    profile: env.SCLAW_PROFILE,
+    programName: env.SCLAW_PROGRAM_NAME,
+  });
   await ensureNpmDependencies(paths.backendDir, "backend", ["prisma", "@prisma/client"]);
   await ensureNpmDependencies(paths.frontendDir, "frontend", ["next"]);
   await ensureAnalysisPython(rootDir, env);
   await ensureOpenSeesRuntime(rootDir, env);
-  await invokeDbInit(rootDir, env);
+  await invokeScopedDbInit(rootDir, env, "doctor");
   log("Local startup checks passed.");
 }
 
 async function dispatch(commandName, rawArgs, rootDir) {
   const context = runtime.loadProjectEnvironment(rootDir, log);
-  const { paths, env } = context;
+  const { paths, env, dotEnv } = context;
+  const programName = env.SCLAW_PROGRAM_NAME || "sclaw";
 
   switch (commandName) {
     case "help":
-      log(formatHelp(rootDir));
+      log(formatHelp(rootDir, programName));
       return;
     case "version":
-      log(`sclaw ${getPackageMetadata(rootDir).version}`);
+      log(`${programName} ${getPackageMetadata(rootDir).version}`);
       return;
     case "install":
       await ensureNpmDependencies(paths.backendDir, "backend", ["prisma", "@prisma/client"]);
       await ensureNpmDependencies(paths.frontendDir, "frontend", ["next"]);
       return;
     case "install-cli":
-      await installCli(rootDir, rawArgs);
+      await installCli(rootDir, rawArgs, programName);
       return;
     case "ensure-uv":
       await ensureUv(rootDir);
       return;
     case "setup-analysis-python":
       await ensureAnalysisPython(rootDir, env);
+      return;
+    case "mirror-status":
+      showMirrorStatus(env, dotEnv, paths);
       return;
     case "dev-backend":
       await runtime.runCommand(runtime.getNpmCommand(), ["run", "dev", "--prefix", paths.backendDir], {
@@ -958,10 +1072,10 @@ async function dispatch(commandName, rawArgs, rootDir) {
       await invokeConvertBatch(rootDir, env, rawArgs);
       return;
     case "db-up":
-      await runtime.runCommand("docker", ["compose", "-f", paths.dockerComposeFile, "up", "-d", "redis"]);
+      await runtime.runCommand("docker", [...docker.getDockerComposeArgs(paths, ["up", "-d", "redis"], { env })]);
       return;
     case "db-down":
-      await runtime.runCommand("docker", ["compose", "-f", paths.dockerComposeFile, "stop", "redis"]);
+      await runtime.runCommand("docker", [...docker.getDockerComposeArgs(paths, ["stop", "redis"], { env })]);
       return;
     case "db-init":
       await invokeDbInit(rootDir, env);
@@ -991,7 +1105,7 @@ async function dispatch(commandName, rawArgs, rootDir) {
       await showDockerStatus(paths, env);
       return;
     case "docker-logs":
-      await showDockerLogs(paths, rawArgs);
+      await showDockerLogs(paths, rawArgs, env);
       return;
     case "local-up":
       await invokeLocalUp(rootDir, env, { skipInfra: false });
@@ -1014,7 +1128,8 @@ async function dispatch(commandName, rawArgs, rootDir) {
       await stopTrackedService(paths, "frontend");
       await stopTrackedService(paths, "backend");
       try {
-        await runtime.runCommand("docker", ["compose", "-f", paths.dockerComposeFile, "stop", "redis"], {
+        await runtime.runCommand("docker", docker.getDockerComposeArgs(paths, ["stop", "redis"], { env }), {
+          env,
           stdio: "ignore",
         });
       } catch {
@@ -1040,6 +1155,9 @@ async function dispatch(commandName, rawArgs, rootDir) {
 
 async function main(argv = process.argv.slice(2), options = {}) {
   ensureSupportedNodeVersion();
+  const cliContext = inferCliContext(options);
+  process.env.SCLAW_PROGRAM_NAME = cliContext.programName;
+  process.env.SCLAW_PROFILE = cliContext.profile;
   const rootDir = runtime.resolveProjectRoot(options.rootDir);
   const rawCommand = argv[0] || "help";
   const commandName = resolveCommandName(rawCommand);
@@ -1048,7 +1166,7 @@ async function main(argv = process.argv.slice(2), options = {}) {
   if (!COMMAND_NAMES.has(commandName)) {
     log(`Unknown command: ${rawCommand}`);
     log("");
-    log(formatHelp(rootDir));
+    log(formatHelp(rootDir, cliContext.programName));
     return 1;
   }
 

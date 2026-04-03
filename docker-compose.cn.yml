@@ -1,0 +1,13 @@
+services:
+  backend:
+    build:
+      args:
+        NODE_IMAGE_REGISTRY_MIRROR: ${DOCKER_REGISTRY_MIRROR:-docker.m.daocloud.io/}
+        NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.tuna.tsinghua.edu.cn/simple}
+        APT_MIRROR: ${APT_MIRROR:-mirrors.tuna.tsinghua.edu.cn}
+  frontend:
+    build:
+      args:
+        NODE_IMAGE_REGISTRY_MIRROR: ${DOCKER_REGISTRY_MIRROR:-docker.m.daocloud.io/}
+        NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}

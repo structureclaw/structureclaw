@@ -20,6 +20,8 @@ export interface SkillPackageMetadata<TDomain extends string = SkillDomain> {
   version: string;
   source: SkillProviderSource;
   capabilities: string[];
+  enabledTools?: string[];
+  providedTools?: string[];
   compatibility: SkillCompatibility;
   entrypoints: SkillPackageEntrypoints;
   enabledByDefault: boolean;
@@ -53,6 +55,8 @@ export function normalizeBuiltInManifestToSkillPackage(
     version: options?.version ?? BUILTIN_SKILL_PACKAGE_VERSION,
     source: 'builtin',
     capabilities: Array.isArray(manifest.capabilities) ? [...manifest.capabilities] : [],
+    enabledTools: Array.isArray(manifest.enabledTools) ? [...manifest.enabledTools] : [],
+    providedTools: Array.isArray(manifest.providedTools) ? [...manifest.providedTools] : [],
     compatibility: {
       minRuntimeVersion: manifest.compatibility?.minRuntimeVersion || '0.1.0',
       skillApiVersion: manifest.compatibility?.skillApiVersion || 'v1',
@@ -93,6 +97,8 @@ export function normalizeSkillHubCatalogEntryToSkillPackage(
     version: entry.version,
     source: 'skillhub',
     capabilities: Array.isArray(entry.capabilities) ? [...entry.capabilities] : [],
+    enabledTools: [],
+    providedTools: [],
     compatibility: {
       minRuntimeVersion: entry.compatibility?.minRuntimeVersion || '0.1.0',
       skillApiVersion: entry.compatibility?.skillApiVersion || 'v1',

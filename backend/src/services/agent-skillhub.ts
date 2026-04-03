@@ -3,9 +3,9 @@ import { mkdir, readFile, writeFile } from 'fs/promises';
 import { createHash } from 'crypto';
 import path from 'path';
 import { normalizeSkillHubCatalogEntryToSkillPackage } from '../skill-shared/package.js';
+import { evaluateSkillCompatibility } from '../skill-shared/loader.js';
+import type { SkillCompatibilityReasonCode } from '../skill-shared/loader.js';
 import type { SkillDomain } from '../agent-runtime/types.js';
-
-type SkillCompatibilityReasonCode = 'runtime_version_incompatible' | 'skill_api_version_incompatible';
 type SkillIntegrityReasonCode = 'signature_invalid' | 'checksum_mismatch';
 
 export interface SkillHubCatalogEntry {
@@ -163,9 +163,9 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
   buildCatalogEntry({
     id: 'skillhub.seismic-simplified-policy',
     version: '1.0.0',
-    domain: 'analysis-strategy',
+    domain: 'analysis',
     entrypoints: {
-      analysisStrategy: 'dist/analysis-strategy.js',
+      analysis: 'dist/analysis.js',
     },
     name: {
       zh: '抗震简化策略',
@@ -184,9 +184,9 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
   buildCatalogEntry({
     id: 'skillhub.future-runtime-only',
     version: '1.0.0',
-    domain: 'analysis-strategy',
+    domain: 'analysis',
     entrypoints: {
-      analysisStrategy: 'dist/analysis-strategy.js',
+      analysis: 'dist/analysis.js',
     },
     name: {
       zh: '未来运行时策略包',
@@ -254,30 +254,6 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
 
 const CURRENT_RUNTIME_VERSION = process.env.SCLAW_RUNTIME_VERSION || '0.1.0';
 const CURRENT_SKILL_API_VERSION = process.env.SCLAW_SKILL_API_VERSION || 'v1';
-
-function parseVersion(value: string): number[] {
-  return String(value)
-    .trim()
-    .replace(/^v/i, '')
-    .split('.')
-    .map((part) => Number.parseInt(part, 10))
-    .filter((part) => Number.isFinite(part));
-}
-
-function isVersionGreater(required: string, current: string): boolean {
-  const requiredParts = parseVersion(required);
-  const currentParts = parseVersion(current);
-  const maxLen = Math.max(requiredParts.length, currentParts.length);
-  for (let index = 0; index < maxLen; index += 1) {
-    const left = requiredParts[index] || 0;
-    const right = currentParts[index] || 0;
-    if (left === right) {
-      continue;
-    }
-    return left > right;
-  }
-  return false;
-}
 
 function normalizeKeyword(value: string | undefined): string {
   return typeof value === 'string' ? value.trim().toLowerCase() : '';
@@ -523,17 +499,11 @@ export class AgentSkillHubService {
     compatible: boolean;
     reasonCodes: SkillCompatibilityReasonCode[];
   } {
-    const reasonCodes: SkillCompatibilityReasonCode[] = [];
-    if (isVersionGreater(entry.compatibility.minRuntimeVersion, CURRENT_RUNTIME_VERSION)) {
-      reasonCodes.push('runtime_version_incompatible');
-    }
-    if (entry.compatibility.skillApiVersion !== CURRENT_SKILL_API_VERSION) {
-      reasonCodes.push('skill_api_version_incompatible');
-    }
-    return {
-      compatible: reasonCodes.length === 0,
-      reasonCodes,
-    };
+    return evaluateSkillCompatibility(
+      entry.compatibility,
+      CURRENT_RUNTIME_VERSION,
+      CURRENT_SKILL_API_VERSION,
+    );
   }
 
   private async readInstalledState(): Promise<InstalledStateFile> {

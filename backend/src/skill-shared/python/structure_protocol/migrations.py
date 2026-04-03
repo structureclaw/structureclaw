@@ -7,6 +7,7 @@ from typing import Any, Dict
 SUPPORTED_SCHEMA_VERSIONS = {
     "1.0.0",
     "1.0.1",
+    "2.0.0",
 }
 
 
@@ -36,3 +37,14 @@ def migrate_structure_model_v1(model: Dict[str, Any], target_schema_version: str
         }
     migrated["schema_version"] = target_schema_version
     return migrated
+
+
+def migrate_v1_to_v2(model: Dict[str, Any]) -> Dict[str, Any]:
+    """Migrate a V1 (1.0.x) structural model dict to schema version 2.0.0.
+
+    All V2-specific fields (project, structure_system, stories, etc.) are left
+    absent so that StructureModelV2 will default them to None / empty.
+    The original V1 core fields (nodes, elements, materials, sections,
+    load_cases, load_combinations) are preserved as-is.
+    """
+    return migrate_structure_model_v1(model, "2.0.0")

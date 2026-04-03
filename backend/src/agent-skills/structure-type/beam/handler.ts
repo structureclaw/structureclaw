@@ -8,7 +8,7 @@ import {
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
 import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
-import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
+import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../../agent-runtime/fallback.js';
 import { buildDefaultReportNarrative } from '../../../agent-runtime/report-template.js';
 import type { AppLocale } from '../../../services/locale.js';
@@ -22,7 +22,7 @@ import type {
 } from '../../../agent-runtime/types.js';
 
 const GEOMETRY_KEYS = ['lengthM'] as const;
-const LOAD_BOUNDARY_KEYS = ['supportType', 'loadKN', 'loadType', 'loadPosition'] as const;
+const LOAD_BOUNDARY_KEYS = ['supportType', 'loadKN', 'loadType', 'loadPosition', 'loadPositionM'] as const;
 const ALLOWED_KEYS = combineDomainKeys(GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS);
 
 function toBeamPatch(patch: DraftExtraction): DraftExtraction {
@@ -43,7 +43,7 @@ function buildBeamDefaultReason(paramKey: string, locale: AppLocale): string {
     case 'loadType':
       return locale === 'zh'
         ? '默认按均布荷载建模，更贴近梁构件常见受力工况。'
-        : 'Default to a distributed load, which better matches common beam loading scenarios.';
+        : 'Default to a distributed load, which better matches common beam loading patterns.';
     case 'loadPosition':
       return locale === 'zh'
         ? '均布荷载默认作用于全跨，便于获得连续响应包络。'
@@ -142,19 +142,19 @@ function buildBeamReportNarrative(input: SkillReportNarrativeInput): string {
 }
 
 export const handler: SkillHandler = {
-  detectScenario({ message, locale }) {
+  detectStructuralType({ message, locale }) {
     const text = message.toLowerCase();
     if (text.includes('portal frame') || text.includes('门式刚架') || text.includes('桁架') || text.includes('truss') || text.includes('双跨梁') || text.includes('double-span')) {
       return null;
     }
     if (text.includes('girder') || text.includes('主梁') || text.includes('大梁')) {
-      return buildScenarioMatch('girder', 'beam', 'beam', 'fallback', locale, {
+      return buildStructuralTypeMatch('girder', 'beam', 'beam', 'fallback', locale, {
         zh: '已将“主梁/大梁”先按梁模板处理；若实际是连续梁或更复杂体系，请继续说明。',
         en: '“Girder” has been normalized to the beam template for now. If the actual system is continuous or more complex, please clarify further.',
       });
     }
     if (text.includes('beam') || text.includes('梁') || text.includes('悬臂')) {
-      return buildScenarioMatch('beam', 'beam', 'beam', 'supported', locale);
+      return buildStructuralTypeMatch('beam', 'beam', 'beam', 'supported', locale);
     }
     return null;
   },
@@ -167,8 +167,8 @@ export const handler: SkillHandler = {
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toBeamPatch(patch), 'beam', 'beam');
   },
-  computeMissing(state, mode) {
-    return computeLegacyMissing({ ...state, inferredType: 'beam' }, mode, [...ALLOWED_KEYS]);
+  computeMissing(state, phase) {
+    return computeLegacyMissing({ ...state, inferredType: 'beam' }, phase, [...ALLOWED_KEYS]);
   },
   mapLabels(keys, locale) {
     return buildLegacyLabels(keys, locale);

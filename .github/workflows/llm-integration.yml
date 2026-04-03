@@ -1,0 +1,80 @@
+name: LLM Integration Tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      llm_model:
+        description: "LLM model name (leave empty for default)"
+        required: false
+        default: ""
+      filter:
+        description: "Test category filter (routing|extraction|pipeline|clarification)"
+        required: false
+        default: ""
+
+jobs:
+  llm-integration:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+          - [self-hosted, Windows, X64]
+          - [self-hosted, Linux, X64]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
+
+      - name: Build backend
+        run: npm run build --prefix backend
+
+      - name: Setup Python analysis environment
+        shell: bash
+        run: |
+          if [ -f "backend/.venv/bin/python" ]; then
+            echo "Python venv already exists"
+          elif [ -f "backend/.venv/Scripts/python.exe" ]; then
+            echo "Python venv already exists (Windows)"
+          else
+            echo "Setting up Python analysis environment..."
+            python3 -m venv backend/.venv || python -m venv backend/.venv
+          fi
+
+      - name: Run LLM integration tests
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_MODEL: ${{ github.event.inputs.llm_model || '' }}
+          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER || 'openai-compatible' }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || '' }}
+          LLM_LOG_ENABLED: "true"
+          REDIS_URL: disabled
+          DATABASE_URL: "file:.runtime/data/structureclaw-llm-ci.db"
+        shell: bash
+        run: |
+          ARGS=""
+          if [ -n "${{ github.event.inputs.filter }}" ]; then
+            ARGS="--filter ${{ github.event.inputs.filter }}"
+          fi
+          node tests/runner.mjs llm-integration $ARGS
+
+      - name: Upload LLM call logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm-logs-${{ matrix.runner[1] }}-${{ matrix.runner[2] }}
+          path: .runtime/logs/llm-calls.jsonl
+          retention-days: 7
+          if-no-files-found: ignore

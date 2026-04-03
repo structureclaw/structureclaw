@@ -1,0 +1,388 @@
+{
+  "version": "1.0.0",
+  "testCases": [
+    {
+      "id": "beam-routing-zh",
+      "category": "routing",
+      "locale": "zh",
+      "messages": ["一根简支梁，跨度6米"],
+      "assertions": {
+        "inferredType": "beam",
+        "structuralTypeKey": "beam"
+      }
+    },
+    {
+      "id": "beam-routing-en",
+      "category": "routing",
+      "locale": "en",
+      "messages": ["a simply supported beam, span 6m"],
+      "assertions": {
+        "inferredType": "beam",
+        "structuralTypeKey": "beam"
+      }
+    },
+    {
+      "id": "frame-routing-zh",
+      "category": "routing",
+      "locale": "zh",
+      "messages": ["三层单跨钢框架，层高3.6m，跨度6m"],
+      "assertions": {
+        "inferredType": "frame",
+        "structuralTypeKey": "frame"
+      }
+    },
+    {
+      "id": "frame-routing-en",
+      "category": "routing",
+      "locale": "en",
+      "messages": ["3-story single-bay steel frame, story height 3.6m, bay width 6m"],
+      "assertions": {
+        "inferredType": "frame",
+        "structuralTypeKey": "frame"
+      }
+    },
+    {
+      "id": "portal-frame-routing-zh",
+      "category": "routing",
+      "locale": "zh",
+      "messages": ["门式刚架，跨度18m，高度6m"],
+      "assertions": {
+        "inferredType": "portal-frame",
+        "structuralTypeKey": "portal-frame"
+      }
+    },
+    {
+      "id": "portal-frame-routing-en",
+      "category": "routing",
+      "locale": "en",
+      "messages": ["portal frame, span 18m, height 6m"],
+      "assertions": {
+        "inferredType": "portal-frame",
+        "structuralTypeKey": "portal-frame"
+      }
+    },
+    {
+      "id": "beam-params-zh",
+      "category": "extraction",
+      "locale": "zh",
+      "messages": ["一根悬臂梁，长3米，端部集中力10kN"],
+      "assertions": {
+        "inferredType": "beam",
+        "criticalMissing": [],
+        "draftPatch": {
+          "lengthM": { "value": 3, "tolerance": 0.05 },
+          "supportType": "cantilever",
+          "loadKN": { "value": 10, "tolerance": 0.05 },
+          "loadType": "point"
+        }
+      }
+    },
+    {
+      "id": "beam-params-en",
+      "category": "extraction",
+      "locale": "en",
+      "messages": ["cantilever beam, 4m long, point load 15kN at tip"],
+      "assertions": {
+        "inferredType": "beam",
+        "criticalMissing": [],
+        "draftPatch": {
+          "lengthM": { "value": 4, "tolerance": 0.05 },
+          "supportType": "cantilever",
+          "loadKN": { "value": 15, "tolerance": 0.05 },
+          "loadType": "point"
+        }
+      }
+    },
+    {
+      "id": "beam-distributed-zh",
+      "category": "extraction",
+      "locale": "zh",
+      "messages": ["简支梁6米，均布荷载20kN/m"],
+      "assertions": {
+        "inferredType": "beam",
+        "criticalMissing": [],
+        "draftPatch": {
+          "lengthM": { "value": 6, "tolerance": 0.05 },
+          "supportType": "simply-supported",
+          "loadKN": { "value": 20, "tolerance": 0.05 },
+          "loadType": "distributed"
+        }
+      }
+    },
+    {
+      "id": "frame-params-zh",
+      "category": "extraction",
+      "locale": "zh",
+      "messages": ["4层2跨钢框架，层高3.3m，跨度5.4m，楼面荷载12kN/m²"],
+      "assertions": {
+        "inferredType": "frame",
+        "criticalMissing": [],
+        "draftPatch": {
+          "storyCount": 4,
+          "bayCount": 2,
+          "storyHeightsM": { "value": [3.3, 3.3, 3.3, 3.3], "tolerance": 0.05 },
+          "bayWidthsM": { "value": [5.4, 5.4], "tolerance": 0.05 }
+        }
+      }
+    },
+    {
+      "id": "frame-params-en",
+      "category": "extraction",
+      "locale": "en",
+      "messages": ["2-story 3-bay frame, story height 3.6m, bay widths 6m, 7.5m, 6m"],
+      "assertions": {
+        "inferredType": "frame",
+        "criticalMissing": [],
+        "draftPatch": {
+          "storyCount": 2,
+          "bayCount": 3,
+          "bayWidthsM": { "value": [6, 7.5, 6], "tolerance": 0.05 }
+        }
+      }
+    },
+    {
+      "id": "portal-frame-params-zh",
+      "category": "extraction",
+      "locale": "zh",
+      "messages": ["门式刚架，跨度24m，高度8m，屋面荷载5kN/m"],
+      "assertions": {
+        "inferredType": "portal-frame",
+        "criticalMissing": [],
+        "draftPatch": {
+          "spanLengthM": { "value": 24, "tolerance": 0.05 },
+          "heightM": { "value": 8, "tolerance": 0.05 },
+          "loadKN": { "value": 5, "tolerance": 0.05 }
+        }
+      }
+    },
+    {
+      "id": "portal-frame-params-en",
+      "category": "extraction",
+      "locale": "en",
+      "messages": ["portal frame, span 21m, height 7.5m, roof load 8kN"],
+      "assertions": {
+        "inferredType": "portal-frame",
+        "criticalMissing": [],
+        "draftPatch": {
+          "spanLengthM": { "value": 21, "tolerance": 0.05 },
+          "heightM": { "value": 7.5, "tolerance": 0.05 },
+          "loadKN": { "value": 8, "tolerance": 0.05 }
+        }
+      }
+    },
+    {
+      "id": "frame-steel-zh",
+      "category": "extraction",
+      "locale": "zh",
+      "messages": ["6层3跨钢框架Q345，层高3.6m，跨度7.2m"],
+      "assertions": {
+        "inferredType": "frame",
+        "criticalMissing": [],
+        "draftPatch": {
+          "storyCount": 6,
+          "bayCount": 3,
+          "frameMaterial": "Q345"
+        }
+      }
+    },
+    {
+      "id": "beam-position-zh",
+      "category": "extraction",
+      "locale": "zh",
+      "messages": ["简支梁8米，在距左端3米处作用集中力25kN"],
+      "assertions": {
+        "inferredType": "beam",
+        "criticalMissing": [],
+        "draftPatch": {
+          "lengthM": { "value": 8, "tolerance": 0.05 },
+          "loadKN": { "value": 25, "tolerance": 0.05 },
+          "loadPositionM": { "value": 3, "tolerance": 0.05 }
+        }
+      }
+    },
+    {
+      "id": "frame-3d-zh",
+      "category": "extraction",
+      "locale": "zh",
+      "messages": ["3层2x3跨空间框架，层高4m，X向跨度6m，Y向跨度7.5m"],
+      "assertions": {
+        "inferredType": "frame",
+        "criticalMissing": [],
+        "draftPatch": {
+          "frameDimension": "3d",
+          "storyCount": 3,
+          "bayCountX": 2,
+          "bayCountY": 3
+        }
+      }
+    },
+    {
+      "id": "beam-pipeline-zh",
+      "category": "pipeline",
+      "locale": "zh",
+      "messages": ["简支梁6米，均布荷载20kN/m，请进行静力分析"],
+      "assertions": {
+        "success": true,
+        "toolCalls": ["draft_model", "run_analysis"],
+        "modelBuilt": true,
+        "analysisSuccess": true
+      }
+    },
+    {
+      "id": "frame-pipeline-en",
+      "category": "pipeline",
+      "locale": "en",
+      "messages": ["2-story single-bay steel frame, story height 3.6m, bay 6m, floor load 10kN/m2, analyze and check against steel code"],
+      "assertions": {
+        "success": true,
+        "toolCalls": ["draft_model", "run_analysis", "run_code_check"],
+        "modelBuilt": true,
+        "analysisSuccess": true
+      }
+    },
+    {
+      "id": "portal-frame-pipeline-zh",
+      "category": "pipeline",
+      "locale": "zh",
+      "messages": ["门式刚架，跨度18m，高度7m，屋面荷载6kN/m，分析"],
+      "assertions": {
+        "success": true,
+        "toolCalls": ["draft_model", "run_analysis"],
+        "modelBuilt": true,
+        "analysisSuccess": true
+      }
+    },
+    {
+      "id": "frame-pipeline-multi-bay-zh",
+      "category": "pipeline",
+      "locale": "zh",
+      "messages": ["3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m"],
+      "assertions": {
+        "success": true,
+        "toolCalls": ["draft_model", "run_analysis"],
+        "modelBuilt": true,
+        "analysisSuccess": true
+      }
+    },
+    {
+      "id": "beam-clarify-zh",
+      "category": "clarification",
+      "locale": "zh",
+      "turns": [
+        {
+          "message": "一根梁",
+          "assertions": {
+            "criticalMissingIncludes": ["lengthM"],
+            "modelBuilt": false
+          }
+        },
+        {
+          "message": "6米",
+          "assertions": {
+            "criticalMissingIncludes": ["loadKN"],
+            "modelBuilt": false
+          }
+        },
+        {
+          "message": "20kN均布荷载",
+          "assertions": {
+            "criticalMissing": [],
+            "modelBuilt": true,
+            "draftPatch": {
+              "lengthM": { "value": 6, "tolerance": 0.05 },
+              "supportType": "simply-supported",
+              "loadKN": { "value": 20, "tolerance": 0.05 },
+              "loadType": "distributed"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "frame-clarify-en",
+      "category": "clarification",
+      "locale": "en",
+      "turns": [
+        {
+          "message": "a steel frame",
+          "assertions": {
+            "criticalMissingIncludes": ["storyCount"],
+            "modelBuilt": false
+          }
+        },
+        {
+          "message": "3 stories, 4.2m each, single bay 8m, floor load 12kN/m2",
+          "assertions": {
+            "criticalMissing": [],
+            "modelBuilt": true,
+            "draftPatch": {
+              "storyCount": 3,
+              "bayCount": 1
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "beam-clarify-revise",
+      "category": "clarification",
+      "locale": "zh",
+      "turns": [
+        {
+          "message": "简支梁6米，均布荷载10kN/m",
+          "assertions": {
+            "criticalMissing": [],
+            "modelBuilt": true,
+            "draftPatch": {
+              "lengthM": { "value": 6, "tolerance": 0.05 },
+              "loadKN": { "value": 10, "tolerance": 0.05 }
+            }
+          }
+        },
+        {
+          "message": "改成8米",
+          "assertions": {
+            "criticalMissing": [],
+            "modelBuilt": true,
+            "draftPatch": {
+              "lengthM": { "value": 8, "tolerance": 0.05 }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "id": "portal-frame-clarify-zh",
+      "category": "clarification",
+      "locale": "zh",
+      "turns": [
+        {
+          "message": "门式刚架",
+          "assertions": {
+            "criticalMissingIncludes": ["spanLengthM"],
+            "modelBuilt": false
+          }
+        },
+        {
+          "message": "跨度24m，高8m",
+          "assertions": {
+            "criticalMissingIncludes": ["loadKN"],
+            "modelBuilt": false
+          }
+        },
+        {
+          "message": "荷载10kN/m",
+          "assertions": {
+            "criticalMissing": [],
+            "modelBuilt": true,
+            "draftPatch": {
+              "spanLengthM": { "value": 24, "tolerance": 0.05 },
+              "heightM": { "value": 8, "tolerance": 0.05 },
+              "loadKN": { "value": 10, "tolerance": 0.05 }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

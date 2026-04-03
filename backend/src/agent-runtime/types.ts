@@ -7,6 +7,7 @@ export type FrameDimension = '2d' | '3d';
 export type FrameBaseSupportType = 'fixed' | 'pinned';
 export type AgentAnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear';
 export type MaterialFamily = 'steel' | 'concrete' | 'composite' | 'timber' | 'masonry' | 'generic';
+export type AgentToolSource = 'builtin' | 'external';
 
 export interface DraftFloorLoad {
   story: number;
@@ -16,7 +17,7 @@ export interface DraftFloorLoad {
 }
 
 export type InferredModelType = 'beam' | 'truss' | 'portal-frame' | 'double-span-beam' | 'frame' | 'unknown';
-export type ScenarioTemplateKey =
+export type StructuralTypeKey =
   | 'beam'
   | 'truss'
   | 'portal-frame'
@@ -31,22 +32,22 @@ export type ScenarioTemplateKey =
   | 'tower'
   | 'bridge'
   | 'unknown';
-export type ScenarioSupportLevel = 'supported' | 'fallback' | 'unsupported';
+export type StructuralTypeSupportLevel = 'supported' | 'fallback' | 'unsupported';
 export type SkillStage = 'intent' | 'draft' | 'analysis' | 'design';
 
-export interface ScenarioMatch {
-  key: ScenarioTemplateKey;
+export interface StructuralTypeMatch {
+  key: StructuralTypeKey;
   mappedType: InferredModelType;
   skillId?: string;
-  supportLevel: ScenarioSupportLevel;
+  supportLevel: StructuralTypeSupportLevel;
   supportNote?: string;
 }
 
 export interface DraftState {
   inferredType: InferredModelType;
   skillId?: string;
-  scenarioKey?: ScenarioTemplateKey;
-  supportLevel?: ScenarioSupportLevel;
+  structuralTypeKey?: StructuralTypeKey;
+  supportLevel?: StructuralTypeSupportLevel;
   supportNote?: string;
   skillState?: Record<string, unknown>;
   lengthM?: number;
@@ -75,8 +76,8 @@ export interface DraftState {
 export interface DraftExtraction {
   inferredType?: InferredModelType;
   skillId?: string;
-  scenarioKey?: ScenarioTemplateKey;
-  supportLevel?: ScenarioSupportLevel;
+  structuralTypeKey?: StructuralTypeKey;
+  supportLevel?: StructuralTypeSupportLevel;
   supportNote?: string;
   skillState?: Record<string, unknown>;
   lengthM?: number;
@@ -105,9 +106,17 @@ export interface DraftResult {
   inferredType: InferredModelType;
   missingFields: string[];
   model?: Record<string, unknown>;
-  extractionMode: 'llm' | 'rule-based';
+  extractionMode: 'llm' | 'deterministic';
   stateToPersist?: DraftState;
-  scenario?: ScenarioMatch;
+  structuralTypeMatch?: StructuralTypeMatch;
+}
+
+export interface DraftParameterExtractionResult {
+  nextState: DraftState;
+  missing: { critical: string[]; optional: string[] };
+  structuralTypeMatch: StructuralTypeMatch;
+  plugin: AgentSkillPlugin | undefined;
+  extractionMode: 'llm' | 'deterministic';
 }
 
 export interface InteractionQuestion {
@@ -127,7 +136,7 @@ export interface LocalizedText {
 
 export interface AgentSkillMetadata {
   id: string;
-  structureType: Exclude<InferredModelType, 'unknown'>;
+  structureType: InferredModelType;
   name: LocalizedText;
   description: LocalizedText;
   triggers: string[];
@@ -146,15 +155,38 @@ export interface AgentSkillBundle extends AgentSkillMetadata {
 
 export type SkillDomain =
   | 'structure-type'
-  | 'material-constitutive'
-  | 'geometry-input'
-  | 'load-boundary'
-  | 'analysis-strategy'
+  | 'analysis'
   | 'code-check'
+  | 'data-input'
+  | 'design'
+  | 'drawing'
+  | 'general'
+  | 'load-boundary'
+  | 'material'
   | 'result-postprocess'
-  | 'visualization'
   | 'report-export'
-  | 'generic-fallback';
+  | 'section'
+  | 'validation'
+  | 'visualization';
+
+export type SkillRuntimeStatus = 'active' | 'partial' | 'discoverable' | 'reserved';
+
+export const ALL_SKILL_DOMAINS: SkillDomain[] = [
+  'structure-type',
+  'analysis',
+  'code-check',
+  'data-input',
+  'design',
+  'drawing',
+  'general',
+  'load-boundary',
+  'material',
+  'report-export',
+  'result-postprocess',
+  'section',
+  'validation',
+  'visualization',
+];
 
 export interface SkillCompatibility {
   minRuntimeVersion: string;
@@ -162,15 +194,34 @@ export interface SkillCompatibility {
 }
 
 export interface SkillManifest extends AgentSkillMetadata {
-  scenarioKeys: ScenarioTemplateKey[];
+  structuralTypeKeys: StructuralTypeKey[];
   domain: SkillDomain;
   requires: string[];
   conflicts: string[];
   capabilities: string[];
+  enabledTools?: string[];
+  providedTools?: string[];
   supportedAnalysisTypes?: AgentAnalysisType[];
+  supportedModelFamilies?: string[];
   materialFamilies?: MaterialFamily[];
   priority: number;
   compatibility: SkillCompatibility;
+}
+
+export interface ToolManifest {
+  id: string;
+  source: AgentToolSource;
+  enabledByDefault: boolean;
+  displayName: LocalizedText;
+  description: LocalizedText;
+  category?: 'modeling' | 'analysis' | 'code-check' | 'report' | 'utility';
+  providedBySkillId?: string;
+  requiresSkills?: string[];
+  requiresTools?: string[];
+  tags?: string[];
+  inputSchema?: Record<string, unknown>;
+  outputSchema?: Record<string, unknown>;
+  errorCodes?: string[];
 }
 
 export interface SkillDetectionInput {
@@ -184,7 +235,7 @@ export interface SkillDraftContext {
   locale: AppLocale;
   currentState?: DraftState;
   llmDraftPatch?: Record<string, unknown> | null;
-  scenario: ScenarioMatch;
+  structuralTypeMatch: StructuralTypeMatch;
 }
 
 export interface SkillMissingResult {
@@ -212,11 +263,11 @@ export interface SkillReportNarrativeInput {
 }
 
 export interface SkillHandler {
-  detectScenario(input: SkillDetectionInput): ScenarioMatch | null;
+  detectStructuralType(input: SkillDetectionInput): StructuralTypeMatch | null;
   parseProvidedValues(values: Record<string, unknown>): DraftExtraction;
   extractDraft(input: SkillDraftContext): DraftExtraction;
   mergeState(existing: DraftState | undefined, patch: DraftExtraction): DraftState;
-  computeMissing(state: DraftState, mode: 'chat' | 'execute'): SkillMissingResult;
+  computeMissing(state: DraftState, phase: 'interactive' | 'execution'): SkillMissingResult;
   mapLabels(keys: string[], locale: AppLocale): string[];
   buildQuestions(keys: string[], criticalMissing: string[], state: DraftState, locale: AppLocale): InteractionQuestion[];
   buildDefaultProposals?(keys: string[], state: DraftState, locale: AppLocale): SkillDefaultProposal[];
@@ -231,7 +282,6 @@ export interface AgentSkillPlugin extends AgentSkillBundle {
 }
 
 export interface SkillExecutionResult {
-  detectedScenario?: ScenarioTemplateKey;
   inferredType?: InferredModelType;
   draftPatch?: DraftExtraction;
   missingCritical?: string[];
@@ -239,7 +289,7 @@ export interface SkillExecutionResult {
   questions?: InteractionQuestion[];
   defaultProposals?: Array<{ paramKey: string; value: unknown; reason: string }>;
   stage?: 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';
-  supportLevel?: ScenarioSupportLevel;
+  supportLevel?: StructuralTypeSupportLevel;
   supportNote?: string;
 }
 

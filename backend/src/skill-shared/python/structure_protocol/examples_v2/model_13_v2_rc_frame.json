@@ -82,8 +82,18 @@
     }
   ],
   "sections": [
-    {"id": "col1", "name": "柱 500×500", "type": "rectangular", "width": 500, "height": 500, "properties": {"A": 250000}},
-    {"id": "beam1", "name": "梁 250×500", "type": "rectangular", "width": 250, "height": 500, "properties": {"A": 125000}}
+    {
+      "id": "col1", "name": "柱 500×500", "type": "rectangular",
+      "purpose": "column",
+      "shape": {"kind": "rectangular", "H": 500, "B": 500},
+      "width": 500, "height": 500, "properties": {"A": 250000}
+    },
+    {
+      "id": "beam1", "name": "梁 250×500", "type": "rectangular",
+      "purpose": "beam",
+      "shape": {"kind": "rectangular", "H": 500, "B": 250},
+      "width": 250, "height": 500, "properties": {"A": 125000}
+    }
   ],
   "load_cases": [
     {"id": "D", "type": "dead", "loads": [], "description": "恒荷载"},

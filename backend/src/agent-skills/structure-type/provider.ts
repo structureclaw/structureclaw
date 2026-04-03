@@ -31,7 +31,7 @@ export function validateStructureModelingProviderModule(module: unknown): string
 
   const handler = candidate.handler as Partial<SkillHandler> | undefined;
   const requiredMethods: Array<keyof SkillHandler> = [
-    'detectScenario',
+    'detectStructuralType',
     'parseProvidedValues',
     'extractDraft',
     'mergeState',

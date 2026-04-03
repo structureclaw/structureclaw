@@ -1,7 +1,7 @@
 import { describe, expect, test } from '@jest/globals';
 
-describe('analysis runtime compatibility routes', () => {
-  test('should expose legacy analysis endpoints from backend root', async () => {
+describe('analysis runtime routes', () => {
+  test('should expose backend analysis runtime endpoints from root', async () => {
     const { createRequire } = await import('node:module');
     const require = createRequire(process.cwd() + '/backend/package.json');
     const Fastify = require('fastify');
@@ -37,10 +37,10 @@ describe('analysis runtime compatibility routes', () => {
       return { code: body.code, status: 'success' };
     };
 
-    const { analysisRuntimeCompatibilityRoutes } = await import('../dist/api/analysis-runtime.js');
+    const { analysisRuntimeRoutes } = await import('../dist/api/analysis-runtime.js');
 
     const app = Fastify();
-    await app.register(analysisRuntimeCompatibilityRoutes);
+    await app.register(analysisRuntimeRoutes);
 
     expect((await app.inject({ method: 'GET', url: '/schema/structure-model-v1' })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/schema/converters' })).json().supportedFormats).toContain('structuremodel-v1');

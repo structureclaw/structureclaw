@@ -35,7 +35,7 @@ const codeCheckSchema = z.object({
   engineId: z.string().optional(),
 });
 
-export async function analysisRuntimeCompatibilityRoutes(fastify: FastifyInstance) {
+export async function analysisRuntimeRoutes(fastify: FastifyInstance) {
   fastify.get('/schema/structure-model-v1', async (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.send(await structureProtocolService.getStructureModelSchema());
   });

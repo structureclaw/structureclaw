@@ -3,12 +3,75 @@ import type { SkillPackageMetadata } from './package.js';
 
 type SkillProviderPriorityOrder = 'asc' | 'desc';
 
+export type SkillCompatibilityReasonCode = 'runtime_version_incompatible' | 'skill_api_version_incompatible';
+
+export interface SkillCompatibilityResult {
+  compatible: boolean;
+  reasonCodes: SkillCompatibilityReasonCode[];
+}
+
+export function parseVersion(value: string): number[] {
+  return String(value)
+    .trim()
+    .replace(/^v/i, '')
+    .split('.')
+    .map((part) => Number.parseInt(part, 10))
+    .filter((part) => Number.isFinite(part));
+}
+
+export function isVersionGreater(required: string, current: string): boolean {
+  const requiredParts = parseVersion(required);
+  const currentParts = parseVersion(current);
+  const maxLen = Math.max(requiredParts.length, currentParts.length);
+  for (let index = 0; index < maxLen; index += 1) {
+    const left = requiredParts[index] || 0;
+    const right = currentParts[index] || 0;
+    if (left === right) {
+      continue;
+    }
+    return left > right;
+  }
+  return false;
+}
+
+export function evaluateSkillCompatibility(
+  compatibility: { minRuntimeVersion: string; skillApiVersion: string },
+  runtimeVersion: string,
+  skillApiVersion: string,
+): SkillCompatibilityResult {
+  const reasonCodes: SkillCompatibilityReasonCode[] = [];
+  if (isVersionGreater(compatibility.minRuntimeVersion, runtimeVersion)) {
+    reasonCodes.push('runtime_version_incompatible');
+  }
+  if (compatibility.skillApiVersion !== skillApiVersion) {
+    reasonCodes.push('skill_api_version_incompatible');
+  }
+  return {
+    compatible: reasonCodes.length === 0,
+    reasonCodes,
+  };
+}
+
+export type SkillDependencyRejectReason = 'unmet_requires' | 'conflict_detected';
+
+export interface SkillDependencyRejection {
+  providerId: string;
+  reason: SkillDependencyRejectReason;
+  detail: string;
+}
+
+export interface SkillDependencyResolution<TProvider extends BaseSkillProvider<string>> {
+  accepted: TProvider[];
+  rejected: SkillDependencyRejection[];
+}
+
 export interface LoadSkillProvidersOptions<TProvider extends BaseSkillProvider<string>> {
   builtInProviders?: TProvider[];
   externalProviders?: TProvider[];
   priorityOrder?: SkillProviderPriorityOrder;
   filter?: (provider: TProvider) => boolean;
   finalize?: (providers: TProvider[]) => TProvider[];
+  packages?: Map<string, SkillPackageMetadata>;
 }
 
 export interface ExecutableSkillProviderLoadFailure<TPackage extends SkillPackageMetadata<string>> {
@@ -69,7 +132,67 @@ export function loadSkillProviders<TProvider extends BaseSkillProvider<string>>(
     }
   }
   const deduped = [...byId.values()].sort(compare);
-  return options?.finalize ? options.finalize(deduped) : deduped;
+  const resolved = options?.packages
+    ? resolveSkillDependencies(deduped, options.packages)
+    : { accepted: deduped, rejected: [] };
+  if (resolved.rejected.length > 0) {
+    for (const r of resolved.rejected) {
+      console.warn(`[skill-loader] Provider '${r.providerId}' rejected: ${r.reason} — ${r.detail}`);
+    }
+  }
+  return options?.finalize ? options.finalize(resolved.accepted) : resolved.accepted;
+}
+
+export function resolveSkillDependencies<TProvider extends BaseSkillProvider<string>>(
+  providers: TProvider[],
+  packages: Map<string, SkillPackageMetadata>,
+): SkillDependencyResolution<TProvider> {
+  let accepted = [...providers];
+  const rejected: SkillDependencyRejection[] = [];
+  let changed = true;
+
+  while (changed) {
+    changed = false;
+    const availableIds = new Set(accepted.map((p) => p.id));
+    const nextAccepted: TProvider[] = [];
+
+    for (const provider of accepted) {
+      const pkg = packages.get(provider.id);
+      if (!pkg) {
+        nextAccepted.push(provider);
+        continue;
+      }
+
+      const requires = pkg.requires ?? [];
+      const unmet = requires.filter((dep) => !availableIds.has(dep));
+      if (unmet.length > 0) {
+        rejected.push({
+          providerId: provider.id,
+          reason: 'unmet_requires',
+          detail: `Missing required skills: ${unmet.join(', ')}`,
+        });
+        changed = true;
+        continue;
+      }
+
+      const conflicts = pkg.conflicts ?? [];
+      const hit = conflicts.filter((dep) => dep !== provider.id && availableIds.has(dep));
+      if (hit.length > 0) {
+        rejected.push({
+          providerId: provider.id,
+          reason: 'conflict_detected',
+          detail: `Conflicts with loaded skills: ${hit.join(', ')}`,
+        });
+        changed = true;
+        continue;
+      }
+
+      nextAccepted.push(provider);
+    }
+    accepted = nextAccepted;
+  }
+
+  return { accepted, rejected };
 }
 
 export async function loadExecutableSkillProviders<
@@ -134,4 +257,35 @@ export async function loadExecutableSkillProviders<
   }
 
   return { providers, failures };
+}
+
+export interface SkillLoadSummary {
+  loaded: number;
+  failed: number;
+  failuresByReason: Record<string, number>;
+  failureDetails: Array<{ packageId: string; reason: string; detail?: string }>;
+}
+
+export function summarizeSkillLoadResult<TPackage extends SkillPackageMetadata<string>>(result: {
+  providers: BaseSkillProvider<string>[];
+  failures: ExecutableSkillProviderLoadFailure<TPackage>[];
+}): SkillLoadSummary {
+  const failuresByReason: Record<string, number> = {};
+  const failureDetails: SkillLoadSummary['failureDetails'] = [];
+
+  for (const failure of result.failures) {
+    failuresByReason[failure.reason] = (failuresByReason[failure.reason] ?? 0) + 1;
+    failureDetails.push({
+      packageId: failure.packageId,
+      reason: failure.reason,
+      detail: failure.detail,
+    });
+  }
+
+  return {
+    loaded: result.providers.length,
+    failed: result.failures.length,
+    failuresByReason,
+    failureDetails,
+  };
 }

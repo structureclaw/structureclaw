@@ -88,7 +88,14 @@ function assertStringArray(value: unknown, fallback: string[] = []): string[] {
 function toAnalysisSkillManifest(skillDir: string): AnalysisSkillManifest | null {
   const intentPath = path.join(skillDir, 'intent.md');
   const runtimePath = path.join(skillDir, 'runtime.py');
+  const dirName = path.basename(skillDir);
+
   if (!existsSync(intentPath) || !existsSync(runtimePath)) {
+    const missing = [
+      !existsSync(intentPath) ? 'intent.md' : null,
+      !existsSync(runtimePath) ? 'runtime.py' : null,
+    ].filter(Boolean);
+    console.warn(`[analysis-registry] Skipping skill directory '${dirName}': missing ${missing.join(', ')}`);
     return null;
   }
 
@@ -99,13 +106,27 @@ function toAnalysisSkillManifest(skillDir: string): AnalysisSkillManifest | null
   const engineId = assertString(metadata.engineId) as AnalysisSkillManifest['engineId'];
   const adapterKey = assertString(metadata.adapterKey) as AnalysisSkillManifest['adapterKey'];
 
-  if (!id || !software || !analysisType || !engineId || !adapterKey) {
+  const requiredFields: Record<string, string> = {
+    id: assertString(metadata.id),
+    software,
+    analysisType,
+    engineId,
+    adapterKey,
+  };
+  const missingFields = Object.entries(requiredFields)
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
+  if (missingFields.length > 0) {
+    console.warn(
+      `[analysis-registry] Skipping skill '${dirName}': intent.md frontmatter missing required fields: ${missingFields.join(', ')}`,
+    );
     return null;
   }
 
   return {
     id,
-    domain: 'analysis-strategy',
+    domain: 'analysis',
     name: {
       zh: assertString(metadata.zhName, id),
       en: assertString(metadata.enName, id),
@@ -130,11 +151,17 @@ function toAnalysisSkillManifest(skillDir: string): AnalysisSkillManifest | null
 
 function discoverBuiltinAnalysisSkills(): AnalysisSkillManifest[] {
   const root = resolveAnalysisSkillRoot();
-  return readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'runtime')
-    .map((entry) => toAnalysisSkillManifest(path.join(root, entry.name)))
-    .filter((skill): skill is AnalysisSkillManifest => skill !== null)
-    .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id));
+  const dirs = readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'runtime');
+  const results = dirs.map((entry) => toAnalysisSkillManifest(path.join(root, entry.name)));
+  const loaded = results.filter((skill): skill is AnalysisSkillManifest => skill !== null);
+  const skipped = dirs.length - loaded.length;
+  if (skipped > 0) {
+    console.warn(
+      `[analysis-registry] Discovery summary: ${loaded.length} skills loaded, ${skipped} skipped (check warnings above for details)`,
+    );
+  }
+  return loaded.sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id));
 }
 
 function uniqueOrdered<T extends string>(values: readonly T[], order: readonly T[]): T[] {
@@ -211,6 +238,47 @@ export function listBuiltinAnalysisSkills(): AnalysisSkillManifest[] {
 
 export function getBuiltinAnalysisSkill(id: string): AnalysisSkillManifest | undefined {
   return BUILTIN_ANALYSIS_SKILLS.find((skill) => skill.id === id);
+}
+
+export function resolvePreferredBuiltinAnalysisSkill(options?: {
+  analysisType?: AnalysisSkillManifest['analysisType'];
+  engineId?: string;
+  skillIds?: string[];
+  supportedModelFamilies?: string[];
+}): AnalysisSkillManifest | undefined {
+  const selectedSkillIds = new Set(
+    Array.isArray(options?.skillIds)
+      ? options.skillIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+      : [],
+  );
+  const supportedFamilies = Array.isArray(options?.supportedModelFamilies)
+    ? options.supportedModelFamilies
+      .filter((family): family is string => typeof family === 'string' && family.trim().length > 0)
+      .map((family) => family.trim().toLowerCase())
+    : [];
+
+  const matchesContext = (skill: AnalysisSkillManifest): boolean => {
+    if (options?.analysisType && skill.analysisType !== options.analysisType) {
+      return false;
+    }
+    if (typeof options?.engineId === 'string' && options.engineId.trim().length > 0 && skill.engineId !== options.engineId.trim()) {
+      return false;
+    }
+    if (supportedFamilies.length > 0) {
+      const skillFamilies = skill.supportedModelFamilies.map((family) => family.trim().toLowerCase());
+      if (!skillFamilies.some((family) => supportedFamilies.includes(family))) {
+        return false;
+      }
+    }
+    return true;
+  };
+
+  const matchedSelected = BUILTIN_ANALYSIS_SKILLS.filter((skill) => selectedSkillIds.has(skill.id) && matchesContext(skill));
+  if (matchedSelected.length > 0) {
+    return matchedSelected[0];
+  }
+
+  return BUILTIN_ANALYSIS_SKILLS.find((skill) => matchesContext(skill));
 }
 
 export function listBuiltinAnalysisEngines(): AnalysisEngineDefinition[] {

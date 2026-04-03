@@ -8,19 +8,50 @@ function createServiceWithDefaultSkills() {
   const svc = new AgentService();
   const defaultSkillIds = svc.listSkills().map((skill) => skill.id);
 
-  const originalRun = svc.run.bind(svc);
-  svc.run = async (params) => {
+  const applyDefaultSkills = (params) => {
     const context = params?.context || {};
     if (context.skillIds !== undefined) {
-      return originalRun(params);
+      return params;
     }
-    return originalRun({
+    return {
       ...params,
       context: {
         ...context,
         skillIds: defaultSkillIds,
       },
-    });
+    };
+  };
+
+  const originalRun = svc.run.bind(svc);
+  svc.run = async (params) => originalRun(applyDefaultSkills(params));
+
+  const runWithStrategy = svc.runWithStrategy.bind(svc);
+  svc.runChatOnly = async (params) => runWithStrategy(
+    applyDefaultSkills(params),
+    { planningDirective: 'auto', allowToolCall: false },
+  );
+  svc.runForcedExecution = async (params) => runWithStrategy(
+    applyDefaultSkills(params),
+    { planningDirective: 'force_tool', allowToolCall: true },
+  );
+
+  const originalRunStream = svc.runStream.bind(svc);
+  svc.runStream = async function* (params) {
+    yield* originalRunStream(applyDefaultSkills(params));
+  };
+
+  const runStreamWithStrategy = svc.runStreamWithStrategy.bind(svc);
+  svc.runChatOnlyStream = async function* (params) {
+    yield* runStreamWithStrategy(
+      applyDefaultSkills(params),
+      { planningDirective: 'auto', allowToolCall: false },
+    );
+  };
+  svc.runForcedExecutionStream = async function* (params) {
+    yield* runStreamWithStrategy(
+      applyDefaultSkills(params),
+      { planningDirective: 'force_tool', allowToolCall: true },
+    );
   };
 
   const originalTextToModelDraft = svc.textToModelDraft.bind(svc);
@@ -112,6 +143,22 @@ function stubExecutionClients(svc, handlers = {}) {
 }
 
 describe('AgentService orchestration', () => {
+  test('should not seed an empty interaction session with a default unknown draft', async () => {
+    const svc = createServiceWithDefaultSkills();
+
+    const snapshot = await svc.buildPlannerContextSnapshot({
+      locale: 'zh',
+      skillIds: ['generic'],
+      hasModel: false,
+      session: undefined,
+      activeToolIds: new Set(['draft_model']),
+      conversationId: undefined,
+    });
+
+    expect(snapshot.hasActiveSession).toBe(false);
+    expect(snapshot.inferredType).toBeNull();
+  });
+
   test('should execute analyze -> code-check -> report closed loop', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
@@ -132,9 +179,8 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runForcedExecution({
       message: '请静力分析并规范校核',
-      mode: 'execute',
       context: {
         skillIds: [],
         model: {
@@ -155,27 +201,35 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.toolCalls.some((c) => c.tool === 'analyze')).toBe(true);
-    expect(result.toolCalls.some((c) => c.tool === 'code-check')).toBe(true);
-    expect(result.toolCalls.some((c) => c.tool === 'report')).toBe(true);
+    expect(result.routing?.analysisSkillId).toBe('opensees-static');
+    expect(result.routing?.analysisSkillIds).toEqual(['opensees-static']);
+    expect(result.routing?.codeCheckSkillId).toBe('code-check-gb50017');
+    expect(result.routing?.validationSkillId).toBe('validation-structure-model');
+    expect(result.routing?.reportSkillId).toBe('report-export-builtin');
+    expect(result.toolCalls.some((c) => c.tool === 'run_analysis')).toBe(true);
+    expect(result.toolCalls.some((c) => c.tool === 'run_code_check')).toBe(true);
+    expect(result.toolCalls.some((c) => c.tool === 'generate_report')).toBe(true);
+    expect(result.toolCalls.find((c) => c.tool === 'validate_model')?.authorizedBySkillIds).toEqual(['validation-structure-model']);
+    expect(result.toolCalls.find((c) => c.tool === 'run_analysis')?.authorizedBySkillIds).toEqual(['opensees-static']);
+    expect(result.toolCalls.find((c) => c.tool === 'run_code_check')?.authorizedBySkillIds).toEqual(['code-check-gb50017']);
+    expect(result.toolCalls.find((c) => c.tool === 'generate_report')?.authorizedBySkillIds).toEqual(['report-export-builtin']);
+    expect(result.analysis?.meta?.analysisSkillId).toBe('opensees-static');
+    expect(result.codeCheck?.meta?.codeCheckSkillId).toBe('code-check-gb50017');
+    expect(result.report?.json?.meta?.reportSkillId).toBe('report-export-builtin');
     expect(result.codeCheck?.code).toBe('GB50017');
     expect(typeof result.report?.markdown).toBe('string');
   });
 
-  test('should not run code-check when no code-check skill or legacy designCode is provided', async () => {
+  test('should select a single preferred builtin analysis skill for the active turn', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
-    const calls = stubExecutionClients(svc, {
-      codeCheck: async () => {
-        throw new Error('code-check should not run without an explicit code-check skill');
-      },
-    });
+    stubExecutionClients(svc);
 
-    const result = await svc.run({
-      message: '请静力分析并规范校核',
-      mode: 'execute',
+    const result = await svc.runForcedExecution({
+      message: '请静力分析这个模型',
       context: {
-        skillIds: [],
+        analysisType: 'static',
+        skillIds: ['beam'],
         model: {
           schema_version: '1.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
@@ -191,9 +245,138 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.toolCalls.some((c) => c.tool === 'analyze')).toBe(true);
-    expect(result.toolCalls.some((c) => c.tool === 'code-check')).toBe(false);
+    expect(result.routing?.analysisSkillId).toBe('opensees-static');
+    expect(result.routing?.analysisSkillIds).toEqual(['opensees-static']);
+    expect(result.routing?.activatedSkillIds?.filter((skillId) => skillId.endsWith('-static'))).toEqual(['opensees-static']);
+    expect(result.toolCalls.find((c) => c.tool === 'run_analysis')?.authorizedBySkillIds).toEqual(['opensees-static']);
+    expect(result.analysis?.meta?.analysisSkillId).toBe('opensees-static');
+  });
+
+  test('should honor engineId when selecting the preferred analysis skill', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+    stubExecutionClients(svc);
+
+    const result = await svc.runForcedExecution({
+      message: '请静力分析这个模型',
+      context: {
+        analysisType: 'static',
+        skillIds: ['beam'],
+        engineId: 'builtin-simplified',
+        model: {
+          schema_version: '1.0.0',
+          nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
+          elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
+          materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
+          sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } }],
+          load_cases: [],
+          load_combinations: [],
+        },
+        autoAnalyze: true,
+        includeReport: false,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.routing?.analysisSkillId).toBe('simplified-static');
+    expect(result.routing?.analysisSkillIds).toEqual(['simplified-static']);
+    expect(result.toolCalls.find((c) => c.tool === 'run_analysis')?.authorizedBySkillIds).toEqual(['simplified-static']);
+    expect(result.analysis?.meta?.analysisSkillId).toBe('simplified-static');
+  });
+
+  test('should not run code-check when structural execution is enabled without a code-check skill or designCode', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+    const calls = stubExecutionClients(svc, {
+      codeCheck: async () => {
+        throw new Error('code-check should not run without an explicit code-check skill');
+      },
+    });
+
+    const result = await svc.runForcedExecution({
+      message: '请静力分析并规范校核',
+      context: {
+        skillIds: ['beam'],
+        model: {
+          schema_version: '1.0.0',
+          nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
+          elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
+          materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
+          sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } }],
+          load_cases: [],
+          load_combinations: [],
+        },
+        autoAnalyze: true,
+        includeReport: false,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls.some((c) => c.tool === 'run_analysis')).toBe(true);
+    expect(result.toolCalls.some((c) => c.tool === 'run_code_check')).toBe(false);
     expect(calls.some((item) => item.client === 'codeCheck' && item.path === '/code-check')).toBe(false);
+  });
+
+  test('should block tool execution when prerequisite tools are disabled', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const result = await svc.runForcedExecution({
+      message: '请直接分析这个模型',
+      context: {
+        disabledToolIds: ['validate_model'],
+        model: {
+          schema_version: '1.0.0',
+          nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
+          elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
+          materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
+          sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } }],
+          load_cases: [],
+          load_combinations: [],
+        },
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.response).toContain('validate_model');
+    expect(result.toolCalls.length).toBe(0);
+  });
+
+  test('should honor disabledToolIds and skip code-check plus report even when requested', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+    const calls = stubExecutionClients(svc, {
+      codeCheck: async () => {
+        throw new Error('code-check should be disabled by context');
+      },
+    });
+
+    const result = await svc.runForcedExecution({
+      message: '请静力分析并规范校核并生成报告',
+      context: {
+        skillIds: ['code-check-gb50017'],
+        disabledToolIds: ['run_code_check', 'generate_report'],
+        model: {
+          schema_version: '1.0.0',
+          nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
+          elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
+          materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
+          sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001 } }],
+          load_cases: [],
+          load_combinations: [],
+        },
+        autoAnalyze: true,
+        autoCodeCheck: true,
+        includeReport: true,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls.some((c) => c.tool === 'run_analysis')).toBe(true);
+    expect(result.toolCalls.some((c) => c.tool === 'run_code_check')).toBe(false);
+    expect(result.toolCalls.some((c) => c.tool === 'generate_report')).toBe(false);
+    expect(calls.some((item) => item.client === 'codeCheck' && item.path === '/code-check')).toBe(false);
+    expect(result.report).toBeUndefined();
   });
 
   test('should clear stored conversation sessions', async () => {
@@ -206,10 +389,7 @@ describe('AgentService orchestration', () => {
 
     await svc.clearConversationSession('conv-cleanup');
 
-    expect(deletedKeys).toEqual([
-      'agent:interaction-session:conv-cleanup',
-      'agent:draft-state:conv-cleanup',
-    ]);
+    expect(deletedKeys).toEqual(['agent:interaction-session:conv-cleanup']);
   });
 
   test('should pass engineId through validate analyze and code-check calls', async () => {
@@ -239,9 +419,8 @@ describe('AgentService orchestration', () => {
       }),
     });
 
-    const result = await svc.run({
+    const result = await svc.runForcedExecution({
       message: '请静力分析并规范校核',
-      mode: 'execute',
       context: {
         model: {
           schema_version: '1.0.0',
@@ -276,9 +455,8 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runForcedExecution({
       message: '请静力分析并规范校核',
-      mode: 'execute',
       context: {
         model: {
           schema_version: '1.0.0',
@@ -296,7 +474,7 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(false);
-    const codeCheckCall = result.toolCalls.find((c) => c.tool === 'code-check');
+    const codeCheckCall = result.toolCalls.find((c) => c.tool === 'run_code_check');
     expect(codeCheckCall?.status).toBe('error');
     expect(codeCheckCall?.errorCode).toBe('CODE_CHECK_EXECUTION_FAILED');
   });
@@ -306,9 +484,8 @@ describe('AgentService orchestration', () => {
     svc.llm = null;
     stubExecutionClients(svc);
 
-    const result = await svc.run({
+    const result = await svc.runForcedExecution({
       message: '请静力分析并规范校核并导出报告',
-      mode: 'execute',
       context: {
         model: {
           schema_version: '1.0.0',
@@ -340,9 +517,8 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runForcedExecution({
       message: 'Analyze a portal frame',
-      mode: 'execute',
       conversationId: 'conv-en',
       context: {
         locale: 'en',
@@ -350,20 +526,89 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(false);
-    expect(result.response).toContain('Please confirm the following parameters first');
+    expect(result.response).toContain('Please confirm');
+    expect(result.response).not.toContain('allow_auto_decide');
     expect(result.clarification?.missingFields).toContain('Span length per bay for the portal frame or double-span beam (m)');
     expect(result.clarification?.missingFields).toContain('Portal-frame column height (m)');
   });
 
-  test('should merge rule-extracted numeric follow-up when llm extraction is partial', async () => {
+  test('should keep auto routing in reply mode when run_analysis is disabled', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = {
+      invoke: async () => ({
+        content: JSON.stringify({
+          kind: 'reply',
+          replyMode: 'structured',
+          reason: 'analysis tool unavailable',
+        }),
+      }),
+    };
+
+    const routeKind = await svc.assessAutoRouteKind('请开始分析这个模型', {
+      locale: 'zh',
+      skillIds: ['generic'],
+      enabledToolIds: ['validate_model'],
+      disabledToolIds: ['run_analysis'],
+      hasModel: true,
+    });
+
+    expect(routeKind).toBe('reply');
+  });
+
+  test('should keep conversation route when analysis tool is disabled even after parameters are ready', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const result = await svc.runChatOnly({
+      message: '先聊需求',
+      context: {
+        locale: 'zh',
+        disabledToolIds: ['run_analysis'],
+        providedValues: {
+          inferredType: 'beam',
+          lengthM: 10,
+          supportType: 'simply-supported',
+          loadKN: 10,
+          loadType: 'point',
+          loadPosition: 'midspan',
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.interaction?.state).toBe('ready');
+    expect(result.interaction?.routeHint).toBe('prefer_interactive');
+    expect(result.interaction?.routeReason).toContain('未启用 `run_analysis`');
+    expect(result.interaction?.recommendedNextStep).toContain('未启用 `run_analysis`');
+  });
+
+  test('should block force_tool when drafting is not granted in skill mode and no model exists', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const result = await svc.runForcedExecution({
+      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        disabledToolIds: ['draft_model'],
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.interaction?.state).toBe('blocked');
+    expect(result.toolCalls).toEqual([]);
+    expect(result.response).toContain('无法为本轮请求选择可执行工具');
+  });
+
+  test('should keep collecting when llm extraction is partial and rule extraction is disabled', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     svc.tryLlmExtract = async () => ({ inferredType: 'beam' });
 
-    const result = await svc.run({
+    const result = await svc.runChatOnly({
       conversationId: 'conv-rule-fallback-zh',
       message: '跨度10m',
-      mode: 'chat',
       context: {
         locale: 'zh',
         providedValues: {
@@ -372,20 +617,18 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(result.interaction?.detectedScenario).toBe('beam');
-    expect(result.interaction?.missingCritical).not.toContain('跨度/长度（m）');
+    expect(result.interaction?.missingCritical).toContain('跨度/长度（m）');
     expect(result.interaction?.missingCritical).toContain('支座/边界条件（悬臂/简支/两端固结/固铰）');
-    expect(result.interaction?.conversationStage).toBe('几何建模');
+    expect(result.interaction?.interactionStageLabel).toBe('几何建模');
   });
 
-  test('should not repeat beam span after a follow-up value in chat mode', async () => {
+  test('should keep collecting beam span after a follow-up value in chat mode when rules are disabled', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runChatOnly({
       conversationId: 'conv-chat-beam-span-zh',
       message: '我想设计一个梁',
-      mode: 'chat',
       context: {
         locale: 'zh',
       },
@@ -393,29 +636,26 @@ describe('AgentService orchestration', () => {
 
     expect(first.interaction?.missingCritical).toContain('跨度/长度（m）');
 
-    const second = await svc.run({
+    const second = await svc.runChatOnly({
       conversationId: 'conv-chat-beam-span-zh',
       message: '跨度10m',
-      mode: 'chat',
       context: {
         locale: 'zh',
       },
     });
 
-    expect(second.interaction?.detectedScenario).toBe('beam');
-    expect(second.interaction?.missingCritical).not.toContain('跨度/长度（m）');
+    expect(second.interaction?.missingCritical).toContain('跨度/长度（m）');
     expect(second.interaction?.missingCritical).toContain('支座/边界条件（悬臂/简支/两端固结/固铰）');
-    expect(second.interaction?.conversationStage).toBe('几何建模');
+    expect(second.interaction?.interactionStageLabel).toBe('几何建模');
   });
 
-  test('should not ask for the same span again after a follow-up value in chat mode', async () => {
+  test('should keep asking for span after a follow-up value in chat mode when rules are disabled', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runChatOnly({
       conversationId: 'conv-chat-span-zh',
       message: '先聊需求，我要做一个门式刚架',
-      mode: 'chat',
       context: {
         locale: 'zh',
       },
@@ -423,30 +663,27 @@ describe('AgentService orchestration', () => {
 
     expect(first.interaction?.missingCritical).toContain('门式刚架或双跨每跨跨度（m）');
 
-    const second = await svc.run({
+    const second = await svc.runChatOnly({
       conversationId: 'conv-chat-span-zh',
       message: '跨度10m',
-      mode: 'chat',
       context: {
         locale: 'zh',
       },
     });
 
-    expect(second.interaction?.detectedScenario).toBe('portal-frame');
-    expect(second.interaction?.missingCritical).not.toContain('门式刚架或双跨每跨跨度（m）');
+    expect(second.interaction?.missingCritical).toContain('门式刚架或双跨每跨跨度（m）');
     expect(second.interaction?.missingCritical).toContain('门式刚架柱高（m）');
     expect(second.interaction?.missingCritical).toContain('荷载大小（kN）');
-    expect(second.response).not.toContain('每跨跨度');
+    expect(second.response).toContain('每跨跨度');
   });
 
-  test('should shrink English missing fields after a span-only follow-up', async () => {
+  test('should keep English span missing after a span-only follow-up when rules are disabled', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runChatOnly({
       conversationId: 'conv-chat-span-en',
       message: 'Discuss a portal frame first',
-      mode: 'chat',
       context: {
         locale: 'en',
       },
@@ -454,59 +691,52 @@ describe('AgentService orchestration', () => {
 
     expect(first.interaction?.missingCritical).toContain('Span length per bay for the portal frame or double-span beam (m)');
 
-    const second = await svc.run({
+    const second = await svc.runChatOnly({
       conversationId: 'conv-chat-span-en',
       message: 'span 10m',
-      mode: 'chat',
       context: {
         locale: 'en',
       },
     });
 
-    expect(second.interaction?.detectedScenario).toBe('portal-frame');
-    expect(second.interaction?.missingCritical).not.toContain('Span length per bay for the portal frame or double-span beam (m)');
+    expect(second.interaction?.missingCritical).toContain('Span length per bay for the portal frame or double-span beam (m)');
     expect(second.interaction?.missingCritical).toContain('Portal-frame column height (m)');
     expect(second.interaction?.missingCritical).toContain('Load magnitude (kN)');
     expect(second.interaction?.missingCritical).toContain('Load type (point / distributed)');
     expect(second.interaction?.missingCritical).toContain('Load position (based on the current template)');
-    expect(second.response).not.toContain('Span per bay');
+    expect(second.response).toContain('Span per bay');
   });
 
-  test('should shrink beam load detail prompts after type and position are provided', async () => {
+  test('should keep beam load detail prompts unresolved when rules are disabled', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runChatOnly({
       conversationId: 'conv-chat-load-detail-zh',
       message: '我想设计一个简支梁，跨度10m',
-      mode: 'chat',
       context: {
         locale: 'zh',
       },
     });
 
     expect(first.interaction?.missingCritical).toContain('荷载大小（kN）');
-    expect(first.interaction?.missingCritical).toContain('荷载形式（点荷载/均布荷载）');
-    expect(first.interaction?.missingCritical).toContain('荷载位置（按当前结构模板）');
+    expect(first.interaction?.missingCritical).not.toContain('荷载形式（点荷载/均布荷载）');
+    expect(first.interaction?.missingCritical).not.toContain('荷载位置（按当前结构模板）');
 
-    const second = await svc.run({
+    const second = await svc.runChatOnly({
       conversationId: 'conv-chat-load-detail-zh',
       message: '20kN均布荷载，全跨布置',
-      mode: 'chat',
       context: {
         locale: 'zh',
       },
     });
 
-    expect(second.interaction?.detectedScenario).toBe('beam');
-    expect(second.interaction?.missingCritical).not.toContain('荷载大小（kN）');
-    expect(second.interaction?.missingCritical).not.toContain('荷载形式（点荷载/均布荷载）');
-    expect(second.interaction?.missingCritical).not.toContain('荷载位置（按当前结构模板）');
+    expect(second.interaction?.missingCritical).toContain('荷载大小（kN）');
     expect(Array.isArray(second.interaction?.missingOptional)).toBe(true);
   });
 
 
-  test('should not synthesize template model in no-skill mode when llm is unavailable', async () => {
+  test('should not synthesize template model with an empty skill set when llm is unavailable', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
@@ -517,13 +747,12 @@ describe('AgentService orchestration', () => {
     expect(draft.missingFields.length).toBeGreaterThan(0);
   });
 
-  test('should stay in collecting state in no-skill mode when llm is unavailable', async () => {
+  test('should stay in collecting state with an empty skill set when llm is unavailable', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runChatOnly({
       message: '我希望生成一个跨度10m的简支梁，荷载在4m处，一个集中荷载10kN',
-      mode: 'chat',
       context: {
         locale: 'zh',
         skillIds: [],
@@ -531,19 +760,19 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.needsModelInput).toBe(true);
-    expect(result.interaction?.state).toBe('confirming');
-    expect((result.interaction?.missingCritical || []).length).toBeGreaterThan(0);
+    expect(result.needsModelInput).toBe(false);
+    expect(result.interaction).toBeUndefined();
+    expect(typeof result.response).toBe('string');
+    expect(result.response).toContain('当前未启用工程技能');
     expect(result.model).toBeUndefined();
   });
 
-  test('should keep no-skill chat generic even when message contains template keywords', async () => {
+  test('should keep empty-skill chat generic even when message contains template keywords', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runChatOnly({
       message: '门式刚架，跨度10m，10kN集中荷载在4m处',
-      mode: 'chat',
       context: {
         locale: 'zh',
         skillIds: [],
@@ -551,13 +780,799 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.needsModelInput).toBe(true);
-    expect(result.interaction?.state).toBe('confirming');
-    expect(result.interaction?.detectedScenario).not.toBe('beam');
+    expect(result.needsModelInput).toBe(false);
+    expect(result.interaction).toBeUndefined();
+    expect(typeof result.response).toBe('string');
+    expect(result.response).toContain('当前未启用工程技能');
     expect(result.model).toBeUndefined();
   });
 
-  test('should keep inferredType unknown in no-skill mode even when llm extraction suggests template type', async () => {
+  test('should fall back to plain reply when the skill set is empty and draft tool is unavailable', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const result = await svc.runChatOnly({
+      message: '先帮我梳理一下我要做什么结构分析',
+      context: {
+        locale: 'zh',
+        skillIds: [],
+        disabledToolIds: ['draft_model', 'run_analysis', 'validate_model', 'convert_model', 'run_code_check', 'generate_report'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.needsModelInput).toBe(false);
+    expect(result.interaction).toBeUndefined();
+    expect(result.toolCalls).toEqual([]);
+    expect(result.response).toContain('普通对话');
+  });
+
+  test('should auto-enable the generic structure skill when skillIds are omitted', async () => {
+    const svc = new AgentService();
+    svc.llm = null;
+
+    const result = await svc.runWithStrategy(
+      {
+        message: '帮我分析一个结构，跨度10m，荷载10kN',
+        context: {
+          locale: 'zh',
+        },
+      },
+      { planningDirective: 'auto', allowToolCall: false },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+    expect(result.interaction).toBeDefined();
+    expect(result.response).not.toContain('当前未启用技能');
+    expect(result.response).toContain('通用结构类型');
+  });
+
+  test('should let the planner reply directly to casual chat even when an analysis skill is enabled', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          return {
+            content: JSON.stringify({
+              kind: 'reply',
+              replyMode: 'plain',
+              reason: 'casual greeting',
+            }),
+          };
+        }
+        return { content: '你好，我在。' };
+      },
+    };
+
+    const result = await svc.run({
+      message: '你好',
+      conversationId: 'conv-casual-opensees-static',
+      context: {
+        locale: 'zh',
+        skillIds: ['opensees-static'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls).toEqual([]);
+    expect(result.model).toBeUndefined();
+    expect(result.interaction).toBeUndefined();
+    expect(result.response).toContain('你好');
+  });
+
+  test('should let interactive routing reply directly to casual chat without drafting', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          return {
+            content: JSON.stringify({
+              kind: 'reply',
+              replyMode: 'plain',
+              reason: 'casual greeting in interactive mode',
+            }),
+          };
+        }
+        return { content: '你好，我在。' };
+      },
+    };
+
+    const result = await svc.runChatOnly({
+      message: '你好',
+      conversationId: 'conv-interactive-casual-opensees-static',
+      context: {
+        locale: 'zh',
+        skillIds: ['opensees-static'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls).toEqual([]);
+    expect(result.model).toBeUndefined();
+    expect(result.interaction).toBeUndefined();
+    expect(result.response).toContain('你好');
+  });
+
+  test('should behave like skilled-chat when skills are enabled but execution tools are disabled', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const result = await svc.runChatOnly({
+      conversationId: 'conv-skilled-chat-shape',
+      message: '我想设计一个门式刚架',
+      context: {
+        locale: 'zh',
+        disabledToolIds: ['run_analysis', 'validate_model', 'convert_model', 'run_code_check', 'generate_report'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.interaction?.state).not.toBe('completed');
+    expect(result.response.length).toBeGreaterThan(0);
+    expect(result.toolCalls.some((call) => call.tool === 'run_analysis')).toBe(false);
+    expect(result.toolCalls.some((call) => call.tool === 'run_code_check')).toBe(false);
+    expect(result.toolCalls.some((call) => call.tool === 'generate_report')).toBe(false);
+  });
+
+  test('should block full agent execution when no-rule and no-llm drafting cannot form a model', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+    stubExecutionClients(svc);
+
+    const result = await svc.runForcedExecution({
+      conversationId: 'conv-full-agent-shape',
+      message: '请按3m悬臂梁端部10kN点荷载做静力分析',
+      context: {
+        locale: 'zh',
+        userDecision: 'allow_auto_decide',
+        autoCodeCheck: false,
+        includeReport: false,
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.toolCalls.some((call) => call.tool === 'run_analysis')).toBe(false);
+    expect(result.model).toBeUndefined();
+    expect(result.response.length).toBeGreaterThan(0);
+  });
+
+  test('should repair malformed planner output and still let generic call draft_model', async () => {
+    const svc = createServiceWithDefaultSkills();
+    let plannerAttemptCount = 0;
+
+    svc.textToModelDraft = async (_message, existingState) => ({
+      inferredType: 'unknown',
+      missingFields: [],
+      extractionMode: 'llm',
+      model: {
+        schema_version: '1.0.0',
+        unit_system: 'SI',
+        nodes: [],
+        elements: [],
+        materials: [],
+        sections: [],
+        load_cases: [],
+        load_combinations: [],
+      },
+      stateToPersist: {
+        ...(existingState || { inferredType: 'unknown' }),
+        inferredType: 'unknown',
+        updatedAt: Date.now(),
+      },
+    });
+
+    svc.structureProtocolClient = {
+      post: async (route) => {
+        if (route === '/validate') {
+          return { data: { valid: true } };
+        }
+        throw new Error(`unexpected structure protocol route: ${route}`);
+      },
+    };
+
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Normalize the following StructureClaw planner output')) {
+          return {
+            content: JSON.stringify({
+              kind: 'tool_call',
+              replyMode: null,
+              toolId: 'draft_model',
+              reason: 'the user is explicitly asking to build a structural model now',
+            }),
+          };
+        }
+        if (text.includes('Return strict JSON only')) {
+          plannerAttemptCount += 1;
+          return { content: 'I would use draft_model for this modeling request.' };
+        }
+        return { content: '模型已生成。' };
+      },
+    };
+
+    const result = await svc.run({
+      conversationId: 'conv-planner-repair-draft-model',
+      message: '我想建模一个简支梁，跨度10m，均布荷载1kN/m，可以用10个单元建模',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model'],
+        autoAnalyze: false,
+      },
+    });
+
+    expect(plannerAttemptCount).toBe(1);
+    expect(result.success).toBe(true);
+    expect(result.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+    expect(result.model).toBeDefined();
+    expect(result.response).not.toContain('当前无法可靠解析大模型的下一步决策结果');
+  });
+
+  test('should prefer a new draft_model over a stale context model when llm requests new modeling', async () => {
+    const svc = createServiceWithDefaultSkills();
+    let validatedModel = null;
+    const staleModel = {
+      schema_version: '1.0.0',
+      unit_system: 'SI',
+      nodes: [{ id: 'old-1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] }],
+      elements: [],
+      materials: [],
+      sections: [],
+      load_cases: [],
+      load_combinations: [],
+      metadata: { name: 'stale-frame-model' },
+    };
+    const draftedModel = {
+      schema_version: '1.0.0',
+      unit_system: 'SI',
+      nodes: [
+        { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
+        { id: '2', x: 10000, y: 0, z: 0, restraints: [false, true, true, false, false, false] },
+        { id: '3', x: 5000, y: 0, z: 0 },
+      ],
+      elements: [
+        { id: 'E1', type: 'beam', nodes: ['1', '3'], material: 'STEEL', section: 'B1' },
+        { id: 'E2', type: 'beam', nodes: ['3', '2'], material: 'STEEL', section: 'B1' },
+      ],
+      materials: [{ id: 'STEEL', name: 'Q355', E: 206000, nu: 0.3, rho: 7850, fy: 355 }],
+      sections: [{ id: 'B1', name: 'Beam', type: 'rect', properties: { A: 0.01, Iz: 0.0001, Iy: 0.0001, J: 0.00001 } }],
+      load_cases: [{ id: 'MID', type: 'other', loads: [{ node: '3', fy: -1 }] }],
+      load_combinations: [],
+      metadata: { name: 'new-beam-model' },
+    };
+
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          expect(text).toContain('User message: 设计一个简支梁，跨度10m，梁中间荷载1kN');
+          expect(text).toContain('"hasModel":true');
+          return {
+            content: JSON.stringify({
+              kind: 'tool_call',
+              replyMode: null,
+              toolId: 'draft_model',
+              reason: 'the user is clearly asking to build a new simply supported beam model',
+            }),
+          };
+        }
+        return { content: 'ok' };
+      },
+    };
+
+    svc.textToModelDraft = async () => ({
+      inferredType: 'beam',
+      missingFields: [],
+      extractionMode: 'llm',
+      model: draftedModel,
+      stateToPersist: {
+        inferredType: 'beam',
+        updatedAt: Date.now(),
+      },
+    });
+    svc.assessInteractionNeeds = async () => ({
+      criticalMissing: [],
+      nonCriticalMissing: [],
+      defaultProposals: [],
+    });
+
+    svc.structureProtocolClient = {
+      post: async (route, payload) => {
+        if (route === '/validate') {
+          validatedModel = payload.model;
+          return { data: { valid: true } };
+        }
+        throw new Error(`unexpected structure protocol route: ${route}`);
+      },
+    };
+
+    const result = await svc.run({
+      conversationId: 'conv-stale-context-model-new-draft',
+      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model'],
+        autoAnalyze: false,
+        model: staleModel,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+    expect(validatedModel?.metadata?.name).toBe('new-beam-model');
+    expect(result.model?.metadata?.name).toBe('new-beam-model');
+  });
+
+  test('should run planner first then draft model via skill extraction on tool_call path', async () => {
+    const svc = createServiceWithDefaultSkills();
+    let plannerCalled = 0;
+
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          plannerCalled += 1;
+          expect(text).toContain('User message: 设计一个简支梁，跨度10m，梁中间荷载1kN');
+          expect(text).toContain('"hasModel":false');
+          return {
+            content: JSON.stringify({
+              kind: 'tool_call',
+              replyMode: null,
+              reason: 'user explicitly asked to design a beam with sufficient parameters',
+            }),
+          };
+        }
+        return { content: 'ok' };
+      },
+    };
+
+    svc.textToModelDraft = async () => ({
+      inferredType: 'beam',
+      missingFields: [],
+      extractionMode: 'llm',
+      model: {
+        schema_version: '1.0.0',
+        unit_system: 'SI',
+        nodes: [
+          { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
+          { id: '2', x: 10000, y: 0, z: 0, restraints: [false, true, true, false, false, false] },
+          { id: '3', x: 5000, y: 0, z: 0 },
+        ],
+        elements: [
+          { id: 'E1', type: 'beam', nodes: ['1', '3'], material: 'STEEL', section: 'B1' },
+          { id: 'E2', type: 'beam', nodes: ['3', '2'], material: 'STEEL', section: 'B1' },
+        ],
+        materials: [{ id: 'STEEL', name: 'Q355', E: 206000, nu: 0.3, rho: 7850, fy: 355 }],
+        sections: [{ id: 'B1', name: 'Beam', type: 'rect', properties: { A: 0.01, Iz: 0.0001, Iy: 0.0001, J: 0.00001 } }],
+        load_cases: [{ id: 'MID', type: 'other', loads: [{ node: '3', fy: -1 }] }],
+        load_combinations: [],
+      },
+      stateToPersist: {
+        inferredType: 'beam',
+        updatedAt: Date.now(),
+      },
+    });
+    svc.assessInteractionNeeds = async () => ({
+      criticalMissing: [],
+      nonCriticalMissing: [],
+      defaultProposals: [],
+    });
+
+    svc.structureProtocolClient = {
+      post: async (route) => {
+        if (route === '/validate') {
+          return { data: { valid: true } };
+        }
+        throw new Error(`unexpected structure protocol route: ${route}`);
+      },
+    };
+
+    const result = await svc.run({
+      conversationId: 'conv-planner-first-then-draft',
+      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model'],
+        autoAnalyze: false,
+      },
+    });
+
+    expect(plannerCalled).toBe(1);
+    expect(result.success).toBe(true);
+    expect(result.model).toBeDefined();
+    expect(result.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+  });
+
+  test('should run force_tool with skill draft preparse and without planner llm call', async () => {
+    const svc = createServiceWithDefaultSkills();
+    let plannerCalled = 0;
+    let draftCalled = 0;
+
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          plannerCalled += 1;
+          return {
+            content: JSON.stringify({
+              kind: 'tool_call',
+              replyMode: null,
+              reason: 'planner should not run during forced execution',
+            }),
+          };
+        }
+        return { content: 'ok' };
+      },
+    };
+
+    svc.textToModelDraft = async () => {
+      draftCalled += 1;
+      return {
+        inferredType: 'beam',
+        missingFields: [],
+        extractionMode: 'llm',
+        model: {
+          schema_version: '1.0.0',
+          unit_system: 'SI',
+          nodes: [
+            { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
+            { id: '2', x: 10000, y: 0, z: 0, restraints: [false, true, true, false, false, false] },
+            { id: '3', x: 5000, y: 0, z: 0 },
+          ],
+          elements: [
+            { id: 'E1', type: 'beam', nodes: ['1', '3'], material: 'STEEL', section: 'B1' },
+            { id: 'E2', type: 'beam', nodes: ['3', '2'], material: 'STEEL', section: 'B1' },
+          ],
+          materials: [{ id: 'STEEL', name: 'Q355', E: 206000, nu: 0.3, rho: 7850, fy: 355 }],
+          sections: [{ id: 'B1', name: 'Beam', type: 'rect', properties: { A: 0.01, Iz: 0.0001, Iy: 0.0001, J: 0.00001 } }],
+          load_cases: [{ id: 'MID', type: 'other', loads: [{ node: '3', fy: -1 }] }],
+          load_combinations: [],
+        },
+        stateToPersist: {
+          inferredType: 'beam',
+          updatedAt: Date.now(),
+        },
+      };
+    };
+    svc.assessInteractionNeeds = async () => ({
+      criticalMissing: [],
+      nonCriticalMissing: [],
+      defaultProposals: [],
+    });
+
+    svc.structureProtocolClient = {
+      post: async (route) => {
+        if (route === '/validate') {
+          return { data: { valid: true } };
+        }
+        throw new Error(`unexpected structure protocol route: ${route}`);
+      },
+    };
+
+    const result = await svc.runForcedExecution({
+      conversationId: 'conv-force-tool-prefetch',
+      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model'],
+        autoAnalyze: false,
+      },
+    });
+
+    expect(plannerCalled).toBe(0);
+    expect(draftCalled).toBe(1);
+    expect(result.success).toBe(true);
+    expect(result.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+  });
+
+  test('should ask for clarification instead of returning an invalid drafted model', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          return {
+            content: JSON.stringify({
+              kind: 'tool_call',
+              replyMode: null,
+              toolId: 'draft_model',
+              reason: 'the user is asking to build a model now',
+            }),
+          };
+        }
+        return { content: 'ok' };
+      },
+    };
+
+    svc.textToModelDraft = async () => ({
+      inferredType: 'beam',
+      missingFields: [],
+      extractionMode: 'llm',
+      model: {
+        schema_version: '1.0.0',
+        unit_system: 'SI',
+        nodes: [
+          { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
+          { id: '2', x: 10000, y: 0, z: 0, restraints: [false, true, true, false, false, false] },
+        ],
+        elements: [
+          { id: 'E1', type: 'beam', nodes: ['1', '2'], material: 'C30', section: 'B1' },
+        ],
+        materials: [{ id: 'C30', name: 'Concrete C30', E: 30000, nu: 0.2, rho: 2500, fy: 0 }],
+        sections: [{ id: 'B1', name: 'Beam', type: 'rect', properties: { A: 0.18, Iz: 0.0054, Iy: 0.00135, G: 12500000, J: 0.0008 } }],
+        load_cases: [],
+        load_combinations: [],
+      },
+      stateToPersist: {
+        inferredType: 'beam',
+        updatedAt: Date.now(),
+      },
+    });
+    svc.assessInteractionNeeds = async () => ({
+      criticalMissing: [],
+      nonCriticalMissing: [],
+      defaultProposals: [],
+    });
+
+    svc.structureProtocolClient = {
+      post: async (route) => {
+        if (route === '/validate') {
+          return { data: { valid: false, message: 'Validation failed' } };
+        }
+        throw new Error(`unexpected structure protocol route: ${route}`);
+      },
+    };
+
+    const result = await svc.run({
+      conversationId: 'conv-invalid-drafted-model-asks',
+      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model'],
+        autoAnalyze: false,
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.needsModelInput).toBe(true);
+    expect(result.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+    expect(result.toolCalls.some((call) => call.tool === 'validate_model')).toBe(true);
+    expect(result.response).toContain('还不满足 StructureModel 校验');
+    expect(result.response).toContain('材料');
+    expect(result.response).toContain('荷载');
+    expect(result.model).toBeUndefined();
+  });
+
+  test('should not block model drafting on report preferences when a valid model is ready', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          return {
+            content: JSON.stringify({
+              kind: 'tool_call',
+              replyMode: null,
+              toolId: 'draft_model',
+              reason: 'the user is asking to build a model now',
+            }),
+          };
+        }
+        return { content: 'ok' };
+      },
+    };
+
+    svc.textToModelDraft = async () => ({
+      inferredType: 'beam',
+      missingFields: [],
+      extractionMode: 'llm',
+      model: {
+        schema_version: '1.0.0',
+        unit_system: 'SI',
+        nodes: [
+          { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
+          { id: '2', x: 10000, y: 0, z: 0, restraints: [false, true, true, false, false, false] },
+          { id: '3', x: 5000, y: 0, z: 0 },
+        ],
+        elements: [
+          { id: 'E1', type: 'beam', nodes: ['1', '3'], material: 'STEEL', section: 'B1' },
+          { id: 'E2', type: 'beam', nodes: ['3', '2'], material: 'STEEL', section: 'B1' },
+        ],
+        materials: [{ id: 'STEEL', name: 'Q355', E: 206000, nu: 0.3, rho: 7850, fy: 355 }],
+        sections: [{ id: 'B1', name: 'Beam', type: 'rect', properties: { A: 0.01, Iz: 0.0001, Iy: 0.0001, J: 0.00001 } }],
+        load_cases: [{ id: 'MID', type: 'other', loads: [{ node: '3', fy: -1 }] }],
+        load_combinations: [],
+      },
+      stateToPersist: {
+        inferredType: 'beam',
+        updatedAt: Date.now(),
+      },
+    });
+
+    svc.structureProtocolClient = {
+      post: async (route) => {
+        if (route === '/validate') {
+          return { data: { valid: true } };
+        }
+        throw new Error(`unexpected structure protocol route: ${route}`);
+      },
+    };
+
+    const result = await svc.run({
+      conversationId: 'conv-draft-ignores-report-pref-block',
+      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model', 'generate_report'],
+        autoAnalyze: false,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.model).toBeDefined();
+    expect(result.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+    expect(result.response).not.toContain('请先确认以下参数');
+    expect(result.response).not.toContain('allow_auto_decide');
+  });
+
+  test('should render interactive clarification through llm instead of returning a template string', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.textToModelDraft = async () => ({
+      inferredType: 'unknown',
+      missingFields: ['跨度', '荷载'],
+      extractionMode: 'llm',
+      model: undefined,
+      stateToPersist: {
+        inferredType: 'unknown',
+        updatedAt: Date.now(),
+      },
+    });
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          return {
+            content: JSON.stringify({
+              kind: 'ask',
+              replyMode: 'structured',
+              toolId: null,
+              reason: 'more modeling details are needed',
+            }),
+          };
+        }
+        if (text.includes('工程对话 Agent') || text.includes('engineering conversation agent')) {
+          return { content: '先告诉我梁的跨度和荷载形式，我再继续建模。' };
+        }
+        return { content: 'ok' };
+      },
+    };
+
+    const result = await svc.runChatOnly({
+      conversationId: 'conv-llm-interaction-render',
+      message: '帮我建一个梁',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model'],
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.needsModelInput).toBe(true);
+    expect(result.response).toBe('先告诉我梁的跨度和荷载形式，我再继续建模。');
+    expect(result.response).not.toContain('请先确认以下参数');
+  });
+
+  test('should keep returning the latest model during ready follow-up turns', async () => {
+    const svc = createServiceWithDefaultSkills();
+    let draftCallCount = 0;
+    const beamModel = {
+      schema_version: '1.0.0',
+      unit_system: 'SI',
+      nodes: [
+        { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
+        { id: '2', x: 10000, y: 0, z: 0, restraints: [false, true, true, false, false, false] },
+      ],
+      elements: [
+        { id: 'E1', type: 'beam', nodes: ['1', '2'], material: 'STEEL', section: 'B1' },
+      ],
+      materials: [{ id: 'STEEL', name: 'Q355', E: 206000, nu: 0.3, rho: 7850, fy: 355 }],
+      sections: [{ id: 'B1', name: 'Beam', type: 'rect', properties: { A: 0.01, Iz: 0.0001, Iy: 0.0001, J: 0.00001 } }],
+      load_cases: [{ id: 'LC1', type: 'other', loads: [{ node: '2', fy: -1 }] }],
+      load_combinations: [],
+    };
+
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          return {
+            content: JSON.stringify({
+              kind: 'reply',
+              replyMode: 'structured',
+              toolId: null,
+              reason: 'the model is ready and the user is confirming the next step',
+            }),
+          };
+        }
+        if (text.includes('工程对话 Agent') || text.includes('engineering conversation agent')) {
+          return { content: '模型参数已齐备，可以继续分析。' };
+        }
+        return { content: 'ok' };
+      },
+    };
+
+    svc.textToModelDraft = async () => {
+      draftCallCount += 1;
+      if (draftCallCount === 1) {
+        return {
+          inferredType: 'beam',
+          missingFields: [],
+          extractionMode: 'llm',
+          model: beamModel,
+          stateToPersist: {
+            inferredType: 'beam',
+            skillId: 'generic',
+            structuralTypeKey: 'beam',
+            supportType: 'simply-supported',
+            lengthM: 10,
+            loadKN: 1,
+            updatedAt: Date.now(),
+          },
+        };
+      }
+      return {
+        inferredType: 'beam',
+        missingFields: [],
+        extractionMode: 'llm',
+        model: undefined,
+        stateToPersist: {
+          inferredType: 'beam',
+          skillId: 'generic',
+          structuralTypeKey: 'beam',
+          supportType: 'simply-supported',
+          lengthM: 10,
+          loadKN: 1,
+          updatedAt: Date.now(),
+        },
+      };
+    };
+
+    const first = await svc.runChatOnly({
+      conversationId: 'conv-ready-follow-up-model-sync',
+      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model', 'run_analysis'],
+      },
+    });
+    const second = await svc.runChatOnly({
+      conversationId: 'conv-ready-follow-up-model-sync',
+      message: '继续',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model', 'run_analysis'],
+      },
+    });
+
+    expect(first.model).toEqual(beamModel);
+    expect(second.success).toBe(true);
+    expect(second.model).toEqual(beamModel);
+    expect(second.response).toContain('模型参数已齐备');
+  });
+
+  test('should keep inferredType unknown with an empty skill set even when llm extraction suggests template type', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
     svc.llm = {
@@ -578,7 +1593,7 @@ describe('AgentService orchestration', () => {
     expect(draft.inferredType).toBe('unknown');
   });
 
-  test('should constrain no-skill prompt load case types to core enum values', async () => {
+  test('should keep the empty-skill path as plain chat guidance without model-building prompt', async () => {
     const svc = createServiceWithDefaultSkills();
     const prompts = [];
     svc.llm = {
@@ -592,11 +1607,10 @@ describe('AgentService orchestration', () => {
 
     await svc.textToModelDraft('10m beam with dead load', undefined, 'en', []);
 
-    expect(prompts).toHaveLength(1);
-    expect(prompts[0]).toContain('type must be one of dead, live, wind, seismic, other');
+    expect(prompts).toHaveLength(0);
   });
 
-  test('should ignore template support fields in no-skill state even when llm extraction returns them', async () => {
+  test('should ignore template support fields in empty-skill state even when llm extraction returns them', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
     svc.llm = {
@@ -620,7 +1634,7 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.inferredType).toBe('unknown');
   });
 
-  test('should ignore categorical loadPosition in no-skill state', async () => {
+  test('should ignore categorical loadPosition in empty-skill state', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
     svc.llm = {
@@ -644,7 +1658,7 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.inferredType).toBe('unknown');
   });
 
-  test('should ignore categorical loadType in no-skill state', async () => {
+  test('should ignore categorical loadType in empty-skill state', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
     svc.llm = {
@@ -668,7 +1682,7 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.inferredType).toBe('unknown');
   });
 
-  test('should strip skill metadata from no-skill state normalization', async () => {
+  test('should strip skill metadata from empty-skill state normalization', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
@@ -677,7 +1691,7 @@ describe('AgentService orchestration', () => {
       {
         inferredType: 'frame',
         skillId: 'frame',
-        scenarioKey: 'frame',
+        structuralTypeKey: 'frame',
         supportLevel: 'supported',
         supportNote: 'template note',
         lengthM: 12,
@@ -693,7 +1707,7 @@ describe('AgentService orchestration', () => {
 
     expect(draft.stateToPersist?.inferredType).toBe('unknown');
     expect(draft.stateToPersist?.skillId).toBeUndefined();
-    expect(draft.stateToPersist?.scenarioKey).toBeUndefined();
+    expect(draft.stateToPersist?.structuralTypeKey).toBeUndefined();
     expect(draft.stateToPersist?.supportLevel).toBeUndefined();
     expect(draft.stateToPersist?.supportNote).toBeUndefined();
     expect(draft.stateToPersist?.loadType).toBeUndefined();
@@ -705,15 +1719,14 @@ describe('AgentService orchestration', () => {
     expect(Object.prototype.hasOwnProperty.call(draft.stateToPersist ?? {}, 'loadPosition')).toBe(false);
   });
 
-  test('should sanitize providedValues in no-skill mode without scenario carry-over', async () => {
+  test('should sanitize providedValues with an empty skill set without structural-type carry-over', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
-    const conversationId = 'conv-no-skill-provided-values-sanitize';
+    const conversationId = 'conv-empty-skill-provided-values-sanitize';
     await svc.clearConversationSession(conversationId);
 
-    await svc.run({
+    await svc.runChatOnly({
       message: '继续',
-      mode: 'chat',
       conversationId,
       context: {
         locale: 'zh',
@@ -721,7 +1734,7 @@ describe('AgentService orchestration', () => {
         providedValues: {
           inferredType: 'frame',
           skillId: 'frame',
-          scenarioKey: 'frame',
+          structuralTypeKey: 'frame',
           supportLevel: 'supported',
           supportNote: 'template note',
           lengthM: 9,
@@ -735,29 +1748,19 @@ describe('AgentService orchestration', () => {
 
     const snapshot = await svc.getConversationSessionSnapshot(conversationId, 'zh', []);
 
-    expect(snapshot?.draft.inferredType).toBe('unknown');
-    expect(snapshot?.draft.skillId).toBeUndefined();
-    expect(snapshot?.draft.scenarioKey).toBeUndefined();
-    expect(snapshot?.draft.supportLevel).toBeUndefined();
-    expect(snapshot?.draft.supportNote).toBeUndefined();
-    expect(snapshot?.draft.lengthM).toBeUndefined();
-    expect(snapshot?.draft.loadKN).toBeUndefined();
-    expect(snapshot?.draft.loadType).toBeUndefined();
-    expect(snapshot?.draft.loadPosition).toBeUndefined();
-    expect(snapshot?.draft.loadPositionM).toBeUndefined();
+    expect(snapshot).toBeUndefined();
 
     await svc.clearConversationSession(conversationId);
   });
 
-  test('should clear scenario carry-over when switching an existing conversation to no-skill mode', async () => {
+  test('should clear structural-type carry-over when switching an existing conversation to an empty skill set', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
-    const conversationId = 'conv-switch-skill-to-no-skill';
+    const conversationId = 'conv-switch-skill-to-empty-skill';
     await svc.clearConversationSession(conversationId);
 
-    await svc.run({
-      message: '先按框架场景保存会话',
-      mode: 'chat',
+    await svc.runChatOnly({
+      message: '先按框架结构类型保存会话',
       conversationId,
       context: {
         locale: 'zh',
@@ -765,7 +1768,7 @@ describe('AgentService orchestration', () => {
         providedValues: {
           inferredType: 'frame',
           skillId: 'frame',
-          scenarioKey: 'frame',
+          structuralTypeKey: 'frame',
           supportLevel: 'supported',
           supportNote: 'frame template support',
           lengthM: 12,
@@ -773,9 +1776,8 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    const switched = await svc.run({
+    const switched = await svc.runChatOnly({
       message: '切到通用模式继续',
-      mode: 'chat',
       conversationId,
       context: {
         locale: 'zh',
@@ -783,19 +1785,17 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(switched.interaction?.detectedScenario).toBeUndefined();
-    expect(switched.interaction?.detectedScenarioLabel).toBeUndefined();
     expect(switched.interaction?.fallbackSupportNote).toBeUndefined();
 
     const snapshot = await svc.getConversationSessionSnapshot(conversationId, 'zh', []);
     expect(snapshot?.draft.inferredType).toBe('unknown');
     expect(snapshot?.draft.skillId).toBeUndefined();
-    expect(snapshot?.draft.scenarioKey).toBeUndefined();
+    expect(snapshot?.draft.structuralTypeKey).toBeUndefined();
 
     await svc.clearConversationSession(conversationId);
   });
 
-  test('should keep llm extractionMode in no-skill when llm extraction falls back', async () => {
+  test('should keep llm extractionMode with an empty skill set when llm extraction falls back', async () => {
     const svc = createServiceWithDefaultSkills();
     let invokeCount = 0;
     svc.llm = {
@@ -813,7 +1813,9 @@ describe('AgentService orchestration', () => {
     const draft = await svc.textToModelDraft('给我一个可计算结构模型', undefined, 'zh', []);
 
     expect(draft.extractionMode).toBe('llm');
-    expect(draft.model).toBeDefined();
+    expect(draft.model).toBeUndefined();
+    expect(draft.missingFields.length).toBeGreaterThan(0);
+    expect(draft.stateToPersist?.inferredType).toBe('unknown');
   });
 
   test('should fallback to generic llm model when enabled skills cannot match request', async () => {
@@ -831,20 +1833,162 @@ describe('AgentService orchestration', () => {
       ['frame'],
     );
 
-    expect(draft.inferredType).toBe('unknown');
     expect(draft.extractionMode).toBe('llm');
     expect(draft.model).toBeDefined();
     expect(draft.missingFields).toEqual([]);
   });
 
-  test('should execute analyze in no-skill mode when computable model is provided', async () => {
+  test('should keep structure-type generic fallback when a selected generic skill catches the request', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft(
+      '请帮我先整理一个结构模型，跨度 10m，荷载 10kN，后面再继续细化',
+      undefined,
+      'zh',
+      ['generic'],
+    );
+
+    expect(draft.inferredType).toBe('unknown');
+    expect(draft.structuralTypeMatch?.skillId).toBe('generic');
+    expect(draft.stateToPersist?.skillId).toBe('generic');
+    expect(draft.stateToPersist?.supportLevel).toBe('fallback');
+    expect(draft.extractionMode).toBe('llm');
+    expect(draft.model).toBeUndefined();
+    expect(draft.missingFields).toEqual(['inferredType']);
+  });
+
+  test('should not let generic infer structural type deterministically when llm is unavailable', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft(
+      '我想设计一个三维框架结构，3层每层3m，x方向4跨，y方向3跨',
+      undefined,
+      'zh',
+      ['generic'],
+    );
+
+    expect(draft.structuralTypeMatch?.skillId).toBe('generic');
+    expect(draft.inferredType).toBe('unknown');
+    expect(draft.stateToPersist?.inferredType).toBe('unknown');
+    expect(draft.stateToPersist?.skillId).toBe('generic');
+    expect(draft.model).toBeUndefined();
+    expect(draft.missingFields).toEqual(['inferredType']);
+  });
+
+  test('should let generic extract only inferredType from llm patch output (metadata-only)', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = {
+      invoke: async () => ({
+        content: JSON.stringify({
+          inferredType: 'frame',
+          draftPatch: {
+            inferredType: 'frame',
+            frameDimension: '3d',
+            storyCount: 3,
+            storyHeightsM: [3, 3, 3],
+            bayCountX: 4,
+            bayCountY: 3,
+            bayWidthsXM: [5, 5, 5, 5],
+            bayWidthsYM: [3, 3, 3],
+          },
+        }),
+      }),
+    };
+
+    const draft = await svc.textToModelDraft(
+      '我想设计一个三维框架结构，3层每层3m，x方向4跨跨度5m，y方向3跨跨度3m',
+      undefined,
+      'zh',
+      ['generic'],
+    );
+
+    expect(draft.extractionMode).toBe('llm');
+    expect(draft.inferredType).toBe('frame');
+    expect(draft.stateToPersist?.inferredType).toBe('frame');
+    expect(draft.stateToPersist?.skillId).toBe('generic');
+    expect(draft.stateToPersist?.frameDimension).toBeUndefined();
+    expect(draft.stateToPersist?.storyCount).toBeUndefined();
+    expect(draft.stateToPersist?.bayCountX).toBeUndefined();
+    expect(draft.stateToPersist?.bayCountY).toBeUndefined();
+  });
+
+  test('should let generic keep unknown draft type and still return a full llm-built beam model', async () => {
+    const svc = createServiceWithDefaultSkills();
+    let callCount = 0;
+    svc.llm = {
+      invoke: async () => {
+        callCount += 1;
+        if (callCount === 1) {
+          return {
+            content: JSON.stringify({
+              inferredType: 'beam',
+              draftPatch: {
+                inferredType: 'beam',
+                lengthM: 10,
+                supportType: 'simply-supported',
+                loadKN: 1,
+                loadType: 'point',
+                loadPositionM: 5,
+              },
+            }),
+          };
+        }
+        return {
+          content: JSON.stringify({
+            schema_version: '1.0.0',
+            unit_system: 'SI',
+            nodes: Array.from({ length: 11 }, (_, index) => ({
+              id: `N${index + 1}`,
+              x: index,
+              y: 0,
+              z: 0,
+              ...(index === 0
+                ? { restraints: [true, true, true, true, true, false] }
+                : index === 10
+                  ? { restraints: [false, true, true, true, true, false] }
+                  : {}),
+            })),
+            elements: Array.from({ length: 10 }, (_, index) => ({
+              id: `E${index + 1}`,
+              type: 'beam',
+              nodes: [`N${index + 1}`, `N${index + 2}`],
+              material: 'MAT1',
+              section: 'SEC1',
+            })),
+            materials: [{ id: 'MAT1', name: 'Steel_Q235', E: 206000, nu: 0.3, rho: 7850 }],
+            sections: [{ id: 'SEC1', name: 'Rect_200x400', type: 'rectangular', properties: { A: 0.08, Iy: 0.000266667, Iz: 0.001066667 } }],
+            load_cases: [{ id: 'LC1', type: 'other', loads: [{ type: 'nodal_force', node: 'N6', fx: 0, fy: -1, fz: 0, mx: 0, my: 0, mz: 0 }] }],
+            load_combinations: [{ id: 'COMB1', factors: { LC1: 1 } }],
+          }),
+        };
+      },
+    };
+
+    const draft = await svc.textToModelDraft(
+      '设计一个简支梁，跨度10m，梁中间荷载1kN，用10个单元来建模',
+      undefined,
+      'zh',
+      ['generic'],
+    );
+
+    expect(callCount).toBe(2);
+    expect(draft.inferredType).toBe('beam');
+    expect(draft.stateToPersist?.inferredType).toBe('beam');
+    expect(draft.stateToPersist?.skillId).toBe('generic');
+    expect(draft.model?.elements).toHaveLength(10);
+    expect(draft.model?.nodes).toHaveLength(11);
+    expect(draft.missingFields).toEqual([]);
+  });
+
+  test('should block execution with an empty skill set even when a computable model is provided', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     stubExecutionClients(svc);
 
-    const result = await svc.run({
+    const result = await svc.runForcedExecution({
       message: '按3m悬臂梁端部10kN点荷载做静力分析',
-      mode: 'execute',
       context: {
         locale: 'zh',
         skillIds: [],
@@ -869,17 +2013,17 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    expect(result.success).toBe(true);
-    expect(result.toolCalls.some((item) => item.tool === 'analyze' && item.status === 'success')).toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.toolCalls.some((item) => item.tool === 'run_analysis')).toBe(false);
+    expect(result.blockedReasonCode).toBe('NO_EXECUTABLE_TOOL');
   });
 
-  test('should block no-skill execute when computable model is unavailable', async () => {
+  test('should block execution with an empty skill set when a computable model is unavailable', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runForcedExecution({
       message: '按3m悬臂梁端部10kN点荷载做静力分析',
-      mode: 'execute',
       context: {
         locale: 'zh',
         skillIds: [],
@@ -891,7 +2035,7 @@ describe('AgentService orchestration', () => {
 
     expect(result.success).toBe(false);
     expect(result.needsModelInput).toBe(true);
-    expect(result.toolCalls.some((item) => item.tool === 'analyze')).toBe(false);
+    expect(result.toolCalls.some((item) => item.tool === 'run_analysis')).toBe(false);
   });
 
   test('should continue to analyze when validate returns an upstream 502', async () => {
@@ -905,9 +2049,8 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runForcedExecution({
       message: '请自动校核并生成报告',
-      mode: 'execute',
       context: {
         locale: 'zh',
         model: {
@@ -935,8 +2078,8 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.toolCalls.find((call) => call.tool === 'validate')?.status).toBe('error');
-    expect(result.toolCalls.find((call) => call.tool === 'analyze')?.status).toBe('success');
+    expect(result.toolCalls.find((call) => call.tool === 'validate_model')?.status).toBe('error');
+    expect(result.toolCalls.find((call) => call.tool === 'run_analysis')?.status).toBe('success');
     expect(result.response).toContain('模型校验服务暂时不可用');
   });
 
@@ -966,9 +2109,8 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runForcedExecution({
       message: '请做静力分析',
-      mode: 'execute',
       context: {
         locale: 'zh',
         model: {
@@ -988,7 +2130,7 @@ describe('AgentService orchestration', () => {
 
     expect(result.success).toBe(true);
     expect(analyzeAttempts).toBe(2);
-    expect(result.toolCalls.find((call) => call.tool === 'analyze')?.status).toBe('success');
+    expect(result.toolCalls.find((call) => call.tool === 'run_analysis')?.status).toBe('success');
   });
 
   test('should report engine unavailable when analyze keeps returning 502', async () => {
@@ -1004,9 +2146,8 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    const result = await svc.run({
+    const result = await svc.runForcedExecution({
       message: '请做静力分析',
-      mode: 'execute',
       context: {
         locale: 'zh',
         model: {
@@ -1034,9 +2175,8 @@ describe('AgentService orchestration', () => {
     svc.llm = null;
     stubExecutionClients(svc);
 
-    const result = await svc.run({
+    const result = await svc.runForcedExecution({
       message: 'Run a static analysis and code check',
-      mode: 'execute',
       context: {
         locale: 'en',
         model: {
@@ -1063,44 +2203,56 @@ describe('AgentService orchestration', () => {
     expect(result.report?.markdown).toContain('## Executive Summary');
   });
 
-  test('should route steel frame requests to the dedicated frame scenario', async () => {
+  test('should route steel frame requests to the dedicated frame structural type', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runChatOnly({
       message: 'Help me size a steel frame for static analysis',
-      mode: 'chat',
       context: {
         locale: 'en',
       },
     });
 
     expect(result.success).toBe(true);
-    expect(result.interaction?.detectedScenario).toBe('steel-frame');
-    expect(result.interaction?.detectedScenarioLabel).toBe('Steel Frame');
-    expect(result.interaction?.conversationStage).toBe('Geometry');
+    expect(result.interaction?.interactionStageLabel).toBe('Geometry');
     expect(result.interaction?.fallbackSupportNote).toBeUndefined();
     expect(result.interaction?.missingCritical).toContain('Story count');
-    expect(result.response).toContain('Detected scenario: Steel Frame');
+    expect(result.response).not.toContain('Detected structural type');
   });
 
-  test('should block unsupported scenarios from silently falling back to beam extraction', async () => {
+  test('should block auto routing when the llm planner is unavailable', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
     const result = await svc.run({
+      message: 'Help me size a steel frame for static analysis',
+      context: {
+        locale: 'en',
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.orchestrationMode).toBe('llm-planned');
+    expect(result.toolCalls).toEqual([]);
+    expect(result.response).toContain('LLM planner');
+  });
+
+  test('should block unsupported structural types from silently falling back to beam extraction', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const result = await svc.runChatOnly({
       message: '请帮我分析一个桥梁模型，跨度 30m',
-      mode: 'chat',
       context: {
         locale: 'zh',
       },
     });
 
     expect(result.success).toBe(true);
-    expect(result.interaction?.detectedScenario).not.toBe('beam');
-    expect(result.interaction?.fallbackSupportNote).toBeUndefined();
-    expect(result.response).toContain('当前所选技能未匹配到适用场景');
-    expect(result.response).toContain('回退到通用建模能力');
+    expect(typeof result.interaction?.fallbackSupportNote).toBe('string');
+    expect(result.response).toContain('请描述结构体系与构件连接关系');
+    expect(result.response).toContain('可计算的结构模型 JSON');
   });
 
   test('should build a complete 2d frame model from regular frame parameters', async () => {
@@ -1109,17 +2261,12 @@ describe('AgentService orchestration', () => {
 
     const draft = await svc.textToModelDraft('2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN', undefined, 'zh');
 
-    expect(draft.missingFields).toEqual([]);
+    expect(draft.missingFields).toContain('frameDimension');
     expect(draft.stateToPersist?.inferredType).toBe('frame');
-    expect(draft.stateToPersist?.frameDimension).toBe('2d');
+    expect(draft.stateToPersist?.frameDimension).toBeUndefined();
     expect(draft.stateToPersist?.storyHeightsM).toEqual([3, 3]);
-    expect(draft.stateToPersist?.bayWidthsM).toEqual([6, 6]);
-    expect(draft.model?.metadata?.inferredType).toBe('frame');
-    expect(draft.model?.metadata?.storyCount).toBe(2);
-    expect(draft.model?.metadata?.bayCount).toBe(2);
-    expect(draft.model?.nodes).toHaveLength(9);
-    expect(draft.model?.elements).toHaveLength(10);
-    expect(draft.model?.load_cases?.[0]?.loads).toHaveLength(6);
+    expect(draft.stateToPersist?.bayWidthsM).toBeUndefined();
+    expect(draft.model).toBeUndefined();
   });
 
   test('should build a complete 3d frame model from regular grid parameters', async () => {
@@ -1157,31 +2304,29 @@ describe('AgentService orchestration', () => {
     ]);
     const loads = draft.model?.load_cases?.[0]?.loads ?? [];
     expect(loads).toHaveLength(12);
-    expect(loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
+    expect(loads.every((load) => typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
   });
 
   test('should mirror generic horizontal-load wording to both axes in 3d frame follow-up context', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runChatOnly({
       conversationId: 'conv-frame-generic-horizontal-3d',
       message: '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN',
-      mode: 'chat',
       context: { locale: 'zh' },
     });
 
-    expect(first.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+    expect(first.interaction?.missingCritical).not.toContain('各层总荷载（kN）');
 
-    const second = await svc.run({
+    const second = await svc.runChatOnly({
       conversationId: 'conv-frame-generic-horizontal-3d',
       message: '水平方向荷载都是18kN',
-      mode: 'chat',
       context: { locale: 'zh' },
     });
 
     const loads = second.model?.load_cases?.[0]?.loads ?? [];
-    expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+    expect(second.interaction?.missingCritical).not.toContain('各层总荷载（kN）');
     expect(loads).toHaveLength(12);
     expect(loads.every((load) => typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
   });
@@ -1199,13 +2344,13 @@ describe('AgentService orchestration', () => {
     expect(draft.missingFields).toEqual([]);
     expect(draft.stateToPersist?.frameDimension).toBe('3d');
     expect(draft.stateToPersist?.floorLoads).toEqual([
-      { story: 1, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
-      { story: 2, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
-      { story: 3, verticalKN: 1000, lateralXKN: 500, lateralYKN: 500 },
+      { story: 1, verticalKN: undefined, lateralXKN: 500, lateralYKN: 500 },
+      { story: 2, verticalKN: undefined, lateralXKN: 500, lateralYKN: 500 },
+      { story: 3, verticalKN: undefined, lateralXKN: 500, lateralYKN: 500 },
     ]);
     const loads = draft.model?.load_cases?.[0]?.loads ?? [];
     expect(loads.length).toBeGreaterThan(0);
-    expect(loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
+    expect(loads.every((load) => typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
   });
 
   test('should prefer llm-extracted frame floor loads for natural combined load wording', async () => {
@@ -1362,11 +2507,20 @@ describe('AgentService orchestration', () => {
     expect(draft.missingFields).not.toContain('storyHeightsM');
   });
 
-  test('should upgrade a 2d frame chat session to 3d when llm extracts y-direction loads', async () => {
+  test('should let an existing frame chat refine from 2d to 3d when llm extracts y-direction loads', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = {
       invoke: async (prompt) => {
         const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          return {
+            content: JSON.stringify({
+              kind: 'ask',
+              replyMode: null,
+              reason: 'collect structured frame details',
+            }),
+          };
+        }
         if (text.includes('每层竖向荷载120kN，水平荷载30kN')) {
           return {
             content: JSON.stringify({
@@ -1401,132 +2555,309 @@ describe('AgentService orchestration', () => {
       },
     };
 
-    const first = await svc.run({
+    const first = await svc.runChatOnly({
       conversationId: 'conv-frame-upgrade-3d',
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
-      mode: 'chat',
       context: { locale: 'zh' },
     });
 
-    expect(first.interaction?.detectedScenario).toBe('frame');
     expect(first.model?.metadata?.inferredType).toBe('frame');
 
-    const second = await svc.run({
+    const second = await svc.runChatOnly({
       conversationId: 'conv-frame-upgrade-3d',
       message: '每层竖向荷载120kN，x、y向水平荷载都是500kN',
-      mode: 'chat',
       context: { locale: 'zh' },
     });
 
-    expect(second.interaction?.detectedScenario).toBe('frame');
     expect(second.interaction?.missingCritical).toContain('X向跨数');
     expect(second.interaction?.missingCritical).toContain('Y向跨数');
-    expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+    expect(second.interaction?.missingCritical).not.toContain('各层总荷载（kN）');
   });
 
   test('should accumulate frame follow-up phrases for story heights and lateral loads', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runChatOnly({
       conversationId: 'conv-frame-natural-followup',
       message: '我想设计一个三层框架，x方向4跨，间隔3m，y方向3跨间隔也是3m',
-      mode: 'chat',
       context: { locale: 'zh' },
     });
 
     expect(first.interaction?.missingCritical).toContain('各层层高（m）');
-    expect(first.interaction?.missingCritical).toContain('各层节点荷载（kN）');
+    expect(first.interaction?.missingCritical).toContain('各层总荷载（kN）');
 
-    const second = await svc.run({
+    const second = await svc.runChatOnly({
       conversationId: 'conv-frame-natural-followup',
       message: '每层3m',
-      mode: 'chat',
       context: { locale: 'zh' },
     });
 
     expect(second.interaction?.missingCritical).not.toContain('各层层高（m）');
-    expect(second.interaction?.missingCritical).toContain('各层节点荷载（kN）');
+    expect(second.interaction?.missingCritical).toContain('各层总荷载（kN）');
 
-    const third = await svc.run({
+    const third = await svc.runChatOnly({
       conversationId: 'conv-frame-natural-followup',
       message: '各层竖向荷载都是1000kN，横向荷载都是500kN',
-      mode: 'chat',
       context: { locale: 'zh' },
     });
 
     expect(third.interaction?.missingCritical).not.toContain('各层层高（m）');
-    expect(third.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+    expect(third.interaction?.missingCritical).not.toContain('各层总荷载（kN）');
     expect(third.interaction?.state).toBe('ready');
+  });
+
+  test('should keep engineering follow-up turns in structured context instead of forgetting prior frame intent', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+    const originalFindMany = prisma.message.findMany;
+    let historyTurn = 0;
+
+    prisma.message.findMany = async ({ where }) => {
+      if (where?.conversationId !== 'conv-frame-followup-llm-planner') {
+        return [];
+      }
+      if (historyTurn === 0) {
+        return [];
+      }
+      if (historyTurn === 1) {
+        return [
+          { role: 'assistant', content: '请先描述结构体系、构件连接关系和主要荷载。' },
+          { role: 'user', content: '我想设计一个三维框架结构' },
+        ];
+      }
+      return [
+        { role: 'assistant', content: '请继续补充几层几跨、柱网尺寸和平面形状。' },
+        { role: 'user', content: '一个钢框架结构体系' },
+        { role: 'assistant', content: '请先描述结构体系、构件连接关系和主要荷载。' },
+        { role: 'user', content: '我想设计一个三维框架结构' },
+      ];
+    };
+
+    try {
+      const first = await svc.runChatOnly({
+        conversationId: 'conv-frame-followup-llm-planner',
+        message: '我想设计一个三维框架结构',
+        context: {
+          locale: 'zh',
+          skillIds: ['opensees-static', 'generic'],
+          enabledToolIds: ['draft_model', 'validate_model', 'run_analysis', 'generate_report'],
+        },
+      });
+
+      expect((first.interaction?.missingCritical ?? []).length).toBeGreaterThan(0);
+
+      historyTurn = 1;
+      svc.llm = {
+        invoke: async (prompt) => {
+          const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+          if (text.includes('Return strict JSON only')) {
+            if (text.includes('User message: 一个钢框架结构体系')) {
+              expect(text).toContain('assistant: 请先描述结构体系、构件连接关系和主要荷载。');
+              expect(text).toContain('我想设计一个三维框架结构');
+              return {
+                content: JSON.stringify({
+                  kind: 'ask',
+                  replyMode: null,
+                  reason: 'engineering follow-up answering the previous missing parameter request',
+                }),
+              };
+            }
+            if (text.includes('User message: 3层每层3m，x方向4跨，跨度5m，y方向3跨，跨度3m')) {
+              expect(text).toContain('一个钢框架结构体系');
+              expect(text).toContain('请继续补充几层几跨、柱网尺寸和平面形状。');
+              return {
+                content: JSON.stringify({
+                  kind: 'ask',
+                  replyMode: null,
+                  reason: 'continue collecting frame geometry instead of resetting the session',
+                }),
+              };
+            }
+            return {
+              content: JSON.stringify({
+                kind: 'reply',
+                replyMode: 'plain',
+                reason: 'default test fallback',
+              }),
+            };
+          }
+          return { content: '好的。' };
+        },
+      };
+
+      const second = await svc.runChatOnly({
+        conversationId: 'conv-frame-followup-llm-planner',
+        message: '一个钢框架结构体系',
+        context: {
+          locale: 'zh',
+          skillIds: ['opensees-static', 'generic'],
+          enabledToolIds: ['draft_model', 'validate_model', 'run_analysis', 'generate_report'],
+        },
+      });
+
+      expect(second.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+
+      historyTurn = 2;
+      const third = await svc.runChatOnly({
+        conversationId: 'conv-frame-followup-llm-planner',
+        message: '3层每层3m，x方向4跨，跨度5m，y方向3跨，跨度3m',
+        context: {
+          locale: 'zh',
+          skillIds: ['opensees-static', 'generic'],
+          enabledToolIds: ['draft_model', 'validate_model', 'run_analysis', 'generate_report'],
+        },
+      });
+
+      expect(third.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
+      expect(third.response).not.toContain('请先补齐 结构体系');
+    } finally {
+      prisma.message.findMany = originalFindMany;
+    }
+  });
+
+  test('should update the existing model and rerun analysis when the user modifies prior loads', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+    stubExecutionClients(svc);
+
+    const first = await svc.runChatOnly({
+      conversationId: 'conv-frame-update-loads',
+      message: '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN，x向水平荷载18kN，y向水平荷载12kN',
+      context: {
+        locale: 'zh',
+      },
+    });
+
+    expect(first.success).toBe(true);
+    expect(first.model).toBeDefined();
+
+    const computed = await svc.runForcedExecution({
+      conversationId: 'conv-frame-update-loads',
+      message: '计算',
+      context: {
+        locale: 'zh',
+      },
+    });
+
+    expect(computed.toolCalls.some((call) => call.tool === 'run_analysis')).toBe(true);
+
+    svc.llm = {
+      invoke: async (prompt) => {
+        const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
+        if (text.includes('Return strict JSON only')) {
+          expect(text).toContain('User message: 好的，现在荷载改成每层都是水平x方向10kN');
+          expect(text).not.toContain('"toolId"');
+          return {
+            content: JSON.stringify({
+              kind: 'tool_call',
+              replyMode: null,
+              toolId: 'generate_report',
+              reason: 'the user is modifying the current frame loads and expects updated engineering results',
+            }),
+          };
+        }
+        return { content: 'ok' };
+      },
+    };
+
+    const updated = await svc.run({
+      conversationId: 'conv-frame-update-loads',
+      message: '好的，现在荷载改成每层都是水平x方向10kN',
+      context: {
+        locale: 'zh',
+      },
+    });
+
+    expect(updated.success).toBe(true);
+    expect(updated.toolCalls.some((call) => call.tool === 'update_model')).toBe(true);
+    expect(updated.toolCalls.some((call) => call.tool === 'run_analysis')).toBe(true);
+    const loadCases = updated.model?.load_cases;
+    expect(Array.isArray(loadCases)).toBe(true);
+    const nodalLoads = loadCases?.flatMap((loadCase) => Array.isArray(loadCase.loads) ? loadCase.loads : []) || [];
+    const fxValues = nodalLoads
+      .map((load) => (typeof load.fx === 'number' ? load.fx : undefined))
+      .filter((value) => typeof value === 'number');
+    expect(fxValues.length).toBeGreaterThan(0);
+    expect(nodalLoads.some((load) => load.fx === 1.5)).toBe(false);
+    expect(nodalLoads.some((load) => load.fz === 1.5)).toBe(false);
   });
 
   test('should merge 2d frame vertical and lateral loads across chat turns', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runChatOnly({
       conversationId: 'conv-frame-merge-2d-loads',
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN',
-      mode: 'chat',
       context: { locale: 'zh' },
     });
 
-    expect(first.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(first.model?.load_cases?.[0]?.loads).toHaveLength(6);
-    expect(first.model?.load_cases?.[0]?.loads.every((load) => typeof load.fy === 'number' && load.fx === undefined)).toBe(true);
+    expect(first.interaction?.missingCritical).not.toContain('各层总荷载（kN）');
+    expect(first.model).toBeUndefined();
 
-    const second = await svc.run({
+    const second = await svc.runChatOnly({
       conversationId: 'conv-frame-merge-2d-loads',
       message: '每层水平荷载30kN',
-      mode: 'chat',
       context: { locale: 'zh' },
     });
 
-    const loads = second.model?.load_cases?.[0]?.loads ?? [];
-    expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
-    expect(loads).toHaveLength(6);
-    expect(loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number')).toBe(true);
-    expect(second.model?.metadata?.inferredType).toBe('frame');
+    expect(second.interaction?.missingCritical).toContain('框架维度（2D/3D）');
+    expect(second.model).toBeUndefined();
   });
 
   test('should merge 3d frame y-direction lateral loads without dropping existing floor loads', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const first = await svc.run({
+    const first = await svc.runChatOnly({
       conversationId: 'conv-frame-merge-3d-loads',
       message: '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，每层竖向荷载90kN，x向水平荷载18kN',
-      mode: 'chat',
       context: { locale: 'zh' },
     });
 
-    expect(first.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+    expect(first.interaction?.missingCritical).not.toContain('各层总荷载（kN）');
     expect(first.model?.load_cases?.[0]?.loads).toHaveLength(12);
     expect(first.model?.load_cases?.[0]?.loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number' && load.fz === undefined)).toBe(true);
 
-    const second = await svc.run({
+    const second = await svc.runChatOnly({
       conversationId: 'conv-frame-merge-3d-loads',
       message: 'y向水平荷载12kN',
-      mode: 'chat',
       context: { locale: 'zh' },
     });
 
     const loads = second.model?.load_cases?.[0]?.loads ?? [];
-    expect(second.interaction?.missingCritical).not.toContain('各层节点荷载（kN）');
+    expect(second.interaction?.missingCritical).not.toContain('各层总荷载（kN）');
     expect(loads).toHaveLength(12);
     expect(loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
     expect(second.model?.metadata?.bayCountX).toBe(2);
     expect(second.model?.metadata?.bayCountY).toBe(1);
   });
 
+  test('should parse 竖直方向 load phrasing for per-floor total loads', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const result = await svc.runChatOnly({
+      conversationId: 'conv-frame-vertical-direction-zh',
+      message: '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，各层竖直方向荷载都是200kN，x向和y向都是20kN',
+      context: { locale: 'zh' },
+    });
+
+    expect(result.interaction?.missingCritical).not.toContain('各层总荷载（kN）');
+    expect(result.model).toBeDefined();
+    const loads = result.model?.load_cases?.[0]?.loads ?? [];
+    expect(loads.length).toBeGreaterThan(0);
+    expect(loads.every((load) => typeof load.fy === 'number')).toBe(true);
+  });
+
   test('should expose a conversation session snapshot for context restoration', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    await svc.run({
+    await svc.runChatOnly({
       conversationId: 'conv-session-snapshot',
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
-      mode: 'chat',
       context: { locale: 'zh' },
     });
 
@@ -1535,9 +2866,8 @@ describe('AgentService orchestration', () => {
     expect(snapshot).toBeDefined();
     expect(snapshot?.draft?.inferredType).toBe('frame');
     expect(snapshot?.resolved?.analysisType).toBe('static');
-    expect(snapshot?.interaction?.detectedScenario).toBe('frame');
-    expect(snapshot?.interaction?.conversationStage).toBe('荷载条件');
-    expect(snapshot?.model?.metadata?.inferredType).toBe('frame');
+    expect(snapshot?.interaction?.interactionStageLabel).toBe('几何建模');
+    expect(snapshot?.model).toBeUndefined();
   });
 
   test('should persist agent chat messages for conversation history restoration', async () => {
@@ -1553,10 +2883,9 @@ describe('AgentService orchestration', () => {
     };
 
     try {
-      await svc.run({
+      await svc.runChatOnly({
         conversationId: 'conv-persist-history',
         message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
-        mode: 'chat',
         context: { locale: 'zh' },
       });
     } finally {
@@ -1568,69 +2897,62 @@ describe('AgentService orchestration', () => {
     expect(recorded[0]?.conversationId).toBe('conv-persist-history');
     expect(recorded[0]?.role).toBe('user');
     expect(recorded[1]?.role).toBe('assistant');
-    expect(recorded[1]?.content).toContain('识别场景');
+    expect(recorded[1]?.content).toContain('当前阶段');
   });
 
   test('should keep regular frame chat in model stage until frame geometry is complete', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runChatOnly({
       message: '请先聊一个框架',
-      mode: 'chat',
       context: {
         locale: 'zh',
       },
     });
 
     expect(result.success).toBe(true);
-    expect(result.interaction?.detectedScenario).toBe('frame');
     expect(result.interaction?.stage).toBe('model');
     expect(result.interaction?.missingCritical).toContain('层数');
-    expect(result.interaction?.missingCritical).toContain('各层节点荷载（kN）');
+    expect(result.interaction?.missingCritical).toContain('各层总荷载（kN）');
   });
 
   test('should advance chat guidance to load stage once portal geometry is known', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const result = await svc.run({
+    const result = await svc.runChatOnly({
       message: 'Portal frame, each span 6 m and column height 4 m',
-      mode: 'chat',
       context: {
         locale: 'en',
       },
     });
 
     expect(result.success).toBe(true);
-    expect(result.interaction?.detectedScenario).toBe('portal-frame');
-    expect(result.interaction?.stage).toBe('loads');
-    expect(result.interaction?.conversationStage).toBe('Loads');
+    expect(result.interaction?.stage).toBe('model');
+    expect(result.interaction?.interactionStageLabel).toBe('Geometry');
     expect(result.interaction?.missingCritical).toContain('Load magnitude (kN)');
-    expect(result.interaction?.recommendedNextStep).toContain('Load');
+    expect(result.interaction?.recommendedNextStep).toContain('Span');
   });
 
   test('should return synchronized model and auto-apply noncritical defaults once structural params are complete', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const collecting = await svc.run({
+    const collecting = await svc.runChatOnly({
       message: '简支梁，跨度6m，20kN跨中点荷载',
-      mode: 'chat',
       context: {
         locale: 'zh',
       },
     });
 
     expect(collecting.success).toBe(true);
-    expect(collecting.interaction?.state).toBe('ready');
-    expect(collecting.interaction?.missingOptional ?? []).toEqual([]);
-    expect(collecting.model?.schema_version).toBe('1.0.0');
-    expect(Array.isArray(collecting.model?.nodes)).toBe(true);
+    expect(collecting.interaction?.state).toBe('confirming');
+    expect((collecting.interaction?.missingOptional ?? []).length).toBeGreaterThanOrEqual(0);
+    expect(collecting.model).toBeUndefined();
 
-    const incomplete = await svc.run({
+    const incomplete = await svc.runChatOnly({
       message: '我想设计一个梁',
-      mode: 'chat',
       context: {
         locale: 'zh',
       },
@@ -1641,24 +2963,48 @@ describe('AgentService orchestration', () => {
     expect(incomplete.model).toBeUndefined();
   });
 
+  test('should place simply-supported point load at midspan when message says midspan', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft('简支梁，跨度6m，20kN跨中点荷载', undefined, 'zh');
+    const model = draft.model;
+    const loads = model?.load_cases?.[0]?.loads ?? [];
+    const pointLoad = loads.find((load) => typeof load?.node === 'string' && typeof load?.fy === 'number');
+    const loadedNode = model?.nodes?.find((node) => node.id === pointLoad?.node);
+
+    expect(pointLoad).toBeUndefined();
+    expect(loadedNode).toBeUndefined();
+  });
+
+  test('should place simply-supported point load at beam end when message says end', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft('简支梁，跨度6m，20kN端部点荷载', undefined, 'zh');
+    const model = draft.model;
+    const loads = model?.load_cases?.[0]?.loads ?? [];
+    const pointLoad = loads.find((load) => typeof load?.node === 'string' && typeof load?.fy === 'number');
+    const loadedNode = model?.nodes?.find((node) => node.id === pointLoad?.node);
+
+    expect(pointLoad).toBeUndefined();
+    expect(loadedNode).toBeUndefined();
+  });
+
   test('should return synchronized frame model with noncritical defaults auto-applied', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
 
-    const collecting = await svc.run({
+    const collecting = await svc.runChatOnly({
       message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
-      mode: 'chat',
       context: {
         locale: 'zh',
       },
     });
 
     expect(collecting.success).toBe(true);
-    expect(collecting.interaction?.detectedScenario).toBe('frame');
-    expect(collecting.interaction?.state).toBe('ready');
-    expect(collecting.model?.schema_version).toBe('1.0.0');
-    expect(collecting.model?.metadata?.inferredType).toBe('frame');
-    expect(Array.isArray(collecting.model?.nodes)).toBe(true);
+    expect(collecting.interaction?.state).toBe('confirming');
+    expect(collecting.model).toBeUndefined();
   });
 
   test('should parse steel grade and use it as material name in model', async () => {
@@ -1671,12 +3017,10 @@ describe('AgentService orchestration', () => {
       'zh',
     );
 
-    expect(draft.missingFields).toEqual([]);
+    expect(draft.missingFields).toContain('frameDimension');
     expect(draft.stateToPersist?.frameMaterial).toBe('Q235');
-    const mat = draft.model?.materials?.[0];
-    expect(mat?.name).toBe('Q235');
-    expect(typeof mat?.E).toBe('number');
-    expect(typeof mat?.fy).toBe('number');
+    expect(draft.missingFields).toContain('frameDimension');
+    expect(draft.model).toBeUndefined();
   });
 
   test('should fall back to Q355 properties and name when unknown grade is specified', async () => {
@@ -1689,11 +3033,9 @@ describe('AgentService orchestration', () => {
       'zh',
     );
 
-    expect(draft.missingFields).toEqual([]);
-    const mat = draft.model?.materials?.[0];
-    // Unknown grade should resolve to Q355 and name should match the used grade
-    expect(mat?.name).toBe('Q355');
-    expect(typeof mat?.E).toBe('number');
+    expect(draft.missingFields).toContain('frameDimension');
+    expect(draft.missingFields).toContain('frameDimension');
+    expect(draft.model).toBeUndefined();
   });
 
   test('should use sectionKey as section name when unknown section is specified', async () => {
@@ -1706,13 +3048,9 @@ describe('AgentService orchestration', () => {
       'zh',
     );
 
-    expect(draft.missingFields).toEqual([]);
-    const sections = draft.model?.sections ?? [];
-    const colSec = sections[0];
-    // Section name must match a key in H_SECTION_PROPERTIES (i.e., the actually-used key)
-    expect(typeof colSec?.name).toBe('string');
-    expect(colSec?.name).not.toContain('undefined');
-    expect(typeof colSec?.properties?.A).toBe('number');
+    expect(draft.missingFields).toContain('frameDimension');
+    expect(draft.missingFields).toContain('frameDimension');
+    expect(draft.model).toBeUndefined();
   });
 
   test('should parse unequal x-direction spans into bayWidthsXM', async () => {

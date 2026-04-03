@@ -18,6 +18,7 @@ describe('structure-type provider registry', () => {
       'truss',
       'frame',
       'beam',
+      'generic',
     ]);
   });
 
@@ -76,6 +77,7 @@ describe('structure-type provider registry', () => {
       'truss',
       'frame',
       'beam',
+      'generic',
     ]);
   });
 

@@ -2,7 +2,7 @@
 
 ## 目标
 
-在干净环境（含 Windows）上验证安装、`sclaw` 与 Docker Compose 相关流程是否可用。
+在干净环境（含 Windows）上验证安装、`sclaw` / `sclaw_cn` 与 Docker Compose 相关流程是否可用。
 
 ---
 
@@ -69,7 +69,7 @@ node tests\runner.mjs smoke-docker
 
 1. 创建 Windows 11 VM 模板
 2. 安装 PowerShell 7 与 Node.js
-3. 在 VM 内执行与方案 1 相同的 `node tests/runner.mjs smoke-native` / `smoke-docker`，或使用下列示例在 VM 内直接演练 `sclaw docker-install`：
+3. 在 VM 内执行与方案 1 相同的 `node tests/runner.mjs smoke-native` / `smoke-docker`，或使用下列示例在 VM 内直接演练 `sclaw_cn docker-install`：
 
 ```powershell
 # test-vm.ps1（示例片段）
@@ -81,7 +81,7 @@ Checkpoint-VM -Name $VMName -SnapshotName "BeforeTest"
 # … 将仓库同步到 VM 后 …
 Invoke-Command -VMName $VMName -ScriptBlock {
   Set-Location C:\Test
-  node .\sclaw docker-install --non-interactive --llm-provider openai --llm-base-url https://api.openai.com/v1 --llm-api-key test-key --llm-model gpt-4.1 --skip-api-test
+  node .\sclaw_cn docker-install --non-interactive --llm-provider openai --llm-base-url https://api.openai.com/v1 --llm-api-key test-key --llm-model gpt-4.1 --skip-api-test
 }
 Restore-VMSnapshot -VMName $VMName -Name "BeforeTest"
 ```

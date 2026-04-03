@@ -9,6 +9,10 @@ const { spawn, spawnSync } = require("node:child_process");
 const DEFAULT_ANALYSIS_PYTHON_VERSION = "3.12";
 const DEFAULT_FRONTEND_PORT = "30000";
 const DEFAULT_BACKEND_PORT = "8000";
+const CN_DEFAULT_PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple";
+const CN_DEFAULT_NPM_REGISTRY = "https://registry.npmmirror.com";
+const CN_DEFAULT_DOCKER_REGISTRY_MIRROR = "docker.m.daocloud.io/";
+const CN_DEFAULT_APT_MIRROR = "mirrors.tuna.tsinghua.edu.cn";
 
 function isWindows() {
   return process.platform === "win32";
@@ -132,6 +136,7 @@ function resolvePaths(rootDir) {
     backendDir: path.join(rootDir, "backend"),
     frontendDir: path.join(rootDir, "frontend"),
     dockerComposeFile: path.join(rootDir, "docker-compose.yml"),
+    dockerComposeCnFile: path.join(rootDir, "docker-compose.cn.yml"),
     analysisRequirementsFile: path.join(
       rootDir,
       "backend",
@@ -164,17 +169,93 @@ function resolvePaths(rootDir) {
   };
 }
 
-function loadProjectEnvironment(rootDir, logger = () => {}) {
+function normalizeDockerRegistryMirror(rawValue) {
+  const trimmed = String(rawValue || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  let normalized = trimmed
+    .replace(/^https?:\/\//iu, "")
+    .replace(/^\/+/u, "")
+    .replace(/\s+/gu, "");
+
+  if (!normalized) {
+    throw new Error("DOCKER_REGISTRY_MIRROR is invalid after normalization.");
+  }
+
+  if (!normalized.endsWith("/")) {
+    normalized = `${normalized}/`;
+  }
+
+  return normalized;
+}
+
+function normalizeAptMirror(rawValue) {
+  const trimmed = String(rawValue || "").trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  const normalized = trimmed
+    .replace(/^https?:\/\//iu, "")
+    .replace(/^\/+/u, "")
+    .replace(/\/+$/u, "");
+
+  if (!normalized) {
+    throw new Error("APT_MIRROR is invalid after normalization.");
+  }
+
+  if (/\s/u.test(normalized) || /\//u.test(normalized)) {
+    throw new Error(
+      "APT_MIRROR must be host[:port] without scheme or path, e.g. mirrors.tuna.tsinghua.edu.cn",
+    );
+  }
+
+  return normalized;
+}
+
+function applyCnProfileDefaults(env, dotEnv) {
+  if (String(env.SCLAW_PROFILE || "").toLowerCase() !== "cn") {
+    return;
+  }
+
+  if (!String(dotEnv.PIP_INDEX_URL || "").trim() && !String(process.env.PIP_INDEX_URL || "").trim()) {
+    env.PIP_INDEX_URL = CN_DEFAULT_PIP_INDEX_URL;
+  }
+  if (!String(dotEnv.NPM_CONFIG_REGISTRY || "").trim() && !String(process.env.NPM_CONFIG_REGISTRY || "").trim()) {
+    env.NPM_CONFIG_REGISTRY = CN_DEFAULT_NPM_REGISTRY;
+  }
+  if (
+    !String(dotEnv.DOCKER_REGISTRY_MIRROR || "").trim() &&
+    !String(process.env.DOCKER_REGISTRY_MIRROR || "").trim()
+  ) {
+    env.DOCKER_REGISTRY_MIRROR = CN_DEFAULT_DOCKER_REGISTRY_MIRROR;
+  }
+  if (!String(dotEnv.APT_MIRROR || "").trim() && !String(process.env.APT_MIRROR || "").trim()) {
+    env.APT_MIRROR = CN_DEFAULT_APT_MIRROR;
+  }
+}
+
+function loadProjectEnvironment(rootDir, logger = () => {}, options = {}) {
   const paths = resolvePaths(rootDir);
   ensureDirectory(paths.runtimeDir);
   ensureDirectory(paths.logDir);
   ensureDirectory(paths.pidDir);
   ensureFileFromExample(paths.envFile, paths.envExampleFile, logger);
   const dotEnv = readDotEnv(paths.envFile);
+  const profile =
+    String(options.profile || process.env.SCLAW_PROFILE || dotEnv.SCLAW_PROFILE || "default").toLowerCase();
+  const programName = String(options.programName || process.env.SCLAW_PROGRAM_NAME || "sclaw");
   const env = {
     ...process.env,
     ...dotEnv,
+    SCLAW_PROFILE: profile,
+    SCLAW_PROGRAM_NAME: programName,
   };
+  applyCnProfileDefaults(env, dotEnv);
+  env.DOCKER_REGISTRY_MIRROR = normalizeDockerRegistryMirror(env.DOCKER_REGISTRY_MIRROR);
+  env.APT_MIRROR = normalizeAptMirror(env.APT_MIRROR);
   env.FRONTEND_PORT = env.FRONTEND_PORT || DEFAULT_FRONTEND_PORT;
   env.PORT = env.PORT || DEFAULT_BACKEND_PORT;
   return { paths, dotEnv, env };
@@ -197,11 +278,31 @@ function normalizeSqliteFileUrl(rootDir, databaseUrl) {
   return `file:${normalizedPath.replace(/\\/gu, "/")}${query}`;
 }
 
-function ensureLocalSqliteConfig(rootDir, env, logger = () => {}) {
+function buildScopedSqliteDatabaseUrl(rootDir, profileName = "start") {
+  const safeProfile = String(profileName || "start")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/gu, "-")
+    .replace(/-+/gu, "-")
+    .replace(/^-|-$/gu, "") || "start";
+  const sqlitePath = path.join(rootDir, ".runtime", "data", `structureclaw.${safeProfile}.db`);
+  return `file:${sqlitePath.replace(/\\/gu, "/")}`;
+}
+
+function ensureLocalSqliteConfig(rootDir, env, logger = () => {}, options = {}) {
+  const profileName = options.profileName || "start";
+  const targetDatabaseUrl = buildScopedSqliteDatabaseUrl(rootDir, profileName);
   const currentDatabaseUrl =
     env.DATABASE_URL || "file:../../.runtime/data/structureclaw.db";
+
   if (currentDatabaseUrl.startsWith("file:")) {
-    env.DATABASE_URL = normalizeSqliteFileUrl(rootDir, currentDatabaseUrl);
+    const normalizedCurrent = normalizeSqliteFileUrl(rootDir, currentDatabaseUrl);
+    env.DATABASE_URL = targetDatabaseUrl;
+    if (normalizedCurrent !== targetDatabaseUrl) {
+      logger(
+        `Using isolated SQLite DATABASE_URL for ${profileName}: ${env.DATABASE_URL}`,
+      );
+    }
     return env.DATABASE_URL;
   }
 
@@ -215,8 +316,7 @@ function ensureLocalSqliteConfig(rootDir, env, logger = () => {}) {
     );
   }
 
-  const sqlitePath = path.join(rootDir, ".runtime", "data", "structureclaw.db");
-  env.DATABASE_URL = `file:${sqlitePath.replace(/\\/gu, "/")}`;
+  env.DATABASE_URL = targetDatabaseUrl;
   if (!env.POSTGRES_SOURCE_DATABASE_URL) {
     env.POSTGRES_SOURCE_DATABASE_URL = currentDatabaseUrl;
   }
@@ -555,11 +655,16 @@ function quoteShellArgument(rawValue) {
 }
 
 module.exports = {
+  CN_DEFAULT_APT_MIRROR,
+  CN_DEFAULT_DOCKER_REGISTRY_MIRROR,
+  CN_DEFAULT_NPM_REGISTRY,
+  CN_DEFAULT_PIP_INDEX_URL,
   DEFAULT_ANALYSIS_PYTHON_VERSION,
   DEFAULT_BACKEND_PORT,
   DEFAULT_FRONTEND_PORT,
   appendSessionHeader,
   assertSqliteDatabaseUrl,
+  buildScopedSqliteDatabaseUrl,
   buildAnalysisEnvironment,
   ensureDirectory,
   ensureFileFromExample,
@@ -576,6 +681,8 @@ module.exports = {
   loadProjectEnvironment,
   logFilePath,
   normalizeSqliteFileUrl,
+  normalizeAptMirror,
+  normalizeDockerRegistryMirror,
   parseDotEnv,
   pathExists,
   pidFilePath,

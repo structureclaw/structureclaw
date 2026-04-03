@@ -7,6 +7,7 @@ export {
   getBuiltinAnalysisSkill,
   listBuiltinAnalysisEngines,
   listBuiltinAnalysisSkills,
+  resolvePreferredBuiltinAnalysisSkill,
   LOCAL_GET_ACTION_BY_PATH,
   LOCAL_POST_ACTION_BY_PATH,
 } from './registry.js';

@@ -6,6 +6,11 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        NODE_IMAGE_REGISTRY_MIRROR: ${DOCKER_REGISTRY_MIRROR:-}
+        NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmjs.org}
+        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
+        APT_MIRROR: ${APT_MIRROR:-deb.debian.org}
     container_name: structureclaw-backend
     environment:
       - NODE_ENV=production
@@ -57,6 +62,8 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
+        NODE_IMAGE_REGISTRY_MIRROR: ${DOCKER_REGISTRY_MIRROR:-}
+        NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmjs.org}
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
     container_name: structureclaw-frontend
     environment:

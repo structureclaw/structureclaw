@@ -14,11 +14,12 @@ export const manifest: SkillManifest = {
   triggers: ['portal frame', '门式刚架', 'portal', '门架', '刚架'],
   stages: ['intent', 'draft', 'analysis', 'design'],
   autoLoadByDefault: true,
-  scenarioKeys: ['portal-frame', 'portal'],
+  structuralTypeKeys: ['portal-frame', 'portal'],
   domain: 'structure-type',
   requires: [],
   conflicts: [],
   capabilities: ['intent-detection', 'draft-extraction', 'interaction-questions', 'model-build', 'report-narrative'],
+  enabledTools: ['draft_model', 'update_model'],
   priority: 100,
   compatibility: {
     minRuntimeVersion: '0.1.0',

@@ -8,7 +8,7 @@ import {
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
 import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
-import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
+import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../../agent-runtime/fallback.js';
 import { buildDefaultReportNarrative } from '../../../agent-runtime/report-template.js';
 import type { AppLocale } from '../../../services/locale.js';
@@ -138,13 +138,13 @@ function buildPortalFrameReportNarrative(input: SkillReportNarrativeInput): stri
 }
 
 export const handler: SkillHandler = {
-  detectScenario({ message, locale }) {
+  detectStructuralType({ message, locale }) {
     const text = message.toLowerCase();
     if (text.includes('portal frame') || text.includes('门式刚架')) {
-      return buildScenarioMatch('portal-frame', 'portal-frame', 'portal-frame', 'supported', locale);
+      return buildStructuralTypeMatch('portal-frame', 'portal-frame', 'portal-frame', 'supported', locale);
     }
     if (text.includes('portal') || text.includes('门架') || text.includes('刚架')) {
-      return buildScenarioMatch('portal', 'portal-frame', 'portal-frame', 'fallback', locale, {
+      return buildStructuralTypeMatch('portal', 'portal-frame', 'portal-frame', 'fallback', locale, {
         zh: '已将“门架/刚架”先收敛到门式刚架模板继续补参。',
         en: '“Portal structure” has been narrowed to the portal-frame template for continued guidance.',
       });
@@ -160,8 +160,8 @@ export const handler: SkillHandler = {
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toPortalFramePatch(patch), 'portal-frame', 'portal-frame');
   },
-  computeMissing(state, mode) {
-    return computeLegacyMissing({ ...state, inferredType: 'portal-frame' }, mode, [...ALLOWED_KEYS]);
+  computeMissing(state, phase) {
+    return computeLegacyMissing({ ...state, inferredType: 'portal-frame' }, phase, [...ALLOWED_KEYS]);
   },
   mapLabels(keys, locale) {
     return buildLegacyLabels(keys, locale);

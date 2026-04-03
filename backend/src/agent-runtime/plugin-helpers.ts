@@ -1,5 +1,5 @@
 import type { AppLocale } from '../services/locale.js';
-import type { DraftState, ScenarioMatch, ScenarioSupportLevel } from './types.js';
+import type { DraftState, StructuralTypeMatch, StructuralTypeSupportLevel } from './types.js';
 
 type StructuralStage = 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';
 
@@ -7,14 +7,14 @@ export function localize(locale: AppLocale, zh: string, en: string): string {
   return locale === 'zh' ? zh : en;
 }
 
-export function buildScenarioMatch(
-  key: ScenarioMatch['key'],
-  mappedType: ScenarioMatch['mappedType'],
+export function buildStructuralTypeMatch(
+  key: StructuralTypeMatch['key'],
+  mappedType: StructuralTypeMatch['mappedType'],
   skillId: string,
-  supportLevel: ScenarioSupportLevel,
+  supportLevel: StructuralTypeSupportLevel,
   locale: AppLocale,
   note?: { zh: string; en: string },
-): ScenarioMatch {
+): StructuralTypeMatch {
   return {
     key,
     mappedType,
@@ -24,14 +24,19 @@ export function buildScenarioMatch(
   };
 }
 
-export function withScenarioState(state: DraftState, scenario: ScenarioMatch): DraftState {
+export function withStructuralTypeState(state: DraftState, structuralTypeMatch: StructuralTypeMatch): DraftState {
+  const preserveInferredType = structuralTypeMatch.mappedType === 'unknown' && state.inferredType && state.inferredType !== 'unknown';
+  const inferredType = preserveInferredType ? state.inferredType : structuralTypeMatch.mappedType;
+  const structuralTypeKey = preserveInferredType
+    ? (state.structuralTypeKey ?? state.inferredType)
+    : structuralTypeMatch.key;
   return {
     ...state,
-    inferredType: scenario.mappedType,
-    skillId: scenario.skillId,
-    scenarioKey: scenario.key,
-    supportLevel: scenario.supportLevel,
-    supportNote: scenario.supportNote,
+    inferredType,
+    skillId: structuralTypeMatch.skillId,
+    structuralTypeKey,
+    supportLevel: structuralTypeMatch.supportLevel,
+    supportNote: structuralTypeMatch.supportNote,
     updatedAt: Date.now(),
   };
 }

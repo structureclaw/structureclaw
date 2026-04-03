@@ -22,7 +22,7 @@ const COMMANDS = [
   {
     name: "install-cli",
     usage: "sclaw install-cli [--force]",
-    description: "Install a user-local sclaw shim",
+    description: "Install a user-local CLI shim",
     aliases: ["self-install"],
     group: "core",
   },
@@ -36,6 +36,12 @@ const COMMANDS = [
     name: "setup-analysis-python",
     usage: "sclaw setup-analysis-python",
     description: "Create backend/.venv with analysis dependencies",
+    group: "dev",
+  },
+  {
+    name: "mirror-status",
+    usage: "sclaw mirror-status",
+    description: "Show current mirror configuration and value sources",
     group: "dev",
   },
   {

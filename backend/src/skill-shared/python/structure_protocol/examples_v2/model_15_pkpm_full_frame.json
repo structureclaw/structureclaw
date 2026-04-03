@@ -1,0 +1,146 @@
+{
+  "schema_version": "2.0.0",
+  "unit_system": "SI",
+  "project": {
+    "name": "某办公楼框架（PKPM 算例）",
+    "code_standard": "GB50011-2010",
+    "design_life": 50,
+    "importance_class": "丙"
+  },
+  "structure_system": {
+    "type": "frame",
+    "seismic_grade": "third",
+    "direction_x_system": "框架",
+    "direction_y_system": "框架"
+  },
+  "site_seismic": {
+    "intensity": 7,
+    "design_group": "第一组",
+    "site_category": "II",
+    "characteristic_period": 0.35,
+    "max_influence_coefficient": 0.08,
+    "damping_ratio": 0.05
+  },
+  "wind": {
+    "basic_pressure": 0.45,
+    "terrain_roughness": "B",
+    "shape_factor": 1.3
+  },
+  "stories": [
+    {
+      "id": "F1", "height": 4.2, "elevation": 0.0,
+      "is_basement": false, "rigid_diaphragm": true,
+      "standard_floor_group": "STD-A",
+      "dead_load": 5.0, "live_load": 2.0,
+      "floor_loads": [{"type": "dead", "value": 5.0}, {"type": "live", "value": 2.0}]
+    },
+    {
+      "id": "F2", "height": 3.6, "elevation": 4.2,
+      "is_basement": false, "rigid_diaphragm": true,
+      "standard_floor_group": "STD-A",
+      "dead_load": 5.0, "live_load": 2.0,
+      "floor_loads": [{"type": "dead", "value": 5.0}, {"type": "live", "value": 2.0}]
+    },
+    {
+      "id": "F3", "height": 3.6, "elevation": 7.8,
+      "is_basement": false, "rigid_diaphragm": true,
+      "standard_floor_group": "STD-B",
+      "dead_load": 4.5, "live_load": 2.0,
+      "floor_loads": [{"type": "dead", "value": 4.5}, {"type": "live", "value": 2.0}]
+    }
+  ],
+  "analysis_control": {
+    "p_delta": true,
+    "rigid_floor": true,
+    "period_reduction_factor": 0.7,
+    "accidental_eccentricity": 0.05,
+    "consideration_torsion": true,
+    "modal_count": 15,
+    "basement_count": 0,
+    "live_load_reduction": true,
+    "structure_importance_factor": 1.0
+  },
+  "nodes": [
+    {"id": "1", "x": 0, "y": 0, "z": 0, "restraints": [true, true, true, true, true, true], "story": "F1"},
+    {"id": "2", "x": 6, "y": 0, "z": 0, "restraints": [true, true, true, true, true, true], "story": "F1"},
+    {"id": "3", "x": 12, "y": 0, "z": 0, "restraints": [true, true, true, true, true, true], "story": "F1"},
+    {"id": "4", "x": 0, "y": 6, "z": 0, "restraints": [true, true, true, true, true, true], "story": "F1"},
+    {"id": "5", "x": 6, "y": 6, "z": 0, "restraints": [true, true, true, true, true, true], "story": "F1"},
+    {"id": "6", "x": 12, "y": 6, "z": 0, "restraints": [true, true, true, true, true, true], "story": "F1"},
+    {"id": "7", "x": 0, "y": 0, "z": 4.2, "story": "F2"},
+    {"id": "8", "x": 6, "y": 0, "z": 4.2, "story": "F2"},
+    {"id": "9", "x": 12, "y": 0, "z": 4.2, "story": "F2"},
+    {"id": "10", "x": 0, "y": 6, "z": 4.2, "story": "F2"},
+    {"id": "11", "x": 6, "y": 6, "z": 4.2, "story": "F2"},
+    {"id": "12", "x": 12, "y": 6, "z": 4.2, "story": "F2"},
+    {"id": "13", "x": 0, "y": 0, "z": 7.8, "story": "F3"},
+    {"id": "14", "x": 6, "y": 0, "z": 7.8, "story": "F3"},
+    {"id": "15", "x": 12, "y": 0, "z": 7.8, "story": "F3"},
+    {"id": "16", "x": 0, "y": 6, "z": 7.8, "story": "F3"},
+    {"id": "17", "x": 6, "y": 6, "z": 7.8, "story": "F3"},
+    {"id": "18", "x": 12, "y": 6, "z": 7.8, "story": "F3"}
+  ],
+  "elements": [
+    {"id": "C1", "type": "column", "nodes": ["1", "7"],  "material": "conc1", "section": "col1", "story": "F1", "concrete_grade": "C35", "seismic_grade": "third"},
+    {"id": "C2", "type": "column", "nodes": ["2", "8"],  "material": "conc1", "section": "col1", "story": "F1", "concrete_grade": "C35", "seismic_grade": "third"},
+    {"id": "C3", "type": "column", "nodes": ["3", "9"],  "material": "conc1", "section": "col1", "story": "F1", "concrete_grade": "C35", "seismic_grade": "third"},
+    {"id": "C4", "type": "column", "nodes": ["4", "10"], "material": "conc1", "section": "col1", "story": "F1", "concrete_grade": "C35", "seismic_grade": "third"},
+    {"id": "C5", "type": "column", "nodes": ["5", "11"], "material": "conc1", "section": "col1", "story": "F1", "concrete_grade": "C35", "seismic_grade": "third"},
+    {"id": "C6", "type": "column", "nodes": ["6", "12"], "material": "conc1", "section": "col1", "story": "F1", "concrete_grade": "C35", "seismic_grade": "third"},
+    {"id": "B1", "type": "beam", "nodes": ["7", "8"],  "material": "conc1", "section": "beam1", "story": "F2", "concrete_grade": "C30"},
+    {"id": "B2", "type": "beam", "nodes": ["8", "9"],  "material": "conc1", "section": "beam1", "story": "F2", "concrete_grade": "C30"},
+    {"id": "B3", "type": "beam", "nodes": ["10", "11"], "material": "conc1", "section": "beam1", "story": "F2", "concrete_grade": "C30"},
+    {"id": "B4", "type": "beam", "nodes": ["11", "12"], "material": "conc1", "section": "beam1", "story": "F2", "concrete_grade": "C30"},
+    {"id": "C7", "type": "column", "nodes": ["7", "13"],  "material": "conc1", "section": "col1", "story": "F2", "concrete_grade": "C30"},
+    {"id": "C8", "type": "column", "nodes": ["8", "14"],  "material": "conc1", "section": "col1", "story": "F2", "concrete_grade": "C30"},
+    {"id": "C9", "type": "column", "nodes": ["9", "15"],  "material": "conc1", "section": "col1", "story": "F2", "concrete_grade": "C30"},
+    {"id": "C10", "type": "column", "nodes": ["10", "16"], "material": "conc1", "section": "col1", "story": "F2", "concrete_grade": "C30"},
+    {"id": "C11", "type": "column", "nodes": ["11", "17"], "material": "conc1", "section": "col1", "story": "F2", "concrete_grade": "C30"},
+    {"id": "C12", "type": "column", "nodes": ["12", "18"], "material": "conc1", "section": "col1", "story": "F2", "concrete_grade": "C30"},
+    {"id": "B5", "type": "beam", "nodes": ["13", "14"], "material": "conc1", "section": "beam1", "story": "F3", "concrete_grade": "C30"},
+    {"id": "B6", "type": "beam", "nodes": ["14", "15"], "material": "conc1", "section": "beam1", "story": "F3", "concrete_grade": "C30"},
+    {"id": "B7", "type": "beam", "nodes": ["16", "17"], "material": "conc1", "section": "beam1", "story": "F3", "concrete_grade": "C30"},
+    {"id": "B8", "type": "beam", "nodes": ["17", "18"], "material": "conc1", "section": "beam1", "story": "F3", "concrete_grade": "C30"}
+  ],
+  "materials": [
+    {"id": "conc1", "name": "C30", "E": 30000, "nu": 0.2, "rho": 2500, "grade": "C30", "category": "concrete"},
+    {"id": "rebar1", "name": "HRB400", "E": 200000, "nu": 0.3, "rho": 7850, "fy": 400, "grade": "HRB400", "category": "rebar"}
+  ],
+  "sections": [
+    {
+      "id": "col1", "name": "柱 500×500", "type": "rectangular",
+      "purpose": "column",
+      "shape": {"kind": "rectangular", "H": 500, "B": 500},
+      "width": 500, "height": 500, "properties": {"A": 250000}
+    },
+    {
+      "id": "beam1", "name": "梁 250×600", "type": "rectangular",
+      "purpose": "beam",
+      "shape": {"kind": "rectangular", "H": 600, "B": 250},
+      "width": 250, "height": 600, "properties": {"A": 150000}
+    }
+  ],
+  "load_cases": [
+    {"id": "D",  "type": "dead",    "kind": "permanent", "loads": [], "description": "恒荷载"},
+    {"id": "L",  "type": "live",    "kind": "variable",  "loads": [], "description": "活荷载"},
+    {"id": "WX", "type": "wind",    "kind": "variable",  "loads": [], "description": "X向风"},
+    {"id": "EX", "type": "seismic", "kind": "accidental","loads": [], "description": "X向地震"}
+  ],
+  "load_combinations": [
+    {"id": "ULS1", "factors": {"D": 1.2, "L": 1.4}, "combination_type": "uls", "code_reference": "GB50009-2012 §3.2"},
+    {"id": "ULS2", "factors": {"D": 1.2, "L": 0.7, "EX": 1.3}, "combination_type": "uls"},
+    {"id": "SLS1", "factors": {"D": 1.0, "L": 1.0}, "combination_type": "sls"}
+  ],
+  "wall_openings": [],
+  "slab_openings": [],
+  "metadata": {"name": "pkpm_full_rc_frame_3story"},
+  "extensions": {
+    "pkpm": {
+      "version": "V5.1",
+      "project_path": "C:\\pkpm_projects\\office_frame",
+      "satwe_params": {
+        "coupling_beam_stiffness_reduction": 0.7
+      }
+    }
+  }
+}

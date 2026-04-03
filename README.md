@@ -26,7 +26,7 @@ Main directories:
 
 - `frontend/`: Next.js 14 application
 - `backend/`: Fastify API, agent/chat flows, Prisma integration, and analysis execution host
-- `scripts/`: startup helpers and the `sclaw` CLI implementation
+- `scripts/`: startup helpers and the `sclaw` / `sclaw_cn` CLI implementation
 - `tests/`: regression runner (`node tests/runner.mjs ...`), install smoke, and CI-covered frontend checks (type-check, Vitest, lint) after native smoke
 - `docs/`: user handbook and protocol references
 
@@ -52,11 +52,22 @@ Recommended local flow:
 ./sclaw status
 ```
 
+China mirror flow (same subcommands, mirror defaults enabled):
+
+```bash
+./sclaw_cn doctor
+./sclaw_cn start
+./sclaw_cn status
+```
+
 Notes:
 
-- SQLite is now the default local database. A fresh setup writes to `.runtime/data/structureclaw.db`.
+- SQLite is now the default local database. `./sclaw start` uses `.runtime/data/structureclaw.start.db`, and `./sclaw doctor` uses `.runtime/data/structureclaw.doctor.db` so preflight checks do not touch the active local runtime database.
+- `./sclaw doctor` no longer requires a preinstalled system Python 3.12. It will ensure `uv` and prepare `backend/.venv` with Python 3.12 automatically when needed. On Windows, this automatic setup currently requires `winget`; if `winget` is unavailable, install `uv` manually before running `./sclaw doctor`.
 - If your old local `.env` still points `DATABASE_URL` at a local PostgreSQL instance, `./sclaw doctor` and `./sclaw start` will auto-migrate that data into SQLite, rewrite `.env` to the SQLite default, and keep the original PostgreSQL URL in `POSTGRES_SOURCE_DATABASE_URL`.
 - That first auto-migration also creates a local backup file like `.env.pre-sqlite-migration.<timestamp>.bak`.
+- `sclaw_cn` defaults to China mirror settings when unset: `PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`, `NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`, and Docker mirror prefix via `DOCKER_REGISTRY_MIRROR`.
+- You can override mirror values in `.env` or shell environment (`PIP_INDEX_URL`, `NPM_CONFIG_REGISTRY`, `DOCKER_REGISTRY_MIRROR`, `APT_MIRROR`).
 
 Useful follow-up commands:
 

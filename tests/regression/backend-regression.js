@@ -10,7 +10,7 @@ const {
 const BACKEND_STEPS = [
   ["Dev startup CLI guards", "validate-dev-startup-guards"],
   ["Agent orchestration regression", "validate-agent-orchestration"],
-  ["Agent no-skill fallback contract", "validate-agent-no-skill-fallback"],
+  ["Agent base-chat fallback contract", "validate-agent-base-chat-fallback"],
   ["Agent tools protocol contract", "validate-agent-tools-contract"],
   ["Agent API contract regression", "validate-agent-api-contract"],
   ["Agent capability matrix contract", "validate-agent-capability-matrix"],
@@ -19,8 +19,34 @@ const BACKEND_STEPS = [
   ["Agent SkillHub repository-down fallback contract", "validate-agent-skillhub-repository-down"],
   ["Chat stream contract regression", "validate-chat-stream-contract"],
   ["Chat message routing contract", "validate-chat-message-routing"],
-  ["Report template contract", "validate-report-template-contract"],
+  ["Report narrative contract", "validate-report-narrative-contract"],
 ];
+
+const JEST_ENV_FORWARD_KEYS = [
+  "REDIS_URL",
+  "LLM_PROVIDER",
+  "LLM_API_KEY",
+  "LLM_MODEL",
+  "LLM_BASE_URL",
+  "LLM_TIMEOUT_MS",
+  "LLM_MAX_RETRIES",
+  "OPENAI_API_KEY",
+  "OPENAI_BASE_URL",
+  "OPENAI_MODEL",
+  "ANALYSIS_ENGINE_URL",
+  "ANALYSIS_ENGINE_MANIFEST_PATH",
+  "ZAI_API_KEY",
+];
+
+function pickJestForwardEnv(context) {
+  const forwarded = {};
+  for (const key of JEST_ENV_FORWARD_KEYS) {
+    if (context.env[key] !== undefined) {
+      forwarded[key] = context.env[key];
+    }
+  }
+  return forwarded;
+}
 
 async function runBackendRegression(rootDir) {
   const context = resolveRegressionContext(rootDir);
@@ -47,12 +73,13 @@ async function runBackendRegression(rootDir) {
   await runLoggedStep("Backend test", async () => {
     await runBackendCommand(context, ["run", "db:generate", "--prefix", context.paths.backendDir]);
     await runBackendCommand(context, ["run", "build", "--prefix", context.paths.backendDir]);
-    // cwd must be backend so Jest loads jest.config.cjs; from repo root it matches frontend/**/*.test.tsx.
+    // Run Jest directly in backend cwd to avoid npm prefix/env exit-code inconsistencies.
     await runtime.runCommand(runtime.getNpmCommand(), ["exec", "jest", "--", "--passWithNoTests", "--runInBand"], {
       cwd: context.paths.backendDir,
       env: {
         ...process.env,
-        ...context.env,
+        ...pickJestForwardEnv(context),
+        DATABASE_URL: context.env.DATABASE_URL,
         NODE_OPTIONS: "--experimental-vm-modules",
       },
       stdio: "inherit",

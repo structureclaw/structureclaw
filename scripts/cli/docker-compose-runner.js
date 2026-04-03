@@ -123,10 +123,15 @@ function createDockerComposeRunner(log = () => {}) {
   }
 
   function getDockerComposeArgs(paths, composeArgs, options = {}) {
+    const composeFiles = [paths.dockerComposeFile];
+    const profile = String(options.env && options.env.SCLAW_PROFILE ? options.env.SCLAW_PROFILE : "").toLowerCase();
+    if (profile === "cn" && paths.dockerComposeCnFile && runtime.pathExists(paths.dockerComposeCnFile)) {
+      composeFiles.push(paths.dockerComposeCnFile);
+    }
+
     return [
       "compose",
-      "-f",
-      paths.dockerComposeFile,
+      ...composeFiles.flatMap((composeFile) => ["-f", composeFile]),
       ...(options.envFile ? ["--env-file", options.envFile] : []),
       ...composeArgs,
     ];
@@ -144,6 +149,7 @@ function createDockerComposeRunner(log = () => {}) {
   function readDockerCompose(paths, composeArgs, options = {}) {
     return spawnSync("docker", getDockerComposeArgs(paths, composeArgs, options), {
       cwd: paths.rootDir,
+      env: options.env,
       stdio: ["ignore", "pipe", "pipe"],
       encoding: "utf8",
       windowsHide: true,

@@ -59,7 +59,12 @@
     }
   ],
   "sections": [
-    {"id": "wall1", "name": "剪力墙 200mm", "type": "rectangular", "width": 6000, "thickness": 200, "properties": {"A": 1200000}}
+    {
+      "id": "wall1", "name": "剪力墙 200mm", "type": "rectangular",
+      "purpose": "wall",
+      "shape": {"kind": "rectangular", "T": 200},
+      "width": 6000, "thickness": 200, "properties": {"A": 1200000}
+    }
   ],
   "load_cases": [
     {"id": "D", "type": "dead", "loads": [], "description": "恒荷载"},
@@ -72,6 +77,14 @@
     {"id": "ULS2", "factors": {"D": 1.2, "L": 0.5, "EX": 1.3}, "combination_type": "uls"},
     {"id": "SLS1", "factors": {"D": 1.0, "L": 1.0}, "combination_type": "sls"}
   ],
+  "wall_openings": [
+    {
+      "id": "WO1", "wall_element_id": "W1",
+      "x_offset": 1.5, "z_offset": 0.5,
+      "width": 1.5, "height": 2.1
+    }
+  ],
+  "slab_openings": [],
   "metadata": {"name": "pkpm_shearwall_residential"},
   "extensions": {
     "pkpm": {

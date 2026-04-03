@@ -10,6 +10,7 @@ const validationRunner = require("./regression/run-validation.js");
 const { runBackendRegression } = require("./regression/backend-regression.js");
 const { runAnalysisRegression } = require("./regression/analysis-regression.js");
 const { runDockerComposeSmoke, runNativeInstallSmoke } = require("./smoke/install-smoke.cjs");
+const { runLlmIntegrationTests } = require("./llm-integration/runner.cjs");
 
 function parseCliOptions(args) {
   const positionals = [];
@@ -71,6 +72,7 @@ Commands:
   check --list          List check names
   backend-regression    Full backend regression suite
   analysis-regression   Full analysis regression suite
+  llm-integration       LLM integration tests (requires LLM_API_KEY)
   smoke-native          CI-style native install smoke (npm ci + build)
   smoke-docker          Docker compose smoke test
 
@@ -133,6 +135,9 @@ async function main() {
       return;
     case "smoke-docker":
       await runDockerComposeSmoke(rootDir);
+      return;
+    case "llm-integration":
+      await runLlmIntegrationTests(rootDir, rawArgs);
       return;
     default:
       throw new Error(`Unknown command: ${cmd}`);

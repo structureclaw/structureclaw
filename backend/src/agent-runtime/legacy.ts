@@ -1,9 +1,4 @@
 import {
-  buildModel,
-  computeMissingCriticalKeys,
-  computeMissingLoadDetailKeys,
-  extractDraftByRules,
-  mapMissingFieldLabels,
   mergeDraftState,
   normalizeFloorLoads,
   normalizeFrameBaseSupportType,
@@ -17,6 +12,12 @@ import {
   normalizePositiveInteger,
   normalizeSupportType,
 } from './fallback.js';
+import { buildModel } from './model-builder.js';
+import {
+  computeMissingCriticalKeys,
+  computeMissingLoadDetailKeys,
+  mapMissingFieldLabels,
+} from './draft-guidance.js';
 import type { AppLocale } from '../services/locale.js';
 import type { DraftExtraction, DraftFloorLoad, DraftState, InferredModelType } from './types.js';
 
@@ -107,12 +108,10 @@ export function mergeLegacyDraftPatchLlmFirst(
 }
 
 export function buildLegacyDraftPatchLlmFirst(
-  message: string,
+  _message: string,
   llmDraftPatch: Record<string, unknown> | null | undefined,
 ): DraftExtraction {
-  const normalizedLlmPatch = normalizeLegacyDraftPatch(llmDraftPatch);
-  const rulePatch = extractDraftByRules(message);
-  return mergeLegacyDraftPatchLlmFirst(normalizedLlmPatch, rulePatch);
+  return normalizeLegacyDraftPatch(llmDraftPatch);
 }
 
 export function restrictLegacyDraftPatch(
@@ -135,19 +134,19 @@ export function mergeLegacyState(existing: DraftState | undefined, patch: DraftE
     ...merged,
     inferredType,
     skillId,
-    scenarioKey: (merged.scenarioKey ?? skillId) as DraftState['scenarioKey'],
+    structuralTypeKey: (merged.structuralTypeKey ?? skillId) as DraftState['structuralTypeKey'],
     updatedAt: Date.now(),
   };
 }
 
 export function computeLegacyMissing(
   state: DraftState,
-  mode: 'chat' | 'execute',
+  phase: 'interactive' | 'execution',
   allowedKeys: string[],
 ): { critical: string[]; optional: string[] } {
   const allowed = new Set(allowedKeys);
   const critical = computeMissingCriticalKeys(state).filter((key) => allowed.has(key));
-  if (mode === 'chat') {
+  if (phase === 'interactive') {
     critical.push(...computeMissingLoadDetailKeys(state).filter((key) => allowed.has(key) && !critical.includes(key)));
   }
   return { critical, optional: [] };

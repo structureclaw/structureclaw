@@ -8,7 +8,7 @@ import {
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
 import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
-import { buildScenarioMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
+import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../../agent-runtime/fallback.js';
 import { buildDefaultReportNarrative } from '../../../agent-runtime/report-template.js';
 import type { AppLocale } from '../../../services/locale.js';
@@ -123,16 +123,16 @@ function buildTrussReportNarrative(input: SkillReportNarrativeInput): string {
       : '- For trusses, prioritize nodal loads and pin-joint idealization; verify tension/compression distribution across members.',
     input.locale === 'zh'
       ? '- 若节点偏心、次杆参与受力或连接刚度不可忽略，建议升级为更细化杆系/实体模型。'
-      : '- If joint eccentricity, secondary members, or connection stiffness are non-negligible, upgrade to a refined truss/solid model.',
+      : '- If joint eccentricity, secondary members, or connection stiffness are non-negligible, switch to a more refined truss/solid model.',
   ];
   return [base, ...trussSpecificNotes].join('\n');
 }
 
 export const handler: SkillHandler = {
-  detectScenario({ message, locale }) {
+  detectStructuralType({ message, locale }) {
     const text = message.toLowerCase();
     if (text.includes('truss') || text.includes('桁架')) {
-      return buildScenarioMatch('truss', 'truss', 'truss', 'supported', locale);
+      return buildStructuralTypeMatch('truss', 'truss', 'truss', 'supported', locale);
     }
     return null;
   },
@@ -145,8 +145,8 @@ export const handler: SkillHandler = {
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toTrussPatch(patch), 'truss', 'truss');
   },
-  computeMissing(state, mode) {
-    return computeLegacyMissing({ ...state, inferredType: 'truss' }, mode, [...ALLOWED_KEYS]);
+  computeMissing(state, phase) {
+    return computeLegacyMissing({ ...state, inferredType: 'truss' }, phase, [...ALLOWED_KEYS]);
   },
   mapLabels(keys, locale) {
     return buildLegacyLabels(keys, locale);

@@ -14,11 +14,12 @@ export const manifest: SkillManifest = {
   triggers: ['truss', '桁架'],
   stages: ['intent', 'draft', 'analysis', 'design'],
   autoLoadByDefault: true,
-  scenarioKeys: ['truss'],
+  structuralTypeKeys: ['truss'],
   domain: 'structure-type',
   requires: [],
   conflicts: [],
   capabilities: ['intent-detection', 'draft-extraction', 'interaction-questions', 'model-build', 'report-narrative'],
+  enabledTools: ['draft_model', 'update_model'],
   priority: 80,
   compatibility: {
     minRuntimeVersion: '0.1.0',

@@ -8,7 +8,6 @@ import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, MessageS
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toast'
@@ -16,8 +15,8 @@ import { buildVisualizationSnapshot } from '@/components/visualization/adapter'
 import type { VisualizationSnapshot } from '@/components/visualization/types'
 import { useI18n, type MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
-import { fetchLatestModel, type LatestModelResponse } from '@/lib/api'
 import { API_BASE } from '@/lib/api-base'
+import { loadCapabilityPreferences, saveCapabilityPreferences } from '@/lib/capability-preference'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
 
 const StructuralVisualizationModal = dynamic(
@@ -27,7 +26,6 @@ const StructuralVisualizationModal = dynamic(
 
 type AnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear'
 type PanelTab = 'analysis' | 'report'
-type ComposerAction = 'chat' | 'execute'
 
 type Message = {
   id: string
@@ -52,10 +50,10 @@ type AgentToolCall = {
 type MessageDebugDetails = {
   promptSnapshot: string
   skillIds: string[]
+  toolIds?: string[]
   routing?: {
     selectedSkillIds: string[]
     structuralSkillId?: string
-    structuralScenarioKey?: string
     analysisSkillId?: string
     analysisSkillIds?: string[]
   }
@@ -69,8 +67,6 @@ type MessageMetadata = {
 }
 
 type AgentInteraction = {
-  detectedScenario?: string
-  detectedScenarioLabel?: string
   conversationStage?: string
   missingCritical?: string[]
   missingOptional?: string[]
@@ -177,6 +173,9 @@ type PersistedConversation = ConversationSummary & {
   modelText?: string
   designCode?: string
   selectedSkillIds?: string[]
+  selectedToolIds?: string[]
+  hasExplicitSkillSelection?: boolean
+  hasExplicitToolSelection?: boolean
   modelSyncMessage?: string
   activePanel?: PanelTab
   latestResult?: AgentResult | null
@@ -213,55 +212,131 @@ type SkillDomain =
   | 'unknown'
 
 const ALL_SKILL_DOMAINS: SkillDomain[] = [
-  'analysis',
-  'code-check',
   'data-input',
-  'design',
-  'drawing',
-  'general',
-  'load-boundary',
-  'material',
-  'report-export',
-  'result-postprocess',
-  'section',
   'structure-type',
+  'material',
+  'section',
+  'load-boundary',
+  'analysis',
+  'result-postprocess',
+  'design',
+  'code-check',
   'validation',
+  'report-export',
+  'drawing',
   'visualization',
+  'general',
 ]
 
 type CapabilitySkillSummary = {
   id: string
   domain?: SkillDomain
+  runtimeStatus?: 'active' | 'partial' | 'discoverable' | 'reserved'
+}
+
+type ToolCategory = 'modeling' | 'analysis' | 'code-check' | 'report' | 'utility'
+
+type CapabilityToolSummary = {
+  id: string
+  category?: ToolCategory
+  source?: 'builtin' | 'skill'
+  requiresTools?: string[]
+  displayName?: { zh?: string; en?: string }
+  description?: { zh?: string; en?: string }
 }
 
 type CapabilityDomainSummary = {
   domain: SkillDomain
+  runtimeStatus?: 'active' | 'partial' | 'discoverable' | 'reserved'
   skillIds?: string[]
   autoLoadSkillIds?: string[]
 }
 
 type CapabilityMatrixPayload = {
   skills?: CapabilitySkillSummary[]
+  tools?: CapabilityToolSummary[]
   domainSummaries?: CapabilityDomainSummary[]
   skillDomainById?: Record<string, SkillDomain>
+  foundationToolIds?: string[]
+  enabledToolIdsBySkill?: Record<string, string[]>
   validEngineIdsBySkill?: Record<string, string[]>
   filteredEngineReasonsBySkill?: Record<string, Record<string, string[]>>
 }
 
-type SkillHubCatalogItem = {
-  id: string
-  version?: string
-  domain?: SkillDomain
-  name?: { zh?: string; en?: string }
-  description?: { zh?: string; en?: string }
-  installed?: boolean
-  enabled?: boolean
+function resolveCallableTools(
+  matrix: CapabilityMatrixPayload | null,
+  selectedSkillIds: string[],
+  skillDomainById: Record<string, SkillDomain>,
+) {
+  const matrixTools = Array.isArray(matrix?.tools) ? matrix.tools : []
+  const foundationToolIds = new Set(Array.isArray(matrix?.foundationToolIds) ? matrix.foundationToolIds : [])
+  const enabledToolIdsBySkill = matrix?.enabledToolIdsBySkill && typeof matrix.enabledToolIdsBySkill === 'object'
+    ? matrix.enabledToolIdsBySkill
+    : {}
+  if (Object.keys(enabledToolIdsBySkill).length === 0) {
+    return matrixTools
+  }
+  const callableToolIds = new Set<string>(foundationToolIds)
+
+  selectedSkillIds.forEach((skillId) => {
+    const toolIds = enabledToolIdsBySkill[skillId]
+    if (!Array.isArray(toolIds)) {
+      if (skillDomainById[skillId] === 'structure-type') {
+        callableToolIds.add('validate_model')
+      }
+      return
+    }
+    toolIds.forEach((toolId) => {
+      if (typeof toolId === 'string' && toolId.trim().length > 0) {
+        callableToolIds.add(toolId)
+      }
+    })
+    if (skillDomainById[skillId] === 'structure-type') {
+      callableToolIds.add('validate_model')
+    }
+  })
+
+  const toolById = new Map(matrixTools.map((tool) => [tool.id, tool]))
+  const queue = [...callableToolIds]
+  while (queue.length > 0) {
+    const toolId = queue.shift()
+    if (!toolId) {
+      continue
+    }
+    const tool = toolById.get(toolId)
+    if (!tool || !Array.isArray(tool.requiresTools)) {
+      continue
+    }
+    tool.requiresTools.forEach((requiredToolId) => {
+      if (typeof requiredToolId !== 'string' || requiredToolId.trim().length === 0 || callableToolIds.has(requiredToolId)) {
+        return
+      }
+      callableToolIds.add(requiredToolId)
+      queue.push(requiredToolId)
+    })
+  }
+
+  return matrixTools.filter((tool) => callableToolIds.has(tool.id))
 }
 
-type SkillHubInstalledItem = {
-  id: string
-  version?: string
-  enabled?: boolean
+function toToolIdList(tools: CapabilityToolSummary[]) {
+  return tools.map((tool) => tool.id)
+}
+
+function hasSameIds(left: string[], right: string[]) {
+  const leftSet = new Set(left)
+  const rightSet = new Set(right)
+  if (leftSet.size !== rightSet.size) {
+    return false
+  }
+
+  for (const item of leftSet) {
+    if (!rightSet.has(item)) {
+      return false
+    }
+  }
+
+  return true
 }
 
 function normalizeSkillDomain(value: unknown): SkillDomain {
@@ -303,7 +378,6 @@ function resolveSkillDomainLabel(domain: SkillDomain, t: (key: MessageKey) => st
 }
 
 const STORAGE_KEY = 'structureclaw.console.conversations'
-
 function createId(prefix: string) {
   if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
     return `${prefix}-${crypto.randomUUID()}`
@@ -313,6 +387,33 @@ function createId(prefix: string) {
 
 function buildPromptSnapshot(message: string, context: Record<string, unknown>) {
   return JSON.stringify({ message, context }, null, 2)
+}
+
+function normalizeToolCategory(value: unknown): ToolCategory {
+  if (value === 'modeling' || value === 'analysis' || value === 'code-check' || value === 'report' || value === 'utility') {
+    return value
+  }
+  return 'utility'
+}
+
+function resolveToolCategoryLabel(category: ToolCategory, t: (key: MessageKey) => string) {
+  if (category === 'modeling') return t('toolCategoryModeling')
+  if (category === 'analysis') return t('toolCategoryAnalysis')
+  if (category === 'code-check') return t('toolCategoryCodeCheck')
+  if (category === 'report') return t('toolCategoryReport')
+  return t('toolCategoryUtility')
+}
+
+function resolveToolLabel(tool: CapabilityToolSummary, locale: AppLocale) {
+  const localized = locale === 'zh' ? (tool.displayName?.zh || tool.id) : (tool.displayName?.en || tool.id)
+  if (localized && localized !== tool.id) {
+    return localized
+  }
+  return tool.id
+    .split(/[-_]/g)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ')
 }
 
 function toObjectRecord(value: unknown): Record<string, unknown> | undefined {
@@ -352,6 +453,9 @@ function parsePersistedDebugDetails(metadata: unknown): MessageDebugDetails | un
   const skillIds = Array.isArray(debugRecord.skillIds)
     ? debugRecord.skillIds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
     : []
+  const toolIds = Array.isArray(debugRecord.toolIds)
+    ? debugRecord.toolIds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : []
 
   const responseSummary = typeof debugRecord.responseSummary === 'string' ? debugRecord.responseSummary : ''
   const plan = Array.isArray(debugRecord.plan) ? debugRecord.plan.filter((item): item is string => typeof item === 'string') : []
@@ -363,7 +467,6 @@ function parsePersistedDebugDetails(metadata: unknown): MessageDebugDetails | un
           ? routingRecord.selectedSkillIds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
           : skillIds,
         structuralSkillId: typeof routingRecord.structuralSkillId === 'string' ? routingRecord.structuralSkillId : undefined,
-        structuralScenarioKey: typeof routingRecord.structuralScenarioKey === 'string' ? routingRecord.structuralScenarioKey : undefined,
         analysisSkillId: typeof routingRecord.analysisSkillId === 'string' ? routingRecord.analysisSkillId : undefined,
         analysisSkillIds: Array.isArray(routingRecord.analysisSkillIds)
           ? routingRecord.analysisSkillIds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
@@ -371,13 +474,14 @@ function parsePersistedDebugDetails(metadata: unknown): MessageDebugDetails | un
       }
     : undefined
 
-  if (!promptSnapshot && skillIds.length === 0 && !routing && !responseSummary && plan.length === 0 && toolCalls.length === 0) {
+  if (!promptSnapshot && skillIds.length === 0 && toolIds.length === 0 && !routing && !responseSummary && plan.length === 0 && toolCalls.length === 0) {
     return undefined
   }
 
   return {
     promptSnapshot,
     skillIds,
+    toolIds,
     routing,
     responseSummary,
     plan,
@@ -385,12 +489,13 @@ function parsePersistedDebugDetails(metadata: unknown): MessageDebugDetails | un
   }
 }
 
-function buildMessageDebugDetails(promptSnapshot: string, skillIds: string[], result: AgentResult): MessageDebugDetails {
+function buildMessageDebugDetails(promptSnapshot: string, skillIds: string[], toolIds: string[], result: AgentResult): MessageDebugDetails {
   const safeToolCalls = normalizeToolCalls(result.toolCalls)
 
   return {
     promptSnapshot,
     skillIds,
+    toolIds,
     routing: result.routing,
     responseSummary: result.response || '',
     plan: Array.isArray(result.plan) ? result.plan : [],
@@ -540,16 +645,12 @@ function buildInteractionMessage(
   locale: AppLocale
 ) {
   const questions = payload.content?.questions || []
-  const detectedScenario = payload.content?.detectedScenarioLabel
   const conversationStage = payload.content?.conversationStage
   const fallbackSupportNote = payload.content?.fallbackSupportNote
   const recommendedNextStep = payload.content?.recommendedNextStep
   const criticalMissing = payload.content?.pending?.criticalMissing || []
   const lines: string[] = []
 
-  if (detectedScenario) {
-    lines.push(`${t('guidanceDetectedScenario')}: ${detectedScenario}`)
-  }
   if (conversationStage) {
     lines.push(`${t('guidanceCurrentStage')}: ${conversationStage}`)
   }
@@ -1054,12 +1155,6 @@ function AnalysisPanel({
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid gap-3 md:grid-cols-2">
-                    {guidance.detectedScenarioLabel && (
-                      <div className="rounded-2xl border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
-                        <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('guidanceDetectedScenario')}</div>
-                        <div className="mt-2 text-base font-semibold text-foreground">{guidance.detectedScenarioLabel}</div>
-                      </div>
-                    )}
                     {guidance.conversationStage && (
                       <div className="rounded-2xl border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
                         <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('guidanceCurrentStage')}</div>
@@ -1193,22 +1288,15 @@ export function AIConsole() {
   const [historyError, setHistoryError] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [errorMessage, setErrorMessage] = useState('')
-  const [skillsOpen, setSkillsOpen] = useState(false)
-  const [skillHubOpen, setSkillHubOpen] = useState(true)
   const [contextOpen, setContextOpen] = useState(false)
   const [modelText, setModelText] = useState('')
   const [modelSyncMessage, setModelSyncMessage] = useState('')
-  const [isAutoLoadingModel, setIsAutoLoadingModel] = useState(false)
   const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([])
-  const [skillHubCatalog, setSkillHubCatalog] = useState<SkillHubCatalogItem[]>([])
-  const [skillHubInstalledById, setSkillHubInstalledById] = useState<Record<string, SkillHubInstalledItem>>({})
-  const [skillHubKeyword, setSkillHubKeyword] = useState('')
-  const [skillHubDomainFilter, setSkillHubDomainFilter] = useState<SkillDomain | 'all'>('all')
-  const [skillHubLoading, setSkillHubLoading] = useState(false)
-  const [skillHubActionById, setSkillHubActionById] = useState<Record<string, string>>({})
   const [capabilityMatrix, setCapabilityMatrix] = useState<CapabilityMatrixPayload | null>(null)
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
-  const [skillDomainView, setSkillDomainView] = useState<SkillDomain>('structure-type')
+  const [selectedToolIds, setSelectedToolIds] = useState<string[]>([])
+  const [hasExplicitSkillSelection, setHasExplicitSkillSelection] = useState(true)
+  const [hasExplicitToolSelection, setHasExplicitToolSelection] = useState(true)
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
   const [latestModelVisualizationSnapshot, setLatestModelVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
   const [latestResultVisualizationSnapshot, setLatestResultVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
@@ -1221,7 +1309,9 @@ export function AIConsole() {
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
   const shouldStickToBottomRef = useRef(true)
-  const seededDefaultAnalysisStrategySkillsRef = useRef(false)
+  const capabilityPreferencesHydratedRef = useRef(false)
+  const [skillsLoaded, setSkillsLoaded] = useState(false)
+  const [capabilityMatrixLoaded, setCapabilityMatrixLoaded] = useState(false)
   // 追踪最后有效的结果用于持久化（不会被引擎切换清除）
   const lastValidResultRef = useRef<AgentResult | null>(null)
   const lastValidResultVisualizationRef = useRef<VisualizationSnapshot | null>(null)
@@ -1276,90 +1366,59 @@ export function AIConsole() {
     [selectedSkillIds, skillDomainById]
   )
 
-  const defaultSelectedSkillIds = useMemo(
-    () => availableSkills
-      .map((skill) => skill.id)
-      .filter((skillId) => skillDomainById[skillId] === 'analysis'),
-    [availableSkills, skillDomainById]
+  const defaultSelectedSkillIds = useMemo(() => {
+    const available = new Set(availableSkills.map((skill) => skill.id))
+    return ['opensees-static', 'generic'].filter((skillId) => available.has(skillId))
+  }, [availableSkills])
+
+  const availableTools = useMemo(() => {
+    return [...resolveCallableTools(capabilityMatrix, selectedSkillIds, skillDomainById)].sort((a, b) => {
+      const left = resolveToolLabel(a, locale)
+      const right = resolveToolLabel(b, locale)
+      return left.localeCompare(right)
+    })
+  }, [capabilityMatrix, locale, selectedSkillIds, skillDomainById])
+
+  const initialDefaultToolIds = useMemo(
+    () => toToolIdList(resolveCallableTools(capabilityMatrix, defaultSelectedSkillIds, skillDomainById)),
+    [capabilityMatrix, defaultSelectedSkillIds, skillDomainById]
   )
 
-  const groupedSkills = useMemo(() => {
-    const domainOrder = new Map<string, number>()
-    ALL_SKILL_DOMAINS.forEach((domain, index) => {
-      domainOrder.set(domain, index)
-    })
-    ;(capabilityMatrix?.domainSummaries || []).forEach((summary, index) => {
-      const domain = normalizeSkillDomain(summary?.domain)
-      if (domain !== 'unknown' && !domainOrder.has(domain)) {
-        domainOrder.set(domain, index)
-      }
-    })
+  const baseCallableToolIds = useMemo(
+    () => toToolIdList(resolveCallableTools(capabilityMatrix, [], skillDomainById)),
+    [capabilityMatrix, skillDomainById]
+  )
 
-    const bucket = new Map<SkillDomain, AgentSkillSummary[]>()
-    availableSkills.forEach((skill) => {
-      const domain = skillDomainById[skill.id] || 'unknown'
-      const list = bucket.get(domain) || []
-      list.push(skill)
-      bucket.set(domain, list)
-    })
-
-    const selectedSet = new Set(selectedSkillIds)
-    const explicitDomains = Array.from(new Set<SkillDomain>([
-      ...ALL_SKILL_DOMAINS,
-      ...Array.from(bucket.keys()),
-    ]))
-
-    return explicitDomains
-      .map((domain) => {
-        const skills = bucket.get(domain) || []
-        return [domain, skills] as const
-      })
-      .map(([domain, skills]) => {
-        const sorted = [...skills].sort((a, b) => {
-          const left = locale === 'zh' ? (a.name.zh || a.id) : (a.name.en || a.id)
-          const right = locale === 'zh' ? (b.name.zh || b.id) : (b.name.en || b.id)
-          return left.localeCompare(right)
-        })
-        const skillIds = sorted.map((skill) => skill.id)
-        const selectedCount = skillIds.filter((id) => selectedSet.has(id)).length
-        return {
-          domain,
-          label: resolveSkillDomainLabel(domain, t),
-          skills: sorted,
-          skillIds,
-          selectedCount,
-        }
-      })
+  const loadedModules = useMemo(() => {
+    return availableSkills
+      .filter((skill) => selectedSkillIds.includes(skill.id))
+      .map((skill) => ({
+        id: skill.id,
+        domain: skillDomainById[skill.id] || 'unknown',
+        label: locale === 'zh' ? (skill.name.zh || skill.id) : (skill.name.en || skill.id),
+        source: 'local' as const,
+      }))
       .sort((a, b) => {
-        const left = domainOrder.has(a.domain) ? domainOrder.get(a.domain)! : Number.MAX_SAFE_INTEGER
-        const right = domainOrder.has(b.domain) ? domainOrder.get(b.domain)! : Number.MAX_SAFE_INTEGER
+        const domainOrder = new Map(ALL_SKILL_DOMAINS.map((domain, index) => [domain, index]))
+        const left = domainOrder.get(a.domain) ?? Number.MAX_SAFE_INTEGER
+        const right = domainOrder.get(b.domain) ?? Number.MAX_SAFE_INTEGER
         if (left !== right) {
           return left - right
         }
         return a.label.localeCompare(b.label)
       })
-  }, [availableSkills, capabilityMatrix, locale, selectedSkillIds, skillDomainById, t])
+  }, [availableSkills, locale, selectedSkillIds, skillDomainById])
 
-  const visibleGroupedSkills = useMemo(() => {
-    return groupedSkills.filter((group) => group.domain === skillDomainView)
-  }, [groupedSkills, skillDomainView])
-
-  useEffect(() => {
-    if (!groupedSkills.some((group) => group.domain === skillDomainView)) {
-      setSkillDomainView('structure-type')
-    }
-  }, [groupedSkills, skillDomainView])
-
-  const skillHubDomainOptions = useMemo(() => {
-    return [...ALL_SKILL_DOMAINS]
-  }, [])
-
-  const skillHubVisibleCatalog = useMemo(() => {
-    if (skillHubDomainFilter === 'all') {
-      return skillHubCatalog
-    }
-    return skillHubCatalog.filter((item) => normalizeSkillDomain(item.domain) === skillHubDomainFilter)
-  }, [skillHubCatalog, skillHubDomainFilter])
+  const loadedTools = useMemo(() => {
+    return availableTools
+      .filter((tool) => selectedToolIds.includes(tool.id))
+      .map((tool) => ({
+        id: tool.id,
+        category: normalizeToolCategory(tool.category),
+        label: resolveToolLabel(tool, locale),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+  }, [availableTools, locale, selectedToolIds])
 
   useEffect(() => {
     setMessages((current) => {
@@ -1457,6 +1516,9 @@ export function AIConsole() {
       try {
         const response = await fetch(`${API_BASE}/api/v1/agent/skills`)
         if (!response.ok) {
+          if (active) {
+            setSkillsLoaded(true)
+          }
           return
         }
         const payload = await response.json()
@@ -1465,11 +1527,11 @@ export function AIConsole() {
         }
         const skills = payload as AgentSkillSummary[]
         setAvailableSkills(skills)
-        const defaultSkillIds = skills.filter((skill) => skill.autoLoadByDefault).map((skill) => skill.id)
-        setSelectedSkillIds((current) => (current.length > 0 ? current : defaultSkillIds))
+        setSkillsLoaded(true)
       } catch {
         if (active) {
           setAvailableSkills([])
+          setSkillsLoaded(true)
         }
       }
     }
@@ -1482,68 +1544,34 @@ export function AIConsole() {
   }, [])
 
   useEffect(() => {
-    if (conversationId || seededDefaultAnalysisStrategySkillsRef.current || selectedSkillIds.length > 0 || defaultSelectedSkillIds.length === 0) {
+    if (capabilityPreferencesHydratedRef.current) {
       return
     }
-    // Transitional default: preselect installed analysis skills for new conversations.
-    setSelectedSkillIds(defaultSelectedSkillIds)
-    seededDefaultAnalysisStrategySkillsRef.current = true
-  }, [conversationId, defaultSelectedSkillIds, selectedSkillIds.length])
-
-  useEffect(() => {
-    let active = true
-
-    async function loadSkillHubCatalog() {
-      setSkillHubLoading(true)
-      try {
-        const params = new URLSearchParams()
-        if (skillHubKeyword.trim()) {
-          params.set('q', skillHubKeyword.trim())
-        }
-        const searchResponse = await fetch(`${API_BASE}/api/v1/agent/skillhub/search?${params.toString()}`)
-        const installedResponse = await fetch(`${API_BASE}/api/v1/agent/skillhub/installed`)
-        if (!searchResponse.ok || !installedResponse.ok) {
-          return
-        }
-        const searchPayload = await searchResponse.json()
-        const installedPayload = await installedResponse.json()
-        if (!active) {
-          return
-        }
-
-        const catalog = Array.isArray(searchPayload?.items) ? searchPayload.items as SkillHubCatalogItem[] : []
-        const installedItems = Array.isArray(installedPayload?.items) ? installedPayload.items as SkillHubInstalledItem[] : []
-        const installedMap = installedItems.reduce<Record<string, SkillHubInstalledItem>>((acc, item) => {
-          if (item?.id) {
-            acc[item.id] = item
-          }
-          return acc
-        }, {})
-
-        setSkillHubInstalledById(installedMap)
-        setSkillHubCatalog(catalog.map((item) => ({
-          ...item,
-          installed: Boolean(installedMap[item.id]),
-          enabled: installedMap[item.id]?.enabled ?? item.enabled,
-        })))
-      } catch {
-        if (active) {
-          setSkillHubCatalog([])
-          setSkillHubInstalledById({})
-        }
-      } finally {
-        if (active) {
-          setSkillHubLoading(false)
-        }
-      }
+    if (!skillsLoaded || !capabilityMatrixLoaded) {
+      return
     }
 
-    loadSkillHubCatalog()
+    const storedPreferences = loadCapabilityPreferences()
+    if (storedPreferences) {
+      const validSkillIds = storedPreferences.skillIds.filter((skillId) => availableSkills.some((skill) => skill.id === skillId))
+      const resolvedTools = resolveCallableTools(capabilityMatrix, validSkillIds, skillDomainById)
+      const validToolIds = storedPreferences.toolIds.filter((toolId) => resolvedTools.some((tool) => tool.id === toolId))
+      const shouldRepairLegacyDefaultTools =
+        hasSameIds(validSkillIds, defaultSelectedSkillIds)
+        && hasSameIds(validToolIds, baseCallableToolIds)
+        && initialDefaultToolIds.length > baseCallableToolIds.length
 
-    return () => {
-      active = false
+      setSelectedSkillIds(validSkillIds)
+      setSelectedToolIds(shouldRepairLegacyDefaultTools ? initialDefaultToolIds : validToolIds)
+    } else {
+      setSelectedSkillIds(defaultSelectedSkillIds)
+      setSelectedToolIds(initialDefaultToolIds)
     }
-  }, [skillHubKeyword])
+
+    setHasExplicitSkillSelection(true)
+    setHasExplicitToolSelection(true)
+    capabilityPreferencesHydratedRef.current = true
+  }, [availableSkills, baseCallableToolIds, capabilityMatrixLoaded, defaultSelectedSkillIds, initialDefaultToolIds, skillDomainById, skillsLoaded])
 
   useEffect(() => {
     let active = true
@@ -1552,6 +1580,9 @@ export function AIConsole() {
       try {
         const response = await fetch(`${API_BASE}/api/v1/agent/capability-matrix`)
         if (!response.ok) {
+          if (active) {
+            setCapabilityMatrixLoaded(true)
+          }
           return
         }
         const payload = await response.json()
@@ -1559,9 +1590,11 @@ export function AIConsole() {
           return
         }
         setCapabilityMatrix(payload as CapabilityMatrixPayload)
+        setCapabilityMatrixLoaded(true)
       } catch {
         if (active) {
           setCapabilityMatrix(null)
+          setCapabilityMatrixLoaded(true)
         }
       }
     }
@@ -1573,55 +1606,19 @@ export function AIConsole() {
     }
   }, [])
 
-  // Auto-load latest model from database when conversation changes and model is empty
   useEffect(() => {
-    let active = true
-
-    async function loadLatestModel() {
-      // Keep existing conversations stable; auto-load is only for new empty drafts.
-      if (conversationId) {
-        return
-      }
-      // Only auto-load if current modelText is empty
-      if (modelText) return
-
-      setIsAutoLoadingModel(true)
-      try {
-        const result = await fetchLatestModel()
-        if (!active || !result?.model) {
-          setIsAutoLoadingModel(false)
-          return
-        }
-
-        const modelJson = result.model as Record<string, unknown>
-        const modelJsonText = JSON.stringify(modelJson, null, 2)
-
-        // Set the model text, then stop loading after a small delay
-        setModelText(modelJsonText)
-        const modelAutoLoadedLabel = t('modelAutoLoaded')
-        setModelSyncMessage(
-          modelAutoLoadedLabel.includes('{modelName}')
-            ? modelAutoLoadedLabel.split('{modelName}').join(result.name)
-            : `${modelAutoLoadedLabel} ${result.name}`
-        )
-
-        // Stop loading after model is set
-        setTimeout(() => {
-          if (!active) return
-          setIsAutoLoadingModel(false)
-        }, 100)
-      } catch (error) {
-        console.error('[AI Console] Failed to auto-load model:', error)
-        setIsAutoLoadingModel(false)
-      }
+    if (!capabilityPreferencesHydratedRef.current) {
+      return
+    }
+    if (!skillsLoaded || !capabilityMatrixLoaded) {
+      return
     }
 
-    void loadLatestModel()
-
-    return () => {
-      active = false
-    }
-  }, [conversationId, modelText, t])
+    saveCapabilityPreferences({
+      skillIds: selectedSkillIds,
+      toolIds: selectedToolIds,
+    })
+  }, [capabilityMatrixLoaded, selectedSkillIds, selectedToolIds, skillsLoaded])
 
   useEffect(() => {
     let cancelled = false
@@ -1749,7 +1746,7 @@ export function AIConsole() {
           || serverConversations.find((conversation) => conversation.id === conversationId)?.title
           || messages.find((message) => message.role === 'user')?.content.slice(0, 48)
           || t('untitledConversation'),
-        type: 'analysis',
+        type: 'general',
         createdAt:
           current[conversationId]?.createdAt
           || serverConversations.find((conversation) => conversation.id === conversationId)?.createdAt
@@ -1764,6 +1761,9 @@ export function AIConsole() {
         messages,
         modelText,
         selectedSkillIds,
+        selectedToolIds,
+        hasExplicitSkillSelection,
+        hasExplicitToolSelection,
         modelSyncMessage,
         activePanel,
         // Preserve persisted result/model snapshots during transient null states (e.g. refresh restore sequence).
@@ -1789,6 +1789,9 @@ export function AIConsole() {
     modelSyncMessage,
     modelText,
     selectedSkillIds,
+    selectedToolIds,
+    hasExplicitSkillSelection,
+    hasExplicitToolSelection,
     conversationActivityAt,
     serverConversations,
     t,
@@ -1804,7 +1807,7 @@ export function AIConsole() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: seedMessage.slice(0, 48),
-        type: 'analysis',
+        type: 'general',
         locale,
       }),
     })
@@ -1821,7 +1824,7 @@ export function AIConsole() {
     const nextConversation: ConversationSummary = {
       id: payload.id as string,
       title: (payload.title as string) || seedMessage.slice(0, 48),
-      type: (payload.type as string) || 'analysis',
+      type: (payload.type as string) || 'general',
       createdAt: payload.createdAt as string | undefined,
       updatedAt: payload.updatedAt as string | undefined,
     }
@@ -1832,81 +1835,6 @@ export function AIConsole() {
     })
     setConversationId(payload.id)
     return payload.id as string
-  }
-
-  function toggleSkill(skillId: string) {
-    setSelectedSkillIds((current) => (
-      current.includes(skillId)
-        ? current.filter((item) => item !== skillId)
-        : [...current, skillId]
-    ))
-  }
-
-  function toggleSkillDomain(skillIds: string[]) {
-    if (skillIds.length === 0) {
-      return
-    }
-    setSelectedSkillIds((current) => {
-      const allSelected = skillIds.every((skillId) => current.includes(skillId))
-      if (allSelected) {
-        return current.filter((skillId) => !skillIds.includes(skillId))
-      }
-      return Array.from(new Set([...current, ...skillIds]))
-    })
-  }
-
-  async function runSkillHubAction(skillId: string, action: 'install' | 'enable' | 'disable' | 'uninstall') {
-    setSkillHubActionById((current) => ({ ...current, [skillId]: action }))
-    try {
-      const response = await fetch(`${API_BASE}/api/v1/agent/skillhub/${action}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ skillId }),
-      })
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-
-      setSkillHubCatalog((current) => current.map((item) => {
-        if (item.id !== skillId) {
-          return item
-        }
-        if (action === 'install') {
-          return { ...item, installed: true, enabled: true }
-        }
-        if (action === 'enable') {
-          return { ...item, installed: true, enabled: true }
-        }
-        if (action === 'disable') {
-          return { ...item, installed: true, enabled: false }
-        }
-        return { ...item, installed: false, enabled: false }
-      }))
-
-      setSkillHubInstalledById((current) => {
-        if (action === 'uninstall') {
-          const next = { ...current }
-          delete next[skillId]
-          return next
-        }
-        return {
-          ...current,
-          [skillId]: {
-            id: skillId,
-            enabled: action !== 'disable',
-          },
-        }
-      })
-      toast.success(t('skillHubActionSuccess'))
-    } catch {
-      toast.error(t('skillHubActionFailed'))
-    } finally {
-      setSkillHubActionById((current) => {
-        const next = { ...current }
-        delete next[skillId]
-        return next
-      })
-    }
   }
 
   function appendMessage(message: Message) {
@@ -1962,12 +1890,15 @@ export function AIConsole() {
         [targetConversationId]: {
           id: targetConversationId,
           title: existing?.title || serverConversation?.title || t('untitledConversation'),
-          type: existing?.type || serverConversation?.type || 'analysis',
+          type: existing?.type || serverConversation?.type || 'general',
           createdAt: existing?.createdAt || serverConversation?.createdAt || new Date().toISOString(),
           updatedAt: new Date().toISOString(),
           messages: existing?.messages || messages,
           modelText: existing?.modelText ?? modelText,
           selectedSkillIds: existing?.selectedSkillIds || selectedSkillIds,
+          selectedToolIds: existing?.selectedToolIds || selectedToolIds,
+          hasExplicitSkillSelection: existing?.hasExplicitSkillSelection ?? hasExplicitSkillSelection,
+          hasExplicitToolSelection: existing?.hasExplicitToolSelection ?? hasExplicitToolSelection,
           modelSyncMessage: existing?.modelSyncMessage || modelSyncMessage,
           activePanel: existing?.activePanel || activePanel,
           latestResult: latestResultValue,
@@ -2021,7 +1952,6 @@ export function AIConsole() {
       const backendUpdatedAt = payload?.updatedAt || payload?.createdAt || ''
       const archivedUpdatedAt = archived?.updatedAt || archived?.createdAt || ''
       const preferArchiveState = Boolean(archived && archivedUpdatedAt > backendUpdatedAt)
-      const nextSelectedSkillIds = archived?.selectedSkillIds?.length ? archived.selectedSkillIds : []
       const nextLatestResult = preferArchiveState
         ? pickPreferredLatestResult(archived?.latestResult, backendSnapshots?.latestResult)
         : pickPreferredLatestResult(backendSnapshots?.latestResult, archived?.latestResult)
@@ -2053,7 +1983,6 @@ export function AIConsole() {
       setConversationId(nextConversationId)
       setMessages(nextMessages)
       setModelText(nextModelText)
-      setSelectedSkillIds(nextSelectedSkillIds)
       setModelSyncMessage(nextModelSyncMessage)
       setLatestResult(nextLatestResult)
       setLatestModelVisualizationSnapshot(nextModelSnapshot)
@@ -2070,7 +1999,6 @@ export function AIConsole() {
           || toModelTextFromSnapshot(archived.resultVisualizationSnapshot || archived.visualizationSnapshot)
           || ''
         )
-        setSelectedSkillIds(archived.selectedSkillIds?.length ? archived.selectedSkillIds : [])
         setModelSyncMessage(archived.modelSyncMessage || '')
         const archivedLatestResult = normalizeAgentResultPayload(archived.latestResult || null)
         setLatestResult(archivedLatestResult)
@@ -2095,12 +2023,9 @@ export function AIConsole() {
   }
 
   function resetConsoleState() {
-    const nextDefaultSelectedSkillIds = defaultSelectedSkillIds
     setConversationId('')
     setMessages([initialAssistantMessage])
     setModelText('')
-    setSelectedSkillIds(nextDefaultSelectedSkillIds)
-    seededDefaultAnalysisStrategySkillsRef.current = nextDefaultSelectedSkillIds.length > 0
     setModelSyncMessage('')
     setLatestResult(null)
     setLatestModelVisualizationSnapshot(null)
@@ -2200,31 +2125,30 @@ export function AIConsole() {
     setVisualizationOpen(Boolean(nextSource === 'result' ? (effectiveResultSnapshot || latestModelVisualizationSnapshot) : latestModelVisualizationSnapshot))
   }
 
-  function applySynchronizedModel(nextModel: Record<string, unknown>, source: 'chat' | 'execute') {
+  function applySynchronizedModel(nextModel: Record<string, unknown>, source: 'conversation' | 'tool') {
     const nextText = JSON.stringify(nextModel, null, 2)
     if (nextText !== modelText) {
       setModelText(nextText)
     }
-    if (source === 'chat') {
+    if (source === 'conversation') {
       setModelSyncMessage(t('modelSyncFromChat'))
       setContextOpen(true)
     }
     setErrorMessage('')
   }
 
-  async function handleSubmit(action: ComposerAction) {
+  async function handleSubmit() {
     const trimmedInput = input.trim()
     if (!trimmedInput || isSending) {
       return
     }
 
-    const effectiveAction: ComposerAction = action === 'execute' && selectedSkillIds.length > 0 ? 'execute' : 'chat'
     const parsedModel = parseModelJson(modelText, t)
-    if (parsedModel.error && effectiveAction === 'execute') {
+    if (parsedModel.error) {
       setErrorMessage(parsedModel.error)
       setContextOpen(true)
-      return
     }
+    const contextModel = parsedModel.error ? undefined : parsedModel.model
 
     const userMessage: Message = {
       id: createId('user'),
@@ -2235,8 +2159,7 @@ export function AIConsole() {
     }
 
     const assistantMessageId = createId('assistant')
-    const assistantSeed =
-      effectiveAction === 'chat' ? t('assistantSeedChat') : t('assistantSeedExecute')
+    const assistantSeed = t('assistantSeedAuto')
 
     setErrorMessage('')
     appendMessage(userMessage)
@@ -2252,12 +2175,6 @@ export function AIConsole() {
     setVisualizationOpen(false)
     setVisualizationSource('result')
     setModelSyncMessage('')
-    if (effectiveAction === 'execute') {
-      // Avoid showing stale output from a previous run while a new execution is in flight.
-      setLatestResult(null)
-      setLatestResultVisualizationSnapshot(null)
-      setActivePanel('analysis')
-    }
     let receivedResult = false
     let assistantContent = assistantSeed
     let activeConversationId = conversationId
@@ -2266,101 +2183,27 @@ export function AIConsole() {
     try {
       const nextConversationId = await ensureConversation(trimmedInput)
       activeConversationId = nextConversationId
-      const explicitSkillIds = selectedSkillIds.length > 0 ? selectedSkillIds : undefined
-      const contextPayload =
-        effectiveAction === 'execute'
-          ? {
-              locale,
-              skillIds: explicitSkillIds,
-              model: parsedModel.model,
-              modelFormat: parsedModel.model ? 'structuremodel-v1' : undefined,
-              autoAnalyze: true,
-              autoCodeCheck: hasSelectedCodeCheckSkill,
-              includeReport: true,
-              reportFormat: 'both',
-              reportOutput: 'inline',
-            }
-          : {
-              locale,
-              skillIds: explicitSkillIds,
-              model: parsedModel.model,
-              modelFormat: parsedModel.model ? 'structuremodel-v1' : undefined,
-            }
-      const promptSnapshot = buildPromptSnapshot(trimmedInput, contextPayload as Record<string, unknown>)
-            const debugSkillIds = Array.isArray((contextPayload as Record<string, unknown>).skillIds)
-              ? ((contextPayload as Record<string, unknown>).skillIds as string[])
-              : []
-
-      if (effectiveAction === 'execute') {
-        const response = await fetch(`${API_BASE}/api/v1/chat/execute`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            message: trimmedInput,
-            conversationId: nextConversationId,
-            context: contextPayload,
-          }),
-        })
-
-        if (!response.ok) {
-          throw new Error(`${t('requestFailedHttp')}: HTTP ${response.status}`)
-        }
-
-        const payload = await response.json()
-        if (!payload || typeof payload !== 'object') {
-          throw new Error(t('invalidResponse'))
-        }
-
-        const result = {
-          ...(payload as AgentResult),
-        }
-        const debugDetails = buildMessageDebugDetails(promptSnapshot, debugSkillIds, result)
-        if (result.model && typeof result.model === 'object' && !Array.isArray(result.model)) {
-          applySynchronizedModel(result.model, 'execute')
-        }
-        const visualizationSnapshot = buildVisualizationSnapshot({
-          title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
-          model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : parsedModel.model) ?? null,
-          analysis: extractAnalysis(result),
-          mode: 'analysis-result',
-        })
-        const modelSnapshot = buildVisualizationSnapshot({
-          title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
-          model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : parsedModel.model) ?? null,
-          mode: 'model-only',
-        })
-        receivedResult = true
-        assistantContent = result.response || result.clarification?.question || t('returnedResult')
-        setLatestResult(result)
-        setLatestResultVisualizationSnapshot(visualizationSnapshot)
-        setActivePanel(result.report?.markdown ? 'report' : 'analysis')
-        persistConversationSnapshotsToArchive(nextConversationId, {
-          latestResult: result,
-          modelSnapshot,
-          resultSnapshot: visualizationSnapshot,
-        })
-        // 保存结果快照到后端
-        await saveConversationSnapshotToBackend(nextConversationId, {
-          modelSnapshot,
-          resultSnapshot: visualizationSnapshot,
-          latestResult: result,
-        })
-        replaceMessage(assistantMessageId, (message) => ({
-          ...message,
-          content: assistantContent,
-          status: 'done',
-          debugDetails,
-        }))
-        shouldBumpConversationActivity = true
-        return
+      const contextPayload = {
+        locale,
+        skillIds: selectedSkillIds,
+        enabledToolIds: selectedToolIds,
+        model: contextModel,
+        modelFormat: contextModel ? 'structuremodel-v1' : undefined,
+        autoCodeCheck: hasSelectedCodeCheckSkill || undefined,
       }
+      const promptSnapshot = buildPromptSnapshot(trimmedInput, contextPayload as Record<string, unknown>)
+      const debugSkillIds = Array.isArray((contextPayload as Record<string, unknown>).skillIds)
+        ? ((contextPayload as Record<string, unknown>).skillIds as string[])
+        : []
+      const debugToolIds = Array.isArray((contextPayload as Record<string, unknown>).enabledToolIds)
+        ? ((contextPayload as Record<string, unknown>).enabledToolIds as string[])
+        : []
 
       const response = await fetch(`${API_BASE}/api/v1/chat/stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           message: trimmedInput,
-          mode: effectiveAction,
           conversationId: nextConversationId,
           context: contextPayload,
         }),
@@ -2433,23 +2276,24 @@ export function AIConsole() {
             const result = {
               ...(payload.content as AgentResult),
             }
-            const debugDetails = buildMessageDebugDetails(promptSnapshot, debugSkillIds, result)
+            const debugDetails = buildMessageDebugDetails(promptSnapshot, debugSkillIds, debugToolIds, result)
             if (result.model && typeof result.model === 'object' && !Array.isArray(result.model)) {
-              applySynchronizedModel(result.model, effectiveAction === 'chat' ? 'chat' : 'execute')
+              applySynchronizedModel(result.model, result.analysis ? 'tool' : 'conversation')
             }
             const visualizationSnapshot = buildVisualizationSnapshot({
               title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
-              model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : parsedModel.model) ?? null,
+              model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : contextModel) ?? null,
               analysis: extractAnalysis(result),
               mode: 'analysis-result',
             })
             const modelSnapshot = buildVisualizationSnapshot({
               title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),
-              model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : parsedModel.model) ?? null,
+              model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : contextModel) ?? null,
               mode: 'model-only',
             })
             receivedResult = true
             setLatestResult(result)
+            setLatestModelVisualizationSnapshot(modelSnapshot)
             setLatestResultVisualizationSnapshot(visualizationSnapshot)
             persistConversationSnapshotsToArchive(activeConversationId || nextConversationId, {
               latestResult: result,
@@ -2523,7 +2367,7 @@ export function AIConsole() {
   return (
     <div
       data-testid="console-layout-grid"
-      className="grid min-h-[calc(100vh-5.5rem)] gap-4 xl:h-[calc(100vh-5.5rem)] xl:min-h-0 xl:grid-cols-[280px_minmax(0,1.3fr)_420px] xl:overflow-hidden"
+      className="grid min-h-[calc(100vh-5.5rem)] gap-4 xl:h-[calc(100vh-5.5rem)] xl:min-h-0 xl:grid-cols-[300px_minmax(0,1.7fr)_460px] xl:overflow-hidden 2xl:grid-cols-[320px_minmax(0,1.9fr)_500px]"
     >
       <aside
         data-testid="console-history-panel"
@@ -2676,10 +2520,10 @@ export function AIConsole() {
                 </Badge>
               </div>
             </div>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
+            <p className="mt-3 max-w-5xl text-sm leading-6 text-muted-foreground">
               {t('aiConsoleIntro')}
             </p>
-            <div className="mt-4 max-w-3xl rounded-[22px] border border-border/70 bg-background/70 px-4 py-3 text-sm text-muted-foreground dark:border-white/10 dark:bg-white/5">
+            <div className="mt-4 max-w-5xl rounded-[22px] border border-border/70 bg-background/70 px-4 py-3 text-sm text-muted-foreground dark:border-white/10 dark:bg-white/5">
               <div className="font-medium text-foreground">{t('databaseAdminConsoleCardTitle')}</div>
               <div className="mt-1 leading-6">{t('databaseAdminConsoleCardBody')}</div>
             </div>
@@ -2690,7 +2534,7 @@ export function AIConsole() {
             data-testid="console-chat-scroll"
             className="flex-1 overflow-auto px-5 py-5 xl:min-h-0"
           >
-            <div className="mx-auto flex max-w-4xl flex-col gap-4">
+            <div className="flex w-full flex-col gap-4">
               {messages.length === 1 && (
                 <div className="grid gap-3 md:grid-cols-3">
                   {quickPrompts.map((prompt) => (
@@ -2774,14 +2618,6 @@ export function AIConsole() {
                                     <span className="font-medium text-foreground">{t('promptThinkingStructuralSkill')}</span>
                                     <Badge variant="outline" className="text-[10px]">
                                       {message.debugDetails.routing.structuralSkillId}
-                                    </Badge>
-                                  </div>
-                                ) : null}
-                                {message.debugDetails.routing.structuralScenarioKey ? (
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <span className="font-medium text-foreground">{t('promptThinkingScenario')}</span>
-                                    <Badge variant="outline" className="text-[10px]">
-                                      {message.debugDetails.routing.structuralScenarioKey}
                                     </Badge>
                                   </div>
                                 ) : null}
@@ -2894,7 +2730,7 @@ export function AIConsole() {
           </div>
 
           <div data-testid="console-composer" className="border-t border-border/70 px-4 py-3 dark:border-white/10">
-            <div className="mx-auto max-w-4xl space-y-3">
+            <div className="w-full space-y-3">
               {errorMessage && (
                 <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
                   {errorMessage}
@@ -2902,185 +2738,54 @@ export function AIConsole() {
               )}
 
               <div className="rounded-[24px] border border-border/70 bg-background/70 p-2.5 dark:border-white/10 dark:bg-black/20">
-                <div className="mb-2 rounded-[18px] border border-border/70 bg-card/60 px-3 py-2.5 dark:border-white/10 dark:bg-white/5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="mb-2 rounded-[18px] border border-border/70 bg-card/60 px-3 py-3 dark:border-white/10 dark:bg-white/5">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-foreground">{t('skillSelectionLabel')}</p>
-                      {skillsOpen && (
-                        <p className="text-xs leading-5 text-muted-foreground">
-                          {t('skillSelectionHelp')}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      className="rounded-full border border-border bg-background/70 px-3 py-1.5 text-sm text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
-                      onClick={() => setSkillsOpen((current) => !current)}
-                    >
-                      {skillsOpen ? t('collapseSkills') : t('expandSkills')}
-                    </button>
-                  </div>
-
-                  {skillsOpen && (
-                    <div className="mt-3 space-y-3">
-                      <p className="text-xs text-muted-foreground">{t('skillSelectionCatalogHint')}</p>
                       <div className="flex flex-wrap items-center gap-2">
-                        <label className="text-xs font-medium text-foreground" htmlFor="skill-domain-view-select">{t('skillSelectionDomainViewLabel')}</label>
-                        <select
-                          id="skill-domain-view-select"
-                          value={skillDomainView}
-                          onChange={(event) => setSkillDomainView(event.target.value as SkillDomain)}
-                          className="h-9 min-w-[200px] rounded-md border border-border/70 bg-background px-3 text-xs text-foreground dark:border-white/10 dark:bg-black/20"
+                        <p className="text-sm font-medium text-foreground">{t('capabilitySettingsSummaryTitle')}</p>
+                        <button
+                          type="button"
+                          title={t('skillVsToolSkillHelp')}
+                          className="rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground dark:border-white/10 dark:bg-white/5"
                         >
-                          {groupedSkills.map((group) => (
-                            <option key={group.domain} value={group.domain}>{group.label}</option>
-                          ))}
-                        </select>
+                          {t('skillShortLabel')}
+                        </button>
+                        <button
+                          type="button"
+                          title={t('skillVsToolToolHelp')}
+                          className="rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground dark:border-white/10 dark:bg-white/5"
+                        >
+                          {t('toolShortLabel')}
+                        </button>
                       </div>
-                      {visibleGroupedSkills.map((group) => {
-                        const allSelected = group.skills.length > 0 && group.selectedCount === group.skills.length
-                        return (
-                          <div key={group.domain} className="rounded-2xl border border-border/70 bg-background/60 p-2.5 dark:border-white/10 dark:bg-slate-950/30">
-                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                              <p className="text-xs font-medium text-foreground">
-                                {group.label}
-                                <span className="ml-2 text-muted-foreground">{group.selectedCount}/{group.skills.length}</span>
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => toggleSkillDomain(group.skillIds)}
-                                disabled={group.skillIds.length === 0}
-                                className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground transition hover:text-foreground dark:border-white/10 dark:bg-white/5"
-                              >
-                                {allSelected ? t('skillClearDomainSelection') : t('skillSelectDomainSelection')}
-                              </button>
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {group.skills.length === 0 && (
-                                <p className="text-xs text-muted-foreground">{t('skillDomainNoInstalledSkills')}</p>
-                              )}
-                              {group.skills.map((skill) => {
-                                const label = locale === 'zh' ? (skill.name.zh || skill.id) : (skill.name.en || skill.id)
-                                const selected = selectedSkillIds.includes(skill.id)
-                                return (
-                                  <button
-                                    key={skill.id}
-                                    type="button"
-                                    onClick={() => toggleSkill(skill.id)}
-                                    className={cn(
-                                      'rounded-full border px-3 py-1.5 text-sm transition',
-                                      selected
-                                        ? 'border-cyan-300/50 bg-cyan-300/15 text-cyan-700 dark:text-cyan-100'
-                                        : 'border-border/70 bg-background/70 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-slate-950/40 dark:hover:text-white'
-                                    )}
-                                  >
-                                    {label}
-                                  </button>
-                                )
-                              })}
-                            </div>
-                          </div>
-                        )
-                      })}
-
-                      <div className="rounded-2xl border border-border/70 bg-background/60 p-2.5 dark:border-white/10 dark:bg-slate-950/30">
-                        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="text-xs font-medium text-foreground">{t('skillHubSectionTitle')}</p>
-                            <p className="text-xs text-muted-foreground">{t('skillHubSectionHint')}</p>
-                          </div>
-                          <button
-                            type="button"
-                            className="rounded-full border border-border/70 bg-background/70 px-3 py-1 text-xs text-muted-foreground transition hover:text-foreground dark:border-white/10 dark:bg-white/5"
-                            onClick={() => setSkillHubOpen((current) => !current)}
-                          >
-                            {skillHubOpen ? t('skillHubCollapse') : t('skillHubExpand')}
-                          </button>
-                        </div>
-                        {skillHubOpen && (
-                          <>
-                            <p className="mb-2 rounded-md border border-amber-400/30 bg-amber-300/10 px-2.5 py-1.5 text-[11px] leading-5 text-amber-700 dark:text-amber-200">
-                              {t('skillHubDemoDisclaimer')}
-                            </p>
-                            <div className="mb-2 flex flex-wrap gap-2">
-                              <Input
-                                value={skillHubKeyword}
-                                onChange={(event) => setSkillHubKeyword(event.target.value)}
-                                placeholder={t('skillHubSearchPlaceholder')}
-                                className="h-9 max-w-[220px]"
-                              />
-                              <select
-                                value={skillHubDomainFilter}
-                                onChange={(event) => setSkillHubDomainFilter(event.target.value as SkillDomain | 'all')}
-                                className="h-9 rounded-md border border-border/70 bg-background px-3 text-xs text-foreground dark:border-white/10 dark:bg-black/20"
-                              >
-                                <option value="all">{t('skillHubDomainAll')}</option>
-                                {skillHubDomainOptions.map((domain) => (
-                                  <option key={domain} value={domain}>{resolveSkillDomainLabel(domain, t)}</option>
-                                ))}
-                              </select>
-                            </div>
-
-                            {skillHubLoading ? (
-                              <p className="text-xs text-muted-foreground">{t('skillHubLoading')}</p>
-                            ) : (
-                              <div className="space-y-2">
-                                {skillHubVisibleCatalog.length === 0 && (
-                                  <p className="text-xs text-muted-foreground">{t('skillHubNoResults')}</p>
-                                )}
-                                {skillHubVisibleCatalog.length > 0 && (
-                                  <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
-                                    {skillHubVisibleCatalog.map((item) => {
-                                      const domain = normalizeSkillDomain(item.domain)
-                                      const label = locale === 'zh' ? (item.name?.zh || item.id) : (item.name?.en || item.id)
-                                      const installed = Boolean(skillHubInstalledById[item.id] || item.installed)
-                                      const enabled = installed && (skillHubInstalledById[item.id]?.enabled ?? item.enabled ?? false)
-                                      const runningAction = skillHubActionById[item.id]
-                                      return (
-                                        <div key={item.id} className="rounded-xl border border-border/70 bg-background/70 px-3 py-2 dark:border-white/10 dark:bg-black/20">
-                                          <div className="flex flex-wrap items-center justify-between gap-2">
-                                            <div>
-                                              <p className="text-sm font-medium text-foreground">{label}</p>
-                                              <p className="text-xs text-muted-foreground">{resolveSkillDomainLabel(domain, t)}</p>
-                                            </div>
-                                            <div className="flex flex-wrap items-center gap-2">
-                                              <Badge variant="outline" className="text-[10px]">
-                                                {installed ? (enabled ? t('skillHubStatusEnabled') : t('skillHubStatusDisabled')) : t('skillHubStatusNotInstalled')}
-                                              </Badge>
-                                              {!installed && (
-                                                <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'install')}>
-                                                  {runningAction === 'install' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubInstall')}
-                                                </Button>
-                                              )}
-                                              {installed && enabled && (
-                                                <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'disable')}>
-                                                  {runningAction === 'disable' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubDisable')}
-                                                </Button>
-                                              )}
-                                              {installed && !enabled && (
-                                                <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'enable')}>
-                                                  {runningAction === 'enable' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubEnable')}
-                                                </Button>
-                                              )}
-                                              {installed && (
-                                                <Button size="sm" variant="outline" disabled={Boolean(runningAction)} onClick={() => void runSkillHubAction(item.id, 'uninstall')}>
-                                                  {runningAction === 'uninstall' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : t('skillHubUninstall')}
-                                                </Button>
-                                              )}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      )
-                                    })}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{t('capabilitySettingsSummaryBody')}</p>
                     </div>
-                  )}
+                    <Link
+                      href="/console/capabilities"
+                      className="rounded-full border border-cyan-300/35 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-800 transition hover:bg-cyan-300/20 dark:text-cyan-100"
+                    >
+                      {t('capabilitySettingsOpen')}
+                    </Link>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Badge variant="outline" className="text-[10px]">
+                      {t('loadedSkillsTitle')}: {loadedModules.length}
+                    </Badge>
+                    <Badge variant="outline" className="text-[10px]">
+                      {t('loadedToolsTitle')}: {loadedTools.length}
+                    </Badge>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {loadedModules.slice(0, 4).map((module) => (
+                      <div
+                        key={module.id}
+                        className="flex items-center gap-2 rounded-full border border-border/70 bg-background/70 px-3 py-1.5 text-xs dark:border-white/10 dark:bg-black/20"
+                      >
+                        <span className="font-medium text-foreground">{module.label}</span>
+                        <span className="text-muted-foreground">{resolveSkillDomainLabel(module.domain, t)}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
                 <Textarea
@@ -3107,22 +2812,12 @@ export function AIConsole() {
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
                       type="button"
-                      variant="outline"
-                      className="rounded-full border-border bg-background/70 text-foreground hover:bg-accent/10 dark:border-white/10 dark:bg-white/5 dark:text-slate-100 dark:hover:bg-white/10"
-                      onClick={() => handleSubmit('chat')}
-                      disabled={isSending || !input.trim()}
-                    >
-                      {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Bot className="h-4 w-4" />}
-                      {t('chatFirst')}
-                    </Button>
-                    <Button
-                      type="button"
                       className="rounded-full bg-cyan-300 px-5 text-slate-950 hover:bg-cyan-200"
-                      onClick={() => handleSubmit('execute')}
+                      onClick={() => handleSubmit()}
                       disabled={isSending || !input.trim()}
                     >
                       {isSending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowUp className="h-4 w-4" />}
-                      {t('runAnalysis')}
+                      {t('sendMessage')}
                     </Button>
                   </div>
                 </div>
@@ -3159,12 +2854,7 @@ export function AIConsole() {
                           setModelSyncMessage('')
                         }}
                       />
-                      {isAutoLoadingModel ? (
-                        <div className="text-xs text-muted-foreground flex items-center gap-2">
-                          <Loader2 className="h-3 w-3 animate-spin" />
-                          {t('loadingModel')}
-                        </div>
-                      ) : modelSyncMessage ? (
+                      {modelSyncMessage ? (
                         <div className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-xs leading-5 text-cyan-900 dark:text-cyan-100">
                           {modelSyncMessage}
                         </div>

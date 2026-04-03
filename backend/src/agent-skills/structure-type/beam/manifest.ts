@@ -14,11 +14,12 @@ export const manifest: SkillManifest = {
   triggers: ['beam', '梁', '悬臂', 'girder', '主梁', '大梁'],
   stages: ['intent', 'draft', 'analysis', 'design'],
   autoLoadByDefault: true,
-  scenarioKeys: ['beam', 'girder'],
+  structuralTypeKeys: ['beam', 'girder'],
   domain: 'structure-type',
   requires: [],
   conflicts: [],
   capabilities: ['intent-detection', 'draft-extraction', 'interaction-questions', 'model-build', 'report-narrative'],
+  enabledTools: ['draft_model', 'update_model'],
   priority: 40,
   compatibility: {
     minRuntimeVersion: '0.1.0',

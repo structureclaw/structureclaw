@@ -26,7 +26,7 @@ frontend (Next.js)
 
 - `frontend/`：Next.js 14 前端
 - `backend/`：Fastify API、Agent/Chat 编排、Prisma，以及分析执行宿主
-- `scripts/`：启动脚本与 `sclaw` CLI 实现
+- `scripts/`：启动脚本与 `sclaw` / `sclaw_cn` CLI 实现
 - `tests/`：回归入口（`node tests/runner.mjs ...`）、安装冒烟，以及原生冒烟后在 CI 中执行的前端 type-check、Vitest 与 lint
 - `docs/`：手册与协议参考文档
 
@@ -52,11 +52,22 @@ powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
 ./sclaw status
 ```
 
+国内镜像流程（子命令与 `sclaw` 一致，但默认启用国内镜像）：
+
+```bash
+./sclaw_cn doctor
+./sclaw_cn start
+./sclaw_cn status
+```
+
 补充说明：
 
-- 本地默认数据库现在是 SQLite，默认文件位置是 `.runtime/data/structureclaw.db`。
+- 本地默认数据库现在是 SQLite。`./sclaw start` 默认使用 `.runtime/data/structureclaw.start.db`，`./sclaw doctor` 默认使用 `.runtime/data/structureclaw.doctor.db`，这样预检不会碰当前实际运行库。
+- `./sclaw doctor` 不再要求你预先安装系统级 Python 3.12。缺失时会先确保 `uv` 可用，并自动准备带 Python 3.12 的 `backend/.venv`；在 Windows 上，如果系统未安装 `winget`，则会提示你手动安装 `uv`。
 - 如果你原来的本地 `.env` 还把 `DATABASE_URL` 指向本地 PostgreSQL，`./sclaw doctor` 和 `./sclaw start` 会先自动迁移到 SQLite，再把 `.env` 改写成 SQLite 默认配置，同时把原 PostgreSQL 地址保留到 `POSTGRES_SOURCE_DATABASE_URL`。
 - 第一次自动迁移时，还会生成一个类似 `.env.pre-sqlite-migration.<timestamp>.bak` 的本地备份文件。
+- `sclaw_cn` 在未显式配置时会自动使用国内镜像默认值：`PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`、`NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`，以及通过 `DOCKER_REGISTRY_MIRROR` 指定的 Docker 镜像前缀。
+- 你可以在 `.env` 或 shell 环境中覆盖镜像变量：`PIP_INDEX_URL`、`NPM_CONFIG_REGISTRY`、`DOCKER_REGISTRY_MIRROR`、`APT_MIRROR`。
 
 常用后续命令：
 
