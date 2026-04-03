@@ -108,6 +108,7 @@ class ErrorCode:
     SCHEMA_MISSING_FIELD = "SCHEMA_MISSING_FIELD"
     SCHEMA_TYPE_ERROR = "SCHEMA_TYPE_ERROR"
     SCHEMA_VALUE_ERROR = "SCHEMA_VALUE_ERROR"
+    SCHEMA_VERSION_NOT_SUPPORTED = "SCHEMA_VERSION_NOT_SUPPORTED"
 
     # Semantic errors
     SEMANTIC_INVALID_REFERENCE = "SEMANTIC_INVALID_REFERENCE"
@@ -206,14 +207,30 @@ def pydantic_error_to_path(error: Dict[str, Any]) -> str:
 def validate_schema(
     data: Dict[str, Any],
     stop_on_first_error: bool = False,
+    schema_version: str = "2.0.0",
 ) -> Tuple[bool, Optional[StructureModelV2], List[ValidationIssue]]:
     """
     Validate data against StructureModelV2 schema.
+
+    Args:
+        data: Parsed JSON data
+        stop_on_first_error: Stop after first error
+        schema_version: Target schema version (currently only "2.0.0" is supported)
 
     Returns:
         Tuple of (is_valid, model_instance, issues)
     """
     issues: List[ValidationIssue] = []
+
+    # Check schema version support
+    if schema_version != "2.0.0":
+        issues.append(ValidationIssue(
+            severity="error",
+            code=ErrorCode.SCHEMA_VERSION_NOT_SUPPORTED,
+            message=f"Schema version '{schema_version}' is not supported. Only '2.0.0' is currently supported.",
+            suggestion="Use schema_version '2.0.0' or migrate your model to the latest schema",
+        ))
+        return False, None, issues
 
     if StructureModelV2 is None:
         issues.append(ValidationIssue(
@@ -694,6 +711,7 @@ def validate_structure_json(
     schema_valid, model_instance, schema_issues = validate_schema(
         parsed_data,
         stop_on_first_error=stop_on_first_error,
+        schema_version=schema_version,
     )
     all_issues.extend(schema_issues)
 
