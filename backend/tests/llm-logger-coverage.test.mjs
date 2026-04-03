@@ -27,6 +27,19 @@ function readJsonlLines(filePath) {
   return content.split('\n').filter(Boolean).map((line) => JSON.parse(line));
 }
 
+/**
+ * Safely remove a temp directory. On Windows, WriteStream handles may still
+ * be open after isolateModulesAsync completes, causing ENOTEMPTY / EPERM.
+ * Wrapping in try/catch avoids CI failures — OS will clean up temp dirs.
+ */
+function cleanupTmpDir(dir) {
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    // Intentionally ignored — temp directory, OS will reclaim.
+  }
+}
+
 // Mutable mock config -- tests modify properties before each isolateModulesAsync call.
 const mockConfig = {
   llmLogEnabled: true,
@@ -193,7 +206,7 @@ describe('llmCallLogger.log when logging is enabled', () => {
       expect(new Date(entry.timestamp).toISOString()).toBe(entry.timestamp);
     });
 
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTmpDir(tmpDir);
   });
 
   test('should set responseChars to 0 when response is null', async () => {
@@ -223,7 +236,7 @@ describe('llmCallLogger.log when logging is enabled', () => {
       expect(lines[0].error).toBe('API timeout');
     });
 
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTmpDir(tmpDir);
   });
 
   test('should append multiple entries to the same file', async () => {
@@ -270,7 +283,7 @@ describe('llmCallLogger.log when logging is enabled', () => {
       expect(lines[2].error).toBe('rate limited');
     });
 
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTmpDir(tmpDir);
   });
 
   test('should compute promptChars correctly for empty string', async () => {
@@ -299,7 +312,7 @@ describe('llmCallLogger.log when logging is enabled', () => {
       expect(lines[0].responseChars).toBe(0);
     });
 
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTmpDir(tmpDir);
   });
 
   test('should compute promptChars for Unicode and emoji content', async () => {
@@ -331,7 +344,7 @@ describe('llmCallLogger.log when logging is enabled', () => {
       expect(lines[0].responseChars).toBe(emojiResponse.length);
     });
 
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTmpDir(tmpDir);
   });
 
   test('should handle long prompts without truncation', async () => {
@@ -363,7 +376,7 @@ describe('llmCallLogger.log when logging is enabled', () => {
       expect(lines[0].responseChars).toBe(50000);
     });
 
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTmpDir(tmpDir);
   });
 });
 
@@ -474,7 +487,7 @@ describe('llmCallLogger.log edge cases', () => {
       expect(lines[0].success).toBe(false);
     });
 
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTmpDir(tmpDir);
   });
 
   test('should handle entry without optional error field', async () => {
@@ -501,7 +514,7 @@ describe('llmCallLogger.log edge cases', () => {
       expect(lines[0].error).toBeUndefined();
     });
 
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTmpDir(tmpDir);
   });
 
   test('should handle very short TTL-like rapid sequential calls', async () => {
@@ -534,6 +547,6 @@ describe('llmCallLogger.log edge cases', () => {
       expect(lines[49].model).toBe('model-49');
     });
 
-    fs.rmSync(tmpDir, { recursive: true, force: true });
+    cleanupTmpDir(tmpDir);
   });
 });
