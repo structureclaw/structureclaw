@@ -11,16 +11,6 @@ on:
         description: "Test category filter (routing|extraction|pipeline|clarification)"
         required: false
         default: ""
-  push:
-    branches: [master]
-    paths:
-      - "backend/src/agent-skills/**"
-      - "backend/src/agent-runtime/**"
-      - "backend/src/services/agent.ts"
-      - "backend/src/api/agent.ts"
-      - "backend/src/api/chat.ts"
-      - "tests/llm-integration/**"
-      - ".github/workflows/llm-integration.yml"
 
 jobs:
   llm-integration:

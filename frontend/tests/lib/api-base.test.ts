@@ -79,17 +79,10 @@ describe('api-base', () => {
 
   it('returns the raw value when window is undefined (SSR)', async () => {
     vi.stubEnv('NEXT_PUBLIC_API_URL', 'http://localhost:9000')
-    // In jsdom, window is a non-configurable property on globalThis,
-    // so we override it on the global object where the module checks `typeof window`.
-    const originalWindow = globalThis.window
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    delete (globalThis as any).window
-
-    try {
-      const { API_BASE } = await import('@/lib/api-base')
-      expect(API_BASE).toBe('http://localhost:9000')
-    } finally {
-      globalThis.window = originalWindow
-    }
+    // Simulate SSR by stubbing window to undefined. vi.stubGlobal handles
+    // restoration via afterEach's vi.unstubAllGlobals.
+    vi.stubGlobal('window', undefined)
+    const { API_BASE } = await import('@/lib/api-base')
+    expect(API_BASE).toBe('http://localhost:9000')
   })
 })

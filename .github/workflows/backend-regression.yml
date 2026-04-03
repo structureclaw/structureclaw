@@ -1,6 +1,7 @@
 name: Backend Regression
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'backend/**'
