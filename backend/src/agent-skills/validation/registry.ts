@@ -106,10 +106,6 @@ function assertStringArray(value: unknown, fallback: string[] = []): string[] {
     : fallback;
 }
 
-function assertNumber(value: unknown, fallback = 0): number {
-  return typeof value === 'number' ? value : fallback;
-}
-
 /**
  * Convert validation skill directory to manifest
  */
@@ -140,7 +136,7 @@ function toValidationSkillManifest(skillDir: string): ValidationSkillManifest | 
     triggers: assertStringArray(metadata.triggers),
     stages: ['validation'],
     capabilities: assertStringArray(metadata.capabilities),
-    priority: assertNumber(metadata.priority, 100),
+    priority: Number(metadata.priority ?? 100),
     autoLoadByDefault: Boolean(metadata.autoLoadByDefault ?? true),
     runtimeRelativePath: assertString(metadata.runtimeRelativePath, 'runtime.py'),
     schemaVersions: assertStringArray(metadata.schemaVersions),
