@@ -51,7 +51,7 @@ export interface ValidationResult {
   /** List of issues / 问题列表 */
   issues: ValidationIssue[];
   /** Validated and cleaned model / 验证通过的模型（已清洗/补全） */
-  validatedModel?: unknown;
+  validated_model?: unknown;
 }
 
 /**
