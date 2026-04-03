@@ -28,7 +28,19 @@ function resolveValidationSkillRoot(): string {
     path.resolve(MODULE_DIR),
   ];
 
-  const matched = candidates.find((candidate) => existsSync(path.join(candidate, 'structure-json')));
+  // Find directory containing at least one skill subdirectory with intent.md
+  const matched = candidates.find((candidate) => {
+    if (!existsSync(candidate)) {
+      return false;
+    }
+    try {
+      return readdirSync(candidate).some((name) =>
+        existsSync(path.join(candidate, name, 'intent.md'))
+      );
+    } catch {
+      return false;
+    }
+  });
   if (!matched) {
     throw new Error(`Validation skill directory not found. Tried: ${candidates.join(', ')}`);
   }
