@@ -62,17 +62,15 @@ function parseScalar(raw: string): unknown {
 function parseFrontmatter(markdown: string): FrontmatterResult {
   const normalized = markdown.replace(/\r\n/g, '\n');
   const trimmed = normalized.trimStart();
-  if (!trimmed.startsWith('---\n')) {
-    return { metadata: {} };
-  }
 
-  const endIndex = trimmed.indexOf('\n---\n', 4);
-  if (endIndex === -1) {
+  // Use regex to robustly extract frontmatter block
+  const match = trimmed.match(/^---\n([\s\S]*?)\n---(?:\n|$)/);
+  if (!match) {
     return { metadata: {} };
   }
 
   const metadata: Record<string, unknown> = {};
-  for (const line of trimmed.slice(4, endIndex).split('\n')) {
+  for (const line of match[1].split('\n')) {
     const separator = line.indexOf(':');
     if (separator === -1) {
       continue;
