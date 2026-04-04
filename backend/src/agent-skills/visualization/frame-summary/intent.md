@@ -1,6 +1,6 @@
 ---
 id: visualization-frame-summary
-structureType: generic
+structureType: unknown
 zhName: 框架结构摘要
 enName: Frame Structure Summary
 zhDescription: 在侧边栏展示框架结构统计摘要，包括节点数、单元数、最大位移、最大反力和最大内力。

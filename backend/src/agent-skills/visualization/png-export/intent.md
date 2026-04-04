@@ -1,6 +1,6 @@
 ---
 id: visualization-png-export
-structureType: generic
+structureType: unknown
 zhName: PNG 导出
 enName: PNG Export
 zhDescription: 将当前三维结构场景截图并下载为 PNG 文件，文件名自动包含结构标题与工况信息。

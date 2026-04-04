@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import path from 'path';
-import type { AgentSkillBundle, AgentSkillFile, AgentSkillMetadata, AgentSkillPlugin, SkillManifest, SkillStage } from './types.js';
+import { ALL_SKILL_DOMAINS } from './types.js';
+import type { AgentSkillBundle, AgentSkillFile, AgentSkillMetadata, AgentSkillPlugin, SkillDomain, SkillManifest, SkillStage } from './types.js';
 
 interface FrontmatterResult {
   metadata: Record<string, unknown>;
@@ -122,6 +123,15 @@ function assertString(value: unknown, fallback = ''): string {
   return typeof value === 'string' ? value : fallback;
 }
 
+function normalizeDomain(value: unknown): SkillDomain | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  return (ALL_SKILL_DOMAINS as readonly string[]).includes(value)
+    ? (value as SkillDomain)
+    : undefined;
+}
+
 function assertStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.length > 0) : [];
 }
@@ -192,7 +202,7 @@ export class AgentSkillLoader {
           triggers: assertStringArray(metadata.triggers),
           stages: assertStringArray(metadata.stages) as SkillStage[],
           autoLoadByDefault: Boolean(metadata.autoLoadByDefault ?? true),
-          domain: assertString(metadata.domain) as AgentSkillMetadata['domain'] || undefined,
+          domain: normalizeDomain(metadata.domain),
           stage,
           markdown: body,
         };
