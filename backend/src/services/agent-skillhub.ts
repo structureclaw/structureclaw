@@ -253,40 +253,43 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
     id: 'skillhub.visualization-3d-scene',
     version: '1.0.0',
     domain: 'visualization',
-    entrypoints: {},
     name: { zh: '3D 结构可视化', en: '3D Structural Visualization' },
     description: {
       zh: '基于 Three.js 的三维结构场景渲染，支持轴力/剪力/弯矩云图、变形动画与节点单元拾取。',
       en: 'Three.js-based 3D structural scene with force contours, deformation animation, and node/element picking.',
     },
     capabilities: ['visualization-3d', 'force-contour', 'deformation-view', 'element-picking'],
-    compatibility: { minRuntimeVersion: '0.1.0', skillApiVersion: 'v1' },
+    // This capability is built into the frontend runtime; no installable entrypoints exist.
+    // minRuntimeVersion is intentionally set high to mark this entry as non-installable.
+    compatibility: { minRuntimeVersion: '9.0.0', skillApiVersion: 'v1' },
   }),
   buildCatalogEntry({
     id: 'skillhub.visualization-png-export',
     version: '1.0.0',
     domain: 'visualization',
-    entrypoints: {},
     name: { zh: 'PNG 导出', en: 'PNG Export' },
     description: {
       zh: '将当前三维结构场景截图并下载为 PNG 文件，文件名包含标题与工况信息。',
       en: 'Captures the current 3D structural scene and downloads it as a PNG file with title and case metadata.',
     },
     capabilities: ['visualization-export', 'png-capture'],
-    compatibility: { minRuntimeVersion: '0.1.0', skillApiVersion: 'v1' },
+    // This capability is built into the frontend runtime; no installable entrypoints exist.
+    // minRuntimeVersion is intentionally set high to mark this entry as non-installable.
+    compatibility: { minRuntimeVersion: '9.0.0', skillApiVersion: 'v1' },
   }),
   buildCatalogEntry({
     id: 'skillhub.visualization-frame-summary',
     version: '1.0.0',
     domain: 'visualization',
-    entrypoints: {},
     name: { zh: '框架结构摘要', en: 'Frame Structure Summary' },
     description: {
       zh: '在侧边栏展示框架结构统计摘要，包括节点数、单元数、最大位移、最大反力和最大内力。',
       en: 'Shows a sidebar panel with frame statistics: node/element count, max displacement, max reaction, and max force.',
     },
     capabilities: ['visualization-summary', 'result-summary'],
-    compatibility: { minRuntimeVersion: '0.1.0', skillApiVersion: 'v1' },
+    // This capability is built into the frontend runtime; no installable entrypoints exist.
+    // minRuntimeVersion is intentionally set high to mark this entry as non-installable.
+    compatibility: { minRuntimeVersion: '9.0.0', skillApiVersion: 'v1' },
   }),
 ];
 
