@@ -21,17 +21,6 @@ class LlmCallLogger {
   private disabled = false;
   private warnedOnce = false;
 
-  /**
-   * Serialised write queue.
-   * On Windows, calling stream.write() in a tight loop can leave entries in
-   * the kernel buffer long after the call returns, causing reads that follow
-   * a fixed setTimeout to see fewer lines than expected.  Chaining every
-   * write as a Promise that waits for the 'drain' event when backpressure is
-   * signalled ensures all bytes are handed to the OS before the Promise
-   * resolves, so rapid-sequential tests are reliable on all platforms.
-   */
-  private writeQueue: Promise<void> = Promise.resolve();
-
   private ensureStream(): fs.WriteStream | null {
     if (this.disabled) return null;
     if (this.stream) return this.stream;
@@ -78,27 +67,11 @@ class LlmCallLogger {
       responseChars: entry.response?.length ?? 0,
     };
 
-    const line = JSON.stringify(full) + '\n';
-
-    // Chain onto the existing queue so writes are strictly sequential and
-    // backpressure (drain) is respected.  This prevents the Windows-specific
-    // race where buffered writes are not yet visible to a subsequent read.
-    this.writeQueue = this.writeQueue.then(
-      () =>
-        new Promise<void>((resolve) => {
-          try {
-            const ok = stream.write(line);
-            if (ok) {
-              resolve();
-            } else {
-              stream.once('drain', resolve);
-            }
-          } catch {
-            // Non-blocking: never crash on log write failure.
-            resolve();
-          }
-        }),
-    );
+    try {
+      stream.write(JSON.stringify(full) + '\n');
+    } catch {
+      // Non-blocking: never crash on log write failure.
+    }
   }
 }
 
