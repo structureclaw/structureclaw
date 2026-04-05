@@ -45,6 +45,9 @@ const SEISMIC_POLICY_ID = 'skillhub.seismic-simplified-policy';
 const FUTURE_RUNTIME_ID = 'skillhub.future-runtime-only';
 const BAD_SIGNATURE_ID = 'skillhub.bad-signature-pack';
 const BAD_CHECKSUM_ID = 'skillhub.bad-checksum-pack';
+const VIZ_3D_SCENE_ID = 'skillhub.visualization-3d-scene';
+const VIZ_PNG_EXPORT_ID = 'skillhub.visualization-png-export';
+const VIZ_FRAME_SUMMARY_ID = 'skillhub.visualization-frame-summary';
 
 // ---------------------------------------------------------------------------
 // search()
@@ -69,13 +72,14 @@ describe('AgentSkillHubService.search()', () => {
 
   test('should return all catalog entries when no filters are provided', async () => {
     const result = await service.search();
-    expect(result.total).toBe(6);
-    expect(result.items).toHaveLength(6);
+    expect(result.total).toBe(9);
+    expect(result.items).toHaveLength(9);
     // Each item should have standard shape
     const first = result.items[0];
     expect(first).toHaveProperty('id');
     expect(first).toHaveProperty('version');
     expect(first).toHaveProperty('domain');
+    expect(first).toHaveProperty('packageMetadata');
     expect(first).toHaveProperty('compatibility');
     expect(first).toHaveProperty('integrity');
     expect(first).toHaveProperty('installed');
@@ -101,10 +105,13 @@ describe('AgentSkillHubService.search()', () => {
     expect(result.total).toBe(3);
   });
 
-  test('should return empty for a domain with no entries', async () => {
+  test('should filter by domain = visualization', async () => {
     const result = await service.search({ domain: 'visualization' });
-    expect(result.total).toBe(0);
-    expect(result.items).toHaveLength(0);
+    expect(result.total).toBe(3);
+    expect(result.items).toHaveLength(3);
+    for (const item of result.items) {
+      expect(item.domain).toBe('visualization');
+    }
   });
 
   test('should filter by keyword matching id', async () => {
@@ -162,12 +169,12 @@ describe('AgentSkillHubService.search()', () => {
 
   test('should treat keyword with only whitespace as no keyword', async () => {
     const result = await service.search({ keyword: '   ' });
-    expect(result.total).toBe(6);
+    expect(result.total).toBe(9);
   });
 
   test('should treat undefined keyword as no keyword', async () => {
     const result = await service.search({ keyword: undefined });
-    expect(result.total).toBe(6);
+    expect(result.total).toBe(9);
   });
 
   test('should mark items as not installed and not enabled by default', async () => {
@@ -191,6 +198,14 @@ describe('AgentSkillHubService.search()', () => {
     const otherItem = result.items.find((i) => i.id === MODAL_REPORT_ID);
     expect(otherItem.installed).toBe(false);
     expect(otherItem.enabled).toBe(false);
+  });
+
+  test('should include packageMetadata with source=skillhub', async () => {
+    const result = await service.search();
+    for (const item of result.items) {
+      expect(item.packageMetadata.source).toBe('skillhub');
+      expect(item.packageMetadata.id).toBe(item.id);
+    }
   });
 
   test('should evaluate integrity for each item', async () => {
@@ -871,13 +886,13 @@ describe('AgentSkillHubService environment variable handling', () => {
   test('should NOT throw when SCLAW_SKILLHUB_FORCE_DOWN is set to other values', async () => {
     process.env.SCLAW_SKILLHUB_FORCE_DOWN = '0';
     const result = await service.search();
-    expect(result.total).toBe(6);
+    expect(result.total).toBe(9);
   });
 
   test('should NOT throw when SCLAW_SKILLHUB_FORCE_DOWN is set to "false"', async () => {
     process.env.SCLAW_SKILLHUB_FORCE_DOWN = 'false';
     const result = await service.search();
-    expect(result.total).toBe(6);
+    expect(result.total).toBe(9);
   });
 
   test('should detect offline mode when SCLAW_SKILLHUB_OFFLINE=1', async () => {
