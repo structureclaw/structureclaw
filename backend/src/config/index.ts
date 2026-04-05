@@ -96,6 +96,10 @@ export const config = {
 
   // 日志级别
   logLevel: process.env.LOG_LEVEL || 'info',
+
+  // LLM 调用日志
+  llmLogEnabled: process.env.LLM_LOG_ENABLED !== 'false',
+  llmLogDir: process.env.LLM_LOG_DIR || '',
 };
 
 export type Config = typeof config;
