@@ -463,6 +463,13 @@ async function ensureUv(rootDir) {
       "-Command",
       "irm https://astral.sh/uv/install.ps1 | iex",
     ]);
+    // The installer puts uv in %USERPROFILE%\.local\bin which may not be on
+    // the current process PATH.  Detect and inject it so subsequent commands
+    // in this process can find uv.
+    const localBin = path.join(os.homedir(), ".local", "bin");
+    if (fs.existsSync(path.join(localBin, "uv.exe")) || fs.existsSync(path.join(localBin, "uv"))) {
+      process.env.PATH = `${localBin};${process.env.PATH}`;
+    }
     runtime.requireCommand(
       "uv",
       "uv installation finished, but `uv` is still unavailable. Restart your terminal and retry.",
