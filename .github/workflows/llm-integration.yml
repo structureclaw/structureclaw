@@ -13,14 +13,10 @@ on:
         default: ""
 
 jobs:
-  llm-integration:
-    strategy:
-      fail-fast: false
-      matrix:
-        runner:
-          - [self-hosted, Windows, X64]
-          - [self-hosted, Linux, X64]
-    runs-on: ${{ matrix.runner }}
+  llm-integration-linux:
+    runs-on: [self-hosted, Linux, X64]
+    container:
+      image: node:20-bookworm
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -41,14 +37,47 @@ jobs:
           LLM_LOG_ENABLED: "true"
           REDIS_URL: disabled
           DATABASE_URL: "file:.runtime/data/structureclaw-llm-ci.db"
-        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
         run: node tests/runner.mjs llm-integration ${{ github.event.inputs.filter && format('--filter {0}', github.event.inputs.filter) || '' }}
 
       - name: Upload LLM call logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: llm-logs-${{ matrix.runner[1] }}-${{ matrix.runner[2] }}
+          name: llm-logs-linux
+          path: .runtime/logs/llm-calls.jsonl
+          retention-days: 7
+          if-no-files-found: ignore
+
+  llm-integration-windows:
+    runs-on: [self-hosted, Windows, X64]
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+        with:
+          command: doctor
+          build: true
+
+      - name: Run LLM integration tests
+        shell: pwsh
+        env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_MODEL: ${{ github.event.inputs.llm_model || '' }}
+          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER || 'openai-compatible' }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || '' }}
+          LLM_LOG_ENABLED: "true"
+          REDIS_URL: disabled
+          DATABASE_URL: "file:.runtime/data/structureclaw-llm-ci.db"
+        run: node tests/runner.mjs llm-integration ${{ github.event.inputs.filter && format('--filter {0}', github.event.inputs.filter) || '' }}
+
+      - name: Upload LLM call logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: llm-logs-windows
           path: .runtime/logs/llm-calls.jsonl
           retention-days: 7
           if-no-files-found: ignore

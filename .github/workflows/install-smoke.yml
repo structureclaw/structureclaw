@@ -33,12 +33,33 @@ on:
       - '.github/workflows/install-smoke.yml'
 
 jobs:
-  native-install-smoke:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+  native-install-smoke-linux:
+    runs-on: [self-hosted, Linux, X64]
+    container:
+      image: node:20-bookworm
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
+        with:
+          command: doctor
+          build: true
+
+      - name: Frontend type-check
+        run: npm run type-check --prefix frontend
+
+      - name: Frontend unit tests
+        run: npm run test:run --prefix frontend
+
+      - name: Frontend lint
+        run: npm run lint --prefix frontend
+
+  native-install-smoke-windows:
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 30
 
     steps:
@@ -61,7 +82,7 @@ jobs:
         run: npm run lint --prefix frontend
 
   docker-compose-smoke:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 45
     steps:
       - name: Checkout repository
