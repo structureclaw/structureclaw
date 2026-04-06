@@ -28,6 +28,7 @@ const VIEW_LABELS: Record<VisualizationViewMode, MessageKey> = {
   deformed: 'visualizationViewDeformed',
   forces: 'visualizationViewForces',
   reactions: 'visualizationViewReactions',
+  utilization: 'visualizationViewUtilization',
 }
 
 const PLANE_LABELS: Record<VisualizationPlane, MessageKey> = {
