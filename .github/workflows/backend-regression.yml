@@ -36,16 +36,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
-
-      - name: Install Backend Dependencies
-        run: npm ci --prefix backend
+          command: install
 
       - name: Run Backend Regression
-        shell: bash
         run: node tests/runner.mjs backend-regression

@@ -31,17 +31,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
         with:
-          node-version: '20'
-          cache: npm
-          cache-dependency-path: |
-            backend/package-lock.json
-            frontend/package-lock.json
-
-      - name: Install backend dependencies
-        run: npm ci --prefix backend
+          command: install
 
       - name: Setup backend database and build
         run: |
@@ -50,9 +43,6 @@ jobs:
           npm run build --prefix backend
         env:
           DATABASE_URL: file:../../.runtime/data/test-e2e.db
-
-      - name: Install frontend dependencies
-        run: npm ci --prefix frontend
 
       - name: Install Playwright browsers
         run: npx --prefix frontend playwright install chromium --with-deps

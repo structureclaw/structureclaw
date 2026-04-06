@@ -36,37 +36,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
-
-      - name: Install Backend Dependencies & Build
-        run: |
-          npm ci --prefix backend
-          npm run build --prefix backend
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-
-      - name: Prepare Analysis Virtualenv
-        shell: bash
-        run: |
-          python -m venv backend/.venv
-          if [ -f backend/.venv/Scripts/python.exe ]; then
-            VENV_PY=backend/.venv/Scripts/python.exe
-          else
-            VENV_PY=backend/.venv/bin/python
-          fi
-          "$VENV_PY" -m pip install --upgrade pip
-          "$VENV_PY" -m pip install -r backend/src/agent-skills/analysis/runtime/requirements.txt
+          command: doctor
+          build: true
 
       - name: Run Analysis Regression
-        shell: bash
         # CI may not always provide a usable OpenSeesPy runtime on Linux.
         # The regression suite still verifies unavailable-engine signaling,
         # auto-fallback routing, and the non-OpenSees regression surface.

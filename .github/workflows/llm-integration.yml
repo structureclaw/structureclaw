@@ -26,32 +26,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
         with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: |
-            backend/package-lock.json
-            frontend/package-lock.json
-
-      - name: Install backend dependencies
-        run: npm ci --prefix backend
-
-      - name: Build backend
-        run: npm run build --prefix backend
-
-      - name: Setup Python analysis environment
-        shell: bash
-        run: |
-          if [ -f "backend/.venv/bin/python" ]; then
-            echo "Python venv already exists"
-          elif [ -f "backend/.venv/Scripts/python.exe" ]; then
-            echo "Python venv already exists (Windows)"
-          else
-            echo "Setting up Python analysis environment..."
-            python3 -m venv backend/.venv || python -m venv backend/.venv
-          fi
+          command: doctor
+          build: true
 
       - name: Run LLM integration tests
         env:
@@ -62,13 +41,8 @@ jobs:
           LLM_LOG_ENABLED: "true"
           REDIS_URL: disabled
           DATABASE_URL: "file:.runtime/data/structureclaw-llm-ci.db"
-        shell: bash
-        run: |
-          ARGS=""
-          if [ -n "${{ github.event.inputs.filter }}" ]; then
-            ARGS="--filter ${{ github.event.inputs.filter }}"
-          fi
-          node tests/runner.mjs llm-integration $ARGS
+        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
+        run: node tests/runner.mjs llm-integration ${{ github.event.inputs.filter && format('--filter {0}', github.event.inputs.filter) || '' }}
 
       - name: Upload LLM call logs
         if: always()

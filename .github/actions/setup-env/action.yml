@@ -1,0 +1,46 @@
+name: "Setup Environment"
+description: "Install Node.js via project scripts, then run sclaw for deps/build/python"
+
+inputs:
+  command:
+    description: "sclaw command: doctor (full setup) or install (npm deps only) or none"
+    default: "install"
+  build:
+    description: "Also run sclaw build after setup"
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    # ---------- Install Node.js ----------
+    - name: Install Node.js (Linux)
+      if: runner.os != 'Windows'
+      shell: bash
+      run: bash scripts/install-node-linux.sh
+
+    - name: Install Node.js (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: pwsh scripts/install-node-windows.ps1
+
+    # ---------- sclaw setup ----------
+    - name: Setup via sclaw (Linux)
+      if: inputs.command != 'none' && runner.os != 'Windows'
+      shell: bash
+      run: node ./sclaw ${{ inputs.command }}
+
+    - name: Setup via sclaw (Windows)
+      if: inputs.command != 'none' && runner.os == 'Windows'
+      shell: pwsh
+      run: node ./sclaw ${{ inputs.command }}
+
+    # ---------- sclaw build ----------
+    - name: Build via sclaw (Linux)
+      if: inputs.build == 'true' && runner.os != 'Windows'
+      shell: bash
+      run: node ./sclaw build
+
+    - name: Build via sclaw (Windows)
+      if: inputs.build == 'true' && runner.os == 'Windows'
+      shell: pwsh
+      run: node ./sclaw build
