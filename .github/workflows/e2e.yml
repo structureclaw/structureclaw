@@ -25,15 +25,26 @@ on:
 jobs:
   e2e:
     runs-on: [self-hosted, Linux, X64]
+    container:
+      image: node:20-bookworm
+      options: --add-host=host.docker.internal:host-gateway
     timeout-minutes: 20
 
     steps:
-      - name: Pre-cleanup
+      - name: Rewrite proxy vars for container
         shell: bash
         run: |
-          pkill -f "node.*dist/index" || true
-          pkill -f "next dev" || true
-          rm -rf "${{ github.workspace }}/.runtime"
+          for var in HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy NO_PROXY no_proxy; do
+            val="${!var}"
+            if [[ -n "$val" ]]; then
+              newVal="${val//127.0.0.1/host.docker.internal}"
+              newVal="${newVal//localhost/host.docker.internal}"
+              if [[ "$val" != "$newVal" ]]; then
+                echo "$var=$newVal" >> "$GITHUB_ENV"
+                echo "Rewrote $var: $val -> $newVal"
+              fi
+            fi
+          done
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -78,13 +89,6 @@ jobs:
         run: npm run test:e2e --prefix frontend
         env:
           CI: true
-
-      - name: Post-cleanup
-        if: always()
-        shell: bash
-        run: |
-          pkill -f "node.*dist/index" || true
-          pkill -f "next dev" || true
 
       - name: Upload test artifacts
         if: always()

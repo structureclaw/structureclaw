@@ -35,12 +35,26 @@ on:
 jobs:
   native-install-smoke-linux:
     runs-on: [self-hosted, Linux, X64]
+    container:
+      image: node:20-bookworm
+      options: --add-host=host.docker.internal:host-gateway
     timeout-minutes: 30
 
     steps:
-      - name: Pre-cleanup
+      - name: Rewrite proxy vars for container
         shell: bash
-        run: rm -rf "${{ github.workspace }}/.runtime"
+        run: |
+          for var in HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy NO_PROXY no_proxy; do
+            val="${!var}"
+            if [[ -n "$val" ]]; then
+              newVal="${val//127.0.0.1/host.docker.internal}"
+              newVal="${newVal//localhost/host.docker.internal}"
+              if [[ "$val" != "$newVal" ]]; then
+                echo "$var=$newVal" >> "$GITHUB_ENV"
+                echo "Rewrote $var: $val -> $newVal"
+              fi
+            fi
+          done
 
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -59,21 +73,12 @@ jobs:
 
       - name: Frontend lint
         run: npm run lint --prefix frontend
-
-      - name: Post-cleanup
-        if: always()
-        shell: bash
-        run: rm -rf "${{ github.workspace }}/.runtime"
 
   native-install-smoke-windows:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 30
 
     steps:
-      - name: Pre-cleanup
-        shell: pwsh
-        run: Remove-Item -Recurse -Force "${{ github.workspace }}/.runtime" -ErrorAction SilentlyContinue
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -91,11 +96,6 @@ jobs:
 
       - name: Frontend lint
         run: npm run lint --prefix frontend
-
-      - name: Post-cleanup
-        if: always()
-        shell: pwsh
-        run: Remove-Item -Recurse -Force "${{ github.workspace }}/.runtime" -ErrorAction SilentlyContinue
 
   docker-compose-smoke:
     runs-on: [self-hosted, Linux, X64]
