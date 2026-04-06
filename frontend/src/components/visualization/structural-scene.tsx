@@ -532,10 +532,8 @@ export function StructuralScene(props: StructuralSceneProps) {
         })
       },
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     ;(exportRef as React.MutableRefObject<SceneExportHandle | null>).current = handle
     return () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ;(exportRef as React.MutableRefObject<SceneExportHandle | null>).current = null
     }
   }, [exportRef])
