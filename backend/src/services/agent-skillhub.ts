@@ -249,6 +249,27 @@ const DEFAULT_CATALOG: SkillHubCatalogEntry[] = [
       checksum: 'bad-checksum',
     },
   }),
+  buildCatalogEntry({
+    id: 'skillhub.steel-connection-viz',
+    version: '1.0.0',
+    domain: 'visualization',
+    entrypoints: {
+      visualization: 'dist/visualization.js',
+    },
+    name: {
+      zh: '钢节点连接详图',
+      en: 'Steel Connection Detail View',
+    },
+    description: {
+      zh: '在节点拾取后弹出螺栓排布与焊缝位置详图，数据来源于连接验算结果。需先安装 skillhub.steel-connection-check。',
+      en: 'Pops up bolt-pattern and weld-bead detail after node picking, sourced from connection check results. Requires skillhub.steel-connection-check.',
+    },
+    capabilities: ['visualization-detail', 'node-picking'],
+    compatibility: {
+      minRuntimeVersion: '0.1.0',
+      skillApiVersion: 'v1',
+    },
+  }),
 ];
 
 const CURRENT_RUNTIME_VERSION = process.env.SCLAW_RUNTIME_VERSION || '0.1.0';

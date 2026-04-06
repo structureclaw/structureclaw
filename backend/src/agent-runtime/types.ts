@@ -306,3 +306,72 @@ export interface AgentSkillExecutorInput {
   existingState?: DraftState;
   selectedSkill: AgentSkillPlugin;
 }
+
+// ---------------------------------------------------------------------------
+// Visualization hint types (used by extractVisualizationHints in entry.ts)
+// ---------------------------------------------------------------------------
+
+/** 6-DOF force/moment vector at a connection node. */
+export interface ForceVector6 {
+  Fx: number;
+  Fy: number;
+  Fz: number;
+  Mx: number;
+  My: number;
+  Mz: number;
+}
+
+/** A single linear buckling mode (eigenvalue + normalised mode shape). */
+export interface BucklingMode {
+  /** Buckling factor λ (critical load multiplier). */
+  lambda: number;
+  /** Normalised displacement vector per node: nodeId → [dx, dy, dz]. */
+  modeShape: Record<string, [number, number, number]>;
+}
+
+/**
+ * Structured visualization hints extracted from analysis results.
+ * Consumed by the frontend Three.js renderer and Plotly chart component.
+ */
+export interface VisualizationHints {
+  // ── existing envelope fields ─────────────────────────────────────────────
+  /** Name of the governing load case (envelope). */
+  controlCase?: string | null;
+  /** Maximum nodal displacement in the governing case (mm). */
+  controlNodeDisplacement?: number | null;
+  /** Maximum element moment in the governing case (kN·m). */
+  controlElementMoment?: number | null;
+  /** Whether envelope data is present in the analysis result. */
+  hasEnvelope?: boolean;
+
+  // ── steel member stress / utilization ────────────────────────────────────
+  /**
+   * Per-member utilization ratio map.
+   * Key: member/element ID (string).
+   * Value: utilization ratio (0 = 0%, 1.0 = 100%, >1 = overstressed).
+   */
+  memberUtilizationMap?: Record<string, number> | null;
+
+  // ── steel connection detail ───────────────────────────────────────────────
+  /**
+   * Per-node connection force demand map.
+   * Key: node ID (string).
+   * Value: 6-DOF force vector (kN / kN·m).
+   */
+  connectionForceMap?: Record<string, ForceVector6> | null;
+
+  // ── buckling modes ────────────────────────────────────────────────────────
+  /**
+   * Linear buckling (eigenvalue) mode shapes, ordered by λ ascending.
+   * Only present when the analysis solver outputs buckling eigenvalues.
+   */
+  bucklingModes?: BucklingMode[] | null;
+
+  // ── plotly chart spec ─────────────────────────────────────────────────────
+  /**
+   * Plotly Figure JSON configuration.
+   * Populated by the agent when interactive chart output is requested.
+   * Schema: https://plotly.com/javascript/reference/
+   */
+  plotlyChartSpec?: unknown | null;
+}
