@@ -27,12 +27,16 @@ runs:
     - name: Setup via sclaw (Linux)
       if: inputs.command != 'none' && runner.os != 'Windows'
       shell: bash
-      run: node ./sclaw ${{ inputs.command }}
+      env:
+        SCLAW_COMMAND: ${{ inputs.command }}
+      run: node ./sclaw "$SCLAW_COMMAND"
 
     - name: Setup via sclaw (Windows)
       if: inputs.command != 'none' && runner.os == 'Windows'
       shell: pwsh
-      run: node ./sclaw ${{ inputs.command }}
+      env:
+        SCLAW_COMMAND: ${{ inputs.command }}
+      run: node ./sclaw "$env:SCLAW_COMMAND"
 
     # ---------- sclaw build ----------
     - name: Build via sclaw (Linux)
