@@ -86,6 +86,7 @@ export function StructuralVisualizationModal({
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
   const [selectedLoadIndex, setSelectedLoadIndex] = useState<number | null>(null)
   const [isExporting, setIsExporting] = useState(false)
+  const [bucklingModeIndex, setBucklingModeIndex] = useState(0)
   const exportRef = useRef<SceneExportHandle | null>(null)
 
   const handlePlaneChange = (nextPlane: VisualizationPlane) => {
@@ -176,6 +177,23 @@ export function StructuralVisualizationModal({
           {snapshot?.statusMessage ? (
             <div className="rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm leading-6 text-amber-900 dark:text-amber-100">
               {snapshot.statusMessage}
+            </div>
+          ) : null}
+          {view === 'buckling' && snapshot?.bucklingModes?.length ? (
+            <div className="rounded-2xl border border-border/70 bg-card/80 p-4 dark:border-white/10 dark:bg-slate-950/40">
+              <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('visualizationViewBuckling')}</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {snapshot.bucklingModes.map((mode, index) => (
+                  <button
+                    key={index}
+                    className={`rounded-full border px-3 py-1.5 text-xs transition ${bucklingModeIndex === index ? 'border-violet-400/50 bg-violet-400/16 text-foreground' : 'border-border/70 bg-background/70 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-white/5'}`}
+                    onClick={() => setBucklingModeIndex(index)}
+                    type="button"
+                  >
+                    λ{index + 1} = {mode.lambda.toFixed(3)}
+                  </button>
+                ))}
+              </div>
             </div>
           ) : null}
           {snapshot?.unsupportedElementTypes.length ? (
@@ -403,6 +421,7 @@ export function StructuralVisualizationModal({
           <div className="min-h-0 flex-1" data-testid="visualization-modal-scene">
             <StructuralScene
               activeCase={activeCase}
+              bucklingModeIndex={bucklingModeIndex}
               deformationScale={deformationScale}
               exportRef={exportRef}
               forceMetric={forceMetric}

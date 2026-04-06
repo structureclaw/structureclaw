@@ -1,11 +1,11 @@
 'use client'
 
-import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Canvas, useThree } from '@react-three/fiber'
+import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react'
+import { Canvas, useFrame, useThree } from '@react-three/fiber'
 import { Bounds, Html, Line, OrbitControls, OrthographicCamera, PerspectiveCamera } from '@react-three/drei'
 import * as THREE from 'three'
 import type { MessageKey } from '@/lib/i18n'
-import type { VisualizationCase, VisualizationPlane, VisualizationSnapshot, VisualizationViewMode } from './types'
+import type { BucklingMode, VisualizationCase, VisualizationPlane, VisualizationSnapshot, VisualizationViewMode } from './types'
 import {
   type ForceMetric,
   getCaseNodeDisplacement,
@@ -47,6 +47,8 @@ type StructuralSceneProps = {
   onClearSelection: () => void
   /** Optional ref to expose exportPng() to parent. */
   exportRef?: React.RefObject<SceneExportHandle | null>
+  /** Active buckling mode index (0-based) when view === 'buckling'. */
+  bucklingModeIndex?: number
   t: (key: MessageKey) => string
 }
 
@@ -225,6 +227,67 @@ function DistributedLoadMarker({
   )
 }
 
+/** Animated tube for buckling view — updates position/orientation each frame from amplitudeRef. */
+function BucklingMember({
+  baseStart,
+  baseEnd,
+  modeStart,
+  modeEnd,
+  scale,
+  amplitudeRef,
+  color,
+  selected,
+  onClick,
+  onHover,
+}: {
+  baseStart: THREE.Vector3
+  baseEnd: THREE.Vector3
+  modeStart: [number, number, number]
+  modeEnd: [number, number, number]
+  scale: number
+  amplitudeRef: React.MutableRefObject<number>
+  color: string
+  selected: boolean
+  onClick: () => void
+  onHover: (hovered: boolean) => void
+}) {
+  const groupRef = useRef<THREE.Group | null>(null)
+  const length = useMemo(() => baseStart.distanceTo(baseEnd), [baseStart, baseEnd])
+  const modeStartVec = useMemo(() => new THREE.Vector3(modeStart[0], modeStart[1], modeStart[2]), [modeStart])
+  const modeEndVec = useMemo(() => new THREE.Vector3(modeEnd[0], modeEnd[1], modeEnd[2]), [modeEnd])
+
+  useFrame(() => {
+    if (!groupRef.current) return
+    const amp = amplitudeRef.current
+    const s = baseStart.clone().addScaledVector(modeStartVec, scale * amp)
+    const e = baseEnd.clone().addScaledVector(modeEndVec, scale * amp)
+    const diff = e.clone().sub(s)
+    const mid = s.clone().add(e).multiplyScalar(0.5)
+    groupRef.current.position.copy(mid)
+    const normalized = diff.clone().normalize()
+    const q = new THREE.Quaternion()
+    q.setFromUnitVectors(new THREE.Vector3(0, 1, 0), normalized.lengthSq() > 0 ? normalized : new THREE.Vector3(0, 1, 0))
+    groupRef.current.quaternion.copy(q)
+  })
+
+  return (
+    <group ref={groupRef} position={baseStart.clone().add(baseEnd).multiplyScalar(0.5).toArray()}>
+      <mesh onClick={onClick} onPointerOut={() => onHover(false)} onPointerOver={() => onHover(true)}>
+        <cylinderGeometry args={[selected ? 0.1 : 0.075, selected ? 0.1 : 0.075, Math.max(length, 0.001), 12]} />
+        <meshStandardMaterial color={color} metalness={0.15} roughness={0.32} />
+      </mesh>
+    </group>
+  )
+}
+
+/** R3F component that drives sinusoidal buckling animation via useFrame. */
+function BucklingAnimator({ amplitudeRef }: { amplitudeRef: React.MutableRefObject<number> }) {
+  useFrame(({ clock }) => {
+    amplitudeRef.current = Math.sin(clock.getElapsedTime() * 2.2)
+  })
+  return null
+}
+
 function SceneContent({
   activeCase,
   deformationScale,
@@ -246,16 +309,46 @@ function SceneContent({
   maxReaction,
   maxDisplacement,
   maxUtilization,
+  bucklingModeIndex,
+  bucklingAmplitudeRef,
 }: StructuralSceneProps & {
   maxElementMetric: number
   maxReaction: number
   maxDisplacement: number
   maxUtilization: number
+  bucklingAmplitudeRef: React.MutableRefObject<number>
 }) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [hoveredElementId, setHoveredElementId] = useState<string | null>(null)
   const gridConfig = useMemo(() => getAdaptiveGridConfig(snapshot, plane), [snapshot, plane])
   const cameraPreset = useMemo(() => getPlaneCameraPreset(plane), [plane])
+
+  // Buckling mode shape for the active mode index
+  const activeBucklingMode: BucklingMode | null = useMemo(() => {
+    if (view !== 'buckling' || !snapshot.bucklingModes?.length) return null
+    return snapshot.bucklingModes[bucklingModeIndex ?? 0] ?? snapshot.bucklingModes[0]
+  }, [view, snapshot.bucklingModes, bucklingModeIndex])
+
+  // Compute buckling scale: normalize mode shape so max displacement = 10% of model span
+  const bucklingScale = useMemo(() => {
+    if (!activeBucklingMode) return 1
+    const modeShape = activeBucklingMode.modeShape
+    const maxMag = Math.max(
+      1e-12,
+      ...Object.values(modeShape).map(([dx, dy, dz]) => Math.sqrt(dx * dx + dy * dy + dz * dz))
+    )
+    const xs = snapshot.nodes.map((n) => n.position.x)
+    const ys = snapshot.nodes.map((n) => n.position.y)
+    const zs = snapshot.nodes.map((n) => n.position.z)
+    const span = Math.max(
+      1,
+      Math.max(...xs) - Math.min(...xs),
+      Math.max(...ys) - Math.min(...ys),
+      Math.max(...zs) - Math.min(...zs)
+    )
+    return (span * 0.1) / maxMag
+  }, [activeBucklingMode, snapshot.nodes])
+
   const nodeMap = useMemo(
     () =>
       new Map(
@@ -311,6 +404,7 @@ function SceneContent({
             }
             // In deformed view, always render the main member geometry at deformed coordinates.
             // The "undeformed" toggle controls only the gray overlay reference line.
+            // In buckling view, positions are animated via BucklingMember component.
             const start = view === 'deformed' ? startData.displacedPosition : startData.position
             const end = view === 'deformed' ? endData.displacedPosition : endData.position
             const forceColor = createColorScale(getElementMetric(activeCase, element.id, forceMetric), maxElementMetric)
@@ -322,11 +416,13 @@ function SceneContent({
               ? forceColor
               : view === 'utilization'
                 ? (selectedElementId === element.id ? '#fb923c' : hoveredElementId === element.id ? '#67e8f9' : utilizationColor)
-                : selectedElementId === element.id
-                  ? '#fb923c'
-                  : hoveredElementId === element.id
-                    ? '#67e8f9'
-                    : '#38bdf8'
+                : view === 'buckling'
+                  ? (selectedElementId === element.id ? '#fb923c' : hoveredElementId === element.id ? '#67e8f9' : '#a78bfa')
+                  : selectedElementId === element.id
+                    ? '#fb923c'
+                    : hoveredElementId === element.id
+                      ? '#67e8f9'
+                      : '#38bdf8'
             const undeformedStart = projectPosition(startData.position, plane, snapshot.dimension)
             const undeformedEnd = projectPosition(endData.position, plane, snapshot.dimension)
             const currentStart = projectPosition(start, plane, snapshot.dimension)
@@ -355,17 +451,35 @@ function SceneContent({
                 {(view === 'deformed' && showUndeformed) && (
                   <Line color="#64748b" lineWidth={1} points={[undeformedStart.toArray(), undeformedEnd.toArray()]} transparent opacity={0.45} />
                 )}
-                <ElementTube
-                  color={color}
-                  end={currentEnd}
-                  onClick={() => {
-                    onSelectElement(element.id)
-                    onSelectNode(null)
-                  }}
-                  onHover={(hovered) => setHoveredElementId(hovered ? element.id : null)}
-                  selected={selectedElementId === element.id}
-                  start={currentStart}
-                />
+                {view === 'buckling' && activeBucklingMode ? (
+                  <BucklingMember
+                    amplitudeRef={bucklingAmplitudeRef}
+                    baseStart={currentStart}
+                    baseEnd={currentEnd}
+                    modeStart={activeBucklingMode.modeShape[element.nodeIds[0]] ?? [0, 0, 0]}
+                    modeEnd={activeBucklingMode.modeShape[element.nodeIds[1]] ?? [0, 0, 0]}
+                    scale={bucklingScale}
+                    color={color}
+                    selected={selectedElementId === element.id}
+                    onClick={() => {
+                      onSelectElement(element.id)
+                      onSelectNode(null)
+                    }}
+                    onHover={(hovered) => setHoveredElementId(hovered ? element.id : null)}
+                  />
+                ) : (
+                  <ElementTube
+                    color={color}
+                    end={currentEnd}
+                    onClick={() => {
+                      onSelectElement(element.id)
+                      onSelectNode(null)
+                    }}
+                    onHover={(hovered) => setHoveredElementId(hovered ? element.id : null)}
+                    selected={selectedElementId === element.id}
+                    start={currentStart}
+                  />
+                )}
                 {showElementLabels && (
                   <Html center position={currentStart.clone().add(currentEnd).multiplyScalar(0.5).toArray()}>
                     <div className="rounded-full border border-border/70 bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground shadow-lg dark:border-white/10 dark:bg-slate-950/85">
@@ -505,11 +619,13 @@ function PngExporter({
 }
 
 export function StructuralScene(props: StructuralSceneProps) {
-  const { snapshot, activeCase, forceMetric, view, showLegend, t, exportRef } = props
+  const { snapshot, activeCase, forceMetric, view, showLegend, t, exportRef, bucklingModeIndex } = props
 
   // Internal ref to the gl renderer; populated by PngExporter inside Canvas
   const glRef = useRef<THREE.WebGLRenderer | null>(null)
   const invalidateRef = useRef<(() => void) | null>(null)
+  // Shared amplitude ref for buckling animation — written by BucklingAnimator, read by BucklingMember
+  const bucklingAmplitudeRef = useRef<number>(0)
 
   // Expose exportPng via the forwarded ref
   useEffect(() => {
@@ -614,8 +730,20 @@ export function StructuralScene(props: StructuralSceneProps) {
         unit: '%',
       }
     }
+    if (view === 'buckling') {
+      const modes = snapshot.bucklingModes
+      if (modes?.length) {
+        const mode = modes[bucklingModeIndex ?? 0] ?? modes[0]
+        return {
+          maxValue: mode.lambda,
+          valueScale: 1,
+          label: `λ${(bucklingModeIndex ?? 0) + 1}`,
+          unit: '',
+        }
+      }
+    }
     return null
-  }, [view, forceMetric, maxElementMetric, maxReaction, maxDisplacement, maxUtilization, snapshot.resultUnit, snapshot.momentUnit, snapshot.displacementDisplayFactor, snapshot.displacementUnit, snapshot.nodeLabelUnit, t])
+  }, [view, forceMetric, maxElementMetric, maxReaction, maxDisplacement, maxUtilization, snapshot.resultUnit, snapshot.momentUnit, snapshot.displacementDisplayFactor, snapshot.displacementUnit, snapshot.nodeLabelUnit, snapshot.bucklingModes, bucklingModeIndex, t])
 
   if (!webglAvailable) {
     return (
@@ -637,10 +765,11 @@ export function StructuralScene(props: StructuralSceneProps) {
           <div className="mt-1 leading-5">{t('visualizationElementReferenceMismatchBody')}</div>
         </div>
       )}
-      <Canvas dpr={[1, 1.75]} frameloop="demand" gl={{ preserveDrawingBuffer: true }} onPointerMissed={props.onClearSelection}>
+      <Canvas dpr={[1, 1.75]} frameloop={view === 'buckling' ? 'always' : 'demand'} gl={{ preserveDrawingBuffer: true }} onPointerMissed={props.onClearSelection}>
         <PngExporter glRef={glRef} invalidateRef={invalidateRef} />
+        {view === 'buckling' && <BucklingAnimator amplitudeRef={bucklingAmplitudeRef} />}
         <Suspense fallback={null}>
-          <SceneContent {...props} maxElementMetric={maxElementMetric} maxReaction={maxReaction} maxDisplacement={maxDisplacement} maxUtilization={maxUtilization} />
+          <SceneContent {...props} maxElementMetric={maxElementMetric} maxReaction={maxReaction} maxDisplacement={maxDisplacement} maxUtilization={maxUtilization} bucklingAmplitudeRef={bucklingAmplitudeRef} />
         </Suspense>
       </Canvas>
       {showLegend && colorBarProps && (

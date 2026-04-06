@@ -1,4 +1,5 @@
 import type {
+  BucklingMode,
   VisualizationCase,
   VisualizationElement,
   VisualizationElementResults,
@@ -411,7 +412,7 @@ function derivePlane(nodes: VisualizationNode[], dimension: 2 | 3) {
   return 'xz' as const
 }
 
-function buildAvailableViews(cases: VisualizationCase[], source: VisualizationSource, hasUtilization = false): VisualizationViewMode[] {
+function buildAvailableViews(cases: VisualizationCase[], source: VisualizationSource, hasUtilization = false, hasBuckling = false): VisualizationViewMode[] {
   if (source === 'model') {
     return ['model']
   }
@@ -433,6 +434,7 @@ function buildAvailableViews(cases: VisualizationCase[], source: VisualizationSo
     ...(hasForces ? (['forces'] as const) : []),
     ...(hasReactions ? (['reactions'] as const) : []),
     ...(hasUtilization ? (['utilization'] as const) : []),
+    ...(hasBuckling ? (['buckling'] as const) : []),
   ]
 }
 
@@ -492,6 +494,8 @@ export function buildVisualizationSnapshot(params: {
   statusMessage?: string
   /** memberUtilizationMap from backend VisualizationHints: elementId → ratio (0~1+) */
   memberUtilizationMap?: Record<string, number> | null
+  /** bucklingModes from backend VisualizationHints, sorted by λ ascending */
+  bucklingModes?: BucklingMode[] | null
 }): VisualizationSnapshot | null {
   const model = params.model
   if (!model) {
@@ -634,6 +638,7 @@ export function buildVisualizationSnapshot(params: {
   const hasUtilization = cases.some((item) =>
     Object.values(item.elementResults).some((result) => typeof result.utilization === 'number')
   )
+  const hasBuckling = Array.isArray(params.bucklingModes) && params.bucklingModes.length > 0
 
   return normalizeVisualizationSnapshot({
     version: 1,
@@ -643,7 +648,7 @@ export function buildVisualizationSnapshot(params: {
     plane,
     coordinateSemantics: semantics?.semantics,
     analysisType: typeof analysis?.analysis_type === 'string' ? analysis.analysis_type : undefined,
-    availableViews: buildAvailableViews(cases, source, hasUtilization),
+    availableViews: buildAvailableViews(cases, source, hasUtilization, hasBuckling),
     defaultCaseId: cases.find((item) => item.kind === 'result')?.id || cases[0]?.id || (source === 'model' ? 'model' : 'result'),
     unitSystem: units.unitSystem,
     lengthUnit: units.lengthUnit,
@@ -661,5 +666,6 @@ export function buildVisualizationSnapshot(params: {
     cases,
     summary: asRecord(data?.summary) || undefined,
     statusMessage: params.statusMessage,
+    bucklingModes: hasBuckling ? (params.bucklingModes as BucklingMode[]) : undefined,
   })
 }

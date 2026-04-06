@@ -29,6 +29,7 @@ const VIEW_LABELS: Record<VisualizationViewMode, MessageKey> = {
   forces: 'visualizationViewForces',
   reactions: 'visualizationViewReactions',
   utilization: 'visualizationViewUtilization',
+  buckling: 'visualizationViewBuckling',
 }
 
 const PLANE_LABELS: Record<VisualizationPlane, MessageKey> = {

@@ -1,4 +1,11 @@
-export type VisualizationViewMode = 'model' | 'deformed' | 'forces' | 'reactions' | 'utilization'
+export type VisualizationViewMode = 'model' | 'deformed' | 'forces' | 'reactions' | 'utilization' | 'buckling'
+
+export type BucklingMode = {
+  /** Buckling load factor (λ) */
+  lambda: number
+  /** Node id → [dx, dy, dz] normalized mode shape displacement */
+  modeShape: Record<string, [number, number, number]>
+}
 export type VisualizationSource = 'model' | 'result'
 export type VisualizationPlane = 'xy' | 'xz' | 'yz'
 
@@ -82,4 +89,6 @@ export type VisualizationSnapshot = {
   cases: VisualizationCase[]
   summary?: Record<string, unknown>
   statusMessage?: string
+  /** Buckling modes from linear buckling analysis, sorted by λ ascending. */
+  bucklingModes?: BucklingMode[]
 }
