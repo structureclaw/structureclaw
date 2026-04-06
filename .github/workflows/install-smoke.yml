@@ -42,17 +42,13 @@ jobs:
       env:
         # 1. 处理 HTTP 代理 (覆盖大小写)
         http_proxy: http://host.docker.internal:7891
-        HTTP_PROXY: http://host.docker.internal:7891
         # 2. 处理 HTTPS 代理 (覆盖大小写)
         https_proxy: http://host.docker.internal:7891
-        HTTPS_PROXY: http://host.docker.internal:7891
         # 3. 处理 ALL_PROXY (这非常重要，Git 经常优先读这个)
         # 注意：统一转为 http 协议，避免容器内对 socks5h 的解析差异
         all_proxy: http://host.docker.internal:7891
-        ALL_PROXY: http://host.docker.internal:7891
         # 4. 修正 NO_PROXY
         no_proxy: localhost,127.0.0.1,host.docker.internal,.local,github.com
-        NO_PROXY: localhost,127.0.0.1,host.docker.internal,.local,github.com
     timeout-minutes: 30
 
     steps:
