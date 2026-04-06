@@ -1,4 +1,4 @@
-export type VisualizationViewMode = 'model' | 'deformed' | 'forces' | 'reactions'
+export type VisualizationViewMode = 'model' | 'deformed' | 'forces' | 'reactions' | 'utilization'
 export type VisualizationSource = 'model' | 'result'
 export type VisualizationPlane = 'xy' | 'xz' | 'yz'
 
@@ -22,6 +22,8 @@ export type VisualizationElementResults = {
   endForces?: Record<string, number>
   envelope?: Partial<Record<'maxAbsAxialForce' | 'maxAbsShearForce' | 'maxAbsMoment', number | string>>
   controlCases?: Partial<Record<'axial' | 'shear' | 'moment', string>>
+  /** Steel member utilization ratio (0 = 0%, 1.0 = 100%, >1 = overstressed). */
+  utilization?: number
 }
 
 export type VisualizationNode = {

@@ -411,7 +411,7 @@ function derivePlane(nodes: VisualizationNode[], dimension: 2 | 3) {
   return 'xz' as const
 }
 
-function buildAvailableViews(cases: VisualizationCase[], source: VisualizationSource): VisualizationViewMode[] {
+function buildAvailableViews(cases: VisualizationCase[], source: VisualizationSource, hasUtilization = false): VisualizationViewMode[] {
   if (source === 'model') {
     return ['model']
   }
@@ -432,6 +432,7 @@ function buildAvailableViews(cases: VisualizationCase[], source: VisualizationSo
     ...(hasDisplacements ? (['deformed'] as const) : []),
     ...(hasForces ? (['forces'] as const) : []),
     ...(hasReactions ? (['reactions'] as const) : []),
+    ...(hasUtilization ? (['utilization'] as const) : []),
   ]
 }
 
@@ -489,6 +490,8 @@ export function buildVisualizationSnapshot(params: {
   analysis?: Record<string, unknown> | null
   mode?: 'model-only' | 'analysis-result'
   statusMessage?: string
+  /** memberUtilizationMap from backend VisualizationHints: elementId → ratio (0~1+) */
+  memberUtilizationMap?: Record<string, number> | null
 }): VisualizationSnapshot | null {
   const model = params.model
   if (!model) {
@@ -612,6 +615,26 @@ export function buildVisualizationSnapshot(params: {
   const dimension = semantics?.dimension ?? deriveDimension(nodes)
   const plane = semantics?.plane ?? derivePlane(nodes, dimension)
 
+  // Inject steel member utilization ratios into all cases' elementResults
+  if (params.memberUtilizationMap && Object.keys(params.memberUtilizationMap).length > 0) {
+    const utilizationMap = params.memberUtilizationMap
+    cases.forEach((vizCase) => {
+      Object.entries(utilizationMap).forEach(([elementId, ratio]) => {
+        if (typeof ratio === 'number' && Number.isFinite(ratio)) {
+          vizCase.elementResults[elementId] = {
+            ...(vizCase.elementResults[elementId] || {}),
+            utilization: ratio,
+          }
+        }
+      })
+    })
+  }
+
+  // Build availableViews — include 'utilization' when any element has the field
+  const hasUtilization = cases.some((item) =>
+    Object.values(item.elementResults).some((result) => typeof result.utilization === 'number')
+  )
+
   return normalizeVisualizationSnapshot({
     version: 1,
     title: params.title,
@@ -620,7 +643,7 @@ export function buildVisualizationSnapshot(params: {
     plane,
     coordinateSemantics: semantics?.semantics,
     analysisType: typeof analysis?.analysis_type === 'string' ? analysis.analysis_type : undefined,
-    availableViews: buildAvailableViews(cases, source),
+    availableViews: buildAvailableViews(cases, source, hasUtilization),
     defaultCaseId: cases.find((item) => item.kind === 'result')?.id || cases[0]?.id || (source === 'model' ? 'model' : 'result'),
     unitSystem: units.unitSystem,
     lengthUnit: units.lengthUnit,

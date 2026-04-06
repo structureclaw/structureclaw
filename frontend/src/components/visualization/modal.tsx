@@ -1,11 +1,12 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { formatNumber } from '@/lib/utils'
 import { VisualizationModalShell } from './modal-shell'
 import { StructuralScene } from './structural-scene'
+import type { SceneExportHandle } from './structural-scene'
 import { VisualizationToolbar } from './toolbar'
 import type { VisualizationCase, VisualizationPlane, VisualizationSnapshot, VisualizationViewMode } from './types'
 
@@ -84,6 +85,8 @@ export function StructuralVisualizationModal({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [selectedElementId, setSelectedElementId] = useState<string | null>(null)
   const [selectedLoadIndex, setSelectedLoadIndex] = useState<number | null>(null)
+  const [isExporting, setIsExporting] = useState(false)
+  const exportRef = useRef<SceneExportHandle | null>(null)
 
   const handlePlaneChange = (nextPlane: VisualizationPlane) => {
     setPlane(nextPlane)
@@ -366,6 +369,7 @@ export function StructuralVisualizationModal({
             onDeformationScaleChange={setDeformationScale}
             onForceMetricChange={setForceMetric}
             onSwitchToForcesView={() => setView('forces')}
+            onSwitchToUtilizationView={() => setView('utilization')}
             onToggleElementLabels={() => setShowElementLabels((current) => !current)}
             onToggleLegend={() => setShowLegend((current) => !current)}
             onToggleLoads={() => setShowLoads((current) => !current)}
@@ -379,10 +383,28 @@ export function StructuralVisualizationModal({
             snapshot={snapshot}
             t={t}
           />
+          <div className="flex items-center justify-end gap-2 border-b border-border/70 px-4 py-2 dark:border-white/10">
+            <button
+              className="flex items-center gap-1.5 rounded-full border border-border/70 bg-background/70 px-3 py-1.5 text-sm text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground disabled:opacity-50 dark:border-white/10 dark:bg-white/5"
+              disabled={isExporting}
+              onClick={() => {
+                if (!snapshot) return
+                setIsExporting(true)
+                const filename = `${snapshot.title.replace(/\s+/g, '_')}_${activeCase.id}`
+                exportRef.current?.exportPng(filename, 2)
+                setTimeout(() => setIsExporting(false), 800)
+              }}
+              title={t('visualizationExportPng')}
+              type="button"
+            >
+              {isExporting ? '⏳' : '⬇️'} {t('visualizationExportPng')}
+            </button>
+          </div>
           <div className="min-h-0 flex-1" data-testid="visualization-modal-scene">
             <StructuralScene
               activeCase={activeCase}
               deformationScale={deformationScale}
+              exportRef={exportRef}
               forceMetric={forceMetric}
               onSelectElement={setSelectedElementId}
               onSelectNode={setSelectedNodeId}

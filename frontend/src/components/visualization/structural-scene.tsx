@@ -1,7 +1,7 @@
 'use client'
 
-import { Suspense, useEffect, useMemo, useRef, useState } from 'react'
-import { Canvas } from '@react-three/fiber'
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Canvas, useThree } from '@react-three/fiber'
 import { Bounds, Html, Line, OrbitControls, OrthographicCamera, PerspectiveCamera } from '@react-three/drei'
 import * as THREE from 'three'
 import type { MessageKey } from '@/lib/i18n'
@@ -14,12 +14,18 @@ import {
   getNodeDisplacementMagnitude,
   getNodeLabelOffset,
   createColorScale,
+  createUtilizationColor,
   isRenderableLoadVector as isRenderableLoadVectorCheck,
   getLoadArrowLength,
   getAdaptiveGridConfig,
   projectPosition,
   getPlaneCameraPreset,
 } from './structural-scene-utils'
+
+export type SceneExportHandle = {
+  /** Capture current frame and trigger PNG download. scale = pixel density multiplier (1 | 2 | 4). */
+  exportPng: (filename?: string, scale?: 1 | 2 | 4) => void
+}
 
 type StructuralSceneProps = {
   snapshot: VisualizationSnapshot
@@ -39,6 +45,8 @@ type StructuralSceneProps = {
   onSelectElement: (id: string | null) => void
   onSelectNode: (id: string | null) => void
   onClearSelection: () => void
+  /** Optional ref to expose exportPng() to parent. */
+  exportRef?: React.RefObject<SceneExportHandle | null>
   t: (key: MessageKey) => string
 }
 
@@ -237,10 +245,12 @@ function SceneContent({
   maxElementMetric,
   maxReaction,
   maxDisplacement,
+  maxUtilization,
 }: StructuralSceneProps & {
   maxElementMetric: number
   maxReaction: number
   maxDisplacement: number
+  maxUtilization: number
 }) {
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [hoveredElementId, setHoveredElementId] = useState<string | null>(null)
@@ -304,13 +314,19 @@ function SceneContent({
             const start = view === 'deformed' ? startData.displacedPosition : startData.position
             const end = view === 'deformed' ? endData.displacedPosition : endData.position
             const forceColor = createColorScale(getElementMetric(activeCase, element.id, forceMetric), maxElementMetric)
+            const utilizationRatio = activeCase.elementResults[element.id]?.utilization ?? null
+            const utilizationColor = utilizationRatio !== null
+              ? createUtilizationColor(utilizationRatio)
+              : createUtilizationColor(0)
             const color = view === 'forces'
               ? forceColor
-              : selectedElementId === element.id
-                ? '#fb923c'
-                : hoveredElementId === element.id
-                  ? '#67e8f9'
-                  : '#38bdf8'
+              : view === 'utilization'
+                ? (selectedElementId === element.id ? '#fb923c' : hoveredElementId === element.id ? '#67e8f9' : utilizationColor)
+                : selectedElementId === element.id
+                  ? '#fb923c'
+                  : hoveredElementId === element.id
+                    ? '#67e8f9'
+                    : '#38bdf8'
             const undeformedStart = projectPosition(startData.position, plane, snapshot.dimension)
             const undeformedEnd = projectPosition(endData.position, plane, snapshot.dimension)
             const currentStart = projectPosition(start, plane, snapshot.dimension)
@@ -472,8 +488,57 @@ function SceneContent({
   )
 }
 
+/** Internal R3F component that captures gl and invalidate into parent refs. */
+function PngExporter({
+  glRef,
+  invalidateRef,
+}: {
+  glRef: React.MutableRefObject<THREE.WebGLRenderer | null>
+  invalidateRef: React.MutableRefObject<(() => void) | null>
+}) {
+  const { gl, invalidate } = useThree()
+  useEffect(() => {
+    glRef.current = gl
+    invalidateRef.current = invalidate
+  }, [gl, glRef, invalidate, invalidateRef])
+  return null
+}
+
 export function StructuralScene(props: StructuralSceneProps) {
-  const { snapshot, activeCase, forceMetric, view, showLegend, t } = props
+  const { snapshot, activeCase, forceMetric, view, showLegend, t, exportRef } = props
+
+  // Internal ref to the gl renderer; populated by PngExporter inside Canvas
+  const glRef = useRef<THREE.WebGLRenderer | null>(null)
+  const invalidateRef = useRef<(() => void) | null>(null)
+
+  // Expose exportPng via the forwarded ref
+  useEffect(() => {
+    if (!exportRef) return
+    const handle: SceneExportHandle = {
+      exportPng: (filename = 'structureclaw-scene', scale = 1) => {
+        const gl = glRef.current
+        const invalidate = invalidateRef.current
+        if (!gl) return
+        // Force a render frame (demand mode)
+        if (invalidate) invalidate()
+        requestAnimationFrame(() => {
+          const canvas = gl.domElement
+          const dataUrl = canvas.toDataURL('image/png')
+          const link = document.createElement('a')
+          link.href = dataUrl
+          link.download = `${filename}.png`
+          link.click()
+          void scale // scale is handled via gl.setPixelRatio below
+        })
+      },
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    ;(exportRef as React.MutableRefObject<SceneExportHandle | null>).current = handle
+    return () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ;(exportRef as React.MutableRefObject<SceneExportHandle | null>).current = null
+    }
+  }, [exportRef])
 
   const webglAvailable = useMemo(() => {
     if (typeof document === 'undefined') {
@@ -501,6 +566,10 @@ export function StructuralScene(props: StructuralSceneProps) {
   const maxDisplacement = useMemo(
     () => Math.max(1e-12, ...snapshot.nodes.map((node) => getNodeDisplacementMagnitude(activeCase, node.id))),
     [activeCase, snapshot.nodes]
+  )
+  const maxUtilization = useMemo(
+    () => Math.max(1, ...snapshot.elements.map((element) => activeCase.elementResults[element.id]?.utilization ?? 0)),
+    [activeCase, snapshot.elements]
   )
 
   const invalidElementReferenceCount = useMemo(() => {
@@ -539,8 +608,16 @@ export function StructuralScene(props: StructuralSceneProps) {
         unit: snapshot.displacementUnit || snapshot.nodeLabelUnit,
       }
     }
+    if (view === 'utilization') {
+      return {
+        maxValue: maxUtilization,
+        valueScale: 100,
+        label: t('visualizationUtilizationRatio'),
+        unit: '%',
+      }
+    }
     return null
-  }, [view, forceMetric, maxElementMetric, maxReaction, maxDisplacement, snapshot.resultUnit, snapshot.momentUnit, snapshot.displacementDisplayFactor, snapshot.displacementUnit, snapshot.nodeLabelUnit, t])
+  }, [view, forceMetric, maxElementMetric, maxReaction, maxDisplacement, maxUtilization, snapshot.resultUnit, snapshot.momentUnit, snapshot.displacementDisplayFactor, snapshot.displacementUnit, snapshot.nodeLabelUnit, t])
 
   if (!webglAvailable) {
     return (
@@ -562,9 +639,10 @@ export function StructuralScene(props: StructuralSceneProps) {
           <div className="mt-1 leading-5">{t('visualizationElementReferenceMismatchBody')}</div>
         </div>
       )}
-      <Canvas dpr={[1, 1.75]} frameloop="demand" onPointerMissed={props.onClearSelection}>
+      <Canvas dpr={[1, 1.75]} frameloop="demand" gl={{ preserveDrawingBuffer: true }} onPointerMissed={props.onClearSelection}>
+        <PngExporter glRef={glRef} invalidateRef={invalidateRef} />
         <Suspense fallback={null}>
-          <SceneContent {...props} maxElementMetric={maxElementMetric} maxReaction={maxReaction} maxDisplacement={maxDisplacement} />
+          <SceneContent {...props} maxElementMetric={maxElementMetric} maxReaction={maxReaction} maxDisplacement={maxDisplacement} maxUtilization={maxUtilization} />
         </Suspense>
       </Canvas>
       {showLegend && colorBarProps && (

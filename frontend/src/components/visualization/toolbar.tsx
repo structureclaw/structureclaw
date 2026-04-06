@@ -24,6 +24,7 @@ type VisualizationToolbarProps = {
   onDeformationScaleChange: (value: number) => void
   onForceMetricChange: (value: ForceMetric) => void
   onSwitchToForcesView: () => void
+  onSwitchToUtilizationView: () => void
   onToggleElementLabels: () => void
   onToggleLegend: () => void
   onToggleLoads: () => void
@@ -63,6 +64,7 @@ export function VisualizationToolbar({
   onDeformationScaleChange,
   onForceMetricChange,
   onSwitchToForcesView,
+  onSwitchToUtilizationView,
   onToggleElementLabels,
   onToggleLegend,
   onToggleLoads,
@@ -72,6 +74,7 @@ export function VisualizationToolbar({
 }: VisualizationToolbarProps) {
   const supportsDeformedView = snapshot.availableViews.includes('deformed')
   const supportsForcesView = snapshot.availableViews.includes('forces')
+  const supportsUtilizationView = snapshot.availableViews.includes('utilization')
   const showCaseSelector = snapshot.source === 'result' && snapshot.cases.length > 1
 
   return (
@@ -116,6 +119,21 @@ export function VisualizationToolbar({
             </button>
           ))}
         </div>
+      ) : null}
+
+      {supportsUtilizationView ? (
+        <button
+          className={cn(
+            'rounded-full border px-3 py-2 text-sm transition',
+            selectedView === 'utilization'
+              ? 'border-orange-300/50 bg-orange-300/14 text-foreground'
+              : 'border-border/70 bg-background/70 text-muted-foreground hover:border-orange-300/30 hover:text-foreground dark:border-white/10 dark:bg-white/5'
+          )}
+          onClick={onSwitchToUtilizationView}
+          type="button"
+        >
+          {t('visualizationUtilizationRatio')}
+        </button>
       ) : null}
 
       {supportsDeformedView ? (
