@@ -436,17 +436,31 @@ async function ensureUv(rootDir) {
   }
 
   if (runtime.isWindows()) {
-    runtime.requireCommand(
-      "winget",
-      "Install winget, or install uv manually and then rerun `sclaw ensure-uv`.",
-    );
-    await runtime.runCommand("winget", [
-      "install",
-      "--id",
-      "AstralSoftware.UV",
-      "-e",
-      "--accept-package-agreements",
-      "--accept-source-agreements",
+    // Try winget first; fall back to PowerShell installer if winget is unavailable or fails.
+    if (runtime.hasCommand("winget")) {
+      try {
+        await runtime.runCommand("winget", [
+          "install",
+          "--id",
+          "AstralSoftware.UV",
+          "-e",
+          "--accept-package-agreements",
+          "--accept-source-agreements",
+        ]);
+        if (runtime.hasCommand("uv")) {
+          return;
+        }
+      } catch {
+        // winget install failed — fall through to PowerShell installer.
+      }
+    }
+
+    // PowerShell installer (official Astral recommendation for Windows).
+    await runtime.runCommand("powershell", [
+      "-ExecutionPolicy",
+      "ByPass",
+      "-Command",
+      "irm https://astral.sh/uv/install.ps1 | iex",
     ]);
     runtime.requireCommand(
       "uv",
@@ -1001,7 +1015,11 @@ async function invokeDoctor(rootDir, env) {
   await ensureNpmDependencies(paths.backendDir, "backend", ["prisma", "@prisma/client"]);
   await ensureNpmDependencies(paths.frontendDir, "frontend", ["next"]);
   await ensureAnalysisPython(rootDir, env);
-  await ensureOpenSeesRuntime(rootDir, env);
+  try {
+    await ensureOpenSeesRuntime(rootDir, env);
+  } catch {
+    log("Warning: OpenSees runtime probe failed — analysis features may be limited in this environment.");
+  }
   await invokeScopedDbInit(rootDir, env, "doctor");
   log("Local startup checks passed.");
 }
