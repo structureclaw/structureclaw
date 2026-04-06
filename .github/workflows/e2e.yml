@@ -25,12 +25,16 @@ on:
 jobs:
   e2e:
     runs-on: [self-hosted, Linux, X64]
-    container:
-      image: node:20-bookworm
-      options: --network host
     timeout-minutes: 20
 
     steps:
+      - name: Pre-cleanup
+        shell: bash
+        run: |
+          pkill -f "node.*dist/index" || true
+          pkill -f "next dev" || true
+          rm -rf "${{ github.workspace }}/.runtime"
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -74,6 +78,13 @@ jobs:
         run: npm run test:e2e --prefix frontend
         env:
           CI: true
+
+      - name: Post-cleanup
+        if: always()
+        shell: bash
+        run: |
+          pkill -f "node.*dist/index" || true
+          pkill -f "next dev" || true
 
       - name: Upload test artifacts
         if: always()

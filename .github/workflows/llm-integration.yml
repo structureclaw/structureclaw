@@ -15,11 +15,12 @@ on:
 jobs:
   llm-integration-linux:
     runs-on: [self-hosted, Linux, X64]
-    container:
-      image: node:20-bookworm
-      options: --network host
     timeout-minutes: 30
     steps:
+      - name: Pre-cleanup
+        shell: bash
+        run: rm -rf "${{ github.workspace }}/.runtime"
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -49,10 +50,19 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+      - name: Post-cleanup
+        if: always()
+        shell: bash
+        run: rm -rf "${{ github.workspace }}/.runtime"
+
   llm-integration-windows:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 30
     steps:
+      - name: Pre-cleanup
+        shell: pwsh
+        run: Remove-Item -Recurse -Force "${{ github.workspace }}/.runtime" -ErrorAction SilentlyContinue
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -82,3 +92,8 @@ jobs:
           path: .runtime/logs/llm-calls.jsonl
           retention-days: 7
           if-no-files-found: ignore
+
+      - name: Post-cleanup
+        if: always()
+        shell: pwsh
+        run: Remove-Item -Recurse -Force "${{ github.workspace }}/.runtime" -ErrorAction SilentlyContinue

@@ -35,12 +35,13 @@ on:
 jobs:
   native-install-smoke-linux:
     runs-on: [self-hosted, Linux, X64]
-    container:
-      image: node:20-bookworm
-      options: --network host
     timeout-minutes: 30
 
     steps:
+      - name: Pre-cleanup
+        shell: bash
+        run: rm -rf "${{ github.workspace }}/.runtime"
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -58,12 +59,21 @@ jobs:
 
       - name: Frontend lint
         run: npm run lint --prefix frontend
+
+      - name: Post-cleanup
+        if: always()
+        shell: bash
+        run: rm -rf "${{ github.workspace }}/.runtime"
 
   native-install-smoke-windows:
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 30
 
     steps:
+      - name: Pre-cleanup
+        shell: pwsh
+        run: Remove-Item -Recurse -Force "${{ github.workspace }}/.runtime" -ErrorAction SilentlyContinue
+
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -81,6 +91,11 @@ jobs:
 
       - name: Frontend lint
         run: npm run lint --prefix frontend
+
+      - name: Post-cleanup
+        if: always()
+        shell: pwsh
+        run: Remove-Item -Recurse -Force "${{ github.workspace }}/.runtime" -ErrorAction SilentlyContinue
 
   docker-compose-smoke:
     runs-on: [self-hosted, Linux, X64]
