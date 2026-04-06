@@ -524,6 +524,12 @@ async function ensureAnalysisPython(rootDir, env) {
   }
 
   await ensureUv(rootDir);
+  // ensureUv may have appended to process.env.PATH (e.g. after a fresh uv
+  // install on Windows).  Propagate that to the caller-supplied env dict so
+  // that buildAnalysisEnvironment / runCommand pick it up.
+  if (env.PATH !== process.env.PATH) {
+    env.PATH = process.env.PATH;
+  }
 
   const pythonVersion =
     env.ANALYSIS_PYTHON_VERSION || runtime.DEFAULT_ANALYSIS_PYTHON_VERSION;
