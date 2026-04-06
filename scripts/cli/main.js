@@ -456,7 +456,8 @@ async function ensureUv(rootDir) {
     }
 
     // PowerShell installer (official Astral recommendation for Windows).
-    await runtime.runCommand("powershell", [
+    const ps = runtime.hasCommand("pwsh") ? "pwsh" : "powershell";
+    await runtime.runCommand(ps, [
       "-ExecutionPolicy",
       "ByPass",
       "-Command",
