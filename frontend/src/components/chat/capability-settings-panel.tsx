@@ -14,6 +14,7 @@ import { cn } from '@/lib/utils'
 type AgentSkillSummary = SkillMetadataLike & {
   name: { zh?: string; en?: string }
   description: { zh?: string; en?: string }
+  domain?: string
 }
 
 type ToolCategory = 'modeling' | 'analysis' | 'code-check' | 'report' | 'utility'
@@ -312,7 +313,7 @@ export function CapabilitySettingsPanel() {
   const groupedSkills = useMemo(() => {
     const bucket = new Map<SkillDomain, AgentSkillSummary[]>()
     availableSkills.forEach((skill) => {
-      const domain = skillDomainById[skill.id] || 'unknown'
+      const domain = skillDomainById[skill.id] || normalizeSkillDomain(skill.domain) || 'unknown'
       const list = bucket.get(domain) || []
       list.push(skill)
       bucket.set(domain, list)
@@ -514,6 +515,9 @@ export function CapabilitySettingsPanel() {
               </select>
             </div>
             <div className="space-y-3">
+              {visibleGroupedSkills.length === 0 && (
+                <p className="text-xs text-muted-foreground">{t('skillDomainNoInstalledSkills')}</p>
+              )}
               {visibleGroupedSkills.map((group) => {
                 const allSelected = group.skills.length > 0 && group.selectedCount === group.skills.length
                 return (

@@ -2798,7 +2798,7 @@ export function AIConsole() {
             </div>
           </div>
 
-          <div data-testid="console-composer" className="border-t border-border/70 px-4 py-3 dark:border-white/10">
+          <div data-testid="console-composer" className="border-t border-border/70 px-4 py-3 dark:border-white/10 overflow-y-auto max-h-[60vh]">
             <div className="w-full space-y-3">
               {errorMessage && (
                 <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
@@ -2892,7 +2892,7 @@ export function AIConsole() {
                 </div>
 
                 {contextOpen && (
-                  <div className="mt-3 rounded-[24px] border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
+                  <div className="mt-3 max-h-[50vh] overflow-y-auto rounded-[24px] border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
                     <div className="space-y-2">
                       <div>
                         <div className="flex flex-wrap items-center justify-between gap-2">
