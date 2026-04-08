@@ -391,7 +391,7 @@ Agent 编排层已拆分为以下模块。
 - [backend/src/services/agent-result.ts](backend/src/services/agent-result.ts)
   从 `AgentService` 中提取的结果构建与渲染函数：`buildMetrics`、`buildInteractionQuestion`、`buildToolInteraction`、`buildRecommendedNextStep`、`buildGenericModelingIntro`、`buildChatModeResponse`、`renderSummary`。
 - [backend/src/services/agent-session.ts](backend/src/services/agent-session.ts)
-  会话状态机与 Redis 持久化：`SessionState` 类型、`transitionSession`（强制合法转换）、`getSessionState`、`buildInteractionSessionKey`、`getInteractionSession`、`setInteractionSession`、`clearInteractionSession`。
+  会话状态机与进程内缓存持久化：`SessionState` 类型、`transitionSession`（强制合法转换）、`getSessionState`、`buildInteractionSessionKey`、`getInteractionSession`、`setInteractionSession`、`clearInteractionSession`。
 - [backend/src/services/agent-validation.ts](backend/src/services/agent-validation.ts)
   带 LLM 自动修复的模型校验：`validateWithRetry`（包装 `executeValidateModelStep`，最多尝试 2 次修复）与 `tryRepairModel`（将模型 JSON 及校验错误发送给 LLM 进行 JSON 级别修复）。
 
@@ -426,7 +426,7 @@ Agent 编排层已拆分为以下模块。
 
 ### 10A.1 会话状态机
 
-每个对话在 Redis 中维护一个 `InteractionSession`。会话携带 `state` 字段，用于跟踪当前在多轮流程中的位置。
+每个对话在后端进程缓存中维护一个 `InteractionSession`。会话携带 `state` 字段，用于跟踪当前在多轮流程中的位置。
 
 已定义的状态：
 

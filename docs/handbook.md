@@ -30,7 +30,6 @@ Optional:
 
 - Docker Engine / Docker Desktop
 - Docker Compose v2
-- Redis 7+ (only if you explicitly enable `REDIS_URL`)
 
 ## 4. Repository Structure
 
@@ -136,14 +135,14 @@ Start with `.env.example`.
 Important variables:
 
 - Runtime: `NODE_ENV`, `PORT`, `FRONTEND_PORT`
-- Data: `DATABASE_URL`, `REDIS_URL`
+- Data: `DATABASE_URL`
 - LLM: `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`
 - Integration: `ANALYSIS_PYTHON_BIN`, `ANALYSIS_ENGINE_MANIFEST_PATH`, `CORS_ORIGINS`
 
 Notes:
 
 - `./sclaw start` and `./sclaw restart` default to `.runtime/data/structureclaw.start.db`; `./sclaw doctor` uses `.runtime/data/structureclaw.doctor.db` so startup checks stay isolated from the active local runtime database.
-- `REDIS_URL=disabled` enables in-memory fallback mode in backend.
+- Backend agent sessions and model cache use an in-memory store in the current process.
 - `ANALYSIS_PYTHON_BIN` defaults to `backend/.venv/bin/python`.
 
 ## 7. Primary Workflows

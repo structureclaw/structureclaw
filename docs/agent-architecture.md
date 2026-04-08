@@ -390,7 +390,7 @@ The agent orchestration layer is decomposed into the following modules.
 - [backend/src/services/agent-result.ts](backend/src/services/agent-result.ts)
   Result builders and renderers extracted from `AgentService`: `buildMetrics`, `buildInteractionQuestion`, `buildToolInteraction`, `buildRecommendedNextStep`, `buildGenericModelingIntro`, `buildChatModeResponse`, `renderSummary`.
 - [backend/src/services/agent-session.ts](backend/src/services/agent-session.ts)
-  Session state machine and Redis persistence: `SessionState` type, `transitionSession` (enforces allowed transitions), `getSessionState`, `buildInteractionSessionKey`, `getInteractionSession`, `setInteractionSession`, `clearInteractionSession`.
+  Session state machine and in-process cache persistence: `SessionState` type, `transitionSession` (enforces allowed transitions), `getSessionState`, `buildInteractionSessionKey`, `getInteractionSession`, `setInteractionSession`, `clearInteractionSession`.
 - [backend/src/services/agent-validation.ts](backend/src/services/agent-validation.ts)
   Model validation with LLM auto-repair: `validateWithRetry` (wraps `executeValidateModelStep` with up to 2 repair attempts) and `tryRepairModel` (sends model + validation error to LLM for JSON-level repair).
 
@@ -425,7 +425,7 @@ Each handler corresponds to a distinct conversation path dispatched by the route
 
 ### 10A.1 Session State Machine
 
-Each conversation maintains an `InteractionSession` stored in Redis. The session carries a `state` field that tracks the conversation's position in the multi-round workflow.
+Each conversation maintains an `InteractionSession` stored in the backend process cache. The session carries a `state` field that tracks the conversation's position in the multi-round workflow.
 
 Defined states:
 
