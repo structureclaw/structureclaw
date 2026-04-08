@@ -12,7 +12,8 @@ on:
       - 'backend/package-lock.json'
       - '.github/workflows/e2e.yml'
   push:
-    branches: [master]
+    branches:
+      - master
     paths:
       - 'frontend/**'
       - 'backend/src/api/**'
@@ -51,9 +52,9 @@ jobs:
         env:
           PORT: 30010
           DATABASE_URL: file:../../.runtime/data/test-e2e.db
-          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'openai' }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          LLM_MODEL: ${{ vars.LLM_MODEL || 'gpt-4o-mini' }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
 
       - name: Start frontend
         run: cd frontend && npx next dev -p 30000 &

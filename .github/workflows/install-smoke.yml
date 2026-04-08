@@ -2,8 +2,7 @@ name: Install smoke
 
 on:
   workflow_dispatch:
-  push:
-    branches: [master, main, 'feat/*']
+  pull_request:
     paths:
       - 'docker-compose.yml'
       - 'docker-compose.cn.yml'
@@ -17,7 +16,9 @@ on:
       - 'sclaw_cn'
       - 'package.json'
       - '.github/workflows/install-smoke.yml'
-  pull_request:
+  push:
+    branches:
+      - master
     paths:
       - 'docker-compose.yml'
       - 'docker-compose.cn.yml'
