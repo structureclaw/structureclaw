@@ -10,7 +10,7 @@ Current status is derived from:
 
 - [backend/src/services/agent-capability.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/services/agent-capability.ts)
 - builtin `skill.yaml` files under `backend/src/agent-skills/`
-- legacy section modules that still exist outside the manifest-first catalog
+- remaining runtime handler modules under `backend/src/agent-skills/`
 
 | Domain | `runtimeStatus` in current code | Manifest-backed skills | Legacy skill modules | Current state |
 |---|---|---:|---:|---|
@@ -21,20 +21,19 @@ Current status is derived from:
 | `report-export` | `partial` | 1 | 0 | Runtime-connected placeholder domain. Current builtin asset is mostly manifest metadata. |
 | `load-boundary` | `discoverable` | 10 | 0 | Catalog-visible builtin skills. Not yet auto-participating in the main runtime binder. |
 | `visualization` | `discoverable` | 3 | 0 | Catalog-visible builtin skills with prompt assets, but no per-skill runtime modules today. |
-| `section` | `discoverable` | 3 | 3 | Catalog-visible after manifest migration. Runtime handlers still keep `manifest.ts` during the transition. |
-| `data-input` | `discoverable` | 0 | 0 | Taxonomy slot only in current repo state. |
-| `design` | `discoverable` | 0 | 0 | Taxonomy slot only in current repo state. |
-| `drawing` | `discoverable` | 0 | 0 | Taxonomy slot only in current repo state. |
-| `general` | `discoverable` | 0 | 0 | Taxonomy slot only in current repo state. |
-| `material` | `discoverable` | 0 | 0 | Taxonomy slot only in current repo state. |
-| `result-postprocess` | `discoverable` | 0 | 0 | Taxonomy slot only in current repo state. |
+| `section` | `discoverable` | 3 | 3 | Catalog-visible and runtime-loadable from `skill.yaml` + `handler.ts`, but not auto-activated by the main runtime binder. |
+| `data-input` | `reserved` | 0 | 0 | Taxonomy slot only in current repo state. |
+| `design` | `reserved` | 0 | 0 | Taxonomy slot only in current repo state. |
+| `drawing` | `reserved` | 0 | 0 | Taxonomy slot only in current repo state. |
+| `general` | `reserved` | 0 | 0 | Taxonomy slot only in current repo state. |
+| `material` | `reserved` | 0 | 0 | Taxonomy slot only in current repo state. |
+| `result-postprocess` | `reserved` | 0 | 0 | Taxonomy slot only in current repo state. |
 
 ## Important Caveats
 
-- The architecture documents define `reserved` as a valid status, but the current implementation in [agent-capability.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/services/agent-capability.ts) does not emit `reserved` for any domain yet.
 - A domain being listed under `backend/src/agent-skills/` does not guarantee main-flow participation.
 - A manifest-backed skill is not automatically executable. Some domains are catalog-visible first, then runtime-wired later.
-- `section` is the main outlier: it still ships useful runtime code, but it is outside the current `skill.yaml` catalog path.
+- `section` is no longer outside the catalog path, but it remains a discoverable-only domain rather than a main-flow participant.
 
 ## Asset Snapshot
 
@@ -47,11 +46,10 @@ Current status is derived from:
 | `report-export` | 1 skill with `skill.yaml` only |
 | `load-boundary` | 10 skills with `skill.yaml`; 9 also have `intent.md` + `runtime.py`; `nodal-constraint` is manifest-only |
 | `visualization` | 3 skills with `skill.yaml` + `intent.md`; no per-skill runtime modules |
-| `section` | 3 skills with `skill.yaml` + `intent.md` + `manifest.ts` + `handler.ts` + `runtime.py` |
+| `section` | 3 skills with `skill.yaml` + `intent.md` + `handler.ts` + `runtime.py` |
 
 ## Recommended Cleanup Order
 
-1. Collapse `section` from its mixed `skill.yaml` + `manifest.ts` transition state into one manifest-first contract.
-2. Decide whether taxonomy-only domains should stay `discoverable` or move to explicit `reserved` status in code.
-3. Keep contributor docs focused on a minimum viable builtin skill layout instead of the current "full asset pack" ideal.
-4. Reduce naming overlap between agent skills and the older `SkillService` / `/api/skill` path.
+1. Remove remaining `manifest.ts` duplication from other manifest-backed domains such as `structure-type`.
+2. Keep contributor docs focused on a minimum viable builtin skill layout instead of the current "full asset pack" ideal.
+3. Reduce naming overlap between agent skills and the older `LegacySkillCatalogService` / `/api/v1/skills` catalog path.

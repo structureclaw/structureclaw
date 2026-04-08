@@ -10,7 +10,7 @@
 
 - [backend/src/services/agent-capability.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/services/agent-capability.ts)
 - `backend/src/agent-skills/` 下的 builtin `skill.yaml`
-- 尚未进入 manifest-first catalog 的 legacy `section` 模块
+- `backend/src/agent-skills/` 下仍参与运行时的 handler 模块
 
 | Domain | 当前代码中的 `runtimeStatus` | Manifest-backed skill 数 | Legacy skill 模块数 | 当前状态 |
 |---|---|---:|---:|---|
@@ -21,20 +21,19 @@
 | `report-export` | `partial` | 1 | 0 | 已接入运行时，但当前 builtin 资产基本仍是 manifest 占位。 |
 | `load-boundary` | `discoverable` | 10 | 0 | builtin skill 已进入 catalog，但还没有自动参与主 runtime binder。 |
 | `visualization` | `discoverable` | 3 | 0 | builtin skill 已可发现，也有 prompt 资产，但今天还没有 per-skill runtime 模块。 |
-| `section` | `discoverable` | 3 | 3 | 已进入 catalog，但运行时 handler 层在过渡期仍保留 `manifest.ts`。 |
-| `data-input` | `discoverable` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
-| `design` | `discoverable` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
-| `drawing` | `discoverable` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
-| `general` | `discoverable` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
-| `material` | `discoverable` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
-| `result-postprocess` | `discoverable` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
+| `section` | `discoverable` | 3 | 3 | 已进入 catalog，并可通过 `skill.yaml` + `handler.ts` 参与运行时加载，但还不会自动进入主 binder。 |
+| `data-input` | `reserved` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
+| `design` | `reserved` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
+| `drawing` | `reserved` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
+| `general` | `reserved` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
+| `material` | `reserved` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
+| `result-postprocess` | `reserved` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
 
 ## 关键说明
 
-- 架构文档里定义了 `reserved`，但当前 [agent-capability.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/services/agent-capability.ts) 还没有对任何 domain 实际输出 `reserved`。
 - `backend/src/agent-skills/` 里存在某个 domain，并不等于它已经进入主流程。
 - 某个 skill 已经有 manifest，也不等于它已经可执行。有些 domain 目前只是先进入 catalog，再逐步接入 runtime。
-- `section` 是当前最明显的例外：运行时代码还在，但不属于当前 `skill.yaml` catalog 链路。
+- `section` 已不再游离于当前 catalog 链路之外，但它仍属于 discoverable-only domain，而不是主流程 participant。
 
 ## 资产快照
 
@@ -47,11 +46,10 @@
 | `report-export` | 1 个 skill，目前只有 `skill.yaml` |
 | `load-boundary` | 10 个 skill 均有 `skill.yaml`；其中 9 个还有 `intent.md` + `runtime.py`；`nodal-constraint` 只有 manifest |
 | `visualization` | 3 个 skill，均有 `skill.yaml` + `intent.md`；暂无 per-skill runtime 模块 |
-| `section` | 3 个 skill，均有 `skill.yaml` + `intent.md` + `manifest.ts` + `handler.ts` + `runtime.py` |
+| `section` | 3 个 skill，均有 `skill.yaml` + `intent.md` + `handler.ts` + `runtime.py` |
 
 ## 建议的清理顺序
 
-1. 先把 `section` 从当前 `skill.yaml` + `manifest.ts` 的混合过渡态收敛成单一 manifest-first 合同。
-2. 再决定 taxonomy-only domain 在代码里究竟继续保持 `discoverable`，还是显式改成 `reserved`。
-3. 最后把贡献者文档收敛到“最小可用 skill 模板”，不要继续默认要求完整资产包。
-4. 继续收敛 agent skill 与旧 `SkillService` / `/api/skill` 这两套命名重叠。
+1. 先把 `structure-type` 等其他 manifest-backed domain 里的剩余 `manifest.ts` 冗余也收掉。
+2. 再把贡献者文档收敛到“最小可用 skill 模板”，不要继续默认要求完整资产包。
+3. 继续收敛 agent skill 与旧 `LegacySkillCatalogService` / `/api/v1/skills` catalog 路径的命名边界。

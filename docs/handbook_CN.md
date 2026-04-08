@@ -210,7 +210,7 @@ node .\sclaw stop
 
 上表表示的是稳定 taxonomy，不代表这些 domain 今天都已经完整接入运行时主流程。
 
-当前实现成熟度请查看 [skill-runtime-status_CN.md](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/docs/skill-runtime-status_CN.md)，其中区分了哪些 domain 目前是 `active`、`partial` 或仅 `discoverable`。
+当前实现成熟度请查看 [skill-runtime-status_CN.md](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/docs/skill-runtime-status_CN.md)，其中区分了哪些 domain 目前是 `active`、`partial`、`discoverable` 或 `reserved`。
 
 ## 10. 质量保障与回归
 
