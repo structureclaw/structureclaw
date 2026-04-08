@@ -38,26 +38,24 @@ jobs:
     container:
       image: node:20-bookworm
       options: --add-host=host.docker.internal:host-gateway
-      # 必须在这里显式覆盖 .env 文件中继承过来的所有变量
+      # 必须显式覆盖大小写变量，runner 会注入 HTTP_PROXY=http://127.0.0.1:7891
       env:
-        # 1. 处理 HTTP 代理 (覆盖大小写)
         http_proxy: http://host.docker.internal:7891
-        # 2. 处理 HTTPS 代理 (覆盖大小写)
+        HTTP_PROXY: http://host.docker.internal:7891
         https_proxy: http://host.docker.internal:7891
-        # 3. 处理 ALL_PROXY (这非常重要，Git 经常优先读这个)
-        # 注意：统一转为 http 协议，避免容器内对 socks5h 的解析差异
+        HTTPS_PROXY: http://host.docker.internal:7891
         all_proxy: http://host.docker.internal:7891
-        # 4. 修正 NO_PROXY
+        ALL_PROXY: http://host.docker.internal:7891
         no_proxy: localhost,127.0.0.1,host.docker.internal,.local,github.com
+        NO_PROXY: localhost,127.0.0.1,host.docker.internal,.local,github.com
     timeout-minutes: 30
 
     steps:
-      # 第一步增加一个调试输出，万一还是不行，看日志里的 IP 地址
       - name: Debug Network
+        shell: bash
         run: |
-          ip route show | grep default
-          getent hosts host.docker.internal
-          curl -I https://www.google.com --connect-timeout 5
+          getent hosts host.docker.internal || true
+          curl -sfI https://www.google.com --connect-timeout 5 || echo "curl test failed"
 
       - name: Checkout repository
         uses: actions/checkout@v4

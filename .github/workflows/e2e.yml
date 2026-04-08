@@ -28,24 +28,18 @@ jobs:
     container:
       image: node:20-bookworm
       options: --add-host=host.docker.internal:host-gateway
+      env:
+        http_proxy: http://host.docker.internal:7891
+        HTTP_PROXY: http://host.docker.internal:7891
+        https_proxy: http://host.docker.internal:7891
+        HTTPS_PROXY: http://host.docker.internal:7891
+        all_proxy: http://host.docker.internal:7891
+        ALL_PROXY: http://host.docker.internal:7891
+        no_proxy: localhost,127.0.0.1,host.docker.internal,.local,github.com
+        NO_PROXY: localhost,127.0.0.1,host.docker.internal,.local,github.com
     timeout-minutes: 20
 
     steps:
-      - name: Rewrite proxy vars for container
-        shell: bash
-        run: |
-          for var in HTTP_PROXY HTTPS_PROXY ALL_PROXY http_proxy https_proxy all_proxy NO_PROXY no_proxy; do
-            val="${!var}"
-            if [[ -n "$val" ]]; then
-              newVal="${val//127.0.0.1/host.docker.internal}"
-              newVal="${newVal//localhost/host.docker.internal}"
-              if [[ "$val" != "$newVal" ]]; then
-                echo "$var=$newVal" >> "$GITHUB_ENV"
-                echo "Rewrote $var: $val -> $newVal"
-              fi
-            fi
-          done
-
       - name: Checkout
         uses: actions/checkout@v4
 
