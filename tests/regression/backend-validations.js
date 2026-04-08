@@ -1111,11 +1111,17 @@ async function validateAgentCapabilityMatrix(context) {
   assert(payload.analysisCompatibility.static.baselinePolicyAvailable === true, "baseline policy should be available for static");
   assert(payload.skills.find((skill) => skill.id === "beam")?.runtimeStatus === "active", "beam should be marked active");
   assert(payload.skills.find((skill) => skill.id === "analysis-baseline")?.runtimeStatus === "active", "analysis skill should be marked active");
+  assert(payload.skillDomainById["dead-load"] === "load-boundary", "discoverable load-boundary skills should be exposed in skillDomainById");
+  assert(payload.skillDomainById["visualization-frame-summary"] === "visualization", "discoverable visualization skills should be exposed in skillDomainById");
+  assert(payload.skills.find((skill) => skill.id === "dead-load")?.runtimeStatus === "discoverable", "dead-load should be marked discoverable");
+  assert(payload.skills.find((skill) => skill.id === "visualization-frame-summary")?.runtimeStatus === "discoverable", "visualization-frame-summary should be marked discoverable");
   assert(domainSummaryById["structure-type"]?.runtimeStatus === "active", "structure-type domain should be active");
   assert(domainSummaryById["analysis"]?.runtimeStatus === "active", "analysis domain should be active");
   assert(domainSummaryById["validation"]?.runtimeStatus === "partial", "validation domain should be partial");
   assert(domainSummaryById["report-export"]?.runtimeStatus === "partial", "report-export domain should be partial");
   assert(domainSummaryById["design"]?.runtimeStatus === "discoverable", "design domain should be discoverable");
+  assert(domainSummaryById["load-boundary"]?.skillIds.includes("dead-load"), "load-boundary summary should include discoverable builtin skills");
+  assert(domainSummaryById["visualization"]?.skillIds.includes("visualization-frame-summary"), "visualization summary should include discoverable builtin skills");
   assert(Array.isArray(domainSummaryById["design"]?.skillIds), "design domain summary should exist even without runtime skills");
 
     const responseDynamic = await app.inject({ method: "GET", url: "/api/v1/agent/capability-matrix?analysisType=dynamic" });

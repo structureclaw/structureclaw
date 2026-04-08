@@ -264,6 +264,64 @@ describe('Capability settings and console integration', () => {
     })
   })
 
+  it('falls back to the /agent/skills domain when capability-matrix omits the skill mapping', async () => {
+    const user = userEvent.setup()
+
+    vi.restoreAllMocks()
+    window.localStorage.clear()
+    vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+
+      if (url === `${API_BASE}/api/v1/agent/skills`) {
+        return {
+          ok: true,
+          json: async () => ([
+            {
+              id: 'dead-load',
+              name: { zh: '恒荷载', en: 'Dead Load' },
+              description: { zh: 'dead load', en: 'dead load' },
+              autoLoadByDefault: true,
+              domain: 'load-boundary',
+            },
+          ]),
+        } as Response
+      }
+
+      if (url.startsWith(`${API_BASE}/api/v1/agent/capability-matrix`)) {
+        return {
+          ok: true,
+          json: async () => ({
+            skills: [],
+            tools: [],
+            foundationToolIds: [],
+            enabledToolIdsBySkill: {},
+            skillDomainById: {},
+            domainSummaries: [
+              { domain: 'load-boundary', skillIds: [] },
+            ],
+          }),
+        } as Response
+      }
+
+      return {
+        ok: true,
+        json: async () => ({}),
+      } as Response
+    })
+
+    render(<CapabilitySettingsPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
+    })
+
+    await user.selectOptions(screen.getByLabelText(/category view/i), 'load-boundary')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Dead Load' })).toBeInTheDocument()
+    })
+  })
+
   it('sends the explicit default skill and tool selection from the console', async () => {
     const user = userEvent.setup()
     const fetchMock = vi.mocked(global.fetch)
