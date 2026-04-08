@@ -1,11 +1,13 @@
 import { AnalysisEngineCatalogService } from './analysis-engine.js';
 import { AgentSkillCatalogService } from './agent-skill-catalog.js';
+import { AgentToolCatalogService } from './agent-tool-catalog.js';
 import { AgentSkillRuntime } from '../agent-runtime/index.js';
 import { normalizeAnalysisTypes as normalizeDomainAnalysisTypes } from '../agent-skills/design/entry.js';
 import { normalizeMaterialFamilies as normalizeDomainMaterialFamilies } from '../agent-skills/material/entry.js';
 import { ALL_SKILL_DOMAINS } from '../agent-runtime/types.js';
 import type { AgentAnalysisType, MaterialFamily, SkillDomain, SkillManifest, SkillRuntimeStatus, ToolManifest } from '../agent-runtime/types.js';
 import type { BuiltinSkillCatalogEntry } from './agent-skill-catalog.js';
+import type { LoadedToolManifest } from '../agent-runtime/tool-manifest-loader.js';
 
 const ACTIVE_RUNTIME_DOMAINS = new Set<SkillDomain>(['structure-type', 'analysis', 'code-check']);
 const PARTIAL_RUNTIME_DOMAINS = new Set<SkillDomain>(['validation', 'report-export']);
@@ -191,7 +193,16 @@ function canonicalizeSkillIds(skillIds: readonly string[] | undefined, resolveCa
   return uniqueStrings(skillIds.map((skillId) => resolveCanonicalSkillId(skillId))).sort();
 }
 
-function toCapabilityTool(tool: ToolManifest, resolveCanonicalSkillId: (id: string) => string): CapabilityTool {
+type CapabilityToolManifestLike = Pick<
+  ToolManifest,
+  'id' | 'source' | 'category' | 'enabledByDefault' | 'providedBySkillId' | 'requiresSkills' | 'requiresTools' | 'tags' | 'displayName' | 'description'
+>;
+
+type CapabilityToolInput = (CapabilityToolManifestLike | LoadedToolManifest) & {
+  providedBySkillId?: string;
+};
+
+function toCapabilityTool(tool: CapabilityToolInput, resolveCanonicalSkillId: (id: string) => string): CapabilityTool {
   return {
     id: tool.id,
     source: tool.source,
@@ -245,6 +256,7 @@ export class AgentCapabilityService {
   constructor(
     private readonly skillRuntime = new AgentSkillRuntime(),
     private readonly skillCatalog = new AgentSkillCatalogService(),
+    private readonly toolCatalog = new AgentToolCatalogService(),
     private readonly engineCatalog = new AnalysisEngineCatalogService(),
   ) {}
 
@@ -254,19 +266,22 @@ export class AgentCapabilityService {
     catalogEntries.forEach(validateCatalogEntryMetadata);
     manifests.forEach(validateManifestMetadata);
     const runtimeTooling = await this.skillRuntime.resolveSkillTooling(manifests.map((manifest) => manifest.id));
-    const builtinTools = this.skillRuntime.listBuiltinToolManifests();
+    const builtinTools = await this.toolCatalog.listBuiltinTools();
     const resolveCanonicalSkillId = (id: string) => this.skillCatalog.resolveCanonicalSkillId(id);
     const manifestByCanonicalId = new Map<string, SkillManifest>(
       manifests.map((manifest) => [resolveCanonicalSkillId(manifest.id), manifest]),
     );
     const toolById = new Map<string, CapabilityTool>();
-    const builtinToolById = new Map<string, ToolManifest>(builtinTools.map((tool) => [tool.id, tool]));
+    const builtinToolById = new Map<string, LoadedToolManifest>(builtinTools.map((tool) => [tool.id, tool]));
 
     for (const tool of builtinTools) {
       toolById.set(tool.id, toCapabilityTool(tool, resolveCanonicalSkillId));
     }
 
     for (const tool of runtimeTooling.tools) {
+      if (builtinToolById.has(tool.id)) {
+        continue;
+      }
       toolById.set(tool.id, toCapabilityTool(tool, resolveCanonicalSkillId));
     }
 
