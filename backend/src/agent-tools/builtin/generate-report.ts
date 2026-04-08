@@ -52,7 +52,7 @@ export async function executeGenerateReportStep(args: {
 
 export const GENERATE_REPORT_TOOL_MANIFEST: ToolManifest = {
   id: 'generate_report',
-  source: 'external',
+  source: 'builtin',
   enabledByDefault: false,
   category: 'report',
   displayName: localize('生成报告', 'Generate Report'),

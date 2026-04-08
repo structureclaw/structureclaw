@@ -48,8 +48,8 @@ async function validateAgentOrchestration(context) {
   const AgentService = await importBackendAgentService(context.rootDir);
   const fsModule = await import("node:fs");
 
-  const withDefaultSkills = (svc) => {
-    const defaultSkillIds = svc.listSkills().map((skill) => skill.id);
+  const withDefaultSkills = async (svc) => {
+    const defaultSkillIds = (await svc.listSkills()).map((skill) => skill.id);
 
     const applyDefaultSkills = (params) => {
       const currentContext = params?.context || {};
@@ -173,7 +173,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     svc.llm = {
       invoke: async () => ({
         content: JSON.stringify({
@@ -195,7 +195,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     stubExecutionClients(svc, {
       validate: async () => {
         const error = new Error("validation failed");
@@ -217,7 +217,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
     const result = await svc.runForcedExecution({
@@ -238,7 +238,7 @@ async function validateAgentOrchestration(context) {
     assert(result.toolCalls.some((call) => call.tool === "validate_model"), "validate_model should be called");
     assert(result.toolCalls.some((call) => call.tool === "run_analysis"), "run_analysis should be called");
     assert(result.toolCalls.some((call) => call.tool === "generate_report"), "generate_report should be generated");
-    assert(result.toolCalls.some((call) => call.tool === "run_analysis" && call.source === "external"), "run_analysis should expose external source");
+    assert(result.toolCalls.some((call) => call.tool === "run_analysis" && call.source === "builtin"), "run_analysis should expose builtin source");
     assert(result.toolCalls.some((call) => call.tool === "run_analysis" && Array.isArray(call.authorizedBySkillIds) && call.authorizedBySkillIds.length > 0), "run_analysis should expose authorized skill ids");
     assert(result.report && result.report.summary, "report payload should exist");
     assert(result.metrics?.toolCount >= 2, "tool metrics should be present");
@@ -249,7 +249,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
     const events = [];
@@ -277,7 +277,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
     const result = await svc.runForcedExecution({
@@ -306,7 +306,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
     const first = await svc.runForcedExecution({
@@ -338,7 +338,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
 
     const collecting = await svc.runChatOnly({
       conversationId: "conv-conversation-complete-model",
@@ -373,7 +373,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     const first = await svc.runChatOnly({
       conversationId: "conv-conversation-followup-1",
       message: "先聊需求，我要做一个门式刚架",
@@ -405,7 +405,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
 
     const first = await svc.runChatOnly({
       conversationId: "conv-conversation-followup-beam-1",
@@ -474,7 +474,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
     const beam = await svc.runChatOnly({
@@ -516,7 +516,8 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
+    const defaultSkillIds = (await svc.listSkills()).map((skill) => skill.id);
     let capturedCodeCheckPayload;
     stubExecutionClients(svc, {
       codeCheck: async (_targetPath, payload) => {
@@ -556,7 +557,7 @@ async function validateAgentOrchestration(context) {
     const result = await svc.runForcedExecution({
       message: "请对该模型做静力分析并按GB50017做规范校核并出报告",
       context: {
-        skillIds: [...svc.listSkills().map((skill) => skill.id), "code-check-gb50017"],
+        skillIds: [...defaultSkillIds, "code-check-gb50017"],
         model: {
           schema_version: "1.0.0",
           nodes: [
@@ -672,7 +673,7 @@ async function validateAgentCapabilityModes(context) {
 
   const AgentService = await importBackendAgentService(context.rootDir);
   const svc = new AgentService();
-  const defaultSkillIds = svc.listSkills().map((skill) => skill.id);
+  const defaultSkillIds = (await svc.listSkills()).map((skill) => skill.id);
 
   svc.structureProtocolClient = {
     post: async (targetPath, payload) => {
@@ -1043,6 +1044,9 @@ async function validateAgentManifestBinding(context) {
       resolveCanonicalSkillId: (id) => id,
     },
     {
+      listBuiltinTools: async () => [CONVERT_MODEL_TOOL_MANIFEST],
+    },
+    {
       listEngines: async () => ({ engines: [makeEngine("engine-strict")] }),
     },
   );
@@ -1064,6 +1068,9 @@ async function validateAgentManifestBinding(context) {
     {
       listBuiltinSkills: async () => validCatalogEntries,
       resolveCanonicalSkillId: (id) => id,
+    },
+    {
+      listBuiltinTools: async () => [CONVERT_MODEL_TOOL_MANIFEST],
     },
     {
       listEngines: async () => ({
@@ -1092,7 +1099,7 @@ async function validateAgentManifestBinding(context) {
   assert(matrix.tools.some((tool) => tool.id === "convert_model"), "convert_model should remain available in the tool catalog");
   assert(!matrix.foundationToolIds.includes("run_analysis"), "run_analysis should not be a foundation tool");
   assert(!matrix.foundationToolIds.includes("generate_report"), "generate_report should not be a foundation tool");
-  assert(matrix.tools.every((tool) => tool.id === "convert_model" || (tool.source === "external" && Array.isArray(tool.requiresSkills) && tool.requiresSkills.length > 0)), "non-foundation tools should require explicit grants");
+  assert(matrix.tools.every((tool) => tool.id === "convert_model" || (Array.isArray(tool.requiresSkills) && tool.requiresSkills.length > 0)), "non-foundation tools should require explicit grants");
   assert(matrix.tools.find((tool) => tool.id === "run_analysis")?.requiresTools.includes("validate_model"), "run_analysis should preserve its validate_model dependency");
   assert(matrix.tools.find((tool) => tool.id === "generate_report")?.requiresTools.includes("run_analysis"), "generate_report should preserve its run_analysis dependency");
   assert(Array.isArray(matrix.skillIdsByToolId.run_analysis) && matrix.skillIdsByToolId.run_analysis.includes("analysis-primary") && matrix.skillIdsByToolId.run_analysis.includes("analysis-secondary"), "multiple skills should be able to grant the same tool");
@@ -1150,6 +1157,11 @@ async function validateAgentManifestLoader(context) {
         "compatibility:",
         "  minRuntimeVersion: 0.1.0",
         "  skillApiVersion: v1",
+        "software: simplified",
+        "analysisType: static",
+        "engineId: builtin-simplified",
+        "adapterKey: builtin-simplified",
+        "runtimeRelativePath: runtime.py",
         "supportedAnalysisTypes:",
         "  - static",
         "supportedModelFamilies:",
@@ -1266,6 +1278,11 @@ async function validateAgentManifestLoader(context) {
     assert(skills[0].id === "analysis-static", "skill manifest loader should preserve manifest id");
     assert(Array.isArray(skills[0].grants) && skills[0].grants.includes("run_analysis"), "skill manifest loader should parse explicit grants");
     assert(skills[0].name?.zh === "静力分析技能" && skills[0].name?.en === "Static Analysis Skill", "skill manifest loader should preserve bilingual localized text");
+    assert(skills[0].software === "simplified", "skill manifest loader should preserve optional analysis software metadata");
+    assert(skills[0].analysisType === "static", "skill manifest loader should preserve optional analysisType metadata");
+    assert(skills[0].engineId === "builtin-simplified", "skill manifest loader should preserve optional engineId metadata");
+    assert(skills[0].adapterKey === "builtin-simplified", "skill manifest loader should preserve optional adapterKey metadata");
+    assert(skills[0].runtimeRelativePath === "runtime.py", "skill manifest loader should preserve optional runtimeRelativePath metadata");
 
     let rejectedInvalidSkill = false;
     try {
@@ -1307,6 +1324,29 @@ async function validateAgentManifestLoader(context) {
     assert(
       builtinStructureTypeSkills.every((skill) => Array.isArray(skill.grants) && skill.grants.length > 0),
       "builtin structure-type skill manifests should declare explicit tool grants",
+    );
+    const builtinAnalysisRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "analysis");
+    const builtinAnalysisSkills = await loadSkillManifestsFromDirectory(builtinAnalysisRoot);
+    const builtinAnalysisIds = builtinAnalysisSkills.map((skill) => skill.id).sort();
+    assert(
+      JSON.stringify(builtinAnalysisIds) === JSON.stringify([
+        "opensees-dynamic",
+        "opensees-nonlinear",
+        "opensees-seismic",
+        "opensees-static",
+        "simplified-dynamic",
+        "simplified-seismic",
+        "simplified-static",
+      ]),
+      "skill manifest loader should discover builtin analysis skills from real skill.yaml files",
+    );
+    assert(
+      builtinAnalysisSkills.every((skill) => skill.software && skill.analysisType && skill.engineId && skill.adapterKey),
+      "builtin analysis skill manifests should declare explicit execution metadata",
+    );
+    assert(
+      builtinAnalysisSkills.every((skill) => Array.isArray(skill.grants) && skill.grants.includes("run_analysis")),
+      "builtin analysis skill manifests should declare explicit run_analysis grants",
     );
 
     console.log("[ok] agent manifest loader contract");
@@ -1384,6 +1424,22 @@ async function validateAgentSkillCatalogManifests(context) {
   assert(reportSkill.sourceKinds.includes("file-manifest"), "report-export-builtin should record file-manifest provenance");
   assert(reportSkill.enabledTools.includes("generate_report"), "report-export-builtin should expose generate_report grant from skill.yaml");
   assert(reportSkill.triggers.includes("report"), "report-export-builtin should preserve report trigger");
+
+  const analysisIds = [
+    "opensees-dynamic",
+    "opensees-nonlinear",
+    "opensees-seismic",
+    "opensees-static",
+    "simplified-dynamic",
+    "simplified-seismic",
+    "simplified-static",
+  ];
+  for (const skillId of analysisIds) {
+    const skill = skills.find((entry) => entry.canonicalId === skillId);
+    assert(skill, `skill catalog should include analysis skill ${skillId}`);
+    assert(skill.sourceKinds.includes("file-manifest"), `${skillId} should record file-manifest provenance`);
+    assert(skill.enabledTools.includes("run_analysis"), `${skillId} should expose run_analysis grant from skill.yaml`);
+  }
   console.log("[ok] agent skill catalog manifest contract");
 }
 

@@ -87,7 +87,7 @@ export async function executeUpdateModelExecutionStep(args: {
 
 export const UPDATE_MODEL_TOOL_MANIFEST: ToolManifest = {
   id: 'update_model',
-  source: 'external',
+  source: 'builtin',
   enabledByDefault: false,
   category: 'modeling',
   displayName: localize('更新结构模型', 'Update Structural Model'),

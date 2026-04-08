@@ -4317,8 +4317,8 @@ export class AgentService {
         call.source = manifest.source;
       }
 
-      if (manifest?.source === 'external') {
-        const owners = [...(tooling.skillIdsByToolId[call.tool] || [])];
+      const owners = [...(tooling.skillIdsByToolId[call.tool] || [])];
+      if (owners.length > 0) {
         const authorizedBySkillIds = preferredAuthorizers
           .filter((skillId) => owners.includes(skillId))
           .concat(owners.filter((skillId) => activatedSkillIds.has(skillId) && !preferredAuthorizers.includes(skillId)));
