@@ -1,9 +1,13 @@
+import { existsSync, readdirSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { AgentSkillRuntime } from '../agent-runtime/index.js';
 import {
   BUILTIN_VALIDATION_STRUCTURE_MODEL_LEGACY_ALIASES,
   BUILTIN_VALIDATION_STRUCTURE_MODEL_SKILL_ID,
   resolveBuiltinValidationSkillCanonicalId,
 } from '../agent-runtime/builtin-domain-manifests.js';
+import { loadSkillManifestsFromDirectory, type LoadedSkillManifest } from '../agent-runtime/skill-manifest-loader.js';
 import { listBuiltinAnalysisSkills } from '../agent-skills/analysis/entry.js';
 import { listCodeCheckRuleProviders } from '../agent-skills/code-check/entry.js';
 import { listBuiltinLoadBoundarySkills } from '../agent-skills/load-boundary/entry.js';
@@ -21,9 +25,11 @@ const DEFAULT_COMPATIBILITY: SkillCompatibility = {
   minRuntimeVersion: '0.1.0',
   skillApiVersion: 'v1',
 };
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 export type BuiltinSkillCatalogSourceKind =
   | 'markdown'
+  | 'file-manifest'
   | 'runtime-manifest'
   | 'analysis-registry'
   | 'code-check-registry'
@@ -101,8 +107,46 @@ function mergeStringArrays(base: readonly string[], patch: readonly string[] | u
   return uniqueStrings([...base, ...patch]);
 }
 
+function collectDirectories(rootDir: string): string[] {
+  if (!existsSync(rootDir)) {
+    return [];
+  }
+  const result: string[] = [];
+  const stack = [rootDir];
+  while (stack.length > 0) {
+    const current = stack.pop()!;
+    result.push(current);
+    const entries = readdirSync(current, { withFileTypes: true });
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        stack.push(path.join(current, entry.name));
+      }
+    }
+  }
+  return result;
+}
+
+function hasSkillManifestInDescendants(rootDir: string): boolean {
+  return collectDirectories(rootDir).some((directory) => existsSync(path.join(directory, 'skill.yaml')));
+}
+
+function resolveBuiltinSkillManifestRoot(): string | null {
+  const candidates = [
+    path.resolve(process.cwd(), 'backend/dist/agent-skills'),
+    path.resolve(process.cwd(), 'dist/agent-skills'),
+    path.resolve(process.cwd(), 'backend/src/agent-skills'),
+    path.resolve(process.cwd(), 'src/agent-skills'),
+    path.resolve(MODULE_DIR, '../../agent-skills'),
+    path.resolve(MODULE_DIR, '../../src/agent-skills'),
+  ];
+  return candidates.find((candidate) => hasSkillManifestInDescendants(candidate)) || null;
+}
+
 export class AgentSkillCatalogService {
-  constructor(private readonly skillRuntime = new AgentSkillRuntime()) {}
+  constructor(
+    private readonly skillRuntime = new AgentSkillRuntime(),
+    private readonly builtinSkillManifestRoot = resolveBuiltinSkillManifestRoot(),
+  ) {}
 
   resolveCanonicalSkillId(id: string): string {
     return resolveCanonicalId(id);
@@ -256,6 +300,13 @@ export class AgentSkillCatalogService {
       this.applyPatch(catalog, this.buildManifestPatch(manifest));
     }
 
+    if (this.builtinSkillManifestRoot) {
+      const fileManifests = await loadSkillManifestsFromDirectory(this.builtinSkillManifestRoot);
+      for (const manifest of fileManifests) {
+        this.applyPatch(catalog, this.buildFileManifestPatch(manifest));
+      }
+    }
+
     return [...catalog.values()].sort((left, right) =>
       left.domain.localeCompare(right.domain)
       || right.priority - left.priority
@@ -302,6 +353,35 @@ export class AgentSkillCatalogService {
       supportedAnalysisTypes: this.normalizeAnalysisTypes(manifest.supportedAnalysisTypes),
       supportedModelFamilies: uniqueStrings(manifest.supportedModelFamilies ?? []),
       materialFamilies: this.normalizeMaterialFamilies(manifest.materialFamilies),
+      priority: manifest.priority ?? 0,
+      compatibility: cloneCompatibility(manifest.compatibility),
+    };
+  }
+
+  private buildFileManifestPatch(manifest: LoadedSkillManifest): CatalogMergePatch {
+    return {
+      id: manifest.id,
+      sourceKind: 'file-manifest',
+      domain: manifest.domain as SkillDomain,
+      aliases: Array.isArray(manifest.aliases) ? [...manifest.aliases] : [],
+      name: {
+        zh: manifest.name?.zh,
+        en: manifest.name?.en,
+      },
+      description: {
+        zh: manifest.description?.zh,
+        en: manifest.description?.en,
+      },
+      stages: Array.isArray(manifest.stages) ? [...manifest.stages] : [],
+      triggers: Array.isArray(manifest.triggers) ? [...manifest.triggers] : [],
+      autoLoadByDefault: Boolean(manifest.autoLoadByDefault),
+      structureType: manifest.structureType,
+      capabilities: Array.isArray(manifest.capabilities) ? [...manifest.capabilities] : [],
+      enabledTools: Array.isArray(manifest.grants) ? [...manifest.grants] : [],
+      providedTools: Array.isArray(manifest.providesTools) ? [...manifest.providesTools] : [],
+      supportedAnalysisTypes: this.normalizeAnalysisTypes(manifest.supportedAnalysisTypes as AgentAnalysisType[]),
+      supportedModelFamilies: uniqueStrings(manifest.supportedModelFamilies ?? []),
+      materialFamilies: this.normalizeMaterialFamilies(manifest.materialFamilies as MaterialFamily[]),
       priority: manifest.priority ?? 0,
       compatibility: cloneCompatibility(manifest.compatibility),
     };

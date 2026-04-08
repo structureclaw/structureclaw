@@ -1352,6 +1352,30 @@ async function validateAgentToolCatalog(context) {
   console.log("[ok] agent tool catalog contract");
 }
 
+async function validateAgentSkillCatalogManifests(context) {
+  await runBackendBuildOnce(context);
+
+  const { AgentSkillCatalogService } = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent-skill-catalog.js")).href
+  );
+
+  const service = new AgentSkillCatalogService();
+  const skills = await service.listBuiltinSkills();
+  const structureTypeSkills = skills.filter((skill) => skill.domain === "structure-type");
+  const byId = new Map(structureTypeSkills.map((skill) => [skill.canonicalId, skill]));
+
+  for (const skillId of ["generic", "beam", "truss", "frame", "portal-frame", "double-span-beam"]) {
+    assert(byId.has(skillId), `skill catalog should include structure-type skill ${skillId}`);
+    const skill = byId.get(skillId);
+    assert(Array.isArray(skill.sourceKinds) && skill.sourceKinds.includes("file-manifest"), `${skillId} should record file-manifest provenance`);
+    assert(Array.isArray(skill.enabledTools) && skill.enabledTools.includes("draft_model"), `${skillId} should expose draft_model grant from skill.yaml`);
+    assert(Array.isArray(skill.enabledTools) && skill.enabledTools.includes("update_model"), `${skillId} should expose update_model grant from skill.yaml`);
+  }
+
+  assert(byId.get("generic")?.triggers.includes("load"), "generic structure-type skill should preserve the manifest-level load trigger");
+  console.log("[ok] agent skill catalog manifest contract");
+}
+
 async function validateAgentToolsContract(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
@@ -1531,7 +1555,7 @@ async function validateAgentCapabilityMatrix(context) {
         requires: [],
         conflicts: [],
         capabilities: ["intent-detection"],
-        enabledTools: ["draft_model", "update_model", "validate_model", "run_analysis", "generate_report"],
+        enabledTools: ["draft_model", "update_model"],
         priority: 10,
         compatibility: {
           minRuntimeVersion: "0.1.0",
@@ -1551,7 +1575,7 @@ async function validateAgentCapabilityMatrix(context) {
         requires: [],
         conflicts: [],
         capabilities: ["intent-detection"],
-        enabledTools: ["draft_model", "update_model", "validate_model", "run_analysis", "generate_report"],
+        enabledTools: ["draft_model", "update_model"],
         priority: 20,
         compatibility: {
           minRuntimeVersion: "0.1.0",
@@ -1571,6 +1595,7 @@ async function validateAgentCapabilityMatrix(context) {
         requires: [],
         conflicts: [],
         capabilities: ["analysis-policy"],
+        enabledTools: ["run_analysis"],
         supportedAnalysisTypes: ["static", "dynamic"],
         priority: 5,
         compatibility: {
@@ -1684,7 +1709,8 @@ async function validateAgentCapabilityMatrix(context) {
   assert(Array.isArray(payload.enabledToolIdsBySkill.beam), "beam should expose enabled tools array");
   assert(payload.enabledToolIdsBySkill.beam.includes("draft_model"), "beam should enable draft_model");
   assert(payload.enabledToolIdsBySkill.beam.includes("update_model"), "beam should enable update_model");
-  assert(payload.enabledToolIdsBySkill.beam.includes("run_analysis"), "beam should enable run_analysis");
+  assert(!payload.enabledToolIdsBySkill.beam.includes("run_analysis"), "beam should not enable run_analysis directly");
+  assert(payload.enabledToolIdsBySkill["analysis-baseline"].includes("run_analysis"), "analysis skills should enable run_analysis");
   assert(beamEngines.includes("engine-frame-a"), "beam should include frame-compatible engine");
   assert(beamEngines.includes("engine-generic"), "beam should include generic engine");
   assert(!beamEngines.includes("engine-disabled"), "beam should not include disabled engine");
@@ -2701,6 +2727,7 @@ const BACKEND_VALIDATIONS = {
   "validate-agent-manifest-binding": validateAgentManifestBinding,
   "validate-agent-manifest-loader": validateAgentManifestLoader,
   "validate-agent-tool-catalog": validateAgentToolCatalog,
+  "validate-agent-skill-catalog-manifests": validateAgentSkillCatalogManifests,
   "validate-agent-tools-contract": validateAgentToolsContract,
   "validate-agent-api-contract": validateAgentApiContract,
   "validate-agent-capability-matrix": validateAgentCapabilityMatrix,
