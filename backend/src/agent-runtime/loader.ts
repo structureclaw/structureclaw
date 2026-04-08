@@ -3,7 +3,8 @@ import { fileURLToPath, pathToFileURL } from 'url';
 import path from 'path';
 import { parse as parseYaml } from 'yaml';
 import { formatManifestIssues, skillManifestFileSchema } from './manifest-schema.js';
-import type { AgentSkillBundle, AgentSkillFile, AgentSkillMetadata, AgentSkillPlugin, SkillDomain, SkillManifest, SkillStage } from './types.js';
+import { loadSkillManifestsFromDirectorySync, toRuntimeSkillManifest } from './skill-manifest-loader.js';
+import type { AgentSkillBundle, AgentSkillFile, AgentSkillMetadata, AgentSkillPlugin, SkillDomain, SkillStage } from './types.js';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -119,13 +120,8 @@ function isSkillMarkdownDirectory(skillDir: string): boolean {
 }
 
 function isSkillModuleDirectory(skillDir: string): boolean {
-  return (
-    existsSync(path.join(skillDir, 'manifest.ts'))
-    || existsSync(path.join(skillDir, 'manifest.js'))
-  ) && (
-    existsSync(path.join(skillDir, 'handler.ts'))
-    || existsSync(path.join(skillDir, 'handler.js'))
-  );
+  return existsSync(path.join(skillDir, 'handler.ts'))
+    || existsSync(path.join(skillDir, 'handler.js'));
 }
 
 function listTopLevelDirectories(root: string): Set<string> {
@@ -215,6 +211,12 @@ export class AgentSkillLoader {
     this.pluginCache = (async () => {
       const bundles = this.loadBundles();
       const bundleById = new Map(bundles.map((bundle) => [bundle.id, bundle]));
+      const manifestById = new Map(
+        loadSkillManifestsFromDirectorySync(MARKDOWN_SKILL_ROOT).map((manifest) => [
+          manifest.id,
+          toRuntimeSkillManifest(manifest),
+        ]),
+      );
       const entries = collectDirectories(MODULE_SKILL_ROOT);
       const allowedTopLevelDirectories = listTopLevelDirectories(MARKDOWN_SKILL_ROOT);
       const plugins: AgentSkillPlugin[] = [];
@@ -229,14 +231,13 @@ export class AgentSkillLoader {
           continue;
         }
         const bundle = bundleById.get(path.basename(skillDir));
-        if (!bundle) {
+        const manifest = manifestById.get(path.basename(skillDir));
+        if (!bundle || !manifest) {
           continue;
         }
-        const manifestModule = await this.importSkillModule(skillDir, 'manifest');
         const handlerModule = await this.importSkillModule(skillDir, 'handler');
-        const manifest = (manifestModule?.manifest ?? manifestModule?.default) as SkillManifest | undefined;
         const handler = (handlerModule?.handler ?? handlerModule?.default) as AgentSkillPlugin['handler'] | undefined;
-        if (!manifest || !handler) {
+        if (!handler) {
           continue;
         }
         plugins.push({
@@ -254,7 +255,7 @@ export class AgentSkillLoader {
     return this.pluginCache;
   }
 
-  private async importSkillModule(skillDir: string, baseName: 'manifest' | 'handler'): Promise<Record<string, unknown> | null> {
+  private async importSkillModule(skillDir: string, baseName: 'handler'): Promise<Record<string, unknown> | null> {
     const candidates = [
       path.join(skillDir, `${baseName}.js`),
       path.join(skillDir, `${baseName}.ts`),

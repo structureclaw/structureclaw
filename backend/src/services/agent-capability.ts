@@ -12,14 +12,14 @@ import type { LoadedToolManifest } from '../agent-runtime/tool-manifest-loader.j
 const ACTIVE_RUNTIME_DOMAINS = new Set<SkillDomain>(['structure-type', 'analysis', 'code-check']);
 const PARTIAL_RUNTIME_DOMAINS = new Set<SkillDomain>(['validation', 'report-export']);
 
-function resolveDomainRuntimeStatus(domain: SkillDomain): SkillRuntimeStatus {
+function resolveDomainRuntimeStatus(domain: SkillDomain, hasDiscoverablePresence: boolean): SkillRuntimeStatus {
   if (ACTIVE_RUNTIME_DOMAINS.has(domain)) {
     return 'active';
   }
   if (PARTIAL_RUNTIME_DOMAINS.has(domain)) {
     return 'partial';
   }
-  return 'discoverable';
+  return hasDiscoverablePresence ? 'discoverable' : 'reserved';
 }
 
 interface CapabilitySkill {
@@ -271,6 +271,7 @@ export class AgentCapabilityService {
   ) {}
 
   async getCapabilityMatrix(options?: { analysisType?: CapabilityAnalysisType }) {
+    const runtimeSkills = this.skillRuntime.listSkills();
     const staticCatalogEntries = await this.skillCatalog.listBuiltinSkills();
     const manifests = await this.skillRuntime.listSkillManifests();
     staticCatalogEntries.forEach(validateCatalogEntryMetadata);
@@ -292,6 +293,12 @@ export class AgentCapabilityService {
       || right.priority - left.priority
       || left.canonicalId.localeCompare(right.canonicalId),
     );
+    const discoverableDomains = new Set<SkillDomain>([
+      ...catalogEntries.map((entry) => entry.domain),
+      ...runtimeSkills
+        .map((skill) => skill.domain)
+        .filter((domain): domain is SkillDomain => typeof domain === 'string'),
+    ]);
     const manifestByCanonicalId = new Map<string, SkillManifest>(
       manifests.map((manifest) => [resolveCanonicalSkillId(manifest.id), manifest]),
     );
@@ -362,7 +369,7 @@ export class AgentCapabilityService {
         id: entry.canonicalId,
         structureType: entry.structureType,
         domain: entry.domain,
-        runtimeStatus: resolveDomainRuntimeStatus(entry.domain),
+        runtimeStatus: resolveDomainRuntimeStatus(entry.domain, discoverableDomains.has(entry.domain)),
         requires: Array.isArray(manifest?.requires) ? [...manifest.requires] : [],
         conflicts: Array.isArray(manifest?.conflicts) ? [...manifest.conflicts] : [],
         capabilities: uniqueStrings(entry.capabilities),
@@ -448,7 +455,7 @@ export class AgentCapabilityService {
     const domainSummaryMap = new Map<SkillDomain, DomainSummary>(
       ALL_SKILL_DOMAINS.map((domain) => [domain, {
         domain,
-        runtimeStatus: resolveDomainRuntimeStatus(domain),
+        runtimeStatus: resolveDomainRuntimeStatus(domain, discoverableDomains.has(domain)),
         skillIds: [],
         autoLoadSkillIds: [],
         capabilities: [],

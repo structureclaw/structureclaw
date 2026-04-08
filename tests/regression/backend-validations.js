@@ -2488,7 +2488,15 @@ async function validateAgentCapabilityMatrix(context) {
   assert(domainSummaryById["analysis"]?.runtimeStatus === "active", "analysis domain should be active");
   assert(domainSummaryById["validation"]?.runtimeStatus === "partial", "validation domain should be partial");
   assert(domainSummaryById["report-export"]?.runtimeStatus === "partial", "report-export domain should be partial");
-  assert(domainSummaryById["design"]?.runtimeStatus === "discoverable", "design domain should be discoverable");
+  assert(domainSummaryById["section"]?.runtimeStatus === "discoverable", "section domain should remain discoverable while builtin skills exist");
+  assert(domainSummaryById["load-boundary"]?.runtimeStatus === "discoverable", "load-boundary domain should remain discoverable while builtin skills exist");
+  assert(domainSummaryById["visualization"]?.runtimeStatus === "discoverable", "visualization domain should remain discoverable while builtin skills exist");
+  assert(domainSummaryById["design"]?.runtimeStatus === "reserved", "design domain should be reserved when it has no runtime skill presence");
+  assert(domainSummaryById["data-input"]?.runtimeStatus === "reserved", "data-input domain should be reserved when it has no runtime skill presence");
+  assert(domainSummaryById["drawing"]?.runtimeStatus === "reserved", "drawing domain should be reserved when it has no runtime skill presence");
+  assert(domainSummaryById["general"]?.runtimeStatus === "reserved", "general domain should be reserved when it has no runtime skill presence");
+  assert(domainSummaryById["material"]?.runtimeStatus === "reserved", "material domain should be reserved when it has no runtime skill presence");
+  assert(domainSummaryById["result-postprocess"]?.runtimeStatus === "reserved", "result-postprocess domain should be reserved when it has no runtime skill presence");
   assert(domainSummaryById["load-boundary"]?.skillIds.includes("dead-load"), "load-boundary summary should include discoverable builtin skills");
   assert(domainSummaryById["section"]?.skillIds.includes("section-common"), "section summary should include discoverable builtin skills");
   assert(domainSummaryById["visualization"]?.skillIds.includes("visualization-frame-summary"), "visualization summary should include discoverable builtin skills");
