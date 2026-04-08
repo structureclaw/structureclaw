@@ -40,7 +40,4 @@ jobs:
         uses: ./.github/actions/setup-env
 
       - name: Run Analysis Regression
-        # CI may not always provide a usable OpenSeesPy runtime on Linux.
-        # The regression suite still verifies unavailable-engine signaling,
-        # auto-fallback routing, and the non-OpenSees regression surface.
         run: node tests/runner.mjs analysis-regression

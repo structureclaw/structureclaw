@@ -14,6 +14,7 @@ on:
 
 jobs:
   llm-integration:
+    environment: test
     strategy:
       fail-fast: false
       matrix:
@@ -31,8 +32,8 @@ jobs:
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_MODEL: ${{ github.event.inputs.llm_model || '' }}
-          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER || 'openai-compatible' }}
-          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || '' }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'openai-compatible' }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL || '' }}
           LLM_LOG_ENABLED: "true"
           DATABASE_URL: "file:.runtime/data/structureclaw-llm-ci.db"
         run: node tests/runner.mjs llm-integration ${{ github.event.inputs.filter && format('--filter {0}', github.event.inputs.filter) || '' }}
