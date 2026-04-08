@@ -1,15 +1,3 @@
----
-id: generic
-structureType: unknown
-zhName: 通用结构类型
-enName: Generic Structure Type
-zhDescription: 默认兜底的结构类型技能，会先接住未命中的结构请求并继续补参。
-enDescription: Default fallback structure-type skill that catches unmatched structural requests and continues clarification.
-triggers: ["structure", "model", "analysis", "design", "结构", "模型", "分析", "设计"]
-stages: ["intent", "draft", "analysis", "design"]
-autoLoadByDefault: true
----
-
 你是通用结构类型 skill。
 
 职责：

@@ -1589,6 +1589,29 @@ async function validateAgentRuntimeLoader(context) {
     path.join(context.rootDir, "backend", "src", "agent-skills", "analysis", "runtime", "registry.py"),
     "utf8",
   );
+  const sourceSkillRoot = path.join(context.rootDir, "backend", "src", "agent-skills");
+
+  const collectStageMarkdownFiles = async (rootDir) => {
+    const collected = [];
+    const visit = async (currentDir) => {
+      const entries = await fsp.readdir(currentDir, { withFileTypes: true });
+      for (const entry of entries) {
+        const entryPath = path.join(currentDir, entry.name);
+        if (entry.isDirectory()) {
+          await visit(entryPath);
+          continue;
+        }
+        if (!entry.isFile()) {
+          continue;
+        }
+        if (["intent.md", "draft.md", "analysis.md", "design.md"].includes(entry.name)) {
+          collected.push(entryPath);
+        }
+      }
+    };
+    await visit(rootDir);
+    return collected.sort();
+  };
 
   const runtime = new AgentSkillRuntime();
   const skills = runtime.listSkills();
@@ -1608,6 +1631,13 @@ async function validateAgentRuntimeLoader(context) {
   assert(byId.get("visualization-frame-summary")?.domain === "visualization", "visualization skills should take domain from skill.yaml");
   assert(byId.has("validation-structure-model"), "runtime loader should use canonical validation skill id from skill.yaml");
   assert(!byId.has("structure-json-validation"), "runtime loader should not keep legacy validation frontmatter id once manifest-first loader is active");
+
+  const stageMarkdownFiles = await collectStageMarkdownFiles(sourceSkillRoot);
+  assert(stageMarkdownFiles.length > 0, "runtime loader validation should inspect builtin stage markdown files");
+  for (const markdownPath of stageMarkdownFiles) {
+    const source = await fsp.readFile(markdownPath, "utf8");
+    assert(!source.trimStart().startsWith("---\n"), `${path.relative(context.rootDir, markdownPath)} should not keep legacy YAML frontmatter`);
+  }
 
   const builtinTools = runtime.listBuiltinToolManifests();
   const builtinToolsById = new Map(builtinTools.map((tool) => [tool.id, tool]));

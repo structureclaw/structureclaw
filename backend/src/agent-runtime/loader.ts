@@ -5,11 +5,6 @@ import { parse as parseYaml } from 'yaml';
 import { formatManifestIssues, skillManifestFileSchema } from './manifest-schema.js';
 import type { AgentSkillBundle, AgentSkillFile, AgentSkillMetadata, AgentSkillPlugin, SkillDomain, SkillManifest, SkillStage } from './types.js';
 
-interface FrontmatterResult {
-  metadata: Record<string, unknown>;
-  body: string;
-}
-
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 function collectDirectories(root: string): string[] {
@@ -66,20 +61,19 @@ const MARKDOWN_SKILL_ROOT = resolveSkillRoot([
   path.resolve(MODULE_DIR, '../../agent-skills'),
 ], ['skill.yaml']);
 
-function parseFrontmatter(markdown: string): FrontmatterResult {
+function stripLegacyMarkdownHeader(markdown: string): string {
+  // Stage Markdown is content-only now, but strip any leftover YAML header
+  // so legacy local files do not leak obsolete metadata into prompts.
   const trimmed = markdown.trimStart();
   if (!trimmed.startsWith('---\n')) {
-    return { metadata: {}, body: markdown };
+    return markdown;
   }
 
   const endIndex = trimmed.indexOf('\n---\n', 4);
   if (endIndex === -1) {
-    return { metadata: {}, body: markdown };
+    return markdown;
   }
-  return {
-    metadata: {},
-    body: trimmed.slice(endIndex + 5).trim(),
-  };
+  return trimmed.slice(endIndex + 5).trim();
 }
 
 function normalizeStage(name: string): SkillStage | null {
@@ -170,7 +164,6 @@ export class AgentSkillLoader {
           continue;
         }
         const raw = readFileSync(path.join(skillDir, stageEntry.name), 'utf-8');
-        const { body } = parseFrontmatter(raw);
         const file: AgentSkillFile = {
           id: manifest.id,
           structureType: manifest.structureType,
@@ -181,7 +174,7 @@ export class AgentSkillLoader {
           autoLoadByDefault: manifest.autoLoadByDefault,
           domain: manifest.domain,
           stage,
-          markdown: body,
+          markdown: stripLegacyMarkdownHeader(raw),
         };
         files.push(file);
       }
