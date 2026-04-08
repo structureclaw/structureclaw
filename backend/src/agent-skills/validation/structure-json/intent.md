@@ -1,19 +1,12 @@
----
-id: structure-json-validation
-zhName: 结构 JSON 验证
-enName: Structure JSON Validation
-zhDescription: 验证结构 JSON 的语法、schema、语义正确性，检查必填字段缺失。
-enDescription: Validate structural JSON for syntax, schema compliance, semantic correctness, and missing required fields.
-triggers: ["validate", "验证", "json check", "结构验证", "schema validation", "validate json", "检查 json"]
-stages: ["validation"]
-capabilities: ["syntax-check", "schema-validation", "semantic-validation", "missing-field-detection"]
-priority: 100
-autoLoadByDefault: true
-runtimeRelativePath: runtime.py
-schemaVersions: ["2.0.0", "1.0.0"]
-defaultSchemaVersion: "2.0.0"
----
 # Intent / 意图
+
+> Manifest-first note / 清单优先说明
+>
+> Canonical skill metadata for this builtin validation skill lives in `skill.yaml`.
+> This file is content-only and no longer defines the skill id, stages, grants, or runtime metadata.
+>
+> 此内置校验技能的 canonical 元数据以 `skill.yaml` 为准。
+> 当前文件仅承载内容，不再定义技能 id、阶段、授权工具或运行时元数据。
 
 ## Purpose / 目的
 - `zh`: 在下游执行前验证结构 JSON 的完整性和正确性，确保数据质量并提前发现潜在问题。

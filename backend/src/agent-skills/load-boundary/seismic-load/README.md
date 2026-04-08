@@ -47,7 +47,8 @@ Professional seismic load calculation and application module following GB 50011-
 ```
 seismic-load/
 ├── __init__.py                  # 模块初始化
-├── intent.md                    # 技能定义
+├── skill.yaml                   # 技能清单（静态真源）
+├── intent.md                    # 意图内容
 ├── runtime.py                   # 主运行时
 ├── base_shear_calculator.py     # 底部剪力计算器
 ├── force_distributor.py         # 地震力分配器
@@ -55,6 +56,12 @@ seismic-load/
 ├── utils.py                     # 工具函数
 └── README.md                    # 本文档
 ```
+
+`skill.yaml` is the canonical builtin skill definition for routing, grants, stages, and compatibility.
+`intent.md` is prompt/content only.
+
+`skill.yaml` 是内置技能的唯一静态真源，用于定义路由、授权、阶段和兼容性。
+`intent.md` 只承载提示与内容。
 
 ## 使用方法 / Usage
 

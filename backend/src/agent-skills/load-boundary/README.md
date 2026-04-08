@@ -2,6 +2,14 @@
 
 ## 概述 / Overview
 
+> Manifest-first note / 清单优先说明
+>
+> Builtin load-boundary skills are now defined by `skill.yaml`. Stage Markdown files such as `intent.md`
+> are content assets only and no longer provide canonical ids, grants, stages, or routing metadata.
+>
+> 内置 load-boundary 技能现在以 `skill.yaml` 为唯一静态真源。`intent.md` 等阶段 Markdown
+> 仅承载内容，不再定义 canonical id、授权工具、阶段或路由元数据。
+
 该技能负责结构分析中的荷载和边界条件管理,包括:
 
 - **荷载工况 (Load Cases)**: 定义各种荷载类型(恒载、活载、风载、地震等)
@@ -34,31 +42,40 @@ load-boundary/
 │   ├── load_combination.py               # 基础荷载组合
 │   └── load_combination_enhanced.py      # 增强荷载组合引擎 🆕
 ├── boundary-condition/                   # 边界条件子技能 ✅
-│   ├── intent.md                         # 意图定义
+│   ├── skill.yaml                        # 技能清单（静态真源）
+│   ├── intent.md                         # 意图内容
 │   └── runtime.py                        # 运行时实现
 ├── dead-load/                            # 恒载子技能 ✅
-│   ├── intent.md                         # 意图定义
+│   ├── skill.yaml                        # 技能清单（静态真源）
+│   ├── intent.md                         # 意图内容
 │   └── runtime.py                        # 运行时实现
 ├── live-load/                            # 活载子技能 ✅
-│   ├── intent.md                         # 意图定义
+│   ├── skill.yaml                        # 技能清单（静态真源）
+│   ├── intent.md                         # 意图内容
 │   └── runtime.py                        # 运行时实现
 ├── wind-load/                            # 风载子技能 ✅
-│   ├── intent.md                         # 意图定义
+│   ├── skill.yaml                        # 技能清单（静态真源）
+│   ├── intent.md                         # 意图内容
 │   └── runtime.py                        # 运行时实现
 ├── seismic-load/                         # 地震荷载子技能 ✅
-│   ├── intent.md                         # 意图定义
+│   ├── skill.yaml                        # 技能清单（静态真源）
+│   ├── intent.md                         # 意图内容
 │   └── runtime.py                        # 运行时实现
 ├── load-combination/                     # 荷载组合子技能 🆕
-│   ├── intent.md                         # 意图定义
+│   ├── skill.yaml                        # 技能清单（静态真源）
+│   ├── intent.md                         # 意图内容
 │   └── runtime.py                        # 运行时实现
 ├── crane-load/                           # 吊车荷载子技能 ✅
-│   ├── intent.md                         # 意图定义
+│   ├── skill.yaml                        # 技能清单（静态真源）
+│   ├── intent.md                         # 意图内容
 │   └── runtime.py                        # 运行时实现
 ├── snow-load/                            # 雪荷载子技能 ✅
-│   ├── intent.md                         # 意图定义
+│   ├── skill.yaml                        # 技能清单（静态真源）
+│   ├── intent.md                         # 意图内容
 │   └── runtime.py                        # 运行时实现
 ├── temperature-load/                     # 温度荷载子技能 🚧
-│   ├── intent.md                         # 意图定义
+│   ├── skill.yaml                        # 技能清单（静态真源）
+│   ├── intent.md                         # 意图内容
 │   └── runtime.py                        # 运行时实现
 └── verification/                         # 验证测试
     ├── test_dead_load.py                 # 恒载测试
@@ -827,33 +844,39 @@ Mapping between V2 Schema and OpenSeesPy/PKPM API is documented in:
 - [x] V2 Schema 兼容性验证
 - [x] README 文档
 - [x] 恒载子技能 (dead-load)
-  - [x] 意图定义 (intent.md)
+  - [x] 技能清单 (skill.yaml)
+  - [x] 意图内容 (intent.md)
   - [x] 运行时实现 (runtime.py)
   - [x] 自重自动计算
   - [x] 自定义恒载支持
 - [x] 活载子技能 (live-load)
-  - [x] 意图定义 (intent.md)
+  - [x] 技能清单 (skill.yaml)
+  - [x] 意图内容 (intent.md)
   - [x] 运行时实现 (runtime.py)
   - [x] 规范标准活载库
   - [x] 多种荷载类型支持
 - [x] 风荷载子技能 (wind-load)
-  - [x] 意图定义 (intent.md)
+  - [x] 技能清单 (skill.yaml)
+  - [x] 意图内容 (intent.md)
   - [x] 运行时实现 (runtime.py)
   - [x] 风压计算 (高度变化系数)
   - [x] 多风向支持
 - [x] 地震荷载子技能 (seismic-load)
-  - [x] 意图定义 (intent.md)
+  - [x] 技能清单 (skill.yaml)
+  - [x] 意图内容 (intent.md)
   - [x] 运行时实现 (runtime.py)
   - [x] 底部剪力法
   - [x] 规范参数支持
 - [x] 边界条件子技能 (boundary-condition)
-  - [x] 意图定义 (intent.md)
+  - [x] 技能清单 (skill.yaml)
+  - [x] 意图内容 (intent.md)
   - [x] 运行时实现 (runtime.py)
   - [x] 节点约束 (固定、铰接、滚动)
   - [x] 杆端释放
   - [x] 计算长度
 - [x] 荷载组合子技能 (load-combination) 🆕
-  - [x] 意图定义 (intent.md)
+  - [x] 技能清单 (skill.yaml)
+  - [x] 意图内容 (intent.md)
   - [x] 运行时实现 (runtime.py)
   - [x] ULS 组合 (承载能力极限状态)
   - [x] SLS 组合 (正常使用极限状态)
@@ -862,10 +885,12 @@ Mapping between V2 Schema and OpenSeesPy/PKPM API is documented in:
   - [x] 自定义组合系数
   - [x] 特殊构件组合 (抗风柱)
 - [x] 吊车荷载子技能 (crane-load) 🆕
-  - [x] 意图定义 (intent.md)
+  - [x] 技能清单 (skill.yaml)
+  - [x] 意图内容 (intent.md)
   - [x] 运行时实现 (runtime.py)
 - [x] 雪荷载子技能 (snow-load) 🆕
-  - [x] 意图定义 (intent.md)
+  - [x] 技能清单 (skill.yaml)
+  - [x] 意图内容 (intent.md)
   - [x] 运行时实现 (runtime.py)
 
 ### 待开发 / Pending 📋
