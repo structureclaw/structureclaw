@@ -14,7 +14,7 @@
 
 | Domain | 当前代码中的 `runtimeStatus` | Manifest-backed skill 数 | Legacy skill 模块数 | 当前状态 |
 |---|---|---:|---:|---|
-| `structure-type` | `active` | 6 | 6 | 主入口 domain。catalog 身份已 manifest-first，但 handler 层仍保留 `manifest.ts`。 |
+| `structure-type` | `active` | 6 | 6 | 主入口 domain。运行时加载现在直接使用 `skill.yaml` + `handler.ts`。 |
 | `analysis` | `active` | 7 | 0 | 已完整 manifest 化，且每个 skill 都有独立 `runtime.py`。 |
 | `code-check` | `active` | 4 | 0 | 已 manifest 化，但执行仍走共享的 domain adapter/runtime。 |
 | `validation` | `partial` | 1 | 0 | 已接入运行时，但能力面仍较窄。 |
@@ -41,7 +41,7 @@
 |---|---|
 | `analysis` | 7 个 skill，均包含 `skill.yaml` + `intent.md` + 独立 `runtime.py` |
 | `code-check` | 4 个 skill，均包含 `skill.yaml` + `intent.md`；执行走共享 domain runtime |
-| `structure-type` | 6 个 skill，均包含 `skill.yaml`；运行时仍同时依赖 `manifest.ts` + `handler.ts` |
+| `structure-type` | 6 个 skill，均包含 `skill.yaml` + `handler.ts`；其中 5 个还包含 `draft.md` + `analysis.md` + `design.md`，`generic` 目前仍是 intent-only |
 | `validation` | 1 个 skill，包含 `skill.yaml` + `intent.md` + `runtime.py` |
 | `report-export` | 1 个 skill，目前只有 `skill.yaml` |
 | `load-boundary` | 10 个 skill 均有 `skill.yaml`；其中 9 个还有 `intent.md` + `runtime.py`；`nodal-constraint` 只有 manifest |
@@ -50,6 +50,5 @@
 
 ## 建议的清理顺序
 
-1. 先把 `structure-type` 等其他 manifest-backed domain 里的剩余 `manifest.ts` 冗余也收掉。
-2. 再把贡献者文档收敛到“最小可用 skill 模板”，不要继续默认要求完整资产包。
-3. 继续收敛 agent skill 与旧 `LegacySkillCatalogService` / `/api/v1/skills` catalog 路径的命名边界。
+1. 先把贡献者文档收敛到“最小可用 skill 模板”，不要继续默认要求完整资产包。
+2. 继续收敛 agent skill 与旧 `LegacySkillCatalogService` / `/api/v1/skills` catalog 路径的命名边界。

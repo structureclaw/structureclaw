@@ -14,7 +14,7 @@ Current status is derived from:
 
 | Domain | `runtimeStatus` in current code | Manifest-backed skills | Legacy skill modules | Current state |
 |---|---|---:|---:|---|
-| `structure-type` | `active` | 6 | 6 | Main entry domain. Manifest-first for catalog identity, but handler layer still keeps `manifest.ts`. |
+| `structure-type` | `active` | 6 | 6 | Main entry domain. Runtime loading now uses `skill.yaml` + `handler.ts`. |
 | `analysis` | `active` | 7 | 0 | Fully manifest-backed builtin skills with per-skill `runtime.py`. |
 | `code-check` | `active` | 4 | 0 | Manifest-backed skills. Execution still runs through shared domain adapters/runtime. |
 | `validation` | `partial` | 1 | 0 | Manifest-backed and runtime-connected, but still narrow in scope. |
@@ -41,7 +41,7 @@ Current status is derived from:
 |---|---|
 | `analysis` | 7 skills with `skill.yaml` + `intent.md` + per-skill `runtime.py` |
 | `code-check` | 4 skills with `skill.yaml` + `intent.md`; execution uses shared domain runtime |
-| `structure-type` | 6 skills with `skill.yaml`; runtime still also uses `manifest.ts` + `handler.ts` |
+| `structure-type` | 6 skills with `skill.yaml` + `handler.ts`; 5 also include `draft.md` + `analysis.md` + `design.md`, while `generic` stays intent-only |
 | `validation` | 1 skill with `skill.yaml` + `intent.md` + `runtime.py` |
 | `report-export` | 1 skill with `skill.yaml` only |
 | `load-boundary` | 10 skills with `skill.yaml`; 9 also have `intent.md` + `runtime.py`; `nodal-constraint` is manifest-only |
@@ -50,6 +50,5 @@ Current status is derived from:
 
 ## Recommended Cleanup Order
 
-1. Remove remaining `manifest.ts` duplication from other manifest-backed domains such as `structure-type`.
-2. Keep contributor docs focused on a minimum viable builtin skill layout instead of the current "full asset pack" ideal.
-3. Reduce naming overlap between agent skills and the older `LegacySkillCatalogService` / `/api/v1/skills` catalog path.
+1. Keep contributor docs focused on a minimum viable builtin skill layout instead of the current "full asset pack" ideal.
+2. Reduce naming overlap between agent skills and the older `LegacySkillCatalogService` / `/api/v1/skills` catalog path.
