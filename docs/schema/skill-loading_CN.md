@@ -63,7 +63,7 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 - 暴露给前端的 skill id 必须使用 canonical id。
 - legacy id 只能作为迁移与向后兼容用 alias 保留，不应再作为面向用户的主 id。
 
-当前实现里，`AgentSkillRuntime.listSkillManifests()` 直接读取 `skill.yaml` 文件清单，再与仍然存在的可执行 plugin manifest 合并后统一暴露给能力矩阵和 tool 授权层。
+当前实现里，`AgentSkillRuntime.listSkillManifests()` 以 `skill.yaml` 文件清单作为运行时 manifest 的主来源。只有当某个可执行 plugin 没有对应的 `skill.yaml` 时，才会追加其 plugin manifest。
 
 当前内置 `structure-type` skill manifest 只直接授权建模相关 tool：
 

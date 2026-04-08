@@ -63,7 +63,7 @@ Builtin skill loading now follows one canonical catalog rule:
 - Skill ids exposed to the frontend must use canonical ids.
 - Legacy ids may remain only as aliases for migration and backward compatibility, and should not be used as the primary id shown to users.
 
-In the current implementation, `AgentSkillRuntime.listSkillManifests()` reads builtin file manifests from `skill.yaml` and merges them with any executable plugin manifests that are still present for runtime handling.
+In the current implementation, `AgentSkillRuntime.listSkillManifests()` uses builtin `skill.yaml` manifests as the primary runtime manifest source. Executable plugin manifests are only appended when a plugin does not already have a corresponding `skill.yaml`.
 
 Builtin `structure-type` manifests now directly authorize modeling tools only:
 

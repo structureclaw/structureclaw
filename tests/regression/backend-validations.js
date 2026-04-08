@@ -1616,6 +1616,8 @@ async function validateAgentRuntimeLoader(context) {
   const runtime = new AgentSkillRuntime();
   const skills = runtime.listSkills();
   const byId = new Map(skills.map((skill) => [skill.id, skill]));
+  const runtimeManifests = await runtime.listSkillManifests();
+  const runtimeManifestById = new Map(runtimeManifests.map((manifest) => [manifest.id, manifest]));
 
   assert(byId.has("beam"), "runtime loader should include manifest-backed beam skill");
   assert(byId.get("beam")?.domain === "structure-type", "beam should take domain from skill.yaml");
@@ -1631,6 +1633,9 @@ async function validateAgentRuntimeLoader(context) {
   assert(byId.get("visualization-frame-summary")?.domain === "visualization", "visualization skills should take domain from skill.yaml");
   assert(byId.has("validation-structure-model"), "runtime loader should use canonical validation skill id from skill.yaml");
   assert(!byId.has("structure-json-validation"), "runtime loader should not keep legacy validation frontmatter id once manifest-first loader is active");
+  assert(Array.isArray(runtimeManifestById.get("beam")?.supportedModelFamilies), "structure-type runtime manifests should come from skill.yaml rather than plugin-only manifests");
+  assert(Array.isArray(runtimeManifestById.get("beam")?.providedTools), "runtime manifests should normalize optional tool arrays from skill.yaml");
+  assert(Array.isArray(runtimeManifestById.get("beam")?.materialFamilies), "runtime manifests should preserve manifest schema defaults for structure-type skills");
 
   const stageMarkdownFiles = await collectStageMarkdownFiles(sourceSkillRoot);
   assert(stageMarkdownFiles.length > 0, "runtime loader validation should inspect builtin stage markdown files");

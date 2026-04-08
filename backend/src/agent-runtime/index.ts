@@ -76,13 +76,14 @@ export class AgentSkillRuntime {
 
   async listSkillManifests(): Promise<SkillManifest[]> {
     const plugins = await this.registry.listPlugins();
-    const pluginIds = new Set(plugins.map((plugin) => plugin.id));
     const fileManifests = await loadSkillManifestsFromDirectory(this.builtinSkillManifestRoot);
+    const fileManifestIds = new Set(fileManifests.map((manifest) => manifest.id));
     return [
-      ...plugins.map((plugin) => plugin.manifest),
       ...fileManifests
-        .filter((manifest) => !pluginIds.has(manifest.id))
         .map((manifest) => toRuntimeSkillManifest(manifest)),
+      ...plugins
+        .filter((plugin) => !fileManifestIds.has(plugin.id))
+        .map((plugin) => plugin.manifest),
     ];
   }
 
