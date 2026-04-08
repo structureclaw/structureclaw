@@ -322,6 +322,99 @@ describe('Capability settings and console integration', () => {
     })
   })
 
+  it('renders catalog-projected skills and tools without registry-only metadata', async () => {
+    const user = userEvent.setup()
+
+    vi.restoreAllMocks()
+    window.localStorage.clear()
+    vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+
+      if (url === `${API_BASE}/api/v1/agent/skills`) {
+        return {
+          ok: true,
+          json: async () => ([
+            {
+              id: 'generic',
+              name: { zh: '通用结构类型', en: 'Generic Structure Type' },
+              description: { zh: 'generic', en: 'generic' },
+            },
+            {
+              id: 'beam',
+              name: { zh: '梁', en: 'Beam' },
+              description: { zh: 'beam', en: 'beam' },
+            },
+            {
+              id: 'opensees-static',
+              name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' },
+              description: { zh: 'static', en: 'static' },
+            },
+          ]),
+        } as Response
+      }
+
+      if (url.startsWith(`${API_BASE}/api/v1/agent/capability-matrix`)) {
+        return {
+          ok: true,
+          json: async () => ({
+            skills: [
+              { id: 'generic', domain: 'structure-type' },
+              { id: 'beam', domain: 'structure-type' },
+              { id: 'opensees-static', domain: 'analysis' },
+            ],
+            tools: [
+              {
+                id: 'draft_model',
+                displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' },
+                description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
+              },
+              {
+                id: 'run_analysis',
+                displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' },
+                description: { zh: '执行分析求解', en: 'Execute analysis' },
+                requiresTools: ['draft_model'],
+              },
+            ],
+            foundationToolIds: ['draft_model'],
+            enabledToolIdsBySkill: {
+              generic: ['draft_model'],
+              beam: ['draft_model'],
+              'opensees-static': ['run_analysis'],
+            },
+            domainSummaries: [
+              { domain: 'structure-type', skillIds: ['generic', 'beam'] },
+              { domain: 'analysis', skillIds: ['opensees-static'] },
+            ],
+          }),
+        } as Response
+      }
+
+      return {
+        ok: true,
+        json: async () => ({}),
+      } as Response
+    })
+
+    render(<CapabilitySettingsPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
+    })
+
+    expect(screen.getByRole('button', { name: 'Generic Structure Type' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Beam' })).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText(/category view/i), 'analysis')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'OpenSees Static Analysis' })).toBeInTheDocument()
+    })
+
+    expect(screen.getAllByText(/utility tools/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Draft Structural Model' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Run Structural Analysis' }).length).toBeGreaterThan(0)
+  })
+
   it('sends the explicit default skill and tool selection from the console', async () => {
     const user = userEvent.setup()
     const fetchMock = vi.mocked(global.fetch)
