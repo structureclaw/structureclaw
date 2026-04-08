@@ -17,6 +17,7 @@ import { useI18n, type MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { API_BASE } from '@/lib/api-base'
 import { loadCapabilityPreferences, saveCapabilityPreferences } from '@/lib/capability-preference'
+import { ALL_SKILL_DOMAINS, buildSkillNormalizationContext, type SkillDomain, type SkillMetadataLike } from '@/lib/skill-normalization'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
 
 const StructuralVisualizationModal = dynamic(
@@ -184,50 +185,14 @@ type PersistedConversation = ConversationSummary & {
   visualizationSnapshot?: VisualizationSnapshot | null
 }
 
-type AgentSkillSummary = {
-  id: string
+type AgentSkillSummary = SkillMetadataLike & {
   name: { zh?: string; en?: string }
   description: { zh?: string; en?: string }
   structureType?: string
   stages?: string[]
   triggers?: string[]
   autoLoadByDefault?: boolean
-  domain?: string
 }
-
-type SkillDomain =
-  | 'analysis'
-  | 'code-check'
-  | 'data-input'
-  | 'design'
-  | 'drawing'
-  | 'general'
-  | 'load-boundary'
-  | 'material'
-  | 'report-export'
-  | 'result-postprocess'
-  | 'section'
-  | 'structure-type'
-  | 'validation'
-  | 'visualization'
-  | 'unknown'
-
-const ALL_SKILL_DOMAINS: SkillDomain[] = [
-  'data-input',
-  'structure-type',
-  'material',
-  'section',
-  'load-boundary',
-  'analysis',
-  'result-postprocess',
-  'design',
-  'code-check',
-  'validation',
-  'report-export',
-  'drawing',
-  'visualization',
-  'general',
-]
 
 type CapabilitySkillSummary = {
   id: string
@@ -262,6 +227,8 @@ type CapabilityMatrixPayload = {
   enabledToolIdsBySkill?: Record<string, string[]>
   validEngineIdsBySkill?: Record<string, string[]>
   filteredEngineReasonsBySkill?: Record<string, Record<string, string[]>>
+  canonicalSkillIdByAlias?: Record<string, string>
+  skillAliasesByCanonicalId?: Record<string, string[]>
 }
 
 function resolveCallableTools(
@@ -338,26 +305,6 @@ function hasSameIds(left: string[], right: string[]) {
   }
 
   return true
-}
-
-function normalizeSkillDomain(value: unknown): SkillDomain {
-  const raw = typeof value === 'string' ? value : ''
-  if (ALL_SKILL_DOMAINS.includes(raw as SkillDomain)) {
-    return raw as SkillDomain
-  }
-  if (raw === 'analysis-strategy') {
-    return 'analysis'
-  }
-  if (raw === 'generic-fallback') {
-    return 'general'
-  }
-  if (raw === 'geometry-input') {
-    return 'data-input'
-  }
-  if (raw === 'material-constitutive') {
-    return 'material'
-  }
-  return 'unknown'
 }
 
 function resolveSkillDomainLabel(domain: SkillDomain, t: (key: MessageKey) => string) {
@@ -1330,41 +1277,11 @@ export function AIConsole() {
     }
   }, [latestResultVisualizationSnapshot])
 
-  const skillDomainById = useMemo<Record<string, SkillDomain>>(() => {
-    const map: Record<string, SkillDomain> = {}
-    const matrixMap = capabilityMatrix?.skillDomainById
-    if (matrixMap && typeof matrixMap === 'object') {
-      Object.entries(matrixMap).forEach(([skillId, domain]) => {
-        map[skillId] = normalizeSkillDomain(domain)
-      })
-    }
-
-    const matrixSkills = Array.isArray(capabilityMatrix?.skills) ? capabilityMatrix.skills : []
-    matrixSkills.forEach((skill) => {
-      if (!skill || typeof skill !== 'object' || typeof skill.id !== 'string') {
-        return
-      }
-      if (!map[skill.id]) {
-        map[skill.id] = normalizeSkillDomain(skill.domain)
-      }
-    })
-
-    availableSkills.forEach((skill) => {
-      if (!map[skill.id]) {
-        if (skill.domain) {
-          map[skill.id] = normalizeSkillDomain(skill.domain)
-          return
-        }
-        if (skill.id.startsWith('code-check-')) {
-          map[skill.id] = 'code-check'
-          return
-        }
-        map[skill.id] = 'unknown'
-      }
-    })
-
-    return map
-  }, [availableSkills, capabilityMatrix])
+  const skillNormalization = useMemo(
+    () => buildSkillNormalizationContext(availableSkills, capabilityMatrix),
+    [availableSkills, capabilityMatrix]
+  )
+  const skillDomainById = skillNormalization.skillDomainById
 
   const hasSelectedCodeCheckSkill = useMemo(
     () => selectedSkillIds.some((skillId) => skillDomainById[skillId] === 'code-check'),
@@ -1558,7 +1475,8 @@ export function AIConsole() {
 
     const storedPreferences = loadCapabilityPreferences()
     if (storedPreferences) {
-      const validSkillIds = storedPreferences.skillIds.filter((skillId) => availableSkills.some((skill) => skill.id === skillId))
+      const validSkillIds = skillNormalization.normalizeSkillIds(storedPreferences.skillIds)
+        .filter((skillId) => availableSkills.some((skill) => skill.id === skillId))
       const resolvedTools = resolveCallableTools(capabilityMatrix, validSkillIds, skillDomainById)
       const validToolIds = storedPreferences.toolIds.filter((toolId) => resolvedTools.some((tool) => tool.id === toolId))
       const shouldRepairLegacyDefaultTools =
@@ -1576,7 +1494,7 @@ export function AIConsole() {
     setHasExplicitSkillSelection(true)
     setHasExplicitToolSelection(true)
     capabilityPreferencesHydratedRef.current = true
-  }, [availableSkills, baseCallableToolIds, capabilityMatrixLoaded, defaultSelectedSkillIds, initialDefaultToolIds, skillDomainById, skillsLoaded])
+  }, [availableSkills, baseCallableToolIds, capabilityMatrixLoaded, defaultSelectedSkillIds, initialDefaultToolIds, skillDomainById, skillNormalization, skillsLoaded])
 
   useEffect(() => {
     let active = true
@@ -1620,10 +1538,10 @@ export function AIConsole() {
     }
 
     saveCapabilityPreferences({
-      skillIds: selectedSkillIds,
+      skillIds: skillNormalization.normalizeSkillIds(selectedSkillIds),
       toolIds: selectedToolIds,
     })
-  }, [capabilityMatrixLoaded, selectedSkillIds, selectedToolIds, skillsLoaded])
+  }, [capabilityMatrixLoaded, selectedSkillIds, selectedToolIds, skillNormalization, skillsLoaded])
 
   useEffect(() => {
     let cancelled = false
@@ -2188,9 +2106,10 @@ export function AIConsole() {
     try {
       const nextConversationId = await ensureConversation(trimmedInput)
       activeConversationId = nextConversationId
+      const normalizedSkillIds = skillNormalization.normalizeSkillIds(selectedSkillIds)
       const contextPayload = {
         locale,
-        skillIds: selectedSkillIds,
+        skillIds: normalizedSkillIds,
         enabledToolIds: selectedToolIds,
         model: contextModel,
         modelFormat: contextModel ? 'structuremodel-v1' : undefined,

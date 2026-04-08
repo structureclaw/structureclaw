@@ -6,32 +6,15 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { API_BASE } from '@/lib/api-base'
 import { loadCapabilityPreferences, saveCapabilityPreferences } from '@/lib/capability-preference'
+import { ALL_SKILL_DOMAINS, buildSkillNormalizationContext, type SkillDomain, type SkillMetadataLike } from '@/lib/skill-normalization'
 import { useI18n, type MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { cn } from '@/lib/utils'
 
-type AgentSkillSummary = {
-  id: string
+type AgentSkillSummary = SkillMetadataLike & {
   name: { zh?: string; en?: string }
   description: { zh?: string; en?: string }
 }
-
-type SkillDomain =
-  | 'analysis'
-  | 'code-check'
-  | 'data-input'
-  | 'design'
-  | 'drawing'
-  | 'general'
-  | 'load-boundary'
-  | 'material'
-  | 'report-export'
-  | 'result-postprocess'
-  | 'section'
-  | 'structure-type'
-  | 'validation'
-  | 'visualization'
-  | 'unknown'
 
 type ToolCategory = 'modeling' | 'analysis' | 'code-check' | 'report' | 'utility'
 
@@ -64,38 +47,11 @@ type CapabilityMatrixPayload = {
   skillDomainById?: Record<string, SkillDomain>
   foundationToolIds?: string[]
   enabledToolIdsBySkill?: Record<string, string[]>
+  canonicalSkillIdByAlias?: Record<string, string>
+  skillAliasesByCanonicalId?: Record<string, string[]>
 }
-
-const ALL_SKILL_DOMAINS: SkillDomain[] = [
-  'data-input',
-  'structure-type',
-  'material',
-  'section',
-  'load-boundary',
-  'analysis',
-  'result-postprocess',
-  'design',
-  'code-check',
-  'validation',
-  'report-export',
-  'drawing',
-  'visualization',
-  'general',
-]
 
 const ALL_TOOL_CATEGORIES: ToolCategory[] = ['modeling', 'analysis', 'code-check', 'report', 'utility']
-
-function normalizeSkillDomain(value: unknown): SkillDomain {
-  const raw = typeof value === 'string' ? value : ''
-  if (ALL_SKILL_DOMAINS.includes(raw as SkillDomain)) {
-    return raw as SkillDomain
-  }
-  if (raw === 'analysis-strategy') return 'analysis'
-  if (raw === 'generic-fallback') return 'general'
-  if (raw === 'geometry-input') return 'data-input'
-  if (raw === 'material-constitutive') return 'material'
-  return 'unknown'
-}
 
 function normalizeToolCategory(value: unknown): ToolCategory {
   if (value === 'modeling' || value === 'analysis' || value === 'code-check' || value === 'report' || value === 'utility') {
@@ -229,26 +185,11 @@ export function CapabilitySettingsPanel() {
   const [skillsLoaded, setSkillsLoaded] = useState(false)
   const [capabilityMatrixLoaded, setCapabilityMatrixLoaded] = useState(false)
 
-  const skillDomainById = useMemo<Record<string, SkillDomain>>(() => {
-    const map: Record<string, SkillDomain> = {}
-    const matrixMap = capabilityMatrix?.skillDomainById
-    if (matrixMap && typeof matrixMap === 'object') {
-      Object.entries(matrixMap).forEach(([skillId, domain]) => {
-        map[skillId] = normalizeSkillDomain(domain)
-      })
-    }
-    ;(capabilityMatrix?.skills || []).forEach((skill) => {
-      if (skill?.id && !map[skill.id]) {
-        map[skill.id] = normalizeSkillDomain(skill.domain)
-      }
-    })
-    availableSkills.forEach((skill) => {
-      if (!map[skill.id]) {
-        map[skill.id] = 'unknown'
-      }
-    })
-    return map
-  }, [availableSkills, capabilityMatrix])
+  const skillNormalization = useMemo(
+    () => buildSkillNormalizationContext(availableSkills, capabilityMatrix),
+    [availableSkills, capabilityMatrix]
+  )
+  const skillDomainById = skillNormalization.skillDomainById
 
   const availableTools = useMemo(() => {
     return [...resolveCallableTools(capabilityMatrix, selectedSkillIds, skillDomainById)]
@@ -337,7 +278,8 @@ export function CapabilitySettingsPanel() {
     }
     const stored = loadCapabilityPreferences()
     if (stored) {
-      const validSkillIds = stored.skillIds.filter((skillId) => availableSkills.some((skill) => skill.id === skillId))
+      const validSkillIds = skillNormalization.normalizeSkillIds(stored.skillIds)
+        .filter((skillId) => availableSkills.some((skill) => skill.id === skillId))
       const resolvedTools = resolveCallableTools(capabilityMatrix, validSkillIds, skillDomainById)
       const validToolIds = stored.toolIds.filter((toolId) => resolvedTools.some((tool) => tool.id === toolId))
       const shouldRepairLegacyDefaultTools =
@@ -352,7 +294,7 @@ export function CapabilitySettingsPanel() {
       setSelectedToolIds(initialDefaultToolIds)
     }
     preferencesHydratedRef.current = true
-  }, [availableSkills, baseCallableToolIds, capabilityMatrixLoaded, defaultSelectedSkillIds, initialDefaultToolIds, skillDomainById, skillsLoaded])
+  }, [availableSkills, baseCallableToolIds, capabilityMatrixLoaded, defaultSelectedSkillIds, initialDefaultToolIds, skillDomainById, skillNormalization, skillsLoaded])
 
   useEffect(() => {
     if (!preferencesHydratedRef.current) {
@@ -362,10 +304,10 @@ export function CapabilitySettingsPanel() {
       return
     }
     saveCapabilityPreferences({
-      skillIds: selectedSkillIds,
+      skillIds: skillNormalization.normalizeSkillIds(selectedSkillIds),
       toolIds: selectedToolIds,
     })
-  }, [capabilityMatrixLoaded, selectedSkillIds, selectedToolIds, skillsLoaded])
+  }, [capabilityMatrixLoaded, selectedSkillIds, selectedToolIds, skillNormalization, skillsLoaded])
 
   const groupedSkills = useMemo(() => {
     const bucket = new Map<SkillDomain, AgentSkillSummary[]>()
