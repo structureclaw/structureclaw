@@ -97,6 +97,31 @@ function uniqueStrings(values: readonly string[]): string[] {
   return Array.from(new Set(values.filter((value) => typeof value === 'string' && value.trim().length > 0)));
 }
 
+function assertLocalizedField(value: unknown, field: 'zh' | 'en', ownerLabel: string): void {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`Malformed capability metadata: ${ownerLabel} is missing a non-empty ${field} value.`);
+  }
+}
+
+function validateLocalizedText(value: unknown, ownerLabel: string): void {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`Malformed capability metadata: ${ownerLabel} must be a localized object.`);
+  }
+  const text = value as Record<string, unknown>;
+  assertLocalizedField(text.zh, 'zh', ownerLabel);
+  assertLocalizedField(text.en, 'en', ownerLabel);
+}
+
+function validateCatalogEntryMetadata(entry: BuiltinSkillCatalogEntry): void {
+  validateLocalizedText(entry.name, `skill ${entry.canonicalId} name`);
+  validateLocalizedText(entry.description, `skill ${entry.canonicalId} description`);
+}
+
+function validateManifestMetadata(manifest: SkillManifest): void {
+  validateLocalizedText(manifest.name, `skill ${manifest.id} name`);
+  validateLocalizedText(manifest.description, `skill ${manifest.id} description`);
+}
+
 function normalizeModelFamilies(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return ['generic'];
@@ -226,6 +251,8 @@ export class AgentCapabilityService {
   async getCapabilityMatrix(options?: { analysisType?: CapabilityAnalysisType }) {
     const catalogEntries = await this.skillCatalog.listBuiltinSkills();
     const manifests = await this.skillRuntime.listSkillManifests();
+    catalogEntries.forEach(validateCatalogEntryMetadata);
+    manifests.forEach(validateManifestMetadata);
     const runtimeTooling = await this.skillRuntime.resolveSkillTooling(manifests.map((manifest) => manifest.id));
     const builtinTools = this.skillRuntime.listBuiltinToolManifests();
     const resolveCanonicalSkillId = (id: string) => this.skillCatalog.resolveCanonicalSkillId(id);

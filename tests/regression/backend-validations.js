@@ -763,6 +763,349 @@ async function validateAgentCapabilityModes(context) {
   console.log("[ok] capability-mode contract");
 }
 
+async function validateAgentManifestBinding(context) {
+  await runBackendBuildOnce(context);
+  clearProviderEnv();
+
+  const { AgentCapabilityService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent-capability.js")).href);
+  const { CONVERT_MODEL_TOOL_MANIFEST } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-tools", "builtin", "convert-model.js")).href);
+
+  const makeLocalizedText = (zh, en) => ({ zh, en });
+  const compatibility = { minRuntimeVersion: "0.1.0", skillApiVersion: "v1" };
+  const categoryByToolId = {
+    draft_model: "modeling",
+    update_model: "modeling",
+    run_analysis: "analysis",
+    validate_model: "utility",
+    run_code_check: "code-check",
+    generate_report: "report",
+  };
+
+  const makeGrantTool = (toolId, skillId, requiresTools = []) => ({
+    id: toolId,
+    source: "external",
+    enabledByDefault: false,
+    category: categoryByToolId[toolId],
+    providedBySkillId: skillId,
+    requiresSkills: [skillId],
+    requiresTools,
+    tags: [`${toolId}`, "external-provided"],
+    displayName: makeLocalizedText(toolId, toolId),
+    description: makeLocalizedText(
+      `${skillId} skill 提供的 ${toolId} 工具。`,
+      `The ${skillId} skill provides the ${toolId} tool.`,
+    ),
+  });
+
+  const makeManifest = (id, domain, options = {}) => ({
+    id,
+    domain,
+    name: options.name ?? makeLocalizedText(`${id} 技能`, `${id} skill`),
+    description: options.description ?? makeLocalizedText(`${id} 技能描述`, `${id} skill description`),
+    stages: options.stages ?? ["analysis"],
+    triggers: options.triggers ?? [id],
+    autoLoadByDefault: options.autoLoadByDefault ?? false,
+    structureType: options.structureType ?? "unknown",
+    requires: options.requires ?? [],
+    conflicts: options.conflicts ?? [],
+    capabilities: options.capabilities ?? [],
+    enabledTools: options.enabledTools,
+    providedTools: options.providedTools,
+    supportedAnalysisTypes: options.supportedAnalysisTypes ?? [],
+    supportedModelFamilies: options.supportedModelFamilies ?? ["generic"],
+    materialFamilies: options.materialFamilies ?? [],
+    priority: options.priority ?? 0,
+    compatibility,
+  });
+
+  const validSkillSpecs = [
+    {
+      id: "beam",
+      domain: "structure-type",
+      structureType: "beam",
+      name: makeLocalizedText("梁", "Beam"),
+      description: makeLocalizedText("梁类结构技能", "Beam structure skill"),
+      stages: ["intent", "draft", "analysis"],
+      triggers: ["beam"],
+      autoLoadByDefault: true,
+      capabilities: ["model-drafting"],
+      providedTools: ["draft_model", "update_model"],
+      supportedAnalysisTypes: [],
+      supportedModelFamilies: ["frame", "generic"],
+      priority: 100,
+    },
+    {
+      id: "analysis-primary",
+      domain: "analysis",
+      structureType: "unknown",
+      name: makeLocalizedText("主分析技能", "Primary analysis skill"),
+      description: makeLocalizedText("为 run_analysis 提供显式授权", "Provides explicit authorization for run_analysis"),
+      stages: ["analysis"],
+      triggers: ["analysis"],
+      autoLoadByDefault: false,
+      capabilities: ["analysis-execution"],
+      providedTools: ["run_analysis"],
+      supportedAnalysisTypes: ["static"],
+      supportedModelFamilies: ["generic"],
+      priority: 90,
+    },
+    {
+      id: "analysis-secondary",
+      domain: "analysis",
+      structureType: "unknown",
+      name: makeLocalizedText("备选分析技能", "Secondary analysis skill"),
+      description: makeLocalizedText("与主技能共享 run_analysis 授权", "Shares run_analysis authorization with the primary skill"),
+      stages: ["analysis"],
+      triggers: ["analysis-secondary"],
+      autoLoadByDefault: false,
+      capabilities: ["analysis-execution"],
+      providedTools: ["run_analysis"],
+      supportedAnalysisTypes: ["static"],
+      supportedModelFamilies: ["generic"],
+      priority: 80,
+    },
+    {
+      id: "validator",
+      domain: "validation",
+      structureType: "unknown",
+      name: makeLocalizedText("校验技能", "Validation skill"),
+      description: makeLocalizedText("为 validate_model 提供授权", "Provides authorization for validate_model"),
+      stages: ["analysis"],
+      triggers: ["validate"],
+      autoLoadByDefault: false,
+      capabilities: ["model-validation"],
+      providedTools: ["validate_model"],
+      supportedAnalysisTypes: [],
+      supportedModelFamilies: ["generic"],
+      priority: 70,
+    },
+    {
+      id: "checker",
+      domain: "code-check",
+      structureType: "unknown",
+      name: makeLocalizedText("校核技能", "Code-check skill"),
+      description: makeLocalizedText("为 run_code_check 提供授权", "Provides authorization for run_code_check"),
+      stages: ["design"],
+      triggers: ["code-check"],
+      autoLoadByDefault: false,
+      capabilities: ["code-check-execution"],
+      providedTools: ["run_code_check"],
+      supportedAnalysisTypes: [],
+      supportedModelFamilies: ["generic"],
+      priority: 60,
+    },
+    {
+      id: "reporter",
+      domain: "report-export",
+      structureType: "unknown",
+      name: makeLocalizedText("报告技能", "Report skill"),
+      description: makeLocalizedText("为 generate_report 提供授权", "Provides authorization for generate_report"),
+      stages: ["design"],
+      triggers: ["report"],
+      autoLoadByDefault: false,
+      capabilities: ["report-export"],
+      providedTools: ["generate_report"],
+      supportedAnalysisTypes: [],
+      supportedModelFamilies: ["generic"],
+      priority: 50,
+    },
+  ];
+
+  const validManifestById = new Map(
+    validSkillSpecs.map((spec) => [spec.id, makeManifest(spec.id, spec.domain, spec)]),
+  );
+  const validCatalogEntries = validSkillSpecs.map((spec) => ({
+    id: spec.id,
+    canonicalId: spec.id,
+    aliases: [],
+    domain: spec.domain,
+    name: spec.name,
+    description: spec.description,
+    stages: spec.stages,
+    triggers: spec.triggers,
+    autoLoadByDefault: spec.autoLoadByDefault,
+    structureType: spec.structureType,
+    capabilities: spec.capabilities,
+    enabledTools: [],
+    providedTools: spec.providedTools,
+    supportedAnalysisTypes: spec.supportedAnalysisTypes,
+    supportedModelFamilies: spec.supportedModelFamilies,
+    materialFamilies: [],
+    priority: spec.priority,
+    compatibility,
+    sourceKinds: ["runtime-manifest"],
+  }));
+  const validGrantTools = [
+    makeGrantTool("draft_model", "beam"),
+    makeGrantTool("update_model", "beam"),
+    makeGrantTool("run_analysis", "analysis-primary", ["validate_model"]),
+    makeGrantTool("validate_model", "validator"),
+    makeGrantTool("run_code_check", "checker", ["run_analysis"]),
+    makeGrantTool("generate_report", "reporter", ["run_analysis"]),
+  ];
+
+  const strictManifestSpec = {
+    id: "malformed-binding",
+    domain: "analysis",
+    structureType: "unknown",
+    stages: ["analysis"],
+    triggers: ["malformed-binding"],
+    autoLoadByDefault: false,
+    capabilities: ["analysis-execution"],
+    providedTools: ["run_analysis"],
+    supportedAnalysisTypes: ["static"],
+    supportedModelFamilies: ["generic"],
+    priority: 10,
+  };
+  const strictManifest = makeManifest(strictManifestSpec.id, strictManifestSpec.domain, {
+    ...strictManifestSpec,
+    name: {},
+    description: {},
+    enabledTools: undefined,
+    providedTools: undefined,
+    supportedModelFamilies: undefined,
+  });
+  const strictCatalogEntry = {
+    id: strictManifestSpec.id,
+    canonicalId: strictManifestSpec.id,
+    aliases: [],
+    domain: strictManifestSpec.domain,
+    name: {},
+    description: {},
+    stages: strictManifestSpec.stages,
+    triggers: strictManifestSpec.triggers,
+    autoLoadByDefault: strictManifestSpec.autoLoadByDefault,
+    structureType: strictManifestSpec.structureType,
+    capabilities: strictManifestSpec.capabilities,
+    enabledTools: [],
+    providedTools: strictManifestSpec.providedTools,
+    supportedAnalysisTypes: strictManifestSpec.supportedAnalysisTypes,
+    supportedModelFamilies: strictManifestSpec.supportedModelFamilies,
+    materialFamilies: [],
+    priority: strictManifestSpec.priority,
+    compatibility,
+    sourceKinds: ["runtime-manifest"],
+  };
+
+  const buildResolvedTooling = (manifests) => {
+    const enabledToolIdsBySkill = {};
+    const providedToolIdsBySkill = {};
+    const skillIdsByToolId = {};
+    const toolsById = new Map();
+
+    for (const manifest of manifests) {
+      const providedToolIds = Array.isArray(manifest.providedTools) ? [...manifest.providedTools] : [];
+      const enabledToolIds = Array.isArray(manifest.enabledTools) ? [...manifest.enabledTools] : [];
+      enabledToolIdsBySkill[manifest.id] = enabledToolIds;
+      providedToolIdsBySkill[manifest.id] = providedToolIds;
+
+      for (const toolId of [...enabledToolIds, ...providedToolIds]) {
+        if (!skillIdsByToolId[toolId]) {
+          skillIdsByToolId[toolId] = [];
+        }
+        if (!skillIdsByToolId[toolId].includes(manifest.id)) {
+          skillIdsByToolId[toolId].push(manifest.id);
+        }
+      }
+    }
+
+    for (const tool of validGrantTools) {
+      toolsById.set(tool.id, tool);
+    }
+
+    return {
+      tools: [...toolsById.values()],
+      enabledToolIdsBySkill,
+      providedToolIdsBySkill,
+      skillIdsByToolId,
+    };
+  };
+
+  const makeEngine = (id, overrides = {}) => ({
+    id,
+    name: id,
+    enabled: true,
+    available: true,
+    status: "available",
+    supportedModelFamilies: ["generic"],
+    supportedAnalysisTypes: ["static"],
+    ...overrides,
+  });
+
+  const strictCapabilityService = new AgentCapabilityService(
+    {
+      listSkillManifests: async () => [strictManifest],
+      resolveSkillTooling: async () => buildResolvedTooling([strictManifest]),
+      listBuiltinToolManifests: () => [CONVERT_MODEL_TOOL_MANIFEST],
+    },
+    {
+      listBuiltinSkills: async () => [strictCatalogEntry],
+      resolveCanonicalSkillId: (id) => id,
+    },
+    {
+      listEngines: async () => ({ engines: [makeEngine("engine-strict")] }),
+    },
+  );
+
+  let rejectedMalformedManifest = false;
+  try {
+    await strictCapabilityService.getCapabilityMatrix({ analysisType: "static" });
+  } catch (_error) {
+    rejectedMalformedManifest = true;
+  }
+  assert(rejectedMalformedManifest, "malformed manifest-backed capability metadata must be rejected instead of silently accepted");
+
+  const capabilityService = new AgentCapabilityService(
+    {
+      listSkillManifests: async () => validSkillSpecs.map((spec) => validManifestById.get(spec.id)),
+      resolveSkillTooling: async (skillIds) => buildResolvedTooling(validSkillSpecs.filter((spec) => skillIds === undefined || skillIds.includes(spec.id)).map((spec) => validManifestById.get(spec.id))),
+      listBuiltinToolManifests: () => [CONVERT_MODEL_TOOL_MANIFEST],
+    },
+    {
+      listBuiltinSkills: async () => validCatalogEntries,
+      resolveCanonicalSkillId: (id) => id,
+    },
+    {
+      listEngines: async () => ({
+        engines: [
+          makeEngine("engine-frame", {
+            supportedModelFamilies: ["frame", "generic"],
+            supportedAnalysisTypes: ["static"],
+          }),
+          makeEngine("engine-generic", {
+            supportedModelFamilies: ["generic"],
+            supportedAnalysisTypes: ["static"],
+          }),
+          makeEngine("engine-offline", {
+            available: false,
+            status: "unavailable",
+            supportedModelFamilies: ["frame", "generic"],
+            supportedAnalysisTypes: ["static"],
+          }),
+        ],
+      }),
+    },
+  );
+
+  const matrix = await capabilityService.getCapabilityMatrix({ analysisType: "static" });
+  assert(matrix.foundationToolIds.includes("convert_model"), "convert_model should remain a foundation tool");
+  assert(matrix.tools.some((tool) => tool.id === "convert_model"), "convert_model should remain available in the tool catalog");
+  assert(!matrix.foundationToolIds.includes("run_analysis"), "run_analysis should not be a foundation tool");
+  assert(!matrix.foundationToolIds.includes("generate_report"), "generate_report should not be a foundation tool");
+  assert(matrix.tools.every((tool) => tool.id === "convert_model" || (tool.source === "external" && Array.isArray(tool.requiresSkills) && tool.requiresSkills.length > 0)), "non-foundation tools should require explicit grants");
+  assert(matrix.tools.find((tool) => tool.id === "run_analysis")?.requiresTools.includes("validate_model"), "run_analysis should preserve its validate_model dependency");
+  assert(matrix.tools.find((tool) => tool.id === "generate_report")?.requiresTools.includes("run_analysis"), "generate_report should preserve its run_analysis dependency");
+  assert(Array.isArray(matrix.skillIdsByToolId.run_analysis) && matrix.skillIdsByToolId.run_analysis.includes("analysis-primary") && matrix.skillIdsByToolId.run_analysis.includes("analysis-secondary"), "multiple skills should be able to grant the same tool");
+  assert(matrix.skillIdsByToolId.generate_report?.includes("reporter"), "generate_report should be attributed to its granting skill");
+  assert(matrix.validEngineIdsBySkill.beam.includes("engine-frame"), "beam should stay compatible with the frame engine");
+  assert(!matrix.validEngineIdsBySkill.beam.includes("engine-offline"), "beam should not treat unavailable engines as valid");
+  assert(matrix.filteredEngineReasonsBySkill.beam["engine-offline"].includes("engine_unavailable"), "beam should record unavailable engine reasons");
+  assert(matrix.skillDomainById.beam === "structure-type", "skill identity should remain separate from engine availability");
+  assert(matrix.validSkillIdsByEngine["engine-offline"].includes("beam"), "unavailable engines should still preserve skill compatibility metadata");
+  assert(matrix.skills.some((skill) => skill.id === "analysis-primary" && skill.runtimeStatus === "active"), "analysis skill identity should remain present in the catalog");
+  console.log("[ok] agent manifest binding contract");
+}
+
 async function validateAgentToolsContract(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
@@ -2109,6 +2452,7 @@ const BACKEND_VALIDATIONS = {
   "validate-agent-orchestration": validateAgentOrchestration,
   "validate-agent-base-chat-fallback": validateAgentBaseChatFallback,
   "validate-agent-capability-modes": validateAgentCapabilityModes,
+  "validate-agent-manifest-binding": validateAgentManifestBinding,
   "validate-agent-tools-contract": validateAgentToolsContract,
   "validate-agent-api-contract": validateAgentApiContract,
   "validate-agent-capability-matrix": validateAgentCapabilityMatrix,
