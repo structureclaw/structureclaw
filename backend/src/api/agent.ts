@@ -88,10 +88,10 @@ export async function agentRoutes(fastify: FastifyInstance) {
   fastify.get('/skills', {
     schema: {
       tags: ['Agent'],
-      summary: '查询本地 Markdown Agent Skills',
+      summary: '查询本地内置 Agent Skill 目录',
     },
   }, async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.send(agentService.listSkills());
+    return reply.send(await agentService.listSkills());
   });
 
   fastify.get('/capability-matrix', {

@@ -63,6 +63,7 @@ import {
   buildChatModeResponse as resultBuildChatModeResponse,
   renderSummary as resultRenderSummary,
 } from './agent-result.js';
+import { AgentSkillCatalogService } from './agent-skill-catalog.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'directed' | 'llm-planned';
@@ -387,6 +388,7 @@ export class AgentService {
   public codeCheckClient = createLocalCodeCheckClient();
   public llm: ChatOpenAI | null;
   private readonly skillRuntime: AgentSkillRuntime;
+  private readonly skillCatalog: AgentSkillCatalogService;
   private readonly policy: AgentPolicyService;
   private static readonly draftStateTtlSeconds = 30 * 60;
 
@@ -395,6 +397,7 @@ export class AgentService {
 
     this.llm = createChatModel(0.1);
     this.skillRuntime = new AgentSkillRuntime();
+    this.skillCatalog = new AgentSkillCatalogService(this.skillRuntime);
     this.policy = new AgentPolicyService();
   }
 
@@ -1072,9 +1075,11 @@ export class AgentService {
     };
   }
 
-  listSkills() {
-    return this.skillRuntime.listSkills().map((skill) => ({
-      id: skill.id,
+  async listSkills() {
+    const skills = await this.skillCatalog.listBuiltinSkills();
+    return skills.map((skill) => ({
+      id: skill.canonicalId,
+      aliases: [...skill.aliases].sort(),
       name: skill.name,
       description: skill.description,
       structureType: skill.structureType,
