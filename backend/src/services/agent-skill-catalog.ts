@@ -94,8 +94,19 @@ function normalizeBundleStructureType(bundle: AgentSkillBundle): string | undefi
   return bundle.structureType;
 }
 
+function mergeStringArrays(base: readonly string[], patch: readonly string[] | undefined): string[] {
+  if (patch === undefined) {
+    return [...base];
+  }
+  return uniqueStrings([...base, ...patch]);
+}
+
 export class AgentSkillCatalogService {
   constructor(private readonly skillRuntime = new AgentSkillRuntime()) {}
+
+  resolveCanonicalSkillId(id: string): string {
+    return resolveCanonicalId(id);
+  }
 
   async listBuiltinSkills(): Promise<BuiltinSkillCatalogEntry[]> {
     const catalog = new Map<string, BuiltinSkillCatalogEntry>();
@@ -262,6 +273,12 @@ export class AgentSkillCatalogService {
     }, {});
   }
 
+  async getBuiltinSkillById(id: string): Promise<BuiltinSkillCatalogEntry | undefined> {
+    const canonicalId = this.resolveCanonicalSkillId(id);
+    const entries = await this.listBuiltinSkills();
+    return entries.find((entry) => entry.canonicalId === canonicalId);
+  }
+
   private buildManifestPatch(manifest: SkillManifest): CatalogMergePatch {
     return {
       id: manifest.id,
@@ -330,6 +347,7 @@ export class AgentSkillCatalogService {
     patch: CatalogMergePatch & { canonicalId: string; aliases?: string[] },
   ): BuiltinSkillCatalogEntry {
     const base = current ?? this.createEmptyEntry(patch.id, patch.canonicalId);
+    const runtimeManifestPatch = patch.sourceKind === 'runtime-manifest';
     return {
       ...base,
       id: patch.canonicalId,
@@ -344,20 +362,38 @@ export class AgentSkillCatalogService {
         ...base.description,
         ...(patch.description ?? {}),
       },
-      stages: patch.stages !== undefined ? [...patch.stages] : base.stages,
-      triggers: patch.triggers !== undefined ? [...patch.triggers] : base.triggers,
-      autoLoadByDefault: patch.autoLoadByDefault ?? base.autoLoadByDefault,
+      stages: runtimeManifestPatch
+        ? mergeStringArrays(base.stages, patch.stages)
+        : (patch.stages !== undefined ? [...patch.stages] : base.stages),
+      triggers: runtimeManifestPatch
+        ? mergeStringArrays(base.triggers, patch.triggers)
+        : (patch.triggers !== undefined ? [...patch.triggers] : base.triggers),
+      autoLoadByDefault: runtimeManifestPatch
+        ? (base.autoLoadByDefault || Boolean(patch.autoLoadByDefault))
+        : (patch.autoLoadByDefault ?? base.autoLoadByDefault),
       structureType: patch.structureType ?? base.structureType,
-      capabilities: patch.capabilities !== undefined ? [...patch.capabilities] : base.capabilities,
-      enabledTools: patch.enabledTools !== undefined ? [...patch.enabledTools] : base.enabledTools,
-      providedTools: patch.providedTools !== undefined ? [...patch.providedTools] : base.providedTools,
-      supportedAnalysisTypes: patch.supportedAnalysisTypes !== undefined
-        ? [...patch.supportedAnalysisTypes]
-        : base.supportedAnalysisTypes,
-      supportedModelFamilies: patch.supportedModelFamilies !== undefined
-        ? [...patch.supportedModelFamilies]
-        : base.supportedModelFamilies,
-      materialFamilies: patch.materialFamilies !== undefined ? [...patch.materialFamilies] : base.materialFamilies,
+      capabilities: runtimeManifestPatch
+        ? mergeStringArrays(base.capabilities, patch.capabilities)
+        : (patch.capabilities !== undefined ? [...patch.capabilities] : base.capabilities),
+      enabledTools: runtimeManifestPatch
+        ? mergeStringArrays(base.enabledTools, patch.enabledTools)
+        : (patch.enabledTools !== undefined ? [...patch.enabledTools] : base.enabledTools),
+      providedTools: runtimeManifestPatch
+        ? mergeStringArrays(base.providedTools, patch.providedTools)
+        : (patch.providedTools !== undefined ? [...patch.providedTools] : base.providedTools),
+      supportedAnalysisTypes: runtimeManifestPatch
+        ? mergeStringArrays(base.supportedAnalysisTypes, patch.supportedAnalysisTypes)
+        : (patch.supportedAnalysisTypes !== undefined
+          ? [...patch.supportedAnalysisTypes]
+          : base.supportedAnalysisTypes),
+      supportedModelFamilies: runtimeManifestPatch
+        ? mergeStringArrays(base.supportedModelFamilies, patch.supportedModelFamilies)
+        : (patch.supportedModelFamilies !== undefined
+          ? [...patch.supportedModelFamilies]
+          : base.supportedModelFamilies),
+      materialFamilies: runtimeManifestPatch
+        ? mergeStringArrays(base.materialFamilies, patch.materialFamilies)
+        : (patch.materialFamilies !== undefined ? [...patch.materialFamilies] : base.materialFamilies),
       priority: patch.priority ?? base.priority,
       compatibility: patch.compatibility ? cloneCompatibility(patch.compatibility) : base.compatibility,
       sourceKinds: uniqueStrings([...base.sourceKinds, patch.sourceKind]) as BuiltinSkillCatalogSourceKind[],
