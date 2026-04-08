@@ -1552,6 +1552,10 @@ async function validateAgentRuntimeLoader(context) {
   const analysisRegistry = await import(
     pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "analysis", "registry.js")).href
   );
+  const pythonAnalysisRegistrySource = await fsp.readFile(
+    path.join(context.rootDir, "backend", "src", "agent-skills", "analysis", "runtime", "registry.py"),
+    "utf8",
+  );
 
   const runtime = new AgentSkillRuntime();
   const skills = runtime.listSkills();
@@ -1697,6 +1701,14 @@ async function validateAgentRuntimeLoader(context) {
   assert(typeof analysisRegistry.listBuiltinAnalysisSkills === "undefined", "analysis registry should not export static metadata helpers once manifest-first runtime is active");
   assert(typeof analysisRegistry.getBuiltinAnalysisSkill === "undefined", "analysis registry should not expose builtin analysis metadata lookup");
   assert(typeof analysisRegistry.resolvePreferredBuiltinAnalysisSkill === "undefined", "analysis registry should not expose manifest selection logic directly");
+  assert(
+    pythonAnalysisRegistrySource.includes("skill.yaml"),
+    "python analysis runtime registry should discover builtin skills from skill.yaml",
+  );
+  assert(
+    !pythonAnalysisRegistrySource.includes("intent.md"),
+    "python analysis runtime registry should not depend on intent.md frontmatter metadata",
+  );
   console.log("[ok] agent runtime loader contract");
 }
 
