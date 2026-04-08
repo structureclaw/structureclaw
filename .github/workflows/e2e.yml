@@ -33,8 +33,6 @@ jobs:
 
       - name: Setup environment
         uses: ./.github/actions/setup-env
-        with:
-          command: install
 
       - name: Setup backend database and build
         run: |

@@ -47,9 +47,6 @@ jobs:
 
       - name: Setup environment
         uses: ./.github/actions/setup-env
-        with:
-          command: doctor
-          build: true
 
       - name: Frontend type-check
         run: npm run type-check --prefix frontend

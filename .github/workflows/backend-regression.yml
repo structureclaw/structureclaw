@@ -38,9 +38,6 @@ jobs:
 
       - name: Setup environment
         uses: ./.github/actions/setup-env
-        with:
-          command: doctor
-          build: true
 
       - name: Run Backend Regression
         run: node tests/runner.mjs backend-regression

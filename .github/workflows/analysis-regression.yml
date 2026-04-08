@@ -38,9 +38,6 @@ jobs:
 
       - name: Setup environment
         uses: ./.github/actions/setup-env
-        with:
-          command: doctor
-          build: true
 
       - name: Run Analysis Regression
         # CI may not always provide a usable OpenSeesPy runtime on Linux.
