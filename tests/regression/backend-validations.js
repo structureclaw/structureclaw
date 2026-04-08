@@ -1380,6 +1380,7 @@ async function validateAgentManifestLoader(context) {
         "load-combination",
         "nodal-constraint",
         "seismic-load",
+        "snow-load",
         "temperature-load",
         "wind-load",
       ]),
@@ -1393,6 +1394,17 @@ async function validateAgentManifestLoader(context) {
     assert(Array.isArray(boundarySkill?.boundaryTypes) && boundarySkill.boundaryTypes.includes("fixed"), "boundary-condition manifest should preserve boundaryTypes metadata");
     const combinationSkill = builtinLoadBoundarySkills.find((skill) => skill.id === "load-combination");
     assert(Array.isArray(combinationSkill?.combinationTypes) && combinationSkill.combinationTypes.includes("ULS"), "load-combination manifest should preserve combinationTypes metadata");
+    const builtinVisualizationRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "visualization");
+    const builtinVisualizationSkills = await loadSkillManifestsFromDirectory(builtinVisualizationRoot);
+    const builtinVisualizationIds = builtinVisualizationSkills.map((skill) => skill.id).sort();
+    assert(
+      JSON.stringify(builtinVisualizationIds) === JSON.stringify([
+        "visualization-3d-scene",
+        "visualization-frame-summary",
+        "visualization-png-export",
+      ]),
+      "skill manifest loader should discover builtin visualization skills from real skill.yaml files",
+    );
 
     console.log("[ok] agent manifest loader contract");
   } finally {
@@ -1504,6 +1516,7 @@ async function validateAgentSkillCatalogManifests(context) {
     "live-load",
     "load-combination",
     "nodal-constraint",
+    "snow-load",
     "seismic-load",
     "temperature-load",
     "wind-load",
@@ -1514,7 +1527,45 @@ async function validateAgentSkillCatalogManifests(context) {
     assert(skill.sourceKinds.includes("file-manifest"), `${skillId} should record file-manifest provenance`);
   }
   assert(skills.find((entry) => entry.canonicalId === "dead-load")?.triggers.includes("恒载"), "dead-load should preserve load-boundary trigger metadata");
+  const visualizationIds = [
+    "visualization-3d-scene",
+    "visualization-frame-summary",
+    "visualization-png-export",
+  ];
+  for (const skillId of visualizationIds) {
+    const skill = skills.find((entry) => entry.canonicalId === skillId);
+    assert(skill, `skill catalog should include visualization skill ${skillId}`);
+    assert(skill.sourceKinds.includes("file-manifest"), `${skillId} should record file-manifest provenance`);
+  }
   console.log("[ok] agent skill catalog manifest contract");
+}
+
+async function validateAgentRuntimeLoader(context) {
+  await runBackendBuildOnce(context);
+
+  const { AgentSkillRuntime } = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-runtime", "index.js")).href
+  );
+
+  const runtime = new AgentSkillRuntime();
+  const skills = runtime.listSkills();
+  const byId = new Map(skills.map((skill) => [skill.id, skill]));
+
+  assert(byId.has("beam"), "runtime loader should include manifest-backed beam skill");
+  assert(byId.get("beam")?.domain === "structure-type", "beam should take domain from skill.yaml");
+  assert(byId.has("opensees-static"), "runtime loader should include manifest-backed analysis skill");
+  assert(byId.get("opensees-static")?.domain === "analysis", "analysis skills should take domain from skill.yaml");
+  assert(byId.has("code-check-gb50010"), "runtime loader should include manifest-backed code-check skill");
+  assert(byId.get("code-check-gb50010")?.domain === "code-check", "code-check skills should take domain from skill.yaml");
+  assert(byId.has("dead-load"), "runtime loader should include manifest-backed load-boundary skill");
+  assert(byId.get("dead-load")?.domain === "load-boundary", "load-boundary skills should take domain from skill.yaml");
+  assert(byId.has("snow-load"), "runtime loader should include manifest-backed snow-load skill");
+  assert(byId.get("snow-load")?.domain === "load-boundary", "snow-load should take domain from skill.yaml");
+  assert(byId.has("visualization-frame-summary"), "runtime loader should include manifest-backed visualization skill");
+  assert(byId.get("visualization-frame-summary")?.domain === "visualization", "visualization skills should take domain from skill.yaml");
+  assert(byId.has("validation-structure-model"), "runtime loader should use canonical validation skill id from skill.yaml");
+  assert(!byId.has("structure-json-validation"), "runtime loader should not keep legacy validation frontmatter id once manifest-first loader is active");
+  console.log("[ok] agent runtime loader contract");
 }
 
 async function validateAgentToolsContract(context) {
@@ -2869,6 +2920,7 @@ const BACKEND_VALIDATIONS = {
   "validate-agent-capability-modes": validateAgentCapabilityModes,
   "validate-agent-manifest-binding": validateAgentManifestBinding,
   "validate-agent-manifest-loader": validateAgentManifestLoader,
+  "validate-agent-runtime-loader": validateAgentRuntimeLoader,
   "validate-agent-tool-catalog": validateAgentToolCatalog,
   "validate-agent-skill-catalog-manifests": validateAgentSkillCatalogManifests,
   "validate-agent-tools-contract": validateAgentToolsContract,

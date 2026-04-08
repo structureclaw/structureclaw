@@ -1,19 +1,15 @@
-import { existsSync, readdirSync } from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import { AgentSkillRuntime } from '../agent-runtime/index.js';
 import {
   BUILTIN_VALIDATION_STRUCTURE_MODEL_LEGACY_ALIASES,
   BUILTIN_VALIDATION_STRUCTURE_MODEL_SKILL_ID,
   resolveBuiltinValidationSkillCanonicalId,
 } from '../agent-runtime/builtin-domain-manifests.js';
-import { loadSkillManifestsFromDirectory, type LoadedSkillManifest } from '../agent-runtime/skill-manifest-loader.js';
-import { listBuiltinAnalysisSkills } from '../agent-skills/analysis/entry.js';
-import { listCodeCheckRuleProviders } from '../agent-skills/code-check/entry.js';
-import { listBuiltinLoadBoundarySkills } from '../agent-skills/load-boundary/entry.js';
-import { listBuiltinValidationSkills } from '../agent-skills/validation/entry.js';
+import {
+  loadSkillManifestsFromDirectory,
+  resolveBuiltinSkillManifestRoot,
+  type LoadedSkillManifest,
+} from '../agent-runtime/skill-manifest-loader.js';
 import type {
-  AgentSkillBundle,
   AgentAnalysisType,
   MaterialFamily,
   SkillCompatibility,
@@ -25,16 +21,10 @@ const DEFAULT_COMPATIBILITY: SkillCompatibility = {
   minRuntimeVersion: '0.1.0',
   skillApiVersion: 'v1',
 };
-const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 export type BuiltinSkillCatalogSourceKind =
-  | 'markdown'
   | 'file-manifest'
-  | 'runtime-manifest'
-  | 'analysis-registry'
-  | 'code-check-registry'
-  | 'load-boundary-registry'
-  | 'validation-registry';
+  | 'runtime-manifest';
 
 export interface BuiltinSkillCatalogEntry {
   id: string;
@@ -90,56 +80,11 @@ function resolveAliases(skillId: string, aliases?: string[]): string[] {
   ]).filter((alias) => alias !== canonicalId);
 }
 
-function normalizeBundleStructureType(bundle: AgentSkillBundle): string | undefined {
-  if (typeof bundle.structureType !== 'string' || bundle.structureType.trim().length === 0) {
-    return undefined;
-  }
-  if (bundle.structureType === bundle.id && bundle.domain !== 'structure-type') {
-    return undefined;
-  }
-  return bundle.structureType;
-}
-
 function mergeStringArrays(base: readonly string[], patch: readonly string[] | undefined): string[] {
   if (patch === undefined) {
     return [...base];
   }
   return uniqueStrings([...base, ...patch]);
-}
-
-function collectDirectories(rootDir: string): string[] {
-  if (!existsSync(rootDir)) {
-    return [];
-  }
-  const result: string[] = [];
-  const stack = [rootDir];
-  while (stack.length > 0) {
-    const current = stack.pop()!;
-    result.push(current);
-    const entries = readdirSync(current, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.isDirectory()) {
-        stack.push(path.join(current, entry.name));
-      }
-    }
-  }
-  return result;
-}
-
-function hasSkillManifestInDescendants(rootDir: string): boolean {
-  return collectDirectories(rootDir).some((directory) => existsSync(path.join(directory, 'skill.yaml')));
-}
-
-function resolveBuiltinSkillManifestRoot(): string | null {
-  const candidates = [
-    path.resolve(process.cwd(), 'backend/dist/agent-skills'),
-    path.resolve(process.cwd(), 'dist/agent-skills'),
-    path.resolve(process.cwd(), 'backend/src/agent-skills'),
-    path.resolve(process.cwd(), 'src/agent-skills'),
-    path.resolve(MODULE_DIR, '../../agent-skills'),
-    path.resolve(MODULE_DIR, '../../src/agent-skills'),
-  ];
-  return candidates.find((candidate) => hasSkillManifestInDescendants(candidate)) || null;
 }
 
 export class AgentSkillCatalogService {
@@ -155,156 +100,14 @@ export class AgentSkillCatalogService {
   async listBuiltinSkills(): Promise<BuiltinSkillCatalogEntry[]> {
     const catalog = new Map<string, BuiltinSkillCatalogEntry>();
 
-    for (const bundle of this.skillRuntime.listSkills()) {
-      this.applyPatch(catalog, {
-        id: bundle.id,
-        sourceKind: 'markdown',
-        domain: bundle.domain ?? 'general',
-        name: {
-          zh: bundle.name?.zh,
-          en: bundle.name?.en,
-        },
-        description: {
-          zh: bundle.description?.zh,
-          en: bundle.description?.en,
-        },
-        stages: Array.isArray(bundle.stages) ? [...bundle.stages] : [],
-        triggers: Array.isArray(bundle.triggers) ? [...bundle.triggers] : [],
-        autoLoadByDefault: Boolean(bundle.autoLoadByDefault),
-        structureType: normalizeBundleStructureType(bundle),
-        capabilities: [],
-        enabledTools: [],
-        providedTools: [],
-        supportedAnalysisTypes: [],
-        supportedModelFamilies: [],
-        materialFamilies: [],
-        priority: 0,
-        compatibility: cloneCompatibility(undefined),
-      });
-    }
-
-    for (const skill of listBuiltinAnalysisSkills()) {
-      this.applyPatch(catalog, {
-        id: skill.id,
-        sourceKind: 'analysis-registry',
-        domain: skill.domain,
-        name: {
-          zh: skill.name.zh,
-          en: skill.name.en,
-        },
-        description: {
-          zh: skill.description.zh,
-          en: skill.description.en,
-        },
-        stages: [...skill.stages],
-        triggers: [...skill.triggers],
-        autoLoadByDefault: skill.autoLoadByDefault,
-        capabilities: [...skill.capabilities],
-        enabledTools: ['run_analysis'],
-        providedTools: [],
-        supportedAnalysisTypes: [skill.analysisType],
-        supportedModelFamilies: [...skill.supportedModelFamilies],
-        materialFamilies: [],
-        priority: skill.priority,
-        compatibility: cloneCompatibility(undefined),
-      });
-    }
-
-    for (const provider of listCodeCheckRuleProviders()) {
-      this.applyPatch(catalog, {
-        id: provider.id,
-        sourceKind: 'code-check-registry',
-        domain: provider.domain,
-        name: {
-          zh: provider.rule.designCode || provider.id,
-          en: provider.rule.designCode || provider.id,
-        },
-        description: {
-          zh: provider.rule.designCode
-            ? `${provider.rule.designCode} 规范校核能力。`
-            : `${provider.id} 规范校核能力。`,
-          en: provider.rule.designCode
-            ? `${provider.rule.designCode} code-check capability.`
-            : `${provider.id} code-check capability.`,
-        },
-        stages: ['design'],
-        triggers: provider.rule.designCode ? [provider.rule.designCode] : [provider.id],
-        autoLoadByDefault: false,
-        capabilities: ['code-check-policy', 'code-check-execution'],
-        enabledTools: ['run_code_check'],
-        providedTools: [],
-        supportedAnalysisTypes: [],
-        supportedModelFamilies: ['generic'],
-        materialFamilies: [],
-        priority: provider.priority,
-        compatibility: cloneCompatibility(undefined),
-      });
-    }
-
-    for (const skill of listBuiltinLoadBoundarySkills()) {
-      this.applyPatch(catalog, {
-        id: skill.id,
-        sourceKind: 'load-boundary-registry',
-        domain: skill.domain,
-        name: {
-          zh: skill.name.zh,
-          en: skill.name.en,
-        },
-        description: {
-          zh: skill.description.zh,
-          en: skill.description.en,
-        },
-        stages: [...skill.stages],
-        triggers: [...skill.triggers],
-        autoLoadByDefault: skill.autoLoadByDefault,
-        capabilities: [...skill.capabilities],
-        enabledTools: [],
-        providedTools: [],
-        supportedAnalysisTypes: this.normalizeAnalysisTypes(skill.supportedAnalysisTypes),
-        supportedModelFamilies: uniqueStrings(skill.supportedModelFamilies ?? []),
-        materialFamilies: this.normalizeMaterialFamilies(skill.materialFamilies),
-        priority: skill.priority,
-        compatibility: cloneCompatibility(skill.compatibility),
-      });
-    }
-
-    for (const skill of listBuiltinValidationSkills()) {
-      this.applyPatch(catalog, {
-        id: skill.id,
-        sourceKind: 'validation-registry',
-        domain: skill.domain,
-        name: {
-          zh: skill.name.zh,
-          en: skill.name.en,
-        },
-        description: {
-          zh: skill.description.zh,
-          en: skill.description.en,
-        },
-        stages: [...skill.stages],
-        triggers: [...skill.triggers],
-        autoLoadByDefault: skill.autoLoadByDefault,
-        capabilities: [...skill.capabilities],
-        enabledTools: ['validate_model'],
-        providedTools: [],
-        supportedAnalysisTypes: [],
-        supportedModelFamilies: [],
-        materialFamilies: [],
-        priority: skill.priority,
-        compatibility: cloneCompatibility(undefined),
-      });
+    const fileManifests = await loadSkillManifestsFromDirectory(this.builtinSkillManifestRoot);
+    for (const manifest of fileManifests) {
+      this.applyPatch(catalog, this.buildFileManifestPatch(manifest));
     }
 
     const manifests = await this.skillRuntime.listSkillManifests();
     for (const manifest of manifests) {
       this.applyPatch(catalog, this.buildManifestPatch(manifest));
-    }
-
-    if (this.builtinSkillManifestRoot) {
-      const fileManifests = await loadSkillManifestsFromDirectory(this.builtinSkillManifestRoot);
-      for (const manifest of fileManifests) {
-        this.applyPatch(catalog, this.buildFileManifestPatch(manifest));
-      }
     }
 
     return [...catalog.values()].sort((left, right) =>

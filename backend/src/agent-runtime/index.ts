@@ -17,10 +17,10 @@ import type { CodeCheckClient } from '../agent-skills/code-check/rule.js';
 import { AgentSkillRegistry } from './registry.js';
 import { AgentSkillExecutor } from './executor.js';
 import { listBuiltinToolManifests, resolveToolingForSkillManifests } from './tool-registry.js';
-import { listBuiltinDomainSkillManifests } from './builtin-domain-manifests.js';
 import { buildDefaultReportNarrative } from './report-template.js';
 import { tryBuildGenericModelWithLlm } from '../agent-skills/structure-type/generic/llm-model-builder.js';
 import { localize, withStructuralTypeState } from './plugin-helpers.js';
+import { loadSkillManifestsFromDirectory, resolveBuiltinSkillManifestRoot, toRuntimeSkillManifest } from './skill-manifest-loader.js';
 import type {
   AgentSkillBundle,
   DraftParameterExtractionResult,
@@ -63,9 +63,11 @@ export type {
 
 export class AgentSkillRuntime {
   private readonly registry: AgentSkillRegistry;
+  private readonly builtinSkillManifestRoot: string;
 
   constructor() {
     this.registry = new AgentSkillRegistry();
+    this.builtinSkillManifestRoot = resolveBuiltinSkillManifestRoot();
   }
 
   listSkills(): AgentSkillBundle[] {
@@ -74,9 +76,13 @@ export class AgentSkillRuntime {
 
   async listSkillManifests(): Promise<SkillManifest[]> {
     const plugins = await this.registry.listPlugins();
+    const pluginIds = new Set(plugins.map((plugin) => plugin.id));
+    const fileManifests = await loadSkillManifestsFromDirectory(this.builtinSkillManifestRoot);
     return [
       ...plugins.map((plugin) => plugin.manifest),
-      ...listBuiltinDomainSkillManifests(),
+      ...fileManifests
+        .filter((manifest) => !pluginIds.has(manifest.id))
+        .map((manifest) => toRuntimeSkillManifest(manifest)),
     ];
   }
 

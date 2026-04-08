@@ -1,7 +1,11 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { parse as parseYaml } from 'yaml';
 import { formatManifestIssues, skillManifestFileSchema, type SkillManifestFile } from './manifest-schema.js';
+import type { SkillDomain, SkillManifest } from './types.js';
+
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 export interface LoadedSkillManifest extends SkillManifestFile {
   manifestPath: string;
@@ -24,6 +28,26 @@ function collectDirectories(rootDir: string): string[] {
     }
   }
   return result.sort((left, right) => left.localeCompare(right));
+}
+
+function hasSkillManifestInDescendants(rootDir: string): boolean {
+  return collectDirectories(rootDir).some((directory) => existsSync(path.join(directory, 'skill.yaml')));
+}
+
+export function resolveBuiltinSkillManifestRoot(): string {
+  const candidates = [
+    path.resolve(process.cwd(), 'backend/dist/agent-skills'),
+    path.resolve(process.cwd(), 'dist/agent-skills'),
+    path.resolve(process.cwd(), 'backend/src/agent-skills'),
+    path.resolve(process.cwd(), 'src/agent-skills'),
+    path.resolve(MODULE_DIR, '../../agent-skills'),
+    path.resolve(MODULE_DIR, '../../src/agent-skills'),
+  ];
+  const matched = candidates.find((candidate) => hasSkillManifestInDescendants(candidate));
+  if (!matched) {
+    throw new Error(`Builtin skill manifest directory not found. Tried: ${candidates.join(', ')}`);
+  }
+  return matched;
 }
 
 function readManifest(manifestPath: string): unknown {
@@ -56,4 +80,28 @@ export async function loadSkillManifestsFromDirectory(rootDir: string): Promise<
   }
 
   return manifests.sort((left, right) => left.id.localeCompare(right.id));
+}
+
+export function toRuntimeSkillManifest(manifest: LoadedSkillManifest): SkillManifest {
+  return {
+    id: manifest.id,
+    domain: manifest.domain as SkillDomain,
+    name: manifest.name,
+    description: manifest.description,
+    triggers: [...manifest.triggers],
+    stages: [...manifest.stages],
+    autoLoadByDefault: manifest.autoLoadByDefault,
+    structureType: manifest.structureType as SkillManifest['structureType'],
+    structuralTypeKeys: [...manifest.structuralTypeKeys] as SkillManifest['structuralTypeKeys'],
+    requires: [...manifest.requires],
+    conflicts: [...manifest.conflicts],
+    capabilities: [...manifest.capabilities],
+    enabledTools: [...manifest.grants],
+    providedTools: [...manifest.providesTools],
+    supportedAnalysisTypes: [...manifest.supportedAnalysisTypes] as SkillManifest['supportedAnalysisTypes'],
+    supportedModelFamilies: [...manifest.supportedModelFamilies],
+    materialFamilies: [...manifest.materialFamilies] as SkillManifest['materialFamilies'],
+    priority: manifest.priority,
+    compatibility: { ...manifest.compatibility },
+  };
 }
