@@ -17,6 +17,7 @@ triggers:
   - variable load
   - 可变荷载
 stages:
+  - intent
   - analysis
 structureType: unknown
 structuralTypeKeys: []
@@ -30,8 +31,8 @@ conflicts: []
 autoLoadByDefault: true
 priority: 95
 compatibility:
-  minRuntimeVersion: 1.0.0
-  skillApiVersion: 1.0.0
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
 version: 1.0.0
 scenarioKeys:
   - frame

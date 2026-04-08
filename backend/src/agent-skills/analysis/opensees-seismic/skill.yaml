@@ -14,6 +14,7 @@ triggers:
   - opensees seismic
   - response spectrum
 stages:
+  - intent
   - analysis
 structureType: unknown
 structuralTypeKeys: []

@@ -12,6 +12,7 @@ triggers:
   - 高层混凝土规程
   - high-rise concrete
 stages:
+  - intent
   - analysis
   - design
 structureType: unknown

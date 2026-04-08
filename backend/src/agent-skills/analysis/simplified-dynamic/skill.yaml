@@ -13,6 +13,7 @@ triggers:
   - simplified dynamic
   - lightweight dynamic
 stages:
+  - intent
   - analysis
 structureType: unknown
 structuralTypeKeys: []

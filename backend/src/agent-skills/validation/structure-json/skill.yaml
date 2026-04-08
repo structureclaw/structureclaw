@@ -15,6 +15,7 @@ triggers:
   - json check
   - schema validation
 stages:
+  - intent
   - draft
   - analysis
 structureType: unknown

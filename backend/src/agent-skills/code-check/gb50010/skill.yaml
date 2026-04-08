@@ -12,6 +12,7 @@ triggers:
   - 混凝土规范
   - concrete code
 stages:
+  - intent
   - analysis
   - design
 structureType: unknown

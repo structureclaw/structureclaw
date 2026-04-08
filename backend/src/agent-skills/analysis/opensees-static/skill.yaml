@@ -14,6 +14,7 @@ triggers:
   - opensees static
   - static analysis
 stages:
+  - intent
   - analysis
 structureType: unknown
 structuralTypeKeys: []

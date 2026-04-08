@@ -13,6 +13,7 @@ triggers:
   - simplified static
   - fast static analysis
 stages:
+  - intent
   - analysis
 structureType: unknown
 structuralTypeKeys: []

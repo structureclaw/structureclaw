@@ -17,6 +17,7 @@ triggers:
   - 反力
   - 内力
 stages:
+  - intent
   - analysis
 structureType: unknown
 structuralTypeKeys: []

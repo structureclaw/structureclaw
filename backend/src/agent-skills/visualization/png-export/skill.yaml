@@ -15,6 +15,7 @@ triggers:
   - 保存图片
   - 下载
 stages:
+  - intent
   - analysis
 structureType: unknown
 structuralTypeKeys: []

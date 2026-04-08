@@ -1126,6 +1126,39 @@ async function validateAgentManifestLoader(context) {
     await fsp.mkdir(path.dirname(filePath), { recursive: true });
     await fsp.writeFile(filePath, content, "utf8");
   };
+  const STAGE_FILE_NAMES = ["intent.md", "draft.md", "analysis.md", "design.md"];
+
+  const assertDeclaredStagesCoverMarkdownAssets = async (skills, domainRoot, messagePrefix) => {
+    for (const skill of skills) {
+      const skillDir = path.dirname(skill.manifestPath);
+      const relativeSkillDir = path.relative(domainRoot, skillDir) || skill.id;
+      const entries = await fsp.readdir(skillDir);
+      const stageAssets = STAGE_FILE_NAMES
+        .filter((fileName) => entries.includes(fileName))
+        .map((fileName) => fileName.replace(/\.md$/, ""))
+        .sort();
+      const declaredStages = Array.isArray(skill.stages) ? [...skill.stages].sort() : [];
+      for (const stage of stageAssets) {
+        assert(
+          declaredStages.includes(stage),
+          `${messagePrefix} ${relativeSkillDir} should declare stage '${stage}' in skill.yaml when ${stage}.md exists`,
+        );
+      }
+    }
+  };
+
+  const assertBuiltinCompatibilityMatchesRuntimeDefaults = (skills, messagePrefix) => {
+    for (const skill of skills) {
+      assert(
+        skill.compatibility?.minRuntimeVersion === "0.1.0",
+        `${messagePrefix} ${skill.id} should target builtin runtime minRuntimeVersion 0.1.0`,
+      );
+      assert(
+        skill.compatibility?.skillApiVersion === "v1",
+        `${messagePrefix} ${skill.id} should target builtin skillApiVersion v1`,
+      );
+    }
+  };
 
   try {
     await write(
@@ -1358,6 +1391,15 @@ async function validateAgentManifestLoader(context) {
       builtinStructureTypeSkills.every((skill) => Array.isArray(skill.grants) && skill.grants.length > 0),
       "builtin structure-type skill manifests should declare explicit tool grants",
     );
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinStructureTypeSkills,
+      builtinStructureTypeRoot,
+      "builtin structure-type skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinStructureTypeSkills,
+      "builtin structure-type skill manifest",
+    );
     const builtinAnalysisRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "analysis");
     const builtinAnalysisSkills = await loadSkillManifestsFromDirectory(builtinAnalysisRoot);
     const builtinAnalysisIds = builtinAnalysisSkills.map((skill) => skill.id).sort();
@@ -1381,6 +1423,15 @@ async function validateAgentManifestLoader(context) {
       builtinAnalysisSkills.every((skill) => Array.isArray(skill.grants) && skill.grants.includes("run_analysis")),
       "builtin analysis skill manifests should declare explicit run_analysis grants",
     );
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinAnalysisSkills,
+      builtinAnalysisRoot,
+      "builtin analysis skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinAnalysisSkills,
+      "builtin analysis skill manifest",
+    );
     const builtinCodeCheckRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "code-check");
     const builtinCodeCheckSkills = await loadSkillManifestsFromDirectory(builtinCodeCheckRoot);
     const builtinCodeCheckIds = builtinCodeCheckSkills.map((skill) => skill.id).sort();
@@ -1400,6 +1451,15 @@ async function validateAgentManifestLoader(context) {
     assert(
       builtinCodeCheckSkills.every((skill) => Array.isArray(skill.grants) && skill.grants.includes("run_code_check")),
       "builtin code-check skill manifests should declare explicit run_code_check grants",
+    );
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinCodeCheckSkills,
+      builtinCodeCheckRoot,
+      "builtin code-check skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinCodeCheckSkills,
+      "builtin code-check skill manifest",
     );
     const builtinLoadBoundaryRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "load-boundary");
     const builtinLoadBoundarySkills = await loadSkillManifestsFromDirectory(builtinLoadBoundaryRoot);
@@ -1427,6 +1487,37 @@ async function validateAgentManifestLoader(context) {
     assert(Array.isArray(boundarySkill?.boundaryTypes) && boundarySkill.boundaryTypes.includes("fixed"), "boundary-condition manifest should preserve boundaryTypes metadata");
     const combinationSkill = builtinLoadBoundarySkills.find((skill) => skill.id === "load-combination");
     assert(Array.isArray(combinationSkill?.combinationTypes) && combinationSkill.combinationTypes.includes("ULS"), "load-combination manifest should preserve combinationTypes metadata");
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinLoadBoundarySkills,
+      builtinLoadBoundaryRoot,
+      "builtin load-boundary skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinLoadBoundarySkills,
+      "builtin load-boundary skill manifest",
+    );
+    const builtinValidationRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "validation");
+    const builtinValidationSkills = await loadSkillManifestsFromDirectory(builtinValidationRoot);
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinValidationSkills,
+      builtinValidationRoot,
+      "builtin validation skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinValidationSkills,
+      "builtin validation skill manifest",
+    );
+    const builtinReportExportRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "report-export");
+    const builtinReportExportSkills = await loadSkillManifestsFromDirectory(builtinReportExportRoot);
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinReportExportSkills,
+      builtinReportExportRoot,
+      "builtin report-export skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinReportExportSkills,
+      "builtin report-export skill manifest",
+    );
     const builtinVisualizationRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "visualization");
     const builtinVisualizationSkills = await loadSkillManifestsFromDirectory(builtinVisualizationRoot);
     const builtinVisualizationIds = builtinVisualizationSkills.map((skill) => skill.id).sort();
@@ -1437,6 +1528,15 @@ async function validateAgentManifestLoader(context) {
         "visualization-png-export",
       ]),
       "skill manifest loader should discover builtin visualization skills from real skill.yaml files",
+    );
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinVisualizationSkills,
+      builtinVisualizationRoot,
+      "builtin visualization skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinVisualizationSkills,
+      "builtin visualization skill manifest",
     );
 
     console.log("[ok] agent manifest loader contract");

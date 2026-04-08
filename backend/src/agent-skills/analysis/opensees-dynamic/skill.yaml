@@ -15,6 +15,7 @@ triggers:
   - modal analysis
   - time history
 stages:
+  - intent
   - analysis
 structureType: unknown
 structuralTypeKeys: []

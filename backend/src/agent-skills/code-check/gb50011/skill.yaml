@@ -12,6 +12,7 @@ triggers:
   - 抗震规范
   - seismic code
 stages:
+  - intent
   - analysis
   - design
 structureType: unknown

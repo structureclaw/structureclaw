@@ -13,6 +13,7 @@ triggers:
   - simplified seismic
   - lightweight seismic
 stages:
+  - intent
   - analysis
 structureType: unknown
 structuralTypeKeys: []

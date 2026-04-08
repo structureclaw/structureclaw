@@ -12,6 +12,7 @@ triggers:
   - 钢结构规范
   - steel code
 stages:
+  - intent
   - analysis
   - design
 structureType: unknown
