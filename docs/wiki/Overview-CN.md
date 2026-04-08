@@ -21,12 +21,13 @@ StructureClaw 是一个面向 AEC 工作流的 AI 协同结构工程工作台。
 
 | 领域 | 说明 |
 |---|---|
-| `structure-type` | 结构类型识别（梁、框架、桁架、门式刚架、框剪、住宅剪力墙、输电塔等） |
+| `structure-type` | 结构类型识别（梁、框架、桁架、门式刚架，以及通用兜底路径） |
 | `analysis` | OpenSees 与 Simplified 分析执行 |
 | `code-check` | 设计规范校核 |
 | `data-input` | 结构化数据输入解析 |
 | `design` | 结构设计辅助 |
 | `drawing` | 图纸与可视化生成 |
+| `general` | 通用工程技能与共享工作流辅助 |
 | `load-boundary` | 荷载与边界条件处理 |
 | `material` | 材料属性管理 |
 | `report-export` | 报告生成与导出 |
@@ -34,6 +35,8 @@ StructureClaw 是一个面向 AEC 工作流的 AI 协同结构工程工作台。
 | `section` | 截面属性计算 |
 | `validation` | 模型校验 |
 | `visualization` | 三维模型可视化 |
+
+上表表示的是平台稳定 taxonomy。当前运行时成熟度请单独参考 [../skill-runtime-status_CN.md](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/docs/skill-runtime-status_CN.md)。
 
 ## SkillHub
 

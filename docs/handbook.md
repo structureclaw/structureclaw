@@ -199,6 +199,7 @@ Built-in skill domains under `backend/src/agent-skills/`:
 | `data-input` | Structured data input parsing |
 | `design` | Structural design assistance |
 | `drawing` | Drawing and visualization generation |
+| `general` | General-purpose engineering skills and shared workflow helpers |
 | `load-boundary` | Load and boundary condition handling |
 | `material` | Material property management |
 | `report-export` | Report generation and export |
@@ -206,6 +207,10 @@ Built-in skill domains under `backend/src/agent-skills/`:
 | `section` | Cross-section property calculation |
 | `validation` | Model validation checks |
 | `visualization` | 3D model visualization |
+
+The table above is the stable taxonomy, not a claim that every domain is fully runtime-wired today.
+
+Current implementation maturity is tracked separately in [skill-runtime-status.md](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/docs/skill-runtime-status.md), including which domains are currently `active`, `partial`, or only `discoverable`.
 
 ## 10. Quality and Regression
 
@@ -260,8 +265,10 @@ Contribution details: `CONTRIBUTING.md`.
 
 - Protocol reference: `docs/reference.md`
 - Agent architecture: `docs/agent-architecture.md`
+- Skill runtime status: `docs/skill-runtime-status.md`
 - Chinese handbook: `docs/handbook_CN.md`
 - Chinese protocol reference: `docs/reference_CN.md`
 - Chinese agent architecture: `docs/agent-architecture_CN.md`
+- Chinese skill runtime status: `docs/skill-runtime-status_CN.md`
 - English overview: `README.md`
 - Chinese overview: `README_CN.md`

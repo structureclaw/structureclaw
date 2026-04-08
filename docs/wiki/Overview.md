@@ -21,12 +21,13 @@ Built-in skill domains:
 
 | Domain | Description |
 |---|---|
-| `structure-type` | Structural type recognition (beam, frame, truss, portal-frame, frame-shear-wall, residential-shear-wall, transmission-tower, etc.) |
+| `structure-type` | Structural type recognition (beam, frame, truss, portal-frame, and generic fallback paths) |
 | `analysis` | OpenSees and Simplified analysis execution |
 | `code-check` | Design code compliance checking |
 | `data-input` | Structured data input parsing |
 | `design` | Structural design assistance |
 | `drawing` | Drawing and visualization generation |
+| `general` | General-purpose engineering skills and shared workflow helpers |
 | `load-boundary` | Load and boundary condition handling |
 | `material` | Material property management |
 | `report-export` | Report generation and export |
@@ -34,6 +35,8 @@ Built-in skill domains:
 | `section` | Cross-section property calculation |
 | `validation` | Model validation checks |
 | `visualization` | 3D model visualization |
+
+The table above is the stable platform taxonomy. Current runtime maturity is documented separately in [../skill-runtime-status.md](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/docs/skill-runtime-status.md).
 
 ## SkillHub
 

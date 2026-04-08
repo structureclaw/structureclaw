@@ -199,6 +199,7 @@ node .\sclaw stop
 | `data-input` | 结构化数据输入解析 |
 | `design` | 结构设计辅助 |
 | `drawing` | 图纸与可视化生成 |
+| `general` | 通用工程技能与共享工作流辅助 |
 | `load-boundary` | 荷载与边界条件处理 |
 | `material` | 材料属性管理 |
 | `report-export` | 报告生成与导出 |
@@ -206,6 +207,10 @@ node .\sclaw stop
 | `section` | 截面属性计算 |
 | `validation` | 模型校验 |
 | `visualization` | 三维模型可视化 |
+
+上表表示的是稳定 taxonomy，不代表这些 domain 今天都已经完整接入运行时主流程。
+
+当前实现成熟度请查看 [skill-runtime-status_CN.md](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/docs/skill-runtime-status_CN.md)，其中区分了哪些 domain 目前是 `active`、`partial` 或仅 `discoverable`。
 
 ## 10. 质量保障与回归
 
@@ -260,8 +265,10 @@ node tests/runner.mjs backend-regression
 
 - 协议参考：`docs/reference_CN.md`
 - Agent 架构：`docs/agent-architecture_CN.md`
+- Skill 运行时状态：`docs/skill-runtime-status_CN.md`
 - 英文手册：`docs/handbook.md`
 - 英文协议参考：`docs/reference.md`
 - 英文 Agent 架构：`docs/agent-architecture.md`
+- 英文 Skill 运行时状态：`docs/skill-runtime-status.md`
 - 中文总览：`README_CN.md`
 - 英文总览：`README.md`
