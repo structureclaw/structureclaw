@@ -1373,6 +1373,17 @@ async function validateAgentSkillCatalogManifests(context) {
   }
 
   assert(byId.get("generic")?.triggers.includes("load"), "generic structure-type skill should preserve the manifest-level load trigger");
+  const validationSkill = skills.find((skill) => skill.canonicalId === "validation-structure-model");
+  assert(validationSkill, "skill catalog should include validation-structure-model");
+  assert(validationSkill.sourceKinds.includes("file-manifest"), "validation-structure-model should record file-manifest provenance");
+  assert(validationSkill.enabledTools.includes("validate_model"), "validation-structure-model should expose validate_model grant from skill.yaml");
+  assert(validationSkill.aliases.includes("structure-json-validation"), "validation-structure-model should preserve legacy alias");
+
+  const reportSkill = skills.find((skill) => skill.canonicalId === "report-export-builtin");
+  assert(reportSkill, "skill catalog should include report-export-builtin");
+  assert(reportSkill.sourceKinds.includes("file-manifest"), "report-export-builtin should record file-manifest provenance");
+  assert(reportSkill.enabledTools.includes("generate_report"), "report-export-builtin should expose generate_report grant from skill.yaml");
+  assert(reportSkill.triggers.includes("report"), "report-export-builtin should preserve report trigger");
   console.log("[ok] agent skill catalog manifest contract");
 }
 
@@ -1702,6 +1713,8 @@ async function validateAgentCapabilityMatrix(context) {
   assert(payload.foundationToolIds.includes("convert_model"), "foundation tool list should include convert_model");
   const draftTool = payload.tools.find((tool) => tool.id === "draft_model");
   const analysisTool = payload.tools.find((tool) => tool.id === "run_analysis");
+  assert(draftTool?.source === "builtin", "draft_model should project builtin source from tool catalog");
+  assert(analysisTool?.source === "builtin", "run_analysis should project builtin source from tool catalog");
   assert(!Object.prototype.hasOwnProperty.call(draftTool || {}, "runtimeName"), "capability matrix should not expose runtimeName");
   assert(!Object.prototype.hasOwnProperty.call(draftTool || {}, "compatibilityRuntimeName"), "capability matrix should not expose compatibility runtime aliases");
   assert(Array.isArray(analysisTool?.requiresTools), "run_analysis should expose requiresTools");
