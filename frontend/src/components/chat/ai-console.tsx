@@ -231,6 +231,8 @@ type CapabilityMatrixPayload = {
   skillAliasesByCanonicalId?: Record<string, string[]>
 }
 
+const DEFAULT_CONSOLE_SKILL_IDS = ['opensees-static', 'generic'] as const
+
 function resolveCallableTools(
   matrix: CapabilityMatrixPayload | null,
   selectedSkillIds: string[],
@@ -1243,8 +1245,8 @@ export function AIConsole() {
   const [capabilityMatrix, setCapabilityMatrix] = useState<CapabilityMatrixPayload | null>(null)
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
   const [selectedToolIds, setSelectedToolIds] = useState<string[]>([])
-  const [hasExplicitSkillSelection, setHasExplicitSkillSelection] = useState(true)
-  const [hasExplicitToolSelection, setHasExplicitToolSelection] = useState(true)
+  const [hasExplicitSkillSelection, setHasExplicitSkillSelection] = useState(false)
+  const [hasExplicitToolSelection, setHasExplicitToolSelection] = useState(false)
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
   const [latestModelVisualizationSnapshot, setLatestModelVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
   const [latestResultVisualizationSnapshot, setLatestResultVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
@@ -1486,13 +1488,14 @@ export function AIConsole() {
 
       setSelectedSkillIds(validSkillIds)
       setSelectedToolIds(shouldRepairLegacyDefaultTools ? initialDefaultToolIds : validToolIds)
+      setHasExplicitSkillSelection(true)
+      setHasExplicitToolSelection(true)
     } else {
       setSelectedSkillIds(defaultSelectedSkillIds)
       setSelectedToolIds(initialDefaultToolIds)
+      setHasExplicitSkillSelection(false)
+      setHasExplicitToolSelection(false)
     }
-
-    setHasExplicitSkillSelection(true)
-    setHasExplicitToolSelection(true)
     capabilityPreferencesHydratedRef.current = true
   }, [availableSkills, baseCallableToolIds, capabilityMatrixLoaded, defaultSelectedSkillIds, initialDefaultToolIds, skillDomainById, skillNormalization, skillsLoaded])
 
@@ -2106,11 +2109,36 @@ export function AIConsole() {
     try {
       const nextConversationId = await ensureConversation(trimmedInput)
       activeConversationId = nextConversationId
+      const storedPreferences = capabilityPreferencesHydratedRef.current ? null : loadCapabilityPreferences()
+      const storedSkillIds = storedPreferences
+        ? skillNormalization.normalizeSkillIds(storedPreferences.skillIds)
+        : []
+      const hasStoredExplicitSkillSelection = Boolean(storedPreferences)
+      const hasStoredExplicitToolSelection = Boolean(storedPreferences)
       const normalizedSkillIds = skillNormalization.normalizeSkillIds(selectedSkillIds)
+      const fallbackDefaultSkillIds = skillNormalization.normalizeSkillIds(
+        defaultSelectedSkillIds.length > 0
+          ? defaultSelectedSkillIds
+          : [...DEFAULT_CONSOLE_SKILL_IDS]
+      )
+      const effectiveSkillIds = normalizedSkillIds.length > 0
+        ? normalizedSkillIds
+        : hasExplicitSkillSelection
+          ? []
+          : hasStoredExplicitSkillSelection
+            ? storedSkillIds
+            : fallbackDefaultSkillIds
+      const effectiveEnabledToolIds = selectedToolIds.length > 0
+        ? selectedToolIds
+        : hasExplicitToolSelection
+          ? []
+          : hasStoredExplicitToolSelection
+            ? storedPreferences?.toolIds ?? []
+            : undefined
       const contextPayload = {
         locale,
-        skillIds: normalizedSkillIds,
-        enabledToolIds: selectedToolIds,
+        skillIds: effectiveSkillIds,
+        enabledToolIds: effectiveEnabledToolIds,
         model: contextModel,
         modelFormat: contextModel ? 'structuremodel-v1' : undefined,
         autoCodeCheck: hasSelectedCodeCheckSkill || undefined,
