@@ -403,8 +403,15 @@ export class AgentCapabilityService {
       return acc;
     }, {});
 
-    const enginePayload = await this.engineCatalog.listEngines();
-    const rawEngines = Array.isArray(enginePayload?.engines) ? enginePayload.engines.map((engine) => engine as unknown as Record<string, unknown>) : [];
+    let rawEngines: Record<string, unknown>[] = [];
+    try {
+      const enginePayload = await this.engineCatalog.listEngines();
+      rawEngines = Array.isArray(enginePayload?.engines)
+        ? enginePayload.engines.map((engine) => engine as unknown as Record<string, unknown>)
+        : [];
+    } catch {
+      rawEngines = [];
+    }
     const engines: CapabilityEngine[] = rawEngines
       .filter((engine) => typeof engine.id === 'string' && engine.id.trim().length > 0)
       .map((engine) => ({

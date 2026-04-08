@@ -2531,6 +2531,18 @@ async function validateAgentCapabilityMatrix(context) {
     assert(dynamicPayload.appliedAnalysisType === "dynamic", "payload should echo applied analysis type");
     assert(dynamicPayload.filteredEngineReasonsBySkill.truss["engine-truss-a"].includes("analysis_type_mismatch"), "dynamic matrix should mark analysis type mismatch for static-only truss engine");
 
+    AnalysisEngineCatalogService.prototype.listEngines = async function mockListEnginesFailure() {
+      throw new Error("simulated engine catalog failure");
+    };
+
+    const degradedResponse = await app.inject({ method: "GET", url: "/api/v1/agent/capability-matrix" });
+    assert(degradedResponse.statusCode === 200, "capability matrix route should degrade instead of failing when engine discovery errors");
+    const degradedPayload = degradedResponse.json();
+    assert(Array.isArray(degradedPayload.engines) && degradedPayload.engines.length === 0, "degraded capability matrix should surface an empty engine list");
+    assert(Array.isArray(degradedPayload.tools) && degradedPayload.tools.some((tool) => tool.id === "draft_model"), "degraded capability matrix should still expose builtin tools");
+    assert(Array.isArray(degradedPayload.skills) && degradedPayload.skills.some((skill) => skill.id === "beam"), "degraded capability matrix should still expose skills");
+    assert(Array.isArray(degradedPayload.validEngineIdsBySkill.beam) && degradedPayload.validEngineIdsBySkill.beam.length === 0, "degraded capability matrix should zero out compatible engine lists");
+
     console.log("[ok] agent capability matrix contract");
   } finally {
     AgentSkillRuntime.prototype.listSkillManifests = originalListSkillManifests;
