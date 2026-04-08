@@ -252,29 +252,31 @@ export async function planNextStepWithLlm(
     `Planner context: ${JSON.stringify(snapshot)}`,
   ].join('\n');
 
+  let raw: string;
   try {
     const aiMessage = await llm.invoke(prompt);
-    const raw = typeof aiMessage.content === 'string'
+    raw = typeof aiMessage.content === 'string'
       ? aiMessage.content
       : JSON.stringify(aiMessage.content);
-    const normalized = parsePlannerResponse(raw, allowedKinds)
-      || await repairPlannerResponse(llm, raw, {
-        locale: options.locale,
-        allowedKinds,
-        availableToolIds,
-      });
-    if (!normalized) {
-      throw new Error('LLM_PLANNER_INVALID_RESPONSE');
-    }
-    return {
-      kind: normalized.kind,
-      replyMode: normalized.replyMode,
-      planningDirective: 'auto',
-      rationale: 'llm',
-    };
   } catch {
+    throw new Error('LLM_PLANNER_UNAVAILABLE');
+  }
+
+  const normalized = parsePlannerResponse(raw, allowedKinds)
+    || await repairPlannerResponse(llm, raw, {
+      locale: options.locale,
+      allowedKinds,
+      availableToolIds,
+    });
+  if (!normalized) {
     throw new Error('LLM_PLANNER_INVALID_RESPONSE');
   }
+  return {
+    kind: normalized.kind,
+    replyMode: normalized.replyMode,
+    planningDirective: 'auto',
+    rationale: 'llm',
+  };
 }
 
 // ---------------------------------------------------------------------------
