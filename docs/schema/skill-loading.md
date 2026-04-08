@@ -95,6 +95,20 @@ The current `/api/v1/agent/capability-matrix` also exposes `runtimeStatus` for e
 - `discoverable`: present in the taxonomy, but not yet part of the main orchestration flow.
 - `reserved`: kept as an architectural slot without current runtime capability.
 
+### 2.4 Analysis Engine Availability and Skill Impact
+
+`engineId` declared inside a skill is a static routing hint, not a guarantee that the engine is usable at runtime.
+
+- A skill may declare which analysis engine family it targets, for example OpenSees today, or future integrations such as YJK / PKPM.
+- The actual runtime engine set comes from the engine catalog and current runtime health state.
+- Before an analysis skill can participate in execution, the runtime must verify that the candidate engine is:
+  - enabled
+  - available
+  - compatible with the required model family
+  - compatible with the requested analysis type
+
+Therefore, engine availability is a runtime gate that directly affects downstream skill activation and execution eligibility. A skill may be correctly loaded in the taxonomy, but still be filtered out for execution if its required engine is currently unavailable or incompatible.
+
 ## 3. External / SkillHub Skill Packaging and Loading
 
 ### 3.1 Package Metadata

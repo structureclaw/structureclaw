@@ -95,6 +95,20 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 - `discoverable`：已纳入 taxonomy，但当前尚未进入主编排。
 - `reserved`：仅保留架构位点，当前未提供实际运行时能力。
 
+### 2.4 分析引擎可用性与 Skill 影响
+
+skill 内声明的 `engineId` 只是静态路由提示，并不等于该 engine 在运行时一定可用。
+
+- skill 可以声明自己面向的分析引擎族，例如当前的 OpenSees，或未来可能接入的 YJK / PKPM。
+- 真正的运行时 engine 集合来自 engine catalog 以及当前运行健康状态。
+- analysis skill 在进入执行前，runtime 必须校验候选 engine 是否：
+  - 已启用
+  - 当前可用
+  - 与所需结构模型族兼容
+  - 与请求的分析类型兼容
+
+因此，engine 可用性是一个运行时闸门，会直接影响后续 skill 是否能够参与执行。某个 skill 可以已经成功加载进 taxonomy，但如果它依赖的 engine 当前不可用或不兼容，仍然必须在执行阶段被过滤掉。
+
 ## 3. 外部 / SkillHub 技能打包与加载
 
 ### 3.1 包元数据
