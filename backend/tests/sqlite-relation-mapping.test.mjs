@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, test } from '@jest/globals';
 import { prisma } from '../dist/utils/database.js';
 import { UserService } from '../dist/services/user.js';
-import { SkillService } from '../dist/services/skill.js';
+import { LegacySkillCatalogService } from '../dist/services/skill.js';
 import { CommunityService } from '../dist/services/community.js';
 
 describe('sqlite relation-backed array mapping', () => {
@@ -84,16 +84,16 @@ describe('sqlite relation-backed array mapping', () => {
       },
     ]);
 
-    const svc = new SkillService();
-    const result = await svc.listSkills({});
+    const svc = new LegacySkillCatalogService();
+    const result = await svc.listCatalogSkills({});
 
     expect(result[0].tags).toEqual(['beam', 'design']);
     expect('tagItems' in result[0]).toBe(false);
   });
 
   test('should write skill tags through relation rows and still return tags arrays', async () => {
-    const svc = new SkillService();
-    const result = await svc.createSkill({
+    const svc = new LegacySkillCatalogService();
+    const result = await svc.createCatalogSkill({
       name: 'Beam Design',
       description: 'desc',
       category: 'design',

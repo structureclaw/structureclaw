@@ -6,13 +6,21 @@ import { cache } from '../dist/utils/cache.js';
 
 function createServiceWithDefaultSkills() {
   const svc = new AgentService();
-  const defaultSkillIds = svc.listSkills().map((skill) => skill.id);
+  let defaultSkillIdsPromise;
 
-  const applyDefaultSkills = (params) => {
+  const getDefaultSkillIds = async () => {
+    if (!defaultSkillIdsPromise) {
+      defaultSkillIdsPromise = svc.listSkills().then((skills) => skills.map((skill) => skill.id));
+    }
+    return defaultSkillIdsPromise;
+  };
+
+  const applyDefaultSkills = async (params) => {
     const context = params?.context || {};
     if (context.skillIds !== undefined) {
       return params;
     }
+    const defaultSkillIds = await getDefaultSkillIds();
     return {
       ...params,
       context: {
@@ -23,55 +31,61 @@ function createServiceWithDefaultSkills() {
   };
 
   const originalRun = svc.run.bind(svc);
-  svc.run = async (params) => originalRun(applyDefaultSkills(params));
+  svc.run = async (params) => originalRun(await applyDefaultSkills(params));
 
   const runWithStrategy = svc.runWithStrategy.bind(svc);
   svc.runChatOnly = async (params) => runWithStrategy(
-    applyDefaultSkills(params),
+    await applyDefaultSkills(params),
     { planningDirective: 'auto', allowToolCall: false },
   );
   svc.runForcedExecution = async (params) => runWithStrategy(
-    applyDefaultSkills(params),
+    await applyDefaultSkills(params),
     { planningDirective: 'force_tool', allowToolCall: true },
   );
 
   const originalRunStream = svc.runStream.bind(svc);
   svc.runStream = async function* (params) {
-    yield* originalRunStream(applyDefaultSkills(params));
+    yield* originalRunStream(await applyDefaultSkills(params));
   };
 
   const runStreamWithStrategy = svc.runStreamWithStrategy.bind(svc);
   svc.runChatOnlyStream = async function* (params) {
     yield* runStreamWithStrategy(
-      applyDefaultSkills(params),
+      await applyDefaultSkills(params),
       { planningDirective: 'auto', allowToolCall: false },
     );
   };
   svc.runForcedExecutionStream = async function* (params) {
     yield* runStreamWithStrategy(
-      applyDefaultSkills(params),
+      await applyDefaultSkills(params),
       { planningDirective: 'force_tool', allowToolCall: true },
     );
   };
 
   const originalTextToModelDraft = svc.textToModelDraft.bind(svc);
-  svc.textToModelDraft = async (message, existingState, locale, skillIds) => (
+  svc.textToModelDraft = async (message, existingState, locale, skillIds) => {
+    const resolvedSkillIds = skillIds === undefined ? await getDefaultSkillIds() : skillIds;
+    return (
     originalTextToModelDraft(
       message,
       existingState,
       locale,
-      skillIds === undefined ? defaultSkillIds : skillIds,
+      resolvedSkillIds,
     )
-  );
+    );
+  };
 
   const originalGetConversationSessionSnapshot = svc.getConversationSessionSnapshot.bind(svc);
-  svc.getConversationSessionSnapshot = async (conversationId, locale, skillIds) => (
+  svc.getConversationSessionSnapshot = async (conversationId, locale, skillIds) => {
+    const resolvedSkillIds = skillIds === undefined ? await getDefaultSkillIds() : skillIds;
+    return (
     originalGetConversationSessionSnapshot(
       conversationId,
       locale,
-      skillIds === undefined ? defaultSkillIds : skillIds,
+      resolvedSkillIds,
     )
-  );
+    );
+  };
 
   return svc;
 }

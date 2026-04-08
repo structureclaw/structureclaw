@@ -4,10 +4,31 @@ import {
   normalizeBuiltInManifestToSkillPackage,
   normalizeSkillHubCatalogEntryToSkillPackage,
 } from '../dist/skill-shared/package.js';
+import {
+  loadSkillManifestsFromDirectorySync,
+  resolveBuiltinSkillManifestRoot,
+  toRuntimeSkillManifest,
+} from '../dist/agent-runtime/skill-manifest-loader.js';
 import { resolveToolingForSkillManifests } from '../dist/agent-runtime/tool-registry.js';
-import { manifest as frameManifest } from '../dist/agent-skills/structure-type/frame/manifest.js';
-import { manifest as genericManifest } from '../dist/agent-skills/structure-type/generic/manifest.js';
 import { AgentSkillHubService } from '../dist/services/agent-skillhub.js';
+
+const builtinManifestById = new Map(
+  loadSkillManifestsFromDirectorySync(resolveBuiltinSkillManifestRoot()).map((manifest) => {
+    const runtimeManifest = toRuntimeSkillManifest(manifest);
+    return [runtimeManifest.id, runtimeManifest];
+  }),
+);
+
+function requireBuiltinManifest(id) {
+  const manifest = builtinManifestById.get(id);
+  if (!manifest) {
+    throw new Error(`Expected builtin manifest "${id}" to exist in fixture set.`);
+  }
+  return manifest;
+}
+
+const frameManifest = requireBuiltinManifest('frame');
+const genericManifest = requireBuiltinManifest('generic');
 
 describe('shared skill package metadata', () => {
   test('should normalize built-in manifests into shared package metadata', () => {

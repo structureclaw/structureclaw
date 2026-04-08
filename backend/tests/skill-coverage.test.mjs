@@ -6,14 +6,14 @@ jest.unstable_mockModule('../dist/utils/demo-data.js', () => ({
 }));
 
 const { ensureUserId } = await import('../dist/utils/demo-data.js');
-const { SkillService } = await import('../dist/services/skill.js');
+const { LegacySkillCatalogService } = await import('../dist/services/skill.js');
 
-describe('SkillService', () => {
+describe('LegacySkillCatalogService', () => {
   let svc;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    svc = new SkillService();
+    svc = new LegacySkillCatalogService();
   });
 
   // ---------------------------------------------------------------------------
@@ -32,7 +32,7 @@ describe('SkillService', () => {
       ];
       prisma.skill.findMany = jest.fn().mockResolvedValue(raw);
 
-      const result = await svc.listSkills({});
+      const result = await svc.listCatalogSkills({});
 
       expect(result).toEqual([
         {
@@ -48,7 +48,7 @@ describe('SkillService', () => {
     test('filters by category', async () => {
       prisma.skill.findMany = jest.fn().mockResolvedValue([]);
 
-      await svc.listSkills({ category: 'analysis' });
+      await svc.listCatalogSkills({ category: 'analysis' });
 
       const where = prisma.skill.findMany.mock.calls[0][0].where;
       expect(where.category).toBe('analysis');
@@ -58,7 +58,7 @@ describe('SkillService', () => {
     test('filters by search term with OR conditions', async () => {
       prisma.skill.findMany = jest.fn().mockResolvedValue([]);
 
-      await svc.listSkills({ search: 'seismic' });
+      await svc.listCatalogSkills({ search: 'seismic' });
 
       const where = prisma.skill.findMany.mock.calls[0][0].where;
       expect(where.OR).toEqual([
@@ -71,7 +71,7 @@ describe('SkillService', () => {
     test('applies both category and search filters together', async () => {
       prisma.skill.findMany = jest.fn().mockResolvedValue([]);
 
-      await svc.listSkills({ category: 'design', search: 'beam' });
+      await svc.listCatalogSkills({ category: 'design', search: 'beam' });
 
       const where = prisma.skill.findMany.mock.calls[0][0].where;
       expect(where.category).toBe('design');
@@ -82,7 +82,7 @@ describe('SkillService', () => {
     test('defaults isPublic true when no params provided', async () => {
       prisma.skill.findMany = jest.fn().mockResolvedValue([]);
 
-      await svc.listSkills({});
+      await svc.listCatalogSkills({});
 
       const where = prisma.skill.findMany.mock.calls[0][0].where;
       expect(where.isPublic).toBe(true);
@@ -91,7 +91,7 @@ describe('SkillService', () => {
     test('orders by installs desc then rating desc', async () => {
       prisma.skill.findMany = jest.fn().mockResolvedValue([]);
 
-      await svc.listSkills({});
+      await svc.listCatalogSkills({});
 
       const call = prisma.skill.findMany.mock.calls[0][0];
       expect(call.orderBy).toEqual([{ installs: 'desc' }, { rating: 'desc' }]);
@@ -100,7 +100,7 @@ describe('SkillService', () => {
     test('limits results to 100', async () => {
       prisma.skill.findMany = jest.fn().mockResolvedValue([]);
 
-      await svc.listSkills({});
+      await svc.listCatalogSkills({});
 
       const call = prisma.skill.findMany.mock.calls[0][0];
       expect(call.take).toBe(100);
@@ -109,7 +109,7 @@ describe('SkillService', () => {
     test('returns empty array when no skills found', async () => {
       prisma.skill.findMany = jest.fn().mockResolvedValue([]);
 
-      const result = await svc.listSkills({ category: 'nonexistent' });
+      const result = await svc.listCatalogSkills({ category: 'nonexistent' });
 
       expect(result).toEqual([]);
     });
@@ -118,7 +118,7 @@ describe('SkillService', () => {
       const raw = [{ id: 's1', name: 'NoTags', tagItems: null }];
       prisma.skill.findMany = jest.fn().mockResolvedValue(raw);
 
-      const result = await svc.listSkills({});
+      const result = await svc.listCatalogSkills({});
 
       expect(result[0].tags).toEqual([]);
     });
@@ -127,7 +127,7 @@ describe('SkillService', () => {
       const raw = [{ id: 's1', name: 'NoTags' }];
       prisma.skill.findMany = jest.fn().mockResolvedValue(raw);
 
-      const result = await svc.listSkills({});
+      const result = await svc.listCatalogSkills({});
 
       expect(result[0].tags).toEqual([]);
     });
@@ -135,7 +135,7 @@ describe('SkillService', () => {
     test('includes tagItems with value select and ordering', async () => {
       prisma.skill.findMany = jest.fn().mockResolvedValue([]);
 
-      await svc.listSkills({});
+      await svc.listCatalogSkills({});
 
       const call = prisma.skill.findMany.mock.calls[0][0];
       expect(call.include).toEqual({
@@ -161,7 +161,7 @@ describe('SkillService', () => {
       };
       prisma.skill.findUnique = jest.fn().mockResolvedValue(raw);
 
-      const result = await svc.getSkill('s1');
+      const result = await svc.getCatalogSkill('s1');
 
       expect(result).toEqual({
         id: 's1',
@@ -175,7 +175,7 @@ describe('SkillService', () => {
     test('returns null when skill not found', async () => {
       prisma.skill.findUnique = jest.fn().mockResolvedValue(null);
 
-      const result = await svc.getSkill('nonexistent');
+      const result = await svc.getCatalogSkill('nonexistent');
 
       expect(result).toBeNull();
     });
@@ -183,7 +183,7 @@ describe('SkillService', () => {
     test('includes tagItems, authorUser, and reviews relations', async () => {
       prisma.skill.findUnique = jest.fn().mockResolvedValue(null);
 
-      await svc.getSkill('s1');
+      await svc.getCatalogSkill('s1');
 
       const call = prisma.skill.findUnique.mock.calls[0][0];
       expect(call.include.tagItems).toBeDefined();
@@ -200,7 +200,7 @@ describe('SkillService', () => {
       const raw = { id: 's1', name: 'Test', tagItems: null };
       prisma.skill.findUnique = jest.fn().mockResolvedValue(raw);
 
-      const result = await svc.getSkill('s1');
+      const result = await svc.getCatalogSkill('s1');
 
       expect(result.tags).toEqual([]);
     });
@@ -233,7 +233,7 @@ describe('SkillService', () => {
       };
       prisma.skill.create = jest.fn().mockResolvedValue(created);
 
-      const result = await svc.createSkill(baseParams);
+      const result = await svc.createCatalogSkill(baseParams);
 
       expect(result).toEqual({
         id: 's-new',
@@ -256,7 +256,7 @@ describe('SkillService', () => {
       const created = { id: 's-empty', name: 'Empty', tagItems: [] };
       prisma.skill.create = jest.fn().mockResolvedValue(created);
 
-      const result = await svc.createSkill({ ...baseParams, tags: [] });
+      const result = await svc.createCatalogSkill({ ...baseParams, tags: [] });
 
       expect(result.tags).toEqual([]);
       const call = prisma.skill.create.mock.calls[0][0];
@@ -266,7 +266,7 @@ describe('SkillService', () => {
     test('includes all provided fields in create data', async () => {
       prisma.skill.create = jest.fn().mockResolvedValue({ id: 's1', tagItems: [] });
 
-      await svc.createSkill(baseParams);
+      await svc.createCatalogSkill(baseParams);
 
       const data = prisma.skill.create.mock.calls[0][0].data;
       expect(data.description).toBe('A test skill');
@@ -281,7 +281,7 @@ describe('SkillService', () => {
     test('propagates error when prisma create fails', async () => {
       prisma.skill.create = jest.fn().mockRejectedValue(new Error('db write error'));
 
-      await expect(svc.createSkill(baseParams)).rejects.toThrow('db write error');
+      await expect(svc.createCatalogSkill(baseParams)).rejects.toThrow('db write error');
     });
   });
 
@@ -294,7 +294,7 @@ describe('SkillService', () => {
       prisma.projectSkill.create = jest.fn();
       prisma.skill.update = jest.fn();
 
-      const result = await svc.installSkill('skill-1', 'proj-1', 'user-1');
+      const result = await svc.installCatalogSkill('skill-1', 'proj-1', 'user-1');
 
       expect(result).toEqual({ success: true, message: '技能已安装' });
       expect(prisma.projectSkill.create).not.toHaveBeenCalled();
@@ -306,7 +306,7 @@ describe('SkillService', () => {
       prisma.projectSkill.create = jest.fn().mockResolvedValue({ id: 'ps-new' });
       prisma.skill.update = jest.fn().mockResolvedValue({});
 
-      const result = await svc.installSkill('skill-1', 'proj-1', 'user-1');
+      const result = await svc.installCatalogSkill('skill-1', 'proj-1', 'user-1');
 
       expect(result).toEqual({ success: true, message: '技能安装成功' });
       expect(prisma.projectSkill.create).toHaveBeenCalledWith({
@@ -323,7 +323,7 @@ describe('SkillService', () => {
       prisma.projectSkill.create = jest.fn().mockResolvedValue({ id: 'ps-new' });
       prisma.skill.update = jest.fn().mockResolvedValue({});
 
-      const result = await svc.installSkill('skill-1', 'proj-1');
+      const result = await svc.installCatalogSkill('skill-1', 'proj-1');
 
       expect(result.success).toBe(true);
     });
@@ -331,7 +331,7 @@ describe('SkillService', () => {
     test('propagates error when findFirst fails', async () => {
       prisma.projectSkill.findFirst = jest.fn().mockRejectedValue(new Error('db error'));
 
-      await expect(svc.installSkill('skill-1', 'proj-1')).rejects.toThrow('db error');
+      await expect(svc.installCatalogSkill('skill-1', 'proj-1')).rejects.toThrow('db error');
     });
   });
 
@@ -342,7 +342,7 @@ describe('SkillService', () => {
     test('throws when skill does not exist', async () => {
       prisma.skill.findUnique = jest.fn().mockResolvedValue(null);
 
-      await expect(svc.invokeSkill('nonexistent', {})).rejects.toThrow('技能不存在');
+      await expect(svc.invokeCatalogSkill('nonexistent', {})).rejects.toThrow('技能不存在');
     });
 
     test('throws when skill config has no handler', async () => {
@@ -351,7 +351,7 @@ describe('SkillService', () => {
         config: { triggers: ['test'] },
       });
 
-      await expect(svc.invokeSkill('s1', {})).rejects.toThrow('技能配置无效');
+      await expect(svc.invokeCatalogSkill('s1', {})).rejects.toThrow('技能配置无效');
     });
 
     test('throws when skill config is null', async () => {
@@ -360,7 +360,7 @@ describe('SkillService', () => {
         config: null,
       });
 
-      await expect(svc.invokeSkill('s1', {})).rejects.toThrow('技能配置无效');
+      await expect(svc.invokeCatalogSkill('s1', {})).rejects.toThrow('技能配置无效');
     });
 
     test('records execution and returns handler result for beam-design', async () => {
@@ -370,7 +370,7 @@ describe('SkillService', () => {
       });
       prisma.skillExecution.create = jest.fn().mockResolvedValue({ id: 'exec-1' });
 
-      const result = await svc.invokeSkill('s1', { M: 100, h: 500 }, 'user-1');
+      const result = await svc.invokeCatalogSkill('s1', { M: 100, h: 500 }, 'user-1');
 
       expect(prisma.skillExecution.create).toHaveBeenCalledWith({
         data: {
@@ -390,7 +390,7 @@ describe('SkillService', () => {
       });
       prisma.skillExecution.create = jest.fn().mockResolvedValue({ id: 'exec-1' });
 
-      await svc.invokeSkill('s1', { M: 50, h: 400 });
+      await svc.invokeCatalogSkill('s1', { M: 50, h: 400 });
 
       expect(prisma.skillExecution.create).toHaveBeenCalledWith({
         data: {
@@ -409,7 +409,7 @@ describe('SkillService', () => {
       prisma.skillExecution.create = jest.fn().mockResolvedValue({});
 
       await expect(
-        svc.invokeSkill('s1', {}),
+        svc.invokeCatalogSkill('s1', {}),
       ).rejects.toThrow('未知的技能处理器: unknown-handler');
     });
   });
@@ -425,7 +425,7 @@ describe('SkillService', () => {
       prisma.skillReview.aggregate = jest.fn().mockResolvedValue({ _avg: { rating: 4.5 } });
       prisma.skill.update = jest.fn().mockResolvedValue({});
 
-      const result = await svc.rateSkill('s1', 'user-1', 5, 'Great');
+      const result = await svc.rateCatalogSkill('s1', 'user-1', 5, 'Great');
 
       expect(result).toEqual(review);
       expect(prisma.skillReview.upsert).toHaveBeenCalledWith({
@@ -445,7 +445,7 @@ describe('SkillService', () => {
       prisma.skillReview.aggregate = jest.fn().mockResolvedValue({ _avg: { rating: 3 } });
       prisma.skill.update = jest.fn().mockResolvedValue({});
 
-      await svc.rateSkill('s1', undefined, 3);
+      await svc.rateCatalogSkill('s1', undefined, 3);
 
       expect(ensureUserId).toHaveBeenCalledWith(undefined);
       const upsertWhere = prisma.skillReview.upsert.mock.calls[0][0].where;
@@ -459,7 +459,7 @@ describe('SkillService', () => {
       prisma.skillReview.aggregate = jest.fn().mockResolvedValue({ _avg: { rating: 4 } });
       prisma.skill.update = jest.fn().mockResolvedValue({});
 
-      const result = await svc.rateSkill('s1', 'user-1', 4, 'Updated');
+      const result = await svc.rateCatalogSkill('s1', 'user-1', 4, 'Updated');
 
       expect(result.rating).toBe(4);
       const call = prisma.skillReview.upsert.mock.calls[0][0];
@@ -472,7 +472,7 @@ describe('SkillService', () => {
       prisma.skillReview.aggregate = jest.fn().mockResolvedValue({ _avg: { rating: null } });
       prisma.skill.update = jest.fn().mockResolvedValue({});
 
-      await svc.rateSkill('s1', 'user-1', 2);
+      await svc.rateCatalogSkill('s1', 'user-1', 2);
 
       expect(prisma.skill.update).toHaveBeenCalledWith({
         where: { id: 's1' },
@@ -486,7 +486,7 @@ describe('SkillService', () => {
       prisma.skillReview.aggregate = jest.fn().mockResolvedValue({ _avg: { rating: 5 } });
       prisma.skill.update = jest.fn().mockResolvedValue({});
 
-      await svc.rateSkill('s1', 'user-1', 5);
+      await svc.rateCatalogSkill('s1', 'user-1', 5);
 
       const call = prisma.skillReview.upsert.mock.calls[0][0];
       expect(call.create.comment).toBeUndefined();
@@ -497,7 +497,7 @@ describe('SkillService', () => {
       ensureUserId.mockResolvedValue('user-1');
       prisma.skillReview.upsert = jest.fn().mockRejectedValue(new Error('constraint'));
 
-      await expect(svc.rateSkill('s1', 'user-1', 3)).rejects.toThrow('constraint');
+      await expect(svc.rateCatalogSkill('s1', 'user-1', 3)).rejects.toThrow('constraint');
     });
   });
 
@@ -506,14 +506,14 @@ describe('SkillService', () => {
   // ---------------------------------------------------------------------------
   describe('getBuiltinSkills', () => {
     test('returns an array of builtin skills', () => {
-      const skills = svc.getBuiltinSkills();
+      const skills = svc.getBuiltinCatalogSkills();
 
       expect(Array.isArray(skills)).toBe(true);
       expect(skills.length).toBe(4);
     });
 
     test('each builtin skill has required fields', () => {
-      const skills = svc.getBuiltinSkills();
+      const skills = svc.getBuiltinCatalogSkills();
 
       for (const skill of skills) {
         expect(skill.id).toBeDefined();
@@ -527,7 +527,7 @@ describe('SkillService', () => {
     });
 
     test('contains known builtin skill ids', () => {
-      const skills = svc.getBuiltinSkills();
+      const skills = svc.getBuiltinCatalogSkills();
       const ids = skills.map((s) => s.id);
 
       expect(ids).toContain('skill-beam-design');
@@ -547,7 +547,7 @@ describe('SkillService', () => {
         config: { handler: 'beam-design' },
       });
       prisma.skillExecution.create = jest.fn().mockResolvedValue({});
-      return svc.invokeSkill('s1', params);
+      return svc.invokeCatalogSkill('s1', params);
     }
 
     test('computes required steel area for typical beam', async () => {
@@ -577,7 +577,7 @@ describe('SkillService', () => {
         config: { handler: 'column-design' },
       });
       prisma.skillExecution.create = jest.fn().mockResolvedValue({});
-      return svc.invokeSkill('s1', params);
+      return svc.invokeCatalogSkill('s1', params);
     }
 
     test('computes capacity for typical column', async () => {
@@ -624,7 +624,7 @@ describe('SkillService', () => {
         config: { handler: 'load-calculation' },
       });
       prisma.skillExecution.create = jest.fn().mockResolvedValue({});
-      return svc.invokeSkill('s1', params);
+      return svc.invokeCatalogSkill('s1', params);
     }
 
     test('calculates floor loads', async () => {
@@ -674,7 +674,7 @@ describe('SkillService', () => {
         config: { handler: 'seismic-load' },
       });
       prisma.skillExecution.create = jest.fn().mockResolvedValue({});
-      return svc.invokeSkill('s1', params);
+      return svc.invokeCatalogSkill('s1', params);
     }
 
     test('calculates seismic load for zone 8', async () => {
