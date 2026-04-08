@@ -1549,6 +1549,9 @@ async function validateAgentRuntimeLoader(context) {
   const analysisEntry = await import(
     pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "analysis", "entry.js")).href
   );
+  const analysisRegistry = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "analysis", "registry.js")).href
+  );
 
   const runtime = new AgentSkillRuntime();
   const skills = runtime.listSkills();
@@ -1691,6 +1694,9 @@ async function validateAgentRuntimeLoader(context) {
   assert(typeof analysisEntry.listBuiltinAnalysisSkills === "undefined", "analysis entry should not re-export static metadata helpers once manifest-first runtime is active");
   assert(typeof analysisEntry.getBuiltinAnalysisSkill === "undefined", "analysis entry should not expose builtin analysis metadata lookup");
   assert(typeof analysisEntry.resolvePreferredBuiltinAnalysisSkill === "undefined", "analysis entry should not expose manifest selection logic directly");
+  assert(typeof analysisRegistry.listBuiltinAnalysisSkills === "undefined", "analysis registry should not export static metadata helpers once manifest-first runtime is active");
+  assert(typeof analysisRegistry.getBuiltinAnalysisSkill === "undefined", "analysis registry should not expose builtin analysis metadata lookup");
+  assert(typeof analysisRegistry.resolvePreferredBuiltinAnalysisSkill === "undefined", "analysis registry should not expose manifest selection logic directly");
   console.log("[ok] agent runtime loader contract");
 }
 
@@ -2860,6 +2866,9 @@ async function validateStructureJsonSkill(context) {
   const entryModule = await import(
     pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "validation", "entry.js")).href
   );
+  const registryModule = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "validation", "registry.js")).href
+  );
 
   const skillCatalog = new AgentSkillCatalogService();
   const skill = await skillCatalog.getBuiltinSkillById("validation-structure-model");
@@ -2873,6 +2882,10 @@ async function validateStructureJsonSkill(context) {
   assert(skill.priority === 100, "validation skill priority should stay 100");
   assert(typeof entryModule.listBuiltinValidationSkills === "undefined", "validation entry should not re-export static registry metadata helpers");
   assert(typeof entryModule.getBuiltinValidationSkill === "undefined", "validation entry should not expose builtin metadata lookup");
+  assert(typeof registryModule.listBuiltinValidationSkills === "undefined", "validation registry should not export static metadata helpers once manifest-first runtime is active");
+  assert(typeof registryModule.getBuiltinValidationSkill === "undefined", "validation registry should not expose builtin metadata lookup");
+  assert(typeof registryModule.findValidationSkillsByTrigger === "undefined", "validation registry should not expose trigger-based metadata lookup");
+  assert(typeof registryModule.getValidationSkillCapabilities === "undefined", "validation registry should not expose capability lookup from frontmatter metadata");
   console.log("[ok] manifest-backed validation skill metadata");
 
   // Test 2: Test Python runtime directly via CLI
