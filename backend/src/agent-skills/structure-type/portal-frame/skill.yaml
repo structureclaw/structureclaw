@@ -1,0 +1,46 @@
+id: portal-frame
+domain: structure-type
+source: builtin
+name:
+  zh: 门式刚架
+  en: Portal Frame
+description:
+  zh: 门式刚架需求识别与补参 skill。
+  en: Skill for portal-frame intent detection and clarification.
+triggers:
+  - portal frame
+  - 门式刚架
+  - portal
+  - 门架
+  - 刚架
+stages:
+  - intent
+  - draft
+  - analysis
+  - design
+structureType: portal-frame
+structuralTypeKeys:
+  - portal-frame
+  - portal
+capabilities:
+  - intent-detection
+  - draft-extraction
+  - interaction-questions
+  - model-build
+  - report-narrative
+grants:
+  - draft_model
+  - update_model
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 100
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+supportedAnalysisTypes: []
+supportedModelFamilies: []
+materialFamilies: []
+aliases: []
+toolHints: {}

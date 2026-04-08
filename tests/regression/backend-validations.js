@@ -1290,6 +1290,25 @@ async function validateAgentManifestLoader(context) {
     }
     assert(rejectedInvalidTool, "tool manifest loader should reject malformed tool.yaml files");
 
+    const builtinStructureTypeRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "structure-type");
+    const builtinStructureTypeSkills = await loadSkillManifestsFromDirectory(builtinStructureTypeRoot);
+    const builtinStructureTypeIds = builtinStructureTypeSkills.map((skill) => skill.id).sort();
+    assert(
+      JSON.stringify(builtinStructureTypeIds) === JSON.stringify([
+        "beam",
+        "double-span-beam",
+        "frame",
+        "generic",
+        "portal-frame",
+        "truss",
+      ]),
+      "skill manifest loader should discover builtin structure-type skills from real skill.yaml files",
+    );
+    assert(
+      builtinStructureTypeSkills.every((skill) => Array.isArray(skill.grants) && skill.grants.length > 0),
+      "builtin structure-type skill manifests should declare explicit tool grants",
+    );
+
     console.log("[ok] agent manifest loader contract");
   } finally {
     await fsp.rm(tempRoot, { recursive: true, force: true });
