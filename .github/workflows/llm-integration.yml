@@ -28,7 +28,6 @@ jobs:
         uses: ./.github/actions/setup-env
 
       - name: Run LLM integration tests
-        shell: ${{ runner.os == 'Windows' && 'pwsh' || 'bash' }}
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_MODEL: ${{ github.event.inputs.llm_model || '' }}
