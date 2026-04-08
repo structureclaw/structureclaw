@@ -11,6 +11,28 @@ on:
         description: "Test category filter (routing|extraction|pipeline|clarification)"
         required: false
         default: ""
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'sclaw'
+      - 'sclaw_cn'
+      - 'package.json'
+      - '.github/actions/setup-env/**'
+      - '.github/workflows/llm-integration.yml'
+  push:
+    branches:
+      - master
+    paths:
+      - 'backend/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'sclaw'
+      - 'sclaw_cn'
+      - 'package.json'
+      - '.github/actions/setup-env/**'
+      - '.github/workflows/llm-integration.yml'
 
 jobs:
   llm-integration:
