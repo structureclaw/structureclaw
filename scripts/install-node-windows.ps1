@@ -1,6 +1,6 @@
 param(
-  [int]$MinMajor = 18,
-  [string]$TargetNodeVersion = "20",
+  [int]$MinMajor = 20,
+  [string]$TargetNodeVersion = "24",
   [switch]$DryRun
 )
 

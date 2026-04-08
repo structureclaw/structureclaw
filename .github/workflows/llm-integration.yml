@@ -29,10 +29,10 @@ jobs:
 
       - name: Run LLM integration tests
         env:
-          LLM_API_KEY: ${{ secrets["LLM_API_KEY"] }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_MODEL: ${{ github.event.inputs.llm_model || '' }}
-          LLM_PROVIDER: ${{ secrets["LLM_PROVIDER"] || 'openai-compatible' }}
-          LLM_BASE_URL: ${{ secrets["LLM_BASE_URL"] || '' }}
+          LLM_PROVIDER: ${{ secrets.LLM_PROVIDER || 'openai-compatible' }}
+          LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || '' }}
           LLM_LOG_ENABLED: "true"
           REDIS_URL: disabled
           DATABASE_URL: "file:.runtime/data/structureclaw-llm-ci.db"
