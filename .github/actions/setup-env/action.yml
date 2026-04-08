@@ -12,7 +12,11 @@ runs:
     - name: Install Node.js (Windows)
       if: runner.os == 'Windows'
       shell: powershell
-      run: powershell -ExecutionPolicy Bypass -File scripts/install-node-windows.ps1
+      run: |
+        [Console]::InputEncoding = [System.Text.Encoding]::UTF8
+        [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+        $scriptContent = [System.IO.File]::ReadAllText("$env:GITHUB_WORKSPACE\scripts\install-node-windows.ps1", [System.Text.Encoding]::UTF8)
+        Invoke-Expression $scriptContent
 
     - name: Setup via sclaw (Linux)
       if: runner.os != 'Windows'
