@@ -2,13 +2,13 @@
 
 本文记录当前仓库里 skill 系统的实际实现状态。
 
-它是 [agent-architecture_CN.md](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/docs/agent-architecture_CN.md) 的补充：架构文档里的 14 个 domain 是稳定 taxonomy，这里描述的是今天真正接入到运行时的成熟度。
+它是 [agent-architecture_CN.md](./agent-architecture_CN.md) 的补充：架构文档里的 14 个 domain 是稳定 taxonomy，这里描述的是今天真正接入到运行时的成熟度。
 
 ## 当前 Domain 矩阵
 
 当前状态依据以下来源整理：
 
-- [backend/src/services/agent-capability.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/services/agent-capability.ts)
+- [backend/src/services/agent-capability.ts](../backend/src/services/agent-capability.ts)
 - `backend/src/agent-skills/` 下的 builtin `skill.yaml`
 - `backend/src/agent-skills/` 下仍参与运行时的 handler 模块
 

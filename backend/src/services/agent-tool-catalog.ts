@@ -41,10 +41,15 @@ function resolveBuiltinToolRoot(): string {
 }
 
 export class AgentToolCatalogService {
+  private builtinToolsPromise: Promise<LoadedToolManifest[]> | null = null;
+
   constructor(private readonly builtinToolRoot = resolveBuiltinToolRoot()) {}
 
   async listBuiltinTools(): Promise<LoadedToolManifest[]> {
-    return loadToolManifestsFromDirectory(this.builtinToolRoot);
+    if (!this.builtinToolsPromise) {
+      this.builtinToolsPromise = loadToolManifestsFromDirectory(this.builtinToolRoot);
+    }
+    return this.builtinToolsPromise;
   }
 }
 

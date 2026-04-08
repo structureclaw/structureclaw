@@ -13,7 +13,6 @@ import { buildDefaultReportNarrative } from './report-template.js';
 import { tryBuildGenericModelWithLlm } from '../agent-skills/structure-type/generic/llm-model-builder.js';
 import { localize, withStructuralTypeState } from './plugin-helpers.js';
 import {
-  loadSkillManifestsFromDirectory,
   loadSkillManifestsFromDirectorySync,
   resolveBuiltinSkillManifestRoot,
   toRuntimeSkillManifest,
@@ -61,13 +60,14 @@ export type {
 
 export class AgentSkillRuntime {
   private readonly registry: AgentSkillRegistry;
-  private readonly builtinSkillManifestRoot: string;
   private readonly builtinSkillFileManifests: LoadedSkillManifest[];
+  private readonly builtinRuntimeSkillManifests: SkillManifest[];
 
   constructor(options?: { builtinSkillManifestRoot?: string }) {
     this.registry = new AgentSkillRegistry();
-    this.builtinSkillManifestRoot = options?.builtinSkillManifestRoot || resolveBuiltinSkillManifestRoot();
-    this.builtinSkillFileManifests = loadSkillManifestsFromDirectorySync(this.builtinSkillManifestRoot);
+    const builtinSkillManifestRoot = options?.builtinSkillManifestRoot || resolveBuiltinSkillManifestRoot();
+    this.builtinSkillFileManifests = loadSkillManifestsFromDirectorySync(builtinSkillManifestRoot);
+    this.builtinRuntimeSkillManifests = this.builtinSkillFileManifests.map((manifest) => toRuntimeSkillManifest(manifest));
   }
 
   listSkills(): AgentSkillBundle[] {
@@ -76,11 +76,10 @@ export class AgentSkillRuntime {
 
   async listSkillManifests(): Promise<SkillManifest[]> {
     const plugins = await this.registry.listPlugins();
-    const fileManifests = await loadSkillManifestsFromDirectory(this.builtinSkillManifestRoot);
+    const fileManifests = this.builtinRuntimeSkillManifests;
     const fileManifestIds = new Set(fileManifests.map((manifest) => manifest.id));
     return [
-      ...fileManifests
-        .map((manifest) => toRuntimeSkillManifest(manifest)),
+      ...fileManifests,
       ...plugins
         .filter((plugin) => !fileManifestIds.has(plugin.id))
         .map((plugin) => plugin.manifest),
@@ -331,6 +330,7 @@ export class AgentSkillRuntime {
   private listBuiltinCodeCheckSkillManifests(): LoadedSkillManifest[] {
     return this.builtinSkillFileManifests
       .filter((skill) => skill.domain === 'code-check')
+      // Code-check provider routing intentionally prefers lower numeric priorities first.
       .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id));
   }
 

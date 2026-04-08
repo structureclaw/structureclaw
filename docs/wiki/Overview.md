@@ -36,7 +36,7 @@ Built-in skill domains:
 | `validation` | Model validation checks |
 | `visualization` | 3D model visualization |
 
-The table above is the stable platform taxonomy. Current runtime maturity is documented separately in [../skill-runtime-status.md](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/docs/skill-runtime-status.md).
+The table above is the stable platform taxonomy. Current runtime maturity is documented separately in [../skill-runtime-status.md](../skill-runtime-status.md).
 
 ## SkillHub
 

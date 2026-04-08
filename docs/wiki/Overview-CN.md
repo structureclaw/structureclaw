@@ -36,7 +36,7 @@ StructureClaw 是一个面向 AEC 工作流的 AI 协同结构工程工作台。
 | `validation` | 模型校验 |
 | `visualization` | 三维模型可视化 |
 
-上表表示的是平台稳定 taxonomy。当前运行时成熟度请单独参考 [../skill-runtime-status_CN.md](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/docs/skill-runtime-status_CN.md)。
+上表表示的是平台稳定 taxonomy。当前运行时成熟度请单独参考 [../skill-runtime-status_CN.md](../skill-runtime-status_CN.md)。
 
 ## SkillHub
 

@@ -69,6 +69,8 @@ function resolveAliases(skillId: string, aliases?: string[]): string[] {
 }
 
 export class AgentSkillCatalogService {
+  private builtinSkillEntriesPromise: Promise<BuiltinSkillCatalogEntry[]> | null = null;
+
   constructor(
     private readonly builtinSkillManifestRoot = resolveBuiltinSkillManifestRoot(),
   ) {}
@@ -78,14 +80,17 @@ export class AgentSkillCatalogService {
   }
 
   async listBuiltinSkills(): Promise<BuiltinSkillCatalogEntry[]> {
-    const fileManifests = await loadSkillManifestsFromDirectory(this.builtinSkillManifestRoot);
-    return fileManifests
-      .map((manifest) => this.buildCatalogEntry(manifest))
-      .sort((left, right) =>
-        left.domain.localeCompare(right.domain)
-        || right.priority - left.priority
-        || left.id.localeCompare(right.id),
-      );
+    if (!this.builtinSkillEntriesPromise) {
+      this.builtinSkillEntriesPromise = loadSkillManifestsFromDirectory(this.builtinSkillManifestRoot)
+        .then((fileManifests) => fileManifests
+          .map((manifest) => this.buildCatalogEntry(manifest))
+          .sort((left, right) =>
+            left.domain.localeCompare(right.domain)
+            || right.priority - left.priority
+            || left.id.localeCompare(right.id),
+          ));
+    }
+    return this.builtinSkillEntriesPromise;
   }
 
   async listSkillIdsByAlias(): Promise<Record<string, string>> {

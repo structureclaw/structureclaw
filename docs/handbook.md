@@ -210,7 +210,7 @@ Built-in skill domains under `backend/src/agent-skills/`:
 
 The table above is the stable taxonomy, not a claim that every domain is fully runtime-wired today.
 
-Current implementation maturity is tracked separately in [skill-runtime-status.md](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/docs/skill-runtime-status.md), including which domains are currently `active`, `partial`, `discoverable`, or `reserved`.
+Current implementation maturity is tracked separately in [skill-runtime-status.md](./skill-runtime-status.md), including which domains are currently `active`, `partial`, `discoverable`, or `reserved`.
 
 ## 10. Quality and Regression
 

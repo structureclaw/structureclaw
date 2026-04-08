@@ -63,16 +63,17 @@ const MARKDOWN_SKILL_ROOT = resolveSkillRoot([
 ], ['skill.yaml']);
 
 function stripLegacyMarkdownHeader(markdown: string): string {
+  const normalizedMarkdown = markdown.replace(/\r\n/g, '\n');
   // Stage Markdown is content-only now, but strip any leftover YAML header
   // so legacy local files do not leak obsolete metadata into prompts.
-  const trimmed = markdown.trimStart();
+  const trimmed = normalizedMarkdown.trimStart();
   if (!trimmed.startsWith('---\n')) {
-    return markdown;
+    return normalizedMarkdown;
   }
 
   const endIndex = trimmed.indexOf('\n---\n', 4);
   if (endIndex === -1) {
-    return markdown;
+    return normalizedMarkdown;
   }
   return trimmed.slice(endIndex + 5).trim();
 }
@@ -129,16 +130,30 @@ function listTopLevelDirectories(root: string): Set<string> {
   return new Set(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name));
 }
 
+function normalizeRelativePath(rootDir: string, targetPath: string): string {
+  return path.relative(rootDir, targetPath).split(path.sep).join('/');
+}
+
 export class AgentSkillLoader {
   private cache: AgentSkillBundle[] | null = null;
   private pluginCache: Promise<AgentSkillPlugin[]> | null = null;
+  private readonly moduleSkillRoot: string;
+  private readonly markdownSkillRoot: string;
+
+  constructor(options?: {
+    moduleSkillRoot?: string;
+    markdownSkillRoot?: string;
+  }) {
+    this.moduleSkillRoot = options?.moduleSkillRoot || MODULE_SKILL_ROOT;
+    this.markdownSkillRoot = options?.markdownSkillRoot || MARKDOWN_SKILL_ROOT;
+  }
 
   loadBundles(): AgentSkillBundle[] {
     if (this.cache) {
       return this.cache;
     }
 
-    const entries = collectDirectories(MARKDOWN_SKILL_ROOT);
+    const entries = collectDirectories(this.markdownSkillRoot);
     const files: AgentSkillFile[] = [];
 
     for (const skillDir of entries) {
@@ -211,27 +226,27 @@ export class AgentSkillLoader {
     this.pluginCache = (async () => {
       const bundles = this.loadBundles();
       const bundleById = new Map(bundles.map((bundle) => [bundle.id, bundle]));
-      const manifestById = new Map(
-        loadSkillManifestsFromDirectorySync(MARKDOWN_SKILL_ROOT).map((manifest) => [
-          manifest.id,
+      const manifestByRelativePath = new Map(
+        loadSkillManifestsFromDirectorySync(this.markdownSkillRoot).map((manifest) => [
+          normalizeRelativePath(this.markdownSkillRoot, path.dirname(manifest.manifestPath)),
           toRuntimeSkillManifest(manifest),
         ]),
       );
-      const entries = collectDirectories(MODULE_SKILL_ROOT);
-      const allowedTopLevelDirectories = listTopLevelDirectories(MARKDOWN_SKILL_ROOT);
+      const entries = collectDirectories(this.moduleSkillRoot);
+      const allowedTopLevelDirectories = listTopLevelDirectories(this.markdownSkillRoot);
       const plugins: AgentSkillPlugin[] = [];
 
       for (const skillDir of entries) {
         if (!isSkillModuleDirectory(skillDir)) {
           continue;
         }
-        const relativePath = path.relative(MODULE_SKILL_ROOT, skillDir);
-        const topLevel = relativePath.split(path.sep)[0] || '';
+        const relativePath = normalizeRelativePath(this.moduleSkillRoot, skillDir);
+        const topLevel = relativePath.split('/')[0] || '';
         if (!allowedTopLevelDirectories.has(topLevel)) {
           continue;
         }
-        const bundle = bundleById.get(path.basename(skillDir));
-        const manifest = manifestById.get(path.basename(skillDir));
+        const manifest = manifestByRelativePath.get(relativePath);
+        const bundle = manifest ? bundleById.get(manifest.id) : undefined;
         if (!bundle || !manifest) {
           continue;
         }

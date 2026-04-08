@@ -2,13 +2,13 @@
 
 This document records the current implementation state of the skill system.
 
-It complements [agent-architecture.md](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/docs/agent-architecture.md): the 14 domains there are the stable taxonomy, while this file tracks what is actually wired into today's runtime.
+It complements [agent-architecture.md](./agent-architecture.md): the 14 domains there are the stable taxonomy, while this file tracks what is actually wired into today's runtime.
 
 ## Current Domain Matrix
 
 Current status is derived from:
 
-- [backend/src/services/agent-capability.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/services/agent-capability.ts)
+- [backend/src/services/agent-capability.ts](../backend/src/services/agent-capability.ts)
 - builtin `skill.yaml` files under `backend/src/agent-skills/`
 - remaining runtime handler modules under `backend/src/agent-skills/`
 
