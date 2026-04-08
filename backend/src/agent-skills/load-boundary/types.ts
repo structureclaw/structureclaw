@@ -21,6 +21,7 @@ export type LoadBoundarySkillId =
   | 'live-load'
   | 'wind-load'
   | 'seismic-load'
+  | 'snow-load'
   | 'temperature-load'
   | 'crane-load'
   | 'load-combination'

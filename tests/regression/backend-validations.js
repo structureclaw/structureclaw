@@ -1496,6 +1496,38 @@ async function validateAgentManifestLoader(context) {
       builtinLoadBoundarySkills,
       "builtin load-boundary skill manifest",
     );
+    const loadBoundaryRegistry = await import(
+      pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "load-boundary", "registry.js")).href
+    );
+    const registryIds = loadBoundaryRegistry.listBuiltinLoadBoundarySkills().map((skill) => skill.id).sort();
+    assert(
+      JSON.stringify(registryIds) === JSON.stringify(builtinLoadBoundaryIds),
+      "load-boundary registry should derive its skill inventory from skill.yaml without drift",
+    );
+    assert(
+      loadBoundaryRegistry.getBuiltinLoadBoundarySkill("snow-load")?.version === "1.0.0",
+      "load-boundary registry should preserve manifest metadata for snow-load",
+    );
+    const builtinSectionRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "section");
+    const builtinSectionSkills = await loadSkillManifestsFromDirectory(builtinSectionRoot);
+    const builtinSectionIds = builtinSectionSkills.map((skill) => skill.id).sort();
+    assert(
+      JSON.stringify(builtinSectionIds) === JSON.stringify([
+        "section-bridge",
+        "section-common",
+        "section-irregular",
+      ]),
+      "skill manifest loader should discover builtin section skills from real skill.yaml files",
+    );
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinSectionSkills,
+      builtinSectionRoot,
+      "builtin section skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinSectionSkills,
+      "builtin section skill manifest",
+    );
     const builtinValidationRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "validation");
     const builtinValidationSkills = await loadSkillManifestsFromDirectory(builtinValidationRoot);
     await assertDeclaredStagesCoverMarkdownAssets(
@@ -1660,6 +1692,16 @@ async function validateAgentSkillCatalogManifests(context) {
     assert(typeof skill.manifestPath === "string" && skill.manifestPath.endsWith("skill.yaml"), `${skillId} should retain its skill.yaml path`);
   }
   assert(skills.find((entry) => entry.canonicalId === "dead-load")?.triggers.includes("恒载"), "dead-load should preserve load-boundary trigger metadata");
+  const sectionIds = [
+    "section-bridge",
+    "section-common",
+    "section-irregular",
+  ];
+  for (const skillId of sectionIds) {
+    const skill = skills.find((entry) => entry.canonicalId === skillId);
+    assert(skill, `skill catalog should include section skill ${skillId}`);
+    assert(typeof skill.manifestPath === "string" && skill.manifestPath.endsWith("skill.yaml"), `${skillId} should retain its skill.yaml path`);
+  }
   const visualizationIds = [
     "visualization-3d-scene",
     "visualization-frame-summary",
@@ -1731,6 +1773,12 @@ async function validateAgentRuntimeLoader(context) {
   assert(byId.get("snow-load")?.domain === "load-boundary", "snow-load should take domain from skill.yaml");
   assert(byId.has("visualization-frame-summary"), "runtime loader should include manifest-backed visualization skill");
   assert(byId.get("visualization-frame-summary")?.domain === "visualization", "visualization skills should take domain from skill.yaml");
+  assert(byId.has("section-common"), "runtime loader should include manifest-backed section-common skill");
+  assert(byId.get("section-common")?.domain === "section", "section-common should take domain from skill.yaml");
+  assert(byId.has("section-bridge"), "runtime loader should include manifest-backed section-bridge skill");
+  assert(byId.get("section-bridge")?.domain === "section", "section-bridge should take domain from skill.yaml");
+  assert(byId.has("section-irregular"), "runtime loader should include manifest-backed section-irregular skill");
+  assert(byId.get("section-irregular")?.domain === "section", "section-irregular should take domain from skill.yaml");
   assert(byId.has("validation-structure-model"), "runtime loader should use canonical validation skill id from skill.yaml");
   assert(!byId.has("structure-json-validation"), "runtime loader should not keep legacy validation frontmatter id once manifest-first loader is active");
   assert(Array.isArray(runtimeManifestById.get("beam")?.supportedModelFamilies), "structure-type runtime manifests should come from skill.yaml rather than plugin-only manifests");
@@ -2431,8 +2479,10 @@ async function validateAgentCapabilityMatrix(context) {
   assert(payload.skills.find((skill) => skill.id === "beam")?.runtimeStatus === "active", "beam should be marked active");
   assert(payload.skills.find((skill) => skill.id === "analysis-baseline")?.runtimeStatus === "active", "analysis skill should be marked active");
   assert(payload.skillDomainById["dead-load"] === "load-boundary", "discoverable load-boundary skills should be exposed in skillDomainById");
+  assert(payload.skillDomainById["section-common"] === "section", "discoverable section skills should be exposed in skillDomainById");
   assert(payload.skillDomainById["visualization-frame-summary"] === "visualization", "discoverable visualization skills should be exposed in skillDomainById");
   assert(payload.skills.find((skill) => skill.id === "dead-load")?.runtimeStatus === "discoverable", "dead-load should be marked discoverable");
+  assert(payload.skills.find((skill) => skill.id === "section-common")?.runtimeStatus === "discoverable", "section-common should be marked discoverable");
   assert(payload.skills.find((skill) => skill.id === "visualization-frame-summary")?.runtimeStatus === "discoverable", "visualization-frame-summary should be marked discoverable");
   assert(domainSummaryById["structure-type"]?.runtimeStatus === "active", "structure-type domain should be active");
   assert(domainSummaryById["analysis"]?.runtimeStatus === "active", "analysis domain should be active");
@@ -2440,6 +2490,7 @@ async function validateAgentCapabilityMatrix(context) {
   assert(domainSummaryById["report-export"]?.runtimeStatus === "partial", "report-export domain should be partial");
   assert(domainSummaryById["design"]?.runtimeStatus === "discoverable", "design domain should be discoverable");
   assert(domainSummaryById["load-boundary"]?.skillIds.includes("dead-load"), "load-boundary summary should include discoverable builtin skills");
+  assert(domainSummaryById["section"]?.skillIds.includes("section-common"), "section summary should include discoverable builtin skills");
   assert(domainSummaryById["visualization"]?.skillIds.includes("visualization-frame-summary"), "visualization summary should include discoverable builtin skills");
   assert(Array.isArray(domainSummaryById["design"]?.skillIds), "design domain summary should exist even without runtime skills");
 

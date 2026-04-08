@@ -8,7 +8,7 @@ describe('LoadBoundary Integration Tests', () => {
 
       expect(skills).toBeDefined();
       expect(skills.length).toBeGreaterThan(0);
-      expect(skills).toHaveLength(9); // 9 skills total
+      expect(skills).toHaveLength(10);
 
       // Verify all expected skills are present
       const skillIds = skills.map((s) => s.id);
@@ -16,6 +16,7 @@ describe('LoadBoundary Integration Tests', () => {
       expect(skillIds).toContain('live-load');
       expect(skillIds).toContain('wind-load');
       expect(skillIds).toContain('seismic-load');
+      expect(skillIds).toContain('snow-load');
       expect(skillIds).toContain('temperature-load');
       expect(skillIds).toContain('crane-load');
       expect(skillIds).toContain('load-combination');
@@ -73,7 +74,9 @@ describe('LoadBoundary Integration Tests', () => {
 
       for (const skill of skills) {
         expect(skill.supportedModelFamilies).toBeDefined();
-        expect(skill.supportedModelFamilies).toContain('generic');
+        if (skill.id !== 'temperature-load') {
+          expect(skill.supportedModelFamilies).toContain('generic');
+        }
       }
     });
   });

@@ -2,6 +2,14 @@
 
 This folder keeps the section-design skills as modular, detachable units.
 
+> Manifest-first note
+>
+> Builtin section skills now define their static identity in `skill.yaml`. Stage Markdown files such as
+> `intent.md` are content assets only, while `manifest.ts`, `handler.ts`, and `runtime.py` remain
+> execution-layer assets during the transition.
+
+Current runtime status: `section` is catalog-visible and discoverable, but it is not auto-activated by the main runtime binder today.
+
 ## Skill Map
 
 - `section-common`: standard beams, frames, columns, and common steel profiles.
@@ -18,4 +26,5 @@ This folder keeps the section-design skills as modular, detachable units.
 
 - Each skill should be usable on its own.
 - Each skill should explain its intent in `intent.md`.
+- Each skill should keep canonical metadata in `skill.yaml`.
 - Shared parsing and property estimation should stay inside this folder so later extraction is straightforward.

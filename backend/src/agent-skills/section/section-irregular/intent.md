@@ -1,17 +1,3 @@
----
-id: section-irregular
-structureType: unknown
-version: 1.0.0
-source: builtin
-zhName: 异形与变截面设计
-enName: Irregular Section Designer
-zhDescription: 变截面、异形、开孔、偏心与自定义轮廓截面的补参与轮廓骨架生成
-enDescription: Parameter clarification and outline-skeleton generation for tapered, asymmetric, perforated, and custom sections
-triggers: ["不规则", "变截面", "异形", "开孔", "tapered", "haunch", "asymmetric", "custom", "polygon", "outline", "自定义"]
-stages: ["intent", "draft", "analysis", "design"]
-autoLoadByDefault: true
-priority: 140
----
 # 异形与变截面设计
 
 - `zh`: 当用户描述变截面、异形、偏心、开孔或自定义轮廓截面时使用。
