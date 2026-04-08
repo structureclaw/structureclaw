@@ -3328,6 +3328,22 @@ async function validateDevStartupGuards(context) {
   console.log("[ok] unified startup and docker command guards are present");
 }
 
+async function validateDockerBackendRuntimeAssets(context) {
+  const dockerfilePath = path.join(context.rootDir, "backend", "Dockerfile");
+  const dockerfileContent = await fsp.readFile(dockerfilePath, "utf8");
+
+  assert(
+    dockerfileContent.includes("COPY --from=builder /app/src/agent-skills ./src/agent-skills"),
+    "backend Dockerfile should copy src/agent-skills into the runner image",
+  );
+  assert(
+    dockerfileContent.includes("COPY --from=builder /app/src/agent-tools ./src/agent-tools"),
+    "backend Dockerfile should copy src/agent-tools into the runner image for tool.yaml discovery",
+  );
+
+  console.log("[ok] docker backend runtime assets are present");
+}
+
 async function validateStructureJsonSkill(context) {
   await runBackendBuildOnce(context);
 
@@ -3542,6 +3558,7 @@ const BACKEND_VALIDATIONS = {
   "validate-chat-message-routing": validateChatMessageRouting,
   "validate-report-narrative-contract": validateReportNarrativeContract,
   "validate-dev-startup-guards": validateDevStartupGuards,
+  "validate-docker-backend-runtime-assets": validateDockerBackendRuntimeAssets,
   "validate-structure-json-skill": validateStructureJsonSkill,
 };
 
