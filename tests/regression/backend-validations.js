@@ -1348,6 +1348,26 @@ async function validateAgentManifestLoader(context) {
       builtinAnalysisSkills.every((skill) => Array.isArray(skill.grants) && skill.grants.includes("run_analysis")),
       "builtin analysis skill manifests should declare explicit run_analysis grants",
     );
+    const builtinCodeCheckRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "code-check");
+    const builtinCodeCheckSkills = await loadSkillManifestsFromDirectory(builtinCodeCheckRoot);
+    const builtinCodeCheckIds = builtinCodeCheckSkills.map((skill) => skill.id).sort();
+    assert(
+      JSON.stringify(builtinCodeCheckIds) === JSON.stringify([
+        "code-check-gb50010",
+        "code-check-gb50011",
+        "code-check-gb50017",
+        "code-check-jgj3",
+      ]),
+      "skill manifest loader should discover builtin code-check skills from real skill.yaml files",
+    );
+    assert(
+      builtinCodeCheckSkills.every((skill) => typeof skill.designCode === "string" && skill.designCode.length > 0),
+      "builtin code-check skill manifests should declare explicit designCode metadata",
+    );
+    assert(
+      builtinCodeCheckSkills.every((skill) => Array.isArray(skill.grants) && skill.grants.includes("run_code_check")),
+      "builtin code-check skill manifests should declare explicit run_code_check grants",
+    );
 
     console.log("[ok] agent manifest loader contract");
   } finally {
@@ -1439,6 +1459,18 @@ async function validateAgentSkillCatalogManifests(context) {
     assert(skill, `skill catalog should include analysis skill ${skillId}`);
     assert(skill.sourceKinds.includes("file-manifest"), `${skillId} should record file-manifest provenance`);
     assert(skill.enabledTools.includes("run_analysis"), `${skillId} should expose run_analysis grant from skill.yaml`);
+  }
+  const codeCheckIds = [
+    "code-check-gb50010",
+    "code-check-gb50011",
+    "code-check-gb50017",
+    "code-check-jgj3",
+  ];
+  for (const skillId of codeCheckIds) {
+    const skill = skills.find((entry) => entry.canonicalId === skillId);
+    assert(skill, `skill catalog should include code-check skill ${skillId}`);
+    assert(skill.sourceKinds.includes("file-manifest"), `${skillId} should record file-manifest provenance`);
+    assert(skill.enabledTools.includes("run_code_check"), `${skillId} should expose run_code_check grant from skill.yaml`);
   }
   console.log("[ok] agent skill catalog manifest contract");
 }
