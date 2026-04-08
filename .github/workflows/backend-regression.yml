@@ -5,22 +5,26 @@ on:
   pull_request:
     paths:
       - 'backend/**'
-      - 'scripts/cli/**'
+      - 'scripts/**'
       - 'tests/**'
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
+      - '.env.example'
+      - '.github/actions/setup-env/**'
       - '.github/workflows/backend-regression.yml'
   push:
     branches:
       - master
     paths:
       - 'backend/**'
-      - 'scripts/cli/**'
+      - 'scripts/**'
       - 'tests/**'
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
+      - '.env.example'
+      - '.github/actions/setup-env/**'
       - '.github/workflows/backend-regression.yml'
 
 jobs:

@@ -10,11 +10,12 @@ on:
       - '.env.example'
       - 'backend/**'
       - 'frontend/**'
-      - 'scripts/cli/**'
+      - 'scripts/**'
       - 'tests/**'
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
+      - '.github/actions/setup-env/**'
       - '.github/workflows/install-smoke.yml'
   push:
     branches:
@@ -26,11 +27,12 @@ on:
       - '.env.example'
       - 'backend/**'
       - 'frontend/**'
-      - 'scripts/cli/**'
+      - 'scripts/**'
       - 'tests/**'
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
+      - '.github/actions/setup-env/**'
       - '.github/workflows/install-smoke.yml'
 
 jobs:
@@ -57,6 +59,12 @@ jobs:
 
       - name: Frontend lint
         run: npm run lint --prefix frontend
+
+      - name: Backend type-check
+        run: npm run build --prefix backend
+
+      - name: Backend lint
+        run: npm run lint --prefix backend
 
   docker-compose-smoke:
     runs-on: ubuntu-latest
