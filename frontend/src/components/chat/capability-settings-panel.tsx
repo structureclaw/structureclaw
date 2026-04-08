@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { API_BASE } from '@/lib/api-base'
 import { loadCapabilityPreferences, saveCapabilityPreferences } from '@/lib/capability-preference'
-import { ALL_SKILL_DOMAINS, buildSkillNormalizationContext, type SkillDomain, type SkillMetadataLike } from '@/lib/skill-normalization'
+import { ALL_SKILL_DOMAINS, buildSkillNormalizationContext, normalizeSkillDomain, type SkillDomain, type SkillMetadataLike } from '@/lib/skill-normalization'
 import { useI18n, type MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { cn } from '@/lib/utils'
@@ -15,6 +15,8 @@ type AgentSkillSummary = SkillMetadataLike & {
   name: { zh?: string; en?: string }
   description: { zh?: string; en?: string }
   domain?: string
+  structureType?: string
+  stages?: string[]
 }
 
 type ToolCategory = 'modeling' | 'analysis' | 'code-check' | 'report' | 'utility'
@@ -53,6 +55,20 @@ type CapabilityMatrixPayload = {
 }
 
 const ALL_TOOL_CATEGORIES: ToolCategory[] = ['modeling', 'analysis', 'code-check', 'report', 'utility']
+
+/** Infer domain from skill id when capability-matrix is unavailable. */
+function inferDomainFromSkillId(id: string): SkillDomain {
+  if (id.startsWith('code-check-')) return 'code-check'
+  if (id.startsWith('visualization-')) return 'visualization'
+  if (id.startsWith('opensees-') || id.startsWith('simplified-')) return 'analysis'
+  if (id === 'load-combination' || id === 'boundary-condition' || id.endsWith('-load')) return 'load-boundary'
+  if (id === 'structure-json') return 'validation'
+  if (id === 'png-export') return 'report-export'
+  if (id === 'generic') return 'general'
+  if (['beam', 'double-span-beam', 'frame', 'portal-frame', 'truss'].includes(id)) return 'structure-type'
+  return 'general'
+}
+
 
 function normalizeToolCategory(value: unknown): ToolCategory {
   if (value === 'modeling' || value === 'analysis' || value === 'code-check' || value === 'report' || value === 'utility') {
@@ -313,7 +329,9 @@ export function CapabilitySettingsPanel() {
   const groupedSkills = useMemo(() => {
     const bucket = new Map<SkillDomain, AgentSkillSummary[]>()
     availableSkills.forEach((skill) => {
-      const domain = skillDomainById[skill.id] || normalizeSkillDomain(skill.domain) || 'unknown'
+      const domain = skillDomainById[skill.id]
+        || normalizeSkillDomain(skill.domain)
+        || inferDomainFromSkillId(skill.id)
       const list = bucket.get(domain) || []
       list.push(skill)
       bucket.set(domain, list)

@@ -2436,7 +2436,7 @@ export function AIConsole() {
   return (
     <div
       data-testid="console-layout-grid"
-      className="grid min-h-[calc(100vh-5.5rem)] gap-4 xl:h-[calc(100vh-5.5rem)] xl:min-h-0 xl:grid-cols-[300px_minmax(0,1.7fr)_460px] xl:overflow-hidden 2xl:grid-cols-[320px_minmax(0,1.9fr)_500px]"
+      className="grid min-h-[calc(100vh-5.5rem)] gap-4 xl:h-[calc(100vh-5.5rem)] xl:min-h-0 xl:grid-cols-[260px_minmax(0,2.2fr)_420px] xl:overflow-hidden 2xl:grid-cols-[280px_minmax(0,2.4fr)_460px]"
     >
       <aside
         data-testid="console-history-panel"
