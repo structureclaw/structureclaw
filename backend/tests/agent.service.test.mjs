@@ -382,14 +382,29 @@ describe('AgentService orchestration', () => {
   test('should clear stored conversation sessions', async () => {
     const svc = createServiceWithDefaultSkills();
     const deletedKeys = [];
-    cache.del = async (...keys) => {
-      deletedKeys.push(...keys);
-      return keys.length;
-    };
+    const originalDel = cache.del;
 
-    await svc.clearConversationSession('conv-cleanup');
+    try {
+      cache.del = async (...keys) => {
+        deletedKeys.push(...keys);
+        return keys.length;
+      };
+
+      await svc.clearConversationSession('conv-cleanup');
+    } finally {
+      cache.del = originalDel;
+    }
 
     expect(deletedKeys).toEqual(['agent:interaction-session:conv-cleanup']);
+  });
+
+  test('should preserve cache.del behavior after the cleanup-session assertion', async () => {
+    const key = `agent-service-cache-${Date.now()}`;
+
+    await cache.setex(key, 60, 'value');
+    await cache.del(key);
+
+    expect(await cache.get(key)).toBeNull();
   });
 
   test('should pass engineId through validate analyze and code-check calls', async () => {

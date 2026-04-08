@@ -69,6 +69,18 @@ describe('cache in-memory store: get / setex', () => {
     const result = await cache.get(key);
     expect(result).toBe('second');
   });
+
+  test('should evict the oldest entries when the cache exceeds its max size', async () => {
+    const { cache, MAX_CACHE_ENTRIES } = await import('../dist/utils/cache.js');
+    const prefix = `test-max-size-${Date.now()}-`;
+
+    for (let index = 0; index < MAX_CACHE_ENTRIES + 1; index += 1) {
+      await cache.setex(`${prefix}${index}`, 60, `value-${index}`);
+    }
+
+    expect(await cache.get(`${prefix}0`)).toBeNull();
+    expect(await cache.get(`${prefix}${MAX_CACHE_ENTRIES}`)).toBe(`value-${MAX_CACHE_ENTRIES}`);
+  });
 });
 
 describe('cache in-memory store: del', () => {

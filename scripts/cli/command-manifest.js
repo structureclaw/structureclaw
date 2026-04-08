@@ -72,13 +72,13 @@ const COMMANDS = [
   {
     name: "db-up",
     usage: "sclaw db-up",
-    description: "Show infra status for the SQLite local-first stack",
+    description: "No-op: local stack no longer requires optional infra",
     group: "infra",
   },
   {
     name: "db-down",
     usage: "sclaw db-down",
-    description: "Show infra shutdown status for the SQLite local-first stack",
+    description: "No-op: local stack no longer manages optional infra",
     group: "infra",
   },
   {

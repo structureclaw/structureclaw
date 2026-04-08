@@ -3,7 +3,27 @@ type CacheEntry = {
   expiresAt: number;
 };
 
+export const MAX_CACHE_ENTRIES = 1024;
+
 const memoryCache = new Map<string, CacheEntry>();
+
+function pruneExpiredEntries(now = Date.now()): void {
+  for (const [key, entry] of memoryCache.entries()) {
+    if (now >= entry.expiresAt) {
+      memoryCache.delete(key);
+    }
+  }
+}
+
+function pruneOverflowEntries(): void {
+  while (memoryCache.size > MAX_CACHE_ENTRIES) {
+    const oldestKey = memoryCache.keys().next().value;
+    if (oldestKey === undefined) {
+      return;
+    }
+    memoryCache.delete(oldestKey);
+  }
+}
 
 function memoryGet(key: string): string | null {
   const entry = memoryCache.get(key);
@@ -18,10 +38,16 @@ function memoryGet(key: string): string | null {
 }
 
 function memorySetex(key: string, ttlSeconds: number, value: string): void {
+  if (ttlSeconds <= 0) {
+    memoryCache.delete(key);
+    return;
+  }
+  pruneExpiredEntries();
   memoryCache.set(key, {
     value,
     expiresAt: Date.now() + ttlSeconds * 1000,
   });
+  pruneOverflowEntries();
 }
 
 export const cache = {
@@ -35,6 +61,7 @@ export const cache = {
   },
 
   async del(key: string): Promise<number> {
+    pruneExpiredEntries();
     memoryCache.delete(key);
     return 1;
   },
