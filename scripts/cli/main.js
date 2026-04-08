@@ -10,6 +10,7 @@ const { runFrontendBuild } = require("./frontend-build");
 const runtime = require("./runtime");
 
 const MIN_NODE_MAJOR = 18;
+const ANALYSIS_REQUIRED_PYTHON_MODULES = ["uvicorn", "yaml"];
 
 function getPackageMetadata(rootDir) {
   const packageJsonPath = path.join(rootDir, "package.json");
@@ -519,8 +520,13 @@ async function ensureAnalysisPython(rootDir, env) {
   }
 
   const currentPython = runtime.resolveAnalysisPython(rootDir, env);
-  if (currentPython && (await runtime.pythonModuleExists(currentPython, "uvicorn"))) {
-    return currentPython;
+  if (currentPython) {
+    const currentModuleStates = await Promise.all(
+      ANALYSIS_REQUIRED_PYTHON_MODULES.map(async (moduleName) => [moduleName, await runtime.pythonModuleExists(currentPython, moduleName)]),
+    );
+    if (currentModuleStates.every(([, present]) => present)) {
+      return currentPython;
+    }
   }
 
   await ensureUv(rootDir);
@@ -531,17 +537,20 @@ async function ensureAnalysisPython(rootDir, env) {
     env.PATH = process.env.PATH;
   }
 
-  const pythonVersion =
-    env.ANALYSIS_PYTHON_VERSION || runtime.DEFAULT_ANALYSIS_PYTHON_VERSION;
-  log("Preparing analysis Python virtual environment...");
-  await runtime.runCommand("uv", [
-    "venv",
-    "--python",
-    pythonVersion,
-    path.join(rootDir, "backend", ".venv"),
-  ]);
+  let resolvedPython = currentPython;
+  if (!resolvedPython) {
+    const pythonVersion =
+      env.ANALYSIS_PYTHON_VERSION || runtime.DEFAULT_ANALYSIS_PYTHON_VERSION;
+    log("Preparing analysis Python virtual environment...");
+    await runtime.runCommand("uv", [
+      "venv",
+      "--python",
+      pythonVersion,
+      path.join(rootDir, "backend", ".venv"),
+    ]);
 
-  const resolvedPython = runtime.resolveAnalysisPython(rootDir, env);
+    resolvedPython = runtime.resolveAnalysisPython(rootDir, env);
+  }
   if (!resolvedPython) {
     throw new Error("Failed to locate backend/.venv python after uv venv.");
   }
@@ -558,8 +567,14 @@ async function ensureAnalysisPython(rootDir, env) {
     env,
   });
 
-  if (!(await runtime.pythonModuleExists(resolvedPython, "uvicorn"))) {
-    throw new Error("backend/.venv is present but missing uvicorn.");
+  const installedModuleStates = await Promise.all(
+    ANALYSIS_REQUIRED_PYTHON_MODULES.map(async (moduleName) => [moduleName, await runtime.pythonModuleExists(resolvedPython, moduleName)]),
+  );
+  const missingModules = installedModuleStates
+    .filter(([, present]) => !present)
+    .map(([moduleName]) => moduleName);
+  if (missingModules.length > 0) {
+    throw new Error(`backend/.venv is present but missing required analysis modules: ${missingModules.join(", ")}.`);
   }
 
   return resolvedPython;
