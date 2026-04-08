@@ -24,6 +24,7 @@ on:
 
 jobs:
   e2e:
+    environment: test
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -50,9 +51,9 @@ jobs:
         env:
           PORT: 30010
           DATABASE_URL: file:../../.runtime/data/test-e2e.db
-          LLM_PROVIDER: openai
-          LLM_API_KEY: test-key-for-e2e
-          LLM_MODEL: gpt-4o-mini
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER || 'openai' }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_MODEL: ${{ vars.LLM_MODEL || 'gpt-4o-mini' }}
 
       - name: Start frontend
         run: cd frontend && npx next dev -p 30000 &
