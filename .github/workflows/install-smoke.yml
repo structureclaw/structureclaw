@@ -33,31 +33,15 @@ on:
       - '.github/workflows/install-smoke.yml'
 
 jobs:
-  native-install-smoke-linux:
-    runs-on: [self-hosted, Linux, X64]
-    container:
-      image: node:20-bookworm
-      options: --add-host=host.docker.internal:host-gateway
-      # container.env 小写变量覆盖 runner 注入的同名变量
-      env:
-        http_proxy: http://host.docker.internal:7891
-        https_proxy: http://host.docker.internal:7891
-        all_proxy: http://host.docker.internal:7891
-        no_proxy: localhost,127.0.0.1,host.docker.internal,.local,github.com
+  native-install-smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 30
 
     steps:
-      # Runner 会注入 HTTP_PROXY=http://127.0.0.1:7891（大写），
-      # container.env 不能同时声明大小写同名变量，
-      # 所以用 GITHUB_ENV 在 checkout 之前覆盖大写变量
-      - name: Override runner proxy vars
-        shell: bash
-        run: |
-          echo "HTTP_PROXY=http://host.docker.internal:7891" >> "$GITHUB_ENV"
-          echo "HTTPS_PROXY=http://host.docker.internal:7891" >> "$GITHUB_ENV"
-          echo "ALL_PROXY=http://host.docker.internal:7891" >> "$GITHUB_ENV"
-          echo "NO_PROXY=localhost,127.0.0.1,host.docker.internal,.local,github.com" >> "$GITHUB_ENV"
-
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -73,29 +57,11 @@ jobs:
       - name: Frontend unit tests
         run: npm run test:run --prefix frontend
 
-      - name: Frontend lint
-        run: npm run lint --prefix frontend
-
-  native-install-smoke-windows:
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 30
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Setup environment
-        uses: ./.github/actions/setup-env
-        with:
-          command: doctor
-          build: true
-      - name: Frontend type-check
-        run: npm run type-check --prefix frontend
-      - name: Frontend unit tests
-        run: npm run test:run --prefix frontend
       - name: Frontend lint
         run: npm run lint --prefix frontend
 
   docker-compose-smoke:
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Checkout repository
