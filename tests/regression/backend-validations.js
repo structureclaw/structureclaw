@@ -1745,6 +1745,204 @@ async function validateAgentRuntimeLoader(context) {
   console.log("[ok] agent runtime loader contract");
 }
 
+async function validateAgentRuntimeBinder(context) {
+  await runBackendBuildOnce(context);
+
+  const agentSource = await fsp.readFile(
+    path.join(context.rootDir, "backend", "src", "services", "agent.ts"),
+    "utf8",
+  );
+  const { AgentRuntimeBinder } = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent-runtime-binder.js")).href
+  );
+
+  const makeLocalizedText = (zh, en) => ({ zh, en });
+  const compatibility = { minRuntimeVersion: "0.1.0", skillApiVersion: "v1" };
+  const makeManifest = (id, domain, options = {}) => ({
+    id,
+    domain,
+    name: options.name ?? makeLocalizedText(`${id} 技能`, `${id} skill`),
+    description: options.description ?? makeLocalizedText(`${id} 描述`, `${id} description`),
+    triggers: options.triggers ?? [id],
+    stages: options.stages ?? ["analysis"],
+    autoLoadByDefault: options.autoLoadByDefault ?? false,
+    structureType: options.structureType ?? "unknown",
+    structuralTypeKeys: options.structuralTypeKeys ?? [],
+    requires: options.requires ?? [],
+    conflicts: options.conflicts ?? [],
+    capabilities: options.capabilities ?? [],
+    enabledTools: options.enabledTools ?? [],
+    providedTools: options.providedTools ?? [],
+    supportedAnalysisTypes: options.supportedAnalysisTypes ?? [],
+    supportedModelFamilies: options.supportedModelFamilies ?? ["generic"],
+    materialFamilies: options.materialFamilies ?? [],
+    priority: options.priority ?? 0,
+    compatibility,
+  });
+  const makeTool = (id, options = {}) => ({
+    id,
+    source: options.source ?? "builtin",
+    enabledByDefault: options.enabledByDefault ?? false,
+    tier: options.tier ?? "domain",
+    category: options.category ?? "utility",
+    displayName: options.displayName ?? makeLocalizedText(id, id),
+    description: options.description ?? makeLocalizedText(`${id} 工具`, `${id} tool`),
+    requiresSkills: options.requiresSkills ?? [],
+    requiresTools: options.requiresTools ?? [],
+    tags: options.tags ?? [],
+    errorCodes: options.errorCodes ?? [],
+  });
+
+  const manifests = [
+    makeManifest("beam", "structure-type", {
+      stages: ["intent", "draft", "analysis"],
+      structureType: "beam",
+      autoLoadByDefault: true,
+      providedTools: ["draft_model", "update_model"],
+      supportedModelFamilies: ["frame", "generic"],
+    }),
+    makeManifest("validation-structure-model", "validation", {
+      stages: ["draft", "analysis"],
+      autoLoadByDefault: true,
+      providedTools: ["validate_model"],
+    }),
+    makeManifest("analysis-static", "analysis", {
+      autoLoadByDefault: false,
+      providedTools: ["run_analysis"],
+      supportedAnalysisTypes: ["static"],
+      supportedModelFamilies: ["frame", "generic"],
+    }),
+    makeManifest("code-check-gb50010", "code-check", {
+      stages: ["design"],
+      autoLoadByDefault: false,
+      providedTools: ["run_code_check"],
+    }),
+    makeManifest("report-export-builtin", "report-export", {
+      stages: ["design"],
+      autoLoadByDefault: false,
+      providedTools: ["generate_report"],
+    }),
+  ];
+
+  const builtinTools = [
+    makeTool("convert_model", { tier: "foundation", enabledByDefault: true }),
+    makeTool("draft_model", { category: "modeling", requiresSkills: ["beam"] }),
+    makeTool("update_model", { category: "modeling", requiresSkills: ["beam"] }),
+    makeTool("validate_model", { category: "utility", requiresSkills: ["validation-structure-model"] }),
+    makeTool("run_analysis", {
+      category: "analysis",
+      requiresSkills: ["analysis-static"],
+      requiresTools: ["validate_model"],
+    }),
+    makeTool("run_code_check", {
+      category: "code-check",
+      requiresSkills: ["code-check-gb50010"],
+      requiresTools: ["run_analysis"],
+    }),
+    makeTool("generate_report", {
+      category: "report",
+      requiresSkills: ["report-export-builtin"],
+      requiresTools: ["run_analysis"],
+    }),
+  ];
+
+  const buildResolvedTooling = (skillIds) => {
+    const selectedManifests = skillIds === undefined
+      ? manifests.filter((manifest) => manifest.autoLoadByDefault)
+      : manifests.filter((manifest) => skillIds.includes(manifest.id));
+    const toolsById = new Map();
+    const skillIdsByToolId = {};
+    const enabledToolIdsBySkill = {};
+    const providedToolIdsBySkill = {};
+
+    for (const manifest of selectedManifests) {
+      const enabledToolIds = Array.isArray(manifest.enabledTools) ? [...manifest.enabledTools] : [];
+      const providedToolIds = Array.isArray(manifest.providedTools) ? [...manifest.providedTools] : [];
+      enabledToolIdsBySkill[manifest.id] = enabledToolIds;
+      providedToolIdsBySkill[manifest.id] = providedToolIds;
+      for (const toolId of [...enabledToolIds, ...providedToolIds]) {
+        if (!skillIdsByToolId[toolId]) {
+          skillIdsByToolId[toolId] = [];
+        }
+        if (!skillIdsByToolId[toolId].includes(manifest.id)) {
+          skillIdsByToolId[toolId].push(manifest.id);
+        }
+        const builtin = builtinTools.find((tool) => tool.id === toolId);
+        if (builtin) {
+          toolsById.set(toolId, builtin);
+        }
+      }
+    }
+
+    return {
+      tools: [...toolsById.values()],
+      enabledToolIdsBySkill,
+      providedToolIdsBySkill,
+      skillIdsByToolId,
+    };
+  };
+
+  const fakeSkillRuntime = {
+    listSkillManifests: async () => manifests,
+    resolvePreferredAnalysisSkill: () => ({ id: "analysis-static" }),
+    resolveCodeCheckDesignCodeFromSkillIds: () => undefined,
+    resolveCodeCheckSkillId: (designCode) => designCode === "GB50010" ? "code-check-gb50010" : undefined,
+    resolveSkillTooling: async (skillIds) => buildResolvedTooling(skillIds),
+    listBuiltinToolManifests: () => builtinTools,
+  };
+  const fakePolicy = {
+    inferExecutionIntent: (message) => /分析|analysis/i.test(message),
+    inferProceedIntent: () => false,
+  };
+
+  const binder = new AgentRuntimeBinder(fakeSkillRuntime, fakePolicy);
+  const activeSkillIds = await binder.resolveActiveDomainSkillIds({
+    selectedSkillIds: ["beam"],
+    workingSession: {
+      updatedAt: Date.now(),
+      resolved: {
+        analysisType: "static",
+        designCode: "GB50010",
+        autoCodeCheck: true,
+        includeReport: true,
+      },
+    },
+    modelInput: {
+      elements: [{ type: "beam" }],
+    },
+    message: "请分析这个模型并给出报告",
+    context: {
+      autoAnalyze: true,
+      designCode: "GB50010",
+      includeReport: true,
+    },
+  });
+  assert(Array.isArray(activeSkillIds), "runtime binder should resolve active skill ids");
+  assert(activeSkillIds.includes("beam"), "runtime binder should preserve explicitly selected skills");
+  assert(activeSkillIds.includes("validation-structure-model"), "runtime binder should auto-activate validation skill");
+  assert(activeSkillIds.includes("analysis-static"), "runtime binder should auto-activate preferred analysis skill");
+  assert(activeSkillIds.includes("code-check-gb50010"), "runtime binder should auto-activate code-check skill when design code is available");
+  assert(activeSkillIds.includes("report-export-builtin"), "runtime binder should auto-activate report skill when report output is requested");
+
+  const availableTooling = await binder.resolveAvailableTooling(["beam"], activeSkillIds);
+  assert(availableTooling.tools.some((tool) => tool.id === "draft_model"), "runtime binder should expose selected-skill tools");
+  assert(availableTooling.tools.some((tool) => tool.id === "run_analysis"), "runtime binder should expose active-skill tools");
+  assert(Array.isArray(availableTooling.skillIdsByToolId.run_analysis) && availableTooling.skillIdsByToolId.run_analysis.includes("analysis-static"), "runtime binder should attribute tools to their activating skills");
+
+  const activeToolIds = await binder.resolveActiveToolIds(["beam"], activeSkillIds, {
+    disabledToolIds: ["generate_report"],
+  });
+  assert(activeToolIds.has("convert_model"), "runtime binder should always retain foundation tools");
+  assert(activeToolIds.has("run_analysis"), "runtime binder should activate granted tools");
+  assert(!activeToolIds.has("generate_report"), "runtime binder should honor disabled tool overrides");
+
+  assert(agentSource.includes("AgentRuntimeBinder"), "AgentService should delegate runtime binding to AgentRuntimeBinder");
+  assert(!agentSource.includes("private async resolveActiveDomainSkillIds("), "AgentService should not keep active-skill binding logic inline");
+  assert(!agentSource.includes("private async resolveAvailableTooling("), "AgentService should not keep available-tooling binding logic inline");
+  assert(!agentSource.includes("private async resolveActiveToolIds("), "AgentService should not keep active-tool binding logic inline");
+  console.log("[ok] agent runtime binder contract");
+}
+
 async function validateAgentToolsContract(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
@@ -3102,6 +3300,7 @@ const BACKEND_VALIDATIONS = {
   "validate-agent-manifest-binding": validateAgentManifestBinding,
   "validate-agent-manifest-loader": validateAgentManifestLoader,
   "validate-agent-runtime-loader": validateAgentRuntimeLoader,
+  "validate-agent-runtime-binder": validateAgentRuntimeBinder,
   "validate-agent-tool-catalog": validateAgentToolCatalog,
   "validate-agent-skill-catalog-manifests": validateAgentSkillCatalogManifests,
   "validate-agent-tools-contract": validateAgentToolsContract,

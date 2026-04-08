@@ -30,6 +30,7 @@ import { createLocalStructureProtocolClient } from './structure-protocol-executi
 import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.js';
 import { listBuiltinToolManifests } from '../agent-runtime/tool-registry.js';
 import type { ToolManifest } from '../agent-runtime/types.js';
+import { AgentRuntimeBinder } from './agent-runtime-binder.js';
 import { executeConvertModelStep } from '../agent-tools/builtin/convert-model.js';
 import { executeDraftModelExecutionStep, executeDraftModelInteractiveStep } from '../agent-tools/builtin/draft-model.js';
 import { executeGenerateReportStep } from '../agent-tools/builtin/generate-report.js';
@@ -132,11 +133,6 @@ interface PersistedMessageDebugDetails {
 }
 
 export type ActiveToolSet = Set<string> | undefined;
-
-// Platform foundation tools are runtime-level capabilities and can stay always available.
-const PLATFORM_FOUNDATION_TOOL_IDS: AgentToolName[] = [
-  'convert_model',
-];
 
 export type AgentPlanKind = 'reply' | 'ask' | 'tool_call';
 export type AgentPlanningDirective = 'auto' | 'force_tool';
@@ -390,6 +386,7 @@ export class AgentService {
   private readonly skillRuntime: AgentSkillRuntime;
   private readonly skillCatalog: AgentSkillCatalogService;
   private readonly policy: AgentPolicyService;
+  private readonly runtimeBinder: AgentRuntimeBinder;
   private static readonly draftStateTtlSeconds = 30 * 60;
 
   constructor() {
@@ -399,6 +396,7 @@ export class AgentService {
     this.skillRuntime = new AgentSkillRuntime();
     this.skillCatalog = new AgentSkillCatalogService(this.skillRuntime);
     this.policy = new AgentPolicyService();
+    this.runtimeBinder = new AgentRuntimeBinder(this.skillRuntime, this.policy);
   }
 
   private buildHandlerDeps(): HandlerDeps {
@@ -466,7 +464,7 @@ export class AgentService {
     const locale = this.resolveInteractionLocale(options?.locale);
     const sessionKey = options?.conversationId?.trim();
     const session = await this.getInteractionSession(sessionKey);
-    const activeToolIds = await this.resolveActiveToolIds(options?.skillIds, options?.skillIds, {
+    const activeToolIds = await this.runtimeBinder.resolveActiveToolIds(options?.skillIds, options?.skillIds, {
       enabledToolIds: options?.enabledToolIds,
       disabledToolIds: options?.disabledToolIds,
     });
@@ -583,14 +581,15 @@ export class AgentService {
       workingSession.userApprovedAutoDecide = false;
     }
     const modelInput = params.context?.model || session?.latestModel;
-    const activeSkillIds = await this.resolveActiveDomainSkillIds({
+    const activeSkillIds = await this.runtimeBinder.resolveActiveDomainSkillIds({
       selectedSkillIds: skillIds,
       workingSession,
       modelInput,
       message: params.message,
       context: params.context,
+      hasEmptySkillSelection: this.hasEmptySkillSelection.bind(this),
     });
-    const activeToolIds = await this.resolveActiveToolIds(skillIds, activeSkillIds, {
+    const activeToolIds = await this.runtimeBinder.resolveActiveToolIds(skillIds, activeSkillIds, {
       enabledToolIds: params.context?.enabledToolIds,
       disabledToolIds: params.context?.disabledToolIds,
     });
@@ -620,213 +619,12 @@ export class AgentService {
       : [];
   }
 
-  private resolvePreferredAnalysisModelFamilies(args: {
-    workingSession: InteractionSession;
-    modelInput?: Record<string, unknown>;
-  }): string[] {
-    const structuralType = args.workingSession.structuralTypeMatch?.key
-      || args.workingSession.draft?.structuralTypeKey
-      || args.workingSession.draft?.inferredType;
-    if (structuralType === 'truss') {
-      return ['truss', 'generic'];
-    }
-    if (
-      structuralType === 'beam'
-      || structuralType === 'frame'
-      || structuralType === 'portal-frame'
-      || structuralType === 'double-span-beam'
-    ) {
-      return ['frame', 'generic'];
-    }
-
-    const modelElements = args.modelInput?.elements;
-    if (Array.isArray(modelElements) && modelElements.some((element) => {
-      if (!element || typeof element !== 'object') {
-        return false;
-      }
-      return (element as Record<string, unknown>).type === 'truss';
-    })) {
-      return ['truss', 'generic'];
-    }
-
-    return ['generic'];
-  }
-
-  private async resolveActiveDomainSkillIds(args: {
-    selectedSkillIds?: string[];
-    workingSession: InteractionSession;
-    modelInput?: Record<string, unknown>;
-    message: string;
-    context?: AgentRunInput['context'];
-  }): Promise<string[] | undefined> {
-    if (this.hasEmptySkillSelection(args.selectedSkillIds)) {
-      return [];
-    }
-
-    const selectedSkillIds = this.normalizeSkillIds(args.selectedSkillIds);
-    const manifests = await this.skillRuntime.listSkillManifests();
-    const activatedSkillIds = new Set<string>(selectedSkillIds);
-    const selectedSkillSet = new Set(selectedSkillIds);
-    const structuralSkillId = args.workingSession.structuralTypeMatch?.skillId
-      || args.workingSession.draft?.skillId
-      || manifests.find((manifest) => manifest.domain === 'structure-type' && selectedSkillSet.has(manifest.id))?.id;
-    if (structuralSkillId) {
-      activatedSkillIds.add(structuralSkillId);
-    }
-
-    const hasStructuralContext = Boolean(structuralSkillId || args.workingSession.draft || args.modelInput || args.workingSession.latestModel);
-    const hasExecutionIntent = this.policy.inferExecutionIntent(args.message) || this.policy.inferProceedIntent(args.message);
-    const analysisType = args.workingSession.resolved?.analysisType
-      || args.context?.analysisType
-      || inferAnalysisType(this.policy, args.message);
-    const explicitDesignCode = args.workingSession.resolved?.designCode
-      || args.context?.designCode
-      || this.policy.inferDesignCode(args.message);
-    const designCode = explicitDesignCode || this.skillRuntime.resolveCodeCheckDesignCodeFromSkillIds(selectedSkillIds);
-    const shouldActivateValidation = hasStructuralContext || hasExecutionIntent || inferCodeCheckIntent(this.policy, args.message) || inferReportIntent(this.policy, args.message) === true;
-    if (shouldActivateValidation) {
-      activatedSkillIds.add('validation-structure-model');
-    }
-
-    if (hasStructuralContext || hasExecutionIntent || args.context?.autoAnalyze === true) {
-      const preferredAnalysisSkill = this.skillRuntime.resolvePreferredAnalysisSkill({
-        analysisType,
-        engineId: args.context?.engineId,
-        skillIds: selectedSkillIds,
-        supportedModelFamilies: this.resolvePreferredAnalysisModelFamilies({
-          workingSession: args.workingSession,
-          modelInput: args.modelInput,
-        }),
-      });
-      if (preferredAnalysisSkill) {
-        activatedSkillIds.add(preferredAnalysisSkill.id);
-      }
-    }
-
-    const shouldActivateCodeCheck = Boolean(designCode) && (
-      args.workingSession.resolved?.autoCodeCheck
-      ?? args.context?.autoCodeCheck
-      ?? inferCodeCheckIntent(this.policy, args.message)
-      ?? true
-    );
-    if (shouldActivateCodeCheck) {
-      const codeCheckSkillId = this.skillRuntime.resolveCodeCheckSkillId(designCode);
-      if (codeCheckSkillId) {
-        activatedSkillIds.add(codeCheckSkillId);
-      }
-    }
-
-    const shouldActivateReport = (
-      args.workingSession.resolved?.includeReport
-      ?? args.context?.includeReport
-      ?? true
-    ) && (hasStructuralContext || hasExecutionIntent || inferReportIntent(this.policy, args.message) === true);
-    if (shouldActivateReport) {
-      activatedSkillIds.add('report-export-builtin');
-    }
-
-    if (activatedSkillIds.size === 0) {
-      return args.selectedSkillIds === undefined ? undefined : [];
-    }
-
-    return Array.from(activatedSkillIds).sort();
-  }
-
-  private async resolveAvailableTooling(
-    selectedSkillIds?: string[],
-    activeSkillIds?: string[],
-  ): Promise<{ tools: ToolManifest[]; skillIdsByToolId: Record<string, string[]> }> {
-    const toolMap = new Map<string, ToolManifest>();
-    const ownerMap = new Map<string, Set<string>>();
-    const keyCache = new Set<string>();
-    const toolingInputs: Array<string[] | undefined> = [selectedSkillIds, activeSkillIds];
-
-    for (const skillIds of toolingInputs) {
-      const cacheKey = skillIds === undefined ? '__AUTO__' : JSON.stringify(this.normalizeSkillIds(skillIds));
-      if (keyCache.has(cacheKey)) {
-        continue;
-      }
-      keyCache.add(cacheKey);
-      const tooling = await this.skillRuntime.resolveSkillTooling(skillIds);
-      for (const tool of tooling.tools) {
-        if (!toolMap.has(tool.id)) {
-          toolMap.set(tool.id, tool);
-        }
-      }
-      for (const [toolId, skillOwners] of Object.entries(tooling.skillIdsByToolId)) {
-        if (!ownerMap.has(toolId)) {
-          ownerMap.set(toolId, new Set());
-        }
-        for (const skillId of skillOwners) {
-          ownerMap.get(toolId)!.add(skillId);
-        }
-      }
-    }
-
-    return {
-      tools: Array.from(toolMap.values()).sort((left, right) => left.id.localeCompare(right.id)),
-      skillIdsByToolId: Array.from(ownerMap.entries()).reduce<Record<string, string[]>>((acc, [toolId, skillOwners]) => {
-        acc[toolId] = Array.from(skillOwners).sort();
-        return acc;
-      }, {}),
-    };
-  }
-
-  private async resolveActiveToolIds(
-    selectedSkillIds?: string[],
-    activeSkillIds?: string[],
-    options?: { enabledToolIds?: string[]; disabledToolIds?: string[] },
-  ): Promise<ActiveToolSet> {
-    const builtinCatalog = new Set(listBuiltinToolManifests().map((tool) => tool.id));
-    const active = new Set<string>();
-
-    for (const toolId of PLATFORM_FOUNDATION_TOOL_IDS) {
-      if (builtinCatalog.has(toolId)) {
-        active.add(toolId);
-      }
-    }
-
-    const tooling = await this.resolveAvailableTooling(selectedSkillIds, activeSkillIds);
-    for (const tool of tooling.tools) {
-      active.add(tool.id);
-    }
-
-    return this.applyToolSelection(active, options);
-  }
-
-  private applyToolSelection(
-    active: Set<string>,
-    options?: { enabledToolIds?: string[]; disabledToolIds?: string[] },
-  ): Set<string> {
-    const enabledToolIds = Array.isArray(options?.enabledToolIds)
-      ? options.enabledToolIds
-        .map((toolId) => (typeof toolId === 'string' ? toolId.trim() : ''))
-        .filter((toolId): toolId is string => toolId.length > 0)
-      : undefined;
-    const disabledToolIds = Array.isArray(options?.disabledToolIds)
-      ? options.disabledToolIds
-        .map((toolId) => (typeof toolId === 'string' ? toolId.trim() : ''))
-        .filter((toolId): toolId is string => toolId.length > 0)
-      : [];
-
-    const selected = enabledToolIds ? new Set(enabledToolIds.filter((toolId) => active.has(toolId))) : new Set(active);
-    for (const toolId of disabledToolIds) {
-      selected.delete(toolId);
-    }
-    return selected;
-  }
-
   private hasActiveTool(activeToolIds: ActiveToolSet, toolId: string): boolean {
-    return !activeToolIds || activeToolIds.has(toolId);
+    return this.runtimeBinder.hasActiveTool(activeToolIds, toolId);
   }
 
   private async resolveSelectedToolManifest(toolId: string, skillIds?: string[]): Promise<ToolManifest | undefined> {
-    const builtin = listBuiltinToolManifests().find((tool) => tool.id === toolId);
-    if (builtin) {
-      return builtin;
-    }
-    const tooling = await this.resolveAvailableTooling(undefined, skillIds);
-    return tooling.tools.find((tool) => tool.id === toolId);
+    return this.runtimeBinder.resolveSelectedToolManifest(toolId, skillIds);
   }
 
   private buildMissingToolRequirements(args: {
@@ -834,14 +632,7 @@ export class AgentService {
     skillIds?: string[];
     activeToolIds?: ActiveToolSet;
   }): { missingSkills: string[]; missingTools: string[] } {
-    const selectedSkillIds = new Set(Array.isArray(args.skillIds) ? args.skillIds : []);
-    const missingSkills = Array.isArray(args.manifest.requiresSkills)
-      ? args.manifest.requiresSkills.filter((skillId) => !selectedSkillIds.has(skillId))
-      : [];
-    const missingTools = Array.isArray(args.manifest.requiresTools)
-      ? args.manifest.requiresTools.filter((toolId) => !this.hasActiveTool(args.activeToolIds, toolId))
-      : [];
-    return { missingSkills, missingTools };
+    return this.runtimeBinder.buildMissingToolRequirements(args);
   }
 
   private buildToolRequirementMessage(args: {
@@ -1055,7 +846,7 @@ export class AgentService {
     }
 
     const assessment = await this.assessInteractionNeeds(session, locale, skillIds, 'interactive');
-    const activeToolIds = await this.resolveActiveToolIds(skillIds);
+    const activeToolIds = await this.runtimeBinder.resolveActiveToolIds(skillIds);
     const state = assessment.criticalMissing.length > 0
       ? 'collecting'
       : assessment.nonCriticalMissing.length > 0
@@ -2592,7 +2383,7 @@ export class AgentService {
           analysisType: executionConfig.analysisType,
           engineId: input.engineId,
           skillIds: activeSkillIds ?? skillIds,
-          supportedModelFamilies: this.resolvePreferredAnalysisModelFamilies({
+          supportedModelFamilies: this.runtimeBinder.resolvePreferredAnalysisModelFamilies({
             workingSession,
             modelInput: normalizedModel,
           }),
@@ -2605,7 +2396,7 @@ export class AgentService {
           parameters: input.parameters,
           analysisSkillId,
           skillIds: activeSkillIds ?? skillIds,
-          supportedModelFamilies: this.resolvePreferredAnalysisModelFamilies({
+          supportedModelFamilies: this.runtimeBinder.resolvePreferredAnalysisModelFamilies({
             workingSession,
             modelInput: normalizedModel,
           }),
@@ -3630,7 +3421,7 @@ export class AgentService {
     nonCriticalMissing: string[];
     defaultProposals: InteractionDefaultProposal[];
   }> {
-    const activeToolIds = await this.resolveActiveToolIds(skillIds);
+    const activeToolIds = await this.runtimeBinder.resolveActiveToolIds(skillIds);
     const structural = await this.skillRuntime.assessDraft(
       session.draft || { inferredType: 'unknown', updatedAt: session.updatedAt },
       locale,
@@ -4301,7 +4092,7 @@ export class AgentService {
     }
 
     const builtinById = new Map(listBuiltinToolManifests().map((tool) => [tool.id, tool] as const));
-    const tooling = await this.resolveAvailableTooling(routing?.selectedSkillIds, skillIds);
+    const tooling = await this.runtimeBinder.resolveAvailableTooling(routing?.selectedSkillIds, skillIds);
     const activatedSkillIds = new Set(routing?.activatedSkillIds || []);
     const preferredAuthorizers = [
       routing?.structuralSkillId,
