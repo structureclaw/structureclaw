@@ -1,4 +1,4 @@
-import { describe, expect, test } from '@jest/globals';
+import { afterEach, describe, expect, jest, test } from '@jest/globals';
 import { config } from '../dist/config/index.js';
 
 /**
@@ -83,6 +83,29 @@ describe('cache in-memory store: get / setex', () => {
   });
 });
 
+describe('cache in-memory store: background sweep', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  test('should prune expired entries even if they are never read again', async () => {
+    jest.useFakeTimers();
+    jest.resetModules();
+
+    const { cache, CACHE_SWEEP_INTERVAL_MS, getCacheEntryCount } = await import('../dist/utils/cache.js');
+    const key = `test-sweep-${Date.now()}`;
+
+    await cache.setex(key, 1, 'short-lived');
+    expect(getCacheEntryCount()).toBe(1);
+
+    await jest.advanceTimersByTimeAsync(1_000);
+    expect(getCacheEntryCount()).toBe(1);
+
+    await jest.advanceTimersByTimeAsync(CACHE_SWEEP_INTERVAL_MS);
+    expect(getCacheEntryCount()).toBe(0);
+  });
+});
+
 describe('cache in-memory store: del', () => {
   test('should delete a key and return 1', async () => {
     const { cache } = await import('../dist/utils/cache.js');
@@ -94,6 +117,13 @@ describe('cache in-memory store: del', () => {
 
     const getResult = await cache.get(key);
     expect(getResult).toBeNull();
+  });
+
+  test('should return 0 when deleting a key that does not exist', async () => {
+    const { cache } = await import('../dist/utils/cache.js');
+
+    const delResult = await cache.del(`test-del-missing-${Date.now()}`);
+    expect(delResult).toBe(0);
   });
 });
 

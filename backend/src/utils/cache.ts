@@ -4,6 +4,7 @@ type CacheEntry = {
 };
 
 export const MAX_CACHE_ENTRIES = 1024;
+export const CACHE_SWEEP_INTERVAL_MS = 60_000;
 
 const memoryCache = new Map<string, CacheEntry>();
 
@@ -24,6 +25,12 @@ function pruneOverflowEntries(): void {
     memoryCache.delete(oldestKey);
   }
 }
+
+const evictionInterval = setInterval(() => {
+  pruneExpiredEntries();
+}, CACHE_SWEEP_INTERVAL_MS);
+
+evictionInterval.unref?.();
 
 function memoryGet(key: string): string | null {
   const entry = memoryCache.get(key);
@@ -62,8 +69,7 @@ export const cache = {
 
   async del(key: string): Promise<number> {
     pruneExpiredEntries();
-    memoryCache.delete(key);
-    return 1;
+    return memoryCache.delete(key) ? 1 : 0;
   },
 
   async ping(): Promise<'PONG'> {
@@ -73,3 +79,7 @@ export const cache = {
   async quit(): Promise<void> {
   },
 };
+
+export function getCacheEntryCount(): number {
+  return memoryCache.size;
+}
