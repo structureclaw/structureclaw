@@ -1296,6 +1296,43 @@ async function validateAgentManifestLoader(context) {
   }
 }
 
+async function validateAgentToolCatalog(context) {
+  await runBackendBuildOnce(context);
+
+  const { AgentToolCatalogService } = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent-tool-catalog.js")).href
+  );
+
+  const service = new AgentToolCatalogService();
+  const tools = await service.listBuiltinTools();
+  assert(Array.isArray(tools), "tool catalog should return an array");
+
+  const toolIds = tools.map((tool) => tool.id).sort();
+  assert(
+    JSON.stringify(toolIds) === JSON.stringify([
+      "convert_model",
+      "draft_model",
+      "generate_report",
+      "run_analysis",
+      "run_code_check",
+      "update_model",
+      "validate_model",
+    ]),
+    "tool catalog should expose the canonical builtin tool set from tool.yaml manifests",
+  );
+
+  assert(tools.every((tool) => typeof tool.manifestPath === "string" && tool.manifestPath.endsWith("tool.yaml")), "tool catalog should retain manifest paths");
+  assert(tools.every((tool) => tool.source === "builtin"), "builtin tool catalog should normalize source to builtin");
+  assert(tools.find((tool) => tool.id === "convert_model")?.tier === "foundation", "convert_model should be the foundation tool");
+  assert(tools.filter((tool) => tool.id !== "convert_model").every((tool) => tool.tier === "domain"), "non-foundation builtin tools should be domain tools");
+  assert(tools.find((tool) => tool.id === "run_analysis")?.requiresTools.includes("validate_model"), "run_analysis should depend on validate_model");
+  assert(tools.find((tool) => tool.id === "run_code_check")?.requiresTools.includes("run_analysis"), "run_code_check should depend on run_analysis");
+  assert(tools.find((tool) => tool.id === "generate_report")?.requiresTools.includes("run_analysis"), "generate_report should depend on run_analysis");
+  assert(tools.find((tool) => tool.id === "draft_model")?.displayName?.en === "Draft Structural Model", "draft_model should preserve bilingual text");
+
+  console.log("[ok] agent tool catalog contract");
+}
+
 async function validateAgentToolsContract(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
@@ -2644,6 +2681,7 @@ const BACKEND_VALIDATIONS = {
   "validate-agent-capability-modes": validateAgentCapabilityModes,
   "validate-agent-manifest-binding": validateAgentManifestBinding,
   "validate-agent-manifest-loader": validateAgentManifestLoader,
+  "validate-agent-tool-catalog": validateAgentToolCatalog,
   "validate-agent-tools-contract": validateAgentToolsContract,
   "validate-agent-api-contract": validateAgentApiContract,
   "validate-agent-capability-matrix": validateAgentCapabilityMatrix,
