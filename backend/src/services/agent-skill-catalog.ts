@@ -1,4 +1,9 @@
 import { AgentSkillRuntime } from '../agent-runtime/index.js';
+import {
+  BUILTIN_VALIDATION_STRUCTURE_MODEL_LEGACY_ALIASES,
+  BUILTIN_VALIDATION_STRUCTURE_MODEL_SKILL_ID,
+  resolveBuiltinValidationSkillCanonicalId,
+} from '../agent-runtime/builtin-domain-manifests.js';
 import { listBuiltinAnalysisSkills } from '../agent-skills/analysis/entry.js';
 import { listCodeCheckRuleProviders } from '../agent-skills/code-check/entry.js';
 import { listBuiltinLoadBoundarySkills } from '../agent-skills/load-boundary/entry.js';
@@ -15,10 +20,6 @@ import type {
 const DEFAULT_COMPATIBILITY: SkillCompatibility = {
   minRuntimeVersion: '0.1.0',
   skillApiVersion: 'v1',
-};
-
-export const BUILTIN_SKILL_LEGACY_ALIAS_MAP: Record<string, string> = {
-  'structure-json-validation': 'validation-structure-model',
 };
 
 export type BuiltinSkillCatalogSourceKind =
@@ -69,12 +70,15 @@ function cloneCompatibility(value: SkillCompatibility | undefined): SkillCompati
 }
 
 function resolveCanonicalId(skillId: string): string {
-  return BUILTIN_SKILL_LEGACY_ALIAS_MAP[skillId] ?? skillId;
+  return resolveBuiltinValidationSkillCanonicalId(skillId);
 }
 
 function resolveAliases(skillId: string, aliases?: string[]): string[] {
   const canonicalId = resolveCanonicalId(skillId);
   return uniqueStrings([
+    ...(canonicalId === BUILTIN_VALIDATION_STRUCTURE_MODEL_SKILL_ID
+      ? [...BUILTIN_VALIDATION_STRUCTURE_MODEL_LEGACY_ALIASES]
+      : []),
     ...(canonicalId !== skillId ? [skillId] : []),
     ...(aliases ?? []),
   ]).filter((alias) => alias !== canonicalId);

@@ -2,6 +2,9 @@ import { listBuiltinAnalysisSkills } from '../agent-skills/analysis/entry.js';
 import { listCodeCheckRuleProviders } from '../agent-skills/code-check/entry.js';
 import type { SkillManifest } from './types.js';
 
+export const BUILTIN_VALIDATION_STRUCTURE_MODEL_SKILL_ID = 'validation-structure-model' as const;
+export const BUILTIN_VALIDATION_STRUCTURE_MODEL_LEGACY_ALIASES = ['structure-json-validation'] as const;
+
 const DEFAULT_COMPATIBILITY = {
   minRuntimeVersion: '0.1.0',
   skillApiVersion: 'v1',
@@ -19,6 +22,14 @@ function createGenericDomainManifest(
     structuralTypeKeys: [...GENERIC_STRUCTURAL_TYPE_KEYS],
     compatibility: { ...DEFAULT_COMPATIBILITY },
   };
+}
+
+export function resolveBuiltinValidationSkillCanonicalId(skillId: string): string {
+  return BUILTIN_VALIDATION_STRUCTURE_MODEL_LEGACY_ALIASES.includes(
+    skillId as typeof BUILTIN_VALIDATION_STRUCTURE_MODEL_LEGACY_ALIASES[number],
+  )
+    ? BUILTIN_VALIDATION_STRUCTURE_MODEL_SKILL_ID
+    : skillId;
 }
 
 function buildAnalysisManifests(): SkillManifest[] {
@@ -70,7 +81,7 @@ function buildCodeCheckManifests(): SkillManifest[] {
 
 function buildValidationManifests(): SkillManifest[] {
   return [createGenericDomainManifest({
-    id: 'validation-structure-model',
+    id: BUILTIN_VALIDATION_STRUCTURE_MODEL_SKILL_ID,
     domain: 'validation',
     name: {
       zh: '结构模型校验',
