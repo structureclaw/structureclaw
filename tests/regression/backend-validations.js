@@ -1754,6 +1754,24 @@ async function validateAgentRuntimeLoader(context) {
     await visit(rootDir);
     return collected.sort();
   };
+  const collectFilesByBasename = async (rootDir, fileName) => {
+    const collected = [];
+    const visit = async (currentDir) => {
+      const entries = await fsp.readdir(currentDir, { withFileTypes: true });
+      for (const entry of entries) {
+        const entryPath = path.join(currentDir, entry.name);
+        if (entry.isDirectory()) {
+          await visit(entryPath);
+          continue;
+        }
+        if (entry.isFile() && entry.name === fileName) {
+          collected.push(entryPath);
+        }
+      }
+    };
+    await visit(rootDir);
+    return collected.sort();
+  };
 
   const runtime = new AgentSkillRuntime();
   const skills = runtime.listSkills();
@@ -1791,6 +1809,11 @@ async function validateAgentRuntimeLoader(context) {
     const source = await fsp.readFile(markdownPath, "utf8");
     assert(!source.trimStart().startsWith("---\n"), `${path.relative(context.rootDir, markdownPath)} should not keep legacy YAML frontmatter`);
   }
+  const structureTypeManifestFiles = await collectFilesByBasename(
+    path.join(sourceSkillRoot, "structure-type"),
+    "manifest.ts",
+  );
+  assert(structureTypeManifestFiles.length === 0, "structure-type skills should no longer keep manifest.ts once runtime loading is manifest-first");
 
   const builtinTools = runtime.listBuiltinToolManifests();
   const builtinToolsById = new Map(builtinTools.map((tool) => [tool.id, tool]));
