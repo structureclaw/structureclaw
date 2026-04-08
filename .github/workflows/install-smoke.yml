@@ -57,6 +57,9 @@ jobs:
         shell: bash
         run: node tests/runner.mjs smoke-native
 
+      - name: Backend lint
+        run: npm run lint --prefix backend
+
       - name: Frontend type-check
         run: npm run type-check --prefix frontend
 
