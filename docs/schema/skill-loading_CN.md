@@ -66,6 +66,12 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 | `section` | `agent-skills/section/` | 插件清单 |
 | `validation` | `agent-skills/validation/` | 运行时生成内置 manifest |
 
+当前内置 skill 加载遵循一条 canonical catalog 规则：
+
+- `/api/v1/agent/skills` 和 `/api/v1/agent/capability-matrix` 是同一份归一化内置 skill catalog 的两个投影。
+- 暴露给前端的 skill id 必须使用 canonical id。
+- legacy id 只能作为迁移与向后兼容用 alias 保留，不应再作为面向用户的主 id。
+
 当前实现里，`AgentSkillRuntime.listSkillManifests()` 会把 `structure-type` 插件 manifest 与一组内置 domain manifest 合并后统一暴露给能力矩阵和 tool 授权层。这组运行时生成的 manifest 当前覆盖：
 
 - `analysis`

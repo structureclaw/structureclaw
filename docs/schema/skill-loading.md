@@ -66,6 +66,12 @@ Structure-type skills live under `backend/src/agent-skills/structure-type/`. Eac
 | `section` | `agent-skills/section/` | Plugin manifest |
 | `validation` | `agent-skills/validation/` | Runtime-generated builtin manifest |
 
+Builtin skill loading now follows one canonical catalog rule:
+
+- `/api/v1/agent/skills` and `/api/v1/agent/capability-matrix` are two projections over the same normalized builtin skill catalog.
+- Skill ids exposed to the frontend must use canonical ids.
+- Legacy ids may remain only as aliases for migration and backward compatibility, and should not be used as the primary id shown to users.
+
 In the current implementation, `AgentSkillRuntime.listSkillManifests()` exposes a unified manifest inventory by merging `structure-type` plugin manifests with a set of builtin domain manifests. The runtime-generated manifests currently cover:
 
 - `analysis`
