@@ -219,8 +219,42 @@ Each skill may declare:
 
 - whether it is enabled by default
 - which other skills it requires or conflicts with
-- which tools it provides
-- which tools it allows the agent to use in its context
+- which tools it grants to the agent in its context
+- optional tool policy hints for runtime binding
+
+Manifest-first rule:
+
+- every skill must live in its own directory
+- every skill directory must contain `skill.yaml`
+- if a directory does not contain `skill.yaml`, it is not a valid skill
+
+Recommended built-in layout:
+
+```text
+backend/src/agent-skills/<domain>/<skill-id>/
+  skill.yaml
+  intent.md
+  draft.md
+  analysis.md
+  design.md
+  handler.ts
+  runtime.py
+```
+
+`skill.yaml` is the static truth for:
+
+- skill id and aliases
+- source (`builtin` or `external`)
+- domain
+- localized metadata
+- stages and triggers
+- enablement defaults
+- capabilities
+- explicit tool grants
+- dependency and compatibility metadata
+- model, analysis, and engine hints
+
+`skill.yaml` must not redefine tool identity, tool schema, or runtime engine availability.
 
 ### 8.2 Tools
 
@@ -228,8 +262,38 @@ Each tool should declare:
 
 - whether it is enabled by default
 - whether it is built-in or external
+- its execution-role tier
 - its input and output contract
 - any required guards or prerequisites
+
+Manifest-first rule:
+
+- every tool must live in its own directory
+- every tool directory must contain `tool.yaml`
+- if a directory does not contain `tool.yaml`, it is not a valid tool
+
+Recommended built-in layout:
+
+```text
+backend/src/agent-tools/<tool-id>/
+  tool.yaml
+  handler.ts
+  schema.ts
+```
+
+`tool.yaml` is the static truth for:
+
+- tool id
+- source (`builtin` or `external`)
+- tier (`foundation`, `domain`, or `extension`)
+- category
+- localized display metadata
+- input and output schema references
+- guard and dependency metadata
+- audit and trace metadata
+- implementation entry references
+
+`tool.yaml` must not decide which skills grant the tool or whether the current turn is allowed to use it.
 
 ### 8.3 Agent Rule
 
@@ -275,14 +339,31 @@ To align platform governance with ecosystem extensibility, both skills and tools
 
 2. Tool categories
 
-- Built-in tools: platform-owned foundation action interfaces. The currently active built-in foundation tool is `convert_model`.
+- Built-in tools: platform-owned action interfaces defined by platform manifests.
 - External tools: action interfaces provided by external skills or extensions.
+
+Built-in and external source must be kept distinct from tool tier:
+
+- `foundation`
+  - platform base tools that may remain available under platform policy
+  - current example: `convert_model`
+- `domain`
+  - platform canonical engineering tools that require skill grants
+  - examples: `draft_model`, `update_model`, `validate_model`, `run_analysis`, `run_code_check`, `generate_report`
+- `extension`
+  - tools introduced by external capabilities
+
+The expected source/tier combinations are:
+
+- built-in tools: `foundation` or `domain`
+- external tools: `extension`
 
 3. Authorization rules
 
-- Built-in tools do not require skill grants, but they must not take over domain decision-making.
-- External tools must be explicitly granted by currently matched skills before invocation.
-- External tool calls must also pass dependency and sequencing guards.
+- Foundation built-in tools may remain available under platform policy, but they must not take over domain decision-making.
+- Domain built-in tools must be explicitly granted by currently matched skills before invocation.
+- Extension tools must be explicitly granted by currently matched skills before invocation.
+- Any granted tool call must also pass dependency and sequencing guards.
 - User manual toggles (skill/tool enable/disable) have the highest priority and override automatic activation, platform default allowlists, and policy suggestions.
 
 4. Available tool set
@@ -290,7 +371,8 @@ To align platform governance with ecosystem extensibility, both skills and tools
 For each turn, the available tool set is defined as:
 
 - platform foundation built-in tools (currently `convert_model`, still constrained by platform guards)
-- external tools explicitly granted by currently active skills
+- domain built-in tools explicitly granted by currently active skills
+- extension tools explicitly granted by currently active skills
 
 The final usable set must be intersected with the user-enabled set; any skill or tool manually disabled by the user must become immediately unavailable.
 
@@ -301,19 +383,19 @@ The orchestrator must not invoke tools outside this set.
 Every tool invocation should record:
 
 - tool source (built-in or external)
-- for external tools, the granting skill id
+- tool tier (`foundation`, `domain`, or `extension`)
+- for any granted tool, the granting skill id
 - if blocked, a stable blocked-reason code
 
 ### 8.6 Invocation Matrix
 
 To prevent ambiguity, the invocation matrix is fixed as follows:
 
-- Built-in skill -> built-in tool: allowed
-- Built-in skill -> external tool: allowed only when the external tool is granted by the currently active skills
-- External skill -> built-in tool: allowed
-- External skill -> external tool: allowed only when explicitly granted by that external skill or the current active skill set
+- Any skill -> foundation built-in tool: allowed under platform policy
+- Any skill -> domain built-in tool: allowed only when granted by the current active skill set
+- Any skill -> extension tool: allowed only when granted by the current active skill set
 
-Any implicit allow path for ungranted external tools is prohibited.
+Any implicit allow path for ungranted domain or extension tools is prohibited.
 
 ### 8.7 Current-Phase Operating Constraints (2026-04)
 
@@ -326,8 +408,8 @@ To avoid confusion between the target architecture and the current implementatio
 
 2. Current tool status
 
-- In the current production governance model, every canonical tool except `convert_model` is managed as an external tool.
-- `convert_model` is the active platform foundation built-in tool; all other canonical tools must be skill-granted before invocation.
+- In the current production governance model, `convert_model` is the active platform foundation built-in tool.
+- All other current canonical tools are treated as granted tools and must be skill-granted before invocation, even while the runtime is still migrating toward explicit manifest-backed tool tiers.
 
 3. Effective authorization rule for this phase
 
@@ -338,6 +420,103 @@ To avoid confusion between the target architecture and the current implementatio
 
 - User manual toggles (skill/tool enable/disable) have the highest priority.
 - Manual toggles must override automatic activation, default sets, and policy suggestions.
+
+### 8.8 Manifest-First Catalog Architecture
+
+The loading architecture is manifest-first and directory-driven.
+
+Two static catalogs must exist:
+
+- `skill catalog`
+- `tool catalog`
+
+The catalogs are built from manifest discovery, not from runtime execution state.
+
+Normalized catalog projections must be the single metadata source for both frontend and backend surfaces:
+
+- `/api/v1/agent/skills` is a projection of the skill catalog
+- tool protocol metadata is a projection of the tool catalog
+- `/api/v1/agent/capability-matrix` is a runtime projection built from both catalogs plus runtime state
+
+### 8.9 Runtime Binder
+
+Static manifests do not directly decide the final available tool set. That responsibility belongs to the runtime binder.
+
+The runtime binder combines:
+
+- active or selected skill ids
+- explicit skill grants
+- user skill/tool toggles
+- current model family
+- current analysis type
+- engine availability
+- tool dependency and guard rules
+
+It produces:
+
+- active skills for the current turn
+- available tools for the current turn
+- blocked tools with stable reason codes
+- per-skill and per-tool trace attribution
+
+The binding order is:
+
+1. Load normalized skill and tool catalogs.
+2. Resolve aliases to canonical ids.
+3. Determine active skills from routing, defaults, and user selection.
+4. Collect explicit tool grants from active skills.
+5. Add foundation tools allowed by platform policy.
+6. Intersect with user-enabled skills and tools.
+7. Apply tool dependency and guard rules.
+8. Apply engine and model compatibility rules.
+9. Produce the final available tool set and blocked reasons.
+
+This means non-foundation tools never become available only because a domain exists. They become available because active skills grant them and runtime checks allow them.
+
+### 8.10 Role of Registries and Adapters
+
+Registries may remain, but only as execution-layer helpers.
+
+Acceptable roles:
+
+- discover analysis adapters
+- resolve code-check execution providers
+- locate extension handlers or runtime adapters
+
+Unacceptable roles:
+
+- deciding whether a directory counts as a skill
+- inventing skill identity outside manifest metadata
+- assigning implicit tool grants not declared by the skill
+
+Capability identity belongs to manifests and catalogs. Runtime execution binding belongs to the runtime binder.
+
+### 8.11 Contributor Workflow
+
+The default contributor workflow should be:
+
+1. create a new skill directory
+2. write `skill.yaml`
+3. add the skill's prompts, handler, and runtime files
+4. grant existing canonical tools where needed
+
+In the common case, contributors should not need to edit central registry files or central mapping tables.
+
+Adding a new tool is a separate, less common path. It is needed only when existing tools cannot express a new action contract. In that case the contributor must create a tool directory, add `tool.yaml`, implement the handler and schema, and extend tests and governance for the new tool.
+
+### 8.12 Decision Summary
+
+This architecture fixes the following rules:
+
+- `skill` and `tool` remain distinct
+- both support built-in and external sources
+- both use manifest-first, directory-driven discovery
+- valid manifests are required; no manifest means no capability
+- skills grant tools explicitly
+- multiple skills may grant the same tool
+- canonical platform tools remain platform-owned
+- runtime binding, not registries, decides the final available tool set
+- the default contributor workflow is “write a skill and reuse existing tools”
 
 ## 9. Full Structural Engineering Workflow
 
