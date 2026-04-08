@@ -934,7 +934,7 @@ async function validateAgentManifestBinding(context) {
     materialFamilies: [],
     priority: spec.priority,
     compatibility,
-    sourceKinds: ["runtime-manifest"],
+    manifestPath: `/virtual/skills/${spec.id}/skill.yaml`,
   }));
   const validGrantTools = [
     makeGrantTool("draft_model", "beam"),
@@ -985,7 +985,7 @@ async function validateAgentManifestBinding(context) {
     materialFamilies: [],
     priority: strictManifestSpec.priority,
     compatibility,
-    sourceKinds: ["runtime-manifest"],
+    manifestPath: `/virtual/skills/${strictManifestSpec.id}/skill.yaml`,
   };
 
   const buildResolvedTooling = (manifests) => {
@@ -1497,7 +1497,7 @@ async function validateAgentSkillCatalogManifests(context) {
   for (const skillId of ["generic", "beam", "truss", "frame", "portal-frame", "double-span-beam"]) {
     assert(byId.has(skillId), `skill catalog should include structure-type skill ${skillId}`);
     const skill = byId.get(skillId);
-    assert(Array.isArray(skill.sourceKinds) && skill.sourceKinds.includes("file-manifest"), `${skillId} should record file-manifest provenance`);
+    assert(typeof skill.manifestPath === "string" && skill.manifestPath.endsWith("skill.yaml"), `${skillId} should retain its skill.yaml path`);
     assert(Array.isArray(skill.enabledTools) && skill.enabledTools.includes("draft_model"), `${skillId} should expose draft_model grant from skill.yaml`);
     assert(Array.isArray(skill.enabledTools) && skill.enabledTools.includes("update_model"), `${skillId} should expose update_model grant from skill.yaml`);
   }
@@ -1505,13 +1505,13 @@ async function validateAgentSkillCatalogManifests(context) {
   assert(byId.get("generic")?.triggers.includes("load"), "generic structure-type skill should preserve the manifest-level load trigger");
   const validationSkill = skills.find((skill) => skill.canonicalId === "validation-structure-model");
   assert(validationSkill, "skill catalog should include validation-structure-model");
-  assert(validationSkill.sourceKinds.includes("file-manifest"), "validation-structure-model should record file-manifest provenance");
+  assert(typeof validationSkill.manifestPath === "string" && validationSkill.manifestPath.endsWith("skill.yaml"), "validation-structure-model should retain its skill.yaml path");
   assert(validationSkill.enabledTools.includes("validate_model"), "validation-structure-model should expose validate_model grant from skill.yaml");
   assert(validationSkill.aliases.includes("structure-json-validation"), "validation-structure-model should preserve legacy alias");
 
   const reportSkill = skills.find((skill) => skill.canonicalId === "report-export-builtin");
   assert(reportSkill, "skill catalog should include report-export-builtin");
-  assert(reportSkill.sourceKinds.includes("file-manifest"), "report-export-builtin should record file-manifest provenance");
+  assert(typeof reportSkill.manifestPath === "string" && reportSkill.manifestPath.endsWith("skill.yaml"), "report-export-builtin should retain its skill.yaml path");
   assert(reportSkill.enabledTools.includes("generate_report"), "report-export-builtin should expose generate_report grant from skill.yaml");
   assert(reportSkill.triggers.includes("report"), "report-export-builtin should preserve report trigger");
 
@@ -1527,7 +1527,7 @@ async function validateAgentSkillCatalogManifests(context) {
   for (const skillId of analysisIds) {
     const skill = skills.find((entry) => entry.canonicalId === skillId);
     assert(skill, `skill catalog should include analysis skill ${skillId}`);
-    assert(skill.sourceKinds.includes("file-manifest"), `${skillId} should record file-manifest provenance`);
+    assert(typeof skill.manifestPath === "string" && skill.manifestPath.endsWith("skill.yaml"), `${skillId} should retain its skill.yaml path`);
     assert(skill.enabledTools.includes("run_analysis"), `${skillId} should expose run_analysis grant from skill.yaml`);
   }
   const codeCheckIds = [
@@ -1539,7 +1539,7 @@ async function validateAgentSkillCatalogManifests(context) {
   for (const skillId of codeCheckIds) {
     const skill = skills.find((entry) => entry.canonicalId === skillId);
     assert(skill, `skill catalog should include code-check skill ${skillId}`);
-    assert(skill.sourceKinds.includes("file-manifest"), `${skillId} should record file-manifest provenance`);
+    assert(typeof skill.manifestPath === "string" && skill.manifestPath.endsWith("skill.yaml"), `${skillId} should retain its skill.yaml path`);
     assert(skill.enabledTools.includes("run_code_check"), `${skillId} should expose run_code_check grant from skill.yaml`);
   }
   const loadBoundaryIds = [
@@ -1557,7 +1557,7 @@ async function validateAgentSkillCatalogManifests(context) {
   for (const skillId of loadBoundaryIds) {
     const skill = skills.find((entry) => entry.canonicalId === skillId);
     assert(skill, `skill catalog should include load-boundary skill ${skillId}`);
-    assert(skill.sourceKinds.includes("file-manifest"), `${skillId} should record file-manifest provenance`);
+    assert(typeof skill.manifestPath === "string" && skill.manifestPath.endsWith("skill.yaml"), `${skillId} should retain its skill.yaml path`);
   }
   assert(skills.find((entry) => entry.canonicalId === "dead-load")?.triggers.includes("恒载"), "dead-load should preserve load-boundary trigger metadata");
   const visualizationIds = [
@@ -1568,7 +1568,7 @@ async function validateAgentSkillCatalogManifests(context) {
   for (const skillId of visualizationIds) {
     const skill = skills.find((entry) => entry.canonicalId === skillId);
     assert(skill, `skill catalog should include visualization skill ${skillId}`);
-    assert(skill.sourceKinds.includes("file-manifest"), `${skillId} should record file-manifest provenance`);
+    assert(typeof skill.manifestPath === "string" && skill.manifestPath.endsWith("skill.yaml"), `${skillId} should retain its skill.yaml path`);
   }
   console.log("[ok] agent skill catalog manifest contract");
 }

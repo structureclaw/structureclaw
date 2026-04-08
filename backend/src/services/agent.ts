@@ -394,7 +394,7 @@ export class AgentService {
 
     this.llm = createChatModel(0.1);
     this.skillRuntime = new AgentSkillRuntime();
-    this.skillCatalog = new AgentSkillCatalogService(this.skillRuntime);
+    this.skillCatalog = new AgentSkillCatalogService();
     this.policy = new AgentPolicyService();
     this.runtimeBinder = new AgentRuntimeBinder(this.skillRuntime, this.policy);
   }
