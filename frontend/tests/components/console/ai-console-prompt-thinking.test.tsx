@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AIConsole } from '@/components/chat/ai-console'
 import { API_BASE } from '@/lib/api-base'
@@ -143,9 +143,10 @@ describe('AIConsole prompt and thinking details', () => {
     await waitFor(() => {
       expect(screen.getByText(/prompt snapshot/i)).toBeInTheDocument()
       expect(screen.getByText(/^skills$/i)).toBeInTheDocument()
-      expect(screen.getByText(/resolved skills/i)).toBeInTheDocument()
+      const resolvedSkillsSection = screen.getByText(/resolved skills/i).parentElement
+      expect(resolvedSkillsSection).not.toBeNull()
       expect(screen.getAllByText(/beam/i).length).toBeGreaterThan(0)
-      expect(screen.getByText(/opensees-static/i)).toBeInTheDocument()
+      expect(within(resolvedSkillsSection as HTMLElement).getByText(/opensees-static/i)).toBeInTheDocument()
       expect(screen.getByText(/thinking process/i)).toBeInTheDocument()
       expect(screen.getByText(/tool calls/i)).toBeInTheDocument()
       expect(screen.getAllByText(/analyze_structure/i).length).toBeGreaterThan(0)
