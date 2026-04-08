@@ -2,7 +2,7 @@
 
 Purpose:
 - One software x one analysis category = one skill
-- Every selectable analysis skill must describe itself in `intent.md` frontmatter
+- Every selectable analysis skill must define its static identity in `skill.yaml`
 - Every selectable analysis skill keeps its own `runtime.py` and any Python helpers it needs
 - `runtime/` only keeps execution plumbing such as worker/api/registry; it is not a skill
 
@@ -13,5 +13,5 @@ Layout:
 
 Rules:
 - Do not put user-selectable analysis semantics or solver code directly under `runtime/`
-- New analysis support should add a new skill folder with `intent.md`, `runtime.py`, and any helper modules it needs
+- New analysis support should add a new skill folder with `skill.yaml`, `runtime.py`, stage Markdown, and any helper modules it needs
 - If a software does not support an analysis type, do not create a fake skill for it

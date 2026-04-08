@@ -11,60 +11,51 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 
 ## 2. 内置技能发现与注册
 
-### 2.1 分析技能
+### 2.1 内置技能标准目录形态
 
-分析技能位于 `backend/src/agent-skills/analysis/` 目录下，每个技能是一个子目录，需要包含：
+内置 skill 位于 `backend/src/agent-skills/<domain>/<skill-id>/`。
+
+每个内置 skill 目录必须包含：
 
 | 文件 | 是否必需 | 用途 |
 |------|----------|------|
-| `intent.md` | 是 | 前置元数据（id、software、analysisType、engineId 等） |
-| `runtime.py` | 是 | 分析引擎的 Python 执行脚本 |
+| `skill.yaml` | 是 | canonical 静态元数据：`id`、`domain`、`capabilities`、`grants`、兼容性以及域专属字段 |
+| `intent.md` / `draft.md` / `analysis.md` / `design.md` 等阶段 Markdown | 可选但通常存在 | 运行时加载的提示词 / 内容资产 |
 
-**发现流程**（`analysis/registry.ts`）：
+额外运行时文件仍然由具体域决定，例如：
 
-1. `discoverBuiltinAnalysisSkills()` 扫描分析根目录下的所有子目录。
-2. 以 `.` 开头或名为 `runtime` 的目录将被跳过。
-3. 对每个目录，`toAnalysisSkillManifest()` 检查是否存在 `intent.md` 和 `runtime.py`。
-4. 如果缺少任一文件，将记录警告并跳过该目录。
-5. 解析 `intent.md` 前置元数据中的必需字段：`id`、`software`、`analysisType`、`engineId`、`adapterKey`。
-6. 缺少必需字段时，将记录警告并指明具体缺失的字段名。
-7. 有效技能按优先级降序排列，相同优先级按 id 字母顺序排列。
-8. 输出发现摘要日志：`"N skills loaded, M skipped"`。
+- analysis skill 可以包含 `runtime.py`
+- 可执行的 structure-type plugin 可以包含 `handler.ts`
 
-**内置分析引擎：**
+这些文件属于执行层或内容层，不再负责定义 skill 身份。
 
-| 引擎 ID | 适配器 | 优先级 | 路由提示 |
-|---------|--------|--------|----------|
-| `builtin-opensees` | OpenSees | 100 | 高精度、默认 |
-| `builtin-simplified` | Simplified | 10 | 回退、快速 |
+### 2.2 发现规则
 
-### 2.2 结构类型技能
+当前内置 skill 发现已经切到 manifest-first：
 
-结构类型技能位于 `backend/src/agent-skills/structure-type/` 目录下，每个技能有一个 `manifest.ts` 文件导出元数据。
+1. runtime 递归扫描 `backend/src/agent-skills/`。
+2. 只有目录中存在 `skill.yaml`，才会被视为合法内置 skill。
+3. `skill.yaml` 通过共享 manifest schema 解析，成为静态真源。
+4. 各阶段 Markdown 只作为内容加载，其 frontmatter 不再参与 skill 身份定义。
+5. 没有 `skill.yaml` 的目录不会进入内置 skill 注册。
 
-**注册流程**（`structure-type/registry.ts`）：
+这条规则已经覆盖当前内置域，包括：
 
-1. `listStructureModelingProviders()` 接受内置插件和可选的外部提供者。
-2. 插件通过 `toStructureModelingProvider()` 转换为 `StructureModelingProvider`。
-3. 所有提供者传入 `loadSkillProviders()` 进行去重和排序。
+- `structure-type`
+- `analysis`
+- `code-check`
+- `load-boundary`
+- `validation`
+- `report-export`
+- `visualization`
 
-### 2.3 其他技能域
+### 2.3 Runtime 与 Plugin 层
 
-| 域 | 位置 | 注册方式 |
-|----|------|----------|
-| `analysis` | `agent-skills/analysis/` | 文件系统发现 + manifest 归一化 |
-| `code-check` | `agent-skills/code-check/` | 提供者注册表，带 filter/finalize 回调 |
-| `data-input` | `agent-skills/data-input/` | 插件清单 |
-| `design` | `agent-skills/design/` | 插件清单 |
-| `drawing` | `agent-skills/drawing/` | 插件清单 |
-| `general` | `agent-skills/general/` | 插件清单 |
-| `load-boundary` | `agent-skills/load-boundary/` | 插件清单 |
-| `material` | `agent-skills/material/` | 插件清单 |
-| `visualization` | `agent-skills/visualization/` | 插件清单 |
-| `result-postprocess` | `agent-skills/result-postprocess/` | 插件清单 |
-| `report-export` | `agent-skills/report-export/` | 运行时生成内置 manifest |
-| `section` | `agent-skills/section/` | 插件清单 |
-| `validation` | `agent-skills/validation/` | 运行时生成内置 manifest |
+`skill.yaml` 定义“这个 skill 是什么”，runtime/plugin 模块定义“这个 skill 怎么执行”。
+
+- `AgentSkillLoader.loadBundles()` 读取 `skill.yaml` 与各阶段 Markdown 内容。
+- `AgentSkillLoader.loadPlugins()` 仍可为可执行 plugin 附加 `manifest.ts` / `handler.ts` 这类运行时模块，尤其是 `structure-type` 域。
+- 这些运行时模块不再是内置 skill 的静态身份真源。
 
 当前内置 skill 加载遵循一条 canonical catalog 规则：
 
@@ -72,12 +63,7 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 - 暴露给前端的 skill id 必须使用 canonical id。
 - legacy id 只能作为迁移与向后兼容用 alias 保留，不应再作为面向用户的主 id。
 
-当前实现里，`AgentSkillRuntime.listSkillManifests()` 会把 `structure-type` 插件 manifest 与一组内置 domain manifest 合并后统一暴露给能力矩阵和 tool 授权层。这组运行时生成的 manifest 当前覆盖：
-
-- `analysis`
-- `code-check`
-- `report-export`
-- `validation`
+当前实现里，`AgentSkillRuntime.listSkillManifests()` 直接读取 `skill.yaml` 文件清单，再与仍然存在的可执行 plugin manifest 合并后统一暴露给能力矩阵和 tool 授权层。
 
 当前内置 `structure-type` skill manifest 只直接授权建模相关 tool：
 
@@ -88,11 +74,30 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 
 当前 agent 在进入执行链前，会先显式推导本轮激活的下游 domain skill：
 
-- `analysis` 域按 `analysisType`、`engineId`、结构模型族和显式选择结果选出一个首选 analysis skill。
-- `code-check` 域按 `designCode` 选出一个对应的规范 skill。
-- `validation` 和 `report-export` 由当前上下文按需激活内置 domain manifest。
+- `analysis` 域根据 `skill.yaml` 中声明的 `analysisType`、`engineId`、结构模型族和显式选择结果选出一个首选 analysis skill。
+- `code-check` 域根据 `skill.yaml` 中声明的 `designCode` 建立 skill id 与规范编码之间的映射。
+- `validation` 和 `report-export` 通过其 canonical 内置 skill manifest 按需激活。
 
 当前实现里，`validation`、`analysis`、`code-check`、`report-export` 的实际执行入口都已经通过 `AgentSkillRuntime` 统一封装：Agent 不再直接拼接这些域的 registry / artifact 细节，而是通过 runtime 选择 skill、执行 domain，并把选中的 skill id 回写到结果 `meta` 与 tool trace。
+
+## 2.4 内置 Tool 发现
+
+内置 tool 位于 `backend/src/agent-tools/<tool-id>/`。
+
+每个内置 tool 目录必须包含：
+
+| 文件 | 是否必需 | 用途 |
+|------|----------|------|
+| `tool.yaml` | 是 | canonical 静态元数据：`id`、`tier`、`category`、依赖、schema 与 error code |
+
+当前内置 tool 加载同样遵循 manifest-first：
+
+1. runtime 递归扫描 `backend/src/agent-tools/`。
+2. 只有目录中存在 `tool.yaml`，才会被视为合法内置 tool。
+3. `tool.yaml` 成为 protocol metadata、builtin tool catalog 与 runtime tool resolution 的真源。
+4. 旧的 TypeScript manifest 常量不再作为运行时静态真源。
+
+## 2.5 Runtime 状态投影
 
 当前 `/api/v1/agent/capability-matrix` 还会为每个 skill 和每个 domain summary 暴露 `runtimeStatus`，用于区分“稳定 taxonomy”与“当前运行时接入状态”：
 
@@ -101,7 +106,7 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 - `discoverable`：已纳入 taxonomy，但当前尚未进入主编排。
 - `reserved`：仅保留架构位点，当前未提供实际运行时能力。
 
-### 2.4 分析引擎可用性与 Skill 影响
+### 2.6 分析引擎可用性与 Skill 影响
 
 skill 内声明的 `engineId` 只是静态路由提示，并不等于该 engine 在运行时一定可用。
 
