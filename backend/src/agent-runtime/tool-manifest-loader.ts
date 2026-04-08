@@ -1,11 +1,14 @@
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { parse as parseYaml } from 'yaml';
 import { formatManifestIssues, toolManifestFileSchema, type ToolManifestFile } from './manifest-schema.js';
 
 export interface LoadedToolManifest extends ToolManifestFile {
   manifestPath: string;
 }
+
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
 function collectDirectories(rootDir: string): string[] {
   if (!existsSync(rootDir)) {
@@ -35,7 +38,7 @@ function readManifest(manifestPath: string): unknown {
   }
 }
 
-export async function loadToolManifestsFromDirectory(rootDir: string): Promise<LoadedToolManifest[]> {
+function loadToolManifestsFromDirectoryInternal(rootDir: string): LoadedToolManifest[] {
   const manifests: LoadedToolManifest[] = [];
 
   for (const directory of collectDirectories(rootDir)) {
@@ -56,4 +59,32 @@ export async function loadToolManifestsFromDirectory(rootDir: string): Promise<L
   }
 
   return manifests.sort((left, right) => left.id.localeCompare(right.id));
+}
+
+function hasToolManifestInDescendants(rootDir: string): boolean {
+  return collectDirectories(rootDir).some((directory) => existsSync(path.join(directory, 'tool.yaml')));
+}
+
+export function resolveBuiltinToolManifestRoot(): string {
+  const candidates = [
+    path.resolve(process.cwd(), 'backend/dist/agent-tools'),
+    path.resolve(process.cwd(), 'dist/agent-tools'),
+    path.resolve(process.cwd(), 'backend/src/agent-tools'),
+    path.resolve(process.cwd(), 'src/agent-tools'),
+    path.resolve(MODULE_DIR, '../../agent-tools'),
+    path.resolve(MODULE_DIR, '../../src/agent-tools'),
+  ];
+  const matched = candidates.find((candidate) => hasToolManifestInDescendants(candidate));
+  if (!matched) {
+    throw new Error(`Builtin tool manifest directory not found. Tried: ${candidates.join(', ')}`);
+  }
+  return matched;
+}
+
+export async function loadToolManifestsFromDirectory(rootDir: string): Promise<LoadedToolManifest[]> {
+  return loadToolManifestsFromDirectoryInternal(rootDir);
+}
+
+export function loadToolManifestsFromDirectorySync(rootDir: string): LoadedToolManifest[] {
+  return loadToolManifestsFromDirectoryInternal(rootDir);
 }

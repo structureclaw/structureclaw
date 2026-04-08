@@ -59,7 +59,7 @@ function readManifest(manifestPath: string): unknown {
   }
 }
 
-export async function loadSkillManifestsFromDirectory(rootDir: string): Promise<LoadedSkillManifest[]> {
+function loadSkillManifestsFromDirectoryInternal(rootDir: string): LoadedSkillManifest[] {
   const manifests: LoadedSkillManifest[] = [];
 
   for (const directory of collectDirectories(rootDir)) {
@@ -80,6 +80,14 @@ export async function loadSkillManifestsFromDirectory(rootDir: string): Promise<
   }
 
   return manifests.sort((left, right) => left.id.localeCompare(right.id));
+}
+
+export async function loadSkillManifestsFromDirectory(rootDir: string): Promise<LoadedSkillManifest[]> {
+  return loadSkillManifestsFromDirectoryInternal(rootDir);
+}
+
+export function loadSkillManifestsFromDirectorySync(rootDir: string): LoadedSkillManifest[] {
+  return loadSkillManifestsFromDirectoryInternal(rootDir);
 }
 
 export function toRuntimeSkillManifest(manifest: LoadedSkillManifest): SkillManifest {

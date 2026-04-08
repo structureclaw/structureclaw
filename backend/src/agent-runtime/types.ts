@@ -216,6 +216,7 @@ export interface ToolManifest {
   id: string;
   source: AgentToolSource;
   enabledByDefault: boolean;
+  tier?: 'foundation' | 'domain' | 'extension';
   displayName: LocalizedText;
   description: LocalizedText;
   category?: 'modeling' | 'analysis' | 'code-check' | 'report' | 'utility';

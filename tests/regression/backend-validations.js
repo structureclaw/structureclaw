@@ -1565,6 +1565,126 @@ async function validateAgentRuntimeLoader(context) {
   assert(byId.get("visualization-frame-summary")?.domain === "visualization", "visualization skills should take domain from skill.yaml");
   assert(byId.has("validation-structure-model"), "runtime loader should use canonical validation skill id from skill.yaml");
   assert(!byId.has("structure-json-validation"), "runtime loader should not keep legacy validation frontmatter id once manifest-first loader is active");
+
+  const builtinTools = runtime.listBuiltinToolManifests();
+  const builtinToolsById = new Map(builtinTools.map((tool) => [tool.id, tool]));
+  assert(builtinToolsById.get("convert_model")?.tier === "foundation", "runtime builtin tools should take tier metadata from tool.yaml");
+  assert(builtinToolsById.get("run_analysis")?.tier === "domain", "runtime builtin tools should preserve domain-tier metadata from tool.yaml");
+  assert(Array.isArray(builtinToolsById.get("run_analysis")?.requiresTools) && builtinToolsById.get("run_analysis").requiresTools.includes("validate_model"), "runtime builtin tools should preserve requiresTools metadata from tool.yaml");
+
+  const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "structureclaw-runtime-selection-"));
+  try {
+    const manifestOnlySkillRoot = path.join(tempRoot, "agent-skills");
+    await fsp.mkdir(path.join(manifestOnlySkillRoot, "analysis", "custom-static"), { recursive: true });
+    await fsp.mkdir(path.join(manifestOnlySkillRoot, "code-check", "custom-gb50018"), { recursive: true });
+
+    await fsp.writeFile(
+      path.join(manifestOnlySkillRoot, "analysis", "custom-static", "skill.yaml"),
+      [
+        "id: custom-static",
+        "domain: analysis",
+        "source: builtin",
+        "name:",
+        "  zh: 自定义静力分析",
+        "  en: Custom Static Analysis",
+        "description:",
+        "  zh: 仅通过 skill.yaml 声明的静力分析技能。",
+        "  en: Static analysis skill declared only via skill.yaml.",
+        "triggers: []",
+        "stages:",
+        "  - analysis",
+        "structureType: frame",
+        "structuralTypeKeys: []",
+        "capabilities:",
+        "  - analysis-policy",
+        "  - analysis-execution",
+        "grants:",
+        "  - run_analysis",
+        "providesTools: []",
+        "requires: []",
+        "conflicts: []",
+        "autoLoadByDefault: false",
+        "priority: 999",
+        "compatibility:",
+        "  minRuntimeVersion: 0.1.0",
+        "  skillApiVersion: v1",
+        "software: simplified",
+        "analysisType: static",
+        "engineId: builtin-custom",
+        "adapterKey: builtin-custom",
+        "runtimeRelativePath: runtime.py",
+        "supportedAnalysisTypes:",
+        "  - static",
+        "supportedModelFamilies:",
+        "  - frame",
+        "  - generic",
+        "materialFamilies: []",
+        "",
+      ].join("\n"),
+    );
+
+    await fsp.writeFile(
+      path.join(manifestOnlySkillRoot, "code-check", "custom-gb50018", "skill.yaml"),
+      [
+        "id: code-check-gb50018",
+        "domain: code-check",
+        "source: builtin",
+        "name:",
+        "  zh: GB50018 规范校核",
+        "  en: GB50018 Code Check",
+        "description:",
+        "  zh: 仅通过 skill.yaml 声明的规范校核技能。",
+        "  en: Code-check skill declared only via skill.yaml.",
+        "triggers:",
+        "  - GB50018",
+        "stages:",
+        "  - design",
+        "structureType: unknown",
+        "structuralTypeKeys: []",
+        "capabilities:",
+        "  - code-check-policy",
+        "  - code-check-execution",
+        "grants:",
+        "  - run_code_check",
+        "providesTools: []",
+        "requires: []",
+        "conflicts: []",
+        "autoLoadByDefault: false",
+        "priority: 999",
+        "compatibility:",
+        "  minRuntimeVersion: 0.1.0",
+        "  skillApiVersion: v1",
+        "designCode: GB50018",
+        "supportedAnalysisTypes: []",
+        "supportedModelFamilies:",
+        "  - generic",
+        "materialFamilies: []",
+        "",
+      ].join("\n"),
+    );
+
+    const manifestOnlyRuntime = new AgentSkillRuntime({ builtinSkillManifestRoot: manifestOnlySkillRoot });
+    assert(manifestOnlyRuntime.listAnalysisSkillIds().includes("custom-static"), "analysis skill ids should be resolved from skill.yaml without registry/frontmatter metadata");
+    assert(manifestOnlyRuntime.isAnalysisSkillId("custom-static"), "isAnalysisSkillId should recognize manifest-only analysis skills");
+    assert(
+      manifestOnlyRuntime.resolvePreferredAnalysisSkill({
+        analysisType: "static",
+        engineId: "builtin-custom",
+        supportedModelFamilies: ["frame"],
+      })?.id === "custom-static",
+      "preferred analysis skill resolution should use manifest-only analysis metadata",
+    );
+    assert(
+      manifestOnlyRuntime.resolveCodeCheckDesignCodeFromSkillIds(["code-check-gb50018"]) === "GB50018",
+      "code-check design-code resolution should use manifest-only skill metadata",
+    );
+    assert(
+      manifestOnlyRuntime.resolveCodeCheckSkillId("GB50018") === "code-check-gb50018",
+      "code-check skill lookup should use manifest-only skill metadata",
+    );
+  } finally {
+    await fsp.rm(tempRoot, { recursive: true, force: true });
+  }
   console.log("[ok] agent runtime loader contract");
 }
 

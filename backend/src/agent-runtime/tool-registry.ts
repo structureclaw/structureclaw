@@ -1,5 +1,5 @@
 import type { SkillManifest, ToolManifest } from './types.js';
-import { BUILTIN_TOOL_MANIFESTS } from '../agent-tools/builtin/index.js';
+import { loadToolManifestsFromDirectorySync, resolveBuiltinToolManifestRoot } from './tool-manifest-loader.js';
 
 function titleize(value: string): string {
   return value
@@ -16,8 +16,10 @@ export interface ResolvedTooling {
   skillIdsByToolId: Record<string, string[]>;
 }
 
+const BUILTIN_TOOL_MANIFEST_ROOT = resolveBuiltinToolManifestRoot();
+
 export function listBuiltinToolManifests(): ToolManifest[] {
-  return BUILTIN_TOOL_MANIFESTS.map((tool) => ({ ...tool }));
+  return loadToolManifestsFromDirectorySync(BUILTIN_TOOL_MANIFEST_ROOT).map((tool) => ({ ...tool }));
 }
 
 function inferEnabledToolsFromManifest(manifest: SkillManifest): string[] {
@@ -32,6 +34,7 @@ function createSkillProvidedTool(toolId: string, skillId: string): ToolManifest 
     id: toolId,
     source: 'external',
     enabledByDefault: false,
+    tier: 'extension',
     displayName: {
       zh: titleize(toolId),
       en: titleize(toolId),
@@ -60,7 +63,8 @@ function resolveRelevantSkillManifests(manifests: SkillManifest[], skillIds?: st
 
 export function resolveToolingForSkillManifests(manifests: SkillManifest[], skillIds?: string[]): ResolvedTooling {
   const relevantManifests = resolveRelevantSkillManifests(manifests, skillIds);
-  const builtinById = new Map(BUILTIN_TOOL_MANIFESTS.map((tool) => [tool.id, tool]));
+  const builtinToolManifests = listBuiltinToolManifests();
+  const builtinById = new Map(builtinToolManifests.map((tool) => [tool.id, tool]));
   const toolMap = new Map<string, ToolManifest>();
   const enabledToolIdsBySkill: Record<string, string[]> = {};
   const providedToolIdsBySkill: Record<string, string[]> = {};

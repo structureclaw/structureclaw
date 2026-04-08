@@ -1,7 +1,11 @@
 import { existsSync, readdirSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { loadToolManifestsFromDirectory, type LoadedToolManifest } from '../agent-runtime/tool-manifest-loader.js';
+import {
+  loadToolManifestsFromDirectory,
+  resolveBuiltinToolManifestRoot,
+  type LoadedToolManifest,
+} from '../agent-runtime/tool-manifest-loader.js';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -29,19 +33,11 @@ function hasToolManifestInDescendants(rootDir: string): boolean {
 }
 
 function resolveBuiltinToolRoot(): string {
-  const candidates = [
-    path.resolve(process.cwd(), 'backend/dist/agent-tools'),
-    path.resolve(process.cwd(), 'dist/agent-tools'),
-    path.resolve(process.cwd(), 'backend/src/agent-tools'),
-    path.resolve(process.cwd(), 'src/agent-tools'),
-    path.resolve(MODULE_DIR, '../../agent-tools'),
-    path.resolve(MODULE_DIR, '../../src/agent-tools'),
-  ];
-  const matched = candidates.find((candidate) => hasToolManifestInDescendants(candidate));
-  if (!matched) {
-    throw new Error(`Builtin tool manifest directory not found. Tried: ${candidates.join(', ')}`);
+  const moduleRelativeRoot = path.resolve(MODULE_DIR, '../../agent-tools');
+  if (hasToolManifestInDescendants(moduleRelativeRoot)) {
+    return moduleRelativeRoot;
   }
-  return matched;
+  return resolveBuiltinToolManifestRoot();
 }
 
 export class AgentToolCatalogService {
