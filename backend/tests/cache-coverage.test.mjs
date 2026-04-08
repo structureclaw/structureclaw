@@ -81,6 +81,23 @@ describe('cache in-memory store: get / setex', () => {
     expect(await cache.get(`${prefix}0`)).toBeNull();
     expect(await cache.get(`${prefix}${MAX_CACHE_ENTRIES}`)).toBe(`value-${MAX_CACHE_ENTRIES}`);
   });
+
+  test('should refresh an updated key before applying overflow eviction', async () => {
+    jest.resetModules();
+    const { cache, MAX_CACHE_ENTRIES } = await import('../dist/utils/cache.js');
+    const prefix = `test-refresh-order-${Date.now()}-`;
+
+    for (let index = 0; index < MAX_CACHE_ENTRIES; index += 1) {
+      await cache.setex(`${prefix}${index}`, 60, `value-${index}`);
+    }
+
+    await cache.setex(`${prefix}0`, 60, 'refreshed');
+    await cache.setex(`${prefix}overflow`, 60, 'overflow');
+
+    expect(await cache.get(`${prefix}0`)).toBe('refreshed');
+    expect(await cache.get(`${prefix}1`)).toBeNull();
+    expect(await cache.get(`${prefix}overflow`)).toBe('overflow');
+  });
 });
 
 describe('cache in-memory store: background sweep', () => {

@@ -50,6 +50,9 @@ function memorySetex(key: string, ttlSeconds: number, value: string): void {
     return;
   }
   pruneExpiredEntries();
+  if (memoryCache.has(key)) {
+    memoryCache.delete(key);
+  }
   memoryCache.set(key, {
     value,
     expiresAt: Date.now() + ttlSeconds * 1000,
