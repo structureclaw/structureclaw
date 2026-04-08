@@ -34,7 +34,6 @@ jobs:
           LLM_PROVIDER: ${{ secrets.LLM_PROVIDER || 'openai-compatible' }}
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL || '' }}
           LLM_LOG_ENABLED: "true"
-          REDIS_URL: disabled
           DATABASE_URL: "file:.runtime/data/structureclaw-llm-ci.db"
         run: node tests/runner.mjs llm-integration ${{ github.event.inputs.filter && format('--filter {0}', github.event.inputs.filter) || '' }}
 

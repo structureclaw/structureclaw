@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, jest, test } from '@jest/globals';
-import { config } from '../dist/config/index.js';
 
 /**
  * cache.ts tests
@@ -10,10 +9,6 @@ import { config } from '../dist/config/index.js';
  */
 
 describe('cache module', () => {
-  test('should not expose redis configuration', () => {
-    expect('redisUrl' in config).toBe(false);
-  });
-
   test('should import without error', async () => {
     const mod = await import('../dist/utils/cache.js');
     expect(mod).toBeDefined();
