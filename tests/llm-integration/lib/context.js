@@ -33,7 +33,6 @@ function resolveIntegrationContext(rootDir) {
       DATABASE_URL: `file:${path
         .join(projectRoot, ".runtime", "data", "structureclaw-llm-test.db")
         .replace(/\\/gu, "/")}`,
-      REDIS_URL: "disabled",
     },
   };
 }

@@ -5,7 +5,6 @@ import swaggerUI from '@fastify/swagger-ui';
 import { config } from './config/index.js';
 import { registerRoutes } from './api/routes.js';
 import { prisma } from './utils/database.js';
-import { redis } from './utils/redis.js';
 import { logger } from './utils/logger.js';
 
 const fastify = Fastify({
@@ -59,7 +58,6 @@ async function start() {
       timestamp: new Date().toISOString(),
       services: {
         database: await checkDatabase(),
-        redis: await checkRedis(),
       },
     }));
 
@@ -88,22 +86,11 @@ async function checkDatabase(): Promise<boolean> {
   }
 }
 
-// 检查 Redis 连接
-async function checkRedis(): Promise<boolean> {
-  try {
-    await redis.ping();
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 // 优雅关闭
 process.on('SIGTERM', async () => {
   console.log('Received SIGTERM, shutting down gracefully...');
   await fastify.close();
   await prisma.$disconnect();
-  await redis.quit();
   process.exit(0);
 });
 
@@ -111,7 +98,6 @@ process.on('SIGINT', async () => {
   console.log('Received SIGINT, shutting down gracefully...');
   await fastify.close();
   await prisma.$disconnect();
-  await redis.quit();
   process.exit(0);
 });
 

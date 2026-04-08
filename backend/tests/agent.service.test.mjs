@@ -2,7 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import fs from 'node:fs';
 import { AgentService } from '../dist/services/agent.js';
 import { prisma } from '../dist/utils/database.js';
-import { redis } from '../dist/utils/redis.js';
+import { cache } from '../dist/utils/cache.js';
 
 function createServiceWithDefaultSkills() {
   const svc = new AgentService();
@@ -382,7 +382,7 @@ describe('AgentService orchestration', () => {
   test('should clear stored conversation sessions', async () => {
     const svc = createServiceWithDefaultSkills();
     const deletedKeys = [];
-    redis.del = async (...keys) => {
+    cache.del = async (...keys) => {
       deletedKeys.push(...keys);
       return keys.length;
     };

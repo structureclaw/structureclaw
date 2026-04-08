@@ -7,7 +7,6 @@ import type { InputJsonValue } from '../utils/json.js';
 import { createChatModel } from '../utils/llm.js';
 import { prisma } from '../utils/database.js';
 import { logger } from '../utils/logger.js';
-// redis is now accessed via agent-session.ts
 import { type AppLocale } from './locale.js';
 import { AgentPolicyService } from './agent-policy.js';
 import {

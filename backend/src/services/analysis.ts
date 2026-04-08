@@ -1,5 +1,5 @@
 import { prisma } from '../utils/database.js';
-import { redis } from '../utils/redis.js';
+import { cache } from '../utils/cache.js';
 import { ensureProjectId } from '../utils/demo-data.js';
 import { AnalysisExecutionService } from './analysis-execution.js';
 import { CodeCheckExecutionService } from './code-check-execution.js';
@@ -49,7 +49,7 @@ export class AnalysisService {
     });
 
     // 缓存模型数据
-    await redis.setex(
+    await cache.setex(
       `model:${model.id}`,
       3600,
       JSON.stringify(model)
@@ -61,7 +61,7 @@ export class AnalysisService {
   // 获取模型
   async getModel(id: string) {
     // 先从缓存获取
-    const cached = await redis.get(`model:${id}`);
+    const cached = await cache.get(`model:${id}`);
     if (cached) {
       return JSON.parse(cached);
     }
@@ -77,7 +77,7 @@ export class AnalysisService {
     });
 
     if (model) {
-      await redis.setex(`model:${id}`, 3600, JSON.stringify(model));
+      await cache.setex(`model:${id}`, 3600, JSON.stringify(model));
     }
 
     return model;

@@ -971,18 +971,7 @@ async function invokeLocalUp(rootDir, env, options = {}) {
   await ensureAnalysisPython(rootDir, env);
   await ensureOpenSeesRuntime(rootDir, env);
 
-  if (!options.skipInfra && env.REDIS_URL && String(env.REDIS_URL).toLowerCase() !== "disabled") {
-    runtime.requireCommand(
-      "docker",
-      "Install Docker Desktop and retry, or use `sclaw start` (alias: `local-up-noinfra`).",
-    );
-    await runtime.runCommand("docker", [
-      ...docker.getDockerComposeArgs(paths, [], { env }),
-      "up",
-      "-d",
-      "redis",
-    ]);
-  } else if (options.skipInfra) {
+  if (options.skipInfra) {
     log("Skipping optional infra startup.");
   }
 
@@ -1072,10 +1061,10 @@ async function dispatch(commandName, rawArgs, rootDir) {
       await invokeConvertBatch(rootDir, env, rawArgs);
       return;
     case "db-up":
-      await runtime.runCommand("docker", [...docker.getDockerComposeArgs(paths, ["up", "-d", "redis"], { env })]);
+      log("No optional infra services are required in the SQLite local-first stack.");
       return;
     case "db-down":
-      await runtime.runCommand("docker", [...docker.getDockerComposeArgs(paths, ["stop", "redis"], { env })]);
+      log("No optional infra services are running in the SQLite local-first stack.");
       return;
     case "db-init":
       await invokeDbInit(rootDir, env);
@@ -1127,13 +1116,6 @@ async function dispatch(commandName, rawArgs, rootDir) {
     case "stop":
       await stopTrackedService(paths, "frontend");
       await stopTrackedService(paths, "backend");
-      try {
-        await runtime.runCommand("docker", docker.getDockerComposeArgs(paths, ["stop", "redis"], { env }), {
-          env,
-          stdio: "ignore",
-        });
-      } catch {
-      }
       log("Local stack stopped.");
       return;
     case "status":
