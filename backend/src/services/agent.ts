@@ -17,7 +17,6 @@ import {
   type StructuralTypeKey,
 } from '../agent-runtime/index.js';
 import {
-  inferCodeCheckIntent,
   inferAnalysisType,
   inferReportIntent,
   normalizePolicyAnalysisType,
