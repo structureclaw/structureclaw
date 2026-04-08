@@ -1271,6 +1271,9 @@ async function validateAgentManifestLoader(context) {
     const { loadToolManifestsFromDirectory } = await import(
       pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-runtime", "tool-manifest-loader.js")).href
     );
+    const { resolveToolingForSkillManifests } = await import(
+      pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-runtime", "tool-registry.js")).href
+    );
 
     const skills = await loadSkillManifestsFromDirectory(validSkillRoot);
     assert(Array.isArray(skills), "skill manifest loader should return an array");
@@ -1306,6 +1309,36 @@ async function validateAgentManifestLoader(context) {
       rejectedInvalidTool = true;
     }
     assert(rejectedInvalidTool, "tool manifest loader should reject malformed tool.yaml files");
+
+    let rejectedUnknownGrantedTool = false;
+    try {
+      resolveToolingForSkillManifests([
+        {
+          id: "analysis-unknown-tool",
+          domain: "analysis",
+          name: { zh: "未知工具分析", en: "Unknown Tool Analysis" },
+          description: { zh: "错误授权未知工具。", en: "Incorrectly grants an unknown tool." },
+          triggers: [],
+          stages: ["analysis"],
+          autoLoadByDefault: false,
+          structureType: "unknown",
+          structuralTypeKeys: [],
+          requires: [],
+          conflicts: [],
+          capabilities: ["analysis-execution"],
+          enabledTools: ["nonexistent_tool"],
+          providedTools: [],
+          supportedAnalysisTypes: ["static"],
+          supportedModelFamilies: ["generic"],
+          materialFamilies: [],
+          priority: 0,
+          compatibility: { minRuntimeVersion: "0.1.0", skillApiVersion: "v1" },
+        },
+      ], ["analysis-unknown-tool"]);
+    } catch (_error) {
+      rejectedUnknownGrantedTool = true;
+    }
+    assert(rejectedUnknownGrantedTool, "tool registry should reject skill manifests that grant unknown tools instead of synthesizing placeholder tools");
 
     const builtinStructureTypeRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "structure-type");
     const builtinStructureTypeSkills = await loadSkillManifestsFromDirectory(builtinStructureTypeRoot);
