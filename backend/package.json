@@ -30,6 +30,7 @@
     "pg": "^8.20.0",
     "pino": "^8.19.0",
     "pino-pretty": "^11.0.0",
+    "yaml": "^2.8.1",
     "zod": "^3.22.4"
   },
   "devDependencies": {

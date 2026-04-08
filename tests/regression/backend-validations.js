@@ -1106,6 +1106,196 @@ async function validateAgentManifestBinding(context) {
   console.log("[ok] agent manifest binding contract");
 }
 
+async function validateAgentManifestLoader(context) {
+  await runBackendBuildOnce(context);
+
+  const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "sclaw-manifest-loader-"));
+  const validSkillRoot = path.join(tempRoot, "skills-valid");
+  const invalidSkillRoot = path.join(tempRoot, "skills-invalid");
+  const validToolRoot = path.join(tempRoot, "tools-valid");
+  const invalidToolRoot = path.join(tempRoot, "tools-invalid");
+
+  const write = async (filePath, content) => {
+    await fsp.mkdir(path.dirname(filePath), { recursive: true });
+    await fsp.writeFile(filePath, content, "utf8");
+  };
+
+  try {
+    await write(
+      path.join(validSkillRoot, "analysis", "analysis-static", "skill.yaml"),
+      [
+        "id: analysis-static",
+        "domain: analysis",
+        "source: builtin",
+        "name:",
+        "  zh: 静力分析技能",
+        "  en: Static Analysis Skill",
+        "description:",
+        "  zh: 负责静力分析授权。",
+        "  en: Grants static analysis execution.",
+        "triggers:",
+        "  - static",
+        "stages:",
+        "  - analysis",
+        "structureType: unknown",
+        "structuralTypeKeys: []",
+        "capabilities:",
+        "  - analysis-execution",
+        "grants:",
+        "  - run_analysis",
+        "requires: []",
+        "conflicts: []",
+        "autoLoadByDefault: false",
+        "priority: 10",
+        "compatibility:",
+        "  minRuntimeVersion: 0.1.0",
+        "  skillApiVersion: v1",
+        "supportedAnalysisTypes:",
+        "  - static",
+        "supportedModelFamilies:",
+        "  - generic",
+        "materialFamilies: []",
+        "",
+      ].join("\n"),
+    );
+    await write(
+      path.join(validSkillRoot, "analysis", "analysis-static", "intent.md"),
+      "# Static analysis prompt",
+    );
+    await write(
+      path.join(validSkillRoot, "analysis", "legacy-only", "intent.md"),
+      "# legacy skill without manifest should be ignored",
+    );
+    await write(
+      path.join(invalidSkillRoot, "analysis", "invalid-analysis", "skill.yaml"),
+      [
+        "id: invalid-analysis",
+        "domain: analysis",
+        "source: builtin",
+        "name:",
+        "  zh: 缺失英文名称",
+        "description:",
+        "  zh: 描述存在",
+        "  en: Description exists",
+        "triggers: []",
+        "stages:",
+        "  - analysis",
+        "structureType: unknown",
+        "structuralTypeKeys: []",
+        "capabilities: []",
+        "grants: []",
+        "requires: []",
+        "conflicts: []",
+        "autoLoadByDefault: false",
+        "priority: 0",
+        "compatibility:",
+        "  minRuntimeVersion: 0.1.0",
+        "  skillApiVersion: v1",
+        "supportedAnalysisTypes: []",
+        "supportedModelFamilies:",
+        "  - generic",
+        "materialFamilies: []",
+        "",
+      ].join("\n"),
+    );
+
+    await write(
+      path.join(validToolRoot, "run-analysis", "tool.yaml"),
+      [
+        "id: run_analysis",
+        "source: builtin",
+        "tier: domain",
+        "category: analysis",
+        "enabledByDefault: false",
+        "displayName:",
+        "  zh: 执行结构分析",
+        "  en: Run Structural Analysis",
+        "description:",
+        "  zh: 执行分析求解。",
+        "  en: Execute structural analysis.",
+        "requiresSkills:",
+        "  - analysis-static",
+        "requiresTools:",
+        "  - validate_model",
+        "tags:",
+        "  - builtin",
+        "inputSchema: {}",
+        "outputSchema: {}",
+        "errorCodes:",
+        "  - ENGINE_UNAVAILABLE",
+        "",
+      ].join("\n"),
+    );
+    await write(
+      path.join(validToolRoot, "legacy-helper", "handler.ts"),
+      "export const legacy = true;\n",
+    );
+    await write(
+      path.join(invalidToolRoot, "invalid-tool", "tool.yaml"),
+      [
+        "id: invalid_tool",
+        "source: builtin",
+        "tier: domain",
+        "category: analysis",
+        "enabledByDefault: false",
+        "displayName:",
+        "  zh: 缺失英文名",
+        "description:",
+        "  zh: 描述存在",
+        "  en: Description exists",
+        "requiresSkills: []",
+        "requiresTools: []",
+        "tags: []",
+        "inputSchema: {}",
+        "outputSchema: {}",
+        "errorCodes: []",
+        "",
+      ].join("\n"),
+    );
+
+    const { loadSkillManifestsFromDirectory } = await import(
+      pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-runtime", "skill-manifest-loader.js")).href
+    );
+    const { loadToolManifestsFromDirectory } = await import(
+      pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-runtime", "tool-manifest-loader.js")).href
+    );
+
+    const skills = await loadSkillManifestsFromDirectory(validSkillRoot);
+    assert(Array.isArray(skills), "skill manifest loader should return an array");
+    assert(skills.length === 1, "skill manifest loader should only load directories with skill.yaml");
+    assert(skills[0].id === "analysis-static", "skill manifest loader should preserve manifest id");
+    assert(Array.isArray(skills[0].grants) && skills[0].grants.includes("run_analysis"), "skill manifest loader should parse explicit grants");
+    assert(skills[0].name?.zh === "静力分析技能" && skills[0].name?.en === "Static Analysis Skill", "skill manifest loader should preserve bilingual localized text");
+
+    let rejectedInvalidSkill = false;
+    try {
+      await loadSkillManifestsFromDirectory(invalidSkillRoot);
+    } catch (_error) {
+      rejectedInvalidSkill = true;
+    }
+    assert(rejectedInvalidSkill, "skill manifest loader should reject malformed skill.yaml files");
+
+    const tools = await loadToolManifestsFromDirectory(validToolRoot);
+    assert(Array.isArray(tools), "tool manifest loader should return an array");
+    assert(tools.length === 1, "tool manifest loader should only load directories with tool.yaml");
+    assert(tools[0].id === "run_analysis", "tool manifest loader should preserve manifest id");
+    assert(tools[0].tier === "domain", "tool manifest loader should preserve tool tier");
+    assert(Array.isArray(tools[0].requiresTools) && tools[0].requiresTools.includes("validate_model"), "tool manifest loader should preserve tool dependencies");
+
+    let rejectedInvalidTool = false;
+    try {
+      await loadToolManifestsFromDirectory(invalidToolRoot);
+    } catch (_error) {
+      rejectedInvalidTool = true;
+    }
+    assert(rejectedInvalidTool, "tool manifest loader should reject malformed tool.yaml files");
+
+    console.log("[ok] agent manifest loader contract");
+  } finally {
+    await fsp.rm(tempRoot, { recursive: true, force: true });
+  }
+}
+
 async function validateAgentToolsContract(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
@@ -2453,6 +2643,7 @@ const BACKEND_VALIDATIONS = {
   "validate-agent-base-chat-fallback": validateAgentBaseChatFallback,
   "validate-agent-capability-modes": validateAgentCapabilityModes,
   "validate-agent-manifest-binding": validateAgentManifestBinding,
+  "validate-agent-manifest-loader": validateAgentManifestLoader,
   "validate-agent-tools-contract": validateAgentToolsContract,
   "validate-agent-api-contract": validateAgentApiContract,
   "validate-agent-capability-matrix": validateAgentCapabilityMatrix,
