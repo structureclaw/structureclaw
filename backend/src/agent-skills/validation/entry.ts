@@ -2,7 +2,7 @@
  * Validation Skills Module Entry Point
  * 验证技能模块入口
  *
- * Exports validation-related types, functions, and registries.
+ * Exports validation runtime contracts and types.
  */
 
 // Export types
@@ -17,17 +17,10 @@ export type {
   ValidationOptions,
 } from './types.js';
 
-// Export registry functions
+// Export runtime routing tables
 export {
-  BUILTIN_VALIDATION_SKILLS,
-  VALIDATION_SKILL_BY_ID,
   VALIDATION_GET_ACTION_BY_PATH,
   VALIDATION_POST_ACTION_BY_PATH,
-  listBuiltinValidationSkills,
-  getBuiltinValidationSkill,
-  hasValidationSkill,
-  findValidationSkillsByTrigger,
-  getValidationSkillCapabilities,
 } from './registry.js';
 
 // Export structure-json specific types

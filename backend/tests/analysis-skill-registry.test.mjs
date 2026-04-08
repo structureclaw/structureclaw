@@ -4,33 +4,36 @@ import path from 'node:path';
 import {
   BUILTIN_ANALYSIS_ENGINES,
   BUILTIN_ANALYSIS_RUNTIME_ADAPTER_KEYS,
-  BUILTIN_ANALYSIS_SKILLS,
-  getBuiltinAnalysisSkill,
 } from '../dist/agent-skills/analysis/entry.js';
+import { AgentSkillCatalogService } from '../dist/services/agent-skill-catalog.js';
 
 const repoRoot = path.resolve(process.cwd(), '..');
 const analysisRoot = path.join(repoRoot, 'backend', 'src', 'agent-skills', 'analysis');
 
 describe('analysis skill registry', () => {
-  test('should discover builtin analysis skills directly from skill directories', () => {
-    expect(BUILTIN_ANALYSIS_SKILLS.length).toBeGreaterThan(0);
+  test('should discover builtin analysis skills from manifest-backed catalog entries', async () => {
+    const skillCatalog = new AgentSkillCatalogService();
+    const analysisSkills = (await skillCatalog.listBuiltinSkills())
+      .filter((skill) => skill.domain === 'analysis')
+      .sort((left, right) => left.canonicalId.localeCompare(right.canonicalId));
+
+    expect(analysisSkills.length).toBeGreaterThan(0);
     const discoveredDirs = fs.readdirSync(analysisRoot, { withFileTypes: true })
       .filter((entry) => entry.isDirectory() && entry.name !== 'runtime')
-      .filter((entry) => fs.existsSync(path.join(analysisRoot, entry.name, 'intent.md')))
+      .filter((entry) => fs.existsSync(path.join(analysisRoot, entry.name, 'skill.yaml')))
       .filter((entry) => fs.existsSync(path.join(analysisRoot, entry.name, 'runtime.py')))
       .map((entry) => entry.name)
       .sort();
 
-    expect(BUILTIN_ANALYSIS_SKILLS.map((skill) => skill.id).sort()).toEqual(discoveredDirs);
+    expect(analysisSkills.map((skill) => skill.canonicalId)).toEqual(discoveredDirs);
 
-    for (const skill of BUILTIN_ANALYSIS_SKILLS) {
-      const intentPath = path.join(analysisRoot, skill.id, 'intent.md');
-      const runtimePath = path.join(analysisRoot, skill.id, 'runtime.py');
-      expect(fs.existsSync(intentPath)).toBe(true);
+    for (const skill of analysisSkills) {
+      const manifestPath = path.join(analysisRoot, skill.canonicalId, 'skill.yaml');
+      const runtimePath = path.join(analysisRoot, skill.canonicalId, 'runtime.py');
+      expect(fs.existsSync(manifestPath)).toBe(true);
       expect(fs.existsSync(runtimePath)).toBe(true);
-      expect(getBuiltinAnalysisSkill(skill.id)?.id).toBe(skill.id);
-      expect(skill.runtimeRelativePath).toBe('runtime.py');
-      expect(skill.stages).toEqual(['analysis']);
+      expect(skill.stages).toContain('analysis');
+      expect(skill.enabledTools).toContain('run_analysis');
     }
   });
 

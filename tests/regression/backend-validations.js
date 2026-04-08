@@ -1546,6 +1546,9 @@ async function validateAgentRuntimeLoader(context) {
   const { AgentSkillRuntime } = await import(
     pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-runtime", "index.js")).href
   );
+  const analysisEntry = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "analysis", "entry.js")).href
+  );
 
   const runtime = new AgentSkillRuntime();
   const skills = runtime.listSkills();
@@ -1685,6 +1688,9 @@ async function validateAgentRuntimeLoader(context) {
   } finally {
     await fsp.rm(tempRoot, { recursive: true, force: true });
   }
+  assert(typeof analysisEntry.listBuiltinAnalysisSkills === "undefined", "analysis entry should not re-export static metadata helpers once manifest-first runtime is active");
+  assert(typeof analysisEntry.getBuiltinAnalysisSkill === "undefined", "analysis entry should not expose builtin analysis metadata lookup");
+  assert(typeof analysisEntry.resolvePreferredBuiltinAnalysisSkill === "undefined", "analysis entry should not expose manifest selection logic directly");
   console.log("[ok] agent runtime loader contract");
 }
 
@@ -2847,27 +2853,27 @@ async function validateDevStartupGuards(context) {
 async function validateStructureJsonSkill(context) {
   await runBackendBuildOnce(context);
 
-  // Test 1: Verify skill is discoverable via registry
-  const {
-    getBuiltinValidationSkill,
-    listBuiltinValidationSkills,
-    findValidationSkillsByTrigger,
-  } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "validation", "registry.js")).href);
+  // Test 1: Verify validation skill metadata comes from skill.yaml, not registry exports
+  const { AgentSkillCatalogService } = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent-skill-catalog.js")).href
+  );
+  const entryModule = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "validation", "entry.js")).href
+  );
 
-  const allSkills = listBuiltinValidationSkills();
-  const skill = getBuiltinValidationSkill("structure-json-validation");
-  assert(skill !== undefined, "structure-json-validation skill should be registered");
-  assert(skill.id === "structure-json-validation", "skill id should match");
-  assert(skill.domain === "validation", "skill domain should be validation");
-  assert(skill.triggers.includes("validate"), "skill should have 'validate' trigger");
-  assert(skill.triggers.includes("验证"), "skill should have Chinese '验证' trigger");
-  assert(skill.autoLoadByDefault === true, "skill should auto-load by default");
-  assert(skill.priority === 100, "skill priority should be 100");
-
-  // Test trigger-based lookup
-  const foundByTrigger = findValidationSkillsByTrigger("json check");
-  assert(foundByTrigger.some((s) => s.id === "structure-json-validation"), "skill should be found by trigger");
-  console.log("[ok] skill registry integration");
+  const skillCatalog = new AgentSkillCatalogService();
+  const skill = await skillCatalog.getBuiltinSkillById("validation-structure-model");
+  assert(skill !== undefined, "validation-structure-model should be discoverable from the manifest-backed skill catalog");
+  assert(skill.canonicalId === "validation-structure-model", "validation skill should use the canonical manifest id");
+  assert(skill.aliases.includes("structure-json-validation"), "validation skill should preserve the legacy alias from skill.yaml");
+  assert(skill.domain === "validation", "validation skill should keep validation domain");
+  assert(skill.triggers.includes("validate"), "validation skill should keep validate trigger");
+  assert(skill.triggers.includes("验证"), "validation skill should keep Chinese validate trigger");
+  assert(skill.autoLoadByDefault === true, "validation skill should auto-load by default");
+  assert(skill.priority === 100, "validation skill priority should stay 100");
+  assert(typeof entryModule.listBuiltinValidationSkills === "undefined", "validation entry should not re-export static registry metadata helpers");
+  assert(typeof entryModule.getBuiltinValidationSkill === "undefined", "validation entry should not expose builtin metadata lookup");
+  console.log("[ok] manifest-backed validation skill metadata");
 
   // Test 2: Test Python runtime directly via CLI
   const runtimePath = path.join(
@@ -3016,8 +3022,8 @@ async function validateStructureJsonSkill(context) {
   console.log("[ok] python runtime validates material properties");
 
   // Test 2g: Options - skip semantic validation
-  const skipSemanticResult = await runPythonValidation(badRefModel, ["--no-semantic"]);
-  assert(skipSemanticResult.valid === true, "model with bad refs should pass when semantic is skipped");
+  const skipSemanticResult = await runPythonValidation(dupIdModel, ["--no-semantic"]);
+  assert(skipSemanticResult.valid === true, "model with semantic-only issues should pass when semantic is skipped");
   console.log("[ok] python runtime respects --no-semantic flag");
 
   // Test 2h: Options - stop on first error
@@ -3025,13 +3031,10 @@ async function validateStructureJsonSkill(context) {
   assert(stopOnFirstResult.issues.length <= 2, "should stop after first error");
   console.log("[ok] python runtime respects --stop-on-first-error flag");
 
-  // Test 3: Verify TypeScript types are exported correctly
-  const entryModule = await import(
-    pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "validation", "entry.js")).href
-  );
-  assert(typeof entryModule.listBuiltinValidationSkills === "function", "entry should export listBuiltinValidationSkills");
-  assert(typeof entryModule.getBuiltinValidationSkill === "function", "entry should export getBuiltinValidationSkill");
-  console.log("[ok] validation module entry exports");
+  // Test 3: Verify runtime-facing validation exports still exist
+  assert(typeof entryModule.VALIDATION_GET_ACTION_BY_PATH === "object", "validation entry should keep runtime action mapping exports");
+  assert(typeof entryModule.VALIDATION_POST_ACTION_BY_PATH === "object", "validation entry should keep runtime action mapping exports");
+  console.log("[ok] validation module runtime exports");
 }
 
 const BACKEND_VALIDATIONS = {
