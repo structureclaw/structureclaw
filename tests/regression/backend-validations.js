@@ -1368,6 +1368,31 @@ async function validateAgentManifestLoader(context) {
       builtinCodeCheckSkills.every((skill) => Array.isArray(skill.grants) && skill.grants.includes("run_code_check")),
       "builtin code-check skill manifests should declare explicit run_code_check grants",
     );
+    const builtinLoadBoundaryRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "load-boundary");
+    const builtinLoadBoundarySkills = await loadSkillManifestsFromDirectory(builtinLoadBoundaryRoot);
+    const builtinLoadBoundaryIds = builtinLoadBoundarySkills.map((skill) => skill.id).sort();
+    assert(
+      JSON.stringify(builtinLoadBoundaryIds) === JSON.stringify([
+        "boundary-condition",
+        "crane-load",
+        "dead-load",
+        "live-load",
+        "load-combination",
+        "nodal-constraint",
+        "seismic-load",
+        "temperature-load",
+        "wind-load",
+      ]),
+      "skill manifest loader should discover builtin load-boundary skills from real skill.yaml files",
+    );
+    const deadLoadSkill = builtinLoadBoundarySkills.find((skill) => skill.id === "dead-load");
+    assert(deadLoadSkill?.version === "1.0.0", "dead-load manifest should preserve version metadata");
+    assert(Array.isArray(deadLoadSkill?.scenarioKeys) && deadLoadSkill.scenarioKeys.includes("frame"), "dead-load manifest should preserve scenarioKeys metadata");
+    assert(Array.isArray(deadLoadSkill?.loadTypes) && deadLoadSkill.loadTypes.includes("self-weight"), "dead-load manifest should preserve loadTypes metadata");
+    const boundarySkill = builtinLoadBoundarySkills.find((skill) => skill.id === "boundary-condition");
+    assert(Array.isArray(boundarySkill?.boundaryTypes) && boundarySkill.boundaryTypes.includes("fixed"), "boundary-condition manifest should preserve boundaryTypes metadata");
+    const combinationSkill = builtinLoadBoundarySkills.find((skill) => skill.id === "load-combination");
+    assert(Array.isArray(combinationSkill?.combinationTypes) && combinationSkill.combinationTypes.includes("ULS"), "load-combination manifest should preserve combinationTypes metadata");
 
     console.log("[ok] agent manifest loader contract");
   } finally {
@@ -1472,6 +1497,23 @@ async function validateAgentSkillCatalogManifests(context) {
     assert(skill.sourceKinds.includes("file-manifest"), `${skillId} should record file-manifest provenance`);
     assert(skill.enabledTools.includes("run_code_check"), `${skillId} should expose run_code_check grant from skill.yaml`);
   }
+  const loadBoundaryIds = [
+    "boundary-condition",
+    "crane-load",
+    "dead-load",
+    "live-load",
+    "load-combination",
+    "nodal-constraint",
+    "seismic-load",
+    "temperature-load",
+    "wind-load",
+  ];
+  for (const skillId of loadBoundaryIds) {
+    const skill = skills.find((entry) => entry.canonicalId === skillId);
+    assert(skill, `skill catalog should include load-boundary skill ${skillId}`);
+    assert(skill.sourceKinds.includes("file-manifest"), `${skillId} should record file-manifest provenance`);
+  }
+  assert(skills.find((entry) => entry.canonicalId === "dead-load")?.triggers.includes("恒载"), "dead-load should preserve load-boundary trigger metadata");
   console.log("[ok] agent skill catalog manifest contract");
 }
 
