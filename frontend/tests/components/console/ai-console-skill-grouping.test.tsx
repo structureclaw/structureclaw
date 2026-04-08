@@ -351,6 +351,130 @@ describe('Capability settings and console integration', () => {
     expect(body.context?.model).toBeUndefined()
   })
 
+  it('migrates legacy stored skill ids to canonical ids before sending console requests', async () => {
+    const user = userEvent.setup()
+
+    vi.restoreAllMocks()
+    window.localStorage.setItem(CAPABILITY_PREFERENCE_STORAGE_KEY, JSON.stringify({
+      skillIds: ['structure-json-validation'],
+      toolIds: ['validate_model'],
+    }))
+
+    const fetchMock = vi.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url === `${API_BASE}/api/v1/agent/skills`) {
+        return {
+          ok: true,
+          json: async () => ([
+            {
+              id: 'validation-structure-model',
+              aliases: ['structure-json-validation'],
+              name: { zh: '结构模型校验', en: 'Structure Model Validation' },
+              description: { zh: 'validation', en: 'validation' },
+              autoLoadByDefault: false,
+              domain: 'validation',
+            },
+          ]),
+        } as Response
+      }
+
+      if (url.startsWith(`${API_BASE}/api/v1/agent/capability-matrix`)) {
+        return {
+          ok: true,
+          json: async () => ({
+            skills: [
+              { id: 'validation-structure-model', domain: 'validation' },
+            ],
+            tools: [
+              {
+                id: 'validate_model',
+                category: 'utility',
+                displayName: { zh: '校验模型', en: 'Validate Model' },
+                description: { zh: '校验结构模型', en: 'Validate the structural model' },
+              },
+            ],
+            foundationToolIds: [],
+            enabledToolIdsBySkill: {
+              'validation-structure-model': ['validate_model'],
+            },
+            skillDomainById: {
+              'validation-structure-model': 'validation',
+            },
+            canonicalSkillIdByAlias: {
+              'structure-json-validation': 'validation-structure-model',
+            },
+            domainSummaries: [
+              { domain: 'validation', skillIds: ['validation-structure-model'] },
+            ],
+          }),
+        } as Response
+      }
+
+      if (url === `${API_BASE}/api/v1/chat/conversations`) {
+        return {
+          ok: true,
+          json: async () => ([]),
+        } as Response
+      }
+
+      if (url === `${API_BASE}/api/v1/chat/conversation` && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({ id: 'conv-validation', title: 'Validation', type: 'general' }),
+        } as Response
+      }
+
+      if (url === `${API_BASE}/api/v1/chat/stream`) {
+        return createSseResponse([
+          {
+            type: 'result',
+            content: {
+              response: 'ok',
+              success: true,
+            },
+          },
+        ])
+      }
+
+      if (url === `${API_BASE}/api/v1/models/latest`) {
+        return {
+          ok: true,
+          json: async () => ({ model: null }),
+        } as Response
+      }
+
+      return {
+        ok: true,
+        json: async () => ({}),
+      } as Response
+    })
+
+    render(<AIConsole />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /manage capabilities/i })).toBeInTheDocument()
+    })
+
+    const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
+    await user.type(composer, 'validate model')
+    await user.click(screen.getByRole('button', { name: /send/i }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${API_BASE}/api/v1/chat/stream`,
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
+
+    const streamCall = fetchMock.mock.calls.find(([input]) => String(input) === `${API_BASE}/api/v1/chat/stream`)
+    expect(streamCall).toBeTruthy()
+    const requestInit = streamCall?.[1] as RequestInit | undefined
+    const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { skillIds?: string[]; enabledToolIds?: string[] } }
+    expect(body.context?.skillIds).toEqual(['validation-structure-model'])
+    expect(body.context?.enabledToolIds).toEqual(['validate_model'])
+  })
+
   it('hydrates all default callable tools in the console when the capability matrix gates tools by skill', async () => {
     const user = userEvent.setup()
 
