@@ -26,6 +26,9 @@ on:
       - '.github/actions/setup-env/**'
       - '.github/workflows/llm-integration.yml'
 
+permissions:
+  contents: read
+
 jobs:
   check-permission:
     if: |
@@ -42,9 +45,14 @@ jobs:
       - name: Get PR Reference
         id: get-ref
         run: |
+          set -euo pipefail
           if [ "${{ github.event_name }}" == "issue_comment" ]; then
             PR_URL="${{ github.event.issue.pull_request.url }}"
             SHA=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$PR_URL" | jq -r .head.sha)
+            if [ -z "$SHA" ] || [ "$SHA" = "null" ]; then
+              echo "::error::Failed to resolve PR head SHA"
+              exit 1
+            fi
             echo "sha=$SHA" >> "$GITHUB_OUTPUT"
             COMMENT="${{ github.event.comment.body }}"
             FILTER=$(echo "$COMMENT" | sed -n 's|/test-llm[[:space:]]*\(.*\)|\1|p' | xargs)
