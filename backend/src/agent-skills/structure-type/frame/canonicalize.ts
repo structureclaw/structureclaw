@@ -1,7 +1,8 @@
+import { mergeLegacyDraftPatchLlmFirst } from '../../../agent-runtime/legacy.js';
 import type { DraftExtraction, DraftFloorLoad } from '../../../agent-runtime/types.js';
 import type { FramePatchSources } from './types.js';
 
-function mergeFloorLoadsByStory(
+export function mergeFloorLoadsByStory(
   existing: DraftFloorLoad[] | undefined,
   incoming: DraftFloorLoad[] | undefined,
 ): DraftFloorLoad[] | undefined {
@@ -26,42 +27,58 @@ function mergeFloorLoadsByStory(
   return Array.from(merged.values()).sort((left, right) => left.story - right.story);
 }
 
-export function canonicalizeFramePatch(input: FramePatchSources): DraftExtraction {
-  const naturalPatch = input.naturalPatch ?? {};
-  const llmPatch = input.llmPatch ?? {};
-  const next: DraftExtraction = {
-    ...naturalPatch,
-    ...llmPatch,
-    inferredType: 'frame',
-  };
+export function hasLateralYFloorLoad(floorLoads: DraftFloorLoad[] | undefined): boolean {
+  return Boolean(floorLoads?.some((load) => load.lateralYKN !== undefined));
+}
 
-  const floorLoads = mergeFloorLoadsByStory(
-    input.existingState?.floorLoads,
-    mergeFloorLoadsByStory(naturalPatch.floorLoads, llmPatch.floorLoads),
+function hasFrameYEvidence(
+  patch: DraftExtraction,
+  floorLoads: DraftFloorLoad[] | undefined,
+  message: string,
+): boolean {
+  return Boolean(
+    patch.bayCountY !== undefined
+    || (patch.bayWidthsYM?.length ?? 0) > 0
+    || hasLateralYFloorLoad(floorLoads)
+    || /(?:3d|三维|y向|y方向|x、y向|x\/y向)/i.test(message),
   );
-  if (floorLoads) {
-    next.floorLoads = floorLoads;
-  }
+}
 
-  const hasYEvidence = Boolean(
-    next.bayCountY !== undefined
-    || (next.bayWidthsYM?.length ?? 0) > 0
-    || floorLoads?.some((load) => load.lateralYKN !== undefined)
-    || /(?:3d|三维|y向|y方向|x、y向|x\/y向)/i.test(input.message),
-  );
-
-  if (hasYEvidence) {
-    next.frameDimension = '3d';
-  } else if (next.frameDimension === undefined) {
-    next.frameDimension = input.existingState?.frameDimension ?? '2d';
+export function resolveFrameDimension(
+  patch: DraftExtraction,
+  existingState: FramePatchSources['existingState'],
+  message: string,
+  floorLoads: DraftFloorLoad[] | undefined = patch.floorLoads,
+): '2d' | '3d' {
+  if (patch.frameDimension === '3d') {
+    return '3d';
   }
+  if (hasFrameYEvidence(patch, floorLoads, message)) {
+    return '3d';
+  }
+  if (patch.frameDimension === '2d') {
+    return '2d';
+  }
+  return existingState?.frameDimension ?? '2d';
+}
+
+export function fillFrameDimensionSpecificGeometry(patch: DraftExtraction): DraftExtraction {
+  const next: DraftExtraction = { ...patch };
 
   if (next.storyCount === undefined && next.storyHeightsM?.length) {
     next.storyCount = next.storyHeightsM.length;
   }
 
-  if (next.frameDimension === '2d' && next.bayCount === undefined && next.bayWidthsM?.length) {
-    next.bayCount = next.bayWidthsM.length;
+  if (next.frameDimension === '2d') {
+    if (!next.bayWidthsM?.length && next.bayWidthsXM?.length && !next.bayWidthsYM?.length) {
+      next.bayWidthsM = [...next.bayWidthsXM];
+    }
+    if (next.bayCount === undefined) {
+      next.bayCount = next.bayWidthsM?.length
+        ?? next.bayCountX
+        ?? next.bayWidthsXM?.length;
+    }
+    return next;
   }
 
   if (next.frameDimension === '3d') {
@@ -74,4 +91,25 @@ export function canonicalizeFramePatch(input: FramePatchSources): DraftExtractio
   }
 
   return next;
+}
+
+export function canonicalizeFramePatch(input: FramePatchSources): DraftExtraction {
+  const naturalPatch = input.naturalPatch ?? {};
+  const llmPatch = input.llmPatch ?? {};
+  const mergedPatch = mergeLegacyDraftPatchLlmFirst(llmPatch, naturalPatch);
+  const next: DraftExtraction = {
+    ...mergedPatch,
+    inferredType: 'frame',
+  };
+
+  const floorLoads = mergeFloorLoadsByStory(
+    input.existingState?.floorLoads,
+    mergedPatch.floorLoads,
+  );
+  if (floorLoads) {
+    next.floorLoads = floorLoads;
+  }
+
+  next.frameDimension = resolveFrameDimension(next, input.existingState, input.message, floorLoads);
+  return fillFrameDimensionSpecificGeometry(next);
 }

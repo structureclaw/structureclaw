@@ -12,14 +12,14 @@ function parseLocalizedPositiveInt(raw: string | undefined): number | undefined 
   const trimmed = raw.trim();
   const direct = normalizePositiveInteger(trimmed);
   if (direct !== undefined) return direct;
-  if (trimmed === '十') return 10;
-  if (trimmed.length === 2 && trimmed.startsWith('十')) {
-    const ones = CHINESE_NUMERAL_MAP[trimmed[1]];
-    return ones ? 10 + ones : undefined;
-  }
-  if (trimmed.length === 2 && trimmed.endsWith('十')) {
-    const tens = CHINESE_NUMERAL_MAP[trimmed[0]];
-    return tens ? tens * 10 : undefined;
+
+  const structured = trimmed.match(/^([一二两三四五六七八九])?十([一二两三四五六七八九])?$/);
+  if (structured) {
+    const tens = structured[1] ? CHINESE_NUMERAL_MAP[structured[1]] : 1;
+    const ones = structured[2] ? CHINESE_NUMERAL_MAP[structured[2]] : 0;
+    return tens !== undefined && ones !== undefined
+      ? tens * 10 + ones
+      : undefined;
   }
   return CHINESE_NUMERAL_MAP[trimmed];
 }
@@ -230,7 +230,17 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
     || extractedLateralYLoadKN !== undefined;
   const resolvedFrameDimension = inferred3d
     ? '3d'
-    : (existingState?.frameDimension ?? (bayCountX !== undefined ? '3d' : undefined));
+    : (existingState?.frameDimension ?? '2d');
+  const resolved2dBayCount = genericBayCount ?? bayCountX ?? existingState?.bayCount;
+  const resolved2dBayWidths = resolvedFrameDimension !== '3d'
+    ? (
+        xSpanArray
+        ?? repeatScalar(
+          resolved2dBayCount,
+          xBayScalar ?? genericBayScalar,
+        )
+      )
+    : undefined;
   const mirrorHorizontalLoad = shouldMirrorHorizontalLoadToBothAxes(text, existingState, inferred3d);
   const lateralXLoadKN = extractedLateralXLoadKN;
   const lateralYLoadKN = extractedLateralYLoadKN ?? (mirrorHorizontalLoad ? extractedLateralXLoadKN : undefined);
@@ -243,15 +253,21 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
     inferredType: 'frame',
     frameDimension: resolvedFrameDimension,
     storyCount,
-    bayCount: resolvedFrameDimension !== '3d' ? genericBayCount : undefined,
-    bayCountX: xSpanArray ? xSpanArray.length : bayCountX,
+    bayCount: resolvedFrameDimension !== '3d'
+      ? (resolved2dBayWidths?.length ?? resolved2dBayCount)
+      : undefined,
+    bayCountX: resolvedFrameDimension === '3d'
+      ? (xSpanArray ? xSpanArray.length : bayCountX)
+      : undefined,
     bayCountY: ySpanArray ? ySpanArray.length : bayCountY,
     storyHeightsM: repeatScalar(resolvedStoryCount, storyHeightScalar),
-    bayWidthsM: resolvedFrameDimension !== '3d'
-      ? repeatScalar(genericBayCount ?? existingState?.bayCount, genericBayScalar)
+    bayWidthsM: resolved2dBayWidths,
+    bayWidthsXM: resolvedFrameDimension === '3d'
+      ? (
+          xSpanArray
+          ?? repeatScalar(resolvedBayCountX, xBayScalar ?? genericBayScalar)
+        )
       : undefined,
-    bayWidthsXM: xSpanArray
-      ?? repeatScalar(resolvedBayCountX, xBayScalar ?? (resolvedFrameDimension === '3d' ? genericBayScalar : undefined)),
     bayWidthsYM: ySpanArray ?? repeatScalar(resolvedBayCountY, yBayScalar),
     floorLoads: buildUniformFloorLoads(
       resolvedStoryCount,

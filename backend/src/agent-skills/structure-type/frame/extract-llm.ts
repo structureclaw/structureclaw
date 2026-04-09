@@ -1,12 +1,17 @@
 import {
   buildLegacyDraftPatchLlmFirst,
-  mergeLegacyDraftPatchLlmFirst,
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
 import { composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
 import { normalizeNumber } from '../../../agent-runtime/fallback.js';
 import type { DraftExtraction, DraftFloorLoad, DraftState } from '../../../agent-runtime/types.js';
+import {
+  canonicalizeFramePatch,
+  fillFrameDimensionSpecificGeometry,
+  hasLateralYFloorLoad as hasLateralYFloorLoadCanonical,
+  resolveFrameDimension,
+} from './canonicalize.js';
 import { GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS } from './constants.js';
 import { normalizeFrameNaturalPatch } from './extract-natural.js';
 import { normalizeSectionName, normalizeSteelGrade } from './model.js';
@@ -18,28 +23,6 @@ export function toFramePatch(patch: DraftExtraction): DraftExtraction {
     loadBoundaryKeys: LOAD_BOUNDARY_KEYS,
   });
   return restrictLegacyDraftPatch(domainPatch, 'frame', [...GEOMETRY_KEYS, ...LOAD_BOUNDARY_KEYS]);
-}
-
-function mergeFloorLoads(
-  existing: DraftFloorLoad[] | undefined,
-  incoming: DraftFloorLoad[] | undefined,
-): DraftFloorLoad[] | undefined {
-  if (!existing?.length) return incoming;
-  if (!incoming?.length) return existing;
-
-  const merged = new Map<number, DraftFloorLoad>();
-  for (const load of existing) merged.set(load.story, { ...load });
-  for (const load of incoming) {
-    const current = merged.get(load.story);
-    merged.set(load.story, {
-      story: load.story,
-      verticalKN: load.verticalKN ?? current?.verticalKN,
-      lateralXKN: load.lateralXKN ?? current?.lateralXKN,
-      lateralYKN: load.lateralYKN ?? current?.lateralYKN,
-    });
-  }
-
-  return Array.from(merged.values()).sort((left, right) => left.story - right.story);
 }
 
 function extractLlmScalar(raw: Record<string, unknown> | null | undefined, keys: string[]): number | undefined {
@@ -116,7 +99,7 @@ export function buildFramePatchFromLlm(
 }
 
 export function hasLateralYFloorLoad(floorLoads: DraftFloorLoad[] | undefined): boolean {
-  return Boolean(floorLoads?.some((load) => load.lateralYKN !== undefined));
+  return hasLateralYFloorLoadCanonical(floorLoads);
 }
 
 export function coerceFrameDimension(
@@ -124,29 +107,9 @@ export function coerceFrameDimension(
   existingState: DraftState | undefined,
   message: string,
 ): DraftExtraction {
-  const text = message.toLowerCase();
-  const mentions3dDirections = (
-    text.includes('x、y向')
-    || text.includes('x/y向')
-    || (text.includes('x 向') && text.includes('y 向'))
-    || (text.includes('x向') && text.includes('y向'))
-    || text.includes('3d')
-    || text.includes('三维')
-  );
   const nextPatch: DraftExtraction = { ...patch };
-  if (mentions3dDirections) {
-    nextPatch.frameDimension = '3d';
-    return nextPatch;
-  }
-  if (nextPatch.frameDimension !== undefined) return nextPatch;
-  if (hasLateralYFloorLoad(nextPatch.floorLoads)) {
-    nextPatch.frameDimension = '3d';
-    return nextPatch;
-  }
-  if (existingState?.frameDimension) {
-    nextPatch.frameDimension = existingState.frameDimension;
-  }
-  return nextPatch;
+  nextPatch.frameDimension = resolveFrameDimension(nextPatch, existingState, message);
+  return fillFrameDimensionSpecificGeometry(nextPatch);
 }
 
 export function buildFrameDraftPatch(
@@ -158,16 +121,15 @@ export function buildFrameDraftPatch(
   const rawNaturalPatch = normalizeFrameNaturalPatch(message, existingState);
   const normalizedNaturalPatch = toFramePatch(rawNaturalPatch);
   const normalizedRulePatch = toFramePatch(buildLegacyDraftPatchLlmFirst(message, null));
-  const mergedRulePatch = mergeFloorLoads(
-    normalizedRulePatch.floorLoads,
-    normalizedNaturalPatch.floorLoads,
-  )
-    ? {
-        ...mergeLegacyDraftPatchLlmFirst(normalizedNaturalPatch, normalizedRulePatch),
-        floorLoads: mergeFloorLoads(normalizedRulePatch.floorLoads, normalizedNaturalPatch.floorLoads),
-      }
-    : mergeLegacyDraftPatchLlmFirst(normalizedNaturalPatch, normalizedRulePatch);
-  const nextPatch = mergeLegacyDraftPatchLlmFirst(normalizedLlmPatch, mergedRulePatch);
+  const nextPatch = canonicalizeFramePatch({
+    message,
+    existingState,
+    naturalPatch: {
+      ...normalizedRulePatch,
+      ...normalizedNaturalPatch,
+    },
+    llmPatch: normalizedLlmPatch,
+  });
 
   const frameMaterial = (normalizedLlmPatch.frameMaterial as string | undefined)
     ?? (rawNaturalPatch.frameMaterial as string | undefined);

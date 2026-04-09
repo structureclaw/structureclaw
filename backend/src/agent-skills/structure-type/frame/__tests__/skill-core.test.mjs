@@ -1,7 +1,11 @@
 import { describe, expect, test } from '@jest/globals';
 import { canonicalizeFramePatch } from '../../../../../dist/agent-skills/structure-type/frame/canonicalize.js';
 import { normalizeFrameNaturalPatch } from '../../../../../dist/agent-skills/structure-type/frame/extract-natural.js';
-import { buildFramePatchFromLlm } from '../../../../../dist/agent-skills/structure-type/frame/extract-llm.js';
+import {
+  buildFrameDraftPatch,
+  buildFramePatchFromLlm,
+  coerceFrameDimension,
+} from '../../../../../dist/agent-skills/structure-type/frame/extract-llm.js';
 
 describe('frame canonicalize core contract', () => {
   test('promotes to 3d when y-direction evidence conflicts with llm 2d output', () => {
@@ -82,6 +86,29 @@ describe('frame canonicalize core contract', () => {
     expect(patch.bayWidthsYM).toEqual([3, 3, 3]);
   });
 
+  test('parses structured chinese numerals between 21 and 99', () => {
+    const patch = normalizeFrameNaturalPatch(
+      '二十二层框架，每层3m，2跨每跨6m',
+      undefined,
+    );
+
+    expect(patch.storyCount).toBe(22);
+  });
+
+  test('defaults x-only natural geometry to 2d and fills 2d bay fields', () => {
+    const patch = buildFrameDraftPatch(
+      '三层框架，x方向4跨，间隔6m，每层3m，每层竖向荷载100kN',
+      null,
+      undefined,
+    );
+
+    expect(patch.frameDimension).toBe('2d');
+    expect(patch.bayCount).toBe(4);
+    expect(patch.bayWidthsM).toEqual([6, 6, 6, 6]);
+    expect(patch.bayCountY).toBeUndefined();
+    expect(patch.bayWidthsYM).toBeUndefined();
+  });
+
   test('normalizes llm scalar fields into canonical arrays', () => {
     const patch = buildFramePatchFromLlm({
       inferredType: 'frame',
@@ -99,5 +126,21 @@ describe('frame canonicalize core contract', () => {
     expect(patch.frameMaterial).toBe('Q345');
     expect(patch.frameColumnSection).toBe('HW350X350');
     expect(patch.frameBeamSection).toBe('HN400X200');
+  });
+
+  test('defaults frame dimension to 2d when no y-direction evidence exists', () => {
+    const patch = coerceFrameDimension({
+      inferredType: 'frame',
+      storyCount: 2,
+      bayCount: 2,
+      storyHeightsM: [3, 3],
+      bayWidthsM: [6, 6],
+      floorLoads: [
+        { story: 1, verticalKN: 120, lateralXKN: 30 },
+        { story: 2, verticalKN: 120, lateralXKN: 30 },
+      ],
+    }, undefined, '两层两跨框架，每层3m');
+
+    expect(patch.frameDimension).toBe('2d');
   });
 });
