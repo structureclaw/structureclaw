@@ -11,16 +11,8 @@ on:
         description: "Test category filter (routing|extraction|pipeline|clarification)"
         required: false
         default: ""
-  pull_request:
-    paths:
-      - 'backend/**'
-      - 'scripts/**'
-      - 'tests/**'
-      - 'sclaw'
-      - 'sclaw_cn'
-      - 'package.json'
-      - '.github/actions/setup-env/**'
-      - '.github/workflows/llm-integration.yml'
+  issue_comment:
+    types: [created]
   push:
     branches:
       - master
@@ -35,28 +27,68 @@ on:
       - '.github/workflows/llm-integration.yml'
 
 jobs:
+  check-permission:
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event.issue.pull_request &&
+       contains(github.event.comment.body, '/test-llm') &&
+       github.event.comment.author_association == 'OWNER')
+    runs-on: ubuntu-latest
+    outputs:
+      pr_sha: ${{ steps.get-ref.outputs.sha }}
+      filter_arg: ${{ steps.get-ref.outputs.filter_arg }}
+    steps:
+      - name: Get PR Reference
+        id: get-ref
+        run: |
+          if [ "${{ github.event_name }}" == "issue_comment" ]; then
+            PR_URL="${{ github.event.issue.pull_request.url }}"
+            SHA=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$PR_URL" | jq -r .head.sha)
+            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+            COMMENT="${{ github.event.comment.body }}"
+            FILTER=$(echo "$COMMENT" | sed -n 's|/test-llm[[:space:]]*\(.*\)|\1|p' | xargs)
+            echo "filter_arg=$FILTER" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            echo "filter_arg=${{ github.event.inputs.filter }}" >> "$GITHUB_OUTPUT"
+          fi
+
   llm-integration:
+    needs: check-permission
     environment: test
-    runs-on: [self-hosted, Windows, X64]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-permission.outputs.pr_sha }}
 
       - name: Setup environment
         uses: ./.github/actions/setup-env
 
       - name: Run LLM integration tests
         env:
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_MODEL: ${{ github.event.inputs.llm_model || vars.LLM_MODEL }}
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
           LLM_LOG_ENABLED: "true"
           DATABASE_URL: "file:.runtime/data/structureclaw-llm-ci.db"
-        run: node tests/runner.mjs llm-integration ${{ github.event.inputs.filter && format('--filter {0}', github.event.inputs.filter) || '' }}
+        run: |
+          FILTER_ARG="${{ needs.check-permission.outputs.filter_arg }}"
+          if [ -n "$FILTER_ARG" ]; then
+            node tests/runner.mjs llm-integration --filter "$FILTER_ARG"
+          else
+            node tests/runner.mjs llm-integration
+          fi
 
       - name: Upload LLM call logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: llm-logs-windows
+          name: llm-logs-ubuntu
           path: .runtime/logs/llm-calls.jsonl
           retention-days: 7
           if-no-files-found: ignore
