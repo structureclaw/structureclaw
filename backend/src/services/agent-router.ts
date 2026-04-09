@@ -264,7 +264,7 @@ export async function planNextStepWithLlm(
   assessInteractionNeeds: AssessInteractionNeedsFn,
 ): Promise<AgentNextStepPlan> {
   if (!llm) {
-    throw new Error('LLM_PLANNER_UNAVAILABLE');
+    throw new Error(`LLM_PLANNER_UNAVAILABLE:${localize(options.locale, 'LLM 不可用', 'LLM unavailable')}`);
   }
 
   try {
