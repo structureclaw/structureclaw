@@ -36,6 +36,7 @@ on:
 
 jobs:
   llm-integration:
+    environment: test
     runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 30
     steps:
