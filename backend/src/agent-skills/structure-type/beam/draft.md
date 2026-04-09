@@ -1,7 +1,7 @@
 # Draft
 
-- 必填参数：`lengthM`, `loadKN`
-- 建议参数：`loadType`, `loadPosition`
+- 必填参数：`lengthM`, `supportType`, `loadKN`
+- 建议参数：`loadType`, `loadPositionM`, `loadPosition`
 - 输出 JSON 中使用 `draftPatch`
 
 ## 参数提取规则
@@ -28,6 +28,7 @@
 
 ### loadPositionM（荷载位置，距左端偏移）
 - "距左端3米" / "at 3m from left end" → `"loadPositionM": 3`
+- 当 loadPositionM 有具体数值时，应同时推断 `loadPosition`（如 `"midspan"`、`"free-joint"` 等）
 
 ## 荷载位置映射
 - 点荷载优先位置：`end` 或 `midspan`

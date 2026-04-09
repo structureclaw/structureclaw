@@ -5,7 +5,7 @@ const { createRequire } = require("node:module");
 
 const { resolveIntegrationContext } = require("./lib/context.js");
 const { createRealLlmClient } = require("./lib/real-llm-client.cjs");
-const { withRetry } = require("./lib/retry.js");
+const { withRetry, MAX_ATTEMPTS } = require("./lib/retry.js");
 const { assert, assertMatch, assertToolCalls, assertCriticalMissing, assertNotCriticalMissing } = require("./lib/assertions.js");
 
 // ---------------------------------------------------------------------------
@@ -227,7 +227,7 @@ async function runClarificationTest(runtime, llm, testCase) {
 // ---------------------------------------------------------------------------
 
 async function runLlmIntegrationTests(rootDir, args) {
-  const maxAttempts = 8; // 1 initial + 7 retries
+  const maxAttempts = MAX_ATTEMPTS;
   const context = resolveIntegrationContext(rootDir);
 
   // Inject LLM env vars into process.env BEFORE importing backend modules.

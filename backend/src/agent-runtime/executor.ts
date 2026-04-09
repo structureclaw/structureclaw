@@ -50,8 +50,8 @@ export class AgentSkillExecutor {
         ? '只有同时考虑当前消息和 Known draft state 后仍然未知的字段，才能放入 missingCritical。'
         : 'Only add fields to missingCritical if they are genuinely unknown after considering BOTH the current message AND the Known draft state.',
       input.locale === 'zh'
-        ? '梁状态累积示例：已知 state={"inferredType":"beam","lengthM":6}，用户说"20kN均布荷载"，正确输出={"inferredType":"beam","draftPatch":{"inferredType":"beam","lengthM":6,"supportType":"simply-supported","loadKN":20,"loadType":"distributed"}}'
-        : 'Beam state accumulation example: Known state={"inferredType":"beam","lengthM":6}, user says "20kN distributed load", correct output={"inferredType":"beam","draftPatch":{"inferredType":"beam","lengthM":6,"supportType":"simply-supported","loadKN":20,"loadType":"distributed"}}',
+        ? '梁状态累积示例：已知 state={"inferredType":"beam","lengthM":6}，用户说"20kN均布荷载"，正确输出={"inferredType":"beam","draftPatch":{"inferredType":"beam","lengthM":6,"supportType":"simply-supported","loadKN":20,"loadType":"distributed","loadPosition":"full-span"}}'
+        : 'Beam state accumulation example: Known state={"inferredType":"beam","lengthM":6}, user says "20kN distributed load", correct output={"inferredType":"beam","draftPatch":{"inferredType":"beam","lengthM":6,"supportType":"simply-supported","loadKN":20,"loadType":"distributed","loadPosition":"full-span"}}',
       input.locale === 'zh'
         ? '门式刚架状态累积示例：已知 state={"inferredType":"portal-frame","spanLengthM":24,"heightM":8}，用户说"荷载10kN/m"，正确输出={"inferredType":"portal-frame","draftPatch":{"inferredType":"portal-frame","spanLengthM":24,"heightM":8,"loadKN":10,"loadType":"distributed"}}'
         : 'Portal-frame state accumulation example: Known state={"inferredType":"portal-frame","spanLengthM":24,"heightM":8}, user says "load 10kN/m", correct output={"inferredType":"portal-frame","draftPatch":{"inferredType":"portal-frame","spanLengthM":24,"heightM":8,"loadKN":10,"loadType":"distributed"}}',

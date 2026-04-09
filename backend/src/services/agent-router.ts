@@ -235,7 +235,7 @@ export async function planNextStepWithLlm(
     'If the latest message clearly asks for a new or different structural model, choose tool_call even when an older context model already exists.',
     'For requests like "建模一个简支梁，跨度10m，均布荷载1kN/m，可以用10个单元建模", prefer tool_call when the information is sufficient to attempt a first structural model draft.',
     allowToolCall
-      ? 'Messages containing structural parameters AND analysis intent MUST produce kind=tool_call. Examples: "简支梁6米，均布荷载20kN/m，请进行静力分析", "2-story single-bay steel frame, story height 3.6m, bay 6m, floor load 10kN/m2, analyze and check", "门式刚架，跨度18m，高度7m，屋面荷载6kN/m，分析", "3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m".'
+      ? 'Messages containing structural parameters AND analysis intent MUST produce kind=tool_call. Examples: "简支梁6米，均布荷载20kN/m，请进行静力分析", "2-story single-bay steel frame, story height 3.6m, bay 6m, floor load 10kN/m2, analyze and check", "门式刚架，跨度18m，高度7m，屋面荷载6kN/m，分析", "3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m，请分析".'
       : '',
     'Use replyMode=plain only for casual chat, greetings, meta questions, or clearly non-engineering turns.',
     'Use replyMode=structured for engineering follow-ups that should stay grounded in the current structural context without immediately invoking tools.',
