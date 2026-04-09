@@ -67,6 +67,9 @@ jobs:
     needs: check-permission
     environment: test
     runs-on: ubuntu-latest
+    concurrency:
+      group: llm-integration-${{ github.event.issue.number || github.sha }}
+      cancel-in-progress: true
     timeout-minutes: 30
     steps:
       - name: Checkout repository

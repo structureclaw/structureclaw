@@ -44,8 +44,8 @@ export class AgentSkillExecutor {
         ? '示例：{"inferredType":"beam","draftPatch":{"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPosition":"free-joint","loadPositionM":4}}'
         : 'Example: {"inferredType":"beam","draftPatch":{"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPosition":"free-joint","loadPositionM":4}}',
       input.locale === 'zh'
-        ? '重要：当 Known draft state 已有参数值时，draftPatch 中必须保留所有已有值并补充新提取的值，绝不能丢失之前已确认的参数。'
-        : 'CRITICAL: When Known draft state contains values, you MUST include ALL of them in draftPatch along with any newly extracted values. Never drop previously extracted parameters.',
+        ? '重要：当 Known draft state 已有参数值时，draftPatch 中必须保留所有已提取的工程参数（如长度、荷载、材料等），并补充新提取的值。不要回显元数据字段（如 updatedAt、skillId、structuralTypeKey）。'
+        : 'CRITICAL: When Known draft state contains values, you MUST preserve all previously extracted *parameter* fields in draftPatch along with any newly extracted values. Do not echo metadata fields (updatedAt, skillId, structuralTypeKey, etc.).',
       input.locale === 'zh'
         ? '只有同时考虑当前消息和 Known draft state 后仍然未知的字段，才能放入 missingCritical。'
         : 'Only add fields to missingCritical if they are genuinely unknown after considering BOTH the current message AND the Known draft state.',
