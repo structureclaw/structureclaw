@@ -12,7 +12,6 @@ import type {
   AgentInteractionPhase,
 } from './agent.js';
 import { prisma } from '../utils/database.js';
-import { raw } from '@prisma/client/runtime/library.js';
 
 // ---------------------------------------------------------------------------
 // Callback signatures the caller must supply
@@ -312,7 +311,7 @@ export async function planNextStepWithLlm(
     ].join('\n');
 
     const aiMessage = await llm.invoke(prompt);
-    raw = typeof aiMessage.content === 'string'
+    const raw = typeof aiMessage.content === 'string'
       ? aiMessage.content
       : JSON.stringify(aiMessage.content);
     const normalized = parsePlannerResponse(raw, allowedKinds)
@@ -336,12 +335,6 @@ export async function planNextStepWithLlm(
     }
     throw new Error(`LLM_PLANNER_UNAVAILABLE:${describeLlmPlannerError(error, options.locale)}`);
   }
-  return {
-    kind: normalized.kind,
-    replyMode: normalized.replyMode,
-    planningDirective: 'auto',
-    rationale: 'llm',
-  };
 }
 
 // ---------------------------------------------------------------------------
