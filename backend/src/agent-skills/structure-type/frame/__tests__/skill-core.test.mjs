@@ -1,5 +1,7 @@
 import { describe, expect, test } from '@jest/globals';
 import { canonicalizeFramePatch } from '../../../../../dist/agent-skills/structure-type/frame/canonicalize.js';
+import { normalizeFrameNaturalPatch } from '../../../../../dist/agent-skills/structure-type/frame/extract-natural.js';
+import { buildFramePatchFromLlm } from '../../../../../dist/agent-skills/structure-type/frame/extract-llm.js';
 
 describe('frame canonicalize core contract', () => {
   test('promotes to 3d when y-direction evidence conflicts with llm 2d output', () => {
@@ -63,5 +65,39 @@ describe('frame canonicalize core contract', () => {
       { story: 1, verticalKN: 90, lateralXKN: 18, lateralYKN: 12 },
       { story: 2, verticalKN: 90, lateralXKN: 18, lateralYKN: 12 },
     ]);
+  });
+
+  test('extracts regular 3d frame geometry from natural chinese phrasing', () => {
+    const patch = normalizeFrameNaturalPatch(
+      '我想设计一个三层框架，x方向4跨，间隔3m，y方向3跨间隔也是3m，每层3m',
+      undefined,
+    );
+
+    expect(patch.frameDimension).toBe('3d');
+    expect(patch.storyCount).toBe(3);
+    expect(patch.storyHeightsM).toEqual([3, 3, 3]);
+    expect(patch.bayCountX).toBe(4);
+    expect(patch.bayCountY).toBe(3);
+    expect(patch.bayWidthsXM).toEqual([3, 3, 3, 3]);
+    expect(patch.bayWidthsYM).toEqual([3, 3, 3]);
+  });
+
+  test('normalizes llm scalar fields into canonical arrays', () => {
+    const patch = buildFramePatchFromLlm({
+      inferredType: 'frame',
+      storyCount: 2,
+      bayCount: 2,
+      storyHeightM: 3,
+      bayWidthM: 6,
+      frameMaterial: 'q345',
+      frameColumnSection: 'hw350x350',
+      frameBeamSection: 'hn400x200',
+    }, undefined);
+
+    expect(patch.storyHeightsM).toEqual([3, 3]);
+    expect(patch.bayWidthsM).toEqual([6, 6]);
+    expect(patch.frameMaterial).toBe('Q345');
+    expect(patch.frameColumnSection).toBe('HW350X350');
+    expect(patch.frameBeamSection).toBe('HN400X200');
   });
 });
