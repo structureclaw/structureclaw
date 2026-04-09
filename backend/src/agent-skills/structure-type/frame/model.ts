@@ -1,0 +1,297 @@
+import { computeMissingCriticalKeys } from '../../../agent-runtime/draft-guidance.js';
+import type { DraftState } from '../../../agent-runtime/types.js';
+import { REQUIRED_KEYS } from './constants.js';
+
+const STEEL_GRADE_PROPERTIES: Record<string, { E: number; G: number; nu: number; rho: number; fy: number }> = {
+  Q235: { E: 206000, G: 79000, nu: 0.3, rho: 7850, fy: 235 },
+  Q345: { E: 206000, G: 79000, nu: 0.3, rho: 7850, fy: 345 },
+  Q355: { E: 206000, G: 79000, nu: 0.3, rho: 7850, fy: 355 },
+  Q390: { E: 206000, G: 79000, nu: 0.3, rho: 7850, fy: 390 },
+  Q420: { E: 206000, G: 79000, nu: 0.3, rho: 7850, fy: 420 },
+  S235: { E: 210000, G: 81000, nu: 0.3, rho: 7850, fy: 235 },
+  S275: { E: 210000, G: 81000, nu: 0.3, rho: 7850, fy: 275 },
+  S355: { E: 210000, G: 81000, nu: 0.3, rho: 7850, fy: 355 },
+  A36: { E: 200000, G: 77000, nu: 0.3, rho: 7850, fy: 248 },
+};
+
+const H_SECTION_PROPERTIES: Record<string, { A: number; Iy: number; Iz: number; J: number }> = {
+  'HW200X200': { A: 0.00640, Iy: 4.72e-5, Iz: 1.60e-5, J: 1.70e-6 },
+  'HW250X250': { A: 0.00920, Iy: 1.07e-4, Iz: 3.65e-5, J: 2.90e-6 },
+  'HW300X300': { A: 0.01192, Iy: 2.04e-4, Iz: 6.75e-5, J: 4.23e-6 },
+  'HW350X350': { A: 0.01739, Iy: 4.03e-4, Iz: 1.36e-4, J: 8.63e-6 },
+  'HW400X400': { A: 0.01972, Iy: 6.67e-4, Iz: 2.24e-4, J: 1.01e-5 },
+  'HW450X300': { A: 0.01870, Iy: 7.93e-4, Iz: 2.03e-4, J: 9.86e-6 },
+  'HN300X150': { A: 0.00487, Iy: 7.21e-5, Iz: 5.08e-6, J: 5.18e-7 },
+  'HN350X175': { A: 0.00629, Iy: 1.36e-4, Iz: 9.84e-6, J: 6.32e-7 },
+  'HN400X200': { A: 0.00842, Iy: 2.37e-4, Iz: 1.74e-5, J: 8.44e-7 },
+  'HN450X200': { A: 0.00961, Iy: 3.32e-4, Iz: 1.87e-5, J: 9.68e-7 },
+  'HN500X200': { A: 0.01143, Iy: 5.02e-4, Iz: 2.14e-5, J: 1.24e-6 },
+  'HN600X200': { A: 0.01341, Iy: 9.06e-4, Iz: 2.27e-5, J: 1.48e-6 },
+};
+
+type SteelGradeProps = { E: number; G: number; nu: number; rho: number; fy: number };
+type SectionProps = { name: string; A: number; Iy: number; Iz: number; J: number; G: number };
+
+export function getDefaultColumnSection(storyCount: number): string {
+  if (storyCount > 10) return 'HW400X400';
+  if (storyCount > 5) return 'HW350X350';
+  return 'HW300X300';
+}
+
+export function getDefaultBeamSection(storyCount: number): string {
+  if (storyCount > 10) return 'HN500X200';
+  if (storyCount > 5) return 'HN400X200';
+  return 'HN300X150';
+}
+
+export function normalizeSteelGrade(raw: string): string {
+  const upper = raw.toUpperCase();
+  return Object.keys(STEEL_GRADE_PROPERTIES).find((grade) => grade === upper) ?? upper;
+}
+
+export function normalizeSectionName(raw: string): string {
+  return raw.toUpperCase().replace(/[×x]/gi, 'X');
+}
+
+function resolveSteelGradeProps(grade: string | undefined): SteelGradeProps & { resolvedGrade: string } {
+  const normalized = normalizeSteelGrade(grade ?? 'Q355');
+  const resolved = STEEL_GRADE_PROPERTIES[normalized] ? normalized : 'Q355';
+  return { ...STEEL_GRADE_PROPERTIES[resolved]!, resolvedGrade: resolved };
+}
+
+function resolveSectionProps(
+  section: string | undefined,
+  role: 'column' | 'beam',
+  storyCount: number,
+  matG: number,
+): SectionProps {
+  const defaultSection = role === 'column'
+    ? getDefaultColumnSection(storyCount)
+    : getDefaultBeamSection(storyCount);
+  const normalized = section ? normalizeSectionName(section) : defaultSection;
+  const sectionKey = H_SECTION_PROPERTIES[normalized] ? normalized : defaultSection;
+  return { name: sectionKey, ...H_SECTION_PROPERTIES[sectionKey]!, G: matG };
+}
+
+function accumulateCoords(lengths: number[]): number[] {
+  const coords = [0];
+  for (const value of lengths) {
+    coords.push(coords[coords.length - 1] + value);
+  }
+  return coords;
+}
+
+function buildBaseRestraint(baseSupport: string): boolean[] {
+  return baseSupport === 'pinned'
+    ? [true, true, true, false, false, false]
+    : [true, true, true, true, true, true];
+}
+
+function n2dId(storyIdx: number, bayNodeIdx: number): string {
+  return `N${storyIdx}_${bayNodeIdx}`;
+}
+
+function n3dId(storyIdx: number, xIdx: number, yIdx: number): string {
+  return `N${storyIdx}_${xIdx}_${yIdx}`;
+}
+
+function buildFrame2dLocalModel(
+  state: DraftState,
+  matProps: SteelGradeProps & { resolvedGrade: string },
+  colProps: SectionProps,
+  beamProps: SectionProps,
+  metadata: Record<string, unknown>,
+): Record<string, unknown> {
+  const bayWidths = state.bayWidthsM!;
+  const storyHeights = state.storyHeightsM!;
+  const floorLoads = state.floorLoads!;
+  const baseSupport = (state.frameBaseSupportType as string | undefined) ?? 'fixed';
+  const xCoords = accumulateCoords(bayWidths);
+  const yCoords = accumulateCoords(storyHeights);
+  const nodes: Array<Record<string, unknown>> = [];
+  const elements: Array<Record<string, unknown>> = [];
+  const loads: Array<Record<string, unknown>> = [];
+  let elementId = 1;
+
+  for (let storyIdx = 0; storyIdx < yCoords.length; storyIdx++) {
+    for (let bayIdx = 0; bayIdx < xCoords.length; bayIdx++) {
+      const node: Record<string, unknown> = { id: n2dId(storyIdx, bayIdx), x: xCoords[bayIdx], y: yCoords[storyIdx], z: 0 };
+      if (storyIdx === 0) node.restraints = buildBaseRestraint(baseSupport);
+      nodes.push(node);
+    }
+  }
+
+  for (let storyIdx = 1; storyIdx < yCoords.length; storyIdx++) {
+    for (let bayIdx = 0; bayIdx < xCoords.length; bayIdx++) {
+      elements.push({ id: `C${elementId}`, type: 'beam', nodes: [n2dId(storyIdx - 1, bayIdx), n2dId(storyIdx, bayIdx)], material: '1', section: '1' });
+      elementId += 1;
+    }
+  }
+
+  for (let storyIdx = 1; storyIdx < yCoords.length; storyIdx++) {
+    for (let bayIdx = 0; bayIdx < bayWidths.length; bayIdx++) {
+      elements.push({ id: `B${elementId}`, type: 'beam', nodes: [n2dId(storyIdx, bayIdx), n2dId(storyIdx, bayIdx + 1)], material: '1', section: '2' });
+      elementId += 1;
+    }
+  }
+
+  const levelNodeCount = xCoords.length;
+  for (const load of floorLoads) {
+    const storyIdx = load.story;
+    if (storyIdx <= 0 || storyIdx >= yCoords.length) continue;
+    const vPerNode = load.verticalKN !== undefined ? -load.verticalKN / levelNodeCount : undefined;
+    const lPerNode = load.lateralXKN !== undefined ? load.lateralXKN / levelNodeCount : undefined;
+    for (let bayIdx = 0; bayIdx < xCoords.length; bayIdx++) {
+      const nodeLoad: Record<string, unknown> = { node: n2dId(storyIdx, bayIdx) };
+      if (vPerNode !== undefined) nodeLoad.fy = vPerNode;
+      if (lPerNode !== undefined) nodeLoad.fx = lPerNode;
+      if (Object.keys(nodeLoad).length > 1) loads.push(nodeLoad);
+    }
+  }
+
+  return {
+    schema_version: '1.0.0',
+    unit_system: 'SI',
+    nodes,
+    elements,
+    materials: [{ id: '1', name: matProps.resolvedGrade, E: matProps.E, nu: matProps.nu, rho: matProps.rho, fy: matProps.fy }],
+    sections: [
+      { id: '1', name: colProps.name, type: 'beam', properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
+      { id: '2', name: beamProps.name, type: 'beam', properties: { A: beamProps.A, Iy: beamProps.Iy, Iz: beamProps.Iz, J: beamProps.J, G: beamProps.G } },
+    ],
+    load_cases: [{ id: 'LC1', type: 'other', loads }],
+    load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
+    metadata: {
+      ...metadata,
+      baseSupport,
+      material: matProps.resolvedGrade,
+      columnSection: colProps.name,
+      beamSection: beamProps.name,
+      storyCount: storyHeights.length,
+      bayCount: bayWidths.length,
+      geometry: { storyHeightsM: storyHeights, bayWidthsM: bayWidths },
+    },
+  };
+}
+
+function buildFrame3dLocalModel(
+  state: DraftState,
+  matProps: SteelGradeProps & { resolvedGrade: string },
+  colProps: SectionProps,
+  beamProps: SectionProps,
+  metadata: Record<string, unknown>,
+): Record<string, unknown> {
+  const bayWidthsX = state.bayWidthsXM!;
+  const bayWidthsY = state.bayWidthsYM!;
+  const storyHeights = state.storyHeightsM!;
+  const floorLoads = state.floorLoads!;
+  const baseSupport = (state.frameBaseSupportType as string | undefined) ?? 'fixed';
+  const xCoords = accumulateCoords(bayWidthsX);
+  const zCoords = accumulateCoords(bayWidthsY);
+  const yCoords = accumulateCoords(storyHeights);
+  const nodes: Array<Record<string, unknown>> = [];
+  const elements: Array<Record<string, unknown>> = [];
+  const loads: Array<Record<string, unknown>> = [];
+  let elementId = 1;
+
+  for (let storyIdx = 0; storyIdx < yCoords.length; storyIdx++) {
+    for (let xIdx = 0; xIdx < xCoords.length; xIdx++) {
+      for (let yIdx = 0; yIdx < zCoords.length; yIdx++) {
+        const node: Record<string, unknown> = { id: n3dId(storyIdx, xIdx, yIdx), x: xCoords[xIdx], y: yCoords[storyIdx], z: zCoords[yIdx] };
+        if (storyIdx === 0) node.restraints = buildBaseRestraint(baseSupport);
+        nodes.push(node);
+      }
+    }
+  }
+
+  for (let storyIdx = 1; storyIdx < yCoords.length; storyIdx++) {
+    for (let xIdx = 0; xIdx < xCoords.length; xIdx++) {
+      for (let yIdx = 0; yIdx < zCoords.length; yIdx++) {
+        elements.push({ id: `C${elementId}`, type: 'beam', nodes: [n3dId(storyIdx - 1, xIdx, yIdx), n3dId(storyIdx, xIdx, yIdx)], material: '1', section: '1' });
+        elementId += 1;
+      }
+    }
+  }
+
+  for (let storyIdx = 1; storyIdx < yCoords.length; storyIdx++) {
+    for (let xIdx = 0; xIdx < bayWidthsX.length; xIdx++) {
+      for (let yIdx = 0; yIdx < zCoords.length; yIdx++) {
+        elements.push({ id: `BX${elementId}`, type: 'beam', nodes: [n3dId(storyIdx, xIdx, yIdx), n3dId(storyIdx, xIdx + 1, yIdx)], material: '1', section: '2' });
+        elementId += 1;
+      }
+    }
+  }
+
+  for (let storyIdx = 1; storyIdx < yCoords.length; storyIdx++) {
+    for (let xIdx = 0; xIdx < xCoords.length; xIdx++) {
+      for (let yIdx = 0; yIdx < bayWidthsY.length; yIdx++) {
+        elements.push({ id: `BY${elementId}`, type: 'beam', nodes: [n3dId(storyIdx, xIdx, yIdx), n3dId(storyIdx, xIdx, yIdx + 1)], material: '1', section: '2' });
+        elementId += 1;
+      }
+    }
+  }
+
+  const levelNodeCount = xCoords.length * zCoords.length;
+  for (const load of floorLoads) {
+    const storyIdx = load.story;
+    if (storyIdx <= 0 || storyIdx >= yCoords.length) continue;
+    const vPerNode = load.verticalKN !== undefined ? -load.verticalKN / levelNodeCount : undefined;
+    const lxPerNode = load.lateralXKN !== undefined ? load.lateralXKN / levelNodeCount : undefined;
+    const lyPerNode = load.lateralYKN !== undefined ? load.lateralYKN / levelNodeCount : undefined;
+    for (let xIdx = 0; xIdx < xCoords.length; xIdx++) {
+      for (let yIdx = 0; yIdx < zCoords.length; yIdx++) {
+        const nodeLoad: Record<string, unknown> = { node: n3dId(storyIdx, xIdx, yIdx) };
+        if (vPerNode !== undefined) nodeLoad.fy = vPerNode;
+        if (lxPerNode !== undefined) nodeLoad.fx = lxPerNode;
+        if (lyPerNode !== undefined) nodeLoad.fz = lyPerNode;
+        if (Object.keys(nodeLoad).length > 1) loads.push(nodeLoad);
+      }
+    }
+  }
+
+  return {
+    schema_version: '1.0.0',
+    unit_system: 'SI',
+    nodes,
+    elements,
+    materials: [{ id: '1', name: matProps.resolvedGrade, E: matProps.E, nu: matProps.nu, rho: matProps.rho, fy: matProps.fy }],
+    sections: [
+      { id: '1', name: colProps.name, type: 'beam', properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
+      { id: '2', name: beamProps.name, type: 'beam', properties: { A: beamProps.A, Iy: beamProps.Iy, Iz: beamProps.Iz, J: beamProps.J, G: beamProps.G } },
+    ],
+    load_cases: [{ id: 'LC1', type: 'other', loads }],
+    load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
+    metadata: {
+      ...metadata,
+      baseSupport,
+      material: matProps.resolvedGrade,
+      columnSection: colProps.name,
+      beamSection: beamProps.name,
+      storyCount: storyHeights.length,
+      bayCountX: bayWidthsX.length,
+      bayCountY: bayWidthsY.length,
+      geometry: { storyHeightsM: storyHeights, bayWidthsXM: bayWidthsX, bayWidthsYM: bayWidthsY },
+    },
+  };
+}
+
+function buildFrameLocalModel(state: DraftState): Record<string, unknown> {
+  const matGrade = state.frameMaterial as string | undefined;
+  const colSection = state.frameColumnSection as string | undefined;
+  const beamSection = state.frameBeamSection as string | undefined;
+  const storyCount = state.storyHeightsM?.length ?? (state.storyCount as number | undefined) ?? 0;
+  const matProps = resolveSteelGradeProps(matGrade);
+  const colProps = resolveSectionProps(colSection, 'column', storyCount, matProps.G);
+  const beamProps = resolveSectionProps(beamSection, 'beam', storyCount, matProps.G);
+  const metadata: Record<string, unknown> = { source: 'markdown-skill-draft', inferredType: 'frame' };
+  if (state.frameDimension === '3d') {
+    return buildFrame3dLocalModel(state, matProps, colProps, beamProps, metadata);
+  }
+  return buildFrame2dLocalModel(state, matProps, colProps, beamProps, metadata);
+}
+
+export function buildFrameModel(state: DraftState): Record<string, unknown> | undefined {
+  const critical = computeMissingCriticalKeys(state).filter((key) => (REQUIRED_KEYS as readonly string[]).includes(key));
+  if (critical.length > 0) return undefined;
+  return buildFrameLocalModel(state);
+}

@@ -1,12 +1,54 @@
-import { normalizeLegacyDraftPatch } from '../../../agent-runtime/legacy.js';
-import type { DraftExtraction, DraftState } from '../../../agent-runtime/types.js';
+import {
+  buildLegacyDraftPatchLlmFirst,
+  mergeLegacyDraftPatchLlmFirst,
+  normalizeLegacyDraftPatch,
+  restrictLegacyDraftPatch,
+} from '../../../agent-runtime/legacy.js';
+import { composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
+import { normalizeNumber } from '../../../agent-runtime/fallback.js';
+import type { DraftExtraction, DraftFloorLoad, DraftState } from '../../../agent-runtime/types.js';
+import { GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS } from './constants.js';
+import { normalizeFrameNaturalPatch } from './extract-natural.js';
+import { normalizeSectionName, normalizeSteelGrade } from './model.js';
 
-function normalizeSteelGrade(raw: string): string {
-  return raw.toUpperCase();
+export function toFramePatch(patch: DraftExtraction): DraftExtraction {
+  const domainPatch = composeStructuralDomainPatch({
+    patch,
+    geometryKeys: GEOMETRY_KEYS,
+    loadBoundaryKeys: LOAD_BOUNDARY_KEYS,
+  });
+  return restrictLegacyDraftPatch(domainPatch, 'frame', [...GEOMETRY_KEYS, ...LOAD_BOUNDARY_KEYS]);
 }
 
-function normalizeSectionName(raw: string): string {
-  return raw.toUpperCase().replace(/[×x]/g, 'X');
+function mergeFloorLoads(
+  existing: DraftFloorLoad[] | undefined,
+  incoming: DraftFloorLoad[] | undefined,
+): DraftFloorLoad[] | undefined {
+  if (!existing?.length) return incoming;
+  if (!incoming?.length) return existing;
+
+  const merged = new Map<number, DraftFloorLoad>();
+  for (const load of existing) merged.set(load.story, { ...load });
+  for (const load of incoming) {
+    const current = merged.get(load.story);
+    merged.set(load.story, {
+      story: load.story,
+      verticalKN: load.verticalKN ?? current?.verticalKN,
+      lateralXKN: load.lateralXKN ?? current?.lateralXKN,
+      lateralYKN: load.lateralYKN ?? current?.lateralYKN,
+    });
+  }
+
+  return Array.from(merged.values()).sort((left, right) => left.story - right.story);
+}
+
+function extractLlmScalar(raw: Record<string, unknown> | null | undefined, keys: string[]): number | undefined {
+  if (!raw) return undefined;
+  for (const key of keys) {
+    const value = normalizeNumber(raw[key]);
+    if (value !== undefined && value > 0) return value;
+  }
+  return undefined;
 }
 
 function repeatScalar(count: number | undefined, value: number | undefined): number[] | undefined {
@@ -14,22 +56,135 @@ function repeatScalar(count: number | undefined, value: number | undefined): num
   return Array.from({ length: count }, () => value);
 }
 
+function buildUniformFloorLoads(
+  storyCount: number | undefined,
+  verticalKN: number | undefined,
+  lateralXKN: number | undefined,
+  lateralYKN: number | undefined,
+): DraftFloorLoad[] | undefined {
+  if (!storyCount) return undefined;
+  if (verticalKN === undefined && lateralXKN === undefined && lateralYKN === undefined) return undefined;
+  return Array.from({ length: storyCount }, (_, index) => ({
+    story: index + 1,
+    verticalKN,
+    lateralXKN,
+    lateralYKN,
+  }));
+}
+
 export function buildFramePatchFromLlm(
   rawPatch: Record<string, unknown> | null | undefined,
   existingState: DraftState | undefined,
 ): DraftExtraction {
-  const normalized = normalizeLegacyDraftPatch(rawPatch);
-  const storyCount = normalized.storyCount ?? existingState?.storyCount;
+  const normalized = toFramePatch(normalizeLegacyDraftPatch(rawPatch));
+  const storyCount = normalized.storyCount ?? existingState?.storyCount ?? existingState?.storyHeightsM?.length;
   const bayCount = normalized.bayCount ?? existingState?.bayCount;
-  const storyHeightScalar = typeof rawPatch?.storyHeightM === 'number' ? rawPatch.storyHeightM : undefined;
-  const bayWidthScalar = typeof rawPatch?.bayWidthM === 'number' ? rawPatch.bayWidthM : undefined;
+  const bayCountX = normalized.bayCountX ?? existingState?.bayCountX;
+  const bayCountY = normalized.bayCountY ?? existingState?.bayCountY;
+  const storyHeightScalar = extractLlmScalar(rawPatch, ['storyHeightScalar', 'storyHeightM', 'uniformStoryHeightM']);
+  const bayWidthScalar = extractLlmScalar(rawPatch, ['bayWidthScalar', 'bayWidthM', 'spacingM']);
+  const bayWidthXScalar = extractLlmScalar(rawPatch, ['bayWidthXScalar', 'bayWidthXM', 'spacingXM']);
+  const bayWidthYScalar = extractLlmScalar(rawPatch, ['bayWidthYScalar', 'bayWidthYM', 'spacingYM']);
+  const verticalLoadKN = extractLlmScalar(rawPatch, ['verticalLoadKN', 'uniformVerticalLoadKN']);
+  const lateralXKN = extractLlmScalar(rawPatch, ['lateralXKN', 'horizontalLoadKN', 'uniformLateralXKN']);
+  const lateralYKN = extractLlmScalar(rawPatch, ['lateralYKN', 'uniformLateralYKN']);
+  const frameDimension = normalized.frameDimension
+    ?? (normalized.bayCountY !== undefined || normalized.bayWidthsYM !== undefined || lateralYKN !== undefined ? '3d' : undefined);
+
+  const frameMaterial = typeof rawPatch?.frameMaterial === 'string'
+    ? normalizeSteelGrade(rawPatch.frameMaterial)
+    : undefined;
+  const frameColumnSection = typeof rawPatch?.frameColumnSection === 'string'
+    ? normalizeSectionName(rawPatch.frameColumnSection)
+    : undefined;
+  const frameBeamSection = typeof rawPatch?.frameBeamSection === 'string'
+    ? normalizeSectionName(rawPatch.frameBeamSection)
+    : undefined;
 
   return {
     ...normalized,
+    frameDimension,
     storyHeightsM: normalized.storyHeightsM ?? repeatScalar(storyCount, storyHeightScalar),
     bayWidthsM: normalized.bayWidthsM ?? repeatScalar(bayCount, bayWidthScalar),
-    ...(typeof rawPatch?.frameMaterial === 'string' && { frameMaterial: normalizeSteelGrade(rawPatch.frameMaterial) }),
-    ...(typeof rawPatch?.frameColumnSection === 'string' && { frameColumnSection: normalizeSectionName(rawPatch.frameColumnSection) }),
-    ...(typeof rawPatch?.frameBeamSection === 'string' && { frameBeamSection: normalizeSectionName(rawPatch.frameBeamSection) }),
+    bayWidthsXM: normalized.bayWidthsXM ?? repeatScalar(bayCountX, bayWidthXScalar ?? bayWidthScalar),
+    bayWidthsYM: normalized.bayWidthsYM ?? repeatScalar(bayCountY, bayWidthYScalar ?? bayWidthScalar),
+    floorLoads: normalized.floorLoads ?? buildUniformFloorLoads(storyCount, verticalLoadKN, lateralXKN, frameDimension === '3d' ? lateralYKN : undefined),
+    ...(frameMaterial !== undefined && { frameMaterial }),
+    ...(frameColumnSection !== undefined && { frameColumnSection }),
+    ...(frameBeamSection !== undefined && { frameBeamSection }),
   };
+}
+
+export function hasLateralYFloorLoad(floorLoads: DraftFloorLoad[] | undefined): boolean {
+  return Boolean(floorLoads?.some((load) => load.lateralYKN !== undefined));
+}
+
+export function coerceFrameDimension(
+  patch: DraftExtraction,
+  existingState: DraftState | undefined,
+  message: string,
+): DraftExtraction {
+  const text = message.toLowerCase();
+  const mentions3dDirections = (
+    text.includes('x、y向')
+    || text.includes('x/y向')
+    || (text.includes('x 向') && text.includes('y 向'))
+    || (text.includes('x向') && text.includes('y向'))
+    || text.includes('3d')
+    || text.includes('三维')
+  );
+  const nextPatch: DraftExtraction = { ...patch };
+  if (mentions3dDirections) {
+    nextPatch.frameDimension = '3d';
+    return nextPatch;
+  }
+  if (nextPatch.frameDimension !== undefined) return nextPatch;
+  if (hasLateralYFloorLoad(nextPatch.floorLoads)) {
+    nextPatch.frameDimension = '3d';
+    return nextPatch;
+  }
+  if (existingState?.frameDimension) {
+    nextPatch.frameDimension = existingState.frameDimension;
+  }
+  return nextPatch;
+}
+
+export function buildFrameDraftPatch(
+  message: string,
+  llmDraftPatch: Record<string, unknown> | null | undefined,
+  existingState: DraftState | undefined,
+): DraftExtraction {
+  const normalizedLlmPatch = buildFramePatchFromLlm(llmDraftPatch, existingState);
+  const rawNaturalPatch = normalizeFrameNaturalPatch(message, existingState);
+  const normalizedNaturalPatch = toFramePatch(rawNaturalPatch);
+  const normalizedRulePatch = toFramePatch(buildLegacyDraftPatchLlmFirst(message, null));
+  const mergedRulePatch = mergeFloorLoads(
+    normalizedRulePatch.floorLoads,
+    normalizedNaturalPatch.floorLoads,
+  )
+    ? {
+        ...mergeLegacyDraftPatchLlmFirst(normalizedNaturalPatch, normalizedRulePatch),
+        floorLoads: mergeFloorLoads(normalizedRulePatch.floorLoads, normalizedNaturalPatch.floorLoads),
+      }
+    : mergeLegacyDraftPatchLlmFirst(normalizedNaturalPatch, normalizedRulePatch);
+  const nextPatch = mergeLegacyDraftPatchLlmFirst(normalizedLlmPatch, mergedRulePatch);
+
+  const frameMaterial = (normalizedLlmPatch.frameMaterial as string | undefined)
+    ?? (rawNaturalPatch.frameMaterial as string | undefined);
+  const frameColumnSection = (normalizedLlmPatch.frameColumnSection as string | undefined)
+    ?? (rawNaturalPatch.frameColumnSection as string | undefined);
+  const frameBeamSection = (normalizedLlmPatch.frameBeamSection as string | undefined)
+    ?? (rawNaturalPatch.frameBeamSection as string | undefined);
+
+  return coerceFrameDimension(
+    {
+      ...nextPatch,
+      inferredType: 'frame',
+      ...(frameMaterial !== undefined && { frameMaterial }),
+      ...(frameColumnSection !== undefined && { frameColumnSection }),
+      ...(frameBeamSection !== undefined && { frameBeamSection }),
+    },
+    existingState,
+    message,
+  );
 }
