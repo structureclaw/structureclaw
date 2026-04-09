@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import dotenv from 'dotenv';
@@ -14,10 +13,6 @@ process.env.DATABASE_URL = process.env.DATABASE_URL || `file:${defaultSqliteData
 
 const prisma = new PrismaClient();
 
-function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex');
-}
-
 async function main() {
   const demoUser = await prisma.user.upsert({
     where: { id: 'seed-user-demo' },
@@ -26,28 +21,14 @@ async function main() {
       organization: 'StructureClaw',
       title: 'Structural Engineer',
       bio: 'Local seeded user for development.',
-      expertiseItems: {
-        deleteMany: {},
-        create: ['analysis', 'design', 'community'].map((value, index) => ({
-          value,
-          position: index,
-        })),
-      },
     },
     create: {
       id: 'seed-user-demo',
       email: 'demo@structureclaw.local',
-      passwordHash: hashPassword('demo-password'),
       name: 'Demo User',
       organization: 'StructureClaw',
       title: 'Structural Engineer',
       bio: 'Local seeded user for development.',
-      expertiseItems: {
-        create: ['analysis', 'design', 'community'].map((value, index) => ({
-          value,
-          position: index,
-        })),
-      },
     },
   });
 
@@ -206,81 +187,8 @@ async function main() {
     },
   });
 
-  await prisma.skill.upsert({
-    where: { id: 'seed-skill-beam' },
-    update: {
-      name: 'Beam Design',
-      description: 'Seeded concrete beam design helper.',
-      category: 'design',
-      version: '0.1.0',
-      author: 'StructureClaw',
-      authorId: demoUser.id,
-      tagItems: {
-        deleteMany: {},
-        create: ['beam', 'design', 'concrete'].map((value) => ({ value })),
-      },
-      config: {
-        handler: 'beam-design',
-        triggers: ['beam design', '设计梁'],
-        parameters: {
-          M: { type: 'number', description: '弯矩设计值' },
-          V: { type: 'number', description: '剪力设计值' },
-        },
-      },
-      isPublic: true,
-    },
-    create: {
-      id: 'seed-skill-beam',
-      name: 'Beam Design',
-      description: 'Seeded concrete beam design helper.',
-      category: 'design',
-      version: '0.1.0',
-      author: 'StructureClaw',
-      authorId: demoUser.id,
-      tagItems: {
-        create: ['beam', 'design', 'concrete'].map((value) => ({ value })),
-      },
-      config: {
-        handler: 'beam-design',
-        triggers: ['beam design', '设计梁'],
-        parameters: {
-          M: { type: 'number', description: '弯矩设计值' },
-          V: { type: 'number', description: '剪力设计值' },
-        },
-      },
-      isPublic: true,
-    },
-  });
-
-  await prisma.post.upsert({
-    where: { id: 'seed-post-demo' },
-    update: {
-      title: 'Welcome to StructureClaw',
-      content: 'This seeded post helps verify the community module locally.',
-      category: 'discussion',
-      tagItems: {
-        deleteMany: {},
-        create: ['welcome', 'seed'].map((value) => ({ value })),
-      },
-      attachments: {
-        deleteMany: {},
-      },
-      authorId: demoUser.id,
-    },
-    create: {
-      id: 'seed-post-demo',
-      title: 'Welcome to StructureClaw',
-      content: 'This seeded post helps verify the community module locally.',
-      category: 'discussion',
-      tagItems: {
-        create: ['welcome', 'seed'].map((value) => ({ value })),
-      },
-      authorId: demoUser.id,
-    },
-  });
-
   console.log('Seed completed.');
-  console.log('Demo user: demo@structureclaw.local / demo-password');
+  console.log('Demo user: demo@structureclaw.local');
   console.log(`Demo project id: ${demoProject.id}`);
   console.log(`Demo model id: ${demoModel.id}`);
 }
