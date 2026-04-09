@@ -69,7 +69,10 @@ function describeLlmPlannerError(error: unknown, locale: AppLocale): string {
   const normalizedRaw = sanitizePlannerErrorDetail(raw.replace(/^HTTP \d+:\s*/u, ''));
   const lowerRaw = normalizedRaw.toLowerCase();
 
-  if (status === 403 && lowerRaw.includes('not available in your region')) {
+  if (
+    status === 403
+    && (lowerRaw.includes('not available in your region') || lowerRaw.includes('model_not_available'))
+  ) {
     return localize(locale, 'LLM 403 / 模型区域不可用', 'LLM 403 / model unavailable in your region');
   }
   if (status === 401) {
