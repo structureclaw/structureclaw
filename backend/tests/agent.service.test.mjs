@@ -142,6 +142,12 @@ function stubExecutionClients(svc, handlers = {}) {
   return calls;
 }
 
+function createPlannerHttpError(status, data, message = 'planner request failed') {
+  const error = new Error(message);
+  error.response = { status, data };
+  return error;
+}
+
 describe('AgentService orchestration', () => {
   test('should not seed an empty interaction session with a default unknown draft', async () => {
     const svc = createServiceWithDefaultSkills();
@@ -2236,6 +2242,91 @@ describe('AgentService orchestration', () => {
     expect(result.orchestrationMode).toBe('llm-planned');
     expect(result.toolCalls).toEqual([]);
     expect(result.response).toContain('LLM configuration error');
+  });
+
+  test('should surface localized 401 planner details in blocked runs', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = {
+      invoke: async () => {
+        throw createPlannerHttpError(401, { error: 'invalid_api_key' }, 'Unauthorized');
+      },
+    };
+
+    const result = await svc.run({
+      message: 'Help me size a steel frame for static analysis',
+      context: {
+        locale: 'en',
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.response).toContain('LLM configuration error');
+    expect(result.response).toContain('invalid or unauthorized API key');
+  });
+
+  test('should surface localized 403 region planner details in blocked runs', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = {
+      invoke: async () => {
+        throw createPlannerHttpError(403, { error: 'model_not_available' }, 'Model is not available in your region');
+      },
+    };
+
+    const result = await svc.run({
+      message: 'Help me size a steel frame for static analysis',
+      context: {
+        locale: 'en',
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.response).toContain('LLM configuration error');
+    expect(result.response).toContain('model unavailable in your region');
+  });
+
+  test('should surface localized 429 planner details in blocked runs', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = {
+      invoke: async () => {
+        throw createPlannerHttpError(429, { error: 'rate_limit_exceeded' }, 'Too many requests');
+      },
+    };
+
+    const result = await svc.run({
+      message: 'Help me size a steel frame for static analysis',
+      context: {
+        locale: 'en',
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.response).toContain('LLM configuration error');
+    expect(result.response).toContain('rate limited or quota exceeded');
+  });
+
+  test('should surface sanitized generic http planner details in blocked runs', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = {
+      invoke: async () => {
+        throw createPlannerHttpError(
+          500,
+          'Internal upstream failure\nwith extra whitespace and provider payload details',
+          'Internal Server Error',
+        );
+      },
+    };
+
+    const result = await svc.run({
+      message: 'Help me size a steel frame for static analysis',
+      context: {
+        locale: 'en',
+      },
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.response).toContain('LLM configuration error');
+    expect(result.response).toContain('LLM 500 / Internal upstream failure with extra whitespace');
+    expect(result.response).not.toContain('\n');
   });
 
   test('should block unsupported structural types from silently falling back to beam extraction', async () => {

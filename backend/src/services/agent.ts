@@ -1382,7 +1382,7 @@ export class AgentService {
           '当前自动路由依赖大模型规划，但规划器不可用，因此本轮不会退回任何确定性分流。请先恢复 LLM planner，或改用明确的交互/执行入口。',
           'Automatic routing now depends on the LLM planner. The planner is unavailable, so this turn will not fall back to deterministic routing. Restore the LLM planner or use an explicit interactive/tool entrypoint.',
         );
-      if (plannerErrorMessage !== 'LLM_PLANNER_INVALID_RESPONSE') {
+      if (plannerErrorMessage.startsWith('LLM_PLANNER_UNAVAILABLE:')) {
         plannerResponse = this.localize(
           locale,
           `LLM配置出错：${this.extractPlannerErrorDetail(plannerErrorMessage, locale)}`,
@@ -4201,31 +4201,6 @@ export class AgentService {
       return status ? `HTTP ${status}: ${String(unknownError.message)}` : String(unknownError.message);
     }
     return 'Unknown error';
-  }
-
-  private describeLlmPlannerError(error: unknown, locale: AppLocale): string {
-    const status = this.extractHttpStatus(error);
-    const raw = this.stringifyError(error);
-    const normalizedRaw = raw.replace(/^HTTP \d+:\s*/u, '').trim();
-    const lowerRaw = normalizedRaw.toLowerCase();
-
-    if (status === 403 && lowerRaw.includes('not available in your region')) {
-      return this.localize(locale, 'LLM 403 / 模型区域不可用', 'LLM 403 / model unavailable in your region');
-    }
-    if (status === 401) {
-      return this.localize(locale, 'LLM 401 / API Key 无效或未授权', 'LLM 401 / invalid or unauthorized API key');
-    }
-    if (status === 429) {
-      return this.localize(locale, 'LLM 429 / 请求限流或额度不足', 'LLM 429 / rate limited or quota exceeded');
-    }
-    if (typeof status === 'number') {
-      return this.localize(
-        locale,
-        `LLM ${status} / ${normalizedRaw || '请求失败'}`,
-        `LLM ${status} / ${normalizedRaw || 'request failed'}`,
-      );
-    }
-    return normalizedRaw || this.localize(locale, 'LLM 不可用', 'LLM unavailable');
   }
 
   private extractPlannerErrorDetail(message: string, locale: AppLocale): string {
