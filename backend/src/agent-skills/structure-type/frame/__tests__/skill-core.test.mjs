@@ -126,6 +126,47 @@ describe('frame canonicalize core contract', () => {
     expect(patch.frameBeamSection).toBe('HN400X200');
   });
 
+  test('derives 2d per-floor total loads from floor area intensity when single-bay geometry is explicit', () => {
+    const patch = buildFrameDraftPatch(
+      '2-story single-bay steel frame, story height 3.6m, bay 6m, floor load 10kN/m2',
+      {
+        inferredType: 'frame',
+        frameDimension: '2d',
+        storyCount: 2,
+        bayCount: 1,
+        storyHeightsM: [3.6, 3.6],
+        bayWidthsM: [6],
+      },
+      undefined,
+    );
+
+    expect(patch.floorLoads).toEqual([
+      { story: 1, verticalKN: 360 },
+      { story: 2, verticalKN: 360 },
+    ]);
+  });
+
+  test('derives 2d per-floor total loads from line intensity and total span length', () => {
+    const patch = buildFrameDraftPatch(
+      '3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m',
+      {
+        inferredType: 'frame',
+        frameDimension: '2d',
+        storyCount: 3,
+        bayCount: 2,
+        storyHeightsM: [3.3, 3.3, 3.3],
+        bayWidthsM: [5.4, 6],
+      },
+      undefined,
+    );
+
+    expect(patch.floorLoads).toEqual([
+      { story: 1, verticalKN: 171 },
+      { story: 2, verticalKN: 171 },
+      { story: 3, verticalKN: 171 },
+    ]);
+  });
+
   test('leaves frame dimension undefined when no directional evidence or existing state exists', () => {
     const patch = coerceFrameDimension({
       inferredType: 'frame',

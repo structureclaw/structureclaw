@@ -55,6 +55,81 @@ function buildUniformFloorLoads(
   }));
 }
 
+function sumPositive(values: number[] | undefined): number | undefined {
+  if (!values?.length) return undefined;
+  const total = values.reduce((acc, value) => acc + value, 0);
+  return Number.isFinite(total) && total > 0 ? total : undefined;
+}
+
+function hasSingleBayHint(message: string): boolean {
+  return /(?:single[-\s]?bay|单跨|一跨|1\s*跨)/i.test(message);
+}
+
+function extractAreaLoadIntensity(message: string): number | undefined {
+  return extractLlmScalar({
+    value: message,
+    direct: message.match(/([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)\s*\/\s*m(?:\^?2|2|²)/i)?.[1],
+  }, ['direct']);
+}
+
+function extractLineLoadIntensity(message: string): number | undefined {
+  return extractLlmScalar({
+    value: message,
+    direct: message.match(/([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)\s*\/\s*m(?!\s*(?:\^?2|2|²))/i)?.[1],
+  }, ['direct']);
+}
+
+function deriveFloorLoadsFromIntensity(
+  message: string,
+  patch: DraftExtraction,
+): DraftExtraction {
+  if (patch.floorLoads?.length) return patch;
+
+  const storyCount = patch.storyCount ?? patch.storyHeightsM?.length;
+  if (!storyCount || storyCount <= 0) return patch;
+
+  const areaLoadKNm2 = extractAreaLoadIntensity(message);
+  const lineLoadKNm = extractLineLoadIntensity(message);
+  if (areaLoadKNm2 === undefined && lineLoadKNm === undefined) return patch;
+
+  const dimension = patch.frameDimension
+    ?? (patch.bayCountY !== undefined || patch.bayWidthsYM?.length ? '3d' : '2d');
+
+  let verticalKN: number | undefined;
+  if (dimension === '3d') {
+    const totalSpanX = sumPositive(patch.bayWidthsXM);
+    const totalSpanY = sumPositive(patch.bayWidthsYM);
+    if (areaLoadKNm2 !== undefined && totalSpanX !== undefined && totalSpanY !== undefined) {
+      verticalKN = areaLoadKNm2 * totalSpanX * totalSpanY;
+    }
+  } else {
+    const bayWidths2d = patch.bayWidthsM ?? patch.bayWidthsXM;
+    const totalSpan2d = sumPositive(bayWidths2d);
+    const bayCount2d = patch.bayCount ?? bayWidths2d?.length ?? patch.bayCountX ?? patch.bayWidthsXM?.length;
+
+    if (lineLoadKNm !== undefined && totalSpan2d !== undefined) {
+      verticalKN = lineLoadKNm * totalSpan2d;
+    }
+
+    if (
+      verticalKN === undefined
+      && areaLoadKNm2 !== undefined
+      && totalSpan2d !== undefined
+      && (bayCount2d === 1 || hasSingleBayHint(message))
+    ) {
+      verticalKN = areaLoadKNm2 * totalSpan2d * totalSpan2d;
+    }
+  }
+
+  if (verticalKN === undefined || !Number.isFinite(verticalKN) || verticalKN <= 0) {
+    return patch;
+  }
+
+  const roundedVerticalKN = Number(verticalKN.toFixed(6));
+  const derivedFloorLoads = buildUniformFloorLoads(storyCount, roundedVerticalKN, undefined, undefined);
+  return derivedFloorLoads ? { ...patch, floorLoads: derivedFloorLoads } : patch;
+}
+
 export function buildFramePatchFromLlm(
   rawPatch: Record<string, unknown> | null | undefined,
   existingState: DraftState | undefined,
@@ -130,6 +205,7 @@ export function buildFrameDraftPatch(
     },
     llmPatch: normalizedLlmPatch,
   });
+  const nextPatchWithDerivedLoads = deriveFloorLoadsFromIntensity(message, nextPatch);
 
   const frameMaterial = (normalizedLlmPatch.frameMaterial as string | undefined)
     ?? (rawNaturalPatch.frameMaterial as string | undefined);
@@ -140,7 +216,7 @@ export function buildFrameDraftPatch(
 
   return coerceFrameDimension(
     {
-      ...nextPatch,
+      ...nextPatchWithDerivedLoads,
       inferredType: 'frame',
       ...(frameMaterial !== undefined && { frameMaterial }),
       ...(frameColumnSection !== undefined && { frameColumnSection }),
