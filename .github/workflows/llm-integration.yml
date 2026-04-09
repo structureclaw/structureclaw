@@ -70,7 +70,7 @@ jobs:
     concurrency:
       group: llm-integration-${{ github.event.issue.number || github.sha }}
       cancel-in-progress: true
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
