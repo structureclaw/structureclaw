@@ -15,7 +15,7 @@
 - "简支" / "simply supported" / "简支梁" → `"supportType": "simply-supported"`
 - "悬臂" / "cantilever" / "悬臂梁" → `"supportType": "cantilever"`
 - "两端固" / "fixed-fixed" → `"supportType": "fixed-fixed"`
-- 未指定支座类型时默认 `"supportType": "simply-supported"`
+- 未指定支座类型时默认 `"supportType": "cantilever"`
 
 ### loadKN（荷载大小）
 - "20kN/m" / "均布荷载20kN/m" → `"loadKN": 20`
