@@ -1,130 +1,61 @@
 import { beforeEach, describe, expect, test } from '@jest/globals';
 import { prisma } from '../dist/utils/database.js';
-import { UserService } from '../dist/services/user.js';
-import { LegacySkillCatalogService } from '../dist/services/skill.js';
-import { CommunityService } from '../dist/services/community.js';
+import { ProjectService } from '../dist/services/project.js';
 
 describe('sqlite relation-backed array mapping', () => {
   beforeEach(() => {
     prisma.user.findUnique = async () => null;
-    prisma.skill.findMany = async () => [];
-    prisma.skill.create = async ({ data }) => ({
-      id: 'skill-1',
-      name: data.name,
-      description: data.description,
-      category: data.category,
-      version: data.version,
-      author: data.author,
-      authorId: data.authorId,
-      config: data.config,
-      isPublic: data.isPublic,
-      rating: 0,
-      installs: 0,
-      createdAt: new Date('2026-03-20T00:00:00.000Z'),
-      updatedAt: new Date('2026-03-20T00:00:00.000Z'),
-      tagItems: (data.tagItems?.create || []).map((item) => ({ value: item.value })),
-    });
-    prisma.post.create = async ({ data }) => ({
-      id: 'post-1',
-      title: data.title,
-      content: data.content,
-      category: data.category,
-      projectId: data.projectId,
-      authorId: data.authorId,
-      viewCount: 0,
-      likeCount: 0,
-      isPinned: false,
-      createdAt: new Date('2026-03-20T00:00:00.000Z'),
-      updatedAt: new Date('2026-03-20T00:00:00.000Z'),
-      tagItems: (data.tagItems?.create || []).map((item) => ({ value: item.value })),
-      attachments: (data.attachments?.create || []).map((item) => ({ url: item.url })),
-    });
-  });
-
-  test('should flatten expertise relation rows back into expertise arrays', async () => {
-    prisma.user.findUnique = async () => ({
-      id: 'user-1',
-      email: 'user@example.com',
-      name: 'User One',
+    prisma.user.upsert = async ({ create }) => ({
+      id: create.ownerId ?? 'demo-user-1',
+      email: create.email ?? 'demo@structureclaw.local',
+      name: create.name ?? 'Demo User',
       avatar: null,
-      organization: 'Org',
-      title: 'Engineer',
-      bio: 'bio',
-      expertiseItems: [
-        { value: 'analysis' },
-        { value: 'design' },
-      ],
+      organization: null,
+      title: null,
+      bio: null,
       createdAt: new Date('2026-03-20T00:00:00.000Z'),
       updatedAt: new Date('2026-03-20T00:00:00.000Z'),
     });
-
-    const svc = new UserService();
-    const result = await svc.getUserById('user-1');
-
-    expect(result.expertise).toEqual(['analysis', 'design']);
-    expect('expertiseItems' in result).toBe(false);
   });
 
-  test('should flatten skill tag relation rows back into tags arrays', async () => {
-    prisma.skill.findMany = async () => ([
-      {
-        id: 'skill-1',
-        name: 'Beam Design',
-        description: 'desc',
-        category: 'design',
-        version: '0.1.0',
-        author: 'StructureClaw',
-        config: {},
-        isPublic: true,
-        rating: 4.5,
-        installs: 12,
-        createdAt: new Date('2026-03-20T00:00:00.000Z'),
-        updatedAt: new Date('2026-03-20T00:00:00.000Z'),
-        tagItems: [{ value: 'beam' }, { value: 'design' }],
-      },
-    ]);
-
-    const svc = new LegacySkillCatalogService();
-    const result = await svc.listCatalogSkills({});
-
-    expect(result[0].tags).toEqual(['beam', 'design']);
-    expect('tagItems' in result[0]).toBe(false);
-  });
-
-  test('should write skill tags through relation rows and still return tags arrays', async () => {
-    const svc = new LegacySkillCatalogService();
-    const result = await svc.createCatalogSkill({
-      name: 'Beam Design',
-      description: 'desc',
-      category: 'design',
-      version: '0.1.0',
-      author: 'StructureClaw',
-      authorId: 'user-1',
-      tags: ['beam', 'concrete'],
-      config: { triggers: ['beam'], handler: 'beam-design' },
-      isPublic: true,
+  test('should include project members through relation', async () => {
+    prisma.project.findUnique = async () => ({
+      id: 'project-1',
+      name: 'Test Project',
+      description: null,
+      type: 'building',
+      location: null,
+      settings: null,
+      status: 'active',
+      ownerId: 'user-1',
+      createdAt: new Date('2026-03-20T00:00:00.000Z'),
+      updatedAt: new Date('2026-03-20T00:00:00.000Z'),
+      owner: { id: 'user-1', name: 'Owner', email: 'owner@test.com' },
+      members: [
+        { id: 'pm-1', userId: 'user-2', role: 'member', joinedAt: new Date('2026-03-20T00:00:00.000Z'), user: { id: 'user-2', name: 'Member One', email: 'm1@test.com' } },
+        { id: 'pm-2', userId: 'user-3', role: 'member', joinedAt: new Date('2026-03-20T00:00:00.000Z'), user: { id: 'user-3', name: 'Member Two', email: 'm2@test.com' } },
+      ],
+      models: [],
     });
 
-    expect(result.tags).toEqual(['beam', 'concrete']);
-    expect('tagItems' in result).toBe(false);
+    const svc = new ProjectService();
+    const result = await svc.getProject('project-1');
+
+    expect(result.members).toHaveLength(2);
+    expect(result.members[0].user.name).toBe('Member One');
+    expect(result.members[1].user.name).toBe('Member Two');
   });
 
-  test('should write post tags and attachments through relation rows and still return arrays', async () => {
-    const svc = new CommunityService();
-    const result = await svc.createPost({
-      title: 'Welcome',
-      content: 'hello',
-      category: 'discussion',
-      tags: ['welcome', 'seed'],
-      attachments: ['https://example.com/a.txt', 'https://example.com/b.txt'],
-      authorId: 'user-1',
-    });
+  test('should return project stats counting relations', async () => {
+    prisma.projectMember.count = async () => 3;
+    prisma.structuralModel.count = async () => 5;
+    prisma.analysis.count = async () => 12;
 
-    expect(result.tags).toEqual(['welcome', 'seed']);
-    expect(result.attachments).toEqual([
-      'https://example.com/a.txt',
-      'https://example.com/b.txt',
-    ]);
-    expect('tagItems' in result).toBe(false);
+    const svc = new ProjectService();
+    const stats = await svc.getProjectStats('project-1');
+
+    expect(stats.members).toBe(3);
+    expect(stats.models).toBe(5);
+    expect(stats.analyses).toBe(12);
   });
 });

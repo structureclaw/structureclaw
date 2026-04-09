@@ -76,7 +76,6 @@ describe('AgentSkillHubService.search()', () => {
     expect(first).toHaveProperty('id');
     expect(first).toHaveProperty('version');
     expect(first).toHaveProperty('domain');
-    expect(first).toHaveProperty('packageMetadata');
     expect(first).toHaveProperty('compatibility');
     expect(first).toHaveProperty('integrity');
     expect(first).toHaveProperty('installed');
@@ -192,14 +191,6 @@ describe('AgentSkillHubService.search()', () => {
     const otherItem = result.items.find((i) => i.id === MODAL_REPORT_ID);
     expect(otherItem.installed).toBe(false);
     expect(otherItem.enabled).toBe(false);
-  });
-
-  test('should include packageMetadata with source=skillhub', async () => {
-    const result = await service.search();
-    for (const item of result.items) {
-      expect(item.packageMetadata.source).toBe('skillhub');
-      expect(item.packageMetadata.id).toBe(item.id);
-    }
   });
 
   test('should evaluate integrity for each item', async () => {

@@ -107,7 +107,6 @@ export class ProjectService {
             },
           },
         },
-        skills: true,
       },
     });
   }
@@ -145,7 +144,7 @@ export class ProjectService {
   }
 
   async getProjectStats(id: string) {
-    const [memberCount, modelCount, analysisCount, skillCount] = await Promise.all([
+    const [memberCount, modelCount, analysisCount] = await Promise.all([
       prisma.projectMember.count({ where: { projectId: id } }),
       prisma.structuralModel.count({ where: { projectId: id } }),
       prisma.analysis.count({
@@ -155,7 +154,6 @@ export class ProjectService {
           },
         },
       }),
-      prisma.projectSkill.count({ where: { projectId: id } }),
     ]);
 
     return {
@@ -163,7 +161,6 @@ export class ProjectService {
       members: memberCount,
       models: modelCount,
       analyses: analysisCount,
-      skills: skillCount,
     };
   }
 }

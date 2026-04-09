@@ -2,7 +2,6 @@ import { existsSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { createHash } from 'crypto';
 import path from 'path';
-import { normalizeSkillHubCatalogEntryToSkillPackage } from '../skill-shared/package.js';
 import { evaluateSkillCompatibility } from '../skill-shared/loader.js';
 import type { SkillCompatibilityReasonCode } from '../skill-shared/loader.js';
 import type { SkillDomain } from '../agent-runtime/types.js';
@@ -294,7 +293,6 @@ export class AgentSkillHubService {
     return {
       items: filtered.map((entry) => ({
         ...entry,
-        packageMetadata: normalizeSkillHubCatalogEntryToSkillPackage(entry),
         compatibility: this.evaluateCompatibility(entry),
         integrity: this.evaluateIntegrity(entry),
         installed: Boolean(installed.skills[entry.id]),

@@ -213,7 +213,6 @@ describe('ProjectService', () => {
         owner: { id: 'user-1', name: 'Owner', email: 'o@x.com' },
         members: [],
         models: [],
-        skills: [],
       };
       prisma.project.findUnique = jest.fn().mockResolvedValue(project);
 
@@ -244,7 +243,6 @@ describe('ProjectService', () => {
       expect(call.include).toHaveProperty('owner');
       expect(call.include).toHaveProperty('members');
       expect(call.include).toHaveProperty('models');
-      expect(call.include).toHaveProperty('skills');
     });
 
     test('models include analyses limited to 10 and ordered by newest first', async () => {
@@ -354,7 +352,6 @@ describe('ProjectService', () => {
       prisma.projectMember.count = jest.fn().mockResolvedValue(3);
       prisma.structuralModel.count = jest.fn().mockResolvedValue(5);
       prisma.analysis.count = jest.fn().mockResolvedValue(12);
-      prisma.projectSkill.count = jest.fn().mockResolvedValue(2);
 
       const result = await svc.getProjectStats('proj-1');
 
@@ -363,7 +360,6 @@ describe('ProjectService', () => {
         members: 3,
         models: 5,
         analyses: 12,
-        skills: 2,
       });
     });
 
@@ -371,7 +367,6 @@ describe('ProjectService', () => {
       prisma.projectMember.count = jest.fn().mockResolvedValue(0);
       prisma.structuralModel.count = jest.fn().mockResolvedValue(0);
       prisma.analysis.count = jest.fn().mockResolvedValue(0);
-      prisma.projectSkill.count = jest.fn().mockResolvedValue(0);
 
       const result = await svc.getProjectStats('proj-empty');
 
@@ -380,7 +375,6 @@ describe('ProjectService', () => {
         members: 0,
         models: 0,
         analyses: 0,
-        skills: 0,
       });
     });
 
@@ -388,7 +382,6 @@ describe('ProjectService', () => {
       prisma.projectMember.count = jest.fn().mockResolvedValue(0);
       prisma.structuralModel.count = jest.fn().mockResolvedValue(0);
       prisma.analysis.count = jest.fn().mockResolvedValue(0);
-      prisma.projectSkill.count = jest.fn().mockResolvedValue(0);
 
       await svc.getProjectStats('proj-1');
 
@@ -397,7 +390,6 @@ describe('ProjectService', () => {
       expect(prisma.analysis.count).toHaveBeenCalledWith({
         where: { model: { projectId: 'proj-1' } },
       });
-      expect(prisma.projectSkill.count).toHaveBeenCalledWith({ where: { projectId: 'proj-1' } });
     });
   });
 });

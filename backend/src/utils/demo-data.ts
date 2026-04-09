@@ -1,37 +1,17 @@
-import crypto from 'node:crypto';
 import { prisma } from './database.js';
 
 const DEMO_USER_EMAIL = 'demo@structureclaw.local';
 
-export function hashPassword(password: string): string {
-  return crypto.createHash('sha256').update(password).digest('hex');
-}
-
 export async function ensureDemoUser() {
   return prisma.user.upsert({
     where: { email: DEMO_USER_EMAIL },
-    update: {
-      expertiseItems: {
-        deleteMany: {},
-        create: ['structural-analysis', 'community'].map((value, index) => ({
-          value,
-          position: index,
-        })),
-      },
-    },
+    update: {},
     create: {
       email: DEMO_USER_EMAIL,
-      passwordHash: hashPassword('demo-password'),
       name: 'Demo User',
       organization: 'StructureClaw',
       title: 'Demo Engineer',
       bio: 'Automatically created local demo user.',
-      expertiseItems: {
-        create: ['structural-analysis', 'community'].map((value, index) => ({
-          value,
-          position: index,
-        })),
-      },
     },
   });
 }

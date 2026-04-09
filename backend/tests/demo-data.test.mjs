@@ -1,9 +1,7 @@
-import crypto from 'node:crypto';
 import { describe, expect, test, jest, beforeEach } from '@jest/globals';
 
 /**
  * demo-data.ts exports:
- * - hashPassword(password)        – SHA-256 hex digest, pure function
  * - ensureDemoUser()              – upserts demo user via prisma
  * - ensureUserId(userId?)         – returns userId or creates demo user
  * - ensureProjectId(projectId?, ownerId?) – returns projectId or creates one
@@ -29,7 +27,7 @@ jest.unstable_mockModule('../dist/utils/database.js', () => ({
 }));
 
 // Import after mock setup
-const { hashPassword, ensureDemoUser, ensureUserId, ensureProjectId } =
+const { ensureDemoUser, ensureUserId, ensureProjectId } =
   await import('../dist/utils/demo-data.js');
 
 // ── Constants ───────────────────────────────────────────────────────────────
@@ -40,54 +38,6 @@ beforeEach(() => {
   mockUserUpsert.mockReset();
   mockProjectFindFirst.mockReset();
   mockProjectCreate.mockReset();
-});
-
-// ── hashPassword ────────────────────────────────────────────────────────────
-
-describe('hashPassword', () => {
-  test('should return a 64-character lowercase hex string', () => {
-    const result = hashPassword('demo-password');
-    expect(result).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  test('should produce deterministic output for the same input', () => {
-    const a = hashPassword('hello');
-    const b = hashPassword('hello');
-    expect(a).toBe(b);
-  });
-
-  test('should produce different output for different inputs', () => {
-    const a = hashPassword('password-a');
-    const b = hashPassword('password-b');
-    expect(a).not.toBe(b);
-  });
-
-  test('should handle empty string input', () => {
-    const result = hashPassword('');
-    // SHA-256 of empty string is a well-known constant
-    expect(result).toBe(
-      'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'
-    );
-  });
-
-  test('should handle unicode input', () => {
-    const result = hashPassword('密码测试🔑');
-    expect(result).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  test('should handle very long input', () => {
-    const longPassword = 'x'.repeat(10000);
-    const result = hashPassword(longPassword);
-    expect(result).toMatch(/^[0-9a-f]{64}$/);
-  });
-
-  test('should match known SHA-256 value for "demo-password"', () => {
-    // This is the value used inside ensureDemoUser — verify consistency
-    const expected = hashPassword('demo-password');
-    // SHA-256('demo-password') computed independently
-    const manual = crypto.createHash('sha256').update('demo-password').digest('hex');
-    expect(expected).toBe(manual);
-  });
 });
 
 // ── ensureDemoUser ──────────────────────────────────────────────────────────
@@ -112,40 +62,14 @@ describe('ensureDemoUser', () => {
     expect(call.where.email).toBe('demo@structureclaw.local');
   });
 
-  test('should include expertise items in create payload', async () => {
+  test('should not include passwordHash or expertiseItems in create payload', async () => {
     mockUserUpsert.mockResolvedValue({ id: DEMO_USER_ID });
 
     await ensureDemoUser();
 
     const call = mockUserUpsert.mock.calls[0][0];
-    const createdItems = call.create.expertiseItems.create;
-    expect(createdItems).toEqual([
-      { value: 'structural-analysis', position: 0 },
-      { value: 'community', position: 1 },
-    ]);
-  });
-
-  test('should include expertise items in update payload', async () => {
-    mockUserUpsert.mockResolvedValue({ id: DEMO_USER_ID });
-
-    await ensureDemoUser();
-
-    const call = mockUserUpsert.mock.calls[0][0];
-    expect(call.update.expertiseItems.deleteMany).toEqual({});
-    const updatedItems = call.update.expertiseItems.create;
-    expect(updatedItems).toEqual([
-      { value: 'structural-analysis', position: 0 },
-      { value: 'community', position: 1 },
-    ]);
-  });
-
-  test('should include hashed password in create payload', async () => {
-    mockUserUpsert.mockResolvedValue({ id: DEMO_USER_ID });
-
-    await ensureDemoUser();
-
-    const call = mockUserUpsert.mock.calls[0][0];
-    expect(call.create.passwordHash).toBe(hashPassword('demo-password'));
+    expect(call.create.passwordHash).toBeUndefined();
+    expect(call.create.expertiseItems).toBeUndefined();
   });
 
   test('should propagate prisma errors', async () => {
