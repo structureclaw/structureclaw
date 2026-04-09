@@ -6,7 +6,12 @@ const { createRequire } = require("node:module");
 const { resolveIntegrationContext } = require("./lib/context.js");
 const { createRealLlmClient } = require("./lib/real-llm-client.cjs");
 const { withRetry, MAX_ATTEMPTS } = require("./lib/retry.js");
-const { assert, assertMatch, assertToolCalls, assertCriticalMissing, assertNotCriticalMissing } = require("./lib/assertions.js");
+const {
+  assert,
+  assertMatch,
+  assertToolCalls,
+  applyCriticalMissingAssertions,
+} = require("./lib/assertions.js");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -96,11 +101,12 @@ async function runExtractionTest(runtime, llm, testCase) {
     );
   }
 
-  if (expected.criticalMissing !== undefined) {
-    const actual = result.missingFields || [];
-    for (const field of expected.criticalMissing) {
-      assert(actual.includes(field), `expected "${field}" in criticalMissing, got [${actual.join(", ")}]`);
-    }
+  if (
+    expected.criticalMissing !== undefined
+    || expected.criticalMissingIncludes
+    || expected.criticalMissingNotIncludes
+  ) {
+    applyCriticalMissingAssertions(result.missingFields || [], expected);
   }
 
   if (expected.draftPatch) {
@@ -196,18 +202,12 @@ async function runClarificationTest(runtime, llm, testCase) {
 
     const expected = turn.assertions;
 
-    if (expected.criticalMissingIncludes) {
-      assertCriticalMissing(result.missingFields || [], expected.criticalMissingIncludes);
-    }
-    if (expected.criticalMissing) {
-      if (expected.criticalMissing.length === 0) {
-        assert(
-          (result.missingFields || []).length === 0,
-          `expected no criticalMissing, got [${(result.missingFields || []).join(", ")}]`
-        );
-      } else {
-        assertCriticalMissing(result.missingFields || [], expected.criticalMissing);
-      }
+    if (
+      expected.criticalMissing !== undefined
+      || expected.criticalMissingIncludes
+      || expected.criticalMissingNotIncludes
+    ) {
+      applyCriticalMissingAssertions(result.missingFields || [], expected);
     }
     if (expected.modelBuilt !== undefined) {
       if (expected.modelBuilt) {

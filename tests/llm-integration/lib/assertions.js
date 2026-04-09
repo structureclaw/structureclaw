@@ -111,10 +111,43 @@ function assertNotCriticalMissing(actualMissing, unexpectedFields) {
   }
 }
 
+/**
+ * Apply criticalMissing assertions from a fixture assertion block.
+ * Supports:
+ * - criticalMissing: [] for exact-empty
+ * - criticalMissing: ["field"] for subset inclusion
+ * - criticalMissingIncludes: ["field"] for explicit subset inclusion
+ * - criticalMissingNotIncludes: ["field"] for exclusion / invariant checks
+ */
+function applyCriticalMissingAssertions(actualMissing, expected) {
+  const actual = Array.isArray(actualMissing) ? actualMissing : [];
+  const assertions = expected || {};
+
+  if (assertions.criticalMissingIncludes) {
+    assertCriticalMissing(actual, assertions.criticalMissingIncludes);
+  }
+
+  if (assertions.criticalMissingNotIncludes) {
+    assertNotCriticalMissing(actual, assertions.criticalMissingNotIncludes);
+  }
+
+  if (assertions.criticalMissing) {
+    if (assertions.criticalMissing.length === 0) {
+      assert(
+        actual.length === 0,
+        `expected no criticalMissing, got [${actual.join(", ")}]`
+      );
+      return;
+    }
+    assertCriticalMissing(actual, assertions.criticalMissing);
+  }
+}
+
 module.exports = {
   assert,
   assertMatch,
   assertToolCalls,
   assertCriticalMissing,
   assertNotCriticalMissing,
+  applyCriticalMissingAssertions,
 };

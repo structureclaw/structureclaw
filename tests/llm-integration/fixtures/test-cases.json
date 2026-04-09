@@ -116,7 +116,13 @@
       "messages": ["4层2跨钢框架，层高3.3m，跨度5.4m，楼面荷载12kN/m²"],
       "assertions": {
         "inferredType": "frame",
-        "criticalMissing": [],
+        "criticalMissingNotIncludes": [
+          "frameDimension",
+          "storyCount",
+          "storyHeightsM",
+          "bayCount",
+          "bayWidthsM"
+        ],
         "draftPatch": {
           "storyCount": 4,
           "bayCount": 2,
@@ -132,7 +138,13 @@
       "messages": ["2-story 3-bay frame, story height 3.6m, bay widths 6m, 7.5m, 6m"],
       "assertions": {
         "inferredType": "frame",
-        "criticalMissing": [],
+        "criticalMissingNotIncludes": [
+          "frameDimension",
+          "storyCount",
+          "storyHeightsM",
+          "bayCount",
+          "bayWidthsM"
+        ],
         "draftPatch": {
           "storyCount": 2,
           "bayCount": 3,
@@ -177,7 +189,13 @@
       "messages": ["6层3跨钢框架Q345，层高3.6m，跨度7.2m"],
       "assertions": {
         "inferredType": "frame",
-        "criticalMissing": [],
+        "criticalMissingNotIncludes": [
+          "frameDimension",
+          "storyCount",
+          "storyHeightsM",
+          "bayCount",
+          "bayWidthsM"
+        ],
         "draftPatch": {
           "storyCount": 6,
           "bayCount": 3,
@@ -207,7 +225,15 @@
       "messages": ["3层2x3跨空间框架，层高4m，X向跨度6m，Y向跨度7.5m"],
       "assertions": {
         "inferredType": "frame",
-        "criticalMissing": [],
+        "criticalMissingNotIncludes": [
+          "frameDimension",
+          "storyCount",
+          "storyHeightsM",
+          "bayCountX",
+          "bayCountY",
+          "bayWidthsXM",
+          "bayWidthsYM"
+        ],
         "draftPatch": {
           "frameDimension": "3d",
           "storyCount": 3,
@@ -313,8 +339,13 @@
         {
           "message": "3 stories, 4.2m each, single bay 8m, floor load 12kN/m2",
           "assertions": {
-            "criticalMissing": [],
-            "modelBuilt": true,
+            "criticalMissingNotIncludes": [
+              "frameDimension",
+              "storyCount",
+              "storyHeightsM",
+              "bayCount",
+              "bayWidthsM"
+            ],
             "draftPatch": {
               "storyCount": 3,
               "bayCount": 1
