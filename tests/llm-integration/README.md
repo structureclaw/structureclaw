@@ -8,7 +8,8 @@
 
 ## Fixture Rules
 
-- Every case in `tests/llm-integration/fixtures/test-cases.json` must declare `skillId`.
+- Real LLM cases live next to the owning skill under `backend/src/agent-skills/**/__llm_tests__/`.
+- Every case in those colocated fixture files must declare `skillId`.
 - `skillId` is used for targeted runs like:
 
 ```bash
@@ -20,7 +21,11 @@ node tests/runner.mjs llm-integration extraction --skill beam
 
 ```bash
 npm run test:skills
+npm run test:skill:beam
 npm run test:skill:frame
+npm run test:skill:portal-frame
 npm run test:llm
+npm run test:llm:beam
 npm run test:llm:frame
+npm run test:llm:portal-frame
 ```

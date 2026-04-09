@@ -12,9 +12,13 @@
   },
   "scripts": {
     "test:skills": "npm run test:skills --prefix backend",
+    "test:skill:beam": "npm run test:skill:beam --prefix backend",
     "test:skill:frame": "npm run test:skill:frame --prefix backend",
+    "test:skill:portal-frame": "npm run test:skill:portal-frame --prefix backend",
     "test:llm": "node tests/runner.mjs llm-integration",
+    "test:llm:beam": "node tests/runner.mjs llm-integration --skill beam",
     "test:llm:frame": "node tests/runner.mjs llm-integration --skill frame",
+    "test:llm:portal-frame": "node tests/runner.mjs llm-integration --skill portal-frame",
     "regression:backend": "node tests/runner.mjs backend-regression",
     "regression:analysis": "node tests/runner.mjs analysis-regression",
     "smoke:native": "node tests/runner.mjs smoke-native",

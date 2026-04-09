@@ -1,0 +1,223 @@
+{
+  "version": "1.0.0",
+  "skillId": "frame",
+  "testCases": [
+    {
+      "id": "frame-routing-zh",
+      "skillId": "frame",
+      "category": "routing",
+      "locale": "zh",
+      "messages": [
+        "三层单跨钢框架，层高3.6m，跨度6m"
+      ],
+      "assertions": {
+        "inferredType": "frame",
+        "structuralTypeKey": "frame"
+      }
+    },
+    {
+      "id": "frame-routing-en",
+      "skillId": "frame",
+      "category": "routing",
+      "locale": "en",
+      "messages": [
+        "3-story single-bay steel frame, story height 3.6m, bay width 6m"
+      ],
+      "assertions": {
+        "inferredType": "frame",
+        "structuralTypeKey": "frame"
+      }
+    },
+    {
+      "id": "frame-params-zh",
+      "skillId": "frame",
+      "category": "extraction",
+      "locale": "zh",
+      "messages": [
+        "4层2跨钢框架，层高3.3m，跨度5.4m，楼面荷载12kN/m²"
+      ],
+      "assertions": {
+        "inferredType": "frame",
+        "criticalMissingNotIncludes": [
+          "frameDimension",
+          "storyCount",
+          "storyHeightsM",
+          "bayCount",
+          "bayWidthsM"
+        ],
+        "draftPatch": {
+          "storyCount": 4,
+          "bayCount": 2,
+          "storyHeightsM": {
+            "value": [
+              3.3,
+              3.3,
+              3.3,
+              3.3
+            ],
+            "tolerance": 0.05
+          },
+          "bayWidthsM": {
+            "value": [
+              5.4,
+              5.4
+            ],
+            "tolerance": 0.05
+          }
+        }
+      }
+    },
+    {
+      "id": "frame-params-en",
+      "skillId": "frame",
+      "category": "extraction",
+      "locale": "en",
+      "messages": [
+        "2-story 3-bay frame, story height 3.6m, bay widths 6m, 7.5m, 6m"
+      ],
+      "assertions": {
+        "inferredType": "frame",
+        "criticalMissingNotIncludes": [
+          "frameDimension",
+          "storyCount",
+          "storyHeightsM",
+          "bayCount",
+          "bayWidthsM"
+        ],
+        "draftPatch": {
+          "storyCount": 2,
+          "bayCount": 3,
+          "bayWidthsM": {
+            "value": [
+              6,
+              7.5,
+              6
+            ],
+            "tolerance": 0.05
+          }
+        }
+      }
+    },
+    {
+      "id": "frame-steel-zh",
+      "skillId": "frame",
+      "category": "extraction",
+      "locale": "zh",
+      "messages": [
+        "6层3跨钢框架Q345，层高3.6m，跨度7.2m"
+      ],
+      "assertions": {
+        "inferredType": "frame",
+        "criticalMissingNotIncludes": [
+          "frameDimension",
+          "storyCount",
+          "storyHeightsM",
+          "bayCount",
+          "bayWidthsM"
+        ],
+        "draftPatch": {
+          "storyCount": 6,
+          "bayCount": 3,
+          "frameMaterial": "Q345"
+        }
+      }
+    },
+    {
+      "id": "frame-3d-zh",
+      "skillId": "frame",
+      "category": "extraction",
+      "locale": "zh",
+      "messages": [
+        "3层2x3跨空间框架，层高4m，X向跨度6m，Y向跨度7.5m"
+      ],
+      "assertions": {
+        "inferredType": "frame",
+        "criticalMissingNotIncludes": [
+          "frameDimension",
+          "storyCount",
+          "storyHeightsM",
+          "bayCountX",
+          "bayCountY",
+          "bayWidthsXM",
+          "bayWidthsYM"
+        ],
+        "draftPatch": {
+          "frameDimension": "3d",
+          "storyCount": 3,
+          "bayCountX": 2,
+          "bayCountY": 3
+        }
+      }
+    },
+    {
+      "id": "frame-pipeline-en",
+      "skillId": "frame",
+      "category": "pipeline",
+      "locale": "en",
+      "messages": [
+        "2-story single-bay steel frame, story height 3.6m, bay 6m, floor load 10kN/m2, analyze and check against steel code"
+      ],
+      "assertions": {
+        "success": true,
+        "toolCalls": [
+          "draft_model",
+          "run_analysis",
+          "run_code_check"
+        ],
+        "modelBuilt": true,
+        "analysisSuccess": true
+      }
+    },
+    {
+      "id": "frame-pipeline-multi-bay-zh",
+      "skillId": "frame",
+      "category": "pipeline",
+      "locale": "zh",
+      "messages": [
+        "3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m"
+      ],
+      "assertions": {
+        "success": true,
+        "toolCalls": [
+          "draft_model",
+          "run_analysis"
+        ],
+        "modelBuilt": true,
+        "analysisSuccess": true
+      }
+    },
+    {
+      "id": "frame-clarify-en",
+      "skillId": "frame",
+      "category": "clarification",
+      "locale": "en",
+      "turns": [
+        {
+          "message": "a steel frame",
+          "assertions": {
+            "criticalMissingIncludes": [
+              "storyCount"
+            ],
+            "modelBuilt": false
+          }
+        },
+        {
+          "message": "3 stories, 4.2m each, single bay 8m, floor load 12kN/m2",
+          "assertions": {
+            "criticalMissingNotIncludes": [
+              "frameDimension",
+              "storyCount",
+              "storyHeightsM",
+              "bayCount",
+              "bayWidthsM"
+            ],
+            "draftPatch": {
+              "storyCount": 3,
+              "bayCount": 1
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

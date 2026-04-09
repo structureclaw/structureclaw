@@ -6,6 +6,7 @@ const { createRequire } = require("node:module");
 const { resolveIntegrationContext } = require("./lib/context.js");
 const { createRealLlmClient } = require("./lib/real-llm-client.cjs");
 const { withRetry, MAX_ATTEMPTS } = require("./lib/retry.js");
+const { loadLlmFixtures } = require("./lib/discovery.cjs");
 const { parseLlmIntegrationOptions, filterLlmTestCases } = require("./lib/selection.cjs");
 const {
   assert,
@@ -28,13 +29,6 @@ function logResult(status, caseId, attempt, maxAttempts, durationMs, detail) {
   } else {
     process.stdout.write(`  [FAIL] ${caseId} (${attemptStr}) — ${detail}\n`);
   }
-}
-
-function loadFixtures(rootDir) {
-  const fixturePath = path.join(__dirname, "fixtures", "test-cases.json");
-  const raw = fs.readFileSync(fixturePath, "utf-8");
-  const parsed = JSON.parse(raw);
-  return parsed.testCases;
 }
 
 /** Import AgentSkillRuntime from backend dist. */
@@ -253,7 +247,7 @@ async function runLlmIntegrationTests(rootDir, args) {
   });
 
   // Load test cases
-  const allCases = loadFixtures(rootDir);
+  const allCases = loadLlmFixtures(rootDir);
   const cases = filterLlmTestCases(allCases, options);
 
   if (cases.length === 0) {

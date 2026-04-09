@@ -1,0 +1,151 @@
+{
+  "version": "1.0.0",
+  "skillId": "portal-frame",
+  "testCases": [
+    {
+      "id": "portal-frame-routing-zh",
+      "skillId": "portal-frame",
+      "category": "routing",
+      "locale": "zh",
+      "messages": [
+        "门式刚架，跨度18m，高度6m"
+      ],
+      "assertions": {
+        "inferredType": "portal-frame",
+        "structuralTypeKey": "portal-frame"
+      }
+    },
+    {
+      "id": "portal-frame-routing-en",
+      "skillId": "portal-frame",
+      "category": "routing",
+      "locale": "en",
+      "messages": [
+        "portal frame, span 18m, height 6m"
+      ],
+      "assertions": {
+        "inferredType": "portal-frame",
+        "structuralTypeKey": "portal-frame"
+      }
+    },
+    {
+      "id": "portal-frame-params-zh",
+      "skillId": "portal-frame",
+      "category": "extraction",
+      "locale": "zh",
+      "messages": [
+        "门式刚架，跨度24m，高度8m，屋面荷载5kN/m"
+      ],
+      "assertions": {
+        "inferredType": "portal-frame",
+        "criticalMissing": [],
+        "draftPatch": {
+          "spanLengthM": {
+            "value": 24,
+            "tolerance": 0.05
+          },
+          "heightM": {
+            "value": 8,
+            "tolerance": 0.05
+          },
+          "loadKN": {
+            "value": 5,
+            "tolerance": 0.05
+          }
+        }
+      }
+    },
+    {
+      "id": "portal-frame-params-en",
+      "skillId": "portal-frame",
+      "category": "extraction",
+      "locale": "en",
+      "messages": [
+        "portal frame, span 21m, height 7.5m, roof load 8kN"
+      ],
+      "assertions": {
+        "inferredType": "portal-frame",
+        "criticalMissing": [],
+        "draftPatch": {
+          "spanLengthM": {
+            "value": 21,
+            "tolerance": 0.05
+          },
+          "heightM": {
+            "value": 7.5,
+            "tolerance": 0.05
+          },
+          "loadKN": {
+            "value": 8,
+            "tolerance": 0.05
+          }
+        }
+      }
+    },
+    {
+      "id": "portal-frame-pipeline-zh",
+      "skillId": "portal-frame",
+      "category": "pipeline",
+      "locale": "zh",
+      "messages": [
+        "门式刚架，跨度18m，高度7m，屋面荷载6kN/m，分析"
+      ],
+      "assertions": {
+        "success": true,
+        "toolCalls": [
+          "draft_model",
+          "run_analysis"
+        ],
+        "modelBuilt": true,
+        "analysisSuccess": true
+      }
+    },
+    {
+      "id": "portal-frame-clarify-zh",
+      "skillId": "portal-frame",
+      "category": "clarification",
+      "locale": "zh",
+      "turns": [
+        {
+          "message": "门式刚架",
+          "assertions": {
+            "criticalMissingIncludes": [
+              "spanLengthM"
+            ],
+            "modelBuilt": false
+          }
+        },
+        {
+          "message": "跨度24m，高8m",
+          "assertions": {
+            "criticalMissingIncludes": [
+              "loadKN"
+            ],
+            "modelBuilt": false
+          }
+        },
+        {
+          "message": "荷载10kN/m",
+          "assertions": {
+            "criticalMissing": [],
+            "modelBuilt": true,
+            "draftPatch": {
+              "spanLengthM": {
+                "value": 24,
+                "tolerance": 0.05
+              },
+              "heightM": {
+                "value": 8,
+                "tolerance": 0.05
+              },
+              "loadKN": {
+                "value": 10,
+                "tolerance": 0.05
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
