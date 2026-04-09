@@ -37,7 +37,7 @@ jobs:
       github.event_name == 'push' ||
       (github.event.issue.pull_request &&
        contains(github.event.comment.body, '/test-llm') &&
-       github.event.comment.author_association == 'OWNER')
+       (github.event.comment.user.login == 'guyi2000' || github.event.comment.user.login == 'qinsz01'))
     runs-on: ubuntu-latest
     outputs:
       pr_sha: ${{ steps.get-ref.outputs.sha }}
