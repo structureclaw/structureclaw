@@ -53,7 +53,7 @@ jobs:
       - name: Run LLM integration tests
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          LLM_MODEL: ${{ github.event.inputs.llm_model }}
+          LLM_MODEL: ${{ github.event.inputs.llm_model || vars.LLM_MODEL }}
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
           LLM_LOG_ENABLED: "true"
