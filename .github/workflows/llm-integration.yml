@@ -36,12 +36,7 @@ on:
 
 jobs:
   llm-integration:
-    environment: test
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: [self-hosted, Windows, X64]
     timeout-minutes: 30
     steps:
       - name: Checkout repository
@@ -52,10 +47,6 @@ jobs:
 
       - name: Run LLM integration tests
         env:
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          LLM_MODEL: ${{ github.event.inputs.llm_model || vars.LLM_MODEL }}
-          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
-          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
           LLM_LOG_ENABLED: "true"
           DATABASE_URL: "file:.runtime/data/structureclaw-llm-ci.db"
         run: node tests/runner.mjs llm-integration ${{ github.event.inputs.filter && format('--filter {0}', github.event.inputs.filter) || '' }}
@@ -64,7 +55,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: llm-logs-${{ matrix.os }}
+          name: llm-logs-windows
           path: .runtime/logs/llm-calls.jsonl
           retention-days: 7
           if-no-files-found: ignore
