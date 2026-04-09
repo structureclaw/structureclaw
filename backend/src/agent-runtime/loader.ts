@@ -1,12 +1,10 @@
 import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
 import { fileURLToPath, pathToFileURL } from 'url';
 import path from 'path';
-import type { AgentSkillBundle, AgentSkillFile, AgentSkillMetadata, AgentSkillPlugin, SkillManifest, SkillStage } from './types.js';
-
-interface FrontmatterResult {
-  metadata: Record<string, unknown>;
-  body: string;
-}
+import { parse as parseYaml } from 'yaml';
+import { formatManifestIssues, skillManifestFileSchema } from './manifest-schema.js';
+import { loadSkillManifestsFromDirectorySync, toRuntimeSkillManifest } from './skill-manifest-loader.js';
+import type { AgentSkillBundle, AgentSkillFile, AgentSkillMetadata, AgentSkillPlugin, SkillDomain, SkillStage } from './types.js';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -62,53 +60,22 @@ const MARKDOWN_SKILL_ROOT = resolveSkillRoot([
   path.resolve(process.cwd(), 'src/agent-skills'),
   path.resolve(MODULE_DIR, '../../src/agent-skills'),
   path.resolve(MODULE_DIR, '../../agent-skills'),
-], ['intent.md']);
+], ['skill.yaml']);
 
-function parseScalar(raw: string): unknown {
-  const value = raw.trim();
-  if (value === 'true') {
-    return true;
-  }
-  if (value === 'false') {
-    return false;
-  }
-  if ((value.startsWith('[') && value.endsWith(']')) || (value.startsWith('{') && value.endsWith('}'))) {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return value;
-    }
-  }
-  return value;
-}
-
-function parseFrontmatter(markdown: string): FrontmatterResult {
-  const trimmed = markdown.trimStart();
+function stripLegacyMarkdownHeader(markdown: string): string {
+  const normalizedMarkdown = markdown.replace(/\r\n/g, '\n');
+  // Stage Markdown is content-only now, but strip any leftover YAML header
+  // so legacy local files do not leak obsolete metadata into prompts.
+  const trimmed = normalizedMarkdown.trimStart();
   if (!trimmed.startsWith('---\n')) {
-    return { metadata: {}, body: markdown };
+    return normalizedMarkdown;
   }
 
   const endIndex = trimmed.indexOf('\n---\n', 4);
   if (endIndex === -1) {
-    return { metadata: {}, body: markdown };
+    return normalizedMarkdown;
   }
-
-  const header = trimmed.slice(4, endIndex).split('\n');
-  const metadata: Record<string, unknown> = {};
-  for (const line of header) {
-    const separator = line.indexOf(':');
-    if (separator === -1) {
-      continue;
-    }
-    const key = line.slice(0, separator).trim();
-    const rawValue = line.slice(separator + 1);
-    metadata[key] = parseScalar(rawValue);
-  }
-
-  return {
-    metadata,
-    body: trimmed.slice(endIndex + 5).trim(),
-  };
+  return trimmed.slice(endIndex + 5).trim();
 }
 
 function normalizeStage(name: string): SkillStage | null {
@@ -118,27 +85,44 @@ function normalizeStage(name: string): SkillStage | null {
   return null;
 }
 
-function assertString(value: unknown, fallback = ''): string {
-  return typeof value === 'string' ? value : fallback;
-}
-
-function assertStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string' && item.length > 0) : [];
+function readSkillManifest(skillDir: string): {
+  id: string;
+  structureType: AgentSkillMetadata['structureType'];
+  name: AgentSkillMetadata['name'];
+  description: AgentSkillMetadata['description'];
+  triggers: string[];
+  stages: SkillStage[];
+  autoLoadByDefault: boolean;
+  domain: SkillDomain;
+} {
+  const manifestPath = path.join(skillDir, 'skill.yaml');
+  const parsed = skillManifestFileSchema.safeParse(parseYaml(readFileSync(manifestPath, 'utf8')));
+  if (!parsed.success) {
+    throw new Error(`Invalid skill manifest at ${manifestPath}: ${formatManifestIssues(parsed.error)}`);
+  }
+  return {
+    id: parsed.data.id,
+    structureType: parsed.data.structureType as AgentSkillMetadata['structureType'],
+    name: parsed.data.name,
+    description: parsed.data.description,
+    triggers: [...parsed.data.triggers],
+    stages: [...parsed.data.stages] as SkillStage[],
+    autoLoadByDefault: parsed.data.autoLoadByDefault,
+    domain: parsed.data.domain as SkillDomain,
+  };
 }
 
 function isSkillMarkdownDirectory(skillDir: string): boolean {
+  if (!existsSync(path.join(skillDir, 'skill.yaml'))) {
+    return false;
+  }
   const stageEntries = readdirSync(skillDir, { withFileTypes: true });
   return stageEntries.some((stageEntry) => stageEntry.isFile() && normalizeStage(stageEntry.name.replace(/\.md$/, '')) !== null);
 }
 
 function isSkillModuleDirectory(skillDir: string): boolean {
-  return (
-    existsSync(path.join(skillDir, 'manifest.ts'))
-    || existsSync(path.join(skillDir, 'manifest.js'))
-  ) && (
-    existsSync(path.join(skillDir, 'handler.ts'))
-    || existsSync(path.join(skillDir, 'handler.js'))
-  );
+  return existsSync(path.join(skillDir, 'handler.ts'))
+    || existsSync(path.join(skillDir, 'handler.js'));
 }
 
 function listTopLevelDirectories(root: string): Set<string> {
@@ -146,16 +130,30 @@ function listTopLevelDirectories(root: string): Set<string> {
   return new Set(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name));
 }
 
+function normalizeRelativePath(rootDir: string, targetPath: string): string {
+  return path.relative(rootDir, targetPath).split(path.sep).join('/');
+}
+
 export class AgentSkillLoader {
   private cache: AgentSkillBundle[] | null = null;
   private pluginCache: Promise<AgentSkillPlugin[]> | null = null;
+  private readonly moduleSkillRoot: string;
+  private readonly markdownSkillRoot: string;
+
+  constructor(options?: {
+    moduleSkillRoot?: string;
+    markdownSkillRoot?: string;
+  }) {
+    this.moduleSkillRoot = options?.moduleSkillRoot || MODULE_SKILL_ROOT;
+    this.markdownSkillRoot = options?.markdownSkillRoot || MARKDOWN_SKILL_ROOT;
+  }
 
   loadBundles(): AgentSkillBundle[] {
     if (this.cache) {
       return this.cache;
     }
 
-    const entries = collectDirectories(MARKDOWN_SKILL_ROOT);
+    const entries = collectDirectories(this.markdownSkillRoot);
     const files: AgentSkillFile[] = [];
 
     for (const skillDir of entries) {
@@ -166,7 +164,7 @@ export class AgentSkillLoader {
       if (!skillStat.isDirectory()) {
         continue;
       }
-      const skillId = path.basename(skillDir);
+      const manifest = readSkillManifest(skillDir);
       const stageEntries = readdirSync(skillDir, { withFileTypes: true });
       for (const stageEntry of stageEntries) {
         if (!stageEntry.isFile() || !stageEntry.name.endsWith('.md')) {
@@ -177,23 +175,17 @@ export class AgentSkillLoader {
           continue;
         }
         const raw = readFileSync(path.join(skillDir, stageEntry.name), 'utf-8');
-        const { metadata, body } = parseFrontmatter(raw);
         const file: AgentSkillFile = {
-          id: assertString(metadata.id, skillId),
-          structureType: assertString(metadata.structureType, skillId) as AgentSkillMetadata['structureType'],
-          name: {
-            zh: assertString(metadata.zhName, skillId),
-            en: assertString(metadata.enName, skillId),
-          },
-          description: {
-            zh: assertString(metadata.zhDescription),
-            en: assertString(metadata.enDescription),
-          },
-          triggers: assertStringArray(metadata.triggers),
-          stages: assertStringArray(metadata.stages) as SkillStage[],
-          autoLoadByDefault: Boolean(metadata.autoLoadByDefault ?? true),
+          id: manifest.id,
+          structureType: manifest.structureType,
+          name: manifest.name,
+          description: manifest.description,
+          triggers: manifest.triggers,
+          stages: manifest.stages,
+          autoLoadByDefault: manifest.autoLoadByDefault,
+          domain: manifest.domain,
           stage,
-          markdown: body,
+          markdown: stripLegacyMarkdownHeader(raw),
         };
         files.push(file);
       }
@@ -215,6 +207,7 @@ export class AgentSkillLoader {
         triggers: file.triggers,
         stages: Array.from(new Set([...file.stages, file.stage])) as SkillStage[],
         autoLoadByDefault: file.autoLoadByDefault,
+        domain: file.domain,
         markdownByStage: {
           [file.stage]: file.markdown,
         },
@@ -233,28 +226,33 @@ export class AgentSkillLoader {
     this.pluginCache = (async () => {
       const bundles = this.loadBundles();
       const bundleById = new Map(bundles.map((bundle) => [bundle.id, bundle]));
-      const entries = collectDirectories(MODULE_SKILL_ROOT);
-      const allowedTopLevelDirectories = listTopLevelDirectories(MARKDOWN_SKILL_ROOT);
+      const manifestByRelativePath = new Map(
+        loadSkillManifestsFromDirectorySync(this.markdownSkillRoot).map((manifest) => [
+          normalizeRelativePath(this.markdownSkillRoot, path.dirname(manifest.manifestPath)),
+          toRuntimeSkillManifest(manifest),
+        ]),
+      );
+      const entries = collectDirectories(this.moduleSkillRoot);
+      const allowedTopLevelDirectories = listTopLevelDirectories(this.markdownSkillRoot);
       const plugins: AgentSkillPlugin[] = [];
 
       for (const skillDir of entries) {
         if (!isSkillModuleDirectory(skillDir)) {
           continue;
         }
-        const relativePath = path.relative(MODULE_SKILL_ROOT, skillDir);
-        const topLevel = relativePath.split(path.sep)[0] || '';
+        const relativePath = normalizeRelativePath(this.moduleSkillRoot, skillDir);
+        const topLevel = relativePath.split('/')[0] || '';
         if (!allowedTopLevelDirectories.has(topLevel)) {
           continue;
         }
-        const bundle = bundleById.get(path.basename(skillDir));
-        if (!bundle) {
+        const manifest = manifestByRelativePath.get(relativePath);
+        const bundle = manifest ? bundleById.get(manifest.id) : undefined;
+        if (!bundle || !manifest) {
           continue;
         }
-        const manifestModule = await this.importSkillModule(skillDir, 'manifest');
         const handlerModule = await this.importSkillModule(skillDir, 'handler');
-        const manifest = (manifestModule?.manifest ?? manifestModule?.default) as SkillManifest | undefined;
         const handler = (handlerModule?.handler ?? handlerModule?.default) as AgentSkillPlugin['handler'] | undefined;
-        if (!manifest || !handler) {
+        if (!handler) {
           continue;
         }
         plugins.push({
@@ -272,7 +270,7 @@ export class AgentSkillLoader {
     return this.pluginCache;
   }
 
-  private async importSkillModule(skillDir: string, baseName: 'manifest' | 'handler'): Promise<Record<string, unknown> | null> {
+  private async importSkillModule(skillDir: string, baseName: 'handler'): Promise<Record<string, unknown> | null> {
     const candidates = [
       path.join(skillDir, `${baseName}.js`),
       path.join(skillDir, `${baseName}.ts`),

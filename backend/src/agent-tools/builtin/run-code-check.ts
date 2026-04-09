@@ -73,7 +73,7 @@ export async function executeRunCodeCheckStep(args: {
 
 export const RUN_CODE_CHECK_TOOL_MANIFEST: ToolManifest = {
   id: 'run_code_check',
-  source: 'external',
+  source: 'builtin',
   enabledByDefault: false,
   category: 'code-check',
   displayName: localize('执行规范校核', 'Run Code Check'),

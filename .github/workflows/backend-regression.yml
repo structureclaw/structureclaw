@@ -1,25 +1,30 @@
 name: Backend Regression
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'backend/**'
-      - 'scripts/cli/**'
+      - 'scripts/**'
       - 'tests/**'
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
+      - '.env.example'
+      - '.github/actions/setup-env/**'
       - '.github/workflows/backend-regression.yml'
   push:
     branches:
       - master
     paths:
       - 'backend/**'
-      - 'scripts/cli/**'
+      - 'scripts/**'
       - 'tests/**'
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
+      - '.env.example'
+      - '.github/actions/setup-env/**'
       - '.github/workflows/backend-regression.yml'
 
 jobs:
@@ -35,16 +40,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: backend/package-lock.json
-
-      - name: Install Backend Dependencies
-        run: npm ci --prefix backend
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
 
       - name: Run Backend Regression
-        shell: bash
         run: node tests/runner.mjs backend-regression

@@ -1,0 +1,51 @@
+id: snow-load
+domain: load-boundary
+source: builtin
+name:
+  zh: 雪荷载
+  en: Snow Load
+description:
+  zh: 生成屋面积雪荷载，支持按规范自动生成或指定雪载值。
+  en: Generate roof snow loads with code-based defaults or user-specified values.
+triggers:
+  - 雪载
+  - 雪荷载
+  - 积雪
+  - snow load
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - load-generation
+  - load-validation
+grants: []
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 65
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+version: 1.0.0
+scenarioKeys:
+  - frame
+  - truss
+  - portal-frame
+  - double-span-beam
+  - beam
+loadTypes:
+  - snow
+  - roof
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - frame
+  - truss
+  - generic
+materialFamilies: []
+inputSchema: {}
+outputSchema: {}
+aliases: []
+toolHints: {}

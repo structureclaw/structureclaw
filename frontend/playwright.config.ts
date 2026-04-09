@@ -34,7 +34,6 @@ export default defineConfig({
         LLM_PROVIDER: 'openai',
         LLM_API_KEY: 'test-key-for-e2e',
         LLM_MODEL: 'gpt-4o-mini',
-        REDIS_URL: 'disabled',
       },
     },
     {

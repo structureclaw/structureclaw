@@ -10,6 +10,7 @@ const { runFrontendBuild } = require("./frontend-build");
 const runtime = require("./runtime");
 
 const MIN_NODE_MAJOR = 18;
+const ANALYSIS_REQUIRED_PYTHON_MODULES = ["uvicorn", "yaml"];
 
 function getPackageMetadata(rootDir) {
   const packageJsonPath = path.join(rootDir, "package.json");
@@ -436,18 +437,40 @@ async function ensureUv(rootDir) {
   }
 
   if (runtime.isWindows()) {
-    runtime.requireCommand(
-      "winget",
-      "Install winget, or install uv manually and then rerun `sclaw ensure-uv`.",
-    );
-    await runtime.runCommand("winget", [
-      "install",
-      "--id",
-      "AstralSoftware.UV",
-      "-e",
-      "--accept-package-agreements",
-      "--accept-source-agreements",
+    // Try winget first; fall back to PowerShell installer if winget is unavailable or fails.
+    if (runtime.hasCommand("winget")) {
+      try {
+        await runtime.runCommand("winget", [
+          "install",
+          "--id",
+          "AstralSoftware.UV",
+          "-e",
+          "--accept-package-agreements",
+          "--accept-source-agreements",
+        ]);
+        if (runtime.hasCommand("uv")) {
+          return;
+        }
+      } catch {
+        // winget install failed — fall through to PowerShell installer.
+      }
+    }
+
+    // PowerShell installer (official Astral recommendation for Windows).
+    const ps = runtime.hasCommand("pwsh") ? "pwsh" : "powershell";
+    await runtime.runCommand(ps, [
+      "-ExecutionPolicy",
+      "ByPass",
+      "-Command",
+      "irm https://astral.sh/uv/install.ps1 | iex",
     ]);
+    // The installer puts uv in %USERPROFILE%\.local\bin which may not be on
+    // the current process PATH.  Detect and inject it so subsequent commands
+    // in this process can find uv.
+    const localBin = path.join(os.homedir(), ".local", "bin");
+    if (fs.existsSync(path.join(localBin, "uv.exe")) || fs.existsSync(path.join(localBin, "uv"))) {
+      process.env.PATH = `${localBin};${process.env.PATH}`;
+    }
     runtime.requireCommand(
       "uv",
       "uv installation finished, but `uv` is still unavailable. Restart your terminal and retry.",
@@ -497,23 +520,37 @@ async function ensureAnalysisPython(rootDir, env) {
   }
 
   const currentPython = runtime.resolveAnalysisPython(rootDir, env);
-  if (currentPython && (await runtime.pythonModuleExists(currentPython, "uvicorn"))) {
-    return currentPython;
+  if (currentPython) {
+    const currentModuleStates = await Promise.all(
+      ANALYSIS_REQUIRED_PYTHON_MODULES.map(async (moduleName) => [moduleName, await runtime.pythonModuleExists(currentPython, moduleName)]),
+    );
+    if (currentModuleStates.every(([, present]) => present)) {
+      return currentPython;
+    }
   }
 
   await ensureUv(rootDir);
+  // ensureUv may have appended to process.env.PATH (e.g. after a fresh uv
+  // install on Windows).  Propagate that to the caller-supplied env dict so
+  // that buildAnalysisEnvironment / runCommand pick it up.
+  if (env.PATH !== process.env.PATH) {
+    env.PATH = process.env.PATH;
+  }
 
-  const pythonVersion =
-    env.ANALYSIS_PYTHON_VERSION || runtime.DEFAULT_ANALYSIS_PYTHON_VERSION;
-  log("Preparing analysis Python virtual environment...");
-  await runtime.runCommand("uv", [
-    "venv",
-    "--python",
-    pythonVersion,
-    path.join(rootDir, "backend", ".venv"),
-  ]);
+  let resolvedPython = currentPython;
+  if (!resolvedPython) {
+    const pythonVersion =
+      env.ANALYSIS_PYTHON_VERSION || runtime.DEFAULT_ANALYSIS_PYTHON_VERSION;
+    log("Preparing analysis Python virtual environment...");
+    await runtime.runCommand("uv", [
+      "venv",
+      "--python",
+      pythonVersion,
+      path.join(rootDir, "backend", ".venv"),
+    ]);
 
-  const resolvedPython = runtime.resolveAnalysisPython(rootDir, env);
+    resolvedPython = runtime.resolveAnalysisPython(rootDir, env);
+  }
   if (!resolvedPython) {
     throw new Error("Failed to locate backend/.venv python after uv venv.");
   }
@@ -530,8 +567,14 @@ async function ensureAnalysisPython(rootDir, env) {
     env,
   });
 
-  if (!(await runtime.pythonModuleExists(resolvedPython, "uvicorn"))) {
-    throw new Error("backend/.venv is present but missing uvicorn.");
+  const installedModuleStates = await Promise.all(
+    ANALYSIS_REQUIRED_PYTHON_MODULES.map(async (moduleName) => [moduleName, await runtime.pythonModuleExists(resolvedPython, moduleName)]),
+  );
+  const missingModules = installedModuleStates
+    .filter(([, present]) => !present)
+    .map(([moduleName]) => moduleName);
+  if (missingModules.length > 0) {
+    throw new Error(`backend/.venv is present but missing required analysis modules: ${missingModules.join(", ")}.`);
   }
 
   return resolvedPython;
@@ -971,18 +1014,7 @@ async function invokeLocalUp(rootDir, env, options = {}) {
   await ensureAnalysisPython(rootDir, env);
   await ensureOpenSeesRuntime(rootDir, env);
 
-  if (!options.skipInfra && env.REDIS_URL && String(env.REDIS_URL).toLowerCase() !== "disabled") {
-    runtime.requireCommand(
-      "docker",
-      "Install Docker Desktop and retry, or use `sclaw start` (alias: `local-up-noinfra`).",
-    );
-    await runtime.runCommand("docker", [
-      ...docker.getDockerComposeArgs(paths, [], { env }),
-      "up",
-      "-d",
-      "redis",
-    ]);
-  } else if (options.skipInfra) {
+  if (options.skipInfra) {
     log("Skipping optional infra startup.");
   }
 
@@ -1012,7 +1044,11 @@ async function invokeDoctor(rootDir, env) {
   await ensureNpmDependencies(paths.backendDir, "backend", ["prisma", "@prisma/client"]);
   await ensureNpmDependencies(paths.frontendDir, "frontend", ["next"]);
   await ensureAnalysisPython(rootDir, env);
-  await ensureOpenSeesRuntime(rootDir, env);
+  try {
+    await ensureOpenSeesRuntime(rootDir, env);
+  } catch {
+    log("Warning: OpenSees runtime probe failed — analysis features may be limited in this environment.");
+  }
   await invokeScopedDbInit(rootDir, env, "doctor");
   log("Local startup checks passed.");
 }
@@ -1072,10 +1108,10 @@ async function dispatch(commandName, rawArgs, rootDir) {
       await invokeConvertBatch(rootDir, env, rawArgs);
       return;
     case "db-up":
-      await runtime.runCommand("docker", [...docker.getDockerComposeArgs(paths, ["up", "-d", "redis"], { env })]);
+      log("No optional infra services are required in the SQLite local-first stack.");
       return;
     case "db-down":
-      await runtime.runCommand("docker", [...docker.getDockerComposeArgs(paths, ["stop", "redis"], { env })]);
+      log("No optional infra services are running in the SQLite local-first stack.");
       return;
     case "db-init":
       await invokeDbInit(rootDir, env);
@@ -1127,13 +1163,6 @@ async function dispatch(commandName, rawArgs, rootDir) {
     case "stop":
       await stopTrackedService(paths, "frontend");
       await stopTrackedService(paths, "backend");
-      try {
-        await runtime.runCommand("docker", docker.getDockerComposeArgs(paths, ["stop", "redis"], { env }), {
-          env,
-          stdio: "ignore",
-        });
-      } catch {
-      }
       log("Local stack stopped.");
       return;
     case "status":

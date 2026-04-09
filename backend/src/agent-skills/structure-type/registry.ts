@@ -13,7 +13,9 @@ export function listStructureModelingProviders(options?: {
   builtInPlugins?: AgentSkillPlugin[];
   externalProviders?: StructureModelingProvider[];
 }): StructureModelingProvider[] {
-  const builtInProviders = (options?.builtInPlugins ?? []).map((plugin) => toStructureModelingProvider(plugin));
+  const builtInProviders = (options?.builtInPlugins ?? [])
+    .filter((plugin) => plugin.manifest.domain === 'structure-type')
+    .map((plugin) => toStructureModelingProvider(plugin));
   return loadSkillProviders({
     builtInProviders,
     externalProviders: options?.externalProviders,

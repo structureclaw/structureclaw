@@ -1,0 +1,70 @@
+id: dead-load
+domain: load-boundary
+source: builtin
+name:
+  zh: 恒荷载
+  en: Dead Load
+description:
+  zh: 生成恒荷载，包括结构构件自重和固定设备重力荷载。
+  en: Generate dead loads including gravity loads from structural elements and fixed equipment.
+triggers:
+  - dead load
+  - 恒载
+  - self weight
+  - 自重
+  - fixed load
+  - 固定荷载
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - load-generation
+  - load-validation
+grants: []
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 100
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+version: 1.0.0
+scenarioKeys:
+  - frame
+  - truss
+  - portal-frame
+  - double-span-beam
+  - beam
+loadTypes:
+  - dead
+  - fixed
+  - self-weight
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - frame
+  - truss
+  - generic
+materialFamilies: []
+inputSchema:
+  type: object
+  properties:
+    modelId:
+      type: string
+    density:
+      type: number
+    includeSelfWeight:
+      type: boolean
+  required:
+    - modelId
+outputSchema:
+  type: object
+  properties:
+    loadCases:
+      type: array
+    loads:
+      type: array
+aliases: []
+toolHints: {}

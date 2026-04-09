@@ -4,23 +4,20 @@ import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.
 import {
   buildCodeCheckInput,
   executeCodeCheckDomain,
-  listCodeCheckRuleProviders,
-  resolveCodeCheckDesignCodeFromSkillIds,
-  resolveCodeCheckSkillIdForDesignCode,
 } from '../agent-skills/code-check/entry.js';
-import {
-  getBuiltinAnalysisSkill,
-  listBuiltinAnalysisSkills,
-  resolvePreferredBuiltinAnalysisSkill,
-} from '../agent-skills/analysis/entry.js';
 import type { CodeCheckClient } from '../agent-skills/code-check/rule.js';
 import { AgentSkillRegistry } from './registry.js';
 import { AgentSkillExecutor } from './executor.js';
 import { listBuiltinToolManifests, resolveToolingForSkillManifests } from './tool-registry.js';
-import { listBuiltinDomainSkillManifests } from './builtin-domain-manifests.js';
 import { buildDefaultReportNarrative } from './report-template.js';
 import { tryBuildGenericModelWithLlm } from '../agent-skills/structure-type/generic/llm-model-builder.js';
 import { localize, withStructuralTypeState } from './plugin-helpers.js';
+import {
+  loadSkillManifestsFromDirectorySync,
+  resolveBuiltinSkillManifestRoot,
+  toRuntimeSkillManifest,
+  type LoadedSkillManifest,
+} from './skill-manifest-loader.js';
 import type {
   AgentSkillBundle,
   DraftParameterExtractionResult,
@@ -63,9 +60,14 @@ export type {
 
 export class AgentSkillRuntime {
   private readonly registry: AgentSkillRegistry;
+  private readonly builtinSkillFileManifests: LoadedSkillManifest[];
+  private readonly builtinRuntimeSkillManifests: SkillManifest[];
 
-  constructor() {
+  constructor(options?: { builtinSkillManifestRoot?: string }) {
     this.registry = new AgentSkillRegistry();
+    const builtinSkillManifestRoot = options?.builtinSkillManifestRoot || resolveBuiltinSkillManifestRoot();
+    this.builtinSkillFileManifests = loadSkillManifestsFromDirectorySync(builtinSkillManifestRoot);
+    this.builtinRuntimeSkillManifests = this.builtinSkillFileManifests.map((manifest) => toRuntimeSkillManifest(manifest));
   }
 
   listSkills(): AgentSkillBundle[] {
@@ -74,9 +76,13 @@ export class AgentSkillRuntime {
 
   async listSkillManifests(): Promise<SkillManifest[]> {
     const plugins = await this.registry.listPlugins();
+    const fileManifests = this.builtinRuntimeSkillManifests;
+    const fileManifestIds = new Set(fileManifests.map((manifest) => manifest.id));
     return [
-      ...plugins.map((plugin) => plugin.manifest),
-      ...listBuiltinDomainSkillManifests(),
+      ...fileManifests,
+      ...plugins
+        .filter((plugin) => !fileManifestIds.has(plugin.id))
+        .map((plugin) => plugin.manifest),
     ];
   }
 
@@ -95,11 +101,11 @@ export class AgentSkillRuntime {
   }
 
   listAnalysisSkillIds(): string[] {
-    return listBuiltinAnalysisSkills().map((skill) => skill.id);
+    return this.listBuiltinAnalysisSkillManifests().map((skill) => skill.id);
   }
 
   listCodeCheckSkillIds(): string[] {
-    return listCodeCheckRuleProviders().map((provider) => provider.id);
+    return this.listBuiltinCodeCheckSkillManifests().map((skill) => skill.id);
   }
 
   isAnalysisSkillId(skillId: string | undefined): boolean {
@@ -111,11 +117,26 @@ export class AgentSkillRuntime {
   }
 
   resolveCodeCheckDesignCodeFromSkillIds(skillIds?: string[]): string | undefined {
-    return resolveCodeCheckDesignCodeFromSkillIds(skillIds);
+    if (!Array.isArray(skillIds) || skillIds.length === 0) {
+      return undefined;
+    }
+    const selectedSkillIds = new Set(skillIds);
+    for (const skill of this.listBuiltinCodeCheckSkillManifests()) {
+      if (selectedSkillIds.has(skill.id) && typeof skill.designCode === 'string' && skill.designCode.trim().length > 0) {
+        return skill.designCode.trim().toUpperCase();
+      }
+    }
+    return undefined;
   }
 
   resolveCodeCheckSkillId(designCode: string | undefined): string | undefined {
-    return resolveCodeCheckSkillIdForDesignCode(designCode);
+    if (typeof designCode !== 'string' || designCode.trim().length === 0) {
+      return undefined;
+    }
+    const normalizedDesignCode = designCode.trim().toUpperCase();
+    return this.listBuiltinCodeCheckSkillManifests().find((skill) =>
+      typeof skill.designCode === 'string' && skill.designCode.trim().toUpperCase() === normalizedDesignCode,
+    )?.id;
   }
 
   resolvePreferredAnalysisSkill(options?: {
@@ -124,7 +145,47 @@ export class AgentSkillRuntime {
     skillIds?: string[];
     supportedModelFamilies?: string[];
   }) {
-    return resolvePreferredBuiltinAnalysisSkill(options);
+    const selectedSkillIds = new Set(
+      Array.isArray(options?.skillIds)
+        ? options.skillIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
+        : [],
+    );
+    const normalizedEngineId = typeof options?.engineId === 'string' && options.engineId.trim().length > 0
+      ? options.engineId.trim()
+      : undefined;
+    const supportedFamilies = Array.isArray(options?.supportedModelFamilies)
+      ? options.supportedModelFamilies
+        .filter((family): family is string => typeof family === 'string' && family.trim().length > 0)
+        .map((family) => family.trim().toLowerCase())
+      : [];
+
+    const matchesContext = (skill: LoadedSkillManifest): boolean => {
+      if (skill.domain !== 'analysis') {
+        return false;
+      }
+      if (options?.analysisType && skill.analysisType !== options.analysisType) {
+        return false;
+      }
+      if (normalizedEngineId && skill.engineId !== normalizedEngineId) {
+        return false;
+      }
+      if (supportedFamilies.length > 0) {
+        const skillFamilies = Array.isArray(skill.supportedModelFamilies)
+          ? skill.supportedModelFamilies.map((family) => family.trim().toLowerCase())
+          : [];
+        if (!skillFamilies.some((family) => supportedFamilies.includes(family))) {
+          return false;
+        }
+      }
+      return true;
+    };
+
+    const analysisSkills = this.listBuiltinAnalysisSkillManifests();
+    const matchedSelected = analysisSkills.filter((skill) => selectedSkillIds.has(skill.id) && matchesContext(skill));
+    if (matchedSelected.length > 0) {
+      return matchedSelected[0];
+    }
+    return analysisSkills.find((skill) => matchesContext(skill));
   }
 
   async executeAnalysisSkill(options: {
@@ -152,8 +213,8 @@ export class AgentSkillRuntime {
     skillId?: string;
   }> {
     const selectedSkill = (typeof options.analysisSkillId === 'string' && options.analysisSkillId.trim().length > 0)
-      ? getBuiltinAnalysisSkill(options.analysisSkillId)
-      : resolvePreferredBuiltinAnalysisSkill({
+      ? this.listBuiltinAnalysisSkillManifests().find((skill) => skill.id === options.analysisSkillId)
+      : this.resolvePreferredAnalysisSkill({
         analysisType: options.analysisType,
         engineId: options.engineId,
         skillIds: options.skillIds,
@@ -210,7 +271,7 @@ export class AgentSkillRuntime {
   }> {
     const skillId = (typeof options.codeCheckSkillId === 'string' && options.codeCheckSkillId.trim().length > 0)
       ? options.codeCheckSkillId
-      : resolveCodeCheckSkillIdForDesignCode(options.designCode);
+      : this.resolveCodeCheckSkillId(options.designCode);
     const input = buildCodeCheckInput({
       traceId: options.traceId,
       designCode: options.designCode,
@@ -258,6 +319,19 @@ export class AgentSkillRuntime {
       result: (validated?.data ?? {}) as Record<string, unknown>,
       skillId: 'validation-structure-model',
     };
+  }
+
+  private listBuiltinAnalysisSkillManifests(): LoadedSkillManifest[] {
+    return this.builtinSkillFileManifests
+      .filter((skill) => skill.domain === 'analysis')
+      .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id));
+  }
+
+  private listBuiltinCodeCheckSkillManifests(): LoadedSkillManifest[] {
+    return this.builtinSkillFileManifests
+      .filter((skill) => skill.domain === 'code-check')
+      // Code-check provider routing intentionally prefers lower numeric priorities first.
+      .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id));
   }
 
   async executeReportSkill(options: {

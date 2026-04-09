@@ -1,0 +1,75 @@
+id: nodal-constraint
+domain: load-boundary
+source: builtin
+name:
+  zh: 节点约束
+  en: Nodal Constraint
+description:
+  zh: 定义节点约束，包括刚性约束和弹性支座。
+  en: Define nodal constraints including restraints and elastic supports.
+triggers:
+  - nodal constraint
+  - 节点约束
+  - node support
+  - 节点支座
+  - restraint
+  - 约束
+  - elastic support
+  - 弹性支座
+stages:
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - boundary-definition
+  - constraint-validation
+grants: []
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 90
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+version: 1.0.0
+scenarioKeys:
+  - frame
+  - truss
+  - portal-frame
+  - double-span-beam
+  - beam
+boundaryTypes:
+  - fixed
+  - pinned
+  - roller
+  - elastic
+  - guided
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - frame
+  - truss
+  - generic
+materialFamilies: []
+inputSchema:
+  type: object
+  properties:
+    modelId:
+      type: string
+    nodeId:
+      type: string
+    constraintType:
+      type: string
+    stiffness:
+      type: object
+  required:
+    - modelId
+    - nodeId
+    - constraintType
+outputSchema:
+  type: object
+  properties:
+    node:
+      type: object
+aliases: []
+toolHints: {}

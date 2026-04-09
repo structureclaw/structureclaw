@@ -1,13 +1,5 @@
 import type { SkillManifest, ToolManifest } from './types.js';
-import { BUILTIN_TOOL_MANIFESTS } from '../agent-tools/builtin/index.js';
-
-function titleize(value: string): string {
-  return value
-    .split(/[-_]/g)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(' ');
-}
+import { loadToolManifestsFromDirectorySync, resolveBuiltinToolManifestRoot } from './tool-manifest-loader.js';
 
 export interface ResolvedTooling {
   tools: ToolManifest[];
@@ -16,8 +8,10 @@ export interface ResolvedTooling {
   skillIdsByToolId: Record<string, string[]>;
 }
 
+const BUILTIN_TOOL_MANIFEST_ROOT = resolveBuiltinToolManifestRoot();
+
 export function listBuiltinToolManifests(): ToolManifest[] {
-  return BUILTIN_TOOL_MANIFESTS.map((tool) => ({ ...tool }));
+  return loadToolManifestsFromDirectorySync(BUILTIN_TOOL_MANIFEST_ROOT).map((tool) => ({ ...tool }));
 }
 
 function inferEnabledToolsFromManifest(manifest: SkillManifest): string[] {
@@ -27,24 +21,17 @@ function inferEnabledToolsFromManifest(manifest: SkillManifest): string[] {
   return [...manifest.enabledTools];
 }
 
-function createSkillProvidedTool(toolId: string, skillId: string): ToolManifest {
-  return {
-    id: toolId,
-    source: 'external',
-    enabledByDefault: false,
-    displayName: {
-      zh: titleize(toolId),
-      en: titleize(toolId),
-    },
-    description: {
-      zh: `${skillId} skill 提供的扩展 tool。`,
-      en: `Extension tool provided by the ${skillId} skill.`,
-    },
-    providedBySkillId: skillId,
-    requiresSkills: [skillId],
-    tags: ['external-provided'],
-    errorCodes: [],
-  };
+function assertKnownTool(
+  builtinById: ReadonlyMap<string, ToolManifest>,
+  toolId: string,
+  skillId: string,
+  relation: 'grant' | 'provide',
+): ToolManifest {
+  const builtin = builtinById.get(toolId);
+  if (!builtin) {
+    throw new Error(`Skill manifest '${skillId}' references unknown tool '${toolId}' via ${relation}. Add a tool.yaml for this tool before granting it.`);
+  }
+  return builtin;
 }
 
 function resolveRelevantSkillManifests(manifests: SkillManifest[], skillIds?: string[]): SkillManifest[] {
@@ -60,7 +47,8 @@ function resolveRelevantSkillManifests(manifests: SkillManifest[], skillIds?: st
 
 export function resolveToolingForSkillManifests(manifests: SkillManifest[], skillIds?: string[]): ResolvedTooling {
   const relevantManifests = resolveRelevantSkillManifests(manifests, skillIds);
-  const builtinById = new Map(BUILTIN_TOOL_MANIFESTS.map((tool) => [tool.id, tool]));
+  const builtinToolManifests = listBuiltinToolManifests();
+  const builtinById = new Map(builtinToolManifests.map((tool) => [tool.id, tool]));
   const toolMap = new Map<string, ToolManifest>();
   const enabledToolIdsBySkill: Record<string, string[]> = {};
   const providedToolIdsBySkill: Record<string, string[]> = {};
@@ -83,19 +71,17 @@ export function resolveToolingForSkillManifests(manifests: SkillManifest[], skil
     }
 
     for (const toolId of enabledToolIds) {
-      const builtin = builtinById.get(toolId);
-      toolMap.set(toolId, builtin ? { ...builtin } : createSkillProvidedTool(toolId, manifest.id));
+      const builtin = assertKnownTool(builtinById, toolId, manifest.id, 'grant');
+      toolMap.set(toolId, { ...builtin });
     }
 
     for (const toolId of providedToolIds) {
-      const builtin = builtinById.get(toolId);
-      toolMap.set(toolId, builtin
-        ? {
-          ...builtin,
-          providedBySkillId: builtin.providedBySkillId ?? manifest.id,
-          requiresSkills: Array.from(new Set([...(builtin.requiresSkills || []), manifest.id])),
-        }
-        : createSkillProvidedTool(toolId, manifest.id));
+      const builtin = assertKnownTool(builtinById, toolId, manifest.id, 'provide');
+      toolMap.set(toolId, {
+        ...builtin,
+        providedBySkillId: builtin.providedBySkillId ?? manifest.id,
+        requiresSkills: Array.from(new Set([...(builtin.requiresSkills || []), manifest.id])),
+      });
     }
   }
 

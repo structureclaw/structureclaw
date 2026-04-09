@@ -11,8 +11,9 @@ describe('structure-type provider registry', () => {
     const providers = listStructureModelingProviders({
       builtInPlugins: await loader.loadPlugins(),
     });
+    const ids = providers.map((provider) => provider.id);
 
-    expect(providers.map((provider) => provider.id)).toEqual([
+    expect(ids).toEqual([
       'portal-frame',
       'double-span-beam',
       'truss',
@@ -20,6 +21,9 @@ describe('structure-type provider registry', () => {
       'beam',
       'generic',
     ]);
+    expect(ids).not.toContain('section-common');
+    expect(ids).not.toContain('section-bridge');
+    expect(ids).not.toContain('section-irregular');
   });
 
   test('should preserve explicit skill selection semantics through the provider wrapper', async () => {

@@ -1,0 +1,39 @@
+id: visualization-png-export
+domain: visualization
+source: builtin
+name:
+  zh: PNG 导出
+  en: PNG Export
+description:
+  zh: 将当前三维结构场景截图并导出为 PNG 文件。
+  en: Capture the current 3D structural scene and export it as a PNG file.
+triggers:
+  - 导出
+  - export
+  - PNG
+  - 截图
+  - 保存图片
+  - 下载
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - result-visualization
+  - image-export
+grants: []
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 60
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - generic
+materialFamilies: []
+aliases: []
+toolHints: {}

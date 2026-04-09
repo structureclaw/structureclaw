@@ -1,0 +1,67 @@
+id: temperature-load
+domain: load-boundary
+source: builtin
+name:
+  zh: 温度荷载
+  en: Temperature Load
+description:
+  zh: 生成温度荷载，考虑热胀冷缩效应。
+  en: Generate temperature loads for thermal expansion and contraction effects.
+triggers:
+  - temperature load
+  - 温度荷载
+  - thermal load
+  - 热荷载
+  - thermal expansion
+  - 热胀冷缩
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - load-generation
+grants: []
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: false
+priority: 85
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+version: 1.0.0
+scenarioKeys:
+  - frame
+  - truss
+  - portal-frame
+  - double-span-beam
+  - beam
+loadTypes:
+  - temperature
+  - thermal
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - frame
+  - truss
+materialFamilies: []
+inputSchema:
+  type: object
+  properties:
+    modelId:
+      type: string
+    temperatureChange:
+      type: number
+    expansionCoefficient:
+      type: number
+  required:
+    - modelId
+outputSchema:
+  type: object
+  properties:
+    loadCases:
+      type: array
+    loads:
+      type: array
+aliases: []
+toolHints: {}

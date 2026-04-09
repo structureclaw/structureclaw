@@ -2,7 +2,7 @@ import { prisma } from '../utils/database.js';
 import type { InputJsonValue } from '../utils/json.js';
 import { ensureUserId } from '../utils/demo-data.js';
 
-export interface CreateSkillParams {
+export interface CreateLegacySkillCatalogItemParams {
   name: string;
   description: string;
   category: string;
@@ -18,12 +18,12 @@ export interface CreateSkillParams {
   isPublic: boolean;
 }
 
-type SkillWithTagItems = {
+type LegacySkillCatalogItemWithTagItems = {
   tagItems?: Array<{ value: string }> | null;
 } & Record<string, unknown>;
 
-// 内置技能列表
-const BUILTIN_SKILLS = [
+// Legacy marketplace/catalog seed entries.
+const LEGACY_CATALOG_BUILTIN_SKILLS = [
   {
     id: 'skill-beam-design',
     name: '梁截面设计',
@@ -90,7 +90,7 @@ const BUILTIN_SKILLS = [
   },
 ];
 
-function mapSkillTags<T extends SkillWithTagItems | null>(skill: T) {
+function mapCatalogTags<T extends LegacySkillCatalogItemWithTagItems | null>(skill: T) {
   if (!skill) {
     return null;
   }
@@ -102,9 +102,9 @@ function mapSkillTags<T extends SkillWithTagItems | null>(skill: T) {
   };
 }
 
-export class SkillService {
-  // 获取技能列表
-  async listSkills(params: { category?: string; search?: string }) {
+export class LegacySkillCatalogService {
+  // List legacy catalog items.
+  async listCatalogSkills(params: { category?: string; search?: string }) {
     const where: any = { isPublic: true };
 
     if (params.category) {
@@ -119,7 +119,7 @@ export class SkillService {
       ];
     }
 
-    const skills = await prisma.skill.findMany({
+    const catalogItems = await prisma.skill.findMany({
       where,
       include: {
         tagItems: {
@@ -134,12 +134,12 @@ export class SkillService {
       take: 100,
     });
 
-    return skills.map((skill: SkillWithTagItems) => mapSkillTags(skill));
+    return catalogItems.map((catalogItem: LegacySkillCatalogItemWithTagItems) => mapCatalogTags(catalogItem));
   }
 
-  // 获取技能详情
-  async getSkill(id: string) {
-    const skill = await prisma.skill.findUnique({
+  // Get a legacy catalog item by id.
+  async getCatalogSkill(id: string) {
+    const catalogItem = await prisma.skill.findUnique({
       where: { id },
       include: {
         tagItems: {
@@ -156,12 +156,12 @@ export class SkillService {
       },
     });
 
-    return mapSkillTags(skill);
+    return mapCatalogTags(catalogItem);
   }
 
-  // 创建技能
-  async createSkill(params: CreateSkillParams) {
-    const skill = await prisma.skill.create({
+  // Create a legacy catalog item.
+  async createCatalogSkill(params: CreateLegacySkillCatalogItemParams) {
+    const catalogItem = await prisma.skill.create({
       data: {
         name: params.name,
         description: params.description,
@@ -183,12 +183,12 @@ export class SkillService {
       },
     });
 
-    return mapSkillTags(skill);
+    return mapCatalogTags(catalogItem);
   }
 
-  // 安装技能
-  async installSkill(skillId: string, projectId: string, _userId?: string) {
-    // 检查是否已安装
+  // Install a legacy catalog item into a project.
+  async installCatalogSkill(skillId: string, projectId: string, _userId?: string) {
+    // Check whether the item is already installed.
     const existing = await prisma.projectSkill.findFirst({
       where: { skillId, projectId },
     });
@@ -197,12 +197,12 @@ export class SkillService {
       return { success: true, message: '技能已安装' };
     }
 
-    // 安装技能
+    // Persist the project-item link.
     await prisma.projectSkill.create({
       data: { skillId, projectId },
     });
 
-    // 更新安装计数
+    // Update install count.
     await prisma.skill.update({
       where: { id: skillId },
       data: { installs: { increment: 1 } },
@@ -211,22 +211,22 @@ export class SkillService {
     return { success: true, message: '技能安装成功' };
   }
 
-  // 调用技能
-  async invokeSkill(skillId: string, params: Record<string, unknown>, userId?: string) {
-    const skill = await prisma.skill.findUnique({
+  // Invoke a legacy catalog item handler.
+  async invokeCatalogSkill(skillId: string, params: Record<string, unknown>, userId?: string) {
+    const catalogItem = await prisma.skill.findUnique({
       where: { id: skillId },
     });
 
-    if (!skill) {
+    if (!catalogItem) {
       throw new Error('技能不存在');
     }
 
-    const skillConfig = skill.config as { handler?: string } | null;
-    if (!skillConfig?.handler) {
+    const catalogConfig = catalogItem.config as { handler?: string } | null;
+    if (!catalogConfig?.handler) {
       throw new Error('技能配置无效');
     }
 
-    // 记录执行
+    // Record execution.
     await prisma.skillExecution.create({
       data: {
         skillId,
@@ -235,15 +235,14 @@ export class SkillService {
       },
     });
 
-    // 根据技能配置执行
-    // 这里应该调用实际的处理函数
-    const result = await this.runSkillHandler(skillConfig.handler, params);
+    // Dispatch through the catalog handler registry.
+    const result = await this.runCatalogHandler(catalogConfig.handler, params);
 
     return result;
   }
 
-  // 评分
-  async rateSkill(skillId: string, userId: string | undefined, rating: number, comment?: string) {
+  // Rate a legacy catalog item.
+  async rateCatalogSkill(skillId: string, userId: string | undefined, rating: number, comment?: string) {
     const resolvedUserId = await ensureUserId(userId);
 
     const review = await prisma.skillReview.upsert({
@@ -262,7 +261,7 @@ export class SkillService {
       },
     });
 
-    // 更新平均评分
+    // Update the aggregate rating.
     const avgRating = await prisma.skillReview.aggregate({
       where: { skillId },
       _avg: { rating: true },
@@ -276,14 +275,14 @@ export class SkillService {
     return review;
   }
 
-  // 获取内置技能
-  getBuiltinSkills() {
-    return BUILTIN_SKILLS;
+  // Get bundled legacy catalog seeds.
+  getBuiltinCatalogSkills() {
+    return LEGACY_CATALOG_BUILTIN_SKILLS;
   }
 
-  // 执行技能处理器
-  private async runSkillHandler(handler: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
-    // 根据处理器名称调用相应函数
+  // Execute a catalog handler.
+  private async runCatalogHandler(handler: string, params: Record<string, unknown>): Promise<Record<string, unknown>> {
+    // Dispatch by handler name.
     switch (handler) {
       case 'beam-design':
         return this.handleBeamDesign(params);
@@ -298,14 +297,14 @@ export class SkillService {
     }
   }
 
-  // 梁设计处理器
+  // Beam design handler.
   private async handleBeamDesign(params: Record<string, unknown>) {
-    // 简化的梁截面设计计算
+    // Simplified beam design calculation.
     const M = Number(params.M);
     const h = Number(params.h);
     const h0 = h - 40;
 
-    // 简化计算：As = M / (fy * γs * h0)
+    // Simplified calculation: As = M / (fy * γs * h0).
     const fy = 360; // HRB400钢筋
     const γs = 0.9;
     const As = (M * 1e6) / (fy * γs * h0);
@@ -316,7 +315,7 @@ export class SkillService {
     };
   }
 
-  // 柱设计处理器
+  // Column design handler.
   private async handleColumnDesign(params: Record<string, unknown>) {
     const N = Number(params.N);
     const b = Number(params.b);
@@ -324,7 +323,7 @@ export class SkillService {
     const concreteGrade = String(params.concreteGrade ?? 'C30');
     const fcd = this.getConcreteStrength(concreteGrade);
 
-    // 轴心受压简化计算
+    // Simplified axial compression calculation.
     const Ac = b * h;
     const Ncapacity = 0.9 * (fcd * Ac) / 1000; // kN
 
@@ -335,7 +334,7 @@ export class SkillService {
     };
   }
 
-  // 荷载计算处理器
+  // Load calculation handler.
   private async handleLoadCalculation(params: Record<string, unknown>) {
     const area = Number(params.area);
     const type = String(params.type ?? 'floor');
@@ -364,13 +363,13 @@ export class SkillService {
     };
   }
 
-  // 地震作用计算处理器
+  // Seismic load handler.
   private async handleSeismicLoad(params: Record<string, unknown>) {
     const totalWeight = Number(params.totalWeight);
     const seismicZone = Number(params.seismicZone);
     const siteClass = String(params.siteClass ?? 'II');
 
-    // 简化的底部剪力法
+    // Simplified base shear method.
     const αmax = [0.04, 0.08, 0.16, 0.24, 0.32][seismicZone - 6] || 0.16;
     const FEk = αmax * totalWeight;
 
@@ -381,7 +380,7 @@ export class SkillService {
     };
   }
 
-  // 获取混凝土强度
+  // Resolve concrete strength.
   private getConcreteStrength(grade: string): number {
     const strengths: Record<string, number> = {
       'C20': 9.6,

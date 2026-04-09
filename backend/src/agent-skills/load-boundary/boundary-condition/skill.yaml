@@ -1,0 +1,75 @@
+id: boundary-condition
+domain: load-boundary
+source: builtin
+name:
+  zh: 边界条件
+  en: Boundary Condition
+description:
+  zh: 定义边界条件，包括节点约束和杆端释放。
+  en: Define boundary conditions including nodal constraints and member end releases.
+triggers:
+  - boundary condition
+  - 边界条件
+  - constraint
+  - 约束
+  - support
+  - 支座
+  - fixed support
+  - 固定支座
+  - pinned support
+  - 铰支座
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - boundary-definition
+  - constraint-validation
+grants: []
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 95
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+version: 1.0.0
+scenarioKeys:
+  - frame
+  - truss
+  - portal-frame
+  - double-span-beam
+  - beam
+boundaryTypes:
+  - fixed
+  - pinned
+  - roller
+  - elastic
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - frame
+  - truss
+  - generic
+materialFamilies: []
+inputSchema:
+  type: object
+  properties:
+    modelId:
+      type: string
+    constraints:
+      type: array
+    endReleases:
+      type: array
+  required:
+    - modelId
+outputSchema:
+  type: object
+  properties:
+    constraints:
+      type: array
+    updatedModel:
+      type: object
+aliases: []
+toolHints: {}

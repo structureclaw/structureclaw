@@ -1,0 +1,48 @@
+id: opensees-dynamic
+domain: analysis
+source: builtin
+name:
+  zh: OpenSees 动力分析
+  en: OpenSees Dynamic Analysis
+description:
+  zh: 使用 OpenSees 执行模态或时程动力分析的 skill。
+  en: Skill for modal and time-history dynamic analysis using OpenSees.
+triggers:
+  - OpenSees 动力分析
+  - 模态分析
+  - 时程分析
+  - opensees dynamic
+  - modal analysis
+  - time history
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - analysis-policy
+  - analysis-execution
+grants:
+  - run_analysis
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 150
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+software: opensees
+analysisType: dynamic
+engineId: builtin-opensees
+adapterKey: builtin-opensees
+runtimeRelativePath: runtime.py
+supportedAnalysisTypes:
+  - dynamic
+supportedModelFamilies:
+  - frame
+  - truss
+  - generic
+materialFamilies: []
+aliases: []
+toolHints: {}

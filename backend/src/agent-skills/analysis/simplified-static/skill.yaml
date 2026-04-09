@@ -1,0 +1,46 @@
+id: simplified-static
+domain: analysis
+source: builtin
+name:
+  zh: 简化静力分析
+  en: Simplified Static Analysis
+description:
+  zh: 使用简化内置求解器执行快速静力分析的 skill。
+  en: Skill for fast static analysis using the simplified builtin solver.
+triggers:
+  - 简化静力分析
+  - 快速静力分析
+  - simplified static
+  - fast static analysis
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - analysis-policy
+  - analysis-execution
+grants:
+  - run_analysis
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 40
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+software: simplified
+analysisType: static
+engineId: builtin-simplified
+adapterKey: builtin-simplified
+runtimeRelativePath: runtime.py
+supportedAnalysisTypes:
+  - static
+supportedModelFamilies:
+  - frame
+  - truss
+  - generic
+materialFamilies: []
+aliases: []
+toolHints: {}

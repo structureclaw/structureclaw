@@ -1,0 +1,56 @@
+id: section-common
+domain: section
+source: builtin
+name:
+  zh: 通用截面设计
+  en: Common Section Designer
+description:
+  zh: 常规梁、框架、柱与标准型钢截面的补参、默认建议与模型骨架生成。
+  en: Parameter clarification, default guidance, and model skeleton generation for common beams, frames, columns, and standard profiles.
+triggers:
+  - 截面
+  - 工字钢
+  - H型钢
+  - 钢框架
+  - 型钢
+  - section
+  - section design
+  - profile
+stages:
+  - intent
+  - draft
+  - analysis
+  - design
+structureType: frame
+structuralTypeKeys:
+  - beam
+  - frame
+  - steel-frame
+  - bridge
+capabilities:
+  - section.detect
+  - section.draft
+  - section.model
+  - section.validate
+grants:
+  - draft_model
+  - update_model
+  - validate_model
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: false
+priority: 100
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+version: 1.0.0
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - frame
+  - generic
+materialFamilies:
+  - steel
+  - composite
+aliases: []
+toolHints: {}

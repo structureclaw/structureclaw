@@ -1,14 +1,3 @@
----
-id: beam
-structureType: beam
-zhName: 梁
-enName: Beam
-zhDescription: 梁草模生成 skill。
-enDescription: Beam draft generation skill.
-triggers: ["beam","梁","悬臂"]
-stages: ["draft"]
-autoLoadByDefault: true
----
 # Draft
 
 - 必填参数：`lengthM`, `loadKN`

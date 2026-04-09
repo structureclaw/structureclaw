@@ -1,0 +1,44 @@
+id: visualization-3d-scene
+domain: visualization
+source: builtin
+name:
+  zh: 3D 结构可视化
+  en: 3D Structural Visualization
+description:
+  zh: 基于 Three.js 的三维结构场景渲染，支持内力云图、变形动画与节点单元拾取。
+  en: Three.js-based 3D structural scene rendering with force contours, deformation animation, and node/element picking.
+triggers:
+  - 可视化
+  - visualization
+  - 3D
+  - 三维
+  - 场景
+  - 渲染
+  - 内力图
+  - 变形图
+  - 轴力
+  - 剪力
+  - 弯矩
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - result-visualization
+  - scene-rendering
+grants: []
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 80
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - generic
+materialFamilies: []
+aliases: []
+toolHints: {}

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MIN_MAJOR=18
-TARGET_NODE_VERSION="${TARGET_NODE_VERSION:-20}"
+MIN_MAJOR=20
+TARGET_NODE_VERSION="${TARGET_NODE_VERSION:-24}"
 
 has_node() {
   command -v node >/dev/null 2>&1

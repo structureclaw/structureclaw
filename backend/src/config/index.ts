@@ -25,8 +25,6 @@ function resolveReportsDir(rawValue: string | undefined): string {
 
 dotenv.config({ path: rootEnvPath });
 
-const redisUrlRaw = process.env.REDIS_URL;
-const redisEnabled = redisUrlRaw && redisUrlRaw.toLowerCase() !== 'disabled';
 const llmProviderRaw = (process.env.LLM_PROVIDER || 'openai').toLowerCase();
 const llmProvider = ['openai', 'zhipu', 'openai-compatible'].includes(llmProviderRaw)
   ? llmProviderRaw
@@ -65,13 +63,6 @@ export const config = {
 
   // 数据库配置
   databaseUrl: process.env.DATABASE_URL || defaultSqliteDatabaseUrl,
-
-  // Redis 配置
-  redisUrl: redisEnabled ? redisUrlRaw! : '',
-
-  // JWT 配置
-  jwtSecret: process.env.JWT_SECRET || 'your-super-secret-jwt-key',
-  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '7d',
 
   // AI 配置
   llmProvider,

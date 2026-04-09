@@ -48,8 +48,8 @@ async function validateAgentOrchestration(context) {
   const AgentService = await importBackendAgentService(context.rootDir);
   const fsModule = await import("node:fs");
 
-  const withDefaultSkills = (svc) => {
-    const defaultSkillIds = svc.listSkills().map((skill) => skill.id);
+  const withDefaultSkills = async (svc) => {
+    const defaultSkillIds = (await svc.listSkills()).map((skill) => skill.id);
 
     const applyDefaultSkills = (params) => {
       const currentContext = params?.context || {};
@@ -173,7 +173,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     svc.llm = {
       invoke: async () => ({
         content: JSON.stringify({
@@ -195,7 +195,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     stubExecutionClients(svc, {
       validate: async () => {
         const error = new Error("validation failed");
@@ -217,7 +217,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
     const result = await svc.runForcedExecution({
@@ -238,7 +238,7 @@ async function validateAgentOrchestration(context) {
     assert(result.toolCalls.some((call) => call.tool === "validate_model"), "validate_model should be called");
     assert(result.toolCalls.some((call) => call.tool === "run_analysis"), "run_analysis should be called");
     assert(result.toolCalls.some((call) => call.tool === "generate_report"), "generate_report should be generated");
-    assert(result.toolCalls.some((call) => call.tool === "run_analysis" && call.source === "external"), "run_analysis should expose external source");
+    assert(result.toolCalls.some((call) => call.tool === "run_analysis" && call.source === "builtin"), "run_analysis should expose builtin source");
     assert(result.toolCalls.some((call) => call.tool === "run_analysis" && Array.isArray(call.authorizedBySkillIds) && call.authorizedBySkillIds.length > 0), "run_analysis should expose authorized skill ids");
     assert(result.report && result.report.summary, "report payload should exist");
     assert(result.metrics?.toolCount >= 2, "tool metrics should be present");
@@ -249,7 +249,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
     const events = [];
@@ -277,7 +277,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
     const result = await svc.runForcedExecution({
@@ -306,7 +306,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
     const first = await svc.runForcedExecution({
@@ -338,7 +338,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
 
     const collecting = await svc.runChatOnly({
       conversationId: "conv-conversation-complete-model",
@@ -373,7 +373,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     const first = await svc.runChatOnly({
       conversationId: "conv-conversation-followup-1",
       message: "先聊需求，我要做一个门式刚架",
@@ -405,7 +405,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
 
     const first = await svc.runChatOnly({
       conversationId: "conv-conversation-followup-beam-1",
@@ -474,7 +474,7 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
     stubExecutionClients(svc);
 
     const beam = await svc.runChatOnly({
@@ -516,7 +516,8 @@ async function validateAgentOrchestration(context) {
   }
 
   {
-    const svc = withDefaultSkills(new AgentService());
+    const svc = await withDefaultSkills(new AgentService());
+    const defaultSkillIds = (await svc.listSkills()).map((skill) => skill.id);
     let capturedCodeCheckPayload;
     stubExecutionClients(svc, {
       codeCheck: async (_targetPath, payload) => {
@@ -556,7 +557,7 @@ async function validateAgentOrchestration(context) {
     const result = await svc.runForcedExecution({
       message: "请对该模型做静力分析并按GB50017做规范校核并出报告",
       context: {
-        skillIds: [...svc.listSkills().map((skill) => skill.id), "code-check-gb50017"],
+        skillIds: [...defaultSkillIds, "code-check-gb50017"],
         model: {
           schema_version: "1.0.0",
           nodes: [
@@ -672,7 +673,7 @@ async function validateAgentCapabilityModes(context) {
 
   const AgentService = await importBackendAgentService(context.rootDir);
   const svc = new AgentService();
-  const defaultSkillIds = svc.listSkills().map((skill) => skill.id);
+  const defaultSkillIds = (await svc.listSkills()).map((skill) => skill.id);
 
   svc.structureProtocolClient = {
     post: async (targetPath, payload) => {
@@ -761,6 +762,1391 @@ async function validateAgentCapabilityModes(context) {
   assert(fullAgent.model && typeof fullAgent.model === "object", "full agent should return model artifact");
 
   console.log("[ok] capability-mode contract");
+}
+
+async function validateAgentManifestBinding(context) {
+  await runBackendBuildOnce(context);
+  clearProviderEnv();
+
+  const { AgentCapabilityService } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent-capability.js")).href);
+  const { CONVERT_MODEL_TOOL_MANIFEST } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-tools", "builtin", "convert-model.js")).href);
+
+  const makeLocalizedText = (zh, en) => ({ zh, en });
+  const compatibility = { minRuntimeVersion: "0.1.0", skillApiVersion: "v1" };
+  const categoryByToolId = {
+    draft_model: "modeling",
+    update_model: "modeling",
+    run_analysis: "analysis",
+    validate_model: "utility",
+    run_code_check: "code-check",
+    generate_report: "report",
+  };
+
+  const makeGrantTool = (toolId, skillId, requiresTools = []) => ({
+    id: toolId,
+    source: "external",
+    enabledByDefault: false,
+    category: categoryByToolId[toolId],
+    providedBySkillId: skillId,
+    requiresSkills: [skillId],
+    requiresTools,
+    tags: [`${toolId}`, "external-provided"],
+    displayName: makeLocalizedText(toolId, toolId),
+    description: makeLocalizedText(
+      `${skillId} skill 提供的 ${toolId} 工具。`,
+      `The ${skillId} skill provides the ${toolId} tool.`,
+    ),
+  });
+
+  const makeManifest = (id, domain, options = {}) => ({
+    id,
+    domain,
+    name: options.name ?? makeLocalizedText(`${id} 技能`, `${id} skill`),
+    description: options.description ?? makeLocalizedText(`${id} 技能描述`, `${id} skill description`),
+    stages: options.stages ?? ["analysis"],
+    triggers: options.triggers ?? [id],
+    autoLoadByDefault: options.autoLoadByDefault ?? false,
+    structureType: options.structureType ?? "unknown",
+    requires: options.requires ?? [],
+    conflicts: options.conflicts ?? [],
+    capabilities: options.capabilities ?? [],
+    enabledTools: options.enabledTools,
+    providedTools: options.providedTools,
+    supportedAnalysisTypes: options.supportedAnalysisTypes ?? [],
+    supportedModelFamilies: options.supportedModelFamilies ?? ["generic"],
+    materialFamilies: options.materialFamilies ?? [],
+    priority: options.priority ?? 0,
+    compatibility,
+  });
+
+  const validSkillSpecs = [
+    {
+      id: "beam",
+      domain: "structure-type",
+      structureType: "beam",
+      name: makeLocalizedText("梁", "Beam"),
+      description: makeLocalizedText("梁类结构技能", "Beam structure skill"),
+      stages: ["intent", "draft", "analysis"],
+      triggers: ["beam"],
+      autoLoadByDefault: true,
+      capabilities: ["model-drafting"],
+      providedTools: ["draft_model", "update_model"],
+      supportedAnalysisTypes: [],
+      supportedModelFamilies: ["frame", "generic"],
+      priority: 100,
+    },
+    {
+      id: "analysis-primary",
+      domain: "analysis",
+      structureType: "unknown",
+      name: makeLocalizedText("主分析技能", "Primary analysis skill"),
+      description: makeLocalizedText("为 run_analysis 提供显式授权", "Provides explicit authorization for run_analysis"),
+      stages: ["analysis"],
+      triggers: ["analysis"],
+      autoLoadByDefault: false,
+      capabilities: ["analysis-execution"],
+      providedTools: ["run_analysis"],
+      supportedAnalysisTypes: ["static"],
+      supportedModelFamilies: ["generic"],
+      priority: 90,
+    },
+    {
+      id: "analysis-secondary",
+      domain: "analysis",
+      structureType: "unknown",
+      name: makeLocalizedText("备选分析技能", "Secondary analysis skill"),
+      description: makeLocalizedText("与主技能共享 run_analysis 授权", "Shares run_analysis authorization with the primary skill"),
+      stages: ["analysis"],
+      triggers: ["analysis-secondary"],
+      autoLoadByDefault: false,
+      capabilities: ["analysis-execution"],
+      providedTools: ["run_analysis"],
+      supportedAnalysisTypes: ["static"],
+      supportedModelFamilies: ["generic"],
+      priority: 80,
+    },
+    {
+      id: "validator",
+      domain: "validation",
+      structureType: "unknown",
+      name: makeLocalizedText("校验技能", "Validation skill"),
+      description: makeLocalizedText("为 validate_model 提供授权", "Provides authorization for validate_model"),
+      stages: ["analysis"],
+      triggers: ["validate"],
+      autoLoadByDefault: false,
+      capabilities: ["model-validation"],
+      providedTools: ["validate_model"],
+      supportedAnalysisTypes: [],
+      supportedModelFamilies: ["generic"],
+      priority: 70,
+    },
+    {
+      id: "checker",
+      domain: "code-check",
+      structureType: "unknown",
+      name: makeLocalizedText("校核技能", "Code-check skill"),
+      description: makeLocalizedText("为 run_code_check 提供授权", "Provides authorization for run_code_check"),
+      stages: ["design"],
+      triggers: ["code-check"],
+      autoLoadByDefault: false,
+      capabilities: ["code-check-execution"],
+      providedTools: ["run_code_check"],
+      supportedAnalysisTypes: [],
+      supportedModelFamilies: ["generic"],
+      priority: 60,
+    },
+    {
+      id: "reporter",
+      domain: "report-export",
+      structureType: "unknown",
+      name: makeLocalizedText("报告技能", "Report skill"),
+      description: makeLocalizedText("为 generate_report 提供授权", "Provides authorization for generate_report"),
+      stages: ["design"],
+      triggers: ["report"],
+      autoLoadByDefault: false,
+      capabilities: ["report-export"],
+      providedTools: ["generate_report"],
+      supportedAnalysisTypes: [],
+      supportedModelFamilies: ["generic"],
+      priority: 50,
+    },
+  ];
+
+  const validManifestById = new Map(
+    validSkillSpecs.map((spec) => [spec.id, makeManifest(spec.id, spec.domain, spec)]),
+  );
+  const validCatalogEntries = validSkillSpecs.map((spec) => ({
+    id: spec.id,
+    canonicalId: spec.id,
+    aliases: [],
+    domain: spec.domain,
+    name: spec.name,
+    description: spec.description,
+    stages: spec.stages,
+    triggers: spec.triggers,
+    autoLoadByDefault: spec.autoLoadByDefault,
+    structureType: spec.structureType,
+    capabilities: spec.capabilities,
+    enabledTools: [],
+    providedTools: spec.providedTools,
+    supportedAnalysisTypes: spec.supportedAnalysisTypes,
+    supportedModelFamilies: spec.supportedModelFamilies,
+    materialFamilies: [],
+    priority: spec.priority,
+    compatibility,
+    manifestPath: `/virtual/skills/${spec.id}/skill.yaml`,
+  }));
+  const validGrantTools = [
+    makeGrantTool("draft_model", "beam"),
+    makeGrantTool("update_model", "beam"),
+    makeGrantTool("run_analysis", "analysis-primary", ["validate_model"]),
+    makeGrantTool("validate_model", "validator"),
+    makeGrantTool("run_code_check", "checker", ["run_analysis"]),
+    makeGrantTool("generate_report", "reporter", ["run_analysis"]),
+  ];
+
+  const strictManifestSpec = {
+    id: "malformed-binding",
+    domain: "analysis",
+    structureType: "unknown",
+    stages: ["analysis"],
+    triggers: ["malformed-binding"],
+    autoLoadByDefault: false,
+    capabilities: ["analysis-execution"],
+    providedTools: ["run_analysis"],
+    supportedAnalysisTypes: ["static"],
+    supportedModelFamilies: ["generic"],
+    priority: 10,
+  };
+  const strictManifest = makeManifest(strictManifestSpec.id, strictManifestSpec.domain, {
+    ...strictManifestSpec,
+    name: {},
+    description: {},
+    enabledTools: undefined,
+    providedTools: undefined,
+    supportedModelFamilies: undefined,
+  });
+  const strictCatalogEntry = {
+    id: strictManifestSpec.id,
+    canonicalId: strictManifestSpec.id,
+    aliases: [],
+    domain: strictManifestSpec.domain,
+    name: {},
+    description: {},
+    stages: strictManifestSpec.stages,
+    triggers: strictManifestSpec.triggers,
+    autoLoadByDefault: strictManifestSpec.autoLoadByDefault,
+    structureType: strictManifestSpec.structureType,
+    capabilities: strictManifestSpec.capabilities,
+    enabledTools: [],
+    providedTools: strictManifestSpec.providedTools,
+    supportedAnalysisTypes: strictManifestSpec.supportedAnalysisTypes,
+    supportedModelFamilies: strictManifestSpec.supportedModelFamilies,
+    materialFamilies: [],
+    priority: strictManifestSpec.priority,
+    compatibility,
+    manifestPath: `/virtual/skills/${strictManifestSpec.id}/skill.yaml`,
+  };
+
+  const buildResolvedTooling = (manifests) => {
+    const enabledToolIdsBySkill = {};
+    const providedToolIdsBySkill = {};
+    const skillIdsByToolId = {};
+    const toolsById = new Map();
+
+    for (const manifest of manifests) {
+      const providedToolIds = Array.isArray(manifest.providedTools) ? [...manifest.providedTools] : [];
+      const enabledToolIds = Array.isArray(manifest.enabledTools) ? [...manifest.enabledTools] : [];
+      enabledToolIdsBySkill[manifest.id] = enabledToolIds;
+      providedToolIdsBySkill[manifest.id] = providedToolIds;
+
+      for (const toolId of [...enabledToolIds, ...providedToolIds]) {
+        if (!skillIdsByToolId[toolId]) {
+          skillIdsByToolId[toolId] = [];
+        }
+        if (!skillIdsByToolId[toolId].includes(manifest.id)) {
+          skillIdsByToolId[toolId].push(manifest.id);
+        }
+      }
+    }
+
+    for (const tool of validGrantTools) {
+      toolsById.set(tool.id, tool);
+    }
+
+    return {
+      tools: [...toolsById.values()],
+      enabledToolIdsBySkill,
+      providedToolIdsBySkill,
+      skillIdsByToolId,
+    };
+  };
+
+  const makeEngine = (id, overrides = {}) => ({
+    id,
+    name: id,
+    enabled: true,
+    available: true,
+    status: "available",
+    supportedModelFamilies: ["generic"],
+    supportedAnalysisTypes: ["static"],
+    ...overrides,
+  });
+
+  const strictCapabilityService = new AgentCapabilityService(
+    {
+      listSkillManifests: async () => [strictManifest],
+      resolveSkillTooling: async () => buildResolvedTooling([strictManifest]),
+      listBuiltinToolManifests: () => [CONVERT_MODEL_TOOL_MANIFEST],
+    },
+    {
+      listBuiltinSkills: async () => [strictCatalogEntry],
+      resolveCanonicalSkillId: (id) => id,
+    },
+    {
+      listBuiltinTools: async () => [CONVERT_MODEL_TOOL_MANIFEST],
+    },
+    {
+      listEngines: async () => ({ engines: [makeEngine("engine-strict")] }),
+    },
+  );
+
+  let rejectedMalformedManifest = false;
+  try {
+    await strictCapabilityService.getCapabilityMatrix({ analysisType: "static" });
+  } catch (_error) {
+    rejectedMalformedManifest = true;
+  }
+  assert(rejectedMalformedManifest, "malformed manifest-backed capability metadata must be rejected instead of silently accepted");
+
+  const capabilityService = new AgentCapabilityService(
+    {
+      listSkillManifests: async () => validSkillSpecs.map((spec) => validManifestById.get(spec.id)),
+      resolveSkillTooling: async (skillIds) => buildResolvedTooling(validSkillSpecs.filter((spec) => skillIds === undefined || skillIds.includes(spec.id)).map((spec) => validManifestById.get(spec.id))),
+      listBuiltinToolManifests: () => [CONVERT_MODEL_TOOL_MANIFEST],
+    },
+    {
+      listBuiltinSkills: async () => validCatalogEntries,
+      resolveCanonicalSkillId: (id) => id,
+    },
+    {
+      listBuiltinTools: async () => [CONVERT_MODEL_TOOL_MANIFEST],
+    },
+    {
+      listEngines: async () => ({
+        engines: [
+          makeEngine("engine-frame", {
+            supportedModelFamilies: ["frame", "generic"],
+            supportedAnalysisTypes: ["static"],
+          }),
+          makeEngine("engine-generic", {
+            supportedModelFamilies: ["generic"],
+            supportedAnalysisTypes: ["static"],
+          }),
+          makeEngine("engine-offline", {
+            available: false,
+            status: "unavailable",
+            supportedModelFamilies: ["frame", "generic"],
+            supportedAnalysisTypes: ["static"],
+          }),
+        ],
+      }),
+    },
+  );
+
+  const matrix = await capabilityService.getCapabilityMatrix({ analysisType: "static" });
+  assert(matrix.foundationToolIds.includes("convert_model"), "convert_model should remain a foundation tool");
+  assert(matrix.tools.some((tool) => tool.id === "convert_model"), "convert_model should remain available in the tool catalog");
+  assert(!matrix.foundationToolIds.includes("run_analysis"), "run_analysis should not be a foundation tool");
+  assert(!matrix.foundationToolIds.includes("generate_report"), "generate_report should not be a foundation tool");
+  assert(matrix.tools.every((tool) => tool.id === "convert_model" || (Array.isArray(tool.requiresSkills) && tool.requiresSkills.length > 0)), "non-foundation tools should require explicit grants");
+  assert(matrix.tools.find((tool) => tool.id === "run_analysis")?.requiresTools.includes("validate_model"), "run_analysis should preserve its validate_model dependency");
+  assert(matrix.tools.find((tool) => tool.id === "generate_report")?.requiresTools.includes("run_analysis"), "generate_report should preserve its run_analysis dependency");
+  assert(Array.isArray(matrix.skillIdsByToolId.run_analysis) && matrix.skillIdsByToolId.run_analysis.includes("analysis-primary") && matrix.skillIdsByToolId.run_analysis.includes("analysis-secondary"), "multiple skills should be able to grant the same tool");
+  assert(matrix.skillIdsByToolId.generate_report?.includes("reporter"), "generate_report should be attributed to its granting skill");
+  assert(matrix.validEngineIdsBySkill.beam.includes("engine-frame"), "beam should stay compatible with the frame engine");
+  assert(!matrix.validEngineIdsBySkill.beam.includes("engine-offline"), "beam should not treat unavailable engines as valid");
+  assert(matrix.filteredEngineReasonsBySkill.beam["engine-offline"].includes("engine_unavailable"), "beam should record unavailable engine reasons");
+  assert(matrix.skillDomainById.beam === "structure-type", "skill identity should remain separate from engine availability");
+  assert(matrix.validSkillIdsByEngine["engine-offline"].includes("beam"), "unavailable engines should still preserve skill compatibility metadata");
+  assert(matrix.skills.some((skill) => skill.id === "analysis-primary" && skill.runtimeStatus === "active"), "analysis skill identity should remain present in the catalog");
+  console.log("[ok] agent manifest binding contract");
+}
+
+async function validateAgentManifestLoader(context) {
+  await runBackendBuildOnce(context);
+
+  const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "sclaw-manifest-loader-"));
+  const validSkillRoot = path.join(tempRoot, "skills-valid");
+  const invalidSkillRoot = path.join(tempRoot, "skills-invalid");
+  const validToolRoot = path.join(tempRoot, "tools-valid");
+  const invalidToolRoot = path.join(tempRoot, "tools-invalid");
+
+  const write = async (filePath, content) => {
+    await fsp.mkdir(path.dirname(filePath), { recursive: true });
+    await fsp.writeFile(filePath, content, "utf8");
+  };
+  const STAGE_FILE_NAMES = ["intent.md", "draft.md", "analysis.md", "design.md"];
+
+  const assertDeclaredStagesCoverMarkdownAssets = async (skills, domainRoot, messagePrefix) => {
+    for (const skill of skills) {
+      const skillDir = path.dirname(skill.manifestPath);
+      const relativeSkillDir = path.relative(domainRoot, skillDir) || skill.id;
+      const entries = await fsp.readdir(skillDir);
+      const stageAssets = STAGE_FILE_NAMES
+        .filter((fileName) => entries.includes(fileName))
+        .map((fileName) => fileName.replace(/\.md$/, ""))
+        .sort();
+      const declaredStages = Array.isArray(skill.stages) ? [...skill.stages].sort() : [];
+      for (const stage of stageAssets) {
+        assert(
+          declaredStages.includes(stage),
+          `${messagePrefix} ${relativeSkillDir} should declare stage '${stage}' in skill.yaml when ${stage}.md exists`,
+        );
+      }
+    }
+  };
+
+  const assertBuiltinCompatibilityMatchesRuntimeDefaults = (skills, messagePrefix) => {
+    for (const skill of skills) {
+      assert(
+        skill.compatibility?.minRuntimeVersion === "0.1.0",
+        `${messagePrefix} ${skill.id} should target builtin runtime minRuntimeVersion 0.1.0`,
+      );
+      assert(
+        skill.compatibility?.skillApiVersion === "v1",
+        `${messagePrefix} ${skill.id} should target builtin skillApiVersion v1`,
+      );
+    }
+  };
+
+  try {
+    await write(
+      path.join(validSkillRoot, "analysis", "analysis-static", "skill.yaml"),
+      [
+        "id: analysis-static",
+        "domain: analysis",
+        "source: builtin",
+        "name:",
+        "  zh: 静力分析技能",
+        "  en: Static Analysis Skill",
+        "description:",
+        "  zh: 负责静力分析授权。",
+        "  en: Grants static analysis execution.",
+        "triggers:",
+        "  - static",
+        "stages:",
+        "  - analysis",
+        "structureType: unknown",
+        "structuralTypeKeys: []",
+        "capabilities:",
+        "  - analysis-execution",
+        "grants:",
+        "  - run_analysis",
+        "requires: []",
+        "conflicts: []",
+        "autoLoadByDefault: false",
+        "priority: 10",
+        "compatibility:",
+        "  minRuntimeVersion: 0.1.0",
+        "  skillApiVersion: v1",
+        "software: simplified",
+        "analysisType: static",
+        "engineId: builtin-simplified",
+        "adapterKey: builtin-simplified",
+        "runtimeRelativePath: runtime.py",
+        "supportedAnalysisTypes:",
+        "  - static",
+        "supportedModelFamilies:",
+        "  - generic",
+        "materialFamilies: []",
+        "",
+      ].join("\n"),
+    );
+    await write(
+      path.join(validSkillRoot, "analysis", "analysis-static", "intent.md"),
+      "# Static analysis prompt",
+    );
+    await write(
+      path.join(validSkillRoot, "analysis", "legacy-only", "intent.md"),
+      "# legacy skill without manifest should be ignored",
+    );
+    await write(
+      path.join(invalidSkillRoot, "analysis", "invalid-analysis", "skill.yaml"),
+      [
+        "id: invalid-analysis",
+        "domain: analysis",
+        "source: builtin",
+        "name:",
+        "  zh: 缺失英文名称",
+        "description:",
+        "  zh: 描述存在",
+        "  en: Description exists",
+        "triggers: []",
+        "stages:",
+        "  - analysis",
+        "structureType: unknown",
+        "structuralTypeKeys: []",
+        "capabilities: []",
+        "grants: []",
+        "requires: []",
+        "conflicts: []",
+        "autoLoadByDefault: false",
+        "priority: 0",
+        "compatibility:",
+        "  minRuntimeVersion: 0.1.0",
+        "  skillApiVersion: v1",
+        "supportedAnalysisTypes: []",
+        "supportedModelFamilies:",
+        "  - generic",
+        "materialFamilies: []",
+        "",
+      ].join("\n"),
+    );
+
+    await write(
+      path.join(validToolRoot, "run-analysis", "tool.yaml"),
+      [
+        "id: run_analysis",
+        "source: builtin",
+        "tier: domain",
+        "category: analysis",
+        "enabledByDefault: false",
+        "displayName:",
+        "  zh: 执行结构分析",
+        "  en: Run Structural Analysis",
+        "description:",
+        "  zh: 执行分析求解。",
+        "  en: Execute structural analysis.",
+        "requiresSkills:",
+        "  - analysis-static",
+        "requiresTools:",
+        "  - validate_model",
+        "tags:",
+        "  - builtin",
+        "inputSchema: {}",
+        "outputSchema: {}",
+        "errorCodes:",
+        "  - ENGINE_UNAVAILABLE",
+        "",
+      ].join("\n"),
+    );
+    await write(
+      path.join(validToolRoot, "legacy-helper", "handler.ts"),
+      "export const legacy = true;\n",
+    );
+    await write(
+      path.join(invalidToolRoot, "invalid-tool", "tool.yaml"),
+      [
+        "id: invalid_tool",
+        "source: builtin",
+        "tier: domain",
+        "category: analysis",
+        "enabledByDefault: false",
+        "displayName:",
+        "  zh: 缺失英文名",
+        "description:",
+        "  zh: 描述存在",
+        "  en: Description exists",
+        "requiresSkills: []",
+        "requiresTools: []",
+        "tags: []",
+        "inputSchema: {}",
+        "outputSchema: {}",
+        "errorCodes: []",
+        "",
+      ].join("\n"),
+    );
+
+    const { loadSkillManifestsFromDirectory } = await import(
+      pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-runtime", "skill-manifest-loader.js")).href
+    );
+    const { loadToolManifestsFromDirectory } = await import(
+      pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-runtime", "tool-manifest-loader.js")).href
+    );
+    const { resolveToolingForSkillManifests } = await import(
+      pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-runtime", "tool-registry.js")).href
+    );
+
+    const skills = await loadSkillManifestsFromDirectory(validSkillRoot);
+    assert(Array.isArray(skills), "skill manifest loader should return an array");
+    assert(skills.length === 1, "skill manifest loader should only load directories with skill.yaml");
+    assert(skills[0].id === "analysis-static", "skill manifest loader should preserve manifest id");
+    assert(Array.isArray(skills[0].grants) && skills[0].grants.includes("run_analysis"), "skill manifest loader should parse explicit grants");
+    assert(skills[0].name?.zh === "静力分析技能" && skills[0].name?.en === "Static Analysis Skill", "skill manifest loader should preserve bilingual localized text");
+    assert(skills[0].software === "simplified", "skill manifest loader should preserve optional analysis software metadata");
+    assert(skills[0].analysisType === "static", "skill manifest loader should preserve optional analysisType metadata");
+    assert(skills[0].engineId === "builtin-simplified", "skill manifest loader should preserve optional engineId metadata");
+    assert(skills[0].adapterKey === "builtin-simplified", "skill manifest loader should preserve optional adapterKey metadata");
+    assert(skills[0].runtimeRelativePath === "runtime.py", "skill manifest loader should preserve optional runtimeRelativePath metadata");
+
+    let rejectedInvalidSkill = false;
+    try {
+      await loadSkillManifestsFromDirectory(invalidSkillRoot);
+    } catch (_error) {
+      rejectedInvalidSkill = true;
+    }
+    assert(rejectedInvalidSkill, "skill manifest loader should reject malformed skill.yaml files");
+
+    const tools = await loadToolManifestsFromDirectory(validToolRoot);
+    assert(Array.isArray(tools), "tool manifest loader should return an array");
+    assert(tools.length === 1, "tool manifest loader should only load directories with tool.yaml");
+    assert(tools[0].id === "run_analysis", "tool manifest loader should preserve manifest id");
+    assert(tools[0].tier === "domain", "tool manifest loader should preserve tool tier");
+    assert(Array.isArray(tools[0].requiresTools) && tools[0].requiresTools.includes("validate_model"), "tool manifest loader should preserve tool dependencies");
+
+    let rejectedInvalidTool = false;
+    try {
+      await loadToolManifestsFromDirectory(invalidToolRoot);
+    } catch (_error) {
+      rejectedInvalidTool = true;
+    }
+    assert(rejectedInvalidTool, "tool manifest loader should reject malformed tool.yaml files");
+
+    let rejectedUnknownGrantedTool = false;
+    try {
+      resolveToolingForSkillManifests([
+        {
+          id: "analysis-unknown-tool",
+          domain: "analysis",
+          name: { zh: "未知工具分析", en: "Unknown Tool Analysis" },
+          description: { zh: "错误授权未知工具。", en: "Incorrectly grants an unknown tool." },
+          triggers: [],
+          stages: ["analysis"],
+          autoLoadByDefault: false,
+          structureType: "unknown",
+          structuralTypeKeys: [],
+          requires: [],
+          conflicts: [],
+          capabilities: ["analysis-execution"],
+          enabledTools: ["nonexistent_tool"],
+          providedTools: [],
+          supportedAnalysisTypes: ["static"],
+          supportedModelFamilies: ["generic"],
+          materialFamilies: [],
+          priority: 0,
+          compatibility: { minRuntimeVersion: "0.1.0", skillApiVersion: "v1" },
+        },
+      ], ["analysis-unknown-tool"]);
+    } catch (_error) {
+      rejectedUnknownGrantedTool = true;
+    }
+    assert(rejectedUnknownGrantedTool, "tool registry should reject skill manifests that grant unknown tools instead of synthesizing placeholder tools");
+
+    const builtinStructureTypeRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "structure-type");
+    const builtinStructureTypeSkills = await loadSkillManifestsFromDirectory(builtinStructureTypeRoot);
+    const builtinStructureTypeIds = builtinStructureTypeSkills.map((skill) => skill.id).sort();
+    assert(
+      JSON.stringify(builtinStructureTypeIds) === JSON.stringify([
+        "beam",
+        "double-span-beam",
+        "frame",
+        "generic",
+        "portal-frame",
+        "truss",
+      ]),
+      "skill manifest loader should discover builtin structure-type skills from real skill.yaml files",
+    );
+    assert(
+      builtinStructureTypeSkills.every((skill) => Array.isArray(skill.grants) && skill.grants.length > 0),
+      "builtin structure-type skill manifests should declare explicit tool grants",
+    );
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinStructureTypeSkills,
+      builtinStructureTypeRoot,
+      "builtin structure-type skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinStructureTypeSkills,
+      "builtin structure-type skill manifest",
+    );
+    const builtinAnalysisRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "analysis");
+    const builtinAnalysisSkills = await loadSkillManifestsFromDirectory(builtinAnalysisRoot);
+    const builtinAnalysisIds = builtinAnalysisSkills.map((skill) => skill.id).sort();
+    assert(
+      JSON.stringify(builtinAnalysisIds) === JSON.stringify([
+        "opensees-dynamic",
+        "opensees-nonlinear",
+        "opensees-seismic",
+        "opensees-static",
+        "simplified-dynamic",
+        "simplified-seismic",
+        "simplified-static",
+      ]),
+      "skill manifest loader should discover builtin analysis skills from real skill.yaml files",
+    );
+    assert(
+      builtinAnalysisSkills.every((skill) => skill.software && skill.analysisType && skill.engineId && skill.adapterKey),
+      "builtin analysis skill manifests should declare explicit execution metadata",
+    );
+    assert(
+      builtinAnalysisSkills.every((skill) => Array.isArray(skill.grants) && skill.grants.includes("run_analysis")),
+      "builtin analysis skill manifests should declare explicit run_analysis grants",
+    );
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinAnalysisSkills,
+      builtinAnalysisRoot,
+      "builtin analysis skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinAnalysisSkills,
+      "builtin analysis skill manifest",
+    );
+    const builtinCodeCheckRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "code-check");
+    const builtinCodeCheckSkills = await loadSkillManifestsFromDirectory(builtinCodeCheckRoot);
+    const builtinCodeCheckIds = builtinCodeCheckSkills.map((skill) => skill.id).sort();
+    assert(
+      JSON.stringify(builtinCodeCheckIds) === JSON.stringify([
+        "code-check-gb50010",
+        "code-check-gb50011",
+        "code-check-gb50017",
+        "code-check-jgj3",
+      ]),
+      "skill manifest loader should discover builtin code-check skills from real skill.yaml files",
+    );
+    assert(
+      builtinCodeCheckSkills.every((skill) => typeof skill.designCode === "string" && skill.designCode.length > 0),
+      "builtin code-check skill manifests should declare explicit designCode metadata",
+    );
+    assert(
+      builtinCodeCheckSkills.every((skill) => Array.isArray(skill.grants) && skill.grants.includes("run_code_check")),
+      "builtin code-check skill manifests should declare explicit run_code_check grants",
+    );
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinCodeCheckSkills,
+      builtinCodeCheckRoot,
+      "builtin code-check skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinCodeCheckSkills,
+      "builtin code-check skill manifest",
+    );
+    const builtinLoadBoundaryRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "load-boundary");
+    const builtinLoadBoundarySkills = await loadSkillManifestsFromDirectory(builtinLoadBoundaryRoot);
+    const builtinLoadBoundaryIds = builtinLoadBoundarySkills.map((skill) => skill.id).sort();
+    assert(
+      JSON.stringify(builtinLoadBoundaryIds) === JSON.stringify([
+        "boundary-condition",
+        "crane-load",
+        "dead-load",
+        "live-load",
+        "load-combination",
+        "nodal-constraint",
+        "seismic-load",
+        "snow-load",
+        "temperature-load",
+        "wind-load",
+      ]),
+      "skill manifest loader should discover builtin load-boundary skills from real skill.yaml files",
+    );
+    const deadLoadSkill = builtinLoadBoundarySkills.find((skill) => skill.id === "dead-load");
+    assert(deadLoadSkill?.version === "1.0.0", "dead-load manifest should preserve version metadata");
+    assert(Array.isArray(deadLoadSkill?.scenarioKeys) && deadLoadSkill.scenarioKeys.includes("frame"), "dead-load manifest should preserve scenarioKeys metadata");
+    assert(Array.isArray(deadLoadSkill?.loadTypes) && deadLoadSkill.loadTypes.includes("self-weight"), "dead-load manifest should preserve loadTypes metadata");
+    const boundarySkill = builtinLoadBoundarySkills.find((skill) => skill.id === "boundary-condition");
+    assert(Array.isArray(boundarySkill?.boundaryTypes) && boundarySkill.boundaryTypes.includes("fixed"), "boundary-condition manifest should preserve boundaryTypes metadata");
+    const combinationSkill = builtinLoadBoundarySkills.find((skill) => skill.id === "load-combination");
+    assert(Array.isArray(combinationSkill?.combinationTypes) && combinationSkill.combinationTypes.includes("ULS"), "load-combination manifest should preserve combinationTypes metadata");
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinLoadBoundarySkills,
+      builtinLoadBoundaryRoot,
+      "builtin load-boundary skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinLoadBoundarySkills,
+      "builtin load-boundary skill manifest",
+    );
+    const loadBoundaryRegistry = await import(
+      pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "load-boundary", "registry.js")).href
+    );
+    const registryIds = loadBoundaryRegistry.listBuiltinLoadBoundarySkills().map((skill) => skill.id).sort();
+    assert(
+      JSON.stringify(registryIds) === JSON.stringify(builtinLoadBoundaryIds),
+      "load-boundary registry should derive its skill inventory from skill.yaml without drift",
+    );
+    assert(
+      loadBoundaryRegistry.getBuiltinLoadBoundarySkill("snow-load")?.version === "1.0.0",
+      "load-boundary registry should preserve manifest metadata for snow-load",
+    );
+    const builtinSectionRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "section");
+    const builtinSectionSkills = await loadSkillManifestsFromDirectory(builtinSectionRoot);
+    const builtinSectionIds = builtinSectionSkills.map((skill) => skill.id).sort();
+    assert(
+      JSON.stringify(builtinSectionIds) === JSON.stringify([
+        "section-bridge",
+        "section-common",
+        "section-irregular",
+      ]),
+      "skill manifest loader should discover builtin section skills from real skill.yaml files",
+    );
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinSectionSkills,
+      builtinSectionRoot,
+      "builtin section skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinSectionSkills,
+      "builtin section skill manifest",
+    );
+    const builtinValidationRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "validation");
+    const builtinValidationSkills = await loadSkillManifestsFromDirectory(builtinValidationRoot);
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinValidationSkills,
+      builtinValidationRoot,
+      "builtin validation skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinValidationSkills,
+      "builtin validation skill manifest",
+    );
+    const builtinReportExportRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "report-export");
+    const builtinReportExportSkills = await loadSkillManifestsFromDirectory(builtinReportExportRoot);
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinReportExportSkills,
+      builtinReportExportRoot,
+      "builtin report-export skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinReportExportSkills,
+      "builtin report-export skill manifest",
+    );
+    const builtinVisualizationRoot = path.join(context.rootDir, "backend", "src", "agent-skills", "visualization");
+    const builtinVisualizationSkills = await loadSkillManifestsFromDirectory(builtinVisualizationRoot);
+    const builtinVisualizationIds = builtinVisualizationSkills.map((skill) => skill.id).sort();
+    assert(
+      JSON.stringify(builtinVisualizationIds) === JSON.stringify([
+        "visualization-3d-scene",
+        "visualization-frame-summary",
+        "visualization-png-export",
+      ]),
+      "skill manifest loader should discover builtin visualization skills from real skill.yaml files",
+    );
+    await assertDeclaredStagesCoverMarkdownAssets(
+      builtinVisualizationSkills,
+      builtinVisualizationRoot,
+      "builtin visualization skill manifest",
+    );
+    assertBuiltinCompatibilityMatchesRuntimeDefaults(
+      builtinVisualizationSkills,
+      "builtin visualization skill manifest",
+    );
+
+    console.log("[ok] agent manifest loader contract");
+  } finally {
+    await fsp.rm(tempRoot, { recursive: true, force: true });
+  }
+}
+
+async function validateAgentToolCatalog(context) {
+  await runBackendBuildOnce(context);
+
+  const { AgentToolCatalogService } = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent-tool-catalog.js")).href
+  );
+
+  const service = new AgentToolCatalogService();
+  const tools = await service.listBuiltinTools();
+  assert(Array.isArray(tools), "tool catalog should return an array");
+
+  const toolIds = tools.map((tool) => tool.id).sort();
+  assert(
+    JSON.stringify(toolIds) === JSON.stringify([
+      "convert_model",
+      "draft_model",
+      "generate_report",
+      "run_analysis",
+      "run_code_check",
+      "update_model",
+      "validate_model",
+    ]),
+    "tool catalog should expose the canonical builtin tool set from tool.yaml manifests",
+  );
+
+  assert(tools.every((tool) => typeof tool.manifestPath === "string" && tool.manifestPath.endsWith("tool.yaml")), "tool catalog should retain manifest paths");
+  assert(tools.every((tool) => tool.source === "builtin"), "builtin tool catalog should normalize source to builtin");
+  assert(tools.find((tool) => tool.id === "convert_model")?.tier === "foundation", "convert_model should be the foundation tool");
+  assert(tools.filter((tool) => tool.id !== "convert_model").every((tool) => tool.tier === "domain"), "non-foundation builtin tools should be domain tools");
+  assert(tools.find((tool) => tool.id === "run_analysis")?.requiresTools.includes("validate_model"), "run_analysis should depend on validate_model");
+  assert(tools.find((tool) => tool.id === "run_code_check")?.requiresTools.includes("run_analysis"), "run_code_check should depend on run_analysis");
+  assert(tools.find((tool) => tool.id === "generate_report")?.requiresTools.includes("run_analysis"), "generate_report should depend on run_analysis");
+  assert(tools.find((tool) => tool.id === "draft_model")?.displayName?.en === "Draft Structural Model", "draft_model should preserve bilingual text");
+
+  console.log("[ok] agent tool catalog contract");
+}
+
+async function validateAgentSkillCatalogManifests(context) {
+  await runBackendBuildOnce(context);
+
+  const { AgentSkillCatalogService } = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent-skill-catalog.js")).href
+  );
+
+  const service = new AgentSkillCatalogService();
+  const skills = await service.listBuiltinSkills();
+  const structureTypeSkills = skills.filter((skill) => skill.domain === "structure-type");
+  const byId = new Map(structureTypeSkills.map((skill) => [skill.canonicalId, skill]));
+
+  for (const skillId of ["generic", "beam", "truss", "frame", "portal-frame", "double-span-beam"]) {
+    assert(byId.has(skillId), `skill catalog should include structure-type skill ${skillId}`);
+    const skill = byId.get(skillId);
+    assert(typeof skill.manifestPath === "string" && skill.manifestPath.endsWith("skill.yaml"), `${skillId} should retain its skill.yaml path`);
+    assert(Array.isArray(skill.enabledTools) && skill.enabledTools.includes("draft_model"), `${skillId} should expose draft_model grant from skill.yaml`);
+    assert(Array.isArray(skill.enabledTools) && skill.enabledTools.includes("update_model"), `${skillId} should expose update_model grant from skill.yaml`);
+  }
+
+  assert(byId.get("generic")?.triggers.includes("load"), "generic structure-type skill should preserve the manifest-level load trigger");
+  const validationSkill = skills.find((skill) => skill.canonicalId === "validation-structure-model");
+  assert(validationSkill, "skill catalog should include validation-structure-model");
+  assert(typeof validationSkill.manifestPath === "string" && validationSkill.manifestPath.endsWith("skill.yaml"), "validation-structure-model should retain its skill.yaml path");
+  assert(validationSkill.enabledTools.includes("validate_model"), "validation-structure-model should expose validate_model grant from skill.yaml");
+  assert(validationSkill.aliases.includes("structure-json-validation"), "validation-structure-model should preserve legacy alias");
+
+  const reportSkill = skills.find((skill) => skill.canonicalId === "report-export-builtin");
+  assert(reportSkill, "skill catalog should include report-export-builtin");
+  assert(typeof reportSkill.manifestPath === "string" && reportSkill.manifestPath.endsWith("skill.yaml"), "report-export-builtin should retain its skill.yaml path");
+  assert(reportSkill.enabledTools.includes("generate_report"), "report-export-builtin should expose generate_report grant from skill.yaml");
+  assert(reportSkill.triggers.includes("report"), "report-export-builtin should preserve report trigger");
+
+  const analysisIds = [
+    "opensees-dynamic",
+    "opensees-nonlinear",
+    "opensees-seismic",
+    "opensees-static",
+    "simplified-dynamic",
+    "simplified-seismic",
+    "simplified-static",
+  ];
+  for (const skillId of analysisIds) {
+    const skill = skills.find((entry) => entry.canonicalId === skillId);
+    assert(skill, `skill catalog should include analysis skill ${skillId}`);
+    assert(typeof skill.manifestPath === "string" && skill.manifestPath.endsWith("skill.yaml"), `${skillId} should retain its skill.yaml path`);
+    assert(skill.enabledTools.includes("run_analysis"), `${skillId} should expose run_analysis grant from skill.yaml`);
+  }
+  const codeCheckIds = [
+    "code-check-gb50010",
+    "code-check-gb50011",
+    "code-check-gb50017",
+    "code-check-jgj3",
+  ];
+  for (const skillId of codeCheckIds) {
+    const skill = skills.find((entry) => entry.canonicalId === skillId);
+    assert(skill, `skill catalog should include code-check skill ${skillId}`);
+    assert(typeof skill.manifestPath === "string" && skill.manifestPath.endsWith("skill.yaml"), `${skillId} should retain its skill.yaml path`);
+    assert(skill.enabledTools.includes("run_code_check"), `${skillId} should expose run_code_check grant from skill.yaml`);
+  }
+  const loadBoundaryIds = [
+    "boundary-condition",
+    "crane-load",
+    "dead-load",
+    "live-load",
+    "load-combination",
+    "nodal-constraint",
+    "snow-load",
+    "seismic-load",
+    "temperature-load",
+    "wind-load",
+  ];
+  for (const skillId of loadBoundaryIds) {
+    const skill = skills.find((entry) => entry.canonicalId === skillId);
+    assert(skill, `skill catalog should include load-boundary skill ${skillId}`);
+    assert(typeof skill.manifestPath === "string" && skill.manifestPath.endsWith("skill.yaml"), `${skillId} should retain its skill.yaml path`);
+  }
+  assert(skills.find((entry) => entry.canonicalId === "dead-load")?.triggers.includes("恒载"), "dead-load should preserve load-boundary trigger metadata");
+  const sectionIds = [
+    "section-bridge",
+    "section-common",
+    "section-irregular",
+  ];
+  for (const skillId of sectionIds) {
+    const skill = skills.find((entry) => entry.canonicalId === skillId);
+    assert(skill, `skill catalog should include section skill ${skillId}`);
+    assert(typeof skill.manifestPath === "string" && skill.manifestPath.endsWith("skill.yaml"), `${skillId} should retain its skill.yaml path`);
+  }
+  const visualizationIds = [
+    "visualization-3d-scene",
+    "visualization-frame-summary",
+    "visualization-png-export",
+  ];
+  for (const skillId of visualizationIds) {
+    const skill = skills.find((entry) => entry.canonicalId === skillId);
+    assert(skill, `skill catalog should include visualization skill ${skillId}`);
+    assert(typeof skill.manifestPath === "string" && skill.manifestPath.endsWith("skill.yaml"), `${skillId} should retain its skill.yaml path`);
+  }
+  console.log("[ok] agent skill catalog manifest contract");
+}
+
+async function validateAgentRuntimeLoader(context) {
+  await runBackendBuildOnce(context);
+
+  const { AgentSkillRuntime } = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-runtime", "index.js")).href
+  );
+  const analysisEntry = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "analysis", "entry.js")).href
+  );
+  const analysisRegistry = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "analysis", "registry.js")).href
+  );
+  const pythonAnalysisRegistrySource = await fsp.readFile(
+    path.join(context.rootDir, "backend", "src", "agent-skills", "analysis", "runtime", "registry.py"),
+    "utf8",
+  );
+  const sourceSkillRoot = path.join(context.rootDir, "backend", "src", "agent-skills");
+
+  const collectStageMarkdownFiles = async (rootDir) => {
+    const collected = [];
+    const visit = async (currentDir) => {
+      const entries = await fsp.readdir(currentDir, { withFileTypes: true });
+      for (const entry of entries) {
+        const entryPath = path.join(currentDir, entry.name);
+        if (entry.isDirectory()) {
+          await visit(entryPath);
+          continue;
+        }
+        if (!entry.isFile()) {
+          continue;
+        }
+        if (["intent.md", "draft.md", "analysis.md", "design.md"].includes(entry.name)) {
+          collected.push(entryPath);
+        }
+      }
+    };
+    await visit(rootDir);
+    return collected.sort();
+  };
+  const collectFilesByBasename = async (rootDir, fileName) => {
+    const collected = [];
+    const visit = async (currentDir) => {
+      const entries = await fsp.readdir(currentDir, { withFileTypes: true });
+      for (const entry of entries) {
+        const entryPath = path.join(currentDir, entry.name);
+        if (entry.isDirectory()) {
+          await visit(entryPath);
+          continue;
+        }
+        if (entry.isFile() && entry.name === fileName) {
+          collected.push(entryPath);
+        }
+      }
+    };
+    await visit(rootDir);
+    return collected.sort();
+  };
+
+  const runtime = new AgentSkillRuntime();
+  const skills = runtime.listSkills();
+  const byId = new Map(skills.map((skill) => [skill.id, skill]));
+  const runtimeManifests = await runtime.listSkillManifests();
+  const runtimeManifestById = new Map(runtimeManifests.map((manifest) => [manifest.id, manifest]));
+
+  assert(byId.has("beam"), "runtime loader should include manifest-backed beam skill");
+  assert(byId.get("beam")?.domain === "structure-type", "beam should take domain from skill.yaml");
+  assert(byId.has("opensees-static"), "runtime loader should include manifest-backed analysis skill");
+  assert(byId.get("opensees-static")?.domain === "analysis", "analysis skills should take domain from skill.yaml");
+  assert(byId.has("code-check-gb50010"), "runtime loader should include manifest-backed code-check skill");
+  assert(byId.get("code-check-gb50010")?.domain === "code-check", "code-check skills should take domain from skill.yaml");
+  assert(byId.has("dead-load"), "runtime loader should include manifest-backed load-boundary skill");
+  assert(byId.get("dead-load")?.domain === "load-boundary", "load-boundary skills should take domain from skill.yaml");
+  assert(byId.has("snow-load"), "runtime loader should include manifest-backed snow-load skill");
+  assert(byId.get("snow-load")?.domain === "load-boundary", "snow-load should take domain from skill.yaml");
+  assert(byId.has("visualization-frame-summary"), "runtime loader should include manifest-backed visualization skill");
+  assert(byId.get("visualization-frame-summary")?.domain === "visualization", "visualization skills should take domain from skill.yaml");
+  assert(byId.has("section-common"), "runtime loader should include manifest-backed section-common skill");
+  assert(byId.get("section-common")?.domain === "section", "section-common should take domain from skill.yaml");
+  assert(byId.has("section-bridge"), "runtime loader should include manifest-backed section-bridge skill");
+  assert(byId.get("section-bridge")?.domain === "section", "section-bridge should take domain from skill.yaml");
+  assert(byId.has("section-irregular"), "runtime loader should include manifest-backed section-irregular skill");
+  assert(byId.get("section-irregular")?.domain === "section", "section-irregular should take domain from skill.yaml");
+  assert(byId.has("validation-structure-model"), "runtime loader should use canonical validation skill id from skill.yaml");
+  assert(!byId.has("structure-json-validation"), "runtime loader should not keep legacy validation frontmatter id once manifest-first loader is active");
+  assert(Array.isArray(runtimeManifestById.get("beam")?.supportedModelFamilies), "structure-type runtime manifests should come from skill.yaml rather than plugin-only manifests");
+  assert(Array.isArray(runtimeManifestById.get("beam")?.providedTools), "runtime manifests should normalize optional tool arrays from skill.yaml");
+  assert(Array.isArray(runtimeManifestById.get("beam")?.materialFamilies), "runtime manifests should preserve manifest schema defaults for structure-type skills");
+
+  const stageMarkdownFiles = await collectStageMarkdownFiles(sourceSkillRoot);
+  assert(stageMarkdownFiles.length > 0, "runtime loader validation should inspect builtin stage markdown files");
+  for (const markdownPath of stageMarkdownFiles) {
+    const source = await fsp.readFile(markdownPath, "utf8");
+    assert(!source.trimStart().startsWith("---\n"), `${path.relative(context.rootDir, markdownPath)} should not keep legacy YAML frontmatter`);
+  }
+  const structureTypeManifestFiles = await collectFilesByBasename(
+    path.join(sourceSkillRoot, "structure-type"),
+    "manifest.ts",
+  );
+  assert(structureTypeManifestFiles.length === 0, "structure-type skills should no longer keep manifest.ts once runtime loading is manifest-first");
+
+  const builtinTools = runtime.listBuiltinToolManifests();
+  const builtinToolsById = new Map(builtinTools.map((tool) => [tool.id, tool]));
+  assert(builtinToolsById.get("convert_model")?.tier === "foundation", "runtime builtin tools should take tier metadata from tool.yaml");
+  assert(builtinToolsById.get("run_analysis")?.tier === "domain", "runtime builtin tools should preserve domain-tier metadata from tool.yaml");
+  assert(Array.isArray(builtinToolsById.get("run_analysis")?.requiresTools) && builtinToolsById.get("run_analysis").requiresTools.includes("validate_model"), "runtime builtin tools should preserve requiresTools metadata from tool.yaml");
+
+  const tempRoot = await fsp.mkdtemp(path.join(os.tmpdir(), "structureclaw-runtime-selection-"));
+  try {
+    const manifestOnlySkillRoot = path.join(tempRoot, "agent-skills");
+    await fsp.mkdir(path.join(manifestOnlySkillRoot, "analysis", "custom-static"), { recursive: true });
+    await fsp.mkdir(path.join(manifestOnlySkillRoot, "code-check", "custom-gb50018"), { recursive: true });
+
+    await fsp.writeFile(
+      path.join(manifestOnlySkillRoot, "analysis", "custom-static", "skill.yaml"),
+      [
+        "id: custom-static",
+        "domain: analysis",
+        "source: builtin",
+        "name:",
+        "  zh: 自定义静力分析",
+        "  en: Custom Static Analysis",
+        "description:",
+        "  zh: 仅通过 skill.yaml 声明的静力分析技能。",
+        "  en: Static analysis skill declared only via skill.yaml.",
+        "triggers: []",
+        "stages:",
+        "  - analysis",
+        "structureType: frame",
+        "structuralTypeKeys: []",
+        "capabilities:",
+        "  - analysis-policy",
+        "  - analysis-execution",
+        "grants:",
+        "  - run_analysis",
+        "providesTools: []",
+        "requires: []",
+        "conflicts: []",
+        "autoLoadByDefault: false",
+        "priority: 999",
+        "compatibility:",
+        "  minRuntimeVersion: 0.1.0",
+        "  skillApiVersion: v1",
+        "software: simplified",
+        "analysisType: static",
+        "engineId: builtin-custom",
+        "adapterKey: builtin-custom",
+        "runtimeRelativePath: runtime.py",
+        "supportedAnalysisTypes:",
+        "  - static",
+        "supportedModelFamilies:",
+        "  - frame",
+        "  - generic",
+        "materialFamilies: []",
+        "",
+      ].join("\n"),
+    );
+
+    await fsp.writeFile(
+      path.join(manifestOnlySkillRoot, "code-check", "custom-gb50018", "skill.yaml"),
+      [
+        "id: code-check-gb50018",
+        "domain: code-check",
+        "source: builtin",
+        "name:",
+        "  zh: GB50018 规范校核",
+        "  en: GB50018 Code Check",
+        "description:",
+        "  zh: 仅通过 skill.yaml 声明的规范校核技能。",
+        "  en: Code-check skill declared only via skill.yaml.",
+        "triggers:",
+        "  - GB50018",
+        "stages:",
+        "  - design",
+        "structureType: unknown",
+        "structuralTypeKeys: []",
+        "capabilities:",
+        "  - code-check-policy",
+        "  - code-check-execution",
+        "grants:",
+        "  - run_code_check",
+        "providesTools: []",
+        "requires: []",
+        "conflicts: []",
+        "autoLoadByDefault: false",
+        "priority: 999",
+        "compatibility:",
+        "  minRuntimeVersion: 0.1.0",
+        "  skillApiVersion: v1",
+        "designCode: GB50018",
+        "supportedAnalysisTypes: []",
+        "supportedModelFamilies:",
+        "  - generic",
+        "materialFamilies: []",
+        "",
+      ].join("\n"),
+    );
+
+    const manifestOnlyRuntime = new AgentSkillRuntime({ builtinSkillManifestRoot: manifestOnlySkillRoot });
+    assert(manifestOnlyRuntime.listAnalysisSkillIds().includes("custom-static"), "analysis skill ids should be resolved from skill.yaml without registry/frontmatter metadata");
+    assert(manifestOnlyRuntime.isAnalysisSkillId("custom-static"), "isAnalysisSkillId should recognize manifest-only analysis skills");
+    assert(
+      manifestOnlyRuntime.resolvePreferredAnalysisSkill({
+        analysisType: "static",
+        engineId: "builtin-custom",
+        supportedModelFamilies: ["frame"],
+      })?.id === "custom-static",
+      "preferred analysis skill resolution should use manifest-only analysis metadata",
+    );
+    assert(
+      manifestOnlyRuntime.resolveCodeCheckDesignCodeFromSkillIds(["code-check-gb50018"]) === "GB50018",
+      "code-check design-code resolution should use manifest-only skill metadata",
+    );
+    assert(
+      manifestOnlyRuntime.resolveCodeCheckSkillId("GB50018") === "code-check-gb50018",
+      "code-check skill lookup should use manifest-only skill metadata",
+    );
+  } finally {
+    await fsp.rm(tempRoot, { recursive: true, force: true });
+  }
+  assert(typeof analysisEntry.listBuiltinAnalysisSkills === "undefined", "analysis entry should not re-export static metadata helpers once manifest-first runtime is active");
+  assert(typeof analysisEntry.getBuiltinAnalysisSkill === "undefined", "analysis entry should not expose builtin analysis metadata lookup");
+  assert(typeof analysisEntry.resolvePreferredBuiltinAnalysisSkill === "undefined", "analysis entry should not expose manifest selection logic directly");
+  assert(typeof analysisRegistry.listBuiltinAnalysisSkills === "undefined", "analysis registry should not export static metadata helpers once manifest-first runtime is active");
+  assert(typeof analysisRegistry.getBuiltinAnalysisSkill === "undefined", "analysis registry should not expose builtin analysis metadata lookup");
+  assert(typeof analysisRegistry.resolvePreferredBuiltinAnalysisSkill === "undefined", "analysis registry should not expose manifest selection logic directly");
+  assert(
+    pythonAnalysisRegistrySource.includes("skill.yaml"),
+    "python analysis runtime registry should discover builtin skills from skill.yaml",
+  );
+  assert(
+    !pythonAnalysisRegistrySource.includes("intent.md"),
+    "python analysis runtime registry should not depend on intent.md frontmatter metadata",
+  );
+  console.log("[ok] agent runtime loader contract");
+}
+
+async function validateAgentRuntimeBinder(context) {
+  await runBackendBuildOnce(context);
+
+  const agentSource = await fsp.readFile(
+    path.join(context.rootDir, "backend", "src", "services", "agent.ts"),
+    "utf8",
+  );
+  const { AgentRuntimeBinder } = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent-runtime-binder.js")).href
+  );
+
+  const makeLocalizedText = (zh, en) => ({ zh, en });
+  const compatibility = { minRuntimeVersion: "0.1.0", skillApiVersion: "v1" };
+  const makeManifest = (id, domain, options = {}) => ({
+    id,
+    domain,
+    name: options.name ?? makeLocalizedText(`${id} 技能`, `${id} skill`),
+    description: options.description ?? makeLocalizedText(`${id} 描述`, `${id} description`),
+    triggers: options.triggers ?? [id],
+    stages: options.stages ?? ["analysis"],
+    autoLoadByDefault: options.autoLoadByDefault ?? false,
+    structureType: options.structureType ?? "unknown",
+    structuralTypeKeys: options.structuralTypeKeys ?? [],
+    requires: options.requires ?? [],
+    conflicts: options.conflicts ?? [],
+    capabilities: options.capabilities ?? [],
+    enabledTools: options.enabledTools ?? [],
+    providedTools: options.providedTools ?? [],
+    supportedAnalysisTypes: options.supportedAnalysisTypes ?? [],
+    supportedModelFamilies: options.supportedModelFamilies ?? ["generic"],
+    materialFamilies: options.materialFamilies ?? [],
+    priority: options.priority ?? 0,
+    compatibility,
+  });
+  const makeTool = (id, options = {}) => ({
+    id,
+    source: options.source ?? "builtin",
+    enabledByDefault: options.enabledByDefault ?? false,
+    tier: options.tier ?? "domain",
+    category: options.category ?? "utility",
+    displayName: options.displayName ?? makeLocalizedText(id, id),
+    description: options.description ?? makeLocalizedText(`${id} 工具`, `${id} tool`),
+    requiresSkills: options.requiresSkills ?? [],
+    requiresTools: options.requiresTools ?? [],
+    tags: options.tags ?? [],
+    errorCodes: options.errorCodes ?? [],
+  });
+
+  const manifests = [
+    makeManifest("beam", "structure-type", {
+      stages: ["intent", "draft", "analysis"],
+      structureType: "beam",
+      autoLoadByDefault: true,
+      providedTools: ["draft_model", "update_model"],
+      supportedModelFamilies: ["frame", "generic"],
+    }),
+    makeManifest("validation-structure-model", "validation", {
+      stages: ["draft", "analysis"],
+      autoLoadByDefault: true,
+      providedTools: ["validate_model"],
+    }),
+    makeManifest("analysis-static", "analysis", {
+      autoLoadByDefault: false,
+      providedTools: ["run_analysis"],
+      supportedAnalysisTypes: ["static"],
+      supportedModelFamilies: ["frame", "generic"],
+    }),
+    makeManifest("code-check-gb50010", "code-check", {
+      stages: ["design"],
+      autoLoadByDefault: false,
+      providedTools: ["run_code_check"],
+    }),
+    makeManifest("report-export-builtin", "report-export", {
+      stages: ["design"],
+      autoLoadByDefault: false,
+      providedTools: ["generate_report"],
+    }),
+  ];
+
+  const builtinTools = [
+    makeTool("convert_model", { tier: "foundation", enabledByDefault: true }),
+    makeTool("draft_model", { category: "modeling", requiresSkills: ["beam"] }),
+    makeTool("update_model", { category: "modeling", requiresSkills: ["beam"] }),
+    makeTool("validate_model", { category: "utility", requiresSkills: ["validation-structure-model"] }),
+    makeTool("run_analysis", {
+      category: "analysis",
+      requiresSkills: ["analysis-static"],
+      requiresTools: ["validate_model"],
+    }),
+    makeTool("run_code_check", {
+      category: "code-check",
+      requiresSkills: ["code-check-gb50010"],
+      requiresTools: ["run_analysis"],
+    }),
+    makeTool("generate_report", {
+      category: "report",
+      requiresSkills: ["report-export-builtin"],
+      requiresTools: ["run_analysis"],
+    }),
+  ];
+
+  const buildResolvedTooling = (skillIds) => {
+    const selectedManifests = skillIds === undefined
+      ? manifests.filter((manifest) => manifest.autoLoadByDefault)
+      : manifests.filter((manifest) => skillIds.includes(manifest.id));
+    const toolsById = new Map();
+    const skillIdsByToolId = {};
+    const enabledToolIdsBySkill = {};
+    const providedToolIdsBySkill = {};
+
+    for (const manifest of selectedManifests) {
+      const enabledToolIds = Array.isArray(manifest.enabledTools) ? [...manifest.enabledTools] : [];
+      const providedToolIds = Array.isArray(manifest.providedTools) ? [...manifest.providedTools] : [];
+      enabledToolIdsBySkill[manifest.id] = enabledToolIds;
+      providedToolIdsBySkill[manifest.id] = providedToolIds;
+      for (const toolId of [...enabledToolIds, ...providedToolIds]) {
+        if (!skillIdsByToolId[toolId]) {
+          skillIdsByToolId[toolId] = [];
+        }
+        if (!skillIdsByToolId[toolId].includes(manifest.id)) {
+          skillIdsByToolId[toolId].push(manifest.id);
+        }
+        const builtin = builtinTools.find((tool) => tool.id === toolId);
+        if (builtin) {
+          toolsById.set(toolId, builtin);
+        }
+      }
+    }
+
+    return {
+      tools: [...toolsById.values()],
+      enabledToolIdsBySkill,
+      providedToolIdsBySkill,
+      skillIdsByToolId,
+    };
+  };
+
+  const fakeSkillRuntime = {
+    listSkillManifests: async () => manifests,
+    resolvePreferredAnalysisSkill: () => ({ id: "analysis-static" }),
+    resolveCodeCheckDesignCodeFromSkillIds: () => undefined,
+    resolveCodeCheckSkillId: (designCode) => designCode === "GB50010" ? "code-check-gb50010" : undefined,
+    resolveSkillTooling: async (skillIds) => buildResolvedTooling(skillIds),
+    listBuiltinToolManifests: () => builtinTools,
+  };
+  const fakePolicy = {
+    inferExecutionIntent: (message) => /分析|analysis/i.test(message),
+    inferProceedIntent: () => false,
+  };
+
+  const binder = new AgentRuntimeBinder(fakeSkillRuntime, fakePolicy);
+  const activeSkillIds = await binder.resolveActiveDomainSkillIds({
+    selectedSkillIds: ["beam"],
+    workingSession: {
+      updatedAt: Date.now(),
+      resolved: {
+        analysisType: "static",
+        designCode: "GB50010",
+        autoCodeCheck: true,
+        includeReport: true,
+      },
+    },
+    modelInput: {
+      elements: [{ type: "beam" }],
+    },
+    message: "请分析这个模型并给出报告",
+    context: {
+      autoAnalyze: true,
+      designCode: "GB50010",
+      includeReport: true,
+    },
+  });
+  assert(Array.isArray(activeSkillIds), "runtime binder should resolve active skill ids");
+  assert(activeSkillIds.includes("beam"), "runtime binder should preserve explicitly selected skills");
+  assert(activeSkillIds.includes("validation-structure-model"), "runtime binder should auto-activate validation skill");
+  assert(activeSkillIds.includes("analysis-static"), "runtime binder should auto-activate preferred analysis skill");
+  assert(activeSkillIds.includes("code-check-gb50010"), "runtime binder should auto-activate code-check skill when design code is available");
+  assert(activeSkillIds.includes("report-export-builtin"), "runtime binder should auto-activate report skill when report output is requested");
+
+  const availableTooling = await binder.resolveAvailableTooling(["beam"], activeSkillIds);
+  assert(availableTooling.tools.some((tool) => tool.id === "draft_model"), "runtime binder should expose selected-skill tools");
+  assert(availableTooling.tools.some((tool) => tool.id === "run_analysis"), "runtime binder should expose active-skill tools");
+  assert(Array.isArray(availableTooling.skillIdsByToolId.run_analysis) && availableTooling.skillIdsByToolId.run_analysis.includes("analysis-static"), "runtime binder should attribute tools to their activating skills");
+
+  const activeToolIds = await binder.resolveActiveToolIds(["beam"], activeSkillIds, {
+    disabledToolIds: ["generate_report"],
+  });
+  assert(activeToolIds.has("convert_model"), "runtime binder should always retain foundation tools");
+  assert(activeToolIds.has("run_analysis"), "runtime binder should activate granted tools");
+  assert(!activeToolIds.has("generate_report"), "runtime binder should honor disabled tool overrides");
+
+  assert(agentSource.includes("AgentRuntimeBinder"), "AgentService should delegate runtime binding to AgentRuntimeBinder");
+  assert(!agentSource.includes("private async resolveActiveDomainSkillIds("), "AgentService should not keep active-skill binding logic inline");
+  assert(!agentSource.includes("private async resolveAvailableTooling("), "AgentService should not keep available-tooling binding logic inline");
+  assert(!agentSource.includes("private async resolveActiveToolIds("), "AgentService should not keep active-tool binding logic inline");
+  console.log("[ok] agent runtime binder contract");
 }
 
 async function validateAgentToolsContract(context) {
@@ -942,7 +2328,7 @@ async function validateAgentCapabilityMatrix(context) {
         requires: [],
         conflicts: [],
         capabilities: ["intent-detection"],
-        enabledTools: ["draft_model", "update_model", "validate_model", "run_analysis", "generate_report"],
+        enabledTools: ["draft_model", "update_model"],
         priority: 10,
         compatibility: {
           minRuntimeVersion: "0.1.0",
@@ -962,7 +2348,7 @@ async function validateAgentCapabilityMatrix(context) {
         requires: [],
         conflicts: [],
         capabilities: ["intent-detection"],
-        enabledTools: ["draft_model", "update_model", "validate_model", "run_analysis", "generate_report"],
+        enabledTools: ["draft_model", "update_model"],
         priority: 20,
         compatibility: {
           minRuntimeVersion: "0.1.0",
@@ -982,6 +2368,7 @@ async function validateAgentCapabilityMatrix(context) {
         requires: [],
         conflicts: [],
         capabilities: ["analysis-policy"],
+        enabledTools: ["run_analysis"],
         supportedAnalysisTypes: ["static", "dynamic"],
         priority: 5,
         compatibility: {
@@ -1088,6 +2475,8 @@ async function validateAgentCapabilityMatrix(context) {
   assert(payload.foundationToolIds.includes("convert_model"), "foundation tool list should include convert_model");
   const draftTool = payload.tools.find((tool) => tool.id === "draft_model");
   const analysisTool = payload.tools.find((tool) => tool.id === "run_analysis");
+  assert(draftTool?.source === "builtin", "draft_model should project builtin source from tool catalog");
+  assert(analysisTool?.source === "builtin", "run_analysis should project builtin source from tool catalog");
   assert(!Object.prototype.hasOwnProperty.call(draftTool || {}, "runtimeName"), "capability matrix should not expose runtimeName");
   assert(!Object.prototype.hasOwnProperty.call(draftTool || {}, "compatibilityRuntimeName"), "capability matrix should not expose compatibility runtime aliases");
   assert(Array.isArray(analysisTool?.requiresTools), "run_analysis should expose requiresTools");
@@ -1095,7 +2484,8 @@ async function validateAgentCapabilityMatrix(context) {
   assert(Array.isArray(payload.enabledToolIdsBySkill.beam), "beam should expose enabled tools array");
   assert(payload.enabledToolIdsBySkill.beam.includes("draft_model"), "beam should enable draft_model");
   assert(payload.enabledToolIdsBySkill.beam.includes("update_model"), "beam should enable update_model");
-  assert(payload.enabledToolIdsBySkill.beam.includes("run_analysis"), "beam should enable run_analysis");
+  assert(!payload.enabledToolIdsBySkill.beam.includes("run_analysis"), "beam should not enable run_analysis directly");
+  assert(payload.enabledToolIdsBySkill["analysis-baseline"].includes("run_analysis"), "analysis skills should enable run_analysis");
   assert(beamEngines.includes("engine-frame-a"), "beam should include frame-compatible engine");
   assert(beamEngines.includes("engine-generic"), "beam should include generic engine");
   assert(!beamEngines.includes("engine-disabled"), "beam should not include disabled engine");
@@ -1111,11 +2501,28 @@ async function validateAgentCapabilityMatrix(context) {
   assert(payload.analysisCompatibility.static.baselinePolicyAvailable === true, "baseline policy should be available for static");
   assert(payload.skills.find((skill) => skill.id === "beam")?.runtimeStatus === "active", "beam should be marked active");
   assert(payload.skills.find((skill) => skill.id === "analysis-baseline")?.runtimeStatus === "active", "analysis skill should be marked active");
+  assert(payload.skillDomainById["dead-load"] === "load-boundary", "discoverable load-boundary skills should be exposed in skillDomainById");
+  assert(payload.skillDomainById["section-common"] === "section", "discoverable section skills should be exposed in skillDomainById");
+  assert(payload.skillDomainById["visualization-frame-summary"] === "visualization", "discoverable visualization skills should be exposed in skillDomainById");
+  assert(payload.skills.find((skill) => skill.id === "dead-load")?.runtimeStatus === "discoverable", "dead-load should be marked discoverable");
+  assert(payload.skills.find((skill) => skill.id === "section-common")?.runtimeStatus === "discoverable", "section-common should be marked discoverable");
+  assert(payload.skills.find((skill) => skill.id === "visualization-frame-summary")?.runtimeStatus === "discoverable", "visualization-frame-summary should be marked discoverable");
   assert(domainSummaryById["structure-type"]?.runtimeStatus === "active", "structure-type domain should be active");
   assert(domainSummaryById["analysis"]?.runtimeStatus === "active", "analysis domain should be active");
   assert(domainSummaryById["validation"]?.runtimeStatus === "partial", "validation domain should be partial");
   assert(domainSummaryById["report-export"]?.runtimeStatus === "partial", "report-export domain should be partial");
-  assert(domainSummaryById["design"]?.runtimeStatus === "discoverable", "design domain should be discoverable");
+  assert(domainSummaryById["section"]?.runtimeStatus === "discoverable", "section domain should remain discoverable while builtin skills exist");
+  assert(domainSummaryById["load-boundary"]?.runtimeStatus === "discoverable", "load-boundary domain should remain discoverable while builtin skills exist");
+  assert(domainSummaryById["visualization"]?.runtimeStatus === "discoverable", "visualization domain should remain discoverable while builtin skills exist");
+  assert(domainSummaryById["design"]?.runtimeStatus === "reserved", "design domain should be reserved when it has no runtime skill presence");
+  assert(domainSummaryById["data-input"]?.runtimeStatus === "reserved", "data-input domain should be reserved when it has no runtime skill presence");
+  assert(domainSummaryById["drawing"]?.runtimeStatus === "reserved", "drawing domain should be reserved when it has no runtime skill presence");
+  assert(domainSummaryById["general"]?.runtimeStatus === "reserved", "general domain should be reserved when it has no runtime skill presence");
+  assert(domainSummaryById["material"]?.runtimeStatus === "reserved", "material domain should be reserved when it has no runtime skill presence");
+  assert(domainSummaryById["result-postprocess"]?.runtimeStatus === "reserved", "result-postprocess domain should be reserved when it has no runtime skill presence");
+  assert(domainSummaryById["load-boundary"]?.skillIds.includes("dead-load"), "load-boundary summary should include discoverable builtin skills");
+  assert(domainSummaryById["section"]?.skillIds.includes("section-common"), "section summary should include discoverable builtin skills");
+  assert(domainSummaryById["visualization"]?.skillIds.includes("visualization-frame-summary"), "visualization summary should include discoverable builtin skills");
   assert(Array.isArray(domainSummaryById["design"]?.skillIds), "design domain summary should exist even without runtime skills");
 
     const responseDynamic = await app.inject({ method: "GET", url: "/api/v1/agent/capability-matrix?analysisType=dynamic" });
@@ -1123,6 +2530,18 @@ async function validateAgentCapabilityMatrix(context) {
     const dynamicPayload = responseDynamic.json();
     assert(dynamicPayload.appliedAnalysisType === "dynamic", "payload should echo applied analysis type");
     assert(dynamicPayload.filteredEngineReasonsBySkill.truss["engine-truss-a"].includes("analysis_type_mismatch"), "dynamic matrix should mark analysis type mismatch for static-only truss engine");
+
+    AnalysisEngineCatalogService.prototype.listEngines = async function mockListEnginesFailure() {
+      throw new Error("simulated engine catalog failure");
+    };
+
+    const degradedResponse = await app.inject({ method: "GET", url: "/api/v1/agent/capability-matrix" });
+    assert(degradedResponse.statusCode === 200, "capability matrix route should degrade instead of failing when engine discovery errors");
+    const degradedPayload = degradedResponse.json();
+    assert(Array.isArray(degradedPayload.engines) && degradedPayload.engines.length === 0, "degraded capability matrix should surface an empty engine list");
+    assert(Array.isArray(degradedPayload.tools) && degradedPayload.tools.some((tool) => tool.id === "draft_model"), "degraded capability matrix should still expose builtin tools");
+    assert(Array.isArray(degradedPayload.skills) && degradedPayload.skills.some((skill) => skill.id === "beam"), "degraded capability matrix should still expose skills");
+    assert(Array.isArray(degradedPayload.validEngineIdsBySkill.beam) && degradedPayload.validEngineIdsBySkill.beam.length === 0, "degraded capability matrix should zero out compatible engine lists");
 
     console.log("[ok] agent capability matrix contract");
   } finally {
@@ -1909,10 +3328,226 @@ async function validateDevStartupGuards(context) {
   console.log("[ok] unified startup and docker command guards are present");
 }
 
+async function validateDockerBackendRuntimeAssets(context) {
+  const dockerfilePath = path.join(context.rootDir, "backend", "Dockerfile");
+  const dockerfileContent = await fsp.readFile(dockerfilePath, "utf8");
+
+  assert(
+    dockerfileContent.includes("COPY --from=builder /app/src/agent-skills ./src/agent-skills"),
+    "backend Dockerfile should copy src/agent-skills into the runner image",
+  );
+  assert(
+    dockerfileContent.includes("COPY --from=builder /app/src/agent-tools ./src/agent-tools"),
+    "backend Dockerfile should copy src/agent-tools into the runner image for tool.yaml discovery",
+  );
+
+  console.log("[ok] docker backend runtime assets are present");
+}
+
+async function validateStructureJsonSkill(context) {
+  await runBackendBuildOnce(context);
+
+  // Test 1: Verify validation skill metadata comes from skill.yaml, not registry exports
+  const { AgentSkillCatalogService } = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "services", "agent-skill-catalog.js")).href
+  );
+  const entryModule = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "validation", "entry.js")).href
+  );
+  const registryModule = await import(
+    pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-skills", "validation", "registry.js")).href
+  );
+
+  const skillCatalog = new AgentSkillCatalogService();
+  const skill = await skillCatalog.getBuiltinSkillById("validation-structure-model");
+  assert(skill !== undefined, "validation-structure-model should be discoverable from the manifest-backed skill catalog");
+  assert(skill.canonicalId === "validation-structure-model", "validation skill should use the canonical manifest id");
+  assert(skill.aliases.includes("structure-json-validation"), "validation skill should preserve the legacy alias from skill.yaml");
+  assert(skill.domain === "validation", "validation skill should keep validation domain");
+  assert(skill.triggers.includes("validate"), "validation skill should keep validate trigger");
+  assert(skill.triggers.includes("验证"), "validation skill should keep Chinese validate trigger");
+  assert(skill.autoLoadByDefault === true, "validation skill should auto-load by default");
+  assert(skill.priority === 100, "validation skill priority should stay 100");
+  assert(typeof entryModule.listBuiltinValidationSkills === "undefined", "validation entry should not re-export static registry metadata helpers");
+  assert(typeof entryModule.getBuiltinValidationSkill === "undefined", "validation entry should not expose builtin metadata lookup");
+  assert(typeof registryModule.listBuiltinValidationSkills === "undefined", "validation registry should not export static metadata helpers once manifest-first runtime is active");
+  assert(typeof registryModule.getBuiltinValidationSkill === "undefined", "validation registry should not expose builtin metadata lookup");
+  assert(typeof registryModule.findValidationSkillsByTrigger === "undefined", "validation registry should not expose trigger-based metadata lookup");
+  assert(typeof registryModule.getValidationSkillCapabilities === "undefined", "validation registry should not expose capability lookup from frontmatter metadata");
+  console.log("[ok] manifest-backed validation skill metadata");
+
+  // Test 2: Test Python runtime directly via CLI
+  const runtimePath = path.join(
+    context.rootDir,
+    "backend",
+    "src",
+    "agent-skills",
+    "validation",
+    "structure-json",
+    "runtime.py"
+  );
+
+  // Helper to run Python validation
+  const runPythonValidation = (jsonData, args = []) =>
+    new Promise((resolve, reject) => {
+      const proc = execFile(
+        "python",
+        [runtimePath, "--schema-version", "2.0.0", ...args, "-"],
+        { encoding: "utf8" },
+        (error, stdout, stderr) => {
+          if (error && !stdout) {
+            reject(new Error(`Python execution failed: ${stderr || error.message}`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(stdout));
+          } catch (e) {
+            reject(new Error(`Failed to parse Python output: ${e.message}\nOutput: ${stdout}`));
+          }
+        }
+      );
+      proc.stdin.write(typeof jsonData === "string" ? jsonData : JSON.stringify(jsonData));
+      proc.stdin.end();
+    });
+
+  // Check if Python and schema validation are available
+  let pythonAvailable = false;
+  let schemaValidationAvailable = false;
+  try {
+    const checkResult = await runPythonValidation('{"test": true}', ["--no-semantic"]);
+    pythonAvailable = true;
+    schemaValidationAvailable = !checkResult.issues.some(i => i.code === "SCHEMA_VALIDATION_ERROR" && i.message.includes("not available"));
+  } catch (e) {
+    console.log(`[warn] Python runtime not available: ${e.message}`);
+  }
+
+  if (!pythonAvailable) {
+    console.log("[skip] Python runtime tests (python not available)");
+  } else if (!schemaValidationAvailable) {
+    console.log("[skip] Schema validation tests (StructureModelV2 not available, install structure_protocol)");
+  }
+
+  if (!pythonAvailable || !schemaValidationAvailable) {
+    console.log("[ok] validation skill tests completed with limitations");
+    return;
+  }
+
+  // Test 2a: Valid minimal structure JSON
+  const validModel = {
+    schema_version: "2.0.0",
+    nodes: [
+      { id: "1", x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
+      { id: "2", x: 3, y: 0, z: 0 },
+    ],
+    elements: [{ id: "E1", type: "beam", nodes: ["1", "2"], material: "M1", section: "S1" }],
+    materials: [{ id: "M1", name: "Steel", type: "steel", E: 205000, nu: 0.3, rho: 7850 }],
+    sections: [{ id: "S1", name: "Rectangular 0.3x0.6", type: "rectangular", width: 0.3, height: 0.6 }],
+    load_cases: [],
+    load_combinations: [],
+  };
+
+  const validResult = await runPythonValidation(validModel);
+  assert(validResult.valid === true, "valid model should pass validation");
+  assert(validResult.summary.error_count === 0, "valid model should have no errors");
+  assert(validResult.validated_model !== undefined, "valid model should return validated_model");
+  console.log("[ok] python runtime validates correct model");
+
+  // Test 2b: Invalid JSON syntax
+  const invalidJsonResult = await runPythonValidation('{"invalid json');
+  assert(invalidJsonResult.valid === false, "invalid JSON should fail");
+  assert(invalidJsonResult.summary.error_count > 0, "invalid JSON should have errors");
+  assert(invalidJsonResult.issues.some((i) => i.code === "JSON_SYNTAX_ERROR"), "should report JSON_SYNTAX_ERROR");
+  console.log("[ok] python runtime detects syntax errors");
+
+  // Test 2c: Schema validation errors (missing required fields)
+  const incompleteModel = {
+    schema_version: "2.0.0",
+    nodes: [{ id: "1", x: 0, y: 0 }], // Missing z coordinate
+  };
+  const incompleteResult = await runPythonValidation(incompleteModel);
+  assert(incompleteResult.valid === false, "incomplete model should fail validation");
+  assert(incompleteResult.issues.length > 0, "incomplete model should have issues");
+  console.log("[ok] python runtime detects schema errors");
+
+  // Test 2d: Semantic validation errors (invalid references)
+  const badRefModel = {
+    schema_version: "2.0.0",
+    nodes: [
+      { id: "1", x: 0, y: 0, z: 0 },
+      { id: "2", x: 3, y: 0, z: 0 },
+    ],
+    elements: [{ id: "E1", type: "beam", nodes: ["1", "999"], material: "M1", section: "S1" }], // Node 999 doesn't exist
+    materials: [{ id: "M1", name: "Steel", type: "steel", E: 205000, nu: 0.3, rho: 7850 }],
+    sections: [{ id: "S1", name: "Rectangular 0.3x0.6", type: "rectangular", width: 0.3, height: 0.6 }],
+    load_cases: [],
+    load_combinations: [],
+  };
+  const badRefResult = await runPythonValidation(badRefModel);
+  assert(badRefResult.valid === false, "model with bad references should fail");
+  assert(
+    badRefResult.issues.some((i) => i.code === "SEMANTIC_INVALID_REFERENCE"),
+    "should report SEMANTIC_INVALID_REFERENCE"
+  );
+  console.log("[ok] python runtime detects semantic errors");
+
+  // Test 2e: Duplicate ID detection
+  const dupIdModel = {
+    schema_version: "2.0.0",
+    nodes: [
+      { id: "1", x: 0, y: 0, z: 0 },
+      { id: "1", x: 3, y: 0, z: 0 }, // Duplicate ID
+    ],
+  };
+  const dupIdResult = await runPythonValidation(dupIdModel);
+  assert(dupIdResult.issues.some((i) => i.code === "SEMANTIC_DUPLICATE_ID"), "should report SEMANTIC_DUPLICATE_ID");
+  console.log("[ok] python runtime detects duplicate IDs");
+
+  // Test 2f: Material property validation
+  const badMaterialModel = {
+    schema_version: "2.0.0",
+    nodes: [
+      { id: "1", x: 0, y: 0, z: 0 },
+      { id: "2", x: 3, y: 0, z: 0 },
+    ],
+    elements: [{ id: "E1", type: "beam", nodes: ["1", "2"], material: "M1", section: "S1" }],
+    materials: [{ id: "M1", type: "steel", E: -1000, nu: 0.3, rho: 7850 }], // Negative E
+    sections: [{ id: "S1", type: "rectangular", width: 0.3, height: 0.6 }],
+    load_cases: [],
+    load_combinations: [],
+  };
+  const badMatResult = await runPythonValidation(badMaterialModel);
+  assert(
+    badMatResult.issues.some((i) => i.code === "SEMANTIC_INVALID_VALUE" && i.path.includes("materials")),
+    "should report invalid material value"
+  );
+  console.log("[ok] python runtime validates material properties");
+
+  // Test 2g: Options - skip semantic validation
+  const skipSemanticResult = await runPythonValidation(dupIdModel, ["--no-semantic"]);
+  assert(skipSemanticResult.valid === true, "model with semantic-only issues should pass when semantic is skipped");
+  console.log("[ok] python runtime respects --no-semantic flag");
+
+  // Test 2h: Options - stop on first error
+  const stopOnFirstResult = await runPythonValidation(incompleteModel, ["--stop-on-first-error"]);
+  assert(stopOnFirstResult.issues.length <= 2, "should stop after first error");
+  console.log("[ok] python runtime respects --stop-on-first-error flag");
+
+  // Test 3: Verify runtime-facing validation exports still exist
+  assert(typeof entryModule.VALIDATION_GET_ACTION_BY_PATH === "object", "validation entry should keep runtime action mapping exports");
+  assert(typeof entryModule.VALIDATION_POST_ACTION_BY_PATH === "object", "validation entry should keep runtime action mapping exports");
+  console.log("[ok] validation module runtime exports");
+}
+
 const BACKEND_VALIDATIONS = {
   "validate-agent-orchestration": validateAgentOrchestration,
   "validate-agent-base-chat-fallback": validateAgentBaseChatFallback,
   "validate-agent-capability-modes": validateAgentCapabilityModes,
+  "validate-agent-manifest-binding": validateAgentManifestBinding,
+  "validate-agent-manifest-loader": validateAgentManifestLoader,
+  "validate-agent-runtime-loader": validateAgentRuntimeLoader,
+  "validate-agent-runtime-binder": validateAgentRuntimeBinder,
+  "validate-agent-tool-catalog": validateAgentToolCatalog,
+  "validate-agent-skill-catalog-manifests": validateAgentSkillCatalogManifests,
   "validate-agent-tools-contract": validateAgentToolsContract,
   "validate-agent-api-contract": validateAgentApiContract,
   "validate-agent-capability-matrix": validateAgentCapabilityMatrix,
@@ -1923,6 +3558,8 @@ const BACKEND_VALIDATIONS = {
   "validate-chat-message-routing": validateChatMessageRouting,
   "validate-report-narrative-contract": validateReportNarrativeContract,
   "validate-dev-startup-guards": validateDevStartupGuards,
+  "validate-docker-backend-runtime-assets": validateDockerBackendRuntimeAssets,
+  "validate-structure-json-skill": validateStructureJsonSkill,
 };
 
 async function runBackendValidation(name, context) {

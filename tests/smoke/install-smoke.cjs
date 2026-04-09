@@ -82,6 +82,15 @@ async function runDockerComposeSmoke(rootDir) {
     log("[ci-docker-smoke] docker compose config");
     await docker.runDockerCompose(paths, ["config", "-q"], { env: smokeEnv, envFile, timeoutMs: 120000 });
 
+    try {
+      log("[ci-docker-smoke] pruning stale build cache");
+      await runtime.runCommand("docker", ["builder", "prune", "-f", "--filter", "until=24h"], {
+        env: smokeEnv,
+      });
+    } catch (error) {
+      log(`[ci-docker-smoke] warning: failed to prune build cache: ${error.message}`);
+    }
+
     log("[ci-docker-smoke] docker compose up --build -d");
     await docker.runDockerCompose(paths, ["up", "--build", "-d"], {
       env: smokeEnv,

@@ -76,4 +76,13 @@ describe('api-base', () => {
     const { API_BASE } = await import('@/lib/api-base')
     expect(API_BASE).toBe('http://127.0.0.1:8000/api')
   })
+
+  it('returns the raw value when window is undefined (SSR)', async () => {
+    vi.stubEnv('NEXT_PUBLIC_API_URL', 'http://localhost:9000')
+    // Simulate SSR by stubbing window to undefined. vi.stubGlobal handles
+    // restoration via afterEach's vi.unstubAllGlobals.
+    vi.stubGlobal('window', undefined)
+    const { API_BASE } = await import('@/lib/api-base')
+    expect(API_BASE).toBe('http://localhost:9000')
+  })
 })

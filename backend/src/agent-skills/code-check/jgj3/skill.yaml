@@ -1,0 +1,39 @@
+id: code-check-jgj3
+domain: code-check
+source: builtin
+name:
+  zh: 规范校核 JGJ3
+  en: Code Check JGJ3
+description:
+  zh: 按 JGJ3 执行高层混凝土结构规程校核。
+  en: Run high-rise concrete checks under JGJ3.
+triggers:
+  - JGJ3
+  - 高层混凝土规程
+  - high-rise concrete
+stages:
+  - intent
+  - analysis
+  - design
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - code-check-policy
+  - code-check-execution
+grants:
+  - run_code_check
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: false
+priority: 130
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+designCode: JGJ3
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - generic
+materialFamilies: []
+aliases: []
+toolHints: {}

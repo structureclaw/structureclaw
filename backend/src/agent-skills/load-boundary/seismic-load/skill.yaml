@@ -1,0 +1,74 @@
+id: seismic-load
+domain: load-boundary
+source: builtin
+name:
+  zh: 地震荷载
+  en: Seismic Load
+description:
+  zh: 生成地震荷载，使用底部剪力法，符合 GB50011-2010 规范，支持多种力分配策略。
+  en: Generate seismic loads using equivalent base shear method according to GB50011-2010 with multiple force distribution strategies.
+triggers:
+  - seismic load
+  - 地震荷载
+  - earthquake load
+  - 地震力
+  - seismic analysis
+  - 抗震
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - load-generation
+  - load-validation
+grants: []
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 95
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+version: 1.0.0
+scenarioKeys:
+  - frame
+  - truss
+  - portal-frame
+  - double-span-beam
+  - beam
+loadTypes:
+  - seismic
+  - earthquake
+  - dynamic
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - frame
+  - truss
+  - generic
+materialFamilies: []
+inputSchema:
+  type: object
+  properties:
+    modelId:
+      type: string
+    seismicIntensity:
+      type: string
+    siteClass:
+      type: string
+    designGroup:
+      type: string
+    dampingRatio:
+      type: number
+  required:
+    - modelId
+outputSchema:
+  type: object
+  properties:
+    loadCases:
+      type: array
+    loads:
+      type: array
+aliases: []
+toolHints: {}

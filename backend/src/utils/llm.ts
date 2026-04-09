@@ -2,21 +2,30 @@ import { ChatOpenAI } from '@langchain/openai';
 import { config } from '../config/index.js';
 import { llmCallLogger } from './llm-logger.js';
 
+type ChatModelConfigLike = Pick<
+  typeof config,
+  'llmApiKey' | 'llmModel' | 'llmTimeoutMs' | 'llmMaxRetries' | 'llmBaseUrl'
+>;
+
+export function buildChatModelOptions(modelConfig: ChatModelConfigLike, temperature: number) {
+  return {
+    modelName: modelConfig.llmModel,
+    temperature,
+    timeout: modelConfig.llmTimeoutMs,
+    maxRetries: modelConfig.llmMaxRetries,
+    apiKey: modelConfig.llmApiKey,
+    configuration: {
+      baseURL: modelConfig.llmBaseUrl,
+    },
+  };
+}
+
 export function createChatModel(temperature: number): ChatOpenAI | null {
   if (!config.llmApiKey) {
     return null;
   }
 
-  const model = new ChatOpenAI({
-    modelName: config.llmModel,
-    temperature,
-    timeout: config.llmTimeoutMs,
-    maxRetries: config.llmMaxRetries,
-    openAIApiKey: config.llmApiKey,
-    configuration: {
-      baseURL: config.llmBaseUrl,
-    },
-  });
+  const model = new ChatOpenAI(buildChatModelOptions(config, temperature));
 
   return wrapWithLlmLogging(model);
 }

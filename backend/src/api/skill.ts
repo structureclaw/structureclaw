@@ -1,10 +1,10 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
-import { SkillService } from '../services/skill.js';
+import { LegacySkillCatalogService } from '../services/skill.js';
 
-const skillService = new SkillService();
+const legacySkillCatalogService = new LegacySkillCatalogService();
 
-const createSkillSchema = z.object({
+const createLegacySkillCatalogItemSchema = z.object({
   name: z.string().min(1),
   description: z.string(),
   category: z.enum([
@@ -28,102 +28,104 @@ const createSkillSchema = z.object({
   isPublic: z.boolean().default(false),
 });
 
-export async function skillRoutes(fastify: FastifyInstance) {
-  // 内置技能列表
+async function legacySkillCatalogRoutes(fastify: FastifyInstance) {
+  // Legacy bundled catalog items.
   fastify.get('/builtin', {
     schema: {
-      tags: ['Skills'],
-      summary: '获取内置技能列表',
+      tags: ['Legacy Skill Catalog'],
+      summary: '获取旧版目录条目列表',
     },
   }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const skills = skillService.getBuiltinSkills();
-    return reply.send(skills);
+    const catalogItems = legacySkillCatalogService.getBuiltinCatalogSkills();
+    return reply.send(catalogItems);
   });
 
-  // 获取技能列表
+  // List legacy catalog items.
   fastify.get('/', {
     schema: {
-      tags: ['Skills'],
-      summary: '获取技能列表',
+      tags: ['Legacy Skill Catalog'],
+      summary: '获取旧版目录条目列表',
     },
   }, async (request: FastifyRequest<{ Querystring: { category?: string; search?: string } }>, reply: FastifyReply) => {
     const { category, search } = request.query;
-    const skills = await skillService.listSkills({ category, search });
+    const skills = await legacySkillCatalogService.listCatalogSkills({ category, search });
     return reply.send(skills);
   });
 
-  // 获取技能详情
+  // Get a legacy catalog item.
   fastify.get('/:id', {
     schema: {
-      tags: ['Skills'],
-      summary: '获取技能详情',
+      tags: ['Legacy Skill Catalog'],
+      summary: '获取旧版目录条目详情',
     },
   }, async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     const { id } = request.params;
-    const skill = await skillService.getSkill(id);
-    return reply.send(skill);
+    const catalogItem = await legacySkillCatalogService.getCatalogSkill(id);
+    return reply.send(catalogItem);
   });
 
-  // 创建技能
+  // Create a legacy catalog item.
   fastify.post('/', {
     schema: {
-      tags: ['Skills'],
-      summary: '创建新技能',
+      tags: ['Legacy Skill Catalog'],
+      summary: '创建旧版目录条目',
     },
-  }, async (request: FastifyRequest<{ Body: z.infer<typeof createSkillSchema> }>, reply: FastifyReply) => {
-    const body = createSkillSchema.parse(request.body);
+  }, async (request: FastifyRequest<{ Body: z.infer<typeof createLegacySkillCatalogItemSchema> }>, reply: FastifyReply) => {
+    const body = createLegacySkillCatalogItemSchema.parse(request.body);
     const userId = request.user?.id;
 
-    const skill = await skillService.createSkill({
+    const catalogItem = await legacySkillCatalogService.createCatalogSkill({
       ...body,
       authorId: userId,
     });
 
-    return reply.send(skill);
+    return reply.send(catalogItem);
   });
 
-  // 安装技能
+  // Install a legacy catalog item into a project.
   fastify.post('/:id/install', {
     schema: {
-      tags: ['Skills'],
-      summary: '安装技能到项目',
+      tags: ['Legacy Skill Catalog'],
+      summary: '将旧版目录条目安装到项目',
     },
   }, async (request: FastifyRequest<{ Params: { id: string }; Body: { projectId: string } }>, reply: FastifyReply) => {
     const { id } = request.params;
     const { projectId } = request.body;
     const userId = request.user?.id;
 
-    const result = await skillService.installSkill(id, projectId, userId);
+    const result = await legacySkillCatalogService.installCatalogSkill(id, projectId, userId);
     return reply.send(result);
   });
 
-  // 调用技能
+  // Invoke a legacy catalog item handler.
   fastify.post('/:id/invoke', {
     schema: {
-      tags: ['Skills'],
-      summary: '调用技能',
+      tags: ['Legacy Skill Catalog'],
+      summary: '调用旧版目录条目',
     },
   }, async (request: FastifyRequest<{ Params: { id: string }; Body: Record<string, unknown> }>, reply: FastifyReply) => {
     const { id } = request.params;
     const params = request.body as Record<string, unknown>;
     const userId = request.user?.id;
 
-    const result = await skillService.invokeSkill(id, params, userId);
+    const result = await legacySkillCatalogService.invokeCatalogSkill(id, params, userId);
     return reply.send(result);
   });
 
-  // 技能评分
+  // Rate a legacy catalog item.
   fastify.post('/:id/rate', {
     schema: {
-      tags: ['Skills'],
-      summary: '技能评分',
+      tags: ['Legacy Skill Catalog'],
+      summary: '旧版目录条目评分',
     },
   }, async (request: FastifyRequest<{ Params: { id: string }; Body: { rating: number; comment?: string } }>, reply: FastifyReply) => {
     const { id } = request.params;
     const { rating, comment } = request.body;
     const userId = request.user?.id;
 
-    const result = await skillService.rateSkill(id, userId, rating, comment);
+    const result = await legacySkillCatalogService.rateCatalogSkill(id, userId, rating, comment);
     return reply.send(result);
   });
 }
+
+export { legacySkillCatalogRoutes as skillRoutes };

@@ -1,21 +1,7 @@
 name: Install smoke
 
 on:
-  push:
-    branches: [master, main, 'feat/*']
-    paths:
-      - 'docker-compose.yml'
-      - 'docker-compose.cn.yml'
-      - 'docker/**'
-      - '.env.example'
-      - 'backend/**'
-      - 'frontend/**'
-      - 'scripts/cli/**'
-      - 'tests/**'
-      - 'sclaw'
-      - 'sclaw_cn'
-      - 'package.json'
-      - '.github/workflows/install-smoke.yml'
+  workflow_dispatch:
   pull_request:
     paths:
       - 'docker-compose.yml'
@@ -24,11 +10,29 @@ on:
       - '.env.example'
       - 'backend/**'
       - 'frontend/**'
-      - 'scripts/cli/**'
+      - 'scripts/**'
       - 'tests/**'
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
+      - '.github/actions/setup-env/**'
+      - '.github/workflows/install-smoke.yml'
+  push:
+    branches:
+      - master
+    paths:
+      - 'docker-compose.yml'
+      - 'docker-compose.cn.yml'
+      - 'docker/**'
+      - '.env.example'
+      - 'backend/**'
+      - 'frontend/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'sclaw'
+      - 'sclaw_cn'
+      - 'package.json'
+      - '.github/actions/setup-env/**'
       - '.github/workflows/install-smoke.yml'
 
 jobs:
@@ -39,22 +43,13 @@ jobs:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-          cache-dependency-path: |
-            backend/package-lock.json
-            frontend/package-lock.json
-
-      - name: Native install smoke (npm ci + build)
-        shell: bash
-        run: node tests/runner.mjs smoke-native
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
 
       - name: Frontend type-check
         run: npm run type-check --prefix frontend
@@ -65,13 +60,18 @@ jobs:
       - name: Frontend lint
         run: npm run lint --prefix frontend
 
+      - name: Backend type-check
+        run: npm run build --prefix backend
+
+      - name: Backend lint
+        run: npm run lint --prefix backend
+
   docker-compose-smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Docker compose smoke
         shell: bash
         run: node tests/runner.mjs smoke-docker
@@ -83,7 +83,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
       - name: Verify Docker is ready
         shell: powershell
         run: |
@@ -104,7 +103,6 @@ jobs:
           if ($attempt -eq $maxAttempts) {
             throw 'Docker failed to start'
           }
-
       - name: Docker compose smoke
         shell: powershell
         run: node tests/runner.mjs smoke-docker

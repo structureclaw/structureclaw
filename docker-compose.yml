@@ -17,7 +17,6 @@ services:
       - PORT=${PORT:-8000}
       - BACKEND_BODY_LIMIT_MB=${BACKEND_BODY_LIMIT_MB:-20}
       - DATABASE_URL=${DATABASE_URL:-file:/.runtime/data/structureclaw.db}
-      - REDIS_URL=disabled
       - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-change-in-production}
       - LLM_PROVIDER=${LLM_PROVIDER:-openai}
       - LLM_API_KEY=${LLM_API_KEY}

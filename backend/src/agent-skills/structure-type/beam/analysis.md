@@ -1,14 +1,3 @@
----
-id: beam
-structureType: beam
-zhName: 梁
-enName: Beam
-zhDescription: 梁分析阶段 skill。
-enDescription: Beam analysis-stage skill.
-triggers: ["beam","梁","悬臂"]
-stages: ["analysis"]
-autoLoadByDefault: true
----
 # Analysis
 
 - 默认分析类型可采用 `static`

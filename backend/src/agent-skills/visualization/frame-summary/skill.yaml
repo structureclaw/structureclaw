@@ -1,0 +1,41 @@
+id: visualization-frame-summary
+domain: visualization
+source: builtin
+name:
+  zh: 框架结构摘要
+  en: Frame Structure Summary
+description:
+  zh: 展示框架结构统计摘要，包括节点数、单元数、最大位移、最大反力和最大内力。
+  en: Show frame statistics including node and element counts, max displacement, max reaction, and max force.
+triggers:
+  - 摘要
+  - summary
+  - 统计
+  - 框架
+  - 节点数
+  - 位移
+  - 反力
+  - 内力
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - result-visualization
+  - summary-rendering
+grants: []
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 70
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - generic
+materialFamilies: []
+aliases: []
+toolHints: {}

@@ -96,7 +96,7 @@ node .\sclaw stop
 
 ### Windows / Docker Quick Start
 
-Windows users can now start the full stack directly with Docker, which is the easiest path for beginners who do not want to install local Node.js, Python, PostgreSQL, and Redis first.
+Windows users can now start the full stack directly with Docker, which is the easiest path for beginners who do not want to install local Node.js and Python first.
 
 Recommended steps:
 
@@ -140,7 +140,7 @@ Copy and adjust environment variables from `.env.example`.
 Key variables include:
 
 - `PORT`, `FRONTEND_PORT`
-- `DATABASE_URL`, `POSTGRES_SOURCE_DATABASE_URL`, `REDIS_URL`
+- `DATABASE_URL`, `POSTGRES_SOURCE_DATABASE_URL`
 - `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`
 - `ANALYSIS_PYTHON_BIN`, `ANALYSIS_PYTHON_TIMEOUT_MS`, `ANALYSIS_ENGINE_MANIFEST_PATH`
 

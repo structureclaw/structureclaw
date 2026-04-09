@@ -1,6 +1,6 @@
 param(
-  [int]$MinMajor = 18,
-  [string]$TargetNodeVersion = "20",
+  [int]$MinMajor = 20,
+  [string]$TargetNodeVersion = "24",
   [switch]$DryRun
 )
 
@@ -78,6 +78,6 @@ if (Get-Command node -ErrorAction SilentlyContinue) {
   Write-Host "Done. Current Node.js version: $(node -v)"
   Write-Host "完成。当前 Node.js 版本：$(node -v)"
 } else {
-  Write-Host "Installation completed. Please open a new terminal and run 'node -v'."
-  Write-Host "安装已完成。请打开新的终端并运行 'node -v'。"
+  Write-Host "Installation completed. Please open a new terminal and run ""node -v""."
+  Write-Host "安装已完成。请打开新的终端并运行 ""node -v""。"
 }

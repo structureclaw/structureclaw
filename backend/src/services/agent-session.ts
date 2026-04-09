@@ -1,4 +1,4 @@
-import { redis } from '../utils/redis.js';
+import { cache } from '../utils/cache.js';
 import type { InteractionSession } from './agent.js';
 import type { SessionState } from './agent-context.js';
 
@@ -47,7 +47,7 @@ export async function getInteractionSession(
   }
 
   try {
-    const raw = await redis.get(buildInteractionSessionKey(conversationId));
+    const raw = await cache.get(buildInteractionSessionKey(conversationId));
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed && typeof parsed === 'object' && parsed.draft) {
@@ -66,7 +66,7 @@ export async function setInteractionSession(
   session: InteractionSession,
 ): Promise<void> {
   try {
-    await redis.setex(
+    await cache.setex(
       buildInteractionSessionKey(conversationId),
       SESSION_TTL_SECONDS,
       JSON.stringify(session),
@@ -80,7 +80,7 @@ export async function clearInteractionSession(
   conversationId: string,
 ): Promise<void> {
   try {
-    await redis.del(buildInteractionSessionKey(conversationId));
+    await cache.del(buildInteractionSessionKey(conversationId));
   } catch {
     // Keep non-blocking behavior for session cleanup.
   }

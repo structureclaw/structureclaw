@@ -75,7 +75,7 @@ export async function executeRunAnalysisStep(args: {
 
 export const RUN_ANALYSIS_TOOL_MANIFEST: ToolManifest = {
   id: 'run_analysis',
-  source: 'external',
+  source: 'builtin',
   enabledByDefault: false,
   category: 'analysis',
   displayName: localize('执行结构分析', 'Run Structural Analysis'),

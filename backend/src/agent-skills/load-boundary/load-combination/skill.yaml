@@ -1,0 +1,73 @@
+id: load-combination
+domain: load-boundary
+source: builtin
+name:
+  zh: 荷载组合
+  en: Load Combination
+description:
+  zh: 生成荷载组合，包括承载力极限状态和正常使用极限状态组合，以及地震组合。
+  en: Generate load combinations for ultimate and serviceability limit states including seismic combinations.
+triggers:
+  - load combination
+  - 荷载组合
+  - ULS
+  - SLS
+  - ultimate limit state
+  - 承载力极限状态
+  - serviceability limit state
+  - 正常使用极限状态
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - load-combination
+  - load-validation
+grants: []
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 100
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+version: 1.0.0
+scenarioKeys:
+  - frame
+  - truss
+  - portal-frame
+  - double-span-beam
+  - beam
+combinationTypes:
+  - ULS
+  - SLS
+  - SEISMIC
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - frame
+  - truss
+  - generic
+materialFamilies: []
+inputSchema:
+  type: object
+  properties:
+    modelId:
+      type: string
+    loadCases:
+      type: array
+    combinationType:
+      type: string
+    code:
+      type: string
+  required:
+    - modelId
+    - loadCases
+outputSchema:
+  type: object
+  properties:
+    combinations:
+      type: array
+aliases: []
+toolHints: {}

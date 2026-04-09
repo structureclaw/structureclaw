@@ -1,5 +1,8 @@
 import type { AppLocale } from '../services/locale.js';
 
+// 导出荷载与边界条件专用类型
+export * from './load-boundary-types.js';
+
 export type DraftLoadType = 'point' | 'distributed';
 export type DraftLoadPosition = 'end' | 'midspan' | 'full-span' | 'top-nodes' | 'middle-joint' | 'free-joint';
 export type DraftSupportType = 'cantilever' | 'simply-supported' | 'fixed-fixed' | 'fixed-pinned';
@@ -142,6 +145,7 @@ export interface AgentSkillMetadata {
   triggers: string[];
   stages: SkillStage[];
   autoLoadByDefault: boolean;
+  domain?: SkillDomain;
 }
 
 export interface AgentSkillFile extends AgentSkillMetadata {
@@ -212,6 +216,7 @@ export interface ToolManifest {
   id: string;
   source: AgentToolSource;
   enabledByDefault: boolean;
+  tier?: 'foundation' | 'domain' | 'extension';
   displayName: LocalizedText;
   description: LocalizedText;
   category?: 'modeling' | 'analysis' | 'code-check' | 'report' | 'utility';

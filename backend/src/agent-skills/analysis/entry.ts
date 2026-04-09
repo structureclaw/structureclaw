@@ -3,11 +3,7 @@ export {
   BUILTIN_ANALYSIS_ENGINES,
   BUILTIN_ANALYSIS_ENGINE_IDS,
   BUILTIN_ANALYSIS_RUNTIME_ADAPTER_KEYS,
-  BUILTIN_ANALYSIS_SKILLS,
-  getBuiltinAnalysisSkill,
   listBuiltinAnalysisEngines,
-  listBuiltinAnalysisSkills,
-  resolvePreferredBuiltinAnalysisSkill,
   LOCAL_GET_ACTION_BY_PATH,
   LOCAL_POST_ACTION_BY_PATH,
 } from './registry.js';

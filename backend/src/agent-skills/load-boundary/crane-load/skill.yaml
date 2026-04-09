@@ -1,0 +1,71 @@
+id: crane-load
+domain: load-boundary
+source: builtin
+name:
+  zh: 吊车荷载
+  en: Crane Load
+description:
+  zh: 生成吊车荷载，适用于工业建筑，支持多种吊车配置。
+  en: Generate crane loads for industrial buildings with multiple crane configurations.
+triggers:
+  - crane load
+  - 吊车荷载
+  - bridge crane
+  - 桥式起重机
+  - overhead crane
+  - 行车
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - load-generation
+  - load-validation
+grants: []
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: false
+priority: 90
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+version: 1.0.0
+scenarioKeys:
+  - frame
+  - truss
+  - portal-frame
+  - double-span-beam
+  - beam
+loadTypes:
+  - crane
+  - vertical
+  - horizontal
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - frame
+  - generic
+materialFamilies: []
+inputSchema:
+  type: object
+  properties:
+    modelId:
+      type: string
+    craneCapacity:
+      type: number
+    craneSpan:
+      type: number
+    numberOfCranes:
+      type: number
+  required:
+    - modelId
+outputSchema:
+  type: object
+  properties:
+    loadCases:
+      type: array
+    loads:
+      type: array
+aliases: []
+toolHints: {}

@@ -1,14 +1,3 @@
----
-id: frame
-structureType: frame
-zhName: 规则框架
-enName: Regular Frame
-zhDescription: 规则框架分析阶段 skill。
-enDescription: Analysis-stage skill for regular frames.
-triggers: ["frame","框架","steel frame","钢框架","moment frame","刚接框架"]
-stages: ["analysis"]
-autoLoadByDefault: true
----
 # Analysis
 
 - 规则 2D 框架优先采用线弹性 2D frame 路径。

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import httpx
+import yaml
 from fastapi import HTTPException
 
 from contracts import AnalysisResult, EngineNotAvailableError
@@ -537,12 +538,20 @@ class AnalysisEngineRegistry:
             if not child.is_dir() or child.name.startswith(".") or child.name == "runtime":
                 continue
 
-            intent_path = child / "intent.md"
+            manifest_path = child / "skill.yaml"
             runtime_path = child / "runtime.py"
-            if not intent_path.exists() or not runtime_path.exists():
+            if not manifest_path.exists() or not runtime_path.exists():
                 continue
 
-            metadata = _parse_frontmatter(intent_path.read_text(encoding="utf-8"))
+            try:
+                metadata = yaml.safe_load(manifest_path.read_text(encoding="utf-8")) or {}
+            except (yaml.YAMLError, OSError) as error:
+                logger.warning("Failed to parse analysis skill manifest %s: %s", manifest_path, error)
+                continue
+
+            if not isinstance(metadata, dict) or str(metadata.get("domain", "")).strip() != "analysis":
+                continue
+
             skill_id = str(metadata.get("id", child.name)).strip()
             engine_id = str(metadata.get("engineId", "")).strip()
             adapter_key = str(metadata.get("adapterKey", "")).strip()
@@ -617,42 +626,6 @@ class AnalysisEngineRegistry:
         if value:
             return Path(value)
         return Path(__file__).resolve().parents[6] / ".runtime" / "analysis-engines.json"
-
-
-def _parse_scalar(raw: str) -> Any:
-    value = raw.strip()
-    if value == "true":
-        return True
-    if value == "false":
-        return False
-    if (
-        (value.startswith("[") and value.endswith("]"))
-        or (value.startswith("{") and value.endswith("}"))
-    ):
-        try:
-            return json.loads(value)
-        except json.JSONDecodeError:
-            return value
-    return value
-
-
-def _parse_frontmatter(markdown: str) -> Dict[str, Any]:
-    trimmed = markdown.lstrip()
-    if not trimmed.startswith("---\n"):
-        return {}
-
-    end_index = trimmed.find("\n---\n", 4)
-    if end_index == -1:
-        return {}
-
-    metadata: Dict[str, Any] = {}
-    for line in trimmed[4:end_index].splitlines():
-        separator = line.find(":")
-        if separator == -1:
-            continue
-        key = line[:separator].strip()
-        metadata[key] = _parse_scalar(line[separator + 1 :])
-    return metadata
 
 
 def _load_runtime_module(skill_id: str, runtime_path: Path):

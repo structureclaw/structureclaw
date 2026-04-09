@@ -1,0 +1,39 @@
+id: code-check-gb50017
+domain: code-check
+source: builtin
+name:
+  zh: 规范校核 GB50017
+  en: Code Check GB50017
+description:
+  zh: 按 GB50017 执行钢结构规范校核。
+  en: Run steel structure code checks under GB50017.
+triggers:
+  - GB50017
+  - 钢结构规范
+  - steel code
+stages:
+  - intent
+  - analysis
+  - design
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - code-check-policy
+  - code-check-execution
+grants:
+  - run_code_check
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: false
+priority: 100
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+designCode: GB50017
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - generic
+materialFamilies: []
+aliases: []
+toolHints: {}

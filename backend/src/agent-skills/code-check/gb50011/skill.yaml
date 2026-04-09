@@ -1,0 +1,39 @@
+id: code-check-gb50011
+domain: code-check
+source: builtin
+name:
+  zh: 规范校核 GB50011
+  en: Code Check GB50011
+description:
+  zh: 按 GB50011 执行抗震规范校核。
+  en: Run seismic code checks under GB50011.
+triggers:
+  - GB50011
+  - 抗震规范
+  - seismic code
+stages:
+  - intent
+  - analysis
+  - design
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - code-check-policy
+  - code-check-execution
+grants:
+  - run_code_check
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: false
+priority: 120
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+designCode: GB50011
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - generic
+materialFamilies: []
+aliases: []
+toolHints: {}

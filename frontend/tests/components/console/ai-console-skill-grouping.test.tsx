@@ -264,6 +264,157 @@ describe('Capability settings and console integration', () => {
     })
   })
 
+  it('falls back to the /agent/skills domain when capability-matrix omits the skill mapping', async () => {
+    const user = userEvent.setup()
+
+    vi.restoreAllMocks()
+    window.localStorage.clear()
+    vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+
+      if (url === `${API_BASE}/api/v1/agent/skills`) {
+        return {
+          ok: true,
+          json: async () => ([
+            {
+              id: 'dead-load',
+              name: { zh: '恒荷载', en: 'Dead Load' },
+              description: { zh: 'dead load', en: 'dead load' },
+              autoLoadByDefault: true,
+              domain: 'load-boundary',
+            },
+          ]),
+        } as Response
+      }
+
+      if (url.startsWith(`${API_BASE}/api/v1/agent/capability-matrix`)) {
+        return {
+          ok: true,
+          json: async () => ({
+            skills: [],
+            tools: [],
+            foundationToolIds: [],
+            enabledToolIdsBySkill: {},
+            skillDomainById: {},
+            domainSummaries: [
+              { domain: 'load-boundary', skillIds: [] },
+            ],
+          }),
+        } as Response
+      }
+
+      return {
+        ok: true,
+        json: async () => ({}),
+      } as Response
+    })
+
+    render(<CapabilitySettingsPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
+    })
+
+    await user.selectOptions(screen.getByLabelText(/category view/i), 'load-boundary')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'Dead Load' })).toBeInTheDocument()
+    })
+  })
+
+  it('renders catalog-projected skills and tools without registry-only metadata', async () => {
+    const user = userEvent.setup()
+
+    vi.restoreAllMocks()
+    window.localStorage.clear()
+    vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+
+      if (url === `${API_BASE}/api/v1/agent/skills`) {
+        return {
+          ok: true,
+          json: async () => ([
+            {
+              id: 'generic',
+              name: { zh: '通用结构类型', en: 'Generic Structure Type' },
+              description: { zh: 'generic', en: 'generic' },
+            },
+            {
+              id: 'beam',
+              name: { zh: '梁', en: 'Beam' },
+              description: { zh: 'beam', en: 'beam' },
+            },
+            {
+              id: 'opensees-static',
+              name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' },
+              description: { zh: 'static', en: 'static' },
+            },
+          ]),
+        } as Response
+      }
+
+      if (url.startsWith(`${API_BASE}/api/v1/agent/capability-matrix`)) {
+        return {
+          ok: true,
+          json: async () => ({
+            skills: [
+              { id: 'generic', domain: 'structure-type' },
+              { id: 'beam', domain: 'structure-type' },
+              { id: 'opensees-static', domain: 'analysis' },
+            ],
+            tools: [
+              {
+                id: 'draft_model',
+                displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' },
+                description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
+              },
+              {
+                id: 'run_analysis',
+                displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' },
+                description: { zh: '执行分析求解', en: 'Execute analysis' },
+                requiresTools: ['draft_model'],
+              },
+            ],
+            foundationToolIds: ['draft_model'],
+            enabledToolIdsBySkill: {
+              generic: ['draft_model'],
+              beam: ['draft_model'],
+              'opensees-static': ['run_analysis'],
+            },
+            domainSummaries: [
+              { domain: 'structure-type', skillIds: ['generic', 'beam'] },
+              { domain: 'analysis', skillIds: ['opensees-static'] },
+            ],
+          }),
+        } as Response
+      }
+
+      return {
+        ok: true,
+        json: async () => ({}),
+      } as Response
+    })
+
+    render(<CapabilitySettingsPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
+    })
+
+    expect(screen.getByRole('button', { name: 'Generic Structure Type' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Beam' })).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText(/category view/i), 'analysis')
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: 'OpenSees Static Analysis' })).toBeInTheDocument()
+    })
+
+    expect(screen.getAllByText(/utility tools/i).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Draft Structural Model' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Run Structural Analysis' }).length).toBeGreaterThan(0)
+  })
+
   it('sends the explicit default skill and tool selection from the console', async () => {
     const user = userEvent.setup()
     const fetchMock = vi.mocked(global.fetch)
@@ -291,6 +442,130 @@ describe('Capability settings and console integration', () => {
     expect(body.context?.skillIds).toEqual(['opensees-static', 'generic'])
     expect([...(body.context?.enabledToolIds ?? [])].sort()).toEqual(['draft_model', 'run_analysis', 'update_model'])
     expect(body.context?.model).toBeUndefined()
+  })
+
+  it('migrates legacy stored skill ids to canonical ids before sending console requests', async () => {
+    const user = userEvent.setup()
+
+    vi.restoreAllMocks()
+    window.localStorage.setItem(CAPABILITY_PREFERENCE_STORAGE_KEY, JSON.stringify({
+      skillIds: ['structure-json-validation'],
+      toolIds: ['validate_model'],
+    }))
+
+    const fetchMock = vi.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url === `${API_BASE}/api/v1/agent/skills`) {
+        return {
+          ok: true,
+          json: async () => ([
+            {
+              id: 'validation-structure-model',
+              aliases: ['structure-json-validation'],
+              name: { zh: '结构模型校验', en: 'Structure Model Validation' },
+              description: { zh: 'validation', en: 'validation' },
+              autoLoadByDefault: false,
+              domain: 'validation',
+            },
+          ]),
+        } as Response
+      }
+
+      if (url.startsWith(`${API_BASE}/api/v1/agent/capability-matrix`)) {
+        return {
+          ok: true,
+          json: async () => ({
+            skills: [
+              { id: 'validation-structure-model', domain: 'validation' },
+            ],
+            tools: [
+              {
+                id: 'validate_model',
+                category: 'utility',
+                displayName: { zh: '校验模型', en: 'Validate Model' },
+                description: { zh: '校验结构模型', en: 'Validate the structural model' },
+              },
+            ],
+            foundationToolIds: [],
+            enabledToolIdsBySkill: {
+              'validation-structure-model': ['validate_model'],
+            },
+            skillDomainById: {
+              'validation-structure-model': 'validation',
+            },
+            canonicalSkillIdByAlias: {
+              'structure-json-validation': 'validation-structure-model',
+            },
+            domainSummaries: [
+              { domain: 'validation', skillIds: ['validation-structure-model'] },
+            ],
+          }),
+        } as Response
+      }
+
+      if (url === `${API_BASE}/api/v1/chat/conversations`) {
+        return {
+          ok: true,
+          json: async () => ([]),
+        } as Response
+      }
+
+      if (url === `${API_BASE}/api/v1/chat/conversation` && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({ id: 'conv-validation', title: 'Validation', type: 'general' }),
+        } as Response
+      }
+
+      if (url === `${API_BASE}/api/v1/chat/stream`) {
+        return createSseResponse([
+          {
+            type: 'result',
+            content: {
+              response: 'ok',
+              success: true,
+            },
+          },
+        ])
+      }
+
+      if (url === `${API_BASE}/api/v1/models/latest`) {
+        return {
+          ok: true,
+          json: async () => ({ model: null }),
+        } as Response
+      }
+
+      return {
+        ok: true,
+        json: async () => ({}),
+      } as Response
+    })
+
+    render(<AIConsole />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: /manage capabilities/i })).toBeInTheDocument()
+    })
+
+    const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
+    await user.type(composer, 'validate model')
+    await user.click(screen.getByRole('button', { name: /send/i }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${API_BASE}/api/v1/chat/stream`,
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
+
+    const streamCall = fetchMock.mock.calls.find(([input]) => String(input) === `${API_BASE}/api/v1/chat/stream`)
+    expect(streamCall).toBeTruthy()
+    const requestInit = streamCall?.[1] as RequestInit | undefined
+    const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { skillIds?: string[]; enabledToolIds?: string[] } }
+    expect(body.context?.skillIds).toEqual(['validation-structure-model'])
+    expect(body.context?.enabledToolIds).toEqual(['validate_model'])
   })
 
   it('hydrates all default callable tools in the console when the capability matrix gates tools by skill', async () => {
@@ -430,6 +705,128 @@ describe('Capability settings and console integration', () => {
     const requestInit = streamCall?.[1] as RequestInit | undefined
     const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { enabledToolIds?: string[] } }
     expect([...(body.context?.enabledToolIds ?? [])].sort()).toEqual(['convert_model', 'draft_model', 'run_analysis', 'update_model'])
+  })
+
+  it('falls back to default engineering skills when the console submits before capability hydration finishes', async () => {
+    const user = userEvent.setup()
+
+    let resolveSkills: ((value: Response) => void) | null = null
+    let resolveCapabilityMatrix: ((value: Response) => void) | null = null
+
+    vi.restoreAllMocks()
+    window.localStorage.clear()
+    const fetchMock = vi.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url === `${API_BASE}/api/v1/agent/skills`) {
+        return await new Promise<Response>((resolve) => {
+          resolveSkills = resolve
+        })
+      }
+
+      if (url.startsWith(`${API_BASE}/api/v1/agent/capability-matrix`)) {
+        return await new Promise<Response>((resolve) => {
+          resolveCapabilityMatrix = resolve
+        })
+      }
+
+      if (url === `${API_BASE}/api/v1/chat/conversations`) {
+        return {
+          ok: true,
+          json: async () => ([]),
+        } as Response
+      }
+
+      if (url === `${API_BASE}/api/v1/chat/conversation` && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: async () => ({ id: 'conv-early-submit', title: 'Early Submit', type: 'general' }),
+        } as Response
+      }
+
+      if (url === `${API_BASE}/api/v1/chat/stream`) {
+        return createSseResponse([{ type: 'result', content: { response: 'ok', success: true } }])
+      }
+
+      if (url === `${API_BASE}/api/v1/models/latest`) {
+        return {
+          ok: true,
+          json: async () => ({ model: null }),
+        } as Response
+      }
+
+      return {
+        ok: true,
+        json: async () => ({}),
+      } as Response
+    })
+
+    render(<AIConsole />)
+
+    const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
+    await user.type(composer, 'design immediately')
+    await user.click(screen.getByRole('button', { name: /send/i }))
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        `${API_BASE}/api/v1/chat/stream`,
+        expect.objectContaining({ method: 'POST' })
+      )
+    })
+
+    const streamCall = fetchMock.mock.calls.findLast(([input]) => String(input) === `${API_BASE}/api/v1/chat/stream`)
+    expect(streamCall).toBeTruthy()
+    const requestInit = streamCall?.[1] as RequestInit | undefined
+    const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { skillIds?: string[]; enabledToolIds?: string[] } }
+    expect(body.context?.skillIds).toEqual(['opensees-static', 'generic'])
+    expect(body.context?.enabledToolIds).toBeUndefined()
+
+    resolveSkills?.({
+      ok: true,
+      json: async () => ([
+        {
+          id: 'generic',
+          name: { zh: '通用结构类型', en: 'Generic Structure Type' },
+          description: { zh: 'generic', en: 'generic' },
+          autoLoadByDefault: true,
+        },
+        {
+          id: 'opensees-static',
+          name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' },
+          description: { zh: 'static', en: 'static' },
+          autoLoadByDefault: true,
+        },
+      ]),
+    } as Response)
+    resolveCapabilityMatrix?.({
+      ok: true,
+      json: async () => ({
+        skills: [
+          { id: 'generic', domain: 'structure-type' },
+          { id: 'opensees-static', domain: 'analysis' },
+        ],
+        tools: [
+          {
+            id: 'draft_model',
+            category: 'modeling',
+            displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' },
+            description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
+          },
+        ],
+        foundationToolIds: [],
+        enabledToolIdsBySkill: {
+          generic: ['draft_model'],
+        },
+        skillDomainById: {
+          generic: 'structure-type',
+          'opensees-static': 'analysis',
+        },
+        domainSummaries: [
+          { domain: 'structure-type', skillIds: ['generic'] },
+          { domain: 'analysis', skillIds: ['opensees-static'] },
+        ],
+      }),
+    } as Response)
   })
 
   it('does not send analysis type from frontend when executing with selected analysis skills', async () => {

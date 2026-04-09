@@ -1,0 +1,47 @@
+id: opensees-static
+domain: analysis
+source: builtin
+name:
+  zh: OpenSees 静力分析
+  en: OpenSees Static Analysis
+description:
+  zh: 使用 OpenSees 执行静力/线弹性分析的 skill。
+  en: Skill for static and linear-elastic analysis using OpenSees.
+triggers:
+  - OpenSees 静力分析
+  - 静力分析
+  - 线性静力
+  - opensees static
+  - static analysis
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - analysis-policy
+  - analysis-execution
+grants:
+  - run_analysis
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 140
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+software: opensees
+analysisType: static
+engineId: builtin-opensees
+adapterKey: builtin-opensees
+runtimeRelativePath: runtime.py
+supportedAnalysisTypes:
+  - static
+supportedModelFamilies:
+  - frame
+  - truss
+  - generic
+materialFamilies: []
+aliases: []
+toolHints: {}

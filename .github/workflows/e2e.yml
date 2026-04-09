@@ -1,6 +1,7 @@
 name: E2E Tests
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - 'frontend/**'
@@ -9,9 +10,11 @@ on:
       - 'backend/src/index.ts'
       - 'backend/package.json'
       - 'backend/package-lock.json'
+      - '.github/actions/setup-env/**'
       - '.github/workflows/e2e.yml'
   push:
-    branches: [master]
+    branches:
+      - master
     paths:
       - 'frontend/**'
       - 'backend/src/api/**'
@@ -19,10 +22,12 @@ on:
       - 'backend/src/index.ts'
       - 'backend/package.json'
       - 'backend/package-lock.json'
+      - '.github/actions/setup-env/**'
       - '.github/workflows/e2e.yml'
 
 jobs:
   e2e:
+    environment: test
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -30,17 +35,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: npm
-          cache-dependency-path: |
-            backend/package-lock.json
-            frontend/package-lock.json
-
-      - name: Install backend dependencies
-        run: npm ci --prefix backend
+      - name: Setup environment
+        uses: ./.github/actions/setup-env
 
       - name: Setup backend database and build
         run: |
@@ -50,9 +46,6 @@ jobs:
         env:
           DATABASE_URL: file:../../.runtime/data/test-e2e.db
 
-      - name: Install frontend dependencies
-        run: npm ci --prefix frontend
-
       - name: Install Playwright browsers
         run: npx --prefix frontend playwright install chromium --with-deps
 
@@ -61,10 +54,9 @@ jobs:
         env:
           PORT: 30010
           DATABASE_URL: file:../../.runtime/data/test-e2e.db
-          LLM_PROVIDER: openai
-          LLM_API_KEY: test-key-for-e2e
-          LLM_MODEL: gpt-4o-mini
-          REDIS_URL: disabled
+          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
 
       - name: Start frontend
         run: cd frontend && npx next dev -p 30000 &

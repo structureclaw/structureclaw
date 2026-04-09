@@ -1,0 +1,61 @@
+id: section-bridge
+domain: section
+source: builtin
+name:
+  zh: 桥梁截面设计
+  en: Bridge Section Designer
+description:
+  zh: 桥梁主梁、箱梁、工字梁、桥面宽度与梁间距相关的截面补参与模型骨架生成。
+  en: Parameter clarification and model skeleton generation for bridge girders, box girders, deck width, and girder spacing.
+triggers:
+  - 桥梁
+  - 桥梁截面
+  - 钢箱梁
+  - 箱梁
+  - 桥面
+  - 主梁
+  - girder
+  - bridge
+  - bridge girder
+  - plate girder
+  - box girder
+stages:
+  - intent
+  - draft
+  - analysis
+  - design
+structureType: beam
+structuralTypeKeys:
+  - bridge
+  - beam
+  - frame
+capabilities:
+  - section.detect
+  - section.bridge-model
+  - section.draft
+  - section.validate
+  - section.analysis-handoff
+grants:
+  - draft_model
+  - update_model
+  - validate_model
+  - run_analysis
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: false
+priority: 180
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+version: 1.0.0
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - frame
+  - generic
+materialFamilies:
+  - steel
+  - concrete
+  - composite
+aliases: []
+toolHints: {}

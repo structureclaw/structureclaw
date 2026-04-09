@@ -1,0 +1,47 @@
+id: opensees-seismic
+domain: analysis
+source: builtin
+name:
+  zh: OpenSees 抗震分析
+  en: OpenSees Seismic Analysis
+description:
+  zh: 使用 OpenSees 执行反应谱、Pushover 等抗震分析的 skill。
+  en: Skill for seismic response-spectrum and pushover analysis using OpenSees.
+triggers:
+  - OpenSees 抗震分析
+  - 反应谱分析
+  - pushover
+  - opensees seismic
+  - response spectrum
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - analysis-policy
+  - analysis-execution
+grants:
+  - run_analysis
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 145
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+software: opensees
+analysisType: seismic
+engineId: builtin-opensees
+adapterKey: builtin-opensees
+runtimeRelativePath: runtime.py
+supportedAnalysisTypes:
+  - seismic
+supportedModelFamilies:
+  - frame
+  - truss
+  - generic
+materialFamilies: []
+aliases: []
+toolHints: {}

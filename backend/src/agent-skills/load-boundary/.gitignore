@@ -1,0 +1,7 @@
+# Development Archive - Do Not Submit to Remote Repository
+# This directory contains personal development documentation and reference materials
+# that are not part of the production code. These files are excluded from version
+# control to keep the submission clean.
+
+# Personal archive directory - do not upload
+archive/

@@ -1,0 +1,46 @@
+id: simplified-seismic
+domain: analysis
+source: builtin
+name:
+  zh: 简化抗震分析
+  en: Simplified Seismic Analysis
+description:
+  zh: 使用简化内置求解器执行轻量抗震分析的 skill。
+  en: Skill for lightweight seismic analysis using the simplified builtin solver.
+triggers:
+  - 简化抗震分析
+  - 快速抗震分析
+  - simplified seismic
+  - lightweight seismic
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - analysis-policy
+  - analysis-execution
+grants:
+  - run_analysis
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 45
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+software: simplified
+analysisType: seismic
+engineId: builtin-simplified
+adapterKey: builtin-simplified
+runtimeRelativePath: runtime.py
+supportedAnalysisTypes:
+  - seismic
+supportedModelFamilies:
+  - frame
+  - truss
+  - generic
+materialFamilies: []
+aliases: []
+toolHints: {}

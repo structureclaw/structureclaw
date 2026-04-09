@@ -1,0 +1,45 @@
+id: validation-structure-model
+domain: validation
+source: builtin
+name:
+  zh: 结构模型校验
+  en: Structure Model Validation
+description:
+  zh: 对结构模型执行输入、Schema 与一致性校验，在下游分析前暴露错误与缺项。
+  en: Validate structural model inputs, schema compliance, and consistency before downstream analysis.
+triggers:
+  - validate
+  - validation
+  - 验证
+  - 校验
+  - json check
+  - schema validation
+stages:
+  - intent
+  - draft
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - model-validation
+  - syntax-check
+  - schema-validation
+  - semantic-validation
+  - missing-field-detection
+grants:
+  - validate_model
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 100
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - generic
+materialFamilies: []
+aliases:
+  - structure-json-validation
+toolHints: {}

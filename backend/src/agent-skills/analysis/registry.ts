@@ -1,6 +1,10 @@
-import { existsSync, readdirSync, readFileSync } from 'fs';
+import { existsSync } from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
+import {
+  loadSkillManifestsFromDirectorySync,
+  resolveBuiltinSkillManifestRoot,
+  type LoadedSkillManifest,
+} from '../../agent-runtime/skill-manifest-loader.js';
 import type {
   AnalysisEngineDefinition,
   AnalysisExecutionAction,
@@ -11,157 +15,59 @@ import type {
 
 const ANALYSIS_TYPE_ORDER = ['static', 'dynamic', 'seismic', 'nonlinear'] as const;
 const MODEL_FAMILY_ORDER = ['frame', 'truss', 'generic'] as const;
-const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
-interface FrontmatterResult {
-  metadata: Record<string, unknown>;
+function assertAnalysisManifestField(
+  manifest: LoadedSkillManifest,
+  field: 'software' | 'analysisType' | 'engineId' | 'adapterKey',
+): string {
+  const value = manifest[field];
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`Analysis skill manifest ${manifest.manifestPath} is missing required field '${field}'`);
+  }
+  return value.trim();
 }
 
-function resolveAnalysisSkillRoot(): string {
-  const candidates = [
-    path.resolve(process.cwd(), 'backend/src/agent-skills/analysis'),
-    path.resolve(process.cwd(), 'src/agent-skills/analysis'),
-    path.resolve(MODULE_DIR, '../../../src/agent-skills/analysis'),
-    path.resolve(MODULE_DIR, '../../src/agent-skills/analysis'),
-    path.resolve(MODULE_DIR),
-  ];
+function toAnalysisSkillManifest(manifest: LoadedSkillManifest): AnalysisSkillManifest {
+  const runtimeRelativePath = typeof manifest.runtimeRelativePath === 'string' && manifest.runtimeRelativePath.trim().length > 0
+    ? manifest.runtimeRelativePath.trim()
+    : 'runtime.py';
+  const runtimePath = path.join(path.dirname(manifest.manifestPath), runtimeRelativePath);
 
-  const matched = candidates.find((candidate) => existsSync(path.join(candidate, 'README.md')));
-  if (!matched) {
-    throw new Error(`Analysis skill directory not found. Tried: ${candidates.join(', ')}`);
-  }
-  return matched;
-}
-
-function parseScalar(raw: string): unknown {
-  const value = raw.trim();
-  if (value === 'true') {
-    return true;
-  }
-  if (value === 'false') {
-    return false;
-  }
-  if ((value.startsWith('[') && value.endsWith(']')) || (value.startsWith('{') && value.endsWith('}'))) {
-    try {
-      return JSON.parse(value);
-    } catch {
-      return value;
-    }
-  }
-  return value;
-}
-
-function parseFrontmatter(markdown: string): FrontmatterResult {
-  const normalized = markdown.replace(/\r\n/g, '\n');
-  const trimmed = normalized.trimStart();
-  if (!trimmed.startsWith('---\n')) {
-    return { metadata: {} };
-  }
-
-  const endIndex = trimmed.indexOf('\n---\n', 4);
-  if (endIndex === -1) {
-    return { metadata: {} };
-  }
-
-  const metadata: Record<string, unknown> = {};
-  for (const line of trimmed.slice(4, endIndex).split('\n')) {
-    const separator = line.indexOf(':');
-    if (separator === -1) {
-      continue;
-    }
-    const key = line.slice(0, separator).trim();
-    metadata[key] = parseScalar(line.slice(separator + 1));
-  }
-  return { metadata };
-}
-
-function assertString(value: unknown, fallback = ''): string {
-  return typeof value === 'string' ? value : fallback;
-}
-
-function assertStringArray(value: unknown, fallback: string[] = []): string[] {
-  return Array.isArray(value)
-    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
-    : fallback;
-}
-
-function toAnalysisSkillManifest(skillDir: string): AnalysisSkillManifest | null {
-  const intentPath = path.join(skillDir, 'intent.md');
-  const runtimePath = path.join(skillDir, 'runtime.py');
-  const dirName = path.basename(skillDir);
-
-  if (!existsSync(intentPath) || !existsSync(runtimePath)) {
-    const missing = [
-      !existsSync(intentPath) ? 'intent.md' : null,
-      !existsSync(runtimePath) ? 'runtime.py' : null,
-    ].filter(Boolean);
-    console.warn(`[analysis-registry] Skipping skill directory '${dirName}': missing ${missing.join(', ')}`);
-    return null;
-  }
-
-  const { metadata } = parseFrontmatter(readFileSync(intentPath, 'utf-8'));
-  const id = assertString(metadata.id, path.basename(skillDir));
-  const software = assertString(metadata.software) as AnalysisSkillManifest['software'];
-  const analysisType = assertString(metadata.analysisType) as AnalysisSkillManifest['analysisType'];
-  const engineId = assertString(metadata.engineId) as AnalysisSkillManifest['engineId'];
-  const adapterKey = assertString(metadata.adapterKey) as AnalysisSkillManifest['adapterKey'];
-
-  const requiredFields: Record<string, string> = {
-    id: assertString(metadata.id),
-    software,
-    analysisType,
-    engineId,
-    adapterKey,
-  };
-  const missingFields = Object.entries(requiredFields)
-    .filter(([, value]) => !value)
-    .map(([key]) => key);
-
-  if (missingFields.length > 0) {
-    console.warn(
-      `[analysis-registry] Skipping skill '${dirName}': intent.md frontmatter missing required fields: ${missingFields.join(', ')}`,
-    );
-    return null;
+  if (!existsSync(runtimePath)) {
+    throw new Error(`Analysis skill manifest ${manifest.manifestPath} references missing runtime '${runtimeRelativePath}'`);
   }
 
   return {
-    id,
+    id: manifest.id,
     domain: 'analysis',
-    name: {
-      zh: assertString(metadata.zhName, id),
-      en: assertString(metadata.enName, id),
-    },
-    description: {
-      zh: assertString(metadata.zhDescription),
-      en: assertString(metadata.enDescription),
-    },
-    software,
-    analysisType,
-    engineId,
-    adapterKey,
-    triggers: assertStringArray(metadata.triggers),
+    name: manifest.name,
+    description: manifest.description,
+    software: assertAnalysisManifestField(manifest, 'software') as AnalysisSkillManifest['software'],
+    analysisType: assertAnalysisManifestField(manifest, 'analysisType') as AnalysisSkillManifest['analysisType'],
+    engineId: assertAnalysisManifestField(manifest, 'engineId') as AnalysisSkillManifest['engineId'],
+    adapterKey: assertAnalysisManifestField(manifest, 'adapterKey') as AnalysisSkillManifest['adapterKey'],
+    triggers: Array.isArray(manifest.triggers) ? [...manifest.triggers] : [],
     stages: ['analysis'],
-    capabilities: assertStringArray(metadata.capabilities, ['analysis-policy', 'analysis-execution']),
-    supportedModelFamilies: assertStringArray(metadata.supportedModelFamilies, ['frame', 'truss', 'generic']) as AnalysisModelFamily[],
-    priority: Number(metadata.priority ?? 0),
-    autoLoadByDefault: Boolean(metadata.autoLoadByDefault ?? true),
-    runtimeRelativePath: assertString(metadata.runtimeRelativePath, 'runtime.py'),
+    capabilities: Array.isArray(manifest.capabilities) && manifest.capabilities.length > 0
+      ? [...manifest.capabilities]
+      : ['analysis-policy', 'analysis-execution'],
+    supportedModelFamilies: (
+      Array.isArray(manifest.supportedModelFamilies) && manifest.supportedModelFamilies.length > 0
+        ? manifest.supportedModelFamilies
+        : ['generic']
+    ) as AnalysisModelFamily[],
+    priority: manifest.priority ?? 0,
+    autoLoadByDefault: Boolean(manifest.autoLoadByDefault),
+    runtimeRelativePath,
   };
 }
 
 function discoverBuiltinAnalysisSkills(): AnalysisSkillManifest[] {
-  const root = resolveAnalysisSkillRoot();
-  const dirs = readdirSync(root, { withFileTypes: true })
-    .filter((entry) => entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'runtime');
-  const results = dirs.map((entry) => toAnalysisSkillManifest(path.join(root, entry.name)));
-  const loaded = results.filter((skill): skill is AnalysisSkillManifest => skill !== null);
-  const skipped = dirs.length - loaded.length;
-  if (skipped > 0) {
-    console.warn(
-      `[analysis-registry] Discovery summary: ${loaded.length} skills loaded, ${skipped} skipped (check warnings above for details)`,
-    );
-  }
-  return loaded.sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id));
+  const manifests = loadSkillManifestsFromDirectorySync(resolveBuiltinSkillManifestRoot());
+  return manifests
+    .filter((manifest) => manifest.domain === 'analysis')
+    .map((manifest) => toAnalysisSkillManifest(manifest))
+    .sort((left, right) => right.priority - left.priority || left.id.localeCompare(right.id));
 }
 
 function uniqueOrdered<T extends string>(values: readonly T[], order: readonly T[]): T[] {
@@ -169,50 +75,53 @@ function uniqueOrdered<T extends string>(values: readonly T[], order: readonly T
   return order.filter((value) => seen.has(value));
 }
 
-function buildEngineDefinition(options: {
-  id: BuiltInAnalysisEngineId;
-  name: string;
-  priority: number;
-  routingHints: string[];
-  constraints: Record<string, unknown>;
-}): AnalysisEngineDefinition {
-  const skills = BUILTIN_ANALYSIS_SKILLS.filter((skill) => skill.engineId === options.id);
-  if (skills.length === 0) {
+function buildEngineDefinition(
+  skills: readonly AnalysisSkillManifest[],
+  options: {
+    id: BuiltInAnalysisEngineId;
+    name: string;
+    priority: number;
+    routingHints: string[];
+    constraints: Record<string, unknown>;
+  },
+): AnalysisEngineDefinition {
+  const engineSkills = skills.filter((skill) => skill.engineId === options.id);
+  if (engineSkills.length === 0) {
     throw new Error(`No builtin analysis skills registered for engine '${options.id}'`);
   }
 
-  const adapterKey = skills[0].adapterKey;
+  const adapterKey = engineSkills[0].adapterKey;
   return {
     id: options.id,
     name: options.name,
     adapterKey,
     capabilities: ['analyze', 'validate', 'code-check'],
     supportedAnalysisTypes: uniqueOrdered(
-      skills.map((skill) => skill.analysisType),
+      engineSkills.map((skill) => skill.analysisType),
       ANALYSIS_TYPE_ORDER,
     ),
     supportedModelFamilies: uniqueOrdered(
-      skills.flatMap((skill) => skill.supportedModelFamilies),
+      engineSkills.flatMap((skill) => skill.supportedModelFamilies),
       MODEL_FAMILY_ORDER as readonly AnalysisModelFamily[],
     ),
     priority: options.priority,
     routingHints: options.routingHints,
     constraints: options.constraints,
-    skillIds: skills.map((skill) => skill.id),
+    skillIds: engineSkills.map((skill) => skill.id),
   };
 }
 
-export const BUILTIN_ANALYSIS_SKILLS: AnalysisSkillManifest[] = discoverBuiltinAnalysisSkills();
+const BUILTIN_ANALYSIS_SKILLS: AnalysisSkillManifest[] = discoverBuiltinAnalysisSkills();
 
 export const BUILTIN_ANALYSIS_ENGINES: AnalysisEngineDefinition[] = [
-  buildEngineDefinition({
+  buildEngineDefinition(BUILTIN_ANALYSIS_SKILLS, {
     id: 'builtin-opensees',
     name: 'OpenSees Builtin',
     priority: 100,
     routingHints: ['high-fidelity', 'default'],
     constraints: { requiresOpenSees: true },
   }),
-  buildEngineDefinition({
+  buildEngineDefinition(BUILTIN_ANALYSIS_SKILLS, {
     id: 'builtin-simplified',
     name: 'Simplified Builtin',
     priority: 10,
@@ -231,55 +140,6 @@ export const LOCAL_GET_ACTION_BY_PATH: Record<string, AnalysisExecutionAction> =
 export const LOCAL_POST_ACTION_BY_PATH: Record<string, AnalysisExecutionAction> = {
   '/analyze': 'analyze',
 };
-
-export function listBuiltinAnalysisSkills(): AnalysisSkillManifest[] {
-  return [...BUILTIN_ANALYSIS_SKILLS];
-}
-
-export function getBuiltinAnalysisSkill(id: string): AnalysisSkillManifest | undefined {
-  return BUILTIN_ANALYSIS_SKILLS.find((skill) => skill.id === id);
-}
-
-export function resolvePreferredBuiltinAnalysisSkill(options?: {
-  analysisType?: AnalysisSkillManifest['analysisType'];
-  engineId?: string;
-  skillIds?: string[];
-  supportedModelFamilies?: string[];
-}): AnalysisSkillManifest | undefined {
-  const selectedSkillIds = new Set(
-    Array.isArray(options?.skillIds)
-      ? options.skillIds.filter((id): id is string => typeof id === 'string' && id.trim().length > 0)
-      : [],
-  );
-  const supportedFamilies = Array.isArray(options?.supportedModelFamilies)
-    ? options.supportedModelFamilies
-      .filter((family): family is string => typeof family === 'string' && family.trim().length > 0)
-      .map((family) => family.trim().toLowerCase())
-    : [];
-
-  const matchesContext = (skill: AnalysisSkillManifest): boolean => {
-    if (options?.analysisType && skill.analysisType !== options.analysisType) {
-      return false;
-    }
-    if (typeof options?.engineId === 'string' && options.engineId.trim().length > 0 && skill.engineId !== options.engineId.trim()) {
-      return false;
-    }
-    if (supportedFamilies.length > 0) {
-      const skillFamilies = skill.supportedModelFamilies.map((family) => family.trim().toLowerCase());
-      if (!skillFamilies.some((family) => supportedFamilies.includes(family))) {
-        return false;
-      }
-    }
-    return true;
-  };
-
-  const matchedSelected = BUILTIN_ANALYSIS_SKILLS.filter((skill) => selectedSkillIds.has(skill.id) && matchesContext(skill));
-  if (matchedSelected.length > 0) {
-    return matchedSelected[0];
-  }
-
-  return BUILTIN_ANALYSIS_SKILLS.find((skill) => matchesContext(skill));
-}
 
 export function listBuiltinAnalysisEngines(): AnalysisEngineDefinition[] {
   return [...BUILTIN_ANALYSIS_ENGINES];

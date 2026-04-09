@@ -72,13 +72,13 @@ const COMMANDS = [
   {
     name: "db-up",
     usage: "sclaw db-up",
-    description: "Start optional local infra via docker compose",
+    description: "No-op: local stack no longer requires optional infra",
     group: "infra",
   },
   {
     name: "db-down",
     usage: "sclaw db-down",
-    description: "Stop optional local infra via docker compose",
+    description: "No-op: local stack no longer manages optional infra",
     group: "infra",
   },
   {
@@ -147,7 +147,7 @@ const COMMANDS = [
   {
     name: "local-up",
     usage: "sclaw local-up",
-    description: "Start the local stack and optional infra (alias: local-up-uv)",
+    description: "Start the local stack from source (alias: local-up-uv)",
     aliases: ["local-up-uv"],
     group: "lifecycle",
   },

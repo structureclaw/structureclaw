@@ -30,7 +30,6 @@ Optional:
 
 - Docker Engine / Docker Desktop
 - Docker Compose v2
-- Redis 7+ (only if you explicitly enable `REDIS_URL`)
 
 ## 4. Repository Structure
 
@@ -136,14 +135,14 @@ Start with `.env.example`.
 Important variables:
 
 - Runtime: `NODE_ENV`, `PORT`, `FRONTEND_PORT`
-- Data: `DATABASE_URL`, `REDIS_URL`
+- Data: `DATABASE_URL`
 - LLM: `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`
 - Integration: `ANALYSIS_PYTHON_BIN`, `ANALYSIS_ENGINE_MANIFEST_PATH`, `CORS_ORIGINS`
 
 Notes:
 
 - `./sclaw start` and `./sclaw restart` default to `.runtime/data/structureclaw.start.db`; `./sclaw doctor` uses `.runtime/data/structureclaw.doctor.db` so startup checks stay isolated from the active local runtime database.
-- `REDIS_URL=disabled` enables in-memory fallback mode in backend.
+- Backend agent sessions and model cache use an in-memory store in the current process.
 - `ANALYSIS_PYTHON_BIN` defaults to `backend/.venv/bin/python`.
 
 ## 7. Primary Workflows
@@ -200,6 +199,7 @@ Built-in skill domains under `backend/src/agent-skills/`:
 | `data-input` | Structured data input parsing |
 | `design` | Structural design assistance |
 | `drawing` | Drawing and visualization generation |
+| `general` | General-purpose engineering skills and shared workflow helpers |
 | `load-boundary` | Load and boundary condition handling |
 | `material` | Material property management |
 | `report-export` | Report generation and export |
@@ -207,6 +207,10 @@ Built-in skill domains under `backend/src/agent-skills/`:
 | `section` | Cross-section property calculation |
 | `validation` | Model validation checks |
 | `visualization` | 3D model visualization |
+
+The table above is the stable taxonomy, not a claim that every domain is fully runtime-wired today.
+
+Current implementation maturity is tracked separately in [skill-runtime-status.md](./skill-runtime-status.md), including which domains are currently `active`, `partial`, `discoverable`, or `reserved`.
 
 ## 10. Quality and Regression
 
@@ -261,8 +265,10 @@ Contribution details: `CONTRIBUTING.md`.
 
 - Protocol reference: `docs/reference.md`
 - Agent architecture: `docs/agent-architecture.md`
+- Skill runtime status: `docs/skill-runtime-status.md`
 - Chinese handbook: `docs/handbook_CN.md`
 - Chinese protocol reference: `docs/reference_CN.md`
 - Chinese agent architecture: `docs/agent-architecture_CN.md`
+- Chinese skill runtime status: `docs/skill-runtime-status_CN.md`
 - English overview: `README.md`
 - Chinese overview: `README_CN.md`

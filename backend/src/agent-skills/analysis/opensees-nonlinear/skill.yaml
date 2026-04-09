@@ -1,0 +1,47 @@
+id: opensees-nonlinear
+domain: analysis
+source: builtin
+name:
+  zh: OpenSees 非线性分析
+  en: OpenSees Nonlinear Analysis
+description:
+  zh: 面向 OpenSees 非线性分析需求识别与路由的 skill。
+  en: Skill for recognizing and routing OpenSees nonlinear analysis requests.
+triggers:
+  - OpenSees 非线性分析
+  - 非线性分析
+  - 材料非线性
+  - opensees nonlinear
+  - nonlinear analysis
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - analysis-policy
+  - analysis-execution
+grants:
+  - run_analysis
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 160
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+software: opensees
+analysisType: nonlinear
+engineId: builtin-opensees
+adapterKey: builtin-opensees
+runtimeRelativePath: runtime.py
+supportedAnalysisTypes:
+  - nonlinear
+supportedModelFamilies:
+  - frame
+  - truss
+  - generic
+materialFamilies: []
+aliases: []
+toolHints: {}

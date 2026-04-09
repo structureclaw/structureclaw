@@ -1,11 +1,9 @@
 import type { AppLocale } from '../services/locale.js';
 import type {
-  AgentSkillBundle,
   DraftExtraction,
   DraftFloorLoad,
   DraftLoadPosition,
   DraftLoadType,
-  DraftResult,
   DraftState,
   DraftSupportType,
   FrameBaseSupportType,
@@ -16,10 +14,7 @@ import type {
   StructuralTypeKey,
 } from './types.js';
 import { buildModel as buildDraftModel } from './model-builder.js';
-
-function localize(locale: AppLocale, zh: string, en: string): string {
-  return locale === 'zh' ? zh : en;
-}
+import { localize } from './plugin-helpers.js';
 
 function repeatValue(count: number | undefined, value: number | undefined): number[] | undefined {
   if (!count || !value || count <= 0 || value <= 0) {
@@ -187,7 +182,7 @@ export function normalizeFloorLoads(value: unknown): DraftFloorLoad[] | undefine
   return filtered.length > 0 ? filtered : undefined;
 }
 
-export function buildUnsupportedStructuralType(
+function buildUnsupportedStructuralType(
   locale: AppLocale,
   key: StructuralTypeKey,
   noteZh: string,
@@ -255,124 +250,6 @@ export function detectUnsupportedStructuralTypeByRules(message: string, locale: 
   return null;
 }
 
-export function inferDraftType(text: string): InferredModelType {
-  if (text.includes('门式刚架') || text.includes('portal frame')) {
-    return 'portal-frame';
-  }
-  if (text.includes('双跨梁') || text.includes('double-span')) {
-    return 'double-span-beam';
-  }
-  if (text.includes('桁架') || text.includes('truss')) {
-    return 'truss';
-  }
-  if (text.includes('钢框架') || text.includes('frame') || text.includes('框架')) {
-    return 'frame';
-  }
-  if (text.includes('梁') || text.includes('beam') || text.includes('悬臂')) {
-    return 'beam';
-  }
-  return 'unknown';
-}
-
-export function extractLoadType(text: string): DraftLoadType | undefined {
-  if (text.includes('均布') || text.includes('distributed') || text.includes('uniform') || text.includes('udl')) {
-    return 'distributed';
-  }
-  if (text.includes('点荷载') || text.includes('集中荷载') || text.includes('point load') || text.includes('concentrated')) {
-    return 'point';
-  }
-  if (text.includes('端部') || text.includes('跨中') || text.includes('midspan') || text.includes('tip')) {
-    return 'point';
-  }
-  return undefined;
-}
-
-export function extractSupportType(text: string): DraftSupportType | undefined {
-  if (
-    text.includes('fixed-pinned')
-    || text.includes('fixed pinned')
-    || text.includes('固铰')
-    || text.includes('一端固结一端铰支')
-  ) {
-    return 'fixed-pinned';
-  }
-  if (
-    text.includes('fixed-fixed')
-    || text.includes('fixed fixed')
-    || text.includes('两端固结')
-    || text.includes('双固结')
-  ) {
-    return 'fixed-fixed';
-  }
-  if (
-    text.includes('simply supported')
-    || text.includes('simple support')
-    || text.includes('简支')
-  ) {
-    return 'simply-supported';
-  }
-  if (text.includes('cantilever') || text.includes('悬臂')) {
-    return 'cantilever';
-  }
-  return undefined;
-}
-
-export function extractLoadPosition(
-  text: string,
-  inferredType: InferredModelType,
-  loadType: DraftLoadType | undefined,
-): DraftLoadPosition | undefined {
-  if (text.includes('柱顶') || text.includes('顶节点') || text.includes('top nodes')) {
-    return 'top-nodes';
-  }
-  if (text.includes('中跨节点') || text.includes('中间节点') || text.includes('middle joint') || text.includes('center joint')) {
-    return 'middle-joint';
-  }
-  if (text.includes('跨中') || text.includes('midspan') || text.includes('mid span')) {
-    return 'midspan';
-  }
-  if (text.includes('全跨') || text.includes('整跨') || text.includes('满跨') || text.includes('full span') || text.includes('entire span')) {
-    return 'full-span';
-  }
-  if (text.includes('端部') || text.includes('端点') || text.includes('tip') || text.includes('free end') || text.includes('at end')) {
-    return 'end';
-  }
-  if (text.includes('节点') || text.includes('joint') || text.includes('node')) {
-    return inferredType === 'double-span-beam' ? 'middle-joint' : 'free-joint';
-  }
-  if (loadType === 'distributed') {
-    return inferredType === 'portal-frame' || inferredType === 'double-span-beam' || inferredType === 'beam'
-      ? 'full-span'
-      : undefined;
-  }
-  return undefined;
-}
-
-export function mergeDraftExtraction(preferred: DraftExtraction | null, fallback: DraftExtraction): DraftExtraction {
-  return {
-    inferredType: preferred?.inferredType && preferred.inferredType !== 'unknown' ? preferred.inferredType : fallback.inferredType,
-    lengthM: preferred?.lengthM ?? fallback.lengthM,
-    spanLengthM: preferred?.spanLengthM ?? fallback.spanLengthM,
-    heightM: preferred?.heightM ?? fallback.heightM,
-    supportType: preferred?.supportType ?? fallback.supportType,
-    frameDimension: preferred?.frameDimension ?? fallback.frameDimension,
-    storyCount: preferred?.storyCount ?? fallback.storyCount,
-    bayCount: preferred?.bayCount ?? fallback.bayCount,
-    bayCountX: preferred?.bayCountX ?? fallback.bayCountX,
-    bayCountY: preferred?.bayCountY ?? fallback.bayCountY,
-    storyHeightsM: preferred?.storyHeightsM ?? fallback.storyHeightsM,
-    bayWidthsM: preferred?.bayWidthsM ?? fallback.bayWidthsM,
-    bayWidthsXM: preferred?.bayWidthsXM ?? fallback.bayWidthsXM,
-    bayWidthsYM: preferred?.bayWidthsYM ?? fallback.bayWidthsYM,
-    floorLoads: preferred?.floorLoads ?? fallback.floorLoads,
-    frameBaseSupportType: preferred?.frameBaseSupportType ?? fallback.frameBaseSupportType,
-    loadKN: preferred?.loadKN ?? fallback.loadKN,
-    loadType: preferred?.loadType ?? fallback.loadType,
-    loadPosition: preferred?.loadPosition ?? fallback.loadPosition,
-    loadPositionM: preferred?.loadPositionM ?? fallback.loadPositionM,
-  };
-}
-
 export function mergeDraftState(existing: DraftState | undefined, patch: DraftExtraction): DraftState {
   const mergedType = patch.inferredType && patch.inferredType !== 'unknown' ? patch.inferredType : (existing?.inferredType || 'unknown');
   const mergedLength = patch.lengthM ?? existing?.lengthM;
@@ -421,219 +298,8 @@ export function mergeDraftState(existing: DraftState | undefined, patch: DraftEx
   };
 }
 
-export function computeMissingFields(state: DraftState): string[] {
-  const missing: string[] = [];
-  if (state.inferredType === 'unknown') {
-    missing.push('结构体系/构件拓扑描述（不限类型，可直接给结构模型JSON）');
-    return missing;
-  }
-  if (state.inferredType === 'frame') {
-    if (state.frameDimension === undefined) {
-      missing.push('框架维度（2D/3D）');
-    }
-    if (state.storyCount === undefined && !state.storyHeightsM?.length) {
-      missing.push('层数');
-    }
-    if (!state.storyHeightsM?.length) {
-      missing.push('各层层高（m）');
-    }
-    if (state.frameDimension === '2d') {
-      if (state.bayCount === undefined && !state.bayWidthsM?.length) {
-        missing.push('跨数');
-      }
-      if (!state.bayWidthsM?.length) {
-        missing.push('各跨跨度（m）');
-      }
-    } else if (state.frameDimension === '3d') {
-      if (state.bayCountX === undefined && !state.bayWidthsXM?.length) {
-        missing.push('X向跨数');
-      }
-      if (!state.bayWidthsXM?.length) {
-        missing.push('X向各跨跨度（m）');
-      }
-      if (state.bayCountY === undefined && !state.bayWidthsYM?.length) {
-        missing.push('Y向跨数');
-      }
-      if (!state.bayWidthsYM?.length) {
-        missing.push('Y向各跨跨度（m）');
-      }
-    }
-    if (!state.floorLoads?.length) {
-      missing.push('各层总荷载（kN）');
-    }
-    return missing;
-  }
-  if (state.inferredType === 'portal-frame') {
-    if (state.spanLengthM === undefined) {
-      missing.push('门式刚架跨度（m）');
-    }
-    if (state.heightM === undefined) {
-      missing.push('门式刚架柱高（m）');
-    }
-    if (state.loadKN === undefined) {
-      missing.push('荷载大小（kN）');
-    }
-    return missing;
-  }
-  if (state.inferredType === 'double-span-beam') {
-    if (state.spanLengthM === undefined) {
-      missing.push('每跨跨度（m）');
-    }
-    if (state.loadKN === undefined) {
-      missing.push('荷载大小（kN）');
-    }
-    return missing;
-  }
-  if (state.lengthM === undefined) {
-    missing.push('跨度/长度（m）');
-  }
-  if (state.inferredType === 'beam' && state.supportType === undefined) {
-    missing.push('支座/边界条件（悬臂/简支/两端固结/固铰）');
-  }
-  if (state.loadKN === undefined) {
-    missing.push('荷载大小（kN）');
-  }
-  return missing;
-}
 
-export function computeMissingCriticalKeys(state: DraftState): string[] {
-  const missing: string[] = [];
-  if (state.inferredType === 'unknown') {
-    missing.push('inferredType');
-    return missing;
-  }
-  if (state.inferredType === 'frame') {
-    if (state.frameDimension === undefined) {
-      missing.push('frameDimension');
-    }
-    if (state.storyCount === undefined && !state.storyHeightsM?.length) {
-      missing.push('storyCount');
-    }
-    if (!state.storyHeightsM?.length) {
-      missing.push('storyHeightsM');
-    }
-    if (state.frameDimension === '2d') {
-      if (state.bayCount === undefined && !state.bayWidthsM?.length) {
-        missing.push('bayCount');
-      }
-      if (!state.bayWidthsM?.length) {
-        missing.push('bayWidthsM');
-      }
-    } else if (state.frameDimension === '3d') {
-      if (state.bayCountX === undefined && !state.bayWidthsXM?.length) {
-        missing.push('bayCountX');
-      }
-      if (!state.bayWidthsXM?.length) {
-        missing.push('bayWidthsXM');
-      }
-      if (state.bayCountY === undefined && !state.bayWidthsYM?.length) {
-        missing.push('bayCountY');
-      }
-      if (!state.bayWidthsYM?.length) {
-        missing.push('bayWidthsYM');
-      }
-    }
-    if (!state.floorLoads?.length) {
-      missing.push('floorLoads');
-    }
-    return missing;
-  }
-  if (state.inferredType === 'portal-frame') {
-    if (state.spanLengthM === undefined) {
-      missing.push('spanLengthM');
-    }
-    if (state.heightM === undefined) {
-      missing.push('heightM');
-    }
-    if (state.loadKN === undefined) {
-      missing.push('loadKN');
-    }
-    return missing;
-  }
-  if (state.inferredType === 'double-span-beam') {
-    if (state.spanLengthM === undefined) {
-      missing.push('spanLengthM');
-    }
-    if (state.loadKN === undefined) {
-      missing.push('loadKN');
-    }
-    return missing;
-  }
-  if (state.lengthM === undefined) {
-    missing.push('lengthM');
-  }
-  if (state.inferredType === 'beam' && state.supportType === undefined) {
-    missing.push('supportType');
-  }
-  if (state.loadKN === undefined) {
-    missing.push('loadKN');
-  }
-  return missing;
-}
-
-export function computeMissingLoadDetailKeys(state: DraftState): string[] {
-  if (state.inferredType === 'unknown' || state.inferredType === 'frame') {
-    return [];
-  }
-  if (state.inferredType === 'beam' && state.supportType === undefined) {
-    return [];
-  }
-  const missing: string[] = [];
-  if (state.loadType === undefined) {
-    missing.push('loadType');
-  }
-  if (state.loadPosition === undefined) {
-    missing.push('loadPosition');
-  }
-  return missing;
-}
-
-export function mapMissingFieldLabels(missing: string[], locale: AppLocale): string[] {
-  return missing.map((key) => {
-    switch (key) {
-      case 'inferredType':
-        return localize(locale, '结构体系/构件拓扑描述（不限类型，可直接给结构模型JSON）', 'Structural system / topology description (any type, or provide computable model JSON directly)');
-      case 'lengthM':
-        return localize(locale, '跨度/长度（m）', 'Span / length (m)');
-      case 'spanLengthM':
-        return localize(locale, '门式刚架或双跨每跨跨度（m）', 'Span length per bay for the portal frame or double-span beam (m)');
-      case 'heightM':
-        return localize(locale, '门式刚架柱高（m）', 'Portal-frame column height (m)');
-      case 'supportType':
-        return localize(locale, '支座/边界条件（悬臂/简支/两端固结/固铰）', 'Support condition (cantilever / simply supported / fixed-fixed / fixed-pinned)');
-      case 'frameDimension':
-        return localize(locale, '框架维度（2D/3D）', 'Frame dimension (2D / 3D)');
-      case 'storyCount':
-        return localize(locale, '层数', 'Story count');
-      case 'bayCount':
-        return localize(locale, '跨数', 'Bay count');
-      case 'bayCountX':
-        return localize(locale, 'X向跨数', 'Bay count in X');
-      case 'bayCountY':
-        return localize(locale, 'Y向跨数', 'Bay count in Y');
-      case 'storyHeightsM':
-        return localize(locale, '各层层高（m）', 'Story heights (m)');
-      case 'bayWidthsM':
-        return localize(locale, '各跨跨度（m）', 'Bay widths (m)');
-      case 'bayWidthsXM':
-        return localize(locale, 'X向各跨跨度（m）', 'Bay widths in X (m)');
-      case 'bayWidthsYM':
-        return localize(locale, 'Y向各跨跨度（m）', 'Bay widths in Y (m)');
-      case 'floorLoads':
-        return localize(locale, '各层总荷载（kN）', 'Per-floor total loads (kN)');
-      case 'loadKN':
-        return localize(locale, '荷载大小（kN）', 'Load magnitude (kN)');
-      case 'loadType':
-        return localize(locale, '荷载形式（点荷载/均布荷载）', 'Load type (point / distributed)');
-      case 'loadPosition':
-        return localize(locale, '荷载位置（按当前结构模板）', 'Load position (based on the current template)');
-      default:
-        return key;
-    }
-  });
-}
-
-export function buildSupportTypeQuestion(locale: AppLocale): string {
+function buildSupportTypeQuestion(locale: AppLocale): string {
   return localize(
     locale,
     '请确认支座/边界条件（悬臂、简支、两端固结或固铰）。',
@@ -641,7 +307,7 @@ export function buildSupportTypeQuestion(locale: AppLocale): string {
   );
 }
 
-export function buildLoadTypeQuestion(type: InferredModelType, locale: AppLocale): string {
+function buildLoadTypeQuestion(type: InferredModelType, locale: AppLocale): string {
   switch (type) {
     case 'beam':
       return localize(locale, '请确认荷载形式（点荷载或均布荷载）。', 'Please confirm the load type (point or distributed).');
@@ -656,7 +322,7 @@ export function buildLoadTypeQuestion(type: InferredModelType, locale: AppLocale
   }
 }
 
-export function buildLoadPositionQuestion(type: InferredModelType, locale: AppLocale): string {
+function buildLoadPositionQuestion(type: InferredModelType, locale: AppLocale): string {
   switch (type) {
     case 'beam':
       return localize(locale, '请确认荷载位置（可说端部/跨中/全跨，也可直接给距左端 x m）。', 'Please confirm the load position (end / midspan / full span), or provide an offset x m from the left end.');
@@ -728,58 +394,6 @@ export function buildInteractionQuestions(
   });
 }
 
-export function getStructuralTypeLabel(key: StructuralTypeKey, locale: AppLocale, bundles: AgentSkillBundle[]): string {
-  const matched = bundles.find((bundle) => bundle.id === key || bundle.structureType === key);
-  if (matched) {
-    return locale === 'zh' ? matched.name.zh : matched.name.en;
-  }
-  switch (key) {
-    case 'frame':
-      return localize(locale, '框架', 'Frame');
-    case 'steel-frame':
-      return localize(locale, '钢框架', 'Steel Frame');
-    case 'portal':
-      return localize(locale, '门架/刚架', 'Portal Structure');
-    case 'girder':
-      return localize(locale, '主梁/大梁', 'Girder');
-    case 'space-frame':
-      return localize(locale, '空间网架', 'Space Frame');
-    case 'plate-slab':
-      return localize(locale, '板/楼板', 'Plate or Slab');
-    case 'shell':
-      return localize(locale, '壳体', 'Shell');
-    case 'tower':
-      return localize(locale, '塔架', 'Tower');
-    case 'bridge':
-      return localize(locale, '桥梁', 'Bridge');
-    default:
-      return localize(locale, '未识别', 'Unclassified');
-  }
-}
-
 export function buildModel(state: DraftState): Record<string, unknown> {
   return buildDraftModel(state);
-}
-
-export function buildDraftResult(message: string, existingState: DraftState | undefined, llmExtraction: DraftExtraction | null): DraftResult {
-  void message;
-  const extractionMode: 'llm' | 'deterministic' = llmExtraction ? 'llm' : 'deterministic';
-  const mergedExtraction = llmExtraction ?? {};
-  const mergedState = mergeDraftState(existingState, mergedExtraction);
-  const missingFields = computeMissingFields(mergedState);
-  if (missingFields.length > 0) {
-    return {
-      inferredType: mergedState.inferredType,
-      missingFields,
-      extractionMode,
-      stateToPersist: mergedState,
-    };
-  }
-  return {
-    inferredType: mergedState.inferredType,
-    missingFields: [],
-    extractionMode,
-    model: buildModel(mergedState),
-    stateToPersist: mergedState,
-  };
 }

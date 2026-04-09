@@ -1,22 +1,25 @@
 import { AnalysisEngineCatalogService } from './analysis-engine.js';
+import { AgentSkillCatalogService } from './agent-skill-catalog.js';
+import { AgentToolCatalogService } from './agent-tool-catalog.js';
 import { AgentSkillRuntime } from '../agent-runtime/index.js';
 import { normalizeAnalysisTypes as normalizeDomainAnalysisTypes } from '../agent-skills/design/entry.js';
 import { normalizeMaterialFamilies as normalizeDomainMaterialFamilies } from '../agent-skills/material/entry.js';
-import { normalizeBuiltInManifestToSkillPackage } from '../skill-shared/package.js';
 import { ALL_SKILL_DOMAINS } from '../agent-runtime/types.js';
-import type { AgentAnalysisType, SkillDomain, SkillManifest, SkillRuntimeStatus, ToolManifest } from '../agent-runtime/types.js';
+import type { AgentAnalysisType, MaterialFamily, SkillDomain, SkillManifest, SkillRuntimeStatus, ToolManifest } from '../agent-runtime/types.js';
+import type { BuiltinSkillCatalogEntry } from './agent-skill-catalog.js';
+import type { LoadedToolManifest } from '../agent-runtime/tool-manifest-loader.js';
 
 const ACTIVE_RUNTIME_DOMAINS = new Set<SkillDomain>(['structure-type', 'analysis', 'code-check']);
 const PARTIAL_RUNTIME_DOMAINS = new Set<SkillDomain>(['validation', 'report-export']);
 
-function resolveDomainRuntimeStatus(domain: SkillDomain): SkillRuntimeStatus {
+function resolveDomainRuntimeStatus(domain: SkillDomain, hasDiscoverablePresence: boolean): SkillRuntimeStatus {
   if (ACTIVE_RUNTIME_DOMAINS.has(domain)) {
     return 'active';
   }
   if (PARTIAL_RUNTIME_DOMAINS.has(domain)) {
     return 'partial';
   }
-  return 'discoverable';
+  return hasDiscoverablePresence ? 'discoverable' : 'reserved';
 }
 
 interface CapabilitySkill {
@@ -92,6 +95,35 @@ type CapabilityAnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear';
 const ANALYSIS_TYPES: CapabilityAnalysisType[] = ['static', 'dynamic', 'seismic', 'nonlinear'];
 const FOUNDATION_TOOL_IDS = ['convert_model'] as const;
 
+function uniqueStrings(values: readonly string[]): string[] {
+  return Array.from(new Set(values.filter((value) => typeof value === 'string' && value.trim().length > 0)));
+}
+
+function assertLocalizedField(value: unknown, field: 'zh' | 'en', ownerLabel: string): void {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`Malformed capability metadata: ${ownerLabel} is missing a non-empty ${field} value.`);
+  }
+}
+
+function validateLocalizedText(value: unknown, ownerLabel: string): void {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error(`Malformed capability metadata: ${ownerLabel} must be a localized object.`);
+  }
+  const text = value as Record<string, unknown>;
+  assertLocalizedField(text.zh, 'zh', ownerLabel);
+  assertLocalizedField(text.en, 'en', ownerLabel);
+}
+
+function validateCatalogEntryMetadata(entry: BuiltinSkillCatalogEntry): void {
+  validateLocalizedText(entry.name, `skill ${entry.canonicalId} name`);
+  validateLocalizedText(entry.description, `skill ${entry.canonicalId} description`);
+}
+
+function validateManifestMetadata(manifest: SkillManifest): void {
+  validateLocalizedText(manifest.name, `skill ${manifest.id} name`);
+  validateLocalizedText(manifest.description, `skill ${manifest.id} description`);
+}
+
 function normalizeModelFamilies(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return ['generic'];
@@ -119,6 +151,88 @@ function resolveSkillModelFamilies(structureType: string | undefined): string[] 
     return ['frame', 'generic'];
   }
   return ['generic'];
+}
+
+function buildCatalogEntryFromManifest(
+  manifest: SkillManifest,
+  resolveCanonicalSkillId: (id: string) => string,
+): BuiltinSkillCatalogEntry {
+  const canonicalId = resolveCanonicalSkillId(manifest.id);
+  return {
+    id: canonicalId,
+    canonicalId,
+    aliases: canonicalId === manifest.id ? [] : [manifest.id],
+    domain: manifest.domain,
+    name: {
+      zh: manifest.name?.zh,
+      en: manifest.name?.en,
+    },
+    description: {
+      zh: manifest.description?.zh,
+      en: manifest.description?.en,
+    },
+    stages: Array.isArray(manifest.stages) ? [...manifest.stages] : [],
+    triggers: Array.isArray(manifest.triggers) ? [...manifest.triggers] : [],
+    autoLoadByDefault: Boolean(manifest.autoLoadByDefault),
+    structureType: manifest.structureType,
+    capabilities: Array.isArray(manifest.capabilities) ? [...manifest.capabilities] : [],
+    enabledTools: Array.isArray(manifest.enabledTools) ? [...manifest.enabledTools] : [],
+    providedTools: Array.isArray(manifest.providedTools) ? [...manifest.providedTools] : [],
+    supportedAnalysisTypes: normalizeDomainAnalysisTypes(manifest.supportedAnalysisTypes),
+    supportedModelFamilies: Array.isArray(manifest.supportedModelFamilies)
+      ? uniqueStrings(manifest.supportedModelFamilies)
+      : [],
+    materialFamilies: normalizeDomainMaterialFamilies(manifest.materialFamilies),
+    priority: manifest.priority ?? 0,
+    compatibility: {
+      minRuntimeVersion: manifest.compatibility?.minRuntimeVersion || '0.1.0',
+      skillApiVersion: manifest.compatibility?.skillApiVersion || 'v1',
+    },
+    manifestPath: '<runtime>',
+  };
+}
+
+function assertKnownCapabilityTool(toolId: string, skillId: string): never {
+  throw new Error(`Capability matrix referenced unknown tool "${toolId}" for skill "${skillId}".`);
+}
+
+function canonicalizeSkillIds(skillIds: readonly string[] | undefined, resolveCanonicalSkillId: (id: string) => string): string[] {
+  if (!Array.isArray(skillIds)) {
+    return [];
+  }
+  return uniqueStrings(skillIds.map((skillId) => resolveCanonicalSkillId(skillId))).sort();
+}
+
+type CapabilityToolManifestLike = Pick<
+  ToolManifest,
+  'id' | 'source' | 'category' | 'enabledByDefault' | 'providedBySkillId' | 'requiresSkills' | 'requiresTools' | 'tags' | 'displayName' | 'description'
+>;
+
+type CapabilityToolInput = (CapabilityToolManifestLike | LoadedToolManifest) & {
+  providedBySkillId?: string;
+};
+
+function toCapabilityTool(tool: CapabilityToolInput, resolveCanonicalSkillId: (id: string) => string): CapabilityTool {
+  return {
+    id: tool.id,
+    source: tool.source,
+    category: tool.category,
+    enabledByDefault: tool.enabledByDefault,
+    providedBySkillId: typeof tool.providedBySkillId === 'string'
+      ? resolveCanonicalSkillId(tool.providedBySkillId)
+      : undefined,
+    requiresSkills: canonicalizeSkillIds(tool.requiresSkills, resolveCanonicalSkillId),
+    requiresTools: Array.isArray(tool.requiresTools) ? [...tool.requiresTools] : [],
+    tags: Array.isArray(tool.tags) ? [...tool.tags] : [],
+    displayName: {
+      zh: tool.displayName?.zh,
+      en: tool.displayName?.en,
+    },
+    description: {
+      zh: tool.description?.zh,
+      en: tool.description?.en,
+    },
+  };
 }
 
 function evaluateEngineForSkill(
@@ -151,90 +265,153 @@ function evaluateEngineForSkill(
 export class AgentCapabilityService {
   constructor(
     private readonly skillRuntime = new AgentSkillRuntime(),
+    private readonly skillCatalog = new AgentSkillCatalogService(),
+    private readonly toolCatalog = new AgentToolCatalogService(),
     private readonly engineCatalog = new AnalysisEngineCatalogService(),
   ) {}
 
   async getCapabilityMatrix(options?: { analysisType?: CapabilityAnalysisType }) {
+    const runtimeSkills = this.skillRuntime.listSkills();
+    const staticCatalogEntries = await this.skillCatalog.listBuiltinSkills();
     const manifests = await this.skillRuntime.listSkillManifests();
-    const tooling = await this.skillRuntime.resolveSkillTooling(manifests.map((manifest) => manifest.id));
-    const builtinTools = this.skillRuntime.listBuiltinToolManifests();
+    staticCatalogEntries.forEach(validateCatalogEntryMetadata);
+    manifests.forEach(validateManifestMetadata);
+    const runtimeTooling = await this.skillRuntime.resolveSkillTooling(manifests.map((manifest) => manifest.id));
+    const builtinTools = await this.toolCatalog.listBuiltinTools();
+    const resolveCanonicalSkillId = (id: string) => this.skillCatalog.resolveCanonicalSkillId(id);
+    const catalogEntryByCanonicalId = new Map<string, BuiltinSkillCatalogEntry>(
+      staticCatalogEntries.map((entry) => [entry.canonicalId, entry]),
+    );
+    for (const manifest of manifests) {
+      const canonicalId = resolveCanonicalSkillId(manifest.id);
+      if (!catalogEntryByCanonicalId.has(canonicalId)) {
+        catalogEntryByCanonicalId.set(canonicalId, buildCatalogEntryFromManifest(manifest, resolveCanonicalSkillId));
+      }
+    }
+    const catalogEntries = Array.from(catalogEntryByCanonicalId.values()).sort((left, right) =>
+      left.domain.localeCompare(right.domain)
+      || right.priority - left.priority
+      || left.canonicalId.localeCompare(right.canonicalId),
+    );
+    const discoverableDomains = new Set<SkillDomain>([
+      ...catalogEntries.map((entry) => entry.domain),
+      ...runtimeSkills
+        .map((skill) => skill.domain)
+        .filter((domain): domain is SkillDomain => typeof domain === 'string'),
+    ]);
+    const manifestByCanonicalId = new Map<string, SkillManifest>(
+      manifests.map((manifest) => [resolveCanonicalSkillId(manifest.id), manifest]),
+    );
     const toolById = new Map<string, CapabilityTool>();
+    const builtinToolById = new Map<string, LoadedToolManifest>(builtinTools.map((tool) => [tool.id, tool]));
 
     for (const tool of builtinTools) {
-      toolById.set(tool.id, {
-        id: tool.id,
-        source: tool.source,
-        category: tool.category,
-        enabledByDefault: tool.enabledByDefault,
-        providedBySkillId: tool.providedBySkillId,
-        requiresSkills: Array.isArray(tool.requiresSkills) ? [...tool.requiresSkills] : [],
-        requiresTools: Array.isArray(tool.requiresTools) ? [...tool.requiresTools] : [],
-        tags: Array.isArray(tool.tags) ? [...tool.tags] : [],
-        displayName: {
-          zh: tool.displayName?.zh,
-          en: tool.displayName?.en,
-        },
-        description: {
-          zh: tool.description?.zh,
-          en: tool.description?.en,
-        },
-      });
+      toolById.set(tool.id, toCapabilityTool(tool, resolveCanonicalSkillId));
     }
 
-    for (const tool of tooling.tools) {
-      toolById.set(tool.id, {
-        id: tool.id,
-        source: tool.source,
-        category: tool.category,
-        enabledByDefault: tool.enabledByDefault,
-        providedBySkillId: tool.providedBySkillId,
-        requiresSkills: Array.isArray(tool.requiresSkills) ? [...tool.requiresSkills] : [],
-        requiresTools: Array.isArray(tool.requiresTools) ? [...tool.requiresTools] : [],
-        tags: Array.isArray(tool.tags) ? [...tool.tags] : [],
-        displayName: {
-          zh: tool.displayName?.zh,
-          en: tool.displayName?.en,
-        },
-        description: {
-          zh: tool.description?.zh,
-          en: tool.description?.en,
-        },
-      });
+    for (const tool of runtimeTooling.tools) {
+      if (builtinToolById.has(tool.id)) {
+        continue;
+      }
+      toolById.set(tool.id, toCapabilityTool(tool, resolveCanonicalSkillId));
     }
 
-    const structuralAndGeneralSkills: CapabilitySkill[] = manifests.map((manifest: SkillManifest) => {
-      const pkg = normalizeBuiltInManifestToSkillPackage(manifest);
+    const enableToolForSkill = (toolId: string, skillId: string, relation: 'enabled' | 'provided') => {
+      const existing = toolById.get(toolId);
+      if (!existing) {
+        const builtin = builtinToolById.get(toolId);
+        if (!builtin) {
+          assertKnownCapabilityTool(toolId, skillId);
+        }
+        toolById.set(toolId, toCapabilityTool(builtin, resolveCanonicalSkillId));
+      }
+      if (relation === 'provided') {
+        const current = toolById.get(toolId);
+        if (current) {
+          toolById.set(toolId, {
+            ...current,
+            providedBySkillId: current.providedBySkillId ?? skillId,
+            requiresSkills: uniqueStrings([...current.requiresSkills, skillId]).sort(),
+          });
+        }
+      }
+    };
+
+    const enabledToolIdsBySkill = catalogEntries.reduce<Record<string, string[]>>((acc, entry) => {
+      const skillId = entry.canonicalId;
+      const enabledToolIds = uniqueStrings(entry.enabledTools).sort();
+      acc[skillId] = enabledToolIds;
+      for (const toolId of enabledToolIds) {
+        enableToolForSkill(toolId, skillId, 'enabled');
+      }
+      return acc;
+    }, {});
+    const providedToolIdsBySkill = catalogEntries.reduce<Record<string, string[]>>((acc, entry) => {
+      const skillId = entry.canonicalId;
+      const providedToolIds = uniqueStrings(entry.providedTools).sort();
+      acc[skillId] = providedToolIds;
+      for (const toolId of providedToolIds) {
+        enableToolForSkill(toolId, skillId, 'provided');
+      }
+      return acc;
+    }, {});
+    const skillIdsByToolId = catalogEntries.reduce<Record<string, string[]>>((acc, entry) => {
+      const skillId = entry.canonicalId;
+      for (const toolId of uniqueStrings([...entry.enabledTools, ...entry.providedTools]).sort()) {
+        acc[toolId] = uniqueStrings([...(acc[toolId] || []), skillId]).sort();
+      }
+      return acc;
+    }, {});
+
+    const skills: CapabilitySkill[] = catalogEntries.map((entry: BuiltinSkillCatalogEntry) => {
+      const manifest = manifestByCanonicalId.get(entry.canonicalId);
       return {
-        id: pkg.id,
-        structureType: manifest.structureType,
-        domain: pkg.domain,
-        runtimeStatus: resolveDomainRuntimeStatus(pkg.domain),
-        requires: Array.isArray(pkg.requires) ? pkg.requires : [],
-        conflicts: Array.isArray(pkg.conflicts) ? pkg.conflicts : [],
-        capabilities: Array.isArray(pkg.capabilities) ? pkg.capabilities : [],
-        supportedAnalysisTypes: normalizeDomainAnalysisTypes(pkg.supportedAnalysisTypes),
-        supportedModelFamilies: Array.isArray(manifest.supportedModelFamilies) && manifest.supportedModelFamilies.length > 0
-          ? [...manifest.supportedModelFamilies]
-          : resolveSkillModelFamilies(manifest.structureType),
-        materialFamilies: normalizeDomainMaterialFamilies(pkg.materialFamilies),
-        priority: pkg.priority ?? 0,
+        id: entry.canonicalId,
+        structureType: entry.structureType,
+        domain: entry.domain,
+        runtimeStatus: resolveDomainRuntimeStatus(entry.domain, discoverableDomains.has(entry.domain)),
+        requires: Array.isArray(manifest?.requires) ? [...manifest.requires] : [],
+        conflicts: Array.isArray(manifest?.conflicts) ? [...manifest.conflicts] : [],
+        capabilities: uniqueStrings(entry.capabilities),
+        supportedAnalysisTypes: normalizeDomainAnalysisTypes(entry.supportedAnalysisTypes as AgentAnalysisType[]),
+        supportedModelFamilies: entry.supportedModelFamilies.length > 0
+          ? uniqueStrings(entry.supportedModelFamilies)
+          : resolveSkillModelFamilies(entry.structureType),
+        materialFamilies: normalizeDomainMaterialFamilies(entry.materialFamilies as MaterialFamily[]),
+        priority: entry.priority ?? 0,
         compatibility: {
-          minRuntimeVersion: pkg.compatibility.minRuntimeVersion,
-          skillApiVersion: pkg.compatibility.skillApiVersion,
+          minRuntimeVersion: entry.compatibility.minRuntimeVersion,
+          skillApiVersion: entry.compatibility.skillApiVersion,
         },
-        autoLoadByDefault: pkg.enabledByDefault,
-        stages: Array.isArray(manifest.stages) ? manifest.stages : [],
+        autoLoadByDefault: entry.autoLoadByDefault,
+        stages: uniqueStrings(entry.stages),
         name: {
-          zh: pkg.name?.zh,
-          en: pkg.name?.en,
+          zh: entry.name?.zh,
+          en: entry.name?.en,
         },
       };
     });
-    const skills: CapabilitySkill[] = structuralAndGeneralSkills;
     const tools: CapabilityTool[] = Array.from(toolById.values()).sort((a, b) => a.id.localeCompare(b.id));
+    const skillAliasesByCanonicalId = catalogEntries.reduce<Record<string, string[]>>((acc, entry) => {
+      acc[entry.canonicalId] = uniqueStrings(entry.aliases).sort();
+      return acc;
+    }, {});
+    const canonicalSkillIdByAlias = catalogEntries.reduce<Record<string, string>>((acc, entry) => {
+      for (const alias of uniqueStrings(entry.aliases)) {
+        acc[alias] = entry.canonicalId;
+      }
+      return acc;
+    }, {});
 
-    const enginePayload = await this.engineCatalog.listEngines();
-    const rawEngines = Array.isArray(enginePayload?.engines) ? enginePayload.engines.map((engine) => engine as unknown as Record<string, unknown>) : [];
+    let rawEngines: Record<string, unknown>[] = [];
+    try {
+      const enginePayload = await this.engineCatalog.listEngines();
+      rawEngines = Array.isArray(enginePayload?.engines)
+        ? enginePayload.engines.map((engine) => engine as unknown as Record<string, unknown>)
+        : [];
+    } catch {
+      rawEngines = [];
+    }
     const engines: CapabilityEngine[] = rawEngines
       .filter((engine) => typeof engine.id === 'string' && engine.id.trim().length > 0)
       .map((engine) => ({
@@ -285,7 +462,7 @@ export class AgentCapabilityService {
     const domainSummaryMap = new Map<SkillDomain, DomainSummary>(
       ALL_SKILL_DOMAINS.map((domain) => [domain, {
         domain,
-        runtimeStatus: resolveDomainRuntimeStatus(domain),
+        runtimeStatus: resolveDomainRuntimeStatus(domain, discoverableDomains.has(domain)),
         skillIds: [],
         autoLoadSkillIds: [],
         capabilities: [],
@@ -356,9 +533,11 @@ export class AgentCapabilityService {
       validSkillIdsByEngine,
       skillDomainById,
       foundationToolIds: [...FOUNDATION_TOOL_IDS],
-      enabledToolIdsBySkill: tooling.enabledToolIdsBySkill,
-      providedToolIdsBySkill: tooling.providedToolIdsBySkill,
-      skillIdsByToolId: tooling.skillIdsByToolId,
+      enabledToolIdsBySkill,
+      providedToolIdsBySkill,
+      skillIdsByToolId,
+      skillAliasesByCanonicalId,
+      canonicalSkillIdByAlias,
       analysisCompatibility,
       appliedAnalysisType: options?.analysisType,
     };

@@ -701,10 +701,23 @@ def validate_schema_migration():
     assert model["metadata"]["schema_migration"]["to"] == "1.0.1"
     print("[ok] schema migration 1.0.0 -> 1.0.1")
 
+    migrated_v2 = convert_structure_model_payload(
+        model_payload=source,
+        target_schema_version="2.0.0",
+        source_format="structuremodel-v1",
+        target_format="structuremodel-v1",
+        supported_formats=supported_formats(),
+        get_converter=get_converter,
+    )
+    model_v2 = migrated_v2["model"]
+    assert model_v2["schema_version"] == "2.0.0"
+    assert model_v2["metadata"]["schema_migration"]["to"] == "2.0.0"
+    print("[ok] schema migration 1.0.0 -> 2.0.0")
+
     try:
         convert_structure_model_payload(
             model_payload=source,
-            target_schema_version="2.0.0",
+            target_schema_version="3.0.0",
             source_format="structuremodel-v1",
             target_format="structuremodel-v1",
             supported_formats=supported_formats(),

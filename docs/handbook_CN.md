@@ -30,7 +30,6 @@ StructureClaw 是一个 AI 协同结构工程平台，采用单仓多服务架�
 
 - Docker Engine / Docker Desktop
 - Docker Compose v2
-- Redis 7+（仅在你显式启用 `REDIS_URL` 时需要）
 
 ## 4. 仓库结构
 
@@ -136,14 +135,14 @@ node .\sclaw stop
 关键变量：
 
 - 运行时：`NODE_ENV`、`PORT`、`FRONTEND_PORT`
-- 数据层：`DATABASE_URL`、`REDIS_URL`
+- 数据层：`DATABASE_URL`
 - LLM：`LLM_PROVIDER`、`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`
 - 集成：`ANALYSIS_PYTHON_BIN`、`ANALYSIS_ENGINE_MANIFEST_PATH`、`CORS_ORIGINS`
 
 说明：
 
 - `./sclaw start` 和 `./sclaw restart` 默认使用 `.runtime/data/structureclaw.start.db`；`./sclaw doctor` 使用 `.runtime/data/structureclaw.doctor.db`，确保启动预检与实际运行库隔离。
-- `REDIS_URL=disabled` 时后端使用内存降级缓存。
+- 后端的 agent 会话与模型缓存使用当前进程内存存储。
 - `ANALYSIS_PYTHON_BIN` 默认指向 `backend/.venv/bin/python`。
 
 ## 7. 核心工作流
@@ -200,6 +199,7 @@ node .\sclaw stop
 | `data-input` | 结构化数据输入解析 |
 | `design` | 结构设计辅助 |
 | `drawing` | 图纸与可视化生成 |
+| `general` | 通用工程技能与共享工作流辅助 |
 | `load-boundary` | 荷载与边界条件处理 |
 | `material` | 材料属性管理 |
 | `report-export` | 报告生成与导出 |
@@ -207,6 +207,10 @@ node .\sclaw stop
 | `section` | 截面属性计算 |
 | `validation` | 模型校验 |
 | `visualization` | 三维模型可视化 |
+
+上表表示的是稳定 taxonomy，不代表这些 domain 今天都已经完整接入运行时主流程。
+
+当前实现成熟度请查看 [skill-runtime-status_CN.md](./skill-runtime-status_CN.md)，其中区分了哪些 domain 目前是 `active`、`partial`、`discoverable` 或 `reserved`。
 
 ## 10. 质量保障与回归
 
@@ -261,8 +265,10 @@ node tests/runner.mjs backend-regression
 
 - 协议参考：`docs/reference_CN.md`
 - Agent 架构：`docs/agent-architecture_CN.md`
+- Skill 运行时状态：`docs/skill-runtime-status_CN.md`
 - 英文手册：`docs/handbook.md`
 - 英文协议参考：`docs/reference.md`
 - 英文 Agent 架构：`docs/agent-architecture.md`
+- 英文 Skill 运行时状态：`docs/skill-runtime-status.md`
 - 中文总览：`README_CN.md`
 - 英文总览：`README.md`

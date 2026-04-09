@@ -11,67 +11,59 @@ The system is designed around a **base-chat fallback principle**: when zero engi
 
 ## 2. Builtin Skill Discovery and Registration
 
-### 2.1 Analysis Skills
+### 2.1 Canonical Builtin Skill Layout
 
-Analysis skills live under `backend/src/agent-skills/analysis/`. Each skill is a subdirectory containing:
+Builtin skills live under `backend/src/agent-skills/<domain>/<skill-id>/`.
+
+Every builtin skill directory must contain:
 
 | File | Required | Purpose |
 |------|----------|---------|
-| `intent.md` | Yes | Frontmatter metadata (id, software, analysisType, engineId, etc.) |
-| `runtime.py` | Yes | Python execution script for the analysis engine |
+| `skill.yaml` | Yes | Canonical static metadata: `id`, `domain`, `capabilities`, `grants`, compatibility, and domain-specific fields |
+| Stage Markdown such as `intent.md`, `draft.md`, `analysis.md`, `design.md` | Optional but typical | Prompt/content assets loaded by the runtime |
 
-**Discovery process** (`analysis/registry.ts`):
+Additional runtime files remain domain-specific, for example:
 
-1. `discoverBuiltinAnalysisSkills()` scans all subdirectories under the analysis root.
-2. Directories starting with `.` or named `runtime` are skipped.
-3. For each directory, `toAnalysisSkillManifest()` checks for `intent.md` and `runtime.py`.
-4. If either file is missing, a warning is logged and the directory is skipped.
-5. `intent.md` frontmatter is parsed for required fields: `id`, `software`, `analysisType`, `engineId`, `adapterKey`.
-6. Missing required fields trigger a warning with the specific field names.
-7. Valid skills are sorted by priority (descending), then alphabetically by id.
-8. A discovery summary is logged: `"N skills loaded, M skipped"`.
+- analysis skills may include `runtime.py`
+- executable structure-type plugins may include `handler.ts`
 
-**Built-in analysis engines:**
+Those files are execution/content assets. They no longer define skill identity.
 
-| Engine ID | Adapter | Priority | Routing Hints |
-|-----------|---------|----------|---------------|
-| `builtin-opensees` | OpenSees | 100 | high-fidelity, default |
-| `builtin-simplified` | Simplified | 10 | fallback, fast |
+### 2.2 Discovery Rule
 
-### 2.2 Structure-Type Skills
+Builtin skill discovery is now manifest-first:
 
-Structure-type skills live under `backend/src/agent-skills/structure-type/`. Each skill has a `manifest.ts` that exports the skill's metadata.
+1. The runtime scans `backend/src/agent-skills/` recursively.
+2. A directory is considered a builtin skill only if it contains `skill.yaml`.
+3. `skill.yaml` is parsed through the shared manifest schema and becomes the static source of truth.
+4. Stage Markdown files are loaded only as content; their frontmatter is not used as identity metadata.
+5. Directories without `skill.yaml` are ignored for builtin skill registration.
 
-**Registration process** (`structure-type/registry.ts`):
+This rule applies across builtin domains, including:
 
-1. `listStructureModelingProviders()` takes builtin plugins and optional external providers.
-2. Plugins are converted to `StructureModelingProvider` via `toStructureModelingProvider()`.
-3. All providers are passed to `loadSkillProviders()` for deduplication and sorting.
-
-### 2.3 Other Skill Domains
-
-| Domain | Location | Registration |
-|--------|----------|-------------|
-| `analysis` | `agent-skills/analysis/` | Filesystem discovery + manifest normalization |
-| `code-check` | `agent-skills/code-check/` | Provider registry with filter/finalize callbacks |
-| `data-input` | `agent-skills/data-input/` | Plugin manifest |
-| `design` | `agent-skills/design/` | Plugin manifest |
-| `drawing` | `agent-skills/drawing/` | Plugin manifest |
-| `general` | `agent-skills/general/` | Plugin manifest |
-| `load-boundary` | `agent-skills/load-boundary/` | Plugin manifest |
-| `material` | `agent-skills/material/` | Plugin manifest |
-| `visualization` | `agent-skills/visualization/` | Plugin manifest |
-| `result-postprocess` | `agent-skills/result-postprocess/` | Plugin manifest |
-| `report-export` | `agent-skills/report-export/` | Runtime-generated builtin manifest |
-| `section` | `agent-skills/section/` | Plugin manifest |
-| `validation` | `agent-skills/validation/` | Runtime-generated builtin manifest |
-
-In the current implementation, `AgentSkillRuntime.listSkillManifests()` exposes a unified manifest inventory by merging `structure-type` plugin manifests with a set of builtin domain manifests. The runtime-generated manifests currently cover:
-
+- `structure-type`
 - `analysis`
 - `code-check`
-- `report-export`
+- `load-boundary`
 - `validation`
+- `report-export`
+- `visualization`
+
+### 2.3 Runtime and Plugin Layer
+
+`skill.yaml` defines what a skill is. Runtime/plugin modules define how a skill executes.
+
+- `AgentSkillLoader.loadBundles()` reads `skill.yaml` plus stage Markdown content.
+- `AgentSkillLoader.loadPlugins()` may still attach `manifest.ts` / `handler.ts` style runtime modules for executable plugins, especially in `structure-type`.
+- These runtime modules are no longer the static identity source for builtin skills.
+
+Builtin skill loading now follows one canonical catalog rule:
+
+- `/api/v1/agent/skills` and `/api/v1/agent/capability-matrix` are two projections over the same normalized builtin skill catalog.
+- Skill ids exposed to the frontend must use canonical ids.
+- Legacy ids may remain only as aliases for migration and backward compatibility, and should not be used as the primary id shown to users.
+
+In the current implementation, `AgentSkillRuntime.listSkillManifests()` uses builtin `skill.yaml` manifests as the primary runtime manifest source. Executable plugin manifests are only appended when a plugin does not already have a corresponding `skill.yaml`.
 
 Builtin `structure-type` manifests now directly authorize modeling tools only:
 
@@ -82,11 +74,30 @@ Execution-chain tools such as `validate_model`, `run_analysis`, `run_code_check`
 
 Before entering the execution chain, the agent now derives the downstream domain skill set explicitly for the current turn:
 
-- The `analysis` domain selects one preferred analysis skill based on `analysisType`, `engineId`, structural model family, and any explicit skill selection.
-- The `code-check` domain selects one matching standard skill from `designCode`.
-- `validation` and `report-export` are activated on demand through builtin domain manifests.
+- The `analysis` domain selects one preferred analysis skill from `skill.yaml` metadata based on `analysisType`, `engineId`, structural model family, and any explicit skill selection.
+- The `code-check` domain resolves skill id and design-code mapping from `skill.yaml` metadata.
+- `validation` and `report-export` are activated on demand through their canonical builtin skill manifests.
 
 In the current implementation, the actual `validation`, `analysis`, `code-check`, and `report-export` execution entrypoints are wrapped by `AgentSkillRuntime`: the agent no longer assembles those domain registries or report-domain details directly, and the selected downstream skill id is written back into result `meta` and tool-trace attribution.
+
+## 2.4 Builtin Tool Discovery
+
+Builtin tools live under `backend/src/agent-tools/<tool-id>/`.
+
+Every builtin tool directory must contain:
+
+| File | Required | Purpose |
+|------|----------|---------|
+| `tool.yaml` | Yes | Canonical static metadata: `id`, `tier`, `category`, dependencies, schemas, and error codes |
+
+Builtin tool loading follows the same manifest-first rule:
+
+1. The runtime scans `backend/src/agent-tools/` recursively.
+2. A directory is considered a builtin tool only if it contains `tool.yaml`.
+3. `tool.yaml` becomes the source of truth for protocol metadata, builtin tool catalogs, and runtime tool resolution.
+4. Old TypeScript manifest constants are no longer used as the runtime source of truth.
+
+## 2.5 Runtime Status Projection
 
 The current `/api/v1/agent/capability-matrix` also exposes `runtimeStatus` for each skill and each domain summary so the stable taxonomy can be distinguished from actual runtime wiring:
 
@@ -94,6 +105,20 @@ The current `/api/v1/agent/capability-matrix` also exposes `runtimeStatus` for e
 - `partial`: connected to runtime, but still platform-managed or not yet packaged as a full first-class skill.
 - `discoverable`: present in the taxonomy, but not yet part of the main orchestration flow.
 - `reserved`: kept as an architectural slot without current runtime capability.
+
+### 2.6 Analysis Engine Availability and Skill Impact
+
+`engineId` declared inside a skill is a static routing hint, not a guarantee that the engine is usable at runtime.
+
+- A skill may declare which analysis engine family it targets, for example OpenSees today, or future integrations such as YJK / PKPM.
+- The actual runtime engine set comes from the engine catalog and current runtime health state.
+- Before an analysis skill can participate in execution, the runtime must verify that the candidate engine is:
+  - enabled
+  - available
+  - compatible with the required model family
+  - compatible with the requested analysis type
+
+Therefore, engine availability is a runtime gate that directly affects downstream skill activation and execution eligibility. A skill may be correctly loaded in the taxonomy, but still be filtered out for execution if its required engine is currently unavailable or incompatible.
 
 ## 3. External / SkillHub Skill Packaging and Loading
 

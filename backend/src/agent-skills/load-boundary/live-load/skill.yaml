@@ -1,0 +1,72 @@
+id: live-load
+domain: load-boundary
+source: builtin
+name:
+  zh: 活荷载
+  en: Live Load
+description:
+  zh: 生成活荷载，包括楼面荷载、屋面荷载及其他可变荷载，符合 GB50009-2012 规范。
+  en: Generate live loads including floor loads, roof loads, and other variable loads according to GB50009-2012.
+triggers:
+  - live load
+  - 活载
+  - floor load
+  - 楼面荷载
+  - roof load
+  - 屋面荷载
+  - variable load
+  - 可变荷载
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - load-generation
+  - load-validation
+grants: []
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 95
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+version: 1.0.0
+scenarioKeys:
+  - frame
+  - truss
+  - portal-frame
+  - double-span-beam
+  - beam
+loadTypes:
+  - live
+  - floor
+  - roof
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - frame
+  - truss
+  - generic
+materialFamilies: []
+inputSchema:
+  type: object
+  properties:
+    modelId:
+      type: string
+    floorArea:
+      type: number
+    loadCategory:
+      type: string
+  required:
+    - modelId
+outputSchema:
+  type: object
+  properties:
+    loadCases:
+      type: array
+    loads:
+      type: array
+aliases: []
+toolHints: {}

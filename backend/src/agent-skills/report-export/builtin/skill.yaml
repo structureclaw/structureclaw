@@ -1,0 +1,37 @@
+id: report-export-builtin
+domain: report-export
+source: builtin
+name:
+  zh: 内置报告导出
+  en: Builtin Report Export
+description:
+  zh: 汇总分析与规范校核结果，生成可导出的结构工程报告。
+  en: Assemble analysis and code-check outputs into exportable structural engineering reports.
+triggers:
+  - report
+  - export
+  - 报告
+  - 导出
+stages:
+  - design
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - report-export
+  - result-summarization
+grants:
+  - generate_report
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: false
+priority: 100
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - generic
+materialFamilies: []
+aliases: []
+toolHints: {}

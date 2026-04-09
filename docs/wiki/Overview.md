@@ -11,21 +11,23 @@ StructureClaw is an AI-assisted structural engineering workspace for AEC workflo
 
 ## Skill System
 
-Skills are discovered and loaded from `backend/src/agent-skills/` using a two-layer architecture:
+Skills are discovered and loaded from `backend/src/agent-skills/` using a manifest-first architecture:
 
-- **Markdown intent layer**: `.md` files with YAML frontmatter defining triggers, stages, and metadata
-- **TypeScript handler layer**: `manifest.ts` + `handler.ts` pairs implementing structural-type detection, draft extraction, and model building
+- **Static metadata layer**: `skill.yaml` is the canonical source for skill identity, domain, capabilities, and tool grants
+- **Content layer**: stage Markdown files such as `intent.md`, `draft.md`, `analysis.md`, and `design.md` provide prompts and guidance content
+- **Runtime layer**: executable plugins such as `handler.ts` or `runtime.py` implement skill behavior without redefining the static identity
 
 Built-in skill domains:
 
 | Domain | Description |
 |---|---|
-| `structure-type` | Structural type recognition (beam, frame, truss, portal-frame, frame-shear-wall, residential-shear-wall, transmission-tower, etc.) |
+| `structure-type` | Structural type recognition (beam, frame, truss, portal-frame, and generic fallback paths) |
 | `analysis` | OpenSees and Simplified analysis execution |
 | `code-check` | Design code compliance checking |
 | `data-input` | Structured data input parsing |
 | `design` | Structural design assistance |
 | `drawing` | Drawing and visualization generation |
+| `general` | General-purpose engineering skills and shared workflow helpers |
 | `load-boundary` | Load and boundary condition handling |
 | `material` | Material property management |
 | `report-export` | Report generation and export |
@@ -33,6 +35,8 @@ Built-in skill domains:
 | `section` | Cross-section property calculation |
 | `validation` | Model validation checks |
 | `visualization` | 3D model visualization |
+
+The table above is the stable platform taxonomy. Current runtime maturity is documented separately in [../skill-runtime-status.md](../skill-runtime-status.md).
 
 ## SkillHub
 

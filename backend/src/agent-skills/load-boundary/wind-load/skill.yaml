@@ -1,0 +1,72 @@
+id: wind-load
+domain: load-boundary
+source: builtin
+name:
+  zh: 风荷载
+  en: Wind Load
+description:
+  zh: 生成风荷载，符合 GB50009-2012 规范，包括暴露类别和建筑形状。
+  en: Generate wind loads according to GB50009-2012 including exposure categories and building shapes.
+triggers:
+  - wind load
+  - 风载
+  - wind pressure
+  - 风压
+  - wind force
+  - 风力
+stages:
+  - intent
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - load-generation
+  - load-validation
+grants: []
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 90
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+version: 1.0.0
+scenarioKeys:
+  - frame
+  - truss
+  - portal-frame
+  - double-span-beam
+  - beam
+loadTypes:
+  - wind
+  - static
+  - dynamic
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - frame
+  - truss
+  - generic
+materialFamilies: []
+inputSchema:
+  type: object
+  properties:
+    modelId:
+      type: string
+    windZone:
+      type: string
+    buildingHeight:
+      type: number
+    exposureCategory:
+      type: string
+  required:
+    - modelId
+outputSchema:
+  type: object
+  properties:
+    loadCases:
+      type: array
+    loads:
+      type: array
+aliases: []
+toolHints: {}
