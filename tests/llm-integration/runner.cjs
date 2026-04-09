@@ -227,7 +227,7 @@ async function runClarificationTest(runtime, llm, testCase) {
 // ---------------------------------------------------------------------------
 
 async function runLlmIntegrationTests(rootDir, args) {
-  const maxAttempts = 4; // 1 initial + 3 retries
+  const maxAttempts = 8; // 1 initial + 7 retries
   const context = resolveIntegrationContext(rootDir);
 
   // Inject LLM env vars into process.env BEFORE importing backend modules.

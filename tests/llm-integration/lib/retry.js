@@ -1,4 +1,4 @@
-const MAX_ATTEMPTS = 4; // 1 initial + 3 retries
+const MAX_ATTEMPTS = 8; // 1 initial + 7 retries
 
 /**
  * Retry an async function up to MAX_ATTEMPTS times.

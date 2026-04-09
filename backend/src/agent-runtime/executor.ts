@@ -43,6 +43,18 @@ export class AgentSkillExecutor {
       input.locale === 'zh'
         ? '示例：{"inferredType":"beam","draftPatch":{"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPosition":"free-joint","loadPositionM":4}}'
         : 'Example: {"inferredType":"beam","draftPatch":{"inferredType":"beam","lengthM":10,"supportType":"simply-supported","loadKN":10,"loadType":"point","loadPosition":"free-joint","loadPositionM":4}}',
+      input.locale === 'zh'
+        ? '重要：当 Known draft state 已有参数值时，draftPatch 中必须保留所有已有值并补充新提取的值，绝不能丢失之前已确认的参数。'
+        : 'CRITICAL: When Known draft state contains values, you MUST include ALL of them in draftPatch along with any newly extracted values. Never drop previously extracted parameters.',
+      input.locale === 'zh'
+        ? '只有同时考虑当前消息和 Known draft state 后仍然未知的字段，才能放入 missingCritical。'
+        : 'Only add fields to missingCritical if they are genuinely unknown after considering BOTH the current message AND the Known draft state.',
+      input.locale === 'zh'
+        ? '梁状态累积示例：已知 state={"inferredType":"beam","lengthM":6}，用户说"20kN均布荷载"，正确输出={"inferredType":"beam","draftPatch":{"inferredType":"beam","lengthM":6,"supportType":"simply-supported","loadKN":20,"loadType":"distributed"}}'
+        : 'Beam state accumulation example: Known state={"inferredType":"beam","lengthM":6}, user says "20kN distributed load", correct output={"inferredType":"beam","draftPatch":{"inferredType":"beam","lengthM":6,"supportType":"simply-supported","loadKN":20,"loadType":"distributed"}}',
+      input.locale === 'zh'
+        ? '门式刚架状态累积示例：已知 state={"inferredType":"portal-frame","spanLengthM":24,"heightM":8}，用户说"荷载10kN/m"，正确输出={"inferredType":"portal-frame","draftPatch":{"inferredType":"portal-frame","spanLengthM":24,"heightM":8,"loadKN":10,"loadType":"distributed"}}'
+        : 'Portal-frame state accumulation example: Known state={"inferredType":"portal-frame","spanLengthM":24,"heightM":8}, user says "load 10kN/m", correct output={"inferredType":"portal-frame","draftPatch":{"inferredType":"portal-frame","spanLengthM":24,"heightM":8,"loadKN":10,"loadType":"distributed"}}',
       `Known draft state: ${JSON.stringify(input.existingState || {})}`,
       `User message: ${input.message}`,
       'Markdown skill:',
