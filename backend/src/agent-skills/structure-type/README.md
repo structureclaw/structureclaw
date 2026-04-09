@@ -16,3 +16,9 @@ Initial migration targets:
 - frame
 - portal-frame
 - truss
+
+Testing conventions:
+- Ordinary skill tests live next to the skill under `backend/src/agent-skills/**/__tests__/`.
+- These colocated tests must stay deterministic. They can use `llm = null` or stubbed responses, but they must not call a real external LLM provider.
+- Real provider-backed skill tests live under `tests/llm-integration/` at the repo root.
+- Every real LLM fixture must declare `skillId`, so tests can be filtered per skill with `node tests/runner.mjs llm-integration --skill <skillId>`.

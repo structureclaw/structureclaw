@@ -3,6 +3,7 @@
   "testCases": [
     {
       "id": "beam-routing-zh",
+      "skillId": "beam",
       "category": "routing",
       "locale": "zh",
       "messages": ["一根简支梁，跨度6米"],
@@ -13,6 +14,7 @@
     },
     {
       "id": "beam-routing-en",
+      "skillId": "beam",
       "category": "routing",
       "locale": "en",
       "messages": ["a simply supported beam, span 6m"],
@@ -23,6 +25,7 @@
     },
     {
       "id": "frame-routing-zh",
+      "skillId": "frame",
       "category": "routing",
       "locale": "zh",
       "messages": ["三层单跨钢框架，层高3.6m，跨度6m"],
@@ -33,6 +36,7 @@
     },
     {
       "id": "frame-routing-en",
+      "skillId": "frame",
       "category": "routing",
       "locale": "en",
       "messages": ["3-story single-bay steel frame, story height 3.6m, bay width 6m"],
@@ -43,6 +47,7 @@
     },
     {
       "id": "portal-frame-routing-zh",
+      "skillId": "portal-frame",
       "category": "routing",
       "locale": "zh",
       "messages": ["门式刚架，跨度18m，高度6m"],
@@ -53,6 +58,7 @@
     },
     {
       "id": "portal-frame-routing-en",
+      "skillId": "portal-frame",
       "category": "routing",
       "locale": "en",
       "messages": ["portal frame, span 18m, height 6m"],
@@ -63,6 +69,7 @@
     },
     {
       "id": "beam-params-zh",
+      "skillId": "beam",
       "category": "extraction",
       "locale": "zh",
       "messages": ["一根悬臂梁，长3米，端部集中力10kN"],
@@ -79,6 +86,7 @@
     },
     {
       "id": "beam-params-en",
+      "skillId": "beam",
       "category": "extraction",
       "locale": "en",
       "messages": ["cantilever beam, 4m long, point load 15kN at tip"],
@@ -95,6 +103,7 @@
     },
     {
       "id": "beam-distributed-zh",
+      "skillId": "beam",
       "category": "extraction",
       "locale": "zh",
       "messages": ["简支梁6米，均布荷载20kN/m"],
@@ -111,6 +120,7 @@
     },
     {
       "id": "frame-params-zh",
+      "skillId": "frame",
       "category": "extraction",
       "locale": "zh",
       "messages": ["4层2跨钢框架，层高3.3m，跨度5.4m，楼面荷载12kN/m²"],
@@ -133,6 +143,7 @@
     },
     {
       "id": "frame-params-en",
+      "skillId": "frame",
       "category": "extraction",
       "locale": "en",
       "messages": ["2-story 3-bay frame, story height 3.6m, bay widths 6m, 7.5m, 6m"],
@@ -154,6 +165,7 @@
     },
     {
       "id": "portal-frame-params-zh",
+      "skillId": "portal-frame",
       "category": "extraction",
       "locale": "zh",
       "messages": ["门式刚架，跨度24m，高度8m，屋面荷载5kN/m"],
@@ -169,6 +181,7 @@
     },
     {
       "id": "portal-frame-params-en",
+      "skillId": "portal-frame",
       "category": "extraction",
       "locale": "en",
       "messages": ["portal frame, span 21m, height 7.5m, roof load 8kN"],
@@ -184,6 +197,7 @@
     },
     {
       "id": "frame-steel-zh",
+      "skillId": "frame",
       "category": "extraction",
       "locale": "zh",
       "messages": ["6层3跨钢框架Q345，层高3.6m，跨度7.2m"],
@@ -205,6 +219,7 @@
     },
     {
       "id": "beam-position-zh",
+      "skillId": "beam",
       "category": "extraction",
       "locale": "zh",
       "messages": ["简支梁8米，在距左端3米处作用集中力25kN"],
@@ -220,6 +235,7 @@
     },
     {
       "id": "frame-3d-zh",
+      "skillId": "frame",
       "category": "extraction",
       "locale": "zh",
       "messages": ["3层2x3跨空间框架，层高4m，X向跨度6m，Y向跨度7.5m"],
@@ -244,6 +260,7 @@
     },
     {
       "id": "beam-pipeline-zh",
+      "skillId": "beam",
       "category": "pipeline",
       "locale": "zh",
       "messages": ["简支梁6米，均布荷载20kN/m，请进行静力分析"],
@@ -256,6 +273,7 @@
     },
     {
       "id": "frame-pipeline-en",
+      "skillId": "frame",
       "category": "pipeline",
       "locale": "en",
       "messages": ["2-story single-bay steel frame, story height 3.6m, bay 6m, floor load 10kN/m2, analyze and check against steel code"],
@@ -268,6 +286,7 @@
     },
     {
       "id": "portal-frame-pipeline-zh",
+      "skillId": "portal-frame",
       "category": "pipeline",
       "locale": "zh",
       "messages": ["门式刚架，跨度18m，高度7m，屋面荷载6kN/m，分析"],
@@ -280,6 +299,7 @@
     },
     {
       "id": "frame-pipeline-multi-bay-zh",
+      "skillId": "frame",
       "category": "pipeline",
       "locale": "zh",
       "messages": ["3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m"],
@@ -292,6 +312,7 @@
     },
     {
       "id": "beam-clarify-zh",
+      "skillId": "beam",
       "category": "clarification",
       "locale": "zh",
       "turns": [
@@ -326,6 +347,7 @@
     },
     {
       "id": "frame-clarify-en",
+      "skillId": "frame",
       "category": "clarification",
       "locale": "en",
       "turns": [
@@ -356,6 +378,7 @@
     },
     {
       "id": "beam-clarify-revise",
+      "skillId": "beam",
       "category": "clarification",
       "locale": "zh",
       "turns": [
@@ -384,6 +407,7 @@
     },
     {
       "id": "portal-frame-clarify-zh",
+      "skillId": "portal-frame",
       "category": "clarification",
       "locale": "zh",
       "turns": [

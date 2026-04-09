@@ -6,6 +6,7 @@ const { createRequire } = require("node:module");
 const { resolveIntegrationContext } = require("./lib/context.js");
 const { createRealLlmClient } = require("./lib/real-llm-client.cjs");
 const { withRetry, MAX_ATTEMPTS } = require("./lib/retry.js");
+const { parseLlmIntegrationOptions, filterLlmTestCases } = require("./lib/selection.cjs");
 const {
   assert,
   assertMatch,
@@ -229,6 +230,7 @@ async function runClarificationTest(runtime, llm, testCase) {
 async function runLlmIntegrationTests(rootDir, args) {
   const maxAttempts = MAX_ATTEMPTS;
   const context = resolveIntegrationContext(rootDir);
+  const options = parseLlmIntegrationOptions(args);
 
   // Inject LLM env vars into process.env BEFORE importing backend modules.
   // The backend config module reads process.env at import time.
@@ -252,12 +254,7 @@ async function runLlmIntegrationTests(rootDir, args) {
 
   // Load test cases
   const allCases = loadFixtures(rootDir);
-
-  // Parse filter from args
-  const filterCategory = args.find((a) => !a.startsWith("--"));
-  const cases = filterCategory
-    ? allCases.filter((tc) => tc.category === filterCategory)
-    : allCases;
+  const cases = filterLlmTestCases(allCases, options);
 
   if (cases.length === 0) {
     process.stdout.write("No test cases matched.\n");
@@ -268,6 +265,8 @@ async function runLlmIntegrationTests(rootDir, args) {
   process.stdout.write(`LLM Integration Tests: ${cases.length} cases\n`);
   process.stdout.write(`Provider: ${context.env.LLM_PROVIDER}\n`);
   process.stdout.write(`Model: ${context.env.LLM_MODEL || "(default)"}\n`);
+  process.stdout.write(`Category: ${options.category || "(all)"}\n`);
+  process.stdout.write(`Skill: ${options.skillId || "(all)"}\n`);
   process.stdout.write(`${"=".repeat(60)}\n\n`);
 
   // Create LLM client and runtime

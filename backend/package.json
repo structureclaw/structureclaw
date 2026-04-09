@@ -10,6 +10,8 @@
     "start": "node dist/index.js",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "test": "npm run db:generate && npm run build && cross-env NODE_OPTIONS=--experimental-vm-modules jest --passWithNoTests",
+    "test:skills": "npm run db:generate && npm run build && cross-env NODE_OPTIONS=--experimental-vm-modules jest --passWithNoTests --runInBand src/agent-skills/",
+    "test:skill:frame": "npm run db:generate && npm run build && cross-env NODE_OPTIONS=--experimental-vm-modules jest --passWithNoTests --runInBand src/agent-skills/structure-type/frame/",
     "db:generate": "prisma generate && node ./scripts/ensure-prisma-client-commonjs.mjs",
     "db:push": "npm run db:generate && node ./scripts/sync-sqlite-schema.mjs",
     "db:migrate": "npm run db:generate && node ./scripts/sync-sqlite-schema.mjs",

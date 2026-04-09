@@ -73,6 +73,7 @@ Commands:
   backend-regression    Full backend regression suite
   analysis-regression   Full analysis regression suite
   llm-integration       LLM integration tests (requires LLM_API_KEY)
+                        supports: node tests/runner.mjs llm-integration [category] [--skill <skillId>]
   smoke-native          CI-style native install smoke (npm ci + build)
   smoke-docker          Docker compose smoke test
 
