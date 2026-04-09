@@ -49,7 +49,7 @@ export function resolveFrameDimension(
   existingState: FramePatchSources['existingState'],
   message: string,
   floorLoads: DraftFloorLoad[] | undefined = patch.floorLoads,
-): '2d' | '3d' {
+): '2d' | '3d' | undefined {
   if (patch.frameDimension === '3d') {
     return '3d';
   }
@@ -59,7 +59,7 @@ export function resolveFrameDimension(
   if (patch.frameDimension === '2d') {
     return '2d';
   }
-  return existingState?.frameDimension ?? '2d';
+  return existingState?.frameDimension ?? undefined;
 }
 
 export function fillFrameDimensionSpecificGeometry(patch: DraftExtraction): DraftExtraction {
@@ -69,7 +69,7 @@ export function fillFrameDimensionSpecificGeometry(patch: DraftExtraction): Draf
     next.storyCount = next.storyHeightsM.length;
   }
 
-  if (next.frameDimension === '2d') {
+  if (next.frameDimension === '2d' || next.frameDimension === undefined) {
     if (!next.bayWidthsM?.length && next.bayWidthsXM?.length && !next.bayWidthsYM?.length) {
       next.bayWidthsM = [...next.bayWidthsXM];
     }
@@ -78,7 +78,7 @@ export function fillFrameDimensionSpecificGeometry(patch: DraftExtraction): Draf
         ?? next.bayCountX
         ?? next.bayWidthsXM?.length;
     }
-    return next;
+    if (next.frameDimension === '2d') return next;
   }
 
   if (next.frameDimension === '3d') {

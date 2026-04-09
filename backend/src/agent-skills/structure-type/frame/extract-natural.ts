@@ -230,7 +230,7 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
     || extractedLateralYLoadKN !== undefined;
   const resolvedFrameDimension = inferred3d
     ? '3d'
-    : (existingState?.frameDimension ?? '2d');
+    : (existingState?.frameDimension ?? (bayCountX !== undefined ? '3d' : undefined));
   const resolved2dBayCount = genericBayCount ?? bayCountX ?? existingState?.bayCount;
   const resolved2dBayWidths = resolvedFrameDimension !== '3d'
     ? (

@@ -38,7 +38,7 @@ describe('frame canonicalize core contract', () => {
       llmPatch: null,
     });
 
-    expect(patch.frameDimension).toBe('2d');
+    expect(patch.frameDimension).toBeUndefined();
     expect(patch.storyCount).toBe(2);
     expect(patch.bayCount).toBe(2);
   });
@@ -95,18 +95,16 @@ describe('frame canonicalize core contract', () => {
     expect(patch.storyCount).toBe(22);
   });
 
-  test('defaults x-only natural geometry to 2d and fills 2d bay fields', () => {
+  test('infers 3d when x-direction bay count is present without explicit y-direction', () => {
     const patch = buildFrameDraftPatch(
       '三层框架，x方向4跨，间隔6m，每层3m，每层竖向荷载100kN',
       null,
       undefined,
     );
 
-    expect(patch.frameDimension).toBe('2d');
-    expect(patch.bayCount).toBe(4);
-    expect(patch.bayWidthsM).toEqual([6, 6, 6, 6]);
-    expect(patch.bayCountY).toBeUndefined();
-    expect(patch.bayWidthsYM).toBeUndefined();
+    expect(patch.frameDimension).toBe('3d');
+    expect(patch.bayCountX).toBe(4);
+    expect(patch.bayWidthsXM).toEqual([6, 6, 6, 6]);
   });
 
   test('normalizes llm scalar fields into canonical arrays', () => {
@@ -128,7 +126,7 @@ describe('frame canonicalize core contract', () => {
     expect(patch.frameBeamSection).toBe('HN400X200');
   });
 
-  test('defaults frame dimension to 2d when no y-direction evidence exists', () => {
+  test('leaves frame dimension undefined when no directional evidence or existing state exists', () => {
     const patch = coerceFrameDimension({
       inferredType: 'frame',
       storyCount: 2,
@@ -141,6 +139,6 @@ describe('frame canonicalize core contract', () => {
       ],
     }, undefined, '两层两跨框架，每层3m');
 
-    expect(patch.frameDimension).toBe('2d');
+    expect(patch.frameDimension).toBeUndefined();
   });
 });
