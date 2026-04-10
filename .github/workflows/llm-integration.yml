@@ -43,6 +43,8 @@ jobs:
     outputs:
       pr_sha: ${{ steps.get-ref.outputs.sha }}
       filter_arg: ${{ steps.get-ref.outputs.filter_arg }}
+      trigger_issue_number: ${{ steps.get-ref.outputs.issue_number }}
+      trigger_comment_user: ${{ steps.get-ref.outputs.comment_user }}
     steps:
       - name: Get PR Reference
         id: get-ref
@@ -59,9 +61,13 @@ jobs:
             COMMENT="${{ github.event.comment.body }}"
             FILTER=$(echo "$COMMENT" | sed -n 's|/test-llm[[:space:]]*\(.*\)|\1|p' | xargs)
             echo "filter_arg=$FILTER" >> "$GITHUB_OUTPUT"
+            echo "issue_number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+            echo "comment_user=${{ github.event.comment.user.login }}" >> "$GITHUB_OUTPUT"
           else
             echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
             echo "filter_arg=${{ github.event.inputs.filter }}" >> "$GITHUB_OUTPUT"
+            echo "issue_number=" >> "$GITHUB_OUTPUT"
+            echo "comment_user=" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Reply with Action Link
@@ -104,6 +110,7 @@ jobs:
         uses: ./.github/actions/setup-env
 
       - name: Run LLM integration tests
+        id: run-tests
         env:
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_MODEL: ${{ github.event.inputs.llm_model || vars.LLM_MODEL }}
@@ -114,10 +121,55 @@ jobs:
         run: |
           FILTER_ARG="${{ needs.check-permission.outputs.filter_arg }}"
           if [ -n "$FILTER_ARG" ]; then
-            node tests/runner.mjs llm-integration --filter "$FILTER_ARG"
+            node tests/runner.mjs llm-integration --filter "$FILTER_ARG" 2>&1 | tee test-output.txt
           else
-            node tests/runner.mjs llm-integration
+            node tests/runner.mjs llm-integration 2>&1 | tee test-output.txt
           fi
+
+      - name: Extract test summary
+        if: always()
+        id: summary
+        run: |
+          if [ ! -f test-output.txt ]; then
+            echo "summary=Tests did not produce output." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          SUMMARY=$(grep -A 3 '^Results:' test-output.txt || echo "No summary found")
+          echo "summary<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$SUMMARY" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Report results on PR
+        if: always() && needs.check-permission.outputs.trigger_issue_number != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = Number('${{ needs.check-permission.outputs.trigger_issue_number }}');
+            const commentUser = '${{ needs.check-permission.outputs.trigger_comment_user }}';
+            const success = '${{ steps.run-tests.outcome }}' === 'success';
+            const summary = `${{ steps.summary.outputs.summary }}`;
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const icon = success ? '✅' : '❌';
+            const status = success ? 'PASSED' : 'FAILED';
+            const body = [
+              `${icon} **LLM Integration Tests ${status}**`,
+              ``,
+              `@${commentUser}, the test run has completed.`,
+              ``,
+              `\`\`\``,
+              summary,
+              `\`\`\``,
+              ``,
+              `📦 **[Download Logs](${runUrl})** or check the Artifacts section.`,
+            ].join('\n');
+
+            github.rest.issues.createComment({
+              issue_number: issueNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            })
 
       - name: Upload LLM call logs
         if: always()
