@@ -78,6 +78,7 @@ jobs:
         continue-on-error: true
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.COMMENT_TOKEN }}
           script: |
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
             const body = [
@@ -153,6 +154,7 @@ jobs:
         continue-on-error: true
         uses: actions/github-script@v7
         with:
+          github-token: ${{ secrets.COMMENT_TOKEN }}
           script: |
             const issueNumber = Number('${{ needs.check-permission.outputs.trigger_issue_number }}');
             const commentUser = '${{ needs.check-permission.outputs.trigger_comment_user }}';
