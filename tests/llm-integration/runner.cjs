@@ -1,7 +1,5 @@
-const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
-const { createRequire } = require("node:module");
 
 const { resolveIntegrationContext } = require("./lib/context.js");
 const { createRealLlmClient } = require("./lib/real-llm-client.cjs");
@@ -9,31 +7,17 @@ const { withRetry, MAX_ATTEMPTS } = require("./lib/retry.js");
 const { loadLlmFixtures } = require("./lib/discovery.cjs");
 const { parseLlmIntegrationOptions, filterLlmTestCases } = require("./lib/selection.cjs");
 const {
-  assert,
-  assertMatch,
-  assertToolCalls,
-  applyCriticalMissingAssertions,
   assertRoutingTrace,
   assertToolAuthorizers,
 } = require("./lib/assertions.js");
+const {
+  runRoutingTest,
+  runExtractionTest,
+  runPipelineTest,
+  runClarificationTest,
+} = require("./lib/executors.cjs");
 const { resolveObservedTrace } = require("./lib/trace.cjs");
 const { formatCaseSummary, appendArtifactRecord } = require("./lib/reporting.cjs");
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function logResult(status, caseId, attempt, maxAttempts, durationMs, detail) {
-  const attemptStr = `${attempt}/${maxAttempts}`;
-  const duration = `${(durationMs / 1000).toFixed(1)}s`;
-  if (status === "PASS") {
-    process.stdout.write(`  [PASS] ${caseId} (${attemptStr}) — ${duration}\n`);
-  } else if (status === "RETRY") {
-    process.stdout.write(`  [RETRY] ${caseId} (${attemptStr}) — ${detail}\n`);
-  } else {
-    process.stdout.write(`  [FAIL] ${caseId} (${attemptStr}) — ${detail}\n`);
-  }
-}
 
 /** Import AgentSkillRuntime from backend dist. */
 async function importAgentSkillRuntime(rootDir) {
@@ -43,191 +27,11 @@ async function importAgentSkillRuntime(rootDir) {
 }
 
 /** Import and instantiate AgentService with real LLM. */
-async function createAgentService(rootDir, context) {
+async function createAgentService(rootDir) {
   const filePath = path.join(rootDir, "backend", "dist", "services", "agent.js");
   const mod = await import(`${pathToFileURL(filePath).href}?llm-test=${Date.now()}`);
   const AgentService = mod.AgentService;
   return new AgentService();
-}
-
-function resolveLocale(locale) {
-  return locale === "zh" ? "zh" : "en";
-}
-
-// ---------------------------------------------------------------------------
-// Test executors per category
-// ---------------------------------------------------------------------------
-
-/**
- * ROUTING: Test that detectStructuralType returns the correct skill.
- * No LLM call needed — this is deterministic regex-based.
- */
-async function runRoutingTest(runtime, testCase) {
-  const locale = resolveLocale(testCase.locale);
-  const message = testCase.messages[0];
-  const match = await runtime.detectStructuralType(message, locale);
-  const expected = testCase.assertions;
-
-  if (expected.inferredType) {
-    const actualKey = match.mappedType || match.key;
-    assert(
-      actualKey === expected.inferredType || match.skillId === expected.inferredType,
-      `expected inferredType="${expected.inferredType}", got key="${match.key}" mappedType="${match.mappedType}" skillId="${match.skillId}"`
-    );
-  }
-  if (expected.structuralTypeKey) {
-    assert(
-      match.key === expected.structuralTypeKey || match.mappedType === expected.structuralTypeKey,
-      `expected structuralTypeKey="${expected.structuralTypeKey}", got key="${match.key}" mappedType="${match.mappedType}"`
-    );
-  }
-}
-
-/**
- * EXTRACTION: Test that textToModelDraft produces correct parameters with real LLM.
- */
-async function runExtractionTest(runtime, llm, testCase) {
-  const locale = resolveLocale(testCase.locale);
-  const message = testCase.messages[0];
-  const expected = testCase.assertions;
-
-  const result = await runtime.textToModelDraft(llm, message, undefined, locale, testCase.enabledSkillIds);
-
-  if (expected.inferredType) {
-    assert(
-      result.inferredType === expected.inferredType,
-      `expected inferredType="${expected.inferredType}", got "${result.inferredType}"`
-    );
-  }
-
-  if (
-    expected.criticalMissing !== undefined
-    || expected.criticalMissingIncludes
-    || expected.criticalMissingNotIncludes
-  ) {
-    applyCriticalMissingAssertions(result.missingFields || [], expected);
-  }
-
-  if (expected.draftPatch) {
-    assertDraftPatch(result.stateToPersist || {}, expected.draftPatch);
-  }
-
-  return result;
-}
-
-/**
- * Assert draftPatch fields against expected values.
- * Supports: { value: number, tolerance } for scalars,
- *           { value: number[], tolerance } for arrays,
- *           exact string/number match otherwise.
- */
-function assertDraftPatch(state, expectedPatch) {
-  for (const [key, expectedValue] of Object.entries(expectedPatch)) {
-    const actualValue = state[key];
-    if (expectedValue === null || expectedValue === undefined) continue;
-
-    if (typeof expectedValue === "object" && expectedValue.value !== undefined) {
-      const tolerance = expectedValue.tolerance || 0.05;
-      const expected = expectedValue.value;
-
-      if (Array.isArray(expected)) {
-        // Array with tolerance: compare element-wise
-        assert(Array.isArray(actualValue), `expected ${key} to be an array, got ${typeof actualValue}: ${actualValue}`);
-        assert(actualValue.length === expected.length, `expected ${key} length ${expected.length}, got ${actualValue.length}`);
-        for (let i = 0; i < expected.length; i++) {
-          const diff = Math.abs(actualValue[i] - expected[i]) / Math.abs(expected[i] || 1);
-          assert(diff <= tolerance, `expected ${key}[${i}]=${expected[i]} (±${(tolerance * 100).toFixed(0)}%), got ${actualValue[i]}`);
-        }
-      } else {
-        // Scalar number with tolerance
-        assert(typeof actualValue === "number", `expected ${key} to be a number, got ${typeof actualValue}: ${actualValue}`);
-        const diff = Math.abs(actualValue - expected) / Math.abs(expected || 1);
-        assert(diff <= tolerance, `expected ${key}=${expected} (±${(tolerance * 100).toFixed(0)}%), got ${actualValue}`);
-      }
-    } else {
-      // Exact match (string, number, etc.)
-      assert(
-        actualValue === expectedValue,
-        `expected ${key}="${expectedValue}", got "${actualValue}"`
-      );
-    }
-  }
-}
-
-/**
- * PIPELINE: Full end-to-end via AgentService with real LLM and real analysis.
- */
-async function runPipelineTest(agentService, testCase) {
-  const locale = resolveLocale(testCase.locale);
-  const message = testCase.messages[0];
-  const expected = testCase.assertions;
-
-  const result = await agentService.run({
-    message,
-    conversationId: `llm-test-${testCase.id}-${Date.now()}`,
-    traceId: `trace-${testCase.id}`,
-    context: {
-      locale,
-      skillIds: testCase.enabledSkillIds,
-      autoAnalyze: true,
-      includeReport: expected.expectReport !== false,
-      autoCodeCheck: false,
-    },
-  });
-
-  if (expected.toolCalls) {
-    assertToolCalls(result.toolCalls || [], expected.toolCalls);
-  }
-
-  if (expected.analysisSuccess !== false && result.toolCalls) {
-    const analysisCall = result.toolCalls.find((tc) => tc.tool === "run_analysis");
-    if (analysisCall) {
-      assert(
-        analysisCall.status === "success",
-        `run_analysis should succeed, got status="${analysisCall.status}"${analysisCall.error ? `, error: ${analysisCall.error}` : ""}`
-      );
-    }
-  }
-
-  return result;
-}
-
-/**
- * CLARIFICATION: Multi-turn test where each turn has expected assertions.
- */
-async function runClarificationTest(runtime, llm, testCase) {
-  const locale = resolveLocale(testCase.locale);
-  let currentState = undefined;
-  let lastResult = null;
-
-  for (let i = 0; i < testCase.turns.length; i++) {
-    const turn = testCase.turns[i];
-    const result = await runtime.textToModelDraft(llm, turn.message, currentState, locale, testCase.enabledSkillIds);
-    currentState = result.stateToPersist;
-    lastResult = result;
-
-    const expected = turn.assertions;
-
-    if (
-      expected.criticalMissing !== undefined
-      || expected.criticalMissingIncludes
-      || expected.criticalMissingNotIncludes
-    ) {
-      applyCriticalMissingAssertions(result.missingFields || [], expected);
-    }
-    if (expected.modelBuilt !== undefined) {
-      if (expected.modelBuilt) {
-        assert(result.model !== undefined, `expected model to be built on turn ${i + 1}, but it was undefined`);
-      } else {
-        assert(result.model === undefined, `expected model NOT to be built on turn ${i + 1}`);
-      }
-    }
-    if (expected.draftPatch) {
-      assertDraftPatch(result.stateToPersist || {}, expected.draftPatch);
-    }
-  }
-
-  return lastResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -305,7 +109,7 @@ async function runLlmIntegrationTests(rootDir, args) {
             break;
           case "pipeline": {
             if (!agentService) {
-              agentService = await createAgentService(rootDir, context);
+              agentService = await createAgentService(rootDir);
             }
             pipelineResult = await runPipelineTest(agentService, testCase);
             break;
