@@ -154,7 +154,7 @@ jobs:
             const issueNumber = Number('${{ needs.check-permission.outputs.trigger_issue_number }}');
             const commentUser = '${{ needs.check-permission.outputs.trigger_comment_user }}';
             const success = '${{ steps.run-tests.outcome }}' === 'success';
-            const summary = `${{ steps.summary.outputs.summary }}`;
+            const summary = ${{ toJson(steps.summary.outputs.summary) }};
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
             const icon = success ? '✅' : '❌';
@@ -183,6 +183,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: llm-logs-ubuntu
-          path: .runtime/logs/llm-calls.jsonl
+          path: .runtime/logs/*.jsonl
           retention-days: 7
           if-no-files-found: ignore
