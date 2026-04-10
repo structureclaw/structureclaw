@@ -1,0 +1,42 @@
+{
+  "version": "2.0.0",
+  "family": "double-span-beam",
+  "scenarios": [
+    {
+      "scenarioId": "double-span-beam-routing-zh",
+      "category": "routing",
+      "locale": "zh",
+      "messages": ["双跨连续梁，总长12m，两跨各6m"],
+      "variants": {
+        "legacy": {
+          "expect": {
+            "inferredType": "double-span-beam",
+            "structuralTypeKey": "double-span-beam"
+          }
+        }
+      }
+    },
+    {
+      "scenarioId": "double-span-beam-basic",
+      "category": "extraction",
+      "locale": "zh",
+      "messages": ["双跨连续梁，总长12m，两跨各6m，均布荷载18kN/m"],
+      "variants": {
+        "specific": {
+          "enabledSkillIds": ["double-span-beam"],
+          "fallbackPolicy": "forbid-generic",
+          "expect": {
+            "routing": { "structuralSkillId": "double-span-beam" }
+          }
+        },
+        "generic": {
+          "enabledSkillIds": ["generic"],
+          "fallbackPolicy": "require-generic",
+          "expect": {
+            "routing": { "structuralSkillId": "generic" }
+          }
+        }
+      }
+    }
+  ]
+}
