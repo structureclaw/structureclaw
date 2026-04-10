@@ -544,7 +544,11 @@ describe('llmCallLogger.log edge cases', () => {
       let lines = [];
       for (let attempt = 0; attempt < 10; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 100));
-        lines = readJsonlLines(jsonlPath);
+        try {
+          lines = readJsonlLines(jsonlPath);
+        } catch {
+          lines = [];
+        }
         if (lines.length >= 50) break;
       }
       expect(lines).toHaveLength(50);
