@@ -29,6 +29,7 @@ on:
 permissions:
   contents: read
   pull-requests: read
+  issues: write
 
 jobs:
   check-permission:
@@ -62,6 +63,28 @@ jobs:
             echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
             echo "filter_arg=${{ github.event.inputs.filter }}" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Reply with Action Link
+        if: github.event_name == 'issue_comment'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `✅ **LLM Integration Tests Triggered!**`,
+              ``,
+              `@${context.payload.comment.user.login}, I've started the workflow for you.`,
+              `Please click the link below to monitor progress and **approve the deployment** to the test environment:`,
+              ``,
+              `🚀 **[View Action Run Details](${runUrl})**`,
+            ].join('\n');
+
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            })
 
   llm-integration:
     needs: check-permission
