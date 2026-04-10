@@ -189,7 +189,7 @@ function assertToolAuthorizers(toolCalls, expectedAuthorizers = {}) {
   for (const [toolId, expectedSkills] of Object.entries(expectedAuthorizers)) {
     const call = toolCalls.find((item) => item.tool === toolId);
     assert(call, `expected tool call "${toolId}" to exist`);
-    assertMatch(call.authorizedBySkillIds || [], expectedSkills, `toolAuthorizers.${toolId}`);
+    assertStringSetMatch(call.authorizedBySkillIds || [], expectedSkills, `toolAuthorizers.${toolId}`);
   }
 }
 
