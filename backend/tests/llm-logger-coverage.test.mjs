@@ -539,9 +539,14 @@ describe('llmCallLogger.log edge cases', () => {
         });
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 200));
-
-      const lines = readJsonlLines(path.join(tmpDir, 'llm-calls.jsonl'));
+      // Wait for WriteStream to flush; retry on slow CI (especially Windows).
+      const jsonlPath = path.join(tmpDir, 'llm-calls.jsonl');
+      let lines = [];
+      for (let attempt = 0; attempt < 10; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        lines = readJsonlLines(jsonlPath);
+        if (lines.length >= 50) break;
+      }
       expect(lines).toHaveLength(50);
       expect(lines[0].model).toBe('model-0');
       expect(lines[49].model).toBe('model-49');
