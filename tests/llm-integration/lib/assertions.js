@@ -143,6 +143,50 @@ function applyCriticalMissingAssertions(actualMissing, expected) {
   }
 }
 
+/**
+ * Assert routing trace matches expectations.
+ * @param {object} actual - The observed routing trace
+ * @param {object} expected - Expected values
+ */
+function assertRoutingTrace(actual = {}, expected = {}) {
+  if (expected.selectedSkillIds) {
+    assertMatch(actual.selectedSkillIds || [], expected.selectedSkillIds, "routing.selectedSkillIds");
+  }
+  if (expected.activatedSkillIdsIncludes) {
+    for (const skillId of expected.activatedSkillIdsIncludes) {
+      assert(
+        (actual.activatedSkillIds || []).includes(skillId),
+        `expected activated skill "${skillId}" in [${(actual.activatedSkillIds || []).join(", ")}]`
+      );
+    }
+  }
+  if (expected.structuralSkillId) {
+    assert(
+      actual.structuralSkillId === expected.structuralSkillId,
+      `expected structuralSkillId="${expected.structuralSkillId}", got "${actual.structuralSkillId}"`
+    );
+  }
+  if (expected.analysisSkillId) {
+    assert(
+      actual.analysisSkillId === expected.analysisSkillId,
+      `expected analysisSkillId="${expected.analysisSkillId}", got "${actual.analysisSkillId}"`
+    );
+  }
+}
+
+/**
+ * Assert tool authorizers match expectations.
+ * @param {Array} toolCalls - Observed tool calls
+ * @param {object} expectedAuthorizers - Expected authorizers per tool
+ */
+function assertToolAuthorizers(toolCalls, expectedAuthorizers = {}) {
+  for (const [toolId, expectedSkills] of Object.entries(expectedAuthorizers)) {
+    const call = toolCalls.find((item) => item.tool === toolId);
+    assert(call, `expected tool call "${toolId}" to exist`);
+    assertMatch(call.authorizedBySkillIds || [], expectedSkills, `toolAuthorizers.${toolId}`);
+  }
+}
+
 module.exports = {
   assert,
   assertMatch,
@@ -150,4 +194,6 @@ module.exports = {
   assertCriticalMissing,
   assertNotCriticalMissing,
   applyCriticalMissingAssertions,
+  assertRoutingTrace,
+  assertToolAuthorizers,
 };
