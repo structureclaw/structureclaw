@@ -155,7 +155,11 @@ async function main() {
       if (!fs.existsSync(artifactPath)) {
         throw new Error(`Artifact file not found: ${artifactPath}`);
       }
-      const records = JSON.parse(fs.readFileSync(artifactPath, "utf-8"));
+      const parsed = JSON.parse(fs.readFileSync(artifactPath, "utf-8"));
+      if (!Array.isArray(parsed)) {
+        throw new Error(`Expected a JSON array in ${artifactPath}, got ${typeof parsed}`);
+      }
+      const records = parsed;
       const summary = summarizeArtifacts(records);
       printSummary(summary);
       process.stdout.write("\n");

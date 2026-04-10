@@ -79,3 +79,23 @@ test("filterLlmTestCases narrows by family, variant and scenarioId", () => {
 
   nodeAssert.deepEqual(filtered.map((item) => item.id), ["frame-static-basic#generic"]);
 });
+
+test("parseLlmIntegrationOptions handles --key=value form", () => {
+  const options = parseLlmIntegrationOptions(["--family=beam", "--variant=specific"]);
+
+  nodeAssert.equal(options.family, "beam");
+  nodeAssert.equal(options.skillId, "beam");
+  nodeAssert.equal(options.variant, "specific");
+});
+
+test("parseLlmIntegrationOptions treats --variant auto as no filter", () => {
+  const options = parseLlmIntegrationOptions(["--variant", "auto"]);
+
+  nodeAssert.equal(options.variant, undefined);
+});
+
+test("parseLlmIntegrationOptions treats --variant=auto as no filter", () => {
+  const options = parseLlmIntegrationOptions(["--variant=auto"]);
+
+  nodeAssert.equal(options.variant, undefined);
+});

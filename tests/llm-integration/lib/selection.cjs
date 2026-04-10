@@ -8,6 +8,26 @@ function parseLlmIntegrationOptions(args) {
 
   for (let index = 0; index < args.length; index += 1) {
     const current = args[index];
+
+    // Handle --key=value form
+    const eqIndex = current.indexOf("=");
+    if (current.startsWith("--") && eqIndex > 2) {
+      const key = current.slice(0, eqIndex);
+      const value = current.slice(eqIndex + 1);
+
+      if (key === "--family" || key === "--skill") {
+        family = value;
+        skillId = value;
+      } else if (key === "--variant") {
+        if (value !== "auto") variant = value;
+      } else if (key === "--scenario") {
+        scenarioId = value;
+      } else if (key === "--output") {
+        outputPath = value;
+      }
+      continue;
+    }
+
     if (current === "--family" || current === "--skill") {
       family = args[index + 1];
       skillId = args[index + 1];
@@ -15,7 +35,8 @@ function parseLlmIntegrationOptions(args) {
       continue;
     }
     if (current === "--variant") {
-      variant = args[index + 1];
+      const raw = args[index + 1];
+      if (raw !== "auto") variant = raw;
       index += 1;
       continue;
     }

@@ -24,7 +24,7 @@ describe('beam handler', () => {
     expect(question.question).toContain('均布荷载');
   });
 
-  test('defaults ordinary beams to simply-supported when support is omitted', () => {
+  test('does not auto-fill supportType for ordinary beams — left to question proposals', () => {
     const patch = handler.extractDraft({
       message: '一根梁，长6米，20kN均布荷载',
       llmDraftPatch: {
@@ -35,7 +35,8 @@ describe('beam handler', () => {
       },
     });
 
-    expect(patch.supportType).toBe('simply-supported');
+    expect(patch.supportType).toBeUndefined();
+    expect(patch.loadPosition).toBe('full-span');
   });
 
   test('preserves cantilever support when the message explicitly says cantilever', () => {

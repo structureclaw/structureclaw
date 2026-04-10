@@ -32,8 +32,6 @@ function applyBeamDefaults(message: string, patch: DraftExtraction): DraftExtrac
   if (nextPatch.supportType === undefined) {
     if (text.includes('cantilever') || text.includes('悬臂')) {
       nextPatch.supportType = 'cantilever';
-    } else if (text.includes('beam') || text.includes('梁')) {
-      nextPatch.supportType = 'simply-supported';
     }
   }
 
@@ -182,7 +180,7 @@ export const handler: SkillHandler = {
   },
   parseProvidedValues(values) {
     const patch = normalizeLegacyDraftPatch(values);
-    return toBeamPatch(patch, JSON.stringify(values));
+    return toBeamPatch(patch);
   },
   extractDraft({ message, llmDraftPatch }) {
     return toBeamPatch(buildLegacyDraftPatchLlmFirst(message, llmDraftPatch), message);

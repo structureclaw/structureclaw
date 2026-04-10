@@ -33,7 +33,8 @@ function appendArtifactRecord(outputPath, record) {
   let records = [];
   if (fs.existsSync(outputPath)) {
     try {
-      records = JSON.parse(fs.readFileSync(outputPath, "utf-8"));
+      const parsed = JSON.parse(fs.readFileSync(outputPath, "utf-8"));
+      records = Array.isArray(parsed) ? parsed : [];
     } catch (_) {
       records = [];
     }
