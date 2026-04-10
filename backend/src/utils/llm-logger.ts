@@ -1,7 +1,10 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { config } from '../config/index.js';
 import { logger } from './logger.js';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface LlmLogEntry {
   timestamp: string;
@@ -34,8 +37,9 @@ class LlmCallLogger {
     }
 
     try {
+      // __dirname = backend/dist/utils/ (compiled) → resolve to repo-root/.runtime/logs
       const dir = config.llmLogDir
-        || path.resolve(process.cwd(), '../.runtime/logs');
+        || path.resolve(__dirname, '../../../.runtime/logs');
       fs.mkdirSync(dir, { recursive: true });
       const filePath = path.join(dir, 'llm-calls.jsonl');
       this.stream = fs.createWriteStream(filePath, { flags: 'a' });

@@ -122,6 +122,7 @@ jobs:
           LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
           LLM_LOG_ENABLED: "true"
+          LLM_LOG_DIR: ${{ github.workspace }}/.runtime/logs
           DATABASE_URL: "file:.runtime/data/structureclaw-llm-ci.db"
         run: |
           FILTER_ARG="${{ needs.check-permission.outputs.filter_arg }}"
