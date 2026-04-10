@@ -261,6 +261,8 @@ async function runLlmIntegrationTests(rootDir, args) {
   process.stdout.write(`Model: ${context.env.LLM_MODEL || "(default)"}\n`);
   process.stdout.write(`Category: ${options.category || "(all)"}\n`);
   process.stdout.write(`Skill: ${options.skillId || "(all)"}\n`);
+  process.stdout.write(`Family: ${options.family || "(all)"}\n`);
+  process.stdout.write(`Variant: ${options.variant || "(all)"}\n`);
   process.stdout.write(`${"=".repeat(60)}\n\n`);
 
   // Create LLM client and runtime
