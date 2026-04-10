@@ -7,6 +7,20 @@ const CHINESE_NUMERAL_MAP: Record<string, number> = {
   '五': 5, '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
 };
 
+const ENGLISH_NUMERAL_MAP: Record<string, number> = {
+  one: 1,
+  single: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+  six: 6,
+  seven: 7,
+  eight: 8,
+  nine: 9,
+  ten: 10,
+};
+
 function parseLocalizedPositiveInt(raw: string | undefined): number | undefined {
   if (!raw) return undefined;
   const trimmed = raw.trim();
@@ -21,7 +35,7 @@ function parseLocalizedPositiveInt(raw: string | undefined): number | undefined 
       ? tens * 10 + ones
       : undefined;
   }
-  return CHINESE_NUMERAL_MAP[trimmed];
+  return CHINESE_NUMERAL_MAP[trimmed] ?? ENGLISH_NUMERAL_MAP[trimmed.toLowerCase()];
 }
 
 function extractPositiveInt(text: string, patterns: RegExp[]): number | undefined {
@@ -156,11 +170,11 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
 
   const storyCount = extractPositiveInt(text, [
     /([0-9]+|[一二两三四五六七八九十]+)\s*层/i,
-    /([0-9]+|[一二两三四五六七八九十]+)\s*stories?/i,
+    /([0-9]+|[一二两三四五六七八九十]+|one|two|three|four|five|six|seven|eight|nine|ten)\s*stories?/i,
   ]);
   const genericBayCount = extractPositiveInt(text, [
     /([0-9]+|[一二两三四五六七八九十]+)\s*跨/i,
-    /([0-9]+|[一二两三四五六七八九十]+)\s*bays?/i,
+    /([0-9]+|[一二两三四五六七八九十]+|one|two|three|four|five|six|seven|eight|nine|ten|single)\s*bays?/i,
   ]);
 
   const xSegment = extractDirectionalSegment(text, 'x');
@@ -178,6 +192,8 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
   const storyHeightScalar = extractScalar(text, [
     /每层(?:层高)?(?:都?是|统一为|为|高)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
     /层高(?:都?是|统一为|为)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
+    /story\s*height(?:s)?(?:\s*(?:is|are|of|:))?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|meter|meters)/i,
+    /([0-9]+(?:\.[0-9]+)?)\s*(?:m|meter|meters)\s*each/i,
   ]);
 
   const xSpanArray = extractSpanArray(xSegment);
@@ -196,6 +212,8 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
     /每跨(?:都?是|为)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
     /跨度(?:都?是|也是|为)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
     /间隔(?:都?是|也是|为)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
+    /single\s*bay\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|meter|meters)/i,
+    /bay\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|meter|meters)/i,
   ]);
 
   const verticalLoadKN = extractScalar(text, [

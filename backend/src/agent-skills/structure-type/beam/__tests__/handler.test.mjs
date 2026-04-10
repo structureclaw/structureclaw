@@ -23,4 +23,32 @@ describe('beam handler', () => {
     expect(question.suggestedValue).toBe('distributed');
     expect(question.question).toContain('均布荷载');
   });
+
+  test('defaults ordinary beams to simply-supported when support is omitted', () => {
+    const patch = handler.extractDraft({
+      message: '一根梁，长6米，20kN均布荷载',
+      llmDraftPatch: {
+        inferredType: 'beam',
+        lengthM: 6,
+        loadKN: 20,
+        loadType: 'distributed',
+      },
+    });
+
+    expect(patch.supportType).toBe('simply-supported');
+  });
+
+  test('preserves cantilever support when the message explicitly says cantilever', () => {
+    const patch = handler.extractDraft({
+      message: '悬臂梁，长4米，端部集中力10kN',
+      llmDraftPatch: {
+        inferredType: 'beam',
+        lengthM: 4,
+        loadKN: 10,
+        loadType: 'point',
+      },
+    });
+
+    expect(patch.supportType).toBe('cantilever');
+  });
 });

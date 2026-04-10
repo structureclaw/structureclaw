@@ -18,6 +18,21 @@ function resolveCaseExpect(testCase = {}) {
   return {};
 }
 
+function shouldEnableAutoCodeCheck(expected = {}) {
+  if (typeof expected.autoCodeCheck === "boolean") {
+    return expected.autoCodeCheck;
+  }
+
+  return Array.isArray(expected.toolCalls) && expected.toolCalls.includes("run_code_check");
+}
+
+function attachExecutionResult(error, key, result) {
+  if (error && typeof error === "object" && !Object.prototype.hasOwnProperty.call(error, key)) {
+    error[key] = result;
+  }
+  return error;
+}
+
 async function runRoutingTest(runtime, testCase) {
   const locale = resolveLocale(testCase.locale);
   const message = testCase.messages[0];
@@ -62,7 +77,11 @@ async function runExtractionTest(runtime, llm, testCase) {
   }
 
   if (expected.draftPatch) {
-    assertDraftPatch(result.stateToPersist || {}, expected.draftPatch);
+    try {
+      assertDraftPatch(result.stateToPersist || {}, expected.draftPatch);
+    } catch (error) {
+      throw attachExecutionResult(error, "draftResult", result);
+    }
   }
 
   return result;
@@ -112,22 +131,40 @@ async function runPipelineTest(agentService, testCase) {
       skillIds: testCase.enabledSkillIds,
       autoAnalyze: true,
       includeReport: expected.expectReport !== false,
-      autoCodeCheck: false,
+      autoCodeCheck: shouldEnableAutoCodeCheck(expected),
     },
   });
 
-  if (expected.toolCalls) {
-    assertToolCalls(result.toolCalls || [], expected.toolCalls);
-  }
-
-  if (expected.analysisSuccess !== false && result.toolCalls) {
-    const analysisCall = result.toolCalls.find((tc) => tc.tool === "run_analysis");
-    if (analysisCall) {
+  try {
+    if (typeof expected.success === "boolean") {
       assert(
-        analysisCall.status === "success",
-        `run_analysis should succeed, got status="${analysisCall.status}"${analysisCall.error ? `, error: ${analysisCall.error}` : ""}`
+        Boolean(result.success) === expected.success,
+        `expected pipeline success=${expected.success}, got ${Boolean(result.success)}`
       );
     }
+
+    if (expected.toolCalls) {
+      assertToolCalls(result.toolCalls || [], expected.toolCalls);
+    }
+
+    const analysisCall = result.toolCalls?.find((tc) => tc.tool === "run_analysis");
+    if (expected.analysisSuccess === true) {
+      assert(
+        analysisCall,
+        "expected run_analysis to execute, but no run_analysis tool call was recorded"
+      );
+    }
+
+    if (expected.analysisSuccess !== false && result.toolCalls) {
+      if (analysisCall) {
+        assert(
+          analysisCall.status === "success",
+          `run_analysis should succeed, got status="${analysisCall.status}"${analysisCall.error ? `, error: ${analysisCall.error}` : ""}`
+        );
+      }
+    }
+  } catch (error) {
+    throw attachExecutionResult(error, "pipelineResult", result);
   }
 
   return result;
@@ -161,7 +198,11 @@ async function runClarificationTest(runtime, llm, testCase) {
       }
     }
     if (expected.draftPatch) {
-      assertDraftPatch(result.stateToPersist || {}, expected.draftPatch);
+      try {
+        assertDraftPatch(result.stateToPersist || {}, expected.draftPatch);
+      } catch (error) {
+        throw attachExecutionResult(error, "draftResult", result);
+      }
     }
   }
 
@@ -170,6 +211,8 @@ async function runClarificationTest(runtime, llm, testCase) {
 
 module.exports = {
   resolveCaseExpect,
+  shouldEnableAutoCodeCheck,
+  attachExecutionResult,
   runRoutingTest,
   runExtractionTest,
   runPipelineTest,

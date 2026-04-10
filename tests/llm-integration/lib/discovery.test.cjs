@@ -221,6 +221,6 @@ test("frame fixture expands specific and generic variants from v2 format", () =>
   assert.ok(ids.includes("frame-clarify-en#legacy"), `expected frame-clarify-en#legacy in ${ids.join(", ")}`);
 
   const specificPipeline = frameCases.find((tc) => tc.id === "frame-static-basic#specific");
-  assert.deepEqual(specificPipeline.enabledSkillIds, ["frame", "opensees-static"]);
+  assert.deepEqual(specificPipeline.enabledSkillIds, ["frame", "opensees-static", "code-check-gb50017"]);
   assert.equal(specificPipeline.fallbackPolicy, "forbid-generic");
 });

@@ -140,7 +140,13 @@ function buildDoubleSpanReportNarrative(input: SkillReportNarrativeInput): strin
 export const handler: SkillHandler = {
   detectStructuralType({ message, locale }) {
     const text = message.toLowerCase();
-    if (text.includes('double-span') || text.includes('双跨梁')) {
+    if (
+      text.includes('double-span')
+      || text.includes('双跨梁')
+      || text.includes('双跨连续梁')
+      || /两跨.*连续梁/u.test(text)
+      || /(?:two|2)[-\s]?span.*continuous beam/i.test(text)
+    ) {
       return buildStructuralTypeMatch('double-span-beam', 'double-span-beam', 'double-span-beam', 'supported', locale);
     }
     return null;

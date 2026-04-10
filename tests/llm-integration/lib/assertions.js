@@ -6,6 +6,12 @@ function assert(condition, message) {
   }
 }
 
+function assertStringSetMatch(actual, expected, path) {
+  const actualValues = Array.isArray(actual) ? [...actual].sort() : [];
+  const expectedValues = Array.isArray(expected) ? [...expected].sort() : [];
+  assertMatch(actualValues, expectedValues, path);
+}
+
 /**
  * Compare actual against expected with binary pass/fail tolerance.
  * - Numbers: within ±5%
@@ -150,7 +156,7 @@ function applyCriticalMissingAssertions(actualMissing, expected) {
  */
 function assertRoutingTrace(actual = {}, expected = {}) {
   if (expected.selectedSkillIds) {
-    assertMatch(actual.selectedSkillIds || [], expected.selectedSkillIds, "routing.selectedSkillIds");
+    assertStringSetMatch(actual.selectedSkillIds || [], expected.selectedSkillIds, "routing.selectedSkillIds");
   }
   if (expected.activatedSkillIdsIncludes) {
     for (const skillId of expected.activatedSkillIdsIncludes) {

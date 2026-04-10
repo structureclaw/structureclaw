@@ -124,31 +124,35 @@
       "messages": ["2-story single-bay steel frame, story height 3.6m, bay 6m, floor load 10kN/m2, analyze and check against steel code"],
       "variants": {
         "specific": {
-          "enabledSkillIds": ["frame", "opensees-static"],
+          "enabledSkillIds": ["frame", "opensees-static", "code-check-gb50017"],
           "fallbackPolicy": "forbid-generic",
           "expect": {
             "routing": {
-              "selectedSkillIds": ["frame", "opensees-static"],
+              "selectedSkillIds": ["code-check-gb50017", "frame", "opensees-static"],
               "structuralSkillId": "frame",
               "analysisSkillId": "opensees-static"
             },
             "toolCalls": ["draft_model", "run_analysis", "run_code_check"],
             "toolAuthorizers": {
               "draft_model": ["frame"],
-              "run_analysis": ["opensees-static"]
+              "run_analysis": ["opensees-static"],
+              "run_code_check": ["code-check-gb50017"]
             }
           }
         },
         "generic": {
-          "enabledSkillIds": ["generic", "opensees-static"],
+          "enabledSkillIds": ["generic", "opensees-static", "code-check-gb50017"],
           "fallbackPolicy": "require-generic",
           "expect": {
             "routing": {
-              "selectedSkillIds": ["generic", "opensees-static"],
+              "selectedSkillIds": ["code-check-gb50017", "generic", "opensees-static"],
               "structuralSkillId": "generic",
               "analysisSkillId": "opensees-static"
             },
-            "toolCalls": ["draft_model", "run_analysis"]
+            "toolCalls": ["draft_model", "run_analysis", "run_code_check"],
+            "toolAuthorizers": {
+              "run_code_check": ["code-check-gb50017"]
+            }
           }
         }
       }
@@ -157,7 +161,7 @@
       "scenarioId": "frame-pipeline-multi-bay-zh",
       "category": "pipeline",
       "locale": "zh",
-      "messages": ["3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m"],
+      "messages": ["3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m，请进行静力分析并输出报告"],
       "variants": {
         "legacy": {
           "expect": {

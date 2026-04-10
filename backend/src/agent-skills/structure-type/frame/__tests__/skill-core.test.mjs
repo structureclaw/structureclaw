@@ -86,6 +86,19 @@ describe('frame canonicalize core contract', () => {
     expect(patch.bayWidthsYM).toEqual([3, 3, 3]);
   });
 
+  test('extracts repeated english story heights from "4.2m each" phrasing', () => {
+    const patch = buildFrameDraftPatch(
+      '3 stories, 4.2m each, single bay 8m, floor load 12kN/m2',
+      null,
+      undefined,
+    );
+
+    expect(patch.storyCount).toBe(3);
+    expect(patch.storyHeightsM).toEqual([4.2, 4.2, 4.2]);
+    expect(patch.bayCount).toBe(1);
+    expect(patch.bayWidthsM).toEqual([8]);
+  });
+
   test('parses structured chinese numerals between 21 and 99', () => {
     const patch = normalizeFrameNaturalPatch(
       '二十二层框架，每层3m，2跨每跨6m',

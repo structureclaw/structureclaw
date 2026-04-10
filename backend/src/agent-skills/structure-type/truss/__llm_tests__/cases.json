@@ -51,7 +51,10 @@
             "routing": {
               "structuralSkillId": "truss",
               "analysisSkillId": "opensees-static"
-            }
+            },
+            "success": true,
+            "toolCalls": ["draft_model", "run_analysis"],
+            "analysisSuccess": true
           }
         },
         "generic": {
@@ -61,7 +64,10 @@
             "routing": {
               "structuralSkillId": "generic",
               "analysisSkillId": "opensees-static"
-            }
+            },
+            "success": true,
+            "toolCalls": ["draft_model", "run_analysis"],
+            "analysisSuccess": true
           }
         }
       }

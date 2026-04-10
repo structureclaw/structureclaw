@@ -66,6 +66,20 @@ test("assertRoutingTrace checks selected, activated and resolved skills", () => 
   });
 });
 
+test("assertRoutingTrace treats selectedSkillIds as order-insensitive", () => {
+  nodeAssert.doesNotThrow(() => {
+    assertRoutingTrace({
+      selectedSkillIds: ["frame", "opensees-static", "code-check-gb50017"],
+      structuralSkillId: "frame",
+      analysisSkillId: "opensees-static"
+    }, {
+      selectedSkillIds: ["code-check-gb50017", "frame", "opensees-static"],
+      structuralSkillId: "frame",
+      analysisSkillId: "opensees-static"
+    });
+  });
+});
+
 test("assertRoutingTrace throws when structuralSkillId mismatches", () => {
   nodeAssert.throws(() => {
     assertRoutingTrace({

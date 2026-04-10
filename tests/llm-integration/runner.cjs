@@ -168,6 +168,8 @@ async function runLlmIntegrationTests(rootDir, args) {
 
       results.passed += 1;
     } catch (err) {
+      draftResult = draftResult || err?.draftResult || null;
+      pipelineResult = pipelineResult || err?.pipelineResult || null;
       const duration = Date.now() - caseStart;
       const message = err instanceof Error ? err.message : String(err);
 

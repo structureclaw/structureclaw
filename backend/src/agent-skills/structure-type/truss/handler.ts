@@ -3,6 +3,7 @@ import {
   buildLegacyLabels,
   buildLegacyModel,
   computeLegacyMissing,
+  mergeLegacyDraftPatchLlmFirst,
   mergeLegacyState,
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
@@ -24,6 +25,36 @@ import type {
 const GEOMETRY_KEYS = ['lengthM'] as const;
 const LOAD_BOUNDARY_KEYS = ['loadKN', 'loadType', 'loadPosition'] as const;
 const ALLOWED_KEYS = combineDomainKeys(GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS);
+
+function extractPositiveNumber(pattern: RegExp, message: string): number | undefined {
+  const match = pattern.exec(message);
+  if (!match?.[1]) {
+    return undefined;
+  }
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function buildNaturalTrussPatch(message: string): DraftExtraction {
+  const text = message.toLowerCase();
+  const patch: DraftExtraction = {};
+
+  const lengthM =
+    extractPositiveNumber(/跨度\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i, message)
+    ?? extractPositiveNumber(/\bspan\s*([0-9]+(?:\.[0-9]+)?)\s*m\b/i, text);
+  if (lengthM !== undefined) {
+    patch.lengthM = lengthM;
+  }
+
+  const loadKN =
+    extractPositiveNumber(/(?:节点荷载|节点力|荷载)\s*([0-9]+(?:\.[0-9]+)?)\s*k?n/i, message)
+    ?? extractPositiveNumber(/\b(?:node load|load)\s*([0-9]+(?:\.[0-9]+)?)\s*k?n\b/i, text);
+  if (loadKN !== undefined) {
+    patch.loadKN = loadKN;
+  }
+
+  return patch;
+}
 
 function toTrussPatch(patch: DraftExtraction): DraftExtraction {
   const domainPatch = composeStructuralDomainPatch({
@@ -140,7 +171,12 @@ export const handler: SkillHandler = {
     return toTrussPatch(normalizeLegacyDraftPatch(values));
   },
   extractDraft({ message, llmDraftPatch }) {
-    return toTrussPatch(buildLegacyDraftPatchLlmFirst(message, llmDraftPatch));
+    return toTrussPatch(
+      mergeLegacyDraftPatchLlmFirst(
+        buildLegacyDraftPatchLlmFirst(message, llmDraftPatch),
+        buildNaturalTrussPatch(message),
+      ),
+    );
   },
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toTrussPatch(patch), 'truss', 'truss');

@@ -25,13 +25,35 @@ const GEOMETRY_KEYS = ['lengthM'] as const;
 const LOAD_BOUNDARY_KEYS = ['supportType', 'loadKN', 'loadType', 'loadPosition', 'loadPositionM'] as const;
 const ALLOWED_KEYS = combineDomainKeys(GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS);
 
-function toBeamPatch(patch: DraftExtraction): DraftExtraction {
+function applyBeamDefaults(message: string, patch: DraftExtraction): DraftExtraction {
+  const text = message.toLowerCase();
+  const nextPatch: DraftExtraction = { ...patch };
+
+  if (nextPatch.supportType === undefined) {
+    if (text.includes('cantilever') || text.includes('悬臂')) {
+      nextPatch.supportType = 'cantilever';
+    } else if (text.includes('beam') || text.includes('梁')) {
+      nextPatch.supportType = 'simply-supported';
+    }
+  }
+
+  if (
+    nextPatch.loadPosition === undefined
+    && nextPatch.loadType === 'distributed'
+  ) {
+    nextPatch.loadPosition = 'full-span';
+  }
+
+  return nextPatch;
+}
+
+function toBeamPatch(patch: DraftExtraction, message = ''): DraftExtraction {
   const domainPatch = composeStructuralDomainPatch({
     patch,
     geometryKeys: GEOMETRY_KEYS,
     loadBoundaryKeys: LOAD_BOUNDARY_KEYS,
   });
-  return restrictLegacyDraftPatch(domainPatch, 'beam', [...ALLOWED_KEYS]);
+  return restrictLegacyDraftPatch(applyBeamDefaults(message, domainPatch), 'beam', [...ALLOWED_KEYS]);
 }
 
 function buildBeamDefaultReason(paramKey: string, locale: AppLocale): string {
@@ -159,10 +181,11 @@ export const handler: SkillHandler = {
     return null;
   },
   parseProvidedValues(values) {
-    return toBeamPatch(normalizeLegacyDraftPatch(values));
+    const patch = normalizeLegacyDraftPatch(values);
+    return toBeamPatch(patch, JSON.stringify(values));
   },
   extractDraft({ message, llmDraftPatch }) {
-    return toBeamPatch(buildLegacyDraftPatchLlmFirst(message, llmDraftPatch));
+    return toBeamPatch(buildLegacyDraftPatchLlmFirst(message, llmDraftPatch), message);
   },
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toBeamPatch(patch), 'beam', 'beam');
