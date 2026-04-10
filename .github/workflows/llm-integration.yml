@@ -50,6 +50,8 @@ jobs:
     steps:
       - name: Get PR Reference
         id: get-ref
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
         run: |
           set -euo pipefail
           if [ "${{ github.event_name }}" == "issue_comment" ]; then
@@ -60,8 +62,7 @@ jobs:
               exit 1
             fi
             echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-            COMMENT="${{ github.event.comment.body }}"
-            FILTER=$(echo "$COMMENT" | sed -n 's|/test-llm[[:space:]]*\(.*\)|\1|p' | xargs)
+            FILTER=$(echo "$COMMENT_BODY" | sed -n 's|/test-llm[[:space:]]*\(.*\)|\1|p' | xargs)
             echo "filter_arg=$FILTER" >> "$GITHUB_OUTPUT"
             echo "issue_number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
             echo "comment_user=${{ github.event.comment.user.login }}" >> "$GITHUB_OUTPUT"

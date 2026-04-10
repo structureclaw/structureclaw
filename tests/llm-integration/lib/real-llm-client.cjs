@@ -8,7 +8,7 @@ const path = require("node:path");
  * must be set before calling this function.
  *
  * The returned client is wrapped with LLM call logging so that every
- * invoke() call is recorded to .runtime/logs/llm-calls.jsonl.
+ * invoke() call is recorded to .runtime/logs/llm-calls-test.jsonl.
  *
  * @param {object} context - Integration context with env vars
  * @param {number} [temperature=0] - LLM temperature (0 for deterministic)
@@ -41,7 +41,7 @@ function createRealLlmClient(context, temperature = 0) {
 
 /**
  * Self-contained LLM call logger. Writes one JSON line per invoke() call
- * to <rootDir>/.runtime/logs/llm-calls.jsonl — same format as the backend's
+ * to <rootDir>/.runtime/logs/llm-calls-test.jsonl — same format as the backend's
  * LlmCallLogger so the CI artifact upload picks it up automatically.
  */
 let _logStream = null;
@@ -70,8 +70,10 @@ function wrapWithLogging(model, context) {
   const originalInvoke = model.invoke.bind(model);
 
   function safeStringify(val) {
+    if (typeof val === "string") return val;
     try {
-      return typeof val === "string" ? val : JSON.stringify(val);
+      const result = JSON.stringify(val);
+      return result === undefined ? String(val) : result;
     } catch {
       return String(val);
     }
