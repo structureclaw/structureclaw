@@ -45,15 +45,19 @@ function createRealLlmClient(context, temperature = 0) {
  * LlmCallLogger so the CI artifact upload picks it up automatically.
  */
 let _logStream = null;
+let _logDisabled = false;
 function ensureLogStream(rootDir) {
+  if (_logDisabled) return null;
   if (_logStream) return _logStream;
-  if (process.env.LLM_LOG_ENABLED === "false") return null;
+  if (process.env.LLM_LOG_ENABLED === "false") { _logDisabled = true; return null; }
   try {
     const dir = process.env.LLM_LOG_DIR || path.join(rootDir, ".runtime", "logs");
     fs.mkdirSync(dir, { recursive: true });
     _logStream = fs.createWriteStream(path.join(dir, "llm-calls.jsonl"), { flags: "a" });
+    _logStream.on("error", () => { _logDisabled = true; _logStream = null; });
     return _logStream;
   } catch {
+    _logDisabled = true;
     return null;
   }
 }
