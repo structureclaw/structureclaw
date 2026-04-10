@@ -65,15 +65,29 @@ function wrapWithLogging(model, context) {
   const modelName = context.env.LLM_MODEL || process.env.LLM_MODEL || "unknown";
   const originalInvoke = model.invoke.bind(model);
 
+  function safeStringify(val) {
+    try {
+      return typeof val === "string" ? val : JSON.stringify(val);
+    } catch {
+      return String(val);
+    }
+  }
+
+  function writeLogEntry(entry) {
+    try {
+      stream.write(JSON.stringify(entry) + "\n");
+    } catch {
+      // Non-blocking: never crash on log write failure.
+    }
+  }
+
   model.invoke = async function (input, options) {
-    const promptStr = typeof input === "string" ? input : JSON.stringify(input);
+    const promptStr = safeStringify(input);
     const start = Date.now();
     try {
       const result = await originalInvoke(input, options);
-      const content = typeof result.content === "string"
-        ? result.content
-        : JSON.stringify(result.content);
-      stream.write(JSON.stringify({
+      const content = safeStringify(result.content);
+      writeLogEntry({
         timestamp: new Date().toISOString(),
         model: modelName,
         prompt: promptStr,
@@ -82,10 +96,10 @@ function wrapWithLogging(model, context) {
         responseChars: content.length,
         durationMs: Date.now() - start,
         success: true,
-      }) + "\n");
+      });
       return result;
     } catch (error) {
-      stream.write(JSON.stringify({
+      writeLogEntry({
         timestamp: new Date().toISOString(),
         model: modelName,
         prompt: promptStr,
@@ -95,7 +109,7 @@ function wrapWithLogging(model, context) {
         durationMs: Date.now() - start,
         success: false,
         error: String(error),
-      }) + "\n");
+      });
       throw error;
     }
   };
