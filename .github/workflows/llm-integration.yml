@@ -28,11 +28,13 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
-  issues: write
 
 jobs:
   check-permission:
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
     if: |
       github.event_name == 'workflow_dispatch' ||
       github.event_name == 'push' ||
@@ -85,7 +87,7 @@ jobs:
               `🚀 **[View Action Run Details](${runUrl})**`,
             ].join('\n');
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
               repo: context.repo.repo,
@@ -94,6 +96,9 @@ jobs:
 
   llm-integration:
     needs: check-permission
+    permissions:
+      contents: read
+      issues: write
     environment: test
     runs-on: ubuntu-latest
     concurrency:
@@ -164,7 +169,7 @@ jobs:
               `📦 **[Download Logs](${runUrl})** or check the Artifacts section.`,
             ].join('\n');
 
-            github.rest.issues.createComment({
+            await github.rest.issues.createComment({
               issue_number: issueNumber,
               owner: context.repo.owner,
               repo: context.repo.repo,
