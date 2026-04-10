@@ -206,3 +206,21 @@ test("loadLlmFixtures preserves clarification fixtures that use turns instead of
   assert.equal(legacyCase.turns.length, 1);
   assert.equal(v2Case.turns.length, 1);
 });
+
+test("frame fixture expands specific and generic variants from v2 format", () => {
+  const projectRoot = path.resolve(__dirname, "../../..");
+  const cases = loadLlmFixtures(projectRoot);
+  const frameCases = cases.filter((tc) => tc.family === "frame");
+  const ids = frameCases.map((tc) => tc.id);
+
+  assert.ok(ids.includes("frame-static-basic#specific"), `expected frame-static-basic#specific in ${ids.join(", ")}`);
+  assert.ok(ids.includes("frame-static-basic#generic"), `expected frame-static-basic#generic in ${ids.join(", ")}`);
+  assert.ok(ids.includes("frame-extraction-multi-story#specific"), `expected frame-extraction-multi-story#specific in ${ids.join(", ")}`);
+  assert.ok(ids.includes("frame-extraction-multi-story#generic"), `expected frame-extraction-multi-story#generic in ${ids.join(", ")}`);
+  assert.ok(ids.includes("frame-routing-zh#legacy"), `expected frame-routing-zh#legacy in ${ids.join(", ")}`);
+  assert.ok(ids.includes("frame-clarify-en#legacy"), `expected frame-clarify-en#legacy in ${ids.join(", ")}`);
+
+  const specificPipeline = frameCases.find((tc) => tc.id === "frame-static-basic#specific");
+  assert.deepEqual(specificPipeline.enabledSkillIds, ["frame", "opensees-static"]);
+  assert.equal(specificPipeline.fallbackPolicy, "forbid-generic");
+});
