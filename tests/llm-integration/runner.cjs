@@ -13,7 +13,11 @@ const {
   assertMatch,
   assertToolCalls,
   applyCriticalMissingAssertions,
+  assertRoutingTrace,
+  assertToolAuthorizers,
 } = require("./lib/assertions.js");
+const { resolveObservedTrace } = require("./lib/trace.cjs");
+const { formatCaseSummary, appendArtifactRecord } = require("./lib/reporting.cjs");
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -87,7 +91,7 @@ async function runExtractionTest(runtime, llm, testCase) {
   const message = testCase.messages[0];
   const expected = testCase.assertions;
 
-  const result = await runtime.textToModelDraft(llm, message, undefined, locale);
+  const result = await runtime.textToModelDraft(llm, message, undefined, locale, testCase.enabledSkillIds);
 
   if (expected.inferredType) {
     assert(
@@ -107,6 +111,8 @@ async function runExtractionTest(runtime, llm, testCase) {
   if (expected.draftPatch) {
     assertDraftPatch(result.stateToPersist || {}, expected.draftPatch);
   }
+
+  return result;
 }
 
 /**
@@ -162,6 +168,7 @@ async function runPipelineTest(agentService, testCase) {
     traceId: `trace-${testCase.id}`,
     context: {
       locale,
+      skillIds: testCase.enabledSkillIds,
       autoAnalyze: true,
       includeReport: expected.expectReport !== false,
       autoCodeCheck: false,
@@ -181,6 +188,8 @@ async function runPipelineTest(agentService, testCase) {
       );
     }
   }
+
+  return result;
 }
 
 /**
@@ -189,11 +198,13 @@ async function runPipelineTest(agentService, testCase) {
 async function runClarificationTest(runtime, llm, testCase) {
   const locale = resolveLocale(testCase.locale);
   let currentState = undefined;
+  let lastResult = null;
 
   for (let i = 0; i < testCase.turns.length; i++) {
     const turn = testCase.turns[i];
-    const result = await runtime.textToModelDraft(llm, turn.message, currentState, locale);
+    const result = await runtime.textToModelDraft(llm, turn.message, currentState, locale, testCase.enabledSkillIds);
     currentState = result.stateToPersist;
+    lastResult = result;
 
     const expected = turn.assertions;
 
@@ -215,6 +226,8 @@ async function runClarificationTest(runtime, llm, testCase) {
       assertDraftPatch(result.stateToPersist || {}, expected.draftPatch);
     }
   }
+
+  return lastResult;
 }
 
 // ---------------------------------------------------------------------------
@@ -277,6 +290,8 @@ async function runLlmIntegrationTests(rootDir, args) {
 
   for (const testCase of cases) {
     const caseStart = Date.now();
+    let draftResult = null;
+    let pipelineResult = null;
 
     try {
       await withRetry(async () => {
@@ -286,31 +301,97 @@ async function runLlmIntegrationTests(rootDir, args) {
             break;
           case "extraction":
             if (!llm) throw new Error("LLM client not available");
-            await runExtractionTest(runtime, llm, testCase);
+            draftResult = await runExtractionTest(runtime, llm, testCase);
             break;
           case "pipeline": {
             if (!agentService) {
               agentService = await createAgentService(rootDir, context);
             }
-            await runPipelineTest(agentService, testCase);
+            pipelineResult = await runPipelineTest(agentService, testCase);
             break;
           }
           case "clarification":
             if (!llm) throw new Error("LLM client not available");
-            await runClarificationTest(runtime, llm, testCase);
+            draftResult = await runClarificationTest(runtime, llm, testCase);
             break;
           default:
             throw new Error(`Unknown test category: ${testCase.category}`);
         }
       }, testCase.id, maxAttempts);
 
+      // Resolve observed trace
+      const observedTrace = resolveObservedTrace({
+        testCase,
+        draftResult: draftResult || undefined,
+        pipelineResult: pipelineResult || undefined,
+      });
+
+      // Assert routing trace expectations
+      const expect = testCase.expect || {};
+      if (expect.routing) {
+        assertRoutingTrace(observedTrace, expect.routing);
+      }
+      if (expect.toolAuthorizers) {
+        assertToolAuthorizers(observedTrace.toolCalls || [], expect.toolAuthorizers);
+      }
+
+      // Check fallback policy
+      if (testCase.fallbackPolicy === "forbid-generic" && observedTrace.structuralSkillId === "generic") {
+        throw new Error(`unexpected generic fallback for ${testCase.id}`);
+      }
+      if (testCase.fallbackPolicy === "require-generic" && observedTrace.structuralSkillId !== "generic") {
+        throw new Error(`expected generic fallback for ${testCase.id}`);
+      }
+
       const duration = Date.now() - caseStart;
-      logResult("PASS", testCase.id, 1, maxAttempts, duration);
+      process.stdout.write(`${formatCaseSummary(testCase, observedTrace, "PASS")}\n`);
+
+      if (options.outputPath) {
+        appendArtifactRecord(options.outputPath, {
+          id: testCase.id,
+          category: testCase.category,
+          variant: testCase.variant,
+          family: testCase.family,
+          enabledSkillIds: observedTrace.enabledSkillIds,
+          activatedSkillIds: observedTrace.activatedSkillIds,
+          structuralSkillId: observedTrace.structuralSkillId,
+          analysisSkillId: observedTrace.analysisSkillId,
+          toolCalls: observedTrace.toolCalls,
+          status: "PASS",
+          durationMs: duration,
+        });
+      }
+
       results.passed += 1;
     } catch (err) {
       const duration = Date.now() - caseStart;
       const message = err instanceof Error ? err.message : String(err);
-      logResult("FAIL", testCase.id, maxAttempts, maxAttempts, duration, message);
+
+      const failTrace = resolveObservedTrace({
+        testCase,
+        draftResult: draftResult || undefined,
+        pipelineResult: pipelineResult || undefined,
+      });
+      process.stdout.write(`${formatCaseSummary(testCase, failTrace, "FAIL")}\n`);
+      process.stdout.write(`    error: ${message}\n`);
+
+      if (options.outputPath) {
+        appendArtifactRecord(options.outputPath, {
+          id: testCase.id,
+          category: testCase.category,
+          variant: testCase.variant,
+          family: testCase.family,
+          enabledSkillIds: failTrace.enabledSkillIds,
+          activatedSkillIds: failTrace.activatedSkillIds,
+          structuralSkillId: failTrace.structuralSkillId,
+          analysisSkillId: failTrace.analysisSkillId,
+          toolCalls: failTrace.toolCalls,
+          status: "FAIL",
+          durationMs: duration,
+          error: message,
+        });
+      }
+
       results.failed += 1;
       results.failures.push({ id: testCase.id, error: message });
     }
