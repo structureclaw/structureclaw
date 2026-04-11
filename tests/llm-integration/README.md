@@ -1,10 +1,10 @@
 # LLM Integration Test Conventions
 
 - `backend/src/agent-skills/**/__tests__/**/*.test.mjs` is for ordinary skill tests.
-  These tests must be deterministic and must not call a real external LLM provider.
+  These tests must be deterministic and must not call a real external LLM service.
 - `backend/tests/agent.service.test.mjs` remains ordinary backend integration coverage.
   `svc.llm = null` and stubbed-LLM cases are still non-LLM tests.
-- `tests/llm-integration/**` is the only place for real provider-backed LLM tests.
+- `tests/llm-integration/**` is the only place for real external LLM integration tests.
 
 ## Fixture Rules
 

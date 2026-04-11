@@ -54,7 +54,6 @@ jobs:
         env:
           PORT: 30010
           DATABASE_URL: file:../../.runtime/data/test-e2e.db
-          LLM_PROVIDER: ${{ vars.LLM_PROVIDER }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
 
