@@ -1,10 +1,6 @@
-import path from 'node:path';
-import { pathToFileURL } from 'node:url';
-
 import { describe, expect, test } from '@jest/globals';
 
-const repoRoot = path.resolve(process.cwd(), '..');
-const configModuleUrl = pathToFileURL(path.join(repoRoot, 'backend', 'dist', 'config', 'index.js')).href;
+const configModuleUrl = new URL('../dist/config/index.js', import.meta.url).href;
 
 async function importConfigFresh() {
   return import(`${configModuleUrl}?ts=${Date.now()}-${Math.random()}`);
