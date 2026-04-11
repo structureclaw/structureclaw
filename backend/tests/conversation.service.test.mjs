@@ -55,6 +55,20 @@ describe('ConversationService locale handling', () => {
     expect(snapshot?.staleStructuralData).toBe(true);
   });
 
+
+  test('marks latestResult as stale when nested model metadata is missing semantics version', async () => {
+    prisma.conversation.findUnique = async () => ({
+      modelSnapshot: null,
+      resultSnapshot: null,
+      latestResult: { model: { metadata: { inferredType: 'frame' } } },
+    });
+
+    const svc = new ConversationService();
+    const snapshot = await svc.getConversationSnapshot('conv-latest-result-stale');
+
+    expect(snapshot?.staleStructuralData).toBe(true);
+  });
+
   test('returns non-stale when snapshots have coordinateSemanticsVersion 2', async () => {
     prisma.conversation.findUnique = async () => ({
       modelSnapshot: { dimension: 3, metadata: { inferredType: 'frame', coordinateSemanticsVersion: 2 } },

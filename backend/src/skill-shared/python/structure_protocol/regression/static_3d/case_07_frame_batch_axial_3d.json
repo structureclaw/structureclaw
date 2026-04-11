@@ -1,41 +1,134 @@
 {
   "name": "frame_batch_axial_3d",
-  "abs_tolerance": 1e-7,
+  "abs_tolerance": 1e-07,
   "request": {
     "type": "static",
     "model": {
       "schema_version": "1.0.0",
       "nodes": [
-        {"id": "1", "x": 0.0, "y": 0.0, "z": 0.0, "restraints": [true, true, true, true, true, true]},
-        {"id": "2", "x": 0.0, "y": 3.0, "z": 0.0, "restraints": [true, false, true, true, true, true]}
+        {
+          "id": "1",
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0,
+          "restraints": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ]
+        },
+        {
+          "id": "2",
+          "x": 0.0,
+          "y": 3.0,
+          "z": 0.0,
+          "restraints": [
+            true,
+            false,
+            true,
+            true,
+            true,
+            true
+          ]
+        }
       ],
       "elements": [
-        {"id": "1", "type": "beam", "nodes": ["1", "2"], "material": "1", "section": "1"}
+        {
+          "id": "1",
+          "type": "beam",
+          "nodes": [
+            "1",
+            "2"
+          ],
+          "material": "1",
+          "section": "1"
+        }
       ],
       "materials": [
-        {"id": "1", "name": "steel", "E": 200000.0, "nu": 0.3, "rho": 7850}
+        {
+          "id": "1",
+          "name": "steel",
+          "E": 200000.0,
+          "nu": 0.3,
+          "rho": 7850
+        }
       ],
       "sections": [
-        {"id": "1", "name": "B1", "type": "beam", "properties": {"A": 0.01, "Iy": 0.0001, "Iz": 0.0001, "J": 0.00002, "G": 79000}}
+        {
+          "id": "1",
+          "name": "B1",
+          "type": "beam",
+          "properties": {
+            "A": 0.01,
+            "Iy": 0.0001,
+            "Iz": 0.0001,
+            "J": 2e-05,
+            "G": 79000
+          }
+        }
       ],
       "load_cases": [
-        {"id": "LC1", "type": "other", "loads": [{"node": "2", "fy": 6.0}]},
-        {"id": "LC2", "type": "other", "loads": [{"node": "2", "fy": 12.0}]}
+        {
+          "id": "LC1",
+          "type": "other",
+          "loads": [
+            {
+              "node": "2",
+              "fy": 6.0
+            }
+          ]
+        },
+        {
+          "id": "LC2",
+          "type": "other",
+          "loads": [
+            {
+              "node": "2",
+              "fy": 12.0
+            }
+          ]
+        }
       ],
-      "load_combinations": []
+      "load_combinations": [],
+      "metadata": {
+        "coordinateSemantics": "global-z-up-v2",
+        "coordinateSemanticsVersion": 2,
+        "frameDimension": "3d",
+        "elementReferenceVectors": {
+          "1": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
     },
     "parameters": {
       "batchCases": [
-        {"id": "C1", "loadCaseIds": ["LC1"]},
-        {"id": "C2", "loadCaseIds": ["LC2"]}
+        {
+          "id": "C1",
+          "loadCaseIds": [
+            "LC1"
+          ]
+        },
+        {
+          "id": "C2",
+          "loadCaseIds": [
+            "LC2"
+          ]
+        }
       ]
     }
   },
   "expected": {
+    "data.analysisMode": "linear_3d_frame",
     "data.batchCaseCount": 2,
-    "data.envelope.maxAbsDisplacement": 0.000018,
+    "data.envelope.maxAbsDisplacement": 1.8e-05,
     "data.envelope.controlCase.displacement": "C2",
-    "data.envelopeTables.nodeDisplacement.2.maxAbsDisplacement": 0.000018,
+    "data.envelopeTables.nodeDisplacement.2.maxAbsDisplacement": 1.8e-05,
     "data.envelopeTables.nodeDisplacement.2.controlCase": "C2",
     "data.envelopeTables.elementForce.1.maxAbsAxialForce": 12.0,
     "data.envelopeTables.elementForce.1.controlCaseAxial": "C2"

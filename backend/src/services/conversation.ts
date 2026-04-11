@@ -8,12 +8,24 @@ import { resolveLocale, type AppLocale } from './locale.js';
  * - The payload has a structural inferredType (not 'unknown' or missing)
  * - The payload does NOT have coordinateSemanticsVersion === 2
  */
-export function isStaleStructuralPayload(payload: unknown): boolean {
-  if (!payload || typeof payload !== 'object') return false;
+function getStructuralMetadata(payload: unknown): Record<string, unknown> | null {
+  if (!payload || typeof payload !== 'object') return null;
   const record = payload as Record<string, unknown>;
-  const metadata = record.metadata && typeof record.metadata === 'object'
-    ? record.metadata as Record<string, unknown>
-    : null;
+  if (record.metadata && typeof record.metadata === 'object') {
+    return record.metadata as Record<string, unknown>;
+  }
+  const model = record.model;
+  if (model && typeof model === 'object') {
+    const modelRecord = model as Record<string, unknown>;
+    if (modelRecord.metadata && typeof modelRecord.metadata === 'object') {
+      return modelRecord.metadata as Record<string, unknown>;
+    }
+  }
+  return null;
+}
+
+export function isStaleStructuralPayload(payload: unknown): boolean {
+  const metadata = getStructuralMetadata(payload);
   const inferredType = typeof metadata?.inferredType === 'string' ? metadata.inferredType : undefined;
   if (!inferredType || inferredType === 'unknown') return false;
   return metadata?.coordinateSemanticsVersion !== 2;

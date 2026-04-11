@@ -308,6 +308,20 @@ class StaticAnalyzer:
         if not self.model.elements or not all(elem.type == 'beam' for elem in self.model.elements):
             return None
 
+        try:
+            from coordinate_semantics import get_frame_dimension, get_model_metadata
+
+            model_dict = (
+                self.model.model_dump(mode='python')
+                if hasattr(self.model, 'model_dump')
+                else self.model if isinstance(self.model, dict) else {}
+            )
+            metadata = get_model_metadata(model_dict)
+            if get_frame_dimension(metadata) == '3d':
+                return None
+        except Exception:
+            logger.debug('Could not read frame dimension metadata; falling back to geometry-based plane inference', exc_info=True)
+
         y_range = self._axis_range('y')
         z_range = self._axis_range('z')
         tolerance = 1e-12
@@ -1071,7 +1085,7 @@ class StaticAnalyzer:
         ref = None
         if elem_id is not None:
             try:
-                from runtime.coordinate_semantics import get_model_metadata, get_reference_vector
+                from coordinate_semantics import get_model_metadata, get_reference_vector
 
                 model_dict = (
                     self.model.model_dump(mode="python")
@@ -1460,7 +1474,7 @@ class StaticAnalyzer:
     def _get_beam_reference_vector(self, elem) -> List[float]:
         # Check metadata for an explicit reference vector first.
         try:
-            from runtime.coordinate_semantics import get_model_metadata, get_reference_vector
+            from coordinate_semantics import get_model_metadata, get_reference_vector
 
             model_dict = (
                 self.model.model_dump(mode="python")

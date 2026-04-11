@@ -246,12 +246,9 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
   const resolvedBayCountX = bayCountX ?? existingState?.bayCountX;
   const resolvedBayCountY = bayCountY ?? existingState?.bayCountY;
 
-  const explicitDimensionMatch = text.match(/\b(2d|3d|二维|三维)\b/i);
-  const explicitDimension = explicitDimensionMatch?.[1]?.toLowerCase() === '3d'
-    || explicitDimensionMatch?.[1] === '三维'
+  const explicitDimension = /\b3d\b/i.test(text) || text.includes('三维')
     ? '3d' as const
-    : explicitDimensionMatch?.[1]?.toLowerCase() === '2d'
-      || explicitDimensionMatch?.[1] === '二维'
+    : /\b2d\b/i.test(text) || text.includes('二维')
       ? '2d' as const
       : undefined;
   const inferred3d = text.includes('y方向')

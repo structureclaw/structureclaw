@@ -1,36 +1,107 @@
 {
   "name": "frame_cantilever_tip_load_3d",
-  "abs_tolerance": 1e-6,
+  "abs_tolerance": 1e-06,
   "request": {
     "type": "static",
     "model": {
       "schema_version": "1.0.0",
       "nodes": [
-        {"id": "1", "x": 0.0, "y": 0.0, "z": 0.0, "restraints": [true, true, true, true, true, true]},
-        {"id": "2", "x": 0.0, "y": 3.0, "z": 0.0}
+        {
+          "id": "1",
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0,
+          "restraints": [
+            true,
+            true,
+            true,
+            true,
+            true,
+            true
+          ]
+        },
+        {
+          "id": "2",
+          "x": 0.0,
+          "y": 3.0,
+          "z": 0.0
+        }
       ],
       "elements": [
-        {"id": "1", "type": "beam", "nodes": ["1", "2"], "material": "1", "section": "1"}
+        {
+          "id": "1",
+          "type": "beam",
+          "nodes": [
+            "1",
+            "2"
+          ],
+          "material": "1",
+          "section": "1"
+        }
       ],
       "materials": [
-        {"id": "1", "name": "steel", "E": 200000.0, "nu": 0.3, "rho": 7850}
+        {
+          "id": "1",
+          "name": "steel",
+          "E": 200000.0,
+          "nu": 0.3,
+          "rho": 7850
+        }
       ],
       "sections": [
-        {"id": "1", "name": "B1", "type": "beam", "properties": {"A": 0.01, "Iy": 0.0001, "Iz": 0.0001, "J": 0.00002, "G": 79000}}
+        {
+          "id": "1",
+          "name": "B1",
+          "type": "beam",
+          "properties": {
+            "A": 0.01,
+            "Iy": 0.0001,
+            "Iz": 0.0001,
+            "J": 2e-05,
+            "G": 79000
+          }
+        }
       ],
       "load_cases": [
-        {"id": "LC1", "type": "other", "loads": [{"node": "2", "fz": -3.0}]}
+        {
+          "id": "LC1",
+          "type": "other",
+          "loads": [
+            {
+              "node": "2",
+              "fz": -3.0
+            }
+          ]
+        }
       ],
-      "load_combinations": []
+      "load_combinations": [],
+      "metadata": {
+        "coordinateSemantics": "global-z-up-v2",
+        "coordinateSemanticsVersion": 2,
+        "frameDimension": "3d",
+        "elementReferenceVectors": {
+          "1": [
+            1.0,
+            0.0,
+            0.0
+          ]
+        }
+      }
     },
-    "parameters": {"loadCaseIds": ["LC1"]}
+    "parameters": {
+      "loadCaseIds": [
+        "LC1"
+      ]
+    }
   },
   "expected": {
-    "data.analysisMode": "linear_2d_frame",
-    "data.plane": "xy",
-    "data.displacements.2.uy": -4.5e-06,
-    "data.forces.1.axial": 3.0,
-    "data.reactions.1.fy": 3.0,
-    "data.envelope.maxAbsAxialForce": 3.0
+    "data.analysisMode": "linear_3d_frame",
+    "data.displacements.2.uz": -0.00135,
+    "data.displacements.2.rx": -0.000675,
+    "data.forces.1.n1.V": 3.0,
+    "data.forces.1.n1.M": 9.0,
+    "data.reactions.1.fz": 3.0,
+    "data.reactions.1.mx": 9.0,
+    "data.envelope.maxAbsMoment": 9.0
   }
 }

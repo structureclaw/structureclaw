@@ -2887,7 +2887,7 @@ async function validateAgentSkillhubRepositoryDown(context) {
         elements: [{ id: "1", type: "beam", node_i: "1", node_j: "2", material: "mat1", section: "sec1" }],
         materials: [{ id: "mat1", type: "steel", E: 2.06e11, nu: 0.3, density: 7850 }],
         sections: [{ id: "sec1", type: "rectangular", width: 0.3, height: 0.6 }],
-        load_cases: [{ id: "LC1", type: "dead", loads: [{ type: "nodal", node: "2", fy: -10 }] }],
+        load_cases: [{ id: "LC1", type: "dead", loads: [{ type: "nodal", node: "2", fz: -10 }] }],
         load_combinations: [{ id: "ULS1", factors: [{ case: "LC1", factor: 1.0 }] }],
       },
       userDecision: "allow_auto_decide",

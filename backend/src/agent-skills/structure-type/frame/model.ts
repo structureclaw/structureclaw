@@ -314,7 +314,7 @@ function buildFrameLocalModel(state: DraftState): Record<string, unknown> {
   const matProps = resolveSteelGradeProps(matGrade);
   const colProps = resolveSectionProps(colSection, 'column', storyCount, matProps.G);
   const beamProps = resolveSectionProps(beamSection, 'beam', storyCount, matProps.G);
-  const metadata: Record<string, unknown> = { source: 'markdown-skill-draft', inferredType: 'frame' };
+  const metadata: Record<string, unknown> = { source: 'markdown-skill-draft', inferredType: 'frame', frameDimension: state.frameDimension === '3d' ? '3d' : '2d' };
   if (state.frameDimension === '3d') {
     return buildFrame3dLocalModel(state, matProps, colProps, beamProps, metadata);
   }

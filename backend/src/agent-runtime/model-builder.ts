@@ -347,6 +347,7 @@ export function buildModel(state: DraftState): Record<string, unknown> {
   const metadata = {
     source: 'markdown-skill-draft',
     inferredType: state.inferredType,
+    frameDimension: state.frameDimension === '3d' ? '3d' : '2d',
   };
   if (state.inferredType === 'frame') {
     if (state.frameDimension === '3d') {

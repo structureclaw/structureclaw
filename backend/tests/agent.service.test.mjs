@@ -455,6 +455,31 @@ describe('AgentService orchestration', () => {
     await svc.clearConversationSession(staleConversationId);
   });
 
+
+  test('should invalidate draft-only structural sessions when semantics version is missing', async () => {
+    const svc = createServiceWithDefaultSkills();
+    const staleConversationId = 'conv-stale-draft-only-' + Date.now();
+
+    const { cache } = await import('../dist/utils/cache.js');
+    await cache.setex(
+      'agent:interaction-session:' + staleConversationId,
+      1800,
+      JSON.stringify({
+        draft: { inferredType: 'frame', frameDimension: '3d', updatedAt: Date.now() },
+        structuralTypeMatch: { key: 'frame', mappedType: 'frame', skillId: 'frame', supportLevel: 'supported' },
+        resolved: {},
+        updatedAt: Date.now(),
+      }),
+    );
+
+    const snapshot = await svc.getConversationSessionSnapshot(staleConversationId, 'zh');
+
+    expect(snapshot?.draft?.inferredType).toBe('unknown');
+    expect(snapshot?.model).toBeUndefined();
+
+    await svc.clearConversationSession(staleConversationId);
+  });
+
   test('should preserve in-memory session when latestModel has coordinateSemanticsVersion 2', async () => {
     const svc = createServiceWithDefaultSkills();
     const validConversationId = 'conv-valid-session-' + Date.now();
@@ -464,7 +489,7 @@ describe('AgentService orchestration', () => {
       'agent:interaction-session:' + validConversationId,
       1800,
       JSON.stringify({
-        draft: { inferredType: 'frame', updatedAt: Date.now() },
+        draft: { inferredType: 'frame', coordinateSemanticsVersion: 2, updatedAt: Date.now() },
         structuralTypeMatch: { key: 'frame', mappedType: 'frame', skillId: 'frame', supportLevel: 'supported' },
         latestModel: {
           schema_version: '1.0.0',
@@ -2111,7 +2136,7 @@ describe('AgentService orchestration', () => {
           ],
           materials: [{ id: 'mat1', type: 'steel', E: 2.06e11, nu: 0.3, density: 7850 }],
           sections: [{ id: 'sec1', type: 'rectangular', width: 0.3, height: 0.6 }],
-          load_cases: [{ id: 'LC1', type: 'dead', loads: [{ type: 'nodal', node: '2', fy: -10 }] }],
+          load_cases: [{ id: 'LC1', type: 'dead', loads: [{ type: 'nodal', node: '2', fz: -10 }] }],
           load_combinations: [{ id: 'ULS1', factors: [{ case: 'LC1', factor: 1.0 }] }],
         },
         userDecision: 'allow_auto_decide',
@@ -2496,7 +2521,7 @@ describe('AgentService orchestration', () => {
     ]);
     const loads = draft.model?.load_cases?.[0]?.loads ?? [];
     expect(loads).toHaveLength(12);
-    expect(loads.every((load) => typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
+    expect(loads.every((load) => typeof load.fx === 'number' && typeof load.fy === 'number' && typeof load.fz === 'number')).toBe(true);
   });
 
   test('should mirror generic horizontal-load wording to both axes in 3d frame follow-up context', async () => {
@@ -2520,7 +2545,7 @@ describe('AgentService orchestration', () => {
     const loads = second.model?.load_cases?.[0]?.loads ?? [];
     expect(second.interaction?.missingCritical).not.toContain('各层总荷载（kN）');
     expect(loads).toHaveLength(12);
-    expect(loads.every((load) => typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
+    expect(loads.every((load) => typeof load.fx === 'number' && typeof load.fy === 'number' && typeof load.fz === 'number')).toBe(true);
   });
 
   test('should parse chinese two-direction horizontal-load wording in a single 3d frame sentence', async () => {

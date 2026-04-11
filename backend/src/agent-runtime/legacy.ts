@@ -21,6 +21,7 @@ import {
 import {
   STRUCTURAL_COORDINATE_SEMANTICS,
   STRUCTURAL_COORDINATE_SEMANTICS_VERSION,
+  stampDraftSemantics,
 } from './coordinate-semantics.js';
 import type { AppLocale } from '../services/locale.js';
 import type { DraftExtraction, DraftFloorLoad, DraftState, InferredModelType } from './types.js';
@@ -134,13 +135,13 @@ export function restrictLegacyDraftPatch(
 
 export function mergeLegacyState(existing: DraftState | undefined, patch: DraftExtraction, inferredType: InferredModelType, skillId: string): DraftState {
   const merged = mergeDraftState(existing, { ...patch, inferredType });
-  return {
+  return stampDraftSemantics({
     ...merged,
     inferredType,
     skillId,
     structuralTypeKey: (merged.structuralTypeKey ?? skillId) as DraftState['structuralTypeKey'],
     updatedAt: Date.now(),
-  };
+  });
 }
 
 export function computeLegacyMissing(

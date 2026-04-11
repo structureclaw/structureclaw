@@ -18,8 +18,8 @@ const STRUCTURE_MODEL_V1_TEMPLATE = JSON.stringify({
   ],
   load_cases: [
     { id: 'LC1', type: 'other', loads: [
-      { type: 'nodal_force', node: 'N2', fx: 0, fy: -10, fz: 0, mx: 0, my: 0, mz: 0 },
-      { type: 'distributed', element: 'E1', wx: 0, wy: -10000, wz: 0 },
+      { type: 'nodal_force', node: 'N2', fx: 0, fy: 0, fz: -10, mx: 0, my: 0, mz: 0 },
+      { type: 'distributed', element: 'E1', wx: 0, wy: 0, wz: -10000 },
     ] },
   ],
   load_combinations: [

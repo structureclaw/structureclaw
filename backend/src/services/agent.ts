@@ -834,23 +834,32 @@ export class AgentService {
       return undefined;
     }
 
-    // Invalidate legacy in-memory sessions where a structural model exists but was
-    // created before the z-up migration (coordinateSemanticsVersion !== 2).
-    // Only check latestModel since coordinateSemanticsVersion is stamped on the
-    // model metadata, not on the draft state.
-    if (session.latestModel) {
-      const modelMeta = session.latestModel.metadata && typeof session.latestModel.metadata === 'object'
-        ? session.latestModel.metadata as Record<string, unknown>
-        : null;
-      const inferredType = typeof modelMeta?.inferredType === 'string' ? modelMeta.inferredType : undefined;
-      if (inferredType && inferredType !== 'unknown' && modelMeta?.coordinateSemanticsVersion !== 2) {
-        session.draft = undefined;
-        session.structuralTypeMatch = undefined;
-        session.latestModel = undefined;
-        session.updatedAt = Date.now();
-        if (conversationId?.trim()) {
-          await this.setInteractionSession(conversationId.trim(), session);
-        }
+    const draftInferredType = typeof session.draft?.inferredType === 'string' ? session.draft.inferredType : undefined;
+    const draftIsStale = Boolean(
+      session.draft
+      && draftInferredType
+      && draftInferredType !== 'unknown'
+      && session.draft.coordinateSemanticsVersion !== 2
+    );
+
+    const modelMeta = session.latestModel?.metadata && typeof session.latestModel.metadata === 'object'
+      ? session.latestModel.metadata as Record<string, unknown>
+      : null;
+    const modelInferredType = typeof modelMeta?.inferredType === 'string' ? modelMeta.inferredType : undefined;
+    const modelIsStale = Boolean(
+      session.latestModel
+      && modelInferredType
+      && modelInferredType !== 'unknown'
+      && modelMeta?.coordinateSemanticsVersion !== 2
+    );
+
+    if (draftIsStale || modelIsStale) {
+      session.draft = undefined;
+      session.structuralTypeMatch = undefined;
+      session.latestModel = undefined;
+      session.updatedAt = Date.now();
+      if (conversationId?.trim()) {
+        await this.setInteractionSession(conversationId.trim(), session);
       }
     }
 
@@ -3923,12 +3932,11 @@ export class AgentService {
       .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
       .map((item) => {
         if (item.type === 'distributed' || item.element !== undefined) {
-          const magnitude = this.asNumber(item.wy ?? item.fy ?? item.wz ?? item.fz, 0);
           return {
             type: 'distributed',
             element: String(item.element ?? ''),
-            wy: magnitude,
-            wz: 0,
+            wy: this.asNumber(item.wy ?? item.fy, 0),
+            wz: this.asNumber(item.wz ?? item.fz, 0),
           };
         }
 

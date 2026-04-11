@@ -15,6 +15,12 @@ def get_model_metadata(model: dict) -> dict:
     return metadata if isinstance(metadata, dict) else {}
 
 
+def get_frame_dimension(metadata: dict):
+    """Return the declared frame dimension when present."""
+    value = metadata.get('frameDimension')
+    return value if value in {'2d', '3d'} else None
+
+
 def get_reference_vector(metadata: dict, element_id: str):
     """Look up an explicit reference vector for *element_id* in *metadata*.
 
