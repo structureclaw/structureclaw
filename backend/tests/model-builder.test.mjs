@@ -36,7 +36,7 @@ describe('buildModel - beam', () => {
     expect(model.nodes[2].x).toBe(6);
 
     expect(model.elements).toHaveLength(2);
-    expect(model.load_cases[0].loads).toEqual([{ node: '2', fy: -10 }]);
+    expect(model.load_cases[0].loads).toEqual([{ node: '2', fz: -10 }]);
     expect(model.load_combinations).toEqual([{ id: 'ULS', factors: { LC1: 1.0 } }]);
   });
 
@@ -96,8 +96,8 @@ describe('buildModel - beam', () => {
     const model = buildModel(state);
 
     expect(model.load_cases[0].loads).toEqual([
-      { type: 'distributed', element: '1', wy: -5, wz: 0 },
-      { type: 'distributed', element: '2', wy: -5, wz: 0 },
+      { type: 'distributed', element: '1', wz: -5, wy: 0 },
+      { type: 'distributed', element: '2', wz: -5, wy: 0 },
     ]);
   });
 
@@ -112,8 +112,8 @@ describe('buildModel - beam', () => {
     const model = buildModel(state);
 
     expect(model.load_cases[0].loads).toEqual([
-      { type: 'distributed', element: '1', wy: -8, wz: 0 },
-      { type: 'distributed', element: '2', wy: -8, wz: 0 },
+      { type: 'distributed', element: '1', wz: -8, wy: 0 },
+      { type: 'distributed', element: '2', wz: -8, wy: 0 },
     ]);
   });
 
@@ -127,7 +127,7 @@ describe('buildModel - beam', () => {
 
     const model = buildModel(state);
 
-    expect(model.load_cases[0].loads).toEqual([{ node: '3', fy: -10 }]);
+    expect(model.load_cases[0].loads).toEqual([{ node: '3', fz: -10 }]);
   });
 
   it('should place point load at custom loadPositionM when provided and valid', () => {
@@ -264,8 +264,8 @@ describe('buildModel - portal-frame', () => {
     expect(model.nodes).toHaveLength(4);
     expect(model.nodes[0]).toEqual({ id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] });
     expect(model.nodes[1]).toEqual({ id: '2', x: 8, y: 0, z: 0, restraints: [true, true, true, true, true, true] });
-    expect(model.nodes[2]).toEqual({ id: '3', x: 0, y: 4, z: 0 });
-    expect(model.nodes[3]).toEqual({ id: '4', x: 8, y: 4, z: 0 });
+    expect(model.nodes[2]).toEqual({ id: '3', x: 0, y: 0, z: 4 });
+    expect(model.nodes[3]).toEqual({ id: '4', x: 8, y: 0, z: 4 });
 
     // 3 elements: left column, beam, right column
     expect(model.elements).toHaveLength(3);
@@ -275,8 +275,8 @@ describe('buildModel - portal-frame', () => {
 
     // Load split equally between top nodes
     expect(model.load_cases[0].loads).toEqual([
-      { type: 'nodal', node: '3', forces: [0, -10, 0, 0, 0, 0] },
-      { type: 'nodal', node: '4', forces: [0, -10, 0, 0, 0, 0] },
+      { type: 'nodal', node: '3', forces: [0, 0, -10, 0, 0, 0] },
+      { type: 'nodal', node: '4', forces: [0, 0, -10, 0, 0, 0] },
     ]);
 
     expect(model.sections[0].name).toBe('PF1');
@@ -314,7 +314,7 @@ describe('buildModel - double-span-beam', () => {
     expect(model.elements[0]).toEqual({ id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' });
     expect(model.elements[1]).toEqual({ id: '2', type: 'beam', nodes: ['2', '3'], material: '1', section: '1' });
 
-    expect(model.load_cases[0].loads).toEqual([{ node: '2', fy: -30 }]);
+    expect(model.load_cases[0].loads).toEqual([{ node: '2', fz: -30 }]);
     expect(model.sections[0].name).toBe('B1');
   });
 });
@@ -403,8 +403,8 @@ describe('buildModel - frame 2D', () => {
     // vertical per node = -12 / 2 = -6, lateral per node = 6 / 2 = 3
     const loads = model.load_cases[0].loads;
     expect(loads).toHaveLength(2);
-    expect(loads[0]).toEqual({ node: 'N1_0', fy: -6, fx: 3 });
-    expect(loads[1]).toEqual({ node: 'N1_1', fy: -6, fx: 3 });
+    expect(loads[0]).toEqual({ node: 'N1_0', fz: -6, fx: 3 });
+    expect(loads[1]).toEqual({ node: 'N1_1', fz: -6, fx: 3 });
   });
 
   it('should skip floor loads for invalid story indices', () => {
@@ -441,7 +441,7 @@ describe('buildModel - frame 2D', () => {
     const loads = model.load_cases[0].loads;
     expect(loads).toHaveLength(2);
     for (const load of loads) {
-      expect(load.fy).toBe(-5);
+      expect(load.fz).toBe(-5);
       expect(load.fx).toBeUndefined();
     }
   });
@@ -463,7 +463,7 @@ describe('buildModel - frame 2D', () => {
     expect(loads).toHaveLength(2);
     for (const load of loads) {
       expect(load.fx).toBe(4);
-      expect(load.fy).toBeUndefined();
+      expect(load.fz).toBeUndefined();
     }
   });
 
@@ -523,9 +523,9 @@ describe('buildModel - frame 2D', () => {
     expect(model.nodes[0]).toMatchObject({ x: 0, y: 0, z: 0 });
     expect(model.nodes[1]).toMatchObject({ x: 4, y: 0, z: 0 });
     expect(model.nodes[2]).toMatchObject({ x: 7, y: 0, z: 0 });
-    expect(model.nodes[3]).toMatchObject({ x: 0, y: 3, z: 0 });
-    expect(model.nodes[4]).toMatchObject({ x: 4, y: 3, z: 0 });
-    expect(model.nodes[5]).toMatchObject({ x: 7, y: 3, z: 0 });
+    expect(model.nodes[3]).toMatchObject({ x: 0, y: 0, z: 3 });
+    expect(model.nodes[4]).toMatchObject({ x: 4, y: 0, z: 3 });
+    expect(model.nodes[5]).toMatchObject({ x: 7, y: 0, z: 3 });
   });
 });
 
@@ -610,9 +610,9 @@ describe('buildModel - frame 3D', () => {
     const loads = model.load_cases[0].loads;
     expect(loads).toHaveLength(4);
     for (const load of loads) {
-      expect(load.fy).toBe(-5);
+      expect(load.fz).toBe(-5);
       expect(load.fx).toBe(2.5);
-      expect(load.fz).toBe(2);
+      expect(load.fy).toBe(2);
     }
   });
 
@@ -714,7 +714,7 @@ describe('buildModel - unknown type falls back to beam', () => {
     expect(model.metadata.inferredType).toBe('unknown');
     expect(model.metadata.supportType).toBe('cantilever');
     expect(model.nodes).toHaveLength(3);
-    expect(model.load_cases[0].loads).toEqual([{ node: '2', fy: -8 }]);
+    expect(model.load_cases[0].loads).toEqual([{ node: '2', fz: -8 }]);
   });
 
   it('should treat an unmapped type as beam', () => {
@@ -749,7 +749,7 @@ describe('buildModel - edge cases', () => {
     const model = buildModel(state);
 
     // Neither distributed nor full-span, so point load on pointNodeId ('2')
-    expect(model.load_cases[0].loads).toEqual([{ node: '2', fy: -15 }]);
+    expect(model.load_cases[0].loads).toEqual([{ node: '2', fz: -15 }]);
     expect(model.nodes[1].x).toBe(4);
   });
 
@@ -828,9 +828,9 @@ describe('buildModel - edge cases', () => {
     const loads = model.load_cases[0].loads;
     expect(loads).toHaveLength(4);
     for (const load of loads) {
-      expect(load.fy).toBe(-3);
+      expect(load.fz).toBe(-3);
       expect(load.fx).toBeUndefined();
-      expect(load.fz).toBeUndefined();
+      expect(load.fy).toBeUndefined();
     }
   });
 
@@ -874,8 +874,8 @@ describe('buildModel - edge cases', () => {
     const loads = model.load_cases[0].loads;
     expect(loads).toHaveLength(4);
     for (const load of loads) {
-      expect(load.fz).toBe(3);
-      expect(load.fy).toBeUndefined();
+      expect(load.fy).toBe(3);
+      expect(load.fz).toBeUndefined();
       expect(load.fx).toBeUndefined();
     }
   });
@@ -920,8 +920,8 @@ describe('buildModel - edge cases', () => {
     const story2Loads = loads.filter((l) => l.node.startsWith('N2_'));
     expect(story1Loads).toHaveLength(2);
     expect(story2Loads).toHaveLength(2);
-    expect(story1Loads[0].fy).toBe(-5);
-    expect(story2Loads[0].fy).toBe(-10);
+    expect(story1Loads[0].fz).toBe(-5);
+    expect(story2Loads[0].fz).toBe(-10);
   });
 
   it('should correctly compute node coordinates for multi-bay frame', () => {

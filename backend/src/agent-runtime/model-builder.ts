@@ -1,3 +1,7 @@
+import {
+  STRUCTURAL_COORDINATE_SEMANTICS,
+  STRUCTURAL_COORDINATE_SEMANTICS_VERSION,
+} from './coordinate-semantics.js';
 import type {
   DraftLoadPosition,
   DraftLoadType,
@@ -34,20 +38,20 @@ function buildFrame2dModel(state: DraftState, metadata: Record<string, unknown>)
   const storyHeights = state.storyHeightsM!;
   const floorLoads = state.floorLoads!;
   const xCoordinates = accumulateCoordinates(bayWidths);
-  const yCoordinates = accumulateCoordinates(storyHeights);
+  const zCoordinates = accumulateCoordinates(storyHeights);
   const baseSupport = state.frameBaseSupportType || 'fixed';
   const nodes: Array<Record<string, unknown>> = [];
   const elements: Array<Record<string, unknown>> = [];
   const loadCases = [{ id: 'LC1', type: 'other', loads: [] as Array<Record<string, unknown>> }];
   let elementId = 1;
 
-  for (let storyIndex = 0; storyIndex < yCoordinates.length; storyIndex += 1) {
+  for (let storyIndex = 0; storyIndex < zCoordinates.length; storyIndex += 1) {
     for (let bayNodeIndex = 0; bayNodeIndex < xCoordinates.length; bayNodeIndex += 1) {
       const node: Record<string, unknown> = {
         id: get2dNodeId(storyIndex, bayNodeIndex),
         x: xCoordinates[bayNodeIndex],
-        y: yCoordinates[storyIndex],
-        z: 0,
+        y: 0,
+        z: zCoordinates[storyIndex],
       };
       if (storyIndex === 0) {
         node.restraints = buildFixedRestraint(baseSupport);
@@ -56,7 +60,7 @@ function buildFrame2dModel(state: DraftState, metadata: Record<string, unknown>)
     }
   }
 
-  for (let storyIndex = 1; storyIndex < yCoordinates.length; storyIndex += 1) {
+  for (let storyIndex = 1; storyIndex < zCoordinates.length; storyIndex += 1) {
     for (let bayNodeIndex = 0; bayNodeIndex < xCoordinates.length; bayNodeIndex += 1) {
       elements.push({
         id: `C${elementId}`,
@@ -69,7 +73,7 @@ function buildFrame2dModel(state: DraftState, metadata: Record<string, unknown>)
     }
   }
 
-  for (let storyIndex = 1; storyIndex < yCoordinates.length; storyIndex += 1) {
+  for (let storyIndex = 1; storyIndex < zCoordinates.length; storyIndex += 1) {
     for (let bayIndex = 0; bayIndex < bayWidths.length; bayIndex += 1) {
       elements.push({
         id: `B${elementId}`,
@@ -85,7 +89,7 @@ function buildFrame2dModel(state: DraftState, metadata: Record<string, unknown>)
   const levelNodeCount = xCoordinates.length;
   for (const load of floorLoads) {
     const storyIndex = load.story;
-    if (storyIndex <= 0 || storyIndex >= yCoordinates.length) {
+    if (storyIndex <= 0 || storyIndex >= zCoordinates.length) {
       continue;
     }
     const verticalPerNode = load.verticalKN !== undefined ? -load.verticalKN / levelNodeCount : undefined;
@@ -93,7 +97,7 @@ function buildFrame2dModel(state: DraftState, metadata: Record<string, unknown>)
     for (let bayNodeIndex = 0; bayNodeIndex < xCoordinates.length; bayNodeIndex += 1) {
       const nodeLoad: Record<string, unknown> = { node: get2dNodeId(storyIndex, bayNodeIndex) };
       if (verticalPerNode !== undefined) {
-        nodeLoad.fy = verticalPerNode;
+        nodeLoad.fz = verticalPerNode;
       }
       if (lateralPerNode !== undefined) {
         nodeLoad.fx = lateralPerNode;
@@ -118,6 +122,8 @@ function buildFrame2dModel(state: DraftState, metadata: Record<string, unknown>)
     load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
     metadata: {
       ...metadata,
+      coordinateSemantics: STRUCTURAL_COORDINATE_SEMANTICS,
+      coordinateSemanticsVersion: STRUCTURAL_COORDINATE_SEMANTICS_VERSION,
       baseSupport,
       storyCount: storyHeights.length,
       bayCount: bayWidths.length,
@@ -129,28 +135,48 @@ function buildFrame2dModel(state: DraftState, metadata: Record<string, unknown>)
   };
 }
 
+function buildElementReferenceVectors(
+  elements: Array<Record<string, unknown>>,
+  nodes: Array<Record<string, unknown>>,
+): Record<string, [number, number, number]> {
+  const nodesById = new Map(nodes.map((n) => [n.id as string, n]));
+  const result: Record<string, [number, number, number]> = {};
+  for (const elem of elements) {
+    const [startId, endId] = elem.nodes as [string, string];
+    const start = nodesById.get(startId)!;
+    const end = nodesById.get(endId)!;
+    const dx = (end.x as number) - (start.x as number);
+    const dy = (end.y as number) - (start.y as number);
+    const dz = (end.z as number) - (start.z as number);
+    // Column: primarily vertical (dz dominant)
+    const isColumn = Math.abs(dz) > 0 && Math.abs(dx) < 1e-9 && Math.abs(dy) < 1e-9;
+    result[elem.id as string] = isColumn ? [1, 0, 0] : [0, 0, 1];
+  }
+  return result;
+}
+
 function buildFrame3dModel(state: DraftState, metadata: Record<string, unknown>): Record<string, unknown> {
   const bayWidthsX = state.bayWidthsXM!;
   const bayWidthsY = state.bayWidthsYM!;
   const storyHeights = state.storyHeightsM!;
   const floorLoads = state.floorLoads!;
   const xCoordinates = accumulateCoordinates(bayWidthsX);
-  const zCoordinates = accumulateCoordinates(bayWidthsY);
-  const yCoordinates = accumulateCoordinates(storyHeights);
+  const yCoordinates = accumulateCoordinates(bayWidthsY);
+  const zCoordinates = accumulateCoordinates(storyHeights);
   const baseSupport = state.frameBaseSupportType || 'fixed';
   const nodes: Array<Record<string, unknown>> = [];
   const elements: Array<Record<string, unknown>> = [];
   const loadCases = [{ id: 'LC1', type: 'other', loads: [] as Array<Record<string, unknown>> }];
   let elementId = 1;
 
-  for (let storyIndex = 0; storyIndex < yCoordinates.length; storyIndex += 1) {
+  for (let storyIndex = 0; storyIndex < zCoordinates.length; storyIndex += 1) {
     for (let xIndex = 0; xIndex < xCoordinates.length; xIndex += 1) {
-      for (let yIndex = 0; yIndex < zCoordinates.length; yIndex += 1) {
+      for (let yIndex = 0; yIndex < yCoordinates.length; yIndex += 1) {
         const node: Record<string, unknown> = {
           id: get3dNodeId(storyIndex, xIndex, yIndex),
           x: xCoordinates[xIndex],
-          y: yCoordinates[storyIndex],
-          z: zCoordinates[yIndex],
+          y: yCoordinates[yIndex],
+          z: zCoordinates[storyIndex],
         };
         if (storyIndex === 0) {
           node.restraints = buildFixedRestraint(baseSupport);
@@ -160,9 +186,9 @@ function buildFrame3dModel(state: DraftState, metadata: Record<string, unknown>)
     }
   }
 
-  for (let storyIndex = 1; storyIndex < yCoordinates.length; storyIndex += 1) {
+  for (let storyIndex = 1; storyIndex < zCoordinates.length; storyIndex += 1) {
     for (let xIndex = 0; xIndex < xCoordinates.length; xIndex += 1) {
-      for (let yIndex = 0; yIndex < zCoordinates.length; yIndex += 1) {
+      for (let yIndex = 0; yIndex < yCoordinates.length; yIndex += 1) {
         elements.push({
           id: `C${elementId}`,
           type: 'beam',
@@ -175,9 +201,9 @@ function buildFrame3dModel(state: DraftState, metadata: Record<string, unknown>)
     }
   }
 
-  for (let storyIndex = 1; storyIndex < yCoordinates.length; storyIndex += 1) {
+  for (let storyIndex = 1; storyIndex < zCoordinates.length; storyIndex += 1) {
     for (let xIndex = 0; xIndex < bayWidthsX.length; xIndex += 1) {
-      for (let yIndex = 0; yIndex < zCoordinates.length; yIndex += 1) {
+      for (let yIndex = 0; yIndex < yCoordinates.length; yIndex += 1) {
         elements.push({
           id: `BX${elementId}`,
           type: 'beam',
@@ -202,26 +228,26 @@ function buildFrame3dModel(state: DraftState, metadata: Record<string, unknown>)
     }
   }
 
-  const levelNodeCount = xCoordinates.length * zCoordinates.length;
+  const levelNodeCount = xCoordinates.length * yCoordinates.length;
   for (const load of floorLoads) {
     const storyIndex = load.story;
-    if (storyIndex <= 0 || storyIndex >= yCoordinates.length) {
+    if (storyIndex <= 0 || storyIndex >= zCoordinates.length) {
       continue;
     }
     const verticalPerNode = load.verticalKN !== undefined ? -load.verticalKN / levelNodeCount : undefined;
     const lateralXPerNode = load.lateralXKN !== undefined ? load.lateralXKN / levelNodeCount : undefined;
     const lateralYPerNode = load.lateralYKN !== undefined ? load.lateralYKN / levelNodeCount : undefined;
     for (let xIndex = 0; xIndex < xCoordinates.length; xIndex += 1) {
-      for (let yIndex = 0; yIndex < zCoordinates.length; yIndex += 1) {
+      for (let yIndex = 0; yIndex < yCoordinates.length; yIndex += 1) {
         const nodeLoad: Record<string, unknown> = { node: get3dNodeId(storyIndex, xIndex, yIndex) };
         if (verticalPerNode !== undefined) {
-          nodeLoad.fy = verticalPerNode;
+          nodeLoad.fz = verticalPerNode;
         }
         if (lateralXPerNode !== undefined) {
           nodeLoad.fx = lateralXPerNode;
         }
         if (lateralYPerNode !== undefined) {
-          nodeLoad.fz = lateralYPerNode;
+          nodeLoad.fy = lateralYPerNode;
         }
         if (Object.keys(nodeLoad).length > 1) {
           loadCases[0].loads.push(nodeLoad);
@@ -229,6 +255,8 @@ function buildFrame3dModel(state: DraftState, metadata: Record<string, unknown>)
       }
     }
   }
+
+  const elementReferenceVectors = buildElementReferenceVectors(elements, nodes);
 
   return {
     schema_version: '1.0.0',
@@ -244,6 +272,9 @@ function buildFrame3dModel(state: DraftState, metadata: Record<string, unknown>)
     load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
     metadata: {
       ...metadata,
+      coordinateSemantics: STRUCTURAL_COORDINATE_SEMANTICS,
+      coordinateSemanticsVersion: STRUCTURAL_COORDINATE_SEMANTICS_VERSION,
+      elementReferenceVectors,
       baseSupport,
       storyCount: storyHeights.length,
       bayCountX: bayWidthsX.length,
@@ -303,13 +334,13 @@ function buildBeamLoads(
 ) {
   if (loadType === 'distributed' || loadPosition === 'full-span') {
     return [
-      { type: 'distributed', element: '1', wy: -loadKN, wz: 0 },
-      { type: 'distributed', element: '2', wy: -loadKN, wz: 0 },
+      { type: 'distributed', element: '1', wz: -loadKN, wy: 0 },
+      { type: 'distributed', element: '2', wz: -loadKN, wy: 0 },
     ];
   }
 
   const targetNodeId = loadPosition === 'end' ? endNodeId : pointNodeId;
-  return [{ node: targetNodeId, fy: -loadKN }];
+  return [{ node: targetNodeId, fz: -loadKN }];
 }
 
 export function buildModel(state: DraftState): Record<string, unknown> {
@@ -371,7 +402,7 @@ export function buildModel(state: DraftState): Record<string, unknown> {
         { id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001, Iz: 0.0001, J: 0.0001, G: 79000 } },
       ],
       load_cases: [
-        { id: 'LC1', type: 'other', loads: [{ node: '2', fy: -load }] },
+        { id: 'LC1', type: 'other', loads: [{ node: '2', fz: -load }] },
       ],
       load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
       metadata,
@@ -387,8 +418,8 @@ export function buildModel(state: DraftState): Record<string, unknown> {
       nodes: [
         { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
         { id: '2', x: span, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
-        { id: '3', x: 0, y: height, z: 0 },
-        { id: '4', x: span, y: height, z: 0 },
+        { id: '3', x: 0, y: 0, z: height },
+        { id: '4', x: span, y: 0, z: height },
       ],
       elements: [
         { id: '1', type: 'beam', nodes: ['1', '3'], material: '1', section: '1' },
@@ -403,8 +434,8 @@ export function buildModel(state: DraftState): Record<string, unknown> {
       ],
       load_cases: [
         { id: 'LC1', type: 'other', loads: [
-          { type: 'nodal', node: '3', forces: [0, -load / 2, 0, 0, 0, 0] },
-          { type: 'nodal', node: '4', forces: [0, -load / 2, 0, 0, 0, 0] },
+          { type: 'nodal', node: '3', forces: [0, 0, -load / 2, 0, 0, 0] },
+          { type: 'nodal', node: '4', forces: [0, 0, -load / 2, 0, 0, 0] },
         ] },
       ],
       load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],

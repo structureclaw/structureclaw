@@ -18,6 +18,10 @@ import {
   computeMissingLoadDetailKeys,
   mapMissingFieldLabels,
 } from './draft-guidance.js';
+import {
+  STRUCTURAL_COORDINATE_SEMANTICS,
+  STRUCTURAL_COORDINATE_SEMANTICS_VERSION,
+} from './coordinate-semantics.js';
 import type { AppLocale } from '../services/locale.js';
 import type { DraftExtraction, DraftFloorLoad, DraftState, InferredModelType } from './types.js';
 
@@ -161,5 +165,11 @@ export function buildLegacyModel(state: DraftState): Record<string, unknown> | u
   if (missing.length > 0) {
     return undefined;
   }
-  return buildModel(state);
+  const model = buildModel(state);
+  if (model) {
+    const meta = model.metadata as Record<string, unknown>;
+    meta.coordinateSemantics = STRUCTURAL_COORDINATE_SEMANTICS;
+    meta.coordinateSemanticsVersion = STRUCTURAL_COORDINATE_SEMANTICS_VERSION;
+  }
+  return model;
 }
