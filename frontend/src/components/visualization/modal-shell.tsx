@@ -220,7 +220,7 @@ export function VisualizationModalShell({
 
           <div className="relative flex min-h-0 flex-1 flex-col xl:flex-row">
             <div className="min-h-[300px] flex-1 xl:min-h-0">{children}</div>
-            <aside className="border-t border-border/70 bg-background/50 p-4 xl:w-[320px] xl:border-l xl:border-t-0 dark:border-white/10 dark:bg-white/5">
+            <aside className="overflow-y-auto border-t border-border/70 bg-background/50 p-4 xl:w-[320px] xl:border-l xl:border-t-0 dark:border-white/10 dark:bg-white/5">
               {aside}
             </aside>
           </div>

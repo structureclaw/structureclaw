@@ -306,6 +306,7 @@ function SceneContent({
   onSelectNode,
   onClearSelection,
   maxElementMetric,
+  rawMaxElementMetric,
   maxReaction,
   maxDisplacement,
   maxUtilization,
@@ -313,6 +314,7 @@ function SceneContent({
   bucklingAmplitudeRef,
 }: StructuralSceneProps & {
   maxElementMetric: number
+  rawMaxElementMetric: number
   maxReaction: number
   maxDisplacement: number
   maxUtilization: number
@@ -407,22 +409,33 @@ function SceneContent({
             // In buckling view, positions are animated via BucklingMember component.
             const start = view === 'deformed' ? startData.displacedPosition : startData.position
             const end = view === 'deformed' ? endData.displacedPosition : endData.position
-            const forceColor = createColorScale(getElementMetric(activeCase, element.id, forceMetric), maxElementMetric)
+            const forceColor = rawMaxElementMetric > 0
+              ? createColorScale(getElementMetric(activeCase, element.id, forceMetric), maxElementMetric)
+              : '#38bdf8'
             const utilizationRatio = activeCase.elementResults[element.id]?.utilization ?? null
             const utilizationColor = utilizationRatio !== null
               ? createUtilizationColor(utilizationRatio)
               : createUtilizationColor(0)
+            const deformedColor = (() => {
+              if (selectedElementId === element.id) return '#fb923c'
+              if (hoveredElementId === element.id) return '#67e8f9'
+              const mag0 = getNodeDisplacementMagnitude(activeCase, element.nodeIds[0])
+              const mag1 = getNodeDisplacementMagnitude(activeCase, element.nodeIds[1])
+              return createColorScale((mag0 + mag1) / 2, maxDisplacement)
+            })()
             const color = view === 'forces'
               ? forceColor
               : view === 'utilization'
                 ? (selectedElementId === element.id ? '#fb923c' : hoveredElementId === element.id ? '#67e8f9' : utilizationColor)
-                : view === 'buckling'
-                  ? (selectedElementId === element.id ? '#fb923c' : hoveredElementId === element.id ? '#67e8f9' : '#a78bfa')
-                  : selectedElementId === element.id
-                    ? '#fb923c'
-                    : hoveredElementId === element.id
-                      ? '#67e8f9'
-                      : '#38bdf8'
+                : view === 'deformed'
+                  ? deformedColor
+                  : view === 'buckling'
+                    ? (selectedElementId === element.id ? '#fb923c' : hoveredElementId === element.id ? '#67e8f9' : '#a78bfa')
+                    : selectedElementId === element.id
+                      ? '#fb923c'
+                      : hoveredElementId === element.id
+                        ? '#67e8f9'
+                        : '#38bdf8'
             const undeformedStart = projectPosition(startData.position, plane, snapshot.dimension)
             const undeformedEnd = projectPosition(endData.position, plane, snapshot.dimension)
             const currentStart = projectPosition(start, plane, snapshot.dimension)
@@ -635,16 +648,35 @@ export function StructuralScene(props: StructuralSceneProps) {
         const gl = glRef.current
         const invalidate = invalidateRef.current
         if (!gl) return
-        // Force a render frame (demand mode)
+        if (scale === 1) {
+          // 1x: just capture current frame
+          if (invalidate) invalidate()
+          requestAnimationFrame(() => {
+            const dataUrl = gl.domElement.toDataURL('image/png')
+            const link = document.createElement('a')
+            link.href = dataUrl
+            link.download = `${filename}.png`
+            link.click()
+          })
+          return
+        }
+        // 2x / 4x: temporarily upscale the renderer
+        const origW = gl.domElement.width
+        const origH = gl.domElement.height
+        const origRatio = gl.getPixelRatio()
+        gl.setPixelRatio(origRatio * scale)
+        gl.setSize(origW / origRatio, origH / origRatio, false)
         if (invalidate) invalidate()
         requestAnimationFrame(() => {
-          const canvas = gl.domElement
-          const dataUrl = canvas.toDataURL('image/png')
+          const dataUrl = gl.domElement.toDataURL('image/png')
+          // restore
+          gl.setPixelRatio(origRatio)
+          gl.setSize(origW / origRatio, origH / origRatio, false)
+          if (invalidate) invalidate()
           const link = document.createElement('a')
           link.href = dataUrl
-          link.download = `${filename}.png`
+          link.download = `${filename}@${scale}x.png`
           link.click()
-          void scale // scale is handled via gl.setPixelRatio below
         })
       },
     }
@@ -669,10 +701,11 @@ export function StructuralScene(props: StructuralSceneProps) {
     }
   }, [])
 
-  const maxElementMetric = useMemo(
-    () => Math.max(1, ...snapshot.elements.map((element) => Math.abs(getElementMetric(activeCase, element.id, forceMetric)))),
+  const rawMaxElementMetric = useMemo(
+    () => Math.max(0, ...snapshot.elements.map((element) => Math.abs(getElementMetric(activeCase, element.id, forceMetric)))),
     [activeCase, forceMetric, snapshot.elements]
   )
+  const maxElementMetric = Math.max(1, rawMaxElementMetric)
   const maxReaction = useMemo(
     () => Math.max(1, ...snapshot.nodes.map((node) => getNodeReactionMagnitude(activeCase, node.id))),
     [activeCase, snapshot.nodes]
@@ -707,6 +740,7 @@ export function StructuralScene(props: StructuralSceneProps) {
 
   const colorBarProps = useMemo(() => {
     if (view === 'forces') {
+      if (rawMaxElementMetric <= 0) return null
       const metricLabel = forceMetric === 'axial' ? t('visualizationForceAxial') : forceMetric === 'shear' ? t('visualizationForceShear') : t('visualizationForceMoment')
       const unit = forceMetric === 'moment' ? snapshot.momentUnit : snapshot.resultUnit
       return { maxValue: maxElementMetric, label: metricLabel, unit }
@@ -743,7 +777,7 @@ export function StructuralScene(props: StructuralSceneProps) {
       }
     }
     return null
-  }, [view, forceMetric, maxElementMetric, maxReaction, maxDisplacement, maxUtilization, snapshot.resultUnit, snapshot.momentUnit, snapshot.displacementDisplayFactor, snapshot.displacementUnit, snapshot.nodeLabelUnit, snapshot.bucklingModes, bucklingModeIndex, t])
+  }, [view, forceMetric, maxElementMetric, rawMaxElementMetric, maxReaction, maxDisplacement, maxUtilization, snapshot.resultUnit, snapshot.momentUnit, snapshot.displacementDisplayFactor, snapshot.displacementUnit, snapshot.nodeLabelUnit, snapshot.bucklingModes, bucklingModeIndex, t])
 
   if (!webglAvailable) {
     return (
@@ -769,7 +803,7 @@ export function StructuralScene(props: StructuralSceneProps) {
         <PngExporter glRef={glRef} invalidateRef={invalidateRef} />
         {view === 'buckling' && <BucklingAnimator amplitudeRef={bucklingAmplitudeRef} />}
         <Suspense fallback={null}>
-          <SceneContent {...props} maxElementMetric={maxElementMetric} maxReaction={maxReaction} maxDisplacement={maxDisplacement} maxUtilization={maxUtilization} bucklingAmplitudeRef={bucklingAmplitudeRef} />
+          <SceneContent {...props} maxElementMetric={maxElementMetric} rawMaxElementMetric={rawMaxElementMetric} maxReaction={maxReaction} maxDisplacement={maxDisplacement} maxUtilization={maxUtilization} bucklingAmplitudeRef={bucklingAmplitudeRef} />
         </Suspense>
       </Canvas>
       {showLegend && colorBarProps && (

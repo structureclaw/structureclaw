@@ -580,7 +580,11 @@ export class AgentService {
     } else if (userDecision === 'revise') {
       workingSession.userApprovedAutoDecide = false;
     }
-    const modelInput = params.context?.model || session?.latestModel;
+    const contextModel = params.context?.model;
+    const isCompleteModel = (m: Record<string, unknown> | undefined): boolean =>
+      Boolean(m && Array.isArray(m.materials) && (m.materials as unknown[]).length > 0
+        && Array.isArray(m.sections) && (m.sections as unknown[]).length > 0);
+    const modelInput = (isCompleteModel(contextModel) ? contextModel : undefined) || session?.latestModel || contextModel;
     const activeSkillIds = await this.runtimeBinder.resolveActiveDomainSkillIds({
       selectedSkillIds: skillIds,
       workingSession,
@@ -1981,7 +1985,20 @@ export class AgentService {
       });
     }
 
-    const candidateModel = modelInput || workingSession.latestModel;
+    const isCompleteExecutableModel = (m: Record<string, unknown> | undefined): boolean =>
+      Boolean(m && Array.isArray(m.materials) && (m.materials as unknown[]).length > 0
+        && Array.isArray(m.sections) && (m.sections as unknown[]).length > 0);
+    let candidateModel = modelInput || workingSession.latestModel;
+    if (candidateModel && !isCompleteExecutableModel(candidateModel) && workingSession.draft) {
+      try {
+        const rebuilt = await this.skillRuntime.buildModel(workingSession.draft, skillIds);
+        if (isCompleteExecutableModel(rebuilt)) {
+          candidateModel = rebuilt;
+        }
+      } catch {
+        // keep candidateModel as-is
+      }
+    }
     if (candidateModel && selectedToolId !== 'draft_model') {
       return { ok: true, model: candidateModel };
     }

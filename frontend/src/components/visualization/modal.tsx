@@ -402,21 +402,24 @@ export function StructuralVisualizationModal({
             t={t}
           />
           <div className="flex items-center justify-end gap-2 border-b border-border/70 px-4 py-2 dark:border-white/10">
-            <button
-              className="flex items-center gap-1.5 rounded-full border border-border/70 bg-background/70 px-3 py-1.5 text-sm text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground disabled:opacity-50 dark:border-white/10 dark:bg-white/5"
-              disabled={isExporting}
-              onClick={() => {
-                if (!snapshot) return
-                setIsExporting(true)
-                const filename = `${snapshot.title.replace(/\s+/g, '_')}_${activeCase.id}`
-                exportRef.current?.exportPng(filename, 2)
-                setTimeout(() => setIsExporting(false), 800)
-              }}
-              title={t('visualizationExportPng')}
-              type="button"
-            >
-              {isExporting ? '⏳' : '⬇️'} {t('visualizationExportPng')}
-            </button>
+            {([1, 2, 4] as const).map((scale) => (
+              <button
+                key={scale}
+                className="flex items-center gap-1.5 rounded-full border border-border/70 bg-background/70 px-3 py-1.5 text-sm text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground disabled:opacity-50 dark:border-white/10 dark:bg-white/5"
+                disabled={isExporting}
+                onClick={() => {
+                  if (!snapshot) return
+                  setIsExporting(true)
+                  const filename = `${snapshot.title.replace(/\s+/g, '_')}_${activeCase.id}`
+                  exportRef.current?.exportPng(filename, scale)
+                  setTimeout(() => setIsExporting(false), 1200)
+                }}
+                title={`${t('visualizationExportPng')} ${scale}x`}
+                type="button"
+              >
+                {isExporting ? '⏳' : '⬇️'} {t('visualizationExportPng')} {scale}x
+              </button>
+            ))}
           </div>
           <div className="min-h-0 flex-1" data-testid="visualization-modal-scene">
             <StructuralScene
