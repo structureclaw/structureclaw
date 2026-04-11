@@ -58,12 +58,16 @@ function extractScalar(text: string, patterns: RegExp[]): number | undefined {
   return undefined;
 }
 
-function extractDirectionalLoadScalar(text: string, axis: 'x' | 'y'): number | undefined {
-  const axisToken = axis;
+function extractDirectionalLoadScalar(text: string, axis: 'x' | 'y' | 'z'): number | undefined {
+  const a = axis;
   return extractScalar(text, [
-    new RegExp(`${axisToken}(?:方)?向(?:水平|横向|侧向)?(?:总)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
-    new RegExp(`(?:水平|横向|侧向)?(?:总)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?[^\\n]{0,24}?${axisToken}(?:方)?向\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
-    new RegExp(`${axisToken}(?:方)?向\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
+    // Chinese: x方向荷载, x向水平荷载, x方向总荷载
+    new RegExp(`${a}(?:方)?向(?:水平|横向|侧向)?(?:总)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`(?:水平|横向|侧向)?(?:总)?荷载(?:都?是|均为|各为|分别为|分别取|取|按|为|是)?[^\\n]{0,24}?${a}(?:方)?向\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
+    new RegExp(`${a}(?:方)?向\\s*([0-9]+(?:\\.[0-9]+)?)\\s*(?:kn|千牛)`, 'i'),
+    // English: x-direction load, x-direction total load, z-direction load
+    new RegExp(`${a}-direction\\s*(?:total\\s*)?load(?:\\s+is|=|\\s+of)?\\s*([0-9]+(?:\\.[0-9]+)?)\\s*kn`, 'i'),
+    new RegExp(`${a}-direction\\s*([0-9]+(?:\\.[0-9]+)?)\\s*kn`, 'i'),
   ]);
 }
 
@@ -216,12 +220,14 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
     /bay\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|meter|meters)/i,
   ]);
 
-  const verticalLoadKN = extractScalar(text, [
-    /(?:每层|各层)(?:节点)?(?:竖向|垂直|竖直|总)?(?:方向)?荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
-    /(?:每层|各层)(?:竖向|垂直|竖直)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
-    /(?:竖向|垂直|竖直)荷载[^0-9]{0,10}(?:每层|各层)[^0-9]{0,5}([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
-    /(?:竖向|垂直|竖直)(?:方向)?(?:都?是|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
-  ]);
+  const verticalLoadKN =
+    extractDirectionalLoadScalar(text, 'z')
+    ?? extractScalar(text, [
+      /(?:每层|各层)(?:节点)?(?:竖向|垂直|竖直|总)?(?:方向)?荷载(?:都?是|均为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+      /(?:每层|各层)(?:竖向|垂直|竖直)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+      /(?:竖向|垂直|竖直)荷载[^0-9]{0,10}(?:每层|各层)[^0-9]{0,5}([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+      /(?:竖向|垂直|竖直)(?:方向)?(?:都?是|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
+    ]);
 
   const dualLateralLoadKN = extractScalar(text, [
     /x(?:、|\/|和|及)\s*y(?:方)?向(?:水平|横向|侧向)?(?:总)?荷载(?:都?是|均为|各为|为|是)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)/i,
@@ -240,6 +246,14 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
   const resolvedBayCountX = bayCountX ?? existingState?.bayCountX;
   const resolvedBayCountY = bayCountY ?? existingState?.bayCountY;
 
+  const explicitDimensionMatch = text.match(/\b(2d|3d|二维|三维)\b/i);
+  const explicitDimension = explicitDimensionMatch?.[1]?.toLowerCase() === '3d'
+    || explicitDimensionMatch?.[1] === '三维'
+    ? '3d' as const
+    : explicitDimensionMatch?.[1]?.toLowerCase() === '2d'
+      || explicitDimensionMatch?.[1] === '二维'
+      ? '2d' as const
+      : undefined;
   const inferred3d = text.includes('y方向')
     || text.includes('y向')
     || bayCountY !== undefined
@@ -248,7 +262,9 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
     || extractedLateralYLoadKN !== undefined;
   const resolvedFrameDimension = inferred3d
     ? '3d'
-    : (existingState?.frameDimension ?? (bayCountX !== undefined ? '3d' : undefined));
+    : explicitDimension
+      ?? existingState?.frameDimension
+      ?? (bayCountX !== undefined ? '3d' : undefined);
   const resolved2dBayCount = genericBayCount ?? bayCountX ?? existingState?.bayCount;
   const resolved2dBayWidths = resolvedFrameDimension !== '3d'
     ? (

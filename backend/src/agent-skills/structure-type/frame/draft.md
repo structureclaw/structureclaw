@@ -23,6 +23,11 @@
 - 示例：`y向2跨，5m和7m` → `"bayCountY": 2, "bayWidthsYM": [5, 7]`。
 - 若各跨相同：`每跨6m` → `"bayWidthsXM": [6, 6, 6]`（repeat scalar）。
 
+## 坐标语义
+- 坐标约定：X、Y 为水平方向，Z 为竖向（global-z-up-v2）。
+- 2D 框架：使用 X-Z 平面，X 为跨度方向，Z 为层高/竖向荷载方向。
+- 3D 框架：X 和 Y 为柱网两个水平方向，Z 为层高和竖向荷载方向。
+
 ## 荷载提取
 - 对 `floorLoads`，优先把自然语言映射为统一的各层总荷载数组（单位 kN）：
   - `每层节点荷载都是1000kN` → `floorLoads[].verticalKN = 1000`

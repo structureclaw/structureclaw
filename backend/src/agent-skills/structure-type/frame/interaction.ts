@@ -152,8 +152,8 @@ export function buildFrameQuestions(
       return {
         ...question,
         question: locale === 'zh'
-          ? '请确认框架维度（2d / 3d）。若有 Y 向跨数、Y 向跨度或双向水平荷载，建议选择 3d。'
-          : 'Please confirm frame dimension (2d / 3d). If Y-direction bays/widths or bi-directional lateral loads exist, 3d is recommended.',
+          ? '请确认框架维度（2d / 3d）。若有 Y 向跨数、Y 向跨度或双向水平荷载，建议选择 3d。二维框架按 X-Z 平面建模，Z 为竖向。'
+          : 'Please confirm frame dimension (2d / 3d). If Y-direction bays/widths or bi-directional lateral loads exist, 3d is recommended. 2D frames use the X-Z plane with Z as vertical.',
         suggestedValue: inferredDimension,
       };
     }
