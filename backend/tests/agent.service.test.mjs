@@ -2542,7 +2542,7 @@ describe('AgentService orchestration', () => {
     ]);
     const loads = draft.model?.load_cases?.[0]?.loads ?? [];
     expect(loads.length).toBeGreaterThan(0);
-    expect(loads.every((load) => typeof load.fx === 'number' && typeof load.fz === 'number')).toBe(true);
+    expect(loads.every((load) => typeof load.fx === 'number' && typeof load.fy === 'number')).toBe(true);
   });
 
   test('should prefer llm-extracted frame floor loads for natural combined load wording', async () => {
@@ -3010,7 +3010,7 @@ describe('AgentService orchestration', () => {
 
     expect(first.interaction?.missingCritical).not.toContain('各层总荷载（kN）');
     expect(first.model?.load_cases?.[0]?.loads).toHaveLength(12);
-    expect(first.model?.load_cases?.[0]?.loads.every((load) => typeof load.fy === 'number' && typeof load.fx === 'number' && load.fz === undefined)).toBe(true);
+    expect(first.model?.load_cases?.[0]?.loads.every((load) => typeof load.fz === 'number' && typeof load.fx === 'number' && load.fy === undefined)).toBe(true);
 
     const second = await svc.runChatOnly({
       conversationId: 'conv-frame-merge-3d-loads',
