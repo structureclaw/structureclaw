@@ -3187,4 +3187,36 @@ describe('AgentService orchestration', () => {
     expect(draft.stateToPersist?.bayWidthsXM).toEqual([6, 9, 6]);
     expect(draft.stateToPersist?.bayCountX).toBe(3);
   });
+
+  test('should preserve explicit z-direction floor loads in chat-driven 3d frame drafting', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft(
+      '3D框架，2层，x向2跨每跨6m，y向1跨每跨5m，每层3m，x方向荷载18kN，y方向荷载12kN，z方向荷载10kN',
+      undefined,
+      'zh',
+    );
+
+    expect(draft.missingFields).toEqual([]);
+    expect(draft.stateToPersist?.frameDimension).toBe('3d');
+    expect(draft.stateToPersist?.floorLoads).toEqual([
+      { story: 1, verticalKN: 10, lateralXKN: 18, lateralYKN: 12 },
+      { story: 2, verticalKN: 10, lateralXKN: 18, lateralYKN: 12 },
+    ]);
+  });
+
+  test('should keep 2d frame wording on the xz plane', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    const draft = await svc.textToModelDraft(
+      '2D frame, 2 stories, 2 bays at 6 m, story height 3 m, z-direction load 120 kN and x-direction load 30 kN',
+      undefined,
+      'en',
+    );
+
+    expect(draft.stateToPersist?.frameDimension).toBe('2d');
+    expect(draft.stateToPersist?.floorLoads?.[0]).toMatchObject({ verticalKN: 120, lateralXKN: 30 });
+  });
 });

@@ -942,3 +942,39 @@ describe('buildModel - edge cases', () => {
     expect(groundXCoords).toEqual([0, 3, 7, 9]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// 9. Coordinate semantics migration anchors (z-up target)
+// ---------------------------------------------------------------------------
+describe('buildModel - coordinate semantics (z-up migration)', () => {
+  it('should build 2d frame coordinates on the xz plane', () => {
+    const model = buildModel(makeState({
+      inferredType: 'frame',
+      frameDimension: '2d',
+      bayWidthsM: [6],
+      storyHeightsM: [3],
+      floorLoads: [{ story: 1, verticalKN: 12, lateralXKN: 6 }],
+    }));
+
+    expect(model.nodes[0]).toMatchObject({ x: 0, y: 0, z: 0 });
+    expect(model.nodes[2]).toMatchObject({ x: 0, y: 0, z: 3 });
+    expect(model.load_cases[0].loads[0]).toMatchObject({ fx: 3, fz: -6 });
+    expect(model.metadata.coordinateSemantics).toBe('global-z-up-v2');
+  });
+
+  it('should build 3d frame coordinates with y horizontal and z vertical', () => {
+    const model = buildModel(makeState({
+      inferredType: 'frame',
+      frameDimension: '3d',
+      bayWidthsXM: [6],
+      bayWidthsYM: [5],
+      storyHeightsM: [4],
+      floorLoads: [{ story: 1, verticalKN: 20, lateralXKN: 10, lateralYKN: 8 }],
+    }));
+
+    expect(model.nodes).toContainEqual(expect.objectContaining({ id: 'N1_0_0', x: 0, y: 0, z: 4 }));
+    expect(model.nodes).toContainEqual(expect.objectContaining({ id: 'N1_0_1', x: 0, y: 5, z: 4 }));
+    expect(model.load_cases[0].loads[0]).toMatchObject({ fx: 2.5, fy: 2, fz: -5 });
+    expect(model.metadata.elementReferenceVectors.BX5).toEqual([0, 0, 1]);
+  });
+});
