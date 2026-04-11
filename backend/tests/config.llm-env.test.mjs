@@ -11,7 +11,7 @@ async function importConfigFresh() {
 }
 
 describe('backend llm env config', () => {
-  test('uses direct OpenAI-compatible defaults without provider selection', async () => {
+  test('uses direct OpenAI-compatible defaults without a legacy selector', async () => {
     const previous = {
       LLM_API_KEY: process.env.LLM_API_KEY,
       LLM_MODEL: process.env.LLM_MODEL,

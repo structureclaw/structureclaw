@@ -107,5 +107,5 @@
 ## Security and Config
 - Never commit live secrets, tokens, or private keys.
 - Use `.env.example` as the template.
-- Backend runtime depends on environment configuration for LLM providers and infrastructure; document any new defaults or required variables.
+- Backend runtime depends on environment configuration for the OpenAI-compatible LLM interface and infrastructure; document any new defaults or required variables.
 - When documenting LLM setup, prefer the existing OpenAI-compatible `LLM_API_KEY` + `LLM_BASE_URL` + `LLM_MODEL` pattern.
