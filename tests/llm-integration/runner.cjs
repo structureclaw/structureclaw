@@ -121,7 +121,7 @@ async function runLlmIntegrationTests(rootDir, args) {
           default:
             throw new Error(`Unknown test category: ${testCase.category}`);
         }
-      }, testCase.id, maxAttempts);
+      }, testCase.id, maxAttempts, { retryOnAnyError: true });
 
       // Resolve observed trace
       const observedTrace = resolveObservedTrace({

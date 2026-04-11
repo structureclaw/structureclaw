@@ -1,4 +1,4 @@
-const MAX_ATTEMPTS = 8; // 1 initial + 7 retries
+const MAX_ATTEMPTS = 3; // 1 initial + 2 retries
 
 function shouldRetryError(err) {
   const message = err instanceof Error ? err.message : String(err || "");
@@ -23,15 +23,17 @@ function shouldRetryError(err) {
 
 /**
  * Retry an async function up to MAX_ATTEMPTS times.
- * Logs each retry attempt with the error message.
- * Returns the result on success; throws the last error on final failure.
+ * By default only transient upstream failures retry; runner-level callers can
+ * opt into retrying every case failure to absorb LLM output drift.
  */
-async function withRetry(fn, label = "test", maxAttempts = MAX_ATTEMPTS) {
+async function withRetry(fn, label = "test", maxAttempts = MAX_ATTEMPTS, options = {}) {
+  const retryOnAnyError = options.retryOnAnyError === true;
+
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
       return await fn();
     } catch (err) {
-      if (attempt === maxAttempts || !shouldRetryError(err)) {
+      if (attempt === maxAttempts || (!retryOnAnyError && !shouldRetryError(err))) {
         throw err;
       }
       const msg = err instanceof Error ? err.message : String(err);

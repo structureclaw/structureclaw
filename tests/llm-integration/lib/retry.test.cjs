@@ -30,3 +30,18 @@ test("withRetry retries transient upstream failures", async () => {
   nodeAssert.equal(result, "ok");
   nodeAssert.equal(attempts, 3);
 });
+
+test("withRetry can retry deterministic failures when case-level retries are enabled", async () => {
+  let attempts = 0;
+
+  const result = await withRetry(async () => {
+    attempts += 1;
+    if (attempts < 3) {
+      throw new Error('did not expect "frameDimension" in criticalMissing, but it was present');
+    }
+    return "ok";
+  }, "llm-case", 3, { retryOnAnyError: true });
+
+  nodeAssert.equal(result, "ok");
+  nodeAssert.equal(attempts, 3);
+});
