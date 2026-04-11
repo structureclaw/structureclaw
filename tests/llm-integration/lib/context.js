@@ -12,7 +12,6 @@ function resolveIntegrationContext(rootDir) {
   const llmApiKey = process.env.LLM_API_KEY || env.LLM_API_KEY || "";
   const llmModel = process.env.LLM_MODEL || env.LLM_MODEL || "";
   const llmBaseUrl = process.env.LLM_BASE_URL || env.LLM_BASE_URL || "";
-  const llmProvider = process.env.LLM_PROVIDER || env.LLM_PROVIDER || "openai";
 
   if (!llmApiKey) {
     throw new Error(
@@ -29,7 +28,6 @@ function resolveIntegrationContext(rootDir) {
       LLM_API_KEY: llmApiKey,
       LLM_MODEL: llmModel,
       LLM_BASE_URL: llmBaseUrl,
-      LLM_PROVIDER: llmProvider,
       DATABASE_URL: `file:${path
         .join(projectRoot, ".runtime", "data", "structureclaw-llm-test.db")
         .replace(/\\/gu, "/")}`,

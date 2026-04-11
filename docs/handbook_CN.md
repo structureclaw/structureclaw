@@ -136,7 +136,7 @@ node .\sclaw stop
 
 - 运行时：`NODE_ENV`、`PORT`、`FRONTEND_PORT`
 - 数据层：`DATABASE_URL`
-- LLM：`LLM_PROVIDER`、`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`
+- LLM：`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`（OpenAI-compatible 接口）
 - 集成：`ANALYSIS_PYTHON_BIN`、`ANALYSIS_ENGINE_MANIFEST_PATH`、`CORS_ORIGINS`
 
 说明：
@@ -258,7 +258,7 @@ node tests/runner.mjs backend-regression
 
 - 启动异常优先执行 `./sclaw doctor`。
 - 数据库相关测试失败时，先检查 `DATABASE_URL` 是否以 `file:` 开头，并且指向本地可写路径。
-- LLM 流程异常时，检查 `LLM_PROVIDER` 与 API Key。
+- LLM 流程异常时，检查 `LLM_BASE_URL`、`LLM_MODEL` 与 API Key。
 - 契约失败时，直接运行对应 `node tests/runner.mjs validate <name>` 进行定向诊断。
 
 ## 13. 相关文档

@@ -111,7 +111,7 @@ node .\sclaw docker-install
 For CI or scripted setup, use the non-interactive variant:
 
 ```powershell
-node .\sclaw docker-install --non-interactive --llm-provider openai --llm-base-url https://api.openai.com/v1 --llm-api-key <your-key> --llm-model gpt-4.1
+node .\sclaw docker-install --non-interactive --llm-base-url https://api.openai.com/v1 --llm-api-key <your-key> --llm-model gpt-4.1
 ```
 
 Once the stack is ready, the main entrypoints are:
@@ -141,7 +141,7 @@ Key variables include:
 
 - `PORT`, `FRONTEND_PORT`
 - `DATABASE_URL`, `POSTGRES_SOURCE_DATABASE_URL`
-- `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`
+- `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` (OpenAI-compatible)
 - `ANALYSIS_PYTHON_BIN`, `ANALYSIS_PYTHON_TIMEOUT_MS`, `ANALYSIS_ENGINE_MANIFEST_PATH`
 
 ## API Entrypoints

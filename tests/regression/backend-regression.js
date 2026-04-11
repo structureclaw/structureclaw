@@ -23,7 +23,6 @@ const BACKEND_STEPS = [
 ];
 
 const JEST_ENV_FORWARD_KEYS = [
-  "LLM_PROVIDER",
   "LLM_API_KEY",
   "LLM_MODEL",
   "LLM_BASE_URL",

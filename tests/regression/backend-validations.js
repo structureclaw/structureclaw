@@ -23,7 +23,6 @@ function backendRequire(rootDir) {
 
 function clearProviderEnv() {
   process.env.LLM_API_KEY = "";
-  process.env.LLM_PROVIDER = "openai";
 }
 
 /** Load AgentService from dist using the same module URL as backend/dist/api/agent.js (bare file URL). */

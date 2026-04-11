@@ -31,7 +31,6 @@ export default defineConfig({
       env: {
         PORT: '30010',
         DATABASE_URL: 'file:../../.runtime/data/test-e2e.db',
-        LLM_PROVIDER: 'openai',
         LLM_API_KEY: 'test-key-for-e2e',
         LLM_MODEL: 'gpt-4o-mini',
       },

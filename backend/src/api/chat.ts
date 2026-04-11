@@ -173,7 +173,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
       if (isLlmTimeoutError(error)) {
         request.log.warn({
           err: error,
-          llmProvider: config.llmProvider,
           llmModel: config.llmModel,
           llmTimeoutMs: config.llmTimeoutMs,
           llmMaxRetries: config.llmMaxRetries,

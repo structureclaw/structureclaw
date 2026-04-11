@@ -136,7 +136,7 @@ Important variables:
 
 - Runtime: `NODE_ENV`, `PORT`, `FRONTEND_PORT`
 - Data: `DATABASE_URL`
-- LLM: `LLM_PROVIDER`, `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`
+- LLM: `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` (OpenAI-compatible)
 - Integration: `ANALYSIS_PYTHON_BIN`, `ANALYSIS_ENGINE_MANIFEST_PATH`, `CORS_ORIGINS`
 
 Notes:
@@ -258,7 +258,7 @@ Contribution details: `CONTRIBUTING.md`.
 
 - If startup fails, run `./sclaw doctor` first.
 - If DB-related tests fail locally, verify that `DATABASE_URL` starts with `file:` and points to a writable local path.
-- If LLM flow degrades unexpectedly, confirm `LLM_PROVIDER` and API key env variables.
+- If LLM flow degrades unexpectedly, confirm `LLM_BASE_URL`, `LLM_MODEL`, and API key env variables.
 - If contracts fail, run the corresponding `node tests/runner.mjs validate <name>` command directly for focused diagnostics.
 
 ## 13. Related Documents

@@ -115,7 +115,7 @@ const COMMANDS = [
   {
     name: "docker-install",
     usage:
-      "sclaw docker-install [--non-interactive --llm-provider <name> --llm-base-url <url> --llm-api-key <key> --llm-model <name> --skip-api-test]",
+      "sclaw docker-install [--non-interactive --llm-base-url <url> --llm-api-key <key> --llm-model <name> --skip-api-test]",
     description: "Configure .env and bootstrap the Docker onboarding stack",
     aliases: ["install-docker"],
     group: "infra",

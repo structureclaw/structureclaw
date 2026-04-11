@@ -74,8 +74,8 @@ async function runLlmIntegrationTests(rootDir, args) {
 
   process.stdout.write(`\n${"=".repeat(60)}\n`);
   process.stdout.write(`LLM Integration Tests: ${cases.length} cases\n`);
-  process.stdout.write(`Provider: ${context.env.LLM_PROVIDER}\n`);
   process.stdout.write(`Model: ${context.env.LLM_MODEL || "(default)"}\n`);
+  process.stdout.write(`Base URL: ${context.env.LLM_BASE_URL || "(default)"}\n`);
   process.stdout.write(`Category: ${options.category || "(all)"}\n`);
   process.stdout.write(`Skill: ${options.skillId || "(all)"}\n`);
   process.stdout.write(`Family: ${options.family || "(all)"}\n`);

@@ -81,7 +81,7 @@ Checkpoint-VM -Name $VMName -SnapshotName "BeforeTest"
 # … 将仓库同步到 VM 后 …
 Invoke-Command -VMName $VMName -ScriptBlock {
   Set-Location C:\Test
-  node .\sclaw_cn docker-install --non-interactive --llm-provider openai --llm-base-url https://api.openai.com/v1 --llm-api-key test-key --llm-model gpt-4.1 --skip-api-test
+  node .\sclaw_cn docker-install --non-interactive --llm-base-url https://api.openai.com/v1 --llm-api-key test-key --llm-model gpt-4.1 --skip-api-test
 }
 Restore-VMSnapshot -VMName $VMName -Name "BeforeTest"
 ```

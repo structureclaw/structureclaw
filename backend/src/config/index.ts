@@ -25,16 +25,9 @@ function resolveReportsDir(rawValue: string | undefined): string {
 
 dotenv.config({ path: rootEnvPath });
 
-const llmProviderRaw = (process.env.LLM_PROVIDER || 'openai').toLowerCase();
-const llmProvider = ['openai', 'zhipu', 'openai-compatible'].includes(llmProviderRaw)
-  ? llmProviderRaw
-  : 'openai';
-const isZhipu = llmProvider === 'zhipu';
 const llmApiKey = process.env.LLM_API_KEY || '';
-const llmModel = process.env.LLM_MODEL
-  || (isZhipu ? 'glm-4-plus' : 'gpt-4-turbo-preview');
-const llmBaseUrl = process.env.LLM_BASE_URL
-  || (isZhipu ? 'https://open.bigmodel.cn/api/paas/v4/' : 'https://api.openai.com/v1');
+const llmModel = process.env.LLM_MODEL || 'gpt-4-turbo-preview';
+const llmBaseUrl = process.env.LLM_BASE_URL || 'https://api.openai.com/v1';
 const frontendPort = process.env.FRONTEND_PORT || '30000';
 const backendPort = process.env.PORT || '8000';
 const analysisEngineManifestPath = process.env.ANALYSIS_ENGINE_MANIFEST_PATH || path.resolve(__dirname, '../../../.runtime/analysis-engines.json');
@@ -65,7 +58,6 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL || defaultSqliteDatabaseUrl,
 
   // AI 配置
-  llmProvider,
   llmApiKey,
   llmModel,
   llmBaseUrl,

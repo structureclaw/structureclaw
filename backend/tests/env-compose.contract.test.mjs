@@ -72,7 +72,6 @@ describe('env example vs docker-compose contract', () => {
     expect(dockerInstall).toBeDefined();
     expect(dockerInstall.usage).toContain('sclaw docker-install');
     expect(dockerInstall.usage).toContain('--non-interactive');
-    expect(dockerInstall.usage).toContain('--llm-provider <name>');
     expect(dockerInstall.usage).toContain('--llm-base-url <url>');
     expect(dockerInstall.usage).toContain('--llm-api-key <key>');
     expect(dockerInstall.usage).toContain('--llm-model <name>');

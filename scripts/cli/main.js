@@ -207,9 +207,6 @@ async function promptForDockerInstallConfig(defaults) {
   });
 
   try {
-    const providerInput = await rl.question(
-      `LLM provider / 模型提供商 [${defaults.provider}]: `,
-    );
     const baseUrlInput = await rl.question(
       `LLM base URL / 接口地址${defaults.baseUrl ? ` [${defaults.baseUrl}]` : ""}: `,
     );
@@ -222,7 +219,6 @@ async function promptForDockerInstallConfig(defaults) {
     const apiKeyInput = await rl.question(apiKeyPrompt);
 
     return {
-      provider: providerInput.trim() || defaults.provider,
       baseUrl: baseUrlInput.trim() || defaults.baseUrl,
       model: modelInput.trim() || defaults.model,
       apiKey: apiKeyInput.trim() || defaults.apiKey,
@@ -235,7 +231,6 @@ async function promptForDockerInstallConfig(defaults) {
 async function collectDockerInstallConfig(rawArgs, env) {
   const { flags } = parseCliOptions(rawArgs);
   const defaults = {
-    provider: String(flags.get("llm-provider") || env.LLM_PROVIDER || "openai"),
     baseUrl: String(flags.get("llm-base-url") || env.LLM_BASE_URL || ""),
     apiKey: String(flags.get("llm-api-key") || env.LLM_API_KEY || ""),
     model: String(flags.get("llm-model") || env.LLM_MODEL || ""),
@@ -249,7 +244,6 @@ async function collectDockerInstallConfig(rawArgs, env) {
     : await promptForDockerInstallConfig(defaults);
 
   const missing = [
-    ["--llm-provider", config.provider],
     ["--llm-base-url", config.baseUrl],
     ["--llm-api-key", config.apiKey],
     ["--llm-model", config.model],
@@ -262,7 +256,6 @@ async function collectDockerInstallConfig(rawArgs, env) {
   }
 
   return {
-    provider: config.provider.trim(),
     baseUrl: config.baseUrl.trim(),
     apiKey: config.apiKey.trim(),
     model: config.model.trim(),
@@ -273,7 +266,6 @@ async function collectDockerInstallConfig(rawArgs, env) {
 function persistDockerEnv(paths, config) {
   const templatePath = runtime.pathExists(paths.envFile) ? paths.envFile : paths.envExampleFile;
   let content = fs.readFileSync(templatePath, "utf8");
-  content = replaceEnvValue(content, "LLM_PROVIDER", config.provider);
   content = replaceEnvValue(content, "LLM_BASE_URL", config.baseUrl);
   content = replaceEnvValue(content, "LLM_API_KEY", config.apiKey);
   content = replaceEnvValue(content, "LLM_MODEL", config.model);
@@ -381,7 +373,6 @@ async function invokeDockerInstall(rootDir, env, rawArgs) {
 
   log("Saving docker configuration... / 正在写入 Docker 配置...");
   persistDockerEnv(paths, config);
-  log(`LLM provider: ${config.provider}`);
   log(`LLM base URL: ${config.baseUrl}`);
   log(`LLM API key: ${maskSecret(config.apiKey)}`);
   log(`LLM model: ${config.model}`);
