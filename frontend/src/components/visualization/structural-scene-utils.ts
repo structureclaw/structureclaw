@@ -79,19 +79,18 @@ export function roundUpNice(value: number) {
   return step * base
 }
 
-export function orientToFloorPlane(position: THREE.Vector3, plane: VisualizationPlane) {
-  // With z-up camera (camera.up = (0,0,1)), Three.js treats Z as the vertical axis.
-  // Model data from the backend uses the same z-up convention, so coordinates map
-  // directly without remapping for the default xz plane.
+export function projectPosition(position: THREE.Vector3, plane: VisualizationPlane, dimension: 2 | 3) {
+  if (dimension === 3) {
+    // Canonical 3D snapshots are already expressed in z-up world coordinates.
+    return position.clone()
+  }
   if (plane === 'xy') {
-    // XY plane: structural Y is vertical, map to Three.js Z-up
+    // Orthographic XY views look down the global z axis.
     return new THREE.Vector3(position.x, position.z, position.y)
   }
   if (plane === 'yz') {
-    // YZ plane: structural Y goes to X, structural X goes to Y, Z stays (vertical)
     return new THREE.Vector3(position.y, position.x, position.z)
   }
-  // XZ plane (default for z-up): pass-through since camera is z-up
   return new THREE.Vector3(position.x, position.y, position.z)
 }
 
@@ -112,13 +111,13 @@ export function getLoadArrowLength(snapshot: VisualizationSnapshot, plane: Visua
   let maxZ = Number.NEGATIVE_INFINITY
 
   snapshot.nodes.forEach((node) => {
-    const oriented = orientToFloorPlane(new THREE.Vector3(node.position.x, node.position.y, node.position.z), plane)
-    minX = Math.min(minX, oriented.x)
-    maxX = Math.max(maxX, oriented.x)
-    minY = Math.min(minY, oriented.y)
-    maxY = Math.max(maxY, oriented.y)
-    minZ = Math.min(minZ, oriented.z)
-    maxZ = Math.max(maxZ, oriented.z)
+    const projected = projectPosition(new THREE.Vector3(node.position.x, node.position.y, node.position.z), plane, snapshot.dimension)
+    minX = Math.min(minX, projected.x)
+    maxX = Math.max(maxX, projected.x)
+    minY = Math.min(minY, projected.y)
+    maxY = Math.max(maxY, projected.y)
+    minZ = Math.min(minZ, projected.z)
+    maxZ = Math.max(maxZ, projected.z)
   })
 
   const spanX = maxX - minX
@@ -134,27 +133,62 @@ export function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: Vi
     return {
       size: 24,
       divisions: 24,
-      position: [0, -0.001, 0] as [number, number, number],
-      rotation: [0, 0, 0] as [number, number, number],
+      position: [0, 0, -0.001] as [number, number, number],
+      rotation: [Math.PI / 2, 0, 0] as [number, number, number],
     }
   }
 
-  const orientedNodes = snapshot.nodes.map((node) => orientToFloorPlane(new THREE.Vector3(node.position.x, node.position.y, node.position.z), plane))
-  const xs = orientedNodes.map((node) => node.x)
-  const ys = orientedNodes.map((node) => node.y)
-  const zs = orientedNodes.map((node) => node.z)
+  const xs = snapshot.nodes.map((node) => node.position.x)
+  const ys = snapshot.nodes.map((node) => node.position.y)
+  const zs = snapshot.nodes.map((node) => node.position.z)
   const minX = Math.min(...xs)
   const maxX = Math.max(...xs)
   const minY = Math.min(...ys)
+  const maxY = Math.max(...ys)
   const minZ = Math.min(...zs)
   const maxZ = Math.max(...zs)
+
+  const offsetBase = Math.max(
+    maxX - minX,
+    maxY - minY,
+    maxZ - minZ,
+    1,
+  )
+  const offset = Math.max(offsetBase * 0.01, 0.001)
+
+  if (plane === 'xy') {
+    const spanX = Math.max(maxX - minX, 1)
+    const spanY = Math.max(maxY - minY, 1)
+    const span = Math.max(spanX, spanY)
+    const size = roundUpNice(span * 1.5)
+    const divisions = Math.min(120, Math.max(8, Math.round(size / Math.max(span / 18, 0.25))))
+    return {
+      size,
+      divisions,
+      position: [(minX + maxX) * 0.5, (minY + maxY) * 0.5, minZ - offset] as [number, number, number],
+      rotation: [Math.PI / 2, 0, 0] as [number, number, number],
+    }
+  }
+
+  if (plane === 'yz') {
+    const spanY = Math.max(maxY - minY, 1)
+    const spanZ = Math.max(maxZ - minZ, 1)
+    const span = Math.max(spanY, spanZ)
+    const size = roundUpNice(span * 1.5)
+    const divisions = Math.min(120, Math.max(8, Math.round(size / Math.max(span / 18, 0.25))))
+    return {
+      size,
+      divisions,
+      position: [minX - offset, (minY + maxY) * 0.5, (minZ + maxZ) * 0.5] as [number, number, number],
+      rotation: [0, 0, Math.PI / 2] as [number, number, number],
+    }
+  }
 
   const spanX = Math.max(maxX - minX, 1)
   const spanZ = Math.max(maxZ - minZ, 1)
   const span = Math.max(spanX, spanZ)
   const size = roundUpNice(span * 1.5)
   const divisions = Math.min(120, Math.max(8, Math.round(size / Math.max(span / 18, 0.25))))
-  const offset = Math.max(span * 0.01, 0.001)
 
   return {
     size,
@@ -164,11 +198,19 @@ export function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: Vi
   }
 }
 
-export function projectPosition(position: THREE.Vector3, plane: VisualizationPlane) {
-  return orientToFloorPlane(position, plane)
-}
-
-export function getPlaneCameraPreset() {
+export function getPlaneCameraPreset(plane: VisualizationPlane) {
+  if (plane === 'xy') {
+    return {
+      position: [0, 0, 10] as [number, number, number],
+      up: [0, 1, 0] as [number, number, number],
+    }
+  }
+  if (plane === 'yz') {
+    return {
+      position: [10, 0, 0] as [number, number, number],
+      up: [0, 0, 1] as [number, number, number],
+    }
+  }
   return {
     position: [0, 10, 0] as [number, number, number],
     up: [0, 0, 1] as [number, number, number],

@@ -13,7 +13,6 @@ import {
   getNodeReactionMagnitude,
   getNodeDisplacementMagnitude,
   createColorScale,
-  orientToFloorPlane as orientToFloorPlaneUtil,
   isRenderableLoadVector as isRenderableLoadVectorCheck,
   getLoadArrowLength,
   getAdaptiveGridConfig,
@@ -42,7 +41,6 @@ type StructuralSceneProps = {
   t: (key: MessageKey) => string
 }
 
-const orientToFloorPlane = orientToFloorPlaneUtil
 const isRenderableLoadVector = isRenderableLoadVectorCheck
 
 function ColorBar({
@@ -246,7 +244,7 @@ function SceneContent({
   const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null)
   const [hoveredElementId, setHoveredElementId] = useState<string | null>(null)
   const gridConfig = useMemo(() => getAdaptiveGridConfig(snapshot, plane), [snapshot, plane])
-  const cameraPreset = useMemo(() => getPlaneCameraPreset(), [])
+  const cameraPreset = useMemo(() => getPlaneCameraPreset(plane), [plane])
   const nodeMap = useMemo(
     () =>
       new Map(
@@ -312,10 +310,10 @@ function SceneContent({
                 : hoveredElementId === element.id
                   ? '#67e8f9'
                   : '#38bdf8'
-            const undeformedStart = projectPosition(startData.position, plane)
-            const undeformedEnd = projectPosition(endData.position, plane)
-            const currentStart = projectPosition(start, plane)
-            const currentEnd = projectPosition(end, plane)
+            const undeformedStart = projectPosition(startData.position, plane, snapshot.dimension)
+            const undeformedEnd = projectPosition(endData.position, plane, snapshot.dimension)
+            const currentStart = projectPosition(start, plane, snapshot.dimension)
+            const currentEnd = projectPosition(end, plane, snapshot.dimension)
             const distributedLoadVectors = showLoads
               ? snapshot.loads.reduce<THREE.Vector3[]>((vectors, load) => {
                   if (load.kind !== 'distributed' || load.elementId !== element.id) {
@@ -364,7 +362,7 @@ function SceneContent({
                     key={`${element.id}-distributed-${vectorIndex}`}
                     start={currentStart}
                     end={currentEnd}
-                    vector={projectPosition(vector, plane)}
+                    vector={projectPosition(vector, plane, snapshot.dimension)}
                   />
                 ))}
               </group>
@@ -393,7 +391,7 @@ function SceneContent({
                       ? '#67e8f9'
                     : '#f8fafc'
             const position = view === 'deformed' ? nodeData.displacedPosition : nodeData.position
-            const finalPosition = projectPosition(position, plane)
+            const finalPosition = projectPosition(position, plane, snapshot.dimension)
             const reaction = activeCase.nodeResults[entry.id]?.reaction
             const arrowVector = reaction
               ? new THREE.Vector3(reaction.fx || 0, reaction.fy || 0, reaction.fz || 0)
@@ -454,14 +452,14 @@ function SceneContent({
                   </Html>
                 )}
                 {view === 'reactions' && arrowVector && arrowVector.length() > 0.0001 && (
-                  <VectorArrow color="#fb923c" origin={finalPosition} vector={projectPosition(arrowVector, plane)} />
+                  <VectorArrow color="#fb923c" origin={finalPosition} vector={projectPosition(arrowVector, plane, snapshot.dimension)} />
                 )}
                 {showLoads && view === 'model' && loadVectors.map((vector, index) => (
                   <VectorArrow
                     color="#22c55e"
                     key={`${entry.id}-load-${index}`}
                     origin={finalPosition}
-                    vector={projectPosition(vector, plane)}
+                    vector={projectPosition(vector, plane, snapshot.dimension)}
                   />
                 ))}
               </group>

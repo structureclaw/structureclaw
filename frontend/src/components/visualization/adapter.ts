@@ -377,7 +377,7 @@ function deriveCoordinateSemantics(model: Record<string, unknown> | null): { dim
   if (meta.coordinateSemantics === 'global-z-up-v2') {
     return {
       dimension: meta.frameDimension === '3d' ? 3 : 2,
-      plane: meta.frameDimension === '2d' ? ('xz' as VisualizationPlane) : undefined,
+      plane: meta.frameDimension === '3d' ? ('xy' as VisualizationPlane) : ('xz' as VisualizationPlane),
       semantics: 'global-z-up-v2',
     }
   }
@@ -394,7 +394,11 @@ function deriveDimension(nodes: VisualizationNode[]) {
   return 2 as const
 }
 
-function derivePlane(nodes: VisualizationNode[]) {
+function derivePlane(nodes: VisualizationNode[], dimension: 2 | 3) {
+  if (dimension === 3) {
+    return 'xy' as const
+  }
+
   const ySpread = getAxisSpread(nodes, 'y')
   const zSpread = getAxisSpread(nodes, 'z')
 
@@ -606,7 +610,7 @@ export function buildVisualizationSnapshot(params: {
   )
   const semantics = deriveCoordinateSemantics(model)
   const dimension = semantics?.dimension ?? deriveDimension(nodes)
-  const plane = semantics?.plane ?? derivePlane(nodes)
+  const plane = semantics?.plane ?? derivePlane(nodes, dimension)
 
   return normalizeVisualizationSnapshot({
     version: 1,

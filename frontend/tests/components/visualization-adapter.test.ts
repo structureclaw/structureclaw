@@ -79,6 +79,7 @@ describe('visualization-adapter', () => {
     expect(snapshot).not.toBeNull()
     expect(snapshot?.coordinateSemantics).toBe('global-z-up-v2')
     expect(snapshot?.dimension).toBe(3)
+    expect(snapshot?.plane).toBe('xy')
     expect(snapshot?.loads[0]?.vector).toEqual({ x: 1, y: -5, z: -3 })
     expect(snapshot?.cases.find((item) => item.id === 'result')?.nodeResults['2']?.displacement).toMatchObject({ ux: 0.001, uy: -0.002, uz: -0.003 })
   })
@@ -123,6 +124,7 @@ describe('visualization-adapter', () => {
 
     expect(snapshot).not.toBeNull()
     expect(snapshot?.dimension).toBe(3)
+    expect(snapshot?.plane).toBe('xy')
   })
 
   it('returns null when required model geometry is missing', () => {
