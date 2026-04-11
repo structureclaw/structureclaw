@@ -270,7 +270,7 @@ function SceneContent({
           fov={42}
           position={[8, 8, 8]}
           onUpdate={(camera) => {
-            camera.up.set(0, 1, 0)
+            camera.up.set(0, 0, 1)
           }}
         />
       ) : (
@@ -447,7 +447,7 @@ function SceneContent({
                   <meshBasicMaterial transparent opacity={0} />
                 </mesh>
                 {showNodeLabels && (
-                  <Html center position={finalPosition.clone().add(new THREE.Vector3(0, snapshot.dimension === 3 ? 0.24 : 0.18, 0)).toArray()}>
+                  <Html center position={finalPosition.clone().add(new THREE.Vector3(0, 0, snapshot.dimension === 3 ? 0.24 : 0.18)).toArray()}>
                     <div className="rounded-full border border-border/70 bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground shadow-lg dark:border-white/10 dark:bg-slate-950/85">
                       {entry.id}
                     </div>

@@ -5,6 +5,7 @@ import type {
   VisualizationLoad,
   VisualizationNode,
   VisualizationNodeResults,
+  VisualizationPlane,
   VisualizationSource,
   VisualizationSnapshot,
   VisualizationViewMode,
@@ -112,14 +113,8 @@ function vectorMagnitude(values: Array<number | null | undefined>) {
   return Math.sqrt(filtered.reduce((sum, value) => sum + value ** 2, 0))
 }
 
-function hasSignificantComponent(entries: Array<Record<string, unknown> | null>, key: string, threshold = 1e-12) {
-  return entries.some((entry) => {
-    if (!entry) {
-      return false
-    }
-    const value = asNumber(entry[key])
-    return value !== null && Math.abs(value) > threshold
-  })
+function getAxisSpread(nodes: VisualizationNode[], axis: 'x' | 'y' | 'z') {
+  return new Set(nodes.map((node) => node.position[axis].toFixed(6))).size
 }
 
 function compactNumberRecord<T extends string>(entries: Array<[T, number | null]>) {
@@ -374,39 +369,42 @@ function getLoads(model: Record<string, unknown> | null): VisualizationLoad[] {
   return loads
 }
 
-function deriveDimension(nodes: VisualizationNode[], displacements: Record<string, unknown> | null) {
-  const ySpread = new Set(nodes.map((node) => node.position.y.toFixed(6))).size
-  const zSpread = new Set(nodes.map((node) => node.position.z.toFixed(6))).size
-  const displacementEntries = Object.values(displacements || {}).map((value) => asRecord(value))
-  const hasUy = hasSignificantComponent(displacementEntries, 'uy')
-  const hasUz = hasSignificantComponent(displacementEntries, 'uz')
+function deriveCoordinateSemantics(model: Record<string, unknown> | null): { dimension: 2 | 3; plane?: VisualizationPlane; semantics: string } | null {
+  if (!model || typeof model !== 'object') return null
+  const metadata = model.metadata
+  if (!metadata || typeof metadata !== 'object') return null
+  const meta = metadata as Record<string, unknown>
+  if (meta.coordinateSemantics === 'global-z-up-v2') {
+    return {
+      dimension: meta.frameDimension === '3d' ? 3 : 2,
+      plane: meta.frameDimension === '2d' ? ('xz' as VisualizationPlane) : undefined,
+      semantics: 'global-z-up-v2',
+    }
+  }
+  return null
+}
 
-  if ((ySpread > 1 && zSpread > 1) || (hasUy && hasUz)) {
+function deriveDimension(nodes: VisualizationNode[]) {
+  const ySpread = getAxisSpread(nodes, 'y')
+  const zSpread = getAxisSpread(nodes, 'z')
+
+  if (ySpread > 1 && zSpread > 1) {
     return 3 as const
   }
   return 2 as const
 }
 
-function derivePlane(
-  nodes: VisualizationNode[],
-  displacements: Record<string, unknown> | null,
-  loads: VisualizationLoad[]
-) {
-  const zSpread = new Set(nodes.map((node) => node.position.z.toFixed(6))).size
-  const ySpread = new Set(nodes.map((node) => node.position.y.toFixed(6))).size
-  const displacementEntries = Object.values(displacements || {}).map((value) => asRecord(value))
-  const hasUz = hasSignificantComponent(displacementEntries, 'uz')
-  const hasRy = hasSignificantComponent(displacementEntries, 'ry')
-  const hasUyLoad = loads.some((load) => Math.abs(load.vector.y) > 1e-12)
-  const hasUzLoad = loads.some((load) => Math.abs(load.vector.z) > 1e-12)
+function derivePlane(nodes: VisualizationNode[]) {
+  const ySpread = getAxisSpread(nodes, 'y')
+  const zSpread = getAxisSpread(nodes, 'z')
 
-  if (zSpread > 1 || hasUz || hasRy || hasUzLoad) {
+  if (zSpread > 1) {
     return 'xz' as const
   }
-  if (ySpread > 1 || hasUyLoad) {
+  if (ySpread > 1) {
     return 'xy' as const
   }
-  return 'xy' as const
+  return 'xz' as const
 }
 
 function buildAvailableViews(cases: VisualizationCase[], source: VisualizationSource): VisualizationViewMode[] {
@@ -606,8 +604,9 @@ export function buildVisualizationSnapshot(params: {
   const unsupportedElementTypes = Array.from(
     new Set(elements.map((element) => element.type).filter((type) => !['beam', 'truss'].includes(type)))
   )
-  const dimension = deriveDimension(nodes, baseDisplacements)
-  const plane = derivePlane(nodes, baseDisplacements, loads)
+  const semantics = deriveCoordinateSemantics(model)
+  const dimension = semantics?.dimension ?? deriveDimension(nodes)
+  const plane = semantics?.plane ?? derivePlane(nodes)
 
   return normalizeVisualizationSnapshot({
     version: 1,
@@ -615,6 +614,7 @@ export function buildVisualizationSnapshot(params: {
     source,
     dimension,
     plane,
+    coordinateSemantics: semantics?.semantics,
     analysisType: typeof analysis?.analysis_type === 'string' ? analysis.analysis_type : undefined,
     availableViews: buildAvailableViews(cases, source),
     defaultCaseId: cases.find((item) => item.kind === 'result')?.id || cases[0]?.id || (source === 'model' ? 'model' : 'result'),

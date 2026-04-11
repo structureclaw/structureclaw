@@ -43,6 +43,12 @@ const mockSkills = [
 
 const sampleModelJson = JSON.stringify({
   schema_version: '1.0.0',
+  metadata: {
+    coordinateSemantics: 'global-z-up-v2',
+    coordinateSemanticsVersion: 2,
+    frameDimension: '2d',
+    inferredType: 'frame',
+  },
   nodes: [
     { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
     { id: '2', x: 6, y: 0, z: 0 },
@@ -50,12 +56,13 @@ const sampleModelJson = JSON.stringify({
   elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: 'M1', section: 'S1' }],
   materials: [{ id: 'M1', name: 'Steel', E: 200000, nu: 0.3, rho: 7850 }],
   sections: [{ id: 'S1', area: 1 }],
-  load_cases: [{ id: 'D', type: 'dead', loads: [{ node: '2', fy: -10 }] }],
+  load_cases: [{ id: 'D', type: 'dead', loads: [{ node: '2', fz: -10 }] }],
 })
 
 const sampleAnalysisResult = {
   response: 'Analysis finished.',
   success: true,
+  model: JSON.parse(sampleModelJson),
   analysis: {
     success: true,
     meta: {
@@ -74,7 +81,7 @@ const sampleAnalysisResult = {
         '2': { ux: 0.012, uy: 0, uz: -0.032 },
       },
       reactions: {
-        '1': { fx: 0, fy: 10, fz: 0 },
+        '1': { fx: 0, fy: 0, fz: 10 },
       },
       forces: {
         E1: { axial: 0, n1: { M: 20, V: 10 }, n2: { M: 0, V: 10 } },
@@ -85,7 +92,7 @@ const sampleAnalysisResult = {
             '2': { ux: 0.012, uz: -0.032 },
           },
           reactions: {
-            '1': { fy: 10 },
+            '1': { fz: 10 },
           },
           forces: {
             E1: { axial: 0, n1: { M: 20, V: 10 }, n2: { M: 0, V: 10 } },
@@ -113,6 +120,7 @@ const archivedVisualizationSnapshot: VisualizationSnapshot = {
   source: 'result',
   dimension: 2,
   plane: 'xz',
+  coordinateSemantics: 'global-z-up-v2',
   availableViews: ['model', 'deformed', 'forces', 'reactions'],
   defaultCaseId: 'result',
   nodes: [
@@ -122,7 +130,7 @@ const archivedVisualizationSnapshot: VisualizationSnapshot = {
   elements: [
     { id: 'E1', type: 'beam', nodeIds: ['1', '2'], material: 'M1', section: 'S1' },
   ],
-  loads: [{ nodeId: '2', caseId: 'D', vector: { x: 0, y: -10, z: 0 } }],
+  loads: [{ nodeId: '2', caseId: 'D', vector: { x: 0, y: 0, z: -10 } }],
   unsupportedElementTypes: [],
   cases: [
     {
@@ -1412,7 +1420,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
       elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
       materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
       sections: [{ id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001, Iz: 0.0001, J: 0.0001, G: 79000 } }],
-      load_cases: [{ id: 'LC1', type: 'other', loads: [{ node: '2', fy: -10 }] }],
+      load_cases: [{ id: 'LC1', type: 'other', loads: [{ node: '2', fz: -10 }] }],
       load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
     }
 
@@ -1793,7 +1801,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
           createdAt: '2026-03-12T08:00:00.000Z',
           updatedAt: '2026-03-12T08:00:00.000Z',
           messages: [{ id: 'assistant-1', role: 'assistant', content: 'done', status: 'done', timestamp: '2026-03-12T08:00:00.000Z' }],
-          latestResult: sampleAnalysisResult,
+          latestResult: { ...sampleAnalysisResult, model: null },
           visualizationSnapshot: null,
         },
       })
@@ -1906,6 +1914,69 @@ describe('ConsolePage Integration (CONS-13)', () => {
       expect(screen.getByRole('dialog')).toBeInTheDocument()
     })
     expect(screen.getByText('Archived Beam')).toBeInTheDocument()
+  })
+
+  it('clears stale archived structural snapshots instead of restoring them', async () => {
+    window.localStorage.setItem(
+      'structureclaw.console.conversations',
+      JSON.stringify({
+        'conv-stale-visual': {
+          id: 'conv-stale-visual',
+          title: 'Stale Visual',
+          type: 'analysis',
+          createdAt: '2026-03-12T08:00:00.000Z',
+          updatedAt: '2026-03-12T08:00:00.000Z',
+          messages: [{ id: 'assistant-1', role: 'assistant', content: 'done', status: 'done', timestamp: '2026-03-12T08:00:00.000Z' }],
+          modelText: sampleModelJson,
+          latestResult: sampleAnalysisResult,
+          resultVisualizationSnapshot: {
+            ...archivedVisualizationSnapshot,
+            coordinateSemantics: undefined,
+          },
+        },
+      })
+    )
+
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([{ id: 'conv-stale-visual', title: 'Stale Visual', updatedAt: '2026-03-12T08:00:00.000Z' }]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation/conv-stale-visual')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ messages: [] }),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+    fireEvent.click(await screen.findByText('Stale Visual'))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: /Open Visualization|打开可视化/ })).toBeNull()
+    })
   })
 
   it('opens visualization from backend snapshots even when latestResult is missing', async () => {

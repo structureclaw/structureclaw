@@ -60,6 +60,7 @@ export type VisualizationSnapshot = {
   source: VisualizationSource
   dimension: 2 | 3
   plane: VisualizationPlane
+  coordinateSemantics?: string
   analysisType?: string
   availableViews: VisualizationViewMode[]
   defaultCaseId: string

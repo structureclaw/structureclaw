@@ -382,6 +382,8 @@ export const messages = {
     modelSyncFromChat: 'Model JSON was synchronized from the conversation draft.',
     modelAutoLoaded: 'Auto-loaded model: {modelName}',
     loadingModel: 'Loading model...',
+    staleStructuralSessionTitle: 'Structural session needs regeneration',
+    staleStructuralSessionBody: 'This saved structural workspace uses old coordinate semantics and cannot be restored. Regenerate the model with the current z-up workflow.',
   },
   zh: {
     appName: 'StructureClaw',
@@ -752,6 +754,8 @@ export const messages = {
     modelSyncFromChat: '结构模型 JSON 已根据对话草案自动同步。',
     modelAutoLoaded: '自动加载模型: {modelName}',
     loadingModel: '加载模型中...',
+    staleStructuralSessionTitle: '结构会话需要重新生成',
+    staleStructuralSessionBody: '此保存的结构工作区使用旧坐标语义，无法恢复。请使用当前的 Z 向上工作流重新生成模型。',
   },
 } as const
 

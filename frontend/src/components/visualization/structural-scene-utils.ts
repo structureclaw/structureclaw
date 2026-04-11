@@ -80,12 +80,18 @@ export function roundUpNice(value: number) {
 }
 
 export function orientToFloorPlane(position: THREE.Vector3, plane: VisualizationPlane) {
+  // With z-up camera (camera.up = (0,0,1)), Three.js treats Z as the vertical axis.
+  // Model data from the backend uses the same z-up convention, so coordinates map
+  // directly without remapping for the default xz plane.
   if (plane === 'xy') {
+    // XY plane: structural Y is vertical, map to Three.js Z-up
     return new THREE.Vector3(position.x, position.z, position.y)
   }
   if (plane === 'yz') {
+    // YZ plane: structural Y goes to X, structural X goes to Y, Z stays (vertical)
     return new THREE.Vector3(position.y, position.x, position.z)
   }
+  // XZ plane (default for z-up): pass-through since camera is z-up
   return new THREE.Vector3(position.x, position.y, position.z)
 }
 
