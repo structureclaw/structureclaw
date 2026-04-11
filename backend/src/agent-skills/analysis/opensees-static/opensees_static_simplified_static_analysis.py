@@ -927,7 +927,7 @@ class StaticAnalyzer:
                 # 为最小可用路径提供扭转惯量兜底，避免常见输入缺失导致求解失败。
                 J = max(Iy + Iz, 1e-9)
 
-            R = self._build_3d_rotation_matrix(vec / L)
+            R = self._build_3d_rotation_matrix(vec / L, elem_id=elem.id)
             T = np.zeros((12, 12), dtype=float)
             T[0:3, 0:3] = R
             T[3:6, 3:6] = R
@@ -1065,11 +1065,30 @@ class StaticAnalyzer:
             'summary': self._generate_summary(displacements, forces),
         }
 
-    def _build_3d_rotation_matrix(self, ex: np.ndarray) -> np.ndarray:
+    def _build_3d_rotation_matrix(self, ex: np.ndarray, elem_id: str = None) -> np.ndarray:
         """构建 3D frame 局部坐标旋转矩阵（局部 x 沿杆轴）。"""
-        ref = np.array([0.0, 0.0, 1.0], dtype=float)
-        if abs(float(np.dot(ex, ref))) > 0.98:
-            ref = np.array([0.0, 1.0, 0.0], dtype=float)
+        # Check metadata for an explicit reference vector first.
+        ref = None
+        if elem_id is not None:
+            try:
+                from runtime.coordinate_semantics import get_model_metadata, get_reference_vector
+
+                model_dict = (
+                    self.model.model_dump(mode="python")
+                    if hasattr(self.model, "model_dump")
+                    else self.model if isinstance(self.model, dict) else {}
+                )
+                metadata = get_model_metadata(model_dict)
+                explicit = get_reference_vector(metadata, elem_id)
+                if explicit is not None:
+                    ref = np.array(explicit, dtype=float)
+            except Exception:
+                logger.debug("Could not read metadata reference vectors; using geometry fallback", exc_info=True)
+
+        if ref is None:
+            ref = np.array([0.0, 0.0, 1.0], dtype=float)
+            if abs(float(np.dot(ex, ref))) > 0.98:
+                ref = np.array([0.0, 1.0, 0.0], dtype=float)
 
         ey = np.cross(ref, ex)
         ey_norm = float(np.linalg.norm(ey))
@@ -1439,6 +1458,23 @@ class StaticAnalyzer:
         )
 
     def _get_beam_reference_vector(self, elem) -> List[float]:
+        # Check metadata for an explicit reference vector first.
+        try:
+            from runtime.coordinate_semantics import get_model_metadata, get_reference_vector
+
+            model_dict = (
+                self.model.model_dump(mode="python")
+                if hasattr(self.model, "model_dump")
+                else self.model if isinstance(self.model, dict) else {}
+            )
+            metadata = get_model_metadata(model_dict)
+            explicit = get_reference_vector(metadata, elem.id)
+            if explicit is not None:
+                return explicit
+        except Exception:
+            logger.debug("Could not read metadata reference vectors; using geometry fallback", exc_info=True)
+
+        # Fallback: geometry-based reference vector
         start = self.nodes.get(elem.nodes[0])
         end = self.nodes.get(elem.nodes[1])
         if start is None or end is None:
