@@ -418,6 +418,78 @@ describe('AgentService orchestration', () => {
     expect(deletedKeys).toEqual(['agent:interaction-session:conv-cleanup']);
   });
 
+  test('should invalidate in-memory session when latestModel has stale structural coordinates', async () => {
+    const svc = createServiceWithDefaultSkills();
+    const staleConversationId = 'conv-stale-session-' + Date.now();
+
+    // Manually inject a stale session (structural model without coordinateSemanticsVersion)
+    const { cache } = await import('../dist/utils/cache.js');
+    await cache.setex(
+      'agent:interaction-session:' + staleConversationId,
+      1800,
+      JSON.stringify({
+        draft: { inferredType: 'frame', updatedAt: Date.now() },
+        structuralTypeMatch: { key: 'frame', mappedType: 'frame', skillId: 'frame', supportLevel: 'supported' },
+        latestModel: {
+          schema_version: '1.0.0',
+          nodes: [{ id: '1', x: 0, y: 0, z: 0 }],
+          elements: [],
+          materials: [],
+          sections: [],
+          load_cases: [],
+          load_combinations: [],
+          metadata: { inferredType: 'frame' },
+        },
+        resolved: {},
+        updatedAt: Date.now(),
+      }),
+    );
+
+    const snapshot = await svc.getConversationSessionSnapshot(staleConversationId, 'zh');
+
+    // The stale model should be cleared
+    expect(snapshot?.draft?.inferredType).toBe('unknown');
+    expect(snapshot?.model).toBeUndefined();
+
+    // Clean up
+    await svc.clearConversationSession(staleConversationId);
+  });
+
+  test('should preserve in-memory session when latestModel has coordinateSemanticsVersion 2', async () => {
+    const svc = createServiceWithDefaultSkills();
+    const validConversationId = 'conv-valid-session-' + Date.now();
+
+    const { cache } = await import('../dist/utils/cache.js');
+    await cache.setex(
+      'agent:interaction-session:' + validConversationId,
+      1800,
+      JSON.stringify({
+        draft: { inferredType: 'frame', updatedAt: Date.now() },
+        structuralTypeMatch: { key: 'frame', mappedType: 'frame', skillId: 'frame', supportLevel: 'supported' },
+        latestModel: {
+          schema_version: '1.0.0',
+          nodes: [{ id: '1', x: 0, y: 0, z: 0 }],
+          elements: [],
+          materials: [],
+          sections: [],
+          load_cases: [],
+          load_combinations: [],
+          metadata: { inferredType: 'frame', coordinateSemanticsVersion: 2 },
+        },
+        resolved: {},
+        updatedAt: Date.now(),
+      }),
+    );
+
+    const snapshot = await svc.getConversationSessionSnapshot(validConversationId, 'zh');
+
+    // The valid model should be preserved
+    expect(snapshot?.draft?.inferredType).toBe('frame');
+
+    // Clean up
+    await svc.clearConversationSession(validConversationId);
+  });
+
   test('should preserve cache.del behavior after the cleanup-session assertion', async () => {
     const key = `agent-service-cache-${Date.now()}`;
 

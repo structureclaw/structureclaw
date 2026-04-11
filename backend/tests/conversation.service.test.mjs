@@ -41,4 +41,56 @@ describe('ConversationService locale handling', () => {
 
     expect(deleted).toBeNull();
   });
+
+  test('returns stale structural snapshots as incompatible when semantics version is missing', async () => {
+    prisma.conversation.findUnique = async () => ({
+      modelSnapshot: { dimension: 3, metadata: { inferredType: 'frame' } },
+      resultSnapshot: { dimension: 3, metadata: { inferredType: 'frame' } },
+      latestResult: { model: { metadata: { inferredType: 'frame' } } },
+    });
+
+    const svc = new ConversationService();
+    const snapshot = await svc.getConversationSnapshot('conv-1');
+
+    expect(snapshot?.staleStructuralData).toBe(true);
+  });
+
+  test('returns non-stale when snapshots have coordinateSemanticsVersion 2', async () => {
+    prisma.conversation.findUnique = async () => ({
+      modelSnapshot: { dimension: 3, metadata: { inferredType: 'frame', coordinateSemanticsVersion: 2 } },
+      resultSnapshot: null,
+      latestResult: null,
+    });
+
+    const svc = new ConversationService();
+    const snapshot = await svc.getConversationSnapshot('conv-2');
+
+    expect(snapshot?.staleStructuralData).toBe(false);
+  });
+
+  test('returns non-stale when all snapshots have unknown inferredType', async () => {
+    prisma.conversation.findUnique = async () => ({
+      modelSnapshot: { dimension: 3, metadata: { inferredType: 'unknown' } },
+      resultSnapshot: null,
+      latestResult: null,
+    });
+
+    const svc = new ConversationService();
+    const snapshot = await svc.getConversationSnapshot('conv-3');
+
+    expect(snapshot?.staleStructuralData).toBe(false);
+  });
+
+  test('returns non-stale when conversation has no structural snapshots', async () => {
+    prisma.conversation.findUnique = async () => ({
+      modelSnapshot: null,
+      resultSnapshot: null,
+      latestResult: { success: true },
+    });
+
+    const svc = new ConversationService();
+    const snapshot = await svc.getConversationSnapshot('conv-4');
+
+    expect(snapshot?.staleStructuralData).toBe(false);
+  });
 });

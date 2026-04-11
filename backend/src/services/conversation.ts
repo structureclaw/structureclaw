@@ -2,6 +2,23 @@ import { prisma } from '../utils/database.js';
 import type { JsonValue } from '../utils/json.js';
 import { resolveLocale, type AppLocale } from './locale.js';
 
+/**
+ * Checks whether a structural payload (model snapshot, result snapshot, or latest result)
+ * was created before the z-up migration. Returns true when:
+ * - The payload has a structural inferredType (not 'unknown' or missing)
+ * - The payload does NOT have coordinateSemanticsVersion === 2
+ */
+export function isStaleStructuralPayload(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object') return false;
+  const record = payload as Record<string, unknown>;
+  const metadata = record.metadata && typeof record.metadata === 'object'
+    ? record.metadata as Record<string, unknown>
+    : null;
+  const inferredType = typeof metadata?.inferredType === 'string' ? metadata.inferredType : undefined;
+  if (!inferredType || inferredType === 'unknown') return false;
+  return metadata?.coordinateSemanticsVersion !== 2;
+}
+
 function getDefaultConversationTitle(locale: AppLocale): string {
   return locale === 'zh' ? '新对话' : 'New Conversation';
 }
@@ -89,6 +106,7 @@ export class ConversationService {
     modelSnapshot?: JsonValue | null;
     resultSnapshot?: JsonValue | null;
     latestResult?: JsonValue | null;
+    staleStructuralData?: boolean;
   } | null> {
     const conversation = await prisma.conversation.findUnique({
       where: { id: conversationId },
@@ -101,10 +119,16 @@ export class ConversationService {
 
     if (!conversation) return null;
 
+    const staleStructuralData =
+      isStaleStructuralPayload(conversation.modelSnapshot)
+      || isStaleStructuralPayload(conversation.resultSnapshot)
+      || isStaleStructuralPayload(conversation.latestResult);
+
     return {
       modelSnapshot: conversation.modelSnapshot,
       resultSnapshot: conversation.resultSnapshot,
       latestResult: conversation.latestResult,
+      staleStructuralData,
     };
   }
 }

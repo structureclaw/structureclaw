@@ -834,6 +834,26 @@ export class AgentService {
       return undefined;
     }
 
+    // Invalidate legacy in-memory sessions where a structural model exists but was
+    // created before the z-up migration (coordinateSemanticsVersion !== 2).
+    // Only check latestModel since coordinateSemanticsVersion is stamped on the
+    // model metadata, not on the draft state.
+    if (session.latestModel) {
+      const modelMeta = session.latestModel.metadata && typeof session.latestModel.metadata === 'object'
+        ? session.latestModel.metadata as Record<string, unknown>
+        : null;
+      const inferredType = typeof modelMeta?.inferredType === 'string' ? modelMeta.inferredType : undefined;
+      if (inferredType && inferredType !== 'unknown' && modelMeta?.coordinateSemanticsVersion !== 2) {
+        session.draft = undefined;
+        session.structuralTypeMatch = undefined;
+        session.latestModel = undefined;
+        session.updatedAt = Date.now();
+        if (conversationId?.trim()) {
+          await this.setInteractionSession(conversationId.trim(), session);
+        }
+      }
+    }
+
     if (this.hasEmptySkillSelection(skillIds)) {
       session.draft = undefined;
       session.structuralTypeMatch = undefined;
