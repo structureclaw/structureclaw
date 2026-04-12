@@ -1,14 +1,13 @@
 import { prisma } from '../utils/database.js';
 import type { JsonValue } from '../utils/json.js';
+import { STRUCTURAL_COORDINATE_SEMANTICS } from '../agent-runtime/coordinate-semantics.js';
 import { resolveLocale, type AppLocale } from './locale.js';
-
-const CANONICAL_COORDINATE_SEMANTICS = 'global-z-up';
 
 /**
  * Checks whether a structural payload (model snapshot, result snapshot, or latest result)
  * was created before the z-up migration. Returns true when:
  * - The payload has a structural inferredType (not 'unknown' or missing)
- * - The payload does NOT have coordinateSemantics === 'global-z-up'
+ * - The payload does NOT have coordinateSemantics === canonical z-up semantics
  */
 function getStructuralMetadata(payload: unknown): Record<string, unknown> | null {
   if (!payload || typeof payload !== 'object') return null;
@@ -30,7 +29,7 @@ export function isStaleStructuralPayload(payload: unknown): boolean {
   const metadata = getStructuralMetadata(payload);
   const inferredType = typeof metadata?.inferredType === 'string' ? metadata.inferredType : undefined;
   if (!inferredType || inferredType === 'unknown') return false;
-  return metadata?.coordinateSemantics !== CANONICAL_COORDINATE_SEMANTICS;
+  return metadata?.coordinateSemantics !== STRUCTURAL_COORDINATE_SEMANTICS;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -106,13 +105,13 @@ function repairGenericLatestResult(latestResult: JsonValue | null): JsonValue | 
   }
 
   const currentMetadata = asRecord(model?.metadata);
-  if (currentMetadata?.coordinateSemantics === CANONICAL_COORDINATE_SEMANTICS) {
+  if (currentMetadata?.coordinateSemantics === STRUCTURAL_COORDINATE_SEMANTICS) {
     return latestResult;
   }
 
   const nextMetadata: Record<string, unknown> = {
     ...(currentMetadata || {}),
-    coordinateSemantics: CANONICAL_COORDINATE_SEMANTICS,
+    coordinateSemantics: STRUCTURAL_COORDINATE_SEMANTICS,
     frameDimension:
       currentMetadata?.frameDimension === '2d' || currentMetadata?.frameDimension === '3d'
         ? currentMetadata.frameDimension
@@ -137,12 +136,12 @@ function repairVisualizationSnapshot(
   model: Record<string, unknown> | null,
 ): JsonValue | null {
   const snapshotRecord = asRecord(snapshot);
-  if (!hasSnapshotGeometry(snapshotRecord) || snapshotRecord?.coordinateSemantics === CANONICAL_COORDINATE_SEMANTICS) {
+  if (!hasSnapshotGeometry(snapshotRecord) || snapshotRecord?.coordinateSemantics === STRUCTURAL_COORDINATE_SEMANTICS) {
     return snapshot;
   }
 
   const metadata = asRecord(model?.metadata);
-  if (metadata?.coordinateSemantics !== CANONICAL_COORDINATE_SEMANTICS) {
+  if (metadata?.coordinateSemantics !== STRUCTURAL_COORDINATE_SEMANTICS) {
     return snapshot;
   }
 
@@ -153,7 +152,7 @@ function repairVisualizationSnapshot(
 
   return {
     ...snapshotRecord,
-    coordinateSemantics: CANONICAL_COORDINATE_SEMANTICS,
+    coordinateSemantics: STRUCTURAL_COORDINATE_SEMANTICS,
   } as JsonValue;
 }
 

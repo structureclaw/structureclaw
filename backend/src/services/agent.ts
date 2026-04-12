@@ -38,6 +38,7 @@ import { executeRunCodeCheckStep } from '../agent-tools/builtin/run-code-check.j
 import { executeUpdateModelExecutionStep } from '../agent-tools/builtin/update-model.js';
 // executeValidateModelStep is now accessed via agent-validation.ts
 import { buildTurnContext, type HandlerDeps, type RouteDecision } from './agent-context.js';
+import { STRUCTURAL_COORDINATE_SEMANTICS } from '../agent-runtime/coordinate-semantics.js';
 import { handleChat } from './agent-handlers/index.js';
 import {
   getInteractionSession as getInteractionSessionFromStore,
@@ -839,7 +840,7 @@ export class AgentService {
       session.draft
       && draftInferredType
       && draftInferredType !== 'unknown'
-      && session.draft.coordinateSemantics !== 'global-z-up'
+      && session.draft.coordinateSemantics !== STRUCTURAL_COORDINATE_SEMANTICS
     );
 
     const modelMeta = session.latestModel?.metadata && typeof session.latestModel.metadata === 'object'
@@ -850,7 +851,7 @@ export class AgentService {
       session.latestModel
       && modelInferredType
       && modelInferredType !== 'unknown'
-      && modelMeta?.coordinateSemantics !== 'global-z-up'
+      && modelMeta?.coordinateSemantics !== STRUCTURAL_COORDINATE_SEMANTICS
     );
 
     if (draftIsStale || modelIsStale) {
