@@ -255,13 +255,14 @@ def _compute_utilization_overrides(
                 - sigma_axial * sigma_bending
                 + 3 * tau ** 2
             ) ** 0.5
-            computed['折算应力'] = eq / float(f)
+            beta1 = elem.get('beta1', 1.0)
+            computed['折算应力'] = eq / (float(beta1) * float(f))
         except (ZeroDivisionError, ValueError, TypeError):
             pass
 
-    # Overall beam stability: |Mx| / (phi * Wnx * f)
+    # Overall beam stability: |Mx| / (phi_b * Wnx * f)
     if '整体稳定' not in per_elem:
-        phi = elem.get('phi')
+        phi = elem.get('phi_b') or elem.get('phi')
         if phi is not None and Wnx is not None and f is not None and Mx is not None:
             try:
                 computed['整体稳定'] = abs(float(Mx)) / (
@@ -270,9 +271,9 @@ def _compute_utilization_overrides(
             except (ZeroDivisionError, ValueError, TypeError):
                 pass
 
-    # Axial compression stability: |N| / (phi * A * f)
+    # Axial compression stability: |N| / (phi_axial * A * f)
     if '轴压稳定' not in per_elem:
-        phi = elem.get('phi')
+        phi = elem.get('phi_axial') or elem.get('phi')
         if phi is not None and A is not None and f is not None and N is not None:
             try:
                 computed['轴压稳定'] = abs(float(N)) / (float(phi) * float(A) * float(f))
@@ -303,7 +304,9 @@ def _compute_utilization_overrides(
 
     # Deflection: f_max / (L / n)  — only when deflectionLimitN explicitly provided
     if '挠度' not in per_elem:
-        f_max = forces.get('deflection') or elem.get('deflection')
+        f_max = forces.get('deflection')
+        if f_max is None:
+            f_max = elem.get('deflection')
         L = elem.get('length')
         n_limit = elem.get('deflectionLimitN')
         if f_max is not None and L is not None and n_limit is not None:
@@ -342,6 +345,7 @@ def _check_beam(checker: Any, elem_id: str, context: Dict[str, Any]) -> List[Dic
             'chapter': '第10章 正常使用极限状态',
             'name': '刚度验算',
             'items': [
+                checker._calc_item(elem_id, '长细比', context, 'GB50017-2017 10.1.1', 'λ = l₀/i ≤ [λ]', 1.0),
                 checker._calc_item(elem_id, '挠度', context, 'GB50017-2017 10.2.1', 'f_max ≤ L/n', 1.0),
             ],
         },
@@ -464,12 +468,13 @@ def check_element(checker: Any, elem_id: str, context: Dict[str, Any]) -> Dict[s
         merged_ctx = context
 
     builder = _BUILDERS.get(element_type, _check_beam)
+    normalized_type = element_type if element_type in _BUILDERS else 'beam'
     checks = builder(checker, elem_id, merged_ctx)
-    result = checker._build_element_result(elem_id, element_type, checks, CODE_VERSION)
+    result = checker._build_element_result(elem_id, normalized_type, checks, CODE_VERSION)
     result['chapters'] = _build_chapter_summaries(checks)
     result['chapterCount'] = len(result['chapters'])
     result['elementContext'] = {
-        'type': element_type,
+        'type': normalized_type,
         'section': element_context.get('section'),
         'material': element_context.get('material'),
     }
