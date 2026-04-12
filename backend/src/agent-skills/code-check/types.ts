@@ -5,5 +5,7 @@ export interface CodeCheckDomainInput extends Record<string, unknown> {
   context: {
     analysisSummary: Record<string, unknown>;
     utilizationByElement: Record<string, unknown>;
+    elementContextById?: Record<string, unknown>;
+    modelSummary?: Record<string, unknown>;
   };
 }

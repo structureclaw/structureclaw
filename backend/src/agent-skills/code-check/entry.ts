@@ -46,6 +46,57 @@ export function extractUtilizationByElement(parameters: Record<string, unknown>)
   return {};
 }
 
+export function extractElementContextById(model: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!model) {
+    return {};
+  }
+
+  const elements = model['elements'];
+  if (!Array.isArray(elements)) {
+    return {};
+  }
+
+  return elements.reduce<Record<string, unknown>>((acc, item) => {
+    if (!item || typeof item !== 'object') {
+      return acc;
+    }
+    const element = item as Record<string, unknown>;
+    const id = typeof element['id'] === 'string' ? element['id'] : undefined;
+    if (!id) {
+      return acc;
+    }
+
+    acc[id] = {
+      id,
+      type: element['type'],
+      material: element['material'],
+      section: element['section'],
+      startNode: element['startNode'],
+      endNode: element['endNode'],
+      metadata: element['metadata'],
+    };
+    return acc;
+  }, {});
+}
+
+export function extractModelSummary(model: Record<string, unknown> | undefined): Record<string, unknown> {
+  if (!model) {
+    return {};
+  }
+
+  const metadata = model['metadata'];
+  const metadataObject = metadata && typeof metadata === 'object' && !Array.isArray(metadata)
+    ? metadata as Record<string, unknown>
+    : {};
+
+  return {
+    modelType: model['type'] ?? metadataObject['modelType'] ?? null,
+    elementCount: extractElementIds(model).length,
+    units: metadataObject['units'] ?? null,
+    designCode: metadataObject['designCode'] ?? null,
+  };
+}
+
 export function buildCodeCheckInput(options: {
   traceId: string;
   designCode: string;
@@ -61,6 +112,8 @@ export function buildCodeCheckInput(options: {
     context: {
       analysisSummary: extractAnalysisSummary(options.analysis),
       utilizationByElement: extractUtilizationByElement(options.analysisParameters),
+      elementContextById: extractElementContextById(options.model),
+      modelSummary: extractModelSummary(options.model),
     },
   };
 }
