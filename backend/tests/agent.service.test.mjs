@@ -1,4 +1,4 @@
-import { describe, expect, test } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, test } from '@jest/globals';
 import fs from 'node:fs';
 import { AgentService } from '../dist/services/agent.js';
 import { prisma } from '../dist/utils/database.js';
@@ -162,7 +162,56 @@ function createPlannerHttpError(status, data, message = 'planner request failed'
   return error;
 }
 
+const prismaMethodDefaults = {
+  conversationCreate: prisma.conversation.create,
+  conversationFindUnique: prisma.conversation.findUnique,
+  messageCreateMany: prisma.message.createMany,
+  messageFindMany: prisma.message.findMany,
+};
+
+let createdConversationCount = 0;
+
+function installConversationPersistenceStubs() {
+  prisma.conversation.create = async ({ data }) => {
+    createdConversationCount += 1;
+    return {
+      id: `conv-test-${createdConversationCount}`,
+      title: data?.title ?? null,
+      type: data?.type ?? 'general',
+      userId: data?.userId ?? null,
+    };
+  };
+
+  prisma.conversation.findUnique = async ({ where }) => {
+    if (!where?.id) {
+      return null;
+    }
+    return { id: where.id };
+  };
+
+  prisma.message.createMany = async ({ data }) => ({
+    count: Array.isArray(data) ? data.length : 0,
+  });
+
+  prisma.message.findMany = async () => [];
+}
+
+function restoreConversationPersistenceStubs() {
+  prisma.conversation.create = prismaMethodDefaults.conversationCreate;
+  prisma.conversation.findUnique = prismaMethodDefaults.conversationFindUnique;
+  prisma.message.createMany = prismaMethodDefaults.messageCreateMany;
+  prisma.message.findMany = prismaMethodDefaults.messageFindMany;
+}
+
 describe('AgentService orchestration', () => {
+  beforeEach(() => {
+    installConversationPersistenceStubs();
+  });
+
+  afterEach(() => {
+    restoreConversationPersistenceStubs();
+  });
+
   test('should not seed an empty interaction session with a default unknown draft', async () => {
     const svc = createServiceWithDefaultSkills();
 
