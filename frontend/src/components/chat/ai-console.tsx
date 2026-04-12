@@ -745,8 +745,8 @@ function sanitizePersistedConversation(archived: PersistedConversation): Persist
     toModelFromVisualizationSnapshot(archived.modelVisualizationSnapshot || preferredStoredResultSnapshot),
   )
   const repairedResultSnapshot = pickPreferredResultSnapshot(preferredStoredResultSnapshot, synthesizedResultSnapshot)
-  const staleStructuralData = Boolean(archived.staleStructuralData)
-    || isStaleVisualizationSnapshot(archived.modelVisualizationSnapshot)
+  const staleStructuralData =
+    isStaleVisualizationSnapshot(archived.modelVisualizationSnapshot)
     || isStaleVisualizationSnapshot(repairedResultSnapshot)
     || isStaleStructuralResult(normalizedLatestResult)
 
