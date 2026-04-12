@@ -80,8 +80,8 @@ export const config = {
   // 日志级别
   logLevel: process.env.LOG_LEVEL || 'info',
 
-  // LLM 调用日志
-  llmLogEnabled: process.env.LLM_LOG_ENABLED !== 'false',
+  // LLM 调用日志（默认关闭，设置 LLM_LOG_ENABLED=true 开启；日志含完整 prompt/response，注意隐私）
+  llmLogEnabled: process.env.LLM_LOG_ENABLED === 'true',
   llmLogDir: process.env.LLM_LOG_DIR || '',
 };
 

@@ -378,6 +378,12 @@ export interface AgentStreamChunk {
   error?: string;
 }
 
+/** Returns true when a model object has non-empty materials and sections arrays. */
+function hasCompleteMaterialsAndSections(m: Record<string, unknown> | undefined): boolean {
+  return Boolean(m && Array.isArray(m.materials) && (m.materials as unknown[]).length > 0
+    && Array.isArray(m.sections) && (m.sections as unknown[]).length > 0);
+}
+
 export class AgentService {
   public engineClient: LocalAnalysisEngineClient;
   public structureProtocolClient = createLocalStructureProtocolClient();
@@ -581,10 +587,7 @@ export class AgentService {
       workingSession.userApprovedAutoDecide = false;
     }
     const contextModel = params.context?.model;
-    const isCompleteModel = (m: Record<string, unknown> | undefined): boolean =>
-      Boolean(m && Array.isArray(m.materials) && (m.materials as unknown[]).length > 0
-        && Array.isArray(m.sections) && (m.sections as unknown[]).length > 0);
-    const modelInput = (isCompleteModel(contextModel) ? contextModel : undefined) || session?.latestModel || contextModel;
+    const modelInput = (hasCompleteMaterialsAndSections(contextModel) ? contextModel : undefined) || session?.latestModel || contextModel;
     const activeSkillIds = await this.runtimeBinder.resolveActiveDomainSkillIds({
       selectedSkillIds: skillIds,
       workingSession,
@@ -1985,14 +1988,11 @@ export class AgentService {
       });
     }
 
-    const isCompleteExecutableModel = (m: Record<string, unknown> | undefined): boolean =>
-      Boolean(m && Array.isArray(m.materials) && (m.materials as unknown[]).length > 0
-        && Array.isArray(m.sections) && (m.sections as unknown[]).length > 0);
     let candidateModel = modelInput || workingSession.latestModel;
-    if (candidateModel && !isCompleteExecutableModel(candidateModel) && workingSession.draft) {
+    if (candidateModel && !hasCompleteMaterialsAndSections(candidateModel) && workingSession.draft) {
       try {
         const rebuilt = await this.skillRuntime.buildModel(workingSession.draft, skillIds);
-        if (isCompleteExecutableModel(rebuilt)) {
+        if (hasCompleteMaterialsAndSections(rebuilt)) {
           candidateModel = rebuilt;
         }
       } catch {

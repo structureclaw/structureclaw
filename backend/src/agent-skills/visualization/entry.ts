@@ -33,6 +33,29 @@ export function extractVisualizationHints(analysis: unknown): VisualizationHints
 // ---------------------------------------------------------------------------
 
 /**
+ * Looks up a nested object property from two candidate parent keys.
+ * Returns the first non-array object found, or null.
+ */
+function pickNestedObject(
+	data: Record<string, unknown>,
+	primaryKey: string,
+	primaryField: string,
+	fallbackKey: string,
+	fallbackField: string,
+): Record<string, unknown> | null {
+	for (const [parentKey, fieldKey] of [[primaryKey, primaryField], [fallbackKey, fallbackField]] as const) {
+		const parent = data[parentKey];
+		if (parent && typeof parent === 'object') {
+			const inner = (parent as Record<string, unknown>)[fieldKey];
+			if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
+				return inner as Record<string, unknown>;
+			}
+		}
+	}
+	return null;
+}
+
+/**
  * Extracts per-member utilization ratios from analysis data.
  *
  * Expected shape in analysis.data:
@@ -40,21 +63,7 @@ export function extractVisualizationHints(analysis: unknown): VisualizationHints
  *   OR codeCheck.memberUtilization: Record<string, number>
  */
 function extractMemberUtilizationMap(data: Record<string, unknown>): Record<string, number> | null {
-	const steelCheck = data['steelCheck'];
-	if (steelCheck && typeof steelCheck === 'object') {
-		const inner = (steelCheck as Record<string, unknown>)['memberUtilization'];
-		if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
-			return inner as Record<string, number>;
-		}
-	}
-	const codeCheck = data['codeCheck'];
-	if (codeCheck && typeof codeCheck === 'object') {
-		const inner = (codeCheck as Record<string, unknown>)['memberUtilization'];
-		if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
-			return inner as Record<string, number>;
-		}
-	}
-	return null;
+	return pickNestedObject(data, 'steelCheck', 'memberUtilization', 'codeCheck', 'memberUtilization') as Record<string, number> | null;
 }
 
 /**
@@ -65,21 +74,7 @@ function extractMemberUtilizationMap(data: Record<string, unknown>): Record<stri
  *   OR steelCheck.connectionForces: Record<string, { Fx, Fy, Fz, Mx, My, Mz }>
  */
 function extractConnectionForceMap(data: Record<string, unknown>): Record<string, ForceVector6> | null {
-	const connectionCheck = data['connectionCheck'];
-	if (connectionCheck && typeof connectionCheck === 'object') {
-		const inner = (connectionCheck as Record<string, unknown>)['nodeForces'];
-		if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
-			return inner as Record<string, ForceVector6>;
-		}
-	}
-	const steelCheck = data['steelCheck'];
-	if (steelCheck && typeof steelCheck === 'object') {
-		const inner = (steelCheck as Record<string, unknown>)['connectionForces'];
-		if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
-			return inner as Record<string, ForceVector6>;
-		}
-	}
-	return null;
+	return pickNestedObject(data, 'connectionCheck', 'nodeForces', 'steelCheck', 'connectionForces') as Record<string, ForceVector6> | null;
 }
 
 /**
@@ -97,18 +92,13 @@ function extractBucklingModes(data: Record<string, unknown>): BucklingMode[] | n
 	if (!Array.isArray(modes) || modes.length === 0) {
 		return null;
 	}
-	// Validate and coerce each entry; skip malformed entries silently.
-	const result: BucklingMode[] = [];
-	for (const entry of modes) {
-		if (
-			entry &&
+	const result = (modes as unknown[]).filter(
+		(entry): entry is BucklingMode =>
+			entry !== null &&
 			typeof entry === 'object' &&
 			typeof (entry as Record<string, unknown>)['lambda'] === 'number' &&
-			(entry as Record<string, unknown>)['modeShape'] &&
-			typeof (entry as Record<string, unknown>)['modeShape'] === 'object'
-		) {
-			result.push(entry as BucklingMode);
-		}
-	}
+			(entry as Record<string, unknown>)['modeShape'] !== null &&
+			typeof (entry as Record<string, unknown>)['modeShape'] === 'object',
+	);
 	return result.length > 0 ? result : null;
 }

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { formatNumber } from '@/lib/utils'
+import { getBucklingModes } from './extensions'
 import { VisualizationModalShell } from './modal-shell'
 import { StructuralScene } from './structural-scene'
 import type { SceneExportHandle } from './structural-scene'
@@ -104,12 +105,14 @@ export function StructuralVisualizationModal({
     setSelectedNodeId(null)
     setSelectedElementId(null)
     setSelectedLoadIndex(null)
+    setBucklingModeIndex(0)
   }, [open, snapshot])
 
   const placeholderTitle = useMemo(
     () => snapshot?.title || t('visualizationTitle'),
     [snapshot, t]
   )
+  const bucklingModes = useMemo(() => getBucklingModes(snapshot), [snapshot])
   const activeCase = useMemo<VisualizationCase | null>(
     () => snapshot?.cases.find((item) => item.id === activeCaseId) || snapshot?.cases[0] || null,
     [activeCaseId, snapshot]
@@ -179,11 +182,11 @@ export function StructuralVisualizationModal({
               {snapshot.statusMessage}
             </div>
           ) : null}
-          {view === 'buckling' && snapshot?.bucklingModes?.length ? (
+          {view === 'buckling' && bucklingModes.length ? (
             <div className="rounded-2xl border border-border/70 bg-card/80 p-4 dark:border-white/10 dark:bg-slate-950/40">
               <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('visualizationViewBuckling')}</div>
               <div className="mt-2 flex flex-wrap gap-2">
-                {snapshot.bucklingModes.map((mode, index) => (
+                {bucklingModes.map((mode, index) => (
                   <button
                     key={index}
                     className={`rounded-full border px-3 py-1.5 text-xs transition ${bucklingModeIndex === index ? 'border-violet-400/50 bg-violet-400/16 text-foreground' : 'border-border/70 bg-background/70 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-white/5'}`}
@@ -411,13 +414,12 @@ export function StructuralVisualizationModal({
                   if (!snapshot) return
                   setIsExporting(true)
                   const filename = `${snapshot.title.replace(/\s+/g, '_')}_${activeCase.id}`
-                  exportRef.current?.exportPng(filename, scale)
-                  setTimeout(() => setIsExporting(false), 1200)
+                  exportRef.current?.exportPng(filename, scale, () => setIsExporting(false))
                 }}
                 title={`${t('visualizationExportPng')} ${scale}x`}
                 type="button"
               >
-                {isExporting ? '⏳' : '⬇️'} {t('visualizationExportPng')} {scale}x
+                <span aria-hidden="true">{isExporting ? '…' : '↓'}</span> {t('visualizationExportPng')} {scale}x
               </button>
             ))}
           </div>
@@ -438,6 +440,7 @@ export function StructuralVisualizationModal({
               resetToken={resetToken}
               plane={plane}
               selectedElementId={selectedElementId}
+              selectedLoadIndex={selectedLoadIndex}
               selectedNodeId={selectedNodeId}
               showElementLabels={showElementLabels}
               showLegend={showLegend}
