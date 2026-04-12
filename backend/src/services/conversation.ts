@@ -2,6 +2,8 @@ import { prisma } from '../utils/database.js';
 import type { JsonValue } from '../utils/json.js';
 import { resolveLocale, type AppLocale } from './locale.js';
 
+const CANONICAL_COORDINATE_SEMANTICS = 'global-z-up';
+
 /**
  * Checks whether a structural payload (model snapshot, result snapshot, or latest result)
  * was created before the z-up migration. Returns true when:
@@ -28,7 +30,131 @@ export function isStaleStructuralPayload(payload: unknown): boolean {
   const metadata = getStructuralMetadata(payload);
   const inferredType = typeof metadata?.inferredType === 'string' ? metadata.inferredType : undefined;
   if (!inferredType || inferredType === 'unknown') return false;
-  return metadata?.coordinateSemantics !== 'global-z-up';
+  return metadata?.coordinateSemantics !== CANONICAL_COORDINATE_SEMANTICS;
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function hasModelGeometry(model: Record<string, unknown> | null): boolean {
+  return Boolean(
+    model
+    && Array.isArray(model.nodes)
+    && model.nodes.length > 0
+    && Array.isArray(model.elements)
+    && model.elements.length > 0
+  );
+}
+
+function hasSnapshotGeometry(snapshot: Record<string, unknown> | null): boolean {
+  return Boolean(
+    snapshot
+    && Array.isArray(snapshot.nodes)
+    && snapshot.nodes.length > 0
+    && Array.isArray(snapshot.elements)
+    && snapshot.elements.length > 0
+  );
+}
+
+function toFiniteNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) {
+      return parsed;
+    }
+  }
+  return null;
+}
+
+function inferFrameDimensionFromModel(model: Record<string, unknown>): '2d' | '3d' {
+  const nodes = Array.isArray(model.nodes) ? model.nodes : [];
+  const yValues = new Set<string>();
+  const zValues = new Set<string>();
+
+  nodes.forEach((node) => {
+    const record = asRecord(node);
+    const y = toFiniteNumber(record?.y);
+    const z = toFiniteNumber(record?.z);
+    if (y !== null) {
+      yValues.add(y.toFixed(6));
+    }
+    if (z !== null) {
+      zValues.add(z.toFixed(6));
+    }
+  });
+
+  return yValues.size > 1 && zValues.size > 1 ? '3d' : '2d';
+}
+
+function repairGenericLatestResult(latestResult: JsonValue | null): JsonValue | null {
+  const latestResultRecord = asRecord(latestResult);
+  const routing = asRecord(latestResultRecord?.routing);
+  if (routing?.structuralSkillId !== 'generic') {
+    return latestResult;
+  }
+
+  const model = asRecord(latestResultRecord?.model);
+  if (!hasModelGeometry(model)) {
+    return latestResult;
+  }
+
+  const currentMetadata = asRecord(model?.metadata);
+  if (currentMetadata?.coordinateSemantics === CANONICAL_COORDINATE_SEMANTICS) {
+    return latestResult;
+  }
+
+  const nextMetadata: Record<string, unknown> = {
+    ...(currentMetadata || {}),
+    coordinateSemantics: CANONICAL_COORDINATE_SEMANTICS,
+    frameDimension:
+      currentMetadata?.frameDimension === '2d' || currentMetadata?.frameDimension === '3d'
+        ? currentMetadata.frameDimension
+        : inferFrameDimensionFromModel(model!),
+  };
+
+  if (typeof nextMetadata.source !== 'string' || nextMetadata.source.trim().length === 0) {
+    nextMetadata.source = 'generic-llm-draft';
+  }
+
+  return {
+    ...latestResultRecord,
+    model: {
+      ...model,
+      metadata: nextMetadata,
+    },
+  } as JsonValue;
+}
+
+function repairVisualizationSnapshot(
+  snapshot: JsonValue | null,
+  model: Record<string, unknown> | null,
+): JsonValue | null {
+  const snapshotRecord = asRecord(snapshot);
+  if (!hasSnapshotGeometry(snapshotRecord) || snapshotRecord?.coordinateSemantics === CANONICAL_COORDINATE_SEMANTICS) {
+    return snapshot;
+  }
+
+  const metadata = asRecord(model?.metadata);
+  if (metadata?.coordinateSemantics !== CANONICAL_COORDINATE_SEMANTICS) {
+    return snapshot;
+  }
+
+  const expectedDimension = metadata.frameDimension === '3d' ? 3 : 2;
+  if (snapshotRecord?.dimension !== expectedDimension) {
+    return snapshot;
+  }
+
+  return {
+    ...snapshotRecord,
+    coordinateSemantics: CANONICAL_COORDINATE_SEMANTICS,
+  } as JsonValue;
 }
 
 function getDefaultConversationTitle(locale: AppLocale): string {
@@ -131,15 +257,37 @@ export class ConversationService {
 
     if (!conversation) return null;
 
+    const repairedLatestResult = repairGenericLatestResult(conversation.latestResult);
+    const repairedModel = asRecord(asRecord(repairedLatestResult)?.model);
+    const repairedModelSnapshot = repairVisualizationSnapshot(conversation.modelSnapshot, repairedModel);
+    const repairedResultSnapshot = repairVisualizationSnapshot(conversation.resultSnapshot, repairedModel);
+
+    const repaired =
+      repairedLatestResult !== conversation.latestResult
+      || repairedModelSnapshot !== conversation.modelSnapshot
+      || repairedResultSnapshot !== conversation.resultSnapshot;
+
+    if (repaired) {
+      await prisma.conversation.update({
+        where: { id: conversationId },
+        data: {
+          updatedAt: new Date(),
+          modelSnapshot: repairedModelSnapshot,
+          resultSnapshot: repairedResultSnapshot,
+          latestResult: repairedLatestResult,
+        } as never,
+      });
+    }
+
     const staleStructuralData =
-      isStaleStructuralPayload(conversation.modelSnapshot)
-      || isStaleStructuralPayload(conversation.resultSnapshot)
-      || isStaleStructuralPayload(conversation.latestResult);
+      isStaleStructuralPayload(repairedModelSnapshot)
+      || isStaleStructuralPayload(repairedResultSnapshot)
+      || isStaleStructuralPayload(repairedLatestResult);
 
     return {
-      modelSnapshot: conversation.modelSnapshot,
-      resultSnapshot: conversation.resultSnapshot,
-      latestResult: conversation.latestResult,
+      modelSnapshot: repairedModelSnapshot,
+      resultSnapshot: repairedResultSnapshot,
+      latestResult: repairedLatestResult,
       staleStructuralData,
     };
   }
