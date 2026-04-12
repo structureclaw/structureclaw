@@ -959,7 +959,7 @@ describe('buildModel - coordinate semantics (z-up migration)', () => {
     expect(model.nodes[0]).toMatchObject({ x: 0, y: 0, z: 0 });
     expect(model.nodes[2]).toMatchObject({ x: 0, y: 0, z: 3 });
     expect(model.load_cases[0].loads[0]).toMatchObject({ fx: 3, fz: -6 });
-    expect(model.metadata.coordinateSemantics).toBe('global-z-up-v2');
+    expect(model.metadata.coordinateSemantics).toBe('global-z-up');
   });
 
   it('should build 3d frame coordinates with y horizontal and z vertical', () => {

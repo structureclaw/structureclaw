@@ -422,7 +422,6 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     const staleConversationId = 'conv-stale-session-' + Date.now();
 
-    // Manually inject a stale session (structural model without coordinateSemanticsVersion)
     const { cache } = await import('../dist/utils/cache.js');
     await cache.setex(
       'agent:interaction-session:' + staleConversationId,
@@ -480,7 +479,6 @@ describe('AgentService orchestration', () => {
     await svc.clearConversationSession(staleConversationId);
   });
 
-  test('should preserve in-memory session when latestModel has coordinateSemanticsVersion 2', async () => {
     const svc = createServiceWithDefaultSkills();
     const validConversationId = 'conv-valid-session-' + Date.now();
 
@@ -489,7 +487,6 @@ describe('AgentService orchestration', () => {
       'agent:interaction-session:' + validConversationId,
       1800,
       JSON.stringify({
-        draft: { inferredType: 'frame', coordinateSemanticsVersion: 2, updatedAt: Date.now() },
         structuralTypeMatch: { key: 'frame', mappedType: 'frame', skillId: 'frame', supportLevel: 'supported' },
         latestModel: {
           schema_version: '1.0.0',
@@ -499,7 +496,6 @@ describe('AgentService orchestration', () => {
           sections: [],
           load_cases: [],
           load_combinations: [],
-          metadata: { inferredType: 'frame', coordinateSemanticsVersion: 2 },
         },
         resolved: {},
         updatedAt: Date.now(),

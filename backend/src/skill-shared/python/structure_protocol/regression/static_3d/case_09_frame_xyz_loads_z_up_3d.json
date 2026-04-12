@@ -6,7 +6,7 @@
     "model": {
       "schema_version": "1.0.0",
       "metadata": {
-        "coordinateSemantics": "global-z-up-v2",
+        "coordinateSemantics": "global-z-up",
         "elementReferenceVectors": {
           "1": [
             1.0,
@@ -19,7 +19,6 @@
             0.0
           ]
         },
-        "coordinateSemanticsVersion": 2,
         "frameDimension": "3d"
       },
       "nodes": [

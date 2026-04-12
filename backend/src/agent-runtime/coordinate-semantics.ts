@@ -1,17 +1,14 @@
-export const STRUCTURAL_COORDINATE_SEMANTICS_VERSION = 2;
-export const STRUCTURAL_COORDINATE_SEMANTICS = 'global-z-up-v2' as const;
+export const STRUCTURAL_COORDINATE_SEMANTICS = 'global-z-up' as const;
 
 export function isCanonicalVerticalAxis(axis: 'x' | 'y' | 'z') {
   return axis === 'z';
 }
 
 export function stampDraftSemantics<T extends Record<string, unknown>>(draft: T): T & {
-  coordinateSemantics: 'global-z-up-v2';
-  coordinateSemanticsVersion: 2;
+  coordinateSemantics: 'global-z-up';
 } {
   return {
     ...draft,
     coordinateSemantics: STRUCTURAL_COORDINATE_SEMANTICS,
-    coordinateSemanticsVersion: STRUCTURAL_COORDINATE_SEMANTICS_VERSION,
   };
 }

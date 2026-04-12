@@ -23,7 +23,7 @@ function makeSnapshot(overrides: Partial<VisualizationSnapshot> = {}): Visualiza
 describe('normalizeVisualizationSnapshot', () => {
   it('returns the original reference for canonical z-up 2d snapshots', () => {
     const snapshot = makeSnapshot({
-      coordinateSemantics: 'global-z-up-v2',
+      coordinateSemantics: 'global-z-up',
       loads: [{ nodeId: '1', kind: 'nodal', vector: { x: 0, y: 0, z: -10 } }],
     })
 
@@ -32,7 +32,7 @@ describe('normalizeVisualizationSnapshot', () => {
 
   it('returns the original reference for canonical z-up 3d snapshots', () => {
     const snapshot = makeSnapshot({
-      coordinateSemantics: 'global-z-up-v2',
+      coordinateSemantics: 'global-z-up',
       dimension: 3,
       plane: 'yz',
       loads: [{ nodeId: '1', kind: 'nodal', vector: { x: 1, y: 2, z: 3 } }],

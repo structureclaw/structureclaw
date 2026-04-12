@@ -44,8 +44,7 @@ const mockSkills = [
 const sampleModelJson = JSON.stringify({
   schema_version: '1.0.0',
   metadata: {
-    coordinateSemantics: 'global-z-up-v2',
-    coordinateSemanticsVersion: 2,
+    coordinateSemantics: 'global-z-up',
     frameDimension: '2d',
     inferredType: 'frame',
   },
@@ -120,7 +119,7 @@ const archivedVisualizationSnapshot: VisualizationSnapshot = {
   source: 'result',
   dimension: 2,
   plane: 'xz',
-  coordinateSemantics: 'global-z-up-v2',
+  coordinateSemantics: 'global-z-up',
   availableViews: ['model', 'deformed', 'forces', 'reactions'],
   defaultCaseId: 'result',
   nodes: [

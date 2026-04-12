@@ -9,7 +9,7 @@ describe('visualization-adapter', () => {
       model: {
         schema_version: '1.0.0',
         metadata: {
-          coordinateSemantics: 'global-z-up-v2',
+          coordinateSemantics: 'global-z-up',
           frameDimension: '2d',
         },
         nodes: [
@@ -32,7 +32,7 @@ describe('visualization-adapter', () => {
     })
 
     expect(snapshot).not.toBeNull()
-    expect(snapshot?.coordinateSemantics).toBe('global-z-up-v2')
+    expect(snapshot?.coordinateSemantics).toBe('global-z-up')
     expect(snapshot?.dimension).toBe(2)
     expect(snapshot?.plane).toBe('xz')
     expect(snapshot?.loads[0]?.vector).toEqual({ x: 3, y: 0, z: -10 })
@@ -47,7 +47,7 @@ describe('visualization-adapter', () => {
       model: {
         schema_version: '1.0.0',
         metadata: {
-          coordinateSemantics: 'global-z-up-v2',
+          coordinateSemantics: 'global-z-up',
           frameDimension: '3d',
         },
         nodes: [
@@ -77,7 +77,7 @@ describe('visualization-adapter', () => {
     })
 
     expect(snapshot).not.toBeNull()
-    expect(snapshot?.coordinateSemantics).toBe('global-z-up-v2')
+    expect(snapshot?.coordinateSemantics).toBe('global-z-up')
     expect(snapshot?.dimension).toBe(3)
     expect(snapshot?.plane).toBe('xy')
     expect(snapshot?.loads[0]?.vector).toEqual({ x: 1, y: -5, z: -3 })

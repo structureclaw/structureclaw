@@ -72,7 +72,7 @@ describe('normalizeVisualizationSnapshot', () => {
 
   it('returns the same reference for canonical z-up snapshots', () => {
     const snap = makeSnapshot({
-      coordinateSemantics: 'global-z-up-v2',
+      coordinateSemantics: 'global-z-up',
       loads: [{ nodeId: 'n1', vector: { x: 0, y: 0, z: -10 } }],
     })
     expect(normalizeVisualizationSnapshot(snap)).toBe(snap)

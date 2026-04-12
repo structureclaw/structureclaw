@@ -76,8 +76,7 @@
       ],
       "load_combinations": [],
       "metadata": {
-        "coordinateSemantics": "global-z-up-v2",
-        "coordinateSemanticsVersion": 2,
+        "coordinateSemantics": "global-z-up",
         "frameDimension": "3d",
         "elementReferenceVectors": {
           "1": [

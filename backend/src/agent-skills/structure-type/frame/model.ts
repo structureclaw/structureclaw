@@ -1,7 +1,6 @@
 import { computeMissingCriticalKeys } from '../../../agent-runtime/draft-guidance.js';
 import {
   STRUCTURAL_COORDINATE_SEMANTICS,
-  STRUCTURAL_COORDINATE_SEMANTICS_VERSION,
 } from '../../../agent-runtime/coordinate-semantics.js';
 import type { DraftState } from '../../../agent-runtime/types.js';
 import { REQUIRED_KEYS } from './constants.js';
@@ -168,7 +167,6 @@ function buildFrame2dLocalModel(
     metadata: {
       ...metadata,
       coordinateSemantics: STRUCTURAL_COORDINATE_SEMANTICS,
-      coordinateSemanticsVersion: STRUCTURAL_COORDINATE_SEMANTICS_VERSION,
       baseSupport,
       material: matProps.resolvedGrade,
       columnSection: colProps.name,
@@ -292,7 +290,6 @@ function buildFrame3dLocalModel(
     metadata: {
       ...metadata,
       coordinateSemantics: STRUCTURAL_COORDINATE_SEMANTICS,
-      coordinateSemanticsVersion: STRUCTURAL_COORDINATE_SEMANTICS_VERSION,
       elementReferenceVectors,
       baseSupport,
       material: matProps.resolvedGrade,

@@ -839,7 +839,7 @@ export class AgentService {
       session.draft
       && draftInferredType
       && draftInferredType !== 'unknown'
-      && session.draft.coordinateSemanticsVersion !== 2
+      && session.draft.coordinateSemantics !== 'global-z-up'
     );
 
     const modelMeta = session.latestModel?.metadata && typeof session.latestModel.metadata === 'object'
@@ -850,7 +850,7 @@ export class AgentService {
       session.latestModel
       && modelInferredType
       && modelInferredType !== 'unknown'
-      && modelMeta?.coordinateSemanticsVersion !== 2
+      && modelMeta?.coordinateSemantics !== 'global-z-up'
     );
 
     if (draftIsStale || modelIsStale) {

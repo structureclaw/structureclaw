@@ -69,9 +69,7 @@ describe('ConversationService locale handling', () => {
     expect(snapshot?.staleStructuralData).toBe(true);
   });
 
-  test('returns non-stale when snapshots have coordinateSemanticsVersion 2', async () => {
     prisma.conversation.findUnique = async () => ({
-      modelSnapshot: { dimension: 3, metadata: { inferredType: 'frame', coordinateSemanticsVersion: 2 } },
       resultSnapshot: null,
       latestResult: null,
     });

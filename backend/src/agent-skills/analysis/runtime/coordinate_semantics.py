@@ -6,7 +6,7 @@ reference vectors) that the TypeScript model builder may embed in the
 model payload.
 """
 
-CANONICAL_COORDINATE_SEMANTICS = 'global-z-up-v2'
+CANONICAL_COORDINATE_SEMANTICS = 'global-z-up'
 
 
 def get_model_metadata(model: dict) -> dict:

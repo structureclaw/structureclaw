@@ -20,7 +20,6 @@ import {
 } from './draft-guidance.js';
 import {
   STRUCTURAL_COORDINATE_SEMANTICS,
-  STRUCTURAL_COORDINATE_SEMANTICS_VERSION,
   stampDraftSemantics,
 } from './coordinate-semantics.js';
 import type { AppLocale } from '../services/locale.js';
@@ -170,7 +169,6 @@ export function buildLegacyModel(state: DraftState): Record<string, unknown> | u
   if (model) {
     const meta = model.metadata as Record<string, unknown>;
     meta.coordinateSemantics = STRUCTURAL_COORDINATE_SEMANTICS;
-    meta.coordinateSemanticsVersion = STRUCTURAL_COORDINATE_SEMANTICS_VERSION;
   }
   return model;
 }

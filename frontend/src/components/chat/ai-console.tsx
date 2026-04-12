@@ -499,10 +499,9 @@ function toModelFromVisualizationSnapshot(snapshot?: VisualizationSnapshot | nul
     })),
   }
 
-  if (snapshot.coordinateSemantics === 'global-z-up-v2') {
+  if (snapshot.coordinateSemantics === 'global-z-up') {
     model.metadata = {
-      coordinateSemantics: 'global-z-up-v2',
-      coordinateSemanticsVersion: 2,
+      coordinateSemantics: 'global-z-up',
       frameDimension: snapshot.dimension === 3 ? '3d' : '2d',
       source: 'visualization-snapshot',
     }
@@ -701,8 +700,7 @@ function buildModelVisualizationTitle(baseTitle: string, t: (key: MessageKey) =>
   return `${baseTitle} · ${t('visualizationSourceModel')}`
 }
 
-const CANONICAL_COORDINATE_SEMANTICS = 'global-z-up-v2'
-const CANONICAL_COORDINATE_SEMANTICS_VERSION = 2
+const CANONICAL_COORDINATE_SEMANTICS = 'global-z-up'
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null
@@ -732,7 +730,7 @@ function isStaleStructuralResult(result: AgentResult | null | undefined) {
   if (inferredType === 'unknown') {
     return false
   }
-  return metadata?.coordinateSemanticsVersion !== CANONICAL_COORDINATE_SEMANTICS_VERSION
+  return metadata?.coordinateSemantics !== CANONICAL_COORDINATE_SEMANTICS
 }
 
 function sanitizePersistedConversation(archived: PersistedConversation): PersistedConversation {

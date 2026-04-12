@@ -6,7 +6,7 @@ import { resolveLocale, type AppLocale } from './locale.js';
  * Checks whether a structural payload (model snapshot, result snapshot, or latest result)
  * was created before the z-up migration. Returns true when:
  * - The payload has a structural inferredType (not 'unknown' or missing)
- * - The payload does NOT have coordinateSemanticsVersion === 2
+ * - The payload does NOT have coordinateSemantics === 'global-z-up'
  */
 function getStructuralMetadata(payload: unknown): Record<string, unknown> | null {
   if (!payload || typeof payload !== 'object') return null;
@@ -28,7 +28,7 @@ export function isStaleStructuralPayload(payload: unknown): boolean {
   const metadata = getStructuralMetadata(payload);
   const inferredType = typeof metadata?.inferredType === 'string' ? metadata.inferredType : undefined;
   if (!inferredType || inferredType === 'unknown') return false;
-  return metadata?.coordinateSemanticsVersion !== 2;
+  return metadata?.coordinateSemantics !== 'global-z-up';
 }
 
 function getDefaultConversationTitle(locale: AppLocale): string {

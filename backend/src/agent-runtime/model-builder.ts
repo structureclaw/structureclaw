@@ -1,6 +1,5 @@
 import {
   STRUCTURAL_COORDINATE_SEMANTICS,
-  STRUCTURAL_COORDINATE_SEMANTICS_VERSION,
 } from './coordinate-semantics.js';
 import type {
   DraftLoadPosition,
@@ -123,7 +122,6 @@ function buildFrame2dModel(state: DraftState, metadata: Record<string, unknown>)
     metadata: {
       ...metadata,
       coordinateSemantics: STRUCTURAL_COORDINATE_SEMANTICS,
-      coordinateSemanticsVersion: STRUCTURAL_COORDINATE_SEMANTICS_VERSION,
       baseSupport,
       storyCount: storyHeights.length,
       bayCount: bayWidths.length,
@@ -273,7 +271,6 @@ function buildFrame3dModel(state: DraftState, metadata: Record<string, unknown>)
     metadata: {
       ...metadata,
       coordinateSemantics: STRUCTURAL_COORDINATE_SEMANTICS,
-      coordinateSemanticsVersion: STRUCTURAL_COORDINATE_SEMANTICS_VERSION,
       elementReferenceVectors,
       baseSupport,
       storyCount: storyHeights.length,

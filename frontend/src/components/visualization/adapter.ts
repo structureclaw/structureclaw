@@ -374,11 +374,11 @@ function deriveCoordinateSemantics(model: Record<string, unknown> | null): { dim
   const metadata = model.metadata
   if (!metadata || typeof metadata !== 'object') return null
   const meta = metadata as Record<string, unknown>
-  if (meta.coordinateSemantics === 'global-z-up-v2') {
+  if (meta.coordinateSemantics === 'global-z-up') {
     return {
       dimension: meta.frameDimension === '3d' ? 3 : 2,
       plane: meta.frameDimension === '3d' ? ('xy' as VisualizationPlane) : ('xz' as VisualizationPlane),
-      semantics: 'global-z-up-v2',
+      semantics: 'global-z-up',
     }
   }
   return null
