@@ -69,6 +69,26 @@ describe('ConversationService locale handling', () => {
     expect(snapshot?.staleStructuralData).toBe(true);
   });
 
+  test('marks visualization snapshots with geometry but missing top-level semantics as stale', async () => {
+    prisma.conversation.findUnique = async () => ({
+      modelSnapshot: null,
+      resultSnapshot: {
+        dimension: 3,
+        nodes: [
+          { id: 'N1', x: 0, y: 0, z: 0 },
+          { id: 'N2', x: 1, y: 0, z: 0 },
+        ],
+        elements: [{ id: 'E1', nodes: ['N1', 'N2'] }],
+      },
+      latestResult: null,
+    });
+
+    const svc = new ConversationService();
+    const snapshot = await svc.getConversationSnapshot('conv-visualization-snapshot-stale');
+
+    expect(snapshot?.staleStructuralData).toBe(true);
+  });
+
   test('returns non-stale when all snapshots are empty', async () => {
     prisma.conversation.findUnique = async () => ({
       modelSnapshot: null,

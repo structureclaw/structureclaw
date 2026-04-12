@@ -26,6 +26,11 @@ function getStructuralMetadata(payload: unknown): Record<string, unknown> | null
 }
 
 export function isStaleStructuralPayload(payload: unknown): boolean {
+  const payloadRecord = asRecord(payload);
+  if (hasSnapshotGeometry(payloadRecord)) {
+    return payloadRecord?.coordinateSemantics !== STRUCTURAL_COORDINATE_SEMANTICS;
+  }
+
   const metadata = getStructuralMetadata(payload);
   const inferredType = typeof metadata?.inferredType === 'string' ? metadata.inferredType : undefined;
   if (!inferredType || inferredType === 'unknown') return false;

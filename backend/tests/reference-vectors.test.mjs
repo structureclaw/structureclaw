@@ -21,4 +21,24 @@ describe('buildElementReferenceVectors', () => {
       B2: [0, 0, 1],
     });
   });
+
+  test('skips malformed elements and coerces numeric string coordinates', () => {
+    const nodes = [
+      { id: 'N1', x: '0', y: '0', z: '0' },
+      { id: 'N2', x: '0', y: '0', z: '3' },
+      { id: 'N3', x: 4, y: 0, z: 3 },
+      { id: 'N4', x: 'bad', y: 2, z: 3 },
+    ];
+    const elements = [
+      { id: 'C1', nodes: ['N1', 'N2'] },
+      { id: 'MISSING', nodes: ['N1', 'NX'] },
+      { id: 'BAD-NUM', nodes: ['N3', 'N4'] },
+      { id: 'BAD-SHAPE', nodes: ['N1'] },
+      { nodes: ['N1', 'N2'] },
+    ];
+
+    expect(buildElementReferenceVectors(elements, nodes)).toEqual({
+      C1: [1, 0, 0],
+    });
+  });
 });
