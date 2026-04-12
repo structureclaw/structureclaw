@@ -128,8 +128,8 @@ export function getLoadArrowLength(snapshot: VisualizationSnapshot, plane: Visua
   return Math.max(0.15, Math.min(modelSpan / 10, 1.2))
 }
 
-export function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: VisualizationPlane) {
-  if (!snapshot.nodes.length) {
+function planeGridFallback(plane: VisualizationPlane) {
+  if (plane === 'xy') {
     return {
       size: 24,
       divisions: 24,
@@ -137,10 +137,33 @@ export function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: Vi
       rotation: [Math.PI / 2, 0, 0] as [number, number, number],
     }
   }
+  if (plane === 'yz') {
+    return {
+      size: 24,
+      divisions: 24,
+      position: [-0.001, 0, 0] as [number, number, number],
+      rotation: [0, 0, Math.PI / 2] as [number, number, number],
+    }
+  }
+  return {
+    size: 24,
+    divisions: 24,
+    position: [0, -0.001, 0] as [number, number, number],
+    rotation: [0, 0, 0] as [number, number, number],
+  }
+}
 
-  const xs = snapshot.nodes.map((node) => node.position.x)
-  const ys = snapshot.nodes.map((node) => node.position.y)
-  const zs = snapshot.nodes.map((node) => node.position.z)
+export function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: VisualizationPlane) {
+  if (!snapshot.nodes.length) {
+    return planeGridFallback(plane)
+  }
+
+  const projected = snapshot.nodes.map((node) =>
+    projectPosition(new THREE.Vector3(node.position.x, node.position.y, node.position.z), plane, snapshot.dimension),
+  )
+  const xs = projected.map((p) => p.x)
+  const ys = projected.map((p) => p.y)
+  const zs = projected.map((p) => p.z)
   const minX = Math.min(...xs)
   const maxX = Math.max(...xs)
   const minY = Math.min(...ys)

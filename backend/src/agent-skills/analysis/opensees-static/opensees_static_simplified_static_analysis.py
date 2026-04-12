@@ -33,6 +33,27 @@ class StaticAnalyzer:
         # 应力结果
         self.stresses = {}
 
+        # Lazily cached coordinate semantics metadata.
+        self._coordinate_metadata: Optional[Dict[str, Any]] = None
+
+    def _get_coordinate_metadata(self) -> Dict[str, Any]:
+        """Return cached model metadata dict for coordinate semantics lookups."""
+        if self._coordinate_metadata is not None:
+            return self._coordinate_metadata
+        try:
+            from coordinate_semantics import get_model_metadata
+
+            model_dict = (
+                self.model.model_dump(mode='python')
+                if hasattr(self.model, 'model_dump')
+                else self.model if isinstance(self.model, dict) else {}
+            )
+            self._coordinate_metadata = get_model_metadata(model_dict)
+        except Exception:
+            logger.debug('Could not extract coordinate metadata', exc_info=True)
+            self._coordinate_metadata = {}
+        return self._coordinate_metadata
+
     def run(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         logger.info("Starting static analysis")
         return self._run_simplified(parameters)
@@ -309,15 +330,9 @@ class StaticAnalyzer:
             return None
 
         try:
-            from coordinate_semantics import get_frame_dimension, get_model_metadata
+            from coordinate_semantics import get_frame_dimension
 
-            model_dict = (
-                self.model.model_dump(mode='python')
-                if hasattr(self.model, 'model_dump')
-                else self.model if isinstance(self.model, dict) else {}
-            )
-            metadata = get_model_metadata(model_dict)
-            if get_frame_dimension(metadata) == '3d':
+            if get_frame_dimension(self._get_coordinate_metadata()) == '3d':
                 return None
         except Exception:
             logger.debug('Could not read frame dimension metadata; falling back to geometry-based plane inference', exc_info=True)
@@ -1085,15 +1100,9 @@ class StaticAnalyzer:
         ref = None
         if elem_id is not None:
             try:
-                from coordinate_semantics import get_model_metadata, get_reference_vector
+                from coordinate_semantics import get_reference_vector
 
-                model_dict = (
-                    self.model.model_dump(mode="python")
-                    if hasattr(self.model, "model_dump")
-                    else self.model if isinstance(self.model, dict) else {}
-                )
-                metadata = get_model_metadata(model_dict)
-                explicit = get_reference_vector(metadata, elem_id)
+                explicit = get_reference_vector(self._get_coordinate_metadata(), elem_id)
                 if explicit is not None:
                     ref = np.array(explicit, dtype=float)
             except Exception:
@@ -1474,15 +1483,9 @@ class StaticAnalyzer:
     def _get_beam_reference_vector(self, elem) -> List[float]:
         # Check metadata for an explicit reference vector first.
         try:
-            from coordinate_semantics import get_model_metadata, get_reference_vector
+            from coordinate_semantics import get_reference_vector
 
-            model_dict = (
-                self.model.model_dump(mode="python")
-                if hasattr(self.model, "model_dump")
-                else self.model if isinstance(self.model, dict) else {}
-            )
-            metadata = get_model_metadata(model_dict)
-            explicit = get_reference_vector(metadata, elem.id)
+            explicit = get_reference_vector(self._get_coordinate_metadata(), elem.id)
             if explicit is not None:
                 return explicit
         except Exception:
