@@ -36,7 +36,7 @@ frontend (Next.js 14)  →  backend (Fastify + Prisma)  →  analysis engine (e.
 ```bash
 npm run build --prefix backend          # TypeScript compile
 npm run lint --prefix backend           # ESLint
-npm test --prefix backend -- --runInBand  # Jest (needs db:generate + build first)
+npm test --prefix backend -- --runInBand  # Jest (internally runs db:generate + build first)
 npm run db:generate --prefix backend    # Regenerate Prisma client (required before build after schema changes)
 npm run db:push --prefix backend        # Sync Prisma schema to SQLite (no migration files)
 ```
@@ -53,16 +53,16 @@ npm run test:e2e --prefix frontend      # Playwright E2E tests
 **Running a single test:**
 ```bash
 # Backend (Jest)
-npx jest --prefix backend --runInBand path/to/test.test.ts
+npm test --prefix backend -- --runInBand path/to/test.test.ts
 
 # Frontend (Vitest)
-npx vitest run --prefix frontend path/to/test.test.ts
+npm run test:run --prefix frontend -- path/to/test.test.ts
 ```
 
 **Regression and validation:**
 ```bash
 node tests/runner.mjs analysis-regression                    # OpenSees analysis regression
-node tests/runner.mjs check backend-regression               # Backend contract checks
+node tests/runner.mjs check backend-regression               # Backend regression suite (build + lint + Jest + validations)
 node tests/runner.mjs validate validate-agent-orchestration  # Agent orchestration contract
 node tests/runner.mjs validate validate-chat-stream-contract # Chat stream contract
 node tests/runner.mjs validate validate-analyze-contract     # Analyze endpoint contract
@@ -167,9 +167,9 @@ compatibility:
   skillApiVersion: v1
 ```
 
-### 2. Stage Markdown (optional, `<stage>.md`)
+### 2. Stage Markdown (`<stage>.md`, at least one required)
 
-Plain markdown files (`intent.md`, `draft.md`, `analysis.md`, `design.md`) that provide domain knowledge prompts injected into the LLM context at each pipeline stage. Content-only; no YAML frontmatter.
+Markdown files (`intent.md`, `draft.md`, `analysis.md`, `design.md`) that provide domain knowledge prompts injected into the LLM context at each pipeline stage. Content-only; no YAML frontmatter. At least one stage `.md` file is required for the `AgentSkillLoader` to discover the skill directory.
 
 ### 3. Handler Module (`handler.ts`, optional but required for interactive skills)
 
@@ -193,10 +193,11 @@ buildReportNarrative()  → custom report narrative (optional)
 
 1. Create directory: `backend/src/agent-skills/<domain>/<skill-name>/`
 2. Add `skill.yaml` with all required fields (validate against `skillManifestFileSchema`)
-3. Add stage markdown files as needed (`intent.md`, `draft.md`, etc.)
+3. Add at least one stage markdown file (`intent.md`, `draft.md`, etc.) — required for auto-discovery
 4. For structure-type skills with interactive drafts, add `handler.ts` implementing `SkillHandler`
-5. Register in `backend/src/agent-skills/structure-type/registry.ts` if it's a structure-type skill
-6. Add tests in `<skill-dir>/__tests__/`
+5. Add tests in `<skill-dir>/__tests__/`
+
+Skills are auto-discovered by the `AgentSkillLoader` — no manual registration is needed.
 
 ### Skill Loading Flow
 
