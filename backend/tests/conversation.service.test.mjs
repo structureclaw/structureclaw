@@ -69,7 +69,9 @@ describe('ConversationService locale handling', () => {
     expect(snapshot?.staleStructuralData).toBe(true);
   });
 
+  test('returns non-stale when all snapshots are empty', async () => {
     prisma.conversation.findUnique = async () => ({
+      modelSnapshot: null,
       resultSnapshot: null,
       latestResult: null,
     });

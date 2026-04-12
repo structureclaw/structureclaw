@@ -479,23 +479,38 @@ describe('AgentService orchestration', () => {
     await svc.clearConversationSession(staleConversationId);
   });
 
+  test('should preserve canonical structural sessions in memory', async () => {
     const svc = createServiceWithDefaultSkills();
     const validConversationId = 'conv-valid-session-' + Date.now();
 
-    const { cache } = await import('../dist/utils/cache.js');
     await cache.setex(
       'agent:interaction-session:' + validConversationId,
       1800,
       JSON.stringify({
-        structuralTypeMatch: { key: 'frame', mappedType: 'frame', skillId: 'frame', supportLevel: 'supported' },
+        draft: {
+          inferredType: 'beam',
+          skillId: 'generic',
+          structuralTypeKey: 'beam',
+          coordinateSemantics: 'global-z-up',
+          updatedAt: Date.now(),
+        },
+        structuralTypeMatch: { key: 'beam', mappedType: 'beam', skillId: 'generic', supportLevel: 'fallback' },
         latestModel: {
           schema_version: '1.0.0',
-          nodes: [{ id: '1', x: 0, y: 0, z: 0 }],
-          elements: [],
+          nodes: [
+            { id: '1', x: 0, y: 0, z: 0 },
+            { id: '2', x: 6, y: 0, z: 0 },
+          ],
+          elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'] }],
           materials: [],
           sections: [],
           load_cases: [],
           load_combinations: [],
+          metadata: {
+            inferredType: 'beam',
+            frameDimension: '2d',
+            coordinateSemantics: 'global-z-up',
+          },
         },
         resolved: {},
         updatedAt: Date.now(),
@@ -504,10 +519,9 @@ describe('AgentService orchestration', () => {
 
     const snapshot = await svc.getConversationSessionSnapshot(validConversationId, 'zh');
 
-    // The valid model should be preserved
-    expect(snapshot?.draft?.inferredType).toBe('frame');
+    expect(snapshot?.draft?.inferredType).toBe('beam');
+    expect(snapshot?.model?.metadata?.coordinateSemantics).toBe('global-z-up');
 
-    // Clean up
     await svc.clearConversationSession(validConversationId);
   });
 
