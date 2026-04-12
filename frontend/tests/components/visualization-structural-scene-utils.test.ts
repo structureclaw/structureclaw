@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import * as THREE from 'three'
-import { getAdaptiveGridConfig, getPlaneCameraPreset, projectPosition } from '@/components/visualization/structural-scene-utils'
+import { getAdaptiveGridConfig, getNodeLabelOffset, getPlaneCameraPreset, projectPosition } from '@/components/visualization/structural-scene-utils'
 import type { VisualizationSnapshot } from '@/components/visualization/types'
 
 const sample3dSnapshot: VisualizationSnapshot = {
@@ -44,5 +44,11 @@ describe('structural-scene-utils', () => {
       position: [0, 0, 10],
       up: [0, 1, 0],
     })
+  })
+
+  it('offsets node labels along the active camera up direction', () => {
+    expect(getNodeLabelOffset('xy', 3).toArray()).toEqual([0, 0.24, 0])
+    expect(getNodeLabelOffset('yz', 3).toArray()).toEqual([0, 0, 0.24])
+    expect(getNodeLabelOffset('xz', 2).toArray()).toEqual([0, 0, 0.18])
   })
 })

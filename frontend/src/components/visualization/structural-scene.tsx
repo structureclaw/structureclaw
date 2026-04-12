@@ -12,6 +12,7 @@ import {
   getElementMetric,
   getNodeReactionMagnitude,
   getNodeDisplacementMagnitude,
+  getNodeLabelOffset,
   createColorScale,
   isRenderableLoadVector as isRenderableLoadVectorCheck,
   getLoadArrowLength,
@@ -445,7 +446,7 @@ function SceneContent({
                   <meshBasicMaterial transparent opacity={0} />
                 </mesh>
                 {showNodeLabels && (
-                  <Html center position={finalPosition.clone().add(new THREE.Vector3(0, 0, snapshot.dimension === 3 ? 0.24 : 0.18)).toArray()}>
+                  <Html center position={finalPosition.clone().add(getNodeLabelOffset(plane, snapshot.dimension)).toArray()}>
                     <div className="rounded-full border border-border/70 bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground shadow-lg dark:border-white/10 dark:bg-slate-950/85">
                       {entry.id}
                     </div>

@@ -239,3 +239,9 @@ export function getPlaneCameraPreset(plane: VisualizationPlane) {
     up: [0, 0, 1] as [number, number, number],
   }
 }
+
+export function getNodeLabelOffset(plane: VisualizationPlane, dimension: 2 | 3) {
+  const [x, y, z] = getPlaneCameraPreset(plane).up
+  const distance = dimension === 3 ? 0.24 : 0.18
+  return new THREE.Vector3(x, y, z).multiplyScalar(distance)
+}
