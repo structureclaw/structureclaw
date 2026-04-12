@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 
 RULE_VERSION = 'v2-member-checks'
@@ -454,12 +454,18 @@ def check_element(checker: Any, elem_id: str, context: Dict[str, Any]) -> Dict[s
     # Compute utilization overrides immutably — merge into a copy of context
     computed = _compute_utilization_overrides(elem_id, context)
     if computed:
+        existing_ube = context.get('utilizationByElement')
+        if not isinstance(existing_ube, dict):
+            existing_ube = {}
+        existing_elem = existing_ube.get(elem_id)
+        if not isinstance(existing_elem, dict):
+            existing_elem = {}
         merged_ctx = {
             **context,
             'utilizationByElement': {
-                **context.get('utilizationByElement', {}),
+                **existing_ube,
                 elem_id: {
-                    **context.get('utilizationByElement', {}).get(elem_id, {}),
+                    **existing_elem,
                     **computed,
                 },
             },
