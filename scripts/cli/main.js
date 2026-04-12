@@ -741,6 +741,24 @@ function getServiceCommand(name, frontendPort) {
   };
 }
 
+function parseBooleanEnvFlag(rawValue) {
+  return /^(1|true|yes|on)$/iu.test(String(rawValue || "").trim());
+}
+
+function readTrackedServicePids(paths) {
+  return ["backend", "frontend"]
+    .map((name) => runtime.readTrackedPid(paths, name))
+    .filter((pid) => Number.isInteger(pid) && pid > 0);
+}
+
+function getPortCleanupOptions(paths, env, allowedPids = readTrackedServicePids(paths)) {
+  return {
+    allowedPids,
+    allowUntracked: parseBooleanEnvFlag(env.SCLAW_FORCE_PORT_CLEANUP),
+    rootDir: paths.rootDir,
+  };
+}
+
 function startTrackedService(paths, env, name, frontendPort) {
   const existingPid = runtime.readTrackedPid(paths, name);
   if (existingPid) {
@@ -1018,7 +1036,7 @@ async function invokeLocalUp(rootDir, env, options = {}) {
     env.PORT || runtime.DEFAULT_BACKEND_PORT,
     env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT,
   ];
-  runtime.killPortPids(ports, log);
+  runtime.killPortPids(ports, log, getPortCleanupOptions(paths, env));
 
   startTrackedService(paths, env, "backend", env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT);
   startTrackedService(paths, env, "frontend", env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT);
@@ -1153,18 +1171,30 @@ async function dispatch(commandName, rawArgs, rootDir) {
     case "start":
       await invokeLocalUp(rootDir, env, { skipInfra: true });
       return;
-    case "restart":
+    case "restart": {
+      const trackedPids = readTrackedServicePids(paths);
       await stopTrackedService(paths, "frontend");
       await stopTrackedService(paths, "backend");
-      runtime.killPortPids([env.PORT || runtime.DEFAULT_BACKEND_PORT, env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT], log);
+      runtime.killPortPids(
+        [env.PORT || runtime.DEFAULT_BACKEND_PORT, env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT],
+        log,
+        getPortCleanupOptions(paths, env, trackedPids),
+      );
       await invokeLocalUp(rootDir, env, { skipInfra: true });
       return;
-    case "stop":
+    }
+    case "stop": {
+      const trackedPids = readTrackedServicePids(paths);
       await stopTrackedService(paths, "frontend");
       await stopTrackedService(paths, "backend");
-      runtime.killPortPids([env.PORT || runtime.DEFAULT_BACKEND_PORT, env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT], log);
+      runtime.killPortPids(
+        [env.PORT || runtime.DEFAULT_BACKEND_PORT, env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT],
+        log,
+        getPortCleanupOptions(paths, env, trackedPids),
+      );
       log("Local stack stopped.");
       return;
+    }
     case "status":
       showServiceStatus(paths, "backend");
       showServiceStatus(paths, "frontend");

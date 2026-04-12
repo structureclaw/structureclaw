@@ -58,6 +58,51 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function normalizePortNumber(rawPort) {
+  if (rawPort === undefined || rawPort === null) {
+    return null;
+  }
+  const candidate = typeof rawPort === "number" ? rawPort : Number(String(rawPort).trim());
+  if (!Number.isInteger(candidate) || candidate < 1 || candidate > 65535) {
+    return null;
+  }
+  return candidate;
+}
+
+function normalizePathForMatch(rawValue) {
+  if (!rawValue || typeof rawValue !== "string") {
+    return "";
+  }
+  return rawValue.replace(/\\/gu, "/").toLowerCase();
+}
+
+function normalizeAllowedPids(allowedPids) {
+  const normalized = new Set();
+  for (const value of allowedPids || []) {
+    const pid = Number(value);
+    if (Number.isInteger(pid) && pid > 0) {
+      normalized.add(pid);
+    }
+  }
+  return normalized;
+}
+
+function isProjectOwnedPortProcess({ pid, commandLine, rootDir, allowedPids }) {
+  const numericPid = Number(pid);
+  const normalizedAllowedPids = normalizeAllowedPids(allowedPids);
+  if (Number.isInteger(numericPid) && normalizedAllowedPids.has(numericPid)) {
+    return true;
+  }
+  if (typeof commandLine !== "string" || !rootDir) {
+    return false;
+  }
+  const normalizedRoot = normalizePathForMatch(path.resolve(rootDir));
+  if (!normalizedRoot) {
+    return false;
+  }
+  return normalizePathForMatch(commandLine).includes(normalizedRoot);
+}
+
 function parseDotEnv(rawText) {
   const values = {};
   for (const rawLine of rawText.split(/\r?\n/u)) {
@@ -535,51 +580,122 @@ async function stopProcessTree(pid) {
   }
 }
 
+function listWindowsPortPids(port) {
+  const result = spawnSync(
+    "powershell",
+    [
+      "-NoProfile",
+      "-Command",
+      "Get-NetTCPConnection -LocalPort $args[0] -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess",
+      String(port),
+    ],
+    { encoding: "utf-8", windowsHide: true },
+  );
+  return String(result.stdout || "")
+    .split(/\r?\n/u)
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isInteger(value) && value > 0);
+}
+
+function listUnixPortPids(port) {
+  const result = spawnSync("lsof", ["-i", `:${port}`, "-t"], {
+    encoding: "utf-8",
+  });
+  return String(result.stdout || "")
+    .split(/\r?\n/u)
+    .map((value) => Number(value.trim()))
+    .filter((value) => Number.isInteger(value) && value > 0);
+}
+
+function readWindowsProcessCommandLine(pid) {
+  const result = spawnSync(
+    "powershell",
+    [
+      "-NoProfile",
+      "-Command",
+      "(Get-CimInstance Win32_Process -Filter \"ProcessId = $($args[0])\" -ErrorAction SilentlyContinue).CommandLine",
+      String(pid),
+    ],
+    { encoding: "utf-8", windowsHide: true },
+  );
+  return String(result.stdout || "").trim() || null;
+}
+
+function readUnixProcessCommandLine(pid) {
+  const result = spawnSync("ps", ["-o", "command=", "-p", String(pid)], {
+    encoding: "utf-8",
+  });
+  return String(result.stdout || "").trim() || null;
+}
+
 /**
- * Kill any process listening on the given ports, regardless of PID tracking.
- * Uses lsof on Unix and netstat on Windows.
+ * Kill project-owned or explicitly allowed processes listening on the given ports.
+ * By default this only terminates tracked PIDs. Set allowUntracked=true to also
+ * terminate listeners whose command lines clearly belong to the current project.
  */
-function killPortPids(ports, logFn) {
+function killPortPids(ports, logFn, options = {}) {
   if (!ports || ports.length === 0) {
     return;
   }
 
-  for (const port of ports) {
-    if (isWindows()) {
-      try {
-        const result = spawnSync(
-          "powershell",
-          ["-NoProfile", "-Command", `Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force }`],
-          { encoding: "utf-8", windowsHide: true },
-        );
-        if (result.stdout && result.stdout.trim()) {
-          if (logFn) logFn(`Killed stale process(es) on port ${port}`);
-        }
-      } catch {
-        // nothing to kill
+  const allowedPids = normalizeAllowedPids(options.allowedPids);
+  const allowUntracked = options.allowUntracked === true;
+  const rootDir = allowUntracked && options.rootDir ? path.resolve(options.rootDir) : undefined;
+
+  for (const rawPort of ports) {
+    const port = normalizePortNumber(rawPort);
+    if (!port) {
+      if (logFn) {
+        logFn(`Skipping unsafe port cleanup target: ${String(rawPort)}`);
       }
       continue;
     }
 
     try {
-      const result = spawnSync("lsof", ["-i", `:${port}`, "-t"], {
-        encoding: "utf-8",
-      });
-      const pids = (result.stdout || "").trim();
-      if (!pids) {
+      const pidList = isWindows() ? listWindowsPortPids(port) : listUnixPortPids(port);
+      if (pidList.length === 0) {
         continue;
       }
-      const pidList = pids.split("\n").filter(Boolean);
-      if (logFn) logFn(`Killing stale process(es) on port ${port}: ${pidList.join(" ")}`);
+
       for (const pid of pidList) {
+        const commandLine = isWindows()
+          ? readWindowsProcessCommandLine(pid)
+          : readUnixProcessCommandLine(pid);
+        const owned = isProjectOwnedPortProcess({
+          pid,
+          commandLine,
+          rootDir,
+          allowedPids,
+        });
+        if (!owned) {
+          if (logFn) {
+            logFn(`Skipping non-project process on port ${port} (pid ${pid}).`);
+          }
+          continue;
+        }
+
+        if (logFn) {
+          logFn(
+            allowedPids.has(pid)
+              ? `Killing tracked process on port ${port} (pid ${pid}).`
+              : `Killing project-owned process on port ${port} (pid ${pid}).`,
+          );
+        }
         try {
-          process.kill(Number(pid), "SIGKILL");
+          if (isWindows()) {
+            spawnSync("taskkill", ["/PID", String(pid), "/T", "/F"], {
+              encoding: "utf-8",
+              windowsHide: true,
+            });
+          } else {
+            process.kill(pid, "SIGKILL");
+          }
         } catch {
           // already gone
         }
       }
     } catch {
-      // lsof not available or no processes
+      // inspection tool unavailable or no listeners
     }
   }
 }
@@ -724,12 +840,14 @@ module.exports = {
   hasCommand,
   installedPackagesMatchLock,
   isPidRunning,
+  isProjectOwnedPortProcess,
   isWindows,
   killPortPids,
   latestSessionHeader,
   latestSessionLines,
   loadProjectEnvironment,
   logFilePath,
+  normalizePortNumber,
   normalizeSqliteFileUrl,
   normalizeAptMirror,
   normalizeDockerRegistryMirror,
