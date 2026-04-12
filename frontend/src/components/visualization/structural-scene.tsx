@@ -62,12 +62,14 @@ function ColorBar({
   unit,
   label,
   show,
+  colorMode = 'scale',
 }: {
   maxValue: number
   valueScale?: number
   unit?: string
   label: string
   show: boolean
+  colorMode?: 'scale' | 'utilization'
 }) {
   if (!show) return null
 
@@ -76,6 +78,11 @@ function ColorBar({
     if (val >= 1) return val.toFixed(2)
     return val.toExponential(1)
   }
+
+  const gradient = colorMode === 'utilization'
+    // Matches createUtilizationColor: blue(0%) → green → yellow → red(100%)
+    ? 'linear-gradient(to bottom, #d91a1a, #e6b800, #22c55e, #1a6fd9)'
+    : `linear-gradient(to bottom, ${createColorScale(maxValue, maxValue)}, ${createColorScale(0, maxValue)})`
 
   return (
     <div className="pointer-events-none absolute right-4 top-4 z-10 flex flex-col items-end gap-1.5">
@@ -90,9 +97,7 @@ function ColorBar({
         </div>
         <div
           className="h-32 w-6 rounded-sm"
-          style={{
-            background: `linear-gradient(to bottom, ${createColorScale(maxValue, maxValue)}, ${createColorScale(0, maxValue)})`,
-          }}
+          style={{ background: gradient }}
         />
       </div>
     </div>
