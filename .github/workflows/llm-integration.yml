@@ -143,7 +143,7 @@ jobs:
             echo "summary=Tests did not produce output." >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          SUMMARY=$(grep -A 3 '^Results:' test-output.txt || echo "No summary found")
+          SUMMARY=$(grep -B 1 -A 3 '^Results:' test-output.txt || echo "No summary found")
           echo "summary<<EOF" >> "$GITHUB_OUTPUT"
           echo "$SUMMARY" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
