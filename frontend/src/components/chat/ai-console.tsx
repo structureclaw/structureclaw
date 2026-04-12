@@ -709,7 +709,13 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 function isStaleVisualizationSnapshot(snapshot?: VisualizationSnapshot | null) {
-  return Boolean(snapshot) && snapshot?.coordinateSemantics !== CANONICAL_COORDINATE_SEMANTICS
+  if (!snapshot) return false
+  // Only flag as stale if the snapshot actually contains structural model data
+  // (non-trivial nodes and elements). Snapshots without structural data (e.g. empty
+  // or chat-only conversations) must not trigger the stale-data wipe.
+  if (!Array.isArray(snapshot.nodes) || snapshot.nodes.length === 0) return false
+  if (!Array.isArray(snapshot.elements) || snapshot.elements.length === 0) return false
+  return snapshot.coordinateSemantics !== CANONICAL_COORDINATE_SEMANTICS
 }
 
 function isStaleStructuralResult(result: AgentResult | null | undefined) {
