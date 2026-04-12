@@ -1,8 +1,9 @@
-import { describe, expect, test } from '@jest/globals';
+import { describe, expect, jest, test } from '@jest/globals';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const cliMain = require('../../scripts/cli/main.js');
+const nodePath = require('node:path');
 const runtime = require('../../scripts/cli/runtime.js');
 
 describe('cli runtime port cleanup guards', () => {
@@ -36,6 +37,19 @@ describe('cli runtime port cleanup guards', () => {
       rootDir: '/workspace/structureclaw',
       allowedPids: new Set(),
     })).toBe(false);
+  });
+
+  test('isProjectOwnedPortProcess tolerates windows-resolved roots for slash-only command lines', () => {
+    const resolveSpy = jest.spyOn(nodePath, 'resolve').mockReturnValue('C:\\workspace\\structureclaw');
+
+    expect(runtime.isProjectOwnedPortProcess({
+      pid: 1234,
+      commandLine: 'node /workspace/structureclaw/backend/server.js',
+      rootDir: '/workspace/structureclaw',
+      allowedPids: new Set(),
+    })).toBe(true);
+
+    resolveSpy.mockRestore();
   });
 
   test('getPortCleanupOptions keeps project-owned orphan cleanup enabled by default', () => {

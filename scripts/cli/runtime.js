@@ -87,6 +87,19 @@ function normalizeAllowedPids(allowedPids) {
   return normalized;
 }
 
+function getNormalizedRootMatchCandidates(rootDir) {
+  const candidates = new Set();
+  for (const value of [rootDir, rootDir ? path.resolve(rootDir) : ""]) {
+    const normalized = normalizePathForMatch(value);
+    if (normalized) {
+      candidates.add(normalized);
+      candidates.add(normalized.replace(/^[a-z]:/u, ""));
+    }
+  }
+  candidates.delete("");
+  return [...candidates];
+}
+
 function isProjectOwnedPortProcess({ pid, commandLine, rootDir, allowedPids }) {
   const numericPid = Number(pid);
   const normalizedAllowedPids = normalizeAllowedPids(allowedPids);
@@ -96,11 +109,12 @@ function isProjectOwnedPortProcess({ pid, commandLine, rootDir, allowedPids }) {
   if (typeof commandLine !== "string" || !rootDir) {
     return false;
   }
-  const normalizedRoot = normalizePathForMatch(path.resolve(rootDir));
-  if (!normalizedRoot) {
+  const normalizedCommandLine = normalizePathForMatch(commandLine);
+  const normalizedRoots = getNormalizedRootMatchCandidates(rootDir);
+  if (!normalizedCommandLine || normalizedRoots.length === 0) {
     return false;
   }
-  return normalizePathForMatch(commandLine).includes(normalizedRoot);
+  return normalizedRoots.some((candidate) => normalizedCommandLine.includes(candidate));
 }
 
 function parseDotEnv(rawText) {
