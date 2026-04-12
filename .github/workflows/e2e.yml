@@ -134,9 +134,22 @@ jobs:
 
       - name: Run E2E tests
         id: run-tests
-        run: npm run test:e2e --prefix frontend
+        run: npm run test:e2e --prefix frontend 2>&1 | tee test-output.txt
         env:
           CI: true
+
+      - name: Extract test summary
+        if: always()
+        id: summary
+        run: |
+          if [ ! -f test-output.txt ]; then
+            echo "summary=Tests did not produce output." >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          SUMMARY=$(grep -E '^\s*\d+ passed.*\d+s\)' test-output.txt || grep -E '^\s*\d+ failed' test-output.txt || echo "No summary found")
+          echo "summary<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$SUMMARY" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       - name: Report results on PR
         if: always() && needs.check-permission.outputs.trigger_issue_number != ''
@@ -150,12 +163,17 @@ jobs:
             const success = '${{ steps.run-tests.outcome }}' === 'success';
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
+            const summary = ${{ toJson(steps.summary.outputs.summary) }};
             const icon = success ? '✅' : '❌';
             const status = success ? 'PASSED' : 'FAILED';
             const body = [
               `${icon} **E2E Tests ${status}**`,
               ``,
               `@${commentUser}, the test run has completed.`,
+              ``,
+              '```',
+              summary,
+              '```',
               ``,
               `📦 **[Download Logs](${runUrl})** or check the Artifacts section.`,
             ].join('\n');
