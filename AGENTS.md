@@ -121,6 +121,29 @@ The agent is capability-driven, not mode-driven:
 
 See `docs/agent-architecture.md` for the full canonical design reference.
 
+## Security and Config
+
+- Never commit live secrets, tokens, or private keys.
+- Use `.env.example` as the template.
+- Backend runtime depends on environment configuration for the OpenAI-compatible LLM interface and infrastructure; document any new defaults or required variables.
+- When documenting LLM setup, prefer the existing OpenAI-compatible `LLM_API_KEY` + `LLM_BASE_URL` + `LLM_MODEL` pattern.
+
+## Commit and PR Guidance
+- Follow conventional commit style, for example:
+  - `feat(frontend): add bilingual light and dark experience`
+  - `fix(frontend): stop chat auto-scroll from locking wheel`
+  - `docs: map existing codebase`
+- Commit in small batches with clean boundaries and do not postpone commits once a logical slice is complete.
+- Preferred sequence when applicable:
+  - implementation changes first
+  - tests in a separate commit when that improves reviewability
+  - docs or workflow-note follow-ups in their own commit
+- PRs should state:
+  - what changed and why
+  - impacted areas (`backend`, `frontend`, `scripts`, `docs`)
+  - commands run and results
+  - sample request/response when API behavior changed
+
 ## Skill Development
 
 A skill is the unit of extensibility in the agent. Each skill lives under `backend/src/agent-skills/<domain>/` and consists of two parts:
@@ -243,10 +266,3 @@ Strong success criteria let you loop independently. Weak criteria ("make it work
 ---
 
 **These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
-
-## Security and Config
-
-- Never commit live secrets, tokens, or private keys.
-- Use `.env.example` as the template.
-- Backend runtime depends on environment configuration for the OpenAI-compatible LLM interface and infrastructure; document any new defaults or required variables.
-- When documenting LLM setup, prefer the existing OpenAI-compatible `LLM_API_KEY` + `LLM_BASE_URL` + `LLM_MODEL` pattern.
