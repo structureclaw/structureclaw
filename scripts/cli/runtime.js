@@ -629,9 +629,8 @@ function readUnixProcessCommandLine(pid) {
 }
 
 /**
- * Kill project-owned or explicitly allowed processes listening on the given ports.
- * By default this only terminates tracked PIDs. Set allowUntracked=true to also
- * terminate listeners whose command lines clearly belong to the current project.
+ * Kill tracked listeners and stale project-owned listeners on the given ports.
+ * Foreign listeners are only terminated when allowForeign=true is set explicitly.
  */
 function killPortPids(ports, logFn, options = {}) {
   if (!ports || ports.length === 0) {
@@ -639,8 +638,9 @@ function killPortPids(ports, logFn, options = {}) {
   }
 
   const allowedPids = normalizeAllowedPids(options.allowedPids);
-  const allowUntracked = options.allowUntracked === true;
-  const rootDir = allowUntracked && options.rootDir ? path.resolve(options.rootDir) : undefined;
+  const allowForeign = options.allowForeign === true;
+  const allowProjectOwned = options.allowProjectOwned !== false;
+  const rootDir = allowProjectOwned && options.rootDir ? path.resolve(options.rootDir) : undefined;
 
   for (const rawPort of ports) {
     const port = normalizePortNumber(rawPort);
@@ -661,13 +661,14 @@ function killPortPids(ports, logFn, options = {}) {
         const commandLine = isWindows()
           ? readWindowsProcessCommandLine(pid)
           : readUnixProcessCommandLine(pid);
-        const owned = isProjectOwnedPortProcess({
+        const tracked = allowedPids.has(pid);
+        const projectOwned = isProjectOwnedPortProcess({
           pid,
           commandLine,
           rootDir,
-          allowedPids,
+          allowedPids: new Set(),
         });
-        if (!owned) {
+        if (!tracked && !projectOwned && !allowForeign) {
           if (logFn) {
             logFn(`Skipping non-project process on port ${port} (pid ${pid}).`);
           }
@@ -676,9 +677,11 @@ function killPortPids(ports, logFn, options = {}) {
 
         if (logFn) {
           logFn(
-            allowedPids.has(pid)
+            tracked
               ? `Killing tracked process on port ${port} (pid ${pid}).`
-              : `Killing project-owned process on port ${port} (pid ${pid}).`,
+              : projectOwned
+                ? `Killing project-owned process on port ${port} (pid ${pid}).`
+                : `Force killing foreign process on port ${port} (pid ${pid}).`,
           );
         }
         try {

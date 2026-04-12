@@ -2,6 +2,7 @@ import { describe, expect, test } from '@jest/globals';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
+const cliMain = require('../../scripts/cli/main.js');
 const runtime = require('../../scripts/cli/runtime.js');
 
 describe('cli runtime port cleanup guards', () => {
@@ -35,5 +36,33 @@ describe('cli runtime port cleanup guards', () => {
       rootDir: '/workspace/structureclaw',
       allowedPids: new Set(),
     })).toBe(false);
+  });
+
+  test('getPortCleanupOptions keeps project-owned orphan cleanup enabled by default', () => {
+    expect(
+      cliMain.getPortCleanupOptions(
+        { rootDir: '/workspace/structureclaw' },
+        {},
+        [4321],
+      ),
+    ).toEqual({
+      allowedPids: [4321],
+      allowForeign: false,
+      allowProjectOwned: true,
+      rootDir: '/workspace/structureclaw',
+    });
+
+    expect(
+      cliMain.getPortCleanupOptions(
+        { rootDir: '/workspace/structureclaw' },
+        { SCLAW_FORCE_PORT_CLEANUP: '1' },
+        [],
+      ),
+    ).toEqual({
+      allowedPids: [],
+      allowForeign: true,
+      allowProjectOwned: true,
+      rootDir: '/workspace/structureclaw',
+    });
   });
 });

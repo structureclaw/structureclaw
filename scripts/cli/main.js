@@ -754,7 +754,8 @@ function readTrackedServicePids(paths) {
 function getPortCleanupOptions(paths, env, allowedPids = readTrackedServicePids(paths)) {
   return {
     allowedPids,
-    allowUntracked: parseBooleanEnvFlag(env.SCLAW_FORCE_PORT_CLEANUP),
+    allowForeign: parseBooleanEnvFlag(env.SCLAW_FORCE_PORT_CLEANUP),
+    allowProjectOwned: true,
     rootDir: paths.rootDir,
   };
 }
@@ -1248,6 +1249,7 @@ if (require.main === module) {
 module.exports = {
   formatHelp,
   getPackageMetadata,
+  getPortCleanupOptions,
   main,
   resolveCommandName,
 };
