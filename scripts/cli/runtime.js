@@ -535,6 +535,55 @@ async function stopProcessTree(pid) {
   }
 }
 
+/**
+ * Kill any process listening on the given ports, regardless of PID tracking.
+ * Uses lsof on Unix and netstat on Windows.
+ */
+function killPortPids(ports, logFn) {
+  if (!ports || ports.length === 0) {
+    return;
+  }
+
+  for (const port of ports) {
+    if (isWindows()) {
+      try {
+        const result = spawnSync(
+          "powershell",
+          ["-NoProfile", "-Command", `Get-NetTCPConnection -LocalPort ${port} -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Stop-Process -Id $_ -Force }`],
+          { encoding: "utf-8", windowsHide: true },
+        );
+        if (result.stdout && result.stdout.trim()) {
+          if (logFn) logFn(`Killed stale process(es) on port ${port}`);
+        }
+      } catch {
+        // nothing to kill
+      }
+      continue;
+    }
+
+    try {
+      const result = spawnSync("lsof", ["-i", `:${port}`, "-t"], {
+        encoding: "utf-8",
+      });
+      const pids = (result.stdout || "").trim();
+      if (!pids) {
+        continue;
+      }
+      const pidList = pids.split("\n").filter(Boolean);
+      if (logFn) logFn(`Killing stale process(es) on port ${port}: ${pidList.join(" ")}`);
+      for (const pid of pidList) {
+        try {
+          process.kill(Number(pid), "SIGKILL");
+        } catch {
+          // already gone
+        }
+      }
+    } catch {
+      // lsof not available or no processes
+    }
+  }
+}
+
 function latestSessionHeader(logFile) {
   if (!pathExists(logFile)) {
     return null;
@@ -676,6 +725,7 @@ module.exports = {
   installedPackagesMatchLock,
   isPidRunning,
   isWindows,
+  killPortPids,
   latestSessionHeader,
   latestSessionLines,
   loadProjectEnvironment,

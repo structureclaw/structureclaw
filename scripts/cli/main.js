@@ -1013,6 +1013,13 @@ async function invokeLocalUp(rootDir, env, options = {}) {
     await invokeScopedDbInit(rootDir, env, "start");
   }
 
+  // Kill any stale processes on the configured ports before starting
+  const ports = [
+    env.PORT || runtime.DEFAULT_BACKEND_PORT,
+    env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT,
+  ];
+  runtime.killPortPids(ports, log);
+
   startTrackedService(paths, env, "backend", env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT);
   startTrackedService(paths, env, "frontend", env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT);
   log("");
@@ -1149,11 +1156,13 @@ async function dispatch(commandName, rawArgs, rootDir) {
     case "restart":
       await stopTrackedService(paths, "frontend");
       await stopTrackedService(paths, "backend");
+      runtime.killPortPids([env.PORT || runtime.DEFAULT_BACKEND_PORT, env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT], log);
       await invokeLocalUp(rootDir, env, { skipInfra: true });
       return;
     case "stop":
       await stopTrackedService(paths, "frontend");
       await stopTrackedService(paths, "backend");
+      runtime.killPortPids([env.PORT || runtime.DEFAULT_BACKEND_PORT, env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT], log);
       log("Local stack stopped.");
       return;
     case "status":
