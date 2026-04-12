@@ -1,110 +1,251 @@
-# StructureClaw Agent Guide
+# AGENTS.md
 
-## Repository Snapshot
-- `backend/`: Fastify + Prisma API service. Route handlers live in `src/api`, orchestration and domain logic live in `src/services`, infrastructure helpers live in `src/utils`. Backend-hosted analysis runtime lives under `src/agent-skills/analysis-execution`.
-- `frontend/`: Next.js 14 app. App routes live under `src/app`, reusable UI in `src/components`, client state and i18n helpers in `src/lib`.
-- `scripts/cli/`: internal implementation for the `sclaw` command surface. Prefer `./sclaw ...` over calling script paths directly.
-- `tests/`: regression suite, install smoke, and `node tests/runner.mjs` entrypoint.
-- `docs/`: user-facing and protocol documentation such as the stream protocol and roadmap.
+This file provides guidance to Claude Code (claude.ai/code) / Codex when working with code in this repository.
 
-## Working Rules
-- Preserve module boundaries. New API surface belongs in `backend/src/api`; coordination logic belongs in `backend/src/services`; shared helpers belong in `backend/src/utils`.
-- Keep frontend changes localized. Route/layout concerns belong in `frontend/src/app`, reusable components in `frontend/src/components`, and cross-cutting client logic in `frontend/src/lib`.
-- Bilingual support is mandatory for every new user-visible feature. New UI copy, empty states, errors, prompts, templates, guidance text, and report-facing labels must ship in both `en` and `zh`.
-- Do not add new single-language user-facing flows. If a feature produces user-visible text from backend chat, agent, or report paths, the implementation must include locale propagation and locale-aware backend templates in the same change.
-- Treat the frontend locale as the single source of truth for new interactions. Once a user selects a language, all newly generated user-visible text in that interaction must follow that locale without mixing languages.
-- Keep analysis-runtime changes deterministic. Structural examples, regression fixtures, and converters should remain scriptable and reproducible.
-- Commit discipline is mandatory: make small, logical commits as you go, and do it promptly.
-- Do not wait until the end of a long task to bundle unrelated work into one commit.
-- When a task naturally splits into implementation, tests, docs, or follow-up cleanup, prefer separate commits with clear boundaries.
+## Project Overview
 
-## Build, Run, and Verify
-- Preferred local health flow:
- - `./sclaw doctor`
- - `./sclaw start`
- - `node tests/runner.mjs analysis-regression`
-- Useful lifecycle commands:
- - `./sclaw start`, `./sclaw restart`
- - `./sclaw stop`
- - `./sclaw status`
- - `./sclaw logs`
-- Backend:
-  - `npm run build --prefix backend`
-  - `npm run lint --prefix backend`
-  - `npm test --prefix backend -- --runInBand`
-- Frontend:
-  - `npm run build --prefix frontend`
-  - `npm run type-check --prefix frontend`
-  - `npm run test:run --prefix frontend`
-- Analysis and contract validation (via `tests/runner.mjs`):
-  - `node tests/runner.mjs analysis-regression`
-  - `node tests/runner.mjs check backend-regression`
-  - `node tests/runner.mjs validate validate-agent-orchestration`
-  - `node tests/runner.mjs validate validate-chat-stream-contract`
-  - `node tests/runner.mjs validate validate-analyze-contract`
-- Install smoke (mirrors `.github/workflows/install-smoke.yml`; `smoke-docker` needs Docker):
-  - `node tests/runner.mjs smoke-native`
-  - `node tests/runner.mjs smoke-docker`
-- Optional npm aliases (root `package.json`): `npm run regression:backend`, `npm run regression:analysis`, `npm run smoke:native`, `npm run smoke:docker`.
+StructureClaw is an AI-assisted structural engineering workspace. It takes natural-language structural descriptions through a conversational UI and runs them through a pipeline: draft model → validate → analyze → code-check → report. The system is bilingual (`en` / `zh`); all new user-visible text must ship in both locales.
 
-### Migration: former `sclaw` regression commands
+## Architecture
 
-| Former | Use instead |
-|--------|-------------|
-| `./sclaw validate <name>` | `node tests/runner.mjs validate <name>` |
-| `./sclaw validate --list` | `node tests/runner.mjs validate --list` |
-| `./sclaw check <name>` | `node tests/runner.mjs check <name>` |
-| `./sclaw check --list` | `node tests/runner.mjs check --list` |
-| `./sclaw backend-regression` | `node tests/runner.mjs backend-regression` |
-| `./sclaw analysis-regression` | `node tests/runner.mjs analysis-regression` |
-| `./sclaw test-smoke-native` | `node tests/runner.mjs smoke-native` |
-| `./sclaw test-smoke-docker` | `node tests/runner.mjs smoke-docker` |
+```text
+frontend (Next.js 14)  →  backend (Fastify + Prisma)  →  analysis engine (e.g. Python analysis runtime (OpenSees))
+```
 
-## Coding Expectations
-- TypeScript:
-  - strict mode, ES modules, 2-space indentation, semicolons
-  - prefer explicit types at API and store boundaries
-  - keep route handlers thin and push logic into services
-- Python:
-  - follow existing FastAPI and Pydantic style
-  - keep schema and regression code readable and typed
-- Naming:
-  - files: lowercase domain names such as `agent.ts`, `analysis.ts`
-  - classes: `PascalCase`
-  - functions and variables: `camelCase`
-  - constants: `UPPER_SNAKE_CASE`
-- Frontend specifics:
-  - preserve the existing Next.js app-router structure
-  - reuse the current i18n/theme/store infrastructure instead of adding parallel mechanisms
-  - route all new user-visible copy through the existing i18n system; do not hardcode single-language strings in components, layouts, or client flows
-  - make locale-sensitive formatting follow the active locale for dates, numbers, summaries, and generated display text
-  - prefer design-token and theme-aware styling over fixed light/dark hardcoding
+- **Backend** (`backend/`): Fastify API with Prisma ORM (SQLite default). Route handlers in `src/api`, orchestration/domain logic in `src/services`, shared helpers in `src/utils`.
+- **Frontend** (`frontend/`): Next.js 14 app-router. Routes in `src/app`, reusable UI in `src/components`, client state (Zustand) and i18n in `src/lib`.
+- **Agent runtime** (`backend/src/agent-runtime/`): Capability-driven orchestration — base model (chat) → skill layer (engineering advisor) → tool layer (executable agent). 14 skill domains live under `backend/src/agent-skills/` (structure-type, analysis, code-check, data-input, design, drawing, general, load-boundary, material, report-export, result-postprocess, section, validation, visualization).
+- **Analysis execution** (`backend/src/agent-skills/analysis/`): Spawns a Python subprocess using OpenSees for structural analysis. Python runtime lives in `backend/.venv/`.
+- **CLI** (`scripts/cli/`): The `./sclaw` and `./sclaw_cn` commands wrap all startup, health-check, and lifecycle operations. Always prefer `./sclaw ...` over calling script paths directly.
+- **Tests** (`tests/`): Regression and contract validation via `node tests/runner.mjs`.
 
-## Testing Expectations
-- Prefer repository scripts when a script already captures the intended regression.
-- For backend and contract work, cover success, failure, and missing-input scenarios.
-- For frontend work, run targeted Vitest checks plus `type-check`; run `build` when layout, routing, or provider behavior changes.
-- For new user-visible frontend features, verify both `en` and `zh` paths. Cover the key rendered copy or interaction behavior in tests instead of validating only one locale.
-- For analysis runtime work, keep regression fixtures deterministic and avoid changing expected outputs casually.
-- If a change affects chat, agent orchestration, report output, converters, or schema migration, extend or run the matching `node tests/runner.mjs validate <name>` check.
+## Build & Run
 
-## Commit and PR Guidance
-- Follow conventional commit style, for example:
-  - `feat(frontend): add bilingual light and dark experience`
-  - `fix(frontend): stop chat auto-scroll from locking wheel`
-  - `docs: map existing codebase`
-- Commit in small batches with clean boundaries and do not postpone commits once a logical slice is complete.
-- Preferred sequence when applicable:
-  - implementation changes first
-  - tests in a separate commit when that improves reviewability
-  - docs or workflow-note follow-ups in their own commit
-- PRs should state:
-  - what changed and why
-  - impacted areas (`backend`, `frontend`, `scripts`, `docs`)
-  - commands run and results
-  - sample request/response when API behavior changed
+**Environment setup (first time):**
+```bash
+./sclaw doctor          # checks deps, installs missing, sets up backend/.venv
+./sclaw start           # starts backend + frontend
+./sclaw status          # verify both services running
+./sclaw logs            # tail logs
+./sclaw stop            # graceful shutdown
+```
+
+**China mirror variant:** Replace `./sclaw` with `./sclaw_cn` for mirror defaults (npmmirror, tsinghua PyPI, Docker mirror).
+
+**Backend only:**
+```bash
+npm run build --prefix backend          # TypeScript compile
+npm run lint --prefix backend           # ESLint
+npm test --prefix backend -- --runInBand  # Jest (needs db:generate + build first)
+npm run db:generate --prefix backend    # Regenerate Prisma client (required before build after schema changes)
+npm run db:push --prefix backend        # Sync Prisma schema to SQLite (no migration files)
+```
+
+**Frontend only:**
+```bash
+npm run build --prefix frontend         # Next.js production build
+npm run type-check --prefix frontend    # tsc --noEmit
+npm run test:run --prefix frontend      # Vitest (all tests)
+npm run lint --prefix frontend          # ESLint
+npm run test:e2e --prefix frontend      # Playwright E2E tests
+```
+
+**Running a single test:**
+```bash
+# Backend (Jest)
+npx jest --prefix backend --runInBand path/to/test.test.ts
+
+# Frontend (Vitest)
+npx vitest run --prefix frontend path/to/test.test.ts
+```
+
+**Regression and validation:**
+```bash
+node tests/runner.mjs analysis-regression                    # OpenSees analysis regression
+node tests/runner.mjs check backend-regression               # Backend contract checks
+node tests/runner.mjs validate validate-agent-orchestration  # Agent orchestration contract
+node tests/runner.mjs validate validate-chat-stream-contract # Chat stream contract
+node tests/runner.mjs validate validate-analyze-contract     # Analyze endpoint contract
+node tests/runner.mjs smoke-native                           # Full native install smoke (mirrors CI)
+node tests/runner.mjs smoke-docker                           # Docker smoke (needs Docker)
+node tests/runner.mjs llm-integration                        # LLM integration tests (needs LLM_API_KEY)
+```
+
+## Key Conventions
+
+- **TypeScript**: strict mode, ES modules, 2-space indent, semicolons. Explicit types at API/store boundaries. Route handlers stay thin; logic goes into services.
+- **Naming**: files = lowercase domain (`agent.ts`, `analysis.ts`), classes = `PascalCase`, functions/variables = `camelCase`, constants = `UPPER_SNAKE_CASE`.
+- **Bilingual**: Every user-visible string must support `en` and `zh`. Route through the existing i18n system; never hardcode single-language strings.
+- **Frontend**: Preserve Next.js app-router structure. Use existing Zustand store, i18n, and theme infrastructure. Prefer design-token styling over hardcoded light/dark values.
+- **Python**: Follow existing style in analysis modules. Keep regression fixtures deterministic.
+- **Immutability**: Prefer creating new objects over mutating existing ones.
+- **Commits**: Conventional commit format (`feat(frontend): ...`, `fix(backend): ...`, `docs: ...`). Small logical commits with clear boundaries; don't bundle unrelated work.
+
+## Module Boundaries
+
+| Concern | Location |
+|---------|----------|
+| API routes | `backend/src/api/` |
+| Agent orchestration | `backend/src/services/` and `backend/src/agent-runtime/` |
+| Skill domains | `backend/src/agent-skills/<domain>/` |
+| Executable agent tools | `backend/src/agent-tools/<tool>/` (run_analysis, validate_model, etc.) |
+| Shared skill utilities | `backend/src/skill-shared/` |
+| Shared helpers | `backend/src/utils/` |
+| Frontend pages | `frontend/src/app/` |
+| Reusable components | `frontend/src/components/` |
+| Client state / i18n | `frontend/src/lib/` |
+| CLI implementation | `scripts/cli/` |
+
+## Configuration
+
+Environment variables live in `.env` (template: `.env.example`). Key variables:
+
+- `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`
+- `DATABASE_URL` — SQLite by default (`file:../../.runtime/data/structureclaw.db`)
+- `ANALYSIS_PYTHON_BIN` — leave blank for auto-detected `backend/.venv` Python
+
+## Testing Guidance
+
+- Backend: cover success, failure, and missing-input scenarios. Run `npm test --prefix backend -- --runInBand`.
+- Frontend: run targeted Vitest checks plus `type-check`. Run `build` when layout/routing changes.
+- Both `en` and `zh` paths must be verified for new user-visible frontend features.
+- Analysis runtime: keep regression fixtures deterministic; don't casually change expected outputs.
+- If changes affect chat, agent orchestration, report output, converters, or schema — run `node tests/runner.mjs validate <name>`.
+
+## Agent Architecture Reference
+
+The agent is capability-driven, not mode-driven:
+1. **Base model** (always present): general dialogue, fallback when no engineering capabilities are loaded.
+2. **Skill layer** (optional): engineering intent classification, parameter extraction, guidance.
+3. **Tool layer** (optional): executable engineering actions (analyze, validate, code-check, report).
+
+See `docs/agent-architecture.md` for the full canonical design reference.
+
+## Skill Development
+
+A skill is the unit of extensibility in the agent. Each skill lives under `backend/src/agent-skills/<domain>/` and consists of two parts:
+
+### 1. Skill Manifest (`skill.yaml`)
+
+Required file. Declares identity, capabilities, and routing. Schema validated by `backend/src/agent-runtime/manifest-schema.ts`. Key fields:
+
+```yaml
+id: frame                          # unique skill identifier
+domain: structure-type              # one of 14 domains (see ALL_SKILL_DOMAINS)
+name: { zh: 规则框架, en: Regular Frame }
+description: { zh: ..., en: ... }
+triggers: [frame, 框架, steel frame] # keywords for intent detection
+stages: [intent, draft, analysis, design]
+structureType: frame               # maps to InferredModelType
+autoLoadByDefault: true
+priority: 70                       # higher = preferred when multiple skills match
+compatibility:
+  minRuntimeVersion: "0.1.0"
+  skillApiVersion: v1
+```
+
+### 2. Stage Markdown (optional, `<stage>.md`)
+
+Plain markdown files (`intent.md`, `draft.md`, `analysis.md`, `design.md`) that provide domain knowledge prompts injected into the LLM context at each pipeline stage. Content-only; no YAML frontmatter.
+
+### 3. Handler Module (`handler.ts`, optional but required for interactive skills)
+
+Exports a `SkillHandler` object (interface defined in `backend/src/agent-runtime/types.ts`). The handler methods form the skill's lifecycle:
+
+```
+detectStructuralType()  → match user message to this skill's structural type
+parseProvidedValues()   → normalize explicit user input into DraftExtraction
+extractDraft()          → combine LLM extraction + rules into DraftExtraction
+mergeState()            → immutable merge of existing state + new patch
+computeMissing()        → return critical/optional missing fields
+mapLabels()             → localize missing-field keys for display
+buildQuestions()        → generate InteractionQuestion[] for missing fields
+buildDefaultProposals() → suggest default values (optional)
+buildModel()            → produce the final computable model JSON
+resolveStage()          → determine pipeline stage from current state (optional)
+buildReportNarrative()  → custom report narrative (optional)
+```
+
+### Creating a New Skill
+
+1. Create directory: `backend/src/agent-skills/<domain>/<skill-name>/`
+2. Add `skill.yaml` with all required fields (validate against `skillManifestFileSchema`)
+3. Add stage markdown files as needed (`intent.md`, `draft.md`, etc.)
+4. For structure-type skills with interactive drafts, add `handler.ts` implementing `SkillHandler`
+5. Register in `backend/src/agent-skills/structure-type/registry.ts` if it's a structure-type skill
+6. Add tests in `<skill-dir>/__tests__/`
+
+### Skill Loading Flow
+
+1. `AgentSkillLoader` scans `agent-skills/` recursively for `skill.yaml` files
+2. Manifests validated via Zod (`skillManifestFileSchema`)
+3. Stage markdown loaded and bundled per skill ID
+4. Handler modules dynamically imported from `handler.ts`/`handler.js`
+5. `AgentSkillRegistry` resolves plugins by `skillId` or `structureType` at runtime
+6. `AgentSkillRuntime` orchestrates: detect type → extract params → build model → execute tools
+
+## 1. Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
+
+## 2. Simplicity First
+
+**Minimum code that solves the problem. Nothing speculative.**
+
+- No features beyond what was asked.
+- No abstractions for single-use code.
+- No "flexibility" or "configurability" that wasn't requested.
+- No error handling for impossible scenarios.
+- If you write 200 lines and it could be 50, rewrite it.
+
+Ask yourself: "Would a senior engineer say this is overcomplicated?" If yes, simplify.
+
+## 3. Surgical Changes
+
+**Touch only what you must. Clean up only your own mess.**
+
+When editing existing code:
+- Don't "improve" adjacent code, comments, or formatting.
+- Don't refactor things that aren't broken.
+- Match existing style, even if you'd do it differently.
+- If you notice unrelated dead code, mention it - don't delete it.
+
+When your changes create orphans:
+- Remove imports/variables/functions that YOUR changes made unused.
+- Don't remove pre-existing dead code unless asked.
+
+The test: Every changed line should trace directly to the user's request.
+
+## 4. Goal-Driven Execution
+
+**Define success criteria. Loop until verified.**
+
+Transform tasks into verifiable goals:
+- "Add validation" → "Write tests for invalid inputs, then make them pass"
+- "Fix the bug" → "Write a test that reproduces it, then make it pass"
+- "Refactor X" → "Ensure tests pass before and after"
+
+For multi-step tasks, state a brief plan:
+```
+1. [Step] → verify: [check]
+2. [Step] → verify: [check]
+3. [Step] → verify: [check]
+```
+
+Strong success criteria let you loop independently. Weak criteria ("make it work") require constant clarification.
+
+---
+
+**These guidelines are working if:** fewer unnecessary changes in diffs, fewer rewrites due to overcomplication, and clarifying questions come before implementation rather than after mistakes.
 
 ## Security and Config
+
 - Never commit live secrets, tokens, or private keys.
 - Use `.env.example` as the template.
 - Backend runtime depends on environment configuration for the OpenAI-compatible LLM interface and infrastructure; document any new defaults or required variables.
