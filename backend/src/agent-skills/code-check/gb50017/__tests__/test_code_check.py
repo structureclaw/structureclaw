@@ -16,11 +16,6 @@ _SKILL_DIR = str(Path(__file__).resolve().parent.parent)
 if _SKILL_DIR not in sys.path:
     sys.path.insert(0, _SKILL_DIR)
 
-# Parent code_check.py dir for CodeChecker (append, not insert, to avoid shadowing)
-_PARENT_DIR = str(Path(__file__).resolve().parent.parent.parent)
-if _PARENT_DIR not in sys.path:
-    sys.path.append(_PARENT_DIR)
-
 import code_check as gb50017  # noqa: E402
 
 

@@ -198,6 +198,11 @@ def _compute_utilization_overrides(
 
     computed: Dict[str, float] = {}
 
+    def _has_override(key: str) -> bool:
+        """Check if caller provided a numeric override for this check item."""
+        val = per_elem.get(key)
+        return isinstance(val, (int, float))
+
     A = section.get('A')
     f = material.get('f')
     fv = material.get('fv')
@@ -210,7 +215,7 @@ def _compute_utilization_overrides(
     Wnx = section.get('Wnx') or section.get('Wx')
 
     # Normal stress: (|N|/A + |Mx|/Wnx) / f  (GB50017-2017 7.1.1)
-    if '正应力' not in per_elem and A is not None and f is not None and N is not None:
+    if not _has_override('正应力') and A is not None and f is not None and N is not None:
         try:
             sigma_axial = abs(float(N)) / float(A)
             sigma_bending = 0.0
@@ -222,7 +227,7 @@ def _compute_utilization_overrides(
 
     # Shear stress: |V|*S/(I*tw) / fv  (GB50017-2017 7.1.2)
     #   Falls back to |V|/As/fv when S/I/tw not available but As is
-    if '剪应力' not in per_elem and fv is not None and V is not None:
+    if not _has_override('剪应力') and fv is not None and V is not None:
         try:
             As = section.get('As')  # explicit shear area
             if S is not None and I is not None and tw is not None:
@@ -235,7 +240,7 @@ def _compute_utilization_overrides(
 
     # Equivalent stress: sqrt(sigma_axial^2 + sigma_bending^2
     #   - sigma_axial*sigma_bending + 3*tau^2) / f  (GB50017-2017 7.1.4)
-    if '折算应力' not in per_elem and A is not None and f is not None and N is not None and V is not None:
+    if not _has_override('折算应力') and A is not None and f is not None and N is not None and V is not None:
         try:
             sigma_axial = abs(float(N)) / float(A)
             sigma_bending = 0.0
@@ -261,7 +266,7 @@ def _compute_utilization_overrides(
             pass
 
     # Overall beam stability: |Mx| / (phi_b * Wnx * f)
-    if '整体稳定' not in per_elem:
+    if not _has_override('整体稳定'):
         phi = elem.get('phi_b') or elem.get('phi')
         if phi is not None and Wnx is not None and f is not None and Mx is not None:
             try:
@@ -272,7 +277,7 @@ def _compute_utilization_overrides(
                 pass
 
     # Axial compression stability: |N| / (phi_axial * A * f)
-    if '轴压稳定' not in per_elem:
+    if not _has_override('轴压稳定'):
         phi = elem.get('phi_axial') or elem.get('phi')
         if phi is not None and A is not None and f is not None and N is not None:
             try:
@@ -281,7 +286,7 @@ def _compute_utilization_overrides(
                 pass
 
     # Local plate stability: (b/t) / bt_limit
-    if '局部稳定' not in per_elem:
+    if not _has_override('局部稳定'):
         b = section.get('flangeWidth') or section.get('b')
         t = section.get('flangeThickness') or section.get('t')
         bt_limit = elem.get('btLimit')
@@ -292,7 +297,7 @@ def _compute_utilization_overrides(
                 pass
 
     # Slenderness ratio: (l0 / i) / lambda_limit
-    if '长细比' not in per_elem:
+    if not _has_override('长细比'):
         l0 = elem.get('length') or elem.get('l0')
         i_min = section.get('imin') or section.get('i')
         lambda_limit = elem.get('lambdaLimit')
@@ -303,7 +308,7 @@ def _compute_utilization_overrides(
                 pass
 
     # Deflection: f_max / (L / n)  — only when deflectionLimitN explicitly provided
-    if '挠度' not in per_elem:
+    if not _has_override('挠度'):
         f_max = forces.get('deflection')
         if f_max is None:
             f_max = elem.get('deflection')
