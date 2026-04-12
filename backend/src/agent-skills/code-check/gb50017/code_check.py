@@ -44,7 +44,7 @@ def get_rules() -> Dict[str, Any]:
                     {
                         'item': '正应力',
                         'clause': '7.1.1',
-                        'formula': 'σ = N/Aₙ ± Mₓ/(γₓWₙₓ) ≤ f',
+                        'formula': '(|N|/A + |Mₓ|/Wₙₓ) / f ≤ 1.0',
                         'limit': 1.0,
                         'params': ['N', 'Mx', 'A', 'Wnx', 'f'],
                     },
@@ -60,7 +60,7 @@ def get_rules() -> Dict[str, Any]:
                         'clause': '7.1.4',
                         'formula': '√(σₓ² + σ_b² - σₓ·σ_b + 3τ²) ≤ β₁·f',
                         'limit': 1.0,
-                        'params': ['sigma_axial', 'sigma_bending', 'tau', 'f'],
+                        'params': ['sigma_axial', 'sigma_bending', 'tau', 'beta1', 'f'],
                     },
                 ],
             },
@@ -333,7 +333,7 @@ def _check_beam(checker: Any, elem_id: str, context: Dict[str, Any]) -> List[Dic
             'chapter': '第7章 强度验算',
             'name': '强度验算',
             'items': [
-                checker._calc_item(elem_id, '正应力', context, 'GB50017-2017 7.1.1', 'σ = N/Aₙ ± Mₓ/(γₓWₙₓ) ≤ f', 1.0),
+                checker._calc_item(elem_id, '正应力', context, 'GB50017-2017 7.1.1', '(|N|/A + |Mₓ|/Wₙₓ) / f ≤ 1.0', 1.0),
                 checker._calc_item(elem_id, '剪应力', context, 'GB50017-2017 7.1.2', 'τ = V·S/(I·tw) ≤ f_v', 1.0),
                 checker._calc_item(elem_id, '折算应力', context, 'GB50017-2017 7.1.4', '√(σₓ²+σ_b²-σₓ·σ_b+3τ²) ≤ β₁·f', 1.0),
             ],
