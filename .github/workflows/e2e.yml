@@ -2,16 +2,8 @@ name: E2E Tests
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'frontend/**'
-      - 'backend/src/api/**'
-      - 'backend/src/services/**'
-      - 'backend/src/index.ts'
-      - 'backend/package.json'
-      - 'backend/package-lock.json'
-      - '.github/actions/setup-env/**'
-      - '.github/workflows/e2e.yml'
+  issue_comment:
+    types: [created]
   push:
     branches:
       - master
@@ -25,15 +17,88 @@ on:
       - '.github/actions/setup-env/**'
       - '.github/workflows/e2e.yml'
 
+permissions:
+  contents: read
+
 jobs:
+  check-permission:
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+    if: |
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      (github.event.issue.pull_request &&
+       contains(github.event.comment.body, '/test-e2e') &&
+       (github.event.comment.user.login == 'guyi2000' || github.event.comment.user.login == 'qinsz01'))
+    runs-on: ubuntu-latest
+    outputs:
+      pr_sha: ${{ steps.get-ref.outputs.sha }}
+      trigger_issue_number: ${{ steps.get-ref.outputs.issue_number }}
+      trigger_comment_user: ${{ steps.get-ref.outputs.comment_user }}
+    steps:
+      - name: Get PR Reference
+        id: get-ref
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" == "issue_comment" ]; then
+            PR_URL="${{ github.event.issue.pull_request.url }}"
+            SHA=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$PR_URL" | jq -r .head.sha)
+            if [ -z "$SHA" ] || [ "$SHA" = "null" ]; then
+              echo "::error::Failed to resolve PR head SHA"
+              exit 1
+            fi
+            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+            echo "issue_number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
+            echo "comment_user=${{ github.event.comment.user.login }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
+            echo "issue_number=" >> "$GITHUB_OUTPUT"
+            echo "comment_user=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Reply with Action Link
+        if: github.event_name == 'issue_comment'
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.COMMENT_TOKEN }}
+          script: |
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const body = [
+              `✅ **E2E Tests Triggered!**`,
+              ``,
+              `@${context.payload.comment.user.login}, I've started the workflow for you.`,
+              `Please click the link below to monitor progress and **approve the deployment** to the test environment:`,
+              ``,
+              `🚀 **[View Action Run Details](${runUrl})**`,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            })
+
   e2e:
+    needs: check-permission
+    permissions:
+      contents: read
+      issues: write
     environment: test
     runs-on: ubuntu-latest
+    concurrency:
+      group: e2e-${{ github.event.issue.number || github.sha }}
+      cancel-in-progress: true
     timeout-minutes: 20
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.check-permission.outputs.pr_sha }}
 
       - name: Setup environment
         uses: ./.github/actions/setup-env
@@ -68,9 +133,39 @@ jobs:
           npx wait-on http://localhost:30000 --timeout 60000
 
       - name: Run E2E tests
+        id: run-tests
         run: npm run test:e2e --prefix frontend
         env:
           CI: true
+
+      - name: Report results on PR
+        if: always() && needs.check-permission.outputs.trigger_issue_number != ''
+        continue-on-error: true
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.COMMENT_TOKEN }}
+          script: |
+            const issueNumber = Number('${{ needs.check-permission.outputs.trigger_issue_number }}');
+            const commentUser = '${{ needs.check-permission.outputs.trigger_comment_user }}';
+            const success = '${{ steps.run-tests.outcome }}' === 'success';
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            const icon = success ? '✅' : '❌';
+            const status = success ? 'PASSED' : 'FAILED';
+            const body = [
+              `${icon} **E2E Tests ${status}**`,
+              ``,
+              `@${commentUser}, the test run has completed.`,
+              ``,
+              `📦 **[Download Logs](${runUrl})** or check the Artifacts section.`,
+            ].join('\n');
+
+            await github.rest.issues.createComment({
+              issue_number: issueNumber,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            })
 
       - name: Upload test artifacts
         if: always()
