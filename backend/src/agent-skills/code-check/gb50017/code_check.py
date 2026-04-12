@@ -5,7 +5,7 @@
 """
 from __future__ import annotations
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 
 RULE_VERSION = 'v2-member-checks'
@@ -44,23 +44,23 @@ def get_rules() -> Dict[str, Any]:
                     {
                         'item': '正应力',
                         'clause': '7.1.1',
-                        'formula': 'σ = N/Aₙ ≤ f',
+                        'formula': 'σ = N/Aₙ ± Mₓ/(γₓWₙₓ) ≤ f',
                         'limit': 1.0,
-                        'params': ['N', 'A', 'f'],
+                        'params': ['N', 'Mx', 'A', 'Wnx', 'f'],
                     },
                     {
                         'item': '剪应力',
                         'clause': '7.1.2',
-                        'formula': 'τ = V/(Aₙ·t) ≤ f_v',
+                        'formula': 'τ = V·S/(I·tw) ≤ f_v',
                         'limit': 1.0,
-                        'params': ['V', 'A', 'fv'],
+                        'params': ['V', 'S', 'I', 'tw', 'fv'],
                     },
                     {
                         'item': '折算应力',
                         'clause': '7.1.4',
-                        'formula': '√(σ² + 3τ²) ≤ β₁·f',
+                        'formula': '√(σₓ² + σ_b² - σₓ·σ_b + 3τ²) ≤ β₁·f',
                         'limit': 1.0,
-                        'params': ['sigma', 'tau', 'f'],
+                        'params': ['sigma_axial', 'sigma_bending', 'tau', 'f'],
                     },
                 ],
             },
@@ -99,7 +99,7 @@ def get_rules() -> Dict[str, Any]:
                 'checks': [
                     {
                         'item': '长细比',
-                        'clause': '8.3.1',
+                        'clause': '10.1.1',
                         'formula': 'λ = l₀/i ≤ [λ]',
                         'limit': 1.0,
                         'params': ['l0', 'i', 'lambdaLimit'],
@@ -156,7 +156,7 @@ def _resolve_element_type(elem_id: str, context: Dict[str, Any]) -> str:
     lower = elem_id.lower()
     if 'col' in lower:
         return 'column'
-    if 'brace' in lower or lower.startswith('br'):
+    if 'brace' in lower:
         return 'brace'
     return 'beam'
 
@@ -165,26 +165,38 @@ def _resolve_element_type(elem_id: str, context: Dict[str, Any]) -> str:
 # Utilization computation from elementData
 # ---------------------------------------------------------------------------
 
-def _ensure_utilization_overrides(elem_id: str, context: Dict[str, Any]) -> None:
-    """Pre-populate utilizationByElement from elementData where possible.
+def _compute_utilization_overrides(
+    elem_id: str, context: Dict[str, Any],
+) -> Dict[str, float]:
+    """Compute utilization ratios from elementData.
 
-    Only adds values that are not already present — caller overrides win.
+    Returns a new dict of computed overrides. Does NOT mutate context.
+    Caller overrides (already in utilizationByElement) are respected —
+    this function only computes values that are NOT already present.
     """
     element_data = context.get('elementData', {})
     if not isinstance(element_data, dict):
-        return
+        return {}
     elem = element_data.get(elem_id)
     if not isinstance(elem, dict):
-        return
+        return {}
 
     section = elem.get('section', {})
     material = elem.get('material', {})
     forces = elem.get('forces', {})
     if not isinstance(section, dict) or not isinstance(material, dict) or not isinstance(forces, dict):
-        return
+        return {}
 
-    overrides = context.setdefault('utilizationByElement', {})
-    per_elem = overrides.setdefault(elem_id, {})
+    # Existing caller overrides — these take priority
+    existing = context.get('utilizationByElement', {})
+    if isinstance(existing, dict):
+        per_elem = existing.get(elem_id, {})
+        if not isinstance(per_elem, dict):
+            per_elem = {}
+    else:
+        per_elem = {}
+
+    computed: Dict[str, float] = {}
 
     A = section.get('A')
     f = material.get('f')
@@ -192,37 +204,69 @@ def _ensure_utilization_overrides(elem_id: str, context: Dict[str, Any]) -> None
     N = forces.get('N')
     V = forces.get('V')
     Mx = forces.get('Mx')
+    I = section.get('I') or section.get('Iy') or section.get('Ix')
+    S = section.get('S')  # area moment above neutral axis
+    tw = section.get('tw')  # web thickness
+    Wnx = section.get('Wnx') or section.get('Wx')
 
-    # Normal stress: |N| / A / f
+    # Normal stress: (|N|/A + |Mx|/Wnx) / f  (GB50017-2017 7.1.1)
     if '正应力' not in per_elem and A is not None and f is not None and N is not None:
         try:
-            per_elem['正应力'] = abs(float(N)) / float(A) / float(f)
+            sigma_axial = abs(float(N)) / float(A)
+            sigma_bending = 0.0
+            if Mx is not None and Wnx is not None and float(Wnx) != 0:
+                sigma_bending = abs(float(Mx)) / float(Wnx)
+            computed['正应力'] = (sigma_axial + sigma_bending) / float(f)
         except (ZeroDivisionError, ValueError, TypeError):
             pass
 
-    # Shear stress: |V| / A / fv
-    if '剪应力' not in per_elem and A is not None and fv is not None and V is not None:
+    # Shear stress: |V|*S/(I*tw) / fv  (GB50017-2017 7.1.2)
+    #   Falls back to |V|/As/fv when S/I/tw not available but As is
+    if '剪应力' not in per_elem and fv is not None and V is not None:
         try:
-            per_elem['剪应力'] = abs(float(V)) / float(A) / float(fv)
+            As = section.get('As')  # explicit shear area
+            if S is not None and I is not None and tw is not None:
+                tau = abs(float(V)) * float(S) / (float(I) * float(tw))
+                computed['剪应力'] = tau / float(fv)
+            elif As is not None and float(As) != 0:
+                computed['剪应力'] = abs(float(V)) / float(As) / float(fv)
         except (ZeroDivisionError, ValueError, TypeError):
             pass
 
-    # Equivalent stress: sqrt(sigma^2 + 3*tau^2) / f
+    # Equivalent stress: sqrt(sigma_axial^2 + sigma_bending^2
+    #   - sigma_axial*sigma_bending + 3*tau^2) / f  (GB50017-2017 7.1.4)
     if '折算应力' not in per_elem and A is not None and f is not None and N is not None and V is not None:
         try:
-            sigma = abs(float(N)) / float(A)
-            tau = abs(float(V)) / float(A)
-            per_elem['折算应力'] = (sigma ** 2 + 3 * tau ** 2) ** 0.5 / float(f)
+            sigma_axial = abs(float(N)) / float(A)
+            sigma_bending = 0.0
+            if Mx is not None and Wnx is not None and float(Wnx) != 0:
+                sigma_bending = abs(float(Mx)) / float(Wnx)
+            # tau from shear formula or simplified
+            tau = 0.0
+            if S is not None and I is not None and tw is not None:
+                tau = abs(float(V)) * float(S) / (float(I) * float(tw))
+            else:
+                As = section.get('As', A)
+                if As is not None and float(As) != 0:
+                    tau = abs(float(V)) / float(As)
+            eq = (
+                sigma_axial ** 2
+                + sigma_bending ** 2
+                - sigma_axial * sigma_bending
+                + 3 * tau ** 2
+            ) ** 0.5
+            computed['折算应力'] = eq / float(f)
         except (ZeroDivisionError, ValueError, TypeError):
             pass
 
     # Overall beam stability: |Mx| / (phi * Wnx * f)
     if '整体稳定' not in per_elem:
         phi = elem.get('phi')
-        Wnx = section.get('Wnx') or section.get('Wx')
         if phi is not None and Wnx is not None and f is not None and Mx is not None:
             try:
-                per_elem['整体稳定'] = abs(float(Mx)) / (float(phi) * float(Wnx) * float(f))
+                computed['整体稳定'] = abs(float(Mx)) / (
+                    float(phi) * float(Wnx) * float(f)
+                )
             except (ZeroDivisionError, ValueError, TypeError):
                 pass
 
@@ -231,7 +275,7 @@ def _ensure_utilization_overrides(elem_id: str, context: Dict[str, Any]) -> None
         phi = elem.get('phi')
         if phi is not None and A is not None and f is not None and N is not None:
             try:
-                per_elem['轴压稳定'] = abs(float(N)) / (float(phi) * float(A) * float(f))
+                computed['轴压稳定'] = abs(float(N)) / (float(phi) * float(A) * float(f))
             except (ZeroDivisionError, ValueError, TypeError):
                 pass
 
@@ -242,7 +286,7 @@ def _ensure_utilization_overrides(elem_id: str, context: Dict[str, Any]) -> None
         bt_limit = elem.get('btLimit')
         if b is not None and t is not None and bt_limit is not None:
             try:
-                per_elem['局部稳定'] = (float(b) / float(t)) / float(bt_limit)
+                computed['局部稳定'] = (float(b) / float(t)) / float(bt_limit)
             except (ZeroDivisionError, ValueError, TypeError):
                 pass
 
@@ -253,20 +297,22 @@ def _ensure_utilization_overrides(elem_id: str, context: Dict[str, Any]) -> None
         lambda_limit = elem.get('lambdaLimit')
         if l0 is not None and i_min is not None and lambda_limit is not None:
             try:
-                per_elem['长细比'] = float(l0) / float(i_min) / float(lambda_limit)
+                computed['长细比'] = float(l0) / float(i_min) / float(lambda_limit)
             except (ZeroDivisionError, ValueError, TypeError):
                 pass
 
-    # Deflection: f_max / (L / n)
+    # Deflection: f_max / (L / n)  — only when deflectionLimitN explicitly provided
     if '挠度' not in per_elem:
         f_max = forces.get('deflection') or elem.get('deflection')
         L = elem.get('length')
-        n_limit = elem.get('deflectionLimitN', 250)
-        if f_max is not None and L is not None:
+        n_limit = elem.get('deflectionLimitN')
+        if f_max is not None and L is not None and n_limit is not None:
             try:
-                per_elem['挠度'] = abs(float(f_max)) / (float(L) / float(n_limit))
+                computed['挠度'] = abs(float(f_max)) / (float(L) / float(n_limit))
             except (ZeroDivisionError, ValueError, TypeError):
                 pass
+
+    return computed
 
 
 # ---------------------------------------------------------------------------
@@ -279,9 +325,9 @@ def _check_beam(checker: Any, elem_id: str, context: Dict[str, Any]) -> List[Dic
             'chapter': '第7章 强度验算',
             'name': '强度验算',
             'items': [
-                checker._calc_item(elem_id, '正应力', context, 'GB50017-2017 7.1.1', 'σ = N/Aₙ ≤ f', 1.0),
-                checker._calc_item(elem_id, '剪应力', context, 'GB50017-2017 7.1.2', 'τ = V/(Aₙ·t) ≤ f_v', 1.0),
-                checker._calc_item(elem_id, '折算应力', context, 'GB50017-2017 7.1.4', '√(σ² + 3τ²) ≤ β₁·f', 1.0),
+                checker._calc_item(elem_id, '正应力', context, 'GB50017-2017 7.1.1', 'σ = N/Aₙ ± Mₓ/(γₓWₙₓ) ≤ f', 1.0),
+                checker._calc_item(elem_id, '剪应力', context, 'GB50017-2017 7.1.2', 'τ = V·S/(I·tw) ≤ f_v', 1.0),
+                checker._calc_item(elem_id, '折算应力', context, 'GB50017-2017 7.1.4', '√(σₓ²+σ_b²-σₓ·σ_b+3τ²) ≤ β₁·f', 1.0),
             ],
         },
         {
@@ -323,7 +369,7 @@ def _check_column(checker: Any, elem_id: str, context: Dict[str, Any]) -> List[D
             'chapter': '第10章 正常使用极限状态',
             'name': '刚度验算',
             'items': [
-                checker._calc_item(elem_id, '长细比', context, 'GB50017-2017 8.3.1', 'λ = l₀/i ≤ [λ]', 1.0),
+                checker._calc_item(elem_id, '长细比', context, 'GB50017-2017 10.1.1', 'λ = l₀/i ≤ [λ]', 1.0),
             ],
         },
     ]
@@ -350,7 +396,7 @@ def _check_brace(checker: Any, elem_id: str, context: Dict[str, Any]) -> List[Di
             'chapter': '第10章 正常使用极限状态',
             'name': '刚度验算',
             'items': [
-                checker._calc_item(elem_id, '长细比', context, 'GB50017-2017 8.3.1', 'λ = l₀/i ≤ [λ]', 1.0),
+                checker._calc_item(elem_id, '长细比', context, 'GB50017-2017 10.1.1', 'λ = l₀/i ≤ [λ]', 1.0),
             ],
         },
     ]
@@ -400,9 +446,25 @@ def check_element(checker: Any, elem_id: str, context: Dict[str, Any]) -> Dict[s
     """GB50017-2017 构件校核入口。"""
     element_context = _resolve_element_context(elem_id, context)
     element_type = _resolve_element_type(elem_id, context)
-    _ensure_utilization_overrides(elem_id, context)
+
+    # Compute utilization overrides immutably — merge into a copy of context
+    computed = _compute_utilization_overrides(elem_id, context)
+    if computed:
+        merged_ctx = {
+            **context,
+            'utilizationByElement': {
+                **context.get('utilizationByElement', {}),
+                elem_id: {
+                    **context.get('utilizationByElement', {}).get(elem_id, {}),
+                    **computed,
+                },
+            },
+        }
+    else:
+        merged_ctx = context
+
     builder = _BUILDERS.get(element_type, _check_beam)
-    checks = builder(checker, elem_id, context)
+    checks = builder(checker, elem_id, merged_ctx)
     result = checker._build_element_result(elem_id, element_type, checks, CODE_VERSION)
     result['chapters'] = _build_chapter_summaries(checks)
     result['chapterCount'] = len(result['chapters'])

@@ -8,7 +8,6 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from typing import Any, Dict, List
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -40,7 +39,6 @@ class MockCodeChecker:
         raw = per_elem.get(item_name)
         if isinstance(raw, (int, float)):
             return max(0.0, float(raw))
-        # Read from context (our _ensure_utilization_overrides may have injected)
         ctx_overrides = context.get('utilizationByElement', {})
         if isinstance(ctx_overrides, dict):
             ctx_elem = ctx_overrides.get(elem_id, {})
@@ -48,7 +46,7 @@ class MockCodeChecker:
                 val = ctx_elem.get(item_name)
                 if isinstance(val, (int, float)):
                     return max(0.0, float(val))
-        # Deterministic fallback matching parent
+        # Deterministic fallback matching parent CodeChecker
         seed = sum(ord(ch) for ch in f'{elem_id}:{item_name}')
         return 0.55 + (seed % 40) / 100.0
 
@@ -101,31 +99,34 @@ class MockCodeChecker:
 
 def _make_beam_element_data(**overrides) -> Dict[str, Any]:
     """Create a default beam elementData entry."""
-    base = {
-        'type': 'beam',
-        'section': {'A': 5000.0, 'Wnx': 200000.0, 'Wx': 200000.0, 'i': 50.0},
-        'material': {'f': 215.0, 'fv': 125.0, 'fy': 235.0},
-        'forces': {'N': 50000.0, 'V': 30000.0, 'Mx': 30000000.0},
-        'length': 6000.0,
-        'phi': 0.85,
+    return {
+        **{
+            'type': 'beam',
+            'section': {'A': 5000.0, 'Wnx': 200000.0, 'Wx': 200000.0, 'i': 50.0,
+                        'I': 1e7, 'S': 100000.0, 'tw': 8.0, 'As': 2000.0},
+            'material': {'f': 215.0, 'fv': 125.0, 'fy': 235.0},
+            'forces': {'N': 50000.0, 'V': 30000.0, 'Mx': 30000000.0},
+            'length': 6000.0,
+            'phi': 0.85,
+        },
+        **overrides,
     }
-    base.update(overrides)
-    return base
 
 
 def _make_column_element_data(**overrides) -> Dict[str, Any]:
-    base = {
-        'type': 'column',
-        'section': {'A': 8000.0, 'imin': 40.0, 'i': 40.0, 'b': 200.0, 't': 12.0},
-        'material': {'f': 215.0, 'fv': 125.0},
-        'forces': {'N': 800000.0, 'V': 10000.0},
-        'length': 4000.0,
-        'phi': 0.75,
-        'btLimit': 15.0,
-        'lambdaLimit': 150.0,
+    return {
+        **{
+            'type': 'column',
+            'section': {'A': 8000.0, 'imin': 40.0, 'i': 40.0, 'b': 200.0, 't': 12.0},
+            'material': {'f': 215.0, 'fv': 125.0},
+            'forces': {'N': 800000.0, 'V': 10000.0},
+            'length': 4000.0,
+            'phi': 0.75,
+            'btLimit': 15.0,
+            'lambdaLimit': 150.0,
+        },
+        **overrides,
     }
-    base.update(overrides)
-    return base
 
 
 # ===========================================================================
@@ -196,11 +197,12 @@ class TestResolveElementType:
         # But 'col' in name works
         assert gb50017._resolve_element_type('C-col-1', {}) == 'column'
 
-    def test_brace_from_naming_heuristic_br_prefix(self):
-        assert gb50017._resolve_element_type('br-1', {}) == 'brace'
-
     def test_brace_from_naming_heuristic_brace_in_name(self):
         assert gb50017._resolve_element_type('X1-brace-1', {}) == 'brace'
+
+    def test_brace_from_naming_heuristic_br_prefix(self):
+        # 'br-1' does not contain 'brace', falls to beam
+        assert gb50017._resolve_element_type('br-1', {}) == 'beam'
 
     def test_default_beam_when_no_data(self):
         assert gb50017._resolve_element_type('B1', {}) == 'beam'
@@ -209,160 +211,176 @@ class TestResolveElementType:
         assert gb50017._resolve_element_type('B1', {'elementData': {}}) == 'beam'
 
 
-class TestEnsureUtilizationOverrides:
-    def test_computes_normal_stress(self):
-        ctx: Dict[str, Any] = {
-            'elementData': {
-                'E1': _make_beam_element_data(),
-            },
-        }
-        gb50017._ensure_utilization_overrides('E1', ctx)
-        util = ctx['utilizationByElement']['E1']
-        # N=50000, A=5000 -> sigma=10, f=215 -> utilization=10/215≈0.0465
-        assert '正应力' in util
-        assert util['正应力'] == pytest.approx(50000.0 / 5000.0 / 215.0, abs=0.001)
+class TestComputeUtilizationOverrides:
+    """Tests for _compute_utilization_overrides (returns new dict, no mutation)."""
 
-    def test_computes_shear_stress(self):
+    def test_computes_normal_stress_with_bending(self):
         ctx: Dict[str, Any] = {
-            'elementData': {
-                'E1': _make_beam_element_data(),
-            },
+            'elementData': {'E1': _make_beam_element_data()},
         }
-        gb50017._ensure_utilization_overrides('E1', ctx)
-        util = ctx['utilizationByElement']['E1']
-        # V=30000, A=5000 -> tau=6, fv=125 -> utilization=6/125=0.048
-        assert '剪应力' in util
-        assert util['剪应力'] == pytest.approx(30000.0 / 5000.0 / 125.0, abs=0.001)
+        result = gb50017._compute_utilization_overrides('E1', ctx)
+        # N=50000, A=5000 -> sigma_axial=10, Mx=3e7, Wnx=2e5 -> sigma_bending=150
+        # utilization = (10 + 150) / 215 ≈ 0.744
+        assert '正应力' in result
+        expected = (50000.0 / 5000.0 + 30000000.0 / 200000.0) / 215.0
+        assert result['正应力'] == pytest.approx(expected, abs=0.001)
 
-    def test_computes_equivalent_stress(self):
+    def test_computes_normal_stress_axial_only(self):
         ctx: Dict[str, Any] = {
-            'elementData': {
-                'E1': _make_beam_element_data(),
-            },
+            'elementData': {'E1': {
+                'section': {'A': 5000.0},
+                'material': {'f': 215.0},
+                'forces': {'N': 50000.0},
+            }},
         }
-        gb50017._ensure_utilization_overrides('E1', ctx)
-        util = ctx['utilizationByElement']['E1']
-        assert '折算应力' in util
-        sigma = 50000.0 / 5000.0
-        tau = 30000.0 / 5000.0
-        expected = (sigma ** 2 + 3 * tau ** 2) ** 0.5 / 215.0
-        assert util['折算应力'] == pytest.approx(expected, abs=0.001)
+        result = gb50017._compute_utilization_overrides('E1', ctx)
+        assert result['正应力'] == pytest.approx(50000.0 / 5000.0 / 215.0, abs=0.001)
+
+    def test_computes_shear_stress_with_S_I_tw(self):
+        ctx: Dict[str, Any] = {
+            'elementData': {'E1': _make_beam_element_data()},
+        }
+        result = gb50017._compute_utilization_overrides('E1', ctx)
+        # V=30000, S=100000, I=1e7, tw=8 -> tau = 30000*100000/(1e7*8) = 37.5
+        # fv=125 -> 37.5/125 = 0.3
+        assert '剪应力' in result
+        expected = 30000.0 * 100000.0 / (1e7 * 8.0) / 125.0
+        assert result['剪应力'] == pytest.approx(expected, abs=0.001)
+
+    def test_computes_shear_stress_with_As_fallback(self):
+        ctx: Dict[str, Any] = {
+            'elementData': {'E1': {
+                'section': {'A': 5000.0, 'As': 2000.0},
+                'material': {'fv': 125.0},
+                'forces': {'V': 30000.0, 'N': 50000.0},
+            }},
+        }
+        result = gb50017._compute_utilization_overrides('E1', ctx)
+        assert '剪应力' in result
+        expected = 30000.0 / 2000.0 / 125.0
+        assert result['剪应力'] == pytest.approx(expected, abs=0.001)
+
+    def test_computes_equivalent_stress_includes_bending(self):
+        ctx: Dict[str, Any] = {
+            'elementData': {'E1': _make_beam_element_data()},
+        }
+        result = gb50017._compute_utilization_overrides('E1', ctx)
+        assert '折算应力' in result
+        sigma_axial = 50000.0 / 5000.0  # 10
+        sigma_bending = 30000000.0 / 200000.0  # 150
+        tau = 30000.0 * 100000.0 / (1e7 * 8.0)  # 37.5
+        expected = (sigma_axial ** 2 + sigma_bending ** 2
+                    - sigma_axial * sigma_bending + 3 * tau ** 2) ** 0.5 / 215.0
+        assert result['折算应力'] == pytest.approx(expected, abs=0.001)
 
     def test_computes_overall_stability(self):
         ctx: Dict[str, Any] = {
-            'elementData': {
-                'E1': _make_beam_element_data(),
-            },
+            'elementData': {'E1': _make_beam_element_data()},
         }
-        gb50017._ensure_utilization_overrides('E1', ctx)
-        util = ctx['utilizationByElement']['E1']
-        # Mx=3e7, phi=0.85, Wnx=2e5, f=215 -> 3e7/(0.85*2e5*215)≈0.819
-        assert '整体稳定' in util
-        assert util['整体稳定'] == pytest.approx(30000000.0 / (0.85 * 200000.0 * 215.0), abs=0.001)
+        result = gb50017._compute_utilization_overrides('E1', ctx)
+        assert '整体稳定' in result
+        assert result['整体稳定'] == pytest.approx(
+            30000000.0 / (0.85 * 200000.0 * 215.0), abs=0.001
+        )
 
     def test_computes_axial_compression_stability(self):
         ctx: Dict[str, Any] = {
-            'elementData': {
-                'C1': _make_column_element_data(),
-            },
+            'elementData': {'C1': _make_column_element_data()},
         }
-        gb50017._ensure_utilization_overrides('C1', ctx)
-        util = ctx['utilizationByElement']['C1']
-        # N=8e5, phi=0.75, A=8000, f=215 -> 8e5/(0.75*8000*215)≈0.620
-        assert '轴压稳定' in util
-        assert util['轴压稳定'] == pytest.approx(800000.0 / (0.75 * 8000.0 * 215.0), abs=0.001)
+        result = gb50017._compute_utilization_overrides('C1', ctx)
+        assert '轴压稳定' in result
+        assert result['轴压稳定'] == pytest.approx(
+            800000.0 / (0.75 * 8000.0 * 215.0), abs=0.001
+        )
 
     def test_caller_override_not_overwritten(self):
         ctx: Dict[str, Any] = {
-            'elementData': {
-                'E1': _make_beam_element_data(),
-            },
-            'utilizationByElement': {
-                'E1': {'正应力': 0.73},
-            },
+            'elementData': {'E1': _make_beam_element_data()},
+            'utilizationByElement': {'E1': {'正应力': 0.73}},
         }
-        gb50017._ensure_utilization_overrides('E1', ctx)
-        # Caller override should remain
-        assert ctx['utilizationByElement']['E1']['正应力'] == 0.73
+        result = gb50017._compute_utilization_overrides('E1', ctx)
+        # Function returns computed values only; caller override is in ctx, not in result
+        assert '正应力' not in result  # skipped because already in per_elem
 
     def test_no_computation_when_no_element_data(self):
         ctx: Dict[str, Any] = {}
-        gb50017._ensure_utilization_overrides('E1', ctx)
-        # Should not crash, no utilizationByElement added if no data
-        assert 'utilizationByElement' not in ctx or 'E1' not in ctx.get('utilizationByElement', {})
+        result = gb50017._compute_utilization_overrides('E1', ctx)
+        assert result == {}
 
     def test_partial_data_computes_available_checks(self):
-        """Only N and A provided (no V) — should compute 正应力 but not 剪应力."""
         ctx: Dict[str, Any] = {
-            'elementData': {
-                'E1': {
-                    'section': {'A': 5000.0},
-                    'material': {'f': 215.0},
-                    'forces': {'N': 50000.0},
-                },
-            },
+            'elementData': {'E1': {
+                'section': {'A': 5000.0},
+                'material': {'f': 215.0},
+                'forces': {'N': 50000.0},
+            }},
         }
-        gb50017._ensure_utilization_overrides('E1', ctx)
-        util = ctx['utilizationByElement']['E1']
-        assert '正应力' in util
-        assert '剪应力' not in util
+        result = gb50017._compute_utilization_overrides('E1', ctx)
+        assert '正应力' in result
+        assert '剪应力' not in result
 
     def test_computes_slenderness(self):
         ctx: Dict[str, Any] = {
-            'elementData': {
-                'C1': _make_column_element_data(),
-            },
+            'elementData': {'C1': _make_column_element_data()},
         }
-        gb50017._ensure_utilization_overrides('C1', ctx)
-        util = ctx['utilizationByElement']['C1']
-        # l0=4000, i=40 -> lambda=100, limit=150 -> 100/150≈0.667
-        assert '长细比' in util
-        assert util['长细比'] == pytest.approx(4000.0 / 40.0 / 150.0, abs=0.001)
+        result = gb50017._compute_utilization_overrides('C1', ctx)
+        assert '长细比' in result
+        assert result['长细比'] == pytest.approx(4000.0 / 40.0 / 150.0, abs=0.001)
 
-    def test_computes_deflection(self):
+    def test_computes_deflection_only_when_limit_provided(self):
         ctx: Dict[str, Any] = {
-            'elementData': {
-                'B1': {
-                    'section': {'A': 5000.0},
-                    'material': {'f': 215.0},
-                    'forces': {'N': 0, 'deflection': 12.0},
-                    'length': 6000.0,
-                    'deflectionLimitN': 250,
-                },
-            },
+            'elementData': {'B1': {
+                'section': {'A': 5000.0},
+                'material': {'f': 215.0},
+                'forces': {'N': 0, 'deflection': 12.0},
+                'length': 6000.0,
+                'deflectionLimitN': 250,
+            }},
         }
-        gb50017._ensure_utilization_overrides('B1', ctx)
-        util = ctx['utilizationByElement']['B1']
-        # f_max=12, L=6000, n=250 -> limit=24 -> 12/24=0.5
-        assert '挠度' in util
-        assert util['挠度'] == pytest.approx(12.0 / (6000.0 / 250.0), abs=0.001)
+        result = gb50017._compute_utilization_overrides('B1', ctx)
+        assert '挠度' in result
+        assert result['挠度'] == pytest.approx(12.0 / (6000.0 / 250.0), abs=0.001)
+
+    def test_no_deflection_without_explicit_limit(self):
+        ctx: Dict[str, Any] = {
+            'elementData': {'B1': {
+                'section': {'A': 5000.0},
+                'material': {'f': 215.0},
+                'forces': {'N': 0, 'deflection': 12.0},
+                'length': 6000.0,
+                # no deflectionLimitN
+            }},
+        }
+        result = gb50017._compute_utilization_overrides('B1', ctx)
+        assert '挠度' not in result
 
     def test_computes_local_stability(self):
         ctx: Dict[str, Any] = {
-            'elementData': {
-                'C1': _make_column_element_data(),
-            },
+            'elementData': {'C1': _make_column_element_data()},
         }
-        gb50017._ensure_utilization_overrides('C1', ctx)
-        util = ctx['utilizationByElement']['C1']
-        # b=200, t=12, limit=15 -> 200/12=16.67, 16.67/15≈1.111
-        assert '局部稳定' in util
-        assert util['局部稳定'] == pytest.approx(200.0 / 12.0 / 15.0, abs=0.001)
+        result = gb50017._compute_utilization_overrides('C1', ctx)
+        assert '局部稳定' in result
+        assert result['局部稳定'] == pytest.approx(200.0 / 12.0 / 15.0, abs=0.001)
 
     def test_zero_area_does_not_crash(self):
         ctx: Dict[str, Any] = {
-            'elementData': {
-                'E1': {
-                    'section': {'A': 0.0},
-                    'material': {'f': 215.0},
-                    'forces': {'N': 50000.0, 'V': 30000.0},
-                },
-            },
+            'elementData': {'E1': {
+                'section': {'A': 0.0},
+                'material': {'f': 215.0},
+                'forces': {'N': 50000.0, 'V': 30000.0},
+            }},
         }
-        gb50017._ensure_utilization_overrides('E1', ctx)
-        # Should not crash — values are silently skipped
-        util = ctx.get('utilizationByElement', {}).get('E1', {})
-        assert '正应力' not in util
+        result = gb50017._compute_utilization_overrides('E1', ctx)
+        assert '正应力' not in result
+
+    def test_does_not_mutate_context(self):
+        ctx: Dict[str, Any] = {
+            'elementData': {'E1': _make_beam_element_data()},
+        }
+        original_keys = set(ctx.keys())
+        gb50017._compute_utilization_overrides('E1', ctx)
+        assert set(ctx.keys()) == original_keys
+        assert 'utilizationByElement' not in ctx
 
 
 class TestCheckElementBeam:
@@ -400,13 +418,13 @@ class TestCheckElementBeam:
         assert result['elementType'] == 'beam'
         assert result['code'] == 'GB50017-2017'
 
-    def test_beam_computed_utilization_matches_element_data(self):
+    def test_beam_computed_utilization_includes_bending(self):
         checker = MockCodeChecker()
         ctx = {'elementData': {'B1': _make_beam_element_data()}}
         result = gb50017.check_element(checker, 'B1', ctx)
         strength = next(c for c in result['checks'] if c['name'] == '强度验算')
         normal = next(i for i in strength['items'] if i['item'] == '正应力')
-        expected = 50000.0 / 5000.0 / 215.0
+        expected = (50000.0 / 5000.0 + 30000000.0 / 200000.0) / 215.0
         assert normal['utilization'] == pytest.approx(expected, abs=0.001)
 
 
@@ -445,23 +463,23 @@ class TestCheckElementColumn:
 class TestCheckElementBrace:
     def test_brace_has_axial_strength(self):
         checker = MockCodeChecker()
-        ctx = {'elementData': {'br1': {'type': 'brace', 'section': {'A': 3000.0}, 'material': {'f': 215.0}, 'forces': {'N': 200000.0}}}}
-        result = gb50017.check_element(checker, 'br1', ctx)
+        ctx = {'elementData': {'X1-brace-1': {'type': 'brace', 'section': {'A': 3000.0}, 'material': {'f': 215.0}, 'forces': {'N': 200000.0}}}}
+        result = gb50017.check_element(checker, 'X1-brace-1', ctx)
         strength = next(c for c in result['checks'] if c['name'] == '强度验算')
         assert strength['items'][0]['item'] == '正应力'
 
     def test_brace_has_slenderness(self):
         checker = MockCodeChecker()
-        ctx = {'elementData': {'br1': {'type': 'brace', 'section': {'A': 3000.0, 'i': 30.0}, 'material': {'f': 215.0}, 'forces': {'N': 200000.0}, 'length': 5000.0, 'lambdaLimit': 200.0}}}
-        result = gb50017.check_element(checker, 'br1', ctx)
+        ctx = {'elementData': {'X1-brace-1': {'type': 'brace', 'section': {'A': 3000.0, 'i': 30.0}, 'material': {'f': 215.0}, 'forces': {'N': 200000.0}, 'length': 5000.0, 'lambdaLimit': 200.0}}}
+        result = gb50017.check_element(checker, 'X1-brace-1', ctx)
         stiffness = next(c for c in result['checks'] if c['name'] == '刚度验算')
         items = [i['item'] for i in stiffness['items']]
         assert '长细比' in items
 
     def test_brace_element_type_in_result(self):
         checker = MockCodeChecker()
-        ctx = {'elementData': {'br1': {'type': 'brace', 'section': {'A': 3000.0}, 'material': {'f': 215.0}, 'forces': {'N': 200000.0}}}}
-        result = gb50017.check_element(checker, 'br1', ctx)
+        ctx = {'elementData': {'X1-brace-1': {'type': 'brace', 'section': {'A': 3000.0}, 'material': {'f': 215.0}, 'forces': {'N': 200000.0}}}}
+        result = gb50017.check_element(checker, 'X1-brace-1', ctx)
         assert result['elementType'] == 'brace'
 
 
@@ -488,7 +506,6 @@ class TestBackwardCompatibility:
         ctx = {'utilizationByElement': {}}
         result = gb50017.check_element(checker, 'E1', ctx)
 
-        # Should produce results with deterministic fallback utilizations
         assert result['elementId'] == 'E1'
         assert result['status'] in ('pass', 'fail')
         all_items = [i for c in result['checks'] for i in c.get('items', [])]
@@ -500,12 +517,8 @@ class TestBackwardCompatibility:
         """When both elementData and utilizationByElement provide values, caller wins."""
         checker = MockCodeChecker()
         ctx = {
-            'elementData': {
-                'E1': _make_beam_element_data(),  # would compute 正应力 ≈ 0.047
-            },
-            'utilizationByElement': {
-                'E1': {'正应力': 0.90},  # caller override should win
-            },
+            'elementData': {'E1': _make_beam_element_data()},
+            'utilizationByElement': {'E1': {'正应力': 0.90}},
         }
         result = gb50017.check_element(checker, 'E1', ctx)
         strength = next(c for c in result['checks'] if c['name'] == '强度验算')
@@ -520,6 +533,16 @@ class TestBackwardCompatibility:
         assert result['checks'][0]['items'][0]['item'] == '正应力'
         assert result['checks'][0]['items'][0]['clause'] == 'GB50017-2017 7.1.1'
 
+    def test_context_not_mutated_by_check_element(self):
+        """check_element should not mutate the original context."""
+        checker = MockCodeChecker()
+        ctx: Dict[str, Any] = {
+            'elementData': {'E1': _make_beam_element_data()},
+        }
+        original_ctx = dict(ctx)
+        gb50017.check_element(checker, 'E1', ctx)
+        assert ctx == original_ctx
+
 
 class TestClauseReferences:
     def test_beam_clauses_reference_gb50017_2017(self):
@@ -528,7 +551,7 @@ class TestClauseReferences:
         result = gb50017.check_element(checker, 'B1', ctx)
         all_items = [i for c in result['checks'] for i in c.get('items', [])]
         for item in all_items:
-            assert item['clause'].startswith('GB50017-2017'), f"Clause should start with GB50017-2017, got: {item['clause']}"
+            assert item['clause'].startswith('GB50017-2017')
 
     def test_beam_strength_clause_7_1_1(self):
         checker = MockCodeChecker()
@@ -544,6 +567,14 @@ class TestClauseReferences:
         stability = next(c for c in result['checks'] if c['name'] == '稳定验算')
         axial = next(i for i in stability['items'] if i['item'] == '轴压稳定')
         assert '8.1.1' in axial['clause']
+
+    def test_column_slenderness_clause_10_1_1(self):
+        checker = MockCodeChecker()
+        ctx = {'elementData': {'C1': _make_column_element_data()}}
+        result = gb50017.check_element(checker, 'C1', ctx)
+        stiffness = next(c for c in result['checks'] if c['name'] == '刚度验算')
+        slenderness = next(i for i in stiffness['items'] if i['item'] == '长细比')
+        assert '10.1.1' in slenderness['clause']
 
 
 if __name__ == '__main__':
