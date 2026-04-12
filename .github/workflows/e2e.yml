@@ -134,7 +134,9 @@ jobs:
 
       - name: Run E2E tests
         id: run-tests
-        run: npm run test:e2e --prefix frontend 2>&1 | tee test-output.txt
+        run: |
+          set -o pipefail
+          npm run test:e2e --prefix frontend 2>&1 | tee test-output.txt
         env:
           CI: true
 
@@ -146,7 +148,7 @@ jobs:
             echo "summary=Tests did not produce output." >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          SUMMARY=$(grep -E '^\s*\d+ passed.*\d+s\)' test-output.txt || grep -E '^\s*\d+ failed' test-output.txt || echo "No summary found")
+          SUMMARY=$(grep -E '^[[:space:]]*[0-9]+ passed.*[0-9]+s\)' test-output.txt || grep -E '^[[:space:]]*[0-9]+ failed' test-output.txt || echo "No summary found")
           echo "summary<<EOF" >> "$GITHUB_OUTPUT"
           echo "$SUMMARY" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
