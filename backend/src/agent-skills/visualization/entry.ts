@@ -63,7 +63,11 @@ function pickNestedObject(
  *   OR codeCheck.memberUtilization: Record<string, number>
  */
 function extractMemberUtilizationMap(data: Record<string, unknown>): Record<string, number> | null {
-	return pickNestedObject(data, 'steelCheck', 'memberUtilization', 'codeCheck', 'memberUtilization') as Record<string, number> | null;
+	const raw = pickNestedObject(data, 'steelCheck', 'memberUtilization', 'codeCheck', 'memberUtilization');
+	if (!raw) return null;
+	// Validate that every value is a number before narrowing the type
+	if (!Object.values(raw).every((v) => typeof v === 'number')) return null;
+	return raw as Record<string, number>;
 }
 
 /**
@@ -74,7 +78,11 @@ function extractMemberUtilizationMap(data: Record<string, unknown>): Record<stri
  *   OR steelCheck.connectionForces: Record<string, { Fx, Fy, Fz, Mx, My, Mz }>
  */
 function extractConnectionForceMap(data: Record<string, unknown>): Record<string, ForceVector6> | null {
-	return pickNestedObject(data, 'connectionCheck', 'nodeForces', 'steelCheck', 'connectionForces') as Record<string, ForceVector6> | null;
+	const raw = pickNestedObject(data, 'connectionCheck', 'nodeForces', 'steelCheck', 'connectionForces');
+	if (!raw) return null;
+	// Validate that every value is an object (ForceVector6 shape) before narrowing the type
+	if (!Object.values(raw).every((v) => v !== null && typeof v === 'object' && !Array.isArray(v))) return null;
+	return raw as Record<string, ForceVector6>;
 }
 
 /**

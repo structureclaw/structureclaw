@@ -67,6 +67,56 @@ export function getUtilizationMap(snapshot: VisualizationSnapshot | null): Recor
   return entry?.data?.memberUtilizationMap || null
 }
 
+/**
+ * Shared buckling mode selector panel.
+ * Pass interactive=true (with onSelect) for a clickable version, or omit for read-only display.
+ */
+export function BucklingModePanel({
+  modes,
+  activeIndex,
+  title,
+  onSelect,
+}: {
+  modes: BucklingMode[]
+  activeIndex: number
+  title: string
+  onSelect?: (index: number) => void
+}): ReactNode {
+  return (
+    <div className="rounded-2xl border border-border/70 bg-card/80 p-4 dark:border-white/10 dark:bg-slate-950/40">
+      <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{title}</div>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {modes.map((mode, index) => {
+          const active = activeIndex === index
+          const baseClass = `rounded-full border px-3 py-1.5 text-xs transition ${
+            active
+              ? 'border-violet-400/50 bg-violet-400/16 text-foreground'
+              : 'border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5'
+          }`
+          const label = `λ${index + 1} = ${mode.lambda.toFixed(3)}`
+          if (onSelect) {
+            return (
+              <button
+                key={index}
+                className={`${baseClass} hover:text-foreground`}
+                onClick={() => onSelect(index)}
+                type="button"
+              >
+                {label}
+              </button>
+            )
+          }
+          return (
+            <div key={index} className={baseClass}>
+              {label}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export const visualizationExtensionRegistry: VisualizationExtensionDefinition[] = [
   {
     id: 'builtin.utilization',
@@ -105,19 +155,11 @@ export const visualizationExtensionRegistry: VisualizationExtensionDefinition[] 
         return null
       }
       return (
-        <div className="rounded-2xl border border-border/70 bg-card/80 p-4 dark:border-white/10 dark:bg-slate-950/40">
-          <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('visualizationViewBuckling')}</div>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {modes.map((mode, index) => (
-              <div
-                key={index}
-                className={`rounded-full border px-3 py-1.5 text-xs transition ${bucklingModeIndex === index ? 'border-violet-400/50 bg-violet-400/16 text-foreground' : 'border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5'}`}
-              >
-                位{index + 1} = {mode.lambda.toFixed(3)}
-              </div>
-            ))}
-          </div>
-        </div>
+        <BucklingModePanel
+          modes={modes}
+          activeIndex={bucklingModeIndex}
+          title={t('visualizationViewBuckling')}
+        />
       )
     },
     getLegend: ({ snapshot, bucklingModeIndex }) => {
@@ -128,7 +170,7 @@ export const visualizationExtensionRegistry: VisualizationExtensionDefinition[] 
       const mode = modes[bucklingModeIndex] ?? modes[0]
       return {
         maxValue: mode.lambda,
-        label: `位${bucklingModeIndex + 1}`,
+        label: `λ${bucklingModeIndex + 1}`,
         unit: '',
       }
     },

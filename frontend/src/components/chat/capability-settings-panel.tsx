@@ -311,7 +311,7 @@ export function CapabilitySettingsPanel() {
       setSelectedToolIds(initialDefaultToolIds)
     }
     preferencesHydratedRef.current = true
-  }, [availableSkills, baseCallableToolIds, capabilityMatrixLoaded, defaultSelectedSkillIds, initialDefaultToolIds, skillDomainById, skillNormalization, skillsLoaded])
+  }, [availableSkills, baseCallableToolIds, capabilityMatrix, capabilityMatrixLoaded, defaultSelectedSkillIds, initialDefaultToolIds, skillDomainById, skillNormalization, skillsLoaded])
 
   useEffect(() => {
     if (!preferencesHydratedRef.current) {

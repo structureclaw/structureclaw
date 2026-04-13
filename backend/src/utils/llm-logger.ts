@@ -1,3 +1,7 @@
+/**
+ * LLM call logger — writes JSONL entries to .runtime/logs/llm-calls.jsonl when
+ * LLM_LOG_ENABLED=true.  Consumed by llm.ts (callLlm wrapper).
+ */
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';

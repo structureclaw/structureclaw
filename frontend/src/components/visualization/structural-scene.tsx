@@ -278,6 +278,7 @@ function BucklingMember({
   const _s = useRef(new THREE.Vector3())
   const _e = useRef(new THREE.Vector3())
   const _diff = useRef(new THREE.Vector3())
+  const _norm = useRef(new THREE.Vector3())
   const _mid = useRef(new THREE.Vector3())
   const _q = useRef(new THREE.Quaternion())
   const _up = useRef(new THREE.Vector3(0, 1, 0))
@@ -290,8 +291,9 @@ function BucklingMember({
     _diff.current.subVectors(_e.current, _s.current)
     _mid.current.addVectors(_s.current, _e.current).multiplyScalar(0.5)
     groupRef.current.position.copy(_mid.current)
-    const normalized = _diff.current.clone().normalize()
-    _q.current.setFromUnitVectors(_up.current, normalized.lengthSq() > 0 ? normalized : _up.current)
+    // Copy into scratch _norm then normalize in-place — avoids a per-frame clone() allocation
+    _norm.current.copy(_diff.current).normalize()
+    _q.current.setFromUnitVectors(_up.current, _norm.current.lengthSq() > 0 ? _norm.current : _up.current)
     groupRef.current.quaternion.copy(_q.current)
   })
 

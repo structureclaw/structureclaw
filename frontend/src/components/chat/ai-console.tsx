@@ -89,6 +89,7 @@ type AgentResult = {
   report?: {
     summary?: string
     markdown?: string
+    json?: Record<string, unknown>
   }
   clarification?: {
     question?: string
@@ -101,6 +102,7 @@ type AgentResult = {
   durationMs?: number
   requestedEngineId?: string
   routing?: MessageDebugDetails['routing']
+  visualizationHints?: Record<string, unknown>
 }
 
 type StreamPayload =
@@ -110,6 +112,11 @@ type StreamPayload =
   | { type: 'result'; content?: AgentResult }
   | { type: 'done' }
   | { type: 'error'; error?: string }
+
+type VisualizationHintsPayload = {
+  memberUtilizationMap?: Record<string, number>
+  bucklingModes?: Array<{ lambda: number; modeShape: Record<string, [number, number, number]> }>
+}
 
 type ConversationSummary = {
   id: string
@@ -663,6 +670,31 @@ function extractAnalysis(result: AgentResult | null) {
   return null
 }
 
+function extractVisualizationHints(result: AgentResult | null): VisualizationHintsPayload | null {
+  if (!result) {
+    return null
+  }
+
+  const normalized = normalizeAgentResultPayload(result)
+  if (!normalized) {
+    return null
+  }
+
+  const directHints = toObjectRecord(normalized.visualizationHints)
+  if (directHints) {
+    return directHints as VisualizationHintsPayload
+  }
+
+  const reportRecord = toObjectRecord(normalized.report)
+  const reportJson = toObjectRecord(reportRecord?.json)
+  const jsonHints = toObjectRecord(reportJson?.visualizationHints)
+  if (jsonHints) {
+    return jsonHints as VisualizationHintsPayload
+  }
+
+  return null
+}
+
 function hasAnalysisPayload(result: AgentResult | null | undefined) {
   return Boolean(extractAnalysis(result ?? null))
 }
@@ -871,12 +903,15 @@ function buildResultSnapshotFromResult(
     normalizedResult.model && typeof normalizedResult.model === 'object' && !Array.isArray(normalizedResult.model)
       ? normalizedResult.model
       : null
+  const visualizationHints = extractVisualizationHints(normalizedResult)
 
   return buildVisualizationSnapshot({
     title: buildVisualizationTitle(normalizedResult, title),
     model: modelFromResult ?? fallbackModel ?? null,
     analysis: extractAnalysis(normalizedResult),
     mode: 'analysis-result',
+    memberUtilizationMap: visualizationHints?.memberUtilizationMap,
+    bucklingModes: visualizationHints?.bucklingModes,
   })
 }
 
@@ -1563,7 +1598,7 @@ export function AIConsole() {
       setHasExplicitToolSelection(false)
     }
     capabilityPreferencesHydratedRef.current = true
-  }, [availableSkills, baseCallableToolIds, capabilityMatrixLoaded, defaultSelectedSkillIds, initialDefaultToolIds, skillDomainById, skillNormalization, skillsLoaded])
+  }, [availableSkills, baseCallableToolIds, capabilityMatrix, capabilityMatrixLoaded, defaultSelectedSkillIds, initialDefaultToolIds, skillDomainById, skillNormalization, skillsLoaded])
 
   useEffect(() => {
     let active = true
@@ -2345,6 +2380,7 @@ export function AIConsole() {
             const result = {
               ...(payload.content as AgentResult),
             }
+            const visualizationHints = extractVisualizationHints(result)
             const debugDetails = buildMessageDebugDetails(promptSnapshot, debugSkillIds, debugToolIds, result)
             if (result.model && typeof result.model === 'object' && !Array.isArray(result.model)) {
               applySynchronizedModel(result.model, result.analysis ? 'tool' : 'conversation')
@@ -2354,6 +2390,8 @@ export function AIConsole() {
               model: (result.model && typeof result.model === 'object' && !Array.isArray(result.model) ? result.model : contextModel) ?? null,
               analysis: extractAnalysis(result),
               mode: 'analysis-result',
+              memberUtilizationMap: visualizationHints?.memberUtilizationMap,
+              bucklingModes: visualizationHints?.bucklingModes,
             })
             const modelSnapshot = buildVisualizationSnapshot({
               title: buildVisualizationTitle(result, trimmedInput.slice(0, 48) || t('untitledConversation')),

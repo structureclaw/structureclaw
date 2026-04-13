@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { formatNumber } from '@/lib/utils'
-import { getBucklingModes } from './extensions'
+import { getBucklingModes, BucklingModePanel } from './extensions'
 import { VisualizationModalShell } from './modal-shell'
 import { StructuralScene } from './structural-scene'
 import type { SceneExportHandle } from './structural-scene'
@@ -183,21 +183,12 @@ export function StructuralVisualizationModal({
             </div>
           ) : null}
           {view === 'buckling' && bucklingModes.length ? (
-            <div className="rounded-2xl border border-border/70 bg-card/80 p-4 dark:border-white/10 dark:bg-slate-950/40">
-              <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('visualizationViewBuckling')}</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {bucklingModes.map((mode, index) => (
-                  <button
-                    key={index}
-                    className={`rounded-full border px-3 py-1.5 text-xs transition ${bucklingModeIndex === index ? 'border-violet-400/50 bg-violet-400/16 text-foreground' : 'border-border/70 bg-background/70 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-white/5'}`}
-                    onClick={() => setBucklingModeIndex(index)}
-                    type="button"
-                  >
-                    λ{index + 1} = {mode.lambda.toFixed(3)}
-                  </button>
-                ))}
-              </div>
-            </div>
+            <BucklingModePanel
+              modes={bucklingModes}
+              activeIndex={bucklingModeIndex}
+              title={t('visualizationViewBuckling')}
+              onSelect={setBucklingModeIndex}
+            />
           ) : null}
           {snapshot?.unsupportedElementTypes.length ? (
             <div className="rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm leading-6 text-amber-900 dark:text-amber-100">
