@@ -22,7 +22,8 @@ test.describe('Database admin page', () => {
   test('shows file path from real backend', async ({ page }) => {
     await dbPage.goto();
     // Real backend returns the configured DATABASE_URL path (contains test-e2e.db)
-    await expect(page.getByText(/test-e2e\.db/)).toBeVisible();
+    // Backend may render both the file: URL and plain path, so use .first()
+    await expect(page.getByText(/test-e2e\.db/).first()).toBeVisible();
   });
 
   test('handles API error gracefully', async ({ page }) => {
