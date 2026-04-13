@@ -1,10 +1,10 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest'
+import { describe, it, expect, beforeAll, vi } from 'vitest'
 import { readFileSync, existsSync } from 'fs'
 import path from 'path'
 import { render, screen } from '@testing-library/react'
 import { Providers } from '@/app/providers'
 
-// Mock matchMedia for next-themes ThemeProvider
+// next-themes ThemeProvider requires matchMedia in jsdom
 beforeAll(() => {
   Object.defineProperty(window, 'matchMedia', {
     writable: true,

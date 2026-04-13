@@ -7,18 +7,15 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     globals: true,
-    include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
-    exclude: [
-      'tests/integration/**',
-      'tests/components/console/**',
-      'tests/accessibility/**',
-      'tests/e2e/**',
+    include: [
+      'tests/integration/**/*.test.tsx',
+      'tests/components/console/**/*.test.tsx',
+      'tests/accessibility/semantic.test.tsx',
     ],
     setupFiles: ['./tests/setup.ts'],
-    // Windows CI and local runs are slower; userEvent + waitFor need headroom.
-    testTimeout: 20_000,
+    globalSetup: ['./tests/setup-integration.ts'],
+    testTimeout: 30_000,
     hookTimeout: 30_000,
-    // Console tests spy on global fetch; parallel files clobber each other's mock.
     fileParallelism: false,
   },
   resolve: {

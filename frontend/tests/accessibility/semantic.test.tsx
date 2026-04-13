@@ -1,27 +1,15 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import ConsolePage from '@/app/(console)/console/page'
 
 describe('Semantic HTML (ACCS-03)', () => {
-  beforeEach(() => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue([]),
-    } as unknown as Response)
-    Element.prototype.scrollIntoView = vi.fn()
-  })
-
-  afterEach(() => {
-    vi.restoreAllMocks()
-  })
+  Element.prototype.scrollIntoView = vi.fn()
 
   async function renderConsolePage() {
     render(<ConsolePage />)
     await waitFor(() => {
-      expect(
-        vi.mocked(fetch).mock.calls.some(([url]) => String(url).includes('/api/v1/chat/conversations')),
-      ).toBe(true)
-    })
+      expect(screen.getByRole('heading', { name: /Structural Engineering|结构工程/ })).toBeInTheDocument()
+    }, { timeout: 15_000 })
   }
 
   describe('Console page', () => {
