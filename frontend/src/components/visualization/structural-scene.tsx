@@ -402,7 +402,7 @@ function SceneContent({
         if (startData && endData) {
           const start = view === 'deformed' ? startData.displacedPosition : startData.position
           const end = view === 'deformed' ? endData.displacedPosition : endData.position
-          return projectPosition(start.clone().add(end).multiplyScalar(0.5), plane)
+          return projectPosition(start.clone().add(end).multiplyScalar(0.5), plane, snapshot.dimension)
         }
       }
     }
@@ -411,7 +411,7 @@ function SceneContent({
       const nodeData = nodeMap.get(selectedNodeId)
       if (nodeData) {
         const position = view === 'deformed' ? nodeData.displacedPosition : nodeData.position
-        return projectPosition(position, plane)
+        return projectPosition(position, plane, snapshot.dimension)
       }
     }
 
@@ -423,14 +423,14 @@ function SceneContent({
           const startData = nodeMap.get(element.nodeIds[0])
           const endData = nodeMap.get(element.nodeIds[1])
           if (startData && endData) {
-            return projectPosition(startData.position.clone().add(endData.position).multiplyScalar(0.5), plane)
+            return projectPosition(startData.position.clone().add(endData.position).multiplyScalar(0.5), plane, snapshot.dimension)
           }
         }
       }
       if (selectedLoad?.nodeId) {
         const nodeData = nodeMap.get(selectedLoad.nodeId)
         if (nodeData) {
-          return projectPosition(nodeData.position, plane)
+          return projectPosition(nodeData.position, plane, snapshot.dimension)
         }
       }
     }
@@ -529,7 +529,7 @@ function SceneContent({
                     return vectors
                   }
 
-                  vectors.push(projectPosition(raw.normalize().multiplyScalar(loadArrowLength), plane))
+                  vectors.push(projectPosition(raw.normalize().multiplyScalar(loadArrowLength), plane, snapshot.dimension))
                   return vectors
                 }, [])
               : []
@@ -631,7 +631,7 @@ function SceneContent({
                     return vectors
                   }
 
-                  vectors.push(projectPosition(raw.normalize().multiplyScalar(loadArrowLength), plane))
+                  vectors.push(projectPosition(raw.normalize().multiplyScalar(loadArrowLength), plane, snapshot.dimension))
                   return vectors
                 }, [])
               : []
@@ -894,7 +894,7 @@ export function StructuralScene(props: StructuralSceneProps) {
       }
     }
     return null
-  }, [view, forceMetric, maxElementMetric, rawMaxElementMetric, maxReaction, maxDisplacement, maxUtilization, snapshot, activeCase, bucklingModeIndex, t])
+  }, [view, forceMetric, maxElementMetric, rawMaxElementMetric, maxReaction, maxDisplacement, snapshot, activeCase, bucklingModeIndex, t])
 
   if (!webglAvailable) {
     return (
