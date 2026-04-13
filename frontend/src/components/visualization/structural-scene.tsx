@@ -894,7 +894,7 @@ export function StructuralScene(props: StructuralSceneProps) {
       }
     }
     return null
-  }, [view, forceMetric, maxElementMetric, rawMaxElementMetric, maxReaction, maxDisplacement, maxUtilization, snapshot, bucklingModeIndex, t])
+  }, [view, forceMetric, maxElementMetric, rawMaxElementMetric, maxReaction, maxDisplacement, maxUtilization, snapshot, activeCase, bucklingModeIndex, t])
 
   if (!webglAvailable) {
     return (

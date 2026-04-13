@@ -1,4 +1,8 @@
-export type VisualizationViewMode = 'model' | 'deformed' | 'forces' | 'reactions' | 'utilization' | 'buckling'
+export type VisualizationBaseViewMode = 'model' | 'deformed' | 'forces' | 'reactions'
+export type VisualizationExtensionViewMode = 'utilization' | 'buckling' | `extension:${string}`
+export type VisualizationViewMode = VisualizationBaseViewMode | VisualizationExtensionViewMode
+
+export type VisualizationExtensionId = 'builtin.utilization' | 'builtin.buckling' | `builtin.${string}` | `skillhub.${string}`
 
 export type BucklingMode = {
   /** Buckling load factor (λ) */
@@ -6,6 +10,15 @@ export type BucklingMode = {
   /** Node id → [dx, dy, dz] normalized mode shape displacement */
   modeShape: Record<string, [number, number, number]>
 }
+export type VisualizationExtensionEntry<TData = unknown> = {
+  id: VisualizationExtensionId
+  available: boolean
+  sourceSkillId?: string
+  data: TData
+}
+
+export type VisualizationExtensionMap = Partial<Record<VisualizationExtensionId, VisualizationExtensionEntry>>
+
 export type VisualizationSource = 'model' | 'result'
 export type VisualizationPlane = 'xy' | 'xz' | 'yz'
 
@@ -89,6 +102,7 @@ export type VisualizationSnapshot = {
   cases: VisualizationCase[]
   summary?: Record<string, unknown>
   statusMessage?: string
+  extensions?: VisualizationExtensionMap
   /** Buckling modes from linear buckling analysis, sorted by λ ascending. */
   bucklingModes?: BucklingMode[]
 }

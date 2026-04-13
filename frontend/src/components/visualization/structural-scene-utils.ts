@@ -118,7 +118,7 @@ export function isRenderableLoadVector(vector: THREE.Vector3) {
 
 export function getLoadArrowLength(snapshot: VisualizationSnapshot, plane: VisualizationPlane) {
   if (!snapshot.nodes.length) {
-    return 0.3
+    return 0.6
   }
 
   let minX = Number.POSITIVE_INFINITY
@@ -143,7 +143,7 @@ export function getLoadArrowLength(snapshot: VisualizationSnapshot, plane: Visua
   const spanZ = maxZ - minZ
   const modelSpan = Math.max(spanX, spanY, spanZ, 1)
 
-  return Math.max(0.15, Math.min(modelSpan / 10, 1.2))
+  return Math.max(0.45, Math.min(modelSpan / 6, 2.4))
 }
 
 function planeGridFallback(plane: VisualizationPlane) {

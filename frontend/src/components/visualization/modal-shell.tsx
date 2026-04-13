@@ -6,6 +6,7 @@ import { Focus, Maximize2, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import type { MessageKey } from '@/lib/i18n'
 import { cn } from '@/lib/utils'
+import { getVisualizationViewLabelKey } from './extensions'
 import type { VisualizationPlane, VisualizationSnapshot, VisualizationViewMode } from './types'
 
 type VisualizationModalShellProps = {
@@ -21,15 +22,6 @@ type VisualizationModalShellProps = {
   t: (key: MessageKey) => string
   children: ReactNode
   aside?: ReactNode
-}
-
-const VIEW_LABELS: Record<VisualizationViewMode, MessageKey> = {
-  model: 'visualizationViewModel',
-  deformed: 'visualizationViewDeformed',
-  forces: 'visualizationViewForces',
-  reactions: 'visualizationViewReactions',
-  utilization: 'visualizationViewUtilization',
-  buckling: 'visualizationViewBuckling',
 }
 
 const PLANE_LABELS: Record<VisualizationPlane, MessageKey> = {
@@ -194,7 +186,7 @@ export function VisualizationModalShell({
                   onClick={() => onViewChange(view)}
                   type="button"
                 >
-                  {t(VIEW_LABELS[view])}
+                  {t(getVisualizationViewLabelKey(view))}
                 </button>
               ))}
             </div>
