@@ -6,37 +6,6 @@ test.describe('Capabilities settings page', () => {
 
   test.beforeEach(async ({ page }) => {
     capsPage = new CapabilitiesPage(page);
-    // Mock the skills and capability matrix endpoints
-    await page.route('**/api/v1/agent/skills', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          skills: [
-            { domain: 'analysis', name: 'OpenSees Analysis', enabled: true },
-            { domain: 'code-check', name: 'GB50010', enabled: true },
-            { domain: 'visualization', name: '3D Viewer', enabled: false },
-          ],
-        }),
-      }),
-    );
-    await page.route('**/api/v1/agent/capability-matrix', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          skills: [
-            { domain: 'analysis', enabled: true },
-            { domain: 'code-check', enabled: true },
-            { domain: 'visualization', enabled: false },
-          ],
-          tools: [
-            { category: 'analysis', enabled: true },
-            { category: 'validation', enabled: true },
-          ],
-        }),
-      }),
-    );
   });
 
   test('loads capability settings page', async ({ page }) => {
@@ -44,9 +13,9 @@ test.describe('Capabilities settings page', () => {
     await expect(page).toHaveURL(/\/console\/capabilities/);
   });
 
-  test('displays skill domains', async () => {
+  test('displays skill domains from real backend', async () => {
     await capsPage.goto();
-    // At least some skill-related content should be visible
+    // Real backend returns auto-discovered skills from skill manifests
     const body = await capsPage.page.locator('body').textContent();
     expect(body).toBeTruthy();
   });

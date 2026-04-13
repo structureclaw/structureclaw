@@ -6,27 +6,6 @@ test.describe('Database admin page', () => {
 
   test.beforeEach(async ({ page }) => {
     dbPage = new DatabasePage(page);
-    // Mock the database status API to match actual response shape
-    await page.route('**/api/v1/admin/database/status', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          enabled: true,
-          provider: 'sqlite',
-          mode: 'local-file',
-          database: {
-            provider: 'sqlite',
-            databaseUrl: 'file:/tmp/test-e2e/structureclaw.db',
-            databasePath: '/tmp/test-e2e/structureclaw.db',
-            directoryPath: '/tmp/test-e2e',
-            exists: true,
-            writable: true,
-            sizeBytes: 1024,
-          },
-        }),
-      }),
-    );
   });
 
   test('displays database status card', async () => {
@@ -36,17 +15,18 @@ test.describe('Database admin page', () => {
 
   test('shows SQLite as provider', async ({ page }) => {
     await dbPage.goto();
-    // The provider label is rendered as uppercase in the Provider/Mode card
+    // Real backend returns sqlite provider from the test-e2e.db DATABASE_URL
     await expect(page.getByText('sqlite', { exact: true })).toBeVisible();
   });
 
-  test('shows file path', async ({ page }) => {
+  test('shows file path from real backend', async ({ page }) => {
     await dbPage.goto();
-    // Check that the database path is rendered
-    await expect(page.getByText('/tmp/test-e2e/structureclaw.db', { exact: true })).toBeVisible();
+    // Real backend returns the configured DATABASE_URL path (contains test-e2e.db)
+    await expect(page.getByText(/test-e2e\.db/)).toBeVisible();
   });
 
   test('handles API error gracefully', async ({ page }) => {
+    // Intercept only to simulate a 500 error for UI resilience testing
     await page.route('**/api/v1/admin/database/status', (route) =>
       route.fulfill({
         status: 500,
