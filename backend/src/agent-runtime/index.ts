@@ -2,6 +2,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from '../services/locale.js';
 import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.js';
 import { buildPostprocessedResultArtifact } from '../agent-skills/result-postprocess/entry.js';
+import { computeDependencyFingerprint } from './artifact-helpers.js';
 import {
   buildCodeCheckInput,
   executeCodeCheckDomain,
@@ -745,7 +746,7 @@ export class AgentSkillRuntime {
       structureProtocolClient: { post: args.postToEngineWithRetry as unknown as (path: string, payload: Record<string, unknown>) => Promise<{ data: unknown }> },
     });
     if (!args.step.provides) return {};
-    const artifact = this.buildArtifactEnvelope(args.step.provides, result.result, args.step);
+    const artifact = this.buildArtifactEnvelope(args.step.provides, result.result, args.step, args.pipelineState);
     return { artifact };
   }
 
@@ -768,7 +769,7 @@ export class AgentSkillRuntime {
       parameters: {},
     });
     if (!args.step.provides) return {};
-    const artifact = this.buildArtifactEnvelope(args.step.provides, result.result, args.step);
+    const artifact = this.buildArtifactEnvelope(args.step.provides, result.result, args.step, args.pipelineState);
     return { artifact };
   }
 
@@ -786,7 +787,7 @@ export class AgentSkillRuntime {
       : undefined;
     const postprocessedResult = buildPostprocessedResultArtifact(analysisPayload, analysisRawRef);
     if (!args.step.provides) return {};
-    const artifact = this.buildArtifactEnvelope(args.step.provides, postprocessedResult as unknown as Record<string, unknown>, args.step);
+    const artifact = this.buildArtifactEnvelope(args.step.provides, postprocessedResult as unknown as Record<string, unknown>, args.step, args.pipelineState);
     return { artifact };
   }
 
@@ -813,7 +814,7 @@ export class AgentSkillRuntime {
     const skillId = this.resolveCodeCheckSkillId(designCode);
     const result = await executeCodeCheckDomain(args.codeCheckClient as CodeCheckClient, codeCheckInput);
     if (!args.step.provides) return {};
-    const artifact = this.buildArtifactEnvelope(args.step.provides, result as Record<string, unknown>, args.step);
+    const artifact = this.buildArtifactEnvelope(args.step.provides, result as Record<string, unknown>, args.step, args.pipelineState);
     return { artifact };
   }
 
@@ -839,7 +840,7 @@ export class AgentSkillRuntime {
       });
     if (!args.step.provides) return {};
     const reportPayload = { keyMetrics, clauseTraceability, controllingCases, visualizationHints };
-    const artifact = this.buildArtifactEnvelope(args.step.provides, reportPayload, args.step);
+    const artifact = this.buildArtifactEnvelope(args.step.provides, reportPayload, args.step, args.pipelineState);
     return { artifact };
   }
 
@@ -879,7 +880,7 @@ export class AgentSkillRuntime {
     // Convert produces analysisModel from normalizedModel
     const normalizedModel = args.pipelineState.artifacts.normalizedModel?.payload as Record<string, unknown> ?? {};
     if (!args.step.provides) return {};
-    const artifact = this.buildArtifactEnvelope(args.step.provides, normalizedModel, args.step);
+    const artifact = this.buildArtifactEnvelope(args.step.provides, normalizedModel, args.step, args.pipelineState);
     return { artifact };
   }
 
@@ -912,15 +913,23 @@ export class AgentSkillRuntime {
     kind: ArtifactKind,
     payload: Record<string, unknown>,
     step: SchedulerStep,
+    pipelineState?: ProjectPipelineState,
   ): ArtifactEnvelope {
+    const existing = pipelineState?.artifacts?.[kind as keyof typeof pipelineState.artifacts];
+    const revision = existing ? (existing.revision ?? 0) + 1 : 1;
+    const depRefs: Record<string, { artifactId: string; revision: number }> = {};
+    for (const ref of step.consumes) {
+      depRefs[ref.kind] = { artifactId: ref.artifactId, revision: ref.revision };
+    }
+    const dependencyFingerprint = computeDependencyFingerprint(depRefs, pipelineState?.bindings);
     return {
       artifactId: `${kind}:${Date.now()}`,
       kind,
       scope: 'project',
       status: 'ready',
-      revision: 1,
+      revision,
       producerSkillId: step.skillId ?? `scheduled:${step.action}`,
-      dependencyFingerprint: '',
+      dependencyFingerprint,
       basedOn: step.consumes.map((ref) => ({ kind: ref.kind, artifactId: ref.artifactId, revision: ref.revision })),
       schemaVersion: '1.0.0',
       provenance: { toolId: `scheduled:${step.action}` },

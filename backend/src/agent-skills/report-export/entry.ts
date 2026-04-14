@@ -2,9 +2,17 @@ import {
   extractClauseTraceability,
   extractControllingCases,
   extractKeyMetrics,
+  type PostprocessedResultArtifact,
 } from '../result-postprocess/entry.js';
 import { extractVisualizationHints } from '../visualization/entry.js';
 import type { VisualizationHints } from '../../agent-runtime/types.js';
+
+function isPostprocessedResultArtifact(value: unknown): value is PostprocessedResultArtifact {
+  if (!value || typeof value !== 'object') return false;
+  const record = value as Record<string, unknown>;
+  return typeof record['keyMetrics'] === 'object' && record['keyMetrics'] !== null
+    && typeof record['controllingCases'] === 'object' && record['controllingCases'] !== null;
+}
 
 export function buildReportDomainArtifacts(options: {
   designBasis?: unknown;
@@ -17,10 +25,19 @@ export function buildReportDomainArtifacts(options: {
   controllingCases: Record<string, unknown>;
   visualizationHints: VisualizationHints;
 } {
+  const pp = options.postprocessedResult;
+  if (isPostprocessedResultArtifact(pp)) {
+    return {
+      keyMetrics: extractKeyMetrics(pp, options.codeCheckResult),
+      clauseTraceability: extractClauseTraceability(options.codeCheckResult),
+      controllingCases: pp.controllingCases,
+      visualizationHints: { hasEnvelope: false },
+    };
+  }
   return {
-    keyMetrics: extractKeyMetrics(options.postprocessedResult, options.codeCheckResult),
+    keyMetrics: extractKeyMetrics(pp, options.codeCheckResult),
     clauseTraceability: extractClauseTraceability(options.codeCheckResult),
-    controllingCases: extractControllingCases(options.postprocessedResult),
-    visualizationHints: extractVisualizationHints(options.postprocessedResult),
+    controllingCases: extractControllingCases(pp),
+    visualizationHints: extractVisualizationHints(pp),
   };
 }

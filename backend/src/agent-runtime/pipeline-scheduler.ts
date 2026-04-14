@@ -3,8 +3,6 @@ import type {
   ArtifactEnvelope,
   ArtifactRef,
   ProjectArtifactKind,
-  ProjectExecutionPolicy,
-  ProviderBindingState,
   SchedulerAction,
   SchedulerStep,
   SchedulerInput,
@@ -52,7 +50,7 @@ export class PipelineScheduler {
     }
 
     if (input.targetArtifact === 'draftState') {
-      return { targetArtifact: 'chatReply', requiredSteps: [] };
+      return { targetArtifact: 'draftState', requiredSteps: [] };
     }
 
     const target = input.targetArtifact as ProjectArtifactKind;
