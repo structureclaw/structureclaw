@@ -813,6 +813,13 @@ export class AgentSkillRuntime {
     });
     const skillId = this.resolveCodeCheckSkillId(designCode);
     const result = await executeCodeCheckDomain(args.codeCheckClient as CodeCheckClient, codeCheckInput);
+    if (result && typeof result === 'object' && skillId) {
+      const payload = result as Record<string, unknown>;
+      const existingMeta = payload.meta && typeof payload.meta === 'object'
+        ? payload.meta as Record<string, unknown>
+        : {};
+      payload.meta = { ...existingMeta, codeCheckSkillId: skillId };
+    }
     if (!args.step.provides) return {};
     const artifact = this.buildArtifactEnvelope(args.step.provides, result as Record<string, unknown>, args.step, args.pipelineState);
     return { artifact };
