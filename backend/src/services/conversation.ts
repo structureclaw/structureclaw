@@ -4,6 +4,16 @@ import { STRUCTURAL_COORDINATE_SEMANTICS } from '../agent-runtime/coordinate-sem
 import { resolveLocale, type AppLocale } from './locale.js';
 
 /**
+ * Conversation snapshots (latestResult, modelSnapshot, resultSnapshot) are
+ * PROJECTION CACHES for chat recovery and UI rendering only. They are NOT the
+ * source of truth for project pipeline state. Pipeline truth lives in
+ * Project.settings.agentPipelineState and AgentPipelineRun records.
+ *
+ * Do NOT write pipeline state into conversation snapshots.
+ * Do NOT read pipeline state from conversation snapshots for orchestration decisions.
+ */
+
+/**
  * Checks whether a structural payload (model snapshot, result snapshot, or latest result)
  * was created before the z-up migration. Returns true when:
  * - The payload has a structural inferredType (not 'unknown' or missing)

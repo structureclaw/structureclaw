@@ -600,6 +600,41 @@ async function validateAgentOrchestration(context) {
     }
     console.log("[ok] analyze code-check report closed loop");
   }
+
+  {
+    const agentSource = fs.readFileSync(path.join(context.rootDir, 'backend', 'src', 'services', 'agent.ts'), 'utf8');
+    assert(
+      agentSource.includes('targetArtifact'),
+      'agent orchestration should route execution through targetArtifact planning',
+    );
+    assert(
+      agentSource.includes('projectPolicy'),
+      'agent orchestration should consume project-level execution policy',
+    );
+    assert(
+      agentSource.includes('pipelineScheduler'),
+      'agent orchestration should delegate to pipeline scheduler',
+    );
+    console.log("[ok] agent orchestration target-artifact terms");
+  }
+
+  {
+    const chatPath = path.join(context.rootDir, 'backend', 'src', 'api', 'chat.ts');
+    const chatSource = fs.readFileSync(chatPath, 'utf8');
+
+    const conversationPath = path.join(context.rootDir, 'backend', 'src', 'services', 'conversation.ts');
+    const conversationSource = fs.readFileSync(conversationPath, 'utf8');
+
+    assert(
+      chatSource.includes('projectId'),
+      '/api/v1/chat must accept projectId to align with /api/v1/agent/run',
+    );
+    assert(
+      conversationSource.includes('PROJECTION CACHE') || conversationSource.includes('projection cache'),
+      'conversation.ts must document that snapshots are projection caches, not pipeline truth',
+    );
+    console.log("[ok] chat projectId passthrough and snapshot boundary");
+  }
 }
 
 async function validateAgentBaseChatFallback(context) {
