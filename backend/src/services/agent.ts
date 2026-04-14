@@ -434,6 +434,10 @@ function buildLocalizedBlockedReason(reason: string, locale: AppLocale): string 
       zh: '请求的工具尚未实现。此功能将在后续版本中提供。',
       en: 'Requested tool is not yet implemented. This feature will be available in a future release.',
     },
+    'skill not in selected skill set': {
+      zh: '请求的技能未在当前启用的技能集中。请在项目设置中启用该技能。',
+      en: 'Requested skill is not in the currently enabled skill set. Please enable the skill in project settings.',
+    },
   };
   const localized = messages[reason];
   return localized ? localized[locale] ?? localized.en : reason;

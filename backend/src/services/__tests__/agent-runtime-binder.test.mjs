@@ -141,4 +141,72 @@ describe('agent runtime binder', () => {
 
     expect(active).toEqual([]);
   });
+
+  // --- assertStepAuthorization ---
+
+  test('assertStepAuthorized allows step with no skillId', () => {
+    const binder = new AgentRuntimeBinder(
+      {
+        listSkillManifests: async () => [],
+        resolvePreferredAnalysisSkill: () => undefined,
+        resolveCodeCheckDesignCodeFromSkillIds: () => undefined,
+        resolveCodeCheckSkillId: () => undefined,
+        resolveSkillTooling: async () => ({ tools: [], skillIdsByToolId: {} }),
+        listBuiltinToolManifests: () => [],
+      },
+      {
+        inferExecutionIntent: () => true,
+        inferProceedIntent: () => false,
+      },
+    );
+    expect(() => binder.assertStepAuthorized({
+      step: { stepId: 'test', role: 'transformer', action: 'postprocess', consumes: [], provides: 'postprocessedResult', mode: 'execute', reason: 'test' },
+      selectedSkillIds: ['skill-a'],
+      bindings: {},
+    })).not.toThrow();
+  });
+
+  test('assertStepAuthorized throws when step skillId not in selected set', () => {
+    const binder = new AgentRuntimeBinder(
+      {
+        listSkillManifests: async () => [],
+        resolvePreferredAnalysisSkill: () => undefined,
+        resolveCodeCheckDesignCodeFromSkillIds: () => undefined,
+        resolveCodeCheckSkillId: () => undefined,
+        resolveSkillTooling: async () => ({ tools: [], skillIdsByToolId: {} }),
+        listBuiltinToolManifests: () => [],
+      },
+      {
+        inferExecutionIntent: () => true,
+        inferProceedIntent: () => false,
+      },
+    );
+    expect(() => binder.assertStepAuthorized({
+      step: { stepId: 'test', role: 'consumer', action: 'report', consumes: [], provides: 'reportArtifact', mode: 'execute', reason: 'test', skillId: 'unknown-skill' },
+      selectedSkillIds: ['skill-a', 'skill-b'],
+      bindings: {},
+    })).toThrow('skill not in selected skill set');
+  });
+
+  test('assertStepAuthorized allows step when skillId is in selected set', () => {
+    const binder = new AgentRuntimeBinder(
+      {
+        listSkillManifests: async () => [],
+        resolvePreferredAnalysisSkill: () => undefined,
+        resolveCodeCheckDesignCodeFromSkillIds: () => undefined,
+        resolveCodeCheckSkillId: () => undefined,
+        resolveSkillTooling: async () => ({ tools: [], skillIdsByToolId: {} }),
+        listBuiltinToolManifests: () => [],
+      },
+      {
+        inferExecutionIntent: () => true,
+        inferProceedIntent: () => false,
+      },
+    );
+    expect(() => binder.assertStepAuthorized({
+      step: { stepId: 'test', role: 'consumer', action: 'report', consumes: [], provides: 'reportArtifact', mode: 'execute', reason: 'test', skillId: 'skill-a' },
+      selectedSkillIds: ['skill-a', 'skill-b'],
+      bindings: {},
+    })).not.toThrow();
+  });
 });

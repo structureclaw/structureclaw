@@ -217,11 +217,18 @@ export class AgentRuntimeBinder {
     selectedSkillIds?: string[];
     bindings?: ProviderBindingState;
   }): void {
+    // Provider-slot binding checks
     if (args.step.role === 'provider' && args.step.provides === 'analysisRaw' && !args.bindings?.analysisProviderSkillId) {
       throw new Error('analysisProvider binding required');
     }
     if (args.step.role === 'provider' && args.step.provides === 'codeCheckResult' && !args.bindings?.codeCheckProviderSkillId) {
       throw new Error('codeCheckProvider binding required');
+    }
+
+    // Skill authorization: when a step declares a skillId, it must be in the selected set
+    if (args.step.skillId && args.selectedSkillIds && args.selectedSkillIds.length > 0
+      && !args.selectedSkillIds.includes(args.step.skillId)) {
+      throw new Error('skill not in selected skill set');
     }
   }
 
