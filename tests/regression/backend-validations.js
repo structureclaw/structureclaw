@@ -635,6 +635,69 @@ async function validateAgentOrchestration(context) {
     );
     console.log("[ok] chat projectId passthrough and snapshot boundary");
   }
+
+  {
+    const { skillManifestFileSchema } = await import(
+      pathToFileURL(path.join(context.rootDir, 'backend', 'dist', 'agent-runtime', 'manifest-schema.js')).href
+    );
+    const { parse: parseYaml } = await import('yaml');
+    const { existsSync, readdirSync, readFileSync } = require('node:fs');
+
+    function collectDirectories(root) {
+      const result = [];
+      const queue = [root];
+      while (queue.length > 0) {
+        const dir = queue.shift();
+        result.push(dir);
+        try {
+          const entries = readdirSync(dir, { withFileTypes: true });
+          for (const entry of entries) {
+            if (entry.isDirectory()) queue.push(path.join(dir, entry.name));
+          }
+        } catch { /* ignore */ }
+      }
+      return result;
+    }
+
+    const DOMAIN_ROLE_MAP = {
+      'structure-type': 'entry',
+      'data-input': 'entry',
+      'section': 'enricher',
+      'material': 'enricher',
+      'load-boundary': 'enricher',
+      'design': 'designer',
+      'validation': 'validator',
+      'analysis': 'provider',
+      'result-postprocess': 'transformer',
+      'code-check': 'provider',
+      'drawing': 'consumer',
+      'report-export': 'consumer',
+      'visualization': 'consumer',
+      'general': 'assistant',
+    };
+
+    const skillManifestRoot = path.join(context.rootDir, 'backend', 'src', 'agent-skills');
+    const dirs = collectDirectories(skillManifestRoot);
+    let checkedCount = 0;
+    for (const dir of dirs) {
+      const manifestPath = path.join(dir, 'skill.yaml');
+      if (!existsSync(manifestPath)) continue;
+      const parsed = skillManifestFileSchema.safeParse(parseYaml(readFileSync(manifestPath, 'utf8')));
+      if (!parsed.success) continue;
+      if (!parsed.data.runtimeContract) continue;
+      const expectedRole = DOMAIN_ROLE_MAP[parsed.data.domain];
+      assert(
+        parsed.data.runtimeContract.role === expectedRole,
+        `Skill ${parsed.data.id} in domain ${parsed.data.domain} must declare role ${expectedRole}, got ${parsed.data.runtimeContract.role}`,
+      );
+      checkedCount++;
+    }
+    assert(
+      checkedCount >= 1,
+      `At least 1 builtin skill must declare runtimeContract for domain-to-role validation (found ${checkedCount})`,
+    );
+    console.log(`[ok] domain-to-role mapping validation (${checkedCount} skills checked)`);
+  }
 }
 
 async function validateAgentBaseChatFallback(context) {

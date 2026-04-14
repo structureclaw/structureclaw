@@ -9,8 +9,18 @@ import type { AgentAnalysisType, MaterialFamily, SkillDomain, SkillManifest, Ski
 import type { BuiltinSkillCatalogEntry } from './agent-skill-catalog.js';
 import type { LoadedToolManifest } from '../agent-runtime/tool-manifest-loader.js';
 
-const ACTIVE_RUNTIME_DOMAINS = new Set<SkillDomain>(['structure-type', 'analysis', 'code-check']);
-const PARTIAL_RUNTIME_DOMAINS = new Set<SkillDomain>(['validation', 'report-export']);
+const ACTIVE_RUNTIME_DOMAINS = new Set<SkillDomain>([
+  'structure-type',
+  'analysis',
+  'code-check',
+  'result-postprocess',
+]);
+const PARTIAL_RUNTIME_DOMAINS = new Set<SkillDomain>([
+  'validation',
+  'report-export',
+  'design',
+  'drawing',
+]);
 
 function resolveDomainRuntimeStatus(domain: SkillDomain, hasDiscoverablePresence: boolean): SkillRuntimeStatus {
   if (ACTIVE_RUNTIME_DOMAINS.has(domain)) {

@@ -23,11 +23,11 @@ Current status is derived from:
 | `visualization` | `discoverable` | 3 | 0 | Catalog-visible builtin skills with prompt assets, but no per-skill runtime modules today. |
 | `section` | `discoverable` | 3 | 3 | Catalog-visible and runtime-loadable from `skill.yaml` + `handler.ts`, but not auto-activated by the main runtime binder. |
 | `data-input` | `reserved` | 0 | 0 | Taxonomy slot only in current repo state. |
-| `design` | `reserved` | 0 | 0 | Taxonomy slot only in current repo state. |
-| `drawing` | `reserved` | 0 | 0 | Taxonomy slot only in current repo state. |
+| `design` | `partial` | 0 | 0 | Phase 3.5 added design feedback propose/accept via the scheduler. Full design loop (iteration, multi-proposal) pending. |
+| `drawing` | `partial` | 0 | 0 | Scheduler path exists for drawing artifact planning, but the drawing tool is not yet implemented. |
 | `general` | `reserved` | 0 | 0 | Taxonomy slot only in current repo state. |
 | `material` | `reserved` | 0 | 0 | Taxonomy slot only in current repo state. |
-| `result-postprocess` | `reserved` | 0 | 0 | Taxonomy slot only in current repo state. |
+| `result-postprocess` | `active` | 0 | 0 | Phase 5 stabilized the postprocess artifact through the scheduler. Participates in main orchestration. |
 
 ## Important Caveats
 

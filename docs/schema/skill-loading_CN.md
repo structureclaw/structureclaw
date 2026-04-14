@@ -120,6 +120,107 @@ skill 内声明的 `engineId` 只是静态路由提示，并不等于该 engine 
 
 因此，engine 可用性是一个运行时闸门，会直接影响后续 skill 是否能够参与执行。某个 skill 可以已经成功加载进 taxonomy，但如果它依赖的 engine 当前不可用或不兼容，仍然必须在执行阶段被过滤掉。
 
+### 2.7 skill.yaml 中的 runtimeContract
+
+`skill.yaml` 中的 `runtimeContract` 字段声明了技能如何参与目标调度器的工件图。它用显式的提供者和消费者声明替代了隐式激活。
+
+#### 2.7.1 SkillRole 变体
+
+每个技能通过 `runtimeContract.role` 声明自己的角色。已定义的八种角色：
+
+| 角色 | 描述 |
+|------|------|
+| `entry` | 管线中的第一个技能。接收原始用户输入并产生初始工件（例如 `structure-type` 产生草稿模型）。 |
+| `enricher` | 向已有工件添加信息而不改变其类型（例如向草稿添加荷载/边界条件）。 |
+| `validator` | 检查工件的正确性并产生校验结果工件。 |
+| `assistant` | 提供指导或解释，不产生或修改工件。 |
+| `provider` | 产生其他技能消费的工件。声明 `providerSlot` 供调度器绑定。 |
+| `consumer` | 消费其他技能产生的工件。声明 `requiredConsumes` 和/或 `optionalConsumes`。 |
+| `designer` | 对工件提出设计修改建议。使用 `providesPatches` 和 `autoIteration` 驱动设计反馈循环。 |
+| `transformer` | 将一种工件类型转换为另一种（例如将草稿模型转换为分析输入）。 |
+
+#### 2.7.2 提供者槽位与选择策略
+
+角色为 `provider` 的技能在其运行时合约中声明 `providerSlot`：
+
+```yaml
+runtimeContract:
+  role: provider
+  providerSlot: analysis-opensees-static
+  selectionPolicy: preferred   # preferred | fallback | exclusive
+```
+
+- `providerSlot`：调度器用于将该提供者绑定到工件图中某个工件的稳定标识符。
+- `selectionPolicy`：调度器在同一个槽位有多个提供者时如何选择：
+  - `preferred`：可用时优先使用此提供者。
+  - `fallback`：仅在无 preferred 提供者可用时使用。
+  - `exclusive`：只有此提供者可以填充该槽位，其他提供者被拒绝。
+
+#### 2.7.3 消费者合约
+
+角色为 `consumer` 的技能声明其消费哪些工件：
+
+```yaml
+runtimeContract:
+  role: consumer
+  requiredConsumes:
+    - validated-model
+  optionalConsumes:
+    - load-case-summary
+```
+
+- `requiredConsumes`：该技能执行前必须可用的工件。如果任何必需消费缺失，调度器会先规划生产该工件，或报告阻断原因。
+- `optionalConsumes`：可以增强该技能输出但非强制要求的工件。技能必须能够优雅地处理这些工件的缺失。
+
+#### 2.7.4 设计者合约
+
+角色为 `designer` 的技能声明其如何提出变更：
+
+```yaml
+runtimeContract:
+  role: designer
+  providesPatches:
+    - design-proposal
+  autoIteration: true
+```
+
+- `providesPatches`：此设计者可以作为设计方案产生的工件类型。
+- `autoIteration`：为 `true` 时，调度器会在用户接受方案后自动重新运行设计者，直到设计者发出完成信号或用户拒绝。
+
+#### 2.7.5 示例
+
+分析技能的完整 `runtimeContract` 声明：
+
+```yaml
+id: opensees-static
+domain: analysis
+runtimeContract:
+  role: provider
+  providerSlot: analysis-opensees-static
+  selectionPolicy: preferred
+  requiredConsumes:
+    - validated-model
+  optionalConsumes:
+    - load-case-summary
+    - section-library
+```
+
+带反馈循环的设计技能：
+
+```yaml
+id: steel-design-gb50017
+domain: design
+runtimeContract:
+  role: designer
+  providesPatches:
+    - design-proposal
+  autoIteration: true
+  requiredConsumes:
+    - analysis-result
+  optionalConsumes:
+    - code-check-result
+```
+
 ## 3. 外部 / SkillHub 技能打包与加载
 
 ### 3.1 包元数据

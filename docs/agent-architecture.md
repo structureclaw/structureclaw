@@ -471,6 +471,8 @@ The binding order is:
 8. Apply engine and model compatibility rules.
 9. Produce the final available tool set and blocked reasons.
 
+Under the target scheduler architecture, the binder resolves **explicit provider slots** for each artifact the scheduler requests. There is no auto-activation: a provider is wired only when the scheduler explicitly asks for it via a declared `providerSlot` in the skill's `runtimeContract` (see section on `runtimeContract` in the skill-loading documentation).
+
 This means non-foundation tools never become available only because a domain exists. They become available because active skills grant them and runtime checks allow them.
 
 ### 8.10 Role of Registries and Adapters
@@ -661,6 +663,8 @@ Each incoming user message follows a fixed dispatch sequence:
    - `kind: 'ask'` maps to **collect**
    - `kind: 'reply'` with `replyMode: 'structured'` maps to **draft**
    - `kind: 'tool_call'` maps to **execute**
+
+   Under the target scheduler architecture (section 10B), the router outputs a `targetArtifact` instead of just `kind`/`replyMode`. The `targetArtifact` drives scheduler planning through the controlled artifact graph.
 4. **Dispatch to handler**: the corresponding handler function runs.
 
 ```mermaid
@@ -700,6 +704,84 @@ When a structural model is generated during the current turn, the validation ste
 5. If all repair attempts fail, transition the session to `blocked` and return a clarification response to the user.
 
 This mechanism recovers from common LLM generation errors (missing fields, type mismatches, invalid enum values) without requiring the user to re-enter information.
+
+## 10B. Target Scheduler Orchestration
+
+The runtime is migrating from route-based dispatch to a target-artifact scheduler architecture. This section documents the new dispatch chain and its execution branches.
+
+### 10B.1 Dispatch Chain
+
+The new dispatch chain replaces the simple `planNextStep -> RouteDecision` flow with a four-stage pipeline:
+
+```
+Router -> Scheduler -> Binder -> Executor
+```
+
+1. **Router**: classifies the user message and outputs a `targetArtifact` (not just `kind`/`replyMode`). The `targetArtifact` is the concrete artifact the system intends to produce this turn -- for example a validated model, an analysis result, or a design proposal.
+2. **Scheduler**: plans execution from the `targetArtifact` through a controlled artifact graph. The scheduler determines which artifacts must be produced or updated to reach the target, and in what order.
+3. **Binder**: resolves explicit provider slots for each required artifact. There is no auto-activation -- providers are only wired when the scheduler explicitly requests them.
+4. **Executor**: runs the planned artifact graph, respecting execution branches and interaction checkpoints.
+
+### 10B.2 Project Execution Policy
+
+The project execution policy is the persistent control plane for the scheduler. It stores:
+
+- which artifact types the project requires
+- provider preferences and constraints
+- user-approved design proposals
+- accumulated interaction checkpoints
+
+The policy persists across conversation turns and is the source of truth for what the scheduler is allowed to plan.
+
+### 10B.3 Five Execution Branches
+
+When the scheduler plans an artifact, it selects one of five execution branches:
+
+| Branch | Meaning |
+|--------|---------|
+| `blocked` | Execution cannot proceed; a precondition is unmet. Returns a bilingual blocked reason to the user. |
+| `ask-user` | The scheduler needs user input (clarification, missing parameter) before continuing. |
+| `propose` | A designer skill has produced a design proposal awaiting user acceptance. |
+| `queue-run` | The artifact is queued for background execution. Used for long-running tasks like analysis. |
+| `execute`/`transform` | Immediate execution or transformation of an existing artifact. |
+
+### 10B.4 Bilingual Blocked Reasons
+
+When the scheduler returns the `blocked` branch, the blocked message is always bilingual (`en` and `zh`). The eight blocked scenarios are:
+
+1. Missing required skill for the target artifact
+2. Required upstream artifact not yet produced
+3. Provider not available (engine down, skill not installed)
+4. User manually disabled a required skill or tool
+5. Dependency cycle detected in artifact graph
+6. Design proposal rejected by user
+7. Validation failed and auto-repair exhausted
+8. Engine compatibility check failed
+
+Each blocked reason carries a stable reason code and localized display text.
+
+### 10B.5 Interaction Checkpoints
+
+Interaction checkpoints hold pending user decisions that the scheduler cannot resolve autonomously. The four checkpoint types are:
+
+| Type | Purpose |
+|------|---------|
+| `clarification` | Waiting for the user to provide a missing parameter or answer a question. |
+| `design-proposal` | A designer skill has proposed a design change; awaiting explicit user acceptance or rejection. |
+| `approval` | The scheduler wants to proceed with a potentially destructive or expensive operation; awaiting user confirmation. |
+| `blocked` | The scheduler cannot proceed; recorded as a checkpoint so the UI can display the reason and suggest remediation. |
+
+Checkpoints are stored in the project execution policy and survive across conversation turns.
+
+### 10B.6 Conversation Snapshots
+
+Conversation snapshots (stored via `conversation.ts`) are projection caches of the conversation state at a point in time. They are **not** pipeline truth. The authoritative state for the scheduler is the project execution policy and its artifact graph, not the conversation snapshot.
+
+This distinction matters because:
+
+- A snapshot may lag behind the actual artifact state.
+- Snapshots are for display and audit, not for scheduler planning.
+- The scheduler reads artifact state directly from the artifact store, not from conversation snapshots.
 
 ## 11. Refactor Direction
 

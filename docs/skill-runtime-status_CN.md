@@ -23,11 +23,11 @@
 | `visualization` | `discoverable` | 3 | 0 | builtin skill 已可发现，也有 prompt 资产，但今天还没有 per-skill runtime 模块。 |
 | `section` | `discoverable` | 3 | 3 | 已进入 catalog，并可通过 `skill.yaml` + `handler.ts` 参与运行时加载，但还不会自动进入主 binder。 |
 | `data-input` | `reserved` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
-| `design` | `reserved` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
-| `drawing` | `reserved` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
+| `design` | `partial` | 0 | 0 | 阶段 3.5 通过调度器增加了设计反馈 propose/accept。完整设计循环（迭代、多方案）待实现。 |
+| `drawing` | `partial` | 0 | 0 | 调度器已具备 drawing 工件规划路径，但 drawing tool 尚未实现。 |
 | `general` | `reserved` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
 | `material` | `reserved` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
-| `result-postprocess` | `reserved` | 0 | 0 | 当前仓库状态下仅保留 taxonomy 槽位。 |
+| `result-postprocess` | `active` | 0 | 0 | 阶段 5 通过调度器稳定了 postprocess 工件。已参与主编排。 |
 
 ## 关键说明
 

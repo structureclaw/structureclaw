@@ -120,6 +120,107 @@ The current `/api/v1/agent/capability-matrix` also exposes `runtimeStatus` for e
 
 Therefore, engine availability is a runtime gate that directly affects downstream skill activation and execution eligibility. A skill may be correctly loaded in the taxonomy, but still be filtered out for execution if its required engine is currently unavailable or incompatible.
 
+### 2.7 Runtime Contract in skill.yaml
+
+The `runtimeContract` field in `skill.yaml` declares how a skill participates in the target scheduler's artifact graph. It replaces implicit activation with explicit provider and consumer declarations.
+
+#### 2.7.1 SkillRole Variants
+
+Every skill declares its role via `runtimeContract.role`. The eight defined roles are:
+
+| Role | Description |
+|------|-------------|
+| `entry` | The first skill in the pipeline. Receives raw user input and produces the initial artifact (e.g., `structure-type` producing a draft model). |
+| `enricher` | Adds information to an existing artifact without changing its type (e.g., adding load/boundary conditions to a draft). |
+| `validator` | Checks an artifact for correctness and produces a validation result artifact. |
+| `assistant` | Provides guidance or explanation without producing or modifying artifacts. |
+| `provider` | Produces an artifact that other skills consume. Declares a `providerSlot` for the scheduler to bind. |
+| `consumer` | Consumes artifacts produced by other skills. Declares `requiredConsumes` and/or `optionalConsumes`. |
+| `designer` | Proposes design modifications to an artifact. Uses `providesPatches` and `autoIteration` to drive the design feedback loop. |
+| `transformer` | Converts one artifact type into another (e.g., draft model to analysis input). |
+
+#### 2.7.2 Provider Slot and Selection Policy
+
+Skills with role `provider` declare a `providerSlot` in their runtime contract:
+
+```yaml
+runtimeContract:
+  role: provider
+  providerSlot: analysis-opensees-static
+  selectionPolicy: preferred   # preferred | fallback | exclusive
+```
+
+- `providerSlot`: a stable identifier that the scheduler uses to bind this provider to an artifact in the graph.
+- `selectionPolicy`: how the scheduler should choose among multiple providers for the same slot:
+  - `preferred`: use this provider when available.
+  - `fallback`: use only when no preferred provider is available.
+  - `exclusive`: only this provider can fill the slot; others are rejected.
+
+#### 2.7.3 Consumer Contracts
+
+Skills with role `consumer` declare which artifacts they consume:
+
+```yaml
+runtimeContract:
+  role: consumer
+  requiredConsumes:
+    - validated-model
+  optionalConsumes:
+    - load-case-summary
+```
+
+- `requiredConsumes`: artifacts that must be available before this skill can execute. If any required consume is missing, the scheduler will plan to produce it first or report a blocked reason.
+- `optionalConsumes`: artifacts that enhance this skill's output but are not mandatory. The skill must handle their absence gracefully.
+
+#### 2.7.4 Designer Contracts
+
+Skills with role `designer` declare how they propose changes:
+
+```yaml
+runtimeContract:
+  role: designer
+  providesPatches:
+    - design-proposal
+  autoIteration: true
+```
+
+- `providesPatches`: artifact types this designer can produce as design proposals.
+- `autoIteration`: when `true`, the scheduler will automatically re-run the designer after the user accepts a proposal, until the designer signals completion or the user rejects.
+
+#### 2.7.5 Example
+
+A complete `runtimeContract` in `skill.yaml` for an analysis skill:
+
+```yaml
+id: opensees-static
+domain: analysis
+runtimeContract:
+  role: provider
+  providerSlot: analysis-opensees-static
+  selectionPolicy: preferred
+  requiredConsumes:
+    - validated-model
+  optionalConsumes:
+    - load-case-summary
+    - section-library
+```
+
+A design skill with feedback loop:
+
+```yaml
+id: steel-design-gb50017
+domain: design
+runtimeContract:
+  role: designer
+  providesPatches:
+    - design-proposal
+  autoIteration: true
+  requiredConsumes:
+    - analysis-result
+  optionalConsumes:
+    - code-check-result
+```
+
 ## 3. External / SkillHub Skill Packaging and Loading
 
 ### 3.1 Package Metadata
