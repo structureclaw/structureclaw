@@ -551,8 +551,14 @@ export interface ConsumerRuntimeContract {
   role: 'consumer';
   targetArtifact?: ArtifactKind;
   deliverableProfileKey?: string;
+  /** Specific artifacts that must be present before the consumer can execute. */
   requiredConsumes?: ArtifactKind[];
+  /** Artifacts that improve output quality but are not strictly required. */
   optionalConsumes?: ArtifactKind[];
+  /**
+   * Derived: union of requiredConsumes + optionalConsumes.
+   * Do not set independently — this is computed from the above two fields.
+   */
   consumes?: ArtifactKind[];
   provides?: ArtifactKind[];
 }

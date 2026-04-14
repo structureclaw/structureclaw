@@ -58,11 +58,12 @@ const runtimeContractSchema = z.discriminatedUnion('role', [
   }),
   z.object({
     role: z.literal('consumer'),
-    ...baseRuntimeContractShape,
     targetArtifact: artifactKindSchema.optional(),
     deliverableProfileKey: z.string().optional(),
     requiredConsumes: z.array(artifactKindSchema).default([]),
     optionalConsumes: z.array(artifactKindSchema).default([]),
+    // No standalone `consumes` — derived from requiredConsumes ∪ optionalConsumes at runtime
+    provides: z.array(artifactKindSchema).default([]),
   }),
   z.object({
     role: z.literal('transformer'),
