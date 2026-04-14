@@ -759,10 +759,10 @@ export class AgentSkillRuntime {
     codeCheckClient: unknown;
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
     const model = args.pipelineState.artifacts.analysisModel?.payload as Record<string, unknown> ?? {};
-    const analysisType = 'static'; // default, could be extracted from pipeline state
+    const analysisType = args.pipelineState.policy?.analysisType ?? 'static';
     const result = await this.executeAnalysisSkill({
       model,
-      analysisType: analysisType as 'static' | 'dynamic' | 'seismic' | 'nonlinear',
+      analysisType,
       postToEngineWithRetry: args.postToEngineWithRetry,
       traceId: args.traceId,
       engineId: undefined,
