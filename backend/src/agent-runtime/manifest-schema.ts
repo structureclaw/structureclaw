@@ -46,7 +46,9 @@ const runtimeContractSchema = z.discriminatedUnion('role', [
   }),
   z.object({
     role: z.literal('designer'),
-    ...baseRuntimeContractShape,
+    selectionPolicy: z.enum(['optional', 'explicit_required']).optional(),
+    consumes: z.array(artifactKindSchema).default([]),
+    // NOTE: no `provides` — designers produce patches via providesPatches, not artifacts
     providesPatches: z.array(z.string()).optional(),
     requiresUserAcceptance: z.boolean().optional(),
     autoIteration: z.object({

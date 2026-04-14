@@ -610,6 +610,16 @@ export interface ProjectPipelineState {
   updatedAt: number;
 }
 
+// --- Session working state (spec section 14) ---
+
+export interface SessionWorkingState {
+  selectedSkillIds: string[];
+  locale: import('../services/locale.js').AppLocale;
+  draftState?: ArtifactEnvelope;
+  checkpoint?: InteractionCheckpoint;
+  updatedAt: number;
+}
+
 // --- Run record ---
 
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'canceled';
