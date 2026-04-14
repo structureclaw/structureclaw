@@ -1,5 +1,5 @@
 import type { DraftState, StructuralTypeMatch } from '../agent-runtime/index.js';
-import type { SkillManifest, ToolManifest } from '../agent-runtime/types.js';
+import type { ProviderBindingState, SchedulerStep, SkillManifest, ToolManifest } from '../agent-runtime/types.js';
 
 export type RuntimeBinderActiveToolSet = Set<string>;
 
@@ -70,19 +70,36 @@ export class AgentRuntimeBinder {
 
   async resolveActiveDomainSkillIds(args: {
     selectedSkillIds?: string[];
+    providerBindings?: ProviderBindingState;
     workingSession: RuntimeBinderSession;
     modelInput?: Record<string, unknown>;
     message: string;
     context?: RuntimeBinderContext;
     hasEmptySkillSelection?: (skillIds?: string[]) => boolean;
   }): Promise<string[] | undefined> {
+    const selectedSkillIds = this.normalizeSkillIds(args.selectedSkillIds);
+    const activatedSkillIds = new Set<string>(selectedSkillIds);
+
+    // Provider-first path: when caller explicitly passes providerBindings,
+    // only activate selected skills + bound providers (Phase 4 scheduler path).
+    // When providerBindings is NOT in args, fall through to legacy auto-activation.
+    if ('providerBindings' in args) {
+      if (args.providerBindings?.analysisProviderSkillId) {
+        activatedSkillIds.add(args.providerBindings.analysisProviderSkillId);
+      }
+      if (args.providerBindings?.codeCheckProviderSkillId) {
+        activatedSkillIds.add(args.providerBindings.codeCheckProviderSkillId);
+      }
+      return Array.from(activatedSkillIds).sort();
+    }
+
+    // Legacy auto-activation path (current agent.ts does not pass providerBindings).
+    // Phase 4 will switch to the provider-first path above.
     if (args.hasEmptySkillSelection?.(args.selectedSkillIds)) {
       return [];
     }
 
-    const selectedSkillIds = this.normalizeSkillIds(args.selectedSkillIds);
     const manifests = await this.skillRuntime.listSkillManifests();
-    const activatedSkillIds = new Set<string>(selectedSkillIds);
     const selectedSkillSet = new Set(selectedSkillIds);
     const structuralSkillId = args.workingSession.structuralTypeMatch?.skillId
       || args.workingSession.draft?.skillId
@@ -154,6 +171,58 @@ export class AgentRuntimeBinder {
     }
 
     return Array.from(activatedSkillIds).sort();
+  }
+
+  async resolveProviderBindingRequirements(args: {
+    selectedSkillIds?: string[];
+    requiredSlots: Array<'analysisProvider' | 'codeCheckProvider'>;
+    bindings?: ProviderBindingState;
+    modelFamily?: string;
+    analysisType?: string;
+    designCode?: string;
+  }): Promise<{ blockedReason?: string }> {
+    const manifests = await this.skillRuntime.listSkillManifests();
+    const selectedSkillSet = new Set(this.normalizeSkillIds(args.selectedSkillIds));
+
+    for (const slot of args.requiredSlots) {
+      const candidates = manifests.filter((manifest) => {
+        const rc = manifest.runtimeContract;
+        return selectedSkillSet.has(manifest.id)
+          && rc?.role === 'provider'
+          && (rc as { providerSlot?: string }).providerSlot === slot;
+      });
+      const boundSkillId = slot === 'analysisProvider'
+        ? args.bindings?.analysisProviderSkillId
+        : args.bindings?.codeCheckProviderSkillId;
+      if (candidates.length > 1 && !boundSkillId) {
+        return { blockedReason: `${slot} binding required because multiple provider candidates are selected` };
+      }
+
+      const boundManifest = boundSkillId
+        ? manifests.find((m) => m.id === boundSkillId)
+        : candidates[0];
+      if (boundManifest?.runtimeContract && args.modelFamily) {
+        const contract = boundManifest.runtimeContract as any;
+        if (contract.supportedModelFamilies && !contract.supportedModelFamilies.includes(args.modelFamily)) {
+          return { blockedReason: 'provider incompatible' };
+        }
+      }
+    }
+
+    return {};
+  }
+
+  assertStepAuthorized(args: {
+    step: SchedulerStep;
+    selectedSkillIds?: string[];
+    bindings?: ProviderBindingState;
+  }): void {
+    if (args.step.role === 'provider' && args.step.provides === 'analysisRaw' && !args.bindings?.analysisProviderSkillId) {
+      throw new Error('analysisProvider binding required');
+    }
+    if (args.step.role === 'provider' && args.step.provides === 'codeCheckResult' && !args.bindings?.codeCheckProviderSkillId) {
+      throw new Error('codeCheckProvider binding required');
+    }
   }
 
   async resolveAvailableTooling(
