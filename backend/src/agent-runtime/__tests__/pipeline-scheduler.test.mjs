@@ -266,4 +266,46 @@ describe('pipeline scheduler', () => {
     expect(designStep.mode).toBe('propose');
     expect(designStep.provides).toBe('normalizedModel');
   });
+
+  test('design feedback uses execute mode when auto-design is enabled', () => {
+    const scheduler = new PipelineScheduler();
+    const plan = scheduler.planDesignFeedback({
+      message: '优化设计',
+      locale: 'zh',
+      selectedSkillIds: ['design-steel'],
+      bindings: {},
+      projectPolicy: { autoDesignIterationPolicy: { enabled: true, maxIterations: 5, acceptanceCriteria: [], allowedDomains: ['design'] } },
+      targetArtifact: 'normalizedModel',
+      sessionArtifacts: {},
+      projectArtifacts: {
+        designBasis: { status: 'ready', dependencyFingerprint: 'fp-1' },
+        normalizedModel: { status: 'ready', dependencyFingerprint: 'fp-2' },
+      },
+    });
+
+    const designStep = plan.requiredSteps.find((s) => s.action === 'design');
+    expect(designStep).toBeDefined();
+    expect(designStep.mode).toBe('execute');
+    expect(plan.blockedReason).toBeUndefined();
+  });
+
+  test('design feedback blocks when auto-design is enabled with zero maxIterations', () => {
+    const scheduler = new PipelineScheduler();
+    const plan = scheduler.planDesignFeedback({
+      message: '优化设计',
+      locale: 'zh',
+      selectedSkillIds: ['design-steel'],
+      bindings: {},
+      projectPolicy: { autoDesignIterationPolicy: { enabled: true, maxIterations: 0, acceptanceCriteria: [], allowedDomains: ['design'] } },
+      targetArtifact: 'normalizedModel',
+      sessionArtifacts: {},
+      projectArtifacts: {
+        designBasis: { status: 'ready', dependencyFingerprint: 'fp-1' },
+        normalizedModel: { status: 'ready', dependencyFingerprint: 'fp-2' },
+      },
+    });
+
+    expect(plan.blockedReason).toMatch(/autoDesignIteration/);
+    expect(plan.requiredSteps).toEqual([]);
+  });
 });

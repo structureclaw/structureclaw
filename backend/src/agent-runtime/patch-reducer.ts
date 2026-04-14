@@ -1,4 +1,4 @@
-interface PatchReducerInput {
+export interface PatchReducerInput {
   patchId: string;
   patchKind: 'modelPatch' | 'designPatch';
   producerSkillId: string;
@@ -14,7 +14,7 @@ interface PatchReducerInput {
   createdAt: number;
 }
 
-interface PatchReducerResult {
+export interface PatchReducerResult {
   model: Record<string, unknown>;
   revision: number;
   rejected: Array<{ patchId: string; reason: string }>;

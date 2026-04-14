@@ -43,4 +43,21 @@ describe('patch reducer', () => {
     expect(result.revision).toBe(1);
     expect(result.skipped).toHaveLength(1);
   });
+
+  test('replace strategy overwrites entire key without conflict tracking', () => {
+    const patches = [
+      { patchId: 'p1', patchKind: 'modelPatch', producerSkillId: 'section', baseModelRevision: 1, status: 'accepted', priority: 10, payload: { elements: [{ id: 'E1', section: 'W200' }] }, mergeStrategy: { elements: 'replace' }, reason: 'replace elements', conflicts: [], basedOn: [], createdAt: 100 },
+    ];
+    const result = applyPatches({ elements: [{ id: 'E1', section: 'W100' }], revision: 1 }, patches);
+    expect(result.model.elements).toEqual([{ id: 'E1', section: 'W200' }]);
+    expect(result.conflicted).toHaveLength(0);
+  });
+
+  test('append strategy concatenates arrays', () => {
+    const patches = [
+      { patchId: 'p1', patchKind: 'modelPatch', producerSkillId: 'load', baseModelRevision: 1, status: 'accepted', priority: 10, payload: { loads: [{ id: 'L2', value: 10 }] }, mergeStrategy: { loads: 'append' }, reason: 'add load', conflicts: [], basedOn: [], createdAt: 100 },
+    ];
+    const result = applyPatches({ loads: [{ id: 'L1', value: 5 }], revision: 1 }, patches);
+    expect(result.model.loads).toEqual([{ id: 'L1', value: 5 }, { id: 'L2', value: 10 }]);
+  });
 });
