@@ -1,6 +1,7 @@
 import { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from '../services/locale.js';
 import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.js';
+import { buildPostprocessedResultArtifact } from '../agent-skills/result-postprocess/entry.js';
 import {
   buildCodeCheckInput,
   executeCodeCheckDomain,
@@ -367,7 +368,12 @@ export class AgentSkillRuntime {
       clauseTraceability,
       controllingCases,
       visualizationHints,
-    } = buildReportDomainArtifacts(options.analysis, options.codeCheck);
+    } = buildReportDomainArtifacts({
+      designBasis: undefined,
+      normalizedModel: undefined,
+      postprocessedResult: options.analysis,
+      codeCheckResult: options.codeCheck,
+    });
     const jsonReport: Record<string, unknown> = {
       reportSchemaVersion: '1.0.0',
       intent: options.message,
@@ -774,14 +780,13 @@ export class AgentSkillRuntime {
     postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
     codeCheckClient: unknown;
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
-    // Postprocess extracts structured results from analysisRaw
     const analysisPayload = args.pipelineState.artifacts.analysisRaw?.payload;
-    const postprocessed = {
-      keyMetrics: analysisPayload ?? {},
-      status: 'processed',
-    };
+    const analysisRawRef = args.pipelineState.artifacts.analysisRaw
+      ? { artifactId: args.pipelineState.artifacts.analysisRaw.artifactId, revision: args.pipelineState.artifacts.analysisRaw.revision }
+      : undefined;
+    const postprocessedResult = buildPostprocessedResultArtifact(analysisPayload, analysisRawRef);
     if (!args.step.provides) return {};
-    const artifact = this.buildArtifactEnvelope(args.step.provides, postprocessed, args.step);
+    const artifact = this.buildArtifactEnvelope(args.step.provides, postprocessedResult as unknown as Record<string, unknown>, args.step);
     return { artifact };
   }
 
@@ -795,17 +800,20 @@ export class AgentSkillRuntime {
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
     const model = args.pipelineState.artifacts.normalizedModel?.payload as Record<string, unknown> ?? {};
     const analysis = args.pipelineState.artifacts.analysisRaw?.payload;
+    const postprocessedPayload = args.pipelineState.artifacts.postprocessedResult?.payload;
     const designCode = args.pipelineState.policy?.designCode ?? 'GB50017';
-    const result = await this.executeCodeCheckSkill({
-      codeCheckClient: args.codeCheckClient,
+    const codeCheckInput = buildCodeCheckInput({
       traceId: args.traceId,
       designCode,
       model,
       analysis,
       analysisParameters: {},
+      postprocessedResult: postprocessedPayload as Record<string, unknown> | undefined,
     });
+    const skillId = this.resolveCodeCheckSkillId(designCode);
+    const result = await executeCodeCheckDomain(args.codeCheckClient as CodeCheckClient, codeCheckInput);
     if (!args.step.provides) return {};
-    const artifact = this.buildArtifactEnvelope(args.step.provides, result.result as Record<string, unknown>, args.step);
+    const artifact = this.buildArtifactEnvelope(args.step.provides, result as Record<string, unknown>, args.step);
     return { artifact };
   }
 
@@ -817,18 +825,21 @@ export class AgentSkillRuntime {
     postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
     codeCheckClient: unknown;
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
-    const analysis = args.pipelineState.artifacts.analysisRaw?.payload;
-    const codeCheck = args.pipelineState.artifacts.codeCheckResult?.payload;
-    const result = await this.executeReportSkill({
-      message: '',
-      analysisType: 'static',
-      analysis,
-      codeCheck,
-      format: 'both',
-      locale: args.locale,
-    });
+    const analysisPayload = args.pipelineState.artifacts.analysisRaw?.payload;
+    const codeCheckPayload = args.pipelineState.artifacts.codeCheckResult?.payload;
+    const postprocessedPayload = args.pipelineState.artifacts.postprocessedResult?.payload;
+    const designBasisPayload = args.pipelineState.artifacts.designBasis?.payload;
+    const normalizedModelPayload = args.pipelineState.artifacts.normalizedModel?.payload;
+    const { keyMetrics, clauseTraceability, controllingCases, visualizationHints } =
+      buildReportDomainArtifacts({
+        designBasis: designBasisPayload,
+        normalizedModel: normalizedModelPayload,
+        postprocessedResult: postprocessedPayload ?? analysisPayload,
+        codeCheckResult: codeCheckPayload,
+      });
     if (!args.step.provides) return {};
-    const artifact = this.buildArtifactEnvelope(args.step.provides, result.report as unknown as Record<string, unknown>, args.step);
+    const reportPayload = { keyMetrics, clauseTraceability, controllingCases, visualizationHints };
+    const artifact = this.buildArtifactEnvelope(args.step.provides, reportPayload, args.step);
     return { artifact };
   }
 

@@ -72,6 +72,61 @@ export function extractClauseTraceability(codeCheck: unknown): Array<Record<stri
   return traceRows.slice(0, 20);
 }
 
+export function extractUtilizationByElementFromAnalysis(analysis: unknown): Record<string, unknown> {
+  const analysisPayload = analysis && typeof analysis === 'object' ? analysis as Record<string, unknown> : {};
+  const data = analysisPayload['data'];
+  const dataObject = data && typeof data === 'object' ? data as Record<string, unknown> : {};
+  const envelope = dataObject['envelope'];
+  const envelopeObject = envelope && typeof envelope === 'object' ? envelope as Record<string, unknown> : {};
+  const utilization = envelopeObject['elementUtilization'] ?? dataObject['utilizationByElement'];
+  return utilization && typeof utilization === 'object' ? utilization as Record<string, unknown> : {};
+}
+
+export function extractUnitSystem(analysis: unknown): string {
+  const payload = analysis && typeof analysis === 'object' ? analysis as Record<string, unknown> : {};
+  const metadata = payload['metadata'];
+  if (metadata && typeof metadata === 'object') {
+    const meta = metadata as Record<string, unknown>;
+    if (typeof meta['unitSystem'] === 'string') return meta['unitSystem'];
+  }
+  return 'SI';
+}
+
+export function extractCoordinateSystem(analysis: unknown): string {
+  const payload = analysis && typeof analysis === 'object' ? analysis as Record<string, unknown> : {};
+  const metadata = payload['metadata'];
+  if (metadata && typeof metadata === 'object') {
+    const meta = metadata as Record<string, unknown>;
+    if (typeof meta['coordinateSystem'] === 'string') return meta['coordinateSystem'];
+  }
+  return 'global-z-up';
+}
+
+export interface PostprocessedResultArtifact {
+  keyMetrics: Record<string, unknown>;
+  controllingCases: Record<string, unknown>;
+  utilizationByElement: Record<string, unknown>;
+  clauseTraceability: Array<Record<string, unknown>>;
+  unitSystem?: string;
+  coordinateSystem?: string;
+  analysisRawRef?: { artifactId: string; revision: number };
+}
+
+export function buildPostprocessedResultArtifact(
+  analysis: unknown,
+  analysisRawRef?: { artifactId: string; revision: number },
+): PostprocessedResultArtifact {
+  return {
+    keyMetrics: extractKeyMetrics(analysis, undefined),
+    controllingCases: extractControllingCases(analysis),
+    utilizationByElement: extractUtilizationByElementFromAnalysis(analysis),
+    clauseTraceability: [],
+    unitSystem: extractUnitSystem(analysis),
+    coordinateSystem: extractCoordinateSystem(analysis),
+    analysisRawRef,
+  };
+}
+
 export function extractControllingCases(analysis: unknown): Record<string, unknown> {
   const analysisPayload = analysis && typeof analysis === 'object' ? analysis as Record<string, unknown> : {};
   const analysisData = analysisPayload['data'];
