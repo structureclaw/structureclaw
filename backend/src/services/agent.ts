@@ -1662,6 +1662,86 @@ export class AgentService {
         }
       }
 
+      // Spec sections 7.3, 13.3: design feedback loop
+      // Triggered after postprocess + code-check when auto-design iteration is possible
+      if (pipelineState.artifacts.postprocessedResult && pipelineState.artifacts.codeCheckResult) {
+        const feedbackPlan = this.pipelineScheduler.planDesignFeedback({
+          message: params.message,
+          locale,
+          selectedSkillIds: skillIds ?? [],
+          bindings: pipelineState.bindings,
+          projectPolicy: pipelineState.policy,
+          targetArtifact: 'normalizedModel' as ArtifactKind,
+          sessionArtifacts: {},
+          projectArtifacts: pipelineState.artifacts,
+        });
+
+        if (!feedbackPlan.blockedReason && feedbackPlan.requiredSteps.length > 0) {
+          for (const fbStep of feedbackPlan.requiredSteps) {
+            try {
+              this.runtimeBinder.assertStepAuthorized({
+                step: fbStep,
+                selectedSkillIds: skillIds,
+                bindings: pipelineState.bindings,
+              });
+            } catch (authError) {
+              const authMessage = authError instanceof Error ? authError.message : String(authError);
+              return this.finalizeBlockedRunResult({
+                params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
+                skillIds, plan, toolCalls, sessionKey, workingSession,
+                response: buildLocalizedBlockedReason(authMessage, locale),
+                blockedReasonCode: 'STEP_UNAUTHORIZED',
+                needsModelInput: false,
+              });
+            }
+
+            if (fbStep.mode === 'reuse') continue;
+
+            if (STUB_TOOLS.has(fbStep.action)) {
+              return this.finalizeBlockedRunResult({
+                params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
+                skillIds, plan, toolCalls, sessionKey, workingSession,
+                response: buildLocalizedBlockedReason('tool not implemented', locale),
+                blockedReasonCode: 'TOOL_NOT_IMPLEMENTED',
+                needsModelInput: false,
+              });
+            }
+
+            if (fbStep.mode === 'propose') {
+              workingSession.checkpoint = buildInteractionCheckpoint({
+                kind: 'design-proposal',
+                targetArtifact: fbStep.provides ?? 'normalizedModel',
+                patchId: fbStep.stepId,
+                summary: fbStep.reason,
+              });
+              return this.finalizeRunResult(traceId, sessionKey, params.message, {
+                traceId, startedAt,
+                completedAt: new Date().toISOString(),
+                durationMs: Date.now() - startedAtMs,
+                success: false,
+                orchestrationMode,
+                needsModelInput: false,
+                plan, toolCalls,
+                metrics: this.buildMetrics(toolCalls),
+                interaction: this.buildToolInteraction('confirming', locale),
+                response: fbStep.reason,
+              }, skillIds, workingSession, skillIds);
+            }
+
+            // execute mode: run the design step
+            const fbResult = await this.skillRuntime.executeScheduledStep({
+              step: fbStep,
+              pipelineState,
+              traceId,
+              locale,
+              postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
+              codeCheckClient: this.codeCheckClient,
+            });
+            pipelineState = applySchedulerStepResult({ pipelineState, step: fbStep, stepResult: fbResult });
+          }
+        }
+      }
+
       // Spec section 14: only persist pipeline state for real projects
       if (projectId) {
         await this.projectService.updateProjectPipelineState(projectId, pipelineState);
