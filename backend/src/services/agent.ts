@@ -1671,14 +1671,26 @@ export class AgentService {
         }
 
         // execute / transform
-        const stepResult = await this.skillRuntime.executeScheduledStep({
-          step,
-          pipelineState,
-          traceId,
-          locale,
-          postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
-          codeCheckClient: this.codeCheckClient,
-        });
+        let stepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
+        try {
+          stepResult = await this.skillRuntime.executeScheduledStep({
+            step,
+            pipelineState,
+            traceId,
+            locale,
+            postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
+            codeCheckClient: this.codeCheckClient,
+          });
+        } catch (stepError) {
+          const stepErrorMessage = stepError instanceof Error ? stepError.message : String(stepError);
+          return this.finalizeBlockedRunResult({
+            params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
+            skillIds, plan, toolCalls, sessionKey, workingSession,
+            response: buildLocalizedBlockedReason(stepErrorMessage, locale),
+            blockedReasonCode: 'STEP_EXECUTION_FAILED',
+            needsModelInput: false,
+          });
+        }
         pipelineState = applySchedulerStepResult({ pipelineState, step, stepResult });
         if (projectId && stepResult.runRecord) {
           await this.runStore.updateRun(stepResult.runRecord.runId, {
@@ -1759,14 +1771,26 @@ export class AgentService {
             }
 
             // execute mode: run the design step
-            const fbResult = await this.skillRuntime.executeScheduledStep({
-              step: fbStep,
-              pipelineState,
-              traceId,
-              locale,
-              postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
-              codeCheckClient: this.codeCheckClient,
-            });
+            let fbResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
+            try {
+              fbResult = await this.skillRuntime.executeScheduledStep({
+                step: fbStep,
+                pipelineState,
+                traceId,
+                locale,
+                postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
+                codeCheckClient: this.codeCheckClient,
+              });
+            } catch (fbError) {
+              const fbErrorMessage = fbError instanceof Error ? fbError.message : String(fbError);
+              return this.finalizeBlockedRunResult({
+                params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
+                skillIds, plan, toolCalls, sessionKey, workingSession,
+                response: buildLocalizedBlockedReason(fbErrorMessage, locale),
+                blockedReasonCode: 'STEP_EXECUTION_FAILED',
+                needsModelInput: false,
+              });
+            }
             pipelineState = applySchedulerStepResult({ pipelineState, step: fbStep, stepResult: fbResult });
           }
         }
