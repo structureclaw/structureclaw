@@ -116,4 +116,47 @@ describe('skill manifest runtime contract', () => {
 
     expect(parsed.runtimeContract.role).toBe('transformer');
   });
+
+  test.each([
+    ['entry'],
+    ['enricher'],
+    ['validator'],
+    ['assistant'],
+  ])('accepts %s runtime contract', (role) => {
+    const parsed = skillManifestFileSchema.parse({
+      id: `skill-${role}`,
+      domain: 'general',
+      source: 'builtin',
+      name: { zh: `${role} skill`, en: `${role} skill` },
+      description: { zh: `${role}`, en: `${role}` },
+      triggers: [role],
+      stages: ['intent'],
+      structureType: 'unknown',
+      compatibility: { minRuntimeVersion: '0.1.0', skillApiVersion: 'v1' },
+      runtimeContract: {
+        role,
+        consumes: ['draftState'],
+        provides: ['designBasis'],
+      },
+    });
+
+    expect(parsed.runtimeContract.role).toBe(role);
+    expect(parsed.runtimeContract.consumes).toEqual(['draftState']);
+  });
+
+  test('manifest without runtimeContract parses cleanly (backward compat)', () => {
+    const parsed = skillManifestFileSchema.parse({
+      id: 'legacy-skill',
+      domain: 'general',
+      source: 'builtin',
+      name: { zh: '旧技能', en: 'Legacy Skill' },
+      description: { zh: '无合约', en: 'No contract' },
+      triggers: ['legacy'],
+      stages: ['intent'],
+      structureType: 'unknown',
+      compatibility: { minRuntimeVersion: '0.1.0', skillApiVersion: 'v1' },
+    });
+
+    expect(parsed.runtimeContract).toBeUndefined();
+  });
 });
