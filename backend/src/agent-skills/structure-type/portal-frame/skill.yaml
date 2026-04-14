@@ -44,3 +44,7 @@ supportedModelFamilies: []
 materialFamilies: []
 aliases: []
 toolHints: {}
+runtimeContract:
+  role: entry
+  provides:
+    - designBasis
