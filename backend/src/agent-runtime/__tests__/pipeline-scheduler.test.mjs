@@ -407,4 +407,23 @@ describe('pipeline scheduler', () => {
     expect(plan.blockedReason).toBeUndefined();
     expect(plan.requiredSteps.length).toBeGreaterThan(0);
   });
+
+  test('returns blocked for unknown target artifact', () => {
+    const scheduler = new PipelineScheduler();
+    const plan = scheduler.plan({
+      message: 'do something',
+      locale: 'en',
+      selectedSkillIds: [],
+      bindings: {},
+      projectPolicy: {},
+      targetArtifact: 'nonexistentArtifact',
+      sessionArtifacts: {},
+      projectArtifacts: {
+        designBasis: { status: 'ready', dependencyFingerprint: 'fp-1' },
+      },
+    });
+
+    expect(plan.blockedReason).toMatch(/unknown target artifact/);
+    expect(plan.requiredSteps).toEqual([]);
+  });
 });

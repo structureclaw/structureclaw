@@ -55,6 +55,14 @@ export class PipelineScheduler {
 
     const target = input.targetArtifact as ProjectArtifactKind;
 
+    if (!CONTROLLED_ARTIFACT_GRAPH[target] && !CONSUMER_ARTIFACT_KINDS.has(target)) {
+      return {
+        targetArtifact: input.targetArtifact,
+        requiredSteps: [],
+        blockedReason: `unknown target artifact: ${input.targetArtifact}`,
+      };
+    }
+
     if (!this.hasReadyArtifact('designBasis', input.projectArtifacts)) {
       return {
         targetArtifact: target,
