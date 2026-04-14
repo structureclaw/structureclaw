@@ -1,6 +1,11 @@
 import { prisma } from '../utils/database.js';
 import { ensureUserId } from '../utils/demo-data.js';
 import type { InputJsonValue } from '../utils/json.js';
+import type {
+  ProjectExecutionPolicy,
+  ProjectPipelineState,
+} from '../agent-runtime/types.js';
+import { createEmptyProjectPipelineState } from './agent-pipeline-state.js';
 
 interface CreateProjectParams {
   name: string;
@@ -162,5 +167,62 @@ export class ProjectService {
       models: modelCount,
       analyses: analysisCount,
     };
+  }
+
+  async getProjectExecutionPolicy(id: string): Promise<ProjectExecutionPolicy> {
+    const project = await prisma.project.findUnique({
+      where: { id },
+      select: { settings: true },
+    });
+    const settings = project?.settings && typeof project.settings === 'object'
+      ? project.settings as Record<string, unknown>
+      : {};
+    return (settings.agentExecutionPolicy as ProjectExecutionPolicy | undefined) ?? {};
+  }
+
+  async updateProjectExecutionPolicy(id: string, policy: ProjectExecutionPolicy) {
+    const project = await prisma.project.findUnique({ where: { id }, select: { settings: true } });
+    const settings = project?.settings && typeof project.settings === 'object'
+      ? project.settings as Record<string, unknown>
+      : {};
+    return prisma.project.update({
+      where: { id },
+      data: {
+        settings: {
+          ...settings,
+          agentExecutionPolicy: policy as unknown as InputJsonValue,
+        },
+      },
+    });
+  }
+
+  async getProjectPipelineState(id: string): Promise<ProjectPipelineState> {
+    const project = await prisma.project.findUnique({
+      where: { id },
+      select: { settings: true },
+    });
+    const settings = project?.settings && typeof project.settings === 'object'
+      ? project.settings as Record<string, unknown>
+      : {};
+    return (settings.agentPipelineState as ProjectPipelineState | undefined)
+      ?? createEmptyProjectPipelineState(
+        (settings.agentExecutionPolicy as ProjectExecutionPolicy | undefined) ?? {},
+      );
+  }
+
+  async updateProjectPipelineState(id: string, pipelineState: ProjectPipelineState) {
+    const project = await prisma.project.findUnique({ where: { id }, select: { settings: true } });
+    const settings = project?.settings && typeof project.settings === 'object'
+      ? project.settings as Record<string, unknown>
+      : {};
+    return prisma.project.update({
+      where: { id },
+      data: {
+        settings: {
+          ...settings,
+          agentPipelineState: pipelineState as unknown as InputJsonValue,
+        },
+      },
+    });
   }
 }

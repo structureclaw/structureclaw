@@ -98,6 +98,7 @@ export interface InteractionSession {
     reportFormat?: AgentReportFormat;
     reportOutput?: AgentReportOutput;
   };
+  checkpoint?: import('../agent-runtime/types.js').InteractionCheckpoint;
   updatedAt: number;
 }
 
@@ -277,6 +278,7 @@ export interface AgentRunInput {
   userId?: string;
   context?: {
     locale?: AppLocale;
+    projectId?: string;
     skillIds?: string[];
     enabledToolIds?: string[];
     disabledToolIds?: string[];
@@ -294,6 +296,7 @@ export interface AgentRunInput {
     reportOutput?: AgentReportOutput;
     userDecision?: AgentUserDecision;
     providedValues?: Record<string, unknown>;
+    requestOverrides?: import('../agent-runtime/types.js').RequestExecutionOverrides;
   };
 }
 

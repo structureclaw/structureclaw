@@ -46,6 +46,7 @@ model Project {
   owner   User              @relation(fields: [ownerId], references: [id])
   members ProjectMember[]
   models  StructuralModel[]
+  pipelineRuns AgentPipelineRun[]
 
   @@map("projects")
 }
@@ -137,4 +138,27 @@ model Message {
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@map("messages")
+}
+
+// Agent pipeline runs
+model AgentPipelineRun {
+  id               String    @id @default(cuid())
+  projectId        String?
+  conversationId   String?
+  targetArtifact   String
+  toolId           String
+  providerSkillId  String?
+  status           String
+  inputFingerprint String
+  diagnostics      Json?
+  startedAt        DateTime?
+  finishedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@index([conversationId, createdAt])
+  @@map("agent_pipeline_runs")
 }

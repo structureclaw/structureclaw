@@ -25,6 +25,7 @@ const agentRunSchema = z.object({
   conversationId: optionalIdSchema,
   traceId: optionalIdSchema,
   context: z.object({
+    projectId: z.string().optional(),
     skillIds: z.array(z.string()).optional(),
     enabledToolIds: z.array(z.string()).optional(),
     disabledToolIds: z.array(z.string()).optional(),
@@ -42,6 +43,17 @@ const agentRunSchema = z.object({
     reportOutput: z.enum(['inline', 'file']).optional(),
     userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
     providedValues: z.record(z.any()).optional(),
+    requestOverrides: z.object({
+      forceRecompute: z.boolean().optional(),
+      analysisType: z.enum(['static', 'dynamic', 'seismic', 'nonlinear']).optional(),
+      designCode: z.string().optional(),
+      allowAsync: z.boolean().optional(),
+      autoDesignIterationEnabled: z.boolean().optional(),
+      deliverableProfiles: z.object({
+        drawing: z.string().optional(),
+        report: z.string().optional(),
+      }).optional(),
+    }).optional(),
   }).optional(),
 });
 
