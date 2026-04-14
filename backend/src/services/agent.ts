@@ -74,7 +74,7 @@ import {
   buildInteractionCheckpoint,
 } from './agent-pipeline-state.js';
 import { computeDependencyFingerprint } from '../agent-runtime/artifact-helpers.js';
-import type { ArtifactKind, SchedulerStep, ProjectPipelineState, InteractionCheckpoint } from '../agent-runtime/types.js';
+import type { ArtifactKind, SchedulerStep, ProjectPipelineState } from '../agent-runtime/types.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'directed' | 'llm-planned';

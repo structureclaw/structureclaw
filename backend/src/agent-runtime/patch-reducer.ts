@@ -26,7 +26,7 @@ export function applyPatches(
   baseModel: Record<string, unknown>,
   patches: PatchReducerInput[],
 ): PatchReducerResult {
-  let model = structuredClone(baseModel);
+  const model = structuredClone(baseModel);
   const rejected: PatchReducerResult['rejected'] = [];
   const conflicted: PatchReducerResult['conflicted'] = [];
   const skipped: PatchReducerResult['skipped'] = [];

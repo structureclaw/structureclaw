@@ -985,7 +985,7 @@ export class AgentSkillRuntime {
     return { artifact, patches: [this.toModelPatchRecord(patchRecord, reducerResult)] };
   }
 
-  private toModelPatchRecord(input: PatchReducerInput, result: { revision: number }): ModelPatchRecord {
+  private toModelPatchRecord(input: PatchReducerInput, _result: { revision: number }): ModelPatchRecord {
     return {
       patchId: input.patchId,
       patchKind: input.patchKind,
