@@ -718,6 +718,8 @@ export class AgentSkillRuntime {
         return this.executeConvertScheduledStep(args);
       case 'design':
         return this.executeDesignScheduledStep(args);
+      case 'draft':
+        return this.executeDraftScheduledStep(args);
       default:
         throw new Error(`Unsupported scheduled action: ${args.step.action}`);
     }
@@ -879,6 +881,20 @@ export class AgentSkillRuntime {
     codeCheckClient: unknown;
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
     throw new Error('synthesize_design not yet implemented');
+  }
+
+  private async executeDraftScheduledStep(args: {
+    step: SchedulerStep;
+    pipelineState: ProjectPipelineState;
+    traceId: string;
+    locale: AppLocale;
+    postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
+    codeCheckClient: unknown;
+  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
+    // Draft steps are handled by the existing draft pipeline, not scheduled execution
+    if (!args.step.provides) return {};
+    const existing = args.pipelineState.artifacts[args.step.provides as keyof typeof args.pipelineState.artifacts];
+    return { artifact: existing };
   }
 
   private buildArtifactEnvelope(

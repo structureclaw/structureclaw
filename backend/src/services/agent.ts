@@ -68,6 +68,13 @@ import { AgentSkillCatalogService } from './agent-skill-catalog.js';
 import { AgentRunStoreService } from './agent-run-store.js';
 import { ProjectService } from './project.js';
 import { PipelineScheduler } from '../agent-runtime/pipeline-scheduler.js';
+import {
+  mergeExecutionPolicy,
+  createEmptyProjectPipelineState,
+  buildInteractionCheckpoint,
+} from './agent-pipeline-state.js';
+import { computeDependencyFingerprint } from '../agent-runtime/artifact-helpers.js';
+import type { ArtifactKind, SchedulerStep, ProjectPipelineState, InteractionCheckpoint } from '../agent-runtime/types.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'directed' | 'llm-planned';
@@ -446,6 +453,54 @@ function mapSchedulerActionToToolId(action: string): string {
     report: 'generate_report',
   };
   return mapping[action] ?? action;
+}
+
+function computeStepInputFingerprint(
+  step: SchedulerStep,
+  pipelineState: ProjectPipelineState,
+): string {
+  const refs: Record<string, { artifactId: string; revision: number }> = {};
+  for (const ref of step.consumes) {
+    refs[ref.kind] = { artifactId: ref.artifactId, revision: ref.revision };
+  }
+  return computeDependencyFingerprint(refs, pipelineState.bindings);
+}
+
+function applySchedulerStepResult(args: {
+  pipelineState: ProjectPipelineState;
+  step: SchedulerStep;
+  stepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
+}): ProjectPipelineState {
+  if (!args.stepResult.artifact || !args.step.provides) {
+    return args.pipelineState;
+  }
+  const kind = args.step.provides;
+  return {
+    ...args.pipelineState,
+    artifacts: {
+      ...args.pipelineState.artifacts,
+      [kind]: args.stepResult.artifact,
+    },
+    updatedAt: Date.now(),
+  };
+}
+
+function buildDraftStateArtifact(draft: DraftState): import('../agent-runtime/types.js').ArtifactEnvelope {
+  return {
+    artifactId: `draft:${draft.inferredType ?? 'unknown'}`,
+    kind: 'draftState',
+    scope: 'session',
+    status: 'ready',
+    revision: 1,
+    producerSkillId: 'draft_model',
+    dependencyFingerprint: '',
+    basedOn: [],
+    schemaVersion: '1.0.0',
+    provenance: { toolId: 'draft_model' },
+    createdAt: Date.now(),
+    updatedAt: Date.now(),
+    payload: draft,
+  };
 }
 
 /** Returns true when a model object has non-empty materials and sections arrays. */
@@ -1319,31 +1374,43 @@ export class AgentService {
     // --- Phase 4: Pipeline scheduler integration ---
     if (nextPlan.targetArtifact && nextPlan.kind === 'execute' && allowToolCall) {
       const projectId = params.context?.projectId;
-      let pipelineState = projectId
+      let pipelineState: ProjectPipelineState = projectId
         ? await this.projectService.getProjectPipelineState(projectId)
-        : { artifacts: {}, bindings: {}, policy: {}, updatedAt: Date.now() };
+        : createEmptyProjectPipelineState();
 
+      const requestOverrides = params.context?.requestOverrides;
+      const projectPolicy = projectId
+        ? mergeExecutionPolicy(
+          await this.projectService.getProjectExecutionPolicy(projectId),
+          requestOverrides,
+        )
+        : mergeExecutionPolicy({}, requestOverrides);
+      pipelineState = { ...pipelineState, policy: projectPolicy };
+
+      const workingSessionDraftArtifact = workingSession.draft
+        ? buildDraftStateArtifact(workingSession.draft)
+        : undefined;
       const schedulerPlan = this.pipelineScheduler.plan({
         message: params.message,
         locale,
         selectedSkillIds: skillIds ?? [],
-        bindings: (pipelineState as any).bindings ?? {},
-        projectPolicy: (pipelineState as any).policy ?? {},
-        targetArtifact: nextPlan.targetArtifact as any,
-        sessionArtifacts: {},
-        projectArtifacts: ((pipelineState as any).artifacts ?? {}) as any,
+        bindings: pipelineState.bindings,
+        projectPolicy: pipelineState.policy,
+        targetArtifact: nextPlan.targetArtifact as ArtifactKind | 'chatReply',
+        sessionArtifacts: { draftState: workingSessionDraftArtifact },
+        projectArtifacts: pipelineState.artifacts,
+        requestOverrides,
         consumerContracts: await this.resolveConsumerContracts(skillIds ?? []),
       });
 
       if (schedulerPlan.blockedReason) {
         const blockedResponse = buildLocalizedBlockedReason(schedulerPlan.blockedReason, locale);
-        workingSession.checkpoint = {
-          checkpointId: `cp-${Date.now()}`,
-          kind: 'blocked' as const,
-          targetArtifact: nextPlan.targetArtifact as any,
+        const blockedTarget = nextPlan.targetArtifact !== 'chatReply' ? nextPlan.targetArtifact as ArtifactKind : undefined;
+        workingSession.checkpoint = buildInteractionCheckpoint({
+          kind: 'blocked',
+          targetArtifact: blockedTarget,
           summary: blockedResponse,
-          createdAt: Date.now(),
-        };
+        });
         return this.finalizeBlockedRunResult({
           params,
           traceId,
@@ -1365,13 +1432,12 @@ export class AgentService {
       // Check for unresolved checkpoint
       if (workingSession.checkpoint) {
         const blockedResponse = buildLocalizedBlockedReason('unresolved checkpoint', locale);
-        workingSession.checkpoint = {
-          checkpointId: `cp-${Date.now()}`,
-          kind: 'blocked' as const,
-          targetArtifact: nextPlan.targetArtifact as any,
+        const blockedTarget = nextPlan.targetArtifact !== 'chatReply' ? nextPlan.targetArtifact as ArtifactKind : undefined;
+        workingSession.checkpoint = buildInteractionCheckpoint({
+          kind: 'blocked',
+          targetArtifact: blockedTarget,
           summary: blockedResponse,
-          createdAt: Date.now(),
-        };
+        });
         return this.finalizeBlockedRunResult({
           params,
           traceId,
@@ -1393,19 +1459,18 @@ export class AgentService {
       // Check for in-flight run
       if (projectId && nextPlan.targetArtifact !== 'chatReply') {
         const inFlight = await this.runStore.getLatestRun({
-          targetArtifact: nextPlan.targetArtifact as any,
+          targetArtifact: nextPlan.targetArtifact as ArtifactKind,
           projectId,
           statuses: ['queued', 'running'],
         });
         if (inFlight) {
           const blockedResponse = buildLocalizedBlockedReason('previous run in progress', locale);
-          workingSession.checkpoint = {
-            checkpointId: `cp-${Date.now()}`,
-            kind: 'blocked' as const,
-            targetArtifact: nextPlan.targetArtifact as any,
+          const blockedTarget = nextPlan.targetArtifact !== 'chatReply' ? nextPlan.targetArtifact as ArtifactKind : undefined;
+          workingSession.checkpoint = buildInteractionCheckpoint({
+            kind: 'blocked',
+            targetArtifact: blockedTarget,
             summary: blockedResponse,
-            createdAt: Date.now(),
-          };
+          });
           return this.finalizeBlockedRunResult({
             params,
             traceId,
@@ -1427,6 +1492,12 @@ export class AgentService {
 
       // Execute scheduler steps
       for (const step of schedulerPlan.requiredSteps) {
+        this.runtimeBinder.assertStepAuthorized({
+          step,
+          selectedSkillIds: skillIds,
+          bindings: pipelineState.bindings,
+        });
+
         if (step.mode === 'reuse') {
           continue;
         }
@@ -1451,13 +1522,11 @@ export class AgentService {
         }
 
         if (step.mode === 'block') {
-          workingSession.checkpoint = {
-            checkpointId: `cp-${Date.now()}`,
-            kind: 'blocked' as const,
-            targetArtifact: step.provides as any,
+          workingSession.checkpoint = buildInteractionCheckpoint({
+            kind: 'blocked',
+            targetArtifact: step.provides,
             summary: buildLocalizedBlockedReason(step.reason, locale),
-            createdAt: Date.now(),
-          };
+          });
           return this.finalizeBlockedRunResult({
             params,
             traceId,
@@ -1477,13 +1546,11 @@ export class AgentService {
         }
 
         if (step.mode === 'ask-user') {
-          workingSession.checkpoint = {
-            checkpointId: `cp-${Date.now()}`,
-            kind: 'clarification' as const,
-            targetArtifact: step.provides as any,
+          workingSession.checkpoint = buildInteractionCheckpoint({
+            kind: 'clarification',
+            targetArtifact: step.provides,
             summary: step.reason,
-            createdAt: Date.now(),
-          };
+          });
           return this.finalizeRunResult(traceId, sessionKey, params.message, {
             traceId,
             startedAt,
@@ -1501,14 +1568,12 @@ export class AgentService {
         }
 
         if (step.mode === 'propose') {
-          workingSession.checkpoint = {
-            checkpointId: `cp-${Date.now()}`,
-            kind: 'design-proposal' as const,
-            targetArtifact: (step.provides ?? 'normalizedModel') as any,
+          workingSession.checkpoint = buildInteractionCheckpoint({
+            kind: 'design-proposal',
+            targetArtifact: step.provides ?? 'normalizedModel',
             patchId: step.stepId,
             summary: step.reason,
-            createdAt: Date.now(),
-          };
+          });
           return this.finalizeRunResult(traceId, sessionKey, params.message, {
             traceId,
             startedAt,
@@ -1529,14 +1594,14 @@ export class AgentService {
           const queuedRun = await this.runStore.createRun({
             projectId,
             conversationId: sessionKey,
-            targetArtifact: (step.provides ?? nextPlan.targetArtifact) as any,
+            targetArtifact: (step.provides ?? nextPlan.targetArtifact) as ArtifactKind,
             toolId: mapSchedulerActionToToolId(step.action),
             providerSkillId: step.skillId,
             status: 'queued',
-            inputFingerprint: '',
+            inputFingerprint: computeStepInputFingerprint(step, pipelineState),
           });
           if (projectId) {
-            await this.projectService.updateProjectPipelineState(projectId, pipelineState as any);
+            await this.projectService.updateProjectPipelineState(projectId, pipelineState);
           }
           const queueMessage = locale === 'zh'
             ? `已排队 ${queuedRun.toolId}，目标产物 ${queuedRun.targetArtifact}`
@@ -1560,27 +1625,26 @@ export class AgentService {
         // execute / transform
         const stepResult = await this.skillRuntime.executeScheduledStep({
           step,
-          pipelineState: pipelineState as any,
+          pipelineState,
           traceId,
           locale,
           postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
           codeCheckClient: this.codeCheckClient,
         });
-        if (stepResult.artifact && step.provides) {
-          pipelineState = {
-            ...pipelineState,
-            artifacts: {
-              ...(pipelineState as any).artifacts,
-              [step.provides]: stepResult.artifact,
-            },
-            updatedAt: Date.now(),
-          };
+        pipelineState = applySchedulerStepResult({ pipelineState, step, stepResult });
+        if (projectId && stepResult.runRecord) {
+          await this.runStore.updateRun(stepResult.runRecord.runId, {
+            status: stepResult.runRecord.status,
+            diagnostics: stepResult.runRecord.diagnostics,
+            startedAt: stepResult.runRecord.startedAt ? new Date(stepResult.runRecord.startedAt) : undefined,
+            finishedAt: stepResult.runRecord.finishedAt ? new Date(stepResult.runRecord.finishedAt) : undefined,
+          });
         }
       }
 
-      // Persist pipeline state for real projects
+      // Spec section 14: only persist pipeline state for real projects
       if (projectId) {
-        await this.projectService.updateProjectPipelineState(projectId, pipelineState as any);
+        await this.projectService.updateProjectPipelineState(projectId, pipelineState);
       }
     }
 
