@@ -1492,11 +1492,31 @@ export class AgentService {
 
       // Execute scheduler steps
       for (const step of schedulerPlan.requiredSteps) {
-        this.runtimeBinder.assertStepAuthorized({
-          step,
-          selectedSkillIds: skillIds,
-          bindings: pipelineState.bindings,
-        });
+        try {
+          this.runtimeBinder.assertStepAuthorized({
+            step,
+            selectedSkillIds: skillIds,
+            bindings: pipelineState.bindings,
+          });
+        } catch (authError) {
+          const authMessage = authError instanceof Error ? authError.message : String(authError);
+          return this.finalizeBlockedRunResult({
+            params,
+            traceId,
+            startedAt,
+            startedAtMs,
+            locale,
+            orchestrationMode,
+            skillIds,
+            plan,
+            toolCalls,
+            sessionKey,
+            workingSession,
+            response: buildLocalizedBlockedReason(authMessage, locale),
+            blockedReasonCode: 'STEP_UNAUTHORIZED',
+            needsModelInput: false,
+          });
+        }
 
         if (step.mode === 'reuse') {
           continue;
@@ -1556,13 +1576,13 @@ export class AgentService {
             startedAt,
             completedAt: new Date().toISOString(),
             durationMs: Date.now() - startedAtMs,
-            success: true,
+            success: false,
             orchestrationMode,
             needsModelInput: false,
             plan,
             toolCalls,
             metrics: this.buildMetrics(toolCalls),
-            interaction: this.buildToolInteraction('blocked', locale),
+            interaction: this.buildToolInteraction('collecting', locale),
             response: step.reason,
           }, skillIds, workingSession, skillIds);
         }
@@ -1579,13 +1599,13 @@ export class AgentService {
             startedAt,
             completedAt: new Date().toISOString(),
             durationMs: Date.now() - startedAtMs,
-            success: true,
+            success: false,
             orchestrationMode,
             needsModelInput: false,
             plan,
             toolCalls,
             metrics: this.buildMetrics(toolCalls),
-            interaction: this.buildToolInteraction('blocked', locale),
+            interaction: this.buildToolInteraction('confirming', locale),
             response: step.reason,
           }, skillIds, workingSession, skillIds);
         }
@@ -1611,13 +1631,13 @@ export class AgentService {
             startedAt,
             completedAt: new Date().toISOString(),
             durationMs: Date.now() - startedAtMs,
-            success: true,
+            success: false,
             orchestrationMode,
             needsModelInput: false,
             plan,
             toolCalls,
             metrics: this.buildMetrics(toolCalls),
-            interaction: this.buildToolInteraction('blocked', locale),
+            interaction: this.buildToolInteraction('executing', locale),
             response: queueMessage,
           }, skillIds, workingSession, skillIds);
         }
@@ -4220,7 +4240,7 @@ export class AgentService {
     return resultBuildInteractionQuestion(interaction, locale);
   }
 
-  private buildToolInteraction(state: 'completed' | 'blocked', locale: AppLocale): AgentInteraction {
+  private buildToolInteraction(state: AgentInteractionState, locale: AppLocale): AgentInteraction {
     return resultBuildToolInteraction(state, locale);
   }
 

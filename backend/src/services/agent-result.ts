@@ -56,16 +56,24 @@ export function buildInteractionQuestion(interaction: AgentInteraction, locale: 
   );
 }
 
-export function buildToolInteraction(state: 'completed' | 'blocked', locale: AppLocale): AgentInteraction {
+export function buildToolInteraction(state: import('./agent.js').AgentInteractionState, locale: AppLocale): AgentInteraction {
+  const routeReason = state === 'completed'
+    ? localize(locale, '工具调用已完成。', 'Tool invocation completed.')
+    : state === 'blocked'
+      ? localize(locale, '工具调用已触发，但被下游工具或校验失败阻断。', 'Tool invocation was attempted but blocked by downstream tool or validation failure.')
+      : state === 'collecting'
+        ? localize(locale, '等待用户补充信息。', 'Waiting for user input.')
+        : state === 'confirming'
+          ? localize(locale, '等待用户确认设计方案。', 'Waiting for user to confirm design proposal.')
+          : localize(locale, '任务已排队执行。', 'Task queued for execution.');
+  const nextActions: import('./agent.js').AgentUserDecision[] = state === 'completed' ? [] : ['revise'];
   return {
     state,
     stage: 'report',
     turnId: randomUUID(),
     routeHint: 'prefer_tool',
-    routeReason: state === 'completed'
-      ? localize(locale, '工具调用已完成。', 'Tool invocation completed.')
-      : localize(locale, '工具调用已触发，但被下游工具或校验失败阻断。', 'Tool invocation was attempted but blocked by downstream tool or validation failure.'),
-    nextActions: state === 'completed' ? [] : ['revise'],
+    routeReason,
+    nextActions,
   };
 }
 
