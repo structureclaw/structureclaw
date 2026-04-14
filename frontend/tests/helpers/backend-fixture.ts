@@ -33,6 +33,10 @@ export async function startTestBackend(rootDir: string): Promise<string> {
     stdio: 'pipe',
   })
 
+  // Drain stdout/stderr to prevent pipe buffer from blocking the child process
+  backendProcess.stdout?.on('data', () => {})
+  backendProcess.stderr?.on('data', () => {})
+
   // Wait for health check (up to 30 seconds)
   for (let i = 0; i < 30; i++) {
     await new Promise((r) => setTimeout(r, 1000))
@@ -48,10 +52,25 @@ export async function startTestBackend(rootDir: string): Promise<string> {
 }
 
 export async function stopTestBackend(): Promise<void> {
-  if (backendProcess) {
-    backendProcess.kill()
-    backendProcess = null
-  }
+  if (!backendProcess) return
+
+  const proc = backendProcess
+  backendProcess = null
+
+  proc.kill('SIGTERM')
+
+  // Wait for the child to actually exit (up to 5 seconds)
+  await new Promise<void>((resolve) => {
+    const timeout = setTimeout(() => {
+      proc.kill('SIGKILL')
+      resolve()
+    }, 5000)
+
+    proc.on('exit', () => {
+      clearTimeout(timeout)
+      resolve()
+    })
+  })
 }
 
 export const hasLlmKey = !!process.env.LLM_API_KEY

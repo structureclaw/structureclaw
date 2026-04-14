@@ -374,8 +374,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(await screen.findByText('历史会话标题')).toBeInTheDocument()
   })
 
-  it('shows conversation-list timeout when the backend request hangs', async () => {
-    if (!hasLlmKey) return
+  it.skipIf(!hasLlmKey)('shows conversation-list timeout when the backend request hangs', async () => {
     vi.useFakeTimers()
 
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {

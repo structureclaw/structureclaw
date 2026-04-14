@@ -12,55 +12,34 @@ describeLlm('Agent real LLM integration', () => {
     return new AgentService();
   }
 
-  test('detects skill and routes correctly for a beam description', async () => {
+  test('runs a chat-only request with real LLM and returns structured result', async () => {
     const agent = await createAgentService();
-    const result = await agent.processMessage({
-      message: 'I need to analyze a concrete beam spanning 6 meters with a uniform load of 20 kN/m',
-      context: { skillIds: ['beam', 'generic'] },
+    const result = await agent.runChatOnly({
+      message: 'Explain the difference between dead load and live load in structural design',
+      context: { skillIds: ['generic'] },
     });
 
     expect(result).toBeDefined();
-    expect(typeof result.response).toBe('string');
-    expect(result.response.length).toBeGreaterThan(0);
+    expect(result.success).toBe(true);
+    expect(Array.isArray(result.plan)).toBe(true);
   }, 60_000);
 
   test('streams a chat response with real LLM', async () => {
     const agent = await createAgentService();
     const chunks = [];
 
-    const stream = agent.streamMessage({
+    for await (const chunk of agent.runChatOnlyStream({
       message: 'What is a simply supported beam?',
       context: { skillIds: ['generic'] },
-    });
-
-    for await (const chunk of stream) {
-      if (chunk.type === 'token' && chunk.content) {
-        chunks.push(chunk.content);
-      }
+    })) {
+      chunks.push(chunk);
     }
 
     expect(chunks.length).toBeGreaterThan(0);
-    const fullText = chunks.join('');
-    expect(fullText.length).toBeGreaterThan(20);
-  }, 60_000);
-
-  test('handles a structural engineering question with default skills', async () => {
-    const agent = await createAgentService();
-    const result = await agent.processMessage({
-      message: 'Explain the difference between dead load and live load in structural design',
-      context: {},
-    });
-
-    expect(result).toBeDefined();
-    expect(typeof result.response).toBe('string');
-    // Should contain structural engineering terms
-    const lower = result.response.toLowerCase();
-    const hasStructuralTerms =
-      lower.includes('load') ||
-      lower.includes('structure') ||
-      lower.includes('design') ||
-      lower.includes('force');
-    expect(hasStructuralTerms).toBe(true);
+    // Stream should contain start and result/done chunks
+    const types = chunks.map((c) => c.type);
+    expect(types).toContain('start');
+    expect(types).toContain('result');
   }, 60_000);
 
   test('returns a valid skill list from the registry', async () => {

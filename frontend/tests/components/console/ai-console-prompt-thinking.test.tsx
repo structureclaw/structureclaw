@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AIConsole } from '@/components/chat/ai-console'
@@ -21,9 +21,11 @@ function createSseResponse(events: unknown[]) {
 }
 
 describe('AIConsole prompt and thinking details', () => {
-  it('shows expandable prompt and thinking details on assistant message', async () => {
-    if (!hasLlmKey) return
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
 
+  it.skipIf(!hasLlmKey)('shows expandable prompt and thinking details on assistant message', async () => {
     const user = userEvent.setup()
 
     const realFetch = globalThis.fetch
@@ -99,7 +101,5 @@ describe('AIConsole prompt and thinking details', () => {
       expect(screen.getByText(/"message": "Run static beam check for prompt debug test"/i)).toBeInTheDocument()
       expect(screen.getAllByText(/"analysisType": "static"/i).length).toBeGreaterThan(0)
     })
-
-    vi.restoreAllMocks()
   })
 })

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AIConsole } from '@/components/chat/ai-console'
@@ -23,6 +23,10 @@ function createSseResponse(events: unknown[]) {
 }
 
 describe('Capability settings and console integration', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+    window.localStorage.clear()
+  })
 
   it('supports category-level select and clear actions', async () => {
     const user = userEvent.setup()
@@ -94,8 +98,6 @@ describe('Capability settings and console integration', () => {
     await waitFor(() => {
       expect(screen.getAllByRole('button', { name: /clear category/i }).length).toBeGreaterThan(0)
     })
-
-    vi.restoreAllMocks()
   })
 
   it('allows switching among all fourteen domain groups', async () => {
@@ -175,14 +177,10 @@ describe('Capability settings and console integration', () => {
       expect(screen.getAllByText(/^material skills$/i).length).toBeGreaterThan(0)
       expect(screen.getByText(/no installed local skills in this category yet/i)).toBeInTheDocument()
     })
-
-    vi.restoreAllMocks()
   })
 
   it('falls back to the /agent/skills domain when capability-matrix omits the skill mapping', async () => {
     const user = userEvent.setup()
-
-    vi.restoreAllMocks()
     window.localStorage.clear()
     vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
       const url = String(input)
@@ -239,8 +237,6 @@ describe('Capability settings and console integration', () => {
 
   it('renders catalog-projected skills and tools without registry-only metadata', async () => {
     const user = userEvent.setup()
-
-    vi.restoreAllMocks()
     window.localStorage.clear()
     vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
       const url = String(input)
@@ -420,14 +416,10 @@ describe('Capability settings and console integration', () => {
     const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { skillIds?: string[]; enabledToolIds?: string[]; model?: unknown } }
     expect(body.context?.skillIds).toEqual(expect.arrayContaining(['generic']))
     expect(body.context?.model).toBeUndefined()
-
-    vi.restoreAllMocks()
   })
 
   it('migrates legacy stored skill ids to canonical ids before sending console requests', async () => {
     const user = userEvent.setup()
-
-    vi.restoreAllMocks()
     window.localStorage.setItem(CAPABILITY_PREFERENCE_STORAGE_KEY, JSON.stringify({
       skillIds: ['structure-json-validation'],
       toolIds: ['validate_model'],
@@ -550,8 +542,6 @@ describe('Capability settings and console integration', () => {
 
   it('hydrates all default callable tools in the console when the capability matrix gates tools by skill', async () => {
     const user = userEvent.setup()
-
-    vi.restoreAllMocks()
     window.localStorage.clear()
     vi.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input)
@@ -692,8 +682,6 @@ describe('Capability settings and console integration', () => {
 
     let resolveSkills: ((value: Response) => void) | null = null
     let resolveCapabilityMatrix: ((value: Response) => void) | null = null
-
-    vi.restoreAllMocks()
     window.localStorage.clear()
     const fetchMock = vi.spyOn(global, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input)
@@ -888,14 +876,10 @@ describe('Capability settings and console integration', () => {
     const body = JSON.parse(String(requestInit?.body || '{}')) as { mode?: string; context?: { analysisType?: string } }
     expect(body.mode).toBeUndefined()
     expect(body.context?.analysisType).toBeUndefined()
-
-    vi.restoreAllMocks()
   })
 
   it('surfaces callable tools and sends the remaining tool ids after the user deselects one', async () => {
     const user = userEvent.setup()
-
-    vi.restoreAllMocks()
     window.localStorage.clear()
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
@@ -1065,14 +1049,10 @@ describe('Capability settings and console integration', () => {
     // The console sends the remaining enabled tools (excluding the deselected 'run_analysis')
     expect(body.context?.enabledToolIds).toBeDefined()
     expect(body.context?.enabledToolIds).not.toContain('run_analysis')
-
-    vi.restoreAllMocks()
   })
 
   it('does not overwrite default tool selection before the capability matrix finishes loading', async () => {
     let resolveMatrix: ((value: Response) => void) | null = null
-
-    vi.restoreAllMocks()
     window.localStorage.clear()
     vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
       const url = String(input)
@@ -1163,9 +1143,7 @@ describe('Capability settings and console integration', () => {
     })
   })
 
-  it('repairs legacy foundation-only default tool preferences on the capability settings page', async () => {
-    vi.restoreAllMocks()
-    window.localStorage.setItem(CAPABILITY_PREFERENCE_STORAGE_KEY, JSON.stringify({
+  it('repairs legacy foundation-only default tool preferences on the capability settings page', async () => {    window.localStorage.setItem(CAPABILITY_PREFERENCE_STORAGE_KEY, JSON.stringify({
       skillIds: ['opensees-static', 'generic'],
       toolIds: ['convert_model'],
     }))
@@ -1262,9 +1240,7 @@ describe('Capability settings and console integration', () => {
     })
   })
 
-  it('does not treat duplicated stored skill ids as the default skill set during repair', async () => {
-    vi.restoreAllMocks()
-    window.localStorage.setItem(CAPABILITY_PREFERENCE_STORAGE_KEY, JSON.stringify({
+  it('does not treat duplicated stored skill ids as the default skill set during repair', async () => {    window.localStorage.setItem(CAPABILITY_PREFERENCE_STORAGE_KEY, JSON.stringify({
       skillIds: ['generic', 'generic'],
       toolIds: ['convert_model'],
     }))
