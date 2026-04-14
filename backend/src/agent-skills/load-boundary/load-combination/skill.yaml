@@ -71,3 +71,8 @@ outputSchema:
       type: array
 aliases: []
 toolHints: {}
+runtimeContract:
+  role: enricher
+  consumes:
+    - normalizedModel
+  priority: 100

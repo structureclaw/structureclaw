@@ -49,3 +49,8 @@ inputSchema: {}
 outputSchema: {}
 aliases: []
 toolHints: {}
+runtimeContract:
+  role: enricher
+  consumes:
+    - normalizedModel
+  priority: 65
