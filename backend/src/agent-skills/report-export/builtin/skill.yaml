@@ -35,3 +35,8 @@ supportedModelFamilies:
 materialFamilies: []
 aliases: []
 toolHints: {}
+runtimeContract:
+  role: consumer
+  targetArtifact: reportArtifact
+  requiredConsumes: [designBasis, normalizedModel]
+  optionalConsumes: [postprocessedResult, codeCheckResult]

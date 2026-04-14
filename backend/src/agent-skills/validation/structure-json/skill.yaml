@@ -43,3 +43,7 @@ materialFamilies: []
 aliases:
   - structure-json-validation
 toolHints: {}
+runtimeContract:
+  role: validator
+  consumes: [normalizedModel]
+  provides: [normalizedModel]
