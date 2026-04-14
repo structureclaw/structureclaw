@@ -37,3 +37,10 @@ supportedModelFamilies:
 materialFamilies: []
 aliases: []
 toolHints: {}
+runtimeContract:
+  role: consumer
+  requiredConsumes:
+    - normalizedModel
+  optionalConsumes:
+    - analysisRaw
+    - postprocessedResult
