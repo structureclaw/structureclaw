@@ -308,4 +308,74 @@ describe('pipeline scheduler', () => {
     expect(plan.blockedReason).toMatch(/autoDesignIteration/);
     expect(plan.requiredSteps).toEqual([]);
   });
+
+  // --- Approval checkpoint (spec section 10B.5) ---
+
+  test('inserts approval step before provider execution when requireApprovalBeforeExecution is true', () => {
+    const scheduler = new PipelineScheduler();
+    const plan = scheduler.plan({
+      message: '开始分析',
+      locale: 'zh',
+      selectedSkillIds: ['analysis-opensees-static'],
+      bindings: { analysisProviderSkillId: 'analysis-opensees-static' },
+      projectPolicy: { requireApprovalBeforeExecution: true },
+      targetArtifact: 'analysisRaw',
+      sessionArtifacts: {},
+      projectArtifacts: {
+        designBasis: { status: 'ready', dependencyFingerprint: 'fp-db' },
+      },
+    });
+
+    const approvalStep = plan.requiredSteps.find((s) => s.mode === 'approval');
+    expect(approvalStep).toBeDefined();
+    expect(approvalStep.role).toBe('provider');
+    expect(approvalStep.action).toBe('analyze');
+    expect(approvalStep.provides).toBe('analysisRaw');
+
+    // The execute step should still exist after the approval step
+    const executeStep = plan.requiredSteps.find((s) => s.mode === 'execute' && s.action === 'analyze');
+    expect(executeStep).toBeDefined();
+    expect(plan.requiredSteps.indexOf(approvalStep)).toBeLessThan(plan.requiredSteps.indexOf(executeStep));
+  });
+
+  test('does not insert approval step when requireApprovalBeforeExecution is false', () => {
+    const scheduler = new PipelineScheduler();
+    const plan = scheduler.plan({
+      message: '开始分析',
+      locale: 'zh',
+      selectedSkillIds: ['analysis-opensees-static'],
+      bindings: { analysisProviderSkillId: 'analysis-opensees-static' },
+      projectPolicy: { requireApprovalBeforeExecution: false },
+      targetArtifact: 'analysisRaw',
+      sessionArtifacts: {},
+      projectArtifacts: {
+        designBasis: { status: 'ready', dependencyFingerprint: 'fp-db' },
+      },
+    });
+
+    expect(plan.requiredSteps.some((s) => s.mode === 'approval')).toBe(false);
+  });
+
+  test('approval step for codeCheck when requireApprovalBeforeExecution is true', () => {
+    const scheduler = new PipelineScheduler();
+    const plan = scheduler.plan({
+      message: '开始校核',
+      locale: 'zh',
+      selectedSkillIds: ['code-check-gb50017'],
+      bindings: { codeCheckProviderSkillId: 'code-check-gb50017' },
+      projectPolicy: { requireApprovalBeforeExecution: true },
+      targetArtifact: 'codeCheckResult',
+      sessionArtifacts: {},
+      projectArtifacts: {
+        designBasis: { status: 'ready', dependencyFingerprint: 'fp-1' },
+        normalizedModel: { status: 'ready', dependencyFingerprint: 'fp-2' },
+        postprocessedResult: { status: 'ready', dependencyFingerprint: 'fp-3' },
+      },
+    });
+
+    const approvalStep = plan.requiredSteps.find((s) => s.mode === 'approval');
+    expect(approvalStep).toBeDefined();
+    expect(approvalStep.action).toBe('code_check');
+    expect(approvalStep.provides).toBe('codeCheckResult');
+  });
 });

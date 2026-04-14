@@ -438,6 +438,10 @@ function buildLocalizedBlockedReason(reason: string, locale: AppLocale): string 
       zh: '请求的技能未在当前启用的技能集中。请在项目设置中启用该技能。',
       en: 'Requested skill is not in the currently enabled skill set. Please enable the skill in project settings.',
     },
+    'approval required': {
+      zh: '项目策略要求在执行此操作前获得确认。请确认是否继续执行。',
+      en: 'Project policy requires approval before executing this operation. Please confirm to proceed.',
+    },
   };
   const localized = messages[reason];
   return localized ? localized[locale] ?? localized.en : reason;
@@ -1567,6 +1571,26 @@ export class AgentService {
             blockedReasonCode: 'STEP_BLOCKED',
             needsModelInput: false,
           });
+        }
+
+        if (step.mode === 'approval') {
+          workingSession.checkpoint = buildInteractionCheckpoint({
+            kind: 'approval',
+            targetArtifact: step.provides,
+            summary: step.reason,
+          });
+          return this.finalizeRunResult(traceId, sessionKey, params.message, {
+            traceId, startedAt,
+            completedAt: new Date().toISOString(),
+            durationMs: Date.now() - startedAtMs,
+            success: false,
+            orchestrationMode,
+            needsModelInput: false,
+            plan, toolCalls,
+            metrics: this.buildMetrics(toolCalls),
+            interaction: this.buildToolInteraction('confirming', locale),
+            response: step.reason,
+          }, skillIds, workingSession, skillIds);
         }
 
         if (step.mode === 'ask-user') {

@@ -213,6 +213,19 @@ export class PipelineScheduler {
       });
     }
 
+    // Spec section 10B.5: approval checkpoint before expensive provider execution
+    if (graphNode.providerSlot && input.projectPolicy.requireApprovalBeforeExecution) {
+      steps.push({
+        stepId: `${target}-approval`,
+        role: graphNode.defaultRole,
+        action: graphNode.defaultAction,
+        consumes: this.collectRefs(graphNode.dependsOn, input.projectArtifacts),
+        provides: target,
+        mode: 'approval',
+        reason: `Approval required before executing ${graphNode.defaultAction} to produce ${target}`,
+      });
+    }
+
     const targetMode = graphNode.providerSlot && input.projectPolicy.allowAsync
       ? 'queue-run'
       : 'execute';

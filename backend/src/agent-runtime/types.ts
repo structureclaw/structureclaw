@@ -496,6 +496,7 @@ export interface ProjectExecutionPolicy {
   codeCheckProviderPreference?: string;
   allowAsync?: boolean;
   autoDesignIterationPolicy?: AutoDesignIterationPolicy;
+  requireApprovalBeforeExecution?: boolean;
   deliverableProfiles?: {
     drawing?: string;
     report?: string;
@@ -651,7 +652,7 @@ export interface SchedulerStep {
   skillId?: string;
   consumes: ArtifactRef[];
   provides?: ArtifactKind;
-  mode: 'reuse' | 'execute' | 'transform' | 'queue-run' | 'ask-user' | 'propose' | 'block';
+  mode: 'reuse' | 'execute' | 'transform' | 'queue-run' | 'ask-user' | 'propose' | 'block' | 'approval';
   reason: string;
 }
 
