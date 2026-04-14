@@ -37,3 +37,14 @@ supportedModelFamilies:
 materialFamilies: []
 aliases: []
 toolHints: {}
+runtimeContract:
+  role: provider
+  providerSlot: codeCheckProvider
+  selectionPolicy: explicit_required
+  cardinality: singleton
+  consumes:
+    - designBasis
+    - normalizedModel
+    - postprocessedResult
+  provides:
+    - codeCheckResult
