@@ -45,3 +45,19 @@ supportedModelFamilies:
 materialFamilies: []
 aliases: []
 toolHints: {}
+runtimeContract:
+  role: provider
+  providerSlot: analysisProvider
+  selectionPolicy: explicit_required
+  cardinality: singleton
+  consumes:
+    - analysisModel
+  provides:
+    - analysisRaw
+  runtimeAdapter: builtin-opensees
+  supportedAnalysisTypes:
+    - static
+  supportedModelFamilies:
+    - frame
+    - truss
+    - generic
