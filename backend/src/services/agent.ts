@@ -1691,8 +1691,10 @@ export class AgentService {
       }
 
       // Spec sections 7.3, 13.3: design feedback loop
-      // Triggered after postprocess + code-check when auto-design iteration is possible
-      if (pipelineState.artifacts.postprocessedResult && pipelineState.artifacts.codeCheckResult) {
+      // Only trigger when auto-design iteration policy is enabled or user explicitly requests
+      const autoDesignPolicy = pipelineState.policy?.autoDesignIterationPolicy;
+      if (pipelineState.artifacts.postprocessedResult && pipelineState.artifacts.codeCheckResult
+        && autoDesignPolicy?.enabled) {
         const feedbackPlan = this.pipelineScheduler.planDesignFeedback({
           message: params.message,
           locale,
