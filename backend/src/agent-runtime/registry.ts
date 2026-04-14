@@ -105,6 +105,11 @@ export class AgentSkillRegistry {
     return buildUnknownStructuralType(locale);
   }
 
+  async resolvePluginById(skillId: string): Promise<AgentSkillPlugin | null> {
+    const plugins = await this.listPlugins();
+    return plugins.find((p) => p.id === skillId) ?? null;
+  }
+
   async getStructuralTypeLabel(key: string, locale: AppLocale, skillIds?: string[]): Promise<string> {
     if (key === 'steel-frame') {
       return localize(locale, '钢框架', 'Steel Frame');

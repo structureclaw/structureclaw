@@ -59,3 +59,7 @@ materialFamilies:
   - timber
 aliases: []
 toolHints: {}
+runtimeContract:
+  role: enricher
+  consumes:
+    - normalizedModel

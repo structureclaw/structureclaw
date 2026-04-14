@@ -477,18 +477,30 @@ function computeStepInputFingerprint(
 function applySchedulerStepResult(args: {
   pipelineState: ProjectPipelineState;
   step: SchedulerStep;
-  stepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
+  stepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord; patches?: import('../agent-runtime/types.js').ModelPatchRecord[] };
 }): ProjectPipelineState {
-  if (!args.stepResult.artifact || !args.step.provides) {
+  const kind = args.step.provides;
+  const existingPatches = args.pipelineState.patches ?? [];
+  const newPatches = args.stepResult.patches ?? [];
+
+  if (!args.stepResult.artifact || !kind) {
+    if (newPatches.length > 0) {
+      return {
+        ...args.pipelineState,
+        patches: [...existingPatches, ...newPatches],
+        updatedAt: Date.now(),
+      };
+    }
     return args.pipelineState;
   }
-  const kind = args.step.provides;
+
   return {
     ...args.pipelineState,
     artifacts: {
       ...args.pipelineState.artifacts,
       [kind]: args.stepResult.artifact,
     },
+    patches: [...existingPatches, ...newPatches],
     updatedAt: Date.now(),
   };
 }
@@ -1409,6 +1421,7 @@ export class AgentService {
         projectArtifacts: pipelineState.artifacts,
         requestOverrides,
         consumerContracts: await this.resolveConsumerContracts(skillIds ?? []),
+        enricherContracts: await this.resolveEnricherContracts(skillIds ?? []),
       });
 
       if (schedulerPlan.blockedReason) {
@@ -4780,6 +4793,18 @@ export class AgentService {
     return manifests
       .filter((m) => skillIds.includes(m.id) && m.runtimeContract?.role === 'consumer')
       .map((m) => m.runtimeContract as import('../agent-runtime/types.js').ConsumerRuntimeContract);
+  }
+
+  private async resolveEnricherContracts(
+    skillIds: string[],
+  ): Promise<Array<{ skillId: string; priority: number }>> {
+    const manifests = await this.skillRuntime.listSkillManifests();
+    return manifests
+      .filter((m) => skillIds.includes(m.id) && m.runtimeContract?.role === 'enricher')
+      .map((m) => ({
+        skillId: m.id,
+        priority: (m.runtimeContract as { priority?: number })?.priority ?? m.priority,
+      }));
   }
 
   private buildResolvedRouting(

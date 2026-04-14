@@ -3,6 +3,7 @@ import type { AppLocale } from '../services/locale.js';
 import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.js';
 import { buildPostprocessedResultArtifact } from '../agent-skills/result-postprocess/entry.js';
 import { computeDependencyFingerprint } from './artifact-helpers.js';
+import { applyPatches, type PatchReducerInput } from './patch-reducer.js';
 import {
   buildCodeCheckInput,
   executeCodeCheckDomain,
@@ -38,6 +39,7 @@ import type {
   StructuralTypeKey,
   SkillManifest,
   ToolManifest,
+  ModelPatchRecord,
 } from './types.js';
 
 export type {
@@ -727,6 +729,8 @@ export class AgentSkillRuntime {
         return this.executeDesignScheduledStep(args);
       case 'draft':
         return this.executeDraftScheduledStep(args);
+      case 'enrich':
+        return this.executeEnrichScheduledStep(args);
       default:
         throw new Error(`Unsupported scheduled action: ${args.step.action}`);
     }
@@ -914,6 +918,86 @@ export class AgentSkillRuntime {
     if (!args.step.provides) return {};
     const existing = args.pipelineState.artifacts[args.step.provides as keyof typeof args.pipelineState.artifacts];
     return { artifact: existing };
+  }
+
+  private async executeEnrichScheduledStep(args: {
+    step: SchedulerStep;
+    pipelineState: ProjectPipelineState;
+    traceId: string;
+    locale: AppLocale;
+    postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
+    codeCheckClient: unknown;
+  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord; patches?: ModelPatchRecord[] }> {
+    const skillId = args.step.skillId;
+    if (!skillId) {
+      throw new Error(`Enrich step ${args.step.stepId} has no skillId`);
+    }
+
+    const plugin = await this.registry.resolvePluginById(skillId);
+    if (!plugin) {
+      throw new Error(`Enricher skill not found: ${skillId}`);
+    }
+
+    const baseModel = (args.pipelineState.artifacts.normalizedModel?.payload ?? {}) as Record<string, unknown>;
+    const baseRevision = (baseModel.revision as number) ?? 1;
+
+    // Build enriched model via the skill handler
+    const enrichedModel = plugin.handler.buildModel({
+      inferredType: (baseModel.metadata as Record<string, unknown>)?.inferredType as string ?? 'unknown',
+      updatedAt: Date.now(),
+    } as DraftState) ?? {};
+
+    // Extract patch-relevant fields from the enriched model
+    const patchPayload: Record<string, unknown> = {};
+    const enrichFields = ['sections', 'materials', 'nodes', 'elements', 'load_cases', 'load_combinations'] as const;
+    for (const field of enrichFields) {
+      if (Array.isArray(enrichedModel[field]) && (enrichedModel[field] as unknown[]).length > 0) {
+        patchPayload[field] = enrichedModel[field];
+      }
+    }
+
+    if (Object.keys(patchPayload).length === 0) {
+      // No enrichable content from this skill — return existing artifact unchanged
+      const existing = args.pipelineState.artifacts.normalizedModel;
+      return { artifact: existing };
+    }
+
+    const now = Date.now();
+    const patchRecord: PatchReducerInput = {
+      patchId: `${skillId}:${now}`,
+      patchKind: 'modelPatch',
+      producerSkillId: skillId,
+      baseModelRevision: baseRevision,
+      status: 'accepted',
+      priority: plugin.manifest.priority,
+      payload: patchPayload,
+      reason: `Enriched by ${skillId}`,
+      conflicts: [],
+      basedOn: args.step.consumes,
+      createdAt: now,
+    };
+
+    const reducerResult = applyPatches(baseModel, [patchRecord]);
+
+    if (!args.step.provides) return { patches: [this.toModelPatchRecord(patchRecord, reducerResult)] };
+
+    const artifact = this.buildArtifactEnvelope(args.step.provides, reducerResult.model, args.step, args.pipelineState);
+    return { artifact, patches: [this.toModelPatchRecord(patchRecord, reducerResult)] };
+  }
+
+  private toModelPatchRecord(input: PatchReducerInput, result: { revision: number }): ModelPatchRecord {
+    return {
+      patchId: input.patchId,
+      patchKind: input.patchKind,
+      producerSkillId: input.producerSkillId,
+      baseModelRevision: input.baseModelRevision,
+      basedOn: input.basedOn.map((b) => ({ kind: b.kind as import('./types.js').ArtifactKind, artifactId: b.artifactId, revision: b.revision })),
+      status: 'accepted',
+      priority: input.priority,
+      createdAt: input.createdAt,
+      reason: input.reason,
+      payload: input.payload,
+    };
   }
 
   private buildArtifactEnvelope(

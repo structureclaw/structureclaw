@@ -41,6 +41,7 @@ function artifactToRef(env: ArtifactEnvelope): ArtifactRef {
 
 export interface SchedulerPlanInput extends SchedulerInput {
   consumerContracts?: ConsumerRuntimeContract[];
+  enricherContracts?: Array<{ skillId: string; priority: number }>;
 }
 
 export class PipelineScheduler {
@@ -270,6 +271,25 @@ export class PipelineScheduler {
       mode: targetMode,
       reason: `Execute ${graphNode.defaultAction} to produce ${target}`,
     });
+
+    // Spec section 13.4: enricher steps after normalizedModel creation
+    if (target === 'normalizedModel' && input.enricherContracts && input.enricherContracts.length > 0) {
+      const sortedEnrichers = [...input.enricherContracts].sort((a, b) => a.priority - b.priority);
+      for (const enricher of sortedEnrichers) {
+        steps.push({
+          stepId: `normalizedModel-enrich-${enricher.skillId}`,
+          role: 'enricher',
+          action: 'enrich',
+          skillId: enricher.skillId,
+          consumes: input.projectArtifacts.normalizedModel
+            ? [artifactToRef(input.projectArtifacts.normalizedModel)]
+            : [],
+          provides: 'normalizedModel',
+          mode: 'execute',
+          reason: `Enrich normalizedModel via ${enricher.skillId}`,
+        });
+      }
+    }
 
     return { targetArtifact: target, requiredSteps: steps };
   }

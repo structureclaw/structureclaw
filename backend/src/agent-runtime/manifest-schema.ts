@@ -76,6 +76,7 @@ const runtimeContractSchema = z.discriminatedUnion('role', [
   z.object({
     role: z.literal('enricher'),
     ...baseRuntimeContractShape,
+    priority: z.number().int().optional(),
   }),
   z.object({
     role: z.literal('validator'),

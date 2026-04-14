@@ -54,3 +54,7 @@ materialFamilies:
   - composite
 aliases: []
 toolHints: {}
+runtimeContract:
+  role: enricher
+  consumes:
+    - normalizedModel

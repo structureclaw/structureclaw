@@ -393,7 +393,8 @@ export type SchedulerAction =
   | 'postprocess'
   | 'code_check'
   | 'drawing'
-  | 'report';
+  | 'report'
+  | 'enrich';
 
 // --- Skill Role ---
 
@@ -614,6 +615,7 @@ export interface ProjectPipelineState {
   policy: ProjectExecutionPolicy;
   bindings: ProviderBindingState;
   artifacts: ProjectArtifactState;
+  patches?: ModelPatchRecord[];
   updatedAt: number;
 }
 

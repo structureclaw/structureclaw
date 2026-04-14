@@ -426,4 +426,115 @@ describe('pipeline scheduler', () => {
     expect(plan.blockedReason).toMatch(/unknown target artifact/);
     expect(plan.requiredSteps).toEqual([]);
   });
+
+  // --- Enricher steps (spec section 13.4) ---
+
+  test('generates enricher steps after normalizedModel execute when enricherContracts provided', () => {
+    const scheduler = new PipelineScheduler();
+    const plan = scheduler.plan({
+      message: '建模',
+      locale: 'zh',
+      selectedSkillIds: ['section-common', 'section-irregular'],
+      bindings: {},
+      projectPolicy: {},
+      targetArtifact: 'normalizedModel',
+      sessionArtifacts: {},
+      projectArtifacts: {
+        designBasis: { status: 'ready', dependencyFingerprint: 'fp-1' },
+      },
+      enricherContracts: [
+        { skillId: 'section-common', priority: 100 },
+        { skillId: 'section-irregular', priority: 140 },
+      ],
+    });
+
+    const enrichSteps = plan.requiredSteps.filter((s) => s.action === 'enrich');
+    expect(enrichSteps.length).toBe(2);
+    expect(enrichSteps[0].skillId).toBe('section-common');
+    expect(enrichSteps[1].skillId).toBe('section-irregular');
+    expect(enrichSteps.every((s) => s.role === 'enricher')).toBe(true);
+    expect(enrichSteps.every((s) => s.provides === 'normalizedModel')).toBe(true);
+  });
+
+  test('sorts enricher steps by priority ascending', () => {
+    const scheduler = new PipelineScheduler();
+    const plan = scheduler.plan({
+      message: '建模',
+      locale: 'zh',
+      selectedSkillIds: ['section-irregular', 'section-bridge', 'section-common'],
+      bindings: {},
+      projectPolicy: {},
+      targetArtifact: 'normalizedModel',
+      sessionArtifacts: {},
+      projectArtifacts: {
+        designBasis: { status: 'ready', dependencyFingerprint: 'fp-1' },
+      },
+      enricherContracts: [
+        { skillId: 'section-bridge', priority: 180 },
+        { skillId: 'section-common', priority: 100 },
+        { skillId: 'section-irregular', priority: 140 },
+      ],
+    });
+
+    const enrichSteps = plan.requiredSteps.filter((s) => s.action === 'enrich');
+    expect(enrichSteps.map((s) => s.skillId)).toEqual([
+      'section-common',
+      'section-irregular',
+      'section-bridge',
+    ]);
+  });
+
+  test('does not generate enricher steps when enricherContracts is empty', () => {
+    const scheduler = new PipelineScheduler();
+    const plan = scheduler.plan({
+      message: '建模',
+      locale: 'zh',
+      selectedSkillIds: [],
+      bindings: {},
+      projectPolicy: {},
+      targetArtifact: 'normalizedModel',
+      sessionArtifacts: {},
+      projectArtifacts: {
+        designBasis: { status: 'ready', dependencyFingerprint: 'fp-1' },
+      },
+      enricherContracts: [],
+    });
+
+    const enrichSteps = plan.requiredSteps.filter((s) => s.action === 'enrich');
+    expect(enrichSteps.length).toBe(0);
+  });
+
+  test('does not generate enricher steps when normalizedModel is reused', () => {
+    const scheduler = new PipelineScheduler();
+    // Provide a ready normalizedModel with a matching fingerprint
+    const plan = scheduler.plan({
+      message: '建模',
+      locale: 'zh',
+      selectedSkillIds: ['section-common'],
+      bindings: {},
+      projectPolicy: {},
+      targetArtifact: 'normalizedModel',
+      sessionArtifacts: {},
+      projectArtifacts: {
+        designBasis: { status: 'ready', dependencyFingerprint: 'fp-1', artifactId: 'db-1', revision: 1 },
+        normalizedModel: {
+          status: 'ready',
+          dependencyFingerprint: 'f8956887e2852bbc',
+          artifactId: 'nm-1',
+          revision: 1,
+          basedOn: [],
+        },
+      },
+      enricherContracts: [
+        { skillId: 'section-common', priority: 100 },
+      ],
+    });
+
+    const enrichSteps = plan.requiredSteps.filter((s) => s.action === 'enrich');
+    expect(enrichSteps.length).toBe(0);
+
+    // Should have a reuse step instead
+    const reuseStep = plan.requiredSteps.find((s) => s.mode === 'reuse');
+    expect(reuseStep).toBeDefined();
+  });
 });
