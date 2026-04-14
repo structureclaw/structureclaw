@@ -114,7 +114,7 @@ export function extractJsonObject(raw: string): string | null {
 export function parsePlannerResponse(
   raw: string,
   allowedKinds: AgentPlanKind[],
-): Pick<AgentNextStepPlan, 'kind' | 'replyMode'> | null {
+): Pick<AgentNextStepPlan, 'kind' | 'replyMode' | 'targetArtifact'> | null {
   const jsonText = extractJsonObject(raw);
   if (!jsonText) {
     return null;
@@ -123,7 +123,8 @@ export function parsePlannerResponse(
   const parsed = JSON.parse(jsonText) as {
     kind?: unknown;
     replyMode?: unknown;
-    decision?: { kind?: unknown; replyMode?: unknown };
+    targetArtifact?: unknown;
+    decision?: { kind?: unknown; replyMode?: unknown; targetArtifact?: unknown };
   };
   const payload = typeof parsed.decision === 'object' && parsed.decision !== null ? parsed.decision : parsed;
 
@@ -138,6 +139,7 @@ export function parsePlannerResponse(
   return {
     kind,
     replyMode,
+    targetArtifact: typeof payload.targetArtifact === 'string' ? payload.targetArtifact : undefined,
   };
 }
 
@@ -153,7 +155,7 @@ export async function repairPlannerResponse(
     allowedKinds: AgentPlanKind[];
     availableToolIds: AgentToolName[];
   },
-): Promise<Pick<AgentNextStepPlan, 'kind' | 'replyMode'> | null> {
+): Promise<Pick<AgentNextStepPlan, 'kind' | 'replyMode' | 'targetArtifact'> | null> {
   if (!llm) {
     return null;
   }
@@ -332,6 +334,7 @@ export async function planNextStepWithLlm(
     return {
       kind: normalized.kind,
       replyMode: normalized.replyMode,
+      targetArtifact: normalized.targetArtifact,
       planningDirective: 'auto',
       rationale: 'llm',
     };
@@ -358,23 +361,40 @@ export async function resolveInteractivePlanKind(
   assessInteractionNeeds: AssessInteractionNeedsFn,
   hasEmptySkillSelection: HasEmptySkillSelectionFn,
   hasActiveTool: HasActiveToolFn,
-): Promise<Exclude<AgentPlanKind, 'tool_call'>> {
+): Promise<AgentNextStepPlan> {
+  // --- targetArtifact inference (Phase 4 Step 3) ---
+  // Report intent: user explicitly requested report
+  if (options.session?.resolved?.includeReport) {
+    return { kind: 'execute', planningDirective: 'auto', rationale: 'override', targetArtifact: 'reportArtifact' };
+  }
+  // Analysis intent: user has a model and an analysis type resolved
+  if (options.hasModel && options.session?.resolved?.analysisType) {
+    return { kind: 'execute', planningDirective: 'auto', rationale: 'override', targetArtifact: 'analysisRaw' };
+  }
+  // Code-check intent: design code resolved without report flag
+  if (options.hasModel && options.session?.resolved?.designCode && !options.session?.resolved?.includeReport) {
+    return { kind: 'execute', planningDirective: 'auto', rationale: 'override', targetArtifact: 'codeCheckResult' };
+  }
+
+  // --- existing logic, converted from string literals to full objects ---
   if (options.hasModel) {
-    return 'reply';
+    return { kind: 'reply', planningDirective: 'auto', rationale: 'override' };
   }
   if (hasEmptySkillSelection(options.skillIds) && !hasActiveTool(options.activeToolIds, 'draft_model')) {
-    return 'reply';
+    return { kind: 'reply', planningDirective: 'auto', rationale: 'override' };
   }
   if (!options.session?.draft || options.session.draft.inferredType === 'unknown') {
-    return 'ask';
+    return { kind: 'ask', planningDirective: 'auto', rationale: 'override' };
   }
   const assessment = await assessInteractionNeeds(options.session, options.locale, options.skillIds, 'interactive');
   const readyForExecution = assessment.criticalMissing.length === 0
     && (assessment.nonCriticalMissing.length === 0 || Boolean(options.session.userApprovedAutoDecide));
   if (!options.hasModel) {
-    return 'ask';
+    return { kind: 'ask', planningDirective: 'auto', rationale: 'override' };
   }
-  return readyForExecution ? 'reply' : 'ask';
+  return readyForExecution
+    ? { kind: 'reply', planningDirective: 'auto', rationale: 'override' }
+    : { kind: 'ask', planningDirective: 'auto', rationale: 'override' };
 }
 
 // ---------------------------------------------------------------------------
@@ -422,9 +442,10 @@ export async function planNextStep(
       };
     }
 
+    const interactivePlan = await resolveInteractivePlanKind(options, assessInteractionNeeds, hasEmptySkillSelection, (ids, id) => !ids || ids.has(id));
     return {
-      kind: await resolveInteractivePlanKind(options, assessInteractionNeeds, hasEmptySkillSelection, (ids, id) => !ids || ids.has(id)),
-      replyMode: options.hasModel ? 'structured' : 'plain',
+      ...interactivePlan,
+      replyMode: interactivePlan.replyMode ?? (options.hasModel ? 'structured' : 'plain'),
       planningDirective: options.planningDirective,
       rationale: 'override',
     };

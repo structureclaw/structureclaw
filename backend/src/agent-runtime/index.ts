@@ -20,10 +20,15 @@ import {
 } from './skill-manifest-loader.js';
 import type {
   AgentSkillBundle,
+  ArtifactEnvelope,
+  ArtifactKind,
   DraftParameterExtractionResult,
   DraftResult,
   DraftState,
   InteractionQuestion,
+  ProjectPipelineState,
+  RunRecord,
+  SchedulerStep,
   SkillDefaultProposal,
   StructuralTypeMatch,
   SkillReportNarrativeInput,
@@ -680,5 +685,221 @@ export class AgentSkillRuntime {
       return plugin.handler.buildReportNarrative(input);
     }
     return buildDefaultReportNarrative(input);
+  }
+
+  async executeScheduledStep(args: {
+    step: SchedulerStep;
+    pipelineState: ProjectPipelineState;
+    traceId: string;
+    locale: AppLocale;
+    postToEngineWithRetry: (
+      path: string,
+      input: Record<string, unknown>,
+      retryOptions: { retries: number; traceId: string; tool: 'run_analysis' },
+    ) => Promise<{ data: unknown }>;
+    codeCheckClient: unknown;
+  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
+    switch (args.step.action) {
+      case 'validate':
+        return this.executeValidationScheduledStep(args);
+      case 'analyze':
+        return this.executeAnalysisScheduledStep(args);
+      case 'postprocess':
+        return this.executePostprocessScheduledStep(args);
+      case 'code_check':
+        return this.executeCodeCheckScheduledStep(args);
+      case 'report':
+        return this.executeReportScheduledStep(args);
+      case 'drawing':
+        return this.executeDrawingScheduledStep(args);
+      case 'update':
+        return this.executeUpdateScheduledStep(args);
+      case 'convert':
+        return this.executeConvertScheduledStep(args);
+      case 'design':
+        return this.executeDesignScheduledStep(args);
+      default:
+        throw new Error(`Unsupported scheduled action: ${args.step.action}`);
+    }
+  }
+
+  private async executeValidationScheduledStep(args: {
+    step: SchedulerStep;
+    pipelineState: ProjectPipelineState;
+    traceId: string;
+    locale: AppLocale;
+    postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
+    codeCheckClient: unknown;
+  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
+    const model = args.pipelineState.artifacts.normalizedModel?.payload as Record<string, unknown> ?? {};
+    const result = await this.executeValidationSkill({
+      model,
+      structureProtocolClient: { post: args.postToEngineWithRetry as unknown as (path: string, payload: Record<string, unknown>) => Promise<{ data: unknown }> },
+    });
+    if (!args.step.provides) return {};
+    const artifact = this.buildArtifactEnvelope(args.step.provides, result.result, args.step);
+    return { artifact };
+  }
+
+  private async executeAnalysisScheduledStep(args: {
+    step: SchedulerStep;
+    pipelineState: ProjectPipelineState;
+    traceId: string;
+    locale: AppLocale;
+    postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
+    codeCheckClient: unknown;
+  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
+    const model = args.pipelineState.artifacts.analysisModel?.payload as Record<string, unknown> ?? {};
+    const analysisType = 'static'; // default, could be extracted from pipeline state
+    const result = await this.executeAnalysisSkill({
+      model,
+      analysisType: analysisType as 'static' | 'dynamic' | 'seismic' | 'nonlinear',
+      postToEngineWithRetry: args.postToEngineWithRetry,
+      traceId: args.traceId,
+      engineId: undefined,
+      parameters: {},
+    });
+    if (!args.step.provides) return {};
+    const artifact = this.buildArtifactEnvelope(args.step.provides, result.result, args.step);
+    return { artifact };
+  }
+
+  private async executePostprocessScheduledStep(args: {
+    step: SchedulerStep;
+    pipelineState: ProjectPipelineState;
+    traceId: string;
+    locale: AppLocale;
+    postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
+    codeCheckClient: unknown;
+  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
+    // Postprocess extracts structured results from analysisRaw
+    const analysisPayload = args.pipelineState.artifacts.analysisRaw?.payload;
+    const postprocessed = {
+      keyMetrics: analysisPayload ?? {},
+      status: 'processed',
+    };
+    if (!args.step.provides) return {};
+    const artifact = this.buildArtifactEnvelope(args.step.provides, postprocessed, args.step);
+    return { artifact };
+  }
+
+  private async executeCodeCheckScheduledStep(args: {
+    step: SchedulerStep;
+    pipelineState: ProjectPipelineState;
+    traceId: string;
+    locale: AppLocale;
+    postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
+    codeCheckClient: unknown;
+  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
+    const model = args.pipelineState.artifacts.normalizedModel?.payload as Record<string, unknown> ?? {};
+    const analysis = args.pipelineState.artifacts.analysisRaw?.payload;
+    const designCode = args.pipelineState.policy?.designCode ?? 'GB50017';
+    const result = await this.executeCodeCheckSkill({
+      codeCheckClient: args.codeCheckClient,
+      traceId: args.traceId,
+      designCode,
+      model,
+      analysis,
+      analysisParameters: {},
+    });
+    if (!args.step.provides) return {};
+    const artifact = this.buildArtifactEnvelope(args.step.provides, result.result as Record<string, unknown>, args.step);
+    return { artifact };
+  }
+
+  private async executeReportScheduledStep(args: {
+    step: SchedulerStep;
+    pipelineState: ProjectPipelineState;
+    traceId: string;
+    locale: AppLocale;
+    postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
+    codeCheckClient: unknown;
+  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
+    const analysis = args.pipelineState.artifacts.analysisRaw?.payload;
+    const codeCheck = args.pipelineState.artifacts.codeCheckResult?.payload;
+    const result = await this.executeReportSkill({
+      message: '',
+      analysisType: 'static',
+      analysis,
+      codeCheck,
+      format: 'both',
+      locale: args.locale,
+    });
+    if (!args.step.provides) return {};
+    const artifact = this.buildArtifactEnvelope(args.step.provides, result.report as unknown as Record<string, unknown>, args.step);
+    return { artifact };
+  }
+
+  private async executeDrawingScheduledStep(_args: {
+    step: SchedulerStep;
+    pipelineState: ProjectPipelineState;
+    traceId: string;
+    locale: AppLocale;
+    postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
+    codeCheckClient: unknown;
+  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
+    throw new Error('generate_drawing not yet implemented');
+  }
+
+  private async executeUpdateScheduledStep(args: {
+    step: SchedulerStep;
+    pipelineState: ProjectPipelineState;
+    traceId: string;
+    locale: AppLocale;
+    postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
+    codeCheckClient: unknown;
+  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
+    // Model updates currently flow through the draft pipeline — return current state
+    if (!args.step.provides) return {};
+    const existing = args.pipelineState.artifacts[args.step.provides as keyof typeof args.pipelineState.artifacts];
+    return { artifact: existing };
+  }
+
+  private async executeConvertScheduledStep(args: {
+    step: SchedulerStep;
+    pipelineState: ProjectPipelineState;
+    traceId: string;
+    locale: AppLocale;
+    postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
+    codeCheckClient: unknown;
+  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
+    // Convert produces analysisModel from normalizedModel
+    const normalizedModel = args.pipelineState.artifacts.normalizedModel?.payload as Record<string, unknown> ?? {};
+    if (!args.step.provides) return {};
+    const artifact = this.buildArtifactEnvelope(args.step.provides, normalizedModel, args.step);
+    return { artifact };
+  }
+
+  private async executeDesignScheduledStep(_args: {
+    step: SchedulerStep;
+    pipelineState: ProjectPipelineState;
+    traceId: string;
+    locale: AppLocale;
+    postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
+    codeCheckClient: unknown;
+  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
+    throw new Error('synthesize_design not yet implemented');
+  }
+
+  private buildArtifactEnvelope(
+    kind: ArtifactKind,
+    payload: Record<string, unknown>,
+    step: SchedulerStep,
+  ): ArtifactEnvelope {
+    return {
+      artifactId: `${kind}:${Date.now()}`,
+      kind,
+      scope: 'project',
+      status: 'ready',
+      revision: 1,
+      producerSkillId: step.skillId ?? `scheduled:${step.action}`,
+      dependencyFingerprint: '',
+      basedOn: step.consumes.map((ref) => ({ kind: ref.kind, artifactId: ref.artifactId, revision: ref.revision })),
+      schemaVersion: '1.0.0',
+      provenance: { toolId: `scheduled:${step.action}` },
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      payload,
+    };
   }
 }

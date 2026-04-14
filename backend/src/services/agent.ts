@@ -65,6 +65,9 @@ import {
   renderSummary as resultRenderSummary,
 } from './agent-result.js';
 import { AgentSkillCatalogService } from './agent-skill-catalog.js';
+import { AgentRunStoreService } from './agent-run-store.js';
+import { ProjectService } from './project.js';
+import { PipelineScheduler } from '../agent-runtime/pipeline-scheduler.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'directed' | 'llm-planned';
@@ -135,7 +138,7 @@ interface PersistedMessageDebugDetails {
 
 export type ActiveToolSet = Set<string> | undefined;
 
-export type AgentPlanKind = 'reply' | 'ask' | 'tool_call';
+export type AgentPlanKind = 'reply' | 'ask' | 'tool_call' | 'execute';
 export type AgentPlanningDirective = 'auto' | 'force_tool';
 export type AgentReplyMode = 'plain' | 'structured';
 
@@ -149,6 +152,7 @@ export interface AgentNextStepPlan {
   replyMode?: AgentReplyMode;
   planningDirective: AgentPlanningDirective;
   rationale: 'override' | 'llm';
+  targetArtifact?: string;
 }
 
 export interface SkillDrivenToolDecision {
@@ -381,6 +385,69 @@ export interface AgentStreamChunk {
   error?: string;
 }
 
+// --- Phase 4: Scheduler integration helpers ---
+
+const STUB_TOOLS = new Set<string>(['design', 'drawing']);
+
+function buildLocalizedBlockedReason(reason: string, locale: AppLocale): string {
+  const messages: Record<string, { zh: string; en: string }> = {
+    'analysisProvider binding required': {
+      zh: '需要绑定分析提供者才能执行分析。请在项目设置中选择一个分析技能。',
+      en: 'Analysis provider binding is required to execute analysis. Please select an analysis skill in project settings.',
+    },
+    'codeCheckProvider binding required': {
+      zh: '需要绑定校核提供者才能执行规范校核。请在项目设置中选择一个校核技能。',
+      en: 'Code-check provider binding is required to execute code check. Please select a code-check skill in project settings.',
+    },
+    'designBasis incomplete': {
+      zh: '设计依据不完整，缺少关键前提（单位体系、设计规范或荷载工况）。请补充设计依据后重试。',
+      en: 'Design basis is incomplete: missing unit system, design code, or load cases. Please complete the design basis and try again.',
+    },
+    'provider incompatible': {
+      zh: '已绑定的提供者与当前模型族、分析类型或设计代码不兼容。请更换提供者或调整项目配置。',
+      en: 'Bound provider is incompatible with the current model family, analysis type, or design code. Please switch the provider or adjust project configuration.',
+    },
+    'upstream artifact missing': {
+      zh: '缺少必要的上游结果，且无法自动补齐。请先完成上游步骤。',
+      en: 'Required upstream artifact is missing and cannot be auto-resolved. Please complete upstream steps first.',
+    },
+    'autoDesignIteration not authorized': {
+      zh: '项目策略未授权自动设计迭代。请在项目设置中启用自动设计迭代，或手动确认设计提案。',
+      en: 'Auto-design iteration is not authorized by project policy. Please enable it in project settings, or manually accept design proposals.',
+    },
+    'unresolved checkpoint': {
+      zh: '存在未解决的交互检查点（待确认的设计提案或关键澄清问题）。请先处理待确认事项。',
+      en: 'Unresolved interaction checkpoint exists (pending design proposal or critical clarification). Please resolve pending items first.',
+    },
+    'previous run in progress': {
+      zh: '上一条权威执行记录仍在运行或已失败且未处理。请等待完成或处理失败后重试。',
+      en: 'Previous authoritative run is still in progress or has failed without resolution. Please wait for completion or resolve the failure.',
+    },
+    'tool not implemented': {
+      zh: '请求的工具尚未实现。此功能将在后续版本中提供。',
+      en: 'Requested tool is not yet implemented. This feature will be available in a future release.',
+    },
+  };
+  const localized = messages[reason];
+  return localized ? localized[locale] ?? localized.en : reason;
+}
+
+function mapSchedulerActionToToolId(action: string): string {
+  const mapping: Record<string, string> = {
+    draft: 'draft_model',
+    update: 'update_model',
+    convert: 'convert_model',
+    validate: 'validate_model',
+    design: 'synthesize_design',
+    analyze: 'run_analysis',
+    postprocess: 'postprocess_result',
+    code_check: 'run_code_check',
+    drawing: 'generate_drawing',
+    report: 'generate_report',
+  };
+  return mapping[action] ?? action;
+}
+
 /** Returns true when a model object has non-empty materials and sections arrays. */
 function hasCompleteMaterialsAndSections(m: Record<string, unknown> | undefined): boolean {
   return Boolean(m && Array.isArray(m.materials) && (m.materials as unknown[]).length > 0
@@ -396,6 +463,9 @@ export class AgentService {
   private readonly skillCatalog: AgentSkillCatalogService;
   private readonly policy: AgentPolicyService;
   private readonly runtimeBinder: AgentRuntimeBinder;
+  private readonly runStore: AgentRunStoreService;
+  private readonly projectService: ProjectService;
+  private readonly pipelineScheduler: PipelineScheduler;
   private static readonly draftStateTtlSeconds = 30 * 60;
 
   constructor() {
@@ -406,6 +476,9 @@ export class AgentService {
     this.skillCatalog = new AgentSkillCatalogService();
     this.policy = new AgentPolicyService();
     this.runtimeBinder = new AgentRuntimeBinder(this.skillRuntime, this.policy);
+    this.runStore = new AgentRunStoreService();
+    this.projectService = new ProjectService();
+    this.pipelineScheduler = new PipelineScheduler();
   }
 
   private buildHandlerDeps(): HandlerDeps {
@@ -508,7 +581,7 @@ export class AgentService {
   private parsePlannerResponse(
     raw: string,
     allowedKinds: AgentPlanKind[],
-  ): Pick<AgentNextStepPlan, 'kind' | 'replyMode'> | null {
+  ): Pick<AgentNextStepPlan, 'kind' | 'replyMode' | 'targetArtifact'> | null {
     return routerParsePlannerResponse(raw, allowedKinds);
   }
 
@@ -516,7 +589,7 @@ export class AgentService {
     locale: AppLocale;
     allowedKinds: AgentPlanKind[];
     availableToolIds: AgentToolName[];
-  }): Promise<Pick<AgentNextStepPlan, 'kind' | 'replyMode'> | null> {
+  }): Promise<Pick<AgentNextStepPlan, 'kind' | 'replyMode' | 'targetArtifact'> | null> {
     return routerRepairPlannerResponse(this.llm, raw, options);
   }
 
@@ -555,7 +628,7 @@ export class AgentService {
     hasModel: boolean;
     session?: InteractionSession;
     activeToolIds?: ActiveToolSet;
-  }): Promise<Exclude<AgentPlanKind, 'tool_call'>> {
+  }): Promise<AgentNextStepPlan> {
     return routerResolveInteractivePlanKind(
       options,
       this.assessInteractionNeeds.bind(this),
@@ -1241,6 +1314,274 @@ export class AgentService {
         blockedReasonCode: 'NO_EXECUTABLE_TOOL',
         needsModelInput: false,
       });
+    }
+
+    // --- Phase 4: Pipeline scheduler integration ---
+    if (nextPlan.targetArtifact && nextPlan.kind === 'execute' && allowToolCall) {
+      const projectId = params.context?.projectId;
+      let pipelineState = projectId
+        ? await this.projectService.getProjectPipelineState(projectId)
+        : { artifacts: {}, bindings: {}, policy: {}, updatedAt: Date.now() };
+
+      const schedulerPlan = this.pipelineScheduler.plan({
+        message: params.message,
+        locale,
+        selectedSkillIds: skillIds ?? [],
+        bindings: (pipelineState as any).bindings ?? {},
+        projectPolicy: (pipelineState as any).policy ?? {},
+        targetArtifact: nextPlan.targetArtifact as any,
+        sessionArtifacts: {},
+        projectArtifacts: ((pipelineState as any).artifacts ?? {}) as any,
+        consumerContracts: await this.resolveConsumerContracts(skillIds ?? []),
+      });
+
+      if (schedulerPlan.blockedReason) {
+        const blockedResponse = buildLocalizedBlockedReason(schedulerPlan.blockedReason, locale);
+        workingSession.checkpoint = {
+          checkpointId: `cp-${Date.now()}`,
+          kind: 'blocked' as const,
+          targetArtifact: nextPlan.targetArtifact as any,
+          summary: blockedResponse,
+          createdAt: Date.now(),
+        };
+        return this.finalizeBlockedRunResult({
+          params,
+          traceId,
+          startedAt,
+          startedAtMs,
+          locale,
+          orchestrationMode,
+          skillIds,
+          plan,
+          toolCalls,
+          sessionKey,
+          workingSession,
+          response: blockedResponse,
+          blockedReasonCode: 'PIPELINE_BLOCKED',
+          needsModelInput: false,
+        });
+      }
+
+      // Check for unresolved checkpoint
+      if (workingSession.checkpoint) {
+        const blockedResponse = buildLocalizedBlockedReason('unresolved checkpoint', locale);
+        workingSession.checkpoint = {
+          checkpointId: `cp-${Date.now()}`,
+          kind: 'blocked' as const,
+          targetArtifact: nextPlan.targetArtifact as any,
+          summary: blockedResponse,
+          createdAt: Date.now(),
+        };
+        return this.finalizeBlockedRunResult({
+          params,
+          traceId,
+          startedAt,
+          startedAtMs,
+          locale,
+          orchestrationMode,
+          skillIds,
+          plan,
+          toolCalls,
+          sessionKey,
+          workingSession,
+          response: blockedResponse,
+          blockedReasonCode: 'PIPELINE_BLOCKED',
+          needsModelInput: false,
+        });
+      }
+
+      // Check for in-flight run
+      if (projectId && nextPlan.targetArtifact !== 'chatReply') {
+        const inFlight = await this.runStore.getLatestRun({
+          targetArtifact: nextPlan.targetArtifact as any,
+          projectId,
+          statuses: ['queued', 'running'],
+        });
+        if (inFlight) {
+          const blockedResponse = buildLocalizedBlockedReason('previous run in progress', locale);
+          workingSession.checkpoint = {
+            checkpointId: `cp-${Date.now()}`,
+            kind: 'blocked' as const,
+            targetArtifact: nextPlan.targetArtifact as any,
+            summary: blockedResponse,
+            createdAt: Date.now(),
+          };
+          return this.finalizeBlockedRunResult({
+            params,
+            traceId,
+            startedAt,
+            startedAtMs,
+            locale,
+            orchestrationMode,
+            skillIds,
+            plan,
+            toolCalls,
+            sessionKey,
+            workingSession,
+            response: blockedResponse,
+            blockedReasonCode: 'PIPELINE_BLOCKED',
+            needsModelInput: false,
+          });
+        }
+      }
+
+      // Execute scheduler steps
+      for (const step of schedulerPlan.requiredSteps) {
+        if (step.mode === 'reuse') {
+          continue;
+        }
+
+        if (STUB_TOOLS.has(step.action)) {
+          return this.finalizeBlockedRunResult({
+            params,
+            traceId,
+            startedAt,
+            startedAtMs,
+            locale,
+            orchestrationMode,
+            skillIds,
+            plan,
+            toolCalls,
+            sessionKey,
+            workingSession,
+            response: buildLocalizedBlockedReason('tool not implemented', locale),
+            blockedReasonCode: 'TOOL_NOT_IMPLEMENTED',
+            needsModelInput: false,
+          });
+        }
+
+        if (step.mode === 'block') {
+          workingSession.checkpoint = {
+            checkpointId: `cp-${Date.now()}`,
+            kind: 'blocked' as const,
+            targetArtifact: step.provides as any,
+            summary: buildLocalizedBlockedReason(step.reason, locale),
+            createdAt: Date.now(),
+          };
+          return this.finalizeBlockedRunResult({
+            params,
+            traceId,
+            startedAt,
+            startedAtMs,
+            locale,
+            orchestrationMode,
+            skillIds,
+            plan,
+            toolCalls,
+            sessionKey,
+            workingSession,
+            response: buildLocalizedBlockedReason(step.reason, locale),
+            blockedReasonCode: 'STEP_BLOCKED',
+            needsModelInput: false,
+          });
+        }
+
+        if (step.mode === 'ask-user') {
+          workingSession.checkpoint = {
+            checkpointId: `cp-${Date.now()}`,
+            kind: 'clarification' as const,
+            targetArtifact: step.provides as any,
+            summary: step.reason,
+            createdAt: Date.now(),
+          };
+          return this.finalizeRunResult(traceId, sessionKey, params.message, {
+            traceId,
+            startedAt,
+            completedAt: new Date().toISOString(),
+            durationMs: Date.now() - startedAtMs,
+            success: true,
+            orchestrationMode,
+            needsModelInput: false,
+            plan,
+            toolCalls,
+            metrics: this.buildMetrics(toolCalls),
+            interaction: this.buildToolInteraction('blocked', locale),
+            response: step.reason,
+          }, skillIds, workingSession, skillIds);
+        }
+
+        if (step.mode === 'propose') {
+          workingSession.checkpoint = {
+            checkpointId: `cp-${Date.now()}`,
+            kind: 'design-proposal' as const,
+            targetArtifact: (step.provides ?? 'normalizedModel') as any,
+            patchId: step.stepId,
+            summary: step.reason,
+            createdAt: Date.now(),
+          };
+          return this.finalizeRunResult(traceId, sessionKey, params.message, {
+            traceId,
+            startedAt,
+            completedAt: new Date().toISOString(),
+            durationMs: Date.now() - startedAtMs,
+            success: true,
+            orchestrationMode,
+            needsModelInput: false,
+            plan,
+            toolCalls,
+            metrics: this.buildMetrics(toolCalls),
+            interaction: this.buildToolInteraction('blocked', locale),
+            response: step.reason,
+          }, skillIds, workingSession, skillIds);
+        }
+
+        if (step.mode === 'queue-run') {
+          const queuedRun = await this.runStore.createRun({
+            projectId,
+            conversationId: sessionKey,
+            targetArtifact: (step.provides ?? nextPlan.targetArtifact) as any,
+            toolId: mapSchedulerActionToToolId(step.action),
+            providerSkillId: step.skillId,
+            status: 'queued',
+            inputFingerprint: '',
+          });
+          if (projectId) {
+            await this.projectService.updateProjectPipelineState(projectId, pipelineState as any);
+          }
+          const queueMessage = locale === 'zh'
+            ? `已排队 ${queuedRun.toolId}，目标产物 ${queuedRun.targetArtifact}`
+            : `Queued ${queuedRun.toolId} for ${queuedRun.targetArtifact}`;
+          return this.finalizeRunResult(traceId, sessionKey, params.message, {
+            traceId,
+            startedAt,
+            completedAt: new Date().toISOString(),
+            durationMs: Date.now() - startedAtMs,
+            success: true,
+            orchestrationMode,
+            needsModelInput: false,
+            plan,
+            toolCalls,
+            metrics: this.buildMetrics(toolCalls),
+            interaction: this.buildToolInteraction('blocked', locale),
+            response: queueMessage,
+          }, skillIds, workingSession, skillIds);
+        }
+
+        // execute / transform
+        const stepResult = await this.skillRuntime.executeScheduledStep({
+          step,
+          pipelineState: pipelineState as any,
+          traceId,
+          locale,
+          postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
+          codeCheckClient: this.codeCheckClient,
+        });
+        if (stepResult.artifact && step.provides) {
+          pipelineState = {
+            ...pipelineState,
+            artifacts: {
+              ...(pipelineState as any).artifacts,
+              [step.provides]: stepResult.artifact,
+            },
+            updatedAt: Date.now(),
+          };
+        }
+      }
+
+      // Persist pipeline state for real projects
+      if (projectId) {
+        await this.projectService.updateProjectPipelineState(projectId, pipelineState as any);
+      }
     }
 
     if (nextPlan.kind !== 'tool_call') {
@@ -4212,6 +4553,15 @@ export class AgentService {
       ...input,
       conversationId: conversation.id,
     };
+  }
+
+  private async resolveConsumerContracts(
+    skillIds: string[],
+  ): Promise<Array<import('../agent-runtime/types.js').ConsumerRuntimeContract>> {
+    const manifests = await this.skillRuntime.listSkillManifests();
+    return manifests
+      .filter((m) => skillIds.includes(m.id) && m.runtimeContract?.role === 'consumer')
+      .map((m) => m.runtimeContract as import('../agent-runtime/types.js').ConsumerRuntimeContract);
   }
 
   private buildResolvedRouting(
