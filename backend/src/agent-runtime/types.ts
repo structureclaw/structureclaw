@@ -212,6 +212,7 @@ export interface SkillManifest extends AgentSkillMetadata {
   materialFamilies?: MaterialFamily[];
   priority: number;
   compatibility: SkillCompatibility;
+  runtimeContract?: SkillRuntimeContract;
 }
 
 export interface ToolManifest {
@@ -374,4 +375,286 @@ export interface VisualizationHints {
    * Schema: https://plotly.com/javascript/reference/
    */
   plotlyChartSpec?: unknown | null;
+}
+
+// ---------------------------------------------------------------------------
+// Scheduler runtime contract types
+// ---------------------------------------------------------------------------
+
+// --- Scheduler Action ---
+
+export type SchedulerAction =
+  | 'draft'
+  | 'update'
+  | 'convert'
+  | 'validate'
+  | 'design'
+  | 'analyze'
+  | 'postprocess'
+  | 'code_check'
+  | 'drawing'
+  | 'report';
+
+// --- Skill Role ---
+
+export type SkillRole =
+  | 'entry'
+  | 'enricher'
+  | 'designer'
+  | 'validator'
+  | 'provider'
+  | 'transformer'
+  | 'consumer'
+  | 'assistant';
+
+// --- Artifact kinds ---
+
+export type ArtifactKind =
+  | 'draftState'
+  | 'designBasis'
+  | 'normalizedModel'
+  | 'analysisModel'
+  | 'analysisRaw'
+  | 'postprocessedResult'
+  | 'codeCheckResult'
+  | 'drawingArtifact'
+  | 'reportArtifact';
+
+export type ProjectArtifactKind = Exclude<ArtifactKind, 'draftState'>;
+
+// --- Artifact references and envelope ---
+
+export interface ArtifactRef {
+  kind: ArtifactKind;
+  artifactId: string;
+  revision: number;
+}
+
+export type ArtifactScope = 'session' | 'project' | 'deliverable';
+export type ArtifactStatus = 'draft' | 'ready' | 'stale' | 'blocked' | 'failed';
+
+export interface ArtifactProvenance {
+  toolId?: string;
+  toolVersion?: string;
+  skillContractVersion?: string;
+  warnings?: string[];
+}
+
+export interface ArtifactEnvelope<T = unknown> {
+  artifactId: string;
+  kind: ArtifactKind;
+  scope: ArtifactScope;
+  status: ArtifactStatus;
+  revision: number;
+  producerSkillId?: string;
+  providerSkillId?: string;
+  runId?: string;
+  createdAt: number;
+  updatedAt: number;
+  basedOn: ArtifactRef[];
+  dependencyFingerprint: string;
+  schemaVersion: string;
+  provenance: ArtifactProvenance;
+  payload: T;
+}
+
+// --- Patch record (type only; reducer logic is follow-up) ---
+
+export type PatchKind = 'modelPatch' | 'designPatch';
+export type PatchStatus = 'proposed' | 'accepted' | 'rejected' | 'conflicted';
+export type PatchMergeStrategy = 'merge' | 'replace' | 'append';
+
+export interface ModelPatchRecord {
+  patchId: string;
+  patchKind: PatchKind;
+  producerSkillId: string;
+  baseModelRevision: number;
+  basedOn: ArtifactRef[];
+  status: PatchStatus;
+  acceptedBy?: 'user' | 'policy' | 'system';
+  priority: number;
+  mergeStrategy?: PatchMergeStrategy;
+  conflicts?: Array<{ path: string; withPatchId: string }>;
+  createdAt: number;
+  reason: string;
+  payload: Record<string, unknown>;
+}
+
+// --- Project execution policy ---
+
+export interface AutoDesignIterationPolicy {
+  enabled: boolean;
+  maxIterations: number;
+  acceptanceCriteria: string[];
+  allowedDomains: string[];
+}
+
+export interface ProjectExecutionPolicy {
+  analysisType?: AgentAnalysisType;
+  designCode?: string;
+  analysisProviderPreference?: string;
+  codeCheckProviderPreference?: string;
+  allowAsync?: boolean;
+  autoDesignIterationPolicy?: AutoDesignIterationPolicy;
+  deliverableProfiles?: {
+    drawing?: string;
+    report?: string;
+  };
+}
+
+export interface RequestExecutionOverrides {
+  forceRecompute?: boolean;
+  analysisType?: AgentAnalysisType;
+  designCode?: string;
+  allowAsync?: boolean;
+  autoDesignIterationEnabled?: boolean;
+  deliverableProfiles?: {
+    drawing?: string;
+    report?: string;
+  };
+}
+
+// --- Provider binding ---
+
+export interface ProviderBindingState {
+  analysisProviderSkillId?: string;
+  codeCheckProviderSkillId?: string;
+}
+
+// --- Runtime contract (all role variants) ---
+
+export interface ProviderRuntimeContract {
+  role: 'provider';
+  providerSlot: 'analysisProvider' | 'codeCheckProvider';
+  selectionPolicy?: 'optional' | 'explicit_required';
+  cardinality?: 'singleton';
+  consumes?: ArtifactKind[];
+  provides?: ArtifactKind[];
+  runtimeAdapter?: string;
+  supportedAnalysisTypes?: string[];
+  supportedModelFamilies?: string[];
+}
+
+export interface DesignerRuntimeContract {
+  role: 'designer';
+  selectionPolicy?: 'optional' | 'explicit_required';
+  consumes?: ArtifactKind[];
+  providesPatches?: string[];
+  requiresUserAcceptance?: boolean;
+  autoIteration?: {
+    supported: boolean;
+    defaultEnabled: boolean;
+  };
+}
+
+export interface ConsumerRuntimeContract {
+  role: 'consumer';
+  targetArtifact?: ArtifactKind;
+  deliverableProfileKey?: string;
+  requiredConsumes?: ArtifactKind[];
+  optionalConsumes?: ArtifactKind[];
+  consumes?: ArtifactKind[];
+  provides?: ArtifactKind[];
+}
+
+export interface TransformerRuntimeContract {
+  role: 'transformer';
+  consumes?: ArtifactKind[];
+  provides?: ArtifactKind[];
+}
+
+export interface BaseRuntimeContract {
+  role: 'entry' | 'enricher' | 'validator' | 'assistant';
+  selectionPolicy?: 'optional' | 'explicit_required';
+  consumes?: ArtifactKind[];
+  provides?: ArtifactKind[];
+}
+
+export type SkillRuntimeContract =
+  | ProviderRuntimeContract
+  | DesignerRuntimeContract
+  | ConsumerRuntimeContract
+  | TransformerRuntimeContract
+  | BaseRuntimeContract;
+
+// --- Interaction checkpoint ---
+
+export type CheckpointKind = 'clarification' | 'design-proposal' | 'approval' | 'blocked';
+
+export interface InteractionCheckpoint {
+  checkpointId: string;
+  kind: CheckpointKind;
+  targetArtifact?: ArtifactKind;
+  patchId?: string;
+  summary: string;
+  createdAt: number;
+}
+
+// --- Pipeline state ---
+
+export interface ProjectArtifactState {
+  designBasis?: ArtifactEnvelope;
+  normalizedModel?: ArtifactEnvelope;
+  analysisModel?: ArtifactEnvelope;
+  analysisRaw?: ArtifactEnvelope;
+  postprocessedResult?: ArtifactEnvelope;
+  codeCheckResult?: ArtifactEnvelope;
+  drawingArtifact?: ArtifactEnvelope;
+  reportArtifact?: ArtifactEnvelope;
+}
+
+export interface ProjectPipelineState {
+  policy: ProjectExecutionPolicy;
+  bindings: ProviderBindingState;
+  artifacts: ProjectArtifactState;
+  updatedAt: number;
+}
+
+// --- Run record ---
+
+export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'canceled';
+
+export interface RunRecord {
+  runId: string;
+  targetArtifact: ArtifactKind;
+  toolId: string;
+  providerSkillId?: string;
+  status: RunStatus;
+  inputFingerprint: string;
+  startedAt?: number;
+  finishedAt?: number;
+  diagnostics?: string[];
+}
+
+// --- Scheduler types ---
+
+export interface SchedulerStep {
+  stepId: string;
+  role: SkillRole;
+  action: SchedulerAction;
+  skillId?: string;
+  consumes: ArtifactRef[];
+  provides?: ArtifactKind;
+  mode: 'reuse' | 'execute' | 'transform' | 'queue-run' | 'ask-user' | 'propose' | 'block';
+  reason: string;
+}
+
+export interface SchedulerInput {
+  message: string;
+  locale: AppLocale;
+  selectedSkillIds: string[];
+  bindings: ProviderBindingState;
+  projectPolicy: ProjectExecutionPolicy;
+  targetArtifact: ArtifactKind | 'chatReply';
+  sessionArtifacts: {
+    draftState?: ArtifactEnvelope;
+  };
+  projectArtifacts: Partial<Record<ProjectArtifactKind, ArtifactEnvelope>>;
+  requestOverrides?: RequestExecutionOverrides;
+}
+
+export interface SchedulerPlan {
+  targetArtifact: ArtifactKind | 'chatReply';
+  requiredSteps: SchedulerStep[];
+  blockedReason?: string;
 }

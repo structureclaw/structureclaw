@@ -111,5 +111,6 @@ export function toRuntimeSkillManifest(manifest: LoadedSkillManifest): SkillMani
     materialFamilies: [...manifest.materialFamilies] as SkillManifest['materialFamilies'],
     priority: manifest.priority,
     compatibility: { ...manifest.compatibility },
+    runtimeContract: manifest.runtimeContract,
   };
 }
