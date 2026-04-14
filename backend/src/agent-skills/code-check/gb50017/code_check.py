@@ -10,7 +10,7 @@ CHAPTERS = [
     {
         'id': 'chapter-7-strength',
         'title': '第7章 强度验算',
-        'checks': ['受弯强度', '受剪强度', '折算应力'],
+        'checks': ['正应力', '剪应力', '折算应力'],
     },
     {
         'id': 'chapter-8-stability',
