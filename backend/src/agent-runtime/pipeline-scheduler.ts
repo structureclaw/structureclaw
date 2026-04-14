@@ -64,15 +64,16 @@ export class PipelineScheduler {
     }
 
     if (CONSUMER_ARTIFACT_KINDS.has(target)) {
-      return this.planConsumerPath(target, input);
+      return this.planConsumerPath(target, input, new Set());
     }
 
-    return this.planDependencyPath(target, input);
+    return this.planDependencyPath(target, input, new Set());
   }
 
   private planConsumerPath(
     target: ArtifactKind,
     input: SchedulerPlanInput,
+    visited: Set<ProjectArtifactKind>,
   ): SchedulerPlan {
     const contract = input.consumerContracts?.find(
       (c) => c.targetArtifact === target,
@@ -89,7 +90,14 @@ export class PipelineScheduler {
       if (!this.hasReadyArtifact(reqKind, input.projectArtifacts)) {
         const reqGraph = CONTROLLED_ARTIFACT_GRAPH[reqKind as ProjectArtifactKind];
         if (reqGraph) {
-          const subPlan = this.planDependencyPath(reqKind as ProjectArtifactKind, input);
+          if (visited.has(reqKind as ProjectArtifactKind)) {
+            return {
+              targetArtifact: target,
+              requiredSteps: [],
+              blockedReason: 'dependency cycle detected',
+            };
+          }
+          const subPlan = this.planDependencyPath(reqKind as ProjectArtifactKind, input, new Set(visited));
           if (subPlan.blockedReason) {
             return subPlan;
           }
@@ -140,7 +148,17 @@ export class PipelineScheduler {
   private planDependencyPath(
     target: ProjectArtifactKind,
     input: SchedulerPlanInput,
+    visited: Set<ProjectArtifactKind>,
   ): SchedulerPlan {
+    if (visited.has(target)) {
+      return {
+        targetArtifact: target,
+        requiredSteps: [],
+        blockedReason: 'dependency cycle detected',
+      };
+    }
+    visited.add(target);
+
     const graphNode = CONTROLLED_ARTIFACT_GRAPH[target];
     if (!graphNode) {
       return { targetArtifact: target, requiredSteps: [] };
@@ -193,7 +211,7 @@ export class PipelineScheduler {
       if (!this.hasReadyArtifact(dep, input.projectArtifacts)) {
         const depGraph = CONTROLLED_ARTIFACT_GRAPH[dep as ProjectArtifactKind];
         if (depGraph) {
-          const subPlan = this.planDependencyPath(dep as ProjectArtifactKind, input);
+          const subPlan = this.planDependencyPath(dep as ProjectArtifactKind, input, new Set(visited));
           if (subPlan.blockedReason) {
             return subPlan;
           }
