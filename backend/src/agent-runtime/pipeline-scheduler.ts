@@ -189,7 +189,12 @@ export class PipelineScheduler {
         }
       }
       const fp = computeDependencyFingerprint(depRefs, input.bindings);
-      if (canReuseArtifact(existing, fp, input.requestOverrides?.forceRecompute ?? false)) {
+      const expectedProducerSkillId = graphNode.providerSlot === 'analysisProvider'
+        ? input.bindings.analysisProviderSkillId
+        : graphNode.providerSlot === 'codeCheckProvider'
+          ? input.bindings.codeCheckProviderSkillId
+          : undefined;
+      if (canReuseArtifact(existing, fp, input.requestOverrides?.forceRecompute ?? false, expectedProducerSkillId)) {
         return {
           targetArtifact: target,
           requiredSteps: [{
