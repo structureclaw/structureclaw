@@ -232,6 +232,43 @@ export class PipelineScheduler {
     return { targetArtifact: target, requiredSteps: steps };
   }
 
+  /**
+   * Plan a design feedback step (spec section 7.3, 13.3).
+   * Triggered when design iteration is requested after postprocess/code-check.
+   */
+  planDesignFeedback(input: SchedulerPlanInput): SchedulerPlan {
+    const autoPolicy = input.projectPolicy?.autoDesignIterationPolicy;
+
+    if (autoPolicy?.enabled && autoPolicy.maxIterations <= 0) {
+      return {
+        targetArtifact: 'normalizedModel',
+        requiredSteps: [],
+        blockedReason: 'autoDesignIteration not authorized',
+      };
+    }
+
+    const mode = autoPolicy?.enabled ? 'execute' : 'propose';
+
+    return {
+      targetArtifact: 'normalizedModel',
+      requiredSteps: [{
+        stepId: 'design-feedback-propose',
+        role: 'designer',
+        action: 'design',
+        skillId: input.selectedSkillIds.find((id) => id.startsWith('design-')),
+        consumes: [
+          ...(input.projectArtifacts.designBasis ? [artifactToRef(input.projectArtifacts.designBasis)] : []),
+          ...(input.projectArtifacts.normalizedModel ? [artifactToRef(input.projectArtifacts.normalizedModel)] : []),
+          ...(input.projectArtifacts.postprocessedResult ? [artifactToRef(input.projectArtifacts.postprocessedResult)] : []),
+          ...(input.projectArtifacts.codeCheckResult ? [artifactToRef(input.projectArtifacts.codeCheckResult)] : []),
+        ],
+        provides: 'normalizedModel',
+        mode,
+        reason: 'Design feedback: propose model revision based on analysis/code-check results',
+      }],
+    };
+  }
+
   private hasReadyArtifact(
     kind: ArtifactKind,
     artifacts: Partial<Record<ProjectArtifactKind, ArtifactEnvelope>>,

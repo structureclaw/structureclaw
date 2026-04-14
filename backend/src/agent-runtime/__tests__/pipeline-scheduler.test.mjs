@@ -240,4 +240,30 @@ describe('pipeline scheduler', () => {
     expect(plan.requiredSteps).toEqual([]);
     expect(plan.blockedReason).toBeUndefined();
   });
+
+  // --- Design feedback path ---
+
+  test('plans design feedback step when target is design iteration', () => {
+    const scheduler = new PipelineScheduler();
+    const plan = scheduler.planDesignFeedback({
+      message: '优化设计',
+      locale: 'zh',
+      selectedSkillIds: ['design-steel'],
+      bindings: {},
+      projectPolicy: {},
+      targetArtifact: 'normalizedModel',
+      sessionArtifacts: {},
+      projectArtifacts: {
+        designBasis: { status: 'ready', dependencyFingerprint: 'fp-1' },
+        normalizedModel: { status: 'ready', dependencyFingerprint: 'fp-2' },
+        postprocessedResult: { status: 'ready', dependencyFingerprint: 'fp-3' },
+        codeCheckResult: { status: 'ready', dependencyFingerprint: 'fp-4' },
+      },
+    });
+
+    const designStep = plan.requiredSteps.find((s) => s.action === 'design');
+    expect(designStep).toBeDefined();
+    expect(designStep.mode).toBe('propose');
+    expect(designStep.provides).toBe('normalizedModel');
+  });
 });
