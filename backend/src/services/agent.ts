@@ -1809,7 +1809,7 @@ export class AgentService {
       }
     }
 
-    if (nextPlan.kind !== 'tool_call') {
+    if (nextPlan.kind !== 'tool_call' && !(nextPlan.kind === 'execute' && allowToolCall)) {
       return this.handleConversationMode({
         nextPlan,
         params,

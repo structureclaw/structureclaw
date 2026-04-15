@@ -166,7 +166,7 @@ export async function repairPlannerResponse(
     'Preserve the original intent. Only fix formatting or minor schema issues.',
     `Allowed kinds: ${options.allowedKinds.join(', ')}`,
     'Output schema:',
-    `{"kind":"${options.allowedKinds.join('|')}","replyMode":"plain|structured|null","reason":"short reason"}`,
+    `{"kind":"${options.allowedKinds.join('|')}","replyMode":"plain|structured|null","targetArtifact":"analysisRaw|codeCheckResult|reportArtifact|normalizedModel|null","reason":"short reason"}`,
     `Locale: ${options.locale}`,
     `Planner output to normalize:\n${raw}`,
   ].join('\n');
@@ -273,8 +273,8 @@ export async function planNextStepWithLlm(
     const snapshot = await buildPlannerContextSnapshot(options, assessInteractionNeeds);
     const allowedKinds: AgentPlanKind[] = Array.isArray(options.allowedKinds) && options.allowedKinds.length > 0
       ? options.allowedKinds
-      : ['reply', 'ask', 'tool_call'];
-    const allowToolCall = allowedKinds.includes('tool_call');
+      : ['reply', 'ask', 'execute', 'tool_call'];
+    const allowExecute = allowedKinds.includes('execute');
     const availableToolIds = snapshot.availableToolIds.filter((toolId): toolId is AgentToolName => (
       ['draft_model', 'update_model', 'convert_model', 'validate_model', 'run_analysis', 'run_code_check', 'generate_report'] as string[]
     ).includes(toolId));
@@ -283,36 +283,36 @@ export async function planNextStepWithLlm(
     'Decide the single best next step for the latest user message.',
     'Available skills and tools constrain what can be invoked, but they do not force invocation.',
     'If the user is greeting, chatting casually, or asking a non-execution question, choose reply.',
-    allowToolCall
-      ? 'Avoid tool_call for vague or exploratory messages, BUT when the user provides concrete structural parameters (dimensions, loads, materials) AND explicitly requests analysis, modeling, code checking, or calculation, ALWAYS choose tool_call.'
-      : 'Tool invocation is not allowed in this planning mode. Choose only reply or ask.',
+    allowExecute
+      ? 'Avoid execute for vague or exploratory messages, BUT when the user provides concrete structural parameters (dimensions, loads, materials) AND explicitly requests analysis, modeling, code checking, or calculation, ALWAYS choose execute with the appropriate targetArtifact.'
+      : 'Execution is not allowed in this planning mode. Choose only reply or ask.',
     'When there is an active engineering session with missing parameters, and the latest user message adds structure type, geometry, topology, material, section, load, support, or report details, do not choose a plain reply.',
     'In that situation, choose ask so the structured engineering session continues, unless the information is now complete enough that a structured reply is clearly better.',
-    'Treat short parameter fragments such as "钢框架结构体系", "每层3m", "x方 向4跨", "Q355", or similar engineering increments as continuation turns, not casual chat.',
+    'Treat short parameter fragments such as "钢框架结构体系", "每层3m", "x方向4跨", "Q355", or similar engineering increments as continuation turns, not casual chat.',
     'If the previous assistant message was asking for engineering parameters and the latest user message answers that request, continue the structured engineering session.',
     'If the user changes previously confirmed geometry, loads, supports, material, or section values, treat that as a model update request rather than a plain question.',
-    'If there is an existing engineering session or model and the user says things like "改成", "改为", "change to", "update", or modifies previously analyzed values, prefer tool_call when tool invocation is allowed.',
-    'After a model update request, prefer tool_call when the user expects the updated model to be used immediately for analysis or refreshed engineering results.',
-    'If the user explicitly asks to build, model, generate, or revise a structural model now, that can also justify tool_call even if the request is not yet an analysis execution request.',
+    'If there is an existing engineering session or model and the user says things like "改成", "改为", "change to", "update", or modifies previously analyzed values, prefer execute when execution is allowed.',
+    'After a model update request, prefer execute when the user expects the updated model to be used immediately for analysis or refreshed engineering results.',
+    'If the user explicitly asks to build, model, generate, or revise a structural model now, that can also justify execute even if the request is not yet an analysis execution request.',
     'An existing context model is only reusable context. It must not override the latest user request by itself.',
-    'If the latest message clearly asks for a new or different structural model, choose tool_call even when an older context model already exists.',
-    'For requests like "建模一个简支梁，跨度10m，均布荷载1kN/m，可以用10个单元建模", prefer tool_call when the information is sufficient to attempt a first structural model draft.',
-    allowToolCall
-      ? 'Messages containing structural parameters AND analysis intent MUST produce kind=tool_call. Examples: "简支梁6米，均布荷载20kN/m，请进行静力分析", "2-story single-bay steel frame, story height 3.6m, bay 6m, floor load 10kN/m2, analyze and check", "门式刚架，跨度18m，高度7m，屋面荷载6kN/m，分析", "3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m，请分析".'
+    'If the latest message clearly asks for a new or different structural model, choose execute even when an older context model already exists.',
+    'For requests like "建模一个简支梁，跨度10m，均布荷载1kN/m，可以用10个单元建模", prefer execute when the information is sufficient to attempt a first structural model draft.',
+    allowExecute
+      ? 'Messages containing structural parameters AND analysis intent MUST produce kind=execute with targetArtifact="analysisRaw". Examples: "简支梁6米，均布荷载20kN/m，请进行静力分析", "2-story single-bay steel frame, story height 3.6m, bay 6m, floor load 10kN/m2, analyze and check", "门式刚架，跨度18m，高度7m，屋面荷载6kN/m，分析", "3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m，请分析".'
       : '',
     'Use replyMode=plain only for casual chat, greetings, meta questions, or clearly non-engineering turns.',
-    'Use replyMode=structured for engineering follow-ups that should stay grounded in the current structural context without immediately invoking tools.',
+    'Use replyMode=structured for engineering follow-ups that should stay grounded in the current structural context without immediately invoking execution.',
     'Choose ask when the user is pursuing an engineering task but key information is still missing.',
-    allowToolCall
-      ? 'Choose tool_call when the user is clearly asking to create/update a model now, or to execute/continue engineering execution now.'
+    allowExecute
+      ? 'Choose execute when the user is clearly asking to create/update a model now, or to execute/continue engineering execution now.'
       : 'Choose ask when more engineering details are needed before the next turn can proceed.',
     'If the user message looks like a parameter fragment or engineering follow-up, plain reply is almost always wrong.',
     'Use replyMode=structured only when a structural model already exists or the engineering draft is already ready and the best next step is to explain, summarize, or confirm readiness rather than ask or execute.',
-    allowToolCall
-      ? `When kind=tool_call, do not choose concrete tools. The runtime will select tools from enabled capabilities: ${availableToolIds.join(', ') || 'none'}.`
-      : 'When tool invocation is not allowed, choose only reply or ask.',
+    allowExecute
+      ? 'When kind=execute, set targetArtifact to indicate which artifact the pipeline should produce:\n  - "analysisRaw" when the user wants structural analysis\n  - "codeCheckResult" when the user wants code compliance checking\n  - "reportArtifact" when the user wants a report\n  - "normalizedModel" when the user wants to create or update a structural model\n  - null when kind is not execute'
+      : 'When execution is not allowed, choose only reply or ask.',
     'Return strict JSON only with this schema:',
-    `{"kind":"${allowedKinds.join('|')}","replyMode":"plain|structured|null","reason":"short reason"}`,
+    `{"kind":"${allowedKinds.join('|')}","replyMode":"plain|structured|null","targetArtifact":"analysisRaw|codeCheckResult|reportArtifact|normalizedModel|null","reason":"short reason"}`,
     `Locale: ${options.locale}`,
     `User message: ${message}`,
     `Planner context: ${JSON.stringify(snapshot)}`,
@@ -398,6 +398,29 @@ export async function resolveInteractivePlanKind(
 }
 
 // ---------------------------------------------------------------------------
+// inferTargetArtifact
+// ---------------------------------------------------------------------------
+
+function inferTargetArtifact(options: {
+  session?: InteractionSession;
+  hasModel: boolean;
+}): string | undefined {
+  if (options.session?.resolved?.includeReport) {
+    return 'reportArtifact';
+  }
+  if (options.hasModel && options.session?.resolved?.analysisType) {
+    return 'analysisRaw';
+  }
+  if (options.hasModel && options.session?.resolved?.designCode && !options.session?.resolved?.includeReport) {
+    return 'codeCheckResult';
+  }
+  if (options.hasModel) {
+    return 'analysisRaw';
+  }
+  return 'normalizedModel';
+}
+
+// ---------------------------------------------------------------------------
 // planNextStep
 // ---------------------------------------------------------------------------
 
@@ -452,6 +475,7 @@ export async function planNextStep(
   }
 
   if (options.planningDirective === 'force_tool') {
+    // TODO(phase-4.5): switch to kind='execute' with targetArtifact once scheduler handles draft/update
     return { kind: 'tool_call', planningDirective: options.planningDirective, rationale: 'override' };
   }
 
