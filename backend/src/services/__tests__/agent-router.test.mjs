@@ -1,5 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
-import { resolveInteractivePlanKind } from '../../../dist/services/agent-router.js';
+import { resolveInteractivePlanKind, parsePlannerResponse, extractJsonObject, planNextStep } from '../../../dist/services/agent-router.js';
 
 describe('agent router target artifact planning', () => {
   const mockAssessInteractionNeeds = async () => ({
@@ -68,5 +68,145 @@ describe('agent router target artifact planning', () => {
     );
 
     expect(plan.targetArtifact).toBe('codeCheckResult');
+  });
+
+  test('returns normalizedModel target when no model exists', async () => {
+    const plan = await resolveInteractivePlanKind(
+      {
+        locale: 'zh',
+        skillIds: ['frame'],
+        hasModel: false,
+        activeToolIds: new Set(['draft_model']),
+        session: {
+          draft: { inferredType: 'frame' },
+          updatedAt: Date.now(),
+        },
+      },
+      mockAssessInteractionNeeds,
+      mockHasEmptySkillSelection,
+      mockHasActiveTool,
+    );
+
+    expect(plan.kind).toBe('ask');
+  });
+});
+
+describe('parsePlannerResponse', () => {
+  test('extracts execute kind with targetArtifact', () => {
+    const result = parsePlannerResponse(
+      '{"kind":"execute","replyMode":null,"targetArtifact":"analysisRaw","reason":"user wants analysis"}',
+      ['reply', 'ask', 'execute'],
+    );
+    expect(result).not.toBeNull();
+    expect(result.kind).toBe('execute');
+    expect(result.targetArtifact).toBe('analysisRaw');
+  });
+
+  test('extracts execute kind with codeCheckResult targetArtifact', () => {
+    const result = parsePlannerResponse(
+      '{"kind":"execute","replyMode":null,"targetArtifact":"codeCheckResult","reason":"code check requested"}',
+      ['reply', 'ask', 'execute'],
+    );
+    expect(result).not.toBeNull();
+    expect(result.kind).toBe('execute');
+    expect(result.targetArtifact).toBe('codeCheckResult');
+  });
+
+  test('extracts execute kind with normalizedModel targetArtifact', () => {
+    const result = parsePlannerResponse(
+      '{"kind":"execute","targetArtifact":"normalizedModel","reason":"model update"}',
+      ['reply', 'ask', 'execute'],
+    );
+    expect(result).not.toBeNull();
+    expect(result.kind).toBe('execute');
+    expect(result.targetArtifact).toBe('normalizedModel');
+  });
+
+  test('extracts reply kind without targetArtifact', () => {
+    const result = parsePlannerResponse(
+      '{"kind":"reply","replyMode":"plain","targetArtifact":null,"reason":"casual chat"}',
+      ['reply', 'ask', 'execute'],
+    );
+    expect(result).not.toBeNull();
+    expect(result.kind).toBe('reply');
+    expect(result.replyMode).toBe('plain');
+    expect(result.targetArtifact).toBeUndefined();
+  });
+
+  test('extracts ask kind from nested decision wrapper', () => {
+    const result = parsePlannerResponse(
+      '{"decision":{"kind":"ask","replyMode":null,"targetArtifact":null,"reason":"missing info"}}',
+      ['reply', 'ask', 'execute'],
+    );
+    expect(result).not.toBeNull();
+    expect(result.kind).toBe('ask');
+  });
+
+  test('rejects tool_call kind when not in allowedKinds', () => {
+    const result = parsePlannerResponse(
+      '{"kind":"tool_call","replyMode":null,"targetArtifact":"analysisRaw","reason":"legacy"}',
+      ['reply', 'ask', 'execute'],
+    );
+    expect(result).toBeNull();
+  });
+
+  test('extracts from fenced json block', () => {
+    const result = parsePlannerResponse(
+      '```json\n{"kind":"execute","targetArtifact":"reportArtifact","reason":"report"}\n```',
+      ['reply', 'ask', 'execute'],
+    );
+    expect(result).not.toBeNull();
+    expect(result.kind).toBe('execute');
+    expect(result.targetArtifact).toBe('reportArtifact');
+  });
+});
+
+describe('planNextStep force_tool path', () => {
+  const mockAssessInteractionNeeds = async () => ({
+    criticalMissing: [],
+    nonCriticalMissing: [],
+    defaultProposals: [],
+  });
+  const mockHasEmptySkillSelection = () => false;
+
+  test('returns tool_call for force_tool directive', async () => {
+    const plan = await planNextStep(
+      null,
+      '分析这个结构',
+      {
+        planningDirective: 'force_tool',
+        allowToolCall: true,
+        locale: 'zh',
+        skillIds: ['frame'],
+        hasModel: true,
+      },
+      mockAssessInteractionNeeds,
+      mockHasEmptySkillSelection,
+    );
+    expect(plan.kind).toBe('tool_call');
+  });
+
+  test('returns execute with targetArtifact via LLM when allowed', async () => {
+    const mockLlm = {
+      invoke: async () => ({
+        content: '{"kind":"execute","replyMode":null,"targetArtifact":"analysisRaw","reason":"analysis requested"}',
+      }),
+    };
+    const plan = await planNextStep(
+      mockLlm,
+      '简支梁6米，均布荷载20kN/m，请进行静力分析',
+      {
+        planningDirective: 'auto',
+        allowToolCall: true,
+        locale: 'zh',
+        skillIds: ['beam'],
+        hasModel: true,
+        activeToolIds: new Set(['run_analysis']),
+      },
+      mockAssessInteractionNeeds,
+      mockHasEmptySkillSelection,
+    );
+    expect(plan.kind).toBe('execute');
+    expect(plan.targetArtifact).toBe('analysisRaw');
   });
 });
