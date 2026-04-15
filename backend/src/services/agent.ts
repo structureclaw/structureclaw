@@ -1687,6 +1687,10 @@ export class AgentService {
             locale,
             postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
             codeCheckClient: this.codeCheckClient,
+            message: params.message,
+            llm: this.llm,
+            draftState: workingSession.draft,
+            skillIds,
           });
         } catch (stepError) {
           const stepErrorMessage = stepError instanceof Error ? stepError.message : String(stepError);
@@ -1787,6 +1791,10 @@ export class AgentService {
                 locale,
                 postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
                 codeCheckClient: this.codeCheckClient,
+                message: params.message,
+                llm: this.llm,
+                draftState: workingSession.draft,
+                skillIds,
               });
             } catch (fbError) {
               const fbErrorMessage = fbError instanceof Error ? fbError.message : String(fbError);

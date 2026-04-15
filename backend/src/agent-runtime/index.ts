@@ -707,6 +707,10 @@ export class AgentSkillRuntime {
       retryOptions: { retries: number; traceId: string; tool: 'run_analysis' },
     ) => Promise<{ data: unknown }>;
     codeCheckClient: unknown;
+    message?: string;
+    llm?: ChatOpenAI | null;
+    draftState?: DraftState;
+    skillIds?: string[];
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
     switch (args.step.action) {
       case 'validate':
@@ -876,9 +880,66 @@ export class AgentSkillRuntime {
     locale: AppLocale;
     postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
     codeCheckClient: unknown;
+    message?: string;
+    llm?: ChatOpenAI | null;
+    draftState?: DraftState;
+    skillIds?: string[];
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
-    // Model updates currently flow through the draft pipeline — return current state
     if (!args.step.provides) return {};
+
+    // designBasis update: build from session resolved config
+    if (args.step.provides === 'designBasis') {
+      const payload: Record<string, unknown> = {
+        source: 'session-inferred',
+        createdAt: new Date().toISOString(),
+      };
+      const artifact = this.buildArtifactEnvelope(args.step.provides, payload, args.step, args.pipelineState);
+      return { artifact };
+    }
+
+    // normalizedModel update: draft or update the structural model
+    if (args.step.provides === 'normalizedModel') {
+      if (!args.message || !args.draftState) {
+        // No draft context — return existing artifact if present
+        const existing = args.pipelineState.artifacts.normalizedModel;
+        if (existing) return { artifact: existing };
+        // Cannot produce model without draft context
+        throw new Error('normalizedModel update requires message and draftState');
+      }
+
+      const extraction = await this.extractDraftParameters(
+        args.llm ?? null,
+        args.message,
+        args.draftState,
+        args.locale,
+        args.skillIds,
+      );
+
+      if (extraction.missing.critical.length > 0) {
+        throw new Error(`DRAFT_INCOMPLETE:${extraction.missing.critical.join(',')}`);
+      }
+
+      const draftResult = await this.buildModelFromDraft(
+        args.llm ?? null,
+        args.message,
+        extraction,
+        args.locale,
+      );
+
+      if (!draftResult.model) {
+        throw new Error('DRAFT_INCOMPLETE:model build failed');
+      }
+
+      const artifact = this.buildArtifactEnvelope(
+        args.step.provides,
+        draftResult.model,
+        args.step,
+        args.pipelineState,
+      );
+      return { artifact };
+    }
+
+    // Generic update: return existing
     const existing = args.pipelineState.artifacts[args.step.provides as keyof typeof args.pipelineState.artifacts];
     return { artifact: existing };
   }
@@ -894,6 +955,8 @@ export class AgentSkillRuntime {
     // Convert produces analysisModel from normalizedModel
     const normalizedModel = args.pipelineState.artifacts.normalizedModel?.payload as Record<string, unknown> ?? {};
     if (!args.step.provides) return {};
+    // For internally-produced models (structuremodel-v1), the normalizedModel IS the analysis model.
+    // External format conversion is handled by the convert_model tool before entering the pipeline.
     const artifact = this.buildArtifactEnvelope(args.step.provides, normalizedModel, args.step, args.pipelineState);
     return { artifact };
   }
@@ -916,11 +979,13 @@ export class AgentSkillRuntime {
     locale: AppLocale;
     postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
     codeCheckClient: unknown;
+    message?: string;
+    llm?: ChatOpenAI | null;
+    draftState?: DraftState;
+    skillIds?: string[];
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
-    // Draft steps are handled by the existing draft pipeline, not scheduled execution
-    if (!args.step.provides) return {};
-    const existing = args.pipelineState.artifacts[args.step.provides as keyof typeof args.pipelineState.artifacts];
-    return { artifact: existing };
+    // Draft delegates to update logic — both use extractDraftParameters + buildModelFromDraft
+    return this.executeUpdateScheduledStep(args);
   }
 
   private async executeEnrichScheduledStep(args: {
