@@ -640,7 +640,7 @@ async function validateAgentOrchestration(context) {
     const { skillManifestFileSchema } = await import(
       pathToFileURL(path.join(context.rootDir, 'backend', 'dist', 'agent-runtime', 'manifest-schema.js')).href
     );
-    const { parse: parseYaml } = await import('yaml');
+    const { parse: parseYaml } = backendRequire(context.rootDir)('yaml');
     const { existsSync, readdirSync, readFileSync } = require('node:fs');
 
     function collectDirectories(root) {

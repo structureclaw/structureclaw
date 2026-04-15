@@ -942,6 +942,9 @@ export class AgentSkillRuntime {
     const baseRevision = (baseModel.revision as number) ?? 1;
 
     // Build enriched model via the skill handler
+    if (typeof plugin.handler.buildModel !== 'function') {
+      return { artifact: args.pipelineState.artifacts.normalizedModel };
+    }
     const enrichedModel = plugin.handler.buildModel({
       inferredType: (baseModel.metadata as Record<string, unknown>)?.inferredType as string ?? 'unknown',
       updatedAt: Date.now(),
@@ -1014,7 +1017,7 @@ export class AgentSkillRuntime {
     }
     const dependencyFingerprint = computeDependencyFingerprint(depRefs, pipelineState?.bindings);
     return {
-      artifactId: `${kind}:${Date.now()}`,
+      artifactId: `${kind}:${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       kind,
       scope: 'project',
       status: 'ready',
