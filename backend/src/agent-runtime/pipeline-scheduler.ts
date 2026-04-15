@@ -262,10 +262,14 @@ export class PipelineScheduler {
       ? 'queue-run'
       : 'execute';
 
+    const bindingKey = graphNode.providerSlot ? `${graphNode.providerSlot}SkillId` as keyof import('./types.js').ProviderBindingState : undefined;
+    const boundSkillId = bindingKey ? input.bindings?.[bindingKey] : undefined;
+
     steps.push({
       stepId: `${target}-execute`,
       role: graphNode.defaultRole,
       action: graphNode.defaultAction,
+      skillId: boundSkillId,
       consumes: this.collectRefs(graphNode.dependsOn, input.projectArtifacts),
       provides: target,
       mode: targetMode,

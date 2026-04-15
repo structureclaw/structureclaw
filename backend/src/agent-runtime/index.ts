@@ -747,7 +747,10 @@ export class AgentSkillRuntime {
     const model = args.pipelineState.artifacts.normalizedModel?.payload as Record<string, unknown> ?? {};
     const result = await this.executeValidationSkill({
       model,
-      structureProtocolClient: { post: args.postToEngineWithRetry as unknown as (path: string, payload: Record<string, unknown>) => Promise<{ data: unknown }> },
+      structureProtocolClient: {
+        post: (path: string, payload: Record<string, unknown>) =>
+          args.postToEngineWithRetry(path, payload, { retries: 3, traceId: args.traceId, tool: 'run_analysis' }),
+      },
     });
     if (!args.step.provides) return {};
     const artifact = this.buildArtifactEnvelope(args.step.provides, result.result, args.step, args.pipelineState);

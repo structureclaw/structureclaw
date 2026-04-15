@@ -1450,15 +1450,9 @@ export class AgentService {
         });
       }
 
-      // Check for unresolved checkpoint
+      // Check for unresolved checkpoint — preserve existing checkpoint details
       if (workingSession.checkpoint) {
         const blockedResponse = buildLocalizedBlockedReason('unresolved checkpoint', locale);
-        const blockedTarget = nextPlan.targetArtifact !== 'chatReply' ? nextPlan.targetArtifact as ArtifactKind : undefined;
-        workingSession.checkpoint = buildInteractionCheckpoint({
-          kind: 'blocked',
-          targetArtifact: blockedTarget,
-          summary: blockedResponse,
-        });
         return this.finalizeBlockedRunResult({
           params,
           traceId,

@@ -66,7 +66,7 @@ export function buildInteractionCheckpoint(input: {
   patchId?: string;
 }): InteractionCheckpoint {
   return {
-    checkpointId: `checkpoint:${Date.now()}`,
+    checkpointId: `checkpoint:${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
     kind: input.kind,
     targetArtifact: input.targetArtifact,
     patchId: input.patchId,
