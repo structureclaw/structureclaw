@@ -23,10 +23,10 @@ const PARTIAL_RUNTIME_DOMAINS = new Set<SkillDomain>([
 ]);
 
 function resolveDomainRuntimeStatus(domain: SkillDomain, hasDiscoverablePresence: boolean): SkillRuntimeStatus {
-  if (ACTIVE_RUNTIME_DOMAINS.has(domain)) {
+  if (ACTIVE_RUNTIME_DOMAINS.has(domain) && hasDiscoverablePresence) {
     return 'active';
   }
-  if (PARTIAL_RUNTIME_DOMAINS.has(domain)) {
+  if (PARTIAL_RUNTIME_DOMAINS.has(domain) && hasDiscoverablePresence) {
     return 'partial';
   }
   return hasDiscoverablePresence ? 'discoverable' : 'reserved';
