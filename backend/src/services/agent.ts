@@ -1407,6 +1407,55 @@ export class AgentService {
         : mergeExecutionPolicy({}, requestOverrides);
       pipelineState = { ...pipelineState, policy: projectPolicy };
 
+      // Step 3.1: Seed artifacts from workingSession for session-only contexts.
+      // Prevents scheduler from blocking with "designBasis incomplete" when no project exists.
+      if (!pipelineState.artifacts.designBasis && workingSession.draft) {
+        pipelineState = {
+          ...pipelineState,
+          artifacts: {
+            ...pipelineState.artifacts,
+            designBasis: {
+              artifactId: 'session:designBasis',
+              kind: 'designBasis',
+              scope: 'session',
+              status: 'ready',
+              revision: 1,
+              producerSkillId: 'session-inferred',
+              dependencyFingerprint: '',
+              basedOn: [],
+              schemaVersion: '1.0.0',
+              provenance: { toolId: 'session-seed' },
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+              payload: { source: 'session-inferred' },
+            },
+          },
+        };
+      }
+      if (!pipelineState.artifacts.normalizedModel && workingSession.latestModel) {
+        pipelineState = {
+          ...pipelineState,
+          artifacts: {
+            ...pipelineState.artifacts,
+            normalizedModel: {
+              artifactId: 'session:normalizedModel',
+              kind: 'normalizedModel',
+              scope: 'session',
+              status: 'ready',
+              revision: 1,
+              producerSkillId: workingSession.draft?.skillId ?? 'session-seed',
+              dependencyFingerprint: '',
+              basedOn: [],
+              schemaVersion: '1.0.0',
+              provenance: { toolId: 'session-seed' },
+              createdAt: Date.now(),
+              updatedAt: Date.now(),
+              payload: workingSession.latestModel,
+            },
+          },
+        };
+      }
+
       const workingSessionDraftArtifact = workingSession.draft
         ? buildDraftStateArtifact(workingSession.draft)
         : undefined;
@@ -1703,6 +1752,10 @@ export class AgentService {
           });
         }
         pipelineState = applySchedulerStepResult({ pipelineState, step, stepResult });
+        // Step 3.2: Write back normalizedModel to workingSession for backward compatibility
+        if (stepResult.artifact?.kind === 'normalizedModel' && stepResult.artifact.payload) {
+          workingSession.latestModel = stepResult.artifact.payload as Record<string, unknown>;
+        }
         if (projectId && stepResult.runRecord) {
           await this.runStore.updateRun(stepResult.runRecord.runId, {
             status: stepResult.runRecord.status,
@@ -1815,6 +1868,48 @@ export class AgentService {
       if (projectId) {
         await this.projectService.updateProjectPipelineState(projectId, pipelineState);
       }
+
+      // Step 3.3: Build result from pipelineState after the step loop
+      const schedulerModel = pipelineState.artifacts.normalizedModel?.payload as Record<string, unknown> | undefined;
+      const schedulerAnalysis = pipelineState.artifacts.analysisRaw?.payload;
+      const schedulerCodeCheck = pipelineState.artifacts.codeCheckResult?.payload;
+      const schedulerReport = pipelineState.artifacts.reportArtifact?.payload;
+
+      if (sessionKey) {
+        workingSession.updatedAt = Date.now();
+        await this.setInteractionSession(sessionKey, workingSession);
+      }
+
+      const schedulerResponse = await this.renderSummary(
+        params.message,
+        this.localize(
+          locale,
+          `调度器执行完成。target=${nextPlan.targetArtifact}`,
+          `Scheduler execution completed. target=${nextPlan.targetArtifact}`,
+        ),
+        locale,
+        schedulerAnalysis,
+        sessionKey,
+      );
+
+      return this.finalizeRunResult(traceId, sessionKey, params.message, {
+        traceId,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        durationMs: Date.now() - startedAtMs,
+        success: true,
+        orchestrationMode,
+        needsModelInput: false,
+        plan,
+        toolCalls,
+        model: schedulerModel,
+        analysis: schedulerAnalysis,
+        codeCheck: schedulerCodeCheck,
+        report: schedulerReport ? { summary: 'Scheduler report', json: schedulerReport as Record<string, unknown> } : undefined,
+        metrics: this.buildMetrics(toolCalls),
+        interaction: this.buildToolInteraction('completed', locale),
+        response: schedulerResponse,
+      }, skillIds, workingSession, skillIds);
     }
 
     if (nextPlan.kind !== 'tool_call' && !(nextPlan.kind === 'execute' && allowToolCall)) {
