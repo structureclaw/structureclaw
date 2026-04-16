@@ -713,31 +713,31 @@ export class AgentSkillRuntime {
     skillIds?: string[];
     engineId?: string;
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
-    switch (args.step.action) {
-      case 'validate':
+    switch (args.step.tool) {
+      case 'validate_model':
         return this.executeValidationScheduledStep(args);
-      case 'analyze':
+      case 'run_analysis':
         return this.executeAnalysisScheduledStep(args);
-      case 'postprocess':
+      case 'postprocess_result':
         return this.executePostprocessScheduledStep(args);
-      case 'code_check':
+      case 'run_code_check':
         return this.executeCodeCheckScheduledStep(args);
-      case 'report':
+      case 'generate_report':
         return this.executeReportScheduledStep(args);
-      case 'drawing':
+      case 'generate_drawing':
         return this.executeDrawingScheduledStep(args);
-      case 'update':
+      case 'update_model':
         return this.executeUpdateScheduledStep(args);
-      case 'convert':
+      case 'convert_model':
         return this.executeConvertScheduledStep(args);
-      case 'design':
+      case 'synthesize_design':
         return this.executeDesignScheduledStep(args);
-      case 'draft':
+      case 'draft_model':
         return this.executeDraftScheduledStep(args);
-      case 'enrich':
+      case 'enrich_model':
         return this.executeEnrichScheduledStep(args);
       default:
-        throw new Error(`Unsupported scheduled action: ${args.step.action}`);
+        throw new Error(`Unsupported scheduled tool: ${args.step.tool}`);
     }
   }
 
@@ -1106,11 +1106,11 @@ export class AgentSkillRuntime {
       scope: 'project',
       status: 'ready',
       revision,
-      producerSkillId: step.skillId ?? `scheduled:${step.action}`,
+      producerSkillId: step.skillId ?? `scheduled:${step.tool}`,
       dependencyFingerprint,
       basedOn: step.consumes.map((ref) => ({ kind: ref.kind, artifactId: ref.artifactId, revision: ref.revision })),
       schemaVersion: '1.0.0',
-      provenance: { toolId: `scheduled:${step.action}` },
+      provenance: { toolId: `scheduled:${step.tool}` },
       createdAt: Date.now(),
       updatedAt: Date.now(),
       payload,
