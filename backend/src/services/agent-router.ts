@@ -273,7 +273,7 @@ export async function planNextStepWithLlm(
     const snapshot = await buildPlannerContextSnapshot(options, assessInteractionNeeds);
     const allowedKinds: AgentPlanKind[] = Array.isArray(options.allowedKinds) && options.allowedKinds.length > 0
       ? options.allowedKinds
-      : ['reply', 'ask', 'execute', 'tool_call'];
+      : ['reply', 'ask', 'execute'];
     const allowExecute = allowedKinds.includes('execute');
     const availableToolIds = snapshot.availableToolIds.filter((toolId): toolId is AgentToolName => (
       ['draft_model', 'update_model', 'convert_model', 'validate_model', 'run_analysis', 'run_code_check', 'generate_report'] as string[]

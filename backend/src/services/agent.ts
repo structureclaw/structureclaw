@@ -145,7 +145,7 @@ interface PersistedMessageDebugDetails {
 
 export type ActiveToolSet = Set<string> | undefined;
 
-export type AgentPlanKind = 'reply' | 'ask' | 'tool_call' | 'execute';
+export type AgentPlanKind = 'reply' | 'ask' | 'execute';
 export type AgentPlanningDirective = 'auto' | 'force_tool';
 export type AgentReplyMode = 'plain' | 'structured';
 
@@ -160,41 +160,6 @@ export interface AgentNextStepPlan {
   planningDirective: AgentPlanningDirective;
   rationale: 'override' | 'llm';
   targetArtifact?: string;
-}
-
-export interface SkillDrivenToolDecision {
-  toolId: AgentToolName;
-  reason: string;
-}
-
-export interface ResolvedExecutionConfig {
-  analysisType: 'static' | 'dynamic' | 'seismic' | 'nonlinear';
-  designCode?: string;
-  autoCodeCheck: boolean;
-  includeReport: boolean;
-  reportFormat: AgentReportFormat;
-  reportOutput: AgentReportOutput;
-}
-
-export interface ExecutionPipelineArgs {
-  params: AgentRunInput;
-  traceId: string;
-  startedAt: string;
-  startedAtMs: number;
-  locale: AppLocale;
-  orchestrationMode: AgentOrchestrationMode;
-  skillIds?: string[];
-  activeSkillIds?: string[];
-  activeToolIds?: ActiveToolSet;
-  plan: string[];
-  toolCalls: AgentToolCall[];
-  sessionKey?: string;
-  workingSession: InteractionSession;
-  normalizedModel: Record<string, unknown>;
-  analysisParameters: Record<string, unknown>;
-  autoAnalyze: boolean;
-  executionConfig: ResolvedExecutionConfig;
-  validationWarning?: string;
 }
 
 interface PreparedRunContext {
@@ -234,16 +199,6 @@ export interface PlannerContextSnapshot {
   recentConversation: string[];
   lastAssistantMessage?: string;
   sessionState?: import('./agent-context.js').SessionState;
-}
-
-interface PreparedExecutionModel {
-  normalizedModel: Record<string, unknown>;
-  validationWarning?: string;
-}
-
-interface ExecutionArtifacts {
-  report?: AgentRunResult['report'];
-  artifacts?: AgentRunResult['artifacts'];
 }
 
 export interface AgentResolvedRouting {
@@ -394,7 +349,7 @@ export interface AgentStreamChunk {
 
 // --- Phase 4: Scheduler integration helpers ---
 
-const STUB_TOOLS = new Set<string>(['design', 'drawing']);
+const STUB_TOOLS = new Set<string>(['synthesize_design', 'generate_drawing']);
 
 function buildLocalizedBlockedReason(reason: string, locale: AppLocale): string {
   const messages: Record<string, { zh: string; en: string }> = {
@@ -445,22 +400,6 @@ function buildLocalizedBlockedReason(reason: string, locale: AppLocale): string 
   };
   const localized = messages[reason];
   return localized ? localized[locale] ?? localized.en : reason;
-}
-
-function mapSchedulerActionToToolId(action: string): string {
-  const mapping: Record<string, string> = {
-    draft: 'draft_model',
-    update: 'update_model',
-    convert: 'convert_model',
-    validate: 'validate_model',
-    design: 'synthesize_design',
-    analyze: 'run_analysis',
-    postprocess: 'postprocess_result',
-    code_check: 'run_code_check',
-    drawing: 'generate_drawing',
-    report: 'generate_report',
-  };
-  return mapping[action] ?? action;
 }
 
 function computeStepInputFingerprint(
@@ -781,147 +720,10 @@ export class AgentService {
     return this.runtimeBinder.hasActiveTool(activeToolIds, toolId);
   }
 
-  private async resolveSelectedToolManifest(toolId: string, skillIds?: string[]): Promise<ToolManifest | undefined> {
-    return this.runtimeBinder.resolveSelectedToolManifest(toolId, skillIds);
-  }
 
-  private buildMissingToolRequirements(args: {
-    manifest: ToolManifest;
-    skillIds?: string[];
-    activeToolIds?: ActiveToolSet;
-  }): { missingSkills: string[]; missingTools: string[] } {
-    return this.runtimeBinder.buildMissingToolRequirements(args);
-  }
 
-  private buildToolRequirementMessage(args: {
-    locale: AppLocale;
-    toolId: string;
-    missingSkills: string[];
-    missingTools: string[];
-  }): string {
-    if (args.locale === 'zh') {
-      const parts: string[] = [];
-      if (args.missingSkills.length > 0) {
-        parts.push(`缺少能力集: ${args.missingSkills.join(', ')}`);
-      }
-      if (args.missingTools.length > 0) {
-        parts.push(`缺少依赖工具: ${args.missingTools.join(', ')}`);
-      }
-      return `无法执行 ${args.toolId}，${parts.join('；')}。`;
-    }
-    const parts: string[] = [];
-    if (args.missingSkills.length > 0) {
-      parts.push(`missing skills: ${args.missingSkills.join(', ')}`);
-    }
-    if (args.missingTools.length > 0) {
-      parts.push(`missing prerequisite tools: ${args.missingTools.join(', ')}`);
-    }
-    return `Cannot execute ${args.toolId}: ${parts.join('; ')}.`;
-  }
 
-  private inferSkillDrivenToolDecision(args: {
-    message: string;
-    locale: AppLocale;
-    activeToolIds?: ActiveToolSet;
-    modelInput?: Record<string, unknown>;
-    workingSession: InteractionSession;
-  }): SkillDrivenToolDecision | null {
-    const {
-      message,
-      locale,
-      activeToolIds,
-      modelInput,
-      workingSession,
-    } = args;
-    const hasModel = Boolean(modelInput || workingSession.latestModel);
-    const asksUpdate = /(改成|改为|修改|更新|change\s+to|update|revise)/i.test(message);
-    const asksModeling = /(设计|建模|模型|model|draft|design)/i.test(message);
-    const asksFreshModel = /(重新|重建|从头|新建|全新|new|fresh|scratch|from\s+scratch)/i.test(message);
-    const asksRunAnalysis = /(分析|analysis|analy[sz]e|analyze|验算|计算)/i.test(message);
-    const asksCodeCheck = /(规范|校核|code\s*check|compliance)/i.test(message);
-    const asksReport = /(报告|report|导出|export)/i.test(message);
 
-    if (hasModel && asksUpdate && this.hasActiveTool(activeToolIds, 'update_model')) {
-      return {
-        toolId: 'update_model',
-        reason: this.localize(locale, '命中模型修改意图，优先走 update_model', 'Detected model-update intent; prefer update_model'),
-      };
-    }
-
-    if ((asksFreshModel || !hasModel || (asksModeling && !asksRunAnalysis && !asksReport && !asksCodeCheck))
-      && this.hasActiveTool(activeToolIds, 'draft_model')) {
-      return {
-        toolId: 'draft_model',
-        reason: this.localize(
-          locale,
-          asksFreshModel
-            ? '命中新建模型意图，优先重新草拟结构模型'
-            : '优先通过 draft_model 建立本轮结构模型',
-          asksFreshModel
-            ? 'Detected fresh-model intent; prefer re-drafting the structural model'
-            : 'Prefer draft_model to establish the structural model for this turn',
-        ),
-      };
-    }
-
-    if (hasModel && asksCodeCheck && this.hasActiveTool(activeToolIds, 'run_code_check')) {
-      return {
-        toolId: 'run_code_check',
-        reason: this.localize(locale, '命中规范校核意图，优先走 run_code_check', 'Detected code-check intent; prefer run_code_check'),
-      };
-    }
-
-    if (hasModel && asksReport && this.hasActiveTool(activeToolIds, 'generate_report')) {
-      return {
-        toolId: 'generate_report',
-        reason: this.localize(locale, '命中报告生成意图，优先走 generate_report', 'Detected report intent; prefer generate_report'),
-      };
-    }
-
-    if (hasModel && (asksRunAnalysis || asksModeling) && this.hasActiveTool(activeToolIds, 'run_analysis')) {
-      return {
-        toolId: 'run_analysis',
-        reason: this.localize(locale, '模型已就绪，命中分析意图，走 run_analysis', 'Model is ready and analysis intent is detected; select run_analysis'),
-      };
-    }
-
-    if (hasModel && this.hasActiveTool(activeToolIds, 'validate_model')) {
-      return {
-        toolId: 'validate_model',
-        reason: this.localize(locale, '模型已存在，先做 validate_model 作为执行入口', 'Model exists; validate_model is used as execution entrypoint'),
-      };
-    }
-
-    if (this.hasActiveTool(activeToolIds, 'draft_model')) {
-      return {
-        toolId: 'draft_model',
-        reason: this.localize(locale, '回退到 draft_model 以建立可执行模型', 'Fallback to draft_model to establish an executable model'),
-      };
-    }
-
-    return null;
-  }
-
-  private buildDisabledToolMessage(toolId: string, locale: AppLocale): string {
-    switch (toolId) {
-      case 'draft_model':
-        return this.localize(locale, '当前能力集中未启用 `draft_model`，无法从对话直接生成结构模型。', 'The current capability set does not enable `draft_model`, so a structural model cannot be generated directly from conversation.');
-      case 'update_model':
-        return this.localize(locale, '当前能力集中未启用 `update_model`，无法基于现有模型继续修改。', 'The current capability set does not enable `update_model`, so the existing structural model cannot be updated.');
-      case 'convert_model':
-        return this.localize(locale, '当前能力集中未启用 `convert_model`。', 'The current capability set does not enable `convert_model`.');
-      case 'validate_model':
-        return this.localize(locale, '当前能力集中未启用 `validate_model`。', 'The current capability set does not enable `validate_model`.');
-      case 'run_analysis':
-        return this.localize(locale, '当前能力集中未启用 `run_analysis`。', 'The current capability set does not enable `run_analysis`.');
-      case 'run_code_check':
-        return this.localize(locale, '当前能力集中未启用 `run_code_check`。', 'The current capability set does not enable `run_code_check`.');
-      case 'generate_report':
-        return this.localize(locale, '当前能力集中未启用 `generate_report`。', 'The current capability set does not enable `generate_report`.');
-      default:
-        return this.localize(locale, '当前能力集中未启用所需 tool。', 'The current capability set does not enable the required tool.');
-    }
-  }
 
   private async finalizeBlockedRunResult(args: {
     params: AgentRunInput;
@@ -1603,10 +1405,10 @@ export class AgentService {
       // Helper: record each scheduler step as an AgentToolCall
       const pushToolCall = (step: SchedulerStep, status: AgentToolCall['status'], extra?: Partial<AgentToolCall>) => {
         const now = new Date().toISOString();
-        const mappedToolId = mapSchedulerActionToToolId(step.action) as AgentToolName;
+        const mappedToolId = step.tool as AgentToolName;
         toolCalls.push({
           tool: mappedToolId,
-          input: { stepId: step.stepId, action: step.action, ...(step.provides ? { targetArtifact: step.provides } : {}) },
+          input: { stepId: step.stepId, tool: step.tool, ...(step.provides ? { targetArtifact: step.provides } : {}) },
           status,
           startedAt: extra?.startedAt ?? now,
           completedAt: extra?.completedAt ?? now,
@@ -1622,7 +1424,7 @@ export class AgentService {
       if (Array.isArray(disabledToolIds) && disabledToolIds.length > 0) {
         for (const preStep of schedulerPlan.requiredSteps) {
           if (preStep.mode === 'reuse') continue;
-          const preStepToolId = mapSchedulerActionToToolId(preStep.action);
+          const preStepToolId = preStep.tool;
           if (disabledToolIds.includes(preStepToolId)) {
             const disabledToolResponse = this.localize(
               locale,
@@ -1672,7 +1474,7 @@ export class AgentService {
         }
 
         // Check if tool is disabled
-        const stepToolId = mapSchedulerActionToToolId(step.action);
+        const stepToolId = step.tool;
         const disabledToolIds = params.context?.disabledToolIds;
         if (Array.isArray(disabledToolIds) && disabledToolIds.includes(stepToolId)) {
           const disabledToolResponse = this.localize(
@@ -1689,7 +1491,7 @@ export class AgentService {
           });
         }
 
-        if (STUB_TOOLS.has(step.action)) {
+        if (STUB_TOOLS.has(step.tool)) {
           return this.finalizeBlockedRunResult({
             params,
             traceId,
@@ -1802,7 +1604,7 @@ export class AgentService {
             projectId,
             conversationId: sessionKey,
             targetArtifact: (step.provides ?? nextPlan.targetArtifact) as ArtifactKind,
-            toolId: mapSchedulerActionToToolId(step.action),
+            toolId: step.tool,
             providerSkillId: step.skillId,
             status: 'queued',
             inputFingerprint: computeStepInputFingerprint(step, pipelineState),
@@ -1850,15 +1652,15 @@ export class AgentService {
         } catch (stepError) {
           const stepErrorMessage = stepError instanceof Error ? stepError.message : String(stepError);
           const actionErrorCodes: Record<string, string> = {
-            code_check: 'CODE_CHECK_EXECUTION_FAILED',
-            validate: 'VALIDATION_EXECUTION_FAILED',
-            analyze: 'ANALYSIS_EXECUTION_FAILED',
-            report: 'REPORT_EXECUTION_FAILED',
-            draft: 'DRAFT_INCOMPLETE',
+            run_code_check: 'CODE_CHECK_EXECUTION_FAILED',
+            validate_model: 'VALIDATION_EXECUTION_FAILED',
+            run_analysis: 'ANALYSIS_EXECUTION_FAILED',
+            generate_report: 'REPORT_EXECUTION_FAILED',
+            draft_model: 'DRAFT_INCOMPLETE',
           };
           const errorCode = stepError instanceof Error && stepError.message.startsWith('DRAFT_INCOMPLETE')
             ? 'DRAFT_INCOMPLETE'
-            : actionErrorCodes[step.action] ?? 'STEP_EXECUTION_FAILED';
+            : actionErrorCodes[step.tool] ?? 'STEP_EXECUTION_FAILED';
           pushToolCall(step, 'error', {
             startedAt: stepStartedAt,
             error: stepErrorMessage,
@@ -1879,7 +1681,7 @@ export class AgentService {
             });
           }
           // Bypass validate on upstream 502 (transient server errors)
-          if (step.action === 'validate' && this.shouldBypassValidateFailure(stepError)) {
+          if (step.tool === 'validate_model' && this.shouldBypassValidateFailure(stepError)) {
             // Add validation warning to plan for inclusion in final response
             plan.push(this.localize(
               locale,
@@ -1889,7 +1691,7 @@ export class AgentService {
             continue;
           }
           // Localize analyze engine 502 errors
-          if (step.action === 'analyze' && this.shouldRetryEngineCall(stepError)) {
+          if (step.tool === 'run_analysis' && this.shouldRetryEngineCall(stepError)) {
             const engineUnavailable = this.localize(
               locale,
               `分析引擎服务暂时不可用，重试后仍失败：${stepErrorMessage}`,
@@ -1969,7 +1771,7 @@ export class AgentService {
 
             if (fbStep.mode === 'reuse') continue;
 
-            if (STUB_TOOLS.has(fbStep.action)) {
+            if (STUB_TOOLS.has(fbStep.tool)) {
               return this.finalizeBlockedRunResult({
                 params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
                 skillIds, plan, toolCalls, sessionKey, workingSession,
@@ -2176,152 +1978,19 @@ export class AgentService {
       }, activeSkillIds ?? skillIds, workingSession, skillIds);
     }
 
-    if (nextPlan.kind !== 'tool_call' && !(nextPlan.kind === 'execute' && allowToolCall)) {
-      return this.handleConversationMode({
-        nextPlan,
-        params,
-        traceId,
-        startedAt,
-        startedAtMs,
-        locale,
-        orchestrationMode,
-        toolCalls,
-        plan,
-        sessionKey,
-        workingSession,
-        activeToolIds,
-      });
-    }
-
-    const skillDrivenToolDecision = this.inferSkillDrivenToolDecision({
-      message: params.message,
-      locale,
-      activeToolIds,
-      modelInput,
-      workingSession,
-    });
-    if (!skillDrivenToolDecision) {
-      const response = this.localize(
-        locale,
-        '当前能力集无法为本轮请求选择可执行工具，请先启用建模或分析能力。',
-        'No executable tool can be selected for this request under the current capability set. Enable drafting or analysis capabilities first.',
-      );
-      return this.finalizeBlockedRunResult({
-        params,
-        traceId,
-        startedAt,
-        startedAtMs,
-        locale,
-        orchestrationMode,
-        skillIds,
-        plan,
-        toolCalls,
-        sessionKey,
-        workingSession,
-        response,
-        blockedReasonCode: 'NO_EXECUTABLE_TOOL',
-        needsModelInput: !modelInput && !workingSession.latestModel,
-      });
-    }
-    const selectedToolId = skillDrivenToolDecision.toolId;
-    plan.push(skillDrivenToolDecision.reason);
-
-    const selectedToolManifest = await this.resolveSelectedToolManifest(selectedToolId, activeSkillIds);
-    if (selectedToolManifest) {
-      const { missingSkills, missingTools } = this.buildMissingToolRequirements({
-        manifest: selectedToolManifest,
-        skillIds: activeSkillIds,
-        activeToolIds,
-      });
-      if (missingSkills.length > 0 || missingTools.length > 0) {
-        return this.finalizeBlockedRunResult({
-          params,
-          traceId,
-          startedAt,
-          startedAtMs,
-          locale,
-          orchestrationMode,
-          skillIds,
-          plan,
-          toolCalls,
-          sessionKey,
-          workingSession,
-          response: this.buildToolRequirementMessage({
-            locale,
-            toolId: selectedToolId,
-            missingSkills,
-            missingTools,
-          }),
-          blockedReasonCode: missingSkills.length > 0 ? 'TOOL_REQUIRES_SKILL' : 'TOOL_REQUIRES_TOOL',
-          needsModelInput: !modelInput && !workingSession.latestModel,
-        });
-      }
-    }
-
-    const executableModel = await this.ensureExecutableModel({
+    return this.handleConversationMode({
+      nextPlan,
       params,
       traceId,
       startedAt,
       startedAtMs,
       locale,
       orchestrationMode,
-      skillIds,
-      noSkillMode,
-      activeToolIds,
-      plan,
       toolCalls,
+      plan,
       sessionKey,
       workingSession,
-      modelInput,
-      hadExistingSession,
-      selectedToolId,
-    });
-    if (!executableModel.ok) {
-      return executableModel.result;
-    }
-    const executionConfig = this.resolveExecutionConfig(workingSession, params, activeSkillIds);
-    const preparedExecutionModel = await this.prepareExecutionModel({
-      params,
-      traceId,
-      startedAt,
-      startedAtMs,
-      locale,
-      orchestrationMode,
-      skillIds,
-      activeSkillIds,
       activeToolIds,
-      plan,
-      toolCalls,
-      sessionKey,
-      workingSession,
-      executableModel: executableModel.model,
-      modelInput,
-      sourceFormat,
-      autoAnalyze,
-    });
-    if (!preparedExecutionModel.ok) {
-      return preparedExecutionModel.result;
-    }
-
-    return this.runExecutionPipeline({
-      params,
-      traceId,
-      startedAt,
-      startedAtMs,
-      locale,
-      orchestrationMode,
-      skillIds,
-      activeSkillIds,
-      activeToolIds,
-      plan,
-      toolCalls,
-      sessionKey,
-      workingSession,
-      normalizedModel: preparedExecutionModel.value.normalizedModel,
-      analysisParameters,
-      autoAnalyze,
-      executionConfig,
-      validationWarning: preparedExecutionModel.value.validationWarning,
     });
   }
 
@@ -2334,370 +2003,10 @@ export class AgentService {
     return resultBuildRecommendedNextStep(assessment, interaction, locale, activeToolIds);
   }
 
-  private async prepareExecutionModel(args: {
-    params: AgentRunInput;
-    traceId: string;
-    startedAt: string;
-    startedAtMs: number;
-    locale: AppLocale;
-    orchestrationMode: AgentOrchestrationMode;
-    skillIds?: string[];
-    activeSkillIds?: string[];
-    activeToolIds?: ActiveToolSet;
-    plan: string[];
-    toolCalls: AgentToolCall[];
-    sessionKey?: string;
-    workingSession: InteractionSession;
-    executableModel: Record<string, unknown>;
-    modelInput?: Record<string, unknown>;
-    sourceFormat: string;
-    autoAnalyze: boolean;
-  }): Promise<
-    | { ok: true; value: PreparedExecutionModel }
-    | { ok: false; result: AgentRunResult }
-  > {
-    const normalized = await this.normalizeExecutionModel(args);
-    if (!normalized.ok) {
-      return normalized;
-    }
-    return this.validateExecutionModel({
-      ...args,
-      normalizedModel: normalized.value.normalizedModel,
-    });
-  }
 
-  private async normalizeExecutionModel(args: {
-    params: AgentRunInput;
-    traceId: string;
-    startedAt: string;
-    startedAtMs: number;
-    locale: AppLocale;
-    orchestrationMode: AgentOrchestrationMode;
-    skillIds?: string[];
-    activeSkillIds?: string[];
-    activeToolIds?: ActiveToolSet;
-    plan: string[];
-    toolCalls: AgentToolCall[];
-    sessionKey?: string;
-    workingSession: InteractionSession;
-    executableModel: Record<string, unknown>;
-    modelInput?: Record<string, unknown>;
-    sourceFormat: string;
-  }): Promise<
-    | { ok: true; value: Pick<PreparedExecutionModel, 'normalizedModel'> }
-    | { ok: false; result: AgentRunResult }
-  > {
-    const {
-      params,
-      traceId,
-      startedAt,
-      startedAtMs,
-      locale,
-      orchestrationMode,
-      skillIds,
-      activeSkillIds,
-      activeToolIds,
-      plan,
-      toolCalls,
-      sessionKey,
-      workingSession,
-      executableModel,
-      modelInput,
-      sourceFormat,
-    } = args;
 
-    if (sourceFormat === 'structuremodel-v1') {
-      return { ok: true, value: { normalizedModel: executableModel } };
-    }
 
-    if (!this.hasActiveTool(activeToolIds, 'convert_model')) {
-      const response = this.buildDisabledToolMessage('convert_model', locale);
-      return {
-        ok: false,
-        result: await this.finalizeBlockedRunResult({
-          params,
-          traceId,
-          startedAt,
-          startedAtMs,
-          locale,
-          orchestrationMode,
-          skillIds: activeSkillIds ?? skillIds,
-          selectedSkillIds: skillIds,
-          plan,
-          toolCalls,
-          sessionKey,
-          workingSession,
-          response,
-          blockedReasonCode: 'TOOL_DISABLED',
-          model: executableModel,
-        }),
-      };
-    }
 
-    const result = await executeConvertModelStep({
-      locale,
-      sourceFormat,
-      modelInput,
-      plan,
-      toolCalls,
-      localize: this.localize.bind(this),
-      startToolCall: this.startToolCall.bind(this),
-      completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
-      completeToolCallError: this.completeToolCallError.bind(this),
-      structureProtocolClient: this.structureProtocolClient,
-      buildBlockedResult: async (response) => this.finalizeBlockedRunResult({
-        params,
-        traceId,
-        startedAt,
-        startedAtMs,
-        locale,
-        orchestrationMode,
-        skillIds: activeSkillIds ?? skillIds,
-        selectedSkillIds: skillIds,
-        plan,
-        toolCalls,
-        sessionKey,
-        workingSession,
-        response,
-      }),
-    });
-    if (!result.ok) {
-      return result;
-    }
-    return {
-      ok: true,
-      value: {
-        normalizedModel: result.normalizedModel,
-      },
-    };
-  }
-
-  private async validateExecutionModel(args: {
-    params: AgentRunInput;
-    traceId: string;
-    startedAt: string;
-    startedAtMs: number;
-    locale: AppLocale;
-    orchestrationMode: AgentOrchestrationMode;
-    skillIds?: string[];
-    activeSkillIds?: string[];
-    activeToolIds?: ActiveToolSet;
-    plan: string[];
-    toolCalls: AgentToolCall[];
-    sessionKey?: string;
-    workingSession: InteractionSession;
-    normalizedModel: Record<string, unknown>;
-    autoAnalyze: boolean;
-  }): Promise<
-    | { ok: true; value: PreparedExecutionModel }
-    | { ok: false; result: AgentRunResult }
-  > {
-    const {
-      params,
-      traceId,
-      startedAt,
-      startedAtMs,
-      locale,
-      orchestrationMode,
-      skillIds,
-      activeSkillIds,
-      activeToolIds,
-      plan,
-      toolCalls,
-      sessionKey,
-      workingSession,
-      normalizedModel,
-      autoAnalyze,
-    } = args;
-
-    if (!this.hasActiveTool(activeToolIds, 'validate_model')) {
-      const response = this.buildDisabledToolMessage('validate_model', locale);
-      return {
-        ok: false,
-        result: await this.finalizeBlockedRunResult({
-          params,
-          traceId,
-          startedAt,
-          startedAtMs,
-          locale,
-          orchestrationMode,
-          skillIds: activeSkillIds ?? skillIds,
-          selectedSkillIds: skillIds,
-          plan,
-          toolCalls,
-          sessionKey,
-          workingSession,
-          response,
-          blockedReasonCode: 'TOOL_DISABLED',
-          model: normalizedModel,
-        }),
-      };
-    }
-
-    const step = await validateWithRetry(
-      normalizedModel,
-      this.wasGeneratedThisTurn(toolCalls),
-      {
-        locale,
-        engineId: params.context?.engineId,
-        autoAnalyze,
-        plan,
-        toolCalls,
-        traceId,
-        llm: this.llm,
-        localize: this.localize.bind(this),
-        loggerWarn: (meta, message) => logger.warn(meta, message),
-        startToolCall: this.startToolCall.bind(this),
-        completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
-        completeToolCallError: this.completeToolCallError.bind(this),
-        shouldBypassValidateFailure: this.shouldBypassValidateFailure.bind(this),
-        buildBlockedResult: async (response) => this.finalizeBlockedRunResult({
-          params,
-          traceId,
-          startedAt,
-          startedAtMs,
-          locale,
-          orchestrationMode,
-          skillIds: activeSkillIds ?? skillIds,
-          selectedSkillIds: skillIds,
-          plan,
-          toolCalls,
-          sessionKey,
-          workingSession,
-          response,
-          model: normalizedModel,
-        }),
-        buildGeneratedModelValidationClarification: async (validationError) => this.buildGeneratedModelValidationClarification({
-          params,
-          traceId,
-          startedAt,
-          startedAtMs,
-          locale,
-          orchestrationMode,
-          skillIds,
-          activeSkillIds,
-          plan,
-          toolCalls,
-          sessionKey,
-          workingSession,
-          validationError,
-        }),
-        runValidate: (model) => this.skillRuntime.executeValidationSkill({
-          model,
-          engineId: params.context?.engineId,
-          structureProtocolClient: this.structureProtocolClient,
-        }),
-      },
-    );
-
-    if (!step.ok) {
-      return {
-        ok: false,
-        result: step.result,
-      };
-    }
-
-    return {
-      ok: true,
-      value: {
-        normalizedModel: step.model,
-        validationWarning: step.warning,
-      },
-    };
-  }
-
-  private wasGeneratedThisTurn(toolCalls: AgentToolCall[]): boolean {
-    return toolCalls.some((call) => call.tool === 'draft_model' || call.tool === 'update_model');
-  }
-
-  private async buildGeneratedModelValidationClarification(args: {
-    params: AgentRunInput;
-    traceId: string;
-    startedAt: string;
-    startedAtMs: number;
-    locale: AppLocale;
-    orchestrationMode: AgentOrchestrationMode;
-    skillIds?: string[];
-    activeSkillIds?: string[];
-    plan: string[];
-    toolCalls: AgentToolCall[];
-    sessionKey?: string;
-    workingSession: InteractionSession;
-    validationError: string;
-  }): Promise<AgentRunResult> {
-    const {
-      params,
-      traceId,
-      startedAt,
-      startedAtMs,
-      locale,
-      orchestrationMode,
-      skillIds,
-      activeSkillIds,
-      plan,
-      toolCalls,
-      sessionKey,
-      workingSession,
-      validationError,
-    } = args;
-    const effectiveSkillIds = activeSkillIds ?? skillIds;
-    const assessment = await this.assessInteractionNeeds(workingSession, locale, effectiveSkillIds);
-    const interaction = await this.buildInteractionPayload(
-      assessment,
-      workingSession,
-      assessment.criticalMissing.length > 0 ? 'confirming' : 'collecting',
-      locale,
-      effectiveSkillIds,
-    );
-    const missingFields = await this.mapMissingFieldLabels(
-      assessment.criticalMissing,
-      locale,
-      workingSession.draft || { inferredType: 'unknown', updatedAt: workingSession.updatedAt },
-      effectiveSkillIds,
-    );
-    const fieldsToConfirm = missingFields.length > 0
-      ? missingFields
-      : [
-        this.localize(locale, '材料', 'material'),
-        this.localize(locale, '截面', 'section'),
-        this.localize(locale, '荷载', 'loads'),
-        this.localize(locale, '边界条件', 'boundary conditions'),
-      ];
-    const question = this.localize(
-      locale,
-      `当前生成的结构模型还不满足 StructureModel 校验，先不要执行。请补充或确认：${fieldsToConfirm.join('、')}。如果你已经有完整合法模型，也可以直接贴 JSON。`,
-      `The generated structural model does not yet satisfy StructureModel validation, so execution will stop here. Please provide or confirm: ${fieldsToConfirm.join(', ')}. If you already have a complete valid model, you can paste the JSON directly.`
-    );
-
-    return this.finalizeBlockedRunResult({
-      params,
-      traceId,
-      startedAt,
-      startedAtMs,
-      locale,
-      orchestrationMode,
-      skillIds: effectiveSkillIds,
-      selectedSkillIds: skillIds,
-      plan,
-      toolCalls,
-      sessionKey,
-      workingSession,
-      response: question,
-      needsModelInput: true,
-      clarification: {
-        missingFields: fieldsToConfirm,
-        question,
-      },
-      interaction: {
-        ...interaction,
-        fallbackSupportNote: this.localize(
-          locale,
-          `当前生成的模型未通过 StructureModel 校验：${validationError}`,
-          `The generated model did not pass StructureModel validation: ${validationError}`
-        ),
-      },
-    });
-  }
 
   private buildChatModeResponse(interaction: AgentInteraction, locale: AppLocale): string {
     return resultBuildChatModeResponse(interaction, locale);
@@ -2847,777 +2156,13 @@ export class AgentService {
     });
   }
 
-  private resolveExecutionConfig(
-    workingSession: InteractionSession,
-    params: AgentRunInput,
-    skillIds?: string[],
-  ): ResolvedExecutionConfig {
-    const codeFromSkills = this.skillRuntime.resolveCodeCheckDesignCodeFromSkillIds(skillIds);
-    return {
-      analysisType: workingSession.resolved?.analysisType || params.context?.analysisType || inferAnalysisType(this.policy, params.message),
-      designCode: workingSession.resolved?.designCode || params.context?.designCode || codeFromSkills,
-      autoCodeCheck: workingSession.resolved?.autoCodeCheck
-        ?? params.context?.autoCodeCheck
-        ?? Boolean(codeFromSkills || workingSession.resolved?.designCode || params.context?.designCode),
-      includeReport: workingSession.resolved?.includeReport ?? params.context?.includeReport ?? true,
-      reportFormat: workingSession.resolved?.reportFormat || params.context?.reportFormat || 'both',
-      reportOutput: workingSession.resolved?.reportOutput || params.context?.reportOutput || 'inline',
-    };
-  }
 
-  private async ensureExecutableModel(args: {
-    params: AgentRunInput;
-    traceId: string;
-    startedAt: string;
-    startedAtMs: number;
-    locale: AppLocale;
-    orchestrationMode: AgentOrchestrationMode;
-    skillIds?: string[];
-    noSkillMode: boolean;
-    activeToolIds?: ActiveToolSet;
-    plan: string[];
-    toolCalls: AgentToolCall[];
-    sessionKey?: string;
-    workingSession: InteractionSession;
-    modelInput?: Record<string, unknown>;
-    hadExistingSession: boolean;
-    selectedToolId: AgentToolName;
-  }): Promise<
-    | { ok: true; model: Record<string, unknown> }
-    | { ok: false; result: AgentRunResult }
-  > {
-    const {
-      params,
-      traceId,
-      startedAt,
-      startedAtMs,
-      locale,
-      orchestrationMode,
-      skillIds,
-      noSkillMode,
-      activeToolIds,
-      plan,
-      toolCalls,
-      sessionKey,
-      workingSession,
-      modelInput,
-      hadExistingSession,
-      selectedToolId,
-    } = args;
 
-    if (selectedToolId === 'update_model') {
-      return this.updateExecutableModel({
-        params,
-        traceId,
-        startedAt,
-        startedAtMs,
-        locale,
-        orchestrationMode,
-        skillIds,
-        activeToolIds,
-        plan,
-        toolCalls,
-        sessionKey,
-        workingSession,
-        modelInput,
-        hadExistingSession,
-      });
-    }
 
-    let candidateModel = modelInput || workingSession.latestModel;
-    if (candidateModel && !hasCompleteMaterialsAndSections(candidateModel) && workingSession.draft) {
-      try {
-        const rebuilt = await this.skillRuntime.buildModel(workingSession.draft, skillIds);
-        if (hasCompleteMaterialsAndSections(rebuilt)) {
-          candidateModel = rebuilt;
-        }
-      } catch {
-        // keep candidateModel as-is
-      }
-    }
-    if (candidateModel && selectedToolId !== 'draft_model') {
-      return { ok: true, model: candidateModel };
-    }
 
-    if (!this.hasActiveTool(activeToolIds, 'draft_model')) {
-      const response = this.buildDisabledToolMessage('draft_model', locale);
-      return {
-        ok: false,
-        result: await this.finalizeBlockedRunResult({
-          params,
-          traceId,
-          startedAt,
-          startedAtMs,
-          locale,
-          orchestrationMode,
-          skillIds,
-          plan,
-          toolCalls,
-          sessionKey,
-          workingSession,
-          response,
-          blockedReasonCode: 'TOOL_DISABLED',
-          needsModelInput: true,
-        }),
-      };
-    }
 
-    const draftExecution = await executeDraftModelExecutionStep({
-      message: params.message,
-      locale,
-      skillIds,
-      sessionKey,
-      plan,
-      toolCalls,
-      workingSession,
-      startToolCall: this.startToolCall.bind(this),
-      completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
-      textToModelDraft: (msg: string, state: DraftState | undefined, loc: AppLocale, ids?: string[]) =>
-        this.textToModelDraft(msg, state, loc, ids, params.conversationId),
-      isGenericFallbackDraft: this.isGenericFallbackDraft.bind(this),
-      applyDraftToSession: this.applyDraftToSession.bind(this),
-    });
-    const draft = draftExecution.draft;
-    const genericFallbackDraft = draftExecution.genericFallbackDraft;
 
-    if (workingSession.userApprovedAutoDecide) {
-      for (let i = 0; i < 3; i += 1) {
-        const assessment = await this.assessInteractionNeeds(workingSession, locale, skillIds);
-        if (assessment.nonCriticalMissing.length === 0) {
-          break;
-        }
-        await this.applyNonCriticalDefaults(workingSession, assessment.defaultProposals, locale, skillIds);
-      }
-    }
 
-    const availableModel = draft.model;
-    const finalAssessment = availableModel
-      ? { criticalMissing: [], nonCriticalMissing: [], defaultProposals: [] }
-      : await this.assessInteractionNeeds(workingSession, locale, skillIds);
-    if (finalAssessment.criticalMissing.length > 0 || !availableModel) {
-      if (sessionKey) {
-        await this.setInteractionSession(sessionKey, workingSession);
-      }
-
-      if (genericFallbackDraft) {
-        const missingFields = draft.missingFields.length > 0
-          ? draft.missingFields
-          : [this.localize(locale, '关键结构参数', 'key structural parameters')];
-        const intro = this.buildGenericModelingIntro(locale, noSkillMode);
-        const question = this.localize(
-          locale,
-          `${intro.replace(/。$/, '')}，请先补充：${missingFields.join('、')}。`,
-          `${intro.replace(/\.$/, '')}. Please provide: ${missingFields.join(', ')}.`
-        );
-        return {
-          ok: false,
-          result: await this.finalizeBlockedRunResult({
-            params,
-            traceId,
-            startedAt,
-            startedAtMs,
-            locale,
-            orchestrationMode,
-            skillIds,
-            plan,
-            toolCalls,
-            sessionKey,
-            workingSession,
-            response: question,
-            needsModelInput: true,
-            clarification: {
-              missingFields,
-              question,
-            },
-          }),
-        };
-      }
-
-      const interaction = await this.buildInteractionPayload(
-        finalAssessment,
-        workingSession,
-        finalAssessment.criticalMissing.length > 0 ? 'confirming' : 'collecting',
-        locale,
-        skillIds,
-      );
-      const missingFields = await this.mapMissingFieldLabels(finalAssessment.criticalMissing, locale, workingSession.draft || { inferredType: 'unknown', updatedAt: workingSession.updatedAt }, skillIds);
-      const fallback = this.buildInteractionQuestion(interaction, locale);
-      const question = await this.renderInteractionResponse(
-        params.message,
-        interaction,
-        fallback,
-        locale,
-        sessionKey,
-        skillIds,
-      );
-      return {
-        ok: false,
-        result: await this.finalizeRunResult(traceId, sessionKey, params.message, {
-          traceId,
-          startedAt,
-          completedAt: new Date().toISOString(),
-          durationMs: Date.now() - startedAtMs,
-          success: false,
-          orchestrationMode,
-          needsModelInput: finalAssessment.criticalMissing.length > 0,
-          plan,
-          toolCalls,
-          metrics: this.buildMetrics(toolCalls),
-          interaction,
-          clarification: {
-            missingFields,
-            question,
-          },
-          response: question,
-        }, skillIds, workingSession),
-      };
-    }
-
-    return { ok: true, model: availableModel };
-  }
-
-  private async updateExecutableModel(args: {
-    params: AgentRunInput;
-    traceId: string;
-    startedAt: string;
-    startedAtMs: number;
-    locale: AppLocale;
-    orchestrationMode: AgentOrchestrationMode;
-    skillIds?: string[];
-    activeSkillIds?: string[];
-    activeToolIds?: ActiveToolSet;
-    plan: string[];
-    toolCalls: AgentToolCall[];
-    sessionKey?: string;
-    workingSession: InteractionSession;
-    modelInput?: Record<string, unknown>;
-    hadExistingSession: boolean;
-  }): Promise<
-    | { ok: true; model: Record<string, unknown> }
-    | { ok: false; result: AgentRunResult }
-  > {
-    const {
-      params,
-      traceId,
-      startedAt,
-      startedAtMs,
-      locale,
-      orchestrationMode,
-      skillIds,
-      activeSkillIds,
-      activeToolIds,
-      plan,
-      toolCalls,
-      sessionKey,
-      workingSession,
-      modelInput,
-      hadExistingSession,
-    } = args;
-
-    if (!this.hasActiveTool(activeToolIds, 'update_model')) {
-      const response = this.buildDisabledToolMessage('update_model', locale);
-      return {
-        ok: false,
-        result: await this.finalizeBlockedRunResult({
-          params,
-          traceId,
-          startedAt,
-          startedAtMs,
-          locale,
-          orchestrationMode,
-          skillIds: activeSkillIds ?? skillIds,
-          selectedSkillIds: skillIds,
-          plan,
-          toolCalls,
-          sessionKey,
-          workingSession,
-          response,
-          blockedReasonCode: 'TOOL_DISABLED',
-          model: modelInput,
-          needsModelInput: true,
-        }),
-      };
-    }
-
-    if (!hadExistingSession && !modelInput && !workingSession.latestModel) {
-      const response = this.localize(
-        locale,
-        '当前没有可修改的现有模型或会话上下文。请先建立结构模型，或直接提供完整模型后再修改。',
-        'There is no existing model or engineering session to update. Build a structural model first, or provide a complete model before requesting updates.',
-      );
-      return {
-        ok: false,
-        result: await this.finalizeBlockedRunResult({
-          params,
-          traceId,
-          startedAt,
-          startedAtMs,
-          locale,
-          orchestrationMode,
-          skillIds: activeSkillIds ?? skillIds,
-          selectedSkillIds: skillIds,
-          plan,
-          toolCalls,
-          sessionKey,
-          workingSession,
-          response,
-          model: modelInput || workingSession.latestModel,
-          needsModelInput: true,
-        }),
-      };
-    }
-
-    const updateExecution = await executeUpdateModelExecutionStep({
-      message: params.message,
-      locale,
-      skillIds,
-      sessionKey,
-      plan,
-      toolCalls,
-      workingSession,
-      startToolCall: this.startToolCall.bind(this),
-      completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
-      textToModelDraft: (msg: string, state: DraftState | undefined, loc: AppLocale, ids?: string[]) =>
-        this.textToModelDraft(msg, state, loc, ids, params.conversationId),
-      isGenericFallbackDraft: this.isGenericFallbackDraft.bind(this),
-      applyInferredNonCriticalFromMessage: this.applyInferredNonCriticalFromMessage.bind(this),
-    });
-    const draft = updateExecution.draft;
-
-    const availableModel = draft.model;
-    const finalAssessment = availableModel
-      ? { criticalMissing: [], nonCriticalMissing: [], defaultProposals: [] }
-      : await this.assessInteractionNeeds(workingSession, locale, skillIds);
-    if (finalAssessment.criticalMissing.length > 0 || !availableModel) {
-      if (sessionKey) {
-        await this.setInteractionSession(sessionKey, workingSession);
-      }
-
-      const missingFields = await this.mapMissingFieldLabels(finalAssessment.criticalMissing, locale, workingSession.draft || { inferredType: 'unknown', updatedAt: workingSession.updatedAt }, skillIds);
-      const response = finalAssessment.criticalMissing.length > 0
-        ? this.localize(
-          locale,
-          `模型修改请求已识别，但还缺少这些关键参数：${missingFields.join('、')}。`,
-          `The model update request was recognized, but these key parameters are still missing: ${missingFields.join(', ')}.`,
-        )
-        : this.localize(
-          locale,
-          '模型修改请求已识别，但当前更新结果还不足以形成可执行模型。请继续补充参数。',
-          'The model update request was recognized, but the current update is still insufficient to form an executable model. Please continue providing details.',
-        );
-      return {
-        ok: false,
-        result: await this.finalizeBlockedRunResult({
-          params,
-          traceId,
-          startedAt,
-          startedAtMs,
-          locale,
-          orchestrationMode,
-          skillIds: activeSkillIds ?? skillIds,
-          selectedSkillIds: skillIds,
-          plan,
-          toolCalls,
-          sessionKey,
-          workingSession,
-          response,
-          model: availableModel || modelInput || workingSession.latestModel,
-          needsModelInput: true,
-          clarification: missingFields.length > 0
-            ? {
-              missingFields,
-              question: response,
-            }
-            : undefined,
-        }),
-      };
-    }
-
-    return { ok: true, model: availableModel };
-  }
-
-  private async runExecutionPipeline(args: ExecutionPipelineArgs): Promise<AgentRunResult> {
-    const {
-      params,
-      traceId,
-      startedAt,
-      startedAtMs,
-      locale,
-      orchestrationMode,
-      skillIds,
-      activeSkillIds,
-      activeToolIds,
-      plan,
-      toolCalls,
-      sessionKey,
-      workingSession,
-      normalizedModel,
-      autoAnalyze,
-    } = args;
-
-    if (!autoAnalyze) {
-      const response = await this.renderSummary(
-        params.message,
-        this.localize(locale, '模型已通过校验。根据当前配置，本轮未触发 `run_analysis`。', 'The model passed validation. `run_analysis` was not invoked for this turn under the current configuration.'),
-        locale,
-      );
-      const result: AgentRunResult = {
-        traceId,
-        startedAt,
-        completedAt: new Date().toISOString(),
-        durationMs: Date.now() - startedAtMs,
-        success: true,
-        orchestrationMode,
-        needsModelInput: false,
-        plan,
-        toolCalls,
-        model: normalizedModel,
-        metrics: this.buildMetrics(toolCalls),
-        interaction: this.buildToolInteraction('completed', locale),
-        response,
-      };
-      if (sessionKey) {
-        workingSession.latestModel = normalizedModel;
-        workingSession.updatedAt = Date.now();
-        await this.setInteractionSession(sessionKey, workingSession);
-      }
-      return this.finalizeRunResult(traceId, sessionKey, params.message, result, activeSkillIds ?? skillIds, workingSession, skillIds);
-    }
-
-    if (!this.hasActiveTool(activeToolIds, 'run_analysis')) {
-      const response = this.buildDisabledToolMessage('run_analysis', locale);
-      return this.finalizeBlockedRunResult({
-        params,
-        traceId,
-        startedAt,
-        startedAtMs,
-        locale,
-        orchestrationMode,
-        skillIds: activeSkillIds ?? skillIds,
-        selectedSkillIds: skillIds,
-        plan,
-        toolCalls,
-        sessionKey,
-        workingSession,
-        response,
-        blockedReasonCode: 'TOOL_DISABLED',
-        model: normalizedModel,
-      });
-    }
-
-    const analyzed = await this.runAnalyzeStep(args);
-    if (!analyzed.ok) {
-      return analyzed.result;
-    }
-
-    const codeChecked = await this.runCodeCheckStep({
-      ...args,
-      analyzed: analyzed.value.data,
-    });
-    if (!codeChecked.ok) {
-      return codeChecked.result;
-    }
-
-    const reported = await this.runReportStep({
-      ...args,
-      analyzed: analyzed.value.data,
-      codeCheckResult: codeChecked.value,
-    });
-    return this.finalizeExecutionSuccess({
-      ...args,
-      analyzed: analyzed.value.data,
-      codeCheckResult: codeChecked.value,
-      report: reported.report,
-      artifacts: reported.artifacts,
-    });
-  }
-
-  private async runAnalyzeStep(args: ExecutionPipelineArgs): Promise<
-    | { ok: true; value: { data: any } }
-    | { ok: false; result: AgentRunResult }
-  > {
-    const {
-      params,
-      traceId,
-      startedAt,
-      startedAtMs,
-      locale,
-      orchestrationMode,
-      skillIds,
-      activeSkillIds,
-      plan,
-      toolCalls,
-      sessionKey,
-      workingSession,
-      normalizedModel,
-      analysisParameters,
-      executionConfig,
-    } = args;
-
-    const result = await executeRunAnalysisStep({
-      traceId,
-      locale,
-      analysisType: executionConfig.analysisType,
-      engineId: params.context?.engineId,
-      model: normalizedModel,
-      parameters: this.buildAnalysisParameters(analysisParameters, normalizedModel),
-      plan,
-      toolCalls,
-      localize: this.localize.bind(this),
-      startToolCall: this.startToolCall.bind(this),
-      completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
-      completeToolCallError: this.completeToolCallError.bind(this),
-      shouldRetryEngineCall: this.shouldRetryEngineCall.bind(this),
-      runAnalysis: async (input) => {
-        const analysisSkillId = this.skillRuntime.resolvePreferredAnalysisSkill({
-          analysisType: executionConfig.analysisType,
-          engineId: input.engineId,
-          skillIds: activeSkillIds ?? skillIds,
-          supportedModelFamilies: this.runtimeBinder.resolvePreferredAnalysisModelFamilies({
-            workingSession,
-            modelInput: normalizedModel,
-          }),
-        })?.id;
-        const execution = await this.skillRuntime.executeAnalysisSkill({
-          traceId,
-          analysisType: executionConfig.analysisType,
-          engineId: input.engineId,
-          model: input.model,
-          parameters: input.parameters,
-          analysisSkillId,
-          skillIds: activeSkillIds ?? skillIds,
-          supportedModelFamilies: this.runtimeBinder.resolvePreferredAnalysisModelFamilies({
-            workingSession,
-            modelInput: normalizedModel,
-          }),
-          postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
-        });
-        return execution.result;
-      },
-      buildBlockedResult: async (response) => this.finalizeBlockedRunResult({
-        params,
-        traceId,
-        startedAt,
-        startedAtMs,
-        locale,
-        orchestrationMode,
-        skillIds: activeSkillIds ?? skillIds,
-        selectedSkillIds: skillIds,
-        plan,
-        toolCalls,
-        sessionKey,
-        workingSession,
-        response,
-        model: normalizedModel,
-      }),
-    });
-    if (!result.ok) {
-      return result;
-    }
-    return { ok: true, value: { data: result.data } };
-  }
-
-  private async runCodeCheckStep(args: ExecutionPipelineArgs & { analyzed: any }): Promise<
-    | { ok: true; value: unknown }
-    | { ok: false; result: AgentRunResult }
-  > {
-    const {
-      params,
-      traceId,
-      startedAt,
-      startedAtMs,
-      locale,
-      orchestrationMode,
-      skillIds,
-      activeSkillIds,
-      activeToolIds,
-      plan,
-      toolCalls,
-      sessionKey,
-      workingSession,
-      normalizedModel,
-      analysisParameters,
-      executionConfig,
-      analyzed,
-    } = args;
-
-    const analysisSuccess = Boolean(analyzed?.success);
-    if (!analysisSuccess || !executionConfig.autoCodeCheck || !executionConfig.designCode || !this.hasActiveTool(activeToolIds, 'run_code_check')) {
-      return { ok: true, value: undefined };
-    }
-    const designCode = executionConfig.designCode;
-
-    return executeRunCodeCheckStep({
-      locale,
-      localize: this.localize.bind(this),
-      plan,
-      toolCalls,
-      startToolCall: this.startToolCall.bind(this),
-      completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
-      completeToolCallError: this.completeToolCallError.bind(this),
-      traceId,
-      designCode,
-      model: normalizedModel,
-      analysis: analyzed,
-      analysisParameters,
-      codeCheckElements: params.context?.codeCheckElements,
-      engineId: params.context?.engineId,
-      runCodeCheck: async () => this.skillRuntime.executeCodeCheckSkill({
-        codeCheckClient: this.codeCheckClient,
-        traceId,
-        designCode,
-        model: normalizedModel,
-        analysis: analyzed,
-        analysisParameters,
-        codeCheckElements: params.context?.codeCheckElements,
-        engineId: params.context?.engineId,
-        codeCheckSkillId: this.skillRuntime.resolveCodeCheckSkillId(designCode),
-      }),
-      buildBlockedResult: async (response) => this.finalizeBlockedRunResult({
-        params,
-        traceId,
-        startedAt,
-        startedAtMs,
-        locale,
-        orchestrationMode,
-        skillIds: activeSkillIds ?? skillIds,
-        selectedSkillIds: skillIds,
-        plan,
-        toolCalls,
-        sessionKey,
-        workingSession,
-        response,
-        model: normalizedModel,
-      }),
-    });
-  }
-
-  private async runReportStep(args: ExecutionPipelineArgs & {
-    analyzed: any;
-    codeCheckResult: unknown;
-  }): Promise<ExecutionArtifacts> {
-    const {
-      params,
-      traceId,
-      locale,
-      skillIds,
-      activeSkillIds,
-      activeToolIds,
-      plan,
-      toolCalls,
-      workingSession,
-      executionConfig,
-      analyzed,
-      codeCheckResult,
-    } = args;
-
-    if (!analyzed?.success || !executionConfig.includeReport || !this.hasActiveTool(activeToolIds, 'generate_report')) {
-      return {};
-    }
-
-    return executeGenerateReportStep({
-      message: params.message,
-      locale,
-      analysisType: executionConfig.analysisType,
-      analysis: analyzed,
-      codeCheck: codeCheckResult,
-      format: executionConfig.reportFormat,
-      reportOutput: executionConfig.reportOutput,
-      draft: workingSession.draft,
-      skillIds: activeSkillIds ?? skillIds,
-      traceId,
-      plan,
-      toolCalls,
-      localize: this.localize.bind(this),
-      startToolCall: this.startToolCall.bind(this),
-      completeToolCallSuccess: this.completeToolCallSuccess.bind(this),
-      generateReport: async () => {
-        const execution = await this.skillRuntime.executeReportSkill({
-          message: params.message,
-          analysisType: executionConfig.analysisType,
-          analysis: analyzed,
-          codeCheck: codeCheckResult,
-          format: executionConfig.reportFormat,
-          locale,
-          draft: workingSession.draft,
-          skillIds: activeSkillIds ?? skillIds,
-        });
-        return execution.report;
-      },
-      persistReportArtifacts: this.persistReportArtifacts.bind(this),
-    });
-  }
-
-  private async finalizeExecutionSuccess(args: ExecutionPipelineArgs & {
-    analyzed: any;
-    codeCheckResult: unknown;
-    report?: AgentRunResult['report'];
-    artifacts?: AgentRunResult['artifacts'];
-  }): Promise<AgentRunResult> {
-    const {
-      params,
-      traceId,
-      startedAt,
-      startedAtMs,
-      locale,
-      orchestrationMode,
-      skillIds,
-      activeSkillIds,
-      plan,
-      toolCalls,
-      sessionKey,
-      workingSession,
-      normalizedModel,
-      executionConfig,
-      validationWarning,
-      analyzed,
-      codeCheckResult,
-      report,
-      artifacts,
-    } = args;
-
-    const analysisResultData = analyzed?.success ? (analyzed as Record<string, unknown>)['data'] : undefined;
-    const response = await this.renderSummary(
-      params.message,
-      this.localize(
-        locale,
-        `分析完成。analysis_type=${executionConfig.analysisType}, success=${String(analyzed?.success ?? false)}`
-          + (executionConfig.autoCodeCheck ? `, code_check=${String(Boolean(codeCheckResult))}` : '')
-          + (validationWarning ? `, validation_warning=true` : ''),
-        `Analysis finished. analysis_type=${executionConfig.analysisType}, success=${String(analyzed?.success ?? false)}`
-          + (executionConfig.autoCodeCheck ? `, code_check=${String(Boolean(codeCheckResult))}` : '')
-          + (validationWarning ? `, validation_warning=true` : ''),
-      ),
-      locale,
-      analysisResultData,
-      sessionKey,
-    );
-
-    if (sessionKey) {
-      workingSession.latestModel = normalizedModel;
-      workingSession.updatedAt = Date.now();
-      await this.setInteractionSession(sessionKey, workingSession);
-    }
-    return this.finalizeRunResult(traceId, sessionKey, params.message, {
-      traceId,
-      startedAt,
-      completedAt: new Date().toISOString(),
-      durationMs: Date.now() - startedAtMs,
-      success: Boolean(analyzed?.success),
-      orchestrationMode,
-      needsModelInput: false,
-      plan,
-      toolCalls,
-      model: normalizedModel,
-      analysis: analyzed,
-      codeCheck: codeCheckResult,
-      report,
-      artifacts,
-      metrics: this.buildMetrics(toolCalls),
-      interaction: this.buildToolInteraction('completed', locale),
-      response: validationWarning ? `${validationWarning}\n\n${response}` : response,
-    }, activeSkillIds ?? skillIds, workingSession, skillIds);
-  }
 
   private async draftConversationState(args: {
     params: AgentRunInput;
