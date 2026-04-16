@@ -1,0 +1,35 @@
+id: synthesize_design
+source: builtin
+tier: domain
+category: modeling
+enabledByDefault: false
+displayName:
+  zh: 设计迭代优化
+  en: Design Iteration and Optimization
+description:
+  zh: 基于分析或校核结果迭代优化结构设计方案。
+  en: Iteratively optimize the structural design based on analysis or code-check results.
+requiresSkills: []
+requiresTools:
+  - run_analysis
+tags:
+  - design
+  - iteration
+inputSchema:
+  type: object
+  required:
+    - normalizedModel
+  properties:
+    normalizedModel:
+      type: object
+    postprocessedResult:
+      type: object
+    codeCheckResult:
+      type: object
+outputSchema:
+  type: object
+  properties:
+    proposedModel:
+      type: object
+errorCodes:
+  - DESIGN_EXECUTION_FAILED

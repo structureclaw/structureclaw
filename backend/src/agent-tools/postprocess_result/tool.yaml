@@ -1,0 +1,31 @@
+id: postprocess_result
+source: builtin
+tier: domain
+category: analysis
+enabledByDefault: false
+displayName:
+  zh: 后处理分析结果
+  en: Postprocess Analysis Results
+description:
+  zh: 对原始分析结果进行后处理，生成组合工况包络、位移摘要等。
+  en: Postprocess raw analysis results into load combination envelopes, displacement summaries, etc.
+requiresSkills: []
+requiresTools:
+  - run_analysis
+tags:
+  - postprocess
+  - analysis
+inputSchema:
+  type: object
+  required:
+    - analysisRaw
+  properties:
+    analysisRaw:
+      type: object
+outputSchema:
+  type: object
+  properties:
+    postprocessedResult:
+      type: object
+errorCodes:
+  - POSTPROCESS_EXECUTION_FAILED
