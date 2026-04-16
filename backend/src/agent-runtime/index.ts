@@ -1029,7 +1029,8 @@ export class AgentSkillRuntime {
 
     const plugin = await this.registry.resolvePluginById(skillId);
     if (!plugin) {
-      throw new Error(`Enricher skill not found: ${skillId}`);
+      // Enricher skill declared a runtimeContract but has no handler module — skip.
+      return { artifact: args.pipelineState.artifacts.normalizedModel };
     }
 
     const baseModel = (args.pipelineState.artifacts.normalizedModel?.payload ?? {}) as Record<string, unknown>;
