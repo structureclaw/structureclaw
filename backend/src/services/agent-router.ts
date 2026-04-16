@@ -410,17 +410,15 @@ function inferTargetArtifact(options: {
   session?: InteractionSession;
   hasModel: boolean;
   activeToolIds?: ActiveToolSet;
+  forceExecution?: boolean;
 }): string | undefined {
   // Always target the deepest analysis artifact, not reportArtifact.
   // Report is handled as a follow-up after the main pipeline completes.
   const hasCodeCheckTool = options.activeToolIds?.has('run_code_check') ?? false;
-  if (options.hasModel && (options.session?.resolved?.designCode || hasCodeCheckTool)) {
-    return 'codeCheckResult';
-  }
-  if (options.hasModel && options.session?.resolved?.analysisType) {
-    return 'analysisRaw';
-  }
-  if (options.hasModel) {
+  if (options.hasModel || options.forceExecution) {
+    if (options.session?.resolved?.designCode || hasCodeCheckTool) {
+      return 'codeCheckResult';
+    }
     return 'analysisRaw';
   }
   return 'normalizedModel';
@@ -483,7 +481,7 @@ export async function planNextStep(
   if (options.planningDirective === 'force_tool') {
     return {
       kind: 'execute',
-      targetArtifact: inferTargetArtifact(options),
+      targetArtifact: inferTargetArtifact({ ...options, forceExecution: true }),
       planningDirective: options.planningDirective,
       rationale: 'override',
     };
