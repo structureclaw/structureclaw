@@ -863,7 +863,11 @@ export class AgentSkillRuntime {
     if (!args.step.provides) return {};
 
     // Delegate to executeReportSkill for full report (summary, markdown, meta)
-    const analysisType = (args.pipelineState.artifacts.designBasis?.payload as Record<string, unknown> | undefined)?.analysisType as 'static' | 'dynamic' | 'seismic' | 'nonlinear' | undefined ?? 'static';
+    // Prefer pipelineState.policy.analysisType (same source used by scheduled analysis execution).
+    // Fall back to designBasis.payload.analysisType for backwards compatibility, then 'static'.
+    const analysisType = args.pipelineState.policy?.analysisType
+      ?? (args.pipelineState.artifacts.designBasis?.payload as Record<string, unknown> | undefined)?.analysisType as 'static' | 'dynamic' | 'seismic' | 'nonlinear' | undefined
+      ?? 'static';
     const reportResult = await this.executeReportSkill({
       message: args.message ?? '',
       analysisType,
@@ -1104,7 +1108,15 @@ export class AgentSkillRuntime {
     const draftStateHash = kind === 'normalizedModel' && draftState
       ? computeDraftStateContentHash(draftState as Record<string, unknown>)
       : undefined;
-    const dependencyFingerprint = computeDependencyFingerprint(depRefs, pipelineState?.bindings, draftStateHash);
+    // Only include provider bindings relevant to this artifact's provider slot.
+    // analysisRaw → analysisProvider, codeCheckResult → codeCheckProvider, others → none.
+    // Must match the scheduler's fingerprint computation for reuse checks to work.
+    const relevantBindings = kind === 'analysisRaw' && pipelineState?.bindings
+      ? { analysisProviderSkillId: pipelineState.bindings.analysisProviderSkillId }
+      : kind === 'codeCheckResult' && pipelineState?.bindings
+        ? { codeCheckProviderSkillId: pipelineState.bindings.codeCheckProviderSkillId }
+        : undefined;
+    const dependencyFingerprint = computeDependencyFingerprint(depRefs, relevantBindings, draftStateHash);
     return {
       artifactId: `${kind}:${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       kind,

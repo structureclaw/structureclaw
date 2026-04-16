@@ -386,9 +386,14 @@ export async function resolveInteractivePlanKind(
   if (!options.session?.draft || options.session.draft.inferredType === 'unknown') {
     return { kind: 'ask', planningDirective: 'auto', rationale: 'override' };
   }
+  // Assess interaction readiness. When hasModel is false we always fall back to
+  // 'ask' regardless of the assessment result — model building requires explicit
+  // user confirmation before proceeding. When hasModel is true (reachable via the
+  // early-return above at line 380), the assessment determines the final path.
   const assessment = await assessInteractionNeeds(options.session, options.locale, options.skillIds, 'interactive');
   const readyForExecution = assessment.criticalMissing.length === 0
     && (assessment.nonCriticalMissing.length === 0 || Boolean(options.session.userApprovedAutoDecide));
+  // Safety guard: never auto-proceed without a model — always ask for confirmation first.
   if (!options.hasModel) {
     return { kind: 'ask', planningDirective: 'auto', rationale: 'override' };
   }

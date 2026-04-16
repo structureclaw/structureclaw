@@ -1684,18 +1684,25 @@ export class AgentService {
             errorCode,
             durationMs: Date.now() - stepStartedAtMs,
           });
-          // DRAFT_INCOMPLETE: fall back to conversation mode for clarification prompts
+          // DRAFT_INCOMPLETE: fall back to conversation mode for clarification prompts.
+          // In directed mode (forced execution), override success to false — the pipeline
+          // cannot complete without full model details, but the conversation-mode fallback
+          // still produces useful clarification data (missing fields, prompts).
           if (errorCode === 'DRAFT_INCOMPLETE') {
             const askPlan: AgentNextStepPlan = {
               kind: 'ask',
               planningDirective: 'auto',
               rationale: 'override',
             };
-            return this.handleConversationMode({
+            const convResult = await this.handleConversationMode({
               nextPlan: askPlan,
               params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
               toolCalls, plan, sessionKey, workingSession, activeToolIds,
             });
+            if (orchestrationMode === 'directed') {
+              return { ...convResult, success: false, needsModelInput: true };
+            }
+            return convResult;
           }
           // Bypass validate on upstream 502 (transient server errors)
           if (step.tool === 'validate_model' && this.shouldBypassValidateFailure(stepError)) {
