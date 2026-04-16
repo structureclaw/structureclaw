@@ -390,6 +390,10 @@ function buildLocalizedBlockedReason(reason: string, locale: AppLocale): string 
       zh: '项目策略要求在执行此操作前获得确认。请确认是否继续执行。',
       en: 'Project policy requires approval before executing this operation. Please confirm to proceed.',
     },
+    'validation failed': {
+      zh: '模型校验失败',
+      en: 'Model validation failed',
+    },
   };
   const localized = messages[reason];
   return localized ? localized[locale] ?? localized.en : reason;
