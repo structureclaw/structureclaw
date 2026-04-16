@@ -3,7 +3,7 @@ import type {
   ArtifactEnvelope,
   ArtifactRef,
   ProjectArtifactKind,
-  SchedulerAction,
+  SchedulerTool,
   SchedulerStep,
   SchedulerInput,
   SchedulerPlan,
@@ -17,19 +17,19 @@ import { canReuseArtifact, computeDependencyFingerprint } from './artifact-helpe
 interface GraphNode {
   dependsOn: ArtifactKind[];
   providerSlot?: 'analysisProvider' | 'codeCheckProvider';
-  defaultAction: SchedulerAction;
+  defaultTool: SchedulerTool;
   defaultRole: SkillRole;
 }
 
 const CONTROLLED_ARTIFACT_GRAPH: Record<ProjectArtifactKind, GraphNode> = {
-  designBasis: { dependsOn: [], defaultAction: 'update', defaultRole: 'entry' },
-  normalizedModel: { dependsOn: ['designBasis'], defaultAction: 'update', defaultRole: 'enricher' },
-  analysisModel: { dependsOn: ['designBasis', 'normalizedModel'], defaultAction: 'convert', defaultRole: 'transformer' },
-  analysisRaw: { dependsOn: ['analysisModel'], providerSlot: 'analysisProvider', defaultAction: 'analyze', defaultRole: 'provider' },
-  postprocessedResult: { dependsOn: ['analysisRaw'], defaultAction: 'postprocess', defaultRole: 'transformer' },
-  codeCheckResult: { dependsOn: ['designBasis', 'normalizedModel', 'postprocessedResult'], providerSlot: 'codeCheckProvider', defaultAction: 'code_check', defaultRole: 'provider' },
-  drawingArtifact: { dependsOn: ['designBasis', 'normalizedModel'], defaultAction: 'drawing', defaultRole: 'consumer' },
-  reportArtifact: { dependsOn: ['designBasis', 'normalizedModel'], defaultAction: 'report', defaultRole: 'consumer' },
+  designBasis: { dependsOn: [], defaultTool: 'update_model', defaultRole: 'entry' },
+  normalizedModel: { dependsOn: ['designBasis'], defaultTool: 'update_model', defaultRole: 'enricher' },
+  analysisModel: { dependsOn: ['designBasis', 'normalizedModel'], defaultTool: 'convert_model', defaultRole: 'transformer' },
+  analysisRaw: { dependsOn: ['analysisModel'], providerSlot: 'analysisProvider', defaultTool: 'run_analysis', defaultRole: 'provider' },
+  postprocessedResult: { dependsOn: ['analysisRaw'], defaultTool: 'postprocess_result', defaultRole: 'transformer' },
+  codeCheckResult: { dependsOn: ['designBasis', 'normalizedModel', 'postprocessedResult'], providerSlot: 'codeCheckProvider', defaultTool: 'run_code_check', defaultRole: 'provider' },
+  drawingArtifact: { dependsOn: ['designBasis', 'normalizedModel'], defaultTool: 'generate_drawing', defaultRole: 'consumer' },
+  reportArtifact: { dependsOn: ['designBasis', 'normalizedModel'], defaultTool: 'generate_report', defaultRole: 'consumer' },
 };
 
 // Consumer artifacts that support required/optional consumes
@@ -142,7 +142,7 @@ export class PipelineScheduler {
     steps.push({
       stepId: `${target}-generate`,
       role: 'consumer',
-      action: graphNode?.defaultAction ?? 'report',
+      tool: graphNode?.defaultTool ?? 'generate_report',
       consumes: consumedRefs,
       provides: target,
       mode: 'execute',
@@ -209,7 +209,7 @@ export class PipelineScheduler {
           requiredSteps: [{
             stepId: `${target}-reuse`,
             role: graphNode.defaultRole,
-            action: graphNode.defaultAction,
+            tool: graphNode.defaultTool,
             consumes: [],
             provides: target,
             mode: 'reuse',
@@ -236,9 +236,9 @@ export class PipelineScheduler {
 
     if (graphNode.providerSlot) {
       steps.push({
-        stepId: `${target}-validation`,
+        stepId: `${target}-validate_model`,
         role: 'validator',
-        action: 'validate',
+        tool: 'validate_model',
         consumes: this.collectRefs(graphNode.dependsOn, input.projectArtifacts),
         mode: 'execute',
         reason: `Validate before provider execution for ${target}`,
@@ -250,11 +250,11 @@ export class PipelineScheduler {
       steps.push({
         stepId: `${target}-approval`,
         role: graphNode.defaultRole,
-        action: graphNode.defaultAction,
+        tool: graphNode.defaultTool,
         consumes: this.collectRefs(graphNode.dependsOn, input.projectArtifacts),
         provides: target,
         mode: 'approval',
-        reason: `Approval required before executing ${graphNode.defaultAction} to produce ${target}`,
+        reason: `Approval required before executing ${graphNode.defaultTool} to produce ${target}`,
       });
     }
 
@@ -265,20 +265,20 @@ export class PipelineScheduler {
     const bindingKey = graphNode.providerSlot ? `${graphNode.providerSlot}SkillId` as keyof import('./types.js').ProviderBindingState : undefined;
     const boundSkillId = bindingKey ? input.bindings?.[bindingKey] : undefined;
 
-    // Use 'draft' action for normalizedModel when no existing model is present
-    const actualAction = target === 'normalizedModel' && !input.projectArtifacts.normalizedModel
-      ? 'draft'
-      : graphNode.defaultAction;
+    // Use 'draft_model' tool for normalizedModel when no existing model is present
+    const actualTool = target === 'normalizedModel' && !input.projectArtifacts.normalizedModel
+      ? 'draft_model'
+      : graphNode.defaultTool;
 
     steps.push({
-      stepId: `${target}-execute`,
+      stepId: `${target}-${actualTool}`,
       role: graphNode.defaultRole,
-      action: actualAction,
+      tool: actualTool,
       skillId: boundSkillId,
       consumes: this.collectRefs(graphNode.dependsOn, input.projectArtifacts),
       provides: target,
       mode: targetMode,
-      reason: `Execute ${actualAction} to produce ${target}`,
+      reason: `Execute ${actualTool} to produce ${target}`,
     });
 
     // Spec section 13.4: enricher steps after normalizedModel creation
@@ -286,9 +286,9 @@ export class PipelineScheduler {
       const sortedEnrichers = [...input.enricherContracts].sort((a, b) => a.priority - b.priority);
       for (const enricher of sortedEnrichers) {
         steps.push({
-          stepId: `normalizedModel-enrich-${enricher.skillId}`,
+          stepId: `normalizedModel-enrich_model-${enricher.skillId}`,
           role: 'enricher',
-          action: 'enrich',
+          tool: 'enrich_model',
           skillId: enricher.skillId,
           consumes: input.projectArtifacts.normalizedModel
             ? [artifactToRef(input.projectArtifacts.normalizedModel)]
@@ -325,7 +325,7 @@ export class PipelineScheduler {
       requiredSteps: [{
         stepId: 'design-feedback-propose',
         role: 'designer',
-        action: 'design',
+        tool: 'synthesize_design',
         skillId: input.selectedSkillIds.find((id) => id.startsWith('design-')),
         consumes: [
           ...(input.projectArtifacts.designBasis ? [artifactToRef(input.projectArtifacts.designBasis)] : []),
