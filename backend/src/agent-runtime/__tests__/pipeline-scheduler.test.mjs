@@ -157,7 +157,7 @@ describe('pipeline scheduler', () => {
       },
     });
 
-    expect(plan.requiredSteps.some((s) => s.action === 'update')).toBe(true);
+    expect(plan.requiredSteps.some((s) => s.action === 'draft' || s.action === 'update')).toBe(true);
     expect(plan.requiredSteps.some((s) => s.action === 'report')).toBe(true);
     expect(plan.blockedReason).toBeUndefined();
   });

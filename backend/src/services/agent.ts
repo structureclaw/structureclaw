@@ -1480,6 +1480,7 @@ export class AgentService {
       if (!pipelineState.bindings.analysisProviderSkillId && activeSkillIds) {
         const preferredAnalysis = this.skillRuntime.resolvePreferredAnalysisSkill({
           analysisType: workingSession.resolved?.analysisType || params.context?.analysisType || 'static',
+          engineId: params.context?.engineId,
           skillIds: activeSkillIds,
         });
         if (preferredAnalysis) {
@@ -1615,6 +1616,29 @@ export class AgentService {
           errorCode: extra?.errorCode,
         });
       };
+
+      // Pre-check: scan all steps for disabled tools before executing any
+      const disabledToolIds = params.context?.disabledToolIds;
+      if (Array.isArray(disabledToolIds) && disabledToolIds.length > 0) {
+        for (const preStep of schedulerPlan.requiredSteps) {
+          if (preStep.mode === 'reuse') continue;
+          const preStepToolId = mapSchedulerActionToToolId(preStep.action);
+          if (disabledToolIds.includes(preStepToolId)) {
+            const disabledToolResponse = this.localize(
+              locale,
+              `工具 ${preStepToolId} 已被禁用，无法执行。`,
+              `Tool ${preStepToolId} is disabled and cannot be executed.`,
+            );
+            return this.finalizeBlockedRunResult({
+              params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
+              skillIds, plan, toolCalls, sessionKey, workingSession,
+              response: disabledToolResponse,
+              blockedReasonCode: 'TOOL_DISABLED',
+              needsModelInput: false,
+            });
+          }
+        }
+      }
 
       for (const step of schedulerPlan.requiredSteps) {
         try {
@@ -1821,6 +1845,7 @@ export class AgentService {
             llm: this.llm,
             draftState: workingSession.draft,
             skillIds,
+            engineId: params.context?.engineId,
           });
         } catch (stepError) {
           const stepErrorMessage = stepError instanceof Error ? stepError.message : String(stepError);
@@ -1840,9 +1865,43 @@ export class AgentService {
             errorCode,
             durationMs: Date.now() - stepStartedAtMs,
           });
+          // DRAFT_INCOMPLETE: fall back to conversation mode for clarification prompts
+          if (errorCode === 'DRAFT_INCOMPLETE') {
+            const askPlan: AgentNextStepPlan = {
+              kind: 'ask',
+              planningDirective: 'auto',
+              rationale: 'override',
+            };
+            return this.handleConversationMode({
+              nextPlan: askPlan,
+              params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
+              toolCalls, plan, sessionKey, workingSession, activeToolIds,
+            });
+          }
           // Bypass validate on upstream 502 (transient server errors)
           if (step.action === 'validate' && this.shouldBypassValidateFailure(stepError)) {
+            // Add validation warning to plan for inclusion in final response
+            plan.push(this.localize(
+              locale,
+              `模型校验服务暂时不可用，已跳过 \`validate_model\` 并继续执行 \`run_analysis\`：${stepErrorMessage}`,
+              `The model validation service is temporarily unavailable. \`validate_model\` was skipped and \`run_analysis\` will continue: ${stepErrorMessage}`,
+            ));
             continue;
+          }
+          // Localize analyze engine 502 errors
+          if (step.action === 'analyze' && this.shouldRetryEngineCall(stepError)) {
+            const engineUnavailable = this.localize(
+              locale,
+              `分析引擎服务暂时不可用，重试后仍失败：${stepErrorMessage}`,
+              `The analysis engine is temporarily unavailable and still failed after retry: ${stepErrorMessage}`,
+            );
+            return this.finalizeBlockedRunResult({
+              params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
+              skillIds, plan, toolCalls, sessionKey, workingSession,
+              response: engineUnavailable,
+              blockedReasonCode: errorCode,
+              needsModelInput: false,
+            });
           }
           return this.finalizeBlockedRunResult({
             params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
@@ -1957,6 +2016,7 @@ export class AgentService {
                 llm: this.llm,
                 draftState: workingSession.draft,
                 skillIds,
+                engineId: params.context?.engineId,
               });
             } catch (fbError) {
               const fbErrorMessage = fbError instanceof Error ? fbError.message : String(fbError);
@@ -2021,6 +2081,7 @@ export class AgentService {
                 llm: this.llm,
                 draftState: workingSession.draft,
                 skillIds,
+                engineId: params.context?.engineId,
               });
             } catch (rStepError) {
               const rStepErrorMessage = rStepError instanceof Error ? rStepError.message : String(rStepError);
@@ -2060,7 +2121,7 @@ export class AgentService {
       }
 
       const analysisSuccess = Boolean((schedulerAnalysis as Record<string, unknown> | undefined)?.success);
-      const schedulerResponse = await this.renderSummary(
+      let schedulerResponse = await this.renderSummary(
         params.message,
         this.localize(
           locale,
@@ -2071,6 +2132,11 @@ export class AgentService {
         schedulerAnalysis,
         sessionKey,
       );
+
+      // Append any validation bypass warnings or plan notes to the response
+      if (plan.length > 0) {
+        schedulerResponse = `${schedulerResponse}\n${plan.join('\n')}`;
+      }
 
       // Export report artifacts to files when reportOutput=file
       const reportOutput = workingSession.resolved?.reportOutput || params.context?.reportOutput || 'inline';
@@ -4240,6 +4306,10 @@ export class AgentService {
       skillIds,
       allowBuildFromDraft: true,
     });
+    // Persist latestModel that was set by resolveConversationModel
+    if (sessionKey) {
+      await this.setInteractionSession(sessionKey, workingSession);
+    }
     const fallback = this.buildChatModeResponse(resolved.interaction, this.resolveInteractionLocale(params.context?.locale));
     const response = await this.renderInteractionResponse(
       params.message,
@@ -4303,6 +4373,10 @@ export class AgentService {
       skillIds,
       allowBuildFromDraft: resolved.assessment.criticalMissing.length === 0,
     });
+    // Persist latestModel that was set by resolveConversationModel
+    if (sessionKey) {
+      await this.setInteractionSession(sessionKey, workingSession);
+    }
     const fallback = this.buildChatModeResponse(resolved.interaction, locale);
     const response = await this.renderInteractionResponse(
       params.message,

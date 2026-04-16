@@ -169,7 +169,7 @@ describe('planNextStep force_tool path', () => {
   });
   const mockHasEmptySkillSelection = () => false;
 
-  test('returns tool_call for force_tool directive', async () => {
+  test('returns execute with targetArtifact for force_tool directive', async () => {
     const plan = await planNextStep(
       null,
       '分析这个结构',
@@ -179,11 +179,16 @@ describe('planNextStep force_tool path', () => {
         locale: 'zh',
         skillIds: ['frame'],
         hasModel: true,
+        session: {
+          resolved: { analysisType: 'static' },
+          updatedAt: Date.now(),
+        },
       },
       mockAssessInteractionNeeds,
       mockHasEmptySkillSelection,
     );
-    expect(plan.kind).toBe('tool_call');
+    expect(plan.kind).toBe('execute');
+    expect(plan.targetArtifact).toBe('analysisRaw');
   });
 
   test('returns execute with targetArtifact via LLM when allowed', async () => {

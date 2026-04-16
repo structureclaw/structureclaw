@@ -711,6 +711,7 @@ export class AgentSkillRuntime {
     llm?: ChatOpenAI | null;
     draftState?: DraftState;
     skillIds?: string[];
+    engineId?: string;
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
     switch (args.step.action) {
       case 'validate':
@@ -747,10 +748,12 @@ export class AgentSkillRuntime {
     locale: AppLocale;
     postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
     codeCheckClient: unknown;
+    engineId?: string;
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
     const model = args.pipelineState.artifacts.normalizedModel?.payload as Record<string, unknown> ?? {};
     const result = await this.executeValidationSkill({
       model,
+      engineId: args.engineId,
       structureProtocolClient: {
         post: (path: string, payload: Record<string, unknown>) =>
           args.postToEngineWithRetry(path, payload, { retries: 3, traceId: args.traceId, tool: 'run_analysis' }),
@@ -769,6 +772,7 @@ export class AgentSkillRuntime {
     postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
     codeCheckClient: unknown;
     skillIds?: string[];
+    engineId?: string;
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
     const model = args.pipelineState.artifacts.analysisModel?.payload as Record<string, unknown> ?? {};
     const analysisType = args.pipelineState.policy?.analysisType ?? 'static';
@@ -777,7 +781,7 @@ export class AgentSkillRuntime {
       analysisType,
       postToEngineWithRetry: args.postToEngineWithRetry,
       traceId: args.traceId,
-      engineId: undefined,
+      engineId: args.engineId,
       parameters: {},
       skillIds: args.skillIds,
     });
@@ -811,6 +815,7 @@ export class AgentSkillRuntime {
     locale: AppLocale;
     postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
     codeCheckClient: unknown;
+    engineId?: string;
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
     const model = args.pipelineState.artifacts.normalizedModel?.payload as Record<string, unknown> ?? {};
     const analysis = args.pipelineState.artifacts.analysisRaw?.payload;
@@ -824,8 +829,12 @@ export class AgentSkillRuntime {
       analysisParameters: {},
       postprocessedResult: postprocessedPayload as Record<string, unknown> | undefined,
     });
+    // Inject engineId into the code-check input payload
+    if (args.engineId) {
+      (codeCheckInput as Record<string, unknown>).engineId = args.engineId;
+    }
     const skillId = this.resolveCodeCheckSkillId(designCode);
-    const result = await executeCodeCheckDomain(args.codeCheckClient as CodeCheckClient, codeCheckInput);
+    const result = await executeCodeCheckDomain(args.codeCheckClient as CodeCheckClient, codeCheckInput, args.engineId);
     if (result && typeof result === 'object' && skillId) {
       const payload = result as Record<string, unknown>;
       const existingMeta = payload.meta && typeof payload.meta === 'object'

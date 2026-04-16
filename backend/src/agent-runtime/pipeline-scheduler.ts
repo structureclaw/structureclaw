@@ -265,15 +265,20 @@ export class PipelineScheduler {
     const bindingKey = graphNode.providerSlot ? `${graphNode.providerSlot}SkillId` as keyof import('./types.js').ProviderBindingState : undefined;
     const boundSkillId = bindingKey ? input.bindings?.[bindingKey] : undefined;
 
+    // Use 'draft' action for normalizedModel when no existing model is present
+    const actualAction = target === 'normalizedModel' && !input.projectArtifacts.normalizedModel
+      ? 'draft'
+      : graphNode.defaultAction;
+
     steps.push({
       stepId: `${target}-execute`,
       role: graphNode.defaultRole,
-      action: graphNode.defaultAction,
+      action: actualAction,
       skillId: boundSkillId,
       consumes: this.collectRefs(graphNode.dependsOn, input.projectArtifacts),
       provides: target,
       mode: targetMode,
-      reason: `Execute ${graphNode.defaultAction} to produce ${target}`,
+      reason: `Execute ${actualAction} to produce ${target}`,
     });
 
     // Spec section 13.4: enricher steps after normalizedModel creation
