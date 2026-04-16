@@ -494,7 +494,7 @@ async function validateAgentOrchestration(context) {
     assert(beam.success === true, "double-span beam draft should succeed");
     assert(Array.isArray(beam.model?.elements) && beam.model.elements.length === 2, "double-span beam should have 2 elements");
 
-    const truss = await svc.runForcedExecution({
+    const truss = await svc.runChatOnly({
       message: "建立一个平面桁架，长度5m，10kN轴向荷载并计算",
       context: {
         userDecision: "allow_auto_decide",
