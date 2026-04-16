@@ -139,6 +139,8 @@ jobs:
           npm run test:e2e --prefix frontend 2>&1 | tee test-output.txt
         env:
           CI: true
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
 
       - name: Extract test summary
         if: always()
