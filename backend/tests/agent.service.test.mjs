@@ -3056,20 +3056,19 @@ describe('AgentService orchestration', () => {
 
     expect(computed.toolCalls.some((call) => call.tool === 'run_analysis')).toBe(true);
 
-    // The message contains "改成" which triggers the invalidateArtifacts heuristic.
-    // The scheduler should plan update_model for normalizedModel (not reuse)
-    // and then re-run analysis downstream.
+    // The user changes loads. The pre-processing step updates the DraftState
+    // via extractDraftParameters, which changes the DraftState content hash.
+    // The scheduler detects the hash change vs the seeded normalizedModel fingerprint
+    // and plans an update_model step to rebuild normalizedModel.
     svc.llm = {
       invoke: async (prompt) => {
         const text = typeof prompt === 'string' ? prompt : JSON.stringify(prompt);
         if (text.includes('Return strict JSON only')) {
-          expect(text).toContain('User message: 好的，现在荷载改成每层都是水平x方向10kN');
           return {
             content: JSON.stringify({
               kind: 'execute',
               targetArtifact: 'analysisRaw',
               replyMode: null,
-              modelUpdateIntent: true,
               reason: 'the user is modifying the current frame loads and expects updated engineering results',
             }),
           };
@@ -3077,6 +3076,33 @@ describe('AgentService orchestration', () => {
         return { content: 'ok' };
       },
     };
+
+    // Stub extractDraftParameters to return an updated draft with changed loads.
+    // The pre-processing step calls this to update the DraftState before scheduling.
+    // The changed DraftState hash triggers normalizedModel rebuild via fingerprint mismatch.
+    svc.skillRuntime.extractDraftParameters = async () => ({
+      nextState: {
+        inferredType: 'frame',
+        structuralTypeKey: '3d-frame',
+        skillId: '3d-frame',
+        supportLevel: 'supported',
+        floorLoadsX: [10, 10],
+        floorLoadsY: [0, 0],
+        floorVerticalLoads: [0, 0],
+        updatedAt: Date.now(),
+      },
+      missing: { critical: [], optional: [] },
+      structuralTypeMatch: { key: '3d-frame', mappedType: 'frame', skillId: '3d-frame', supportLevel: 'supported' },
+      plugin: { id: '3d-frame' },
+      extractionMode: 'llm',
+    });
+    svc.skillRuntime.buildModelFromDraft = async () => ({
+      inferredType: 'frame',
+      missingFields: [],
+      extractionMode: 'llm',
+      model: computed.model ?? first.model,
+      stateToPersist: { inferredType: 'frame', updatedAt: Date.now() },
+    });
 
     const updated = await svc.run({
       conversationId: 'conv-frame-update-loads',
@@ -3086,10 +3112,10 @@ describe('AgentService orchestration', () => {
       },
     });
 
-    // The invalidation signal forces normalizedModel rebuild.
+    // The DraftState hash change forces normalizedModel rebuild.
     // The update_model step should be planned and executed.
     // (Enricher steps may fail in test context, blocking downstream steps — that's OK,
-    // the key assertion is that update_model was triggered by the invalidation signal.)
+    // the key assertion is that update_model was triggered by the DraftState change.)
     expect(updated.toolCalls.some((call) => call.tool === 'update_model')).toBe(true);
   });
 

@@ -75,8 +75,16 @@ describe('pipeline scheduler', () => {
       targetArtifact: 'postprocessedResult',
       sessionArtifacts: {},
       projectArtifacts: {
-        designBasis: { status: 'ready', dependencyFingerprint: 'fp-db' },
-        analysisRaw: { status: 'ready', dependencyFingerprint: 'fp-ar-1' },
+        designBasis: { status: 'ready', dependencyFingerprint: 'e3b0c44298fc1c14', artifactId: 'db-1', revision: 1 },
+        normalizedModel: {
+          status: 'ready',
+          dependencyFingerprint: 'f8956887e2852bbc',
+          artifactId: 'nm-1',
+          revision: 1,
+          basedOn: [],
+        },
+        analysisModel: { status: 'ready', dependencyFingerprint: '6e18c1ac2fbe865d', artifactId: 'am-1', revision: 1 },
+        analysisRaw: { status: 'ready', dependencyFingerprint: '06015a3a0911ecc4', artifactId: 'ar-1', revision: 1 },
       },
     });
 
@@ -97,9 +105,23 @@ describe('pipeline scheduler', () => {
       targetArtifact: 'codeCheckResult',
       sessionArtifacts: {},
       projectArtifacts: {
-        designBasis: { status: 'ready', dependencyFingerprint: 'fp-1' },
-        normalizedModel: { status: 'ready', dependencyFingerprint: 'fp-2' },
-        postprocessedResult: { status: 'ready', dependencyFingerprint: 'fp-3' },
+        designBasis: { status: 'ready', dependencyFingerprint: 'e3b0c44298fc1c14', artifactId: 'db-1', revision: 1 },
+        normalizedModel: {
+          status: 'ready',
+          dependencyFingerprint: 'f8956887e2852bbc',
+          artifactId: 'nm-1',
+          revision: 1,
+          basedOn: [],
+        },
+        analysisModel: { status: 'ready', dependencyFingerprint: '6e18c1ac2fbe865d', artifactId: 'am-1', revision: 1 },
+        analysisRaw: {
+          artifactId: 'ar-1',
+          kind: 'analysisRaw',
+          status: 'ready',
+          dependencyFingerprint: '06015a3a0911ecc4',
+          basedOn: [],
+        },
+        postprocessedResult: { status: 'ready', dependencyFingerprint: 'ba6787c0d85d3076', artifactId: 'pp-1', revision: 1 },
       },
     });
 
@@ -195,14 +217,6 @@ describe('pipeline scheduler', () => {
   test('reuses ready artifact when fingerprint matches and forceRecompute is false', () => {
     const scheduler = new PipelineScheduler();
     // dependencyFingerprint must match what computeDependencyFingerprint produces
-    // from analysisModel's artifactId/revision + the provider binding
-    const existingArtifact = {
-      artifactId: 'ar-1',
-      kind: 'analysisRaw',
-      status: 'ready',
-      dependencyFingerprint: '06015a3a0911ecc4', // sha256("analysisModel:am-1:1|analysisProvider:analysis-opensees-static")[:16]
-      basedOn: [],
-    };
     const plan = scheduler.plan({
       message: '开始分析',
       locale: 'zh',
@@ -212,9 +226,22 @@ describe('pipeline scheduler', () => {
       targetArtifact: 'analysisRaw',
       sessionArtifacts: {},
       projectArtifacts: {
-        designBasis: { status: 'ready', dependencyFingerprint: 'fp-db', artifactId: 'db-1', revision: 1 },
-        analysisModel: { status: 'ready', dependencyFingerprint: 'fp-am-1', artifactId: 'am-1', revision: 1 },
-        analysisRaw: existingArtifact,
+        designBasis: { status: 'ready', dependencyFingerprint: 'e3b0c44298fc1c14', artifactId: 'db-1', revision: 1 },
+        normalizedModel: {
+          status: 'ready',
+          dependencyFingerprint: 'f8956887e2852bbc',
+          artifactId: 'nm-1',
+          revision: 1,
+          basedOn: [],
+        },
+        analysisModel: { status: 'ready', dependencyFingerprint: '6e18c1ac2fbe865d', artifactId: 'am-1', revision: 1 },
+        analysisRaw: {
+          artifactId: 'ar-1',
+          kind: 'analysisRaw',
+          status: 'ready',
+          dependencyFingerprint: '06015a3a0911ecc4',
+          basedOn: [],
+        },
       },
     });
 
@@ -222,9 +249,9 @@ describe('pipeline scheduler', () => {
     expect(analyzeStep?.mode).toBe('reuse');
   });
 
-  // --- Invalidation signal ---
+  // --- DraftState-triggered rebuild ---
 
-  test('rebuilds artifact when included in invalidateArtifacts despite matching fingerprint', () => {
+  test('rebuilds normalizedModel when DraftState content hash changes', () => {
     const scheduler = new PipelineScheduler();
     const plan = scheduler.plan({
       message: '荷载改成10kN',
@@ -233,7 +260,22 @@ describe('pipeline scheduler', () => {
       bindings: { analysisProviderSkillId: 'analysis-opensees-static' },
       projectPolicy: {},
       targetArtifact: 'analysisRaw',
-      sessionArtifacts: {},
+      sessionArtifacts: {
+        draftState: {
+          artifactId: 'draft:beam',
+          kind: 'draftState',
+          scope: 'session',
+          status: 'ready',
+          revision: 1,
+          dependencyFingerprint: '',
+          basedOn: [],
+          schemaVersion: '1.0.0',
+          provenance: { toolId: 'draft_model' },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          payload: { inferredType: 'beam', lengthM: 10, loadKN: 20, updatedAt: Date.now() },
+        },
+      },
       projectArtifacts: {
         designBasis: { status: 'ready', dependencyFingerprint: 'fp-db', artifactId: 'db-1', revision: 1 },
         normalizedModel: {
@@ -252,15 +294,14 @@ describe('pipeline scheduler', () => {
           basedOn: [],
         },
       },
-      invalidateArtifacts: new Set(['normalizedModel', 'analysisModel', 'analysisRaw']),
     });
 
-    // normalizedModel should NOT be reused — forced rebuild
+    // normalizedModel should NOT be reused — fingerprint mismatch due to DraftState hash
     const nmStep = plan.requiredSteps.find((s) => s.provides === 'normalizedModel');
     expect(nmStep).toBeDefined();
     expect(nmStep.mode).toBe('execute');
 
-    // Downstream artifacts also rebuilt because normalizedModel gets a new revision
+    // Downstream artifacts also rebuilt via rebuiltSet cascade
     const analyzeStep = plan.requiredSteps.find((s) => s.tool === 'run_analysis');
     expect(analyzeStep).toBeDefined();
     expect(analyzeStep.mode).not.toBe('reuse');
@@ -268,15 +309,8 @@ describe('pipeline scheduler', () => {
     expect(plan.blockedReason).toBeUndefined();
   });
 
-  test('still reuses artifact when invalidateArtifacts is empty', () => {
+  test('still reuses artifact when DraftState is absent and fingerprint matches', () => {
     const scheduler = new PipelineScheduler();
-    const existingArtifact = {
-      artifactId: 'ar-1',
-      kind: 'analysisRaw',
-      status: 'ready',
-      dependencyFingerprint: '06015a3a0911ecc4',
-      basedOn: [],
-    };
     const plan = scheduler.plan({
       message: '开始分析',
       locale: 'zh',
@@ -286,15 +320,89 @@ describe('pipeline scheduler', () => {
       targetArtifact: 'analysisRaw',
       sessionArtifacts: {},
       projectArtifacts: {
-        designBasis: { status: 'ready', dependencyFingerprint: 'fp-db', artifactId: 'db-1', revision: 1 },
-        analysisModel: { status: 'ready', dependencyFingerprint: 'fp-am-1', artifactId: 'am-1', revision: 1 },
-        analysisRaw: existingArtifact,
+        designBasis: { status: 'ready', dependencyFingerprint: 'e3b0c44298fc1c14', artifactId: 'db-1', revision: 1 },
+        normalizedModel: {
+          status: 'ready',
+          dependencyFingerprint: 'f8956887e2852bbc',
+          artifactId: 'nm-1',
+          revision: 1,
+          basedOn: [],
+        },
+        analysisModel: { status: 'ready', dependencyFingerprint: '6e18c1ac2fbe865d', artifactId: 'am-1', revision: 1 },
+        analysisRaw: {
+          artifactId: 'ar-1',
+          kind: 'analysisRaw',
+          status: 'ready',
+          dependencyFingerprint: '06015a3a0911ecc4',
+          basedOn: [],
+        },
       },
-      invalidateArtifacts: new Set(),
     });
 
     const analyzeStep = plan.requiredSteps.find((s) => s.tool === 'run_analysis');
     expect(analyzeStep?.mode).toBe('reuse');
+  });
+
+  test('rebuiltSet cascade: rebuilding normalizedModel forces all downstream to rebuild', () => {
+    const scheduler = new PipelineScheduler();
+    const plan = scheduler.plan({
+      message: 'update model',
+      locale: 'en',
+      selectedSkillIds: ['analysis-opensees-static'],
+      bindings: { analysisProviderSkillId: 'analysis-opensees-static' },
+      projectPolicy: {},
+      targetArtifact: 'postprocessedResult',
+      sessionArtifacts: {
+        draftState: {
+          artifactId: 'draft:beam',
+          kind: 'draftState',
+          scope: 'session',
+          status: 'ready',
+          revision: 1,
+          dependencyFingerprint: '',
+          basedOn: [],
+          schemaVersion: '1.0.0',
+          provenance: { toolId: 'draft_model' },
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          payload: { inferredType: 'beam', lengthM: 8, updatedAt: Date.now() },
+        },
+      },
+      projectArtifacts: {
+        designBasis: { status: 'ready', dependencyFingerprint: 'fp-db', artifactId: 'db-1', revision: 1 },
+        normalizedModel: {
+          status: 'ready',
+          dependencyFingerprint: 'f8956887e2852bbc',
+          artifactId: 'nm-1',
+          revision: 1,
+          basedOn: [],
+        },
+        analysisModel: { status: 'ready', dependencyFingerprint: 'fp-am', artifactId: 'am-1', revision: 1 },
+        analysisRaw: {
+          artifactId: 'ar-1',
+          kind: 'analysisRaw',
+          status: 'ready',
+          dependencyFingerprint: '06015a3a0911ecc4',
+          basedOn: [],
+        },
+        postprocessedResult: {
+          artifactId: 'pp-1',
+          kind: 'postprocessedResult',
+          status: 'ready',
+          dependencyFingerprint: 'fp-pp',
+          basedOn: [],
+        },
+      },
+    });
+
+    // All steps should be execute (not reuse) because rebuiltSet propagates
+    const reuseSteps = plan.requiredSteps.filter((s) => s.mode === 'reuse');
+    expect(reuseSteps.length).toBe(0);
+
+    const executeSteps = plan.requiredSteps.filter((s) => s.mode === 'execute');
+    expect(executeSteps.length).toBeGreaterThan(0);
+
+    expect(plan.blockedReason).toBeUndefined();
   });
 
   // --- chatReply passthrough ---
@@ -437,14 +545,28 @@ describe('pipeline scheduler', () => {
       message: '开始校核',
       locale: 'zh',
       selectedSkillIds: ['code-check-gb50017'],
-      bindings: { codeCheckProviderSkillId: 'code-check-gb50017' },
+      bindings: { analysisProviderSkillId: 'analysis-opensees-static', codeCheckProviderSkillId: 'code-check-gb50017' },
       projectPolicy: { requireApprovalBeforeExecution: true },
       targetArtifact: 'codeCheckResult',
       sessionArtifacts: {},
       projectArtifacts: {
-        designBasis: { status: 'ready', dependencyFingerprint: 'fp-1' },
-        normalizedModel: { status: 'ready', dependencyFingerprint: 'fp-2' },
-        postprocessedResult: { status: 'ready', dependencyFingerprint: 'fp-3' },
+        designBasis: { status: 'ready', dependencyFingerprint: 'e3b0c44298fc1c14', artifactId: 'db-1', revision: 1 },
+        normalizedModel: {
+          status: 'ready',
+          dependencyFingerprint: 'f8956887e2852bbc',
+          artifactId: 'nm-1',
+          revision: 1,
+          basedOn: [],
+        },
+        analysisModel: { status: 'ready', dependencyFingerprint: '6e18c1ac2fbe865d', artifactId: 'am-1', revision: 1 },
+        analysisRaw: {
+          artifactId: 'ar-1',
+          kind: 'analysisRaw',
+          status: 'ready',
+          dependencyFingerprint: '06015a3a0911ecc4',
+          basedOn: [],
+        },
+        postprocessedResult: { status: 'ready', dependencyFingerprint: 'ba6787c0d85d3076', artifactId: 'pp-1', revision: 1 },
       },
     });
 
@@ -472,9 +594,23 @@ describe('pipeline scheduler', () => {
       targetArtifact: 'codeCheckResult',
       sessionArtifacts: {},
       projectArtifacts: {
-        designBasis: { status: 'ready', dependencyFingerprint: 'fp-1' },
-        normalizedModel: { status: 'ready', dependencyFingerprint: 'fp-2' },
-        postprocessedResult: { status: 'ready', dependencyFingerprint: 'fp-3' },
+        designBasis: { status: 'ready', dependencyFingerprint: 'e3b0c44298fc1c14', artifactId: 'db-1', revision: 1 },
+        normalizedModel: {
+          status: 'ready',
+          dependencyFingerprint: 'f8956887e2852bbc',
+          artifactId: 'nm-1',
+          revision: 1,
+          basedOn: [],
+        },
+        analysisModel: { status: 'ready', dependencyFingerprint: '6e18c1ac2fbe865d', artifactId: 'am-1', revision: 1 },
+        analysisRaw: {
+          artifactId: 'ar-1',
+          kind: 'analysisRaw',
+          status: 'ready',
+          dependencyFingerprint: '06015a3a0911ecc4',
+          basedOn: [],
+        },
+        postprocessedResult: { status: 'ready', dependencyFingerprint: 'fp-pp-1', artifactId: 'pp-1', revision: 1 },
       },
     });
 
