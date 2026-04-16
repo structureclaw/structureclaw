@@ -130,6 +130,18 @@ function stubExecutionClients(svc, handlers = {}) {
         },
       };
     }
+    if (path === '/validate') {
+      if (handlers.validate) {
+        return handlers.validate(path, payload, calls);
+      }
+      return { data: { valid: true, schemaVersion: '1.0.0' } };
+    }
+    if (path === '/convert') {
+      if (handlers.convert) {
+        return handlers.convert(path, payload, calls);
+      }
+      return { data: { model: payload?.model ?? {} } };
+    }
     throw new Error(`unexpected analysis path ${path}`);
   };
 

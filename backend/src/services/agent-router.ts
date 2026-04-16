@@ -404,15 +404,16 @@ export async function resolveInteractivePlanKind(
 function inferTargetArtifact(options: {
   session?: InteractionSession;
   hasModel: boolean;
+  activeToolIds?: ActiveToolSet;
 }): string | undefined {
-  if (options.session?.resolved?.includeReport) {
-    return 'reportArtifact';
+  // Always target the deepest analysis artifact, not reportArtifact.
+  // Report is handled as a follow-up after the main pipeline completes.
+  const hasCodeCheckTool = options.activeToolIds?.has('run_code_check') ?? false;
+  if (options.hasModel && (options.session?.resolved?.designCode || hasCodeCheckTool)) {
+    return 'codeCheckResult';
   }
   if (options.hasModel && options.session?.resolved?.analysisType) {
     return 'analysisRaw';
-  }
-  if (options.hasModel && options.session?.resolved?.designCode && !options.session?.resolved?.includeReport) {
-    return 'codeCheckResult';
   }
   if (options.hasModel) {
     return 'analysisRaw';
@@ -475,10 +476,12 @@ export async function planNextStep(
   }
 
   if (options.planningDirective === 'force_tool') {
-    // TODO(phase-4.5): Migrate runForcedExecution tests to scheduler path, then switch to execute.
-    // The old tool_call path tracks individual tool calls (run_analysis, etc.) that tests assert on.
-    // The scheduler path tracks scheduler steps instead. Tests need rewritten assertions.
-    return { kind: 'tool_call', planningDirective: options.planningDirective, rationale: 'override' };
+    return {
+      kind: 'execute',
+      targetArtifact: inferTargetArtifact(options),
+      planningDirective: options.planningDirective,
+      rationale: 'override',
+    };
   }
 
   return planNextStepWithLlm(llm, message, options, assessInteractionNeeds);

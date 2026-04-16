@@ -1460,6 +1460,34 @@ export class AgentService {
       const workingSessionDraftArtifact = workingSession.draft
         ? buildDraftStateArtifact(workingSession.draft)
         : undefined;
+
+      // Auto-bind provider slots for session-only contexts (no project bindings)
+      if (!pipelineState.bindings.analysisProviderSkillId && activeSkillIds) {
+        const preferredAnalysis = this.skillRuntime.resolvePreferredAnalysisSkill({
+          analysisType: workingSession.resolved?.analysisType || params.context?.analysisType || 'static',
+          skillIds: activeSkillIds,
+        });
+        if (preferredAnalysis) {
+          pipelineState = {
+            ...pipelineState,
+            bindings: { ...pipelineState.bindings, analysisProviderSkillId: preferredAnalysis.id },
+          };
+        }
+      }
+      if (!pipelineState.bindings.codeCheckProviderSkillId && activeSkillIds) {
+        const designCode = workingSession.resolved?.designCode || params.context?.designCode
+          || this.skillRuntime.resolveCodeCheckDesignCodeFromSkillIds(activeSkillIds);
+        if (designCode) {
+          const codeCheckSkillId = this.skillRuntime.resolveCodeCheckSkillId(designCode);
+          if (codeCheckSkillId) {
+            pipelineState = {
+              ...pipelineState,
+              bindings: { ...pipelineState.bindings, codeCheckProviderSkillId: codeCheckSkillId },
+            };
+          }
+        }
+      }
+
       const schedulerPlan = this.pipelineScheduler.plan({
         message: params.message,
         locale,
@@ -1577,7 +1605,7 @@ export class AgentService {
         try {
           this.runtimeBinder.assertStepAuthorized({
             step,
-            selectedSkillIds: skillIds,
+            selectedSkillIds: activeSkillIds ?? skillIds,
             bindings: pipelineState.bindings,
           });
         } catch (authError) {
@@ -1911,6 +1939,62 @@ export class AgentService {
         }
       }
 
+      // Follow-up: if report is requested but main target wasn't reportArtifact,
+      // plan and execute reportArtifact now that analysis/code-check are done.
+      const includeReport = workingSession.resolved?.includeReport ?? params.context?.includeReport ?? true;
+      if (includeReport && !pipelineState.artifacts.reportArtifact) {
+        const reportPlan = this.pipelineScheduler.plan({
+          message: params.message,
+          locale,
+          selectedSkillIds: skillIds ?? [],
+          bindings: pipelineState.bindings,
+          projectPolicy: pipelineState.policy,
+          targetArtifact: 'reportArtifact',
+          sessionArtifacts: {},
+          projectArtifacts: pipelineState.artifacts,
+          consumerContracts: await this.resolveConsumerContracts(skillIds ?? []),
+          enricherContracts: await this.resolveEnricherContracts(skillIds ?? []),
+        });
+        if (!reportPlan.blockedReason && reportPlan.requiredSteps.length > 0) {
+          for (const reportStep of reportPlan.requiredSteps) {
+            if (reportStep.mode === 'reuse') continue;
+            const rStepStartedAtMs = Date.now();
+            const rStepStartedAt = new Date(rStepStartedAtMs).toISOString();
+            let rStepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
+            try {
+              rStepResult = await this.skillRuntime.executeScheduledStep({
+                step: reportStep,
+                pipelineState,
+                traceId,
+                locale,
+                postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
+                codeCheckClient: this.codeCheckClient,
+                message: params.message,
+                llm: this.llm,
+                draftState: workingSession.draft,
+                skillIds,
+              });
+            } catch (rStepError) {
+              const rStepErrorMessage = rStepError instanceof Error ? rStepError.message : String(rStepError);
+              pushToolCall(reportStep, 'error', {
+                startedAt: rStepStartedAt,
+                error: rStepErrorMessage,
+                errorCode: 'STEP_EXECUTION_FAILED',
+                durationMs: Date.now() - rStepStartedAtMs,
+              });
+              break; // Don't fail the whole result for a report error
+            }
+            pushToolCall(reportStep, 'success', {
+              startedAt: rStepStartedAt,
+              completedAt: new Date().toISOString(),
+              durationMs: Date.now() - rStepStartedAtMs,
+              output: rStepResult.artifact?.payload,
+            });
+            pipelineState = applySchedulerStepResult({ pipelineState, step: reportStep, stepResult: rStepResult });
+          }
+        }
+      }
+
       // Spec section 14: only persist pipeline state for real projects
       if (projectId) {
         await this.projectService.updateProjectPipelineState(projectId, pipelineState);
@@ -1943,10 +2027,14 @@ export class AgentService {
       // Export report artifacts to files when reportOutput=file
       const reportOutput = workingSession.resolved?.reportOutput || params.context?.reportOutput || 'inline';
       const reportFormat = workingSession.resolved?.reportFormat || params.context?.reportFormat || 'both';
-      const reportObj = schedulerReport ? {
-        summary: (schedulerReport as Record<string, unknown>).summary as string ?? this.localize(locale, '报告已生成', 'Report generated'),
-        json: schedulerReport as Record<string, unknown>,
-        markdown: (schedulerReport as Record<string, unknown>).markdown as string | undefined,
+      const reportPayload = schedulerReport as Record<string, unknown> | undefined;
+      const reportJson = reportPayload?.json && typeof reportPayload.json === 'object'
+        ? reportPayload.json as Record<string, unknown>
+        : reportPayload;
+      const reportObj = reportPayload ? {
+        summary: (reportPayload.summary as string) ?? this.localize(locale, '报告已生成', 'Report generated'),
+        json: reportJson ?? {},
+        markdown: reportPayload.markdown as string | undefined,
       } : undefined;
       let artifacts: AgentRunResult['artifacts'] | undefined;
       if (reportOutput === 'file' && reportObj) {
@@ -1971,7 +2059,7 @@ export class AgentService {
         metrics: this.buildMetrics(toolCalls),
         interaction: this.buildToolInteraction('completed', locale),
         response: schedulerResponse,
-      }, skillIds, workingSession, skillIds);
+      }, activeSkillIds ?? skillIds, workingSession, skillIds);
     }
 
     if (nextPlan.kind !== 'tool_call' && !(nextPlan.kind === 'execute' && allowToolCall)) {
