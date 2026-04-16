@@ -843,22 +843,27 @@ export class AgentSkillRuntime {
     locale: AppLocale;
     postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
     codeCheckClient: unknown;
+    message?: string;
+    draftState?: DraftState;
+    skillIds?: string[];
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
     const analysisPayload = args.pipelineState.artifacts.analysisRaw?.payload;
     const codeCheckPayload = args.pipelineState.artifacts.codeCheckResult?.payload;
-    const postprocessedPayload = args.pipelineState.artifacts.postprocessedResult?.payload;
-    const designBasisPayload = args.pipelineState.artifacts.designBasis?.payload;
-    const normalizedModelPayload = args.pipelineState.artifacts.normalizedModel?.payload;
-    const { keyMetrics, clauseTraceability, controllingCases, visualizationHints } =
-      buildReportDomainArtifacts({
-        designBasis: designBasisPayload,
-        normalizedModel: normalizedModelPayload,
-        postprocessedResult: postprocessedPayload ?? analysisPayload,
-        codeCheckResult: codeCheckPayload,
-      });
     if (!args.step.provides) return {};
-    const reportPayload = { keyMetrics, clauseTraceability, controllingCases, visualizationHints };
-    const artifact = this.buildArtifactEnvelope(args.step.provides, reportPayload, args.step, args.pipelineState);
+
+    // Delegate to executeReportSkill for full report (summary, markdown, meta)
+    const analysisType = (args.pipelineState.artifacts.designBasis?.payload as Record<string, unknown> | undefined)?.analysisType as 'static' | 'dynamic' | 'seismic' | 'nonlinear' | undefined ?? 'static';
+    const reportResult = await this.executeReportSkill({
+      message: args.message ?? '',
+      analysisType,
+      analysis: analysisPayload,
+      codeCheck: codeCheckPayload,
+      format: 'both',
+      locale: args.locale,
+      draft: args.draftState,
+      skillIds: args.skillIds,
+    });
+    const artifact = this.buildArtifactEnvelope(args.step.provides, reportResult.report, args.step, args.pipelineState);
     return { artifact };
   }
 

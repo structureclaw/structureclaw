@@ -1556,6 +1556,23 @@ export class AgentService {
       }
 
       // Execute scheduler steps
+      // Helper: record each scheduler step as an AgentToolCall
+      const pushToolCall = (step: SchedulerStep, status: AgentToolCall['status'], extra?: Partial<AgentToolCall>) => {
+        const now = new Date().toISOString();
+        const mappedToolId = mapSchedulerActionToToolId(step.action) as AgentToolName;
+        toolCalls.push({
+          tool: mappedToolId,
+          input: { stepId: step.stepId, action: step.action, ...(step.provides ? { targetArtifact: step.provides } : {}) },
+          status,
+          startedAt: extra?.startedAt ?? now,
+          completedAt: extra?.completedAt ?? now,
+          durationMs: extra?.durationMs,
+          output: extra?.output,
+          error: extra?.error,
+          errorCode: extra?.errorCode,
+        });
+      };
+
       for (const step of schedulerPlan.requiredSteps) {
         try {
           this.runtimeBinder.assertStepAuthorized({
@@ -1728,6 +1745,8 @@ export class AgentService {
         }
 
         // execute / transform
+        const stepStartedAtMs = Date.now();
+        const stepStartedAt = new Date(stepStartedAtMs).toISOString();
         let stepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
         try {
           stepResult = await this.skillRuntime.executeScheduledStep({
@@ -1744,14 +1763,27 @@ export class AgentService {
           });
         } catch (stepError) {
           const stepErrorMessage = stepError instanceof Error ? stepError.message : String(stepError);
+          const errorCode = stepError instanceof Error && stepError.message.startsWith('DRAFT_INCOMPLETE') ? 'DRAFT_INCOMPLETE' : 'STEP_EXECUTION_FAILED';
+          pushToolCall(step, 'error', {
+            startedAt: stepStartedAt,
+            error: stepErrorMessage,
+            errorCode,
+            durationMs: Date.now() - stepStartedAtMs,
+          });
           return this.finalizeBlockedRunResult({
             params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
             skillIds, plan, toolCalls, sessionKey, workingSession,
             response: buildLocalizedBlockedReason(stepErrorMessage, locale),
-            blockedReasonCode: 'STEP_EXECUTION_FAILED',
+            blockedReasonCode: errorCode,
             needsModelInput: false,
           });
         }
+        pushToolCall(step, 'success', {
+          startedAt: stepStartedAt,
+          completedAt: new Date().toISOString(),
+          durationMs: Date.now() - stepStartedAtMs,
+          output: stepResult.artifact?.payload,
+        });
         pipelineState = applySchedulerStepResult({ pipelineState, step, stepResult });
         // Step 3.2: Write back normalizedModel to workingSession for backward compatibility
         if (stepResult.artifact?.kind === 'normalizedModel' && stepResult.artifact.payload) {
@@ -1836,6 +1868,8 @@ export class AgentService {
             }
 
             // execute mode: run the design step
+            const fbStepStartedAtMs = Date.now();
+            const fbStepStartedAt = new Date(fbStepStartedAtMs).toISOString();
             let fbResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
             try {
               fbResult = await this.skillRuntime.executeScheduledStep({
@@ -1852,6 +1886,12 @@ export class AgentService {
               });
             } catch (fbError) {
               const fbErrorMessage = fbError instanceof Error ? fbError.message : String(fbError);
+              pushToolCall(fbStep, 'error', {
+                startedAt: fbStepStartedAt,
+                error: fbErrorMessage,
+                errorCode: 'STEP_EXECUTION_FAILED',
+                durationMs: Date.now() - fbStepStartedAtMs,
+              });
               return this.finalizeBlockedRunResult({
                 params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
                 skillIds, plan, toolCalls, sessionKey, workingSession,
@@ -1860,6 +1900,12 @@ export class AgentService {
                 needsModelInput: false,
               });
             }
+            pushToolCall(fbStep, 'success', {
+              startedAt: fbStepStartedAt,
+              completedAt: new Date().toISOString(),
+              durationMs: Date.now() - fbStepStartedAtMs,
+              output: fbResult.artifact?.payload,
+            });
             pipelineState = applySchedulerStepResult({ pipelineState, step: fbStep, stepResult: fbResult });
           }
         }
@@ -1881,32 +1927,47 @@ export class AgentService {
         await this.setInteractionSession(sessionKey, workingSession);
       }
 
+      const analysisSuccess = Boolean((schedulerAnalysis as Record<string, unknown> | undefined)?.success);
       const schedulerResponse = await this.renderSummary(
         params.message,
         this.localize(
           locale,
-          `调度器执行完成。target=${nextPlan.targetArtifact}`,
-          `Scheduler execution completed. target=${nextPlan.targetArtifact}`,
+          `分析完成。target=${nextPlan.targetArtifact}, success=${String(analysisSuccess)}`,
+          `Analysis finished. target=${nextPlan.targetArtifact}, success=${String(analysisSuccess)}`,
         ),
         locale,
         schedulerAnalysis,
         sessionKey,
       );
 
+      // Export report artifacts to files when reportOutput=file
+      const reportOutput = workingSession.resolved?.reportOutput || params.context?.reportOutput || 'inline';
+      const reportFormat = workingSession.resolved?.reportFormat || params.context?.reportFormat || 'both';
+      const reportObj = schedulerReport ? {
+        summary: (schedulerReport as Record<string, unknown>).summary as string ?? this.localize(locale, '报告已生成', 'Report generated'),
+        json: schedulerReport as Record<string, unknown>,
+        markdown: (schedulerReport as Record<string, unknown>).markdown as string | undefined,
+      } : undefined;
+      let artifacts: AgentRunResult['artifacts'] | undefined;
+      if (reportOutput === 'file' && reportObj) {
+        artifacts = await this.persistReportArtifacts(traceId, reportObj, reportFormat as AgentReportFormat);
+      }
+
       return this.finalizeRunResult(traceId, sessionKey, params.message, {
         traceId,
         startedAt,
         completedAt: new Date().toISOString(),
         durationMs: Date.now() - startedAtMs,
-        success: true,
+        success: schedulerAnalysis ? analysisSuccess : true,
         orchestrationMode,
-        needsModelInput: false,
+        needsModelInput: !schedulerModel && !modelInput && !workingSession.latestModel,
         plan,
         toolCalls,
         model: schedulerModel,
         analysis: schedulerAnalysis,
         codeCheck: schedulerCodeCheck,
-        report: schedulerReport ? { summary: 'Scheduler report', json: schedulerReport as Record<string, unknown> } : undefined,
+        report: reportObj,
+        artifacts,
         metrics: this.buildMetrics(toolCalls),
         interaction: this.buildToolInteraction('completed', locale),
         response: schedulerResponse,
