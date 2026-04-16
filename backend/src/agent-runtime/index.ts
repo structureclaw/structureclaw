@@ -707,6 +707,7 @@ export class AgentSkillRuntime {
       retryOptions: { retries: number; traceId: string; tool: 'run_analysis' },
     ) => Promise<{ data: unknown }>;
     codeCheckClient: unknown;
+    structureProtocolClient?: { post: (path: string, payload: Record<string, unknown>) => Promise<{ data: unknown }> };
     message?: string;
     llm?: ChatOpenAI | null;
     draftState?: DraftState;
@@ -749,15 +750,19 @@ export class AgentSkillRuntime {
     postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
     codeCheckClient: unknown;
     engineId?: string;
+    structureProtocolClient?: { post: (path: string, payload: Record<string, unknown>) => Promise<{ data: unknown }> };
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
     const model = args.pipelineState.artifacts.normalizedModel?.payload as Record<string, unknown> ?? {};
+    // Prefer the explicitly-provided structureProtocolClient (used by agent.ts);
+    // fall back to wrapping postToEngineWithRetry for backwards compatibility.
+    const validationClient = args.structureProtocolClient ?? {
+      post: (path: string, payload: Record<string, unknown>) =>
+        args.postToEngineWithRetry(path, payload, { retries: 3, traceId: args.traceId, tool: 'run_analysis' }),
+    };
     const result = await this.executeValidationSkill({
       model,
       engineId: args.engineId,
-      structureProtocolClient: {
-        post: (path: string, payload: Record<string, unknown>) =>
-          args.postToEngineWithRetry(path, payload, { retries: 3, traceId: args.traceId, tool: 'run_analysis' }),
-      },
+      structureProtocolClient: validationClient,
     });
     if (!args.step.provides) return {};
     const artifact = this.buildArtifactEnvelope(args.step.provides, result.result, args.step, args.pipelineState);

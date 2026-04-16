@@ -1664,6 +1664,7 @@ export class AgentService {
             locale,
             postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
             codeCheckClient: this.codeCheckClient,
+            structureProtocolClient: this.structureProtocolClient,
             message: params.message,
             llm: this.llm,
             draftState: workingSession.draft,

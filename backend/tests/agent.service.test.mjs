@@ -642,7 +642,7 @@ describe('AgentService orchestration', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(calls.find((item) => item.client === 'analysis' && item.path === '/validate')?.payload.engineId).toBe('builtin-opensees');
+    expect(calls.find((item) => item.client === 'structureProtocol' && item.path === '/validate')?.payload.engineId).toBe('builtin-opensees');
     expect(calls.find((item) => item.client === 'analysis' && item.path === '/analyze')?.payload.engineId).toBe('builtin-opensees');
     expect(calls.find((item) => item.client === 'codeCheck' && item.path === '/code-check')?.payload.engineId).toBe('builtin-opensees');
   });
