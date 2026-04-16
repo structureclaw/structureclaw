@@ -203,7 +203,8 @@ export class PipelineScheduler {
         : graphNode.providerSlot === 'codeCheckProvider'
           ? input.bindings.codeCheckProviderSkillId
           : undefined;
-      if (canReuseArtifact(existing, fp, input.requestOverrides?.forceRecompute ?? false, expectedProducerSkillId)) {
+      const isInvalidated = input.invalidateArtifacts?.has(target) ?? false;
+      if (!isInvalidated && canReuseArtifact(existing, fp, input.requestOverrides?.forceRecompute ?? false, expectedProducerSkillId)) {
         return {
           targetArtifact: target,
           requiredSteps: [{
@@ -222,7 +223,8 @@ export class PipelineScheduler {
     const steps: SchedulerStep[] = [];
 
     for (const dep of graphNode.dependsOn) {
-      if (!this.hasReadyArtifact(dep, input.projectArtifacts)) {
+      const depInvalidated = input.invalidateArtifacts?.has(dep as ProjectArtifactKind) ?? false;
+      if (!this.hasReadyArtifact(dep, input.projectArtifacts) || depInvalidated) {
         const depGraph = CONTROLLED_ARTIFACT_GRAPH[dep as ProjectArtifactKind];
         if (depGraph) {
           const subPlan = this.planDependencyPath(dep as ProjectArtifactKind, input, new Set(visited));
