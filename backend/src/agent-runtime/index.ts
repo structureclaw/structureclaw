@@ -2,7 +2,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from '../services/locale.js';
 import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.js';
 import { buildPostprocessedResultArtifact } from '../agent-skills/result-postprocess/entry.js';
-import { computeDependencyFingerprint } from './artifact-helpers.js';
+import { computeDependencyFingerprint, computeDraftStateContentHash } from './artifact-helpers.js';
 import { applyPatches, type PatchReducerInput } from './patch-reducer.js';
 import {
   buildCodeCheckInput,
@@ -951,6 +951,7 @@ export class AgentSkillRuntime {
         draftResult.model,
         args.step,
         args.pipelineState,
+        args.draftState,
       );
       return { artifact };
     }
@@ -1092,6 +1093,7 @@ export class AgentSkillRuntime {
     payload: Record<string, unknown>,
     step: SchedulerStep,
     pipelineState?: ProjectPipelineState,
+    draftState?: DraftState,
   ): ArtifactEnvelope {
     const existing = pipelineState?.artifacts?.[kind as keyof typeof pipelineState.artifacts];
     const revision = existing ? (existing.revision ?? 0) + 1 : 1;
@@ -1099,7 +1101,10 @@ export class AgentSkillRuntime {
     for (const ref of step.consumes) {
       depRefs[ref.kind] = { artifactId: ref.artifactId, revision: ref.revision };
     }
-    const dependencyFingerprint = computeDependencyFingerprint(depRefs, pipelineState?.bindings);
+    const draftStateHash = kind === 'normalizedModel' && draftState
+      ? computeDraftStateContentHash(draftState as Record<string, unknown>)
+      : undefined;
+    const dependencyFingerprint = computeDependencyFingerprint(depRefs, pipelineState?.bindings, draftStateHash);
     return {
       artifactId: `${kind}:${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
       kind,
