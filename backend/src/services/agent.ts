@@ -30,13 +30,7 @@ import type { LocalAnalysisEngineClient } from '../agent-skills/analysis/types.j
 import { listBuiltinToolManifests } from '../agent-runtime/tool-registry.js';
 import type { ToolManifest } from '../agent-runtime/types.js';
 import { AgentRuntimeBinder } from './agent-runtime-binder.js';
-import { executeConvertModelStep } from '../agent-tools/builtin/convert-model.js';
-import { executeDraftModelExecutionStep, executeDraftModelInteractiveStep } from '../agent-tools/builtin/draft-model.js';
-import { executeGenerateReportStep } from '../agent-tools/builtin/generate-report.js';
-import { executeRunAnalysisStep } from '../agent-tools/builtin/run-analysis.js';
-import { executeRunCodeCheckStep } from '../agent-tools/builtin/run-code-check.js';
-import { executeUpdateModelExecutionStep } from '../agent-tools/builtin/update-model.js';
-// executeValidateModelStep is now accessed via agent-validation.ts
+import { executeDraftModelInteractiveStep } from '../agent-tools/builtin/draft-model.js';
 import { buildTurnContext, type HandlerDeps, type RouteDecision } from './agent-context.js';
 import { STRUCTURAL_COORDINATE_SEMANTICS } from '../agent-runtime/coordinate-semantics.js';
 import { handleChat } from './agent-handlers/index.js';
@@ -46,7 +40,6 @@ import {
   clearInteractionSession as clearInteractionSessionFromStore,
   buildInteractionSessionKey as buildSessionKey,
 } from './agent-session.js';
-import { validateWithRetry } from './agent-validation.js';
 import {
   planNextStep as routerPlanNextStep,
   buildPlannerContextSnapshot as routerBuildPlannerContextSnapshot,
@@ -1124,13 +1117,9 @@ export class AgentService {
     const {
       locale,
       modelInput,
-      sourceFormat,
-      autoAnalyze,
-      analysisParameters,
       skillIds,
       activeSkillIds,
       noSkillMode,
-      hadExistingSession,
       activeToolIds,
       sessionKey,
       workingSession,
