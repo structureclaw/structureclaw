@@ -222,7 +222,7 @@ export interface ToolManifest {
   tier?: 'foundation' | 'domain' | 'extension';
   displayName: LocalizedText;
   description: LocalizedText;
-  category?: 'modeling' | 'analysis' | 'code-check' | 'report' | 'utility';
+  category?: 'modeling' | 'analysis' | 'code-check' | 'report' | 'utility' | 'drawing';
   providedBySkillId?: string;
   requiresSkills?: string[];
   requiresTools?: string[];
@@ -381,20 +381,20 @@ export interface VisualizationHints {
 // Scheduler runtime contract types
 // ---------------------------------------------------------------------------
 
-// --- Scheduler Action ---
+// --- Scheduler Tool ---
 
-export type SchedulerAction =
-  | 'draft'
-  | 'update'
-  | 'convert'
-  | 'validate'
-  | 'design'
-  | 'analyze'
-  | 'postprocess'
-  | 'code_check'
-  | 'drawing'
-  | 'report'
-  | 'enrich';
+export type SchedulerTool =
+  | 'draft_model'
+  | 'update_model'
+  | 'convert_model'
+  | 'validate_model'
+  | 'synthesize_design'
+  | 'run_analysis'
+  | 'postprocess_result'
+  | 'run_code_check'
+  | 'generate_drawing'
+  | 'generate_report'
+  | 'enrich_model';
 
 // --- Skill Role ---
 
@@ -650,7 +650,7 @@ export interface RunRecord {
 export interface SchedulerStep {
   stepId: string;
   role: SkillRole;
-  action: SchedulerAction;
+  tool: SchedulerTool;
   skillId?: string;
   consumes: ArtifactRef[];
   provides?: ArtifactKind;

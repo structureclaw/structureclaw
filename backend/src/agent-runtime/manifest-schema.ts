@@ -12,7 +12,7 @@ const materialFamilySchema = z.enum(['steel', 'concrete', 'composite', 'timber',
 const toolSourceSchema = z.enum(['builtin', 'external']);
 const skillSourceSchema = z.enum(['builtin', 'external']);
 const toolTierSchema = z.enum(['foundation', 'domain', 'extension']);
-const toolCategorySchema = z.enum(['modeling', 'analysis', 'code-check', 'report', 'utility']);
+const toolCategorySchema = z.enum(['modeling', 'analysis', 'code-check', 'report', 'utility', 'drawing']);
 
 // --- Runtime contract schemas ---
 
