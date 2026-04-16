@@ -1281,6 +1281,7 @@ export class AgentService {
       // so the scheduler can detect parameter changes via DraftState hash.
       // Only needed when targeting downstream artifacts (analysis, code-check, etc.)
       // and a draft + model already exist — normalizedModel creation handles its own extraction.
+      const preExtractInferredType = (workingSession.draft as Record<string, unknown> | undefined)?.inferredType as string | undefined;
       if (workingSession.draft
           && pipelineState.artifacts.normalizedModel
           && nextPlan.targetArtifact !== 'normalizedModel'
@@ -1295,6 +1296,34 @@ export class AgentService {
         } catch {
           // Extraction failure should not block execution — scheduler will handle it.
         }
+      }
+      // If pre-extraction promoted inferredType from unknown to a real structural type,
+      // the seeded normalizedModel fingerprint is now stale (it was computed without
+      // DraftState hash because the old inferredType was 'unknown'). Re-seed the
+      // fingerprint so the scheduler can still reuse the artifact.
+      if (pipelineState.artifacts.normalizedModel
+          && preExtractInferredType === 'unknown'
+          && workingSession.draft
+          && workingSession.draft.inferredType
+          && workingSession.draft.inferredType !== 'unknown') {
+        const nmDepRefs2: Record<string, { artifactId: string; revision: number }> = {};
+        if (pipelineState.artifacts.designBasis) {
+          nmDepRefs2.designBasis = { artifactId: pipelineState.artifacts.designBasis.artifactId, revision: pipelineState.artifacts.designBasis.revision };
+        }
+        pipelineState = {
+          ...pipelineState,
+          artifacts: {
+            ...pipelineState.artifacts,
+            normalizedModel: {
+              ...pipelineState.artifacts.normalizedModel,
+              dependencyFingerprint: computeDependencyFingerprint(
+                nmDepRefs2,
+                undefined,
+                computeDraftStateContentHash(workingSession.draft as Record<string, unknown>),
+              ),
+            },
+          },
+        };
       }
 
       const workingSessionDraftArtifact = workingSession.draft
