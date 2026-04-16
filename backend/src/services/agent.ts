@@ -1262,7 +1262,9 @@ export class AgentService {
               dependencyFingerprint: computeDependencyFingerprint(
                 nmDepRefs,
                 undefined,
-                workingSession.draft ? computeDraftStateContentHash(workingSession.draft as Record<string, unknown>) : undefined,
+                workingSession.draft && workingSession.draft.inferredType && workingSession.draft.inferredType !== 'unknown'
+                  ? computeDraftStateContentHash(workingSession.draft as Record<string, unknown>)
+                  : undefined,
               ),
               basedOn: [],
               schemaVersion: '1.0.0',
@@ -1336,7 +1338,12 @@ export class AgentService {
         targetArtifact: nextPlan.targetArtifact as ArtifactKind | 'chatReply',
         sessionArtifacts: { draftState: workingSessionDraftArtifact },
         projectArtifacts: pipelineState.artifacts,
-        requestOverrides,
+        requestOverrides: {
+          ...requestOverrides,
+          forceRecompute: nextPlan.targetArtifact === 'normalizedModel'
+            ? true
+            : requestOverrides?.forceRecompute,
+        },
         consumerContracts: await this.resolveConsumerContracts(skillIds ?? []),
         enricherContracts: await this.resolveEnricherContracts(skillIds ?? []),
       });
