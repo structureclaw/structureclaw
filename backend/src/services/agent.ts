@@ -73,8 +73,8 @@ import {
   createEmptyProjectPipelineState,
   buildInteractionCheckpoint,
 } from './agent-pipeline-state.js';
-import { computeDependencyFingerprint } from '../agent-runtime/artifact-helpers.js';
-import type { ArtifactKind, SchedulerStep, ProjectPipelineState, ProjectArtifactKind } from '../agent-runtime/types.js';
+import { computeDependencyFingerprint, computeDraftStateContentHash } from '../agent-runtime/artifact-helpers.js';
+import type { ArtifactKind, SchedulerStep, ProjectPipelineState } from '../agent-runtime/types.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'directed' | 'llm-planned';
@@ -160,7 +160,6 @@ export interface AgentNextStepPlan {
   planningDirective: AgentPlanningDirective;
   rationale: 'override' | 'llm';
   targetArtifact?: string;
-  modelUpdateIntent?: boolean;
 }
 
 interface PreparedRunContext {
@@ -721,18 +720,6 @@ export class AgentService {
     return this.runtimeBinder.hasActiveTool(activeToolIds, toolId);
   }
 
-  private needsArtifactInvalidation(
-    message: string,
-    workingSession: InteractionSession,
-    nextPlan: AgentNextStepPlan,
-  ): boolean {
-    if (nextPlan.kind !== 'execute') return false;
-    if (!workingSession.draft && !workingSession.latestModel) return false;
-    if (nextPlan.modelUpdateIntent === true) return true;
-    const updatePatterns = /改成|改为|换成|修改|调整|update|change|modify|set.*to/i;
-    return updatePatterns.test(message);
-  }
-
 
 
 
@@ -1251,7 +1238,7 @@ export class AgentService {
               status: 'ready',
               revision: 1,
               producerSkillId: 'session-inferred',
-              dependencyFingerprint: '',
+              dependencyFingerprint: computeDependencyFingerprint({}),
               basedOn: [],
               schemaVersion: '1.0.0',
               provenance: { toolId: 'session-seed' },
@@ -1264,6 +1251,10 @@ export class AgentService {
       }
       const normalizedModelSource = workingSession.latestModel || modelInput;
       if (!pipelineState.artifacts.normalizedModel && normalizedModelSource) {
+        const nmDepRefs: Record<string, { artifactId: string; revision: number }> = {};
+        if (pipelineState.artifacts.designBasis) {
+          nmDepRefs.designBasis = { artifactId: pipelineState.artifacts.designBasis.artifactId, revision: pipelineState.artifacts.designBasis.revision };
+        }
         pipelineState = {
           ...pipelineState,
           artifacts: {
@@ -1275,7 +1266,11 @@ export class AgentService {
               status: 'ready',
               revision: 1,
               producerSkillId: workingSession.draft?.skillId ?? 'session-seed',
-              dependencyFingerprint: '',
+              dependencyFingerprint: computeDependencyFingerprint(
+                nmDepRefs,
+                undefined,
+                workingSession.draft ? computeDraftStateContentHash(workingSession.draft as Record<string, unknown>) : undefined,
+              ),
               basedOn: [],
               schemaVersion: '1.0.0',
               provenance: { toolId: 'session-seed' },
@@ -1285,6 +1280,26 @@ export class AgentService {
             },
           },
         };
+      }
+
+      // Pre-process message through skill handler to update DraftState
+      // so the scheduler can detect parameter changes via DraftState hash.
+      // Only needed when targeting downstream artifacts (analysis, code-check, etc.)
+      // and a draft + model already exist — normalizedModel creation handles its own extraction.
+      if (workingSession.draft
+          && pipelineState.artifacts.normalizedModel
+          && nextPlan.targetArtifact !== 'normalizedModel'
+          && activeSkillIds && activeSkillIds.length > 0) {
+        try {
+          const extraction = await this.skillRuntime.extractDraftParameters(
+            this.llm, params.message, workingSession.draft, locale, activeSkillIds,
+          );
+          if (extraction.nextState && extraction.plugin) {
+            workingSession.draft = extraction.nextState;
+          }
+        } catch {
+          // Extraction failure should not block execution — scheduler will handle it.
+        }
       }
 
       const workingSessionDraftArtifact = workingSession.draft
@@ -1319,9 +1334,6 @@ export class AgentService {
         }
       }
 
-      const invalidateArtifacts = this.needsArtifactInvalidation(params.message, workingSession, nextPlan)
-        ? new Set<ProjectArtifactKind>(['normalizedModel', 'analysisModel', 'analysisRaw', 'postprocessedResult', 'codeCheckResult'])
-        : undefined;
       const schedulerPlan = this.pipelineScheduler.plan({
         message: params.message,
         locale,
@@ -1334,7 +1346,6 @@ export class AgentService {
         requestOverrides,
         consumerContracts: await this.resolveConsumerContracts(skillIds ?? []),
         enricherContracts: await this.resolveEnricherContracts(skillIds ?? []),
-        invalidateArtifacts,
       });
 
       if (schedulerPlan.blockedReason) {

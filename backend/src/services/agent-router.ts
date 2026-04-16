@@ -114,7 +114,7 @@ export function extractJsonObject(raw: string): string | null {
 export function parsePlannerResponse(
   raw: string,
   allowedKinds: AgentPlanKind[],
-): Pick<AgentNextStepPlan, 'kind' | 'replyMode' | 'targetArtifact' | 'modelUpdateIntent'> | null {
+): Pick<AgentNextStepPlan, 'kind' | 'replyMode' | 'targetArtifact'> | null {
   const jsonText = extractJsonObject(raw);
   if (!jsonText) {
     return null;
@@ -140,9 +140,6 @@ export function parsePlannerResponse(
     kind,
     replyMode,
     targetArtifact: typeof payload.targetArtifact === 'string' ? payload.targetArtifact : undefined,
-    modelUpdateIntent: typeof (payload as { modelUpdateIntent?: unknown }).modelUpdateIntent === 'boolean'
-      ? (payload as { modelUpdateIntent?: boolean }).modelUpdateIntent
-      : undefined,
   };
 }
 
@@ -158,7 +155,7 @@ export async function repairPlannerResponse(
     allowedKinds: AgentPlanKind[];
     availableToolIds: AgentToolName[];
   },
-): Promise<Pick<AgentNextStepPlan, 'kind' | 'replyMode' | 'targetArtifact' | 'modelUpdateIntent'> | null> {
+): Promise<Pick<AgentNextStepPlan, 'kind' | 'replyMode' | 'targetArtifact'> | null> {
   if (!llm) {
     return null;
   }
@@ -169,7 +166,7 @@ export async function repairPlannerResponse(
     'Preserve the original intent. Only fix formatting or minor schema issues.',
     `Allowed kinds: ${options.allowedKinds.join(', ')}`,
     'Output schema:',
-    `{"kind":"${options.allowedKinds.join('|')}","replyMode":"plain|structured|null","targetArtifact":"analysisRaw|codeCheckResult|reportArtifact|normalizedModel|null","modelUpdateIntent":true/false,"reason":"short reason"}`,
+    `{"kind":"${options.allowedKinds.join('|')}","replyMode":"plain|structured|null","targetArtifact":"analysisRaw|codeCheckResult|reportArtifact|normalizedModel|null","reason":"short reason"}`,
     `Locale: ${options.locale}`,
     `Planner output to normalize:\n${raw}`,
   ].join('\n');
@@ -295,7 +292,6 @@ export async function planNextStepWithLlm(
     'If the previous assistant message was asking for engineering parameters and the latest user message answers that request, continue the structured engineering session.',
     'If the user changes previously confirmed geometry, loads, supports, material, or section values, treat that as a model update request rather than a plain question.',
     'If there is an existing engineering session or model and the user says things like "改成", "改为", "change to", "update", or modifies previously analyzed values, prefer execute when execution is allowed.',
-    'When the user message modifies previously confirmed parameters (loads, geometry, materials, sections, supports), set modelUpdateIntent to true so the pipeline rebuilds the model before re-running downstream analysis or checks.',
     'After a model update request, prefer execute when the user expects the updated model to be used immediately for analysis or refreshed engineering results.',
     'If the user explicitly asks to build, model, generate, or revise a structural model now, that can also justify execute even if the request is not yet an analysis execution request.',
     'An existing context model is only reusable context. It must not override the latest user request by itself.',
@@ -316,7 +312,7 @@ export async function planNextStepWithLlm(
       ? 'When kind=execute, set targetArtifact to indicate which artifact the pipeline should produce:\n  - "analysisRaw" when the user wants structural analysis\n  - "codeCheckResult" when the user wants code compliance checking\n  - "reportArtifact" when the user wants a report\n  - "normalizedModel" when the user wants to create or update a structural model\n  - null when kind is not execute'
       : 'When execution is not allowed, choose only reply or ask.',
     'Return strict JSON only with this schema:',
-    `{"kind":"${allowedKinds.join('|')}","replyMode":"plain|structured|null","targetArtifact":"analysisRaw|codeCheckResult|reportArtifact|normalizedModel|null","modelUpdateIntent":true/false,"reason":"short reason"}`,
+    `{"kind":"${allowedKinds.join('|')}","replyMode":"plain|structured|null","targetArtifact":"analysisRaw|codeCheckResult|reportArtifact|normalizedModel|null","reason":"short reason"}`,
     `Locale: ${options.locale}`,
     `User message: ${message}`,
     `Planner context: ${JSON.stringify(snapshot)}`,
@@ -339,7 +335,6 @@ export async function planNextStepWithLlm(
       kind: normalized.kind,
       replyMode: normalized.replyMode,
       targetArtifact: normalized.targetArtifact,
-      modelUpdateIntent: normalized.modelUpdateIntent,
       planningDirective: 'auto',
       rationale: 'llm',
     };
