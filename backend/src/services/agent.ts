@@ -1393,6 +1393,21 @@ export class AgentService {
 
     // --- Phase 4: Pipeline scheduler integration ---
     if (nextPlan.targetArtifact && nextPlan.kind === 'execute' && allowToolCall) {
+      // Block execution when skill set is empty and no active tools (mirrors old-path guard)
+      if (noSkillMode && !this.hasActiveTool(activeToolIds, 'draft_model')) {
+        const blockedResponse = this.localize(
+          locale,
+          '当前能力集无法为本轮请求选择可执行工具，请先启用建模或分析能力。',
+          'No executable tool can be selected for this request under the current capability set. Enable drafting or analysis capabilities first.',
+        );
+        return this.finalizeBlockedRunResult({
+          params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
+          skillIds, plan, toolCalls, sessionKey, workingSession,
+          response: blockedResponse,
+          blockedReasonCode: 'NO_EXECUTABLE_TOOL',
+          needsModelInput: !modelInput && !workingSession.latestModel,
+        });
+      }
       const projectId = params.context?.projectId;
       let pipelineState: ProjectPipelineState = projectId
         ? await this.projectService.getProjectPipelineState(projectId)
@@ -1791,7 +1806,16 @@ export class AgentService {
           });
         } catch (stepError) {
           const stepErrorMessage = stepError instanceof Error ? stepError.message : String(stepError);
-          const errorCode = stepError instanceof Error && stepError.message.startsWith('DRAFT_INCOMPLETE') ? 'DRAFT_INCOMPLETE' : 'STEP_EXECUTION_FAILED';
+          const actionErrorCodes: Record<string, string> = {
+            code_check: 'CODE_CHECK_EXECUTION_FAILED',
+            validate: 'VALIDATION_EXECUTION_FAILED',
+            analyze: 'ANALYSIS_EXECUTION_FAILED',
+            report: 'REPORT_EXECUTION_FAILED',
+            draft: 'DRAFT_INCOMPLETE',
+          };
+          const errorCode = stepError instanceof Error && stepError.message.startsWith('DRAFT_INCOMPLETE')
+            ? 'DRAFT_INCOMPLETE'
+            : actionErrorCodes[step.action] ?? 'STEP_EXECUTION_FAILED';
           pushToolCall(step, 'error', {
             startedAt: stepStartedAt,
             error: stepErrorMessage,
@@ -1941,7 +1965,9 @@ export class AgentService {
 
       // Follow-up: if report is requested but main target wasn't reportArtifact,
       // plan and execute reportArtifact now that analysis/code-check are done.
-      const includeReport = workingSession.resolved?.includeReport ?? params.context?.includeReport ?? true;
+      const reportToolEnabled = !activeToolIds || activeToolIds.has('generate_report');
+      const includeReport = reportToolEnabled
+        && (workingSession.resolved?.includeReport ?? params.context?.includeReport ?? true);
       if (includeReport && !pipelineState.artifacts.reportArtifact) {
         const reportPlan = this.pipelineScheduler.plan({
           message: params.message,
