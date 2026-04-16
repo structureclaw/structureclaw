@@ -768,6 +768,7 @@ export class AgentSkillRuntime {
     locale: AppLocale;
     postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
     codeCheckClient: unknown;
+    skillIds?: string[];
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
     const model = args.pipelineState.artifacts.analysisModel?.payload as Record<string, unknown> ?? {};
     const analysisType = args.pipelineState.policy?.analysisType ?? 'static';
@@ -778,6 +779,7 @@ export class AgentSkillRuntime {
       traceId: args.traceId,
       engineId: undefined,
       parameters: {},
+      skillIds: args.skillIds,
     });
     if (!args.step.provides) return {};
     const artifact = this.buildArtifactEnvelope(args.step.provides, result.result, args.step, args.pipelineState);

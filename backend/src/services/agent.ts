@@ -1647,6 +1647,24 @@ export class AgentService {
           continue;
         }
 
+        // Check if tool is disabled
+        const stepToolId = mapSchedulerActionToToolId(step.action);
+        const disabledToolIds = params.context?.disabledToolIds;
+        if (Array.isArray(disabledToolIds) && disabledToolIds.includes(stepToolId)) {
+          const disabledToolResponse = this.localize(
+            locale,
+            `工具 ${stepToolId} 已被禁用，无法执行。`,
+            `Tool ${stepToolId} is disabled and cannot be executed.`,
+          );
+          return this.finalizeBlockedRunResult({
+            params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
+            skillIds, plan, toolCalls, sessionKey, workingSession,
+            response: disabledToolResponse,
+            blockedReasonCode: 'TOOL_DISABLED',
+            needsModelInput: false,
+          });
+        }
+
         if (STUB_TOOLS.has(step.action)) {
           return this.finalizeBlockedRunResult({
             params,
@@ -1822,6 +1840,10 @@ export class AgentService {
             errorCode,
             durationMs: Date.now() - stepStartedAtMs,
           });
+          // Bypass validate on upstream 502 (transient server errors)
+          if (step.action === 'validate' && this.shouldBypassValidateFailure(stepError)) {
+            continue;
+          }
           return this.finalizeBlockedRunResult({
             params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
             skillIds, plan, toolCalls, sessionKey, workingSession,
