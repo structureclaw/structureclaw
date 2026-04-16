@@ -160,7 +160,7 @@ describe('agent runtime binder', () => {
       },
     );
     expect(() => binder.assertStepAuthorized({
-      step: { stepId: 'test', role: 'transformer', action: 'postprocess', consumes: [], provides: 'postprocessedResult', mode: 'execute', reason: 'test' },
+      step: { stepId: 'test', role: 'transformer', tool: 'postprocess_result', consumes: [], provides: 'postprocessedResult', mode: 'execute', reason: 'test' },
       selectedSkillIds: ['skill-a'],
       bindings: {},
     })).not.toThrow();
@@ -182,7 +182,7 @@ describe('agent runtime binder', () => {
       },
     );
     expect(() => binder.assertStepAuthorized({
-      step: { stepId: 'test', role: 'consumer', action: 'report', consumes: [], provides: 'reportArtifact', mode: 'execute', reason: 'test', skillId: 'unknown-skill' },
+      step: { stepId: 'test', role: 'consumer', tool: 'generate_report', consumes: [], provides: 'reportArtifact', mode: 'execute', reason: 'test', skillId: 'unknown-skill' },
       selectedSkillIds: ['skill-a', 'skill-b'],
       bindings: {},
     })).toThrow('skill not in selected skill set');
@@ -204,7 +204,7 @@ describe('agent runtime binder', () => {
       },
     );
     expect(() => binder.assertStepAuthorized({
-      step: { stepId: 'test', role: 'consumer', action: 'report', consumes: [], provides: 'reportArtifact', mode: 'execute', reason: 'test', skillId: 'skill-a' },
+      step: { stepId: 'test', role: 'consumer', tool: 'generate_report', consumes: [], provides: 'reportArtifact', mode: 'execute', reason: 'test', skillId: 'skill-a' },
       selectedSkillIds: ['skill-a', 'skill-b'],
       bindings: {},
     })).not.toThrow();

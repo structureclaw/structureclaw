@@ -58,8 +58,8 @@ describe('pipeline scheduler', () => {
       },
     });
 
-    expect(plan.requiredSteps.some((step) => step.action === 'validate')).toBe(true);
-    expect(plan.requiredSteps.some((step) => step.action === 'analyze' && step.mode === 'queue-run')).toBe(true);
+    expect(plan.requiredSteps.some((step) => step.tool === 'validate_model')).toBe(true);
+    expect(plan.requiredSteps.some((step) => step.tool === 'run_analysis' && step.mode === 'queue-run')).toBe(true);
   });
 
   // --- Postprocess path ---
@@ -80,7 +80,7 @@ describe('pipeline scheduler', () => {
       },
     });
 
-    expect(plan.requiredSteps.some((step) => step.action === 'postprocess')).toBe(true);
+    expect(plan.requiredSteps.some((step) => step.tool === 'postprocess_result')).toBe(true);
     expect(plan.blockedReason).toBeUndefined();
   });
 
@@ -103,7 +103,7 @@ describe('pipeline scheduler', () => {
       },
     });
 
-    const ccStep = plan.requiredSteps.find((s) => s.action === 'code_check');
+    const ccStep = plan.requiredSteps.find((s) => s.tool === 'run_code_check');
     expect(ccStep).toBeDefined();
     expect(plan.blockedReason).toBeUndefined();
   });
@@ -132,7 +132,7 @@ describe('pipeline scheduler', () => {
       },
     });
 
-    expect(plan.requiredSteps.some((s) => s.action === 'report')).toBe(true);
+    expect(plan.requiredSteps.some((s) => s.tool === 'generate_report')).toBe(true);
     expect(plan.blockedReason).toBeUndefined();
   });
 
@@ -157,8 +157,8 @@ describe('pipeline scheduler', () => {
       },
     });
 
-    expect(plan.requiredSteps.some((s) => s.action === 'draft' || s.action === 'update')).toBe(true);
-    expect(plan.requiredSteps.some((s) => s.action === 'report')).toBe(true);
+    expect(plan.requiredSteps.some((s) => s.tool === 'draft_model' || s.tool === 'update_model')).toBe(true);
+    expect(plan.requiredSteps.some((s) => s.tool === 'generate_report')).toBe(true);
     expect(plan.blockedReason).toBeUndefined();
   });
 
@@ -186,7 +186,7 @@ describe('pipeline scheduler', () => {
       },
     });
 
-    expect(plan.requiredSteps.some((s) => s.action === 'drawing')).toBe(true);
+    expect(plan.requiredSteps.some((s) => s.tool === 'generate_drawing')).toBe(true);
     expect(plan.blockedReason).toBeUndefined();
   });
 
@@ -218,7 +218,7 @@ describe('pipeline scheduler', () => {
       },
     });
 
-    const analyzeStep = plan.requiredSteps.find((s) => s.action === 'analyze');
+    const analyzeStep = plan.requiredSteps.find((s) => s.tool === 'run_analysis');
     expect(analyzeStep?.mode).toBe('reuse');
   });
 
@@ -261,7 +261,7 @@ describe('pipeline scheduler', () => {
       },
     });
 
-    const designStep = plan.requiredSteps.find((s) => s.action === 'design');
+    const designStep = plan.requiredSteps.find((s) => s.tool === 'synthesize_design');
     expect(designStep).toBeDefined();
     expect(designStep.mode).toBe('propose');
     expect(designStep.provides).toBe('normalizedModel');
@@ -283,7 +283,7 @@ describe('pipeline scheduler', () => {
       },
     });
 
-    const designStep = plan.requiredSteps.find((s) => s.action === 'design');
+    const designStep = plan.requiredSteps.find((s) => s.tool === 'synthesize_design');
     expect(designStep).toBeDefined();
     expect(designStep.mode).toBe('execute');
     expect(plan.blockedReason).toBeUndefined();
@@ -329,11 +329,11 @@ describe('pipeline scheduler', () => {
     const approvalStep = plan.requiredSteps.find((s) => s.mode === 'approval');
     expect(approvalStep).toBeDefined();
     expect(approvalStep.role).toBe('provider');
-    expect(approvalStep.action).toBe('analyze');
+    expect(approvalStep.tool).toBe('run_analysis');
     expect(approvalStep.provides).toBe('analysisRaw');
 
     // The execute step should still exist after the approval step
-    const executeStep = plan.requiredSteps.find((s) => s.mode === 'execute' && s.action === 'analyze');
+    const executeStep = plan.requiredSteps.find((s) => s.mode === 'execute' && s.tool === 'run_analysis');
     expect(executeStep).toBeDefined();
     expect(plan.requiredSteps.indexOf(approvalStep)).toBeLessThan(plan.requiredSteps.indexOf(executeStep));
   });
@@ -375,7 +375,7 @@ describe('pipeline scheduler', () => {
 
     const approvalStep = plan.requiredSteps.find((s) => s.mode === 'approval');
     expect(approvalStep).toBeDefined();
-    expect(approvalStep.action).toBe('code_check');
+    expect(approvalStep.tool).toBe('run_code_check');
     expect(approvalStep.provides).toBe('codeCheckResult');
   });
 
@@ -448,7 +448,7 @@ describe('pipeline scheduler', () => {
       ],
     });
 
-    const enrichSteps = plan.requiredSteps.filter((s) => s.action === 'enrich');
+    const enrichSteps = plan.requiredSteps.filter((s) => s.tool === 'enrich_model');
     expect(enrichSteps.length).toBe(2);
     expect(enrichSteps[0].skillId).toBe('section-common');
     expect(enrichSteps[1].skillId).toBe('section-irregular');
@@ -476,7 +476,7 @@ describe('pipeline scheduler', () => {
       ],
     });
 
-    const enrichSteps = plan.requiredSteps.filter((s) => s.action === 'enrich');
+    const enrichSteps = plan.requiredSteps.filter((s) => s.tool === 'enrich_model');
     expect(enrichSteps.map((s) => s.skillId)).toEqual([
       'section-common',
       'section-irregular',
@@ -500,7 +500,7 @@ describe('pipeline scheduler', () => {
       enricherContracts: [],
     });
 
-    const enrichSteps = plan.requiredSteps.filter((s) => s.action === 'enrich');
+    const enrichSteps = plan.requiredSteps.filter((s) => s.tool === 'enrich_model');
     expect(enrichSteps.length).toBe(0);
   });
 
@@ -530,7 +530,7 @@ describe('pipeline scheduler', () => {
       ],
     });
 
-    const enrichSteps = plan.requiredSteps.filter((s) => s.action === 'enrich');
+    const enrichSteps = plan.requiredSteps.filter((s) => s.tool === 'enrich_model');
     expect(enrichSteps.length).toBe(0);
 
     // Should have a reuse step instead
