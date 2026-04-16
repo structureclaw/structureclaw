@@ -670,8 +670,6 @@ export interface SchedulerInput {
   };
   projectArtifacts: Partial<Record<ProjectArtifactKind, ArtifactEnvelope>>;
   requestOverrides?: RequestExecutionOverrides;
-  /** Artifact kinds to force-recompute regardless of fingerprint match. */
-  invalidateArtifacts?: Set<ProjectArtifactKind>;
 }
 
 export interface SchedulerPlan {

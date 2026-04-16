@@ -10,7 +10,7 @@ import type {
   SkillRole,
   ConsumerRuntimeContract,
 } from './types.js';
-import { canReuseArtifact, computeDependencyFingerprint } from './artifact-helpers.js';
+import { canReuseArtifact, computeDependencyFingerprint, computeDraftStateContentHash } from './artifact-helpers.js';
 
 // --- Controlled artifact graph ---
 
@@ -72,17 +72,21 @@ export class PipelineScheduler {
       };
     }
 
+    const plannedSet = new Set<ProjectArtifactKind>();
+
     if (CONSUMER_ARTIFACT_KINDS.has(target)) {
-      return this.planConsumerPath(target, input, new Set());
+      return this.planConsumerPath(target, input, new Set(), new Set(), plannedSet);
     }
 
-    return this.planDependencyPath(target, input, new Set());
+    return this.planDependencyPath(target, input, new Set(), new Set(), plannedSet);
   }
 
   private planConsumerPath(
     target: ArtifactKind,
     input: SchedulerPlanInput,
     visited: Set<ProjectArtifactKind>,
+    rebuiltSet: Set<ProjectArtifactKind>,
+    plannedSet: Set<ProjectArtifactKind>,
   ): SchedulerPlan {
     const contract = input.consumerContracts?.find(
       (c) => c.targetArtifact === target,
@@ -96,7 +100,8 @@ export class PipelineScheduler {
     const steps: SchedulerStep[] = [];
 
     for (const reqKind of requiredKinds) {
-      if (!this.hasReadyArtifact(reqKind, input.projectArtifacts)) {
+      if (!this.hasReadyArtifact(reqKind, input.projectArtifacts)
+          || rebuiltSet.has(reqKind as ProjectArtifactKind)) {
         const reqGraph = CONTROLLED_ARTIFACT_GRAPH[reqKind as ProjectArtifactKind];
         if (reqGraph) {
           if (visited.has(reqKind as ProjectArtifactKind)) {
@@ -106,7 +111,7 @@ export class PipelineScheduler {
               blockedReason: 'dependency cycle detected',
             };
           }
-          const subPlan = this.planDependencyPath(reqKind as ProjectArtifactKind, input, new Set(visited));
+          const subPlan = this.planDependencyPath(reqKind as ProjectArtifactKind, input, new Set(visited), rebuiltSet, plannedSet);
           if (subPlan.blockedReason) {
             return subPlan;
           }
@@ -158,6 +163,8 @@ export class PipelineScheduler {
     target: ProjectArtifactKind,
     input: SchedulerPlanInput,
     visited: Set<ProjectArtifactKind>,
+    rebuiltSet: Set<ProjectArtifactKind>,
+    plannedSet: Set<ProjectArtifactKind>,
   ): SchedulerPlan {
     if (visited.has(target)) {
       return {
@@ -168,28 +175,77 @@ export class PipelineScheduler {
     }
     visited.add(target);
 
+    // Already planned in this session — steps were generated upstream.
+    // rebuiltSet already reflects its status.
+    if (plannedSet.has(target)) {
+      return { targetArtifact: target, requiredSteps: [] };
+    }
+
     const graphNode = CONTROLLED_ARTIFACT_GRAPH[target];
     if (!graphNode) {
       return { targetArtifact: target, requiredSteps: [] };
     }
 
-    if (graphNode.providerSlot === 'analysisProvider' && !input.bindings.analysisProviderSkillId) {
-      return {
-        targetArtifact: target,
-        requiredSteps: [],
-        blockedReason: 'analysisProvider binding required',
-      };
-    }
-    if (graphNode.providerSlot === 'codeCheckProvider' && !input.bindings.codeCheckProviderSkillId) {
-      return {
-        targetArtifact: target,
-        requiredSteps: [],
-        blockedReason: 'codeCheckProvider binding required',
-      };
+    // Provider binding gates — check early when artifact is not ready (needs execution).
+    // When artifact IS ready, defer to reuse check; if reuse passes, binding is irrelevant.
+    const existingArtifact = input.projectArtifacts[target];
+    if (!(existingArtifact && existingArtifact.status === 'ready')) {
+      if (graphNode.providerSlot === 'analysisProvider' && !input.bindings.analysisProviderSkillId) {
+        return {
+          targetArtifact: target,
+          requiredSteps: [],
+          blockedReason: 'analysisProvider binding required',
+        };
+      }
+      if (graphNode.providerSlot === 'codeCheckProvider' && !input.bindings.codeCheckProviderSkillId) {
+        return {
+          targetArtifact: target,
+          requiredSteps: [],
+          blockedReason: 'codeCheckProvider binding required',
+        };
+      }
     }
 
+    // Traverse dependencies to populate rebuiltSet.
+    // For leaf deps (no upstream deps of their own), only recurse if not ready.
+    // For non-leaf deps, recurse when either:
+    //   (a) the dep is not ready, or
+    //   (b) a DraftState is present — fingerprints may change via DraftState hash
+    // Without DraftState, ready non-leaf deps are trusted (their fingerprints
+    // were correct when created and nothing upstream has changed).
+    // Only treat DraftState as present when it carries a real structural type.
+    // A placeholder draft (inferredType='unknown') from empty applyProvidedValues
+    // should not trigger deep traversal.
+    const draftPayload = input.sessionArtifacts?.draftState?.payload as Record<string, unknown> | undefined;
+    const hasDraftState = Boolean(
+      draftPayload
+      && typeof draftPayload.inferredType === 'string'
+      && draftPayload.inferredType !== 'unknown',
+    );
+    const steps: SchedulerStep[] = [];
+    for (const dep of graphNode.dependsOn) {
+      const depGraph = CONTROLLED_ARTIFACT_GRAPH[dep as ProjectArtifactKind];
+      if (!depGraph) continue;
+      const isLeafDep = depGraph.dependsOn.length === 0;
+      const depReady = this.hasReadyArtifact(dep, input.projectArtifacts);
+      const shouldRecurse = isLeafDep
+        ? !depReady
+        : !depReady || hasDraftState;
+      if (shouldRecurse) {
+        const subPlan = this.planDependencyPath(dep as ProjectArtifactKind, input, new Set(visited), rebuiltSet, plannedSet);
+        if (subPlan.blockedReason) {
+          return subPlan;
+        }
+        steps.push(...subPlan.requiredSteps);
+      }
+    }
+
+    // If any dependency was rebuilt, skip reuse for this target
+    const dependsOnRebuilt = graphNode.dependsOn.some(dep => rebuiltSet.has(dep as ProjectArtifactKind));
+
+    // Reuse check (only when no dep was rebuilt)
     const existing = input.projectArtifacts[target];
-    if (existing && existing.status === 'ready') {
+    if (!dependsOnRebuilt && existing && existing.status === 'ready') {
       const depRefs: Record<string, { artifactId: string; revision: number }> = {};
       for (const dep of graphNode.dependsOn) {
         const depEnv = input.projectArtifacts[dep as ProjectArtifactKind];
@@ -197,14 +253,26 @@ export class PipelineScheduler {
           depRefs[dep] = { artifactId: depEnv.artifactId, revision: depEnv.revision };
         }
       }
-      const fp = computeDependencyFingerprint(depRefs, input.bindings);
+      // Include DraftState content hash for normalizedModel fingerprint.
+      // Only when hasDraftState is true (real structural type, not placeholder).
+      // This gates change detection to sessions where a real draft exists.
+      const draftStateHash = target === 'normalizedModel' && hasDraftState && input.sessionArtifacts?.draftState?.payload
+        ? computeDraftStateContentHash(input.sessionArtifacts.draftState.payload as Record<string, unknown>)
+        : undefined;
+      // Only include provider bindings relevant to this artifact's provider slot
+      const relevantBindings = graphNode.providerSlot === 'analysisProvider'
+        ? { analysisProviderSkillId: input.bindings.analysisProviderSkillId }
+        : graphNode.providerSlot === 'codeCheckProvider'
+          ? { codeCheckProviderSkillId: input.bindings.codeCheckProviderSkillId }
+          : undefined;
+      const fp = computeDependencyFingerprint(depRefs, relevantBindings, draftStateHash);
       const expectedProducerSkillId = graphNode.providerSlot === 'analysisProvider'
         ? input.bindings.analysisProviderSkillId
         : graphNode.providerSlot === 'codeCheckProvider'
           ? input.bindings.codeCheckProviderSkillId
           : undefined;
-      const isInvalidated = input.invalidateArtifacts?.has(target) ?? false;
-      if (!isInvalidated && canReuseArtifact(existing, fp, input.requestOverrides?.forceRecompute ?? false, expectedProducerSkillId)) {
+      if (canReuseArtifact(existing, fp, input.requestOverrides?.forceRecompute ?? false, expectedProducerSkillId)) {
+        plannedSet.add(target);
         return {
           targetArtifact: target,
           requiredSteps: [{
@@ -220,21 +288,9 @@ export class PipelineScheduler {
       }
     }
 
-    const steps: SchedulerStep[] = [];
-
-    for (const dep of graphNode.dependsOn) {
-      const depInvalidated = input.invalidateArtifacts?.has(dep as ProjectArtifactKind) ?? false;
-      if (!this.hasReadyArtifact(dep, input.projectArtifacts) || depInvalidated) {
-        const depGraph = CONTROLLED_ARTIFACT_GRAPH[dep as ProjectArtifactKind];
-        if (depGraph) {
-          const subPlan = this.planDependencyPath(dep as ProjectArtifactKind, input, new Set(visited));
-          if (subPlan.blockedReason) {
-            return subPlan;
-          }
-          steps.push(...subPlan.requiredSteps);
-        }
-      }
-    }
+    // This artifact needs rebuild — add to rebuiltSet so dependents know
+    rebuiltSet.add(target);
+    plannedSet.add(target);
 
     if (graphNode.providerSlot) {
       steps.push({
