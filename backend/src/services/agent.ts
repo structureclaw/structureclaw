@@ -74,7 +74,7 @@ import {
   buildInteractionCheckpoint,
 } from './agent-pipeline-state.js';
 import { computeDependencyFingerprint } from '../agent-runtime/artifact-helpers.js';
-import type { ArtifactKind, SchedulerStep, ProjectPipelineState } from '../agent-runtime/types.js';
+import type { ArtifactKind, SchedulerStep, ProjectPipelineState, ProjectArtifactKind } from '../agent-runtime/types.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'directed' | 'llm-planned';
@@ -160,6 +160,7 @@ export interface AgentNextStepPlan {
   planningDirective: AgentPlanningDirective;
   rationale: 'override' | 'llm';
   targetArtifact?: string;
+  modelUpdateIntent?: boolean;
 }
 
 interface PreparedRunContext {
@@ -718,6 +719,18 @@ export class AgentService {
 
   private hasActiveTool(activeToolIds: ActiveToolSet, toolId: string): boolean {
     return this.runtimeBinder.hasActiveTool(activeToolIds, toolId);
+  }
+
+  private needsArtifactInvalidation(
+    message: string,
+    workingSession: InteractionSession,
+    nextPlan: AgentNextStepPlan,
+  ): boolean {
+    if (nextPlan.kind !== 'execute') return false;
+    if (!workingSession.draft && !workingSession.latestModel) return false;
+    if (nextPlan.modelUpdateIntent === true) return true;
+    const updatePatterns = /改成|改为|换成|修改|调整|update|change|modify|set.*to/i;
+    return updatePatterns.test(message);
   }
 
 
@@ -1306,6 +1319,9 @@ export class AgentService {
         }
       }
 
+      const invalidateArtifacts = this.needsArtifactInvalidation(params.message, workingSession, nextPlan)
+        ? new Set<ProjectArtifactKind>(['normalizedModel', 'analysisModel', 'analysisRaw', 'postprocessedResult', 'codeCheckResult'])
+        : undefined;
       const schedulerPlan = this.pipelineScheduler.plan({
         message: params.message,
         locale,
@@ -1318,6 +1334,7 @@ export class AgentService {
         requestOverrides,
         consumerContracts: await this.resolveConsumerContracts(skillIds ?? []),
         enricherContracts: await this.resolveEnricherContracts(skillIds ?? []),
+        invalidateArtifacts,
       });
 
       if (schedulerPlan.blockedReason) {
