@@ -222,6 +222,81 @@ describe('pipeline scheduler', () => {
     expect(analyzeStep?.mode).toBe('reuse');
   });
 
+  // --- Invalidation signal ---
+
+  test('rebuilds artifact when included in invalidateArtifacts despite matching fingerprint', () => {
+    const scheduler = new PipelineScheduler();
+    const plan = scheduler.plan({
+      message: '荷载改成10kN',
+      locale: 'zh',
+      selectedSkillIds: ['analysis-opensees-static'],
+      bindings: { analysisProviderSkillId: 'analysis-opensees-static' },
+      projectPolicy: {},
+      targetArtifact: 'analysisRaw',
+      sessionArtifacts: {},
+      projectArtifacts: {
+        designBasis: { status: 'ready', dependencyFingerprint: 'fp-db', artifactId: 'db-1', revision: 1 },
+        normalizedModel: {
+          status: 'ready',
+          dependencyFingerprint: 'f8956887e2852bbc',
+          artifactId: 'nm-1',
+          revision: 1,
+          basedOn: [],
+        },
+        analysisModel: { status: 'ready', dependencyFingerprint: 'fp-am', artifactId: 'am-1', revision: 1 },
+        analysisRaw: {
+          artifactId: 'ar-1',
+          kind: 'analysisRaw',
+          status: 'ready',
+          dependencyFingerprint: '06015a3a0911ecc4',
+          basedOn: [],
+        },
+      },
+      invalidateArtifacts: new Set(['normalizedModel', 'analysisModel', 'analysisRaw']),
+    });
+
+    // normalizedModel should NOT be reused — forced rebuild
+    const nmStep = plan.requiredSteps.find((s) => s.provides === 'normalizedModel');
+    expect(nmStep).toBeDefined();
+    expect(nmStep.mode).toBe('execute');
+
+    // Downstream artifacts also rebuilt because normalizedModel gets a new revision
+    const analyzeStep = plan.requiredSteps.find((s) => s.tool === 'run_analysis');
+    expect(analyzeStep).toBeDefined();
+    expect(analyzeStep.mode).not.toBe('reuse');
+
+    expect(plan.blockedReason).toBeUndefined();
+  });
+
+  test('still reuses artifact when invalidateArtifacts is empty', () => {
+    const scheduler = new PipelineScheduler();
+    const existingArtifact = {
+      artifactId: 'ar-1',
+      kind: 'analysisRaw',
+      status: 'ready',
+      dependencyFingerprint: '06015a3a0911ecc4',
+      basedOn: [],
+    };
+    const plan = scheduler.plan({
+      message: '开始分析',
+      locale: 'zh',
+      selectedSkillIds: ['analysis-opensees-static'],
+      bindings: { analysisProviderSkillId: 'analysis-opensees-static' },
+      projectPolicy: {},
+      targetArtifact: 'analysisRaw',
+      sessionArtifacts: {},
+      projectArtifacts: {
+        designBasis: { status: 'ready', dependencyFingerprint: 'fp-db', artifactId: 'db-1', revision: 1 },
+        analysisModel: { status: 'ready', dependencyFingerprint: 'fp-am-1', artifactId: 'am-1', revision: 1 },
+        analysisRaw: existingArtifact,
+      },
+      invalidateArtifacts: new Set(),
+    });
+
+    const analyzeStep = plan.requiredSteps.find((s) => s.tool === 'run_analysis');
+    expect(analyzeStep?.mode).toBe('reuse');
+  });
+
   // --- chatReply passthrough ---
 
   test('chatReply returns empty steps', () => {
