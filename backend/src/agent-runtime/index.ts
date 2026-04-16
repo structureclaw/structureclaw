@@ -713,7 +713,8 @@ export class AgentSkillRuntime {
     draftState?: DraftState;
     skillIds?: string[];
     engineId?: string;
-  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
+    analysisParameters?: Record<string, unknown>;
+  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord; draftMeta?: { structuralTypeMatch?: StructuralTypeMatch; nextState?: DraftState } }> {
     switch (args.step.tool) {
       case 'validate_model':
         return this.executeValidationScheduledStep(args);
@@ -821,6 +822,7 @@ export class AgentSkillRuntime {
     postToEngineWithRetry: (path: string, input: Record<string, unknown>, retryOptions: { retries: number; traceId: string; tool: 'run_analysis' }) => Promise<{ data: unknown }>;
     codeCheckClient: unknown;
     engineId?: string;
+    analysisParameters?: Record<string, unknown>;
   }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
     const model = args.pipelineState.artifacts.normalizedModel?.payload as Record<string, unknown> ?? {};
     const analysis = args.pipelineState.artifacts.analysisRaw?.payload;
@@ -831,7 +833,7 @@ export class AgentSkillRuntime {
       designCode,
       model,
       analysis,
-      analysisParameters: {},
+      analysisParameters: args.analysisParameters ?? {},
       postprocessedResult: postprocessedPayload as Record<string, unknown> | undefined,
     });
     // Inject engineId into the code-check input payload
@@ -909,7 +911,7 @@ export class AgentSkillRuntime {
     llm?: ChatOpenAI | null;
     draftState?: DraftState;
     skillIds?: string[];
-  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord }> {
+  }): Promise<{ artifact?: ArtifactEnvelope; runRecord?: RunRecord; draftMeta?: { structuralTypeMatch?: StructuralTypeMatch; nextState?: DraftState } }> {
     if (!args.step.provides) return {};
 
     // designBasis update: build from session resolved config
@@ -962,7 +964,13 @@ export class AgentSkillRuntime {
         args.pipelineState,
         args.draftState,
       );
-      return { artifact };
+      return {
+        artifact,
+        draftMeta: {
+          structuralTypeMatch: extraction.structuralTypeMatch,
+          nextState: extraction.nextState,
+        },
+      };
     }
 
     // Generic update: return existing

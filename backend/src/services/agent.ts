@@ -1655,7 +1655,7 @@ export class AgentService {
         // execute / transform
         const stepStartedAtMs = Date.now();
         const stepStartedAt = new Date(stepStartedAtMs).toISOString();
-        let stepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
+        let stepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord; draftMeta?: { structuralTypeMatch?: any; nextState?: any } };
         try {
           stepResult = await this.skillRuntime.executeScheduledStep({
             step,
@@ -1670,6 +1670,7 @@ export class AgentService {
             draftState: workingSession.draft,
             skillIds,
             engineId: params.context?.engineId,
+            analysisParameters: prepared.analysisParameters,
           });
         } catch (stepError) {
           const stepErrorMessage = stepError instanceof Error ? stepError.message : String(stepError);
@@ -1752,6 +1753,15 @@ export class AgentService {
         // Step 3.2: Write back normalizedModel to workingSession for backward compatibility
         if (stepResult.artifact?.kind === 'normalizedModel' && stepResult.artifact.payload) {
           workingSession.latestModel = stepResult.artifact.payload as Record<string, unknown>;
+        }
+        // Step 3.3: Write back draft metadata (structuralTypeMatch, draft state) from draft/update steps
+        if (stepResult.draftMeta) {
+          if (stepResult.draftMeta.structuralTypeMatch) {
+            workingSession.structuralTypeMatch = stepResult.draftMeta.structuralTypeMatch;
+          }
+          if (stepResult.draftMeta.nextState) {
+            workingSession.draft = stepResult.draftMeta.nextState;
+          }
         }
         if (projectId && stepResult.runRecord) {
           await this.runStore.updateRun(stepResult.runRecord.runId, {

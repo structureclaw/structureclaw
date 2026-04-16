@@ -106,9 +106,11 @@ export function buildCodeCheckInput(options: {
   postprocessedResult?: Record<string, unknown>;
   codeCheckElements?: string[];
 }): CodeCheckDomainInput {
-  const utilizationByElement = extractUtilizationByElement(
-    options.postprocessedResult ?? options.analysisParameters,
-  );
+  const postprocessedUtil = options.postprocessedResult
+    ? extractUtilizationByElement(options.postprocessedResult)
+    : {};
+  const parameterUtil = extractUtilizationByElement(options.analysisParameters);
+  const utilizationByElement = { ...postprocessedUtil, ...parameterUtil };
   return {
     modelId: options.traceId,
     code: options.designCode,
