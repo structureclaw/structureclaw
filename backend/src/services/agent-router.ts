@@ -475,7 +475,9 @@ export async function planNextStep(
   }
 
   if (options.planningDirective === 'force_tool') {
-    // TODO(phase-4.5): switch to kind='execute' with targetArtifact once scheduler handles draft/update
+    // TODO(phase-4.5): Migrate runForcedExecution tests to scheduler path, then switch to execute.
+    // The old tool_call path tracks individual tool calls (run_analysis, etc.) that tests assert on.
+    // The scheduler path tracks scheduler steps instead. Tests need rewritten assertions.
     return { kind: 'tool_call', planningDirective: options.planningDirective, rationale: 'override' };
   }
 

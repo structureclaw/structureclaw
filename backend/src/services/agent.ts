@@ -1407,9 +1407,9 @@ export class AgentService {
         : mergeExecutionPolicy({}, requestOverrides);
       pipelineState = { ...pipelineState, policy: projectPolicy };
 
-      // Step 3.1: Seed artifacts from workingSession for session-only contexts.
+      // Step 3.1: Seed artifacts from workingSession/modelInput for session-only contexts.
       // Prevents scheduler from blocking with "designBasis incomplete" when no project exists.
-      if (!pipelineState.artifacts.designBasis && workingSession.draft) {
+      if (!pipelineState.artifacts.designBasis && (workingSession.draft || modelInput)) {
         pipelineState = {
           ...pipelineState,
           artifacts: {
@@ -1432,7 +1432,8 @@ export class AgentService {
           },
         };
       }
-      if (!pipelineState.artifacts.normalizedModel && workingSession.latestModel) {
+      const normalizedModelSource = workingSession.latestModel || modelInput;
+      if (!pipelineState.artifacts.normalizedModel && normalizedModelSource) {
         pipelineState = {
           ...pipelineState,
           artifacts: {
@@ -1450,7 +1451,7 @@ export class AgentService {
               provenance: { toolId: 'session-seed' },
               createdAt: Date.now(),
               updatedAt: Date.now(),
-              payload: workingSession.latestModel,
+              payload: normalizedModelSource,
             },
           },
         };
