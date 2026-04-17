@@ -2,13 +2,13 @@
 
 ## When to Use
 
-Activate this skill when the user asks to export or generate a calculation report (计算书) from a completed PKPM SATWE structural analysis. The skill reads analysis results via `APIPyInterface.ResultData` and produces structured JSON + Markdown output.
+Activate this skill when the user asks to export or generate a calculation report (计算书) from a completed PKPM SATWE structural analysis. The skill reads analysis results via `APIPyInterface.ResultData` when available, falls back to parsing SATWE `.OUT` result files when it is not, and produces structured JSON, Markdown, Word (.docx), and PDF outputs.
 
 ## Prerequisites
 
 - A PKPM SATWE analysis has been completed successfully (JWS project exists with result data).
-- `APIPyInterface` Python extension is available (installed via `pkpm-api` package).
 - The JWS path is provided via `parameters.jws_path` or `model._pkpm_jws_path`.
+- Result data is accessible either through the optional `APIPyInterface` Python extension (typically installed via `pkpm-api`) or through SATWE-generated `.OUT` files (WMASS, WZQ, WDISP, WPJ, WGCPJ) for fallback parsing.
 
 ## Triggers
 

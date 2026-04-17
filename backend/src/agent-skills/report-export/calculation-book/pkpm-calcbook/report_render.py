@@ -70,7 +70,8 @@ def _generate_markdown(report: Dict[str, Any]) -> str:
         lines.append("## 结构平面图")
         lines.append("")
         for img in images:
-            lines.append(f"![结构平面图]({img})")
+            posix_path = Path(img).as_posix()
+            lines.append(f"![结构平面图]({posix_path})")
             lines.append("")
 
     detailed = report.get("detailed", {})

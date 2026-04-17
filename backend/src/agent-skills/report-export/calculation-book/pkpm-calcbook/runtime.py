@@ -220,14 +220,17 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         _generate_pdf(report, pdf_path, images=project_images)
         report["summary"]["pdf_path"] = str(pdf_path)
     except ImportError:
-        try:
-            result_path = _convert_docx_to_pdf(docx_path)
-            if result_path:
-                report["summary"]["pdf_path"] = str(result_path)
-            else:
-                warnings.append("PDF generation skipped: reportlab not installed and WPS conversion failed")
-        except Exception as exc:
-            warnings.append(f"PDF generation failed: {exc}")
+        if docx_path.is_file():
+            try:
+                result_path = _convert_docx_to_pdf(docx_path)
+                if result_path:
+                    report["summary"]["pdf_path"] = str(result_path)
+                else:
+                    warnings.append("PDF generation skipped: reportlab not installed and WPS conversion failed")
+            except Exception as exc:
+                warnings.append(f"PDF generation failed: {exc}")
+        else:
+            warnings.append("PDF generation skipped: DOCX file not available for WPS conversion")
     except Exception as exc:
         warnings.append(f"PDF generation failed: {exc}")
 

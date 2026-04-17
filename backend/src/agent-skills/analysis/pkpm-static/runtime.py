@@ -68,8 +68,9 @@ def _run_jws_cycle(cycle_path: Path, work_dir: Path, timeout: int = 600) -> None
     2. Set cwd to the PkpmCycle directory.
     3. Launch JWSCYCLE.exe (no CLI arguments needed).
 
-    Uses an inter-process lock to prevent concurrent analyses from
-    overwriting the shared DirectorySet.conf file.
+    Uses an in-process thread lock to prevent concurrent analyses in this
+    process from overwriting the shared DirectorySet.conf file.
+    Multi-process deployments require an external lock mechanism.
     """
     cycle_dir = cycle_path.parent
     conf_path = cycle_dir / "DirectorySet.conf"
