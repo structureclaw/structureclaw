@@ -1299,19 +1299,31 @@ export class AgentService {
         }
       }
       // If pre-extraction promoted inferredType from unknown to a real structural type,
-      // the existing normalizedModel artifact was built under the old 'unknown' type
-      // and its payload is stale. Remove it so the scheduler re-runs the draft step
-      // with the correct structural type.
+      // the seeded normalizedModel fingerprint is now stale (it was computed without
+      // DraftState hash because the old inferredType was 'unknown'). Re-seed the
+      // fingerprint so the scheduler can still reuse the artifact.
       if (pipelineState.artifacts.normalizedModel
           && preExtractInferredType === 'unknown'
           && workingSession.draft
           && workingSession.draft.inferredType
           && workingSession.draft.inferredType !== 'unknown') {
-        const artifacts = { ...pipelineState.artifacts };
-        delete artifacts.normalizedModel;
+        const nmDepRefs2: Record<string, { artifactId: string; revision: number }> = {};
+        if (pipelineState.artifacts.designBasis) {
+          nmDepRefs2.designBasis = { artifactId: pipelineState.artifacts.designBasis.artifactId, revision: pipelineState.artifacts.designBasis.revision };
+        }
         pipelineState = {
           ...pipelineState,
-          artifacts,
+          artifacts: {
+            ...pipelineState.artifacts,
+            normalizedModel: {
+              ...pipelineState.artifacts.normalizedModel,
+              dependencyFingerprint: computeDependencyFingerprint(
+                nmDepRefs2,
+                undefined,
+                computeDraftStateContentHash(workingSession.draft as Record<string, unknown>),
+              ),
+            },
+          },
         };
       }
 
