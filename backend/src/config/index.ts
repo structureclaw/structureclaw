@@ -61,7 +61,7 @@ export const config = {
   llmApiKey,
   llmModel,
   llmBaseUrl,
-  llmTimeoutMs: parseInt(process.env.LLM_TIMEOUT_MS || '90000', 10),
+  llmTimeoutMs: parseInt(process.env.LLM_TIMEOUT_MS || '180000', 10),
   llmMaxRetries: parseInt(process.env.LLM_MAX_RETRIES || '0', 10),
 
   // 分析执行配置

@@ -7,7 +7,7 @@ describe('LLM planner wiring', () => {
     const options = buildChatModelOptions({
       llmApiKey: 'test-key',
       llmModel: 'glm-5-turbo',
-      llmTimeoutMs: 90000,
+      llmTimeoutMs: 180000,
       llmMaxRetries: 0,
       llmBaseUrl: 'https://example.com/v1',
     }, 0.1);
