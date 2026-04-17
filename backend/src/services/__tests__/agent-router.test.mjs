@@ -218,6 +218,55 @@ describe('planNextStep force_tool path', () => {
     expect(plan.targetArtifact).toBe('analysisRaw');
   });
 
+  test('force_tool targets normalizedModel when hasModel is false even with forceExecution', async () => {
+    const plan = await planNextStep(
+      null,
+      '设计一个简支梁',
+      {
+        planningDirective: 'force_tool',
+        allowToolCall: true,
+        locale: 'zh',
+        skillIds: ['generic'],
+        hasModel: false,
+        activeToolIds: new Set(['draft_model']),
+        session: {
+          draft: { inferredType: 'beam' },
+          updatedAt: Date.now(),
+        },
+      },
+      mockAssessInteractionNeeds,
+      mockHasEmptySkillSelection,
+    );
+    expect(plan.kind).toBe('execute');
+    expect(plan.targetArtifact).toBe('normalizedModel');
+  });
+
+  test('force_tool falls back to analysisRaw when run_code_check is not in activeToolIds', async () => {
+    const plan = await planNextStep(
+      null,
+      '静力分析并规范校核',
+      {
+        planningDirective: 'force_tool',
+        allowToolCall: true,
+        locale: 'zh',
+        skillIds: ['code-check-gb50017'],
+        hasModel: true,
+        activeToolIds: new Set(['run_analysis']),
+        session: {
+          resolved: {
+            autoCodeCheck: true,
+            designCode: 'GB50017',
+          },
+          updatedAt: Date.now(),
+        },
+      },
+      mockAssessInteractionNeeds,
+      mockHasEmptySkillSelection,
+    );
+    expect(plan.kind).toBe('execute');
+    expect(plan.targetArtifact).toBe('analysisRaw');
+  });
+
   test('returns execute with targetArtifact via LLM when allowed', async () => {
     const mockLlm = {
       invoke: async () => ({
