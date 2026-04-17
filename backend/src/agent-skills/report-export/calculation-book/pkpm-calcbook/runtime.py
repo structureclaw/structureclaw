@@ -200,11 +200,20 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     report["markdown"] = _generate_markdown(report)
 
     # Generate Word document
+    project_dir = jws_path.parent.resolve()
     raw_output_dir = parameters.get("output_dir", "")
-    if raw_output_dir and ".." in Path(raw_output_dir).parts:
-        warnings.append("output_dir contains path traversal, using default")
-        raw_output_dir = ""
-    output_dir = Path(raw_output_dir).resolve() if raw_output_dir else jws_path.parent
+    output_dir = project_dir
+    if raw_output_dir:
+        candidate = Path(raw_output_dir)
+        if candidate.is_absolute():
+            resolved = candidate.resolve()
+        else:
+            resolved = (project_dir / candidate).resolve()
+        try:
+            resolved.relative_to(project_dir)
+            output_dir = resolved
+        except ValueError:
+            warnings.append("output_dir must be within the project directory, using default")
     output_dir.mkdir(parents=True, exist_ok=True)
     docx_path = output_dir / f"{jws_path.stem}_计算书.docx"
 

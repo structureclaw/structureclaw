@@ -76,21 +76,36 @@ def _run_jws_cycle(cycle_path: Path, work_dir: Path, timeout: int = 600) -> None
     conf_path = cycle_dir / "DirectorySet.conf"
 
     with _jws_cycle_lock:
+        had_previous_conf = conf_path.exists()
+        previous_conf_text = (
+            conf_path.read_text(encoding="utf-8") if had_previous_conf else None
+        )
+
         conf_path.write_text(str(work_dir), encoding="utf-8")
 
         try:
-            proc = subprocess.run(
-                [str(cycle_path)],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                cwd=str(cycle_dir),
-                timeout=timeout,
-            )
-        except subprocess.TimeoutExpired:
-            raise RuntimeError(f"PKPM analysis timed out after {timeout}s")
+            try:
+                proc = subprocess.run(
+                    [str(cycle_path)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    cwd=str(cycle_dir),
+                    timeout=timeout,
+                )
+            except subprocess.TimeoutExpired:
+                raise RuntimeError(f"PKPM analysis timed out after {timeout}s")
+            except (FileNotFoundError, OSError) as exc:
+                raise RuntimeError(
+                    f"Failed to launch JWSCYCLE.exe at '{cycle_path}': {exc}"
+                ) from exc
+        finally:
+            if had_previous_conf:
+                conf_path.write_text(previous_conf_text, encoding="utf-8")
+            elif conf_path.exists():
+                conf_path.unlink()
 
     if proc.returncode != 0:
         stderr_snippet = (proc.stderr or "")[:500]
