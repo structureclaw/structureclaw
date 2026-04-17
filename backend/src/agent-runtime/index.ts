@@ -1053,14 +1053,7 @@ export class AgentSkillRuntime {
       updatedAt: Date.now(),
     } as DraftState) ?? {};
 
-    // Extract patch-relevant fields from the enriched model
-    const patchPayload: Record<string, unknown> = {};
-    const enrichFields = ['sections', 'materials', 'nodes', 'elements', 'load_cases', 'load_combinations'] as const;
-    for (const field of enrichFields) {
-      if (Array.isArray(enrichedModel[field]) && (enrichedModel[field] as unknown[]).length > 0) {
-        patchPayload[field] = enrichedModel[field];
-      }
-    }
+    const patchPayload = this.buildEnricherPatchPayload(baseModel, enrichedModel, plugin.manifest.domain);
 
     if (Object.keys(patchPayload).length === 0) {
       // No enrichable content from this skill — return existing artifact unchanged
@@ -1089,6 +1082,44 @@ export class AgentSkillRuntime {
 
     const artifact = this.buildArtifactEnvelope(args.step.provides, reducerResult.model, args.step, args.pipelineState);
     return { artifact, patches: [this.toModelPatchRecord(patchRecord, reducerResult)] };
+  }
+
+  private buildEnricherPatchPayload(
+    baseModel: Record<string, unknown>,
+    enrichedModel: Record<string, unknown>,
+    domain: string | undefined,
+  ): Record<string, unknown> {
+    const patchPayload: Record<string, unknown> = {};
+    const enrichFields = domain === 'section'
+      ? ['sections', 'materials'] as const
+      : ['sections', 'materials', 'nodes', 'elements', 'load_cases', 'load_combinations'] as const;
+
+    for (const field of enrichFields) {
+      const enrichedItems = Array.isArray(enrichedModel[field]) ? enrichedModel[field] as Array<Record<string, unknown>> : [];
+      if (enrichedItems.length === 0) {
+        continue;
+      }
+
+      if (field === 'sections' || field === 'materials') {
+        const baseItems = Array.isArray(baseModel[field]) ? baseModel[field] as Array<Record<string, unknown>> : [];
+        patchPayload[field] = this.preserveReferencedResourceIds(baseItems, enrichedItems);
+        continue;
+      }
+
+      patchPayload[field] = enrichedItems;
+    }
+
+    return patchPayload;
+  }
+
+  private preserveReferencedResourceIds(
+    baseItems: Array<Record<string, unknown>>,
+    enrichedItems: Array<Record<string, unknown>>,
+  ): Array<Record<string, unknown>> {
+    return enrichedItems.map((item, index) => {
+      const baseId = typeof baseItems[index]?.id === 'string' ? baseItems[index].id : undefined;
+      return baseId ? { ...item, id: baseId } : item;
+    });
   }
 
   private toModelPatchRecord(input: PatchReducerInput, _result: { revision: number }): ModelPatchRecord {
