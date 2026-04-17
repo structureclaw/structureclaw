@@ -69,10 +69,10 @@ def _run_jws_cycle(cycle_path: Path, work_dir: Path, timeout: int = 600) -> None
 
     proc = subprocess.Popen(
         [str(cycle_path)],
-        shell=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         encoding="utf-8",
+        errors="replace",
         cwd=str(cycle_dir),
     )
     try:
@@ -108,7 +108,8 @@ def _extract_results(jws_path: Path) -> Dict[str, Any]:
     column_results: list[dict[str, Any]] = []
 
     floor_idx = 1
-    while True:
+    max_floors = 500
+    while floor_idx <= max_floors:
         beams = result.GetDesignBeams(floor_idx)
         columns = result.GetDesignColumns(floor_idx)
         if not beams and not columns:
