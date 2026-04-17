@@ -150,7 +150,7 @@ jobs:
             echo "summary=Tests did not produce output." >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          SUMMARY=$(grep -E '^[[:space:]]*[0-9]+ passed.*\(([0-9]+m[[:space:]]+)?[0-9]+(\.[0-9]+)?s\)' test-output.txt || grep -E '^[[:space:]]*[0-9]+ failed' test-output.txt || echo "No summary found")
+          SUMMARY=$(grep -E '^[[:space:]]*[0-9]+ (passed|failed).*\(([0-9]+m[[:space:]]+)?[0-9]+(\.[0-9]+)?(m|s)\)' test-output.txt || grep -E '^[[:space:]]*[0-9]+ failed' test-output.txt || echo "No summary found")
           echo "summary<<EOF" >> "$GITHUB_OUTPUT"
           echo "$SUMMARY" >> "$GITHUB_OUTPUT"
           echo "EOF" >> "$GITHUB_OUTPUT"
