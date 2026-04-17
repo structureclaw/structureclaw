@@ -300,6 +300,8 @@ async function validateAgentOrchestration(context) {
     assert(result.toolCalls.some((call) => call.tool === "draft_model"), "draft_model should be called");
     assert(result.toolCalls.some((call) => call.tool === "validate_model"), "validate_model should be called after draft");
     assert(result.toolCalls.some((call) => call.tool === "run_analysis"), "run_analysis should be called after draft");
+    assert(!result.toolCalls.some((call) => call.tool === "run_code_check"), "run_code_check should stay disabled when autoCodeCheck is false");
+    assert(!result.toolCalls.some((call) => call.tool === "generate_report"), "generate_report should stay disabled when includeReport is false");
     assert(result.toolCalls.some((call) => call.tool === "draft_model" && Array.isArray(call.authorizedBySkillIds) && call.authorizedBySkillIds.length > 0), "draft_model should expose authorized skill ids");
     console.log("[ok] agent text-to-model draft orchestration");
   }

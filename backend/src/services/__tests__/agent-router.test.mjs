@@ -191,6 +191,33 @@ describe('planNextStep force_tool path', () => {
     expect(plan.targetArtifact).toBe('analysisRaw');
   });
 
+  test('keeps force_tool on analysisRaw when autoCodeCheck and report are explicitly disabled', async () => {
+    const plan = await planNextStep(
+      null,
+      '分析这个结构',
+      {
+        planningDirective: 'force_tool',
+        allowToolCall: true,
+        locale: 'zh',
+        skillIds: ['frame', 'code-check-gb50017', 'report-export-builtin'],
+        hasModel: true,
+        activeToolIds: new Set(['run_analysis', 'run_code_check', 'generate_report']),
+        session: {
+          resolved: {
+            analysisType: 'static',
+            autoCodeCheck: false,
+            includeReport: false,
+          },
+          updatedAt: Date.now(),
+        },
+      },
+      mockAssessInteractionNeeds,
+      mockHasEmptySkillSelection,
+    );
+    expect(plan.kind).toBe('execute');
+    expect(plan.targetArtifact).toBe('analysisRaw');
+  });
+
   test('returns execute with targetArtifact via LLM when allowed', async () => {
     const mockLlm = {
       invoke: async () => ({

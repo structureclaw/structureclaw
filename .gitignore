@@ -43,6 +43,10 @@ backend/uploads/*
 # AI Editor & Agent configs
 .cursor/
 .kiro/
+.codex
+
+# Local test artifacts
+tests/.artifacts/
 
 # Personal agent planning artifacts
 docs/superpowers/

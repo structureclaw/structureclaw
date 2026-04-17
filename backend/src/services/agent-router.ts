@@ -414,9 +414,13 @@ function inferTargetArtifact(options: {
 }): string | undefined {
   // Always target the deepest analysis artifact, not reportArtifact.
   // Report is handled as a follow-up after the main pipeline completes.
-  const hasCodeCheckTool = options.activeToolIds?.has('run_code_check') ?? false;
+  const autoCodeCheck = options.session?.resolved?.autoCodeCheck;
+  const hasResolvedDesignCode = typeof options.session?.resolved?.designCode === 'string'
+    && options.session.resolved.designCode.trim().length > 0;
+  const shouldTargetCodeCheck = autoCodeCheck === true
+    || (autoCodeCheck !== false && hasResolvedDesignCode);
   if (options.hasModel || options.forceExecution) {
-    if (options.session?.resolved?.designCode || hasCodeCheckTool) {
+    if (shouldTargetCodeCheck) {
       return 'codeCheckResult';
     }
     return 'analysisRaw';
