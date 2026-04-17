@@ -224,26 +224,6 @@ def _build_plan_nodes(
 
 
 # ---------------------------------------------------------------------------
-# Beam direction angle
-# ---------------------------------------------------------------------------
-
-def _beam_angle(
-    na: str,
-    nb: str,
-    v2_to_xy: dict[str, tuple[float, float]],
-) -> float:
-    """Return 0.0 for X-direction beams, 90.0 for Y-direction beams."""
-    xa, ya = v2_to_xy[na]
-    xb, yb = v2_to_xy[nb]
-    if abs(yb - ya) < 1.0:   # same Y → X-direction
-        return 0.0
-    if abs(xb - xa) < 1.0:   # same X → Y-direction
-        return 90.0
-    # diagonal: use dominant axis
-    return 0.0 if abs(xb - xa) >= abs(yb - ya) else 90.0
-
-
-# ---------------------------------------------------------------------------
 # Element default steel grade fallback
 # ---------------------------------------------------------------------------
 
@@ -357,8 +337,7 @@ def convert_v2_to_jws(
                 added_nets[net_key] = net_obj.GetID()
 
             net_id = added_nets[net_key]
-            angle = _beam_angle(na, nb, v2_to_xy)
-            beam_obj = floor.AddBeamEx(pm_sec_idx, net_id, 0, 0, 0, angle)
+            beam_obj = floor.AddBeamEx(pm_sec_idx, net_id, 0, 0, 0, 0.0)
             beam_obj.SetSteelGrade(grade)
 
         elif etype == "brace":
