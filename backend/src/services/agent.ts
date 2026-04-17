@@ -1922,6 +1922,63 @@ export class AgentService {
         }
       }
 
+      // Follow-up: if code-check is enabled and not yet done,
+      // plan and execute codeCheckResult now that analysis is complete.
+      const codeCheckToolEnabled = !activeToolIds || activeToolIds.has('run_code_check');
+      const autoCodeCheck = workingSession.resolved?.autoCodeCheck ?? params.context?.autoCodeCheck ?? false;
+      if (codeCheckToolEnabled && autoCodeCheck && !pipelineState.artifacts.codeCheckResult && pipelineState.bindings.codeCheckProviderSkillId) {
+        const codeCheckPlan = this.pipelineScheduler.plan({
+          message: params.message,
+          locale,
+          selectedSkillIds: skillIds ?? [],
+          bindings: pipelineState.bindings,
+          projectPolicy: pipelineState.policy,
+          targetArtifact: 'codeCheckResult',
+          sessionArtifacts: {},
+          projectArtifacts: pipelineState.artifacts,
+          enricherContracts: await this.resolveEnricherContracts(skillIds ?? []),
+        });
+        if (!codeCheckPlan.blockedReason && codeCheckPlan.requiredSteps.length > 0) {
+          for (const ccStep of codeCheckPlan.requiredSteps) {
+            if (ccStep.mode === 'reuse') continue;
+            const ccStepStartedAtMs = Date.now();
+            const ccStepStartedAt = new Date(ccStepStartedAtMs).toISOString();
+            let ccStepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
+            try {
+              ccStepResult = await this.skillRuntime.executeScheduledStep({
+                step: ccStep,
+                pipelineState,
+                traceId,
+                locale,
+                postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
+                codeCheckClient: this.codeCheckClient,
+                message: params.message,
+                llm: this.llm,
+                draftState: workingSession.draft,
+                skillIds,
+                engineId: params.context?.engineId,
+              });
+            } catch (ccStepError) {
+              const ccStepErrorMessage = ccStepError instanceof Error ? ccStepError.message : String(ccStepError);
+              pushToolCall(ccStep, 'error', {
+                startedAt: ccStepStartedAt,
+                error: ccStepErrorMessage,
+                errorCode: 'STEP_EXECUTION_FAILED',
+                durationMs: Date.now() - ccStepStartedAtMs,
+              });
+              break;
+            }
+            pushToolCall(ccStep, 'success', {
+              startedAt: ccStepStartedAt,
+              completedAt: new Date().toISOString(),
+              durationMs: Date.now() - ccStepStartedAtMs,
+              output: ccStepResult.artifact?.payload,
+            });
+            pipelineState = applySchedulerStepResult({ pipelineState, step: ccStep, stepResult: ccStepResult });
+          }
+        }
+      }
+
       // Follow-up: if report is requested but main target wasn't reportArtifact,
       // plan and execute reportArtifact now that analysis/code-check are done.
       const reportToolEnabled = !activeToolIds || activeToolIds.has('generate_report');
