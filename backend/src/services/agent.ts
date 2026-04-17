@@ -1941,6 +1941,8 @@ export class AgentService {
         if (!codeCheckPlan.blockedReason && codeCheckPlan.requiredSteps.length > 0) {
           for (const ccStep of codeCheckPlan.requiredSteps) {
             if (ccStep.mode === 'reuse') continue;
+            // Skip validate_model — model was already validated in the main pipeline.
+            if (ccStep.tool === 'validate_model') continue;
             const ccStepStartedAtMs = Date.now();
             const ccStepStartedAt = new Date(ccStepStartedAtMs).toISOString();
             let ccStepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
