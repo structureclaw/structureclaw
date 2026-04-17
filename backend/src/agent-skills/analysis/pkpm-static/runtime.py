@@ -19,9 +19,13 @@ import subprocess
 import tempfile
 import uuid
 from pathlib import Path
+from threading import Lock
 from typing import Any, Dict
 
 from contracts import EngineNotAvailableError
+
+# Inter-process lock to prevent concurrent DirectorySet.conf overwrites.
+_jws_cycle_lock = Lock()
 
 
 def _check_pkpm_available() -> Path:
@@ -62,24 +66,30 @@ def _run_jws_cycle(cycle_path: Path, work_dir: Path, timeout: int = 600) -> None
     1. Write work_dir path into DirectorySet.conf in the PkpmCycle directory.
     2. Set cwd to the PkpmCycle directory.
     3. Launch JWSCYCLE.exe (no CLI arguments needed).
+
+    Uses an inter-process lock to prevent concurrent analyses from
+    overwriting the shared DirectorySet.conf file.
     """
     cycle_dir = cycle_path.parent
     conf_path = cycle_dir / "DirectorySet.conf"
-    conf_path.write_text(str(work_dir), encoding="utf-8")
 
-    proc = subprocess.Popen(
-        [str(cycle_path)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        encoding="utf-8",
-        errors="replace",
-        cwd=str(cycle_dir),
-    )
-    try:
-        proc.wait(timeout=timeout)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        raise RuntimeError(f"PKPM analysis timed out after {timeout}s")
+    with _jws_cycle_lock:
+        conf_path.write_text(str(work_dir), encoding="utf-8")
+
+        try:
+            proc = subprocess.run(
+                [str(cycle_path)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                cwd=str(cycle_dir),
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"PKPM analysis timed out after {timeout}s")
+
     if proc.returncode != 0:
         stderr_snippet = (proc.stderr or "")[:500]
         raise RuntimeError(
@@ -93,47 +103,50 @@ def _extract_results(jws_path: Path) -> Dict[str, Any]:
     import APIPyInterface
 
     result = APIPyInterface.ResultData()
-    result.InitialResult(str(jws_path))
+    ret = result.InitialResult(str(jws_path))
+    if ret != 0:
+        raise RuntimeError(f"InitialResult returned non-zero: {ret}")
 
-    mode_periods: list[dict[str, Any]] = []
-    for p in result.GetModePeriods():
-        mode_periods.append({
-            "index": p.GetIndex(),
-            "period_s": round(p.GetCycle(), 4),
-            "angle": round(p.GetAngle(), 2),
-            "torsion_ratio": round(p.GetTorsi(), 4),
-        })
-
-    beam_results: list[dict[str, Any]] = []
-    column_results: list[dict[str, Any]] = []
-
-    floor_idx = 1
-    max_floors = 500
-    while floor_idx <= max_floors:
-        beams = result.GetDesignBeams(floor_idx)
-        columns = result.GetDesignColumns(floor_idx)
-        if not beams and not columns:
-            break
-        for b in beams:
-            beam_results.append({
-                "floor": floor_idx,
-                "pmid": b.GetPmid(),
+    try:
+        mode_periods: list[dict[str, Any]] = []
+        for p in result.GetModePeriods():
+            mode_periods.append({
+                "index": p.GetIndex(),
+                "period_s": round(p.GetCycle(), 4),
+                "angle": round(p.GetAngle(), 2),
+                "torsion_ratio": round(p.GetTorsi(), 4),
             })
-        for c in columns:
-            column_results.append({
-                "floor": floor_idx,
-                "pmid": c.GetPmid(),
-            })
-        floor_idx += 1
 
-    result.ClearResult()
+        beam_results: list[dict[str, Any]] = []
+        column_results: list[dict[str, Any]] = []
 
-    return {
-        "mode_periods": mode_periods,
-        "beam_count": len(beam_results),
-        "column_count": len(column_results),
-        "floors_analyzed": floor_idx - 1,
-    }
+        floor_idx = 1
+        max_floors = 500
+        while floor_idx <= max_floors:
+            beams = result.GetDesignBeams(floor_idx)
+            columns = result.GetDesignColumns(floor_idx)
+            if not beams and not columns:
+                break
+            for b in beams:
+                beam_results.append({
+                    "floor": floor_idx,
+                    "pmid": b.GetPmid(),
+                })
+            for c in columns:
+                column_results.append({
+                    "floor": floor_idx,
+                    "pmid": c.GetPmid(),
+                })
+            floor_idx += 1
+
+        return {
+            "mode_periods": mode_periods,
+            "beam_count": len(beam_results),
+            "column_count": len(column_results),
+            "floors_analyzed": floor_idx - 1,
+        }
+    finally:
+        result.ClearResult()
 
 
 def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str, Any]:
