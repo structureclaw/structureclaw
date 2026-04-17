@@ -28,8 +28,8 @@ export function buildReportDomainArtifacts(options: {
   const pp = options.postprocessedResult;
   if (isPostprocessedResultArtifact(pp)) {
     return {
-      keyMetrics: extractKeyMetrics(pp, options.codeCheckResult),
-      clauseTraceability: extractClauseTraceability(options.codeCheckResult),
+      keyMetrics: pp.keyMetrics,
+      clauseTraceability: pp.clauseTraceability,
       controllingCases: pp.controllingCases,
       visualizationHints: { hasEnvelope: false },
     };
