@@ -892,11 +892,11 @@ def _convert_docx_to_pdf(docx_path: Path) -> Optional[Path]:
     wps_exe = _find_wps_exe()
     if wps_exe:
         try:
-            proc = subprocess.Popen(
+            subprocess.run(
                 [str(wps_exe), str(docx_path), "/ExportPDF", str(pdf_path)],
                 stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                timeout=30,
             )
-            proc.wait(timeout=30)
             if pdf_path.is_file():
                 return pdf_path
         except Exception as exc:

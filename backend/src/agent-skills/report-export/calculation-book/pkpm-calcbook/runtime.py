@@ -133,6 +133,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
 
     # ── Try APIPyInterface (supplementary) ───────────────────────────
     api_data: Dict[str, Any] = {}
+    result = None
     try:
         import APIPyInterface
         result = APIPyInterface.ResultData()
@@ -148,23 +149,22 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         api_data["stiff_weight_ratio"] = _extract_stiff_weight_ratio(result)
         api_data["beam_design"] = _extract_beam_design(result)
         api_data["column_design"] = _extract_column_design(result)
-        result.ClearResult()
     except ImportError:
         warnings.append("APIPyInterface not available, using .OUT file data only")
-        for key in ["modal_analysis", "story_stiffness", "story_mass",
-                     "beam_design", "column_design"]:
-            api_data.setdefault(key, [])
-        api_data.setdefault("story_drift", {"earthquake": {}, "wind": {}, "limit_value": None})
-        api_data.setdefault("base_shear", {"entries": [], "shear_weight_limit": None})
-        api_data.setdefault("stiff_weight_ratio", {"entries": [], "limit_value": None})
     except Exception as exc:
         warnings.append(f"APIPyInterface error: {exc}")
-        for key in ["modal_analysis", "story_stiffness", "story_mass",
-                     "beam_design", "column_design"]:
-            api_data.setdefault(key, [])
-        api_data.setdefault("story_drift", {"earthquake": {}, "wind": {}, "limit_value": None})
-        api_data.setdefault("base_shear", {"entries": [], "shear_weight_limit": None})
-        api_data.setdefault("stiff_weight_ratio", {"entries": [], "limit_value": None})
+    finally:
+        if result is not None:
+            result.ClearResult()
+
+    # Set defaults for missing keys
+    for key in ["modal_analysis", "story_stiffness", "story_mass"]:
+        api_data.setdefault(key, [])
+    api_data.setdefault("story_drift", {"earthquake": {}, "wind": {}, "limit_value": None})
+    api_data.setdefault("base_shear", {"entries": [], "shear_weight_limit": None})
+    api_data.setdefault("stiff_weight_ratio", {"entries": [], "limit_value": None})
+    api_data.setdefault("beam_design", {})
+    api_data.setdefault("column_design", {})
 
     # ── Build report ─────────────────────────────────────────────────
     detailed = {

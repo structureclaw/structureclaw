@@ -24,7 +24,8 @@ from typing import Any, Dict
 
 from contracts import EngineNotAvailableError
 
-# Inter-process lock to prevent concurrent DirectorySet.conf overwrites.
+# Thread lock to serialize DirectorySet.conf write + execution within this process.
+# For multi-process deployments, use an external lock mechanism (e.g., file lock).
 _jws_cycle_lock = Lock()
 
 
