@@ -421,17 +421,19 @@ function inferTargetArtifact(options: {
     || (autoCodeCheck !== false && hasResolvedDesignCode);
   // Only target codeCheckResult when run_code_check is still in the active tool set.
   const codeCheckToolActive = !options.activeToolIds || options.activeToolIds.has('run_code_check');
-  const shouldTargetCodeCheck = codeCheckEnabled && codeCheckToolActive;
+  const analysisToolActive = !options.activeToolIds || options.activeToolIds.has('run_analysis');
 
-  // Without a model, always start at normalizedModel — forceExecution alone
-  // must not skip ahead to analysis targets when there is nothing to analyze.
-  if (!options.hasModel) {
+  if (options.hasModel || options.forceExecution) {
+    if (codeCheckEnabled && codeCheckToolActive) {
+      return 'codeCheckResult';
+    }
+    if (analysisToolActive) {
+      return 'analysisRaw';
+    }
+    // run_analysis not available — fall back to draft-level target
     return 'normalizedModel';
   }
-  if (shouldTargetCodeCheck) {
-    return 'codeCheckResult';
-  }
-  return 'analysisRaw';
+  return 'normalizedModel';
 }
 
 // ---------------------------------------------------------------------------
