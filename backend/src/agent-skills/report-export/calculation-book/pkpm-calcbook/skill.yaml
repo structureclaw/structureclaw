@@ -1,0 +1,30 @@
+id: pkpm-calcbook
+domain: report-export
+name:
+  zh: PKPM SATWE 计算书导出
+  en: PKPM SATWE Calculation Report Export
+description:
+  zh: 从已完成的 PKPM SATWE 分析结果中提取计算书数据，包括模态分析、层刚度、层间位移角、基底剪力、构件设计结果等。
+  en: Extract calculation report data from completed PKPM SATWE analysis results, including modal analysis, story stiffness, drift ratios, base shear, and member design results.
+triggers:
+  - PKPM 计算书
+  - SATWE 报告
+  - pkpm report
+  - calculation book
+  - 计算报告
+  - 结构计算书
+stages:
+  - design
+capabilities:
+  - report-export
+  - result-summarization
+grants:
+  - generate_report
+software: pkpm
+engineId: builtin-pkpm
+adapterKey: builtin-pkpm
+autoLoadByDefault: false
+priority: 60
+compatibility:
+  minRuntimeVersion: "0.1.0"
+  skillApiVersion: v1
