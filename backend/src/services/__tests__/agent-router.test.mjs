@@ -290,4 +290,28 @@ describe('planNextStep force_tool path', () => {
     expect(plan.kind).toBe('execute');
     expect(plan.targetArtifact).toBe('analysisRaw');
   });
+
+  test('upgrades normalizedModel target to analysisRaw for concrete design requests when analysis is available', async () => {
+    const mockLlm = {
+      invoke: async () => ({
+        content: '{"kind":"execute","replyMode":null,"targetArtifact":"normalizedModel","reason":"design requested"}',
+      }),
+    };
+    const plan = await planNextStep(
+      mockLlm,
+      '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      {
+        planningDirective: 'auto',
+        allowToolCall: true,
+        locale: 'zh',
+        skillIds: ['beam'],
+        hasModel: false,
+        activeToolIds: new Set(['draft_model', 'validate_model', 'run_analysis']),
+      },
+      mockAssessInteractionNeeds,
+      mockHasEmptySkillSelection,
+    );
+    expect(plan.kind).toBe('execute');
+    expect(plan.targetArtifact).toBe('analysisRaw');
+  });
 });

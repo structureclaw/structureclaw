@@ -2074,13 +2074,38 @@ export class AgentService {
       }
 
       const analysisSuccess = Boolean((schedulerAnalysis as Record<string, unknown> | undefined)?.success);
-      let schedulerResponse = await this.renderSummary(
-        params.message,
-        this.localize(
+      const schedulerSummaryFallback = schedulerAnalysis
+        ? this.localize(
           locale,
           `分析完成。target=${nextPlan.targetArtifact}, success=${String(analysisSuccess)}`,
           `Analysis finished. target=${nextPlan.targetArtifact}, success=${String(analysisSuccess)}`,
-        ),
+        )
+        : schedulerCodeCheck
+          ? this.localize(
+            locale,
+            `规范校核完成。target=${nextPlan.targetArtifact}`,
+            `Code check finished. target=${nextPlan.targetArtifact}`,
+          )
+          : schedulerReport
+            ? this.localize(
+              locale,
+              `报告已生成。target=${nextPlan.targetArtifact}`,
+              `Report generated. target=${nextPlan.targetArtifact}`,
+            )
+            : schedulerModel
+              ? this.localize(
+                locale,
+                `结构模型已生成。target=${nextPlan.targetArtifact}`,
+                `Structural model generated. target=${nextPlan.targetArtifact}`,
+              )
+              : this.localize(
+                locale,
+                `执行完成。target=${nextPlan.targetArtifact}`,
+                `Execution finished. target=${nextPlan.targetArtifact}`,
+              );
+      let schedulerResponse = await this.renderSummary(
+        params.message,
+        schedulerSummaryFallback,
         locale,
         schedulerAnalysis,
         sessionKey,

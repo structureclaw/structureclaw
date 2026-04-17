@@ -35,6 +35,134 @@ function localize(locale: AppLocale, zh: string, en: string): string {
   return locale === 'zh' ? zh : en;
 }
 
+function hasConcreteStructuralParameters(message: string): boolean {
+  const text = message.toLowerCase();
+  if (!/\d/.test(text)) {
+    return false;
+  }
+
+  return [
+    '跨度',
+    '荷载',
+    '层高',
+    '简支',
+    '悬臂',
+    '梁',
+    '框架',
+    '支座',
+    'beam',
+    'frame',
+    'column',
+    'span',
+    'load',
+    'support',
+    'story',
+    'bay',
+    'cantilever',
+  ].some((pattern) => text.includes(pattern));
+}
+
+function hasAnalysisLikeExecutionIntent(message: string): boolean {
+  const text = message.toLowerCase().trim();
+  if (!text) {
+    return false;
+  }
+
+  return [
+    '执行分析',
+    '开始分析',
+    '运行分析',
+    '直接分析',
+    '开始计算',
+    '运行计算',
+    '执行计算',
+    '开始求解',
+    '运行求解',
+    '分析这个模型',
+    '设计',
+    '算一下',
+    '算一算',
+    '验算',
+    '校核',
+    'run analysis',
+    'start analysis',
+    'perform analysis',
+    'run the analysis',
+    'analyze this model',
+    'solve this model',
+    'calculate the result',
+    'design',
+    'size',
+    'sizing',
+    'check this model',
+  ].some((pattern) => text.includes(pattern));
+}
+
+function isExplicitModelOnlyRequest(message: string): boolean {
+  const text = message.toLowerCase().trim();
+  if (!text) {
+    return false;
+  }
+
+  const modelOnlyPatterns = [
+    '只建模',
+    '仅建模',
+    '只生成模型',
+    '只出模型',
+    '仅输出模型',
+    'model only',
+    'only model',
+    'build a model',
+    'draft a model',
+    'create a model',
+  ];
+  if (modelOnlyPatterns.some((pattern) => text.includes(pattern))) {
+    return true;
+  }
+
+  const modelPatterns = [
+    '建模',
+    '模型',
+    '生成模型',
+    '更新模型',
+    'draft model',
+    'build model',
+    'create model',
+    'update model',
+    'structural model',
+  ];
+  return modelPatterns.some((pattern) => text.includes(pattern))
+    && !hasAnalysisLikeExecutionIntent(text);
+}
+
+function normalizeExecuteTargetArtifact(
+  message: string,
+  normalized: Pick<AgentNextStepPlan, 'kind' | 'replyMode' | 'targetArtifact'>,
+  availableToolIds: AgentToolName[],
+  hasModel: boolean,
+): Pick<AgentNextStepPlan, 'kind' | 'replyMode' | 'targetArtifact'> {
+  if (normalized.kind !== 'execute' || normalized.targetArtifact !== 'normalizedModel') {
+    return normalized;
+  }
+
+  if (!availableToolIds.includes('run_analysis')) {
+    return normalized;
+  }
+
+  if (isExplicitModelOnlyRequest(message)) {
+    return normalized;
+  }
+
+  if (hasAnalysisLikeExecutionIntent(message) && (hasConcreteStructuralParameters(message) || hasModel)) {
+    return {
+      ...normalized,
+      targetArtifact: 'analysisRaw',
+    };
+  }
+
+  return normalized;
+}
+
 function extractHttpStatus(error: unknown): number | undefined {
   const status = (error as any)?.response?.status;
   return typeof status === 'number' ? status : undefined;
@@ -294,6 +422,7 @@ export async function planNextStepWithLlm(
     'If there is an existing engineering session or model and the user says things like "改成", "改为", "change to", "update", or modifies previously analyzed values, prefer execute when execution is allowed.',
     'After a model update request, prefer execute when the user expects the updated model to be used immediately for analysis or refreshed engineering results.',
     'If the user explicitly asks to build, model, generate, or revise a structural model now, that can also justify execute even if the request is not yet an analysis execution request.',
+    'In the current OpenSees workflow, when run_analysis is available and the user gives concrete structural parameters while asking to design, size, calculate, or check the structure, prefer targetArtifact="analysisRaw" unless the user explicitly asks for model-only output.',
     'An existing context model is only reusable context. It must not override the latest user request by itself.',
     'If the latest message clearly asks for a new or different structural model, choose execute even when an older context model already exists.',
     'For requests like "建模一个简支梁，跨度10m，均布荷载1kN/m，可以用10个单元建模", prefer execute when the information is sufficient to attempt a first structural model draft.',
@@ -331,10 +460,11 @@ export async function planNextStepWithLlm(
     if (!normalized) {
       throw new Error('LLM_PLANNER_INVALID_RESPONSE');
     }
+    const resolvedPlan = normalizeExecuteTargetArtifact(message, normalized, availableToolIds, options.hasModel);
     return {
-      kind: normalized.kind,
-      replyMode: normalized.replyMode,
-      targetArtifact: normalized.targetArtifact,
+      kind: resolvedPlan.kind,
+      replyMode: resolvedPlan.replyMode,
+      targetArtifact: resolvedPlan.targetArtifact,
       planningDirective: 'auto',
       rationale: 'llm',
     };

@@ -1501,6 +1501,68 @@ describe('AgentService orchestration', () => {
     expect(result.toolCalls.some((call) => call.tool === 'draft_model')).toBe(true);
   });
 
+  test('should describe model-only execution as model generation instead of finished analysis', async () => {
+    const svc = createServiceWithDefaultSkills();
+    svc.llm = null;
+
+    svc.skillRuntime.extractDraftParameters = async () => ({
+      nextState: { inferredType: 'beam', updatedAt: Date.now() },
+      missing: { critical: [], optional: [] },
+      structuralTypeMatch: { key: 'beam', mappedType: 'beam', skillId: 'beam', supportLevel: 'supported' },
+      plugin: undefined,
+      extractionMode: 'llm',
+    });
+    svc.skillRuntime.buildModelFromDraft = async () => ({
+      model: {
+        schema_version: '1.0.0',
+        unit_system: 'SI',
+        nodes: [
+          { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
+          { id: '2', x: 10000, y: 0, z: 0, restraints: [false, true, true, false, false, false] },
+          { id: '3', x: 5000, y: 0, z: 0 },
+        ],
+        elements: [
+          { id: 'E1', type: 'beam', nodes: ['1', '3'], material: 'STEEL', section: 'B1' },
+          { id: 'E2', type: 'beam', nodes: ['3', '2'], material: 'STEEL', section: 'B1' },
+        ],
+        materials: [{ id: 'STEEL', name: 'Q355', E: 206000, nu: 0.3, rho: 7850, fy: 355 }],
+        sections: [{ id: 'B1', name: 'Beam', type: 'rect', properties: { A: 0.01, Iz: 0.0001, Iy: 0.0001, J: 0.00001 } }],
+        load_cases: [{ id: 'MID', type: 'other', loads: [{ node: '3', fy: -1 }] }],
+        load_combinations: [],
+      },
+    });
+    svc.assessInteractionNeeds = async () => ({
+      criticalMissing: [],
+      nonCriticalMissing: [],
+      defaultProposals: [],
+    });
+
+    svc.structureProtocolClient = {
+      post: async (route) => {
+        if (route === '/validate') {
+          return { data: { valid: true } };
+        }
+        throw new Error(`unexpected structure protocol route: ${route}`);
+      },
+    };
+
+    const result = await svc.runForcedExecution({
+      conversationId: 'conv-force-tool-model-only-summary',
+      message: '建模一个简支梁，跨度10m，梁中间荷载1kN',
+      context: {
+        locale: 'zh',
+        skillIds: ['generic'],
+        enabledToolIds: ['draft_model', 'validate_model'],
+        autoAnalyze: false,
+      },
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.toolCalls.some((call) => call.tool === 'run_analysis')).toBe(false);
+    expect(result.response).toContain('结构模型已生成');
+    expect(result.response).not.toContain('分析完成');
+  });
+
   test('should ask for clarification instead of returning an invalid drafted model', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = {
