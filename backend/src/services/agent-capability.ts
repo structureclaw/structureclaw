@@ -19,7 +19,6 @@ const PARTIAL_RUNTIME_DOMAINS = new Set<SkillDomain>([
   'validation',
   'report-export',
   'design',
-  'drawing',
 ]);
 
 function resolveDomainRuntimeStatus(domain: SkillDomain, hasDiscoverablePresence: boolean): SkillRuntimeStatus {
