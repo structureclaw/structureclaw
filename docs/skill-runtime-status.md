@@ -47,6 +47,7 @@ Current status is derived from:
 | `load-boundary` | 10 skills with `skill.yaml`; 9 also have `intent.md` + `runtime.py`; `nodal-constraint` is manifest-only |
 | `visualization` | 3 skills with `skill.yaml` + `intent.md`; no per-skill runtime modules |
 | `section` | 3 skills with `skill.yaml` + `intent.md` + `handler.ts` + `runtime.py` |
+| `drawing` | 2 skills with `skill.yaml` + `intent.md`; no per-skill runtime modules yet |
 
 ## Recommended Cleanup Order
 

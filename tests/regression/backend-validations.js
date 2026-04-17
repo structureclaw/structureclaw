@@ -2618,13 +2618,14 @@ async function validateAgentCapabilityMatrix(context) {
   assert(domainSummaryById["general"]?.runtimeStatus === "discoverable", "general domain should be discoverable while builtin utility skills exist");
   assert(domainSummaryById["design"]?.runtimeStatus === "reserved", "design domain should be reserved when it has no runtime skill presence");
   assert(domainSummaryById["data-input"]?.runtimeStatus === "reserved", "data-input domain should be reserved when it has no runtime skill presence");
-  assert(domainSummaryById["drawing"]?.runtimeStatus === "reserved", "drawing domain should be reserved when it has no runtime skill presence");
+  assert(domainSummaryById["drawing"]?.runtimeStatus === "discoverable", "drawing domain should be discoverable while builtin skills exist");
   assert(domainSummaryById["material"]?.runtimeStatus === "reserved", "material domain should be reserved when it has no runtime skill presence");
   assert(domainSummaryById["result-postprocess"]?.runtimeStatus === "reserved", "result-postprocess domain should be reserved when it has no runtime skill presence");
   assert(domainSummaryById["load-boundary"]?.skillIds.includes("dead-load"), "load-boundary summary should include discoverable builtin skills");
   assert(domainSummaryById["section"]?.skillIds.includes("section-common"), "section summary should include discoverable builtin skills");
   assert(domainSummaryById["visualization"]?.skillIds.includes("visualization-frame-summary"), "visualization summary should include discoverable builtin skills");
   assert(domainSummaryById["general"]?.skillIds.includes("memory"), "general summary should include discoverable builtin utility skills");
+  assert(domainSummaryById["drawing"]?.skillIds.includes("pkpm-drawing"), "drawing summary should include discoverable builtin drawing skills");
   assert(Array.isArray(domainSummaryById["design"]?.skillIds), "design domain summary should exist even without runtime skills");
 
     const responseDynamic = await app.inject({ method: "GET", url: "/api/v1/agent/capability-matrix?analysisType=dynamic" });

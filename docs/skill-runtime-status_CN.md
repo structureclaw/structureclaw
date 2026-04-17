@@ -47,6 +47,7 @@
 | `load-boundary` | 10 个 skill 均有 `skill.yaml`；其中 9 个还有 `intent.md` + `runtime.py`；`nodal-constraint` 只有 manifest |
 | `visualization` | 3 个 skill，均有 `skill.yaml` + `intent.md`；暂无 per-skill runtime 模块 |
 | `section` | 3 个 skill，均有 `skill.yaml` + `intent.md` + `handler.ts` + `runtime.py` |
+| `drawing` | 2 个 skill，均有 `skill.yaml` + `intent.md`；暂无 per-skill runtime 模块 |
 
 ## 建议的清理顺序
 
