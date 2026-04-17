@@ -1,5 +1,6 @@
 import { describe, expect, test } from '@jest/globals';
 import { AgentRuntimeBinder } from '../../../dist/services/agent-runtime-binder.js';
+import { AgentPolicyService } from '../../../dist/services/agent-policy.js';
 
 describe('agent runtime binder', () => {
   test('does not auto-activate an analysis provider when no binding exists (provider-first path)', async () => {
@@ -140,6 +141,29 @@ describe('agent runtime binder', () => {
     });
 
     expect(active).toEqual([]);
+  });
+
+  test('legacy auto-activation adds analysis capability for natural structural design requests', async () => {
+    const binder = new AgentRuntimeBinder(
+      {
+        listSkillManifests: async () => [],
+        resolvePreferredAnalysisSkill: () => ({ id: 'analysis-static' }),
+        resolveCodeCheckDesignCodeFromSkillIds: () => undefined,
+        resolveCodeCheckSkillId: () => undefined,
+        resolveSkillTooling: async () => ({ tools: [], skillIdsByToolId: {} }),
+        listBuiltinToolManifests: () => [],
+      },
+      new AgentPolicyService(),
+    );
+
+    const active = await binder.resolveActiveDomainSkillIds({
+      selectedSkillIds: [],
+      workingSession: { updatedAt: 0 },
+      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      context: { includeReport: false },
+    });
+
+    expect(active).toEqual(['analysis-static', 'validation-structure-model']);
   });
 
   // --- assertStepAuthorization ---

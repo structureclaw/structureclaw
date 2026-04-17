@@ -20,6 +20,47 @@ export interface AgentPolicyInteractionQuestion {
   suggestedValue?: unknown;
 }
 
+function hasConcreteStructuralRequest(text: string): boolean {
+  if (!/\d/.test(text)) {
+    return false;
+  }
+
+  return [
+    '跨度',
+    '荷载',
+    '层高',
+    '简支',
+    '悬臂',
+    '梁',
+    '框架',
+    '支座',
+    'beam',
+    'frame',
+    'column',
+    'span',
+    'load',
+    'support',
+    'story',
+    'bay',
+    'cantilever',
+    'midspan',
+  ].some((pattern) => text.includes(pattern));
+}
+
+function hasNaturalStructuralExecutionIntent(text: string): boolean {
+  return [
+    '设计',
+    '算一下',
+    '算一算',
+    '帮我算',
+    '帮我设计',
+    'design',
+    'size',
+    'sizing',
+    'calculate',
+  ].some((pattern) => text.includes(pattern));
+}
+
 export class AgentPolicyService {
   private localize(locale: AgentPolicyLocale, zh: string, en: string): string {
     return locale === 'zh' ? zh : en;
@@ -53,7 +94,7 @@ export class AgentPolicyService {
       return false;
     }
 
-    return [
+    const explicitExecutionIntent = [
       '执行分析',
       '开始分析',
       '运行分析',
@@ -72,6 +113,12 @@ export class AgentPolicyService {
       'solve this model',
       'calculate the result',
     ].some((pattern) => text.includes(pattern));
+
+    if (explicitExecutionIntent) {
+      return true;
+    }
+
+    return hasConcreteStructuralRequest(text) && hasNaturalStructuralExecutionIntent(text);
   }
 
   inferProceedIntent(message: string): boolean {
