@@ -1288,41 +1288,30 @@ export class AgentService {
           && activeSkillIds && activeSkillIds.length > 0) {
         try {
           const extraction = await this.skillRuntime.extractDraftParameters(
-            this.llm, params.message, workingSession.draft, locale, activeSkillIds,
+            this.llm, params.message, { ...workingSession.draft }, locale, activeSkillIds,
           );
           if (extraction.nextState && extraction.plugin) {
             workingSession.draft = extraction.nextState;
           }
         } catch {
           // Extraction failure should not block execution — scheduler will handle it.
+          // workingSession.draft is untouched because we passed a clone to extractDraftParameters.
         }
       }
       // If pre-extraction promoted inferredType from unknown to a real structural type,
-      // the seeded normalizedModel fingerprint is now stale (it was computed without
-      // DraftState hash because the old inferredType was 'unknown'). Re-seed the
-      // fingerprint so the scheduler can still reuse the artifact.
+      // the existing normalizedModel artifact was built under the old 'unknown' type
+      // and its payload is stale. Remove it so the scheduler re-runs the draft step
+      // with the correct structural type.
       if (pipelineState.artifacts.normalizedModel
           && preExtractInferredType === 'unknown'
           && workingSession.draft
           && workingSession.draft.inferredType
           && workingSession.draft.inferredType !== 'unknown') {
-        const nmDepRefs2: Record<string, { artifactId: string; revision: number }> = {};
-        if (pipelineState.artifacts.designBasis) {
-          nmDepRefs2.designBasis = { artifactId: pipelineState.artifacts.designBasis.artifactId, revision: pipelineState.artifacts.designBasis.revision };
-        }
+        const artifacts = { ...pipelineState.artifacts };
+        delete artifacts.normalizedModel;
         pipelineState = {
           ...pipelineState,
-          artifacts: {
-            ...pipelineState.artifacts,
-            normalizedModel: {
-              ...pipelineState.artifacts.normalizedModel,
-              dependencyFingerprint: computeDependencyFingerprint(
-                nmDepRefs2,
-                undefined,
-                computeDraftStateContentHash(workingSession.draft as Record<string, unknown>),
-              ),
-            },
-          },
+          artifacts,
         };
       }
 
@@ -1709,7 +1698,20 @@ export class AgentService {
             analysisParameters: prepared.analysisParameters,
           });
         } catch (stepError) {
-          const stepErrorMessage = stepError instanceof Error ? stepError.message : String(stepError);
+          const rawStepErrorMessage = stepError instanceof Error ? stepError.message : String(stepError);
+          // Surface Pydantic field-level validation detail when available.
+          const errorDetail = (stepError as any)?.detail;
+          let stepErrorMessage = rawStepErrorMessage;
+          if (Array.isArray(errorDetail) && errorDetail.length > 0) {
+            const detailSummary = errorDetail
+              .slice(0, 5)
+              .map((d: { loc?: unknown[]; msg?: string; type?: string }) => {
+                const loc = Array.isArray(d.loc) ? d.loc.join('.') : '?';
+                return `${loc}: ${d.msg ?? d.type ?? 'invalid'}`;
+              })
+              .join('; ');
+            stepErrorMessage = `${rawStepErrorMessage} (${detailSummary})`;
+          }
           const actionErrorCodes: Record<string, string> = {
             run_code_check: 'CODE_CHECK_EXECUTION_FAILED',
             validate_model: 'VALIDATION_EXECUTION_FAILED',
@@ -1889,6 +1891,7 @@ export class AgentService {
                 locale,
                 postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
                 codeCheckClient: this.codeCheckClient,
+                structureProtocolClient: this.structureProtocolClient,
                 message: params.message,
                 llm: this.llm,
                 draftState: workingSession.draft,
@@ -1954,6 +1957,7 @@ export class AgentService {
                 locale,
                 postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
                 codeCheckClient: this.codeCheckClient,
+                structureProtocolClient: this.structureProtocolClient,
                 message: params.message,
                 llm: this.llm,
                 draftState: workingSession.draft,
@@ -2013,6 +2017,7 @@ export class AgentService {
                 locale,
                 postToEngineWithRetry: this.postToEngineWithRetry.bind(this),
                 codeCheckClient: this.codeCheckClient,
+                structureProtocolClient: this.structureProtocolClient,
                 message: params.message,
                 llm: this.llm,
                 draftState: workingSession.draft,
