@@ -91,6 +91,9 @@
     {"id": "B2", "type": "beam", "nodes": ["8", "9"],  "material": "conc1", "section": "beam1", "story": "F2", "concrete_grade": "C30"},
     {"id": "B3", "type": "beam", "nodes": ["10", "11"], "material": "conc1", "section": "beam1", "story": "F2", "concrete_grade": "C30"},
     {"id": "B4", "type": "beam", "nodes": ["11", "12"], "material": "conc1", "section": "beam1", "story": "F2", "concrete_grade": "C30"},
+    {"id": "B1Y", "type": "beam", "nodes": ["7", "10"],  "material": "conc1", "section": "beam1", "story": "F2", "concrete_grade": "C30"},
+    {"id": "B2Y", "type": "beam", "nodes": ["8", "11"],  "material": "conc1", "section": "beam1", "story": "F2", "concrete_grade": "C30"},
+    {"id": "B3Y", "type": "beam", "nodes": ["9", "12"],  "material": "conc1", "section": "beam1", "story": "F2", "concrete_grade": "C30"},
     {"id": "C7", "type": "column", "nodes": ["7", "13"],  "material": "conc1", "section": "col1", "story": "F2", "concrete_grade": "C30"},
     {"id": "C8", "type": "column", "nodes": ["8", "14"],  "material": "conc1", "section": "col1", "story": "F2", "concrete_grade": "C30"},
     {"id": "C9", "type": "column", "nodes": ["9", "15"],  "material": "conc1", "section": "col1", "story": "F2", "concrete_grade": "C30"},
@@ -100,7 +103,10 @@
     {"id": "B5", "type": "beam", "nodes": ["13", "14"], "material": "conc1", "section": "beam1", "story": "F3", "concrete_grade": "C30"},
     {"id": "B6", "type": "beam", "nodes": ["14", "15"], "material": "conc1", "section": "beam1", "story": "F3", "concrete_grade": "C30"},
     {"id": "B7", "type": "beam", "nodes": ["16", "17"], "material": "conc1", "section": "beam1", "story": "F3", "concrete_grade": "C30"},
-    {"id": "B8", "type": "beam", "nodes": ["17", "18"], "material": "conc1", "section": "beam1", "story": "F3", "concrete_grade": "C30"}
+    {"id": "B8", "type": "beam", "nodes": ["17", "18"], "material": "conc1", "section": "beam1", "story": "F3", "concrete_grade": "C30"},
+    {"id": "B5Y", "type": "beam", "nodes": ["13", "16"], "material": "conc1", "section": "beam1", "story": "F3", "concrete_grade": "C30"},
+    {"id": "B6Y", "type": "beam", "nodes": ["14", "17"], "material": "conc1", "section": "beam1", "story": "F3", "concrete_grade": "C30"},
+    {"id": "B7Y", "type": "beam", "nodes": ["15", "18"], "material": "conc1", "section": "beam1", "story": "F3", "concrete_grade": "C30"}
   ],
   "materials": [
     {"id": "conc1", "name": "C30", "E": 30000, "nu": 0.2, "rho": 2500, "grade": "C30", "category": "concrete"},

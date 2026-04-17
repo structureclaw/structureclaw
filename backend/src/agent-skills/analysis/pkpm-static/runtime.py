@@ -1,7 +1,8 @@
 """PKPM static analysis skill — runtime.
 
 Converts a V2 StructureModelV2 JSON payload into a PKPM JWS project file
-via APIPyInterface, then invokes JWSCYCLE.exe for structural analysis.
+via APIPyInterface, then invokes JWSCYCLE.exe for SATWE structural analysis,
+and extracts results via APIPyInterface.ResultData.
 
 Environment variables
 ---------------------
@@ -23,8 +24,8 @@ from typing import Any, Dict
 from contracts import EngineNotAvailableError
 
 
-def _check_pkpm_available() -> str:
-    """Return PKPM_CYCLE_PATH or raise EngineNotAvailableError."""
+def _check_pkpm_available() -> Path:
+    """Return Path to JWSCYCLE.exe or raise EngineNotAvailableError."""
     cycle_path = os.getenv("PKPM_CYCLE_PATH", "").strip()
     if not cycle_path:
         raise EngineNotAvailableError(
@@ -34,12 +35,13 @@ def _check_pkpm_available() -> str:
                 "Set it to the full path of JWSCYCLE.exe."
             ),
         )
-    if not Path(cycle_path).is_file():
+    p = Path(cycle_path)
+    if not p.is_file():
         raise EngineNotAvailableError(
             engine="pkpm",
             reason=f"JWSCYCLE.exe not found at: {cycle_path}",
         )
-    return cycle_path
+    return p
 
 
 def _import_apipyinterface() -> None:
@@ -51,6 +53,86 @@ def _import_apipyinterface() -> None:
             engine="pkpm",
             reason=f"APIPyInterface Python extension not found: {exc}",
         ) from exc
+
+
+def _run_jws_cycle(cycle_path: Path, work_dir: Path, timeout: int = 600) -> None:
+    """Launch JWSCYCLE.exe using the official DirectorySet.conf mechanism.
+
+    Per PKPM official API documentation (gitee.com/pkpmgh/pkpm-official---api-release):
+    1. Write work_dir path into DirectorySet.conf in the PkpmCycle directory.
+    2. Set cwd to the PkpmCycle directory.
+    3. Launch JWSCYCLE.exe (no CLI arguments needed).
+    """
+    cycle_dir = cycle_path.parent
+    conf_path = cycle_dir / "DirectorySet.conf"
+    conf_path.write_text(str(work_dir), encoding="utf-8")
+
+    proc = subprocess.Popen(
+        [str(cycle_path)],
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        encoding="utf-8",
+        cwd=str(cycle_dir),
+    )
+    try:
+        proc.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        raise RuntimeError(f"PKPM analysis timed out after {timeout}s")
+    if proc.returncode != 0:
+        stderr_snippet = (proc.stderr or "")[:500]
+        raise RuntimeError(
+            f"JWSCYCLE.exe exited with code {proc.returncode}. "
+            f"stderr: {stderr_snippet}"
+        )
+
+
+def _extract_results(jws_path: Path) -> Dict[str, Any]:
+    """Extract design results from a completed SATWE analysis via APIPyInterface."""
+    import APIPyInterface
+
+    result = APIPyInterface.ResultData()
+    result.InitialResult(str(jws_path))
+
+    mode_periods: list[dict[str, Any]] = []
+    for p in result.GetModePeriods():
+        mode_periods.append({
+            "index": p.GetIndex(),
+            "period_s": round(p.GetCycle(), 4),
+            "angle": round(p.GetAngle(), 2),
+            "torsion_ratio": round(p.GetTorsi(), 4),
+        })
+
+    beam_results: list[dict[str, Any]] = []
+    column_results: list[dict[str, Any]] = []
+
+    floor_idx = 1
+    while True:
+        beams = result.GetDesignBeams(floor_idx)
+        columns = result.GetDesignColumns(floor_idx)
+        if not beams and not columns:
+            break
+        for b in beams:
+            beam_results.append({
+                "floor": floor_idx,
+                "pmid": b.GetPmid(),
+            })
+        for c in columns:
+            column_results.append({
+                "floor": floor_idx,
+                "pmid": c.GetPmid(),
+            })
+        floor_idx += 1
+
+    result.ClearResult()
+
+    return {
+        "mode_periods": mode_periods,
+        "beam_count": len(beam_results),
+        "column_count": len(column_results),
+        "floors_analyzed": floor_idx - 1,
+    }
 
 
 def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str, Any]:
@@ -97,33 +179,15 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         raise RuntimeError(f"PKPM JWS generation failed: {exc}") from exc
 
     # ---- Phase 2: Run SATWE via JWSCYCLE.exe ----
-    try:
-        result = subprocess.run(
-            [cycle_path, str(jws_path)],
-            capture_output=True,
-            text=True,
-            timeout=600,
-        )
-        if result.returncode != 0:
-            stderr_snippet = (result.stderr or "")[:500]
-            raise RuntimeError(
-                f"JWSCYCLE.exe exited with code {result.returncode}. "
-                f"stderr: {stderr_snippet}"
-            )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError("PKPM analysis timed out after 600 s") from exc
-    except FileNotFoundError as exc:
-        raise RuntimeError(f"Cannot launch JWSCYCLE.exe: {exc}") from exc
+    timeout = int(parameters.get("timeout", 600))
+    _run_jws_cycle(cycle_path, work_dir, timeout=timeout)
 
-    # ---- Phase 3: Collect results ----
-    result_files = list(work_dir.glob("*.OUT")) + list(work_dir.glob("*.out"))
-    summary_lines: list[str] = []
-    for rfile in result_files[:3]:
-        try:
-            text = rfile.read_text(encoding="gbk", errors="replace")
-            summary_lines.append(f"=== {rfile.name} ===\n{text[:2000]}")
-        except Exception as read_exc:
-            warnings.append(f"Could not read result file {rfile.name}: {read_exc}")
+    # ---- Phase 3: Extract results via APIPyInterface ----
+    try:
+        extracted = _extract_results(jws_path)
+    except Exception as exc:
+        warnings.append(f"Result extraction failed: {exc}")
+        extracted = {}
 
     return {
         "status": "success",
@@ -131,10 +195,12 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             "engine": "pkpm-static",
             "jws_path": str(jws_path),
             "work_dir": str(work_dir),
-            "output_files": [str(p) for p in result_files],
+            "floors_analyzed": extracted.get("floors_analyzed", 0),
+            "beam_count": extracted.get("beam_count", 0),
+            "column_count": extracted.get("column_count", 0),
         },
         "detailed": {
-            "raw_output": "\n\n".join(summary_lines) if summary_lines else "(no .OUT files found)",
+            "mode_periods": extracted.get("mode_periods", []),
         },
         "warnings": warnings,
     }
