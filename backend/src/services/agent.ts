@@ -1106,17 +1106,57 @@ export class AgentService {
         return;
       }
 
-      const result = await this.runInternal({ ...preparedInput, traceId }, traceId, strategy, signal);
-      if (result.interaction && result.interaction.state !== 'completed') {
-        yield {
-          type: 'interaction_update',
-          content: result.interaction,
-        };
-      }
-      yield {
-        type: 'result',
-        content: result,
+      // Relay step events from runInternal through this generator.
+      const stepEventQueue: AgentStreamChunk[] = [];
+      let stepEventNotify: (() => void) | null = null;
+
+      const onStepEvent: StepEventCallback = (chunk: AgentStreamChunk) => {
+        stepEventQueue.push(chunk);
+        stepEventNotify?.();
+        stepEventNotify = null;
       };
+
+      // Start runInternal — it calls onStepEvent synchronously from its step loop
+      const resultPromise = this.runInternal(
+        { ...preparedInput, traceId }, traceId, strategy, signal, onStepEvent,
+      );
+
+      // Interleave: yield step events as they arrive, then await the final result.
+      let resultSettled = false;
+      let resolvedResult: AgentRunResult | undefined;
+      resultPromise.then((r) => { resultSettled = true; resolvedResult = r; });
+
+      while (!resultSettled) {
+        // Drain any already-queued events
+        while (stepEventQueue.length > 0) {
+          yield stepEventQueue.shift()!;
+        }
+        if (resultSettled) break;
+
+        // Create a promise that resolves when the next step event arrives
+        const nextEventPromise = new Promise<void>((resolve) => {
+          stepEventNotify = resolve;
+        });
+
+        // Race: next step event vs result completion
+        await Promise.race([nextEventPromise, resultPromise]);
+
+        // Drain events that arrived during the race
+        while (stepEventQueue.length > 0) {
+          yield stepEventQueue.shift()!;
+        }
+      }
+
+      // Flush any events queued between last drain and result resolution
+      while (stepEventQueue.length > 0) {
+        yield stepEventQueue.shift()!;
+      }
+
+      const result = resolvedResult ?? await resultPromise;
+      if (result.interaction && result.interaction.state !== 'completed') {
+        yield { type: 'interaction_update', content: result.interaction };
+      }
+      yield { type: 'result', content: result };
       yield { type: 'done' };
     } catch (error: any) {
       if (signal?.aborted) {
