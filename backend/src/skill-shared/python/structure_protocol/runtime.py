@@ -113,7 +113,4 @@ def convert_structure_model_payload(
 
 
 def _ensure_v2_if_needed(payload: Dict[str, Any]) -> Dict[str, Any]:
-    version = str(payload.get("schema_version", "1.0.0"))
-    if version.startswith("2"):
-        return payload
     return migrate_v1_to_v2(payload)

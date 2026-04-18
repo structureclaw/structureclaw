@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any, Dict
 
 from converters.base import FormatConverter
+from structure_protocol.structure_model_v2 import StructureModelV2
 
 
 class StructureModelV2Converter(FormatConverter):
@@ -19,7 +20,7 @@ class StructureModelV2Converter(FormatConverter):
             return model.model_dump(mode="json")
         return dict(model)
 
-    def from_v2(self, model: Any) -> Dict[str, Any]:
+    def from_v2(self, model: StructureModelV2) -> Dict[str, Any]:
         if hasattr(model, "model_dump"):
             return model.model_dump(mode="json")
         return dict(model)

@@ -40,11 +40,13 @@ def migrate_structure_model_v1(model: Dict[str, Any], target_schema_version: str
 
 
 def ensure_v2_dict(model: Dict[str, Any]) -> Dict[str, Any]:
-    """Ensure a model dict conforms to V2 (schema_version 2.0.0).
+    """Ensure a model dict reports schema_version 2.0.0.
 
-    If the model already reports schema_version "2.x.x", it is returned as-is.
-    Otherwise, V2-only top-level keys are ensured (defaulting to None/empty)
-    and the schema_version is stamped to "2.0.0".
+    If the model already reports schema_version "2.x.x", it is returned as-is
+    (deep-copied). Otherwise, schema_version is stamped to "2.0.0", metadata
+    and unit_system are normalized, and a migration trace is recorded.
+    V2-specific top-level keys (project, stories, etc.) are left absent so
+    that StructureModelV2 will apply its own defaults during validation.
     """
     migrated = deepcopy(model)
     version = str(migrated.get("schema_version", "1.0.0"))

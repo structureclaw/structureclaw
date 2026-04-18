@@ -413,9 +413,6 @@ class AnalysisEngineRegistry:
         }
 
     def _ensure_v2(self, model_payload: Dict[str, Any]) -> Dict[str, Any]:
-        version = str(model_payload.get("schema_version", "1.0.0"))
-        if version.startswith("2"):
-            return model_payload
         return migrate_v1_to_v2(model_payload)
 
     def _detect_model_family(self, model_payload: Dict[str, Any]) -> str:
