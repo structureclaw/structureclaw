@@ -14,6 +14,14 @@ import { toast } from '@/components/ui/toast'
 import { buildVisualizationSnapshot } from '@/components/visualization/adapter'
 import type { VisualizationSnapshot } from '@/components/visualization/types'
 import { useI18n, type MessageKey } from '@/lib/i18n'
+import type { MessageBlock, BlocksState } from './message-blocks'
+import {
+  initBlocksFromPipelineStart,
+  applyStepStart,
+  applyStepEnd,
+  collapseCompletedPhases,
+} from './message-blocks'
+import { MessageBlocksView } from './message-blocks'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { API_BASE } from '@/lib/api-base'
 import { loadCapabilityPreferences, saveCapabilityPreferences } from '@/lib/capability-preference'
@@ -35,6 +43,7 @@ type Message = {
   status?: 'streaming' | 'done' | 'error' | 'aborted'
   timestamp: string
   debugDetails?: MessageDebugDetails
+  blocks?: MessageBlock[]
 }
 
 type AgentToolCall = {
@@ -107,6 +116,13 @@ type AgentResult = {
   visualizationHints?: Record<string, unknown>
 }
 
+type PipelineStepInfo = {
+  stepId: string;
+  tool: string;
+  provides?: string;
+  reason: string;
+};
+
 type StreamPayload =
   | { type: 'start'; content?: { traceId?: string; conversationId?: string; startedAt?: string } }
   | { type: 'token'; content?: string }
@@ -114,6 +130,9 @@ type StreamPayload =
   | { type: 'result'; content?: AgentResult }
   | { type: 'done' }
   | { type: 'error'; error?: string }
+  | { type: 'pipeline_start'; content?: { targetArtifact?: string; steps?: Array<{ stepId: string; tool: string; provides?: string }> } }
+  | { type: 'step_start'; step?: PipelineStepInfo }
+  | { type: 'step_end'; step?: PipelineStepInfo; durationMs?: number; stepStatus?: 'success' | 'error'; error?: string }
 
 type StreamSession = {
   conversationId: string
@@ -1486,6 +1505,8 @@ export function AIConsole() {
   const [historyError, setHistoryError] = useState('')
   const [streamingSessions, setStreamingSessions] = useState<Map<string, StreamSession>>(new Map())
   const streamingSessionsRef = useRef<Map<string, StreamSession>>(new Map())
+  const [currentBlocks, setCurrentBlocks] = useState<BlocksState | null>(null);
+  const currentBlocksRef = useRef<BlocksState | null>(null);
   const conversationIdRef = useRef(conversationId)
   const submittingRef = useRef(false)
   const [isStreaming, setIsStreaming] = useState(false)
@@ -2470,6 +2491,8 @@ export function AIConsole() {
     const assistantMessageId = createId('assistant')
     const assistantSeed = t('assistantSeedAuto')
 
+    setCurrentBlocks(null);
+    currentBlocksRef.current = null;
     setErrorMessage('')
     setInput('')
     setVisualizationOpen(false)
@@ -2662,6 +2685,72 @@ export function AIConsole() {
             }
           }
 
+          if (payload.type === 'pipeline_start' && payload.content?.steps) {
+            const newBlocks = initBlocksFromPipelineStart(
+              payload.content.steps,
+              t,
+            );
+            currentBlocksRef.current = newBlocks;
+            setCurrentBlocks(newBlocks);
+            replaceMessageForConversation(
+              activeConversationId,
+              assistantMessageId,
+              (message) => ({
+                ...message,
+                content: assistantContent,
+                status: 'streaming',
+                blocks: newBlocks,
+              }),
+            );
+          }
+
+          if (payload.type === 'step_start' && payload.step) {
+            const updated = applyStepStart(
+              currentBlocksRef.current ?? [],
+              payload.step.stepId,
+              {
+                tool: payload.step.tool,
+                provides: payload.step.provides,
+                reason: payload.step.reason,
+              },
+            );
+            currentBlocksRef.current = updated;
+            setCurrentBlocks(updated);
+            replaceMessageForConversation(
+              activeConversationId,
+              assistantMessageId,
+              (message) => ({
+                ...message,
+                content: assistantContent,
+                status: 'streaming',
+                blocks: updated,
+              }),
+            );
+          }
+
+          if (payload.type === 'step_end' && payload.step) {
+            let updated = applyStepEnd(
+              currentBlocksRef.current ?? [],
+              payload.step.stepId,
+              payload.stepStatus ?? 'success',
+              payload.durationMs,
+              payload.error,
+            );
+            updated = collapseCompletedPhases(updated);
+            currentBlocksRef.current = updated;
+            setCurrentBlocks(updated);
+            replaceMessageForConversation(
+              activeConversationId,
+              assistantMessageId,
+              (message) => ({
+                ...message,
+                content: assistantContent,
+                status: 'streaming',
+                blocks: updated,
+              }),
+            );
+          }
+
           if (payload.type === 'result' && payload.content && typeof payload.content === 'object') {
             const result = {
               ...(payload.content as AgentResult),
@@ -2712,6 +2801,7 @@ export function AIConsole() {
               content: assistantContent,
               status: 'done',
               debugDetails,
+              blocks: currentBlocksRef.current ?? undefined,
             }))
             shouldBumpConversationActivity = true
           }
@@ -2995,18 +3085,22 @@ export function AIConsole() {
                       <span>{message.role === 'user' ? t('you') : t('structureClawAi')}</span>
                       <span className="text-slate-500">{formatDate(message.timestamp, locale)}</span>
                     </div>
-                    <div className="whitespace-pre-wrap text-sm leading-7">
-                      {message.content}
-                      {message.status === 'streaming' && (
-                        <span className="ml-2 inline-flex h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.9)]" />
-                      )}
-                      {message.status === 'aborted' && (
-                        <span className="ml-2 inline-flex items-center gap-1 text-xs text-rose-500 dark:text-rose-400">
-                          <Square className="h-2.5 w-2.5" />
-                          {t('streamAborted')}
-                        </span>
-                      )}
-                    </div>
+                    {message.blocks && message.blocks.length > 0 ? (
+                      <MessageBlocksView blocks={message.blocks} t={t} />
+                    ) : (
+                      <div className="whitespace-pre-wrap text-sm leading-7">
+                        {message.content}
+                      </div>
+                    )}
+                    {message.status === 'streaming' && !(message.blocks && message.blocks.length > 0) && (
+                      <span className="ml-2 inline-flex h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.9)]" />
+                    )}
+                    {message.status === 'aborted' && (
+                      <span className="ml-2 inline-flex items-center gap-1 text-xs text-rose-500 dark:text-rose-400">
+                        <Square className="h-2.5 w-2.5" />
+                        {t('streamAborted')}
+                      </span>
+                    )}
                     {message.role === 'assistant' && message.debugDetails && (
                       <details className="mt-3 rounded-2xl border border-border/70 bg-background/60 px-3 py-2 dark:border-white/10 dark:bg-slate-950/40">
                         <summary className="cursor-pointer text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
