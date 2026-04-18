@@ -129,7 +129,7 @@ function buildFrame2dLocalModel(
 
   for (let storyIdx = 1; storyIdx < zCoords.length; storyIdx++) {
     for (let bayIdx = 0; bayIdx < xCoords.length; bayIdx++) {
-      elements.push({ id: `C${elementId}`, type: 'beam', nodes: [n2dId(storyIdx - 1, bayIdx), n2dId(storyIdx, bayIdx)], material: '1', section: '1' });
+      elements.push({ id: `C${elementId}`, type: 'column', nodes: [n2dId(storyIdx - 1, bayIdx), n2dId(storyIdx, bayIdx)], material: '1', section: '1' });
       elementId += 1;
     }
   }
@@ -162,7 +162,7 @@ function buildFrame2dLocalModel(
     elements,
     materials: [{ id: '1', name: matProps.resolvedGrade, E: matProps.E, nu: matProps.nu, rho: matProps.rho, fy: matProps.fy }],
     sections: [
-      { id: '1', name: colProps.name, type: 'beam', properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
+      { id: '1', name: colProps.name, type: 'column', properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
       { id: '2', name: beamProps.name, type: 'beam', properties: { A: beamProps.A, Iy: beamProps.Iy, Iz: beamProps.Iz, J: beamProps.J, G: beamProps.G } },
     ],
     load_cases: [{ id: 'LC1', type: 'other', loads }],
@@ -217,7 +217,7 @@ function buildFrame3dLocalModel(
   for (let storyIdx = 1; storyIdx < zCoords.length; storyIdx++) {
     for (let xIdx = 0; xIdx < xCoords.length; xIdx++) {
       for (let yIdx = 0; yIdx < yCoords.length; yIdx++) {
-        elements.push({ id: `C${elementId}`, type: 'beam', nodes: [n3dId(storyIdx - 1, xIdx, yIdx), n3dId(storyIdx, xIdx, yIdx)], material: '1', section: '1' });
+        elements.push({ id: `C${elementId}`, type: 'column', nodes: [n3dId(storyIdx - 1, xIdx, yIdx), n3dId(storyIdx, xIdx, yIdx)], material: '1', section: '1' });
         elementId += 1;
       }
     }
@@ -268,7 +268,7 @@ function buildFrame3dLocalModel(
     elements,
     materials: [{ id: '1', name: matProps.resolvedGrade, E: matProps.E, nu: matProps.nu, rho: matProps.rho, fy: matProps.fy }],
     sections: [
-      { id: '1', name: colProps.name, type: 'beam', properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
+      { id: '1', name: colProps.name, type: 'column', properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
       { id: '2', name: beamProps.name, type: 'beam', properties: { A: beamProps.A, Iy: beamProps.Iy, Iz: beamProps.Iz, J: beamProps.J, G: beamProps.G } },
     ],
     load_cases: [{ id: 'LC1', type: 'other', loads }],
