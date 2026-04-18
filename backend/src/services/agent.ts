@@ -66,7 +66,14 @@ import {
   buildInteractionCheckpoint,
 } from './agent-pipeline-state.js';
 import { computeDependencyFingerprint, computeDraftStateContentHash } from '../agent-runtime/artifact-helpers.js';
-import type { ArtifactKind, SchedulerStep, ProjectPipelineState } from '../agent-runtime/types.js';
+import type { ArtifactEnvelope, ArtifactKind, SchedulerStep, ProjectPipelineState } from '../agent-runtime/types.js';
+import {
+  createEmptyAssistantPresentation,
+  type AssistantPresentationV1,
+  type ArtifactState,
+  type PresentationErrorItem,
+  type TimelineItem,
+} from './chat-presentation.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
 export type AgentOrchestrationMode = 'directed' | 'llm-planned';
@@ -332,7 +339,7 @@ export interface PipelineStepInfo {
   reason: string;
 }
 
-export interface AgentStreamChunk {
+interface LegacyAgentStreamChunk {
   type: 'start'
     | 'interaction_update' | 'result' | 'done' | 'error'
     | 'pipeline_start' | 'pipeline_end'
@@ -345,6 +352,23 @@ export interface AgentStreamChunk {
   durationMs?: number;
   stepStatus?: 'success' | 'error';
 }
+
+export type PublicPresentationChunk =
+  | { type: 'presentation_init'; presentation: AssistantPresentationV1 }
+  | { type: 'timeline_item_upsert'; item: TimelineItem }
+  | { type: 'artifact_upsert'; artifact: ArtifactState }
+  | {
+      type: 'artifact_payload_sync';
+      artifact: 'model' | 'analysis' | 'report';
+      model?: Record<string, unknown>;
+      latestResult?: Record<string, unknown>;
+      snapshot?: Record<string, unknown>;
+    }
+  | { type: 'summary_replace'; summaryText: string }
+  | { type: 'presentation_complete'; completedAt: string }
+  | { type: 'presentation_error'; error: PresentationErrorItem };
+
+export type AgentStreamChunk = LegacyAgentStreamChunk | PublicPresentationChunk;
 
 export type StepEventCallback = (chunk: AgentStreamChunk) => void;
 
@@ -416,6 +440,198 @@ function computeStepInputFingerprint(
     refs[ref.kind] = { artifactId: ref.artifactId, revision: ref.revision };
   }
   return computeDependencyFingerprint(refs, pipelineState.bindings);
+}
+
+function mapToolToPresentationPhase(tool: string): 'modeling' | 'validation' | 'analysis' | 'report' {
+  if (tool === 'validate_model') return 'validation';
+  if (tool === 'run_analysis' || tool === 'postprocess_result' || tool === 'run_code_check') return 'analysis';
+  if (tool === 'generate_report') return 'report';
+  return 'modeling';
+}
+
+function mapToolStartTitle(tool: string, locale: AppLocale): string {
+  if (tool === 'draft_model' || tool === 'update_model' || tool === 'convert_model') {
+    return locale === 'zh' ? '开始生成结构模型' : 'Starting structural model generation';
+  }
+  if (tool === 'validate_model') {
+    return locale === 'zh' ? '开始校验模型' : 'Starting model validation';
+  }
+  if (tool === 'run_analysis' || tool === 'postprocess_result' || tool === 'run_code_check') {
+    return locale === 'zh' ? '开始执行分析' : 'Starting analysis';
+  }
+  if (tool === 'generate_report') {
+    return locale === 'zh' ? '开始生成报告' : 'Starting report generation';
+  }
+  return locale === 'zh' ? `开始执行 ${tool}` : `Starting ${tool}`;
+}
+
+function mapToolDoneTitle(tool: string, locale: AppLocale): string {
+  if (tool === 'draft_model' || tool === 'update_model' || tool === 'convert_model') {
+    return locale === 'zh' ? '结构模型已生成' : 'Structural model generated';
+  }
+  if (tool === 'validate_model') {
+    return locale === 'zh' ? '模型校验完成' : 'Model validation completed';
+  }
+  if (tool === 'run_analysis' || tool === 'postprocess_result' || tool === 'run_code_check') {
+    return locale === 'zh' ? '分析执行完成' : 'Analysis completed';
+  }
+  if (tool === 'generate_report') {
+    return locale === 'zh' ? '报告已生成' : 'Report generated';
+  }
+  return locale === 'zh' ? `${tool} 已完成` : `${tool} completed`;
+}
+
+function summarizeStepArtifact(artifact: Pick<ArtifactEnvelope, 'kind'> | undefined, locale: AppLocale): string | undefined {
+  if (!artifact?.kind) {
+    return undefined;
+  }
+  if (artifact.kind === 'normalizedModel') {
+    return locale === 'zh' ? '可继续预览和校验当前模型' : 'The current model is ready for preview and validation';
+  }
+  if (artifact.kind === 'analysisRaw' || artifact.kind === 'postprocessedResult' || artifact.kind === 'codeCheckResult') {
+    return locale === 'zh' ? '分析结果已可查看' : 'Analysis results are available';
+  }
+  if (artifact.kind === 'reportArtifact') {
+    return locale === 'zh' ? '报告内容已生成' : 'Report content is available';
+  }
+  return undefined;
+}
+
+function mapArtifactEnvelopeToPresentationArtifact(
+  artifact: Pick<ArtifactEnvelope, 'kind'> | undefined,
+): ArtifactState['artifact'] | undefined {
+  if (!artifact?.kind) {
+    return undefined;
+  }
+  if (artifact.kind === 'normalizedModel') {
+    return 'model';
+  }
+  if (artifact.kind === 'analysisRaw' || artifact.kind === 'postprocessedResult' || artifact.kind === 'codeCheckResult') {
+    return 'analysis';
+  }
+  if (artifact.kind === 'reportArtifact') {
+    return 'report';
+  }
+  return undefined;
+}
+
+function buildArtifactUpsertState(
+  artifact: ArtifactState['artifact'],
+  locale: AppLocale,
+): ArtifactState {
+  if (artifact === 'model') {
+    return {
+      artifact,
+      status: 'available',
+      title: locale === 'zh' ? '结构模型' : 'Structural model',
+      summary: locale === 'zh' ? '模型已生成，可立即预览' : 'The model is ready for preview',
+      previewable: true,
+      snapshotKey: 'modelSnapshot',
+    };
+  }
+  if (artifact === 'analysis') {
+    return {
+      artifact,
+      status: 'available',
+      title: locale === 'zh' ? '分析结果' : 'Analysis results',
+      summary: locale === 'zh' ? '分析结果已可查看' : 'Analysis results are available',
+      previewable: true,
+      snapshotKey: 'resultSnapshot',
+    };
+  }
+  return {
+    artifact,
+    status: 'available',
+    title: locale === 'zh' ? '报告' : 'Report',
+    summary: locale === 'zh' ? '报告内容已生成' : 'Report content is available',
+    previewable: true,
+  };
+}
+
+function buildArtifactTimelineItem(
+  artifact: ArtifactState['artifact'],
+  locale: AppLocale,
+  createdAt: string,
+): Extract<TimelineItem, { kind: 'artifact_update' }> {
+  if (artifact === 'model') {
+    return {
+      id: `artifact:${artifact}`,
+      kind: 'artifact_update',
+      phase: 'modeling',
+      status: 'done',
+      artifact,
+      title: locale === 'zh' ? '模型已生成，可立即预览' : 'Model generated and ready for preview',
+      summary: locale === 'zh' ? '当前模型已可继续校验或分析' : 'The current model can be validated or analyzed',
+      previewable: true,
+      createdAt,
+    };
+  }
+  if (artifact === 'analysis') {
+    return {
+      id: `artifact:${artifact}`,
+      kind: 'artifact_update',
+      phase: 'analysis',
+      status: 'done',
+      artifact,
+      title: locale === 'zh' ? '分析结果已生成' : 'Analysis results are ready',
+      summary: locale === 'zh' ? '可继续查看结果与报告' : 'Results are ready for review and reporting',
+      previewable: true,
+      createdAt,
+    };
+  }
+  return {
+    id: `artifact:${artifact}`,
+    kind: 'artifact_update',
+    phase: 'report',
+    status: 'done',
+    artifact,
+    title: locale === 'zh' ? '报告已生成' : 'Report generated',
+    summary: locale === 'zh' ? '可继续查看报告内容' : 'Report content is ready for review',
+    previewable: true,
+    createdAt,
+  };
+}
+
+function buildArtifactPayloadChunk(
+  artifact: ArtifactState['artifact'],
+  payload: Record<string, unknown>,
+  latestModel?: Record<string, unknown>,
+): Extract<PublicPresentationChunk, { type: 'artifact_payload_sync' }> {
+  if (artifact === 'model') {
+    return { type: 'artifact_payload_sync', artifact, model: payload };
+  }
+  if (artifact === 'analysis') {
+    return {
+      type: 'artifact_payload_sync',
+      artifact,
+      latestResult: latestModel ? { analysis: payload, model: latestModel } : { analysis: payload },
+    };
+  }
+  return {
+    type: 'artifact_payload_sync',
+    artifact,
+    latestResult: latestModel ? { report: payload, model: latestModel } : { report: payload },
+  };
+}
+
+function buildPipelineStartNote(stepCount: number, locale: AppLocale, createdAt: string): Extract<TimelineItem, { kind: 'note' }> {
+  return {
+    id: 'note:pipeline-start',
+    kind: 'note',
+    phase: 'modeling',
+    status: 'done',
+    previewText: locale === 'zh'
+      ? `已开始执行流程，计划步骤 ${stepCount} 个`
+      : `Execution started with ${stepCount} planned steps`,
+    createdAt,
+  };
+}
+
+function normalizePresentationPayload(payload: unknown): Record<string, unknown> | undefined {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return undefined;
+  }
+  return payload as Record<string, unknown>;
 }
 
 function applySchedulerStepResult(args: {
@@ -1025,6 +1241,65 @@ export class AgentService {
           {
             type: 'object',
             properties: {
+              type: { const: 'presentation_init' },
+              presentation: { type: 'object' },
+            },
+            required: ['type', 'presentation'],
+          },
+          {
+            type: 'object',
+            properties: {
+              type: { const: 'timeline_item_upsert' },
+              item: { type: 'object' },
+            },
+            required: ['type', 'item'],
+          },
+          {
+            type: 'object',
+            properties: {
+              type: { const: 'artifact_upsert' },
+              artifact: { type: 'object' },
+            },
+            required: ['type', 'artifact'],
+          },
+          {
+            type: 'object',
+            properties: {
+              type: { const: 'artifact_payload_sync' },
+              artifact: { enum: ['model', 'analysis', 'report'] },
+              model: { type: 'object' },
+              latestResult: { type: 'object' },
+              snapshot: { type: 'object' },
+            },
+            required: ['type', 'artifact'],
+          },
+          {
+            type: 'object',
+            properties: {
+              type: { const: 'summary_replace' },
+              summaryText: { type: 'string' },
+            },
+            required: ['type', 'summaryText'],
+          },
+          {
+            type: 'object',
+            properties: {
+              type: { const: 'presentation_complete' },
+              completedAt: { type: 'string' },
+            },
+            required: ['type', 'completedAt'],
+          },
+          {
+            type: 'object',
+            properties: {
+              type: { const: 'presentation_error' },
+              error: { type: 'object' },
+            },
+            required: ['type', 'error'],
+          },
+          {
+            type: 'object',
+            properties: {
               type: { const: 'result' },
               content: { type: 'object' },
             },
@@ -1100,8 +1375,20 @@ export class AgentService {
           startedAt,
         },
       };
+      yield {
+        type: 'presentation_init',
+        presentation: createEmptyAssistantPresentation({
+          traceId,
+          mode: strategy.allowToolCall ? 'execution' : 'conversation',
+          startedAt,
+        }),
+      };
 
       if (signal?.aborted) {
+        yield {
+          type: 'presentation_complete',
+          completedAt: new Date().toISOString(),
+        };
         yield { type: 'done' };
         return;
       }
@@ -1156,12 +1443,33 @@ export class AgentService {
       if (result.interaction && result.interaction.state !== 'completed') {
         yield { type: 'interaction_update', content: result.interaction };
       }
+      yield {
+        type: 'summary_replace',
+        summaryText: result.response,
+      };
       yield { type: 'result', content: result };
+      yield {
+        type: 'presentation_complete',
+        completedAt: result.completedAt,
+      };
       yield { type: 'done' };
     } catch (error: any) {
       if (signal?.aborted) {
         return;
       }
+      yield {
+        type: 'presentation_error',
+        error: {
+          id: `error:${traceId}`,
+          kind: 'error',
+          phase: 'modeling',
+          status: 'error',
+          title: preparedInput.context?.locale === 'en' ? 'Execution failed' : '执行失败',
+          message: this.stringifyError(error),
+          retryable: true,
+          createdAt: new Date().toISOString(),
+        },
+      };
       yield {
         type: 'error',
         error: this.stringifyError(error),
@@ -1562,6 +1870,77 @@ export class AgentService {
         }
       }
 
+      const emitPresentationArtifact = (
+        artifact: ArtifactEnvelope | undefined,
+        createdAt: string,
+      ): void => {
+        const presentationArtifact = mapArtifactEnvelopeToPresentationArtifact(artifact);
+        if (!presentationArtifact) {
+          return;
+        }
+        onStepEvent?.({
+          type: 'timeline_item_upsert',
+          item: buildArtifactTimelineItem(presentationArtifact, locale, createdAt),
+        });
+        onStepEvent?.({
+          type: 'artifact_upsert',
+          artifact: buildArtifactUpsertState(presentationArtifact, locale),
+        });
+        const payload = normalizePresentationPayload(artifact?.payload);
+        if (payload) {
+          onStepEvent?.(buildArtifactPayloadChunk(presentationArtifact, payload, workingSession.latestModel));
+        }
+      };
+
+      const emitPresentationStepStart = (step: SchedulerStep, startedAtIso: string): void => {
+        onStepEvent?.({
+          type: 'timeline_item_upsert',
+          item: {
+            id: `step:${step.stepId}`,
+            kind: 'step',
+            phase: mapToolToPresentationPhase(step.tool),
+            tool: step.tool,
+            status: 'running',
+            title: mapToolStartTitle(step.tool, locale),
+            reason: step.reason,
+            startedAt: startedAtIso,
+          },
+        });
+      };
+
+      const emitPresentationStepEnd = (args: {
+        step: SchedulerStep;
+        status: 'done' | 'error';
+        startedAtIso: string;
+        completedAtIso: string;
+        durationMs: number;
+        artifact?: ArtifactEnvelope;
+        errorMessage?: string;
+      }): void => {
+        onStepEvent?.({
+          type: 'timeline_item_upsert',
+          item: {
+            id: `step:${args.step.stepId}`,
+            kind: 'step',
+            phase: mapToolToPresentationPhase(args.step.tool),
+            tool: args.step.tool,
+            status: args.status,
+            title: args.status === 'done'
+              ? mapToolDoneTitle(args.step.tool, locale)
+              : buildLocalizedBlockedReason(args.errorMessage ?? 'STEP_EXECUTION_FAILED', locale),
+            reason: args.step.reason,
+            resultSummary: args.status === 'done' ? summarizeStepArtifact(args.artifact, locale) : undefined,
+            errorMessage: args.status === 'error' ? args.errorMessage : undefined,
+            startedAt: args.startedAtIso,
+            completedAt: args.completedAtIso,
+            durationMs: args.durationMs,
+          },
+        });
+        if (args.status === 'done') {
+          emitPresentationArtifact(args.artifact, args.completedAtIso);
+        }
+      };
+
       // Emit pipeline_start with the planned step summary
       onStepEvent?.({
         type: 'pipeline_start',
@@ -1571,6 +1950,14 @@ export class AgentService {
             .filter(s => s.mode !== 'reuse')
             .map(s => ({ stepId: s.stepId, tool: s.tool, provides: s.provides })),
         },
+      });
+      onStepEvent?.({
+        type: 'timeline_item_upsert',
+        item: buildPipelineStartNote(
+          schedulerPlan.requiredSteps.filter((s) => s.mode !== 'reuse').length,
+          locale,
+          startedAt,
+        ),
       });
 
       for (const step of schedulerPlan.requiredSteps) {
@@ -1762,6 +2149,9 @@ export class AgentService {
           }, skillIds, workingSession, skillIds);
         }
 
+        const stepStartedAtMs = Date.now();
+        const stepStartedAt = new Date(stepStartedAtMs).toISOString();
+
         // Emit step_start event
         onStepEvent?.({
           type: 'step_start',
@@ -1772,10 +2162,9 @@ export class AgentService {
             reason: step.reason,
           },
         });
+        emitPresentationStepStart(step, stepStartedAt);
 
         // execute / transform
-        const stepStartedAtMs = Date.now();
-        const stepStartedAt = new Date(stepStartedAtMs).toISOString();
         let stepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord; draftMeta?: { structuralTypeMatch?: any; nextState?: any } };
         try {
           stepResult = await this.skillRuntime.executeScheduledStep({
@@ -1836,6 +2225,14 @@ export class AgentService {
             durationMs: Date.now() - stepStartedAtMs,
             stepStatus: 'error',
             error: stepErrorMessage,
+          });
+          emitPresentationStepEnd({
+            step,
+            status: 'error',
+            startedAtIso: stepStartedAt,
+            completedAtIso: new Date().toISOString(),
+            durationMs: Date.now() - stepStartedAtMs,
+            errorMessage: stepErrorMessage,
           });
           // DRAFT_INCOMPLETE: fall back to conversation mode for clarification prompts.
           // In directed mode (forced execution), override success to false — the pipeline
@@ -1908,6 +2305,14 @@ export class AgentService {
           },
           durationMs: Date.now() - stepStartedAtMs,
           stepStatus: 'success',
+        });
+        emitPresentationStepEnd({
+          step,
+          status: 'done',
+          startedAtIso: stepStartedAt,
+          completedAtIso: new Date().toISOString(),
+          durationMs: Date.now() - stepStartedAtMs,
+          artifact: stepResult.artifact,
         });
         // Step 3.2: Write back normalizedModel to workingSession for backward compatibility
         if (stepResult.artifact?.kind === 'normalizedModel' && stepResult.artifact.payload) {
@@ -2009,6 +2414,7 @@ export class AgentService {
                 type: 'step_start',
                 step: { stepId: fbStep.stepId, tool: fbStep.tool, provides: fbStep.provides, reason: fbStep.reason },
               });
+              emitPresentationStepStart(fbStep, fbStepStartedAt);
               fbResult = await this.skillRuntime.executeScheduledStep({
                 step: fbStep,
                 pipelineState,
@@ -2039,6 +2445,14 @@ export class AgentService {
                 stepStatus: 'error',
                 error: fbErrorMessage,
               });
+              emitPresentationStepEnd({
+                step: fbStep,
+                status: 'error',
+                startedAtIso: fbStepStartedAt,
+                completedAtIso: new Date().toISOString(),
+                durationMs: Date.now() - fbStepStartedAtMs,
+                errorMessage: fbErrorMessage,
+              });
               return this.finalizeBlockedRunResult({
                 params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
                 skillIds, plan, toolCalls, sessionKey, workingSession,
@@ -2058,6 +2472,14 @@ export class AgentService {
               step: { stepId: fbStep.stepId, tool: fbStep.tool, provides: fbStep.provides, reason: fbStep.reason },
               durationMs: Date.now() - fbStepStartedAtMs,
               stepStatus: 'success',
+            });
+            emitPresentationStepEnd({
+              step: fbStep,
+              status: 'done',
+              startedAtIso: fbStepStartedAt,
+              completedAtIso: new Date().toISOString(),
+              durationMs: Date.now() - fbStepStartedAtMs,
+              artifact: fbResult.artifact,
             });
             pipelineState = applySchedulerStepResult({ pipelineState, step: fbStep, stepResult: fbResult });
           }
@@ -2093,6 +2515,7 @@ export class AgentService {
                 type: 'step_start',
                 step: { stepId: ccStep.stepId, tool: ccStep.tool, provides: ccStep.provides, reason: ccStep.reason },
               });
+              emitPresentationStepStart(ccStep, ccStepStartedAt);
               ccStepResult = await this.skillRuntime.executeScheduledStep({
                 step: ccStep,
                 pipelineState,
@@ -2123,6 +2546,14 @@ export class AgentService {
                 stepStatus: 'error',
                 error: ccStepErrorMessage,
               });
+              emitPresentationStepEnd({
+                step: ccStep,
+                status: 'error',
+                startedAtIso: ccStepStartedAt,
+                completedAtIso: new Date().toISOString(),
+                durationMs: Date.now() - ccStepStartedAtMs,
+                errorMessage: ccStepErrorMessage,
+              });
               break;
             }
             pushToolCall(ccStep, 'success', {
@@ -2136,6 +2567,14 @@ export class AgentService {
               step: { stepId: ccStep.stepId, tool: ccStep.tool, provides: ccStep.provides, reason: ccStep.reason },
               durationMs: Date.now() - ccStepStartedAtMs,
               stepStatus: 'success',
+            });
+            emitPresentationStepEnd({
+              step: ccStep,
+              status: 'done',
+              startedAtIso: ccStepStartedAt,
+              completedAtIso: new Date().toISOString(),
+              durationMs: Date.now() - ccStepStartedAtMs,
+              artifact: ccStepResult.artifact,
             });
             pipelineState = applySchedulerStepResult({ pipelineState, step: ccStep, stepResult: ccStepResult });
           }
@@ -2171,6 +2610,7 @@ export class AgentService {
                 type: 'step_start',
                 step: { stepId: reportStep.stepId, tool: reportStep.tool, provides: reportStep.provides, reason: reportStep.reason },
               });
+              emitPresentationStepStart(reportStep, rStepStartedAt);
               rStepResult = await this.skillRuntime.executeScheduledStep({
                 step: reportStep,
                 pipelineState,
@@ -2201,6 +2641,14 @@ export class AgentService {
                 stepStatus: 'error',
                 error: rStepErrorMessage,
               });
+              emitPresentationStepEnd({
+                step: reportStep,
+                status: 'error',
+                startedAtIso: rStepStartedAt,
+                completedAtIso: new Date().toISOString(),
+                durationMs: Date.now() - rStepStartedAtMs,
+                errorMessage: rStepErrorMessage,
+              });
               break; // Don't fail the whole result for a report error
             }
             pushToolCall(reportStep, 'success', {
@@ -2214,6 +2662,14 @@ export class AgentService {
               step: { stepId: reportStep.stepId, tool: reportStep.tool, provides: reportStep.provides, reason: reportStep.reason },
               durationMs: Date.now() - rStepStartedAtMs,
               stepStatus: 'success',
+            });
+            emitPresentationStepEnd({
+              step: reportStep,
+              status: 'done',
+              startedAtIso: rStepStartedAt,
+              completedAtIso: new Date().toISOString(),
+              durationMs: Date.now() - rStepStartedAtMs,
+              artifact: rStepResult.artifact,
             });
             pipelineState = applySchedulerStepResult({ pipelineState, step: reportStep, stepResult: rStepResult });
           }

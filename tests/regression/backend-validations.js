@@ -165,6 +165,18 @@ async function validateAgentOrchestration(context) {
     assert(protocol.runRequestSchema?.type === "object", "runRequestSchema should be json schema object");
     assert(protocol.runResultSchema?.type === "object", "runResultSchema should be json schema object");
     assert(Array.isArray(protocol.streamEventSchema?.oneOf), "streamEventSchema should include oneOf");
+    assert(
+      protocol.streamEventSchema.oneOf.some((entry) => entry?.properties?.type?.const === "presentation_init"),
+      "stream schema should expose presentation_init",
+    );
+    assert(
+      protocol.streamEventSchema.oneOf.some((entry) => entry?.properties?.type?.const === "artifact_upsert"),
+      "stream schema should expose artifact_upsert",
+    );
+    assert(
+      protocol.streamEventSchema.oneOf.some((entry) => entry?.properties?.type?.const === "artifact_payload_sync"),
+      "stream schema should expose artifact_payload_sync",
+    );
     assert(protocol.tools.some((tool) => tool.name === "run_analysis"), "run_analysis tool spec should exist");
     assert(protocol.tools.every((tool) => tool.outputSchema && typeof tool.outputSchema === "object"), "tool outputSchema should exist");
     assert(protocol.tools.every((tool) => Array.isArray(tool.errorCodes)), "tool errorCodes should be array");
@@ -3013,6 +3025,23 @@ async function validateChatStreamContract(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
   const AgentService = await importBackendAgentService(context.rootDir);
+  const protocol = AgentService.getProtocol();
+
+  assert(
+    Array.isArray(protocol.streamEventSchema?.oneOf)
+      && protocol.streamEventSchema.oneOf.some((entry) => entry?.properties?.type?.const === "presentation_init"),
+    "stream schema should expose presentation_init",
+  );
+  assert(
+    Array.isArray(protocol.streamEventSchema?.oneOf)
+      && protocol.streamEventSchema.oneOf.some((entry) => entry?.properties?.type?.const === "artifact_upsert"),
+    "stream schema should expose artifact_upsert",
+  );
+  assert(
+    Array.isArray(protocol.streamEventSchema?.oneOf)
+      && protocol.streamEventSchema.oneOf.some((entry) => entry?.properties?.type?.const === "artifact_payload_sync"),
+    "stream schema should expose artifact_payload_sync",
+  );
 
   let capturedTraceId;
   const originalRunStream = AgentService.prototype.runStream;
@@ -3022,6 +3051,46 @@ async function validateChatStreamContract(context) {
     capturedTraceId = request.traceId;
     const traceId = "stream-trace-001";
     yield { type: "start", content: { traceId, conversationId: "conv-stream-001", startedAt: "2026-03-09T00:00:00.000Z" } };
+    yield {
+      type: "presentation_init",
+      presentation: {
+        version: 1,
+        mode: "execution",
+        status: "streaming",
+        summaryText: "",
+        timeline: [],
+        artifacts: [],
+        traceId,
+        startedAt: "2026-03-09T00:00:00.000Z",
+      },
+    };
+    yield {
+      type: "timeline_item_upsert",
+      item: {
+        id: "step:draft_model",
+        kind: "step",
+        phase: "modeling",
+        tool: "draft_model",
+        status: "done",
+        title: "结构模型已生成",
+      },
+    };
+    yield {
+      type: "artifact_upsert",
+      artifact: {
+        artifact: "model",
+        status: "available",
+        title: "结构模型",
+        previewable: true,
+        snapshotKey: "modelSnapshot",
+      },
+    };
+    yield {
+      type: "artifact_payload_sync",
+      artifact: "model",
+      model: { schema_version: "1.0.0" },
+    };
+    yield { type: "summary_replace", summaryText: "ok" };
     yield {
       type: "result",
       content: {
@@ -3080,6 +3149,9 @@ async function validateChatStreamContract(context) {
       .filter((item) => item !== "[DONE]")
       .map((item) => JSON.parse(item));
     assert(chunks[0].type === "start", "first chunk should be start");
+    assert(chunks.some((chunk) => chunk.type === "presentation_init"), "stream should contain presentation_init chunk");
+    assert(chunks.some((chunk) => chunk.type === "artifact_upsert"), "stream should contain artifact_upsert chunk");
+    assert(chunks.some((chunk) => chunk.type === "artifact_payload_sync"), "stream should contain artifact_payload_sync chunk");
     assert(chunks.some((chunk) => chunk.type === "result"), "stream should contain result chunk");
     assert(chunks[chunks.length - 1].type === "done", "last chunk before [DONE] should be done");
     assert(capturedTraceId === "trace-stream-request-1", "chat/stream should pass traceId to agent stream");
