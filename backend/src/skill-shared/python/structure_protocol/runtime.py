@@ -75,10 +75,11 @@ def convert_structure_model_payload(
 
     try:
         normalized_source = source_converter.to_v2(model_payload)
+        original_schema_version = str(normalized_source.get("schema_version", "1.0.0"))
         migrated = _ensure_v2_if_needed(normalized_source)
         model = StructureModelV2.model_validate(migrated)
         final_schema = migrate_structure_model_v1(
-            model.model_dump(mode="json"), target_schema_version
+            model.model_dump(mode="json"), target_schema_version, original_schema_version
         )
         if target_format in ("structuremodel-v1", "structuremodel-v2"):
             normalized = final_schema

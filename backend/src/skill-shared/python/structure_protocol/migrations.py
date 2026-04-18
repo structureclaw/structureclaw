@@ -15,12 +15,12 @@ def is_supported_target_schema_version(version: str) -> bool:
     return version in SUPPORTED_SCHEMA_VERSIONS
 
 
-def migrate_structure_model_v1(model: Dict[str, Any], target_schema_version: str) -> Dict[str, Any]:
+def migrate_structure_model_v1(model: Dict[str, Any], target_schema_version: str, original_schema_version: str | None = None) -> Dict[str, Any]:
     if not is_supported_target_schema_version(target_schema_version):
         raise ValueError(f"Unsupported target schema version: {target_schema_version}")
 
     migrated = deepcopy(model)
-    source_schema_version = str(migrated.get("schema_version", "1.0.0"))
+    source_schema_version = original_schema_version or str(migrated.get("schema_version", "1.0.0"))
 
     metadata = migrated.get("metadata")
     if not isinstance(metadata, dict):
