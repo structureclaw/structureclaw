@@ -673,13 +673,7 @@ def _load_runtime_module(skill_id: str, runtime_path: Path):
     module = module_from_spec(spec)
     sys.modules[module_name] = module
     skill_dir = str(runtime_path.parent)
-    inserted = False
     if skill_dir not in sys.path:
         sys.path.insert(0, skill_dir)
-        inserted = True
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        if inserted and sys.path and sys.path[0] == skill_dir:
-            sys.path.pop(0)
+    spec.loader.exec_module(module)
     return module

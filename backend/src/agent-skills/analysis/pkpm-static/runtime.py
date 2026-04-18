@@ -205,7 +205,8 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
 
     # ---- Phase 1: Generate JWS ----
     try:
-        jws_path = convert_v2_to_jws(model, work_dir, project_name)
+        model_dict = model.model_dump(mode="json") if hasattr(model, "model_dump") else dict(model)
+        jws_path = convert_v2_to_jws(model_dict, work_dir, project_name)
     except Exception as exc:
         raise RuntimeError(f"PKPM JWS generation failed: {exc}") from exc
 
