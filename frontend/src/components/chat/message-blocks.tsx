@@ -203,23 +203,30 @@ import { cn } from '@/lib/utils';
 export function StepBlockView({ step, t }: { step: StepBlock; t: (key: MessageKey) => string }) {
   const label = t(stepLabelKey(step.tool));
   return (
-    <div className="flex items-center gap-2 py-1 text-sm">
-      {step.status === 'done' && <Check className="h-3.5 w-3.5 text-emerald-500" />}
-      {step.status === 'running' && <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-400" />}
-      {step.status === 'pending' && <div className="h-3.5 w-3.5 rounded-full border border-muted-foreground/40" />}
-      {step.status === 'error' && <X className="h-3.5 w-3.5 text-rose-500" />}
-      <span className={cn(
-        'flex-1',
-        step.status === 'pending' && 'text-muted-foreground',
-        step.status === 'done' && 'text-foreground',
-        step.status === 'error' && 'text-rose-500',
-      )}>
-        {label}
-      </span>
-      {step.durationMs != null && (
-        <span className="text-xs text-muted-foreground">
-          {step.durationMs < 1000 ? `${step.durationMs}ms` : `${(step.durationMs / 1000).toFixed(1)}s`}
+    <div className="py-1 text-sm">
+      <div className="flex items-center gap-2">
+        {step.status === 'done' && <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500" />}
+        {step.status === 'running' && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-400" />}
+        {step.status === 'pending' && <div className="h-3.5 w-3.5 shrink-0 rounded-full border border-muted-foreground/40" />}
+        {step.status === 'error' && <X className="h-3.5 w-3.5 shrink-0 text-rose-500" />}
+        <span className={cn(
+          'flex-1',
+          step.status === 'pending' && 'text-muted-foreground',
+          step.status === 'done' && 'text-foreground',
+          step.status === 'error' && 'text-rose-500',
+        )}>
+          {label}
         </span>
+        {step.durationMs != null && (
+          <span className="text-xs text-muted-foreground">
+            {step.durationMs < 1000 ? `${step.durationMs}ms` : `${(step.durationMs / 1000).toFixed(1)}s`}
+          </span>
+        )}
+      </div>
+      {step.error && (
+        <div className="ml-5 mt-0.5 text-xs text-rose-400 dark:text-rose-300">
+          {step.error}
+        </div>
       )}
     </div>
   );

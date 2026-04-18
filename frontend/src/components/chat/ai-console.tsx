@@ -3085,9 +3085,10 @@ export function AIConsole() {
                       <span>{message.role === 'user' ? t('you') : t('structureClawAi')}</span>
                       <span className="text-slate-500">{formatDate(message.timestamp, locale)}</span>
                     </div>
-                    {message.blocks && message.blocks.length > 0 ? (
+                    {message.blocks && message.blocks.length > 0 && (
                       <MessageBlocksView blocks={message.blocks} t={t} />
-                    ) : (
+                    )}
+                    {message.content && (
                       <div className="whitespace-pre-wrap text-sm leading-7">
                         {message.content}
                       </div>
