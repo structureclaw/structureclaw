@@ -346,6 +346,8 @@ export interface AgentStreamChunk {
   stepStatus?: 'success' | 'error';
 }
 
+export type StepEventCallback = (chunk: AgentStreamChunk) => void;
+
 // --- Phase 4: Scheduler integration helpers ---
 
 const STUB_TOOLS = new Set<string>(['synthesize_design', 'generate_drawing']);
@@ -1132,6 +1134,7 @@ export class AgentService {
     traceId: string,
     strategy: AgentRunStrategy,
     signal?: AbortSignal,
+    onStepEvent?: StepEventCallback,
   ): Promise<AgentRunResult> {
     const startedAtMs = Date.now();
     const startedAt = new Date(startedAtMs).toISOString();
@@ -1519,6 +1522,17 @@ export class AgentService {
         }
       }
 
+      // Emit pipeline_start with the planned step summary
+      onStepEvent?.({
+        type: 'pipeline_start',
+        content: {
+          targetArtifact: schedulerPlan.targetArtifact,
+          steps: schedulerPlan.requiredSteps
+            .filter(s => s.mode !== 'reuse')
+            .map(s => ({ stepId: s.stepId, tool: s.tool, provides: s.provides })),
+        },
+      });
+
       for (const step of schedulerPlan.requiredSteps) {
         try {
           this.runtimeBinder.assertStepAuthorized({
@@ -1708,6 +1722,17 @@ export class AgentService {
           }, skillIds, workingSession, skillIds);
         }
 
+        // Emit step_start event
+        onStepEvent?.({
+          type: 'step_start',
+          step: {
+            stepId: step.stepId,
+            tool: step.tool,
+            provides: step.provides,
+            reason: step.reason,
+          },
+        });
+
         // execute / transform
         const stepStartedAtMs = Date.now();
         const stepStartedAt = new Date(stepStartedAtMs).toISOString();
@@ -1759,6 +1784,18 @@ export class AgentService {
             error: stepErrorMessage,
             errorCode,
             durationMs: Date.now() - stepStartedAtMs,
+          });
+          onStepEvent?.({
+            type: 'step_end',
+            step: {
+              stepId: step.stepId,
+              tool: step.tool,
+              provides: step.provides,
+              reason: step.reason,
+            },
+            durationMs: Date.now() - stepStartedAtMs,
+            stepStatus: 'error',
+            error: stepErrorMessage,
           });
           // DRAFT_INCOMPLETE: fall back to conversation mode for clarification prompts.
           // In directed mode (forced execution), override success to false — the pipeline
@@ -1821,6 +1858,17 @@ export class AgentService {
           output: stepResult.artifact?.payload,
         });
         pipelineState = applySchedulerStepResult({ pipelineState, step, stepResult });
+        onStepEvent?.({
+          type: 'step_end',
+          step: {
+            stepId: step.stepId,
+            tool: step.tool,
+            provides: step.provides,
+            reason: step.reason,
+          },
+          durationMs: Date.now() - stepStartedAtMs,
+          stepStatus: 'success',
+        });
         // Step 3.2: Write back normalizedModel to workingSession for backward compatibility
         if (stepResult.artifact?.kind === 'normalizedModel' && stepResult.artifact.payload) {
           workingSession.latestModel = stepResult.artifact.payload as Record<string, unknown>;
@@ -1917,6 +1965,10 @@ export class AgentService {
             const fbStepStartedAt = new Date(fbStepStartedAtMs).toISOString();
             let fbResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
             try {
+              onStepEvent?.({
+                type: 'step_start',
+                step: { stepId: fbStep.stepId, tool: fbStep.tool, provides: fbStep.provides, reason: fbStep.reason },
+              });
               fbResult = await this.skillRuntime.executeScheduledStep({
                 step: fbStep,
                 pipelineState,
@@ -1940,6 +1992,13 @@ export class AgentService {
                 errorCode: 'STEP_EXECUTION_FAILED',
                 durationMs: Date.now() - fbStepStartedAtMs,
               });
+              onStepEvent?.({
+                type: 'step_end',
+                step: { stepId: fbStep.stepId, tool: fbStep.tool, provides: fbStep.provides, reason: fbStep.reason },
+                durationMs: Date.now() - fbStepStartedAtMs,
+                stepStatus: 'error',
+                error: fbErrorMessage,
+              });
               return this.finalizeBlockedRunResult({
                 params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
                 skillIds, plan, toolCalls, sessionKey, workingSession,
@@ -1953,6 +2012,12 @@ export class AgentService {
               completedAt: new Date().toISOString(),
               durationMs: Date.now() - fbStepStartedAtMs,
               output: fbResult.artifact?.payload,
+            });
+            onStepEvent?.({
+              type: 'step_end',
+              step: { stepId: fbStep.stepId, tool: fbStep.tool, provides: fbStep.provides, reason: fbStep.reason },
+              durationMs: Date.now() - fbStepStartedAtMs,
+              stepStatus: 'success',
             });
             pipelineState = applySchedulerStepResult({ pipelineState, step: fbStep, stepResult: fbResult });
           }
@@ -1984,6 +2049,10 @@ export class AgentService {
             const ccStepStartedAt = new Date(ccStepStartedAtMs).toISOString();
             let ccStepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
             try {
+              onStepEvent?.({
+                type: 'step_start',
+                step: { stepId: ccStep.stepId, tool: ccStep.tool, provides: ccStep.provides, reason: ccStep.reason },
+              });
               ccStepResult = await this.skillRuntime.executeScheduledStep({
                 step: ccStep,
                 pipelineState,
@@ -2007,6 +2076,13 @@ export class AgentService {
                 errorCode: 'STEP_EXECUTION_FAILED',
                 durationMs: Date.now() - ccStepStartedAtMs,
               });
+              onStepEvent?.({
+                type: 'step_end',
+                step: { stepId: ccStep.stepId, tool: ccStep.tool, provides: ccStep.provides, reason: ccStep.reason },
+                durationMs: Date.now() - ccStepStartedAtMs,
+                stepStatus: 'error',
+                error: ccStepErrorMessage,
+              });
               break;
             }
             pushToolCall(ccStep, 'success', {
@@ -2014,6 +2090,12 @@ export class AgentService {
               completedAt: new Date().toISOString(),
               durationMs: Date.now() - ccStepStartedAtMs,
               output: ccStepResult.artifact?.payload,
+            });
+            onStepEvent?.({
+              type: 'step_end',
+              step: { stepId: ccStep.stepId, tool: ccStep.tool, provides: ccStep.provides, reason: ccStep.reason },
+              durationMs: Date.now() - ccStepStartedAtMs,
+              stepStatus: 'success',
             });
             pipelineState = applySchedulerStepResult({ pipelineState, step: ccStep, stepResult: ccStepResult });
           }
@@ -2045,6 +2127,10 @@ export class AgentService {
             const rStepStartedAt = new Date(rStepStartedAtMs).toISOString();
             let rStepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
             try {
+              onStepEvent?.({
+                type: 'step_start',
+                step: { stepId: reportStep.stepId, tool: reportStep.tool, provides: reportStep.provides, reason: reportStep.reason },
+              });
               rStepResult = await this.skillRuntime.executeScheduledStep({
                 step: reportStep,
                 pipelineState,
@@ -2068,6 +2154,13 @@ export class AgentService {
                 errorCode: 'STEP_EXECUTION_FAILED',
                 durationMs: Date.now() - rStepStartedAtMs,
               });
+              onStepEvent?.({
+                type: 'step_end',
+                step: { stepId: reportStep.stepId, tool: reportStep.tool, provides: reportStep.provides, reason: reportStep.reason },
+                durationMs: Date.now() - rStepStartedAtMs,
+                stepStatus: 'error',
+                error: rStepErrorMessage,
+              });
               break; // Don't fail the whole result for a report error
             }
             pushToolCall(reportStep, 'success', {
@@ -2076,10 +2169,18 @@ export class AgentService {
               durationMs: Date.now() - rStepStartedAtMs,
               output: rStepResult.artifact?.payload,
             });
+            onStepEvent?.({
+              type: 'step_end',
+              step: { stepId: reportStep.stepId, tool: reportStep.tool, provides: reportStep.provides, reason: reportStep.reason },
+              durationMs: Date.now() - rStepStartedAtMs,
+              stepStatus: 'success',
+            });
             pipelineState = applySchedulerStepResult({ pipelineState, step: reportStep, stepResult: rStepResult });
           }
         }
       }
+
+      onStepEvent?.({ type: 'pipeline_end' });
 
       // Spec section 14: only persist pipeline state for real projects
       if (projectId) {
