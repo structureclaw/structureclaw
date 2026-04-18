@@ -176,10 +176,18 @@ function buildPersistedDebugDetails(params: {
     return undefined;
   }
 
+  // Build a compact context snapshot, omitting large fields like model/parameters
+  // to avoid DB bloat.
+  const compactContext: Record<string, unknown> = {};
+  if (params.context?.locale) compactContext.locale = params.context.locale;
+  if (params.context?.skillIds) compactContext.skillIds = params.context.skillIds;
+  if (params.context?.enabledToolIds) compactContext.enabledToolIds = params.context.enabledToolIds;
+  if (params.context?.engineId) compactContext.engineId = params.context.engineId;
+
   return {
     promptSnapshot: JSON.stringify({
       message: params.userMessage,
-      context: params.context,
+      context: compactContext,
     }, null, 2),
     skillIds,
     toolIds,
@@ -525,6 +533,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     let assistantContent = '';
     let assistantMetadata: Record<string, unknown> | undefined;
     let messagesPersisted = false;
+    let streamTraceId = body.traceId;
 
     const persistStreamMessages = async (assistantAborted?: boolean) => {
       if (messagesPersisted) {
@@ -536,7 +545,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         userMessage: body.message,
         assistantContent,
         assistantAborted,
-        traceId: body.traceId,
+        traceId: streamTraceId,
         assistantMetadata,
       });
       messagesPersisted = true;
@@ -558,7 +567,9 @@ export async function chatRoutes(fastify: FastifyInstance) {
           && (chunk as { type?: string }).type === 'start'
           && (chunk as { content?: { conversationId?: string } }).content?.conversationId
         ) {
-          streamConversationId = (chunk as { content: { conversationId: string } }).content.conversationId;
+          const startContent = (chunk as { content: { conversationId: string; traceId?: string } }).content;
+          streamConversationId = startContent.conversationId;
+          if (startContent.traceId) streamTraceId = startContent.traceId;
         }
         if (
           chunk
@@ -612,8 +623,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
     } catch (error) {
       if (abortController.signal.aborted) {
         request.log.info({ conversationId: streamConversationId }, 'Stream aborted by client');
-        // Save messages even on abort so the next request has context.
-        await persistStreamMessages(true).catch(() => {});
         reply.raw.end();
       } else {
         request.log.error({ err: error }, 'Unexpected error in /api/v1/chat/stream');
@@ -625,6 +634,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
         reply.raw.end();
       }
     } finally {
+      // Ensure messages are persisted even on unexpected errors.
+      await persistStreamMessages(abortController.signal.aborted).catch(() => {});
       reply.raw.off('close', onClose);
       request.socket.off('close', onClose);
     }

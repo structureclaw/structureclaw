@@ -3268,34 +3268,20 @@ describe('AgentService orchestration', () => {
     expect(snapshot?.model).toBeUndefined();
   });
 
-  test('should persist agent chat messages for conversation history restoration', async () => {
+  test('should return response for conversation history restoration (persistence moved to chat route)', async () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
-    const originalCreateMany = prisma.message.createMany;
-    const originalFindUnique = prisma.conversation.findUnique;
-    const recorded = [];
-    prisma.conversation.findUnique = async () => ({ id: 'conv-persist-history' });
-    prisma.message.createMany = async ({ data }) => {
-      recorded.push(...data);
-      return { count: data.length };
-    };
 
-    try {
-      await svc.runChatOnly({
-        conversationId: 'conv-persist-history',
-        message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
-        context: { locale: 'zh' },
-      });
-    } finally {
-      prisma.conversation.findUnique = originalFindUnique;
-      prisma.message.createMany = originalCreateMany;
-    }
+    const result = await svc.runChatOnly({
+      conversationId: 'conv-persist-history',
+      message: '2层2跨框架，每层3m，每跨6m，每层竖向荷载120kN，水平荷载30kN',
+      context: { locale: 'zh' },
+    });
 
-    expect(recorded).toHaveLength(2);
-    expect(recorded[0]?.conversationId).toBe('conv-persist-history');
-    expect(recorded[0]?.role).toBe('user');
-    expect(recorded[1]?.role).toBe('assistant');
-    expect(recorded[1]?.content).toContain('当前阶段');
+    // Message persistence is now handled in the chat route, not AgentService.
+    // Verify the response is returned correctly so the route can persist it.
+    expect(result.conversationId).toBe('conv-persist-history');
+    expect(result.response).toContain('当前阶段');
   });
 
   test('should keep regular frame chat in model stage until frame geometry is complete', async () => {

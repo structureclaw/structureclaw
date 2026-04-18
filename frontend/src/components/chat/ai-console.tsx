@@ -2501,37 +2501,12 @@ export function AIConsole() {
         status: 'aborted',
       }))
 
-      try {
-        if (activeConversationId) {
-          const currentMessages = messagesRef.current.map((m: Message) =>
-            m.id === assistantMessageId
-              ? {
-                  ...m,
-                  content: abortedContent,
-                  status: 'aborted' as const,
-                }
-              : m
-          )
-          const currentArchive = loadConversationArchive()
-          const existing = currentArchive[activeConversationId]
-          const patched = sanitizePersistedConversation({
-            id: activeConversationId,
-            title: existing?.title || trimmedInput.slice(0, 48),
-            type: 'general' as const,
-            createdAt: existing?.createdAt || new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            messages: currentMessages,
-            modelText: existing?.modelText || '',
-            latestResult: existing?.latestResult ?? null,
-          })
-          window.localStorage.setItem(STORAGE_KEY, JSON.stringify({
-            ...currentArchive,
-            [activeConversationId]: patched,
-          }))
-        }
-      } catch {
-        // Best-effort; the auto-persist effect may still catch it
-      }
+      // Note: manual localStorage write removed — replaceMessageForConversation
+      // updates React state (which feeds the auto-persist useEffect), and the
+      // backend persistence below ensures the conversation survives across
+      // browser sessions.  The old approach read from messagesRef.current which
+      // points to the *currently viewed* conversation, causing data corruption
+      // when a background stream was aborted while the user had switched away.
 
       if (activeConversationId) {
         await saveConversationMessagesToBackend(activeConversationId, {
@@ -3261,7 +3236,7 @@ export function AIConsole() {
                     </Badge>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    {isStreaming ? (
+                    {streamingSessions.get(conversationId)?.status === 'streaming' ? (
                       <Button
                         type="button"
                         className="rounded-full bg-rose-500 px-5 text-white hover:bg-rose-400"
@@ -3275,7 +3250,7 @@ export function AIConsole() {
                         type="button"
                         className="rounded-full bg-cyan-300 px-5 text-slate-950 hover:bg-cyan-200"
                         onClick={() => handleSubmit()}
-                        disabled={!input.trim()}
+                        disabled={!input.trim() || submittingRef.current}
                       >
                         <ArrowUp className="h-4 w-4" />
                         {t('sendMessage')}
