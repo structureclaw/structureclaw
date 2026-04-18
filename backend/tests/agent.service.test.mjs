@@ -100,7 +100,7 @@ function stubExecutionClients(svc, handlers = {}) {
         if (handlers.validate) {
           return handlers.validate(path, payload, calls);
         }
-        return { data: { valid: true, schemaVersion: '1.0.0' } };
+        return { data: { valid: true, schemaVersion: '2.0.0' } };
       }
       if (path === '/convert') {
         if (handlers.convert) {
@@ -120,7 +120,7 @@ function stubExecutionClients(svc, handlers = {}) {
       }
       return {
         data: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           analysis_type: payload.type,
           success: true,
           error_code: null,
@@ -134,7 +134,7 @@ function stubExecutionClients(svc, handlers = {}) {
       if (handlers.validate) {
         return handlers.validate(path, payload, calls);
       }
-      return { data: { valid: true, schemaVersion: '1.0.0' } };
+      return { data: { valid: true, schemaVersion: '2.0.0' } };
     }
     if (path === '/convert') {
       if (handlers.convert) {
@@ -248,7 +248,7 @@ describe('AgentService orchestration', () => {
         expect(payload.engineId).toBeUndefined();
         return {
           data: {
-            schema_version: '1.0.0',
+            schema_version: '2.0.0',
             analysis_type: payload.type,
             success: true,
             error_code: null,
@@ -265,7 +265,7 @@ describe('AgentService orchestration', () => {
       context: {
         skillIds: [],
         model: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
           elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
           materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
@@ -312,7 +312,7 @@ describe('AgentService orchestration', () => {
         analysisType: 'static',
         skillIds: ['beam'],
         model: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
           elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
           materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
@@ -345,7 +345,7 @@ describe('AgentService orchestration', () => {
         skillIds: ['beam'],
         engineId: 'builtin-simplified',
         model: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
           elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
           materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
@@ -379,7 +379,7 @@ describe('AgentService orchestration', () => {
       context: {
         skillIds: ['beam'],
         model: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
           elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
           materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
@@ -407,7 +407,7 @@ describe('AgentService orchestration', () => {
       context: {
         disabledToolIds: ['validate_model'],
         model: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
           elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
           materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
@@ -438,7 +438,7 @@ describe('AgentService orchestration', () => {
         skillIds: ['code-check-gb50017'],
         disabledToolIds: ['run_code_check', 'generate_report'],
         model: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
           elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
           materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
@@ -491,7 +491,7 @@ describe('AgentService orchestration', () => {
         draft: { inferredType: 'frame', updatedAt: Date.now() },
         structuralTypeMatch: { key: 'frame', mappedType: 'frame', skillId: 'frame', supportLevel: 'supported' },
         latestModel: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }],
           elements: [],
           materials: [],
@@ -557,7 +557,7 @@ describe('AgentService orchestration', () => {
         },
         structuralTypeMatch: { key: 'beam', mappedType: 'beam', skillId: 'generic', supportLevel: 'fallback' },
         latestModel: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           nodes: [
             { id: '1', x: 0, y: 0, z: 0 },
             { id: '2', x: 6, y: 0, z: 0 },
@@ -599,10 +599,10 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     svc.llm = null;
     const calls = stubExecutionClients(svc, {
-      validate: async (_path, payload) => ({ data: { valid: true, schemaVersion: '1.0.0', meta: { engineId: payload.engineId } } }),
+      validate: async (_path, payload) => ({ data: { valid: true, schemaVersion: '2.0.0', meta: { engineId: payload.engineId } } }),
       analyze: async (_path, payload) => ({
         data: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           analysis_type: payload.type,
           success: true,
           error_code: null,
@@ -626,7 +626,7 @@ describe('AgentService orchestration', () => {
       message: '请静力分析并规范校核',
       context: {
         model: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
           elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
           materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
@@ -662,7 +662,7 @@ describe('AgentService orchestration', () => {
       message: '请静力分析并规范校核',
       context: {
         model: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
           elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
           materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
@@ -691,7 +691,7 @@ describe('AgentService orchestration', () => {
       message: '请静力分析并规范校核并导出报告',
       context: {
         model: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
           elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
           materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
@@ -1156,7 +1156,7 @@ describe('AgentService orchestration', () => {
       missingFields: [],
       extractionMode: 'llm',
       model: {
-        schema_version: '1.0.0',
+        schema_version: '2.0.0',
         unit_system: 'SI',
         nodes: [],
         elements: [],
@@ -1223,7 +1223,7 @@ describe('AgentService orchestration', () => {
   test('should prefer a new draft_model over a stale context model when llm requests new modeling', async () => {
     const svc = createServiceWithDefaultSkills();
     const staleModel = {
-      schema_version: '1.0.0',
+      schema_version: '2.0.0',
       unit_system: 'SI',
       nodes: [{ id: 'old-1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] }],
       elements: [],
@@ -1234,7 +1234,7 @@ describe('AgentService orchestration', () => {
       metadata: { name: 'stale-frame-model' },
     };
     const draftedModel = {
-      schema_version: '1.0.0',
+      schema_version: '2.0.0',
       unit_system: 'SI',
       nodes: [
         { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
@@ -1360,7 +1360,7 @@ describe('AgentService orchestration', () => {
       missingFields: [],
       extractionMode: 'llm',
       model: {
-        schema_version: '1.0.0',
+        schema_version: '2.0.0',
         unit_system: 'SI',
         nodes: [
           { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
@@ -1451,7 +1451,7 @@ describe('AgentService orchestration', () => {
 
     svc.skillRuntime.buildModelFromDraft = async () => ({
       model: {
-        schema_version: '1.0.0',
+        schema_version: '2.0.0',
         unit_system: 'SI',
         nodes: [
           { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
@@ -1514,7 +1514,7 @@ describe('AgentService orchestration', () => {
     });
     svc.skillRuntime.buildModelFromDraft = async () => ({
       model: {
-        schema_version: '1.0.0',
+        schema_version: '2.0.0',
         unit_system: 'SI',
         nodes: [
           { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
@@ -1666,7 +1666,7 @@ describe('AgentService orchestration', () => {
       missingFields: [],
       extractionMode: 'llm',
       model: {
-        schema_version: '1.0.0',
+        schema_version: '2.0.0',
         unit_system: 'SI',
         nodes: [
           { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
@@ -1767,7 +1767,7 @@ describe('AgentService orchestration', () => {
     const svc = createServiceWithDefaultSkills();
     let draftCallCount = 0;
     const beamModel = {
-      schema_version: '1.0.0',
+      schema_version: '2.0.0',
       unit_system: 'SI',
       nodes: [
         { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, false, false, false] },
@@ -2228,7 +2228,7 @@ describe('AgentService orchestration', () => {
         }
         return {
           content: JSON.stringify({
-            schema_version: '1.0.0',
+            schema_version: '2.0.0',
             unit_system: 'SI',
             nodes: Array.from({ length: 11 }, (_, index) => ({
               id: `N${index + 1}`,
@@ -2284,7 +2284,7 @@ describe('AgentService orchestration', () => {
         locale: 'zh',
         skillIds: [],
         model: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           unit_system: 'SI',
           nodes: [
             { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
@@ -2345,7 +2345,7 @@ describe('AgentService orchestration', () => {
       context: {
         locale: 'zh',
         model: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           nodes: [
             { id: '1', x: 0, y: 0, z: 0, restraints: [true, false, true, false, true, false] },
             { id: '2', x: 5, y: 0, z: 0 },
@@ -2388,7 +2388,7 @@ describe('AgentService orchestration', () => {
         }
         return {
           data: {
-            schema_version: '1.0.0',
+            schema_version: '2.0.0',
             analysis_type: payload.type,
             success: true,
             error_code: null,
@@ -2405,7 +2405,7 @@ describe('AgentService orchestration', () => {
       context: {
         locale: 'zh',
         model: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
           elements: [{ id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
           materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
@@ -2442,7 +2442,7 @@ describe('AgentService orchestration', () => {
       context: {
         locale: 'zh',
         model: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
           elements: [{ id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
           materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],
@@ -2471,7 +2471,7 @@ describe('AgentService orchestration', () => {
       context: {
         locale: 'en',
         model: {
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
           elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' }],
           materials: [{ id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 }],

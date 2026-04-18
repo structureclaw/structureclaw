@@ -39,6 +39,27 @@ def migrate_structure_model_v1(model: Dict[str, Any], target_schema_version: str
     return migrated
 
 
+def ensure_v2_dict(model: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure a model dict conforms to V2 (schema_version 2.0.0).
+
+    If the model already reports schema_version "2.x.x", it is returned as-is.
+    Otherwise, V2-only top-level keys are ensured (defaulting to None/empty)
+    and the schema_version is stamped to "2.0.0".
+    """
+    migrated = deepcopy(model)
+    version = str(migrated.get("schema_version", "1.0.0"))
+    if version.startswith("2"):
+        return migrated
+
+    migrated["schema_version"] = "2.0.0"
+    if not isinstance(migrated.get("metadata"), dict):
+        migrated["metadata"] = {}
+    if not migrated.get("unit_system"):
+        migrated["unit_system"] = "SI"
+    migrated["metadata"]["schema_migration"] = {"from": version, "to": "2.0.0"}
+    return migrated
+
+
 def migrate_v1_to_v2(model: Dict[str, Any]) -> Dict[str, Any]:
     """Migrate a V1 (1.0.x) structural model dict to schema version 2.0.0.
 
@@ -47,4 +68,4 @@ def migrate_v1_to_v2(model: Dict[str, Any]) -> Dict[str, Any]:
     The original V1 core fields (nodes, elements, materials, sections,
     load_cases, load_combinations) are preserved as-is.
     """
-    return migrate_structure_model_v1(model, "2.0.0")
+    return ensure_v2_dict(model)

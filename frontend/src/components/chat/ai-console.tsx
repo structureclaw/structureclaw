@@ -490,7 +490,7 @@ function toModelFromVisualizationSnapshot(snapshot?: VisualizationSnapshot | nul
   }
 
   const model: Record<string, unknown> = {
-    schema_version: '1.0.0',
+    schema_version: '2.0.0',
     nodes: snapshot.nodes.map((node) => ({
       id: node.id,
       x: node.position.x,
@@ -2292,7 +2292,7 @@ export function AIConsole() {
         skillIds: effectiveSkillIds,
         enabledToolIds: effectiveEnabledToolIds,
         model: contextModel,
-        modelFormat: contextModel ? 'structuremodel-v1' : undefined,
+        modelFormat: contextModel ? 'structuremodel-v2' : undefined,
         autoCodeCheck: hasSelectedCodeCheckSkill || undefined,
       }
       const promptSnapshot = buildPromptSnapshot(trimmedInput, contextPayload as Record<string, unknown>)

@@ -15,9 +15,9 @@ const validateSchema = z.object({
 
 const convertSchema = z.object({
   model: z.record(z.any()),
-  target_schema_version: z.string().default('1.0.0'),
-  source_format: z.string().default('structuremodel-v1'),
-  target_format: z.string().default('structuremodel-v1'),
+  target_schema_version: z.string().default('2.0.0'),
+  source_format: z.string().default('structuremodel-v2'),
+  target_format: z.string().default('structuremodel-v2'),
 });
 
 const analyzeSchema = z.object({
@@ -37,6 +37,10 @@ const codeCheckSchema = z.object({
 
 export async function analysisRuntimeRoutes(fastify: FastifyInstance) {
   fastify.get('/schema/structure-model-v1', async (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.send(await structureProtocolService.getStructureModelSchema());
+  });
+
+  fastify.get('/schema/structure-model-v2', async (_request: FastifyRequest, reply: FastifyReply) => {
     return reply.send(await structureProtocolService.getStructureModelSchema());
   });
 

@@ -31,7 +31,7 @@ const createModelSchema = z.object({
   })),
   elements: z.array(z.object({
     id: z.string(),
-    type: z.enum(['beam', 'truss', 'shell', 'solid']),
+    type: z.enum(['beam', 'column', 'truss', 'shell', 'solid', 'wall', 'slab', 'link', 'brace']),
     nodes: z.array(z.string()),
     material: z.string(),
     section: z.string(),

@@ -109,7 +109,7 @@ function buildFrame2dModel(state: DraftState, metadata: Record<string, unknown>)
   }
 
   return {
-    schema_version: '1.0.0',
+    schema_version: '2.0.0',
     unit_system: 'SI',
     nodes,
     elements,
@@ -238,7 +238,7 @@ function buildFrame3dModel(state: DraftState, metadata: Record<string, unknown>)
   const elementReferenceVectors = buildElementReferenceVectors(elements, nodes);
 
   return {
-    schema_version: '1.0.0',
+    schema_version: '2.0.0',
     unit_system: 'SI',
     nodes,
     elements,
@@ -337,7 +337,7 @@ export function buildModel(state: DraftState): Record<string, unknown> {
     const length = state.lengthM!;
     const load = state.loadKN!;
     return {
-      schema_version: '1.0.0',
+      schema_version: '2.0.0',
       unit_system: 'SI',
       nodes: [
         { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
@@ -363,7 +363,7 @@ export function buildModel(state: DraftState): Record<string, unknown> {
     const span = state.spanLengthM!;
     const load = state.loadKN!;
     return {
-      schema_version: '1.0.0',
+      schema_version: '2.0.0',
       unit_system: 'SI',
       nodes: [
         { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
@@ -392,7 +392,7 @@ export function buildModel(state: DraftState): Record<string, unknown> {
     const height = state.heightM!;
     const load = state.loadKN!;
     return {
-      schema_version: '1.0.0',
+      schema_version: '2.0.0',
       unit_system: 'SI',
       nodes: [
         { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
@@ -427,7 +427,7 @@ export function buildModel(state: DraftState): Record<string, unknown> {
   const beamNodes = buildBeamNodes(length, supportType, state.loadPositionM);
   const beamLoads = buildBeamLoads(load, state.loadType, state.loadPosition, beamNodes.pointNodeId, beamNodes.endNodeId);
   return {
-    schema_version: '1.0.0',
+    schema_version: '2.0.0',
     unit_system: 'SI',
     nodes: beamNodes.nodes,
     elements: beamNodes.elements,

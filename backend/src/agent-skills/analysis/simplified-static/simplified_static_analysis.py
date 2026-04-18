@@ -303,13 +303,13 @@ class StaticAnalyzer:
         """判断是否可用内置 2D frame 求解器。"""
         if not self.model.elements:
             return False
-        return all(elem.type == 'beam' for elem in self.model.elements)
+        return all(elem.type in ('beam', 'column') for elem in self.model.elements)
 
     def _can_run_3d_frame_solver(self) -> bool:
         """判断是否可用内置 3D frame 求解器。"""
         if not self.model.elements:
             return False
-        return all(elem.type == 'beam' for elem in self.model.elements)
+        return all(elem.type in ('beam', 'column') for elem in self.model.elements)
 
     def _requires_3d_frame_solver(self, parameters: Dict[str, Any]) -> bool:
         """
@@ -326,7 +326,7 @@ class StaticAnalyzer:
           - 'xz': x-z 平面，弯曲绕 y 轴
           - None: 必须走 3D
         """
-        if not self.model.elements or not all(elem.type == 'beam' for elem in self.model.elements):
+        if not self.model.elements or not all(elem.type in ('beam', 'column') for elem in self.model.elements):
             return None
 
         try:

@@ -653,7 +653,7 @@ export function buildVisualizationSnapshot(params: {
     : [buildCase('model', 'Model', 'case', null, null, null, null)]
 
   const unsupportedElementTypes = Array.from(
-    new Set(elements.map((element) => element.type).filter((type) => !['beam', 'truss'].includes(type)))
+    new Set(elements.map((element) => element.type).filter((type) => !['beam', 'truss', 'column', 'brace'].includes(type)))
   )
   const semantics = deriveCoordinateSemantics(model)
   const dimension = semantics?.dimension ?? deriveDimension(nodes)

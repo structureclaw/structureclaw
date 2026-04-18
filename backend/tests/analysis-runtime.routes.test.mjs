@@ -28,7 +28,7 @@ describe('analysis runtime routes', () => {
       return { valid: true, echo: body.engineId };
     };
     StructureProtocolExecutionService.prototype.convert = async function mockConvert() {
-      return { model: { schema_version: '1.0.0' } };
+      return { model: { schema_version: '2.0.0' } };
     };
     AnalysisExecutionService.prototype.analyze = async function mockAnalyze(body) {
       return { success: true, analysis_type: body.type };
@@ -48,7 +48,7 @@ describe('analysis runtime routes', () => {
     expect((await app.inject({ method: 'GET', url: '/engines/builtin-opensees' })).json().id).toBe('builtin-opensees');
     expect((await app.inject({ method: 'POST', url: '/engines/builtin-opensees/check' })).json().engine.id).toBe('builtin-opensees');
     expect((await app.inject({ method: 'POST', url: '/validate', payload: { model: {}, engineId: 'builtin-opensees' } })).json().valid).toBe(true);
-    expect((await app.inject({ method: 'POST', url: '/convert', payload: { model: {} } })).json().model.schema_version).toBe('1.0.0');
+    expect((await app.inject({ method: 'POST', url: '/convert', payload: { model: {} } })).json().model.schema_version).toBe('2.0.0');
     expect((await app.inject({ method: 'POST', url: '/analyze', payload: { type: 'static', model: {}, parameters: {} } })).json().success).toBe(true);
     expect((await app.inject({ method: 'POST', url: '/code-check', payload: { model_id: 'm1', code: 'GB50017', elements: [] } })).json().code).toBe('GB50017');
 

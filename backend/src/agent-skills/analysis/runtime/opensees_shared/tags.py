@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from structure_protocol.structure_model_v1 import StructureModelV1
+from structure_protocol.structure_model_v2 import StructureModelV2
 
 
 class OpenSeesTagMapper:
-    """Maps V1 string IDs to OpenSees integer tags.
+    """Maps model string IDs to OpenSees integer tags.
 
     Replaces the duplicated OpenSeesModelAdapter classes that were defined
     separately in opensees-dynamic/runtime.py and opensees-seismic/runtime.py.
@@ -15,7 +15,7 @@ class OpenSeesTagMapper:
     continue to work without modification.
     """
 
-    def __init__(self, model: StructureModelV1) -> None:
+    def __init__(self, model: StructureModelV2) -> None:
         self.model = model
         self._ops_node_tags = {
             str(node.id): index + 1 for index, node in enumerate(model.nodes)

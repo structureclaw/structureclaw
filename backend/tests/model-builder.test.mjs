@@ -19,7 +19,7 @@ describe('buildModel - beam', () => {
 
     const model = buildModel(state);
 
-    expect(model.schema_version).toBe('1.0.0');
+    expect(model.schema_version).toBe('2.0.0');
     expect(model.unit_system).toBe('SI');
     expect(model.metadata.inferredType).toBe('beam');
     expect(model.metadata.source).toBe('markdown-skill-draft');
@@ -217,7 +217,7 @@ describe('buildModel - truss', () => {
 
     const model = buildModel(state);
 
-    expect(model.schema_version).toBe('1.0.0');
+    expect(model.schema_version).toBe('2.0.0');
     expect(model.metadata.inferredType).toBe('truss');
 
     expect(model.nodes).toHaveLength(2);
@@ -257,7 +257,7 @@ describe('buildModel - portal-frame', () => {
 
     const model = buildModel(state);
 
-    expect(model.schema_version).toBe('1.0.0');
+    expect(model.schema_version).toBe('2.0.0');
     expect(model.metadata.inferredType).toBe('portal-frame');
 
     // 4 nodes: base-left, base-right, top-left, top-right
@@ -296,7 +296,7 @@ describe('buildModel - double-span-beam', () => {
 
     const model = buildModel(state);
 
-    expect(model.schema_version).toBe('1.0.0');
+    expect(model.schema_version).toBe('2.0.0');
     expect(model.metadata.inferredType).toBe('double-span-beam');
 
     expect(model.nodes).toHaveLength(3);
@@ -334,7 +334,7 @@ describe('buildModel - frame 2D', () => {
 
     const model = buildModel(state);
 
-    expect(model.schema_version).toBe('1.0.0');
+    expect(model.schema_version).toBe('2.0.0');
     expect(model.metadata.inferredType).toBe('frame');
     expect(model.metadata.storyCount).toBe(1);
     expect(model.metadata.bayCount).toBe(1);
@@ -545,7 +545,7 @@ describe('buildModel - frame 3D', () => {
 
     const model = buildModel(state);
 
-    expect(model.schema_version).toBe('1.0.0');
+    expect(model.schema_version).toBe('2.0.0');
     expect(model.metadata.inferredType).toBe('frame');
     expect(model.metadata.bayCountX).toBe(1);
     expect(model.metadata.bayCountY).toBe(1);

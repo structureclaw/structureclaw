@@ -6,7 +6,7 @@ describe('tryBuildGenericModelWithLlm', () => {
     const llm = {
       invoke: async () => ({
         content: JSON.stringify({
-          schema_version: '1.0.0',
+          schema_version: '2.0.0',
           unit_system: 'SI',
           nodes: [
             { id: 'N1', x: 0, y: 0, z: 0 },

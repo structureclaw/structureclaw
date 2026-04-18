@@ -4,10 +4,10 @@ from typing import Any, Dict
 
 from opensees_dynamic_analysis import OpenSeesDynamicExecutor
 from opensees_shared.tags import OpenSeesTagMapper
-from structure_protocol.structure_model_v1 import StructureModelV1
+from structure_protocol.structure_model_v2 import StructureModelV2
 
 
-def run_analysis(model: StructureModelV1, parameters: Dict[str, Any]) -> Dict[str, Any]:
+def run_analysis(model: StructureModelV2, parameters: Dict[str, Any]) -> Dict[str, Any]:
     analysis_type = parameters.get("analysisType", "modal")
     helper = OpenSeesTagMapper(model)
     executor = OpenSeesDynamicExecutor(helper)

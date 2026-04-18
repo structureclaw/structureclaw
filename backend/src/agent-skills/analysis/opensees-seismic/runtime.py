@@ -8,10 +8,10 @@ from opensees_seismic_simplified_seismic_analysis import (
     build_simplified_response_spectrum_result,
 )
 from opensees_shared.tags import OpenSeesTagMapper
-from structure_protocol.structure_model_v1 import StructureModelV1
+from structure_protocol.structure_model_v2 import StructureModelV2
 
 
-def run_analysis(model: StructureModelV1, parameters: Dict[str, Any]) -> Dict[str, Any]:
+def run_analysis(model: StructureModelV2, parameters: Dict[str, Any]) -> Dict[str, Any]:
     method = parameters.get("method", "response_spectrum")
     helper = OpenSeesTagMapper(model)
     executor = OpenSeesSeismicExecutor(helper)
