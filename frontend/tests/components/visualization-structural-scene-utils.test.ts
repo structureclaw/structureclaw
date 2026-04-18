@@ -39,6 +39,20 @@ describe('structural-scene-utils', () => {
     expect(config.position[2]).toBeLessThan(0)
   })
 
+  it('keeps the 3d grid on the xy floor regardless of selected plane', () => {
+    // Switching to xz or yz in 3D should NOT move the grid to a wall.
+    const xzConfig = getAdaptiveGridConfig(sample3dSnapshot, 'xz')
+    const yzConfig = getAdaptiveGridConfig(sample3dSnapshot, 'yz')
+
+    // Both should produce the same XY floor grid as the 'xy' selection.
+    const xyConfig = getAdaptiveGridConfig(sample3dSnapshot, 'xy')
+
+    expect(xzConfig.rotation).toEqual(xyConfig.rotation)
+    expect(xzConfig.position).toEqual(xyConfig.position)
+    expect(yzConfig.rotation).toEqual(xyConfig.rotation)
+    expect(yzConfig.position).toEqual(xyConfig.position)
+  })
+
   it('uses a top-down orthographic preset for xy plane views', () => {
     expect(getPlaneCameraPreset('xy')).toEqual({
       position: [0, 0, 10],

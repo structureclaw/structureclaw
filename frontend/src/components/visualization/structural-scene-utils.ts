@@ -173,11 +173,16 @@ function planeGridFallback(plane: VisualizationPlane) {
 
 export function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: VisualizationPlane) {
   if (!snapshot.nodes.length) {
-    return planeGridFallback(plane)
+    return planeGridFallback(snapshot.dimension === 3 ? 'xy' : plane)
   }
 
+  // For 3D mode, always compute grid from raw positions (z-up canonical).
+  // The grid should always be the horizontal floor (XY plane) at minZ,
+  // regardless of which analysis plane the user selected.
+  const effectivePlane = snapshot.dimension === 3 ? 'xy' : plane
+
   const projected = snapshot.nodes.map((node) =>
-    projectPosition(new THREE.Vector3(node.position.x, node.position.y, node.position.z), plane, snapshot.dimension),
+    projectPosition(new THREE.Vector3(node.position.x, node.position.y, node.position.z), effectivePlane, snapshot.dimension),
   )
   const xs = projected.map((p) => p.x)
   const ys = projected.map((p) => p.y)
@@ -197,7 +202,7 @@ export function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: Vi
   )
   const offset = Math.max(offsetBase * 0.01, 0.001)
 
-  if (plane === 'xy') {
+  if (effectivePlane === 'xy') {
     const spanX = Math.max(maxX - minX, 1)
     const spanY = Math.max(maxY - minY, 1)
     const span = Math.max(spanX, spanY)
@@ -211,7 +216,7 @@ export function getAdaptiveGridConfig(snapshot: VisualizationSnapshot, plane: Vi
     }
   }
 
-  if (plane === 'yz') {
+  if (effectivePlane === 'yz') {
     const spanY = Math.max(maxY - minY, 1)
     const spanZ = Math.max(maxZ - minZ, 1)
     const span = Math.max(spanY, spanZ)
