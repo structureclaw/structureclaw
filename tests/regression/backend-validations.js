@@ -3025,6 +3025,7 @@ async function validateChatStreamContract(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
   const AgentService = await importBackendAgentService(context.rootDir);
+  const { prisma } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "utils", "database.js")).href);
   const protocol = AgentService.getProtocol();
 
   assert(
@@ -3044,8 +3045,13 @@ async function validateChatStreamContract(context) {
   );
 
   let capturedTraceId;
+  let persistedAssistantMetadata;
   const originalRunStream = AgentService.prototype.runStream;
   const originalRunForcedExecutionStream = AgentService.prototype.runForcedExecutionStream;
+  const originalConversationFindFirst = prisma.conversation.findFirst;
+  const originalConversationUpdate = prisma.conversation.update;
+  const originalMessageFindMany = prisma.message.findMany;
+  const originalMessageCreateMany = prisma.message.createMany;
   const mockRunStream = async function* mockRunStream(params) {
     const request = params;
     capturedTraceId = request.traceId;
@@ -3111,6 +3117,13 @@ async function validateChatStreamContract(context) {
   };
   AgentService.prototype.runStream = mockRunStream;
   AgentService.prototype.runForcedExecutionStream = mockRunStream;
+  prisma.conversation.findFirst = async () => ({ id: "conv-stream-001" });
+  prisma.conversation.update = async () => ({ id: "conv-stream-001" });
+  prisma.message.findMany = async () => [];
+  prisma.message.createMany = async ({ data }) => {
+    persistedAssistantMetadata = data.find((entry) => entry.role === "assistant")?.metadata;
+    return { count: Array.isArray(data) ? data.length : 0 };
+  };
 
   const parseSseEvents = (raw) =>
     raw
@@ -3155,6 +3168,11 @@ async function validateChatStreamContract(context) {
     assert(chunks.some((chunk) => chunk.type === "result"), "stream should contain result chunk");
     assert(chunks[chunks.length - 1].type === "done", "last chunk before [DONE] should be done");
     assert(capturedTraceId === "trace-stream-request-1", "chat/stream should pass traceId to agent stream");
+    assert(persistedAssistantMetadata?.presentation?.version === 1, "chat/stream should persist assistant presentation metadata");
+    assert(
+      persistedAssistantMetadata?.presentation?.summaryText === "ok",
+      "chat/stream should persist the latest summaryText inside assistant presentation metadata",
+    );
 
     const startTrace = chunks.find((chunk) => chunk.type === "start")?.content?.traceId;
     const resultTrace = chunks.find((chunk) => chunk.type === "result")?.content?.traceId;
@@ -3177,6 +3195,10 @@ async function validateChatStreamContract(context) {
   } finally {
     AgentService.prototype.runStream = originalRunStream;
     AgentService.prototype.runForcedExecutionStream = originalRunForcedExecutionStream;
+    prisma.conversation.findFirst = originalConversationFindFirst;
+    prisma.conversation.update = originalConversationUpdate;
+    prisma.message.findMany = originalMessageFindMany;
+    prisma.message.createMany = originalMessageCreateMany;
     if (app) {
       await app.close();
     }
