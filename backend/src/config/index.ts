@@ -66,7 +66,7 @@ export const config = {
 
   // 分析执行配置
   analysisPythonBin: process.env.ANALYSIS_PYTHON_BIN || defaultAnalysisPythonBin,
-  analysisPythonTimeoutMs: parseInt(process.env.ANALYSIS_PYTHON_TIMEOUT_MS || '300000', 10),
+  analysisPythonTimeoutMs: parseInt(process.env.ANALYSIS_PYTHON_TIMEOUT_MS || '600000', 10),
   analysisEngineManifestPath,
 
   // CORS
