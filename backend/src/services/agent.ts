@@ -325,10 +325,25 @@ export interface AgentRunResult {
   response: string;
 }
 
+export interface PipelineStepInfo {
+  stepId: string;
+  tool: string;
+  provides?: string;
+  reason: string;
+}
+
 export interface AgentStreamChunk {
-  type: 'start' | 'interaction_update' | 'result' | 'done' | 'error';
+  type: 'start'
+    | 'interaction_update' | 'result' | 'done' | 'error'
+    | 'pipeline_start' | 'pipeline_end'
+    | 'step_start' | 'step_end';
   content?: unknown;
   error?: string;
+  /** For step_start / step_end */
+  step?: PipelineStepInfo;
+  /** For step_end */
+  durationMs?: number;
+  stepStatus?: 'success' | 'error';
 }
 
 // --- Phase 4: Scheduler integration helpers ---
