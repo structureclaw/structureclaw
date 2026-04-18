@@ -195,3 +195,120 @@ export function collapseCompletedPhases(blocks: BlocksState): BlocksState {
     return block;
   });
 }
+
+import { useState, useEffect } from 'react';
+import { ChevronDown, ChevronRight, Check, X, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
+export function StepBlockView({ step, t }: { step: StepBlock; t: (key: MessageKey) => string }) {
+  const label = t(stepLabelKey(step.tool));
+  return (
+    <div className="flex items-center gap-2 py-1 text-sm">
+      {step.status === 'done' && <Check className="h-3.5 w-3.5 text-emerald-500" />}
+      {step.status === 'running' && <Loader2 className="h-3.5 w-3.5 animate-spin text-cyan-400" />}
+      {step.status === 'pending' && <div className="h-3.5 w-3.5 rounded-full border border-muted-foreground/40" />}
+      {step.status === 'error' && <X className="h-3.5 w-3.5 text-rose-500" />}
+      <span className={cn(
+        'flex-1',
+        step.status === 'pending' && 'text-muted-foreground',
+        step.status === 'done' && 'text-foreground',
+        step.status === 'error' && 'text-rose-500',
+      )}>
+        {label}
+      </span>
+      {step.durationMs != null && (
+        <span className="text-xs text-muted-foreground">
+          {step.durationMs < 1000 ? `${step.durationMs}ms` : `${(step.durationMs / 1000).toFixed(1)}s`}
+        </span>
+      )}
+    </div>
+  );
+}
+
+export function PhaseBlockView({
+  block,
+  t,
+  onToggleExpand,
+}: {
+  block: PhaseBlock;
+  t: (key: MessageKey) => string;
+  onToggleExpand: () => void;
+}) {
+  const statusLabel = block.status === 'running'
+    ? t('phaseStatusRunning')
+    : block.status === 'done'
+      ? t('phaseStatusDone')
+      : block.status === 'error'
+        ? t('phaseStatusError')
+        : t('phaseStatusPending');
+
+  return (
+    <div className="rounded-xl border border-border/50 bg-background/50 dark:border-white/5 dark:bg-white/[0.02]">
+      <button
+        type="button"
+        className="flex w-full items-center gap-2 px-3 py-2 text-left"
+        onClick={onToggleExpand}
+      >
+        {block.expanded
+          ? <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+          : <ChevronRight className="h-3.5 w-3.5 text-muted-foreground" />}
+        {block.status === 'done' && <Check className="h-4 w-4 text-emerald-500" />}
+        {block.status === 'running' && <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />}
+        {block.status === 'error' && <X className="h-4 w-4 text-rose-500" />}
+        {block.status === 'pending' && <div className="h-4 w-4 rounded-full border-2 border-muted-foreground/30" />}
+        <span className="flex-1 text-sm font-medium">{block.label}</span>
+        <span className={cn(
+          'text-xs',
+          block.status === 'running' && 'text-cyan-400',
+          block.status === 'done' && 'text-emerald-500',
+          block.status === 'error' && 'text-rose-500',
+          block.status === 'pending' && 'text-muted-foreground',
+        )}>
+          {statusLabel}
+          {block.durationMs != null && ` (${(block.durationMs / 1000).toFixed(1)}s)`}
+        </span>
+      </button>
+      {block.expanded && block.steps.length > 0 && (
+        <div className="border-t border-border/30 px-4 py-1 dark:border-white/5">
+          {block.steps.map(step => (
+            <StepBlockView key={step.stepId} step={step} t={t} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function TextBlockView({ content }: { content: string }) {
+  return <div className="whitespace-pre-wrap text-sm leading-7">{content}</div>;
+}
+
+export function MessageBlocksView({
+  blocks,
+  t,
+}: {
+  blocks: MessageBlock[];
+  t: (key: MessageKey) => string;
+}) {
+  const [localBlocks, setLocalBlocks] = useState(blocks);
+
+  useEffect(() => { setLocalBlocks(blocks); }, [blocks]);
+
+  const toggleExpand = (index: number) => {
+    setLocalBlocks(prev => prev.map((b, i) =>
+      b.type === 'phase' && i === index
+        ? { ...b, expanded: !b.expanded }
+        : b
+    ));
+  };
+
+  return (
+    <div className="space-y-2">
+      {localBlocks.map((block, i) =>
+        block.type === 'phase'
+          ? <PhaseBlockView key={block.phaseKey} block={block} t={t} onToggleExpand={() => toggleExpand(i)} />
+          : <TextBlockView key={`text-${i}`} content={(block as TextBlock).content} />
+      )}
+    </div>
+  );
+}
