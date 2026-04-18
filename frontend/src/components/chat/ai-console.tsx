@@ -20,6 +20,7 @@ import {
   applyStepStart,
   applyStepEnd,
   collapseCompletedPhases,
+  enrichBlocksWithToolCalls,
 } from './message-blocks'
 import { MessageBlocksView } from './message-blocks'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
@@ -2796,12 +2797,15 @@ export function AIConsole() {
               latestResult: result,
             }).catch(() => {})
             assistantContent = result.response || result.clarification?.question || t('returnedResult')
+            const enrichedBlocks = currentBlocksRef.current
+              ? enrichBlocksWithToolCalls(currentBlocksRef.current, normalizeToolCalls(result.toolCalls))
+              : undefined
             replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
               ...message,
               content: assistantContent,
               status: 'done',
               debugDetails,
-              blocks: currentBlocksRef.current ?? undefined,
+              blocks: enrichedBlocks,
             }))
             shouldBumpConversationActivity = true
           }

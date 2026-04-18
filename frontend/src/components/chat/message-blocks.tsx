@@ -6,6 +6,12 @@ import type { MessageKey } from '@/lib/i18n';
 
 export type StepStatus = 'pending' | 'running' | 'done' | 'error';
 
+export type ToolCallDetail = {
+  input?: Record<string, unknown>;
+  output?: unknown;
+  error?: string;
+};
+
 export type StepBlock = {
   type: 'step';
   stepId: string;
@@ -15,6 +21,7 @@ export type StepBlock = {
   status: StepStatus;
   durationMs?: number;
   error?: string;
+  toolCallDetail?: ToolCallDetail;
 };
 
 export type PhaseStatus = 'pending' | 'running' | 'done' | 'error';
@@ -196,12 +203,51 @@ export function collapseCompletedPhases(blocks: BlocksState): BlocksState {
   });
 }
 
+export function enrichBlocksWithToolCalls(
+  blocks: BlocksState,
+  toolCalls: Array<{ tool: string; input?: Record<string, unknown>; output?: unknown; error?: string }>,
+): BlocksState {
+  return blocks.map(block => {
+    if (block.type !== 'phase') return block;
+    return {
+      ...block,
+      steps: block.steps.map(step => {
+        // Match by tool name; if multiple calls for same tool, take the last one
+        const match = toolCalls.filter(tc => tc.tool === step.tool).pop();
+        if (!match) return step;
+        return {
+          ...step,
+          toolCallDetail: {
+            input: match.input,
+            output: match.output,
+            error: match.error,
+          },
+        };
+      }),
+    };
+  });
+}
+
 import { useState, useEffect } from 'react';
 import { ChevronDown, ChevronRight, Check, X, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
+function formatJsonBrief(data: unknown, maxLen = 200): string {
+  if (!data || typeof data !== 'object') return '';
+  try {
+    const str = JSON.stringify(data, null, 0);
+    return str.length > maxLen ? str.slice(0, maxLen) + '…' : str;
+  } catch {
+    return '';
+  }
+}
+
 export function StepBlockView({ step, t }: { step: StepBlock; t: (key: MessageKey) => string }) {
   const label = t(stepLabelKey(step.tool));
+  const [expanded, setExpanded] = useState(false);
+  const hasDetail = step.toolCallDetail && (step.toolCallDetail.output || step.toolCallDetail.error);
+  const outputBrief = step.toolCallDetail?.output ? formatJsonBrief(step.toolCallDetail.output) : null;
+
   return (
     <div className="py-1 text-sm">
       <div className="flex items-center gap-2">
@@ -222,10 +268,46 @@ export function StepBlockView({ step, t }: { step: StepBlock; t: (key: MessageKe
             {step.durationMs < 1000 ? `${step.durationMs}ms` : `${(step.durationMs / 1000).toFixed(1)}s`}
           </span>
         )}
+        {hasDetail && (
+          <button
+            type="button"
+            className="ml-1 text-muted-foreground hover:text-foreground"
+            onClick={() => setExpanded(e => !e)}
+          >
+            {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+          </button>
+        )}
       </div>
       {step.error && (
         <div className="ml-5 mt-0.5 text-xs text-rose-400 dark:text-rose-300">
           {step.error}
+        </div>
+      )}
+      {outputBrief && !expanded && (
+        <div className="ml-5 mt-0.5 truncate text-xs text-muted-foreground/70">
+          {outputBrief}
+        </div>
+      )}
+      {expanded && hasDetail && (
+        <div className="ml-5 mt-1 space-y-1">
+          {step.toolCallDetail!.output != null && (
+            <details open>
+              <summary className="cursor-pointer text-xs font-medium text-muted-foreground">{t('promptThinkingToolOutput')}</summary>
+              <pre className="mt-1 max-h-48 overflow-auto rounded-md bg-black/5 p-2 text-xs dark:bg-white/5">
+                {typeof step.toolCallDetail!.output === 'string'
+                  ? (step.toolCallDetail!.output as string)
+                  : JSON.stringify(step.toolCallDetail!.output, null, 2)}
+              </pre>
+            </details>
+          )}
+          {step.toolCallDetail!.input != null && Object.keys(step.toolCallDetail!.input).length > 0 && (
+            <details>
+              <summary className="cursor-pointer text-xs font-medium text-muted-foreground">{t('promptThinkingToolInput')}</summary>
+              <pre className="mt-1 max-h-32 overflow-auto rounded-md bg-black/5 p-2 text-xs dark:bg-white/5">
+                {JSON.stringify(step.toolCallDetail!.input, null, 2)}
+              </pre>
+            </details>
+          )}
         </div>
       )}
     </div>
