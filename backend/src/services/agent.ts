@@ -1993,9 +1993,20 @@ export class AgentService {
           });
         }
 
-        // Strict mode: skip steps whose tool is not in the active tool set
+        // Strict mode: block steps whose tool is not in the active tool set
         if (!this.hasActiveTool(activeToolIds, stepToolId)) {
-          continue;
+          const missingToolResponse = this.localize(
+            locale,
+            `执行流程需要工具 \`${stepToolId}\`，但该工具未启用。请在能力设置中启用对应的技能或工具。`,
+            `Pipeline requires tool \`${stepToolId}\` but it is not enabled. Please enable the corresponding skill or tool in capability settings.`,
+          );
+          return this.finalizeBlockedRunResult({
+            params, traceId, startedAt, startedAtMs, locale, orchestrationMode,
+            skillIds, plan, toolCalls, sessionKey, workingSession,
+            response: missingToolResponse,
+            blockedReasonCode: 'TOOL_NOT_ACTIVE',
+            needsModelInput: false,
+          });
         }
 
         if (STUB_TOOLS.has(step.tool)) {
@@ -2443,7 +2454,20 @@ export class AgentService {
             if (ccStep.mode === 'reuse') continue;
             // Skip validate_model — model was already validated in the main pipeline.
             if (ccStep.tool === 'validate_model') continue;
-            if (!this.hasActiveTool(activeToolIds, ccStep.tool)) continue;
+            if (!this.hasActiveTool(activeToolIds, ccStep.tool)) {
+              emitStepUpdate(ccStep, {
+                status: 'error',
+                startedAtIso: new Date(Date.now()).toISOString(),
+                completedAtIso: new Date().toISOString(),
+                durationMs: 0,
+                errorMessage: this.localize(
+                  locale,
+                  `工具 ${ccStep.tool} 未启用`,
+                  `Tool ${ccStep.tool} is not enabled`,
+                ),
+              });
+              break;
+            }
             const ccStepStartedAtMs = Date.now();
             const ccStepStartedAt = new Date(ccStepStartedAtMs).toISOString();
             let ccStepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
@@ -2521,7 +2545,20 @@ export class AgentService {
         if (!reportPlan.blockedReason && reportPlan.requiredSteps.length > 0) {
           for (const reportStep of reportPlan.requiredSteps) {
             if (reportStep.mode === 'reuse') continue;
-            if (!this.hasActiveTool(activeToolIds, reportStep.tool)) continue;
+            if (!this.hasActiveTool(activeToolIds, reportStep.tool)) {
+              emitStepUpdate(reportStep, {
+                status: 'error',
+                startedAtIso: new Date(Date.now()).toISOString(),
+                completedAtIso: new Date().toISOString(),
+                durationMs: 0,
+                errorMessage: this.localize(
+                  locale,
+                  `工具 ${reportStep.tool} 未启用`,
+                  `Tool ${reportStep.tool} is not enabled`,
+                ),
+              });
+              break;
+            }
             const rStepStartedAtMs = Date.now();
             const rStepStartedAt = new Date(rStepStartedAtMs).toISOString();
             let rStepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };

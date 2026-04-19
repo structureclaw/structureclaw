@@ -263,7 +263,7 @@ describe('AgentService orchestration', () => {
     const result = await svc.runForcedExecution({
       message: '请静力分析并规范校核',
       context: {
-        skillIds: ['opensees-static', 'code-check-gb50017', 'validation-structure-model', 'report-export-builtin'],
+        skillIds: ['opensees-static', 'code-check-gb50017', 'validation-structure-model', 'report-export-builtin', 'beam', 'postprocess-builtin'],
         model: {
           schema_version: '1.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
@@ -308,7 +308,7 @@ describe('AgentService orchestration', () => {
       message: '请静力分析这个模型',
       context: {
         analysisType: 'static',
-        skillIds: ['beam', 'opensees-static'],
+        skillIds: ['beam', 'opensees-static', 'validation-structure-model'],
         model: {
           schema_version: '1.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
@@ -340,7 +340,7 @@ describe('AgentService orchestration', () => {
       message: '请静力分析这个模型',
       context: {
         analysisType: 'static',
-        skillIds: ['beam', 'simplified-static'],
+        skillIds: ['beam', 'simplified-static', 'validation-structure-model'],
         engineId: 'builtin-simplified',
         model: {
           schema_version: '1.0.0',
@@ -375,7 +375,7 @@ describe('AgentService orchestration', () => {
     const result = await svc.runForcedExecution({
       message: '请静力分析并规范校核',
       context: {
-        skillIds: ['beam', 'opensees-static'],
+        skillIds: ['beam', 'opensees-static', 'validation-structure-model'],
         model: {
           schema_version: '1.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
@@ -433,7 +433,7 @@ describe('AgentService orchestration', () => {
     const result = await svc.runForcedExecution({
       message: '请静力分析并规范校核并生成报告',
       context: {
-        skillIds: ['opensees-static', 'code-check-gb50017'],
+        skillIds: ['opensees-static', 'code-check-gb50017', 'beam', 'validation-structure-model'],
         disabledToolIds: ['run_code_check', 'generate_report'],
         model: {
           schema_version: '1.0.0',
@@ -633,7 +633,7 @@ describe('AgentService orchestration', () => {
           load_combinations: [],
         },
         engineId: 'builtin-opensees',
-        skillIds: ['opensees-static', 'validation-structure-model', 'code-check-gb50017'],
+        skillIds: ['opensees-static', 'validation-structure-model', 'code-check-gb50017', 'beam', 'postprocess-builtin'],
         autoAnalyze: true,
         autoCodeCheck: true,
       },
@@ -668,7 +668,7 @@ describe('AgentService orchestration', () => {
           load_cases: [],
           load_combinations: [],
         },
-        skillIds: ['opensees-static', 'code-check-gb50017'],
+        skillIds: ['opensees-static', 'code-check-gb50017', 'beam', 'validation-structure-model', 'postprocess-builtin'],
         autoAnalyze: true,
         autoCodeCheck: true,
       },
@@ -2358,7 +2358,7 @@ describe('AgentService orchestration', () => {
           load_cases: [{ id: 'LC1', type: 'other', loads: [{ type: 'distributed', element: '1', wz: -10 }] }],
           load_combinations: [{ id: 'ULS', factors: { LC1: 1 } }],
         },
-        skillIds: ['opensees-static', 'validation-structure-model', 'code-check-gb50017'],
+        skillIds: ['opensees-static', 'validation-structure-model', 'code-check-gb50017', 'beam', 'report-export-builtin', 'postprocess-builtin'],
         autoAnalyze: true,
         autoCodeCheck: true,
         includeReport: true,
@@ -2477,7 +2477,7 @@ describe('AgentService orchestration', () => {
           load_cases: [],
           load_combinations: [],
         },
-        skillIds: ['opensees-static', 'code-check-gb50017', 'report-export-builtin'],
+        skillIds: ['opensees-static', 'code-check-gb50017', 'report-export-builtin', 'beam', 'validation-structure-model', 'postprocess-builtin'],
         autoAnalyze: true,
         autoCodeCheck: true,
         includeReport: true,
