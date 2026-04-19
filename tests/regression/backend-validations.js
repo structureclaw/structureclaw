@@ -3492,6 +3492,7 @@ async function validateReportNarrativeContract(context) {
   const result = await svc.runWithStrategy({
     message: "请分析并按规范校核后出报告",
     context: {
+      skillIds: ["beam", "opensees-static", "validation-structure-model", "report-export-builtin", "code-check-gb50017", "postprocess-builtin"],
       model: {
         schema_version: "1.0.0",
         nodes: [
