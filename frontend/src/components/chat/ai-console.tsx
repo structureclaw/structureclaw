@@ -23,6 +23,11 @@ import {
   enrichBlocksWithToolCalls,
 } from './message-blocks'
 import { MessageBlocksView } from './message-blocks'
+import {
+  MessagePresentationView,
+  reducePresentationEvent,
+  type AssistantPresentationV1,
+} from './message-presentation'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { API_BASE } from '@/lib/api-base'
 import { loadCapabilityPreferences, saveCapabilityPreferences } from '@/lib/capability-preference'
@@ -45,6 +50,7 @@ type Message = {
   timestamp: string
   debugDetails?: MessageDebugDetails
   blocks?: MessageBlock[]
+  presentation?: AssistantPresentationV1
 }
 
 type AgentToolCall = {
@@ -77,6 +83,7 @@ type MessageMetadata = {
   debugDetails?: MessageDebugDetails
   status?: 'done' | 'error' | 'aborted'
   traceId?: string
+  presentation?: AssistantPresentationV1
 }
 
 type AgentInteraction = {
@@ -128,6 +135,13 @@ type StreamPayload =
   | { type: 'start'; content?: { traceId?: string; conversationId?: string; startedAt?: string } }
   | { type: 'token'; content?: string }
   | { type: 'interaction_update'; content?: AgentInteraction }
+  | { type: 'presentation_init'; presentation?: AssistantPresentationV1 }
+  | { type: 'timeline_item_upsert'; item?: AssistantPresentationV1['timeline'][number] }
+  | { type: 'artifact_upsert'; artifact?: AssistantPresentationV1['artifacts'][number] }
+  | { type: 'artifact_payload_sync'; artifact?: 'model' | 'analysis' | 'report'; model?: Record<string, unknown>; latestResult?: AgentResult; snapshot?: VisualizationSnapshot }
+  | { type: 'summary_replace'; summaryText?: string }
+  | { type: 'presentation_complete'; completedAt?: string }
+  | { type: 'presentation_error'; error?: Extract<AssistantPresentationV1['timeline'][number], { kind: 'error' }> }
   | { type: 'result'; content?: AgentResult }
   | { type: 'done' }
   | { type: 'error'; error?: string }
@@ -214,6 +228,7 @@ async function saveConversationMessagesToBackend(
     assistantContent: string
     assistantAborted?: boolean
     traceId?: string
+    assistantPresentation?: AssistantPresentationV1
   }
 ): Promise<void> {
   if (!conversationId) return
@@ -227,6 +242,7 @@ async function saveConversationMessagesToBackend(
         assistantContent: params.assistantContent,
         assistantAborted: params.assistantAborted,
         traceId: params.traceId,
+        assistantPresentation: params.assistantPresentation,
       }),
     })
   } catch (error) {
@@ -506,6 +522,41 @@ function parsePersistedDebugDetails(metadata: unknown): MessageDebugDetails | un
   }
 }
 
+function parsePersistedPresentation(metadata: unknown): AssistantPresentationV1 | undefined {
+  const metadataRecord = toObjectRecord(metadata)
+  const presentationRecord = toObjectRecord(metadataRecord?.presentation)
+  if (!presentationRecord) {
+    return undefined
+  }
+
+  const summaryText = typeof presentationRecord.summaryText === 'string' ? presentationRecord.summaryText : ''
+  const timeline = Array.isArray(presentationRecord.timeline)
+    ? presentationRecord.timeline.filter((item): item is AssistantPresentationV1['timeline'][number] => Boolean(item && typeof item === 'object'))
+    : []
+  const artifacts = Array.isArray(presentationRecord.artifacts)
+    ? presentationRecord.artifacts.filter((item): item is AssistantPresentationV1['artifacts'][number] => Boolean(item && typeof item === 'object'))
+    : []
+  const status = presentationRecord.status === 'done'
+    || presentationRecord.status === 'error'
+    || presentationRecord.status === 'aborted'
+    || presentationRecord.status === 'streaming'
+    ? presentationRecord.status
+    : 'done'
+  const mode = presentationRecord.mode === 'conversation' ? 'conversation' : 'execution'
+
+  return {
+    version: 1,
+    mode,
+    status,
+    summaryText,
+    timeline,
+    artifacts,
+    traceId: typeof presentationRecord.traceId === 'string' ? presentationRecord.traceId : undefined,
+    startedAt: typeof presentationRecord.startedAt === 'string' ? presentationRecord.startedAt : undefined,
+    completedAt: typeof presentationRecord.completedAt === 'string' ? presentationRecord.completedAt : undefined,
+  }
+}
+
 const LEGACY_ABORTED_SUFFIX_PATTERNS = [
   /\n\n---\n\*(?:Stream stopped|已停止)\*$/u,
   /（已停止）$/u,
@@ -539,11 +590,21 @@ function normalizePersistedMessage(message: Message): Message {
   const normalizedStatus = message.status === 'streaming'
     ? 'aborted'
     : (message.status ?? (hasLegacyAbortedSuffix(message.content) ? 'aborted' : 'done'))
+  const normalizedPresentation = message.presentation
+    ? {
+        ...message.presentation,
+        status: message.presentation.status === 'streaming' && normalizedStatus === 'aborted'
+          ? 'aborted'
+          : message.presentation.status,
+        summaryText: message.presentation.summaryText || stripLegacyAbortedSuffix(message.content),
+      }
+    : undefined
 
   return {
     ...message,
     content: stripLegacyAbortedSuffix(message.content),
     status: normalizedStatus,
+    presentation: normalizedPresentation,
   }
 }
 
@@ -1508,6 +1569,7 @@ export function AIConsole() {
   const streamingSessionsRef = useRef<Map<string, StreamSession>>(new Map())
   const [currentBlocks, setCurrentBlocks] = useState<BlocksState | null>(null);
   const currentBlocksRef = useRef<BlocksState | null>(null);
+  const currentPresentationRef = useRef<AssistantPresentationV1 | null>(null)
   const conversationIdRef = useRef(conversationId)
   const submittingRef = useRef(false)
   const [isStreaming, setIsStreaming] = useState(false)
@@ -2222,6 +2284,7 @@ export function AIConsole() {
             status: parsePersistedMessageStatus(message.metadata, message.content),
             timestamp: message.createdAt,
             debugDetails: parsePersistedDebugDetails(message.metadata),
+            presentation: parsePersistedPresentation(message.metadata),
           }))
         : []
       const archivedMessages = archived?.messages || []
@@ -2494,6 +2557,7 @@ export function AIConsole() {
 
     setCurrentBlocks(null);
     currentBlocksRef.current = null;
+    currentPresentationRef.current = null
     setErrorMessage('')
     setInput('')
     setVisualizationOpen(false)
@@ -2516,13 +2580,41 @@ export function AIConsole() {
     const traceId = assistantMessageId
     setIsStreaming(true)
 
+    const syncAssistantPresentationMessage = (
+      nextPresentation: AssistantPresentationV1,
+      nextStatus: Message['status'] = nextPresentation.status === 'done'
+        ? 'done'
+        : nextPresentation.status === 'error'
+          ? 'error'
+          : nextPresentation.status === 'aborted'
+            ? 'aborted'
+            : 'streaming',
+    ) => {
+      currentPresentationRef.current = nextPresentation
+      replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
+        ...message,
+        content: nextPresentation.summaryText || assistantContent,
+        status: nextStatus,
+        presentation: nextPresentation,
+      }))
+    }
+
     const finalizeAbortedTurn = async () => {
       const abortedContent = resolveAbortedAssistantContent(assistantContent, assistantSeed)
+      const abortedPresentation = currentPresentationRef.current
+        ? {
+            ...currentPresentationRef.current,
+            status: 'aborted' as const,
+            completedAt: currentPresentationRef.current.completedAt || new Date().toISOString(),
+            summaryText: currentPresentationRef.current.summaryText || abortedContent,
+          }
+        : undefined
 
       replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
         ...message,
         content: abortedContent,
         status: 'aborted',
+        presentation: abortedPresentation ?? message.presentation,
       }))
 
       // Note: manual localStorage write removed — replaceMessageForConversation
@@ -2538,6 +2630,7 @@ export function AIConsole() {
           assistantContent: abortedContent,
           assistantAborted: true,
           traceId,
+          assistantPresentation: abortedPresentation,
         })
       }
     }
@@ -2549,6 +2642,7 @@ export function AIConsole() {
       // Set conversationId immediately so the Stop button appears
       // without waiting for the SSE start event.
       if (nextConversationId !== conversationId) {
+        conversationIdRef.current = nextConversationId
         setConversationId(nextConversationId)
       }
 
@@ -2686,6 +2780,66 @@ export function AIConsole() {
             }
           }
 
+          if (payload.type === 'presentation_init' && payload.presentation) {
+            syncAssistantPresentationMessage(payload.presentation, 'streaming')
+          }
+
+          if (payload.type === 'timeline_item_upsert' && payload.item && currentPresentationRef.current) {
+            const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
+              type: 'timeline_item_upsert',
+              item: payload.item,
+            })
+            syncAssistantPresentationMessage(nextPresentation, 'streaming')
+          }
+
+          if (payload.type === 'artifact_upsert' && payload.artifact && currentPresentationRef.current) {
+            const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
+              type: 'artifact_upsert',
+              artifact: payload.artifact,
+            })
+            syncAssistantPresentationMessage(nextPresentation, 'streaming')
+          }
+
+          if (payload.type === 'summary_replace' && typeof payload.summaryText === 'string' && currentPresentationRef.current) {
+            assistantContent = payload.summaryText
+            const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
+              type: 'summary_replace',
+              summaryText: payload.summaryText,
+            })
+            syncAssistantPresentationMessage(nextPresentation, 'streaming')
+          }
+
+          if (payload.type === 'presentation_complete' && typeof payload.completedAt === 'string' && currentPresentationRef.current) {
+            const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
+              type: 'presentation_complete',
+              completedAt: payload.completedAt,
+            })
+            syncAssistantPresentationMessage(nextPresentation, 'done')
+          }
+
+          if (payload.type === 'presentation_error' && payload.error && currentPresentationRef.current) {
+            assistantContent = payload.error.message || assistantContent
+            const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
+              type: 'presentation_error',
+              error: payload.error,
+            })
+            syncAssistantPresentationMessage(nextPresentation, 'error')
+          }
+
+          if (payload.type === 'artifact_payload_sync') {
+            if (payload.artifact === 'model' && payload.model) {
+              if (activeConversationId === conversationIdRef.current) {
+                applySynchronizedModel(payload.model, 'tool')
+              }
+            }
+            if (payload.artifact === 'analysis' && payload.latestResult && activeConversationId === conversationIdRef.current) {
+              setLatestResult((current) => ({
+                ...(current || {}),
+                ...(payload.latestResult || {}),
+              }))
+            }
+          }
+
           if (payload.type === 'pipeline_start' && payload.content?.steps) {
             const newBlocks = initBlocksFromPipelineStart(
               payload.content.steps,
@@ -2759,7 +2913,7 @@ export function AIConsole() {
             const visualizationHints = extractVisualizationHints(result)
             const debugDetails = buildMessageDebugDetails(promptSnapshot, debugSkillIds, debugToolIds, result)
             if (result.model && typeof result.model === 'object' && !Array.isArray(result.model)) {
-              if (activeConversationId === conversationId) {
+              if (activeConversationId === conversationIdRef.current) {
                 applySynchronizedModel(result.model, result.analysis ? 'tool' : 'conversation')
               }
             }
@@ -2778,7 +2932,7 @@ export function AIConsole() {
             })
             receivedResult = true
             // Only update active conversation state when this is the foreground stream
-            if (activeConversationId === conversationId) {
+            if (activeConversationId === conversationIdRef.current) {
               setLatestResult(result)
               setLatestModelVisualizationSnapshot(modelSnapshot)
               setLatestResultVisualizationSnapshot(visualizationSnapshot)
@@ -2800,12 +2954,27 @@ export function AIConsole() {
             const enrichedBlocks = currentBlocksRef.current
               ? enrichBlocksWithToolCalls(currentBlocksRef.current, normalizeToolCalls(result.toolCalls))
               : undefined
+            let nextPresentation: AssistantPresentationV1 | null = currentPresentationRef.current
+            if (nextPresentation) {
+              if (!nextPresentation.summaryText) {
+                nextPresentation = reducePresentationEvent(nextPresentation, {
+                  type: 'summary_replace',
+                  summaryText: assistantContent,
+                })
+              }
+              nextPresentation = reducePresentationEvent(nextPresentation, {
+                type: 'presentation_complete',
+                completedAt: result.completedAt || new Date().toISOString(),
+              })
+              currentPresentationRef.current = nextPresentation
+            }
             replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
               ...message,
               content: assistantContent,
               status: 'done',
               debugDetails,
               blocks: enrichedBlocks,
+              presentation: currentPresentationRef.current ?? message.presentation,
             }))
             shouldBumpConversationActivity = true
           }
@@ -2813,13 +2982,14 @@ export function AIConsole() {
           if (payload.type === 'error') {
             const nextError = typeof payload.error === 'string' ? payload.error : t('requestFailed')
             assistantContent = nextError
-            if (activeConversationId === conversationId) {
+            if (activeConversationId === conversationIdRef.current) {
               setErrorMessage(nextError)
             }
             replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
               ...message,
               content: assistantContent,
               status: 'error',
+              presentation: currentPresentationRef.current ?? message.presentation,
             }))
             shouldBumpConversationActivity = true
           }
@@ -2833,6 +3003,7 @@ export function AIConsole() {
           ...message,
           content: message.content || assistantSeed,
           status: message.status === 'error' ? 'error' : 'done',
+          presentation: currentPresentationRef.current ?? message.presentation,
         }))
         if (assistantContent !== assistantSeed || receivedResult) {
           shouldBumpConversationActivity = true
@@ -2848,15 +3019,17 @@ export function AIConsole() {
           replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
             ...message,
             status: message.status === 'error' ? 'error' : 'done',
+            presentation: currentPresentationRef.current ?? message.presentation,
           }))
         } else {
-          if (activeConversationId === conversationId) {
+          if (activeConversationId === conversationIdRef.current) {
             setErrorMessage(nextError)
           }
           replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
             ...message,
             content: nextError,
             status: 'error',
+            presentation: currentPresentationRef.current ?? message.presentation,
           }))
           shouldBumpConversationActivity = Boolean(activeConversationId)
         }
@@ -3089,15 +3262,18 @@ export function AIConsole() {
                       <span>{message.role === 'user' ? t('you') : t('structureClawAi')}</span>
                       <span className="text-slate-500">{formatDate(message.timestamp, locale)}</span>
                     </div>
-                    {message.blocks && message.blocks.length > 0 && (
+                    {message.presentation && (
+                      <MessagePresentationView presentation={message.presentation} t={t} />
+                    )}
+                    {!message.presentation && message.blocks && message.blocks.length > 0 && (
                       <MessageBlocksView blocks={message.blocks} t={t} />
                     )}
-                    {message.content && (
+                    {!message.presentation && message.content && (
                       <div className="whitespace-pre-wrap text-sm leading-7">
                         {message.content}
                       </div>
                     )}
-                    {message.status === 'streaming' && !(message.blocks && message.blocks.length > 0) && (
+                    {message.status === 'streaming' && !(message.presentation || (message.blocks && message.blocks.length > 0)) && (
                       <span className="ml-2 inline-flex h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.9)]" />
                     )}
                     {message.status === 'aborted' && (
@@ -3106,7 +3282,7 @@ export function AIConsole() {
                         {t('streamAborted')}
                       </span>
                     )}
-                    {message.role === 'assistant' && message.debugDetails && (
+                    {message.role === 'assistant' && message.debugDetails && !message.presentation && (
                       <details className="mt-3 rounded-2xl border border-border/70 bg-background/60 px-3 py-2 dark:border-white/10 dark:bg-slate-950/40">
                         <summary className="cursor-pointer text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
                           {t('promptThinkingToggle')}
