@@ -143,24 +143,6 @@ function resolveCallableTools(
   })
 
   const toolById = new Map(matrixTools.map((tool) => [tool.id, tool]))
-  const queue = [...callableToolIds]
-  while (queue.length > 0) {
-    const toolId = queue.shift()
-    if (!toolId) {
-      continue
-    }
-    const tool = toolById.get(toolId)
-    if (!tool || !Array.isArray(tool.requiresTools)) {
-      continue
-    }
-    tool.requiresTools.forEach((requiredToolId) => {
-      if (typeof requiredToolId !== 'string' || requiredToolId.trim().length === 0 || callableToolIds.has(requiredToolId)) {
-        return
-      }
-      callableToolIds.add(requiredToolId)
-      queue.push(requiredToolId)
-    })
-  }
 
   return matrixTools.filter((tool) => callableToolIds.has(tool.id))
 }
