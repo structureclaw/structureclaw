@@ -197,6 +197,13 @@ export class AgentSkillRuntime {
     return analysisSkills.find((skill) => matchesContext(skill));
   }
 
+  resolveDefaultSkillForDomain(domain: string): string | undefined {
+    const match = this.builtinSkillFileManifests
+      .filter((s) => s.domain === domain)
+      .sort((a, b) => b.priority - a.priority)[0];
+    return match?.id;
+  }
+
   async executeAnalysisSkill(options: {
     traceId: string;
     analysisType: 'static' | 'dynamic' | 'seismic' | 'nonlinear';

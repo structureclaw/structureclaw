@@ -1974,6 +1974,46 @@ export class AgentService {
         }
       }
 
+      if (!pipelineState.bindings.validationSkillId) {
+        const resolved = this.skillRuntime.resolveDefaultSkillForDomain('validation');
+        if (resolved && activeSkillIds?.includes(resolved)) {
+          pipelineState = {
+            ...pipelineState,
+            bindings: { ...pipelineState.bindings, validationSkillId: resolved },
+          };
+        }
+      }
+
+      if (!pipelineState.bindings.reportSkillId) {
+        const resolved = this.skillRuntime.resolveDefaultSkillForDomain('report-export');
+        if (resolved && activeSkillIds?.includes(resolved)) {
+          pipelineState = {
+            ...pipelineState,
+            bindings: { ...pipelineState.bindings, reportSkillId: resolved },
+          };
+        }
+      }
+
+      if (!pipelineState.bindings.drawingSkillId) {
+        const resolved = this.skillRuntime.resolveDefaultSkillForDomain('drawing');
+        if (resolved && activeSkillIds?.includes(resolved)) {
+          pipelineState = {
+            ...pipelineState,
+            bindings: { ...pipelineState.bindings, drawingSkillId: resolved },
+          };
+        }
+      }
+
+      if (!pipelineState.bindings.postprocessSkillId) {
+        const resolved = this.skillRuntime.resolveDefaultSkillForDomain('result-postprocess');
+        if (resolved && activeSkillIds?.includes(resolved)) {
+          pipelineState = {
+            ...pipelineState,
+            bindings: { ...pipelineState.bindings, postprocessSkillId: resolved },
+          };
+        }
+      }
+
       const schedulerPlan = this.pipelineScheduler.plan({
         message: params.message,
         locale,

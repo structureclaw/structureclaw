@@ -522,6 +522,10 @@ export interface RequestExecutionOverrides {
 export interface ProviderBindingState {
   analysisProviderSkillId?: string;
   codeCheckProviderSkillId?: string;
+  validationSkillId?: string;
+  postprocessSkillId?: string;
+  reportSkillId?: string;
+  drawingSkillId?: string;
 }
 
 // --- Runtime contract (all role variants) ---

@@ -12,6 +12,18 @@ import type {
 } from './types.js';
 import { canReuseArtifact, computeDependencyFingerprint, computeDraftStateContentHash } from './artifact-helpers.js';
 
+// --- Tool-to-binding-key mapping ---
+
+const TOOL_BINDING_KEY: Record<string, keyof import('./types.js').ProviderBindingState | 'structural'> = {
+  draft_model: 'structural',
+  update_model: 'structural',
+  convert_model: 'structural',
+  validate_model: 'validationSkillId',
+  postprocess_result: 'postprocessSkillId',
+  generate_report: 'reportSkillId',
+  generate_drawing: 'drawingSkillId',
+};
+
 // --- Controlled artifact graph ---
 
 interface GraphNode {
@@ -293,10 +305,17 @@ export class PipelineScheduler {
     plannedSet.add(target);
 
     if (graphNode.providerSlot) {
+      const validationBinding = TOOL_BINDING_KEY['validate_model'];
+      const validationSkillId = validationBinding === 'structural'
+        ? input.structuralSkillId
+        : validationBinding
+          ? input.bindings?.[validationBinding]
+          : undefined;
       steps.push({
         stepId: `${target}-validate_model`,
         role: 'validator',
         tool: 'validate_model',
+        skillId: validationSkillId,
         consumes: this.collectRefs(graphNode.dependsOn, input.projectArtifacts),
         mode: 'execute',
         reason: `Validate before provider execution for ${target}`,
@@ -326,11 +345,15 @@ export class PipelineScheduler {
       : graphNode.defaultTool;
 
     const bindingKey = graphNode.providerSlot ? `${graphNode.providerSlot}SkillId` as keyof import('./types.js').ProviderBindingState : undefined;
+
+    const toolBinding = TOOL_BINDING_KEY[actualTool];
     const boundSkillId = bindingKey
       ? input.bindings?.[bindingKey]
-      : ['draft_model', 'update_model', 'convert_model'].includes(actualTool)
+      : toolBinding === 'structural'
         ? input.structuralSkillId
-        : undefined;
+        : toolBinding
+          ? input.bindings?.[toolBinding]
+          : undefined;
 
     steps.push({
       stepId: `${target}-${actualTool}`,

@@ -44,6 +44,7 @@ interface RuntimeBindingSkillRuntimeLike {
     skillIdsByToolId: Record<string, string[]>;
   }>;
   listBuiltinToolManifests(): ToolManifest[];
+  resolveDefaultSkillForDomain(domain: string): string | undefined;
 }
 
 interface RuntimeBindingPolicyLike {
@@ -164,6 +165,15 @@ export class AgentRuntimeBinder {
     ) && (hasStructuralContext || hasExecutionIntent || reportIntent === true);
     if (shouldActivateReport) {
       activatedSkillIds.add('report-export-builtin');
+    }
+
+    // Postprocess: auto-activate when analysis will run
+    const shouldActivatePostprocess = hasStructuralContext || hasExecutionIntent || args.context?.autoAnalyze === true;
+    if (shouldActivatePostprocess) {
+      const postprocessSkill = this.skillRuntime.resolveDefaultSkillForDomain('result-postprocess');
+      if (postprocessSkill) {
+        activatedSkillIds.add(postprocessSkill);
+      }
     }
 
     if (activatedSkillIds.size === 0) {

@@ -12,6 +12,7 @@ describe('agent runtime binder', () => {
         resolveCodeCheckSkillId: () => undefined,
         resolveSkillTooling: async () => ({ tools: [], skillIdsByToolId: {} }),
         listBuiltinToolManifests: () => [],
+        resolveDefaultSkillForDomain: () => undefined,
       },
       {
         inferExecutionIntent: () => true,
@@ -39,6 +40,7 @@ describe('agent runtime binder', () => {
         resolveCodeCheckSkillId: () => undefined,
         resolveSkillTooling: async () => ({ tools: [], skillIdsByToolId: {} }),
         listBuiltinToolManifests: () => [],
+        resolveDefaultSkillForDomain: () => undefined,
       },
       {
         inferExecutionIntent: () => true,
@@ -69,6 +71,7 @@ describe('agent runtime binder', () => {
         resolveCodeCheckSkillId: () => undefined,
         resolveSkillTooling: async () => ({ tools: [], skillIdsByToolId: {} }),
         listBuiltinToolManifests: () => [],
+        resolveDefaultSkillForDomain: () => undefined,
       },
       {
         inferExecutionIntent: () => true,
@@ -96,6 +99,7 @@ describe('agent runtime binder', () => {
         resolveCodeCheckSkillId: () => undefined,
         resolveSkillTooling: async () => ({ tools: [], skillIdsByToolId: {} }),
         listBuiltinToolManifests: () => [],
+        resolveDefaultSkillForDomain: () => undefined,
       },
       {
         inferExecutionIntent: () => true,
@@ -125,6 +129,7 @@ describe('agent runtime binder', () => {
         resolveCodeCheckSkillId: () => undefined,
         resolveSkillTooling: async () => ({ tools: [], skillIdsByToolId: {} }),
         listBuiltinToolManifests: () => [],
+        resolveDefaultSkillForDomain: () => undefined,
       },
       {
         inferExecutionIntent: () => true,
@@ -152,6 +157,7 @@ describe('agent runtime binder', () => {
         resolveCodeCheckSkillId: () => undefined,
         resolveSkillTooling: async () => ({ tools: [], skillIdsByToolId: {} }),
         listBuiltinToolManifests: () => [],
+        resolveDefaultSkillForDomain: () => undefined,
       },
       new AgentPolicyService(),
     );
@@ -177,6 +183,7 @@ describe('agent runtime binder', () => {
         resolveCodeCheckSkillId: () => undefined,
         resolveSkillTooling: async () => ({ tools: [], skillIdsByToolId: {} }),
         listBuiltinToolManifests: () => [],
+        resolveDefaultSkillForDomain: () => undefined,
       },
       {
         inferExecutionIntent: () => true,
@@ -199,6 +206,7 @@ describe('agent runtime binder', () => {
         resolveCodeCheckSkillId: () => undefined,
         resolveSkillTooling: async () => ({ tools: [], skillIdsByToolId: {} }),
         listBuiltinToolManifests: () => [],
+        resolveDefaultSkillForDomain: () => undefined,
       },
       {
         inferExecutionIntent: () => true,
@@ -221,6 +229,7 @@ describe('agent runtime binder', () => {
         resolveCodeCheckSkillId: () => undefined,
         resolveSkillTooling: async () => ({ tools: [], skillIdsByToolId: {} }),
         listBuiltinToolManifests: () => [],
+        resolveDefaultSkillForDomain: () => undefined,
       },
       {
         inferExecutionIntent: () => true,

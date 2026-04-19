@@ -1,0 +1,48 @@
+id: postprocess-builtin
+domain: result-postprocess
+source: builtin
+name:
+  zh: 内置结果后处理
+  en: Builtin Result Postprocessing
+description:
+  zh: 对分析原始结果提取包络、关键指标和控制工况，为下游规范校核与报告生成提供结构化后处理数据。
+  en: Extract envelopes, key metrics, and controlling cases from raw analysis results for downstream code-check and report generation.
+triggers:
+  - postprocess
+  - envelope
+  - 后处理
+  - 包络
+  - 结果整理
+stages:
+  - analysis
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - result-postprocess
+  - envelope-extraction
+  - key-metric-extraction
+  - controlling-case-extraction
+grants:
+  - postprocess_result
+providesTools: []
+requires: []
+conflicts: []
+autoLoadByDefault: true
+priority: 100
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+supportedAnalysisTypes:
+  - static
+  - dynamic
+  - seismic
+  - nonlinear
+supportedModelFamilies:
+  - generic
+materialFamilies: []
+aliases: []
+toolHints: {}
+runtimeContract:
+  role: transformer
+  consumes: [analysisRaw]
+  provides: [postprocessedResult]
