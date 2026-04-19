@@ -263,7 +263,7 @@ describe('AgentService orchestration', () => {
     const result = await svc.runForcedExecution({
       message: '请静力分析并规范校核',
       context: {
-        skillIds: [],
+        skillIds: ['opensees-static', 'code-check-gb50017', 'validation-structure-model', 'report-export-builtin'],
         model: {
           schema_version: '1.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
@@ -273,7 +273,6 @@ describe('AgentService orchestration', () => {
           load_cases: [],
           load_combinations: [],
         },
-        skillIds: ['code-check-gb50017'],
         autoAnalyze: true,
         autoCodeCheck: true,
         includeReport: true,
@@ -285,7 +284,6 @@ describe('AgentService orchestration', () => {
     expect(result.routing?.analysisSkillId).toBe('opensees-static');
     expect(result.routing?.analysisSkillIds).toEqual(['opensees-static']);
     expect(result.routing?.codeCheckSkillId).toBe('code-check-gb50017');
-    expect(result.routing?.validationSkillId).toBe('validation-structure-model');
     expect(result.routing?.reportSkillId).toBe('report-export-builtin');
     expect(result.toolCalls.some((c) => c.tool === 'run_analysis')).toBe(true);
     expect(result.toolCalls.some((c) => c.tool === 'run_code_check')).toBe(true);
@@ -310,7 +308,7 @@ describe('AgentService orchestration', () => {
       message: '请静力分析这个模型',
       context: {
         analysisType: 'static',
-        skillIds: ['beam'],
+        skillIds: ['beam', 'opensees-static'],
         model: {
           schema_version: '1.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
@@ -342,7 +340,7 @@ describe('AgentService orchestration', () => {
       message: '请静力分析这个模型',
       context: {
         analysisType: 'static',
-        skillIds: ['beam'],
+        skillIds: ['beam', 'simplified-static'],
         engineId: 'builtin-simplified',
         model: {
           schema_version: '1.0.0',
@@ -377,7 +375,7 @@ describe('AgentService orchestration', () => {
     const result = await svc.runForcedExecution({
       message: '请静力分析并规范校核',
       context: {
-        skillIds: ['beam'],
+        skillIds: ['beam', 'opensees-static'],
         model: {
           schema_version: '1.0.0',
           nodes: [{ id: '1', x: 0, y: 0, z: 0 }, { id: '2', x: 3, y: 0, z: 0 }],
@@ -435,7 +433,7 @@ describe('AgentService orchestration', () => {
     const result = await svc.runForcedExecution({
       message: '请静力分析并规范校核并生成报告',
       context: {
-        skillIds: ['code-check-gb50017'],
+        skillIds: ['opensees-static', 'code-check-gb50017'],
         disabledToolIds: ['run_code_check', 'generate_report'],
         model: {
           schema_version: '1.0.0',
@@ -635,7 +633,7 @@ describe('AgentService orchestration', () => {
           load_combinations: [],
         },
         engineId: 'builtin-opensees',
-        skillIds: ['code-check-gb50017'],
+        skillIds: ['opensees-static', 'validation-structure-model', 'code-check-gb50017'],
         autoAnalyze: true,
         autoCodeCheck: true,
       },
@@ -670,7 +668,7 @@ describe('AgentService orchestration', () => {
           load_cases: [],
           load_combinations: [],
         },
-        skillIds: ['code-check-gb50017'],
+        skillIds: ['opensees-static', 'code-check-gb50017'],
         autoAnalyze: true,
         autoCodeCheck: true,
       },
@@ -2360,7 +2358,7 @@ describe('AgentService orchestration', () => {
           load_cases: [{ id: 'LC1', type: 'other', loads: [{ type: 'distributed', element: '1', wz: -10 }] }],
           load_combinations: [{ id: 'ULS', factors: { LC1: 1 } }],
         },
-        skillIds: ['code-check-gb50017'],
+        skillIds: ['opensees-static', 'validation-structure-model', 'code-check-gb50017'],
         autoAnalyze: true,
         autoCodeCheck: true,
         includeReport: true,
@@ -2479,7 +2477,7 @@ describe('AgentService orchestration', () => {
           load_cases: [],
           load_combinations: [],
         },
-        skillIds: ['code-check-gb50017'],
+        skillIds: ['opensees-static', 'code-check-gb50017', 'report-export-builtin'],
         autoAnalyze: true,
         autoCodeCheck: true,
         includeReport: true,

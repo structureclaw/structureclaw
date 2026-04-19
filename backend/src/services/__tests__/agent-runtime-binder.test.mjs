@@ -148,7 +148,7 @@ describe('agent runtime binder', () => {
     expect(active).toEqual([]);
   });
 
-  test('legacy auto-activation adds analysis capability for natural structural design requests', async () => {
+  test('strict mode: no auto-activation when skills are empty', async () => {
     const binder = new AgentRuntimeBinder(
       {
         listSkillManifests: async () => [],
@@ -169,7 +169,32 @@ describe('agent runtime binder', () => {
       context: { includeReport: false },
     });
 
-    expect(active).toEqual(['analysis-static', 'validation-structure-model']);
+    expect(active).toEqual([]);
+  });
+
+  test('strict mode: only user-selected skills are active', async () => {
+    const binder = new AgentRuntimeBinder(
+      {
+        listSkillManifests: async () => [],
+        resolvePreferredAnalysisSkill: () => ({ id: 'analysis-static' }),
+        resolveCodeCheckDesignCodeFromSkillIds: () => undefined,
+        resolveCodeCheckSkillId: () => undefined,
+        resolveSkillTooling: async () => ({ tools: [], skillIdsByToolId: {} }),
+        listBuiltinToolManifests: () => [],
+        resolveDefaultSkillForDomain: () => 'validation-structure-model',
+      },
+      new AgentPolicyService(),
+    );
+
+    const active = await binder.resolveActiveDomainSkillIds({
+      selectedSkillIds: ['generic', 'opensees-static'],
+      workingSession: { updatedAt: 0 },
+      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      context: {},
+    });
+
+    // Only user-selected skills, no auto-activation of validation/report/codeCheck
+    expect(active).toEqual(['generic', 'opensees-static']);
   });
 
   // --- assertStepAuthorization ---

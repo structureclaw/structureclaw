@@ -94,86 +94,11 @@ export class AgentRuntimeBinder {
       return Array.from(activatedSkillIds).sort();
     }
 
-    // Legacy auto-activation path (current agent.ts does not pass providerBindings).
-    // Phase 4 will switch to the provider-first path above.
+    // Strict mode: only use skills the user explicitly selected.
+    // No auto-activation of any skill — validation, analysis, report, code-check,
+    // postprocess, structural-type — all must come from the user's selection.
     if (args.hasEmptySkillSelection?.(args.selectedSkillIds)) {
       return [];
-    }
-
-    const manifests = await this.skillRuntime.listSkillManifests();
-    const selectedSkillSet = new Set(selectedSkillIds);
-    const structuralSkillId = args.workingSession.structuralTypeMatch?.skillId
-      || args.workingSession.draft?.skillId
-      || manifests.find((manifest) => manifest.domain === 'structure-type' && selectedSkillSet.has(manifest.id))?.id;
-    if (structuralSkillId) {
-      activatedSkillIds.add(structuralSkillId);
-    }
-
-    const hasStructuralContext = Boolean(structuralSkillId || args.workingSession.draft || args.modelInput || args.workingSession.latestModel);
-    const hasExecutionIntent = this.policy.inferExecutionIntent(args.message) || this.policy.inferProceedIntent(args.message);
-    const analysisType = args.workingSession.resolved?.analysisType
-      || args.context?.analysisType
-      || this.policy.inferAnalysisType?.(args.message)
-      || 'static';
-    const explicitDesignCode = args.workingSession.resolved?.designCode
-      || args.context?.designCode
-      || this.policy.inferDesignCode?.(args.message);
-    const designCode = explicitDesignCode || this.skillRuntime.resolveCodeCheckDesignCodeFromSkillIds(selectedSkillIds);
-    const codeCheckIntent = this.policy.inferCodeCheckIntent?.(args.message) ?? false;
-    const reportIntent = this.policy.inferReportIntent?.(args.message);
-
-    const shouldActivateValidation = hasStructuralContext
-      || hasExecutionIntent
-      || codeCheckIntent
-      || reportIntent === true;
-    if (shouldActivateValidation) {
-      activatedSkillIds.add('validation-structure-model');
-    }
-
-    if (hasStructuralContext || hasExecutionIntent || args.context?.autoAnalyze === true) {
-      const preferredAnalysisSkill = this.skillRuntime.resolvePreferredAnalysisSkill({
-        analysisType,
-        engineId: args.context?.engineId,
-        skillIds: selectedSkillIds,
-        supportedModelFamilies: this.resolvePreferredAnalysisModelFamilies({
-          workingSession: args.workingSession,
-          modelInput: args.modelInput,
-        }),
-      });
-      if (preferredAnalysisSkill) {
-        activatedSkillIds.add(preferredAnalysisSkill.id);
-      }
-    }
-
-    const shouldActivateCodeCheck = Boolean(designCode) && (
-      args.workingSession.resolved?.autoCodeCheck
-      ?? args.context?.autoCodeCheck
-      ?? codeCheckIntent
-      ?? true
-    );
-    if (shouldActivateCodeCheck) {
-      const codeCheckSkillId = this.skillRuntime.resolveCodeCheckSkillId(designCode);
-      if (codeCheckSkillId) {
-        activatedSkillIds.add(codeCheckSkillId);
-      }
-    }
-
-    const shouldActivateReport = (
-      args.workingSession.resolved?.includeReport
-      ?? args.context?.includeReport
-      ?? true
-    ) && (hasStructuralContext || hasExecutionIntent || reportIntent === true);
-    if (shouldActivateReport) {
-      activatedSkillIds.add('report-export-builtin');
-    }
-
-    // Postprocess: auto-activate when analysis will run
-    const shouldActivatePostprocess = hasStructuralContext || hasExecutionIntent || args.context?.autoAnalyze === true;
-    if (shouldActivatePostprocess) {
-      const postprocessSkill = this.skillRuntime.resolveDefaultSkillForDomain('result-postprocess');
-      if (postprocessSkill) {
-        activatedSkillIds.add(postprocessSkill);
-      }
     }
 
     if (activatedSkillIds.size === 0) {

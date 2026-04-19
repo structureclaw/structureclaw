@@ -194,6 +194,11 @@ export class AgentSkillRuntime {
     if (matchedSelected.length > 0) {
       return matchedSelected[0];
     }
+    // Strict mode: only return analysis skills the user explicitly selected.
+    // No fallback to any analysis skill outside the selected set.
+    if (selectedSkillIds.size > 0) {
+      return undefined;
+    }
     return analysisSkills.find((skill) => matchesContext(skill));
   }
 
