@@ -499,7 +499,7 @@ function phaseForToolCall(tool: string): PresentationPhase {
   return 'modeling';
 }
 
-function skillIdForToolCall(tool: string, routing?: PresentationResultLike['routing']): string | undefined {
+export function skillIdForToolCall(tool: string, routing?: PresentationResultLike['routing']): string | undefined {
   if (tool === 'draft_model' || tool === 'update_model' || tool === 'convert_model') {
     return routing?.structuralSkillId;
   }
