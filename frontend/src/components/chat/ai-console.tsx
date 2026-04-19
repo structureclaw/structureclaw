@@ -3231,7 +3231,13 @@ export function AIConsole() {
                       </div>
                     )}
                     {message.status === 'streaming' && !message.presentation && (
-                      <span className="ml-2 inline-flex h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.9)]" />
+                      <div className="flex items-center gap-2 mt-2">
+                        <svg className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-600 dark:text-cyan-300" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        <span className="text-sm text-muted-foreground">{t('presentationPlanning')}</span>
+                      </div>
                     )}
                     {message.status === 'aborted' && (
                       <span className="ml-2 inline-flex items-center gap-1 text-xs text-rose-500 dark:text-rose-400">

@@ -133,6 +133,8 @@ export function MessagePresentationView({
   t: (key: MessageKey) => string
   resolveSkillName?: SkillNameResolver
 }) {
+  const isStreamingEmpty = presentation.status === 'streaming' && (presentation.phases?.length ?? 0) === 0
+
   return (
     <div className="space-y-3">
       {presentation.summaryText ? (
@@ -140,6 +142,16 @@ export function MessagePresentationView({
           {presentation.summaryText}
         </div>
       ) : null}
+
+      {isStreamingEmpty && (
+        <div className="flex items-center gap-2 rounded-2xl border border-border/70 bg-background/60 px-3 py-3 dark:border-white/10 dark:bg-slate-950/40">
+          <svg className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-600 dark:text-cyan-300" viewBox="0 0 24 24" fill="none">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+          <span className="text-sm text-muted-foreground">{t('presentationPlanning')}</span>
+        </div>
+      )}
 
       {(presentation.phases?.length ?? 0) > 0 ? (
         <div className="space-y-2 rounded-2xl border border-border/70 bg-background/60 px-3 py-3 dark:border-white/10 dark:bg-slate-950/40">
@@ -226,6 +238,15 @@ export function MessagePresentationView({
               )
             })}
           </div>
+          {presentation.status === 'streaming' && (
+            <div className="flex items-center gap-2 pt-1">
+              <svg className="h-3 w-3 shrink-0 animate-spin text-cyan-600 dark:text-cyan-300" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              <span className="text-xs text-muted-foreground">{t('presentationRunning')}</span>
+            </div>
+          )}
         </div>
       ) : null}
     </div>

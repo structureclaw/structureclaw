@@ -521,6 +521,13 @@ function buildArtifactPayloadChunk(
   };
 }
 
+function normalizePresentationPayload(payload: unknown): Record<string, unknown> | undefined {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return undefined;
+  }
+  return payload as Record<string, unknown>;
+}
+
 function buildInteractionTimelineTitle(interaction: AgentInteraction, locale: AppLocale): string {
   if (interaction.state === 'collecting') {
     return locale === 'zh' ? '补充建模信息' : 'Need more modeling details';
@@ -532,13 +539,6 @@ function buildInteractionTimelineTitle(interaction: AgentInteraction, locale: Ap
     return locale === 'zh' ? '交互已阻止' : 'Interaction blocked';
   }
   return locale === 'zh' ? '交互更新' : 'Interaction update';
-}
-
-function normalizePresentationPayload(payload: unknown): Record<string, unknown> | undefined {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return undefined;
-  }
-  return payload as Record<string, unknown>;
 }
 
 function applySchedulerStepResult(args: {
