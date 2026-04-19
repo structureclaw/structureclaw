@@ -710,6 +710,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
             assistantContent = resultContent.clarification.question;
           }
           if (resultContent && typeof resultContent === 'object') {
+            const preRebuildPhases = assistantPresentation.phases;
             assistantPresentation = rebuildAssistantPresentationFromResult({
               base: assistantPresentation,
               result: resultContent as Parameters<typeof rebuildAssistantPresentationFromResult>[0]['result'],
@@ -718,6 +719,19 @@ export async function chatRoutes(fastify: FastifyInstance) {
               traceId: streamTraceId,
               startedAt: assistantPresentation.startedAt,
             });
+            // Emit diff: any new/updated phases and steps from the rebuild
+            for (const phase of assistantPresentation.phases) {
+              const prePhase = preRebuildPhases.find((p) => p.phaseId === phase.phaseId);
+              if (!prePhase || prePhase.status !== phase.status || prePhase.steps.length !== phase.steps.length) {
+                reply.raw.write(`data: ${JSON.stringify({ type: 'phase_upsert', phase })}\n\n`);
+              }
+              for (const step of phase.steps) {
+                const preStep = prePhase?.steps.find((s) => s.id === step.id);
+                if (!preStep || preStep.status !== step.status || preStep.skillId !== step.skillId) {
+                  reply.raw.write(`data: ${JSON.stringify({ type: 'step_upsert', phaseId: phase.phaseId, step })}\n\n`);
+                }
+              }
+            }
           }
           if (!assistantPresentation.summaryText && assistantContent.trim().length > 0) {
             assistantPresentation = reducePresentationEvent(assistantPresentation, {

@@ -3215,7 +3215,15 @@ export function AIConsole() {
                       <span className="text-slate-500">{formatDate(message.timestamp, locale)}</span>
                     </div>
                     {message.presentation && (
-                      <MessagePresentationView presentation={message.presentation} t={t} />
+                      <MessagePresentationView
+                        presentation={message.presentation}
+                        t={t}
+                        resolveSkillName={(skillId: string) => {
+                          const skill = availableSkills.find((s) => s.id === skillId)
+                          if (!skill) return skillId
+                          return locale === 'zh' ? (skill.name.zh || skill.name.en || skillId) : (skill.name.en || skill.name.zh || skillId)
+                        }}
+                      />
                     )}
                     {!message.presentation && message.content && (
                       <div className="whitespace-pre-wrap text-sm leading-7">

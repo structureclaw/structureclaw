@@ -122,12 +122,16 @@ export function reducePresentationEvent(
 
 // --- View ---
 
+export type SkillNameResolver = (skillId: string) => string | undefined
+
 export function MessagePresentationView({
   presentation,
   t,
+  resolveSkillName,
 }: {
   presentation: AssistantPresentation
   t: (key: MessageKey) => string
+  resolveSkillName?: SkillNameResolver
 }) {
   return (
     <div className="space-y-3">
@@ -170,14 +174,11 @@ export function MessagePresentationView({
                               <div className="flex items-center gap-1.5">
                                 {step.skillId ? (
                                   <span className="inline-flex shrink-0 items-center rounded bg-violet-100 px-1 py-px text-[10px] font-medium leading-none text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">
-                                    {t('presentationKindSkill')}
+                                    {resolveSkillName?.(step.skillId) ?? step.skillId}
                                   </span>
                                 ) : null}
                                 <span className="text-sm font-medium text-foreground">{step.title}</span>
                               </div>
-                              {step.skillId ? (
-                                <span className="text-[11px] text-muted-foreground">{step.skillId}</span>
-                              ) : null}
                             </div>
                             <Badge
                               variant="outline"
