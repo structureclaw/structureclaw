@@ -3,6 +3,7 @@
 Thumbs.db
 .vscode/
 .idea/
+.playwright-mcp/
 .claude/
 
 # Environment and local runtime config
