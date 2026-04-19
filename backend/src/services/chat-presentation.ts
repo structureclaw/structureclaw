@@ -338,35 +338,11 @@ function buildPhaseSignals(result: PresentationResultLike): TimelinePhaseGroup[]
     });
   };
 
-  for (const phase of phasesFromRouting(result.routing)) {
-    addPhase(phase);
-  }
   for (const call of result.toolCalls || []) {
     addPhase(phaseForToolCall(call.tool), call.status === 'error' ? 'error' : 'running');
   }
 
   return orderedPhases([...phases.values()]);
-}
-
-function phasesFromRouting(routing: PresentationResultLike['routing']): PresentationPhase[] {
-  if (!routing) {
-    return [];
-  }
-
-  const phases: PresentationPhase[] = [];
-  if (routing.structuralSkillId || uniqueStrings(routing.selectedSkillIds).length > 0) {
-    phases.push('modeling');
-  }
-  if (routing.validationSkillId) {
-    phases.push('validation');
-  }
-  if (routing.analysisSkillId || uniqueStrings(routing.analysisSkillIds).length > 0 || routing.codeCheckSkillId) {
-    phases.push('analysis');
-  }
-  if (routing.reportSkillId) {
-    phases.push('report');
-  }
-  return Array.from(new Set(phases));
 }
 
 // --- Internal upsert helpers ---
