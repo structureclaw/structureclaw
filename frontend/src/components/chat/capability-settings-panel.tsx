@@ -215,7 +215,7 @@ export function CapabilitySettingsPanel() {
 
   const defaultSelectedSkillIds = useMemo(() => {
     const available = new Set(availableSkills.map((skill) => skill.id))
-    return ['opensees-static', 'generic'].filter((skillId) => available.has(skillId))
+    return ['opensees-static', 'generic', 'validation-structure-model', 'report-export-builtin'].filter((skillId) => available.has(skillId))
   }, [availableSkills])
 
   const initialDefaultToolIds = useMemo(
