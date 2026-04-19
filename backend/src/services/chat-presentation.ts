@@ -632,8 +632,14 @@ export function toolTitle(tool: string, status: 'running' | 'done' | 'error', lo
 }
 
 function toolStartTitle(tool: string, locale: 'en' | 'zh'): string {
-  if (tool === 'draft_model' || tool === 'update_model' || tool === 'convert_model') {
+  if (tool === 'draft_model') {
     return locale === 'zh' ? '生成结构模型' : 'Generating structural model';
+  }
+  if (tool === 'update_model') {
+    return locale === 'zh' ? '更新结构模型' : 'Updating structural model';
+  }
+  if (tool === 'convert_model') {
+    return locale === 'zh' ? '转换分析模型' : 'Converting analysis model';
   }
   if (tool === 'validate_model') {
     return locale === 'zh' ? '校验模型' : 'Validating model';
@@ -648,8 +654,14 @@ function toolStartTitle(tool: string, locale: 'en' | 'zh'): string {
 }
 
 function toolDoneTitle(tool: string, locale: 'en' | 'zh'): string {
-  if (tool === 'draft_model' || tool === 'update_model' || tool === 'convert_model') {
+  if (tool === 'draft_model') {
     return locale === 'zh' ? '结构模型已生成' : 'Structural model generated';
+  }
+  if (tool === 'update_model') {
+    return locale === 'zh' ? '结构模型已更新' : 'Structural model updated';
+  }
+  if (tool === 'convert_model') {
+    return locale === 'zh' ? '分析模型已转换' : 'Analysis model converted';
   }
   if (tool === 'validate_model') {
     return locale === 'zh' ? '模型校验完成' : 'Model validation completed';
@@ -664,8 +676,14 @@ function toolDoneTitle(tool: string, locale: 'en' | 'zh'): string {
 }
 
 function toolErrorTitle(tool: string, locale: 'en' | 'zh'): string {
-  if (tool === 'draft_model' || tool === 'update_model' || tool === 'convert_model') {
+  if (tool === 'draft_model') {
     return locale === 'zh' ? '结构模型生成失败' : 'Structural model generation failed';
+  }
+  if (tool === 'update_model') {
+    return locale === 'zh' ? '结构模型更新失败' : 'Structural model update failed';
+  }
+  if (tool === 'convert_model') {
+    return locale === 'zh' ? '分析模型转换失败' : 'Analysis model conversion failed';
   }
   if (tool === 'validate_model') {
     return locale === 'zh' ? '模型校验失败' : 'Model validation failed';

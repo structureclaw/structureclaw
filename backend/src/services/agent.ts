@@ -1713,6 +1713,12 @@ export class AgentService {
         }
       }
 
+      // Pre-resolve structural skill from selected skills so scheduler and
+      // emitStepUpdate can show the skill badge even before draft_model runs.
+      const preResolvedStructuralSkillId = workingSession.structuralTypeMatch?.skillId
+        || workingSession.draft?.skillId
+        || await this.resolveStructuralSkillFromActive(skillIds);
+
       const schedulerPlan = this.pipelineScheduler.plan({
         message: params.message,
         locale,
@@ -1730,7 +1736,7 @@ export class AgentService {
         },
         consumerContracts: await this.resolveConsumerContracts(skillIds ?? []),
         enricherContracts: await this.resolveEnricherContracts(skillIds ?? []),
-        structuralSkillId: workingSession.structuralTypeMatch?.skillId || workingSession.draft?.skillId,
+        structuralSkillId: preResolvedStructuralSkillId,
       });
 
       if (schedulerPlan.blockedReason) {
@@ -1889,7 +1895,7 @@ export class AgentService {
             status: updates.status,
             tool: step.tool,
             skillId: step.skillId || skillIdForToolCall(step.tool, {
-              structuralSkillId: workingSession.structuralTypeMatch?.skillId || workingSession.draft?.skillId,
+              structuralSkillId: workingSession.structuralTypeMatch?.skillId || workingSession.draft?.skillId || preResolvedStructuralSkillId,
               validationSkillId: pipelineState.bindings.validationSkillId,
               analysisSkillId: pipelineState.bindings.analysisProviderSkillId,
               codeCheckSkillId: pipelineState.bindings.codeCheckProviderSkillId,
@@ -4431,6 +4437,13 @@ export class AgentService {
         skillId: m.id,
         priority: (m.runtimeContract as { priority?: number })?.priority ?? m.priority,
       }));
+  }
+
+  private async resolveStructuralSkillFromActive(activeSkillIds?: string[]): Promise<string | undefined> {
+    if (!activeSkillIds || activeSkillIds.length === 0) return undefined;
+    const manifests = await this.skillRuntime.listSkillManifests();
+    const activeSet = new Set(activeSkillIds);
+    return manifests.find((m) => m.domain === 'structure-type' && activeSet.has(m.id))?.id;
   }
 
   private buildResolvedRouting(
