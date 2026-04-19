@@ -162,6 +162,12 @@ export function MessagePresentationView({
                         phase.status === 'running' && 'border-cyan-300/50 text-cyan-700 dark:text-cyan-200',
                       )}
                     >
+                      {phase.status === 'running' && (
+                        <svg className="h-3 w-3 shrink-0 animate-spin text-cyan-600 dark:text-cyan-300" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                      )}
                       {getPhaseStatusLabel(phase.status, t)}
                     </Badge>
                   </summary>
@@ -188,6 +194,12 @@ export function MessagePresentationView({
                                 step.status === 'running' && 'border-cyan-300/50 text-cyan-700 dark:text-cyan-200',
                               )}
                             >
+                              {step.status === 'running' && (
+                                <svg className="h-3 w-3 shrink-0 animate-spin text-cyan-600 dark:text-cyan-300" viewBox="0 0 24 24" fill="none">
+                                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                                </svg>
+                              )}
                               {getStepStatusLabel(step.status, t)}
                             </Badge>
                           </div>
