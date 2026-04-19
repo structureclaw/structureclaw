@@ -1875,16 +1875,18 @@ export class AgentService {
         const phase = mapToolToPresentationPhase(step.tool);
         const phaseId = buildPhaseId(phase);
 
-        onStepEvent?.({
-          type: 'phase_upsert',
-          phase: {
-            phaseId,
-            phase,
-            title: phaseTitle(phase, locale),
-            status: 'running',
-            steps: [],
-          },
-        });
+        if (updates.status === 'running') {
+          onStepEvent?.({
+            type: 'phase_upsert',
+            phase: {
+              phaseId,
+              phase,
+              title: phaseTitle(phase, locale),
+              status: 'running',
+              steps: [],
+            },
+          });
+        }
 
         onStepEvent?.({
           type: 'step_upsert',

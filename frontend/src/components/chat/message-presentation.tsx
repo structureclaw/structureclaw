@@ -275,11 +275,17 @@ function upsertPhase(phases: TimelinePhaseGroup[], nextPhase: TimelinePhaseGroup
     return [...phases, { ...nextPhase, steps: nextPhase.steps || [] }]
   }
   const existing = phases[index]
+  // Don't regress phase status: if steps already derived 'done', don't override with 'running'
+  const stepsToUse = (nextPhase.steps && nextPhase.steps.length > 0) ? nextPhase.steps : existing.steps
+  const allDone = stepsToUse.length > 0 && stepsToUse.every((s) => s.status === 'done')
+  const hasError = stepsToUse.some((s) => s.status === 'error')
+  const derivedStatus: PresentationPhaseStatus = hasError ? 'error' : allDone ? 'done' : nextPhase.status
   const next = [...phases]
   next[index] = {
     ...existing,
     ...nextPhase,
-    steps: (nextPhase.steps && nextPhase.steps.length > 0) ? nextPhase.steps : existing.steps,
+    status: derivedStatus,
+    steps: stepsToUse,
   }
   return next
 }
@@ -291,9 +297,14 @@ function upsertStep(phases: TimelinePhaseGroup[], phaseId: string, step: Timelin
   }
   const next = [...phases]
   const phase = next[phaseIndex]
+  const nextSteps = upsertById(phase.steps, step)
+  const allDone = nextSteps.length > 0 && nextSteps.every((s) => s.status === 'done')
+  const hasError = nextSteps.some((s) => s.status === 'error')
+  const nextStatus: PresentationPhaseStatus = hasError ? 'error' : allDone ? 'done' : 'running'
   next[phaseIndex] = {
     ...phase,
-    steps: upsertById(phase.steps, step),
+    status: nextStatus,
+    steps: nextSteps,
   }
   return next
 }
