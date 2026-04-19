@@ -26,7 +26,10 @@ import { MessageBlocksView } from './message-blocks'
 import {
   MessagePresentationView,
   reducePresentationEvent,
-  type AssistantPresentationV1,
+  type AssistantPresentation,
+  type TimelinePhaseGroup,
+  type TimelineEventItem,
+  type PresentationArtifactState,
 } from './message-presentation'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { API_BASE } from '@/lib/api-base'
@@ -50,7 +53,7 @@ type Message = {
   timestamp: string
   debugDetails?: MessageDebugDetails
   blocks?: MessageBlock[]
-  presentation?: AssistantPresentationV1
+  presentation?: AssistantPresentation
 }
 
 type AgentToolCall = {
@@ -83,7 +86,7 @@ type MessageMetadata = {
   debugDetails?: MessageDebugDetails
   status?: 'done' | 'error' | 'aborted'
   traceId?: string
-  presentation?: AssistantPresentationV1
+  presentation?: AssistantPresentation
 }
 
 type AgentInteraction = {
@@ -135,13 +138,14 @@ type StreamPayload =
   | { type: 'start'; content?: { traceId?: string; conversationId?: string; startedAt?: string } }
   | { type: 'token'; content?: string }
   | { type: 'interaction_update'; content?: AgentInteraction }
-  | { type: 'presentation_init'; presentation?: AssistantPresentationV1 }
-  | { type: 'timeline_item_upsert'; item?: AssistantPresentationV1['timeline'][number] }
-  | { type: 'artifact_upsert'; artifact?: AssistantPresentationV1['artifacts'][number] }
+  | { type: 'presentation_init'; presentation?: AssistantPresentation }
+  | { type: 'phase_upsert'; phase?: TimelinePhaseGroup }
+  | { type: 'timeline_item_upsert'; phaseId?: string; item?: TimelineEventItem }
+  | { type: 'artifact_upsert'; artifact?: PresentationArtifactState }
   | { type: 'artifact_payload_sync'; artifact?: 'model' | 'analysis' | 'report'; model?: Record<string, unknown>; latestResult?: AgentResult; snapshot?: VisualizationSnapshot }
   | { type: 'summary_replace'; summaryText?: string }
   | { type: 'presentation_complete'; completedAt?: string }
-  | { type: 'presentation_error'; error?: Extract<AssistantPresentationV1['timeline'][number], { kind: 'error' }> }
+  | { type: 'presentation_error'; error?: Extract<TimelineEventItem, { kind: 'error' }> }
   | { type: 'result'; content?: AgentResult }
   | { type: 'done' }
   | { type: 'error'; error?: string }
@@ -228,7 +232,7 @@ async function saveConversationMessagesToBackend(
     assistantContent: string
     assistantAborted?: boolean
     traceId?: string
-    assistantPresentation?: AssistantPresentationV1
+    assistantPresentation?: AssistantPresentation
   }
 ): Promise<void> {
   if (!conversationId) return
@@ -522,20 +526,13 @@ function parsePersistedDebugDetails(metadata: unknown): MessageDebugDetails | un
   }
 }
 
-function parsePersistedPresentation(metadata: unknown): AssistantPresentationV1 | undefined {
+function parsePersistedPresentation(metadata: unknown): AssistantPresentation | undefined {
   const metadataRecord = toObjectRecord(metadata)
   const presentationRecord = toObjectRecord(metadataRecord?.presentation)
   if (!presentationRecord) {
     return undefined
   }
 
-  const summaryText = typeof presentationRecord.summaryText === 'string' ? presentationRecord.summaryText : ''
-  const timeline = Array.isArray(presentationRecord.timeline)
-    ? presentationRecord.timeline.filter((item): item is AssistantPresentationV1['timeline'][number] => Boolean(item && typeof item === 'object'))
-    : []
-  const artifacts = Array.isArray(presentationRecord.artifacts)
-    ? presentationRecord.artifacts.filter((item): item is AssistantPresentationV1['artifacts'][number] => Boolean(item && typeof item === 'object'))
-    : []
   const status = presentationRecord.status === 'done'
     || presentationRecord.status === 'error'
     || presentationRecord.status === 'aborted'
@@ -543,17 +540,76 @@ function parsePersistedPresentation(metadata: unknown): AssistantPresentationV1 
     ? presentationRecord.status
     : 'done'
   const mode = presentationRecord.mode === 'conversation' ? 'conversation' : 'execution'
+  const summaryText = typeof presentationRecord.summaryText === 'string' ? presentationRecord.summaryText : ''
+  const traceId = typeof presentationRecord.traceId === 'string' ? presentationRecord.traceId : undefined
+  const startedAt = typeof presentationRecord.startedAt === 'string' ? presentationRecord.startedAt : undefined
+  const completedAt = typeof presentationRecord.completedAt === 'string' ? presentationRecord.completedAt : undefined
+  const errorMessage = typeof presentationRecord.errorMessage === 'string' ? presentationRecord.errorMessage : undefined
+
+  const artifacts = Array.isArray(presentationRecord.artifacts)
+    ? presentationRecord.artifacts.filter((item): item is PresentationArtifactState => Boolean(item && typeof item === 'object'))
+    : []
+
+  // v2 data with phases — use directly
+  if (presentationRecord.version === 2 && Array.isArray(presentationRecord.phases)) {
+    const phases = presentationRecord.phases.filter(
+      (p): p is TimelinePhaseGroup => Boolean(p && typeof p === 'object'),
+    )
+    return {
+      version: 2,
+      mode,
+      status,
+      summaryText,
+      phases,
+      artifacts,
+      traceId,
+      startedAt,
+      completedAt,
+      errorMessage,
+    }
+  }
+
+  // v1 data with flat timeline — wrap items in a single phase group for backward compat
+  const timeline = Array.isArray(presentationRecord.timeline)
+    ? presentationRecord.timeline.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+    : []
+  const wrappedItems: TimelineEventItem[] = timeline.map((item, index) => ({
+    id: typeof item.id === 'string' ? item.id : `legacy-${index}`,
+    kind: 'assistant_reply' as const,
+    phase: 'understanding' as const,
+    status: 'done' as const,
+    title: typeof (item as Record<string, unknown>).title === 'string'
+      ? (item as Record<string, unknown>).title as string
+      : typeof (item as Record<string, unknown>).previewText === 'string'
+        ? (item as Record<string, unknown>).previewText as string
+        : 'Legacy item',
+    text: typeof (item as Record<string, unknown>).rawUserFacingText === 'string'
+      ? (item as Record<string, unknown>).rawUserFacingText as string
+      : typeof (item as Record<string, unknown>).explanationText === 'string'
+        ? (item as Record<string, unknown>).explanationText as string
+        : '',
+  }))
 
   return {
-    version: 1,
+    version: 2,
     mode,
     status,
     summaryText,
-    timeline,
+    phases: wrappedItems.length > 0
+      ? [{
+          phaseId: 'phase:legacy',
+          phase: 'understanding',
+          status: status === 'error' ? 'error' : 'done',
+          items: wrappedItems,
+          startedAt,
+          completedAt,
+        }]
+      : [],
     artifacts,
-    traceId: typeof presentationRecord.traceId === 'string' ? presentationRecord.traceId : undefined,
-    startedAt: typeof presentationRecord.startedAt === 'string' ? presentationRecord.startedAt : undefined,
-    completedAt: typeof presentationRecord.completedAt === 'string' ? presentationRecord.completedAt : undefined,
+    traceId,
+    startedAt,
+    completedAt,
+    errorMessage,
   }
 }
 
@@ -1569,7 +1625,7 @@ export function AIConsole() {
   const streamingSessionsRef = useRef<Map<string, StreamSession>>(new Map())
   const [currentBlocks, setCurrentBlocks] = useState<BlocksState | null>(null);
   const currentBlocksRef = useRef<BlocksState | null>(null);
-  const currentPresentationRef = useRef<AssistantPresentationV1 | null>(null)
+  const currentPresentationRef = useRef<AssistantPresentation | null>(null)
   const conversationIdRef = useRef(conversationId)
   const submittingRef = useRef(false)
   const [isStreaming, setIsStreaming] = useState(false)
@@ -2581,7 +2637,7 @@ export function AIConsole() {
     setIsStreaming(true)
 
     const syncAssistantPresentationMessage = (
-      nextPresentation: AssistantPresentationV1,
+      nextPresentation: AssistantPresentation,
       nextStatus: Message['status'] = nextPresentation.status === 'done'
         ? 'done'
         : nextPresentation.status === 'error'
@@ -2784,9 +2840,18 @@ export function AIConsole() {
             syncAssistantPresentationMessage(payload.presentation, 'streaming')
           }
 
-          if (payload.type === 'timeline_item_upsert' && payload.item && currentPresentationRef.current) {
+          if (payload.type === 'phase_upsert' && payload.phase && currentPresentationRef.current) {
+            const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
+              type: 'phase_upsert',
+              phase: payload.phase,
+            })
+            syncAssistantPresentationMessage(nextPresentation, 'streaming')
+          }
+
+          if (payload.type === 'timeline_item_upsert' && payload.phaseId && payload.item && currentPresentationRef.current) {
             const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
               type: 'timeline_item_upsert',
+              phaseId: payload.phaseId,
               item: payload.item,
             })
             syncAssistantPresentationMessage(nextPresentation, 'streaming')
@@ -2954,7 +3019,7 @@ export function AIConsole() {
             const enrichedBlocks = currentBlocksRef.current
               ? enrichBlocksWithToolCalls(currentBlocksRef.current, normalizeToolCalls(result.toolCalls))
               : undefined
-            let nextPresentation: AssistantPresentationV1 | null = currentPresentationRef.current
+            let nextPresentation: AssistantPresentation | null = currentPresentationRef.current
             if (nextPresentation) {
               if (!nextPresentation.summaryText) {
                 nextPresentation = reducePresentationEvent(nextPresentation, {

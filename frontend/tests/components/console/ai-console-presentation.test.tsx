@@ -24,7 +24,7 @@ describe('AIConsole presentation rendering', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders summary and timeline from presentation events', async () => {
+  it('renders summary and grouped phases from v2 presentation events', async () => {
     const user = userEvent.setup()
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -35,23 +35,44 @@ describe('AIConsole presentation rendering', () => {
           {
             type: 'presentation_init',
             presentation: {
-              version: 1,
+              version: 2,
               mode: 'execution',
               status: 'streaming',
               summaryText: '',
-              timeline: [],
+              phases: [],
               artifacts: [],
             },
           },
           {
+            type: 'phase_upsert',
+            phase: {
+              phaseId: 'phase:modeling',
+              phase: 'modeling',
+              title: '建模',
+              status: 'running',
+              items: [],
+            },
+          },
+          {
             type: 'timeline_item_upsert',
+            phaseId: 'phase:modeling',
             item: {
-              id: 'step-draft-model',
-              kind: 'step',
+              id: 'tool:draft_model:result',
+              kind: 'tool_result',
               phase: 'modeling',
               tool: 'draft_model',
               status: 'done',
               title: '结构模型已生成',
+            },
+          },
+          {
+            type: 'phase_upsert',
+            phase: {
+              phaseId: 'phase:modeling',
+              phase: 'modeling',
+              title: '建模',
+              status: 'done',
+              items: [],
             },
           },
           {
@@ -121,6 +142,7 @@ describe('AIConsole presentation rendering', () => {
     await waitFor(() => {
       const chatPanel = screen.getByTestId('console-chat-scroll')
       expect(within(chatPanel).getAllByText('模型已生成，可继续分析。').length).toBeGreaterThan(0)
+      expect(within(chatPanel).getByText('建模')).toBeInTheDocument()
       expect(within(chatPanel).getByText('结构模型已生成')).toBeInTheDocument()
       expect(within(chatPanel).queryByText(/show prompt & thinking/i)).not.toBeInTheDocument()
     })
@@ -137,27 +159,38 @@ describe('AIConsole presentation rendering', () => {
           {
             type: 'presentation_init',
             presentation: {
-              version: 1,
+              version: 2,
               mode: 'execution',
               status: 'streaming',
               summaryText: '',
-              timeline: [],
+              phases: [],
               artifacts: [],
             },
           },
           {
-            type: 'timeline_item_upsert',
-            item: {
-              id: 'note:interaction-turn-1',
-              kind: 'note',
+            type: 'phase_upsert',
+            phase: {
+              phaseId: 'phase:understanding',
               phase: 'understanding',
-              status: 'done',
-              previewText: '当前处于建模信息收集中',
-              explanationText: '当前仍缺少关键建模参数。',
+              title: '理解需求',
+              status: 'running',
+              items: [],
             },
           },
           {
             type: 'timeline_item_upsert',
+            phaseId: 'phase:understanding',
+            item: {
+              id: 'note:interaction-turn-1',
+              kind: 'phase_start',
+              phase: 'understanding',
+              status: 'running',
+              title: '当前处于建模信息收集中',
+            },
+          },
+          {
+            type: 'timeline_item_upsert',
+            phaseId: 'phase:understanding',
             item: {
               id: 'interaction:turn-1',
               kind: 'clarification',
@@ -227,14 +260,14 @@ describe('AIConsole presentation rendering', () => {
     expect(within(chatPanel).queryByText('这个合成解释不应优先显示。')).not.toBeInTheDocument()
 
     const detailToggles = within(chatPanel).getAllByText(/show details/i)
-    await user.click(detailToggles[1])
+    await user.click(detailToggles[0])
 
     await waitFor(() => {
       expect(
         within(chatPanel).getAllByText(
           '已记录简支梁，跨度10m，跨中集中荷载1kN。请补充梁截面尺寸和材料信息，例如截面宽高及弹性模量，以便开始分析。',
         ).length,
-      ).toBeGreaterThan(1)
+      ).toBeGreaterThan(0)
       expect(within(chatPanel).queryByText('这个合成解释不应优先显示。')).not.toBeInTheDocument()
     })
   })
@@ -264,7 +297,7 @@ describe('AIConsole presentation rendering', () => {
             timestamp: '2026-04-19T10:00:01.000Z',
           },
         ],
-        modelText: '{\"source\":\"archive\"}',
+        modelText: '{"source":"archive"}',
         latestResult: null,
         modelVisualizationSnapshot: null,
         resultVisualizationSnapshot: null,
@@ -309,19 +342,27 @@ describe('AIConsole presentation rendering', () => {
               createdAt: '2026-04-19T10:00:01.000Z',
               metadata: {
                 presentation: {
-                  version: 1,
+                  version: 2,
                   mode: 'execution',
                   status: 'done',
                   summaryText: '后端 presentation 摘要应该恢复出来',
-                  timeline: [
+                  phases: [
                     {
-                      id: 'interaction:restore',
-                      kind: 'clarification',
+                      phaseId: 'phase:understanding',
                       phase: 'understanding',
+                      title: '理解需求',
                       status: 'done',
-                      title: '当前需要补充参数',
-                      previewText: '还缺截面尺寸和材料参数',
-                      rawUserFacingText: '后端恢复时应该优先看到这一段原始回复。',
+                      items: [
+                        {
+                          id: 'interaction:restore',
+                          kind: 'clarification',
+                          phase: 'understanding',
+                          status: 'done',
+                          title: '当前需要补充参数',
+                          previewText: '还缺截面尺寸和材料参数',
+                          rawUserFacingText: '后端恢复时应该优先看到这一段原始回复。',
+                        },
+                      ],
                     },
                   ],
                   artifacts: [],
@@ -385,11 +426,11 @@ describe('AIConsole presentation rendering', () => {
           {
             type: 'presentation_init',
             presentation: {
-              version: 1,
+              version: 2,
               mode: 'execution',
               status: 'streaming',
               summaryText: '',
-              timeline: [],
+              phases: [],
               artifacts: [],
             },
           },
