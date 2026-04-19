@@ -13,6 +13,8 @@ type TimelineNote = {
   phase: PresentationPhase
   status: 'done'
   previewText: string
+  explanationText?: string
+  rawUserFacingText?: string
   fullText?: string
   createdAt?: string
 }
@@ -24,6 +26,9 @@ type TimelineStep = {
   tool: string
   status: 'pending' | 'running' | 'done' | 'error'
   title: string
+  previewText?: string
+  explanationText?: string
+  rawUserFacingText?: string
   reason?: string
   resultSummary?: string
   errorMessage?: string
@@ -50,6 +55,9 @@ type TimelineClarification = {
   phase: 'understanding' | 'modeling'
   status: 'done'
   title: string
+  previewText?: string
+  explanationText?: string
+  rawUserFacingText?: string
   missingCritical?: string[]
   missingOptional?: string[]
   question?: string
@@ -238,6 +246,9 @@ function upsertArtifact(
 
 function getPresentationLabel(item: PresentationTimelineItem) {
   if (item.kind === 'note') return item.previewText
+  if ('previewText' in item && typeof item.previewText === 'string' && item.previewText.trim().length > 0) {
+    return item.previewText
+  }
   if (item.kind === 'error') return item.title
   return item.title
 }
@@ -247,10 +258,16 @@ function getPresentationDetails(
   t: (key: MessageKey) => string,
 ): Array<{ label: string; value: string }> {
   if (item.kind === 'note') {
-    return item.fullText ? [{ label: t('presentationDetailSummary'), value: item.fullText }] : []
+    const fallbackSummary = item.explanationText ?? item.fullText
+    return [
+      item.rawUserFacingText ? { label: t('presentationDetailRawText'), value: item.rawUserFacingText } : null,
+      !item.rawUserFacingText && fallbackSummary ? { label: t('presentationDetailSummary'), value: fallbackSummary } : null,
+    ].filter((value): value is { label: string; value: string } => Boolean(value))
   }
   if (item.kind === 'step') {
     return [
+      item.rawUserFacingText ? { label: t('presentationDetailRawText'), value: item.rawUserFacingText } : null,
+      !item.rawUserFacingText && item.explanationText ? { label: t('presentationDetailSummary'), value: item.explanationText } : null,
       item.reason ? { label: t('presentationDetailReason'), value: item.reason } : null,
       item.resultSummary ? { label: t('presentationDetailResult'), value: item.resultSummary } : null,
       item.errorMessage ? { label: t('presentationDetailError'), value: item.errorMessage } : null,
@@ -261,6 +278,8 @@ function getPresentationDetails(
   }
   if (item.kind === 'clarification') {
     return [
+      item.rawUserFacingText ? { label: t('presentationDetailRawText'), value: item.rawUserFacingText } : null,
+      !item.rawUserFacingText && item.explanationText ? { label: t('presentationDetailSummary'), value: item.explanationText } : null,
       item.question ? { label: t('presentationDetailQuestion'), value: item.question } : null,
       item.missingCritical?.length ? { label: t('presentationDetailMissingCritical'), value: item.missingCritical.join(', ') } : null,
       item.missingOptional?.length ? { label: t('presentationDetailMissingOptional'), value: item.missingOptional.join(', ') } : null,

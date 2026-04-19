@@ -126,6 +126,119 @@ describe('AIConsole presentation rendering', () => {
     })
   })
 
+  it('renders clarification turns with collapsed status and expandable raw reply text', async () => {
+    const user = userEvent.setup()
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
+
+      if (url.includes('/api/v1/chat/stream')) {
+        return createSseResponse([
+          {
+            type: 'presentation_init',
+            presentation: {
+              version: 1,
+              mode: 'execution',
+              status: 'streaming',
+              summaryText: '',
+              timeline: [],
+              artifacts: [],
+            },
+          },
+          {
+            type: 'timeline_item_upsert',
+            item: {
+              id: 'note:interaction-turn-1',
+              kind: 'note',
+              phase: 'understanding',
+              status: 'done',
+              previewText: '当前处于建模信息收集中',
+              explanationText: '当前仍缺少关键建模参数。',
+            },
+          },
+          {
+            type: 'timeline_item_upsert',
+            item: {
+              id: 'interaction:turn-1',
+              kind: 'clarification',
+              phase: 'understanding',
+              status: 'done',
+              title: '当前需要补充参数',
+              previewText: '还缺截面尺寸和材料参数',
+              explanationText: '这个合成解释不应优先显示。',
+              rawUserFacingText: '已记录简支梁，跨度10m，跨中集中荷载1kN。请补充梁截面尺寸和材料信息，例如截面宽高及弹性模量，以便开始分析。',
+              missingCritical: ['截面尺寸', '材料参数'],
+              question: '请补充梁截面尺寸和材料参数。',
+            },
+          },
+          {
+            type: 'summary_replace',
+            summaryText: '已记录简支梁，跨度10m，跨中集中荷载1kN。请补充梁截面尺寸和材料信息，例如截面宽高及弹性模量，以便开始分析。',
+          },
+          {
+            type: 'presentation_complete',
+            completedAt: '2026-04-19T10:00:05.000Z',
+          },
+          {
+            type: 'done',
+          },
+        ])
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && !url.includes('/snapshot') && !url.includes('/messages')) {
+        return Response.json({
+          id: 'conv-clarification-test',
+          title: 'Design a simply supported beam',
+          type: 'general',
+        })
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return Response.json([])
+      }
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return Response.json([])
+      }
+
+      if (url.includes('/api/v1/agent/capability-matrix')) {
+        return Response.json({})
+      }
+
+      if (url.includes('/snapshot')) {
+        return Response.json({ success: true })
+      }
+
+      if (url.includes('/messages')) {
+        return Response.json({ success: true })
+      }
+
+      return Response.json({})
+    })
+
+    render(<AIConsole />)
+
+    const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
+    await user.type(composer, 'Design a simply supported beam')
+    await user.click(screen.getByRole('button', { name: /send/i }))
+
+    const chatPanel = await screen.findByTestId('console-chat-scroll')
+    expect(within(chatPanel).getByText('还缺截面尺寸和材料参数')).toBeInTheDocument()
+    expect(within(chatPanel).queryByText('这个合成解释不应优先显示。')).not.toBeInTheDocument()
+
+    const detailToggles = within(chatPanel).getAllByText(/show details/i)
+    await user.click(detailToggles[1])
+
+    await waitFor(() => {
+      expect(
+        within(chatPanel).getAllByText(
+          '已记录简支梁，跨度10m，跨中集中荷载1kN。请补充梁截面尺寸和材料信息，例如截面宽高及弹性模量，以便开始分析。',
+        ).length,
+      ).toBeGreaterThan(1)
+      expect(within(chatPanel).queryByText('这个合成解释不应优先显示。')).not.toBeInTheDocument()
+    })
+  })
+
   it('prefers backend presentation when restoring a saved conversation', async () => {
     const user = userEvent.setup()
     window.localStorage.setItem('structureclaw.console.conversations', JSON.stringify({
@@ -202,12 +315,13 @@ describe('AIConsole presentation rendering', () => {
                   summaryText: '后端 presentation 摘要应该恢复出来',
                   timeline: [
                     {
-                      id: 'step-draft-model',
-                      kind: 'step',
-                      phase: 'modeling',
-                      tool: 'draft_model',
+                      id: 'interaction:restore',
+                      kind: 'clarification',
+                      phase: 'understanding',
                       status: 'done',
-                      title: '结构模型已生成',
+                      title: '当前需要补充参数',
+                      previewText: '还缺截面尺寸和材料参数',
+                      rawUserFacingText: '后端恢复时应该优先看到这一段原始回复。',
                     },
                   ],
                   artifacts: [],
@@ -249,6 +363,14 @@ describe('AIConsole presentation rendering', () => {
       const chatPanel = screen.getByTestId('console-chat-scroll')
       expect(within(chatPanel).getByText('后端 presentation 摘要应该恢复出来')).toBeInTheDocument()
       expect(within(chatPanel).queryByText('本地缓存摘要不应成为主显示')).not.toBeInTheDocument()
+      expect(within(chatPanel).getByText('还缺截面尺寸和材料参数')).toBeInTheDocument()
+    })
+
+    const chatPanel = screen.getByTestId('console-chat-scroll')
+    await user.click(within(chatPanel).getByText(/show details/i))
+
+    await waitFor(() => {
+      expect(within(chatPanel).getByText('后端恢复时应该优先看到这一段原始回复。')).toBeInTheDocument()
     })
   })
 
