@@ -3082,6 +3082,22 @@ async function validateChatStreamContract(context) {
       },
     };
     yield {
+      type: "timeline_item_upsert",
+      item: {
+        id: "interaction:clarify-span",
+        kind: "clarification",
+        phase: "understanding",
+        status: "done",
+        title: "Need more modeling details",
+        previewText: "Need more modeling details",
+        explanationText: "Critical modeling inputs are still missing.",
+        rawUserFacingText: "Please provide the span and support conditions.",
+        missingCritical: ["span", "support conditions"],
+        question: "Please provide the span and support conditions.",
+        createdAt: "2026-03-09T00:00:00.004Z",
+      },
+    };
+    yield {
       type: "artifact_upsert",
       artifact: {
         artifact: "model",
@@ -3165,6 +3181,7 @@ async function validateChatStreamContract(context) {
     assert(chunks.some((chunk) => chunk.type === "presentation_init"), "stream should contain presentation_init chunk");
     assert(chunks.some((chunk) => chunk.type === "artifact_upsert"), "stream should contain artifact_upsert chunk");
     assert(chunks.some((chunk) => chunk.type === "artifact_payload_sync"), "stream should contain artifact_payload_sync chunk");
+    assert(chunks.some((chunk) => chunk.type === "timeline_item_upsert" && chunk.item?.kind === "clarification"), "stream should contain clarification timeline chunk");
     assert(chunks.some((chunk) => chunk.type === "result"), "stream should contain result chunk");
     assert(chunks[chunks.length - 1].type === "done", "last chunk before [DONE] should be done");
     assert(capturedTraceId === "trace-stream-request-1", "chat/stream should pass traceId to agent stream");
@@ -3172,6 +3189,11 @@ async function validateChatStreamContract(context) {
     assert(
       persistedAssistantMetadata?.presentation?.summaryText === "ok",
       "chat/stream should persist the latest summaryText inside assistant presentation metadata",
+    );
+    assert(
+      Array.isArray(persistedAssistantMetadata?.presentation?.timeline)
+        && persistedAssistantMetadata.presentation.timeline.some((item) => item.kind === "clarification" && item.rawUserFacingText === "Please provide the span and support conditions."),
+      "chat/stream should persist clarification timeline items inside assistant presentation metadata",
     );
 
     const startTrace = chunks.find((chunk) => chunk.type === "start")?.content?.traceId;

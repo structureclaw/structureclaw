@@ -627,6 +627,71 @@ function buildPipelineStartNote(stepCount: number, locale: AppLocale, createdAt:
   };
 }
 
+function buildInteractionTimelineItem(args: {
+  interaction: AgentInteraction;
+  locale: AppLocale;
+  createdAt: string;
+  response: string;
+  clarificationQuestion?: string;
+}): Extract<TimelineItem, { kind: 'clarification' }> {
+  const questionText = (args.clarificationQuestion ?? '').trim();
+  const rawUserFacingText = args.response.trim().length > 0
+    ? args.response.trim()
+    : questionText;
+  const phase = args.interaction.state === 'collecting' ? 'understanding' : 'modeling';
+  const previewText = questionText.length > 0
+    ? questionText
+    : buildInteractionTimelineTitle(args.interaction, args.locale);
+
+  return {
+    id: `interaction:${args.interaction.turnId}`,
+    kind: 'clarification',
+    phase,
+    status: 'done',
+    title: buildInteractionTimelineTitle(args.interaction, args.locale),
+    previewText,
+    explanationText: args.interaction.routeReason,
+    rawUserFacingText: rawUserFacingText.length > 0 ? rawUserFacingText : undefined,
+    missingCritical: args.interaction.missingCritical,
+    missingOptional: args.interaction.missingOptional,
+    question: questionText.length > 0 && questionText !== rawUserFacingText ? questionText : undefined,
+    createdAt: args.createdAt,
+  };
+}
+
+function buildInteractionStageNote(args: {
+  interaction: AgentInteraction;
+  locale: AppLocale;
+  createdAt: string;
+}): Extract<TimelineItem, { kind: 'note' }> {
+  const stageLabel = args.interaction.interactionStageLabel
+    ?? (args.locale === 'zh' ? '当前阶段' : 'Current stage');
+  return {
+    id: `note:interaction:${args.interaction.turnId}`,
+    kind: 'note',
+    phase: args.interaction.state === 'collecting' ? 'understanding' : 'modeling',
+    status: 'done',
+    previewText: args.locale === 'zh'
+      ? `当前处于${stageLabel}`
+      : `Current stage: ${stageLabel}`,
+    explanationText: args.interaction.routeReason,
+    createdAt: args.createdAt,
+  };
+}
+
+function buildInteractionTimelineTitle(interaction: AgentInteraction, locale: AppLocale): string {
+  if (interaction.state === 'collecting') {
+    return locale === 'zh' ? '补充建模信息' : 'Need more modeling details';
+  }
+  if (interaction.state === 'confirming') {
+    return locale === 'zh' ? '等待设计确认' : 'Waiting on design confirmation';
+  }
+  if (interaction.state === 'blocked') {
+    return locale === 'zh' ? '交互已阻止' : 'Interaction blocked';
+  }
+  return locale === 'zh' ? '交互更新' : 'Interaction update';
+}
+
 function normalizePresentationPayload(payload: unknown): Record<string, unknown> | undefined {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return undefined;
@@ -1441,6 +1506,29 @@ export class AgentService {
 
       const result = resolvedResult ?? await resultPromise;
       if (result.interaction && result.interaction.state !== 'completed') {
+        const locale = this.resolveInteractionLocale(preparedInput.context?.locale);
+        if (result.interaction.state === 'collecting'
+          || result.interaction.state === 'confirming'
+          || result.interaction.state === 'blocked') {
+          yield {
+            type: 'timeline_item_upsert',
+            item: buildInteractionStageNote({
+              interaction: result.interaction,
+              locale,
+              createdAt: result.completedAt,
+            }),
+          };
+          yield {
+            type: 'timeline_item_upsert',
+            item: buildInteractionTimelineItem({
+              interaction: result.interaction,
+              locale,
+              createdAt: result.completedAt,
+              response: result.response,
+              clarificationQuestion: result.clarification?.question,
+            }),
+          };
+        }
         yield { type: 'interaction_update', content: result.interaction };
       }
       yield {

@@ -82,6 +82,36 @@ describe('chat presentation reducer', () => {
     expect(state.artifacts[0].artifact).toBe('model');
   });
 
+  test('clarification timeline items retain raw user-facing text through reduction', () => {
+    let state = createEmptyAssistantPresentation({
+      traceId: 'trace-clarification',
+      mode: 'execution',
+      startedAt: '2026-04-19T10:00:00.000Z',
+    });
+
+    state = reducePresentationEvent(state, {
+      type: 'timeline_item_upsert',
+      item: {
+        id: 'interaction:turn-1',
+        kind: 'clarification',
+        phase: 'understanding',
+        status: 'done',
+        title: 'Need more modeling details',
+        previewText: 'Need more modeling details',
+        explanationText: 'Critical modeling inputs are still missing.',
+        rawUserFacingText: 'Please provide the span and support conditions.',
+        missingCritical: ['span', 'support conditions'],
+        question: 'Please provide the span and support conditions.',
+        createdAt: '2026-04-19T10:00:00.010Z',
+      },
+    });
+
+    expect(state.timeline).toHaveLength(1);
+    expect(state.timeline[0].kind).toBe('clarification');
+    expect(state.timeline[0].rawUserFacingText).toBe('Please provide the span and support conditions.');
+    expect(state.timeline[0].explanationText).toBe('Critical modeling inputs are still missing.');
+  });
+
   test('stream persistence stores presentation in assistant message metadata', async () => {
     const { AgentService } = await import('../../../dist/services/agent.js');
     const { chatRoutes } = await import('../../../dist/api/chat.js');
@@ -116,7 +146,23 @@ describe('chat presentation reducer', () => {
       };
       yield {
         type: 'summary_replace',
-        summaryText: '模型已生成，可继续分析。',
+        summaryText: 'Please provide the span and support conditions.',
+      };
+      yield {
+        type: 'timeline_item_upsert',
+        item: {
+          id: 'interaction:turn-clarify',
+          kind: 'clarification',
+          phase: 'understanding',
+          status: 'done',
+          title: 'Need more modeling details',
+          previewText: 'Need more modeling details',
+          explanationText: 'Critical modeling inputs are still missing.',
+          rawUserFacingText: 'Please provide the span and support conditions.',
+          missingCritical: ['span', 'support conditions'],
+          question: 'Please provide the span and support conditions.',
+          createdAt: '2026-04-19T10:00:00.010Z',
+        },
       };
       yield {
         type: 'result',
@@ -128,10 +174,21 @@ describe('chat presentation reducer', () => {
           durationMs: 50,
           success: true,
           orchestrationMode: 'llm-planned',
-          needsModelInput: false,
+          needsModelInput: true,
           plan: [],
           toolCalls: [],
-          response: '模型已生成，可继续分析。',
+          interaction: {
+            state: 'confirming',
+            stage: 'model',
+            turnId: 'turn-clarify',
+            missingCritical: ['span', 'support conditions'],
+            missingOptional: [],
+          },
+          clarification: {
+            missingFields: ['span', 'support conditions'],
+            question: 'Please provide the span and support conditions.',
+          },
+          response: 'Please provide the span and support conditions.',
         },
       };
       yield {
@@ -165,7 +222,10 @@ describe('chat presentation reducer', () => {
       expect(assistantMessage).toBeTruthy();
       expect(assistantMessage?.metadata?.presentation).toBeDefined();
       expect(assistantMessage?.metadata?.presentation?.version).toBe(1);
-      expect(assistantMessage?.metadata?.presentation?.summaryText).toBe('模型已生成，可继续分析。');
+      expect(assistantMessage?.metadata?.presentation?.summaryText).toBe('Please provide the span and support conditions.');
+      expect(assistantMessage?.metadata?.presentation?.timeline).toHaveLength(1);
+      expect(assistantMessage?.metadata?.presentation?.timeline?.[0]?.kind).toBe('clarification');
+      expect(assistantMessage?.metadata?.presentation?.timeline?.[0]?.rawUserFacingText).toBe('Please provide the span and support conditions.');
     } finally {
       AgentService.prototype.runStream = originalRunStream;
       await prisma.message.deleteMany({ where: { conversationId } });

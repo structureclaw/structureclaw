@@ -15,6 +15,8 @@ export type TimelineItem =
       phase: PresentationPhase;
       status: 'done';
       previewText: string;
+      explanationText?: string;
+      rawUserFacingText?: string;
       fullText?: string;
       createdAt?: string;
     }
@@ -25,6 +27,9 @@ export type TimelineItem =
       tool: string;
       status: 'pending' | 'running' | 'done' | 'error';
       title: string;
+      previewText?: string;
+      explanationText?: string;
+      rawUserFacingText?: string;
       reason?: string;
       resultSummary?: string;
       errorMessage?: string;
@@ -49,6 +54,9 @@ export type TimelineItem =
       phase: 'understanding' | 'modeling';
       status: 'done';
       title: string;
+      previewText?: string;
+      explanationText?: string;
+      rawUserFacingText?: string;
       missingCritical?: string[];
       missingOptional?: string[];
       question?: string;
