@@ -299,7 +299,7 @@ type CapabilityMatrixPayload = {
   skillAliasesByCanonicalId?: Record<string, string[]>
 }
 
-const DEFAULT_CONSOLE_SKILL_IDS = ['opensees-static', 'generic'] as const
+const DEFAULT_CONSOLE_SKILL_IDS = ['opensees-static', 'generic', 'validation-structure-model', 'report-export-builtin'] as const
 
 function resolveCallableTools(
   matrix: CapabilityMatrixPayload | null,
