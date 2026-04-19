@@ -1920,9 +1920,14 @@ export class AgentService {
               type: 'artifact_upsert',
               artifact: buildArtifactUpsertState(presentationArtifact, locale),
             });
-            const payload = normalizePresentationPayload(updates.artifact.payload);
-            if (payload) {
-              onStepEvent?.(buildArtifactPayloadChunk(presentationArtifact, payload, workingSession.latestModel));
+            // Only push model visualization to right panel during streaming;
+            // analysis/report will sync via the final 'result' event to avoid
+            // showing incomplete data on the right panel.
+            if (presentationArtifact === 'model') {
+              const payload = normalizePresentationPayload(updates.artifact.payload);
+              if (payload) {
+                onStepEvent?.(buildArtifactPayloadChunk(presentationArtifact, payload, workingSession.latestModel));
+              }
             }
           }
         }
