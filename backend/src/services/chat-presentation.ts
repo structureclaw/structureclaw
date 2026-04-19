@@ -311,19 +311,18 @@ export function buildCompletedAssistantPresentation(args: {
 
   for (const skillId of selectedSkillIds) {
     const phase = phaseForSkillId(skillId, routing);
-    presentation = appendItem(
-      presentation,
+    const phaseId = buildPhaseId(phase);
+    const item: TimelineEventItem = {
+      id: `skill-selected:${skillId}`,
+      kind: 'skill_selected',
       phase,
-      {
-        id: `skill-selected:${skillId}`,
-        kind: 'skill_selected',
-        phase,
-        status: 'done',
-        skillId,
-        title: locale === 'zh' ? `已选择技能: ${skillId}` : `Skill selected: ${skillId}`,
-        createdAt: args.result.completedAt,
-      },
-    );
+      status: 'done',
+      skillId,
+      title: locale === 'zh' ? `已选择技能: ${skillId}` : `Skill selected: ${skillId}`,
+      createdAt: args.result.completedAt,
+    };
+    // Prepend skill_selected to ensure it appears before tool items
+    presentation = prependItem(presentation, phaseId, item);
   }
 
   for (const call of args.result.toolCalls || []) {
@@ -682,6 +681,34 @@ function appendItem(
     phaseId: buildPhaseId(phase),
     item,
   });
+}
+
+function prependItem(
+  presentation: AssistantPresentation,
+  phaseId: string,
+  item: TimelineEventItem,
+): AssistantPresentation {
+  const phaseIndex = presentation.phases.findIndex((p) => p.phaseId === phaseId);
+  if (phaseIndex === -1) {
+    // Phase doesn't exist yet — fall back to append (which creates the phase)
+    return reducePresentationEvent(presentation, {
+      type: 'timeline_item_upsert',
+      phaseId,
+      item,
+    });
+  }
+  const phase = presentation.phases[phaseIndex];
+  const existingIndex = phase.items.findIndex((i) => i.id === item.id);
+  let nextItems: TimelineEventItem[];
+  if (existingIndex !== -1) {
+    // Already exists — move to front
+    nextItems = [item, ...phase.items.filter((i) => i.id !== item.id)];
+  } else {
+    nextItems = [item, ...phase.items];
+  }
+  const nextPhases = [...presentation.phases];
+  nextPhases[phaseIndex] = { ...phase, items: nextItems };
+  return { ...presentation, phases: nextPhases };
 }
 
 function upsertPhase(

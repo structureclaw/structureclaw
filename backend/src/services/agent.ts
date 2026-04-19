@@ -2308,6 +2308,36 @@ export class AgentService {
         ),
       });
 
+      // Emit skill_selected for all unique skills in the plan upfront
+      // so they appear before tool items in the timeline.
+      const emittedSkillIds = new Set<string>();
+      for (const s of schedulerPlan.requiredSteps) {
+        if (s.skillId && !emittedSkillIds.has(s.skillId)) {
+          emittedSkillIds.add(s.skillId);
+          const skillPhase = mapToolToPresentationPhase(s.tool);
+          onStepEvent?.({
+            type: 'phase_upsert',
+            phase: {
+              phaseId: buildPhaseId(skillPhase),
+              phase: skillPhase,
+              title: phaseTitle(skillPhase, locale),
+              status: 'running',
+              items: [],
+            },
+          });
+          onStepEvent?.({
+            type: 'timeline_item_upsert',
+            phaseId: buildPhaseId(skillPhase),
+            item: buildSkillSelectedTimelineItem({
+              skillId: s.skillId,
+              phase: skillPhase,
+              createdAt: startedAt,
+              locale,
+            }),
+          });
+        }
+      }
+
       for (const step of schedulerPlan.requiredSteps) {
         try {
           this.runtimeBinder.assertStepAuthorized({
