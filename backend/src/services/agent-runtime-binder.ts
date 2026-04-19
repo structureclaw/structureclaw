@@ -60,7 +60,7 @@ export class AgentRuntimeBinder {
   constructor(
     private readonly skillRuntime: RuntimeBindingSkillRuntimeLike,
     private readonly policy: RuntimeBindingPolicyLike,
-    private readonly foundationToolIds: readonly string[] = ['convert_model'],
+    private readonly foundationToolIds: readonly string[] = ['convert_model', 'enrich_model'],
   ) {}
 
   normalizeSkillIds(skillIds?: string[]): string[] {
