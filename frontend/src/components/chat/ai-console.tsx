@@ -26,7 +26,7 @@ import {
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { API_BASE } from '@/lib/api-base'
 import { loadCapabilityPreferences, saveCapabilityPreferences } from '@/lib/capability-preference'
-import { ALL_SKILL_DOMAINS, buildSkillNormalizationContext, type SkillDomain, type SkillMetadataLike } from '@/lib/skill-normalization'
+import { ALL_SKILL_DOMAINS, buildSkillNormalizationContext, DEFAULT_CONSOLE_SKILL_IDS, type SkillDomain, type SkillMetadataLike } from '@/lib/skill-normalization'
 import { cn, formatDate, formatNumber } from '@/lib/utils'
 
 const StructuralVisualizationModal = dynamic(
@@ -299,7 +299,7 @@ type CapabilityMatrixPayload = {
   skillAliasesByCanonicalId?: Record<string, string[]>
 }
 
-const DEFAULT_CONSOLE_SKILL_IDS = ['opensees-static', 'generic', 'validation-structure-model', 'report-export-builtin'] as const
+
 
 function resolveCallableTools(
   matrix: CapabilityMatrixPayload | null,

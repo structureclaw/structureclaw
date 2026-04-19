@@ -203,3 +203,10 @@ export function buildSkillNormalizationContext(
     normalizeSkillIds,
   }
 }
+
+export const DEFAULT_CONSOLE_SKILL_IDS = [
+  'opensees-static',
+  'generic',
+  'validation-structure-model',
+  'report-export-builtin',
+] as const

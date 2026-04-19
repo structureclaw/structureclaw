@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { API_BASE } from '@/lib/api-base'
 import { loadCapabilityPreferences, saveCapabilityPreferences } from '@/lib/capability-preference'
-import { ALL_SKILL_DOMAINS, buildSkillNormalizationContext, normalizeSkillDomain, type SkillDomain, type SkillMetadataLike } from '@/lib/skill-normalization'
+import { ALL_SKILL_DOMAINS, buildSkillNormalizationContext, DEFAULT_CONSOLE_SKILL_IDS, normalizeSkillDomain, type SkillDomain, type SkillMetadataLike } from '@/lib/skill-normalization'
 import { useI18n, type MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { cn } from '@/lib/utils'
@@ -215,7 +215,7 @@ export function CapabilitySettingsPanel() {
 
   const defaultSelectedSkillIds = useMemo(() => {
     const available = new Set(availableSkills.map((skill) => skill.id))
-    return ['opensees-static', 'generic', 'validation-structure-model', 'report-export-builtin'].filter((skillId) => available.has(skillId))
+    return [...DEFAULT_CONSOLE_SKILL_IDS].filter((skillId) => available.has(skillId))
   }, [availableSkills])
 
   const initialDefaultToolIds = useMemo(
