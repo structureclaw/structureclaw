@@ -1309,7 +1309,7 @@ describe('AgentService orchestration', () => {
       context: {
         locale: 'zh',
         skillIds: ['generic'],
-        enabledToolIds: ['draft_model', 'validate_model'],
+        enabledToolIds: ['draft_model', 'update_model', 'validate_model'],
         autoAnalyze: false,
         model: staleModel,
       },

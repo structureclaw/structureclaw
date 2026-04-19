@@ -1993,6 +1993,11 @@ export class AgentService {
           });
         }
 
+        // Strict mode: skip steps whose tool is not in the active tool set
+        if (!this.hasActiveTool(activeToolIds, stepToolId)) {
+          continue;
+        }
+
         if (STUB_TOOLS.has(step.tool)) {
           return this.finalizeBlockedRunResult({
             params,
@@ -2438,6 +2443,7 @@ export class AgentService {
             if (ccStep.mode === 'reuse') continue;
             // Skip validate_model — model was already validated in the main pipeline.
             if (ccStep.tool === 'validate_model') continue;
+            if (!this.hasActiveTool(activeToolIds, ccStep.tool)) continue;
             const ccStepStartedAtMs = Date.now();
             const ccStepStartedAt = new Date(ccStepStartedAtMs).toISOString();
             let ccStepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
@@ -2515,6 +2521,7 @@ export class AgentService {
         if (!reportPlan.blockedReason && reportPlan.requiredSteps.length > 0) {
           for (const reportStep of reportPlan.requiredSteps) {
             if (reportStep.mode === 'reuse') continue;
+            if (!this.hasActiveTool(activeToolIds, reportStep.tool)) continue;
             const rStepStartedAtMs = Date.now();
             const rStepStartedAt = new Date(rStepStartedAtMs).toISOString();
             let rStepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
