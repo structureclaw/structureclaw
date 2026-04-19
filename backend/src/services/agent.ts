@@ -440,14 +440,6 @@ function mapToolToPresentationPhase(tool: string): 'modeling' | 'validation' | '
   return 'modeling';
 }
 
-function mapToolStartTitle(tool: string, locale: AppLocale): string {
-  return toolTitle(tool, 'running', locale);
-}
-
-function mapToolDoneTitle(tool: string, locale: AppLocale): string {
-  return toolTitle(tool, 'done', locale);
-}
-
 function mapArtifactEnvelopeToPresentationArtifact(
   artifact: Pick<ArtifactEnvelope, 'kind'> | undefined,
 ): ArtifactState['artifact'] | undefined {
