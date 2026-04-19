@@ -168,6 +168,19 @@ function buildFrame2dLocalModel(
       { id: '1', name: colProps.name, type: 'H', purpose: 'column', standard_steel_name: colProps.standardSteelName, shape: colProps.shape, properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
       { id: '2', name: beamProps.name, type: 'H', purpose: 'beam', standard_steel_name: beamProps.standardSteelName, shape: beamProps.shape, properties: { A: beamProps.A, Iy: beamProps.Iy, Iz: beamProps.Iz, J: beamProps.J, G: beamProps.G } },
     ],
+    stories: storyHeights.map((h, i) => {
+      const storyIdx = i + 1;
+      const fl = floorLoads.find((l) => l.story === storyIdx);
+      const floorAreaM2 = Math.max(xCoords[xCoords.length - 1], 1);
+      const deadLoad = fl?.verticalKN ? Math.abs(fl.verticalKN) / floorAreaM2 : undefined;
+      return {
+        id: `F${storyIdx}`,
+        height: h,
+        elevation: zCoords[i],
+        standard_floor_group: 'SF1',
+        ...(deadLoad ? { dead_load: Math.round(deadLoad * 100) / 100 } : {}),
+      };
+    }),
     load_cases: [{ id: 'LC1', type: 'other', loads }],
     load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
     metadata: {
@@ -274,6 +287,19 @@ function buildFrame3dLocalModel(
       { id: '1', name: colProps.name, type: 'H', purpose: 'column', standard_steel_name: colProps.standardSteelName, shape: colProps.shape, properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
       { id: '2', name: beamProps.name, type: 'H', purpose: 'beam', standard_steel_name: beamProps.standardSteelName, shape: beamProps.shape, properties: { A: beamProps.A, Iy: beamProps.Iy, Iz: beamProps.Iz, J: beamProps.J, G: beamProps.G } },
     ],
+    stories: storyHeights.map((h, i) => {
+      const storyIdx = i + 1;
+      const fl = floorLoads.find((l) => l.story === storyIdx);
+      const floorAreaM2 = Math.max(xCoords[xCoords.length - 1], 1) * Math.max(yCoords[yCoords.length - 1], 1);
+      const deadLoad = fl?.verticalKN ? Math.abs(fl.verticalKN) / floorAreaM2 : undefined;
+      return {
+        id: `F${storyIdx}`,
+        height: h,
+        elevation: zCoords[i],
+        standard_floor_group: 'SF1',
+        ...(deadLoad ? { dead_load: Math.round(deadLoad * 100) / 100 } : {}),
+      };
+    }),
     load_cases: [{ id: 'LC1', type: 'other', loads }],
     load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
     metadata: {

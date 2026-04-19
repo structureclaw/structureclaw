@@ -101,6 +101,7 @@ export class PythonWorkerRunner<TInput extends object> {
       const child = spawn(pythonCommand.executable, [...pythonCommand.args, this.workerPath], {
         cwd: process.cwd(),
         stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
       });
 
       let stdout = '';

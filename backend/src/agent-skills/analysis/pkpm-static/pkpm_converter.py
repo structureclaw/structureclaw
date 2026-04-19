@@ -148,21 +148,21 @@ def _register_section(
 
     if role == "col":
         csec = APIPyInterface.ColumnSection()
-        if std_name:
-            csec.SetStandSteelSect(std_name, APIPyInterface.SectionShape())
-        elif shape_dict:
+        if shape_dict:
             sec_kind, sh = _make_section_shape(shape_dict)
             csec.SetUserSect(sec_kind, sh)
+        elif std_name:
+            csec.SetStandSteelSect(std_name, APIPyInterface.SectionShape())
         else:
             raise ValueError(f"Section '{sec['id']}' has no standard_steel_name or shape.")
         pm_idx = model.AddColumnSection(csec)
     else:
         bsec = APIPyInterface.BeamSection()
-        if std_name:
-            bsec.SetStandSteelSect(std_name, APIPyInterface.SectionShape())
-        elif shape_dict:
+        if shape_dict:
             sec_kind, sh = _make_section_shape(shape_dict)
             bsec.SetUserSect(sec_kind, sh)
+        elif std_name:
+            bsec.SetStandSteelSect(std_name, APIPyInterface.SectionShape())
         else:
             raise ValueError(f"Section '{sec['id']}' has no standard_steel_name or shape.")
         pm_idx = model.AddBeamSection(bsec)
@@ -288,8 +288,23 @@ def convert_v2_to_jws(
     )
 
     # ---- Standard floor 1 (plan template) ----
+    model.AddStandFloor()
     model.SetCurrentStandFloor(1)
     floor = model.GetCurrentStandFloor()
+
+    # ---- Floor dead/live loads from stories ----
+    stories_for_load = data.get("stories", [])
+    agg_dead = 0.0
+    agg_live = 0.0
+    for st in stories_for_load:
+        dl = st.get("dead_load")
+        ll = st.get("live_load")
+        if dl is not None:
+            agg_dead = max(agg_dead, float(dl))
+        if ll is not None:
+            agg_live = max(agg_live, float(ll))
+    if agg_dead > 0 or agg_live > 0:
+        floor.SetDeadLive(agg_dead, agg_live)
 
     nodes = data.get("nodes", [])
     v2_to_pm, v2_to_xy = _build_plan_nodes(floor, nodes)
