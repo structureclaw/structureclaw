@@ -1,6 +1,7 @@
 'use client'
 
 import { Badge } from '@/components/ui/badge'
+import { stepLabelKey } from '@/components/chat/message-blocks'
 import { cn } from '@/lib/utils'
 import type { MessageKey } from '@/lib/i18n'
 
@@ -335,7 +336,7 @@ export function MessagePresentationView({
                     <div className="space-y-2 border-t border-border/50 px-3 py-2 dark:border-white/10">
                       {phase.items.map((item) => {
                         const details = getItemDetails(item, t)
-                        const label = getItemLabel(item)
+                        const label = getItemLabel(item, t)
                         const hasDetails = details.length > 0
                         return (
                           <div key={item.id} className="rounded-lg border border-border/60 bg-background/60 px-2.5 py-1.5 dark:border-white/10 dark:bg-slate-950/30">
@@ -462,13 +463,14 @@ function getPhaseStatusLabel(status: PresentationPhaseStatus, t: (key: MessageKe
   }
 }
 
-function getItemLabel(item: TimelineEventItem): string {
+function getItemLabel(item: TimelineEventItem, t: (key: MessageKey) => string): string {
   switch (item.kind) {
     case 'phase_start': return item.title
-    case 'skill_selected': return item.title
-    case 'skill_result': return item.title
-    case 'tool_start': return item.title
-    case 'tool_result': return item.title
+    case 'skill_selected': return `${t('presentationSkillSelected')}: ${item.skillId}`
+    case 'skill_result': return `${item.skillId} — ${item.status === 'error' ? t('presentationStatusError') : t('presentationStatusDone')}`
+    case 'tool_start':
+    case 'tool_result':
+      return t(stepLabelKey(item.tool))
     case 'artifact_ready': return item.title
     case 'clarification':
       if (item.previewText && item.previewText.trim().length > 0) return item.previewText

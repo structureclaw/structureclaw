@@ -618,7 +618,7 @@ function buildSkillSelectedTimelineItem(args: {
     phase: args.phase,
     status: 'done',
     skillId: args.skillId,
-    title: args.locale === 'zh' ? '已选择技能' : 'Skill selected',
+    title: args.locale === 'zh' ? `已选择技能: ${args.skillId}` : `Skill selected: ${args.skillId}`,
     reason: args.reason,
     createdAt: args.createdAt,
   };
@@ -640,8 +640,8 @@ function buildSkillResultTimelineItem(args: {
     status: args.status,
     skillId: args.skillId,
     title: args.status === 'error'
-      ? args.locale === 'zh' ? '技能结果失败' : 'Skill result failed'
-      : args.locale === 'zh' ? '技能结果完成' : 'Skill result completed',
+      ? args.locale === 'zh' ? `技能 ${args.skillId} 失败` : `Skill ${args.skillId} failed`
+      : args.locale === 'zh' ? `技能 ${args.skillId} 完成` : `Skill ${args.skillId} completed`,
     summaryText: args.summaryText,
     resultSummary: args.summaryText,
     errorMessage: args.errorMessage,

@@ -320,8 +320,7 @@ export function buildCompletedAssistantPresentation(args: {
         phase,
         status: 'done',
         skillId,
-        title: locale === 'zh' ? '已选择技能' : 'Skill selected',
-        reason: locale === 'zh' ? '由路由结果确认' : 'Confirmed by routing result',
+        title: locale === 'zh' ? `已选择技能: ${skillId}` : `Skill selected: ${skillId}`,
         createdAt: args.result.completedAt,
       },
     );
@@ -824,11 +823,11 @@ function phaseTitle(phase: PresentationPhase, locale: 'en' | 'zh' = 'en'): strin
 }
 
 function skillDoneTitle(skillId: string, locale: 'en' | 'zh'): string {
-  return locale === 'zh' ? `技能 ${skillId} 已完成` : `Skill ${skillId} completed`;
+  return locale === 'zh' ? `技能 ${skillId} 完成` : `Skill ${skillId} completed`;
 }
 
 function skillErrorTitle(skillId: string, locale: 'en' | 'zh'): string {
-  return locale === 'zh' ? `技能 ${skillId} 执行失败` : `Skill ${skillId} failed`;
+  return locale === 'zh' ? `技能 ${skillId} 失败` : `Skill ${skillId} failed`;
 }
 
 function skillPhaseTitle(skillId: string, locale: 'en' | 'zh'): string {
@@ -836,24 +835,51 @@ function skillPhaseTitle(skillId: string, locale: 'en' | 'zh'): string {
 }
 
 function toolStartTitle(tool: string, locale: 'en' | 'zh'): string {
-  if (locale === 'zh') {
-    return `开始执行 ${tool}`;
+  if (tool === 'draft_model' || tool === 'update_model' || tool === 'convert_model') {
+    return locale === 'zh' ? '开始生成结构模型' : 'Starting structural model generation';
   }
-  return `Starting ${tool}`;
+  if (tool === 'validate_model') {
+    return locale === 'zh' ? '开始校验模型' : 'Starting model validation';
+  }
+  if (tool === 'run_analysis' || tool === 'postprocess_result' || tool === 'run_code_check') {
+    return locale === 'zh' ? '开始执行分析' : 'Starting analysis';
+  }
+  if (tool === 'generate_report') {
+    return locale === 'zh' ? '开始生成报告' : 'Starting report generation';
+  }
+  return locale === 'zh' ? `开始执行 ${tool}` : `Starting ${tool}`;
 }
 
 function toolDoneTitle(tool: string, locale: 'en' | 'zh'): string {
-  if (locale === 'zh') {
-    return `${tool} 已完成`;
+  if (tool === 'draft_model' || tool === 'update_model' || tool === 'convert_model') {
+    return locale === 'zh' ? '结构模型已生成' : 'Structural model generated';
   }
-  return `${tool} completed`;
+  if (tool === 'validate_model') {
+    return locale === 'zh' ? '模型校验完成' : 'Model validation completed';
+  }
+  if (tool === 'run_analysis' || tool === 'postprocess_result' || tool === 'run_code_check') {
+    return locale === 'zh' ? '分析执行完成' : 'Analysis completed';
+  }
+  if (tool === 'generate_report') {
+    return locale === 'zh' ? '报告已生成' : 'Report generated';
+  }
+  return locale === 'zh' ? `${tool} 已完成` : `${tool} completed`;
 }
 
 function toolErrorTitle(tool: string, locale: 'en' | 'zh'): string {
-  if (locale === 'zh') {
-    return `${tool} 执行失败`;
+  if (tool === 'draft_model' || tool === 'update_model' || tool === 'convert_model') {
+    return locale === 'zh' ? '结构模型生成失败' : 'Structural model generation failed';
   }
-  return `${tool} failed`;
+  if (tool === 'validate_model') {
+    return locale === 'zh' ? '模型校验失败' : 'Model validation failed';
+  }
+  if (tool === 'run_analysis' || tool === 'postprocess_result' || tool === 'run_code_check') {
+    return locale === 'zh' ? '分析执行失败' : 'Analysis failed';
+  }
+  if (tool === 'generate_report') {
+    return locale === 'zh' ? '报告生成失败' : 'Report generation failed';
+  }
+  return locale === 'zh' ? `${tool} 执行失败` : `${tool} failed`;
 }
 
 function artifactTitle(artifact: ArtifactName, locale: 'en' | 'zh'): string {

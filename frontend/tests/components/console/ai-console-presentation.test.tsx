@@ -143,7 +143,7 @@ describe('AIConsole presentation rendering', () => {
       const chatPanel = screen.getByTestId('console-chat-scroll')
       expect(within(chatPanel).getAllByText('模型已生成，可继续分析。').length).toBeGreaterThan(0)
       expect(within(chatPanel).getByText('建模')).toBeInTheDocument()
-      expect(within(chatPanel).getByText('结构模型已生成')).toBeInTheDocument()
+      expect(within(chatPanel).getByText(/Draft Model|创建模型草稿/)).toBeInTheDocument()
       expect(within(chatPanel).queryByText(/show prompt & thinking/i)).not.toBeInTheDocument()
     })
   })
