@@ -3069,7 +3069,7 @@ async function validateChatStreamContract(context) {
     yield {
       type: "presentation_init",
       presentation: {
-        version: 2,
+        version: 3,
         mode: "execution",
         status: "streaming",
         summaryText: "",
@@ -3086,50 +3086,45 @@ async function validateChatStreamContract(context) {
         phase: "modeling",
         title: "建模阶段",
         status: "running",
-        items: [],
+        steps: [],
       },
     };
     yield {
-      type: "timeline_item_upsert",
-      item: {
-        id: "skill-selected:draft_model",
-        kind: "skill_selected",
+      type: "step_upsert",
+      step: {
+        id: "step:draft_model:2026-03-09T00:00:00.002Z",
+        phase: "modeling",
         status: "done",
-        skillId: "draft_model",
+        tool: "draft_model",
         title: "已选择建模技能",
         reason: "routing",
-        createdAt: "2026-03-09T00:00:00.002Z",
+        startedAt: "2026-03-09T00:00:00.002Z",
       },
       phaseId: "phase:modeling",
     };
     yield {
-      type: "timeline_item_upsert",
+      type: "step_upsert",
       phaseId: "phase:modeling",
-      item: {
-        id: "tool-start:draft_model",
-        kind: "tool_start",
+      step: {
+        id: "step:draft_model:2026-03-09T00:00:00.003Z",
         phase: "modeling",
         tool: "draft_model",
         status: "running",
         title: "开始生成结构模型",
         reason: "draft model",
+        startedAt: "2026-03-09T00:00:00.003Z",
       },
     };
     yield {
-      type: "timeline_item_upsert",
+      type: "step_upsert",
       phaseId: "phase:understanding",
-      item: {
-        id: "interaction:clarify-span",
-        kind: "clarification",
+      step: {
+        id: "step:clarify:2026-03-09T00:00:00.004Z",
         phase: "understanding",
         status: "done",
         title: "Need more modeling details",
-        previewText: "Need more modeling details",
-        explanationText: "Critical modeling inputs are still missing.",
-        rawUserFacingText: "Please provide the span and support conditions.",
-        missingCritical: ["span", "support conditions"],
-        question: "Please provide the span and support conditions.",
-        createdAt: "2026-03-09T00:00:00.004Z",
+        errorMessage: "Please provide the span and support conditions.",
+        startedAt: "2026-03-09T00:00:00.004Z",
       },
     };
     yield {
@@ -3148,16 +3143,15 @@ async function validateChatStreamContract(context) {
       model: { schema_version: "1.0.0" },
     };
     yield {
-      type: "timeline_item_upsert",
-      phaseId: "phase:analysis",
-      item: {
-        id: "tool-result:draft_model",
-        kind: "tool_result",
-        phase: "analysis",
+      type: "step_upsert",
+      phaseId: "phase:modeling",
+      step: {
+        id: "step:draft_model:2026-03-09T00:00:00.015Z",
+        phase: "modeling",
         tool: "draft_model",
         status: "done",
         title: "结构模型已生成",
-        summaryText: "结构模型已生成，可继续分析。",
+        output: { model: { schema_version: "1.0.0" } },
         startedAt: "2026-03-09T00:00:00.015Z",
         completedAt: "2026-03-09T00:00:00.030Z",
         durationMs: 15,
@@ -3251,29 +3245,19 @@ async function validateChatStreamContract(context) {
     assert(chunks.some((chunk) => chunk.type === "phase_upsert"), "stream should contain phase_upsert chunk");
     assert(chunks.some((chunk) => chunk.type === "artifact_upsert"), "stream should contain artifact_upsert chunk");
     assert(chunks.some((chunk) => chunk.type === "artifact_payload_sync"), "stream should contain artifact_payload_sync chunk");
-    assert(chunks.some((chunk) => chunk.type === "timeline_item_upsert" && chunk.phaseId === "phase:modeling"), "stream should contain phase-scoped timeline chunk");
+    assert(chunks.some((chunk) => chunk.type === "step_upsert" && chunk.phaseId === "phase:modeling"), "stream should contain phase-scoped step chunk");
     assert(chunks.some((chunk) => chunk.type === "result"), "stream should contain result chunk");
     assert(chunks[chunks.length - 1].type === "done", "last chunk before [DONE] should be done");
     assert(capturedTraceId === "trace-stream-request-1", "chat/stream should pass traceId to agent stream");
-    assert(persistedAssistantMetadata?.presentation?.version === 2, "chat/stream should persist assistant presentation metadata");
+    assert(persistedAssistantMetadata?.presentation?.version === 3, "chat/stream should persist assistant presentation metadata");
     assert(
       persistedAssistantMetadata?.presentation?.summaryText === "ok",
       "chat/stream should persist the latest summaryText inside assistant presentation metadata",
     );
     assert(
       Array.isArray(persistedAssistantMetadata?.presentation?.phases)
-        && persistedAssistantMetadata.presentation.phases.some((phase) => phase.phase === "understanding" && phase.items.some((item) => item.kind === "clarification" && item.rawUserFacingText === "Please provide the span and support conditions.")),
-      "chat/stream should persist clarification items inside grouped assistant presentation metadata",
-    );
-    assert(
-      Array.isArray(persistedAssistantMetadata?.presentation?.phases)
-        && persistedAssistantMetadata.presentation.phases.some((phase) => phase.phase === "modeling" && phase.items.some((item) => item.kind === "skill_selected")),
-      "chat/stream should persist grouped skill selection items inside assistant presentation metadata",
-    );
-    assert(
-      Array.isArray(persistedAssistantMetadata?.presentation?.phases)
-        && persistedAssistantMetadata.presentation.phases.some((phase) => phase.phase === "analysis" && phase.items.some((item) => item.kind === "tool_result")),
-      "chat/stream should reconstruct tool results into grouped assistant presentation metadata",
+        && persistedAssistantMetadata.presentation.phases.some((phase) => phase.phase === "modeling" && phase.steps.some((step) => step.tool === "draft_model")),
+      "chat/stream should persist modeling steps inside assistant presentation metadata",
     );
 
     const startTrace = chunks.find((chunk) => chunk.type === "start")?.content?.traceId;

@@ -1665,45 +1665,22 @@ export class AgentService {
         }
       }
 
-      if (!pipelineState.bindings.validationSkillId) {
-        const resolved = this.skillRuntime.resolveDefaultSkillForDomain('validation');
-        if (resolved && activeSkillIds?.includes(resolved)) {
-          pipelineState = {
-            ...pipelineState,
-            bindings: { ...pipelineState.bindings, validationSkillId: resolved },
-          };
+      const bindDefaultSkill = (domain: string, key: keyof typeof pipelineState.bindings) => {
+        if (!pipelineState.bindings[key]) {
+          const resolved = this.skillRuntime.resolveDefaultSkillForDomain(domain);
+          if (resolved && activeSkillIds?.includes(resolved)) {
+            pipelineState = {
+              ...pipelineState,
+              bindings: { ...pipelineState.bindings, [key]: resolved },
+            };
+          }
         }
-      }
+      };
 
-      if (!pipelineState.bindings.reportSkillId) {
-        const resolved = this.skillRuntime.resolveDefaultSkillForDomain('report-export');
-        if (resolved && activeSkillIds?.includes(resolved)) {
-          pipelineState = {
-            ...pipelineState,
-            bindings: { ...pipelineState.bindings, reportSkillId: resolved },
-          };
-        }
-      }
-
-      if (!pipelineState.bindings.drawingSkillId) {
-        const resolved = this.skillRuntime.resolveDefaultSkillForDomain('drawing');
-        if (resolved && activeSkillIds?.includes(resolved)) {
-          pipelineState = {
-            ...pipelineState,
-            bindings: { ...pipelineState.bindings, drawingSkillId: resolved },
-          };
-        }
-      }
-
-      if (!pipelineState.bindings.postprocessSkillId) {
-        const resolved = this.skillRuntime.resolveDefaultSkillForDomain('result-postprocess');
-        if (resolved && activeSkillIds?.includes(resolved)) {
-          pipelineState = {
-            ...pipelineState,
-            bindings: { ...pipelineState.bindings, postprocessSkillId: resolved },
-          };
-        }
-      }
+      bindDefaultSkill('validation', 'validationSkillId');
+      bindDefaultSkill('report-export', 'reportSkillId');
+      bindDefaultSkill('drawing', 'drawingSkillId');
+      bindDefaultSkill('result-postprocess', 'postprocessSkillId');
 
       // Pre-resolve structural skill from selected skills so scheduler and
       // emitStepUpdate can show the skill badge even before draft_model runs.
@@ -2439,7 +2416,7 @@ export class AgentService {
           sessionArtifacts: {},
           projectArtifacts: pipelineState.artifacts,
           enricherContracts: await this.resolveEnricherContracts(skillIds ?? []),
-          structuralSkillId: workingSession.structuralTypeMatch?.skillId || workingSession.draft?.skillId,
+          structuralSkillId: preResolvedStructuralSkillId,
         });
         if (!codeCheckPlan.blockedReason && codeCheckPlan.requiredSteps.length > 0) {
           for (const ccStep of codeCheckPlan.requiredSteps) {
@@ -2532,7 +2509,7 @@ export class AgentService {
           projectArtifacts: pipelineState.artifacts,
           consumerContracts: await this.resolveConsumerContracts(skillIds ?? []),
           enricherContracts: await this.resolveEnricherContracts(skillIds ?? []),
-          structuralSkillId: workingSession.structuralTypeMatch?.skillId || workingSession.draft?.skillId,
+          structuralSkillId: preResolvedStructuralSkillId,
         });
         if (!reportPlan.blockedReason && reportPlan.requiredSteps.length > 0) {
           for (const reportStep of reportPlan.requiredSteps) {

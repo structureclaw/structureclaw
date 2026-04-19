@@ -6,6 +6,8 @@ import type { MessageKey } from '@/lib/i18n'
 
 export type PresentationPhase = 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report'
 export type PresentationPhaseStatus = 'pending' | 'running' | 'done' | 'error'
+
+const PHASE_ORDER: PresentationPhase[] = ['understanding', 'modeling', 'validation', 'analysis', 'report']
 type ArtifactName = 'model' | 'analysis' | 'report'
 
 // --- TimelineStepItem ---
@@ -269,7 +271,7 @@ function getPhaseLabel(phase: PresentationPhase, title: string | undefined, t: (
   switch (phase) {
     case 'understanding': return t('phaseLabelUnderstanding')
     case 'modeling': return t('phaseLabelModeling')
-    case 'validation': return t('phaseLabelModeling')
+    case 'validation': return t('phaseLabelCodeCheck')
     case 'analysis': return t('phaseLabelAnalysis')
     case 'report': return t('phaseLabelReport')
   }
@@ -290,13 +292,16 @@ function getStepStatusLabel(status: TimelineStepItem['status'], t: (key: Message
   return t('presentationStatusDone')
 }
 
+function orderedPhases(phases: TimelinePhaseGroup[]): TimelinePhaseGroup[] {
+  return [...phases].sort((a, b) => PHASE_ORDER.indexOf(a.phase) - PHASE_ORDER.indexOf(b.phase))
+}
+
 function upsertPhase(phases: TimelinePhaseGroup[], nextPhase: TimelinePhaseGroup): TimelinePhaseGroup[] {
   const index = phases.findIndex((p) => p.phaseId === nextPhase.phaseId)
   if (index === -1) {
-    return [...phases, { ...nextPhase, steps: nextPhase.steps || [] }]
+    return orderedPhases([...phases, { ...nextPhase, steps: nextPhase.steps || [] }])
   }
   const existing = phases[index]
-  // Don't regress phase status: if steps already derived 'done', don't override with 'running'
   const stepsToUse = (nextPhase.steps && nextPhase.steps.length > 0) ? nextPhase.steps : existing.steps
   const allDone = stepsToUse.length > 0 && stepsToUse.every((s) => s.status === 'done')
   const hasError = stepsToUse.some((s) => s.status === 'error')
