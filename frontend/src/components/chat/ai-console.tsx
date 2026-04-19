@@ -1317,6 +1317,35 @@ function AnalysisPanel({
   )
 }
 
+const LINK_RE = /\[([^\]]+)\]\(([^)\s]+)\)/g
+const PDF_LINK_RE = /\[PDF[^\]]*\]\(([^)\s]+)\)/
+
+function extractPdfUrl(content: string): string | null {
+  const m = content.match(PDF_LINK_RE)
+  if (!m) return null
+  const relative = m[1]
+  if (relative.startsWith('http') || relative.startsWith('//')) return relative
+  return `${API_BASE}${relative}`
+}
+
+function renderContentWithLinks(content: string) {
+  const parts: (string | JSX.Element)[] = []
+  let last = 0
+  for (const m of content.matchAll(LINK_RE)) {
+    if (m.index > last) parts.push(content.slice(last, m.index))
+    const rawUrl = m[2]
+    const label = m[1]
+    const url = rawUrl.startsWith('/') ? `${API_BASE}${rawUrl}` : rawUrl
+    parts.push(
+      <a key={m.index} href={url} target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline hover:text-cyan-300">{label}</a>,
+    )
+    last = (m.index ?? 0) + m[0].length
+  }
+  if (parts.length === 0) return content
+  if (last < content.length) parts.push(content.slice(last))
+  return <>{parts}</>
+}
+
 export function AIConsole() {
   const { t, locale } = useI18n()
   const initialAssistantMessage = useMemo<Message>(() => ({
@@ -2715,11 +2744,20 @@ export function AIConsole() {
                       <span className="text-slate-500">{formatDate(message.timestamp, locale)}</span>
                     </div>
                     <div className="whitespace-pre-wrap text-sm leading-7">
-                      {message.content}
+                      {message.role === 'assistant' ? renderContentWithLinks(message.content) : message.content}
                       {message.status === 'streaming' && (
                         <span className="ml-2 inline-flex h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.9)]" />
                       )}
                     </div>
+                    {message.role === 'assistant' && extractPdfUrl(message.content) && (
+                      <div className="mt-3 overflow-hidden rounded-xl border border-border/70 dark:border-white/10">
+                        <iframe
+                          src={extractPdfUrl(message.content)!}
+                          className="h-[480px] w-full border-0"
+                          title="PDF Preview"
+                        />
+                      </div>
+                    )}
                     {message.role === 'assistant' && message.debugDetails && (
                       <details className="mt-3 rounded-2xl border border-border/70 bg-background/60 px-3 py-2 dark:border-white/10 dark:bg-slate-950/40">
                         <summary className="cursor-pointer text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">

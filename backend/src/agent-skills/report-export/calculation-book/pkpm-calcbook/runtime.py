@@ -244,3 +244,35 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         warnings.append(f"PDF generation failed: {exc}")
 
     return report
+
+
+if __name__ == "__main__":
+    import json
+    import sys
+
+    CURRENT_DIR = Path(__file__).resolve().parent
+    BACKEND_SRC = CURRENT_DIR.parents[4]
+    for p in (CURRENT_DIR, BACKEND_SRC / "skill-shared" / "python"):
+        s = str(p)
+        if s not in sys.path:
+            sys.path.insert(0, s)
+
+    raw = sys.stdin.read().strip()
+    if not raw:
+        print(json.dumps({"ok": False, "errorCode": "EMPTY_REQUEST", "message": "No input"}, ensure_ascii=False))
+        raise SystemExit(1)
+
+    try:
+        payload = json.loads(raw)
+        model = payload.get("model", {})
+        parameters = payload.get("parameters", {})
+        result = run_analysis(model, parameters)
+        print(json.dumps({"ok": True, "data": result}, ensure_ascii=False))
+    except Exception as exc:
+        print(json.dumps({
+            "ok": False,
+            "errorCode": "CALCBOOK_FAILED",
+            "message": str(exc),
+            "detail": {"type": type(exc).__name__},
+        }, ensure_ascii=False))
+        raise SystemExit(1)

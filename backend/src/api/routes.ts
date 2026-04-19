@@ -6,6 +6,7 @@ import { agentRoutes } from './agent.js';
 import { analysisEngineRoutes } from './analysis-engine.js';
 import { adminDatabaseRoutes } from './admin-database.js';
 import { analysisRuntimeRoutes } from './analysis-runtime.js';
+import { fileRoutes } from './files.js';
 
 export async function registerRoutes(fastify: FastifyInstance) {
   await fastify.register(analysisRuntimeRoutes);
@@ -20,6 +21,7 @@ export async function registerRoutes(fastify: FastifyInstance) {
   await fastify.register(analysisEngineRoutes, { prefix: `${apiPrefix}/analysis-engines` });
   await fastify.register(agentRoutes, { prefix: `${apiPrefix}/agent` });
   await fastify.register(adminDatabaseRoutes, { prefix: `${apiPrefix}/admin/database` });
+  await fastify.register(fileRoutes, { prefix: `${apiPrefix}/files` });
 
   // API 信息
   fastify.get(`${apiPrefix}`, async () => ({
