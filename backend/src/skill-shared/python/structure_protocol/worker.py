@@ -61,8 +61,8 @@ def main() -> int:
         if action == "converter_schema":
             _ok({
                 "supportedFormats": supported_formats(),
-                "defaultSourceFormat": "structuremodel-v1",
-                "defaultTargetFormat": "structuremodel-v1",
+                "defaultSourceFormat": "structuremodel-v2",
+                "defaultTargetFormat": "structuremodel-v2",
                 "warning": None,
             })
             return 0
@@ -73,9 +73,9 @@ def main() -> int:
             request = dict(payload.get("input") or {})
             _ok(convert_structure_model_payload(
                 request.get("model") or {},
-                str(request.get("target_schema_version", "1.0.0")),
-                str(request.get("source_format", "structuremodel-v1")),
-                str(request.get("target_format", "structuremodel-v1")),
+                str(request.get("target_schema_version", "2.0.0")),
+                str(request.get("source_format", "structuremodel-v2")),
+                str(request.get("target_format", "structuremodel-v2")),
                 supported_formats(),
                 get_converter,
             ))

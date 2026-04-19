@@ -8,7 +8,7 @@ from typing import List, Dict, Any, Optional
 import logging
 
 from registry import AnalysisEngineRegistry
-from structure_protocol.structure_model_v1 import StructureModelV1
+from structure_protocol.structure_model_v2 import StructureModelV2
 
 # 配置日志
 logging.basicConfig(level=logging.INFO)
@@ -36,7 +36,7 @@ app.add_middleware(
 
 class AnalysisRequest(BaseModel):
     type: str  # static, dynamic, seismic, nonlinear
-    model: StructureModelV1
+    model: StructureModelV2
     parameters: Dict[str, Any]
     engine_id: Optional[str] = Field(default=None, alias="engineId")
 

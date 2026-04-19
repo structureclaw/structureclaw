@@ -10,9 +10,9 @@ Options:
   --input-dir <dir>               Directory containing source JSON files
   --output-dir <dir>              Directory to write converted JSON files
   --report <file>                 Path to write batch report JSON
-  --source-format <name>          Source format (default: structuremodel-v1)
+  --source-format <name>          Source format (default: structuremodel-v2)
   --target-format <name>          Target format
-  --target-schema-version <ver>   Target schema version (default: 1.0.0)
+  --target-schema-version <ver>   Target schema version (default: 2.0.0)
   --allow-failures                Return success even if some files fail
   -h, --help                      Show this help
 `);
@@ -23,9 +23,9 @@ function parseArgs(argv) {
     inputDir: "",
     outputDir: "",
     report: "",
-    sourceFormat: "structuremodel-v1",
+    sourceFormat: "structuremodel-v2",
     targetFormat: "",
-    targetSchemaVersion: "1.0.0",
+    targetSchemaVersion: "2.0.0",
     allowFailures: false,
     help: false,
   };

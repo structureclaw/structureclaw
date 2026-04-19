@@ -33,12 +33,12 @@ export async function executeConvertModelStep(args: {
   buildBlockedResult: (response: string) => Promise<AgentRunResult>;
   structureProtocolClient: StructureProtocolClientLike;
 }): Promise<{ ok: true; normalizedModel: Record<string, unknown> } | { ok: false; result: AgentRunResult }> {
-  args.plan.push(args.localize(args.locale, `将输入模型从 ${args.sourceFormat} 转为 structuremodel-v1`, `Convert the input model from ${args.sourceFormat} to structuremodel-v1`));
+  args.plan.push(args.localize(args.locale, `将输入模型从 ${args.sourceFormat} 转为 structuremodel-v2`, `Convert the input model from ${args.sourceFormat} to structuremodel-v2`));
   const convertInput = {
     model: args.modelInput,
     source_format: args.sourceFormat,
-    target_format: 'structuremodel-v1',
-    target_schema_version: '1.0.0',
+    target_format: 'structuremodel-v2',
+    target_schema_version: '2.0.0',
   };
   const convertCall = args.startToolCall('convert_model', convertInput);
   args.toolCalls.push(convertCall);

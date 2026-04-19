@@ -727,7 +727,7 @@ function toModelFromVisualizationSnapshot(snapshot?: VisualizationSnapshot | nul
   }
 
   const model: Record<string, unknown> = {
-    schema_version: '1.0.0',
+    schema_version: '2.0.0',
     nodes: snapshot.nodes.map((node) => ({
       id: node.id,
       x: node.position.x,
@@ -1559,6 +1559,35 @@ function AnalysisPanel({
   )
 }
 
+const LINK_RE = /\[([^\]]+)\]\(([^)\s]+)\)/g
+const PDF_LINK_RE = /\[PDF[^\]]*\]\(([^)\s]+)\)/
+
+function extractPdfUrl(content: string): string | null {
+  const m = content.match(PDF_LINK_RE)
+  if (!m) return null
+  const relative = m[1]
+  if (relative.startsWith('http') || relative.startsWith('//')) return relative
+  return `${API_BASE}${relative}`
+}
+
+function renderContentWithLinks(content: string) {
+  const parts: (string | JSX.Element)[] = []
+  let last = 0
+  for (const m of content.matchAll(LINK_RE)) {
+    if (m.index > last) parts.push(content.slice(last, m.index))
+    const rawUrl = m[2]
+    const label = m[1]
+    const url = rawUrl.startsWith('/') ? `${API_BASE}${rawUrl}` : rawUrl
+    parts.push(
+      <a key={m.index} href={url} target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline hover:text-cyan-300">{label}</a>,
+    )
+    last = (m.index ?? 0) + m[0].length
+  }
+  if (parts.length === 0) return content
+  if (last < content.length) parts.push(content.slice(last))
+  return <>{parts}</>
+}
+
 export function AIConsole() {
   const { t, locale } = useI18n()
   const initialAssistantMessage = useMemo<Message>(() => ({
@@ -1598,6 +1627,8 @@ export function AIConsole() {
   const [selectedToolIds, setSelectedToolIds] = useState<string[]>([])
   const [hasExplicitSkillSelection, setHasExplicitSkillSelection] = useState(false)
   const [hasExplicitToolSelection, setHasExplicitToolSelection] = useState(false)
+  const [availableEngines, setAvailableEngines] = useState<Array<{ id: string; name: string; available: boolean; priority: number }>>([])
+  const [selectedEngineId, setSelectedEngineId] = useState('')
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
   const [latestModelVisualizationSnapshot, setLatestModelVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
   const [latestResultVisualizationSnapshot, setLatestResultVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
@@ -1852,6 +1883,35 @@ export function AIConsole() {
     return () => {
       active = false
     }
+  }, [])
+
+  useEffect(() => {
+    let active = true
+
+    async function loadEngines() {
+      try {
+        const response = await fetch(`${API_BASE}/api/v1/analysis-engines`)
+        if (!response.ok || !active) return
+        const payload = await response.json()
+        if (!active || !Array.isArray(payload?.engines)) return
+        setAvailableEngines(
+          payload.engines
+            .filter((e: Record<string, unknown>) => e.available)
+            .map((e: Record<string, unknown>) => ({
+              id: String(e.id ?? ''),
+              name: String(e.name ?? e.id ?? ''),
+              available: Boolean(e.available),
+              priority: Number(e.priority ?? 0),
+            }))
+            .sort((a: { priority: number }, b: { priority: number }) => b.priority - a.priority),
+        )
+      } catch {
+        if (active) setAvailableEngines([])
+      }
+    }
+
+    loadEngines()
+    return () => { active = false }
   }, [])
 
   useEffect(() => {
@@ -2697,7 +2757,8 @@ export function AIConsole() {
         skillIds: effectiveSkillIds,
         enabledToolIds: effectiveEnabledToolIds,
         model: contextModel,
-        modelFormat: contextModel ? 'structuremodel-v1' : undefined,
+        modelFormat: contextModel ? 'structuremodel-v2' : undefined,
+        engineId: selectedEngineId || undefined,
         autoCodeCheck: hasSelectedCodeCheckSkill || undefined,
         resumeFromMessage,
       }
@@ -3227,7 +3288,7 @@ export function AIConsole() {
                     )}
                     {!message.presentation && message.content && (
                       <div className="whitespace-pre-wrap text-sm leading-7">
-                        {message.content}
+                        {message.role === 'assistant' ? renderContentWithLinks(message.content) : message.content}
                       </div>
                     )}
                     {message.status === 'streaming' && !message.presentation && (
@@ -3244,6 +3305,15 @@ export function AIConsole() {
                         <Square className="h-2.5 w-2.5" />
                         {t('streamAborted')}
                       </span>
+                    )}
+                    {message.role === 'assistant' && !message.presentation && extractPdfUrl(message.content) && (
+                      <div className="mt-3 overflow-hidden rounded-xl border border-border/70 dark:border-white/10">
+                        <iframe
+                          src={extractPdfUrl(message.content)!}
+                          className="h-[480px] w-full border-0"
+                          title="PDF Preview"
+                        />
+                      </div>
                     )}
                     {message.role === 'assistant' && message.debugDetails && !message.presentation && (
                       <details className="mt-3 rounded-2xl border border-border/70 bg-background/60 px-3 py-2 dark:border-white/10 dark:bg-slate-950/40">
@@ -3544,6 +3614,39 @@ export function AIConsole() {
                           {t('visualizationModelPreviewHelp')}
                         </div>
                       ) : null}
+                      {availableEngines.length > 1 && (
+                        <div className="space-y-1 pt-2">
+                          <div className="text-sm font-semibold text-foreground">{t('analysisEngineSelectorLabel')}</div>
+                          <div className="text-xs leading-5 text-muted-foreground">{t('analysisEngineSelectorHelp')}</div>
+                          <div className="mt-1 flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              className={`rounded-full border px-3 py-1 text-xs transition ${
+                                !selectedEngineId
+                                  ? 'border-cyan-300/60 bg-cyan-300/15 text-cyan-900 dark:text-cyan-100'
+                                  : 'border-border/70 bg-background/70 text-muted-foreground hover:border-cyan-300/30 hover:text-foreground dark:border-white/10 dark:bg-white/5'
+                              }`}
+                              onClick={() => setSelectedEngineId('')}
+                            >
+                              {t('analysisEngineAutoOption')}
+                            </button>
+                            {availableEngines.map((engine) => (
+                              <button
+                                key={engine.id}
+                                type="button"
+                                className={`rounded-full border px-3 py-1 text-xs transition ${
+                                  selectedEngineId === engine.id
+                                    ? 'border-cyan-300/60 bg-cyan-300/15 text-cyan-900 dark:text-cyan-100'
+                                    : 'border-border/70 bg-background/70 text-muted-foreground hover:border-cyan-300/30 hover:text-foreground dark:border-white/10 dark:bg-white/5'
+                                }`}
+                                onClick={() => setSelectedEngineId(selectedEngineId === engine.id ? '' : engine.id)}
+                              >
+                                {engine.name}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

@@ -1,6 +1,7 @@
 import { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from '../services/locale.js';
 import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.js';
+import { runPkpmCalcbook } from '../agent-skills/report-export/calculation-book/pkpm-calcbook/runner.js';
 import { buildPostprocessedResultArtifact } from '../agent-skills/result-postprocess/entry.js';
 import { computeDependencyFingerprint, computeDraftStateContentHash } from './artifact-helpers.js';
 import { applyPatches, type PatchReducerInput } from './patch-reducer.js';
@@ -13,6 +14,7 @@ import { AgentSkillRegistry } from './registry.js';
 import { AgentSkillExecutor } from './executor.js';
 import { listBuiltinToolManifests, resolveToolingForSkillManifests } from './tool-registry.js';
 import { buildDefaultReportNarrative } from './report-template.js';
+import { logger } from '../utils/logger.js';
 import { tryBuildGenericModelWithLlm } from '../agent-skills/structure-type/generic/llm-model-builder.js';
 import { localize, withStructuralTypeState } from './plugin-helpers.js';
 import {
@@ -904,6 +906,34 @@ export class AgentSkillRuntime {
     const analysisPayload = args.pipelineState.artifacts.analysisRaw?.payload;
     const codeCheckPayload = args.pipelineState.artifacts.codeCheckResult?.payload;
     if (!args.step.provides) return {};
+
+    // PKPM calcbook: detect PKPM engine and generate calculation book directly
+    const analysisAny = analysisPayload as Record<string, unknown> | undefined;
+    const meta = analysisAny?.meta as Record<string, unknown> | undefined;
+    const data = analysisAny?.data as Record<string, unknown> | undefined;
+    const summary = data?.summary as Record<string, unknown> | undefined;
+    logger.info({ engineId: meta?.engineId, hasMeta: !!meta, analysisKeys: analysisAny ? Object.keys(analysisAny) : [], dataKeys: data ? Object.keys(data) : [], summaryKeys: summary ? Object.keys(summary) : [] }, 'PKPM calcbook detection');
+    if (meta?.engineId === 'builtin-pkpm') {
+      const jwsPath = summary?.jws_path as string | undefined;
+      if (jwsPath) {
+        const calcbookResult = await runPkpmCalcbook(jwsPath);
+        const report = {
+          summary: `PKPM calculation book generated (${calcbookResult.summary?.docx_path ? 'DOCX' : 'no DOCX'}, ${calcbookResult.summary?.pdf_path ? 'PDF' : 'no PDF'})`,
+          json: {
+            reportSchemaVersion: '1.0.0',
+            analysisType: 'static',
+            summary: calcbookResult.summary,
+            detailed: calcbookResult.detailed,
+            warnings: calcbookResult.warnings,
+            generatedAt: new Date().toISOString(),
+            meta: { reportSkillId: 'pkpm-calcbook' },
+          } satisfies Record<string, unknown>,
+          markdown: calcbookResult.markdown,
+        };
+        const artifact = this.buildArtifactEnvelope(args.step.provides, report, args.step, args.pipelineState);
+        return { artifact };
+      }
+    }
 
     // Delegate to executeReportSkill for full report (summary, markdown, meta)
     // Prefer pipelineState.policy.analysisType (same source used by scheduled analysis execution).

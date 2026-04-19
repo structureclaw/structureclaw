@@ -8,16 +8,18 @@ from pydantic import ValidationError
 from structure_protocol.migrations import (
     is_supported_target_schema_version,
     migrate_structure_model_v1,
+    migrate_v1_to_v2,
 )
-from structure_protocol.structure_model_v1 import StructureModelV1
+from structure_protocol.structure_model_v2 import StructureModelV2
 
 
 def get_structure_model_schema() -> Dict[str, Any]:
-    return StructureModelV1.model_json_schema()
+    return StructureModelV2.model_json_schema()
 
 
 def validate_structure_model_payload(model_payload: Dict[str, Any]) -> Dict[str, Any]:
-    model = StructureModelV1.model_validate(model_payload)
+    migrated = _ensure_v2_if_needed(model_payload)
+    model = StructureModelV2.model_validate(migrated)
     return {
         "valid": True,
         "schemaVersion": model.schema_version,
@@ -72,19 +74,23 @@ def convert_structure_model_payload(
         )
 
     try:
-        normalized_source = source_converter.to_v1(model_payload)
-        model = StructureModelV1.model_validate(normalized_source)
-        migrated = migrate_structure_model_v1(model.model_dump(mode="json"), target_schema_version)
-        if target_format == "structuremodel-v1":
-            normalized = migrated
+        normalized_source = source_converter.to_v2(model_payload)
+        original_schema_version = str(normalized_source.get("schema_version", "1.0.0"))
+        migrated = _ensure_v2_if_needed(normalized_source)
+        model = StructureModelV2.model_validate(migrated)
+        final_schema = migrate_structure_model_v1(
+            model.model_dump(mode="json"), target_schema_version, original_schema_version
+        )
+        if target_format in ("structuremodel-v1", "structuremodel-v2"):
+            normalized = final_schema
         else:
-            normalized = target_converter.from_v1(StructureModelV1.model_validate(migrated))
+            normalized = target_converter.from_v2(model)
     except ValidationError as error:
         raise HTTPException(
             status_code=422,
             detail={
                 "errorCode": "INVALID_STRUCTURE_MODEL",
-                "message": "Input model failed StructureModel v1 validation",
+                "message": "Input model failed StructureModel v2 validation",
                 "errors": error.errors(include_context=False),
             },
         ) from error
@@ -104,3 +110,7 @@ def convert_structure_model_payload(
         "targetSchemaVersion": target_schema_version,
         "model": normalized,
     }
+
+
+def _ensure_v2_if_needed(payload: Dict[str, Any]) -> Dict[str, Any]:
+    return migrate_v1_to_v2(payload)

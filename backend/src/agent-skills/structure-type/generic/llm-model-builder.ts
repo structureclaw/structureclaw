@@ -60,7 +60,7 @@ export async function tryBuildGenericModelWithLlm(
       }
 
       if (typeof parsed.schema_version !== 'string') {
-        parsed.schema_version = '1.0.0';
+        parsed.schema_version = '2.0.0';
       }
       if (typeof parsed.unit_system !== 'string') {
         parsed.unit_system = 'SI';

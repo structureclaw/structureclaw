@@ -16,7 +16,8 @@ from fastapi import HTTPException
 
 from contracts import AnalysisResult, EngineNotAvailableError
 from skill_loader import SkillNotLoadedError, build_missing_skill_detail, load_skill_symbol
-from structure_protocol.structure_model_v1 import StructureModelV1
+from structure_protocol.migrations import migrate_v1_to_v2
+from structure_protocol.structure_model_v2 import StructureModelV2
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,18 @@ ENGINE_DEFAULTS = {
         "priority": 100,
         "routingHints": ["high-fidelity", "default"],
         "constraints": {"requiresOpenSees": True},
+    },
+    "builtin-pkpm": {
+        "name": "PKPM Builtin",
+        "priority": 90,
+        "routingHints": ["commercial", "design-code"],
+        "constraints": {"requiresPKPM": True},
+    },
+    "builtin-yjk": {
+        "name": "YJK Builtin",
+        "priority": 85,
+        "routingHints": ["commercial", "design-code"],
+        "constraints": {"requiresYJK": True},
     },
     "builtin-simplified": {
         "name": "Simplified Builtin",
@@ -98,7 +111,8 @@ class AnalysisEngineRegistry:
                 payload["engineId"] = engine_id
             return self._post_to_http_engine(manifest, "/validate", payload)
 
-        model = StructureModelV1.model_validate(model_payload)
+        migrated = self._ensure_v2(model_payload)
+        model = StructureModelV2.model_validate(migrated)
         return {
             "valid": True,
             "schemaVersion": model.schema_version,
@@ -116,7 +130,7 @@ class AnalysisEngineRegistry:
     def run_analysis(
         self,
         analysis_type: str,
-        model: StructureModelV1,
+        model: StructureModelV2,
         parameters: Dict[str, Any],
         engine_id: Optional[str] = None,
     ) -> Dict[str, Any]:
@@ -162,7 +176,7 @@ class AnalysisEngineRegistry:
         self,
         selection: EngineSelection,
         analysis_type: str,
-        model: StructureModelV1,
+        model: StructureModelV2,
         parameters: Dict[str, Any],
         engine_id: Optional[str],
     ) -> Dict[str, Any]:
@@ -184,7 +198,7 @@ class AnalysisEngineRegistry:
         self,
         selection: EngineSelection,
         analysis_type: str,
-        model: StructureModelV1,
+        model: StructureModelV2,
         engine_id: Optional[str],
     ) -> Optional[EngineSelection]:
         if engine_id is not None:
@@ -243,7 +257,7 @@ class AnalysisEngineRegistry:
         self,
         adapter_key: str,
         analysis_type: str,
-        model: StructureModelV1,
+        model: StructureModelV2,
         parameters: Dict[str, Any],
     ) -> AnalysisResult:
         skill = self._resolve_builtin_skill(adapter_key, analysis_type)
@@ -398,6 +412,9 @@ class AnalysisEngineRegistry:
             "fallbackFrom": selection.fallback_from,
         }
 
+    def _ensure_v2(self, model_payload: Dict[str, Any]) -> Dict[str, Any]:
+        return migrate_v1_to_v2(model_payload)
+
     def _detect_model_family(self, model_payload: Dict[str, Any]) -> str:
         elements = model_payload.get("elements")
         if not isinstance(elements, list) or not elements:
@@ -414,6 +431,10 @@ class AnalysisEngineRegistry:
             return "Engine is disabled"
         if manifest["kind"] == "python" and manifest.get("constraints", {}).get("requiresOpenSees"):
             return self._opensees_unavailable_reason()
+        if manifest["kind"] == "python" and manifest.get("constraints", {}).get("requiresPKPM"):
+            return self._pkpm_unavailable_reason()
+        if manifest["kind"] == "python" and manifest.get("constraints", {}).get("requiresYJK"):
+            return self._yjk_unavailable_reason()
         if manifest["kind"] == "http":
             base_url = manifest.get("baseUrl")
             if not isinstance(base_url, str) or not base_url.strip():
@@ -489,6 +510,21 @@ class AnalysisEngineRegistry:
         logger.warning("OpenSeesPy runtime is unavailable: %s", reason)
         self._opensees_runtime_reason = str(reason)
         return self._opensees_runtime_reason
+
+    def _pkpm_unavailable_reason(self) -> Optional[str]:
+        cycle_path = os.getenv("PKPM_CYCLE_PATH", "").strip()
+        if not cycle_path:
+            return "PKPM_CYCLE_PATH environment variable is not set"
+        if not Path(cycle_path).is_file():
+            return f"JWSCYCLE.exe not found at: {cycle_path}"
+        try:
+            import APIPyInterface  # noqa: F401
+        except ImportError:
+            return "APIPyInterface Python extension not found"
+        return None
+
+    def _yjk_unavailable_reason(self) -> Optional[str]:
+        return "YJK engine is not yet implemented"
 
     def _builtin_manifests(self) -> List[Dict[str, Any]]:
         manifests: List[Dict[str, Any]] = []
@@ -637,13 +673,7 @@ def _load_runtime_module(skill_id: str, runtime_path: Path):
     module = module_from_spec(spec)
     sys.modules[module_name] = module
     skill_dir = str(runtime_path.parent)
-    inserted = False
     if skill_dir not in sys.path:
         sys.path.insert(0, skill_dir)
-        inserted = True
-    try:
-        spec.loader.exec_module(module)
-    finally:
-        if inserted and sys.path and sys.path[0] == skill_dir:
-            sys.path.pop(0)
+    spec.loader.exec_module(module)
     return module

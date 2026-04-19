@@ -2638,6 +2638,28 @@ export class AgentService {
         signal,
       );
 
+      // Append PKPM calcbook file paths to the response
+      if (schedulerReport) {
+        const reportAny = schedulerReport as Record<string, unknown>;
+        const reportJson = reportAny.json as Record<string, unknown> | undefined;
+        const reportMeta = reportJson?.meta as Record<string, unknown> | undefined;
+        if (reportMeta?.reportSkillId === 'pkpm-calcbook') {
+          const reportSummary = reportJson?.summary as Record<string, unknown> | undefined;
+          const docxPath = reportSummary?.docx_path as string | undefined;
+          const pdfPath = reportSummary?.pdf_path as string | undefined;
+          if (pdfPath || docxPath) {
+            const apiUrl = (p: string) => `/api/v1/files/serve?path=${encodeURIComponent(p)}`;
+            const lines: string[] = [];
+            if (pdfPath) lines.push(`- [PDF 计算书](${apiUrl(pdfPath)})`);
+            if (docxPath) lines.push(`- [Word 计算书](${apiUrl(docxPath)})`);
+            const calcbookInfo = locale === 'zh'
+              ? `\n\n计算书已生成：\n${lines.join('\n')}`
+              : `\n\nCalculation book generated:\n${lines.join('\n')}`;
+            schedulerResponse += calcbookInfo;
+          }
+        }
+      }
+
       // Append any validation bypass warnings or plan notes to the response
       if (plan.length > 0) {
         schedulerResponse = `${schedulerResponse}\n${plan.join('\n')}`;

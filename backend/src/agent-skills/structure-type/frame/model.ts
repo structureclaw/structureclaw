@@ -18,23 +18,25 @@ const STEEL_GRADE_PROPERTIES: Record<string, { E: number; G: number; nu: number;
   A36: { E: 200000, G: 77000, nu: 0.3, rho: 7850, fy: 248 },
 };
 
-const H_SECTION_PROPERTIES: Record<string, { A: number; Iy: number; Iz: number; J: number }> = {
-  'HW200X200': { A: 0.00640, Iy: 4.72e-5, Iz: 1.60e-5, J: 1.70e-6 },
-  'HW250X250': { A: 0.00920, Iy: 1.07e-4, Iz: 3.65e-5, J: 2.90e-6 },
-  'HW300X300': { A: 0.01192, Iy: 2.04e-4, Iz: 6.75e-5, J: 4.23e-6 },
-  'HW350X350': { A: 0.01739, Iy: 4.03e-4, Iz: 1.36e-4, J: 8.63e-6 },
-  'HW400X400': { A: 0.01972, Iy: 6.67e-4, Iz: 2.24e-4, J: 1.01e-5 },
-  'HW450X300': { A: 0.01870, Iy: 7.93e-4, Iz: 2.03e-4, J: 9.86e-6 },
-  'HN300X150': { A: 0.00487, Iy: 7.21e-5, Iz: 5.08e-6, J: 5.18e-7 },
-  'HN350X175': { A: 0.00629, Iy: 1.36e-4, Iz: 9.84e-6, J: 6.32e-7 },
-  'HN400X200': { A: 0.00842, Iy: 2.37e-4, Iz: 1.74e-5, J: 8.44e-7 },
-  'HN450X200': { A: 0.00961, Iy: 3.32e-4, Iz: 1.87e-5, J: 9.68e-7 },
-  'HN500X200': { A: 0.01143, Iy: 5.02e-4, Iz: 2.14e-5, J: 1.24e-6 },
-  'HN600X200': { A: 0.01341, Iy: 9.06e-4, Iz: 2.27e-5, J: 1.48e-6 },
+type HSectionEntry = { A: number; Iy: number; Iz: number; J: number; shape: { kind: string; H: number; B: number; tw: number; tf: number }; standardSteelName: string };
+
+const H_SECTION_PROPERTIES: Record<string, HSectionEntry> = {
+  'HW200X200': { A: 0.00640, Iy: 4.72e-5, Iz: 1.60e-5, J: 1.70e-6, shape: { kind: 'H', H: 200, B: 200, tw: 8, tf: 12 }, standardSteelName: 'HW200x200' },
+  'HW250X250': { A: 0.00920, Iy: 1.07e-4, Iz: 3.65e-5, J: 2.90e-6, shape: { kind: 'H', H: 250, B: 250, tw: 9, tf: 14 }, standardSteelName: 'HW250x250' },
+  'HW300X300': { A: 0.01192, Iy: 2.04e-4, Iz: 6.75e-5, J: 4.23e-6, shape: { kind: 'H', H: 300, B: 300, tw: 10, tf: 15 }, standardSteelName: 'HW300x300' },
+  'HW350X350': { A: 0.01739, Iy: 4.03e-4, Iz: 1.36e-4, J: 8.63e-6, shape: { kind: 'H', H: 350, B: 350, tw: 12, tf: 19 }, standardSteelName: 'HW350x350' },
+  'HW400X400': { A: 0.01972, Iy: 6.67e-4, Iz: 2.24e-4, J: 1.01e-5, shape: { kind: 'H', H: 400, B: 400, tw: 13, tf: 21 }, standardSteelName: 'HW400x400' },
+  'HW450X300': { A: 0.01870, Iy: 7.93e-4, Iz: 2.03e-4, J: 9.86e-6, shape: { kind: 'H', H: 450, B: 300, tw: 11, tf: 18 }, standardSteelName: 'HW450x300' },
+  'HN300X150': { A: 0.00487, Iy: 7.21e-5, Iz: 5.08e-6, J: 5.18e-7, shape: { kind: 'H', H: 300, B: 150, tw: 6.5, tf: 9 }, standardSteelName: 'HN300x150' },
+  'HN350X175': { A: 0.00629, Iy: 1.36e-4, Iz: 9.84e-6, J: 6.32e-7, shape: { kind: 'H', H: 350, B: 175, tw: 7, tf: 11 }, standardSteelName: 'HN350x175' },
+  'HN400X200': { A: 0.00842, Iy: 2.37e-4, Iz: 1.74e-5, J: 8.44e-7, shape: { kind: 'H', H: 400, B: 200, tw: 8, tf: 13 }, standardSteelName: 'HN400x200' },
+  'HN450X200': { A: 0.00961, Iy: 3.32e-4, Iz: 1.87e-5, J: 9.68e-7, shape: { kind: 'H', H: 450, B: 200, tw: 9, tf: 14 }, standardSteelName: 'HN450x200' },
+  'HN500X200': { A: 0.01143, Iy: 5.02e-4, Iz: 2.14e-5, J: 1.24e-6, shape: { kind: 'H', H: 500, B: 200, tw: 10, tf: 16 }, standardSteelName: 'HN500x200' },
+  'HN600X200': { A: 0.01341, Iy: 9.06e-4, Iz: 2.27e-5, J: 1.48e-6, shape: { kind: 'H', H: 600, B: 200, tw: 11, tf: 17 }, standardSteelName: 'HN600x200' },
 };
 
 type SteelGradeProps = { E: number; G: number; nu: number; rho: number; fy: number };
-type SectionProps = { name: string; A: number; Iy: number; Iz: number; J: number; G: number; substituted?: string };
+type SectionProps = { name: string; A: number; Iy: number; Iz: number; J: number; G: number; shape: { kind: string; H: number; B: number; tw: number; tf: number }; standardSteelName: string; substituted?: string };
 
 export function getDefaultColumnSection(storyCount: number): string {
   if (storyCount > 10) return 'HW400X400';
@@ -76,7 +78,8 @@ function resolveSectionProps(
   const found = Boolean(H_SECTION_PROPERTIES[normalized]);
   const sectionKey = found ? normalized : defaultSection;
   const substituted = (section && !found) ? `${normalized} not in builtin library, substituted with ${sectionKey}` : undefined;
-  return { name: sectionKey, ...H_SECTION_PROPERTIES[sectionKey]!, G: matG, substituted };
+  const entry = H_SECTION_PROPERTIES[sectionKey]!;
+  return { name: sectionKey, A: entry.A, Iy: entry.Iy, Iz: entry.Iz, J: entry.J, G: matG, shape: entry.shape, standardSteelName: entry.standardSteelName, substituted };
 }
 
 function accumulateCoords(lengths: number[]): number[] {
@@ -129,7 +132,7 @@ function buildFrame2dLocalModel(
 
   for (let storyIdx = 1; storyIdx < zCoords.length; storyIdx++) {
     for (let bayIdx = 0; bayIdx < xCoords.length; bayIdx++) {
-      elements.push({ id: `C${elementId}`, type: 'beam', nodes: [n2dId(storyIdx - 1, bayIdx), n2dId(storyIdx, bayIdx)], material: '1', section: '1' });
+      elements.push({ id: `C${elementId}`, type: 'column', nodes: [n2dId(storyIdx - 1, bayIdx), n2dId(storyIdx, bayIdx)], material: '1', section: '1' });
       elementId += 1;
     }
   }
@@ -156,15 +159,28 @@ function buildFrame2dLocalModel(
   }
 
   return {
-    schema_version: '1.0.0',
+    schema_version: '2.0.0',
     unit_system: 'SI',
     nodes,
     elements,
     materials: [{ id: '1', name: matProps.resolvedGrade, E: matProps.E, nu: matProps.nu, rho: matProps.rho, fy: matProps.fy }],
     sections: [
-      { id: '1', name: colProps.name, type: 'beam', properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
-      { id: '2', name: beamProps.name, type: 'beam', properties: { A: beamProps.A, Iy: beamProps.Iy, Iz: beamProps.Iz, J: beamProps.J, G: beamProps.G } },
+      { id: '1', name: colProps.name, type: 'H', purpose: 'column', standard_steel_name: colProps.standardSteelName, shape: colProps.shape, properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
+      { id: '2', name: beamProps.name, type: 'H', purpose: 'beam', standard_steel_name: beamProps.standardSteelName, shape: beamProps.shape, properties: { A: beamProps.A, Iy: beamProps.Iy, Iz: beamProps.Iz, J: beamProps.J, G: beamProps.G } },
     ],
+    stories: storyHeights.map((h, i) => {
+      const storyIdx = i + 1;
+      const fl = floorLoads.find((l) => l.story === storyIdx);
+      const floorAreaM2 = Math.max(xCoords[xCoords.length - 1], 1);
+      const deadLoad = fl?.verticalKN ? Math.abs(fl.verticalKN) / floorAreaM2 : undefined;
+      return {
+        id: `F${storyIdx}`,
+        height: h,
+        elevation: zCoords[i],
+        standard_floor_group: 'SF1',
+        ...(deadLoad ? { dead_load: Math.round(deadLoad * 100) / 100 } : {}),
+      };
+    }),
     load_cases: [{ id: 'LC1', type: 'other', loads }],
     load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
     metadata: {
@@ -217,7 +233,7 @@ function buildFrame3dLocalModel(
   for (let storyIdx = 1; storyIdx < zCoords.length; storyIdx++) {
     for (let xIdx = 0; xIdx < xCoords.length; xIdx++) {
       for (let yIdx = 0; yIdx < yCoords.length; yIdx++) {
-        elements.push({ id: `C${elementId}`, type: 'beam', nodes: [n3dId(storyIdx - 1, xIdx, yIdx), n3dId(storyIdx, xIdx, yIdx)], material: '1', section: '1' });
+        elements.push({ id: `C${elementId}`, type: 'column', nodes: [n3dId(storyIdx - 1, xIdx, yIdx), n3dId(storyIdx, xIdx, yIdx)], material: '1', section: '1' });
         elementId += 1;
       }
     }
@@ -262,15 +278,28 @@ function buildFrame3dLocalModel(
   const elementReferenceVectors = buildElementReferenceVectors(elements, nodes);
 
   return {
-    schema_version: '1.0.0',
+    schema_version: '2.0.0',
     unit_system: 'SI',
     nodes,
     elements,
     materials: [{ id: '1', name: matProps.resolvedGrade, E: matProps.E, nu: matProps.nu, rho: matProps.rho, fy: matProps.fy }],
     sections: [
-      { id: '1', name: colProps.name, type: 'beam', properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
-      { id: '2', name: beamProps.name, type: 'beam', properties: { A: beamProps.A, Iy: beamProps.Iy, Iz: beamProps.Iz, J: beamProps.J, G: beamProps.G } },
+      { id: '1', name: colProps.name, type: 'H', purpose: 'column', standard_steel_name: colProps.standardSteelName, shape: colProps.shape, properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
+      { id: '2', name: beamProps.name, type: 'H', purpose: 'beam', standard_steel_name: beamProps.standardSteelName, shape: beamProps.shape, properties: { A: beamProps.A, Iy: beamProps.Iy, Iz: beamProps.Iz, J: beamProps.J, G: beamProps.G } },
     ],
+    stories: storyHeights.map((h, i) => {
+      const storyIdx = i + 1;
+      const fl = floorLoads.find((l) => l.story === storyIdx);
+      const floorAreaM2 = Math.max(xCoords[xCoords.length - 1], 1) * Math.max(yCoords[yCoords.length - 1], 1);
+      const deadLoad = fl?.verticalKN ? Math.abs(fl.verticalKN) / floorAreaM2 : undefined;
+      return {
+        id: `F${storyIdx}`,
+        height: h,
+        elevation: zCoords[i],
+        standard_floor_group: 'SF1',
+        ...(deadLoad ? { dead_load: Math.round(deadLoad * 100) / 100 } : {}),
+      };
+    }),
     load_cases: [{ id: 'LC1', type: 'other', loads }],
     load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
     metadata: {

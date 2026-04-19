@@ -4,18 +4,18 @@ from typing import Any, Dict
 
 from opensees_static_analysis import OpenSeesStaticExecutor
 from opensees_static_simplified_static_analysis import StaticAnalyzer
-from structure_protocol.structure_model_v1 import StructureModelV1
+from structure_protocol.structure_model_v2 import StructureModelV2
 
 
 class OpenSeesStaticAnalyzer(StaticAnalyzer):
-    """Bridges StructureModelV1 node/element IDs to OpenSees integer tags.
+    """Bridges StructureModelV2 node/element IDs to OpenSees integer tags.
 
     Inherits StaticAnalyzer (from the opensees-static library) which owns the
     bulk of the static analysis logic; this subclass only overrides the tag
     look-up methods required by OpenSeesPy.
     """
 
-    def __init__(self, model: StructureModelV1) -> None:
+    def __init__(self, model: StructureModelV2) -> None:
         super().__init__(model)
         self._ops_node_tags = {
             str(node.id): index + 1 for index, node in enumerate(model.nodes)
@@ -49,7 +49,7 @@ class OpenSeesStaticAnalyzer(StaticAnalyzer):
         return self._select_planar_frame_mode(parameters)
 
 
-def run_analysis(model: StructureModelV1, parameters: Dict[str, Any]) -> Dict[str, Any]:
+def run_analysis(model: StructureModelV2, parameters: Dict[str, Any]) -> Dict[str, Any]:
     analyzer = OpenSeesStaticAnalyzer(model)
     executor = OpenSeesStaticExecutor(analyzer)
     try:

@@ -19,6 +19,7 @@ export interface LocalStructureProtocolClient {
 
 const LOCAL_GET_PATHS: Record<string, StructureProtocolAction> = {
   '/schema/structure-model-v1': 'structure_model_schema',
+  '/schema/structure-model-v2': 'structure_model_schema',
   '/schema/converters': 'converter_schema',
 };
 

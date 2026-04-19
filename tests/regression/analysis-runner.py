@@ -15,13 +15,14 @@ from opensees_runtime import get_opensees_runtime_issue
 from registry import AnalysisEngineRegistry
 from runtime import run_code_check
 from structure_protocol.runtime import convert_structure_model_payload
-from structure_protocol.structure_model_v1 import (
-    Element,
-    Material,
-    Node,
-    Section,
-    StructureModelV1,
+from structure_protocol.structure_model_v2 import (
+    ElementV2 as Element,
+    MaterialV2 as Material,
+    NodeV2 as Node,
+    SectionV2 as Section,
+    StructureModelV2,
 )
+from structure_protocol.structure_model_v1 import StructureModelV1
 
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
@@ -133,7 +134,7 @@ def validate_opensees_runtime_and_routing():
     }
 
     registry = AnalysisEngineRegistry("StructureClaw Analysis Engine", "0.1.0")
-    model = StructureModelV1.model_validate(simply_supported)
+    model = StructureModelV2.model_validate(simply_supported)
 
     if issue is None:
         print("[ok] OpenSees runtime smoke test")
@@ -252,8 +253,8 @@ def validate_opensees_runtime_and_routing():
 
 
 def validate_analyze_contract():
-    model = StructureModelV1(
-        schema_version="1.0.0",
+    model = StructureModelV2(
+        schema_version="2.0.0",
         nodes=[
             Node(id="1", x=0, y=0, z=0, restraints=[True, True, True, True, True, True]),
             Node(id="2", x=0, y=0, z=3),
@@ -280,16 +281,16 @@ def validate_analyze_contract():
         raise SystemExit("Expected success=true for static request")
     if ok_result["analysis_type"] != "static":
         raise SystemExit(f"Expected analysis_type=static, got {ok_result['analysis_type']}")
-    if ok_result["schema_version"] != "1.0.0":
-        raise SystemExit(f"Expected schema_version=1.0.0, got {ok_result['schema_version']}")
+    if ok_result["schema_version"] != "2.0.0":
+        raise SystemExit(f"Expected schema_version=2.0.0, got {ok_result['schema_version']}")
     required_meta = {"engineId", "engineName", "engineVersion", "engineKind", "selectionMode", "timestamp"}
     missing_meta = required_meta - set(ok_result["meta"].keys())
     if missing_meta:
         raise SystemExit(f"meta fields required: {sorted(missing_meta)}")
     print("[ok] analyze success envelope contract")
 
-    truss_3d_model = StructureModelV1(
-        schema_version="1.0.0",
+    truss_3d_model = StructureModelV2(
+        schema_version="2.0.0",
         nodes=[
             Node(id="1", x=0, y=1, z=0, restraints=[True, True, True, False, False, False]),
             Node(id="2", x=2, y=1, z=0, restraints=[False, True, True, False, False, False]),
@@ -324,8 +325,8 @@ def validate_analyze_contract():
         raise SystemExit(f"Missing envelope fields for 3D truss: {sorted(missing_envelope)}")
     print("[ok] analyze 3d truss envelope contract")
 
-    frame_3d_model = StructureModelV1(
-        schema_version="1.0.0",
+    frame_3d_model = StructureModelV2(
+        schema_version="2.0.0",
         nodes=[
             Node(id="1", x=0, y=0, z=0, restraints=[True, True, True, True, True, True]),
             Node(id="2", x=0, y=3, z=2, restraints=[True, False, False, True, False, False]),
@@ -350,8 +351,8 @@ def validate_analyze_contract():
         raise SystemExit(f"Expected analysisMode=linear_3d_frame, got {frame_3d_result.get('data', {}).get('analysisMode')}")
     print("[ok] analyze 3d frame envelope contract")
 
-    simplified_planar_beam_model = StructureModelV1(
-        schema_version="1.0.0",
+    simplified_planar_beam_model = StructureModelV2(
+        schema_version="2.0.0",
         nodes=[
             Node(id="1", x=0, y=0, z=0, restraints=[True, True, True, True, True, True]),
             Node(id="2", x=5, y=0, z=0),
@@ -504,11 +505,11 @@ def validate_structure_examples():
     validated = 0
     for file_path in files:
         payload = json.loads(file_path.read_text(encoding="utf-8"))
-        StructureModelV1.model_validate(payload)
+        StructureModelV2.model_validate(payload)
         validated += 1
         print(f"[ok] {file_path.name}")
 
-    print(f"Validated {validated} StructureModel v1 examples.")
+    print(f"Validated {validated} StructureModel examples against V2 schema.")
 
 
 def validate_convert_roundtrip():

@@ -196,7 +196,8 @@ export async function renderSummary(
       localize(locale, `系统结果：${fallback}`, `System result: ${fallback}`),
     );
     if (hasData) {
-      const dataObj = analysisData as Record<string, unknown>;
+      const rawObj = analysisData as Record<string, unknown>;
+      const dataObj = (rawObj.data && typeof rawObj.data === 'object' && !Array.isArray(rawObj.data) ? rawObj.data : rawObj) as Record<string, unknown>;
       const compact = JSON.stringify({
         analysisMode: dataObj['analysisMode'] ?? null,
         plane: dataObj['plane'] ?? null,
