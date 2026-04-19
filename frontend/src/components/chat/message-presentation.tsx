@@ -283,6 +283,11 @@ export function reducePresentationEvent(
         ...state,
         status: 'done',
         completedAt: event.completedAt,
+        phases: state.phases.map((phase) =>
+          phase.status === 'error'
+            ? phase
+            : { ...phase, status: 'done' as const, completedAt: phase.completedAt ?? event.completedAt }
+        ),
       }
     case 'presentation_error':
       return {
@@ -342,7 +347,18 @@ export function MessagePresentationView({
                           <div key={item.id} className="rounded-lg border border-border/60 bg-background/60 px-2.5 py-1.5 dark:border-white/10 dark:bg-slate-950/30">
                             <div className="flex items-start justify-between gap-3">
                               <div className="min-w-0 flex-1">
-                                <div className="text-sm font-medium text-foreground">{label}</div>
+                                <div className="flex items-center gap-1.5">
+                                  {getItemKindTag(item) ? (
+                                    <span className={cn(
+                                      'inline-flex shrink-0 items-center rounded px-1 py-px text-[10px] font-medium leading-none',
+                                      getItemKindTag(item) === 'skill' && 'bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300',
+                                      getItemKindTag(item) === 'tool' && 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300',
+                                    )}>
+                                      {getItemKindLabel(getItemKindTag(item)!, t)}
+                                    </span>
+                                  ) : null}
+                                  <span className="text-sm font-medium text-foreground">{label}</span>
+                                </div>
                               </div>
                               <Badge
                                 variant="outline"
@@ -531,4 +547,14 @@ function getItemStatusLabel(status: TimelineEventItem['status'], t: (key: Messag
   if (status === 'running') return t('presentationStatusRunning')
   if (status === 'error') return t('presentationStatusError')
   return t('presentationStatusDone')
+}
+
+function getItemKindTag(item: TimelineEventItem): 'skill' | 'tool' | null {
+  if (item.kind === 'skill_selected' || item.kind === 'skill_result') return 'skill'
+  if (item.kind === 'tool_start' || item.kind === 'tool_result') return 'tool'
+  return null
+}
+
+function getItemKindLabel(kind: 'skill' | 'tool', t: (key: MessageKey) => string): string {
+  return kind === 'skill' ? t('presentationKindSkill') : t('presentationKindTool')
 }

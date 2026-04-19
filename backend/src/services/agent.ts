@@ -655,7 +655,7 @@ function buildToolStartTimelineItem(args: {
   startedAt: string;
 }): Extract<TimelineEventItem, { kind: 'tool_start' }> {
   return {
-    id: `tool-start:${args.step.tool}:${args.startedAt}`,
+    id: `tool:${args.step.tool}:${args.startedAt}`,
     kind: 'tool_start',
     phase: mapToolToPresentationPhase(args.step.tool),
     status: 'running',
@@ -677,7 +677,7 @@ function buildToolResultTimelineItem(args: {
   errorMessage?: string;
 }): Extract<TimelineEventItem, { kind: 'tool_result' }> {
   return {
-    id: `tool-result:${args.step.tool}:${args.completedAt}`,
+    id: `tool:${args.step.tool}:${args.startedAt}`,
     kind: 'tool_result',
     phase: mapToolToPresentationPhase(args.step.tool),
     status: args.status,

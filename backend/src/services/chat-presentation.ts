@@ -346,7 +346,7 @@ export function buildCompletedAssistantPresentation(args: {
     });
 
       presentation = appendItem(presentation, phase, {
-        id: `tool-start:${call.tool}:${startedAt}`,
+        id: `tool:${call.tool}:${startedAt}`,
         kind: 'tool_start',
         phase,
         status: 'running',
@@ -357,7 +357,7 @@ export function buildCompletedAssistantPresentation(args: {
       });
 
     presentation = appendItem(presentation, phase, {
-      id: `tool-result:${call.tool}:${completedAt}`,
+      id: `tool:${call.tool}:${startedAt}`,
       kind: 'tool_result',
         phase,
         status: call.status === 'error' ? 'error' : 'done',
