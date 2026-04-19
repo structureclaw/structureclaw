@@ -133,9 +133,6 @@ function resolveCallableTools(
   selectedSkillIds.forEach((skillId) => {
     const toolIds = enabledToolIdsBySkill[skillId]
     if (!Array.isArray(toolIds)) {
-      if (skillDomainById[skillId] === 'structure-type') {
-        callableToolIds.add('validate_model')
-      }
       return
     }
     toolIds.forEach((toolId) => {
@@ -143,9 +140,6 @@ function resolveCallableTools(
         callableToolIds.add(toolId)
       }
     })
-    if (skillDomainById[skillId] === 'structure-type') {
-      callableToolIds.add('validate_model')
-    }
   })
 
   const toolById = new Map(matrixTools.map((tool) => [tool.id, tool]))
