@@ -2243,18 +2243,7 @@ export class AgentService {
           output: stepResult.artifact?.payload,
         });
         pipelineState = applySchedulerStepResult({ pipelineState, step, stepResult });
-        emitStepUpdate(step, {
-          status: 'done',
-          startedAtIso: stepStartedAt,
-          completedAtIso: new Date().toISOString(),
-          durationMs: Date.now() - stepStartedAtMs,
-          artifact: stepResult.artifact,
-        });
-        // Step 3.2: Write back normalizedModel to workingSession for backward compatibility
-        if (stepResult.artifact?.kind === 'normalizedModel' && stepResult.artifact.payload) {
-          workingSession.latestModel = stepResult.artifact.payload as Record<string, unknown>;
-        }
-        // Step 3.3: Write back draft metadata (structuralTypeMatch, draft state) from draft/update steps
+        // Step 3.3: Write back draft metadata BEFORE emitStepUpdate so skillId is available
         if (stepResult.draftMeta) {
           if (stepResult.draftMeta.structuralTypeMatch) {
             workingSession.structuralTypeMatch = stepResult.draftMeta.structuralTypeMatch;
@@ -2263,6 +2252,17 @@ export class AgentService {
             workingSession.draft = stepResult.draftMeta.nextState;
           }
         }
+        // Step 3.2: Write back normalizedModel to workingSession for backward compatibility
+        if (stepResult.artifact?.kind === 'normalizedModel' && stepResult.artifact.payload) {
+          workingSession.latestModel = stepResult.artifact.payload as Record<string, unknown>;
+        }
+        emitStepUpdate(step, {
+          status: 'done',
+          startedAtIso: stepStartedAt,
+          completedAtIso: new Date().toISOString(),
+          durationMs: Date.now() - stepStartedAtMs,
+          artifact: stepResult.artifact,
+        });
         if (projectId && stepResult.runRecord) {
           await this.runStore.updateRun(stepResult.runRecord.runId, {
             status: stepResult.runRecord.status,
