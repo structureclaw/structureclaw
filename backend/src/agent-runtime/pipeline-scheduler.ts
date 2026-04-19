@@ -320,13 +320,17 @@ export class PipelineScheduler {
       ? 'queue-run'
       : 'execute';
 
-    const bindingKey = graphNode.providerSlot ? `${graphNode.providerSlot}SkillId` as keyof import('./types.js').ProviderBindingState : undefined;
-    const boundSkillId = bindingKey ? input.bindings?.[bindingKey] : undefined;
-
     // Use 'draft_model' tool for normalizedModel when no existing model is present
     const actualTool = target === 'normalizedModel' && !input.projectArtifacts.normalizedModel
       ? 'draft_model'
       : graphNode.defaultTool;
+
+    const bindingKey = graphNode.providerSlot ? `${graphNode.providerSlot}SkillId` as keyof import('./types.js').ProviderBindingState : undefined;
+    const boundSkillId = bindingKey
+      ? input.bindings?.[bindingKey]
+      : ['draft_model', 'update_model', 'convert_model'].includes(actualTool)
+        ? input.structuralSkillId
+        : undefined;
 
     steps.push({
       stepId: `${target}-${actualTool}`,

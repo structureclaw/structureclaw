@@ -1991,6 +1991,7 @@ export class AgentService {
         },
         consumerContracts: await this.resolveConsumerContracts(skillIds ?? []),
         enricherContracts: await this.resolveEnricherContracts(skillIds ?? []),
+        structuralSkillId: workingSession.structuralTypeMatch?.skillId || workingSession.draft?.skillId,
       });
 
       if (schedulerPlan.blockedReason) {
@@ -2808,6 +2809,7 @@ export class AgentService {
           sessionArtifacts: {},
           projectArtifacts: pipelineState.artifacts,
           enricherContracts: await this.resolveEnricherContracts(skillIds ?? []),
+          structuralSkillId: workingSession.structuralTypeMatch?.skillId || workingSession.draft?.skillId,
         });
         if (!codeCheckPlan.blockedReason && codeCheckPlan.requiredSteps.length > 0) {
           for (const ccStep of codeCheckPlan.requiredSteps) {
@@ -2905,6 +2907,7 @@ export class AgentService {
           projectArtifacts: pipelineState.artifacts,
           consumerContracts: await this.resolveConsumerContracts(skillIds ?? []),
           enricherContracts: await this.resolveEnricherContracts(skillIds ?? []),
+          structuralSkillId: workingSession.structuralTypeMatch?.skillId || workingSession.draft?.skillId,
         });
         if (!reportPlan.blockedReason && reportPlan.requiredSteps.length > 0) {
           for (const reportStep of reportPlan.requiredSteps) {

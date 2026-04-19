@@ -671,6 +671,7 @@ export interface SchedulerInput {
   };
   projectArtifacts: Partial<Record<ProjectArtifactKind, ArtifactEnvelope>>;
   requestOverrides?: RequestExecutionOverrides;
+  structuralSkillId?: string;
 }
 
 export interface SchedulerPlan {
