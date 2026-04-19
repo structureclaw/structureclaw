@@ -2632,11 +2632,11 @@ async function validateAgentCapabilityMatrix(context) {
   assert(domainSummaryById["load-boundary"]?.runtimeStatus === "discoverable", "load-boundary domain should remain discoverable while builtin skills exist");
   assert(domainSummaryById["visualization"]?.runtimeStatus === "discoverable", "visualization domain should remain discoverable while builtin skills exist");
   assert(domainSummaryById["general"]?.runtimeStatus === "discoverable", "general domain should be discoverable while builtin utility skills exist");
-  assert(domainSummaryById["design"]?.runtimeStatus === "reserved", "design domain should be reserved when it has no runtime skill presence");
+  assert(domainSummaryById["design"]?.runtimeStatus === "partial", "design domain should be partial when design-builtin skill is present");
   assert(domainSummaryById["data-input"]?.runtimeStatus === "reserved", "data-input domain should be reserved when it has no runtime skill presence");
   assert(domainSummaryById["drawing"]?.runtimeStatus === "discoverable", "drawing domain should be discoverable while builtin skills exist");
   assert(domainSummaryById["material"]?.runtimeStatus === "reserved", "material domain should be reserved when it has no runtime skill presence");
-  assert(domainSummaryById["result-postprocess"]?.runtimeStatus === "reserved", "result-postprocess domain should be reserved when it has no runtime skill presence");
+  assert(domainSummaryById["result-postprocess"]?.runtimeStatus === "active", "result-postprocess domain should be active when postprocess-builtin skill is present");
   assert(domainSummaryById["load-boundary"]?.skillIds.includes("dead-load"), "load-boundary summary should include discoverable builtin skills");
   assert(domainSummaryById["section"]?.skillIds.includes("section-common"), "section summary should include discoverable builtin skills");
   assert(domainSummaryById["visualization"]?.skillIds.includes("visualization-frame-summary"), "visualization summary should include discoverable builtin skills");
@@ -2996,7 +2996,7 @@ async function validateAgentSkillhubRepositoryDown(context) {
   const result = await svc.runForcedExecution({
     message: "按3m悬臂梁端部10kN点荷载做静力分析",
     context: {
-      skillIds: ["beam"],
+      skillIds: ["beam", "opensees-static", "validation-structure-model"],
       model: {
         schema_version: "1.0.0",
         unit_system: "SI",
