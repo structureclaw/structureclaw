@@ -628,8 +628,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
         if (
           chunk
           && typeof chunk === 'object'
-          && (chunk as { type?: string }).type === 'timeline_item_upsert'
-          && (chunk as { item?: unknown }).item
+          && (chunk as { type?: string }).type === 'step_upsert'
+          && (chunk as { step?: unknown }).step
         ) {
           assistantPresentation = reducePresentationEvent(
             assistantPresentation,
@@ -674,15 +674,15 @@ export async function chatRoutes(fastify: FastifyInstance) {
           chunk
           && typeof chunk === 'object'
           && (chunk as { type?: string }).type === 'presentation_error'
-          && (chunk as { error?: unknown }).error
+          && (chunk as { phase?: unknown }).phase
         ) {
           assistantPresentation = reducePresentationEvent(
             assistantPresentation,
             chunk as Parameters<typeof reducePresentationEvent>[1],
           );
-          const errorItem = (chunk as { error: { message?: string } }).error;
-          if (typeof errorItem.message === 'string' && errorItem.message.trim().length > 0) {
-            assistantContent = errorItem.message;
+          const errorPayload = chunk as { message?: string };
+          if (typeof errorPayload.message === 'string' && errorPayload.message.trim().length > 0) {
+            assistantContent = errorPayload.message;
           }
         }
         if (

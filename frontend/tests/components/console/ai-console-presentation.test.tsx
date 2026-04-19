@@ -24,7 +24,7 @@ describe('AIConsole presentation rendering', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders summary and grouped phases from v2 presentation events', async () => {
+  it('renders summary and grouped phases from v3 presentation events', async () => {
     const user = userEvent.setup()
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -35,7 +35,7 @@ describe('AIConsole presentation rendering', () => {
           {
             type: 'presentation_init',
             presentation: {
-              version: 2,
+              version: 3,
               mode: 'execution',
               status: 'streaming',
               summaryText: '',
@@ -50,19 +50,21 @@ describe('AIConsole presentation rendering', () => {
               phase: 'modeling',
               title: '建模',
               status: 'running',
-              items: [],
+              steps: [],
             },
           },
           {
-            type: 'timeline_item_upsert',
+            type: 'step_upsert',
             phaseId: 'phase:modeling',
-            item: {
-              id: 'tool:draft_model:result',
-              kind: 'tool_result',
+            step: {
+              id: 'step:draft_model:2026-04-19T10:00:01.000Z',
               phase: 'modeling',
               tool: 'draft_model',
               status: 'done',
               title: '结构模型已生成',
+              startedAt: '2026-04-19T10:00:01.000Z',
+              completedAt: '2026-04-19T10:00:02.000Z',
+              durationMs: 1000,
             },
           },
           {
@@ -72,7 +74,7 @@ describe('AIConsole presentation rendering', () => {
               phase: 'modeling',
               title: '建模',
               status: 'done',
-              items: [],
+              steps: [],
             },
           },
           {
@@ -143,132 +145,8 @@ describe('AIConsole presentation rendering', () => {
       const chatPanel = screen.getByTestId('console-chat-scroll')
       expect(within(chatPanel).getAllByText('模型已生成，可继续分析。').length).toBeGreaterThan(0)
       expect(within(chatPanel).getByText('建模')).toBeInTheDocument()
-      expect(within(chatPanel).getByText(/Draft Model|创建模型草稿/)).toBeInTheDocument()
+      expect(within(chatPanel).getByText('结构模型已生成')).toBeInTheDocument()
       expect(within(chatPanel).queryByText(/show prompt & thinking/i)).not.toBeInTheDocument()
-    })
-  })
-
-  it('renders clarification turns with collapsed status and expandable raw reply text', async () => {
-    const user = userEvent.setup()
-
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
-
-      if (url.includes('/api/v1/chat/stream')) {
-        return createSseResponse([
-          {
-            type: 'presentation_init',
-            presentation: {
-              version: 2,
-              mode: 'execution',
-              status: 'streaming',
-              summaryText: '',
-              phases: [],
-              artifacts: [],
-            },
-          },
-          {
-            type: 'phase_upsert',
-            phase: {
-              phaseId: 'phase:understanding',
-              phase: 'understanding',
-              title: '理解需求',
-              status: 'running',
-              items: [],
-            },
-          },
-          {
-            type: 'timeline_item_upsert',
-            phaseId: 'phase:understanding',
-            item: {
-              id: 'note:interaction-turn-1',
-              kind: 'phase_start',
-              phase: 'understanding',
-              status: 'running',
-              title: '当前处于建模信息收集中',
-            },
-          },
-          {
-            type: 'timeline_item_upsert',
-            phaseId: 'phase:understanding',
-            item: {
-              id: 'interaction:turn-1',
-              kind: 'clarification',
-              phase: 'understanding',
-              status: 'done',
-              title: '当前需要补充参数',
-              previewText: '还缺截面尺寸和材料参数',
-              explanationText: '这个合成解释不应优先显示。',
-              rawUserFacingText: '已记录简支梁，跨度10m，跨中集中荷载1kN。请补充梁截面尺寸和材料信息，例如截面宽高及弹性模量，以便开始分析。',
-              missingCritical: ['截面尺寸', '材料参数'],
-              question: '请补充梁截面尺寸和材料参数。',
-            },
-          },
-          {
-            type: 'summary_replace',
-            summaryText: '已记录简支梁，跨度10m，跨中集中荷载1kN。请补充梁截面尺寸和材料信息，例如截面宽高及弹性模量，以便开始分析。',
-          },
-          {
-            type: 'presentation_complete',
-            completedAt: '2026-04-19T10:00:05.000Z',
-          },
-          {
-            type: 'done',
-          },
-        ])
-      }
-
-      if (url.includes('/api/v1/chat/conversation') && !url.includes('/snapshot') && !url.includes('/messages')) {
-        return Response.json({
-          id: 'conv-clarification-test',
-          title: 'Design a simply supported beam',
-          type: 'general',
-        })
-      }
-
-      if (url.includes('/api/v1/chat/conversations')) {
-        return Response.json([])
-      }
-
-      if (url.includes('/api/v1/agent/skills')) {
-        return Response.json([])
-      }
-
-      if (url.includes('/api/v1/agent/capability-matrix')) {
-        return Response.json({})
-      }
-
-      if (url.includes('/snapshot')) {
-        return Response.json({ success: true })
-      }
-
-      if (url.includes('/messages')) {
-        return Response.json({ success: true })
-      }
-
-      return Response.json({})
-    })
-
-    render(<AIConsole />)
-
-    const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
-    await user.type(composer, 'Design a simply supported beam')
-    await user.click(screen.getByRole('button', { name: /send/i }))
-
-    const chatPanel = await screen.findByTestId('console-chat-scroll')
-    expect(within(chatPanel).getByText('还缺截面尺寸和材料参数')).toBeInTheDocument()
-    expect(within(chatPanel).queryByText('这个合成解释不应优先显示。')).not.toBeInTheDocument()
-
-    const detailToggles = within(chatPanel).getAllByText(/show details/i)
-    await user.click(detailToggles[0])
-
-    await waitFor(() => {
-      expect(
-        within(chatPanel).getAllByText(
-          '已记录简支梁，跨度10m，跨中集中荷载1kN。请补充梁截面尺寸和材料信息，例如截面宽高及弹性模量，以便开始分析。',
-        ).length,
-      ).toBeGreaterThan(0)
-      expect(within(chatPanel).queryByText('这个合成解释不应优先显示。')).not.toBeInTheDocument()
     })
   })
 
@@ -342,7 +220,7 @@ describe('AIConsole presentation rendering', () => {
               createdAt: '2026-04-19T10:00:01.000Z',
               metadata: {
                 presentation: {
-                  version: 2,
+                  version: 3,
                   mode: 'execution',
                   status: 'done',
                   summaryText: '后端 presentation 摘要应该恢复出来',
@@ -352,15 +230,13 @@ describe('AIConsole presentation rendering', () => {
                       phase: 'understanding',
                       title: '理解需求',
                       status: 'done',
-                      items: [
+                      steps: [
                         {
-                          id: 'interaction:restore',
-                          kind: 'clarification',
+                          id: 'step:draft_model:2026-04-19T10:00:01.000Z',
                           phase: 'understanding',
+                          tool: 'draft_model',
                           status: 'done',
-                          title: '当前需要补充参数',
-                          previewText: '还缺截面尺寸和材料参数',
-                          rawUserFacingText: '后端恢复时应该优先看到这一段原始回复。',
+                          title: '参数收集完成',
                         },
                       ],
                     },
@@ -404,14 +280,7 @@ describe('AIConsole presentation rendering', () => {
       const chatPanel = screen.getByTestId('console-chat-scroll')
       expect(within(chatPanel).getByText('后端 presentation 摘要应该恢复出来')).toBeInTheDocument()
       expect(within(chatPanel).queryByText('本地缓存摘要不应成为主显示')).not.toBeInTheDocument()
-      expect(within(chatPanel).getByText('还缺截面尺寸和材料参数')).toBeInTheDocument()
-    })
-
-    const chatPanel = screen.getByTestId('console-chat-scroll')
-    await user.click(within(chatPanel).getByText(/show details/i))
-
-    await waitFor(() => {
-      expect(within(chatPanel).getByText('后端恢复时应该优先看到这一段原始回复。')).toBeInTheDocument()
+      expect(within(chatPanel).getByText('理解需求')).toBeInTheDocument()
     })
   })
 
@@ -426,7 +295,7 @@ describe('AIConsole presentation rendering', () => {
           {
             type: 'presentation_init',
             presentation: {
-              version: 2,
+              version: 3,
               mode: 'execution',
               status: 'streaming',
               summaryText: '',

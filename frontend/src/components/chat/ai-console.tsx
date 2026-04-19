@@ -14,22 +14,14 @@ import { toast } from '@/components/ui/toast'
 import { buildVisualizationSnapshot } from '@/components/visualization/adapter'
 import type { VisualizationSnapshot } from '@/components/visualization/types'
 import { useI18n, type MessageKey } from '@/lib/i18n'
-import type { MessageBlock, BlocksState } from './message-blocks'
-import {
-  initBlocksFromPipelineStart,
-  applyStepStart,
-  applyStepEnd,
-  collapseCompletedPhases,
-  enrichBlocksWithToolCalls,
-} from './message-blocks'
-import { MessageBlocksView } from './message-blocks'
 import {
   MessagePresentationView,
   reducePresentationEvent,
   type AssistantPresentation,
   type TimelinePhaseGroup,
-  type TimelineEventItem,
+  type TimelineStepItem,
   type PresentationArtifactState,
+  type PresentationEvent,
 } from './message-presentation'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 import { API_BASE } from '@/lib/api-base'
@@ -52,7 +44,6 @@ type Message = {
   status?: 'streaming' | 'done' | 'error' | 'aborted'
   timestamp: string
   debugDetails?: MessageDebugDetails
-  blocks?: MessageBlock[]
   presentation?: AssistantPresentation
 }
 
@@ -127,31 +118,21 @@ type AgentResult = {
   visualizationHints?: Record<string, unknown>
 }
 
-type PipelineStepInfo = {
-  stepId: string;
-  tool: string;
-  provides?: string;
-  reason: string;
-};
-
 type StreamPayload =
   | { type: 'start'; content?: { traceId?: string; conversationId?: string; startedAt?: string } }
   | { type: 'token'; content?: string }
   | { type: 'interaction_update'; content?: AgentInteraction }
   | { type: 'presentation_init'; presentation?: AssistantPresentation }
   | { type: 'phase_upsert'; phase?: TimelinePhaseGroup }
-  | { type: 'timeline_item_upsert'; phaseId?: string; item?: TimelineEventItem }
+  | { type: 'step_upsert'; phaseId?: string; step?: TimelineStepItem }
   | { type: 'artifact_upsert'; artifact?: PresentationArtifactState }
   | { type: 'artifact_payload_sync'; artifact?: 'model' | 'analysis' | 'report'; model?: Record<string, unknown>; latestResult?: AgentResult; snapshot?: VisualizationSnapshot }
   | { type: 'summary_replace'; summaryText?: string }
   | { type: 'presentation_complete'; completedAt?: string }
-  | { type: 'presentation_error'; error?: Extract<TimelineEventItem, { kind: 'error' }> }
+  | { type: 'presentation_error'; phase?: string; message?: string }
   | { type: 'result'; content?: AgentResult }
   | { type: 'done' }
   | { type: 'error'; error?: string }
-  | { type: 'pipeline_start'; content?: { targetArtifact?: string; steps?: Array<{ stepId: string; tool: string; provides?: string }> } }
-  | { type: 'step_start'; step?: PipelineStepInfo }
-  | { type: 'step_end'; step?: PipelineStepInfo; durationMs?: number; stepStatus?: 'success' | 'error'; error?: string }
 
 type StreamSession = {
   conversationId: string
@@ -550,13 +531,21 @@ function parsePersistedPresentation(metadata: unknown): AssistantPresentation | 
     ? presentationRecord.artifacts.filter((item): item is PresentationArtifactState => Boolean(item && typeof item === 'object'))
     : []
 
-  // v2 data with phases — use directly
-  if (presentationRecord.version === 2 && Array.isArray(presentationRecord.phases)) {
-    const phases = presentationRecord.phases.filter(
-      (p): p is TimelinePhaseGroup => Boolean(p && typeof p === 'object'),
-    )
+  // Only v3 format is supported — use phases if present, otherwise degrade gracefully
+  if (presentationRecord.version === 3 && Array.isArray(presentationRecord.phases)) {
+    const phases: TimelinePhaseGroup[] = presentationRecord.phases
+      .filter((p): p is Record<string, unknown> => Boolean(p && typeof p === 'object'))
+      .map((p): TimelinePhaseGroup => ({
+        phaseId: typeof p.phaseId === 'string' ? p.phaseId : `phase:${p.phase ?? 'modeling'}`,
+        phase: (typeof p.phase === 'string' ? p.phase : 'modeling') as 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report',
+        title: typeof p.title === 'string' ? p.title : undefined,
+        status: (typeof p.status === 'string' ? p.status : 'done') as 'pending' | 'running' | 'done' | 'error',
+        steps: Array.isArray(p.steps) ? p.steps as TimelineStepItem[] : [],
+        startedAt: typeof p.startedAt === 'string' ? p.startedAt : undefined,
+        completedAt: typeof p.completedAt === 'string' ? p.completedAt : undefined,
+      }))
     return {
-      version: 2,
+      version: 3,
       mode,
       status,
       summaryText,
@@ -569,42 +558,13 @@ function parsePersistedPresentation(metadata: unknown): AssistantPresentation | 
     }
   }
 
-  // v1 data with flat timeline — wrap items in a single phase group for backward compat
-  const timeline = Array.isArray(presentationRecord.timeline)
-    ? presentationRecord.timeline.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
-    : []
-  const wrappedItems: TimelineEventItem[] = timeline.map((item, index) => ({
-    id: typeof item.id === 'string' ? item.id : `legacy-${index}`,
-    kind: 'assistant_reply' as const,
-    phase: 'understanding' as const,
-    status: 'done' as const,
-    title: typeof (item as Record<string, unknown>).title === 'string'
-      ? (item as Record<string, unknown>).title as string
-      : typeof (item as Record<string, unknown>).previewText === 'string'
-        ? (item as Record<string, unknown>).previewText as string
-        : 'Legacy item',
-    text: typeof (item as Record<string, unknown>).rawUserFacingText === 'string'
-      ? (item as Record<string, unknown>).rawUserFacingText as string
-      : typeof (item as Record<string, unknown>).explanationText === 'string'
-        ? (item as Record<string, unknown>).explanationText as string
-        : '',
-  }))
-
+  // Legacy v1/v2 data — keep summary only, drop incompatible phase data
   return {
-    version: 2,
+    version: 3,
     mode,
     status,
     summaryText,
-    phases: wrappedItems.length > 0
-      ? [{
-          phaseId: 'phase:legacy',
-          phase: 'understanding',
-          status: status === 'error' ? 'error' : 'done',
-          items: wrappedItems,
-          startedAt,
-          completedAt,
-        }]
-      : [],
+    phases: [],
     artifacts,
     traceId,
     startedAt,
@@ -1623,8 +1583,6 @@ export function AIConsole() {
   const [historyError, setHistoryError] = useState('')
   const [streamingSessions, setStreamingSessions] = useState<Map<string, StreamSession>>(new Map())
   const streamingSessionsRef = useRef<Map<string, StreamSession>>(new Map())
-  const [currentBlocks, setCurrentBlocks] = useState<BlocksState | null>(null);
-  const currentBlocksRef = useRef<BlocksState | null>(null);
   const currentPresentationRef = useRef<AssistantPresentation | null>(null)
   const conversationIdRef = useRef(conversationId)
   const submittingRef = useRef(false)
@@ -2611,8 +2569,6 @@ export function AIConsole() {
     const assistantMessageId = createId('assistant')
     const assistantSeed = t('assistantSeedAuto')
 
-    setCurrentBlocks(null);
-    currentBlocksRef.current = null;
     currentPresentationRef.current = null
     setErrorMessage('')
     setInput('')
@@ -2848,11 +2804,11 @@ export function AIConsole() {
             syncAssistantPresentationMessage(nextPresentation, 'streaming')
           }
 
-          if (payload.type === 'timeline_item_upsert' && payload.phaseId && payload.item && currentPresentationRef.current) {
+          if (payload.type === 'step_upsert' && payload.phaseId && payload.step && currentPresentationRef.current) {
             const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
-              type: 'timeline_item_upsert',
+              type: 'step_upsert',
               phaseId: payload.phaseId,
-              item: payload.item,
+              step: payload.step,
             })
             syncAssistantPresentationMessage(nextPresentation, 'streaming')
           }
@@ -2882,11 +2838,12 @@ export function AIConsole() {
             syncAssistantPresentationMessage(nextPresentation, 'done')
           }
 
-          if (payload.type === 'presentation_error' && payload.error && currentPresentationRef.current) {
-            assistantContent = payload.error.message || assistantContent
+          if (payload.type === 'presentation_error' && payload.phase && payload.message && currentPresentationRef.current) {
+            assistantContent = payload.message || assistantContent
             const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
               type: 'presentation_error',
-              error: payload.error,
+              phase: payload.phase as 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report',
+              message: payload.message,
             })
             syncAssistantPresentationMessage(nextPresentation, 'error')
           }
@@ -2903,72 +2860,6 @@ export function AIConsole() {
                 ...(payload.latestResult || {}),
               }))
             }
-          }
-
-          if (payload.type === 'pipeline_start' && payload.content?.steps) {
-            const newBlocks = initBlocksFromPipelineStart(
-              payload.content.steps,
-              t,
-            );
-            currentBlocksRef.current = newBlocks;
-            setCurrentBlocks(newBlocks);
-            replaceMessageForConversation(
-              activeConversationId,
-              assistantMessageId,
-              (message) => ({
-                ...message,
-                content: assistantContent,
-                status: 'streaming',
-                blocks: newBlocks,
-              }),
-            );
-          }
-
-          if (payload.type === 'step_start' && payload.step) {
-            const updated = applyStepStart(
-              currentBlocksRef.current ?? [],
-              payload.step.stepId,
-              {
-                tool: payload.step.tool,
-                provides: payload.step.provides,
-                reason: payload.step.reason,
-              },
-            );
-            currentBlocksRef.current = updated;
-            setCurrentBlocks(updated);
-            replaceMessageForConversation(
-              activeConversationId,
-              assistantMessageId,
-              (message) => ({
-                ...message,
-                content: assistantContent,
-                status: 'streaming',
-                blocks: updated,
-              }),
-            );
-          }
-
-          if (payload.type === 'step_end' && payload.step) {
-            let updated = applyStepEnd(
-              currentBlocksRef.current ?? [],
-              payload.step.stepId,
-              payload.stepStatus ?? 'success',
-              payload.durationMs,
-              payload.error,
-            );
-            updated = collapseCompletedPhases(updated);
-            currentBlocksRef.current = updated;
-            setCurrentBlocks(updated);
-            replaceMessageForConversation(
-              activeConversationId,
-              assistantMessageId,
-              (message) => ({
-                ...message,
-                content: assistantContent,
-                status: 'streaming',
-                blocks: updated,
-              }),
-            );
           }
 
           if (payload.type === 'result' && payload.content && typeof payload.content === 'object') {
@@ -3016,9 +2907,6 @@ export function AIConsole() {
               latestResult: result,
             }).catch(() => {})
             assistantContent = result.response || result.clarification?.question || t('returnedResult')
-            const enrichedBlocks = currentBlocksRef.current
-              ? enrichBlocksWithToolCalls(currentBlocksRef.current, normalizeToolCalls(result.toolCalls))
-              : undefined
             let nextPresentation: AssistantPresentation | null = currentPresentationRef.current
             if (nextPresentation) {
               if (!nextPresentation.summaryText) {
@@ -3038,7 +2926,6 @@ export function AIConsole() {
               content: assistantContent,
               status: 'done',
               debugDetails,
-              blocks: enrichedBlocks,
               presentation: currentPresentationRef.current ?? message.presentation,
             }))
             shouldBumpConversationActivity = true
@@ -3330,15 +3217,12 @@ export function AIConsole() {
                     {message.presentation && (
                       <MessagePresentationView presentation={message.presentation} t={t} />
                     )}
-                    {!message.presentation && message.blocks && message.blocks.length > 0 && (
-                      <MessageBlocksView blocks={message.blocks} t={t} />
-                    )}
                     {!message.presentation && message.content && (
                       <div className="whitespace-pre-wrap text-sm leading-7">
                         {message.content}
                       </div>
                     )}
-                    {message.status === 'streaming' && !(message.presentation || (message.blocks && message.blocks.length > 0)) && (
+                    {message.status === 'streaming' && !message.presentation && (
                       <span className="ml-2 inline-flex h-2 w-2 rounded-full bg-cyan-300 shadow-[0_0_18px_rgba(103,232,249,0.9)]" />
                     )}
                     {message.status === 'aborted' && (

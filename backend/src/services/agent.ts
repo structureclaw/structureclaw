@@ -70,11 +70,12 @@ import type { ArtifactEnvelope, ArtifactKind, SchedulerStep, ProjectPipelineStat
 import {
   createEmptyAssistantPresentation,
   buildPhaseId,
+  phaseTitle,
+  toolTitle,
   type PresentationPhase,
   type AssistantPresentation,
   type ArtifactState,
-  type PresentationErrorItem,
-  type TimelineEventItem,
+  type TimelineStepItem,
   type TimelinePhaseGroup,
 } from './chat-presentation.js';
 
@@ -335,31 +336,10 @@ export interface AgentRunResult {
   response: string;
 }
 
-export interface PipelineStepInfo {
-  stepId: string;
-  tool: string;
-  provides?: string;
-  reason: string;
-}
-
-interface LegacyAgentStreamChunk {
-  type: 'start'
-    | 'interaction_update' | 'result' | 'done' | 'error'
-    | 'pipeline_start' | 'pipeline_end'
-    | 'step_start' | 'step_end';
-  content?: unknown;
-  error?: string;
-  /** For step_start / step_end */
-  step?: PipelineStepInfo;
-  /** For step_end */
-  durationMs?: number;
-  stepStatus?: 'success' | 'error';
-}
-
 export type PublicPresentationChunk =
   | { type: 'presentation_init'; presentation: AssistantPresentation }
   | { type: 'phase_upsert'; phase: TimelinePhaseGroup }
-  | { type: 'timeline_item_upsert'; phaseId: string; item: TimelineEventItem }
+  | { type: 'step_upsert'; phaseId: string; step: TimelineStepItem }
   | { type: 'artifact_upsert'; artifact: ArtifactState }
   | {
       type: 'artifact_payload_sync';
@@ -370,9 +350,15 @@ export type PublicPresentationChunk =
     }
   | { type: 'summary_replace'; summaryText: string }
   | { type: 'presentation_complete'; completedAt: string }
-  | { type: 'presentation_error'; error: PresentationErrorItem };
+  | { type: 'presentation_error'; phase: PresentationPhase; message: string; createdAt?: string };
 
-export type AgentStreamChunk = LegacyAgentStreamChunk | PublicPresentationChunk;
+export type AgentStreamChunk =
+  | { type: 'start'; content?: unknown }
+  | { type: 'interaction_update'; content?: unknown }
+  | { type: 'result'; content?: unknown }
+  | { type: 'done' }
+  | { type: 'error'; error?: string }
+  | PublicPresentationChunk;
 
 export type StepEventCallback = (chunk: AgentStreamChunk) => void;
 
@@ -453,70 +439,12 @@ function mapToolToPresentationPhase(tool: string): 'modeling' | 'validation' | '
   return 'modeling';
 }
 
-function phaseTitle(phase: PresentationPhase, locale: AppLocale): string {
-  const zh: Record<PresentationPhase, string> = {
-    understanding: '澄清阶段',
-    modeling: '建模阶段',
-    validation: '校验阶段',
-    analysis: '分析阶段',
-    report: '报告阶段',
-  };
-  const en: Record<PresentationPhase, string> = {
-    understanding: 'Understanding',
-    modeling: 'Modeling',
-    validation: 'Validation',
-    analysis: 'Analysis',
-    report: 'Report',
-  };
-  return locale === 'zh' ? zh[phase] : en[phase];
-}
-
 function mapToolStartTitle(tool: string, locale: AppLocale): string {
-  if (tool === 'draft_model' || tool === 'update_model' || tool === 'convert_model') {
-    return locale === 'zh' ? '开始生成结构模型' : 'Starting structural model generation';
-  }
-  if (tool === 'validate_model') {
-    return locale === 'zh' ? '开始校验模型' : 'Starting model validation';
-  }
-  if (tool === 'run_analysis' || tool === 'postprocess_result' || tool === 'run_code_check') {
-    return locale === 'zh' ? '开始执行分析' : 'Starting analysis';
-  }
-  if (tool === 'generate_report') {
-    return locale === 'zh' ? '开始生成报告' : 'Starting report generation';
-  }
-  return locale === 'zh' ? `开始执行 ${tool}` : `Starting ${tool}`;
+  return toolTitle(tool, 'running', locale);
 }
 
 function mapToolDoneTitle(tool: string, locale: AppLocale): string {
-  if (tool === 'draft_model' || tool === 'update_model' || tool === 'convert_model') {
-    return locale === 'zh' ? '结构模型已生成' : 'Structural model generated';
-  }
-  if (tool === 'validate_model') {
-    return locale === 'zh' ? '模型校验完成' : 'Model validation completed';
-  }
-  if (tool === 'run_analysis' || tool === 'postprocess_result' || tool === 'run_code_check') {
-    return locale === 'zh' ? '分析执行完成' : 'Analysis completed';
-  }
-  if (tool === 'generate_report') {
-    return locale === 'zh' ? '报告已生成' : 'Report generated';
-  }
-  return locale === 'zh' ? `${tool} 已完成` : `${tool} completed`;
-}
-
-function summarizeStepArtifact(artifact: Pick<ArtifactEnvelope, 'kind'> | undefined, locale: AppLocale): string | undefined {
-  if (!artifact?.kind) {
-    return undefined;
-  }
-  if (artifact.kind === 'normalizedModel') {
-    return locale === 'zh' ? '可继续预览和校验当前模型' : 'The current model is ready for preview and validation';
-  }
-  if (artifact.kind === 'analysisRaw' || artifact.kind === 'postprocessedResult' || artifact.kind === 'codeCheckResult') {
-    return locale === 'zh' ? '分析结果已可查看' : 'Analysis results are available';
-  }
-  if (artifact.kind === 'reportArtifact') {
-    return locale === 'zh' ? '报告内容已生成' : 'Report content is available';
-  }
-  return undefined;
+  return toolTitle(tool, 'done', locale);
 }
 
 function mapArtifactEnvelopeToPresentationArtifact(
@@ -592,186 +520,6 @@ function buildArtifactPayloadChunk(
   };
 }
 
-function buildPhaseStartItem(stepCount: number, locale: AppLocale, createdAt: string): Extract<TimelineEventItem, { kind: 'phase_start' }> {
-  return {
-    id: 'phase-start:modeling',
-    kind: 'phase_start',
-    phase: 'modeling',
-    status: 'running',
-    title: locale === 'zh'
-      ? `已开始执行流程，计划步骤 ${stepCount} 个`
-      : `Execution started with ${stepCount} planned steps`,
-    createdAt,
-  };
-}
-
-function buildSkillSelectedTimelineItem(args: {
-  skillId: string;
-  phase: PresentationPhase;
-  createdAt: string;
-  locale: AppLocale;
-  reason?: string;
-}): Extract<TimelineEventItem, { kind: 'skill_selected' }> {
-  return {
-    id: `skill-selected:${args.skillId}:${args.createdAt}`,
-    kind: 'skill_selected',
-    phase: args.phase,
-    status: 'done',
-    skillId: args.skillId,
-    title: args.locale === 'zh' ? `已选择技能: ${args.skillId}` : `Skill selected: ${args.skillId}`,
-    reason: args.reason,
-    createdAt: args.createdAt,
-  };
-}
-
-function buildSkillResultTimelineItem(args: {
-  skillId: string;
-  phase: PresentationPhase;
-  createdAt: string;
-  locale: AppLocale;
-  status: 'done' | 'error';
-  summaryText?: string;
-  errorMessage?: string;
-}): Extract<TimelineEventItem, { kind: 'skill_result' }> {
-  return {
-    id: `skill-result:${args.skillId}:${args.createdAt}`,
-    kind: 'skill_result',
-    phase: args.phase,
-    status: args.status,
-    skillId: args.skillId,
-    title: args.status === 'error'
-      ? args.locale === 'zh' ? `技能 ${args.skillId} 失败` : `Skill ${args.skillId} failed`
-      : args.locale === 'zh' ? `技能 ${args.skillId} 完成` : `Skill ${args.skillId} completed`,
-    summaryText: args.summaryText,
-    resultSummary: args.summaryText,
-    errorMessage: args.errorMessage,
-    createdAt: args.createdAt,
-  };
-}
-
-function buildToolStartTimelineItem(args: {
-  step: SchedulerStep;
-  locale: AppLocale;
-  startedAt: string;
-}): Extract<TimelineEventItem, { kind: 'tool_start' }> {
-  return {
-    id: `tool:${args.step.tool}:${args.startedAt}`,
-    kind: 'tool_start',
-    phase: mapToolToPresentationPhase(args.step.tool),
-    status: 'running',
-    tool: args.step.tool,
-    title: mapToolStartTitle(args.step.tool, args.locale),
-    reason: args.step.reason,
-    startedAt: args.startedAt,
-  };
-}
-
-function buildToolResultTimelineItem(args: {
-  step: SchedulerStep;
-  locale: AppLocale;
-  status: 'done' | 'error';
-  startedAt: string;
-  completedAt: string;
-  durationMs: number;
-  artifact?: ArtifactEnvelope;
-  errorMessage?: string;
-}): Extract<TimelineEventItem, { kind: 'tool_result' }> {
-  return {
-    id: `tool:${args.step.tool}:${args.startedAt}`,
-    kind: 'tool_result',
-    phase: mapToolToPresentationPhase(args.step.tool),
-    status: args.status,
-    tool: args.step.tool,
-    title: args.status === 'done'
-      ? mapToolDoneTitle(args.step.tool, args.locale)
-      : buildLocalizedBlockedReason(args.errorMessage ?? 'STEP_EXECUTION_FAILED', args.locale),
-    summaryText: args.status === 'done' ? summarizeStepArtifact(args.artifact, args.locale) : undefined,
-    resultSummary: args.status === 'done' ? summarizeStepArtifact(args.artifact, args.locale) : undefined,
-    errorMessage: args.status === 'error' ? args.errorMessage : undefined,
-    startedAt: args.startedAt,
-    completedAt: args.completedAt,
-    durationMs: args.durationMs,
-  };
-}
-
-function buildArtifactReadyTimelineItem(args: {
-  artifact: ArtifactState['artifact'];
-  locale: AppLocale;
-  createdAt: string;
-}): Extract<TimelineEventItem, { kind: 'artifact_ready' }> {
-  if (args.artifact === 'model') {
-    return {
-      id: `artifact-ready:${args.artifact}`,
-      kind: 'artifact_ready',
-      phase: 'modeling',
-      status: 'done',
-      artifact: args.artifact,
-      title: localeAwareArtifactReadyTitle(args.artifact, args.locale),
-      summary: args.locale === 'zh' ? '当前模型已可继续校验或分析' : 'The current model can be validated or analyzed',
-      previewable: true,
-      snapshotKey: 'modelSnapshot',
-      createdAt: args.createdAt,
-    };
-  }
-  if (args.artifact === 'analysis') {
-    return {
-      id: `artifact-ready:${args.artifact}`,
-      kind: 'artifact_ready',
-      phase: 'analysis',
-      status: 'done',
-      artifact: args.artifact,
-      title: localeAwareArtifactReadyTitle(args.artifact, args.locale),
-      summary: args.locale === 'zh' ? '可继续查看结果与报告' : 'Results are ready for review and reporting',
-      previewable: true,
-      snapshotKey: 'resultSnapshot',
-      createdAt: args.createdAt,
-    };
-  }
-  return {
-    id: `artifact-ready:${args.artifact}`,
-    kind: 'artifact_ready',
-    phase: 'report',
-    status: 'done',
-    artifact: args.artifact,
-    title: localeAwareArtifactReadyTitle(args.artifact, args.locale),
-    summary: args.locale === 'zh' ? '可继续查看报告内容' : 'Report content is ready for review',
-    previewable: true,
-    createdAt: args.createdAt,
-  };
-}
-
-function buildClarificationTimelineItem(args: {
-  interaction: AgentInteraction;
-  locale: AppLocale;
-  createdAt: string;
-  response: string;
-  clarificationQuestion?: string;
-}): Extract<TimelineEventItem, { kind: 'clarification' }> {
-  const questionText = (args.clarificationQuestion ?? '').trim();
-  const rawUserFacingText = args.response.trim().length > 0
-    ? args.response.trim()
-    : questionText;
-  const phase = args.interaction.state === 'collecting' ? 'understanding' : 'modeling';
-  const previewText = questionText.length > 0
-    ? questionText
-    : buildInteractionTimelineTitle(args.interaction, args.locale);
-
-  return {
-    id: `interaction:${args.interaction.turnId}`,
-    kind: 'clarification',
-    phase,
-    status: 'done',
-    title: buildInteractionTimelineTitle(args.interaction, args.locale),
-    previewText,
-    explanationText: args.interaction.routeReason,
-    rawUserFacingText: rawUserFacingText.length > 0 ? rawUserFacingText : undefined,
-    missingCritical: args.interaction.missingCritical,
-    missingOptional: args.interaction.missingOptional,
-    question: questionText.length > 0 && questionText !== rawUserFacingText ? questionText : undefined,
-    createdAt: args.createdAt,
-  };
-}
-
 function buildInteractionTimelineTitle(interaction: AgentInteraction, locale: AppLocale): string {
   if (interaction.state === 'collecting') {
     return locale === 'zh' ? '补充建模信息' : 'Need more modeling details';
@@ -790,10 +538,6 @@ function normalizePresentationPayload(payload: unknown): Record<string, unknown>
     return undefined;
   }
   return payload as Record<string, unknown>;
-}
-
-function localeAwareArtifactReadyTitle(artifact: ArtifactState['artifact'], locale: AppLocale): string {
-  return buildArtifactUpsertState(artifact, locale).title;
 }
 
 function applySchedulerStepResult(args: {
@@ -1419,11 +1163,11 @@ export class AgentService {
           {
             type: 'object',
             properties: {
-              type: { const: 'timeline_item_upsert' },
+              type: { const: 'step_upsert' },
               phaseId: { type: 'string' },
-              item: { type: 'object' },
+              step: { type: 'object' },
             },
-            required: ['type', 'phaseId', 'item'],
+            required: ['type', 'phaseId', 'step'],
           },
           {
             type: 'object',
@@ -1464,9 +1208,10 @@ export class AgentService {
             type: 'object',
             properties: {
               type: { const: 'presentation_error' },
-              error: { type: 'object' },
+              phase: { type: 'string' },
+              message: { type: 'string' },
             },
-            required: ['type', 'error'],
+            required: ['type', 'phase', 'message'],
           },
           {
             type: 'object',
@@ -1621,72 +1366,32 @@ export class AgentService {
             phase,
             title: phaseTitle(phase, locale),
             status: 'running',
-            items: [],
+            steps: [],
           },
         };
+        const clarificationQuestion = result.clarification?.question?.trim();
         if (result.interaction.state === 'collecting'
           || result.interaction.state === 'confirming'
           || result.interaction.state === 'blocked') {
+          const responseText = result.response?.trim() || clarificationQuestion || '';
           yield {
-            type: 'timeline_item_upsert',
+            type: 'step_upsert',
             phaseId: buildPhaseId(phase),
-            item: buildClarificationTimelineItem({
-              interaction: result.interaction,
-              locale,
-              createdAt: result.completedAt,
-              response: result.response,
-              clarificationQuestion: result.clarification?.question,
-            }),
-          };
-        }
-        if (result.response.trim().length > 0) {
-          yield {
-            type: 'timeline_item_upsert',
-            phaseId: buildPhaseId(phase),
-            item: {
-              id: `assistant-reply:${result.completedAt}`,
-              kind: 'assistant_reply',
+            step: {
+              id: `clarification:${result.interaction.turnId ?? result.completedAt}`,
               phase,
               status: 'done',
-              title: locale === 'zh' ? '助手回复' : 'Assistant reply',
-              text: result.response,
-              createdAt: result.completedAt,
+              tool: 'clarification',
+              title: buildInteractionTimelineTitle(result.interaction, locale),
+              output: responseText ? { question: clarificationQuestion, response: responseText, missingCritical: result.interaction.missingCritical, missingOptional: result.interaction.missingOptional } : undefined,
+              startedAt: result.completedAt,
+              completedAt: result.completedAt,
             },
           };
         }
         yield { type: 'interaction_update', content: result.interaction };
       } else if (result.response.trim().length > 0) {
-        const locale = this.resolveInteractionLocale(preparedInput.context?.locale);
-        const phase = result.report
-          ? 'report'
-          : result.analysis
-            ? 'analysis'
-            : result.model
-              ? 'modeling'
-              : 'understanding';
-        yield {
-          type: 'phase_upsert',
-          phase: {
-            phaseId: buildPhaseId(phase),
-            phase,
-            title: phaseTitle(phase, locale),
-            status: 'running',
-            items: [],
-          },
-        };
-        yield {
-          type: 'timeline_item_upsert',
-          phaseId: buildPhaseId(phase),
-          item: {
-            id: `assistant-reply:${result.completedAt}`,
-            kind: 'assistant_reply',
-            phase,
-            status: 'done',
-            title: locale === 'zh' ? '助手回复' : 'Assistant reply',
-            text: result.response,
-            createdAt: result.completedAt,
-          },
-        };
+        // Non-tool response: just summary, no steps needed
       }
       yield {
         type: 'summary_replace',
@@ -1704,16 +1409,9 @@ export class AgentService {
       }
       yield {
         type: 'presentation_error',
-        error: {
-          id: `error:${traceId}`,
-          kind: 'error',
-          phase: 'modeling',
-          status: 'error',
-          title: preparedInput.context?.locale === 'en' ? 'Execution failed' : '执行失败',
-          message: this.stringifyError(error),
-          retryable: true,
-          createdAt: new Date().toISOString(),
-        },
+        phase: 'modeling',
+        message: this.stringifyError(error),
+        createdAt: new Date().toISOString(),
       };
       yield {
         type: 'error',
@@ -2156,138 +1854,65 @@ export class AgentService {
         }
       }
 
-      const emitPresentationArtifact = (
-        artifact: ArtifactEnvelope | undefined,
-        createdAt: string,
-      ): void => {
-        const presentationArtifact = mapArtifactEnvelopeToPresentationArtifact(artifact);
-        if (!presentationArtifact) {
-          return;
-        }
-        const phase = presentationArtifact === 'model'
-          ? 'modeling'
-          : presentationArtifact === 'analysis'
-            ? 'analysis'
-            : 'report';
-        onStepEvent?.({
-          type: 'phase_upsert',
-          phase: {
-            phaseId: buildPhaseId(phase),
-            phase,
-            title: phaseTitle(phase, locale),
-            status: 'running',
-            items: [],
-          },
-        });
-        onStepEvent?.({
-          type: 'timeline_item_upsert',
-          phaseId: buildPhaseId(phase),
-          item: buildArtifactReadyTimelineItem({
-            artifact: presentationArtifact,
-            locale,
-            createdAt,
-          }),
-        });
-        onStepEvent?.({
-          type: 'artifact_upsert',
-          artifact: buildArtifactUpsertState(presentationArtifact, locale),
-        });
-        const payload = normalizePresentationPayload(artifact?.payload);
-        if (payload) {
-          onStepEvent?.(buildArtifactPayloadChunk(presentationArtifact, payload, workingSession.latestModel));
-        }
-      };
-
-      const emitPresentationStepStart = (step: SchedulerStep, startedAtIso: string): void => {
-        const phase = mapToolToPresentationPhase(step.tool);
-        onStepEvent?.({
-          type: 'phase_upsert',
-          phase: {
-            phaseId: buildPhaseId(phase),
-            phase,
-            title: phaseTitle(phase, locale),
-            status: 'running',
-            items: [],
-          },
-        });
-        if (step.skillId) {
-          onStepEvent?.({
-            type: 'timeline_item_upsert',
-            phaseId: buildPhaseId(phase),
-            item: buildSkillSelectedTimelineItem({
-              skillId: step.skillId,
-              phase,
-              createdAt: startedAtIso,
-              locale,
-              reason: step.reason,
-            }),
-          });
-        }
-        onStepEvent?.({
-          type: 'timeline_item_upsert',
-          phaseId: buildPhaseId(phase),
-          item: buildToolStartTimelineItem({
-            step,
-            locale,
-            startedAt: startedAtIso,
-          }),
-        });
-      };
-
-      const emitPresentationStepEnd = (args: {
-        step: SchedulerStep;
-        status: 'done' | 'error';
-        startedAtIso: string;
-        completedAtIso: string;
-        durationMs: number;
-        artifact?: ArtifactEnvelope;
-        errorMessage?: string;
-      }): void => {
-        const phase = mapToolToPresentationPhase(args.step.tool);
-        onStepEvent?.({
-          type: 'timeline_item_upsert',
-          phaseId: buildPhaseId(phase),
-          item: buildToolResultTimelineItem({
-            step: args.step,
-            locale,
-            status: args.status,
-            startedAt: args.startedAtIso,
-            completedAt: args.completedAtIso,
-            durationMs: args.durationMs,
-            artifact: args.artifact,
-            errorMessage: args.errorMessage,
-          }),
-        });
-        if (args.step.skillId) {
-          onStepEvent?.({
-            type: 'timeline_item_upsert',
-            phaseId: buildPhaseId(phase),
-            item: buildSkillResultTimelineItem({
-              skillId: args.step.skillId,
-              phase,
-              createdAt: args.completedAtIso,
-              locale,
-              status: args.status,
-              summaryText: args.status === 'done' ? summarizeStepArtifact(args.artifact, locale) : undefined,
-              errorMessage: args.errorMessage,
-            }),
-          });
-        }
-        if (args.status === 'done') {
-          emitPresentationArtifact(args.artifact, args.completedAtIso);
-        }
-      };
-
-      // Emit pipeline_start with the planned step summary
-      onStepEvent?.({
-        type: 'pipeline_start',
-        content: {
-          targetArtifact: schedulerPlan.targetArtifact,
-          steps: schedulerPlan.requiredSteps
-            .filter(s => s.mode !== 'reuse')
-            .map(s => ({ stepId: s.stepId, tool: s.tool, provides: s.provides })),
+      const emitStepUpdate = (
+        step: SchedulerStep,
+        updates: {
+          status: 'running' | 'done' | 'error';
+          startedAtIso: string;
+          completedAtIso?: string;
+          durationMs?: number;
+          artifact?: ArtifactEnvelope;
+          errorMessage?: string;
         },
-      });
+      ): void => {
+        const phase = mapToolToPresentationPhase(step.tool);
+        const phaseId = buildPhaseId(phase);
+
+        onStepEvent?.({
+          type: 'phase_upsert',
+          phase: {
+            phaseId,
+            phase,
+            title: phaseTitle(phase, locale),
+            status: 'running',
+            steps: [],
+          },
+        });
+
+        onStepEvent?.({
+          type: 'step_upsert',
+          phaseId,
+          step: {
+            id: `step:${step.tool}:${updates.startedAtIso}`,
+            phase,
+            status: updates.status,
+            tool: step.tool,
+            skillId: step.skillId || undefined,
+            title: toolTitle(step.tool, updates.status, locale),
+            reason: step.reason,
+            output: updates.artifact?.payload,
+            errorMessage: updates.errorMessage,
+            startedAt: updates.startedAtIso,
+            completedAt: updates.completedAtIso,
+            durationMs: updates.durationMs,
+          },
+        });
+
+        if (updates.status === 'done' && updates.artifact) {
+          const presentationArtifact = mapArtifactEnvelopeToPresentationArtifact(updates.artifact);
+          if (presentationArtifact) {
+            onStepEvent?.({
+              type: 'artifact_upsert',
+              artifact: buildArtifactUpsertState(presentationArtifact, locale),
+            });
+            const payload = normalizePresentationPayload(updates.artifact.payload);
+            if (payload) {
+              onStepEvent?.(buildArtifactPayloadChunk(presentationArtifact, payload, workingSession.latestModel));
+            }
+          }
+        }
+      };
+
       onStepEvent?.({
         type: 'phase_upsert',
         phase: {
@@ -2295,48 +1920,9 @@ export class AgentService {
           phase: 'modeling',
           title: phaseTitle('modeling', locale),
           status: 'running',
-          items: [],
+          steps: [],
         },
       });
-      onStepEvent?.({
-        type: 'timeline_item_upsert',
-        phaseId: buildPhaseId('modeling'),
-        item: buildPhaseStartItem(
-          schedulerPlan.requiredSteps.filter((s) => s.mode !== 'reuse').length,
-          locale,
-          startedAt,
-        ),
-      });
-
-      // Emit skill_selected for all unique skills in the plan upfront
-      // so they appear before tool items in the timeline.
-      const emittedSkillIds = new Set<string>();
-      for (const s of schedulerPlan.requiredSteps) {
-        if (s.skillId && !emittedSkillIds.has(s.skillId)) {
-          emittedSkillIds.add(s.skillId);
-          const skillPhase = mapToolToPresentationPhase(s.tool);
-          onStepEvent?.({
-            type: 'phase_upsert',
-            phase: {
-              phaseId: buildPhaseId(skillPhase),
-              phase: skillPhase,
-              title: phaseTitle(skillPhase, locale),
-              status: 'running',
-              items: [],
-            },
-          });
-          onStepEvent?.({
-            type: 'timeline_item_upsert',
-            phaseId: buildPhaseId(skillPhase),
-            item: buildSkillSelectedTimelineItem({
-              skillId: s.skillId,
-              phase: skillPhase,
-              createdAt: startedAt,
-              locale,
-            }),
-          });
-        }
-      }
 
       for (const step of schedulerPlan.requiredSteps) {
         try {
@@ -2530,17 +2116,7 @@ export class AgentService {
         const stepStartedAtMs = Date.now();
         const stepStartedAt = new Date(stepStartedAtMs).toISOString();
 
-        // Emit step_start event
-        onStepEvent?.({
-          type: 'step_start',
-          step: {
-            stepId: step.stepId,
-            tool: step.tool,
-            provides: step.provides,
-            reason: step.reason,
-          },
-        });
-        emitPresentationStepStart(step, stepStartedAt);
+        emitStepUpdate(step, { status: 'running', startedAtIso: stepStartedAt });
 
         // execute / transform
         let stepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord; draftMeta?: { structuralTypeMatch?: any; nextState?: any } };
@@ -2592,20 +2168,7 @@ export class AgentService {
             errorCode,
             durationMs: Date.now() - stepStartedAtMs,
           });
-          onStepEvent?.({
-            type: 'step_end',
-            step: {
-              stepId: step.stepId,
-              tool: step.tool,
-              provides: step.provides,
-              reason: step.reason,
-            },
-            durationMs: Date.now() - stepStartedAtMs,
-            stepStatus: 'error',
-            error: stepErrorMessage,
-          });
-          emitPresentationStepEnd({
-            step,
+          emitStepUpdate(step, {
             status: 'error',
             startedAtIso: stepStartedAt,
             completedAtIso: new Date().toISOString(),
@@ -2673,19 +2236,7 @@ export class AgentService {
           output: stepResult.artifact?.payload,
         });
         pipelineState = applySchedulerStepResult({ pipelineState, step, stepResult });
-        onStepEvent?.({
-          type: 'step_end',
-          step: {
-            stepId: step.stepId,
-            tool: step.tool,
-            provides: step.provides,
-            reason: step.reason,
-          },
-          durationMs: Date.now() - stepStartedAtMs,
-          stepStatus: 'success',
-        });
-        emitPresentationStepEnd({
-          step,
+        emitStepUpdate(step, {
           status: 'done',
           startedAtIso: stepStartedAt,
           completedAtIso: new Date().toISOString(),
@@ -2788,11 +2339,7 @@ export class AgentService {
             const fbStepStartedAt = new Date(fbStepStartedAtMs).toISOString();
             let fbResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
             try {
-              onStepEvent?.({
-                type: 'step_start',
-                step: { stepId: fbStep.stepId, tool: fbStep.tool, provides: fbStep.provides, reason: fbStep.reason },
-              });
-              emitPresentationStepStart(fbStep, fbStepStartedAt);
+              emitStepUpdate(fbStep, { status: 'running', startedAtIso: fbStepStartedAt });
               fbResult = await this.skillRuntime.executeScheduledStep({
                 step: fbStep,
                 pipelineState,
@@ -2816,15 +2363,7 @@ export class AgentService {
                 errorCode: 'STEP_EXECUTION_FAILED',
                 durationMs: Date.now() - fbStepStartedAtMs,
               });
-              onStepEvent?.({
-                type: 'step_end',
-                step: { stepId: fbStep.stepId, tool: fbStep.tool, provides: fbStep.provides, reason: fbStep.reason },
-                durationMs: Date.now() - fbStepStartedAtMs,
-                stepStatus: 'error',
-                error: fbErrorMessage,
-              });
-              emitPresentationStepEnd({
-                step: fbStep,
+              emitStepUpdate(fbStep, {
                 status: 'error',
                 startedAtIso: fbStepStartedAt,
                 completedAtIso: new Date().toISOString(),
@@ -2845,14 +2384,7 @@ export class AgentService {
               durationMs: Date.now() - fbStepStartedAtMs,
               output: fbResult.artifact?.payload,
             });
-            onStepEvent?.({
-              type: 'step_end',
-              step: { stepId: fbStep.stepId, tool: fbStep.tool, provides: fbStep.provides, reason: fbStep.reason },
-              durationMs: Date.now() - fbStepStartedAtMs,
-              stepStatus: 'success',
-            });
-            emitPresentationStepEnd({
-              step: fbStep,
+            emitStepUpdate(fbStep, {
               status: 'done',
               startedAtIso: fbStepStartedAt,
               completedAtIso: new Date().toISOString(),
@@ -2890,11 +2422,7 @@ export class AgentService {
             const ccStepStartedAt = new Date(ccStepStartedAtMs).toISOString();
             let ccStepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
             try {
-              onStepEvent?.({
-                type: 'step_start',
-                step: { stepId: ccStep.stepId, tool: ccStep.tool, provides: ccStep.provides, reason: ccStep.reason },
-              });
-              emitPresentationStepStart(ccStep, ccStepStartedAt);
+              emitStepUpdate(ccStep, { status: 'running', startedAtIso: ccStepStartedAt });
               ccStepResult = await this.skillRuntime.executeScheduledStep({
                 step: ccStep,
                 pipelineState,
@@ -2918,15 +2446,7 @@ export class AgentService {
                 errorCode: 'STEP_EXECUTION_FAILED',
                 durationMs: Date.now() - ccStepStartedAtMs,
               });
-              onStepEvent?.({
-                type: 'step_end',
-                step: { stepId: ccStep.stepId, tool: ccStep.tool, provides: ccStep.provides, reason: ccStep.reason },
-                durationMs: Date.now() - ccStepStartedAtMs,
-                stepStatus: 'error',
-                error: ccStepErrorMessage,
-              });
-              emitPresentationStepEnd({
-                step: ccStep,
+              emitStepUpdate(ccStep, {
                 status: 'error',
                 startedAtIso: ccStepStartedAt,
                 completedAtIso: new Date().toISOString(),
@@ -2941,14 +2461,7 @@ export class AgentService {
               durationMs: Date.now() - ccStepStartedAtMs,
               output: ccStepResult.artifact?.payload,
             });
-            onStepEvent?.({
-              type: 'step_end',
-              step: { stepId: ccStep.stepId, tool: ccStep.tool, provides: ccStep.provides, reason: ccStep.reason },
-              durationMs: Date.now() - ccStepStartedAtMs,
-              stepStatus: 'success',
-            });
-            emitPresentationStepEnd({
-              step: ccStep,
+            emitStepUpdate(ccStep, {
               status: 'done',
               startedAtIso: ccStepStartedAt,
               completedAtIso: new Date().toISOString(),
@@ -2986,11 +2499,7 @@ export class AgentService {
             const rStepStartedAt = new Date(rStepStartedAtMs).toISOString();
             let rStepResult: { artifact?: import('../agent-runtime/types.js').ArtifactEnvelope; runRecord?: import('../agent-runtime/types.js').RunRecord };
             try {
-              onStepEvent?.({
-                type: 'step_start',
-                step: { stepId: reportStep.stepId, tool: reportStep.tool, provides: reportStep.provides, reason: reportStep.reason },
-              });
-              emitPresentationStepStart(reportStep, rStepStartedAt);
+              emitStepUpdate(reportStep, { status: 'running', startedAtIso: rStepStartedAt });
               rStepResult = await this.skillRuntime.executeScheduledStep({
                 step: reportStep,
                 pipelineState,
@@ -3014,15 +2523,7 @@ export class AgentService {
                 errorCode: 'STEP_EXECUTION_FAILED',
                 durationMs: Date.now() - rStepStartedAtMs,
               });
-              onStepEvent?.({
-                type: 'step_end',
-                step: { stepId: reportStep.stepId, tool: reportStep.tool, provides: reportStep.provides, reason: reportStep.reason },
-                durationMs: Date.now() - rStepStartedAtMs,
-                stepStatus: 'error',
-                error: rStepErrorMessage,
-              });
-              emitPresentationStepEnd({
-                step: reportStep,
+              emitStepUpdate(reportStep, {
                 status: 'error',
                 startedAtIso: rStepStartedAt,
                 completedAtIso: new Date().toISOString(),
@@ -3037,14 +2538,7 @@ export class AgentService {
               durationMs: Date.now() - rStepStartedAtMs,
               output: rStepResult.artifact?.payload,
             });
-            onStepEvent?.({
-              type: 'step_end',
-              step: { stepId: reportStep.stepId, tool: reportStep.tool, provides: reportStep.provides, reason: reportStep.reason },
-              durationMs: Date.now() - rStepStartedAtMs,
-              stepStatus: 'success',
-            });
-            emitPresentationStepEnd({
-              step: reportStep,
+            emitStepUpdate(reportStep, {
               status: 'done',
               startedAtIso: rStepStartedAt,
               completedAtIso: new Date().toISOString(),
@@ -3055,8 +2549,6 @@ export class AgentService {
           }
         }
       }
-
-      onStepEvent?.({ type: 'pipeline_end' });
 
       // Spec section 14: only persist pipeline state for real projects
       if (projectId) {
