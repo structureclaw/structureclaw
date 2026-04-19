@@ -50,14 +50,42 @@ describe('chat presentation reducer', () => {
     });
 
     state = reducePresentationEvent(state, {
-      type: 'timeline_item_upsert',
-      item: {
-        id: 'step-draft-model',
-        kind: 'step',
+      type: 'phase_upsert',
+      phase: {
+        phaseId: 'phase:modeling',
         phase: 'modeling',
-        tool: 'draft_model',
+        title: '建模阶段',
         status: 'running',
+        items: [],
+      },
+    });
+
+    state = reducePresentationEvent(state, {
+      type: 'timeline_item_upsert',
+      phaseId: 'phase:modeling',
+      item: {
+        id: 'skill-selected:draft_model',
+        kind: 'skill_selected',
+        status: 'done',
+        skillId: 'draft_model',
+        title: '已选择建模技能',
+        reason: 'routing',
+        createdAt: '2026-04-19T10:00:00.005Z',
+      },
+    });
+
+    state = reducePresentationEvent(state, {
+      type: 'timeline_item_upsert',
+      phaseId: 'phase:modeling',
+      item: {
+        id: 'tool-start:draft_model',
+        kind: 'tool_start',
+        phase: 'modeling',
+        status: 'running',
+        tool: 'draft_model',
         title: '开始生成结构模型',
+        reason: 'draft model',
+        startedAt: '2026-04-19T10:00:00.010Z',
       },
     });
 
@@ -77,9 +105,19 @@ describe('chat presentation reducer', () => {
       summaryText: '模型已生成，可继续分析。',
     });
 
+    state = reducePresentationEvent(state, {
+      type: 'presentation_complete',
+      completedAt: '2026-04-19T10:00:00.050Z',
+    });
+
     expect(state.summaryText).toBe('模型已生成，可继续分析。');
-    expect(state.timeline).toHaveLength(1);
+    expect(state.phases).toHaveLength(1);
+    expect(state.phases[0].phaseId).toBe('phase:modeling');
+    expect(state.phases[0].items).toHaveLength(2);
+    expect(state.phases[0].items[0].kind).toBe('skill_selected');
+    expect(state.phases[0].items[1].kind).toBe('tool_start');
     expect(state.artifacts[0].artifact).toBe('model');
+    expect(state.status).toBe('done');
   });
 
   test('clarification timeline items retain raw user-facing text through reduction', () => {
@@ -90,7 +128,19 @@ describe('chat presentation reducer', () => {
     });
 
     state = reducePresentationEvent(state, {
+      type: 'phase_upsert',
+      phase: {
+        phaseId: 'phase:understanding',
+        phase: 'understanding',
+        title: '澄清阶段',
+        status: 'running',
+        items: [],
+      },
+    });
+
+    state = reducePresentationEvent(state, {
       type: 'timeline_item_upsert',
+      phaseId: 'phase:understanding',
       item: {
         id: 'interaction:turn-1',
         kind: 'clarification',
@@ -106,10 +156,11 @@ describe('chat presentation reducer', () => {
       },
     });
 
-    expect(state.timeline).toHaveLength(1);
-    expect(state.timeline[0].kind).toBe('clarification');
-    expect(state.timeline[0].rawUserFacingText).toBe('Please provide the span and support conditions.');
-    expect(state.timeline[0].explanationText).toBe('Critical modeling inputs are still missing.');
+    expect(state.phases).toHaveLength(1);
+    expect(state.phases[0].items).toHaveLength(1);
+    expect(state.phases[0].items[0].kind).toBe('clarification');
+    expect(state.phases[0].items[0].rawUserFacingText).toBe('Please provide the span and support conditions.');
+    expect(state.phases[0].items[0].explanationText).toBe('Critical modeling inputs are still missing.');
   });
 
   test('stream persistence stores presentation in assistant message metadata', async () => {
@@ -145,11 +196,22 @@ describe('chat presentation reducer', () => {
         }),
       };
       yield {
+        type: 'phase_upsert',
+        phase: {
+          phaseId: 'phase:modeling',
+          phase: 'modeling',
+          title: '建模阶段',
+          status: 'running',
+          items: [],
+        },
+      };
+      yield {
         type: 'summary_replace',
         summaryText: 'Please provide the span and support conditions.',
       };
       yield {
         type: 'timeline_item_upsert',
+        phaseId: 'phase:understanding',
         item: {
           id: 'interaction:turn-clarify',
           kind: 'clarification',
@@ -165,6 +227,20 @@ describe('chat presentation reducer', () => {
         },
       };
       yield {
+        type: 'timeline_item_upsert',
+        phaseId: 'phase:modeling',
+        item: {
+          id: 'tool-start:draft_model',
+          kind: 'tool_start',
+          phase: 'modeling',
+          status: 'running',
+          tool: 'draft_model',
+          title: '开始生成结构模型',
+          reason: 'draft model',
+          startedAt: '2026-04-19T10:00:00.015Z',
+        },
+      };
+      yield {
         type: 'result',
         content: {
           traceId,
@@ -176,7 +252,26 @@ describe('chat presentation reducer', () => {
           orchestrationMode: 'llm-planned',
           needsModelInput: true,
           plan: [],
-          toolCalls: [],
+          routing: {
+            selectedSkillIds: ['frame'],
+            activatedSkillIds: ['frame'],
+            structuralSkillId: 'frame',
+          },
+          toolCalls: [
+            {
+              tool: 'draft_model',
+              status: 'success',
+              startedAt: '2026-04-19T10:00:00.015Z',
+              completedAt: '2026-04-19T10:00:00.030Z',
+              durationMs: 15,
+              output: {
+                model: { schema_version: '1.0.0' },
+              },
+            },
+          ],
+          model: {
+            schema_version: '1.0.0',
+          },
           interaction: {
             state: 'confirming',
             stage: 'model',
@@ -221,11 +316,14 @@ describe('chat presentation reducer', () => {
 
       expect(assistantMessage).toBeTruthy();
       expect(assistantMessage?.metadata?.presentation).toBeDefined();
-      expect(assistantMessage?.metadata?.presentation?.version).toBe(1);
+      expect(assistantMessage?.metadata?.presentation?.version).toBe(2);
       expect(assistantMessage?.metadata?.presentation?.summaryText).toBe('Please provide the span and support conditions.');
-      expect(assistantMessage?.metadata?.presentation?.timeline).toHaveLength(1);
-      expect(assistantMessage?.metadata?.presentation?.timeline?.[0]?.kind).toBe('clarification');
-      expect(assistantMessage?.metadata?.presentation?.timeline?.[0]?.rawUserFacingText).toBe('Please provide the span and support conditions.');
+      expect(Array.isArray(assistantMessage?.metadata?.presentation?.phases)).toBe(true);
+      expect(assistantMessage?.metadata?.presentation?.phases?.some((phase) => phase.phase === 'understanding')).toBe(true);
+      expect(assistantMessage?.metadata?.presentation?.phases?.some((phase) => phase.phase === 'modeling')).toBe(true);
+      expect(assistantMessage?.metadata?.presentation?.phases?.some((phase) => phase.items.some((item) => item.kind === 'skill_selected'))).toBe(true);
+      expect(assistantMessage?.metadata?.presentation?.phases?.some((phase) => phase.items.some((item) => item.kind === 'tool_start'))).toBe(true);
+      expect(assistantMessage?.metadata?.presentation?.phases?.some((phase) => phase.items.some((item) => item.kind === 'tool_result'))).toBe(true);
     } finally {
       AgentService.prototype.runStream = originalRunStream;
       await prisma.message.deleteMany({ where: { conversationId } });

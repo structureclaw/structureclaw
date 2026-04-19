@@ -69,10 +69,13 @@ import { computeDependencyFingerprint, computeDraftStateContentHash } from '../a
 import type { ArtifactEnvelope, ArtifactKind, SchedulerStep, ProjectPipelineState } from '../agent-runtime/types.js';
 import {
   createEmptyAssistantPresentation,
-  type AssistantPresentationV1,
+  buildPhaseId,
+  type PresentationPhase,
+  type AssistantPresentation,
   type ArtifactState,
   type PresentationErrorItem,
-  type TimelineItem,
+  type TimelineEventItem,
+  type TimelinePhaseGroup,
 } from './chat-presentation.js';
 
 export type AgentToolName = 'draft_model' | 'update_model' | 'convert_model' | 'validate_model' | 'run_analysis' | 'run_code_check' | 'generate_report';
@@ -354,8 +357,9 @@ interface LegacyAgentStreamChunk {
 }
 
 export type PublicPresentationChunk =
-  | { type: 'presentation_init'; presentation: AssistantPresentationV1 }
-  | { type: 'timeline_item_upsert'; item: TimelineItem }
+  | { type: 'presentation_init'; presentation: AssistantPresentation }
+  | { type: 'phase_upsert'; phase: TimelinePhaseGroup }
+  | { type: 'timeline_item_upsert'; phaseId: string; item: TimelineEventItem }
   | { type: 'artifact_upsert'; artifact: ArtifactState }
   | {
       type: 'artifact_payload_sync';
@@ -447,6 +451,24 @@ function mapToolToPresentationPhase(tool: string): 'modeling' | 'validation' | '
   if (tool === 'run_analysis' || tool === 'postprocess_result' || tool === 'run_code_check') return 'analysis';
   if (tool === 'generate_report') return 'report';
   return 'modeling';
+}
+
+function phaseTitle(phase: PresentationPhase, locale: AppLocale): string {
+  const zh: Record<PresentationPhase, string> = {
+    understanding: '澄清阶段',
+    modeling: '建模阶段',
+    validation: '校验阶段',
+    analysis: '分析阶段',
+    report: '报告阶段',
+  };
+  const en: Record<PresentationPhase, string> = {
+    understanding: 'Understanding',
+    modeling: 'Modeling',
+    validation: 'Validation',
+    analysis: 'Analysis',
+    report: 'Report',
+  };
+  return locale === 'zh' ? zh[phase] : en[phase];
 }
 
 function mapToolStartTitle(tool: string, locale: AppLocale): string {
@@ -548,50 +570,6 @@ function buildArtifactUpsertState(
   };
 }
 
-function buildArtifactTimelineItem(
-  artifact: ArtifactState['artifact'],
-  locale: AppLocale,
-  createdAt: string,
-): Extract<TimelineItem, { kind: 'artifact_update' }> {
-  if (artifact === 'model') {
-    return {
-      id: `artifact:${artifact}`,
-      kind: 'artifact_update',
-      phase: 'modeling',
-      status: 'done',
-      artifact,
-      title: locale === 'zh' ? '模型已生成，可立即预览' : 'Model generated and ready for preview',
-      summary: locale === 'zh' ? '当前模型已可继续校验或分析' : 'The current model can be validated or analyzed',
-      previewable: true,
-      createdAt,
-    };
-  }
-  if (artifact === 'analysis') {
-    return {
-      id: `artifact:${artifact}`,
-      kind: 'artifact_update',
-      phase: 'analysis',
-      status: 'done',
-      artifact,
-      title: locale === 'zh' ? '分析结果已生成' : 'Analysis results are ready',
-      summary: locale === 'zh' ? '可继续查看结果与报告' : 'Results are ready for review and reporting',
-      previewable: true,
-      createdAt,
-    };
-  }
-  return {
-    id: `artifact:${artifact}`,
-    kind: 'artifact_update',
-    phase: 'report',
-    status: 'done',
-    artifact,
-    title: locale === 'zh' ? '报告已生成' : 'Report generated',
-    summary: locale === 'zh' ? '可继续查看报告内容' : 'Report content is ready for review',
-    previewable: true,
-    createdAt,
-  };
-}
-
 function buildArtifactPayloadChunk(
   artifact: ArtifactState['artifact'],
   payload: Record<string, unknown>,
@@ -614,26 +592,161 @@ function buildArtifactPayloadChunk(
   };
 }
 
-function buildPipelineStartNote(stepCount: number, locale: AppLocale, createdAt: string): Extract<TimelineItem, { kind: 'note' }> {
+function buildPhaseStartItem(stepCount: number, locale: AppLocale, createdAt: string): Extract<TimelineEventItem, { kind: 'phase_start' }> {
   return {
-    id: 'note:pipeline-start',
-    kind: 'note',
+    id: 'phase-start:modeling',
+    kind: 'phase_start',
     phase: 'modeling',
-    status: 'done',
-    previewText: locale === 'zh'
+    status: 'running',
+    title: locale === 'zh'
       ? `已开始执行流程，计划步骤 ${stepCount} 个`
       : `Execution started with ${stepCount} planned steps`,
     createdAt,
   };
 }
 
-function buildInteractionTimelineItem(args: {
+function buildSkillSelectedTimelineItem(args: {
+  skillId: string;
+  phase: PresentationPhase;
+  createdAt: string;
+  locale: AppLocale;
+  reason?: string;
+}): Extract<TimelineEventItem, { kind: 'skill_selected' }> {
+  return {
+    id: `skill-selected:${args.skillId}:${args.createdAt}`,
+    kind: 'skill_selected',
+    phase: args.phase,
+    status: 'done',
+    skillId: args.skillId,
+    title: args.locale === 'zh' ? '已选择技能' : 'Skill selected',
+    reason: args.reason,
+    createdAt: args.createdAt,
+  };
+}
+
+function buildSkillResultTimelineItem(args: {
+  skillId: string;
+  phase: PresentationPhase;
+  createdAt: string;
+  locale: AppLocale;
+  status: 'done' | 'error';
+  summaryText?: string;
+  errorMessage?: string;
+}): Extract<TimelineEventItem, { kind: 'skill_result' }> {
+  return {
+    id: `skill-result:${args.skillId}:${args.createdAt}`,
+    kind: 'skill_result',
+    phase: args.phase,
+    status: args.status,
+    skillId: args.skillId,
+    title: args.status === 'error'
+      ? args.locale === 'zh' ? '技能结果失败' : 'Skill result failed'
+      : args.locale === 'zh' ? '技能结果完成' : 'Skill result completed',
+    summaryText: args.summaryText,
+    resultSummary: args.summaryText,
+    errorMessage: args.errorMessage,
+    createdAt: args.createdAt,
+  };
+}
+
+function buildToolStartTimelineItem(args: {
+  step: SchedulerStep;
+  locale: AppLocale;
+  startedAt: string;
+}): Extract<TimelineEventItem, { kind: 'tool_start' }> {
+  return {
+    id: `tool-start:${args.step.tool}:${args.startedAt}`,
+    kind: 'tool_start',
+    phase: mapToolToPresentationPhase(args.step.tool),
+    status: 'running',
+    tool: args.step.tool,
+    title: mapToolStartTitle(args.step.tool, args.locale),
+    reason: args.step.reason,
+    startedAt: args.startedAt,
+  };
+}
+
+function buildToolResultTimelineItem(args: {
+  step: SchedulerStep;
+  locale: AppLocale;
+  status: 'done' | 'error';
+  startedAt: string;
+  completedAt: string;
+  durationMs: number;
+  artifact?: ArtifactEnvelope;
+  errorMessage?: string;
+}): Extract<TimelineEventItem, { kind: 'tool_result' }> {
+  return {
+    id: `tool-result:${args.step.tool}:${args.completedAt}`,
+    kind: 'tool_result',
+    phase: mapToolToPresentationPhase(args.step.tool),
+    status: args.status,
+    tool: args.step.tool,
+    title: args.status === 'done'
+      ? mapToolDoneTitle(args.step.tool, args.locale)
+      : buildLocalizedBlockedReason(args.errorMessage ?? 'STEP_EXECUTION_FAILED', args.locale),
+    summaryText: args.status === 'done' ? summarizeStepArtifact(args.artifact, args.locale) : undefined,
+    resultSummary: args.status === 'done' ? summarizeStepArtifact(args.artifact, args.locale) : undefined,
+    errorMessage: args.status === 'error' ? args.errorMessage : undefined,
+    startedAt: args.startedAt,
+    completedAt: args.completedAt,
+    durationMs: args.durationMs,
+  };
+}
+
+function buildArtifactReadyTimelineItem(args: {
+  artifact: ArtifactState['artifact'];
+  locale: AppLocale;
+  createdAt: string;
+}): Extract<TimelineEventItem, { kind: 'artifact_ready' }> {
+  if (args.artifact === 'model') {
+    return {
+      id: `artifact-ready:${args.artifact}`,
+      kind: 'artifact_ready',
+      phase: 'modeling',
+      status: 'done',
+      artifact: args.artifact,
+      title: localeAwareArtifactReadyTitle(args.artifact, args.locale),
+      summary: args.locale === 'zh' ? '当前模型已可继续校验或分析' : 'The current model can be validated or analyzed',
+      previewable: true,
+      snapshotKey: 'modelSnapshot',
+      createdAt: args.createdAt,
+    };
+  }
+  if (args.artifact === 'analysis') {
+    return {
+      id: `artifact-ready:${args.artifact}`,
+      kind: 'artifact_ready',
+      phase: 'analysis',
+      status: 'done',
+      artifact: args.artifact,
+      title: localeAwareArtifactReadyTitle(args.artifact, args.locale),
+      summary: args.locale === 'zh' ? '可继续查看结果与报告' : 'Results are ready for review and reporting',
+      previewable: true,
+      snapshotKey: 'resultSnapshot',
+      createdAt: args.createdAt,
+    };
+  }
+  return {
+    id: `artifact-ready:${args.artifact}`,
+    kind: 'artifact_ready',
+    phase: 'report',
+    status: 'done',
+    artifact: args.artifact,
+    title: localeAwareArtifactReadyTitle(args.artifact, args.locale),
+    summary: args.locale === 'zh' ? '可继续查看报告内容' : 'Report content is ready for review',
+    previewable: true,
+    createdAt: args.createdAt,
+  };
+}
+
+function buildClarificationTimelineItem(args: {
   interaction: AgentInteraction;
   locale: AppLocale;
   createdAt: string;
   response: string;
   clarificationQuestion?: string;
-}): Extract<TimelineItem, { kind: 'clarification' }> {
+}): Extract<TimelineEventItem, { kind: 'clarification' }> {
   const questionText = (args.clarificationQuestion ?? '').trim();
   const rawUserFacingText = args.response.trim().length > 0
     ? args.response.trim()
@@ -659,26 +772,6 @@ function buildInteractionTimelineItem(args: {
   };
 }
 
-function buildInteractionStageNote(args: {
-  interaction: AgentInteraction;
-  locale: AppLocale;
-  createdAt: string;
-}): Extract<TimelineItem, { kind: 'note' }> {
-  const stageLabel = args.interaction.interactionStageLabel
-    ?? (args.locale === 'zh' ? '当前阶段' : 'Current stage');
-  return {
-    id: `note:interaction:${args.interaction.turnId}`,
-    kind: 'note',
-    phase: args.interaction.state === 'collecting' ? 'understanding' : 'modeling',
-    status: 'done',
-    previewText: args.locale === 'zh'
-      ? `当前处于${stageLabel}`
-      : `Current stage: ${stageLabel}`,
-    explanationText: args.interaction.routeReason,
-    createdAt: args.createdAt,
-  };
-}
-
 function buildInteractionTimelineTitle(interaction: AgentInteraction, locale: AppLocale): string {
   if (interaction.state === 'collecting') {
     return locale === 'zh' ? '补充建模信息' : 'Need more modeling details';
@@ -697,6 +790,10 @@ function normalizePresentationPayload(payload: unknown): Record<string, unknown>
     return undefined;
   }
   return payload as Record<string, unknown>;
+}
+
+function localeAwareArtifactReadyTitle(artifact: ArtifactState['artifact'], locale: AppLocale): string {
+  return buildArtifactUpsertState(artifact, locale).title;
 }
 
 function applySchedulerStepResult(args: {
@@ -1314,10 +1411,19 @@ export class AgentService {
           {
             type: 'object',
             properties: {
+              type: { const: 'phase_upsert' },
+              phase: { type: 'object' },
+            },
+            required: ['type', 'phase'],
+          },
+          {
+            type: 'object',
+            properties: {
               type: { const: 'timeline_item_upsert' },
+              phaseId: { type: 'string' },
               item: { type: 'object' },
             },
-            required: ['type', 'item'],
+            required: ['type', 'phaseId', 'item'],
           },
           {
             type: 'object',
@@ -1507,20 +1613,24 @@ export class AgentService {
       const result = resolvedResult ?? await resultPromise;
       if (result.interaction && result.interaction.state !== 'completed') {
         const locale = this.resolveInteractionLocale(preparedInput.context?.locale);
+        const phase = result.interaction.state === 'collecting' ? 'understanding' : 'modeling';
+        yield {
+          type: 'phase_upsert',
+          phase: {
+            phaseId: buildPhaseId(phase),
+            phase,
+            title: phaseTitle(phase, locale),
+            status: 'running',
+            items: [],
+          },
+        };
         if (result.interaction.state === 'collecting'
           || result.interaction.state === 'confirming'
           || result.interaction.state === 'blocked') {
           yield {
             type: 'timeline_item_upsert',
-            item: buildInteractionStageNote({
-              interaction: result.interaction,
-              locale,
-              createdAt: result.completedAt,
-            }),
-          };
-          yield {
-            type: 'timeline_item_upsert',
-            item: buildInteractionTimelineItem({
+            phaseId: buildPhaseId(phase),
+            item: buildClarificationTimelineItem({
               interaction: result.interaction,
               locale,
               createdAt: result.completedAt,
@@ -1529,7 +1639,54 @@ export class AgentService {
             }),
           };
         }
+        if (result.response.trim().length > 0) {
+          yield {
+            type: 'timeline_item_upsert',
+            phaseId: buildPhaseId(phase),
+            item: {
+              id: `assistant-reply:${result.completedAt}`,
+              kind: 'assistant_reply',
+              phase,
+              status: 'done',
+              title: locale === 'zh' ? '助手回复' : 'Assistant reply',
+              text: result.response,
+              createdAt: result.completedAt,
+            },
+          };
+        }
         yield { type: 'interaction_update', content: result.interaction };
+      } else if (result.response.trim().length > 0) {
+        const locale = this.resolveInteractionLocale(preparedInput.context?.locale);
+        const phase = result.report
+          ? 'report'
+          : result.analysis
+            ? 'analysis'
+            : result.model
+              ? 'modeling'
+              : 'understanding';
+        yield {
+          type: 'phase_upsert',
+          phase: {
+            phaseId: buildPhaseId(phase),
+            phase,
+            title: phaseTitle(phase, locale),
+            status: 'running',
+            items: [],
+          },
+        };
+        yield {
+          type: 'timeline_item_upsert',
+          phaseId: buildPhaseId(phase),
+          item: {
+            id: `assistant-reply:${result.completedAt}`,
+            kind: 'assistant_reply',
+            phase,
+            status: 'done',
+            title: locale === 'zh' ? '助手回复' : 'Assistant reply',
+            text: result.response,
+            createdAt: result.completedAt,
+          },
+        };
       }
       yield {
         type: 'summary_replace',
@@ -1966,9 +2123,29 @@ export class AgentService {
         if (!presentationArtifact) {
           return;
         }
+        const phase = presentationArtifact === 'model'
+          ? 'modeling'
+          : presentationArtifact === 'analysis'
+            ? 'analysis'
+            : 'report';
+        onStepEvent?.({
+          type: 'phase_upsert',
+          phase: {
+            phaseId: buildPhaseId(phase),
+            phase,
+            title: phaseTitle(phase, locale),
+            status: 'running',
+            items: [],
+          },
+        });
         onStepEvent?.({
           type: 'timeline_item_upsert',
-          item: buildArtifactTimelineItem(presentationArtifact, locale, createdAt),
+          phaseId: buildPhaseId(phase),
+          item: buildArtifactReadyTimelineItem({
+            artifact: presentationArtifact,
+            locale,
+            createdAt,
+          }),
         });
         onStepEvent?.({
           type: 'artifact_upsert',
@@ -1981,18 +2158,38 @@ export class AgentService {
       };
 
       const emitPresentationStepStart = (step: SchedulerStep, startedAtIso: string): void => {
+        const phase = mapToolToPresentationPhase(step.tool);
+        onStepEvent?.({
+          type: 'phase_upsert',
+          phase: {
+            phaseId: buildPhaseId(phase),
+            phase,
+            title: phaseTitle(phase, locale),
+            status: 'running',
+            items: [],
+          },
+        });
+        if (step.skillId) {
+          onStepEvent?.({
+            type: 'timeline_item_upsert',
+            phaseId: buildPhaseId(phase),
+            item: buildSkillSelectedTimelineItem({
+              skillId: step.skillId,
+              phase,
+              createdAt: startedAtIso,
+              locale,
+              reason: step.reason,
+            }),
+          });
+        }
         onStepEvent?.({
           type: 'timeline_item_upsert',
-          item: {
-            id: `step:${step.stepId}`,
-            kind: 'step',
-            phase: mapToolToPresentationPhase(step.tool),
-            tool: step.tool,
-            status: 'running',
-            title: mapToolStartTitle(step.tool, locale),
-            reason: step.reason,
+          phaseId: buildPhaseId(phase),
+          item: buildToolStartTimelineItem({
+            step,
+            locale,
             startedAt: startedAtIso,
-          },
+          }),
         });
       };
 
@@ -2005,25 +2202,36 @@ export class AgentService {
         artifact?: ArtifactEnvelope;
         errorMessage?: string;
       }): void => {
+        const phase = mapToolToPresentationPhase(args.step.tool);
         onStepEvent?.({
           type: 'timeline_item_upsert',
-          item: {
-            id: `step:${args.step.stepId}`,
-            kind: 'step',
-            phase: mapToolToPresentationPhase(args.step.tool),
-            tool: args.step.tool,
+          phaseId: buildPhaseId(phase),
+          item: buildToolResultTimelineItem({
+            step: args.step,
+            locale,
             status: args.status,
-            title: args.status === 'done'
-              ? mapToolDoneTitle(args.step.tool, locale)
-              : buildLocalizedBlockedReason(args.errorMessage ?? 'STEP_EXECUTION_FAILED', locale),
-            reason: args.step.reason,
-            resultSummary: args.status === 'done' ? summarizeStepArtifact(args.artifact, locale) : undefined,
-            errorMessage: args.status === 'error' ? args.errorMessage : undefined,
             startedAt: args.startedAtIso,
             completedAt: args.completedAtIso,
             durationMs: args.durationMs,
-          },
+            artifact: args.artifact,
+            errorMessage: args.errorMessage,
+          }),
         });
+        if (args.step.skillId) {
+          onStepEvent?.({
+            type: 'timeline_item_upsert',
+            phaseId: buildPhaseId(phase),
+            item: buildSkillResultTimelineItem({
+              skillId: args.step.skillId,
+              phase,
+              createdAt: args.completedAtIso,
+              locale,
+              status: args.status,
+              summaryText: args.status === 'done' ? summarizeStepArtifact(args.artifact, locale) : undefined,
+              errorMessage: args.errorMessage,
+            }),
+          });
+        }
         if (args.status === 'done') {
           emitPresentationArtifact(args.artifact, args.completedAtIso);
         }
@@ -2040,8 +2248,19 @@ export class AgentService {
         },
       });
       onStepEvent?.({
+        type: 'phase_upsert',
+        phase: {
+          phaseId: buildPhaseId('modeling'),
+          phase: 'modeling',
+          title: phaseTitle('modeling', locale),
+          status: 'running',
+          items: [],
+        },
+      });
+      onStepEvent?.({
         type: 'timeline_item_upsert',
-        item: buildPipelineStartNote(
+        phaseId: buildPhaseId('modeling'),
+        item: buildPhaseStartItem(
           schedulerPlan.requiredSteps.filter((s) => s.mode !== 'reuse').length,
           locale,
           startedAt,

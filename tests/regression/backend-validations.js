@@ -170,6 +170,10 @@ async function validateAgentOrchestration(context) {
       "stream schema should expose presentation_init",
     );
     assert(
+      protocol.streamEventSchema.oneOf.some((entry) => entry?.properties?.type?.const === "phase_upsert"),
+      "stream schema should expose phase_upsert",
+    );
+    assert(
       protocol.streamEventSchema.oneOf.some((entry) => entry?.properties?.type?.const === "artifact_upsert"),
       "stream schema should expose artifact_upsert",
     );
@@ -3035,6 +3039,11 @@ async function validateChatStreamContract(context) {
   );
   assert(
     Array.isArray(protocol.streamEventSchema?.oneOf)
+      && protocol.streamEventSchema.oneOf.some((entry) => entry?.properties?.type?.const === "phase_upsert"),
+    "stream schema should expose phase_upsert",
+  );
+  assert(
+    Array.isArray(protocol.streamEventSchema?.oneOf)
       && protocol.streamEventSchema.oneOf.some((entry) => entry?.properties?.type?.const === "artifact_upsert"),
     "stream schema should expose artifact_upsert",
   );
@@ -3060,29 +3069,55 @@ async function validateChatStreamContract(context) {
     yield {
       type: "presentation_init",
       presentation: {
-        version: 1,
+        version: 2,
         mode: "execution",
         status: "streaming",
         summaryText: "",
-        timeline: [],
+        phases: [],
         artifacts: [],
         traceId,
         startedAt: "2026-03-09T00:00:00.000Z",
       },
     };
     yield {
-      type: "timeline_item_upsert",
-      item: {
-        id: "step:draft_model",
-        kind: "step",
+      type: "phase_upsert",
+      phase: {
+        phaseId: "phase:modeling",
         phase: "modeling",
-        tool: "draft_model",
-        status: "done",
-        title: "结构模型已生成",
+        title: "建模阶段",
+        status: "running",
+        items: [],
       },
     };
     yield {
       type: "timeline_item_upsert",
+      item: {
+        id: "skill-selected:draft_model",
+        kind: "skill_selected",
+        status: "done",
+        skillId: "draft_model",
+        title: "已选择建模技能",
+        reason: "routing",
+        createdAt: "2026-03-09T00:00:00.002Z",
+      },
+      phaseId: "phase:modeling",
+    };
+    yield {
+      type: "timeline_item_upsert",
+      phaseId: "phase:modeling",
+      item: {
+        id: "tool-start:draft_model",
+        kind: "tool_start",
+        phase: "modeling",
+        tool: "draft_model",
+        status: "running",
+        title: "开始生成结构模型",
+        reason: "draft model",
+      },
+    };
+    yield {
+      type: "timeline_item_upsert",
+      phaseId: "phase:understanding",
       item: {
         id: "interaction:clarify-span",
         kind: "clarification",
@@ -3112,6 +3147,22 @@ async function validateChatStreamContract(context) {
       artifact: "model",
       model: { schema_version: "1.0.0" },
     };
+    yield {
+      type: "timeline_item_upsert",
+      phaseId: "phase:analysis",
+      item: {
+        id: "tool-result:draft_model",
+        kind: "tool_result",
+        phase: "analysis",
+        tool: "draft_model",
+        status: "done",
+        title: "结构模型已生成",
+        summaryText: "结构模型已生成，可继续分析。",
+        startedAt: "2026-03-09T00:00:00.015Z",
+        completedAt: "2026-03-09T00:00:00.030Z",
+        durationMs: 15,
+      },
+    };
     yield { type: "summary_replace", summaryText: "ok" };
     yield {
       type: "result",
@@ -3125,7 +3176,25 @@ async function validateChatStreamContract(context) {
         orchestrationMode: "llm-planned",
         needsModelInput: false,
         plan: ["validate_model", "run_analysis", "generate_report"],
-        toolCalls: [],
+        routing: {
+          selectedSkillIds: ["frame"],
+          activatedSkillIds: ["frame"],
+          structuralSkillId: "frame",
+          analysisSkillId: "analysis-static",
+        },
+        toolCalls: [
+          {
+            tool: "draft_model",
+            status: "success",
+            startedAt: "2026-03-09T00:00:00.015Z",
+            completedAt: "2026-03-09T00:00:00.030Z",
+            durationMs: 15,
+            output: {
+              model: { schema_version: "1.0.0" },
+            },
+          },
+        ],
+        model: { schema_version: "1.0.0" },
         response: "ok",
       },
     };
@@ -3179,21 +3248,32 @@ async function validateChatStreamContract(context) {
       .map((item) => JSON.parse(item));
     assert(chunks[0].type === "start", "first chunk should be start");
     assert(chunks.some((chunk) => chunk.type === "presentation_init"), "stream should contain presentation_init chunk");
+    assert(chunks.some((chunk) => chunk.type === "phase_upsert"), "stream should contain phase_upsert chunk");
     assert(chunks.some((chunk) => chunk.type === "artifact_upsert"), "stream should contain artifact_upsert chunk");
     assert(chunks.some((chunk) => chunk.type === "artifact_payload_sync"), "stream should contain artifact_payload_sync chunk");
-    assert(chunks.some((chunk) => chunk.type === "timeline_item_upsert" && chunk.item?.kind === "clarification"), "stream should contain clarification timeline chunk");
+    assert(chunks.some((chunk) => chunk.type === "timeline_item_upsert" && chunk.phaseId === "phase:modeling"), "stream should contain phase-scoped timeline chunk");
     assert(chunks.some((chunk) => chunk.type === "result"), "stream should contain result chunk");
     assert(chunks[chunks.length - 1].type === "done", "last chunk before [DONE] should be done");
     assert(capturedTraceId === "trace-stream-request-1", "chat/stream should pass traceId to agent stream");
-    assert(persistedAssistantMetadata?.presentation?.version === 1, "chat/stream should persist assistant presentation metadata");
+    assert(persistedAssistantMetadata?.presentation?.version === 2, "chat/stream should persist assistant presentation metadata");
     assert(
       persistedAssistantMetadata?.presentation?.summaryText === "ok",
       "chat/stream should persist the latest summaryText inside assistant presentation metadata",
     );
     assert(
-      Array.isArray(persistedAssistantMetadata?.presentation?.timeline)
-        && persistedAssistantMetadata.presentation.timeline.some((item) => item.kind === "clarification" && item.rawUserFacingText === "Please provide the span and support conditions."),
-      "chat/stream should persist clarification timeline items inside assistant presentation metadata",
+      Array.isArray(persistedAssistantMetadata?.presentation?.phases)
+        && persistedAssistantMetadata.presentation.phases.some((phase) => phase.phase === "understanding" && phase.items.some((item) => item.kind === "clarification" && item.rawUserFacingText === "Please provide the span and support conditions.")),
+      "chat/stream should persist clarification items inside grouped assistant presentation metadata",
+    );
+    assert(
+      Array.isArray(persistedAssistantMetadata?.presentation?.phases)
+        && persistedAssistantMetadata.presentation.phases.some((phase) => phase.phase === "modeling" && phase.items.some((item) => item.kind === "skill_selected")),
+      "chat/stream should persist grouped skill selection items inside assistant presentation metadata",
+    );
+    assert(
+      Array.isArray(persistedAssistantMetadata?.presentation?.phases)
+        && persistedAssistantMetadata.presentation.phases.some((phase) => phase.phase === "analysis" && phase.items.some((item) => item.kind === "tool_result")),
+      "chat/stream should reconstruct tool results into grouped assistant presentation metadata",
     );
 
     const startTrace = chunks.find((chunk) => chunk.type === "start")?.content?.traceId;

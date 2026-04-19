@@ -8,8 +8,9 @@ import { prisma } from '../utils/database.js';
 import type { InputJsonValue } from '../utils/json.js';
 import {
   createEmptyAssistantPresentation,
+  buildCompletedAssistantPresentation as rebuildAssistantPresentationFromResult,
   reducePresentationEvent,
-  type AssistantPresentationV1,
+  type AssistantPresentation,
 } from '../services/chat-presentation.js';
 
 const conversationService = new ConversationService();
@@ -204,30 +205,6 @@ function buildPersistedDebugDetails(params: {
   };
 }
 
-function buildCompletedAssistantPresentation(args: {
-  traceId?: string;
-  mode: 'conversation' | 'execution';
-  summaryText: string;
-  completedAt?: string;
-}): AssistantPresentationV1 {
-  let presentation = createEmptyAssistantPresentation({
-    traceId: args.traceId,
-    mode: args.mode,
-  });
-
-  if (args.summaryText.trim().length > 0) {
-    presentation = reducePresentationEvent(presentation, {
-      type: 'summary_replace',
-      summaryText: args.summaryText,
-    });
-  }
-
-  return reducePresentationEvent(presentation, {
-    type: 'presentation_complete',
-    completedAt: args.completedAt ?? new Date().toISOString(),
-  });
-}
-
 async function persistLatestConversationResult(params: {
   conversationId?: string;
   userId?: string;
@@ -270,7 +247,7 @@ async function persistConversationMessages(params: {
   assistantAborted?: boolean;
   traceId?: string;
   assistantMetadata?: Record<string, unknown>;
-  assistantPresentation?: AssistantPresentationV1;
+  assistantPresentation?: AssistantPresentation;
 }): Promise<void> {
   const conversationId = params.conversationId?.trim();
   const userMessage = params.userMessage.trim();
@@ -367,11 +344,17 @@ export async function chatRoutes(fastify: FastifyInstance) {
         latestResult: result,
       });
       const assistantText = result.response || result.clarification?.question || '';
-      const assistantPresentation = buildCompletedAssistantPresentation({
-        traceId: result.traceId ?? body.traceId,
+      const assistantPresentation = rebuildAssistantPresentationFromResult({
+        base: createEmptyAssistantPresentation({
+          traceId: result.traceId ?? body.traceId,
+          mode: Array.isArray(result.toolCalls) && result.toolCalls.length > 0 ? 'execution' : 'conversation',
+          startedAt: result.startedAt,
+        }),
+        result,
         mode: Array.isArray(result.toolCalls) && result.toolCalls.length > 0 ? 'execution' : 'conversation',
-        summaryText: assistantText,
-        completedAt: result.completedAt,
+        locale: body.context?.locale ?? 'en',
+        traceId: result.traceId ?? body.traceId,
+        startedAt: result.startedAt,
       });
       const debugDetails = buildPersistedDebugDetails({
         userMessage: body.message,
@@ -536,7 +519,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       assistantContent: body.assistantContent,
       assistantAborted: body.assistantAborted,
       traceId: body.traceId,
-      assistantPresentation: body.assistantPresentation as AssistantPresentationV1 | undefined,
+      assistantPresentation: body.assistantPresentation as AssistantPresentation | undefined,
     });
 
     return reply.send({ success: true });
@@ -629,7 +612,18 @@ export async function chatRoutes(fastify: FastifyInstance) {
           && (chunk as { type?: string }).type === 'presentation_init'
           && (chunk as { presentation?: unknown }).presentation
         ) {
-          assistantPresentation = (chunk as { presentation: AssistantPresentationV1 }).presentation;
+          assistantPresentation = (chunk as { presentation: AssistantPresentation }).presentation;
+        }
+        if (
+          chunk
+          && typeof chunk === 'object'
+          && (chunk as { type?: string }).type === 'phase_upsert'
+          && (chunk as { phase?: unknown }).phase
+        ) {
+          assistantPresentation = reducePresentationEvent(
+            assistantPresentation,
+            chunk as Parameters<typeof reducePresentationEvent>[1],
+          );
         }
         if (
           chunk
@@ -714,6 +708,16 @@ export async function chatRoutes(fastify: FastifyInstance) {
             assistantContent = resultContent.response;
           } else if (resultContent?.clarification?.question) {
             assistantContent = resultContent.clarification.question;
+          }
+          if (resultContent && typeof resultContent === 'object') {
+            assistantPresentation = rebuildAssistantPresentationFromResult({
+              base: assistantPresentation,
+              result: resultContent as Parameters<typeof rebuildAssistantPresentationFromResult>[0]['result'],
+              mode: assistantPresentation.mode,
+              locale: body.context?.locale ?? 'en',
+              traceId: streamTraceId,
+              startedAt: assistantPresentation.startedAt,
+            });
           }
           if (!assistantPresentation.summaryText && assistantContent.trim().length > 0) {
             assistantPresentation = reducePresentationEvent(assistantPresentation, {
