@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
-import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, MessageSquarePlus, Orbit, Sparkles, Square, Trash2, User } from 'lucide-react'
+import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, Maximize2, MessageSquarePlus, Orbit, Sparkles, Square, Trash2, User } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -3307,7 +3307,18 @@ export function AIConsole() {
                       </span>
                     )}
                     {message.role === 'assistant' && extractPdfUrl(message.content) && (
-                      <div className="mt-3 overflow-hidden rounded-xl border border-border/70 dark:border-white/10">
+                      <div className="group/pdf mt-3 overflow-hidden rounded-xl border border-border/70 dark:border-white/10">
+                        <div className="flex items-center justify-between border-b border-border/50 px-3 py-1.5 dark:border-white/10">
+                          <span className="text-xs font-medium text-muted-foreground">PDF</span>
+                          <button
+                            type="button"
+                            onClick={() => window.open(extractPdfUrl(message.content)!, '_blank')}
+                            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                          >
+                            <Maximize2 className="h-3 w-3" />
+                            {locale === 'zh' ? '全屏查看' : 'Fullscreen'}
+                          </button>
+                        </div>
                         <iframe
                           src={extractPdfUrl(message.content)!}
                           className="h-[480px] w-full border-0"
