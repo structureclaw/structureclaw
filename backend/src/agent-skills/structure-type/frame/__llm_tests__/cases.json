@@ -124,11 +124,11 @@
       "messages": ["2-story single-bay steel frame, story height 3.6m, bay 6m, floor load 10kN/m2, analyze and check against steel code"],
       "variants": {
         "specific": {
-          "enabledSkillIds": ["frame", "opensees-static", "code-check-gb50017", "validation-structure-model"],
+          "enabledSkillIds": ["frame", "opensees-static", "code-check-gb50017", "validation-structure-model", "postprocess-builtin"],
           "fallbackPolicy": "forbid-generic",
           "expect": {
             "routing": {
-              "selectedSkillIds": ["code-check-gb50017", "frame", "opensees-static", "validation-structure-model"],
+              "selectedSkillIds": ["code-check-gb50017", "frame", "opensees-static", "validation-structure-model", "postprocess-builtin"],
               "structuralSkillId": "frame",
               "analysisSkillId": "opensees-static"
             },
@@ -141,11 +141,11 @@
           }
         },
         "generic": {
-          "enabledSkillIds": ["generic", "opensees-static", "code-check-gb50017", "validation-structure-model"],
+          "enabledSkillIds": ["generic", "opensees-static", "code-check-gb50017", "validation-structure-model", "postprocess-builtin"],
           "fallbackPolicy": "require-generic",
           "expect": {
             "routing": {
-              "selectedSkillIds": ["code-check-gb50017", "generic", "opensees-static", "validation-structure-model"],
+              "selectedSkillIds": ["code-check-gb50017", "generic", "opensees-static", "validation-structure-model", "postprocess-builtin"],
               "structuralSkillId": "generic",
               "analysisSkillId": "opensees-static"
             },
