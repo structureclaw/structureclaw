@@ -152,6 +152,9 @@ def _make_section_shape(
         if T is not None: sh.Set_T(int(T))
         if D is not None: sh.Set_D(int(D))
 
+    # Material type: 5=steel, 6=concrete
+    sh.Set_M(5 if material_family == "steel" else 6)
+
     return sec_kind, sh
 
 
@@ -185,39 +188,40 @@ def _register_section(
     Register one V2 section entry.
     Returns (role, pm_section_idx) where role is "col" or "beam".
 
-    Uses SetUserSect with the appropriate SectionKind for sections with
-    shape data. SetStandSteelSect is only used as fallback when only a
-    standard name is available (no shape dict).
-
-    Steel material is indicated via SetSteelGrade() on each element.
+    Uses SetUserSect with shape.Set_M(5) for steel material indication.
+    Steel material is also indicated via SetSteelGrade() on each element.
     """
-    role = inferred_role
-
     std_name: str | None = sec.get("standard_steel_name")
     shape_dict: dict | None = sec.get("shape")
 
-    if role == "col":
+    if inferred_role == "col":
         csec = APIPyInterface.ColumnSection()
         if shape_dict:
-            sec_kind, sh = _make_section_shape(shape_dict, material_family)
-            csec.SetUserSect(sec_kind, sh)
+            _sec_kind, sh = _make_section_shape(shape_dict, material_family)
+            csec.SetUserSect(_sec_kind, sh)
         elif std_name:
-            csec.SetStandSteelSect(std_name, APIPyInterface.SectionShape())
+            csec.SetUserSect(
+                APIPyInterface.SectionKind.IDSec_I,
+                APIPyInterface.SectionShape(),
+            )
         else:
             raise ValueError(f"Section '{sec['id']}' has no standard_steel_name or shape.")
         pm_idx = model.AddColumnSection(csec)
     else:
         bsec = APIPyInterface.BeamSection()
         if shape_dict:
-            sec_kind, sh = _make_section_shape(shape_dict, material_family)
-            bsec.SetUserSect(sec_kind, sh)
+            _sec_kind, sh = _make_section_shape(shape_dict, material_family)
+            bsec.SetUserSect(_sec_kind, sh)
         elif std_name:
-            bsec.SetStandSteelSect(std_name, APIPyInterface.SectionShape())
+            bsec.SetUserSect(
+                APIPyInterface.SectionKind.IDSec_I,
+                APIPyInterface.SectionShape(),
+            )
         else:
             raise ValueError(f"Section '{sec['id']}' has no standard_steel_name or shape.")
         pm_idx = model.AddBeamSection(bsec)
 
-    return role, pm_idx
+    return inferred_role, pm_idx
 
 
 def _build_section_registry(
