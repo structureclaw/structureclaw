@@ -3306,7 +3306,7 @@ export function AIConsole() {
                         {t('streamAborted')}
                       </span>
                     )}
-                    {message.role === 'assistant' && !message.presentation && extractPdfUrl(message.content) && (
+                    {message.role === 'assistant' && extractPdfUrl(message.content) && (
                       <div className="mt-3 overflow-hidden rounded-xl border border-border/70 dark:border-white/10">
                         <iframe
                           src={extractPdfUrl(message.content)!}
