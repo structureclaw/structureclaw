@@ -173,12 +173,14 @@ function buildFrame2dLocalModel(
       const fl = floorLoads.find((l) => l.story === storyIdx);
       const floorAreaM2 = Math.max(xCoords[xCoords.length - 1], 1);
       const deadLoad = fl?.verticalKN ? Math.abs(fl.verticalKN) / floorAreaM2 : undefined;
+      const liveLoad = fl?.liveLoadKN ? Math.abs(fl.liveLoadKN) / floorAreaM2 : undefined;
       return {
         id: `F${storyIdx}`,
         height: h,
         elevation: zCoords[i],
         standard_floor_group: 'SF1',
         ...(deadLoad ? { dead_load: Math.round(deadLoad * 100) / 100 } : {}),
+        ...(liveLoad ? { live_load: Math.round(liveLoad * 100) / 100 } : {}),
       };
     }),
     load_cases: [{ id: 'LC1', type: 'other', loads }],
@@ -292,12 +294,14 @@ function buildFrame3dLocalModel(
       const fl = floorLoads.find((l) => l.story === storyIdx);
       const floorAreaM2 = Math.max(xCoords[xCoords.length - 1], 1) * Math.max(yCoords[yCoords.length - 1], 1);
       const deadLoad = fl?.verticalKN ? Math.abs(fl.verticalKN) / floorAreaM2 : undefined;
+      const liveLoad = fl?.liveLoadKN ? Math.abs(fl.liveLoadKN) / floorAreaM2 : undefined;
       return {
         id: `F${storyIdx}`,
         height: h,
         elevation: zCoords[i],
         standard_floor_group: 'SF1',
         ...(deadLoad ? { dead_load: Math.round(deadLoad * 100) / 100 } : {}),
+        ...(liveLoad ? { live_load: Math.round(liveLoad * 100) / 100 } : {}),
       };
     }),
     load_cases: [{ id: 'LC1', type: 'other', loads }],

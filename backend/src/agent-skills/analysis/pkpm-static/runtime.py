@@ -246,23 +246,25 @@ def _extract_results(jws_path: Path) -> Dict[str, Any]:
 
             floor_idx += 1
 
-        # ---- Node displacements (filter PKPM sentinel 99999) ----
+        # ---- Node displacements (per-load-case envelope, filter sentinel) ----
         _SENTINEL = 99990.0
         node_displacements: list[dict[str, Any]] = []
         try:
             for node in result.GetPyNodeInResult():
                 disp_dict = node.GetNodeDisp()
-                dx = dy = dz = 0.0
+                best_mag = 0.0
+                best_dx = best_dy = best_dz = 0.0
                 for _key, nd in disp_dict.items():
-                    vx = abs(_safe_float(nd.GetDispX()))
-                    vy = abs(_safe_float(nd.GetDispY()))
-                    vz = abs(_safe_float(nd.GetDispZ()))
-                    if vx < _SENTINEL:
-                        dx = max(dx, vx)
-                    if vy < _SENTINEL:
-                        dy = max(dy, vy)
-                    if vz < _SENTINEL:
-                        dz = max(dz, vz)
+                    vx = _safe_float(nd.GetDispX())
+                    vy = _safe_float(nd.GetDispY())
+                    vz = _safe_float(nd.GetDispZ())
+                    if abs(vx) >= _SENTINEL or abs(vy) >= _SENTINEL or abs(vz) >= _SENTINEL:
+                        continue
+                    mag = (vx ** 2 + vy ** 2 + vz ** 2) ** 0.5
+                    if mag > best_mag:
+                        best_mag = mag
+                        best_dx, best_dy, best_dz = abs(vx), abs(vy), abs(vz)
+                dx, dy, dz = best_dx, best_dy, best_dz
                 if dx > 0:
                     all_node_disp_x.append(dx)
                 if dy > 0:
@@ -391,7 +393,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     # ---- Phase 1: Generate JWS ----
     try:
         model_dict = model.model_dump(mode="json") if hasattr(model, "model_dump") else dict(model)
-        jws_path = convert_v2_to_jws(model_dict, work_dir, project_name)
+        jws_path, converter_mappings = convert_v2_to_jws(model_dict, work_dir, project_name)
     except Exception as exc:
         raise RuntimeError(f"PKPM JWS generation failed: {exc}") from exc
 
@@ -412,12 +414,50 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     beams = extracted.get("beams", [])
     columns = extracted.get("columns", [])
 
+    # ---- Build V2 node → PKPM (floor, pmid) mapping ----
+    v2_to_pm: Dict[str, int] = converter_mappings.get("v2_to_pm", {})
+    v2_node_z: Dict[str, float] = converter_mappings.get("v2_node_z", {})
+    elem_map_raw: Dict[str, Any] = converter_mappings.get("elem_map", {})
+
+    # Build story top elevations for floor mapping
+    sorted_stories = sorted(
+        model_dict.get("stories", []),
+        key=lambda s: float(s.get("elevation", 0)),
+    )
+    story_tops: list[float] = []
+    for st in sorted_stories:
+        elev = float(st.get("elevation", 0))
+        h = float(st.get("height", 0))
+        story_tops.append(elev + h)
+
+    # Map each V2 node to a PKPM floor number (1-indexed)
+    v2_node_floor: Dict[str, int] = {}
+    for v2_id, z in v2_node_z.items():
+        if abs(z) < 0.001:
+            v2_node_floor[v2_id] = 0  # base
+            continue
+        for i, top_z in enumerate(story_tops):
+            if abs(z - top_z) < 0.01:
+                v2_node_floor[v2_id] = i + 1
+                break
+
+    # Build reverse: (pkpm_pmid, floor) → v2_node_id
+    pm_floor_to_v2: Dict[tuple[int, int], str] = {}
+    for v2_id, pm_id in v2_to_pm.items():
+        floor = v2_node_floor.get(v2_id, -1)
+        if floor > 0:
+            pm_floor_to_v2[(pm_id, floor)] = v2_id
+
     # displacements: { nodeId: { ux, uy, uz, rx, ry, rz } }
     displacements: Dict[str, Dict[str, float]] = {}
     for nd in node_disps:
-        node_id = str(nd.get("pmid", ""))
-        if node_id:
-            displacements[node_id] = {
+        pmid = nd.get("pmid", -1)
+        floor = nd.get("floor", 0)
+        # Try to remap to V2 node ID
+        v2_id = pm_floor_to_v2.get((pmid, floor))
+        node_key = v2_id if v2_id else str(pmid)
+        if node_key:
+            displacements[node_key] = {
                 "ux": nd.get("max_disp_x_mm", 0.0),
                 "uy": nd.get("max_disp_y_mm", 0.0),
                 "uz": nd.get("max_disp_z_mm", 0.0),
@@ -426,11 +466,20 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
                 "rz": 0.0,
             }
 
+    # Build element pmid → V2 element ID mapping
+    # PKPM design beams/columns are keyed by their pmid in results.
+    # We map by position: for columns, pmid = plan node id; for beams, pmid = net id.
+    pm_elem_to_v2: Dict[int, str] = {}
+    for v2_eid, info in elem_map_raw.items():
+        pm_elem_to_v2[info["pmid"]] = v2_eid
+
     # forces: { elementId: { N, V, M, T, n1.N, n2.N, ... } }
     forces: Dict[str, Dict[str, float]] = {}
     for b in beams:
-        elem_id = str(b.get("pmid", ""))
-        if not elem_id:
+        pmid = b.get("pmid", -1)
+        v2_eid = pm_elem_to_v2.get(pmid)
+        elem_id = v2_eid if v2_eid else str(pmid)
+        if not elem_id or elem_id == str(-1):
             continue
         shear = b.get("max_shear_force_kn", 0.0)
         posi_moments = b.get("positive_moments_kNm", [])
@@ -444,8 +493,10 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             "M": max_m,
         }
     for c in columns:
-        elem_id = str(c.get("pmid", ""))
-        if not elem_id:
+        pmid = c.get("pmid", -1)
+        v2_eid = pm_elem_to_v2.get(pmid)
+        elem_id = v2_eid if v2_eid else str(pmid)
+        if not elem_id or elem_id == str(-1):
             continue
         col_n = c.get("max_axial_force_kn", 0.0)
         col_v = c.get("max_shear_force_kn", 0.0)
@@ -453,7 +504,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         acr = c.get("axial_compression_ratio", [])
         forces[elem_id] = {
             **(forces.get(elem_id, {})),
-            "N": max(col_n, max([abs(v) for v in acr], default=0.0)),
+            "N": col_n,
             "V": col_v,
             "M": col_m,
         }

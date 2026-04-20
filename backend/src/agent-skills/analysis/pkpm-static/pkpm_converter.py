@@ -244,7 +244,7 @@ def convert_v2_to_jws(
     data: dict,
     work_dir: Path,
     project_name: str,
-) -> Path:
+) -> tuple[Path, dict[str, Any]]:
     """
     Convert V2 StructureModelV2 JSON dict to a PKPM JWS file.
 
@@ -254,7 +254,10 @@ def convert_v2_to_jws(
         project_name: Base name for the JWS project (no extension).
 
     Returns:
-        Path to the generated .JWS file.
+        (jws_path, mappings) where mappings contains:
+          - v2_to_pm: {v2_node_id: pkpm_plan_node_id}
+          - v2_node_z: {v2_node_id: z_coordinate_m}
+          - elem_map: {v2_elem_id: {pmid, type, floor_nodes}}
 
     Raises:
         ImportError:  If APIPyInterface is not available.
@@ -315,6 +318,20 @@ def convert_v2_to_jws(
     plan_nodes_with_col: set[int] = set()
     # Track beam nets to avoid duplicates
     added_nets: dict[tuple[int, int], int] = {}  # (pm_a, pm_b) → net_id
+    # Track V2 element → PKPM mapping for result remapping
+    elem_map: dict[str, dict[str, Any]] = {}
+
+    # Build base restraint lookup: {pm_node_id: is_pinned}
+    # V2 restraints: [ux, uy, uz, rx, ry, rz] — pinned = [T,T,T,F,F,F], fixed = [T,T,T,T,T,T]
+    base_restraint: dict[int, bool] = {}  # pm_node_id → True if pinned (not fully fixed)
+    for n in nodes:
+        r = n.get("restraints")
+        if r and len(r) == 6 and any(r):
+            pm_id = v2_to_pm.get(n["id"])
+            if pm_id is not None:
+                all_fixed = all(r)
+                if not all_fixed:
+                    base_restraint[pm_id] = True  # pinned or partial
 
     for elem in elements:
         etype = elem.get("type", "")
@@ -333,7 +350,21 @@ def convert_v2_to_jws(
             if pm_node_id not in plan_nodes_with_col:
                 col_obj = floor.AddColumn(pm_sec_idx, pm_node_id)
                 col_obj.SetSteelGrade(grade)
+                # Apply base restraint if the base node has non-fixed restraints
+                if pm_node_id in base_restraint:
+                    try:
+                        col_obj.SetSpecial(
+                            APIPyInterface.SpecialColumn.IDSp_Constrain_Support, 1.0
+                        )
+                    except Exception:
+                        print(f"[pkpm_converter] SetSpecial(IDSp_Constrain_Support) failed "
+                              f"for column at node {pm_node_id}")
                 plan_nodes_with_col.add(pm_node_id)
+            elem_map[elem.get("id", "")] = {
+                "pmid": pm_node_id,
+                "type": "col",
+                "floor_nodes": node_ids,
+            }
 
         elif etype == "beam":
             if pm_sec_idx < 0:
@@ -354,6 +385,11 @@ def convert_v2_to_jws(
             net_id = added_nets[net_key]
             beam_obj = floor.AddBeamEx(pm_sec_idx, net_id, 0, 0, 0, 0.0)
             beam_obj.SetSteelGrade(grade)
+            elem_map[elem.get("id", "")] = {
+                "pmid": net_id,
+                "type": "beam",
+                "floor_nodes": node_ids,
+            }
 
         elif etype == "brace":
             # Braces: log a note, skip silently for now
@@ -374,4 +410,8 @@ def convert_v2_to_jws(
         model.AddNaturalFloor(rf)
 
     model.SavePMModel()
-    return jws_path
+    return jws_path, {
+        "v2_to_pm": v2_to_pm,
+        "v2_node_z": {n["id"]: float(n.get("z", 0)) for n in nodes},
+        "elem_map": elem_map,
+    }

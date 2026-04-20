@@ -15,6 +15,7 @@ export type AgentToolSource = 'builtin' | 'external';
 export interface DraftFloorLoad {
   story: number;
   verticalKN?: number;
+  liveLoadKN?: number;
   lateralXKN?: number;
   lateralYKN?: number;
 }

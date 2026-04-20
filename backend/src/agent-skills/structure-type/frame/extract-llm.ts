@@ -42,14 +42,16 @@ function repeatScalar(count: number | undefined, value: number | undefined): num
 function buildUniformFloorLoads(
   storyCount: number | undefined,
   verticalKN: number | undefined,
+  liveLoadKN: number | undefined,
   lateralXKN: number | undefined,
   lateralYKN: number | undefined,
 ): DraftFloorLoad[] | undefined {
   if (!storyCount) return undefined;
-  if (verticalKN === undefined && lateralXKN === undefined && lateralYKN === undefined) return undefined;
+  if (verticalKN === undefined && liveLoadKN === undefined && lateralXKN === undefined && lateralYKN === undefined) return undefined;
   return Array.from({ length: storyCount }, (_, index) => ({
     story: index + 1,
     verticalKN,
+    liveLoadKN,
     lateralXKN,
     lateralYKN,
   }));
@@ -72,6 +74,19 @@ function extractAreaLoadIntensity(message: string): number | undefined {
   }, ['direct']);
 }
 
+function extractLiveLoadIntensity(message: string): number | undefined {
+  const livePatterns = [
+    /活载[荷]?\s*[：:]*\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)\s*\/\s*m(?:\^?2|2|²)/i,
+    /live\s*load\s*[：:]*\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)\s*\/\s*m(?:\^?2|2|²)/i,
+    /活荷载\s*[：:]*\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)\s*\/\s*m(?:\^?2|2|²)/i,
+  ];
+  for (const pattern of livePatterns) {
+    const match = message.match(pattern);
+    if (match?.[1]) return normalizeNumber(match[1]);
+  }
+  return undefined;
+}
+
 function extractLineLoadIntensity(message: string): number | undefined {
   return extractLlmScalar({
     value: message,
@@ -90,12 +105,14 @@ function deriveFloorLoadsFromIntensity(
 
   const areaLoadKNm2 = extractAreaLoadIntensity(message);
   const lineLoadKNm = extractLineLoadIntensity(message);
-  if (areaLoadKNm2 === undefined && lineLoadKNm === undefined) return patch;
+  const liveLoadKNm2 = extractLiveLoadIntensity(message);
+  if (areaLoadKNm2 === undefined && lineLoadKNm === undefined && liveLoadKNm2 === undefined) return patch;
 
   const dimension = patch.frameDimension
     ?? (patch.bayCountY !== undefined || patch.bayWidthsYM?.length ? '3d' : '2d');
 
   let verticalKN: number | undefined;
+  let derivedLiveLoadKN: number | undefined;
   if (dimension === '3d') {
     const totalSpanX = sumPositive(patch.bayWidthsXM);
     const totalSpanY = sumPositive(patch.bayWidthsYM);
@@ -121,12 +138,33 @@ function deriveFloorLoadsFromIntensity(
     }
   }
 
-  if (verticalKN === undefined || !Number.isFinite(verticalKN) || verticalKN <= 0) {
+  // Derive live load KN from intensity (same area logic as dead load)
+  if (liveLoadKNm2 !== undefined) {
+    if (dimension === '3d') {
+      const totalSpanX = sumPositive(patch.bayWidthsXM);
+      const totalSpanY = sumPositive(patch.bayWidthsYM);
+      if (totalSpanX !== undefined && totalSpanY !== undefined) {
+        derivedLiveLoadKN = liveLoadKNm2 * totalSpanX * totalSpanY;
+      }
+    } else {
+      const bayWidths2d = patch.bayWidthsM ?? patch.bayWidthsXM;
+      const totalSpan2d = sumPositive(bayWidths2d);
+      if (totalSpan2d !== undefined) {
+        derivedLiveLoadKN = liveLoadKNm2 * totalSpan2d;
+      }
+    }
+  }
+
+  if ((verticalKN === undefined || !Number.isFinite(verticalKN) || verticalKN <= 0)
+    && (derivedLiveLoadKN === undefined || !Number.isFinite(derivedLiveLoadKN) || derivedLiveLoadKN <= 0)) {
     return patch;
   }
 
-  const roundedVerticalKN = Number(verticalKN.toFixed(6));
-  const derivedFloorLoads = buildUniformFloorLoads(storyCount, roundedVerticalKN, undefined, undefined);
+  const roundedVerticalKN = verticalKN && Number.isFinite(verticalKN) && verticalKN > 0
+    ? Number(verticalKN.toFixed(6)) : undefined;
+  const roundedLiveLoadKN = derivedLiveLoadKN && Number.isFinite(derivedLiveLoadKN) && derivedLiveLoadKN > 0
+    ? Number(derivedLiveLoadKN.toFixed(6)) : undefined;
+  const derivedFloorLoads = buildUniformFloorLoads(storyCount, roundedVerticalKN, roundedLiveLoadKN, undefined, undefined);
   return derivedFloorLoads ? { ...patch, floorLoads: derivedFloorLoads } : patch;
 }
 
@@ -144,6 +182,7 @@ export function buildFramePatchFromLlm(
   const bayWidthXScalar = extractLlmScalar(rawPatch, ['bayWidthXScalar', 'bayWidthXM', 'spacingXM']);
   const bayWidthYScalar = extractLlmScalar(rawPatch, ['bayWidthYScalar', 'bayWidthYM', 'spacingYM']);
   const verticalLoadKN = extractLlmScalar(rawPatch, ['verticalLoadKN', 'uniformVerticalLoadKN']);
+  const liveLoadKN = extractLlmScalar(rawPatch, ['liveLoadKN', 'uniformLiveLoadKN']);
   const lateralXKN = extractLlmScalar(rawPatch, ['lateralXKN', 'horizontalLoadKN', 'uniformLateralXKN']);
   const lateralYKN = extractLlmScalar(rawPatch, ['lateralYKN', 'uniformLateralYKN']);
   const frameDimension = normalized.frameDimension
@@ -166,7 +205,7 @@ export function buildFramePatchFromLlm(
     bayWidthsM: normalized.bayWidthsM ?? repeatScalar(bayCount, bayWidthScalar),
     bayWidthsXM: normalized.bayWidthsXM ?? repeatScalar(bayCountX, bayWidthXScalar ?? bayWidthScalar),
     bayWidthsYM: normalized.bayWidthsYM ?? repeatScalar(bayCountY, bayWidthYScalar ?? bayWidthScalar),
-    floorLoads: normalized.floorLoads ?? buildUniformFloorLoads(storyCount, verticalLoadKN, lateralXKN, frameDimension === '3d' ? lateralYKN : undefined),
+    floorLoads: normalized.floorLoads ?? buildUniformFloorLoads(storyCount, verticalLoadKN, liveLoadKN, lateralXKN, frameDimension === '3d' ? lateralYKN : undefined),
     ...(frameMaterial !== undefined && { frameMaterial }),
     ...(frameColumnSection !== undefined && { frameColumnSection }),
     ...(frameBeamSection !== undefined && { frameBeamSection }),
