@@ -111,7 +111,7 @@
       "messages": ["门式刚架，跨度18m，高度7m，屋面荷载6kN/m，分析"],
       "variants": {
         "specific": {
-          "enabledSkillIds": ["portal-frame", "opensees-static"],
+          "enabledSkillIds": ["portal-frame", "opensees-static", "validation-structure-model"],
           "fallbackPolicy": "forbid-generic",
           "expect": {
             "routing": {

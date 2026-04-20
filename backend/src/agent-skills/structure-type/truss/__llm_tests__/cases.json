@@ -45,7 +45,7 @@
       "messages": ["三角桁架，跨度12m，高3m，节点荷载20kN，做静力分析"],
       "variants": {
         "specific": {
-          "enabledSkillIds": ["truss", "opensees-static"],
+          "enabledSkillIds": ["truss", "opensees-static", "validation-structure-model"],
           "fallbackPolicy": "forbid-generic",
           "expect": {
             "routing": {
@@ -58,7 +58,7 @@
           }
         },
         "generic": {
-          "enabledSkillIds": ["generic", "opensees-static"],
+          "enabledSkillIds": ["generic", "opensees-static", "validation-structure-model"],
           "fallbackPolicy": "require-generic",
           "expect": {
             "routing": {

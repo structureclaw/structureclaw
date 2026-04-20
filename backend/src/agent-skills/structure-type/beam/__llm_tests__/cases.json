@@ -179,7 +179,7 @@
       "messages": ["简支梁6米，均布荷载20kN/m，请进行静力分析"],
       "variants": {
         "specific": {
-          "enabledSkillIds": ["beam", "opensees-static"],
+          "enabledSkillIds": ["beam", "opensees-static", "validation-structure-model"],
           "fallbackPolicy": "forbid-generic",
           "expect": {
             "routing": {
