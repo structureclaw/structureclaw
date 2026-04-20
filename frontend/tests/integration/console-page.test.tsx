@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import ConsolePage from '../../src/app/(console)/console/page'
 import type { VisualizationSnapshot } from '../../src/components/visualization'
+import { API_BASE } from '@/lib/api-base'
 import { CAPABILITY_PREFERENCE_STORAGE_KEY } from '@/lib/capability-preference'
 import { clearLocaleCookie, LOCALE_STORAGE_KEY, normalizeLocale } from '@/lib/locale-preference'
 import { AppStoreProvider } from '@/lib/stores/context'
@@ -1701,6 +1702,169 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(within(reportTable).getByRole('columnheader', { name: 'Drift' })).toBeInTheDocument()
     expect(within(reportTable).getByText('SLS')).toBeInTheDocument()
     expect(within(reportTable).getByText('1/350')).toBeInTheDocument()
+  })
+
+  it('rewrites backend-relative markdown links to API_BASE urls', async () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      const supportResponse = mockConsoleSupportRequest(url)
+      if (supportResponse) {
+        return supportResponse
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-markdown-links',
+            title: 'Markdown links',
+            type: 'general',
+            createdAt: '2026-04-20T08:00:00.000Z',
+            updatedAt: '2026-04-20T08:00:00.000Z',
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/stream')) {
+        return createSseResponse([
+          {
+            type: 'result',
+            content: {
+              response: 'Execution done.',
+              success: true,
+              report: {
+                summary: '[Download artifact](/api/v1/files/serve?path=report.md)',
+                markdown: '[Open backend file](/api/v1/files/serve?path=report.md)',
+              },
+            },
+          },
+        ])
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+
+    fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
+      target: { value: 'Render markdown links' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^Send$|^发送$/ }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^Report$|^报告$/ })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Report$|^报告$/ }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Download artifact' })).toHaveAttribute('href', `${API_BASE}/api/v1/files/serve?path=report.md`)
+    })
+    expect(screen.getByRole('link', { name: 'Open backend file' })).toHaveAttribute('href', `${API_BASE}/api/v1/files/serve?path=report.md`)
+  })
+
+  it('keeps compact paragraph spacing out of the report markdown containers', async () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      const supportResponse = mockConsoleSupportRequest(url)
+      if (supportResponse) {
+        return supportResponse
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-markdown-spacing',
+            title: 'Markdown spacing',
+            type: 'general',
+            createdAt: '2026-04-20T08:00:00.000Z',
+            updatedAt: '2026-04-20T08:00:00.000Z',
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/stream')) {
+        return createSseResponse([
+          {
+            type: 'result',
+            content: {
+              response: 'First paragraph.\n\nSecond paragraph.',
+              success: true,
+              report: {
+                summary: 'Summary first paragraph.\n\nSummary second paragraph.',
+                markdown: 'Body first paragraph.\n\nBody second paragraph.',
+              },
+            },
+          },
+        ])
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+
+    fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
+      target: { value: 'Render markdown spacing' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^Send$|^发送$/ }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^Analysis$|^分析结果$/ })).toBeInTheDocument()
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^Analysis$|^分析结果$/ }))
+
+    const executionSummaryParagraph = screen.getByText('First paragraph.').closest('p')
+    expect(executionSummaryParagraph).not.toBeNull()
+    const executionMarkdownContainer = executionSummaryParagraph?.parentElement
+    expect(executionMarkdownContainer).toHaveClass('prose-p:my-0')
+
+    fireEvent.click(screen.getByRole('button', { name: /^Report$|^报告$/ }))
+
+    await waitFor(() => {
+      expect(screen.getByText('Summary first paragraph.')).toBeInTheDocument()
+    })
+
+    const reportSummaryParagraph = screen.getByText('Summary first paragraph.').closest('p')
+    expect(reportSummaryParagraph).not.toBeNull()
+    expect(reportSummaryParagraph?.parentElement).not.toHaveClass('prose-p:my-0')
+
+    const reportBodyParagraph = screen.getByText('Body first paragraph.').closest('p')
+    expect(reportBodyParagraph).not.toBeNull()
+    expect(reportBodyParagraph?.parentElement).not.toHaveClass('prose-p:my-0')
   })
 
   it('does not show an engine manager action on the conversation page', async () => {

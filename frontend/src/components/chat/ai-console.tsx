@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
-import ReactMarkdown from 'react-markdown'
+import ReactMarkdown, { defaultUrlTransform, type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, Maximize2, MessageSquarePlus, Orbit, Sparkles, Square, Trash2, User } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -300,18 +300,32 @@ type CapabilityMatrixPayload = {
   skillAliasesByCanonicalId?: Record<string, string[]>
 }
 
-const MARKDOWN_BODY_CLASS = 'prose prose-sm max-w-none prose-headings:text-foreground prose-p:my-0 prose-p:text-muted-foreground prose-strong:text-foreground prose-code:text-cyan-700 prose-pre:bg-muted/60 prose-a:text-cyan-700 prose-a:no-underline hover:prose-a:text-cyan-600 prose-table:my-4 prose-table:w-full prose-th:border prose-th:border-border/70 prose-th:bg-background/70 prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:text-foreground prose-td:border prose-td:border-border/50 prose-td:px-3 prose-td:py-2 prose-td:text-muted-foreground dark:prose-invert dark:prose-code:text-cyan-200 dark:prose-pre:bg-black/30 dark:prose-a:text-cyan-200 dark:hover:prose-a:text-cyan-100 dark:prose-th:border-white/10 dark:prose-th:bg-white/5 dark:prose-td:border-white/10'
+const MARKDOWN_BODY_BASE_CLASS = 'prose prose-sm max-w-none prose-headings:text-foreground prose-p:text-muted-foreground prose-strong:text-foreground prose-code:text-cyan-700 prose-pre:bg-muted/60 prose-a:text-cyan-700 prose-a:no-underline hover:prose-a:text-cyan-600 prose-table:my-4 prose-table:w-full prose-th:border prose-th:border-border/70 prose-th:bg-background/70 prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:text-foreground prose-td:border prose-td:border-border/50 prose-td:px-3 prose-td:py-2 prose-td:text-muted-foreground dark:prose-invert dark:prose-code:text-cyan-200 dark:prose-pre:bg-black/30 dark:prose-a:text-cyan-200 dark:hover:prose-a:text-cyan-100 dark:prose-th:border-white/10 dark:prose-th:bg-white/5 dark:prose-td:border-white/10'
+const MARKDOWN_BODY_COMPACT_CLASS = `${MARKDOWN_BODY_BASE_CLASS} prose-p:my-0`
+
+function rewriteMarkdownUrl(url: string) {
+  const safeUrl = defaultUrlTransform(url)
+  return safeUrl.startsWith('/') ? `${API_BASE}${safeUrl}` : safeUrl
+}
+
+const MARKDOWN_COMPONENTS: Components = {
+  a: ({ href, ...props }) => <a {...props} href={href} target="_blank" rel="noopener noreferrer" />,
+}
 
 function MarkdownBody({
   content,
   className,
+  compact = false,
 }: {
   content: string
   className?: string
+  compact?: boolean
 }) {
   return (
-    <div className={cn(MARKDOWN_BODY_CLASS, className)}>
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+    <div className={cn(compact ? MARKDOWN_BODY_COMPACT_CLASS : MARKDOWN_BODY_BASE_CLASS, className)}>
+      <ReactMarkdown components={MARKDOWN_COMPONENTS} remarkPlugins={[remarkGfm]} urlTransform={rewriteMarkdownUrl}>
+        {content}
+      </ReactMarkdown>
     </div>
   )
 }
@@ -1369,7 +1383,7 @@ function AnalysisPanel({
                 </div>
                 <div>
                   <CardTitle className="text-xl text-foreground">{t('executionSummary')}</CardTitle>
-                  <MarkdownBody content={result.response || t('noNaturalLanguageSummary')} />
+                  <MarkdownBody compact content={result.response || t('noNaturalLanguageSummary')} />
                 </div>
               </CardHeader>
               {(stats.length > 0 || result.plan?.length) && (
@@ -1457,7 +1471,7 @@ function AnalysisPanel({
               >
                 <CardHeader>
                   <CardTitle className="text-lg">{t('guidancePanelTitle')}</CardTitle>
-                  <MarkdownBody content={result.response || t('guidancePanelBody')} />
+                  <MarkdownBody compact content={result.response || t('guidancePanelBody')} />
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid gap-3 md:grid-cols-2">
@@ -1472,7 +1486,7 @@ function AnalysisPanel({
                   {guidance.fallbackSupportNote && (
                     <div className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 p-4 text-sm leading-6 text-foreground">
                       <div className="mb-2 text-xs uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-200">{t('guidanceSupportNote')}</div>
-                      <MarkdownBody content={guidance.fallbackSupportNote} className="prose-p:text-foreground dark:prose-p:text-foreground" />
+                      <MarkdownBody compact content={guidance.fallbackSupportNote} className="prose-p:text-foreground dark:prose-p:text-foreground" />
                     </div>
                   )}
 
@@ -1505,7 +1519,7 @@ function AnalysisPanel({
                   {guidance.recommendedNextStep && (
                     <div className="rounded-2xl border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
                       <div className="mb-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('guidanceRecommendedNextStep')}</div>
-                      <MarkdownBody content={guidance.recommendedNextStep} className="prose-p:text-foreground dark:prose-p:text-foreground" />
+                      <MarkdownBody compact content={guidance.recommendedNextStep} className="prose-p:text-foreground dark:prose-p:text-foreground" />
                     </div>
                   )}
                 </CardContent>
