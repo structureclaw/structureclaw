@@ -15,6 +15,7 @@ PKPM_WORK_DIR : str, optional
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import tempfile
 import uuid
@@ -126,7 +127,25 @@ def _max_from_list(values: list[float]) -> float:
     return max(values) if values else 0.0
 
 
-def _extract_results(jws_path: Path) -> Dict[str, Any]:
+def _read_satwe_params(result: Any) -> Dict[str, Any]:
+    """Read SATWE design parameters from SysInfoDetail for verification."""
+    satwe_params: Dict[str, Any] = {}
+    try:
+        sys_info = result.GetSysInfoDetail()
+        satwe_params["damping_ratio"] = _safe_float(sys_info.GetDamp_whole())
+        satwe_params["structure_type"] = _safe_float(sys_info.GetKind_tb())
+        satwe_params["seismic_intensity"] = _safe_float(sys_info.GetLiedu())
+        satwe_params["site_category"] = _safe_float(sys_info.GetIgrdtype())
+        satwe_params["steel_structure_flag"] = _safe_float(sys_info.GetIe_sts())
+        satwe_params["solver_type"] = _safe_float(sys_info.GetIsolver())
+        satwe_params["mode_count"] = _safe_float(sys_info.GetVb_nmode())
+        satwe_params["basement_count"] = _safe_float(sys_info.GetNbasement0())
+    except Exception:
+        pass
+    return satwe_params
+
+
+def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str, Any]:
     """Extract design results from a completed SATWE analysis via APIPyInterface."""
     import APIPyInterface
 
@@ -157,6 +176,9 @@ def _extract_results(jws_path: Path) -> Dict[str, Any]:
         all_node_disp_x: list[float] = []
         all_node_disp_y: list[float] = []
         all_node_disp_z: list[float] = []
+        # Per-load-case force accumulation: {case_name: {(pmid,floor): {N,Vy,Vz,T,My,Mz}}}
+        case_beam_forces: Dict[str, Dict[tuple[int, int], Dict[str, float]]] = {}
+        case_col_forces: Dict[str, Dict[tuple[int, int], Dict[str, float]]] = {}
 
         floor_idx = 1
         max_floors = 500
@@ -181,6 +203,18 @@ def _extract_results(jws_path: Path) -> Dict[str, Any]:
                                 beam_max_v = max(beam_max_v, abs(vals[2]))  # Vz
                             if len(vals) >= 5:
                                 beam_max_m = max(beam_max_m, abs(vals[4]))  # My
+                            # Accumulate per-case forces (keyed by (pmid, floor) to avoid cross-floor overwrite)
+                            beam_key = (pmid, floor_idx)
+                            case_beam_forces.setdefault(case_name, {}).setdefault(
+                                beam_key, {"N": 0.0, "Vy": 0.0, "Vz": 0.0, "T": 0.0, "My": 0.0, "Mz": 0.0}
+                            )
+                            entry = case_beam_forces[case_name][beam_key]
+                            if len(vals) >= 1: entry["N"] = max(entry["N"], abs(vals[0]))
+                            if len(vals) >= 2: entry["Vy"] = max(entry["Vy"], abs(vals[1]))
+                            if len(vals) >= 3: entry["Vz"] = max(entry["Vz"], abs(vals[2]))
+                            if len(vals) >= 4: entry["T"] = max(entry["T"], abs(vals[3]))
+                            if len(vals) >= 5: entry["My"] = max(entry["My"], abs(vals[4]))
+                            if len(vals) >= 6: entry["Mz"] = max(entry["Mz"], abs(vals[5]))
 
                 # Fallback: use design summary methods
                 shear = _safe_float(b.GetShearingforce())
@@ -202,6 +236,15 @@ def _extract_results(jws_path: Path) -> Dict[str, Any]:
                 max_nega_moment = max(max_nega_moment, _max_from_list([abs(v) for v in nega]))
                 max_shear_compression_ratio = max(max_shear_compression_ratio, scr)
 
+                # Beam utilization ratio (GetCalcMax1 works for both steel and concrete)
+                beam_util = 0.0
+                try:
+                    beam_util = _max_from_list([abs(v) for v in b.GetCalcMax1()])
+                except Exception:
+                    pass
+                if beam_util < 0.001:
+                    beam_util = scr
+
                 beam_results.append({
                     "floor": floor_idx,
                     "pmid": pmid,
@@ -209,6 +252,7 @@ def _extract_results(jws_path: Path) -> Dict[str, Any]:
                     "shear_compression_ratio": round(scr, 4),
                     "positive_moments_kNm": [round(v, 2) for v in posi],
                     "negative_moments_kNm": [round(v, 2) for v in nega],
+                    "utilization_ratio": round(beam_util, 4),
                 })
 
             for c in columns:
@@ -229,10 +273,31 @@ def _extract_results(jws_path: Path) -> Dict[str, Any]:
                                 col_max_v = max(col_max_v, (vals[1]**2 + vals[2]**2)**0.5)  # sqrt(Vy²+Vz²)
                             if len(vals) >= 6:
                                 col_max_m = max(col_max_m, (vals[4]**2 + vals[5]**2)**0.5)  # sqrt(My²+Mz²)
+                            # Accumulate per-case forces (keyed by (pmid, floor) to avoid cross-floor overwrite)
+                            col_key = (pmid, floor_idx)
+                            case_col_forces.setdefault(case_name, {}).setdefault(
+                                col_key, {"N": 0.0, "Vy": 0.0, "Vz": 0.0, "T": 0.0, "My": 0.0, "Mz": 0.0}
+                            )
+                            entry = case_col_forces[case_name][col_key]
+                            if len(vals) >= 1: entry["N"] = max(entry["N"], abs(vals[0]))
+                            if len(vals) >= 2: entry["Vy"] = max(entry["Vy"], abs(vals[1]))
+                            if len(vals) >= 3: entry["Vz"] = max(entry["Vz"], abs(vals[2]))
+                            if len(vals) >= 4: entry["T"] = max(entry["T"], abs(vals[3]))
+                            if len(vals) >= 5: entry["My"] = max(entry["My"], abs(vals[4]))
+                            if len(vals) >= 6: entry["Mz"] = max(entry["Mz"], abs(vals[5]))
 
                 axial_ratios = c.GetAxialCompresRatio()
                 acr = _max_from_list([abs(v) for v in axial_ratios])
                 max_axial_compression_ratio = max(max_axial_compression_ratio, acr)
+
+                # Column utilization ratio (GetCalcMax1 for both steel/concrete)
+                col_util = 0.0
+                try:
+                    col_util = _max_from_list([abs(v) for v in c.GetCalcMax1()])
+                except Exception:
+                    pass
+                if col_util < 0.001:
+                    col_util = acr
 
                 column_results.append({
                     "floor": floor_idx,
@@ -242,24 +307,33 @@ def _extract_results(jws_path: Path) -> Dict[str, Any]:
                     "max_axial_force_kn": round(col_max_n, 2),
                     "max_shear_force_kn": round(col_max_v, 2),
                     "max_moment_kNm": round(col_max_m, 2),
+                    "utilization_ratio": round(col_util, 4),
                 })
 
             floor_idx += 1
 
-        # ---- Node displacements (per-load-case envelope, filter sentinel) ----
+        # ---- Node displacements (per-load-case, filter sentinel) ----
         _SENTINEL = 99990.0
         node_displacements: list[dict[str, Any]] = []
+        # {case_name: {(pmid,floor): {ux, uy, uz, rx, ry, rz}}}
+        case_node_disps: Dict[str, Dict[tuple[int, int], Dict[str, float]]] = {}
         try:
             for node in result.GetPyNodeInResult():
                 disp_dict = node.GetNodeDisp()
                 best_mag = 0.0
                 best_dx = best_dy = best_dz = 0.0
-                for _key, nd in disp_dict.items():
+                for case_name, nd in disp_dict.items():
                     vx = _safe_float(nd.GetDispX())
                     vy = _safe_float(nd.GetDispY())
                     vz = _safe_float(nd.GetDispZ())
                     if abs(vx) >= _SENTINEL or abs(vy) >= _SENTINEL or abs(vz) >= _SENTINEL:
                         continue
+                    pmid = node.GetPmID()
+                    node_key = (pmid, node.GetFloorNo())
+                    case_node_disps.setdefault(case_name, {})[node_key] = {
+                        "ux": abs(vx), "uy": abs(vy), "uz": abs(vz),
+                        "rx": 0.0, "ry": 0.0, "rz": 0.0,
+                    }
                     mag = (vx ** 2 + vy ** 2 + vz ** 2) ** 0.5
                     if mag > best_mag:
                         best_mag = mag
@@ -348,6 +422,10 @@ def _extract_results(jws_path: Path) -> Dict[str, Any]:
             "story_drift": story_drift,
             "storey_stiffness": storey_stiffness,
             "bearing_shear": bearing_shear,
+            "case_node_disps": case_node_disps,
+            "case_beam_forces": case_beam_forces,
+            "case_col_forces": case_col_forces,
+            "satwe_params": _read_satwe_params(result),
         }
     finally:
         result.ClearResult()
@@ -393,7 +471,12 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     # ---- Phase 1: Generate JWS ----
     try:
         model_dict = model.model_dump(mode="json") if hasattr(model, "model_dump") else dict(model)
-        jws_path, converter_mappings = convert_v2_to_jws(model_dict, work_dir, project_name)
+        # Detect material family before converter (converter needs it for grade setting)
+        from pkpm_converter import _detect_material_family as _conv_detect_mat
+        material_family = _conv_detect_mat(model_dict)
+        jws_path, converter_mappings = convert_v2_to_jws(
+            model_dict, work_dir, project_name, material_family=material_family
+        )
     except Exception as exc:
         raise RuntimeError(f"PKPM JWS generation failed: {exc}") from exc
 
@@ -402,8 +485,10 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     _run_jws_cycle(cycle_path, work_dir, timeout=timeout)
 
     # ---- Phase 3: Extract results via APIPyInterface ----
+    # material_family was already detected in Phase 1 and passed to converter
+
     try:
-        extracted = _extract_results(jws_path)
+        extracted = _extract_results(jws_path, material_family=material_family)
     except Exception as exc:
         warnings.append(f"Result extraction failed: {exc}")
         extracted = {}
@@ -466,48 +551,151 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
                 "rz": 0.0,
             }
 
-    # Build element pmid → V2 element ID mapping
-    # PKPM design beams/columns are keyed by their pmid in results.
-    # We map by position: for columns, pmid = plan node id; for beams, pmid = net id.
-    pm_elem_to_v2: Dict[int, str] = {}
+    # Build (pmid, floor) → V2 element ID mapping
+    # PKPM same pmid repeats on every floor; tuple key disambiguates.
+    v2_elem_by_id: Dict[str, dict] = {
+        e.get("id", ""): e for e in model_dict.get("elements", [])
+    }
+    pm_floor_elem_to_v2: Dict[tuple[int, int], str] = {}
     for v2_eid, info in elem_map_raw.items():
-        pm_elem_to_v2[info["pmid"]] = v2_eid
+        pmid = info["pmid"]
+        elem_data = v2_elem_by_id.get(v2_eid)
+        if not elem_data:
+            continue
+        node_ids = elem_data.get("nodes", [])
+        start_floor = v2_node_floor.get(node_ids[0], 0) if node_ids else 0
+        end_floor = v2_node_floor.get(node_ids[-1], 0) if node_ids else 0
+        pkpm_floor = max(start_floor, end_floor)
+        if pkpm_floor > 0:
+            pm_floor_elem_to_v2[(pmid, pkpm_floor)] = v2_eid
 
-    # forces: { elementId: { N, V, M, T, n1.N, n2.N, ... } }
+    # forces: { elementId: { N, V, M, Vy, Vz, My, Mz, T } }
     forces: Dict[str, Dict[str, float]] = {}
-    for b in beams:
-        pmid = b.get("pmid", -1)
-        v2_eid = pm_elem_to_v2.get(pmid)
-        elem_id = v2_eid if v2_eid else str(pmid)
+    # Collect per-element max forces from per-case data for full 6-DOF
+    # Build a merged {(pmid, floor): {N,Vy,Vz,T,My,Mz}} taking max across all cases
+    elem_max_forces: Dict[tuple[int, int], Dict[str, float]] = {}
+    for case_forces_dict in [extracted.get("case_beam_forces", {}), extracted.get("case_col_forces", {})]:
+        for _case_name, key_map in case_forces_dict.items():
+            for key, f in key_map.items():
+                if key not in elem_max_forces:
+                    elem_max_forces[key] = {"N": 0.0, "Vy": 0.0, "Vz": 0.0, "T": 0.0, "My": 0.0, "Mz": 0.0}
+                entry = elem_max_forces[key]
+                for comp in ("N", "Vy", "Vz", "T", "My", "Mz"):
+                    entry[comp] = max(entry[comp], f.get(comp, 0.0))
+
+    for key, f in elem_max_forces.items():
+        v2_eid = pm_floor_elem_to_v2.get(key)
+        elem_id = v2_eid if v2_eid else str(key[0])
         if not elem_id or elem_id == str(-1):
             continue
-        shear = b.get("max_shear_force_kn", 0.0)
-        posi_moments = b.get("positive_moments_kNm", [])
-        nega_moments = b.get("negative_moments_kNm", [])
-        max_m = max(
-            max([abs(v) for v in posi_moments], default=0.0),
-            max([abs(v) for v in nega_moments], default=0.0),
-        )
         forces[elem_id] = {
-            "V": abs(shear),
-            "M": max_m,
+            "N": f["N"],
+            "V": (f["Vy"]**2 + f["Vz"]**2)**0.5,
+            "M": (f["My"]**2 + f["Mz"]**2)**0.5,
+            "Vy": f["Vy"],
+            "Vz": f["Vz"],
+            "My": f["My"],
+            "Mz": f["Mz"],
+            "T": f["T"],
         }
-    for c in columns:
-        pmid = c.get("pmid", -1)
-        v2_eid = pm_elem_to_v2.get(pmid)
-        elem_id = v2_eid if v2_eid else str(pmid)
-        if not elem_id or elem_id == str(-1):
-            continue
-        col_n = c.get("max_axial_force_kn", 0.0)
-        col_v = c.get("max_shear_force_kn", 0.0)
-        col_m = c.get("max_moment_kNm", 0.0)
-        acr = c.get("axial_compression_ratio", [])
-        forces[elem_id] = {
-            **(forces.get(elem_id, {})),
-            "N": col_n,
-            "V": col_v,
-            "M": col_m,
+
+    # ---- Build member utilization map (Phase 5) ----
+    member_utilization: Dict[str, float] = {}
+    for item in beams + columns:
+        pmid = item.get("pmid", -1)
+        floor = item.get("floor", 0)
+        v2_eid = pm_floor_elem_to_v2.get((pmid, floor))
+        util = item.get("utilization_ratio", 0.0)
+        if v2_eid and util > 0:
+            member_utilization[v2_eid] = round(util, 4)
+
+    # ---- Build caseResults + envelopeTables (Phase 3) ----
+    case_node_disps = extracted.get("case_node_disps", {})
+    case_beam_forces = extracted.get("case_beam_forces", {})
+    case_col_forces = extracted.get("case_col_forces", {})
+    floors_analyzed = extracted.get("floors_analyzed", 0)
+
+    all_case_names: set[str] = set()
+    all_case_names.update(case_node_disps.keys())
+    all_case_names.update(case_beam_forces.keys())
+    all_case_names.update(case_col_forces.keys())
+
+    case_results: Dict[str, Dict[str, Any]] = {}
+    node_displacement_envelope: Dict[str, Dict[str, Any]] = {}
+    element_force_envelope: Dict[str, Dict[str, Any]] = {}
+
+    for case_name in sorted(all_case_names):
+        # Per-case displacements — remap (pmid, floor) → V2 node ID
+        case_disps: Dict[str, Dict[str, float]] = {}
+        for key, disp in case_node_disps.get(case_name, {}).items():
+            v2_id = pm_floor_to_v2.get(key)
+            if v2_id:
+                case_disps[v2_id] = disp
+            else:
+                case_disps[str(key[0])] = disp
+
+        # Per-case forces — remap (pmid, floor) → V2 element ID
+        case_forces_out: Dict[str, Dict[str, float]] = {}
+        for key, force in case_beam_forces.get(case_name, {}).items():
+            v2_eid = pm_floor_elem_to_v2.get(key)
+            elem_id = v2_eid if v2_eid else str(key[0])
+            case_forces_out[elem_id] = {
+                "N": force["N"],
+                "V": (force["Vy"]**2 + force["Vz"]**2)**0.5,
+                "M": (force["My"]**2 + force["Mz"]**2)**0.5,
+                "Vy": force["Vy"], "Vz": force["Vz"],
+                "My": force["My"], "Mz": force["Mz"], "T": force["T"],
+            }
+        for key, force in case_col_forces.get(case_name, {}).items():
+            v2_eid = pm_floor_elem_to_v2.get(key)
+            elem_id = v2_eid if v2_eid else str(key[0])
+            existing = case_forces_out.get(elem_id, {})
+            case_forces_out[elem_id] = {
+                **existing,
+                "N": force["N"],
+                "V": (force["Vy"]**2 + force["Vz"]**2)**0.5,
+                "M": (force["My"]**2 + force["Mz"]**2)**0.5,
+                "Vy": force["Vy"], "Vz": force["Vz"],
+                "My": force["My"], "Mz": force["Mz"], "T": force["T"],
+            }
+
+        case_results[case_name] = {
+            "status": "success",
+            "displacements": case_disps,
+            "forces": case_forces_out,
+            "reactions": {},
+            "envelope": {},
         }
+
+        # Accumulate envelope tables
+        for node_id, disp in case_disps.items():
+            mag = (disp["ux"]**2 + disp["uy"]**2 + disp["uz"]**2)**0.5
+            item = node_displacement_envelope.setdefault(
+                str(node_id), {"maxAbsDisplacement": 0.0, "controlCase": ""}
+            )
+            if mag > item["maxAbsDisplacement"]:
+                item["maxAbsDisplacement"] = round(mag, 4)
+                item["controlCase"] = case_name
+
+        for elem_id, force in case_forces_out.items():
+            item = element_force_envelope.setdefault(
+                str(elem_id), {
+                    "maxAbsAxialForce": 0.0, "maxAbsShearForce": 0.0, "maxAbsMoment": 0.0,
+                    "controlCaseAxial": "", "controlCaseShear": "", "controlCaseMoment": "",
+                }
+            )
+            axial = abs(force.get("N", 0.0))
+            shear = abs(force.get("V", 0.0))
+            moment = abs(force.get("M", 0.0))
+            if axial > item["maxAbsAxialForce"]:
+                item["maxAbsAxialForce"] = round(axial, 2)
+                item["controlCaseAxial"] = case_name
+            if shear > item["maxAbsShearForce"]:
+                item["maxAbsShearForce"] = round(shear, 2)
+                item["controlCaseShear"] = case_name
+            if moment > item["maxAbsMoment"]:
+                item["maxAbsMoment"] = round(moment, 2)
+                item["controlCaseMoment"] = case_name
 
     # envelope for max displacement
     max_disp = pkpm_summary.get("max_displacement_mm", 0.0)
@@ -521,7 +709,18 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     if max_disp_node:
         envelope[f"node:{max_disp_node}:maxAbsDisplacement"] = max_disp
 
-    return {
+    # Build envelope summary with control cases
+    envelope_summary: Dict[str, Any] = {
+        "maxAbsDisplacement": max_disp,
+        "controlCase": {"displacement": ""},
+    }
+    for nid, item in node_displacement_envelope.items():
+        if item["maxAbsDisplacement"] == max_disp:
+            envelope_summary["controlCase"]["displacement"] = item.get("controlCase", "")
+            break
+
+    # Build result dict
+    result_dict: Dict[str, Any] = {
         "status": "success",
         "analysisMode": "pkpm-satwe",
         "displacements": displacements,
@@ -536,7 +735,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             "engine": "pkpm-static",
             "jws_path": str(jws_path),
             "work_dir": str(work_dir),
-            "floors_analyzed": extracted.get("floors_analyzed", 0),
+            "floors_analyzed": floors_analyzed,
             "beam_count": extracted.get("beam_count", 0),
             "column_count": extracted.get("column_count", 0),
             **pkpm_summary,
@@ -550,5 +749,18 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             "storey_stiffness": extracted.get("storey_stiffness", []),
             "bearing_shear": extracted.get("bearing_shear", []),
         },
+        "caseResults": case_results,
+        "envelopeTables": {
+            "nodeDisplacement": node_displacement_envelope,
+            "elementForce": element_force_envelope,
+            "nodeReaction": {},
+        },
         "warnings": warnings,
     }
+
+    # Add utilization data under correct key for frontend adapter
+    if member_utilization:
+        check_key = "steelCheck" if material_family == "steel" else "codeCheck"
+        result_dict[check_key] = {"memberUtilization": member_utilization}
+
+    return result_dict

@@ -65,6 +65,27 @@ function resolveSteelGradeProps(grade: string | undefined): SteelGradeProps & { 
   return { ...STEEL_GRADE_PROPERTIES[resolved]!, resolvedGrade: resolved };
 }
 
+function parseCustomHSection(raw: string): { H: number; B: number; tw: number; tf: number } | null {
+  const normalized = raw.toUpperCase().replace(/[×X]/g, 'x').replace(/\s+/g, '');
+  const match = normalized.match(/^H(\d+)x(\d+)x([\d.]+)x([\d.]+)$/);
+  if (!match) return null;
+  const H = parseFloat(match[1]!);
+  const B = parseFloat(match[2]!);
+  const tw = parseFloat(match[3]!);
+  const tf = parseFloat(match[4]!);
+  if (H > 0 && B > 0 && tw > 0 && tf > 0) return { H, B, tw, tf };
+  return null;
+}
+
+function computeHSectionProps(H: number, B: number, tw: number, tf: number, G: number) {
+  const hw = H - 2 * tf;
+  const A = tw * hw + 2 * B * tf;
+  const Iy = (tw * hw ** 3) / 12 + (2 * B * tf ** 3) / 12 + 2 * B * tf * ((hw + tf) / 2) ** 2;
+  const Iz = (2 * tf * B ** 3) / 12 + (hw * tw ** 3) / 12;
+  const J = (2 * B * tf ** 3 + hw * tw ** 3) / 3;
+  return { A: A / 1e6, Iy: Iy / 1e12, Iz: Iz / 1e12, J: J / 1e12, G };
+}
+
 function resolveSectionProps(
   section: string | undefined,
   role: 'column' | 'beam',
@@ -76,10 +97,23 @@ function resolveSectionProps(
     : getDefaultBeamSection(storyCount);
   const normalized = section ? normalizeSectionName(section) : defaultSection;
   const found = Boolean(H_SECTION_PROPERTIES[normalized]);
-  const sectionKey = found ? normalized : defaultSection;
-  const substituted = (section && !found) ? `${normalized} not in builtin library, substituted with ${sectionKey}` : undefined;
-  const entry = H_SECTION_PROPERTIES[sectionKey]!;
-  return { name: sectionKey, A: entry.A, Iy: entry.Iy, Iz: entry.Iz, J: entry.J, G: matG, shape: entry.shape, standardSteelName: entry.standardSteelName, substituted };
+  if (found) {
+    const entry = H_SECTION_PROPERTIES[normalized]!;
+    return { name: normalized, A: entry.A, Iy: entry.Iy, Iz: entry.Iz, J: entry.J, G: matG, shape: entry.shape, standardSteelName: entry.standardSteelName };
+  }
+  const custom = section ? parseCustomHSection(section) : null;
+  if (custom) {
+    const props = computeHSectionProps(custom.H, custom.B, custom.tw, custom.tf, matG);
+    const name = `H${custom.H}x${custom.B}x${custom.tw}x${custom.tf}`;
+    return {
+      name,
+      ...props,
+      shape: { kind: 'H', H: custom.H, B: custom.B, tw: custom.tw, tf: custom.tf },
+      standardSteelName: name,
+    };
+  }
+  const entry = H_SECTION_PROPERTIES[defaultSection]!;
+  return { name: defaultSection, A: entry.A, Iy: entry.Iy, Iz: entry.Iz, J: entry.J, G: matG, shape: entry.shape, standardSteelName: entry.standardSteelName, substituted: `${normalized} not in builtin library and not parseable, substituted with ${defaultSection}` };
 }
 
 function accumulateCoords(lengths: number[]): number[] {
