@@ -1529,6 +1529,176 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByText(/Actual engine builtin-simplified|实际引擎 builtin-simplified/)).toBeInTheDocument()
   })
 
+  it('renders markdown body fields in the execution summary and guidance panel', async () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+    const interaction = {
+      detectedStructuralType: 'unknown',
+      interactionStageLabel: 'Intent',
+      missingCritical: [],
+      missingOptional: [],
+      fallbackSupportNote: 'Use the **generic** structure skill first.',
+      recommendedNextStep: 'Confirm the **system** and main loads.',
+      questions: [],
+      pending: {
+        criticalMissing: [],
+        nonCriticalMissing: [],
+      },
+    }
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      const supportResponse = mockConsoleSupportRequest(url)
+      if (supportResponse) {
+        return supportResponse
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-markdown-guidance',
+            title: 'Markdown guidance',
+            type: 'general',
+            createdAt: '2026-04-20T08:00:00.000Z',
+            updatedAt: '2026-04-20T08:00:00.000Z',
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/stream')) {
+        return createSseResponse([
+          {
+            type: 'result',
+            content: {
+              response: 'Continue with **intent** collection.',
+              success: true,
+              interaction,
+            },
+          },
+        ])
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+
+    fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
+      target: { value: 'Render markdown guidance' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^Send$|^发送$/ }))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('console-guidance-panel')).toBeInTheDocument()
+    })
+
+    const executionHeader = screen.getByRole('heading', { name: 'Execution Summary' }).parentElement
+    expect(executionHeader).not.toBeNull()
+    expect(within(executionHeader as HTMLElement).getByText('intent', { selector: 'strong' })).toBeInTheDocument()
+
+    const guidancePanel = screen.getByTestId('console-guidance-panel')
+    expect(within(guidancePanel).getByText('intent', { selector: 'strong' })).toBeInTheDocument()
+    expect(within(guidancePanel).getByText('generic', { selector: 'strong' })).toBeInTheDocument()
+    expect(within(guidancePanel).getByText('system', { selector: 'strong' })).toBeInTheDocument()
+  })
+
+  it('renders markdown summaries and gfm tables in the report panel', async () => {
+    window.localStorage.setItem(LOCALE_STORAGE_KEY, 'en')
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+      const supportResponse = mockConsoleSupportRequest(url)
+      if (supportResponse) {
+        return supportResponse
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-markdown-report',
+            title: 'Markdown report',
+            type: 'general',
+            createdAt: '2026-04-20T08:00:00.000Z',
+            updatedAt: '2026-04-20T08:00:00.000Z',
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/stream')) {
+        return createSseResponse([
+          {
+            type: 'result',
+            content: {
+              response: 'Report is ready.',
+              success: true,
+              report: {
+                summary: 'Report **insight** is available.',
+                markdown: [
+                  '| Case | Drift |',
+                  '| --- | --- |',
+                  '| SLS | 1/350 |',
+                ].join('\n'),
+              },
+            },
+          },
+        ])
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+
+    fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
+      target: { value: 'Render markdown report' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /^Send$|^发送$/ }))
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /^Report$|^报告$/ })).toBeInTheDocument()
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: /^Report$|^报告$/ }))
+
+    await waitFor(() => {
+      expect(screen.getByText('insight', { selector: 'strong' })).toBeInTheDocument()
+    })
+    const reportTable = screen.getByRole('table')
+    expect(within(reportTable).getByRole('columnheader', { name: 'Case' })).toBeInTheDocument()
+    expect(within(reportTable).getByRole('columnheader', { name: 'Drift' })).toBeInTheDocument()
+    expect(within(reportTable).getByText('SLS')).toBeInTheDocument()
+    expect(within(reportTable).getByText('1/350')).toBeInTheDocument()
+  })
+
   it('does not show an engine manager action on the conversation page', async () => {
     await renderConsolePage()
 

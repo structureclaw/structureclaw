@@ -4,6 +4,7 @@ import dynamic from 'next/dynamic'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, Maximize2, MessageSquarePlus, Orbit, Sparkles, Square, Trash2, User } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -297,6 +298,22 @@ type CapabilityMatrixPayload = {
   filteredEngineReasonsBySkill?: Record<string, Record<string, string[]>>
   canonicalSkillIdByAlias?: Record<string, string>
   skillAliasesByCanonicalId?: Record<string, string[]>
+}
+
+const MARKDOWN_BODY_CLASS = 'prose prose-sm max-w-none prose-headings:text-foreground prose-p:my-0 prose-p:text-muted-foreground prose-strong:text-foreground prose-code:text-cyan-700 prose-pre:bg-muted/60 prose-a:text-cyan-700 prose-a:no-underline hover:prose-a:text-cyan-600 prose-table:my-4 prose-table:w-full prose-th:border prose-th:border-border/70 prose-th:bg-background/70 prose-th:px-3 prose-th:py-2 prose-th:text-left prose-th:text-foreground prose-td:border prose-td:border-border/50 prose-td:px-3 prose-td:py-2 prose-td:text-muted-foreground dark:prose-invert dark:prose-code:text-cyan-200 dark:prose-pre:bg-black/30 dark:prose-a:text-cyan-200 dark:hover:prose-a:text-cyan-100 dark:prose-th:border-white/10 dark:prose-th:bg-white/5 dark:prose-td:border-white/10'
+
+function MarkdownBody({
+  content,
+  className,
+}: {
+  content: string
+  className?: string
+}) {
+  return (
+    <div className={cn(MARKDOWN_BODY_CLASS, className)}>
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+    </div>
+  )
 }
 
 
@@ -1352,9 +1369,7 @@ function AnalysisPanel({
                 </div>
                 <div>
                   <CardTitle className="text-xl text-foreground">{t('executionSummary')}</CardTitle>
-                  <CardDescription className="text-muted-foreground">
-                    {result.response || t('noNaturalLanguageSummary')}
-                  </CardDescription>
+                  <MarkdownBody content={result.response || t('noNaturalLanguageSummary')} />
                 </div>
               </CardHeader>
               {(stats.length > 0 || result.plan?.length) && (
@@ -1442,9 +1457,7 @@ function AnalysisPanel({
               >
                 <CardHeader>
                   <CardTitle className="text-lg">{t('guidancePanelTitle')}</CardTitle>
-                  <CardDescription className="text-muted-foreground">
-                    {result.response || t('guidancePanelBody')}
-                  </CardDescription>
+                  <MarkdownBody content={result.response || t('guidancePanelBody')} />
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="grid gap-3 md:grid-cols-2">
@@ -1459,7 +1472,7 @@ function AnalysisPanel({
                   {guidance.fallbackSupportNote && (
                     <div className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 p-4 text-sm leading-6 text-foreground">
                       <div className="mb-2 text-xs uppercase tracking-[0.18em] text-cyan-700 dark:text-cyan-200">{t('guidanceSupportNote')}</div>
-                      <div>{guidance.fallbackSupportNote}</div>
+                      <MarkdownBody content={guidance.fallbackSupportNote} className="prose-p:text-foreground dark:prose-p:text-foreground" />
                     </div>
                   )}
 
@@ -1492,7 +1505,7 @@ function AnalysisPanel({
                   {guidance.recommendedNextStep && (
                     <div className="rounded-2xl border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
                       <div className="mb-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('guidanceRecommendedNextStep')}</div>
-                      <div className="text-sm leading-6 text-foreground">{guidance.recommendedNextStep}</div>
+                      <MarkdownBody content={guidance.recommendedNextStep} className="prose-p:text-foreground dark:prose-p:text-foreground" />
                     </div>
                   )}
                 </CardContent>
@@ -1527,8 +1540,8 @@ function AnalysisPanel({
                     {t('reportSummary')}
                   </CardTitle>
                 </CardHeader>
-                <CardContent className="text-sm leading-7 text-muted-foreground">
-                  {reportSummary}
+                <CardContent>
+                  <MarkdownBody content={reportSummary} />
                 </CardContent>
               </Card>
             )}
@@ -1542,8 +1555,8 @@ function AnalysisPanel({
               </CardHeader>
               <CardContent>
                 {reportMarkdown ? (
-                  <article className="prose prose-sm max-w-none dark:prose-invert prose-headings:text-foreground prose-p:text-muted-foreground prose-strong:text-foreground prose-code:text-cyan-700 dark:prose-code:text-cyan-200">
-                    <ReactMarkdown>{reportMarkdown}</ReactMarkdown>
+                  <article>
+                    <MarkdownBody content={reportMarkdown} />
                   </article>
                 ) : (
                   <div className="rounded-2xl border border-dashed border-border/70 bg-background/70 p-6 text-sm text-muted-foreground dark:border-white/10 dark:bg-white/5">
