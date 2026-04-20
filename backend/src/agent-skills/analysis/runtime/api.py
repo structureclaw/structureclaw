@@ -99,6 +99,12 @@ async def check_analysis_engine(engine_id: str):
     return engine_registry.check_engine(engine_id)
 
 
+@app.post("/engines/{engine_id}/probe")
+async def probe_analysis_engine(engine_id: str):
+    """运行小型算例验证分析引擎能否正常工作"""
+    return engine_registry.probe_engine(engine_id)
+
+
 @app.post("/analyze")
 async def analyze(request: AnalysisRequest) -> AnalysisResponse:
     """

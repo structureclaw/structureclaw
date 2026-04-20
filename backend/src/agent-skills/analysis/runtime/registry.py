@@ -21,6 +21,7 @@ from structure_protocol.structure_model_v2 import StructureModelV2
 
 logger = logging.getLogger(__name__)
 
+ANALYSIS_ROOT = Path(__file__).resolve().parent.parent
 ENGINE_MANIFEST_ENV = "ANALYSIS_ENGINE_MANIFEST_PATH"
 _UNSET = object()
 
@@ -101,6 +102,209 @@ class AnalysisEngineRegistry:
                 "checkedAt": manifest.get("checkedAt"),
             },
         }
+
+    def probe_engine(self, engine_id: str) -> Dict[str, Any]:
+        manifest = self.get_engine(engine_id)
+        if manifest is None:
+            raise HTTPException(
+                status_code=404,
+                detail={
+                    "errorCode": "ENGINE_NOT_FOUND",
+                    "message": f"Analysis engine '{engine_id}' was not found",
+                },
+            )
+        from time import perf_counter
+
+        start = perf_counter()
+        if engine_id == "builtin-opensees":
+            result = self._probe_opensees()
+        elif engine_id == "builtin-pkpm":
+            result = self._probe_pkpm()
+        elif engine_id == "builtin-simplified":
+            result = self._probe_simplified()
+        elif engine_id == "builtin-yjk":
+            result = {"passed": False, "error": "YJK engine is not yet implemented"}
+        else:
+            result = {"passed": False, "error": f"Unknown engine '{engine_id}' for probe"}
+        elapsed = round((perf_counter() - start) * 1000)
+        return {
+            "engineId": engine_id,
+            "engineName": manifest.get("name", engine_id),
+            "passed": result["passed"],
+            "durationMs": elapsed,
+            "error": result.get("error"),
+            "details": result.get("details"),
+        }
+
+    def _probe_opensees(self) -> Dict[str, Any]:
+        try:
+            from importlib.util import module_from_spec, spec_from_file_location
+            probe_path = ANALYSIS_ROOT / "opensees-static" / "opensees_runtime.py"
+            spec = spec_from_file_location("_opensees_runtime_probe", str(probe_path))
+            if spec is None or spec.loader is None:
+                return {"passed": False, "error": f"Cannot load OpenSees runtime from {probe_path}"}
+            mod = module_from_spec(spec)
+            spec.loader.exec_module(mod)
+            issue = mod.get_opensees_runtime_issue()
+            if issue:
+                return {"passed": False, "error": issue}
+            return {"passed": True, "details": "OpenSeesPy 2-node beam smoke test passed"}
+        except Exception as error:
+            return {"passed": False, "error": str(error)}
+
+    def _probe_pkpm(self) -> Dict[str, Any]:
+        steps: list[Dict[str, Any]] = []
+
+        # Step 1: check env + file
+        cycle_path = os.getenv("PKPM_CYCLE_PATH", "").strip()
+        if not cycle_path:
+            return {"passed": False, "error": "PKPM_CYCLE_PATH environment variable is not set", "steps": steps}
+        p = Path(cycle_path)
+        if not p.is_file():
+            return {"passed": False, "error": f"JWSCYCLE.exe not found at: {cycle_path}", "steps": steps}
+        steps.append({"name": "JWSCYCLE.exe path", "passed": True})
+
+        # Step 2: import APIPyInterface
+        try:
+            import APIPyInterface
+        except ImportError as exc:
+            return {"passed": False, "error": f"APIPyInterface import failed: {exc}", "steps": steps}
+        steps.append({"name": "APIPyInterface import", "passed": True})
+
+        # Step 3: create minimal model and run SATWE
+        import tempfile
+        import uuid
+        try:
+            work_dir = Path(tempfile.gettempdir()) / "pkpm_probe" / uuid.uuid4().hex[:8]
+            work_dir.mkdir(parents=True, exist_ok=True)
+            project_name = "probe"
+            jws_path = work_dir / f"{project_name}.JWS"
+
+            model = APIPyInterface.Model()
+            model.CreatNewModel(str(work_dir), project_name)
+            model.OpenPMModel(str(jws_path))
+
+            # Add a column section (concrete rectangle 400x400)
+            csec = APIPyInterface.ColumnSection()
+            sh = APIPyInterface.SectionShape()
+            sh.Set_H(400)
+            sh.Set_B(400)
+            csec.SetUserSect(APIPyInterface.SectionKind.IDSec_Rectangle, sh)
+            col_sec_idx = model.AddColumnSection(csec)
+
+            # Add a beam section
+            bsec = APIPyInterface.BeamSection()
+            sh2 = APIPyInterface.SectionShape()
+            sh2.Set_H(300)
+            sh2.Set_B(200)
+            bsec.SetUserSect(APIPyInterface.SectionKind.IDSec_Rectangle, sh2)
+            beam_sec_idx = model.AddBeamSection(bsec)
+
+            # Standard floor with 2 nodes
+            model.AddStandFloor()
+            model.SetCurrentStandFloor(1)
+            floor = model.GetCurrentStandFloor()
+            n1 = floor.AddNode(0.0, 0.0)
+            n2 = floor.AddNode(6000.0, 0.0)
+            floor.AddColumn(col_sec_idx, n1.GetID())
+            floor.AddColumn(col_sec_idx, n2.GetID())
+            net = floor.AddLineNet(n1.GetID(), n2.GetID())
+            floor.AddBeamEx(beam_sec_idx, net.GetID(), 0, 0, 0, 0.0)
+
+            # 1 natural floor at 3.6m
+            rf = APIPyInterface.RealFloor()
+            rf.SetFloorHeight(3600.0)
+            rf.SetBottomElevation(0.0)
+            rf.SetStandFloorIndex(1)
+            model.AddNaturalFloor(rf)
+
+            model.SavePMModel()
+            steps.append({"name": "Create minimal PKPM model", "passed": True})
+
+        except Exception as exc:
+            return {"passed": False, "error": f"Model creation failed: {exc}", "steps": steps}
+
+        # Step 4: run SATWE via JWSCYCLE.exe
+        try:
+            self._run_jws_cycle_probe(p, work_dir)
+            steps.append({"name": "SATWE analysis", "passed": True})
+        except Exception as exc:
+            return {
+                "passed": False,
+                "error": f"SATWE analysis failed: {exc}",
+                "steps": steps,
+                "hint": "PKPM may not be activated or the license is invalid",
+            }
+
+        # Step 5: extract results
+        try:
+            result = APIPyInterface.ResultData()
+            ret = result.InitialResult(str(jws_path))
+            result.ClearResult()
+            if ret == 0:
+                return {
+                    "passed": False,
+                    "error": "InitialResult returned FALSE — failed to read analysis results",
+                    "steps": steps,
+                }
+            steps.append({"name": "Extract results", "passed": True})
+        except Exception as exc:
+            return {
+                "passed": False,
+                "error": f"Result extraction failed: {exc}",
+                "steps": steps,
+                "hint": "SATWE ran but results could not be read — PKPM license may be invalid",
+            }
+
+        # Cleanup probe directory
+        try:
+            import shutil
+            shutil.rmtree(work_dir, ignore_errors=True)
+        except Exception:
+            pass
+
+        return {"passed": True, "details": "PKPM probe completed: model created, SATWE ran, results extracted", "steps": steps}
+
+    @staticmethod
+    def _run_jws_cycle_probe(cycle_path: Path, work_dir: Path, timeout: int = 120) -> None:
+        cycle_dir = cycle_path.parent
+        conf_path = cycle_dir / "DirectorySet.conf"
+        had_previous_conf = conf_path.exists()
+        previous_conf_text = conf_path.read_text(encoding="utf-8") if had_previous_conf else None
+        conf_path.write_text(str(work_dir), encoding="utf-8")
+        try:
+            proc = subprocess.run(
+                [str(cycle_path)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                cwd=str(cycle_dir),
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(f"PKPM probe timed out after {timeout}s")
+        except (FileNotFoundError, OSError) as exc:
+            raise RuntimeError(f"Failed to launch JWSCYCLE.exe: {exc}") from exc
+        finally:
+            if had_previous_conf:
+                conf_path.write_text(previous_conf_text, encoding="utf-8")
+            elif conf_path.exists():
+                conf_path.unlink()
+        if proc.returncode != 0:
+            stderr_snippet = (proc.stderr or "")[:500]
+            raise RuntimeError(f"JWSCYCLE.exe exited with code {proc.returncode}. stderr: {stderr_snippet}")
+
+    def _probe_simplified(self) -> Dict[str, Any]:
+        try:
+            import numpy as np
+            a = np.array([[1.0, 0.0], [0.0, 1.0]])
+            b = np.array([2.0, 3.0])
+            _ = np.linalg.solve(a, b)
+            return {"passed": True, "details": "Simplified engine probe: numpy.linalg.solve OK"}
+        except Exception as error:
+            return {"passed": False, "error": str(error)}
 
     def validate_model(self, model_payload: Dict[str, Any], engine_id: Optional[str] = None) -> Dict[str, Any]:
         selection = self._select_engine_for("validate", None, model_payload, engine_id)

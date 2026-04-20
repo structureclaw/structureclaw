@@ -1627,8 +1627,10 @@ export function AIConsole() {
   const [selectedToolIds, setSelectedToolIds] = useState<string[]>([])
   const [hasExplicitSkillSelection, setHasExplicitSkillSelection] = useState(false)
   const [hasExplicitToolSelection, setHasExplicitToolSelection] = useState(false)
+  const [allEngines, setAllEngines] = useState<Array<{ id: string; name: string; available: boolean; priority: number; status: string; unavailableReason?: string }>>([])
   const [availableEngines, setAvailableEngines] = useState<Array<{ id: string; name: string; available: boolean; priority: number }>>([])
   const [selectedEngineId, setSelectedEngineId] = useState('')
+  const [probeResults, setProbeResults] = useState<Record<string, { passed: boolean; durationMs?: number; error?: string; loading?: boolean }>>({})
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
   const [latestModelVisualizationSnapshot, setLatestModelVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
   const [latestResultVisualizationSnapshot, setLatestResultVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
@@ -1894,25 +1896,94 @@ export function AIConsole() {
         if (!response.ok || !active) return
         const payload = await response.json()
         if (!active || !Array.isArray(payload?.engines)) return
-        setAvailableEngines(
-          payload.engines
-            .filter((e: Record<string, unknown>) => e.available)
-            .map((e: Record<string, unknown>) => ({
-              id: String(e.id ?? ''),
-              name: String(e.name ?? e.id ?? ''),
-              available: Boolean(e.available),
-              priority: Number(e.priority ?? 0),
-            }))
-            .sort((a: { priority: number }, b: { priority: number }) => b.priority - a.priority),
-        )
+        const engines = (payload.engines as Record<string, unknown>[]).map((e) => ({
+          id: String(e.id ?? ''),
+          name: String(e.name ?? e.id ?? ''),
+          available: Boolean(e.available),
+          priority: Number(e.priority ?? 0),
+          status: String(e.status ?? 'unknown'),
+          unavailableReason: typeof e.unavailableReason === 'string' ? e.unavailableReason : undefined,
+        }))
+        setAllEngines(engines.sort((a, b) => b.priority - a.priority))
+        setAvailableEngines(engines.filter((e) => e.available))
       } catch {
-        if (active) setAvailableEngines([])
+        if (active) {
+          setAllEngines([])
+          setAvailableEngines([])
+        }
       }
     }
 
     loadEngines()
     return () => { active = false }
   }, [])
+
+  const [probePopupOpen, setProbePopupOpen] = useState(false)
+  const [probeAllRunning, setProbeAllRunning] = useState(false)
+
+  async function probeAllEngines() {
+    setProbeAllRunning(true)
+    setProbePopupOpen(true)
+    const initial: typeof probeResults = {}
+    allEngines.forEach((e) => { initial[e.id] = { passed: false, loading: true } })
+    setProbeResults(initial)
+
+    const results = await Promise.allSettled(
+      allEngines.map(async (engine) => {
+        try {
+          const response = await fetch(`${API_BASE}/api/v1/analysis-engines/${encodeURIComponent(engine.id)}/probe`, { method: 'POST' })
+          if (!response.ok) {
+            const text = await response.text()
+            return { id: engine.id, passed: false as const, error: text || `HTTP ${response.status}` }
+          }
+          const payload = await response.json()
+          return {
+            id: engine.id,
+            passed: Boolean(payload.passed),
+            durationMs: typeof payload.durationMs === 'number' ? payload.durationMs : undefined,
+            error: typeof payload.error === 'string' ? payload.error : undefined,
+          }
+        } catch (err) {
+          return { id: engine.id, passed: false as const, error: String(err) }
+        }
+      }),
+    )
+
+    setProbeResults((prev) => {
+      const next = { ...prev }
+      results.forEach((r) => {
+        if (r.status === 'fulfilled') {
+          const { id, ...rest } = r.value
+          next[id] = { ...rest, loading: false }
+        }
+      })
+      return next
+    })
+    setProbeAllRunning(false)
+  }
+
+  async function probeEngine(engineId: string) {
+    setProbeResults((prev) => ({ ...prev, [engineId]: { passed: false, loading: true } }))
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/analysis-engines/${encodeURIComponent(engineId)}/probe`, { method: 'POST' })
+      if (!response.ok) {
+        const text = await response.text()
+        setProbeResults((prev) => ({ ...prev, [engineId]: { passed: false, error: text || `HTTP ${response.status}` } }))
+        return
+      }
+      const payload = await response.json()
+      setProbeResults((prev) => ({
+        ...prev,
+        [engineId]: {
+          passed: Boolean(payload.passed),
+          durationMs: typeof payload.durationMs === 'number' ? payload.durationMs : undefined,
+          error: typeof payload.error === 'string' ? payload.error : undefined,
+        },
+      }))
+    } catch (err) {
+      setProbeResults((prev) => ({ ...prev, [engineId]: { passed: false, error: String(err) } }))
+    }
+  }
 
   useEffect(() => {
     if (capabilityPreferencesHydratedRef.current) {
@@ -3553,6 +3624,89 @@ export function AIConsole() {
                     <Badge className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
                       {t('conversationIdShort')} {conversationId ? conversationId.slice(0, 8) : t('notCreated')}
                     </Badge>
+                    {allEngines.length > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        {allEngines.map((engine) => {
+                          const probe = probeResults[engine.id]
+                          const dotColor = probe
+                            ? (probe.loading ? 'bg-amber-400 dark:bg-amber-300' : (probe.passed ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-red-400 dark:bg-red-500'))
+                            : 'bg-gray-400 dark:bg-gray-500'
+                          return (
+                            <span
+                              key={engine.id}
+                              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"
+                              title={probe ? undefined : (engine.unavailableReason || (engine.available ? t('engineStatusAvailable') : t('engineStatusUnavailable')))}
+                            >
+                              <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`} />
+                              <span className={probe ? (probe.passed ? '' : 'opacity-50') : 'opacity-60'}>{engine.name}</span>
+                            </span>
+                          )
+                        })}
+                        <div className="relative ml-1">
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground disabled:opacity-50 dark:border-white/10 dark:bg-white/5"
+                            onClick={() => {
+                              const hasResults = Object.keys(probeResults).length > 0
+                              if (hasResults) {
+                                setProbePopupOpen((v) => !v)
+                              } else {
+                                probeAllEngines()
+                              }
+                            }}
+                            disabled={probeAllRunning}
+                          >
+                            {probeAllRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                            {t('engineProbeButton')}
+                          </button>
+                          {probePopupOpen && !probeAllRunning && Object.keys(probeResults).length > 0 && (
+                            <div className="absolute left-0 top-full z-50 mt-2 w-80 rounded-xl border border-border/70 bg-card p-4 shadow-xl dark:border-white/10 dark:bg-slate-950">
+                              <div className="mb-3 flex items-center justify-between">
+                                <span className="text-xs font-semibold text-foreground">{t('engineProbeButton')}</span>
+                                <button
+                                  type="button"
+                                  className="text-[11px] text-muted-foreground hover:text-foreground"
+                                  onClick={() => setProbePopupOpen(false)}
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                              <div className="space-y-2.5">
+                                {allEngines.map((engine) => {
+                                  const probe = probeResults[engine.id]
+                                  if (!probe) return null
+                                  return (
+                                    <div key={engine.id} className="rounded-lg border border-border/50 bg-background/60 p-2.5 dark:border-white/5 dark:bg-white/5">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-1.5">
+                                          {probe.loading ? (
+                                            <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
+                                          ) : (
+                                            <span className={`inline-block h-2 w-2 rounded-full ${probe.passed ? 'bg-emerald-500' : 'bg-red-400'}`} />
+                                          )}
+                                          <span className="text-xs font-medium text-foreground">{engine.name}</span>
+                                        </div>
+                                        <span className="text-[11px] text-muted-foreground">
+                                          {probe.loading ? t('engineProbeRunning')
+                                            : probe.passed ? t('engineProbePassed')
+                                            : t('engineProbeFailed')}
+                                        </span>
+                                      </div>
+                                      {probe.durationMs != null && !probe.loading && (
+                                        <div className="mt-1 text-[11px] text-muted-foreground">{t('engineProbeDuration')}: {probe.durationMs}ms</div>
+                                      )}
+                                      {probe.error && !probe.loading && (
+                                        <div className="mt-1 text-[11px] leading-4 text-red-600 dark:text-red-400">{probe.error}</div>
+                                      )}
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {streamingSessions.get(conversationId)?.status === 'streaming' ? (

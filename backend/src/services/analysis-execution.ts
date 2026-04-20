@@ -35,6 +35,10 @@ export class AnalysisExecutionService {
     return this.runner.invoke({ action: 'check_engine', engineId: id });
   }
 
+  async probeEngine(id: string): Promise<Record<string, unknown>> {
+    return this.runner.invoke({ action: 'probe_engine', engineId: id });
+  }
+
   async analyze(payload: Record<string, unknown>, requestOptions?: ExecutionRequestOptions): Promise<Record<string, unknown>> {
     return this.runner.invoke({ action: 'analyze', input: payload }, requestOptions);
   }
@@ -64,6 +68,10 @@ export function createLocalAnalysisEngineClient(
       if (path.startsWith('/engines/') && path.endsWith('/check')) {
         const engineId = decodeURIComponent(path.slice('/engines/'.length, -'/check'.length));
         return { data: await service.checkEngine(engineId) as T };
+      }
+      if (path.startsWith('/engines/') && path.endsWith('/probe')) {
+        const engineId = decodeURIComponent(path.slice('/engines/'.length, -'/probe'.length));
+        return { data: await service.probeEngine(engineId) as T };
       }
       const action = LOCAL_POST_ACTION_BY_PATH[path];
       if (!action) {

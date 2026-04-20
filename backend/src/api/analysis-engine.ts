@@ -108,4 +108,13 @@ export async function analysisEngineRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     return reply.send(await service.checkEngine(request.params.id));
   });
+
+  fastify.post('/:id/probe', {
+    schema: {
+      tags: ['Analysis Engines'],
+      summary: '运行小型算例验证引擎能否正常工作',
+    },
+  }, async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
+    return reply.send(await service.probeEngine(request.params.id));
+  });
 }

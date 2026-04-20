@@ -46,6 +46,10 @@ export class AnalysisEngineCatalogService {
     return this.executionService.checkEngine(id);
   }
 
+  async probeEngine(id: string) {
+    return this.executionService.probeEngine(id);
+  }
+
   getManifestSchema() {
     return {
       allowedKinds: ['python', 'http'],

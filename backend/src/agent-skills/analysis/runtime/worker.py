@@ -33,6 +33,7 @@ from api import (  # noqa: E402
     check_analysis_engine,
     get_analysis_engine,
     list_analysis_engines,
+    probe_analysis_engine,
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -95,6 +96,9 @@ def main() -> int:
             return 0
         if action == "check_engine":
             _ok(asyncio.run(check_analysis_engine(str(payload["engineId"]))))
+            return 0
+        if action == "probe_engine":
+            _ok(asyncio.run(probe_analysis_engine(str(payload["engineId"]))))
             return 0
         if action == "analyze":
             request = AnalysisRequest.model_validate(payload["input"])

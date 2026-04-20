@@ -4,6 +4,7 @@ export type AnalysisExecutionAction =
   | 'list_engines'
   | 'get_engine'
   | 'check_engine'
+  | 'probe_engine'
   | 'analyze';
 
 export interface AnalysisExecutionInput {
