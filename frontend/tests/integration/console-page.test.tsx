@@ -155,6 +155,8 @@ const archivedResult = {
   },
 }
 
+const modelJsonPlaceholderPattern = /Paste StructureModel v2 JSON here|将 StructureModel v2 JSON 粘贴到这里/
+
 function createSseResponse(events: unknown[]) {
   const encoder = new TextEncoder()
   const chunks = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).concat('data: [DONE]\n\n')
@@ -295,7 +297,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
 
-    const modelInput = screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/)
+    const modelInput = screen.getByPlaceholderText(modelJsonPlaceholderPattern)
     fireEvent.change(modelInput, { target: { value: sampleModelJson } })
 
     await waitFor(() => {
@@ -637,12 +639,14 @@ describe('ConsolePage Integration (CONS-13)', () => {
     }))
     expect(screen.getByText(/Stream stopped|已停止/)).toBeInTheDocument()
 
-    const stored = JSON.parse(window.localStorage.getItem('structureclaw.console.conversations') || '{}')
-    expect(stored['conv-stop']?.messages?.at(-1)).toEqual(expect.objectContaining({
-      role: 'assistant',
-      content: '',
-      status: 'aborted',
-    }))
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem('structureclaw.console.conversations') || '{}')
+      expect(stored['conv-stop']?.messages?.at(-1)).toEqual(expect.objectContaining({
+        role: 'assistant',
+        content: '',
+        status: 'aborted',
+      }))
+    })
   })
 
   it.skipIf(!hasLlmKey)('shows conversation-list timeout when the backend request hangs', async () => {
@@ -789,7 +793,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
 
-    const modelInput = screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/) as HTMLTextAreaElement
+    const modelInput = screen.getByPlaceholderText(modelJsonPlaceholderPattern) as HTMLTextAreaElement
     expect(modelInput.value).toContain('"schema_version": "1.0.0"')
     expect(screen.queryByText(/^Design Code$|^设计规范$/)).not.toBeInTheDocument()
     expect(screen.getByText('Archived summary')).toBeInTheDocument()
@@ -871,7 +875,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.click(screen.getByRole('button', { name: /New Conversation|新建对话/ }))
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
 
-    const modelInput = screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/) as HTMLTextAreaElement
+    const modelInput = screen.getByPlaceholderText(modelJsonPlaceholderPattern) as HTMLTextAreaElement
     expect(modelInput.value).toBe('')
     expect(screen.queryByText('Archived summary')).not.toBeInTheDocument()
     expect(screen.queryByText(/Analysis Engine Auto|计算引擎 自动选择/)).not.toBeInTheDocument()
@@ -1010,7 +1014,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
-    const modelInput = screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/) as HTMLTextAreaElement
+    const modelInput = screen.getByPlaceholderText(modelJsonPlaceholderPattern) as HTMLTextAreaElement
     fireEvent.change(modelInput, { target: { value: sampleModelJson } })
 
     const titleButtons = screen.getAllByRole('button').filter((button) => (
@@ -1851,7 +1855,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
-    const modelInput = screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/)
+    const modelInput = screen.getByPlaceholderText(modelJsonPlaceholderPattern)
     fireEvent.change(modelInput, { target: { value: '{"schema_version":' } })
     fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
       target: { value: 'Please draft a beam model' },
@@ -1995,7 +1999,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
-    fireEvent.change(screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/), {
+    fireEvent.change(screen.getByPlaceholderText(modelJsonPlaceholderPattern), {
       target: { value: sampleModelJson },
     })
     fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
@@ -2080,7 +2084,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     setCapabilityPreferences(['generic', 'opensees-static', 'code-check-gb50017'])
     await renderConsolePage()
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
-    fireEvent.change(screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/), {
+    fireEvent.change(screen.getByPlaceholderText(modelJsonPlaceholderPattern), {
       target: { value: sampleModelJson },
     })
     fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
@@ -2153,7 +2157,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
-    fireEvent.change(screen.getByPlaceholderText(/Paste StructureModel v1 JSON here|将 StructureModel v1 JSON 粘贴到这里/), {
+    fireEvent.change(screen.getByPlaceholderText(modelJsonPlaceholderPattern), {
       target: { value: sampleModelJson },
     })
     fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
