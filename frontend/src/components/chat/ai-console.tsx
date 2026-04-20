@@ -1928,62 +1928,38 @@ export function AIConsole() {
     allEngines.forEach((e) => { initial[e.id] = { passed: false, loading: true } })
     setProbeResults(initial)
 
-    const results = await Promise.allSettled(
+    let active = true
+
+    await Promise.allSettled(
       allEngines.map(async (engine) => {
         try {
           const response = await fetch(`${API_BASE}/api/v1/analysis-engines/${encodeURIComponent(engine.id)}/probe`, { method: 'POST' })
           if (!response.ok) {
             const text = await response.text()
-            return { id: engine.id, passed: false as const, error: text || `HTTP ${response.status}` }
+            if (active) setProbeResults((prev) => ({ ...prev, [engine.id]: { passed: false, error: text || `HTTP ${response.status}`, loading: false } }))
+            return
           }
           const payload = await response.json()
-          return {
-            id: engine.id,
-            passed: Boolean(payload.passed),
-            durationMs: typeof payload.durationMs === 'number' ? payload.durationMs : undefined,
-            error: typeof payload.error === 'string' ? payload.error : undefined,
+          if (active) {
+            setProbeResults((prev) => ({
+              ...prev,
+              [engine.id]: {
+                passed: Boolean(payload.passed),
+                durationMs: typeof payload.durationMs === 'number' ? payload.durationMs : undefined,
+                error: typeof payload.error === 'string' ? payload.error : undefined,
+                loading: false,
+              },
+            }))
           }
         } catch (err) {
-          return { id: engine.id, passed: false as const, error: String(err) }
+          if (active) setProbeResults((prev) => ({ ...prev, [engine.id]: { passed: false, error: String(err), loading: false } }))
         }
       }),
     )
 
-    setProbeResults((prev) => {
-      const next = { ...prev }
-      results.forEach((r) => {
-        if (r.status === 'fulfilled') {
-          const { id, ...rest } = r.value
-          next[id] = { ...rest, loading: false }
-        }
-      })
-      return next
-    })
-    setProbeAllRunning(false)
+    if (active) setProbeAllRunning(false)
   }
 
-  async function probeEngine(engineId: string) {
-    setProbeResults((prev) => ({ ...prev, [engineId]: { passed: false, loading: true } }))
-    try {
-      const response = await fetch(`${API_BASE}/api/v1/analysis-engines/${encodeURIComponent(engineId)}/probe`, { method: 'POST' })
-      if (!response.ok) {
-        const text = await response.text()
-        setProbeResults((prev) => ({ ...prev, [engineId]: { passed: false, error: text || `HTTP ${response.status}` } }))
-        return
-      }
-      const payload = await response.json()
-      setProbeResults((prev) => ({
-        ...prev,
-        [engineId]: {
-          passed: Boolean(payload.passed),
-          durationMs: typeof payload.durationMs === 'number' ? payload.durationMs : undefined,
-          error: typeof payload.error === 'string' ? payload.error : undefined,
-        },
-      }))
-    } catch (err) {
-      setProbeResults((prev) => ({ ...prev, [engineId]: { passed: false, error: String(err) } }))
-    }
-  }
 
   useEffect(() => {
     if (capabilityPreferencesHydratedRef.current) {
@@ -3659,7 +3635,7 @@ export function AIConsole() {
                             {probeAllRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                             {t('engineProbeButton')}
                           </button>
-                          {probePopupOpen && !probeAllRunning && Object.keys(probeResults).length > 0 && (
+                          {probePopupOpen && Object.keys(probeResults).length > 0 && (
                             <div className="absolute left-0 top-full z-50 mt-2 w-80 rounded-xl border border-border/70 bg-card p-4 shadow-xl dark:border-white/10 dark:bg-slate-950">
                               <div className="mb-3 flex items-center justify-between">
                                 <span className="text-xs font-semibold text-foreground">{t('engineProbeButton')}</span>
@@ -3667,6 +3643,7 @@ export function AIConsole() {
                                   type="button"
                                   className="text-[11px] text-muted-foreground hover:text-foreground"
                                   onClick={() => setProbePopupOpen(false)}
+                                  aria-label="Close"
                                 >
                                   ✕
                                 </button>

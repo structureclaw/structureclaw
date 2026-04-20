@@ -134,6 +134,8 @@ class AnalysisEngineRegistry:
             "durationMs": elapsed,
             "error": result.get("error"),
             "details": result.get("details"),
+            "steps": result.get("steps"),
+            "hint": result.get("hint"),
         }
 
     def _probe_opensees(self) -> Dict[str, Any]:
@@ -171,11 +173,13 @@ class AnalysisEngineRegistry:
             return {"passed": False, "error": f"APIPyInterface import failed: {exc}", "steps": steps}
         steps.append({"name": "APIPyInterface import", "passed": True})
 
-        # Step 3: create minimal model and run SATWE
+        # Step 3-5: create model, run SATWE, extract results — cleanup in finally
+        import shutil
         import tempfile
         import uuid
+
+        work_dir = Path(tempfile.gettempdir()) / "pkpm_probe" / uuid.uuid4().hex[:8]
         try:
-            work_dir = Path(tempfile.gettempdir()) / "pkpm_probe" / uuid.uuid4().hex[:8]
             work_dir.mkdir(parents=True, exist_ok=True)
             project_name = "probe"
             jws_path = work_dir / f"{project_name}.JWS"
@@ -221,23 +225,11 @@ class AnalysisEngineRegistry:
             model.SavePMModel()
             steps.append({"name": "Create minimal PKPM model", "passed": True})
 
-        except Exception as exc:
-            return {"passed": False, "error": f"Model creation failed: {exc}", "steps": steps}
-
-        # Step 4: run SATWE via JWSCYCLE.exe
-        try:
+            # Step 4: run SATWE via JWSCYCLE.exe
             self._run_jws_cycle_probe(p, work_dir)
             steps.append({"name": "SATWE analysis", "passed": True})
-        except Exception as exc:
-            return {
-                "passed": False,
-                "error": f"SATWE analysis failed: {exc}",
-                "steps": steps,
-                "hint": "PKPM may not be activated or the license is invalid",
-            }
 
-        # Step 5: extract results
-        try:
+            # Step 5: extract results
             result = APIPyInterface.ResultData()
             ret = result.InitialResult(str(jws_path))
             result.ClearResult()
@@ -248,20 +240,18 @@ class AnalysisEngineRegistry:
                     "steps": steps,
                 }
             steps.append({"name": "Extract results", "passed": True})
+
         except Exception as exc:
+            step_label = "Model creation" if len(steps) < 3 else ("SATWE analysis" if len(steps) < 4 else "Result extraction")
+            hint = "PKPM may not be activated or the license is invalid" if len(steps) >= 3 else None
             return {
                 "passed": False,
-                "error": f"Result extraction failed: {exc}",
+                "error": f"{step_label} failed: {exc}",
                 "steps": steps,
-                "hint": "SATWE ran but results could not be read — PKPM license may be invalid",
+                **({"hint": hint} if hint else {}),
             }
-
-        # Cleanup probe directory
-        try:
-            import shutil
+        finally:
             shutil.rmtree(work_dir, ignore_errors=True)
-        except Exception:
-            pass
 
         return {"passed": True, "details": "PKPM probe completed: model created, SATWE ran, results extracted", "steps": steps}
 
