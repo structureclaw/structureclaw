@@ -61,6 +61,26 @@ def _import_apipyinterface() -> None:
         ) from exc
 
 
+def _patch_material_label(work_dir: Path) -> None:
+    """Replace 钢砼结构 with 钢结构 in JWSCYCLE output files.
+
+    JWSCYCLE always auto-detects the material type by scanning sections,
+    and custom sections via SetUserSect get classified as composite even
+    when Set_M(5) and KIND 103=10303 are set correctly.  This post-process
+    patch corrects the cosmetic label without affecting analysis results.
+    """
+    _OLD = "钢砼结构".encode("gbk")
+    _NEW = "钢结构".encode("gbk")
+
+    for fname in ("WMASS.OUT", "WHBJSS.OUT"):
+        fpath = work_dir / fname
+        if not fpath.exists():
+            continue
+        data = fpath.read_bytes()
+        if _OLD in data:
+            fpath.write_bytes(data.replace(_OLD, _NEW))
+
+
 def _run_jws_cycle(cycle_path: Path, work_dir: Path, timeout: int = 600) -> None:
     """Launch JWSCYCLE.exe using the official DirectorySet.conf mechanism.
 
@@ -483,6 +503,10 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     # ---- Phase 2: Run SATWE via JWSCYCLE.exe ----
     timeout = int(parameters.get("timeout", 600))
     _run_jws_cycle(cycle_path, work_dir, timeout=timeout)
+
+    # ---- Phase 2.5: Post-process output files ----
+    if material_family == "steel":
+        _patch_material_label(work_dir)
 
     # ---- Phase 3: Extract results via APIPyInterface ----
     # material_family was already detected in Phase 1 and passed to converter
