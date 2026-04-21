@@ -193,15 +193,17 @@ export class AgentSkillRuntime {
 
     const analysisSkills = this.listBuiltinAnalysisSkillManifests();
     const matchedSelected = analysisSkills.filter((skill) => selectedSkillIds.has(skill.id) && matchesContext(skill));
-    if (matchedSelected.length > 0) {
+    if (matchedSelected.length === 1) {
       return matchedSelected[0];
     }
-    // Strict mode: only return analysis skills the user explicitly selected.
-    // No fallback to any analysis skill outside the selected set.
-    if (selectedSkillIds.size > 0) {
-      return undefined;
+    if (matchedSelected.length > 1) {
+      // Multiple analysis skills selected: return highest-priority match as tiebreaker.
+      // listBuiltinAnalysisSkillManifests() is already sorted by descending priority.
+      return matchedSelected[0];
     }
-    return analysisSkills.find((skill) => matchesContext(skill));
+    // No analysis skill selected → return undefined; pipeline will report
+    // "analysisProvider binding required" instead of silently picking an engine.
+    return undefined;
   }
 
   resolveDefaultSkillForDomain(domain: string): string | undefined {
