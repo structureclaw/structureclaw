@@ -3749,9 +3749,9 @@ export function AIConsole() {
                 return (
                   <div key={engine.id} className="rounded-lg border border-border/50 bg-background/60 p-2.5 dark:border-white/5 dark:bg-white/5">
                     <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-2">
                         {probe.loading ? (
-                          <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
+                          <Loader2 className="h-3.5 w-3.5 animate-spin text-amber-500" />
                         ) : (
                           <span className={`inline-block h-2 w-2 rounded-full ${probe.passed ? 'bg-emerald-500' : 'bg-red-400'}`} />
                         )}
