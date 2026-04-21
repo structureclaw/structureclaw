@@ -26,12 +26,12 @@ async function importAgentSkillRuntime(rootDir) {
   return mod.AgentSkillRuntime;
 }
 
-/** Import and instantiate AgentService with real LLM. */
-async function createAgentService(rootDir) {
-  const filePath = path.join(rootDir, "backend", "dist", "services", "agent.js");
+/** Import and instantiate LangGraphAgentService with real LLM. */
+async function createAgentService(rootDir, skillRuntime) {
+  const filePath = path.join(rootDir, "backend", "dist", "agent-langgraph", "agent-service.js");
   const mod = await import(`${pathToFileURL(filePath).href}?llm-test=${Date.now()}`);
-  const AgentService = mod.AgentService;
-  return new AgentService();
+  const LangGraphAgentService = mod.LangGraphAgentService;
+  return new LangGraphAgentService(skillRuntime);
 }
 
 // ---------------------------------------------------------------------------
@@ -109,7 +109,7 @@ async function runLlmIntegrationTests(rootDir, args) {
             break;
           case "pipeline": {
             if (!agentService) {
-              agentService = await createAgentService(rootDir);
+              agentService = await createAgentService(rootDir, runtime);
             }
             pipelineResult = await runPipelineTest(agentService, testCase);
             break;
