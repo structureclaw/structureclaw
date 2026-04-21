@@ -5,7 +5,7 @@
  * (draft state, pipeline artifacts, skill selection, locale, workspace).
  */
 import { Annotation, messagesStateReducer } from '@langchain/langgraph';
-import type { BaseMessage, BaseMessageLike } from '@langchain/core/messages';
+import type { BaseMessage } from '@langchain/core/messages';
 import type {
   DraftState,
   ProjectArtifactState,

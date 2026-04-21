@@ -1,7 +1,6 @@
 import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { ConversationService } from '../services/conversation.js';
-import { AgentService } from '../services/agent.js';
 import { config } from '../config/index.js';
 import { isLlmTimeoutError, toLlmApiError } from '../utils/llm-error.js';
 import { prisma } from '../utils/database.js';
@@ -12,22 +11,11 @@ import {
   reducePresentationEvent,
   type AssistantPresentation,
 } from '../services/chat-presentation.js';
-import { getAgentEngine, LangGraphAgentService } from '../agent-langgraph/index.js';
+import { LangGraphAgentService } from '../agent-langgraph/index.js';
 import { AgentSkillRuntime } from '../agent-runtime/index.js';
 
 const conversationService = new ConversationService();
-const agentService = new AgentService();
-
-// Lazy-initialised LangGraph agent service (created on first use)
-let langGraphAgentService: LangGraphAgentService | null = null;
-
-function getLangGraphAgentService(): LangGraphAgentService {
-  if (!langGraphAgentService) {
-    const skillRuntime = new AgentSkillRuntime();
-    langGraphAgentService = new LangGraphAgentService(skillRuntime);
-  }
-  return langGraphAgentService;
-}
+const agentService = new LangGraphAgentService(new AgentSkillRuntime());
 
 const optionalIdSchema = z.preprocess((value) => {
   if (value === null || value === undefined) {
@@ -352,7 +340,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const userId = request.user?.id;
       const effectiveMessage = buildEffectiveAgentMessage(body.message, body.context?.resumeFromMessage);
 
-      // Sync /message always uses legacy engine (LangGraph agent uses streaming only)
       const result = await agentService.run({
         ...body,
         message: effectiveMessage,
@@ -363,14 +350,14 @@ export async function chatRoutes(fastify: FastifyInstance) {
         userId,
         latestResult: result,
       });
-      const assistantText = result.response || result.clarification?.question || '';
+      const assistantText = result.response || '';
       const assistantPresentation = rebuildAssistantPresentationFromResult({
         base: createEmptyAssistantPresentation({
           traceId: result.traceId ?? body.traceId,
           mode: Array.isArray(result.toolCalls) && result.toolCalls.length > 0 ? 'execution' : 'conversation',
           startedAt: result.startedAt,
         }),
-        result,
+        result: result as any,
         mode: Array.isArray(result.toolCalls) && result.toolCalls.length > 0 ? 'execution' : 'conversation',
         locale: body.context?.locale ?? 'en',
         traceId: result.traceId ?? body.traceId,
@@ -443,7 +430,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       return reply.send(conversation);
     }
 
-    const session = await agentService.getConversationSessionSnapshot(id, query.locale || 'en');
+    const session = await agentService.getConversationSessionSnapshot(id, query.locale ?? 'en');
     const snapshots = await conversationService.getConversationSnapshot(id);
     return reply.send({
       ...conversation,
@@ -607,21 +594,12 @@ export async function chatRoutes(fastify: FastifyInstance) {
     };
 
     try {
-      // Select engine based on feature flag
-      const useLangGraph = getAgentEngine() === 'langgraph';
-      const stream = useLangGraph
-        ? getLangGraphAgentService().runStream({
-            ...body,
-            message: effectiveMessage,
-            userId,
-            signal: abortController.signal,
-          })
-        : agentService.runStream({
-            ...body,
-            message: effectiveMessage,
-            userId,
-            signal: abortController.signal,
-          });
+      const stream = agentService.runStream({
+        ...body,
+        message: effectiveMessage,
+        userId,
+        signal: abortController.signal,
+      });
 
       for await (const chunk of stream) {
         if (abortController.signal.aborted) break;
@@ -819,12 +797,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       summary: 'Resume a paused agent after human clarification',
     },
   }, async (request: FastifyRequest<{ Body: z.infer<typeof resumeStreamSchema> }>, reply: FastifyReply) => {
-    if (getAgentEngine() !== 'langgraph') {
-      return reply.code(400).send({ error: 'Resume is only available with the LangGraph agent engine' });
-    }
-
     const body = resumeStreamSchema.parse(request.body);
-    const userId = request.user?.id;
 
     reply.hijack();
     setSseCorsHeaders(request, reply);
@@ -840,10 +813,9 @@ export async function chatRoutes(fastify: FastifyInstance) {
     request.socket.on('close', onClose);
 
     try {
-      const stream = getLangGraphAgentService().resumeStream(
+      const stream = agentService.resumeStream(
         body.conversationId,
         body.resumeValue,
-        abortController.signal,
       );
 
       for await (const chunk of stream) {

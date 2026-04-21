@@ -23,7 +23,7 @@ import type { BaseCheckpointSaver } from '@langchain/langgraph';
 import { createChatModel } from '../utils/llm.js';
 import { AgentStateAnnotation, type AgentState } from './state.js';
 import { createAllTools, type ToolDeps } from './tools.js';
-import { buildSystemMessages, type SystemPromptContext } from './system-prompt.js';
+import { buildSystemMessages } from './system-prompt.js';
 import type { AgentSkillRuntime } from '../agent-runtime/index.js';
 import type { SkillManifest } from '../agent-runtime/types.js';
 

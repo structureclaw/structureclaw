@@ -3,7 +3,7 @@
  * AgentStreamChunk format used by the Fastify SSE endpoint.
  *
  * LangGraph emits events with streamMode:
- *   - "messages": token-level content from the LLM
+ *   - "messages": token-level content from the LLM (AIMessageChunk)
  *   - "custom": arbitrary data written via config.writer (tool progress)
  *   - "updates": state change notifications
  *
@@ -11,18 +11,42 @@
  *   - start, presentation_init, phase_upsert, step_upsert, artifact_upsert,
  *     summary_replace, result, presentation_complete, done, error
  */
-import type { AIMessage, BaseMessage } from '@langchain/core/messages';
+import type { AIMessage, AIMessageChunk, BaseMessage } from '@langchain/core/messages';
+import {
+  createEmptyAssistantPresentation,
+  type AssistantPresentation,
+} from '../services/chat-presentation.js';
 import { logger } from '../utils/logger.js';
 
-// Re-export the existing stream chunk type for convenience
-export type { AgentStreamChunk } from '../services/agent.js';
-import type { AgentStreamChunk } from '../services/agent.js';
+// Re-export the stream chunk type for convenience
+export type { AgentStreamChunk } from '../types/agent-stream.js';
+import type { AgentStreamChunk } from '../types/agent-stream.js';
+
+// ---------------------------------------------------------------------------
+// Stream context passed from agent-service to streaming layer
+// ---------------------------------------------------------------------------
+
+export interface StreamContext {
+  conversationId: string;
+  traceId: string;
+  startedAt: string;
+}
 
 // ---------------------------------------------------------------------------
 // Event classification helpers
 // ---------------------------------------------------------------------------
 
 function isAIMessage(msg: unknown): msg is AIMessage {
+  return (
+    typeof msg === 'object' &&
+    msg !== null &&
+    '_getType' in msg &&
+    typeof (msg as any)._getType === 'function' &&
+    (msg as any)._getType() === 'ai'
+  );
+}
+
+function isAIMessageChunk(msg: unknown): msg is AIMessageChunk {
   return (
     typeof msg === 'object' &&
     msg !== null &&
@@ -56,10 +80,33 @@ export function langGraphEventToChunks(
 ): AgentStreamChunk[] {
   const chunks: AgentStreamChunk[] = [];
 
-  // Handle interrupt events — LangGraph emits these when interrupt() is called
+  // Handle token-level LLM output from "messages" stream mode
+  if (eventMode === 'messages') {
+    // LangGraph messages mode yields [message, metadata] or just the message
+    const msg = Array.isArray(event) ? event[0] : event;
+    if (isAIMessageChunk(msg) && !hasToolCalls(msg as any)) {
+      const content = typeof msg.content === 'string' ? msg.content : '';
+      if (content.length > 0) {
+        chunks.push({ type: 'token', content });
+      }
+    }
+    return chunks;
+  }
+
+  if (eventMode === 'custom') {
+    // Custom events from config.writer in tools — pass through directly
+    if (typeof event === 'object' && event !== null && 'type' in event) {
+      chunks.push(event as AgentStreamChunk);
+    } else if (typeof event === 'string') {
+      chunks.push({ type: 'summary_replace', summaryText: event });
+    }
+    return chunks;
+  }
+
   if (eventMode === 'updates') {
     const update = event as Record<string, any>;
-    // Check for __interrupt__ in the update (could be at top level or nested)
+
+    // Handle interrupt events
     if (update.__interrupt__) {
       const interrupts = Array.isArray(update.__interrupt__)
         ? update.__interrupt__
@@ -76,11 +123,7 @@ export function langGraphEventToChunks(
               },
             ],
             conversationStage: 'awaiting_user_input',
-            pending: {
-              criticalMissing: [],
-            },
-            // Custom fields for the LangGraph agent — frontend uses these
-            // to decide whether to call /stream or /stream/resume
+            pending: { criticalMissing: [] },
             resumeRequired: true,
             options: value?.options || [],
           },
@@ -88,11 +131,8 @@ export function langGraphEventToChunks(
       }
       return chunks;
     }
-  }
 
-  if (eventMode === 'updates') {
-    // State update: extract the node name and any messages
-    const update = event as Record<string, any>;
+    // Process node state updates
     for (const [nodeName, nodeState] of Object.entries(update)) {
       if (nodeName === 'agent' && nodeState?.messages) {
         const messages: BaseMessage[] = Array.isArray(nodeState.messages)
@@ -102,7 +142,6 @@ export function langGraphEventToChunks(
         for (const msg of messages) {
           if (isAIMessage(msg)) {
             if (hasToolCalls(msg)) {
-              // Agent decided to call tools — emit step events
               for (const tc of (msg as any).tool_calls) {
                 chunks.push({
                   type: 'step_upsert',
@@ -118,13 +157,9 @@ export function langGraphEventToChunks(
                 });
               }
             } else if (typeof msg.content === 'string' && msg.content.length > 0) {
-              // Final response from agent
               chunks.push({
                 type: 'result',
-                content: {
-                  summary: msg.content,
-                  mode: 'conversation',
-                },
+                content: { summary: msg.content, mode: 'conversation' },
               });
             }
           }
@@ -132,7 +167,6 @@ export function langGraphEventToChunks(
       }
 
       if (nodeName === 'tools') {
-        // Tool execution completed
         const messages: BaseMessage[] = Array.isArray(nodeState?.messages)
           ? nodeState.messages
           : nodeState?.messages ? [nodeState.messages] : [];
@@ -151,22 +185,13 @@ export function langGraphEventToChunks(
               output: typeof msg.content === 'string' ? truncate(msg.content, 500) : msg.content,
             },
           });
+
+          // Emit artifact_payload_sync for tool outputs containing model/analysis/report
+          if (typeof msg.content === 'string') {
+            chunks.push(...emitArtifactSync(msg.content));
+          }
         }
       }
-    }
-  }
-
-  if (eventMode === 'custom') {
-    // Custom events from config.writer in tools — pass through directly
-    // These could be progress messages, artifact updates, etc.
-    if (typeof event === 'object' && event !== null && 'type' in event) {
-      chunks.push(event as AgentStreamChunk);
-    } else if (typeof event === 'string') {
-      // Plain string progress message
-      chunks.push({
-        type: 'summary_replace',
-        summaryText: event,
-      });
     }
   }
 
@@ -174,7 +199,37 @@ export function langGraphEventToChunks(
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Artifact sync helper
+// ---------------------------------------------------------------------------
+
+function emitArtifactSync(toolOutput: string): AgentStreamChunk[] {
+  const chunks: AgentStreamChunk[] = [];
+  try {
+    const parsed = JSON.parse(toolOutput);
+    if (parsed && typeof parsed === 'object') {
+      if (parsed.success && parsed.model) {
+        chunks.push({
+          type: 'artifact_payload_sync',
+          artifact: 'model',
+          model: parsed.model,
+        });
+      }
+      if (parsed.success && (parsed.result || parsed.analysis)) {
+        chunks.push({
+          type: 'artifact_payload_sync',
+          artifact: 'analysis',
+          latestResult: { analysis: parsed.result || parsed },
+        });
+      }
+    }
+  } catch {
+    // Not JSON — skip artifact sync
+  }
+  return chunks;
+}
+
+// ---------------------------------------------------------------------------
+// Phase mapping
 // ---------------------------------------------------------------------------
 
 function mapToolToPhase(toolName: string): 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report' {
@@ -212,9 +267,18 @@ function truncate(str: string, maxLen: number): string {
 export async function* streamGraphToChunks(
   graphStream: AsyncIterable<unknown>,
   streamModes: string[],
+  ctx: StreamContext,
 ): AsyncGenerator<AgentStreamChunk> {
-  // Emit start event
-  yield { type: 'start' };
+  // Emit start event with conversation context (frontend reads conversationId from here)
+  yield { type: 'start', content: { conversationId: ctx.conversationId, traceId: ctx.traceId, startedAt: ctx.startedAt } };
+
+  // Emit presentation init (frontend expects this to set up the timeline)
+  const presentation: AssistantPresentation = createEmptyAssistantPresentation({
+    traceId: ctx.traceId,
+    mode: 'execution',
+    startedAt: ctx.startedAt,
+  });
+  yield { type: 'presentation_init', presentation };
 
   try {
     for await (const event of graphStream) {
@@ -227,7 +291,6 @@ export async function* streamGraphToChunks(
           yield chunk;
         }
       } else {
-        // Single-mode stream
         const mode = streamModes.length === 1 ? streamModes[0] : 'updates';
         const chunks = langGraphEventToChunks(event, mode);
         for (const chunk of chunks) {
@@ -236,9 +299,12 @@ export async function* streamGraphToChunks(
       }
     }
 
+    // Emit presentation complete before done
+    yield { type: 'presentation_complete', completedAt: new Date().toISOString() };
     yield { type: 'done' };
   } catch (error) {
     logger.error({ error }, 'LangGraph stream error');
+    yield { type: 'presentation_error', phase: 'modeling' as const, message: error instanceof Error ? error.message : String(error) };
     yield { type: 'error', error: String(error) };
   }
 }

@@ -1,11 +1,12 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { AgentService } from '../services/agent.js';
+import { LangGraphAgentService } from '../agent-langgraph/index.js';
+import { AgentSkillRuntime } from '../agent-runtime/index.js';
 import { AgentCapabilityService } from '../services/agent-capability.js';
 import { AgentSkillHubService } from '../services/agent-skillhub.js';
 import type { SkillDomain } from '../agent-runtime/types.js';
 
-const agentService = new AgentService();
+const agentService = new LangGraphAgentService(new AgentSkillRuntime());
 const capabilityService = new AgentCapabilityService();
 const skillHubService = new AgentSkillHubService();
 
@@ -43,17 +44,6 @@ const agentRunSchema = z.object({
     reportOutput: z.enum(['inline', 'file']).optional(),
     userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
     providedValues: z.record(z.any()).optional(),
-    requestOverrides: z.object({
-      forceRecompute: z.boolean().optional(),
-      analysisType: z.enum(['static', 'dynamic', 'seismic', 'nonlinear']).optional(),
-      designCode: z.string().optional(),
-      allowAsync: z.boolean().optional(),
-      autoDesignIterationEnabled: z.boolean().optional(),
-      deliverableProfiles: z.object({
-        drawing: z.string().optional(),
-        report: z.string().optional(),
-      }).optional(),
-    }).optional(),
   }).optional(),
 });
 
@@ -94,7 +84,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
       summary: '查询 Agent 工具协议与错误码',
     },
   }, async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.send(AgentService.getProtocol());
+    return reply.send(LangGraphAgentService.getProtocol());
   });
 
   fastify.get('/skills', {
@@ -178,7 +168,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
   fastify.post('/run', {
     schema: {
       tags: ['Agent'],
-      summary: 'OpenClaw 风格 Agent 编排入口',
+      summary: 'Agent 编排入口 (LangGraph ReAct)',
       body: {
         type: 'object',
         required: ['message'],
