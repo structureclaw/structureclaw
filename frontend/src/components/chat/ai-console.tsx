@@ -861,11 +861,7 @@ function buildInteractionMessage(
     lines.push(`${t('interactionMissingInfo')}: ${criticalMissing.join(locale === 'zh' ? '、' : ', ')}`)
   }
 
-  if (options.length > 0) {
-    lines.push('')
-    lines.push(locale === 'zh' ? '**可选回复：**' : '**Suggested answers:**')
-    lines.push(...options.map((opt, i) => `${i + 1}. \`${opt}\``))
-  }
+  // Options are rendered as interactive chips in the composer area, not here.
 
   if (recommendedNextStep) {
     lines.push(`${t('guidanceRecommendedNextStep')}: ${recommendedNextStep}`)
@@ -1668,6 +1664,8 @@ export function AIConsole() {
   const lastValidResultVisualizationRef = useRef<VisualizationSnapshot | null>(null)
   // Track whether the LangGraph agent is paused waiting for user input (interrupt)
   const resumeRequiredRef = useRef(false)
+  // Interaction option chips from ask_user_clarification
+  const [pendingOptions, setPendingOptions] = useState<string[]>([])
 
   // Streaming session helpers
   function registerStreamSession(session: StreamSession) {
@@ -2699,8 +2697,8 @@ export function AIConsole() {
     setErrorMessage('')
   }
 
-  async function handleSubmit() {
-    const trimmedInput = input.trim()
+  async function handleSubmit(overrideInput?: string) {
+    const trimmedInput = (overrideInput ?? input).trim()
     if (!trimmedInput || submittingRef.current) {
       return
     }
@@ -2870,6 +2868,7 @@ export function AIConsole() {
       // by calling /stream/resume instead of starting a new /stream
       const isResume = resumeRequiredRef.current
       resumeRequiredRef.current = false
+      setPendingOptions([])
 
       const response = isResume
         ? await fetch(`${API_BASE}/api/v1/chat/stream/resume`, {
@@ -2972,6 +2971,9 @@ export function AIConsole() {
             if ((payload.content as Record<string, unknown>)?.resumeRequired) {
               resumeRequiredRef.current = true
             }
+            // Store options for interactive chip rendering
+            const interactionOpts = (payload.content as AgentInteraction)?.options || []
+            if (interactionOpts.length > 0) setPendingOptions(interactionOpts)
           }
 
           // 处理 'start' 类型消息（包含 conversationId）
@@ -3126,6 +3128,7 @@ export function AIConsole() {
           if (payload.type === 'error') {
             const nextError = typeof payload.error === 'string' ? payload.error : t('requestFailed')
             assistantContent = nextError
+            setPendingOptions([])
             if (activeConversationId === conversationIdRef.current) {
               setErrorMessage(nextError)
             }
@@ -3623,6 +3626,23 @@ export function AIConsole() {
               <div ref={messagesEndRef} />
             </div>
           </div>
+
+          {pendingOptions.length > 0 && !streaming && (
+            <div className="flex flex-wrap gap-2 px-4 py-2">
+              {pendingOptions.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => {
+                    handleSubmit(option)
+                  }}
+                  className="rounded-full border border-cyan-300/30 bg-cyan-300/10 px-3 py-1.5 text-sm text-cyan-700 transition hover:bg-cyan-300/20 hover:border-cyan-300/50 dark:text-cyan-300"
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          )}
 
           <div data-testid="console-composer" className="border-t border-border/70 px-4 py-3 dark:border-white/10 overflow-y-auto max-h-[40vh]">
             <div className="w-full space-y-3">
