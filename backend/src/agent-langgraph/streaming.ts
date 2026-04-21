@@ -309,6 +309,7 @@ export async function* streamGraphToChunks(
   yield { type: 'presentation_init', presentation };
 
   let interrupted = false;
+  let tokenBuffer = '';
 
   try {
     for await (const event of graphStream) {
@@ -320,6 +321,12 @@ export async function* streamGraphToChunks(
         for (const chunk of chunks) {
           if (chunk.type === 'interaction_update') interrupted = true;
           yield chunk;
+          // Mirror token text into presentation.summaryText so the
+          // timeline view shows the LLM's streaming output in real time.
+          if (chunk.type === 'token' && 'content' in chunk) {
+            tokenBuffer += (chunk as { content: string }).content;
+            yield { type: 'summary_replace', summaryText: tokenBuffer };
+          }
         }
       } else {
         const mode = streamModes.length === 1 ? streamModes[0] : 'updates';
@@ -327,6 +334,10 @@ export async function* streamGraphToChunks(
         for (const chunk of chunks) {
           if (chunk.type === 'interaction_update') interrupted = true;
           yield chunk;
+          if (chunk.type === 'token' && 'content' in chunk) {
+            tokenBuffer += (chunk as { content: string }).content;
+            yield { type: 'summary_replace', summaryText: tokenBuffer };
+          }
         }
       }
     }
