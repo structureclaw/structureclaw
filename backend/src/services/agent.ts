@@ -594,6 +594,7 @@ export class AgentService {
   public structureProtocolClient = createLocalStructureProtocolClient();
   public codeCheckClient = createLocalCodeCheckClient();
   public llm: ChatOpenAI | null;
+  private readonly runtimeLlm: ChatOpenAI;
   private readonly skillRuntime: AgentSkillRuntime;
   private readonly skillCatalog: AgentSkillCatalogService;
   private readonly policy: AgentPolicyService;
@@ -606,7 +607,8 @@ export class AgentService {
   constructor() {
     this.engineClient = createLocalAnalysisEngineClient();
 
-    this.llm = createDynamicChatModel(0.1);
+    this.runtimeLlm = createDynamicChatModel(0.1);
+    this.llm = this.runtimeLlm;
     this.skillRuntime = new AgentSkillRuntime();
     this.skillCatalog = new AgentSkillCatalogService();
     this.policy = new AgentPolicyService();
@@ -617,7 +619,15 @@ export class AgentService {
   }
 
   private getCurrentLlm(): ChatOpenAI | null {
-    return hasConfiguredLlmApiKey() ? this.llm : null;
+    if (!this.llm) {
+      return null;
+    }
+
+    if (this.llm === this.runtimeLlm) {
+      return hasConfiguredLlmApiKey() ? this.llm : null;
+    }
+
+    return this.llm;
   }
 
   private buildHandlerDeps(): HandlerDeps {

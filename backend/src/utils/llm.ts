@@ -33,15 +33,16 @@ export function createChatModel(temperature: number): ChatOpenAI | null {
 }
 
 export function createDynamicChatModel(temperature: number): ChatOpenAI {
-  return {
-    async invoke(input: unknown, options?: unknown) {
+  return new Proxy({} as ChatOpenAI, {
+    get(_target, prop) {
       const model = createChatModel(temperature);
       if (!model) {
         throw new Error('LLM is not configured');
       }
-      return model.invoke(input as any, options as any);
+      const value = Reflect.get(model, prop, model);
+      return typeof value === 'function' ? value.bind(model) : value;
     },
-  } as ChatOpenAI;
+  });
 }
 
 function wrapWithLlmLogging(model: ChatOpenAI): ChatOpenAI {

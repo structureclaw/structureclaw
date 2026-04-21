@@ -9,6 +9,9 @@ type StoredLlmSettings = {
   updatedAt?: string;
 };
 
+let cachedRuntimeLlmSettings: StoredLlmSettings | null | undefined;
+let cachedRuntimeLlmSettingsPath: string | undefined;
+
 export type EffectiveLlmSettings = Pick<
   typeof config,
   'llmApiKey' | 'llmModel' | 'llmBaseUrl' | 'llmTimeoutMs' | 'llmMaxRetries'
@@ -84,6 +87,11 @@ function readRuntimeLlmSettingsFromDisk(): StoredLlmSettings | null {
   }
 }
 
+function setCachedRuntimeLlmSettings(settingsPath: string, settings: StoredLlmSettings | null) {
+  cachedRuntimeLlmSettingsPath = settingsPath;
+  cachedRuntimeLlmSettings = settings;
+}
+
 function hasStoredOverrides(settings: StoredLlmSettings | null | undefined): boolean {
   return Boolean(settings?.baseUrl || settings?.model || settings?.apiKey);
 }
@@ -95,18 +103,29 @@ function writeRuntimeLlmSettingsToDisk(settings: StoredLlmSettings) {
     if (fs.existsSync(settingsPath)) {
       fs.unlinkSync(settingsPath);
     }
+    setCachedRuntimeLlmSettings(settingsPath, null);
     return;
   }
 
   fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-  fs.writeFileSync(settingsPath, `${JSON.stringify({
+  const nextSettings = {
     ...settings,
     updatedAt: new Date().toISOString(),
-  }, null, 2)}\n`, 'utf8');
+  };
+  fs.writeFileSync(settingsPath, `${JSON.stringify(nextSettings, null, 2)}\n`, 'utf8');
+  setCachedRuntimeLlmSettings(settingsPath, nextSettings);
 }
 
 function getRuntimeLlmSettings(): StoredLlmSettings | null {
-  return readRuntimeLlmSettingsFromDisk();
+  const settingsPath = getLlmSettingsPath();
+
+  if (cachedRuntimeLlmSettingsPath === settingsPath && cachedRuntimeLlmSettings !== undefined) {
+    return cachedRuntimeLlmSettings;
+  }
+
+  const settings = readRuntimeLlmSettingsFromDisk();
+  setCachedRuntimeLlmSettings(settingsPath, settings);
+  return settings;
 }
 
 function maskApiKey(apiKey: string | undefined): string {
