@@ -12,9 +12,22 @@ import {
   reducePresentationEvent,
   type AssistantPresentation,
 } from '../services/chat-presentation.js';
+import { getAgentEngine, LangGraphAgentService } from '../agent-langgraph/index.js';
+import { AgentSkillRuntime } from '../agent-runtime/index.js';
 
 const conversationService = new ConversationService();
 const agentService = new AgentService();
+
+// Lazy-initialised LangGraph agent service (created on first use)
+let langGraphAgentService: LangGraphAgentService | null = null;
+
+function getLangGraphAgentService(): LangGraphAgentService {
+  if (!langGraphAgentService) {
+    const skillRuntime = new AgentSkillRuntime();
+    langGraphAgentService = new LangGraphAgentService(skillRuntime);
+  }
+  return langGraphAgentService;
+}
 
 const optionalIdSchema = z.preprocess((value) => {
   if (value === null || value === undefined) {
@@ -333,6 +346,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const body = sendMessageSchema.parse(request.body);
       const userId = request.user?.id;
       const effectiveMessage = buildEffectiveAgentMessage(body.message, body.context?.resumeFromMessage);
+
+      // Sync /message always uses legacy engine (LangGraph agent uses streaming only)
       const result = await agentService.run({
         ...body,
         message: effectiveMessage,
@@ -587,12 +602,21 @@ export async function chatRoutes(fastify: FastifyInstance) {
     };
 
     try {
-      const stream = agentService.runStream({
-        ...body,
-        message: effectiveMessage,
-        userId,
-        signal: abortController.signal,
-      });
+      // Select engine based on feature flag
+      const useLangGraph = getAgentEngine() === 'langgraph';
+      const stream = useLangGraph
+        ? getLangGraphAgentService().runStream({
+            ...body,
+            message: effectiveMessage,
+            userId,
+            signal: abortController.signal,
+          })
+        : agentService.runStream({
+            ...body,
+            message: effectiveMessage,
+            userId,
+            signal: abortController.signal,
+          });
 
       for await (const chunk of stream) {
         if (abortController.signal.aborted) break;
