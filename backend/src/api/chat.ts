@@ -755,9 +755,18 @@ export async function chatRoutes(fastify: FastifyInstance) {
           chunk
           && typeof chunk === 'object'
           && (chunk as { type?: string }).type === 'interaction_update'
-          && (chunk as { content?: { guidanceText?: string } }).content?.guidanceText
+          && (chunk as { content?: unknown }).content
         ) {
-          assistantContent = (chunk as { content: { guidanceText: string } }).content.guidanceText;
+          const interactionContent = (chunk as { content: Record<string, unknown> }).content;
+          if (typeof interactionContent.guidanceText === 'string') {
+            assistantContent = interactionContent.guidanceText;
+          } else if (
+            Array.isArray(interactionContent.questions)
+            && interactionContent.questions.length > 0
+            && typeof (interactionContent.questions[0] as { question?: string })?.question === 'string'
+          ) {
+            assistantContent = (interactionContent.questions[0] as { question: string }).question;
+          }
         }
         reply.raw.write(`data: ${JSON.stringify(normalizePublicStreamChunk(chunk))}\n\n`);
       }

@@ -282,6 +282,8 @@ export async function* streamGraphToChunks(
   });
   yield { type: 'presentation_init', presentation };
 
+  let interrupted = false;
+
   try {
     for await (const event of graphStream) {
       // LangGraph stream with multiple modes yields [mode, data] tuples
@@ -290,20 +292,26 @@ export async function* streamGraphToChunks(
         const modeStr = String(mode);
         const chunks = langGraphEventToChunks(data, modeStr);
         for (const chunk of chunks) {
+          if (chunk.type === 'interaction_update') interrupted = true;
           yield chunk;
         }
       } else {
         const mode = streamModes.length === 1 ? streamModes[0] : 'updates';
         const chunks = langGraphEventToChunks(event, mode);
         for (const chunk of chunks) {
+          if (chunk.type === 'interaction_update') interrupted = true;
           yield chunk;
         }
       }
     }
 
-    // Emit presentation complete before done
-    yield { type: 'presentation_complete', completedAt: new Date().toISOString() };
-    yield { type: 'done' };
+    // Only emit completion events when the graph finished normally.
+    // On interrupt (human-in-the-loop), the frontend should show the
+    // interaction UI and wait for the user to respond via /stream/resume.
+    if (!interrupted) {
+      yield { type: 'presentation_complete', completedAt: new Date().toISOString() };
+      yield { type: 'done' };
+    }
   } catch (error) {
     logger.error({ error }, 'LangGraph stream error');
     yield { type: 'presentation_error', phase: 'modeling' as const, message: error instanceof Error ? error.message : String(error) };
