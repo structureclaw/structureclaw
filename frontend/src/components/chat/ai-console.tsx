@@ -1627,6 +1627,8 @@ export function AIConsole() {
   // 追踪最后有效的结果用于持久化（不会被引擎切换清除）
   const lastValidResultRef = useRef<AgentResult | null>(null)
   const lastValidResultVisualizationRef = useRef<VisualizationSnapshot | null>(null)
+  // Track whether the LangGraph agent is paused waiting for user input (interrupt)
+  const resumeRequiredRef = useRef(false)
 
   // Streaming session helpers
   function registerStreamSession(session: StreamSession) {
@@ -2794,17 +2796,32 @@ export function AIConsole() {
         ? ((contextPayload as Record<string, unknown>).enabledToolIds as string[])
         : []
 
-      const response = await fetch(`${API_BASE}/api/v1/chat/stream`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: trimmedInput,
-          conversationId: nextConversationId,
-          traceId,
-          context: contextPayload,
-        }),
-        signal: abortController.signal,
-      })
+      // If the LangGraph agent is paused with interrupt(), resume it
+      // by calling /stream/resume instead of starting a new /stream
+      const isResume = resumeRequiredRef.current
+      resumeRequiredRef.current = false
+
+      const response = isResume
+        ? await fetch(`${API_BASE}/api/v1/chat/stream/resume`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              conversationId: nextConversationId,
+              resumeValue: trimmedInput,
+            }),
+            signal: abortController.signal,
+          })
+        : await fetch(`${API_BASE}/api/v1/chat/stream`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              message: trimmedInput,
+              conversationId: nextConversationId,
+              traceId,
+              context: contextPayload,
+            }),
+            signal: abortController.signal,
+          })
 
       if (!response.ok || !response.body) {
         throw new Error(`${t('requestFailedHttp')}: HTTP ${response.status}`)
@@ -2865,6 +2882,11 @@ export function AIConsole() {
               content: assistantContent,
               status: 'streaming',
             }))
+            // If the agent is paused with interrupt(), track that the next
+            // message should be sent to /stream/resume instead of /stream
+            if ((payload.content as Record<string, unknown>)?.resumeRequired) {
+              resumeRequiredRef.current = true
+            }
           }
 
           // 处理 'start' 类型消息（包含 conversationId）

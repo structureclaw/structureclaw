@@ -69,10 +69,20 @@ export function langGraphEventToChunks(
         chunks.push({
           type: 'interaction_update',
           content: {
-            interactionType: 'clarification',
-            question: value?.question || 'Please provide additional information',
-            options: value?.options || [],
+            questions: [
+              {
+                question: value?.question || 'Please provide additional information',
+                label: value?.question || 'Clarification needed',
+              },
+            ],
+            conversationStage: 'awaiting_user_input',
+            pending: {
+              criticalMissing: [],
+            },
+            // Custom fields for the LangGraph agent — frontend uses these
+            // to decide whether to call /stream or /stream/resume
             resumeRequired: true,
+            options: value?.options || [],
           },
         });
       }
