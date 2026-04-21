@@ -15,9 +15,6 @@ import { logger } from '../utils/logger.js';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import { interrupt } from '../../node_modules/@langchain/langgraph/dist/interrupt.js';
 import type { AgentState } from './state.js';
-// Workaround: moduleResolution "node" doesn't support package.json exports.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import { Command } from '../../node_modules/@langchain/langgraph/dist/constants.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -345,9 +342,23 @@ export function createUpdateSessionConfigTool() {
         updatedKeys.push('selectedSkillIds');
       }
 
-      // Return a Command that updates graph state so changes survive across turns
-      return new Command({
-        update: stateUpdate,
+      // Apply state update via globalThis so tools can read the updated config.
+      // We cannot return Command() here because it breaks the ToolNode message chain —
+      // the ToolNode expects a string/serialisable value to wrap in a ToolMessage.
+      const currentState = (globalThis as any).__agentState as AgentState | undefined;
+      if (currentState) {
+        if (stateUpdate.policy) {
+          (currentState as any).policy = { ...(currentState as any).policy, ...stateUpdate.policy };
+        }
+        if (stateUpdate.selectedSkillIds) {
+          (currentState as any).selectedSkillIds = stateUpdate.selectedSkillIds;
+        }
+      }
+
+      return JSON.stringify({
+        success: true,
+        updatedKeys,
+        message: `Updated: ${updatedKeys.join(', ') || 'nothing'}`,
       });
     },
     {
