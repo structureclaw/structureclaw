@@ -3627,7 +3627,7 @@ export function AIConsole() {
             </div>
           </div>
 
-          {pendingOptions.length > 0 && !streaming && (
+          {pendingOptions.length > 0 && !isStreaming && (
             <div className="flex flex-wrap gap-2 px-4 py-2">
               {pendingOptions.map((option) => (
                 <button
