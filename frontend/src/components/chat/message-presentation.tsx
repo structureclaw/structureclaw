@@ -165,7 +165,7 @@ export function MessagePresentationView({
               const hasSteps = phase.steps.length > 0
               return (
                 <details key={phase.phaseId} open className="rounded-xl border border-border/70 bg-background/70 dark:border-white/10 dark:bg-black/20">
-                  <summary className="flex cursor-pointer items-center gap-2 px-3 py-2">
+                  <summary className="flex cursor-pointer items-center gap-2 px-3 py-2" aria-label={`${phaseLabel} — ${getPhaseStatusLabel(phase.status, t)}`}>
                     <span className="text-sm font-medium text-foreground flex-1">{phaseLabel}</span>
                     <Badge
                       variant="outline"
@@ -217,7 +217,7 @@ export function MessagePresentationView({
                             </Badge>
                           </div>
                           {step.errorMessage ? (
-                            <div className="mt-1 text-xs text-rose-600 dark:text-rose-300">
+                            <div className="mt-1 text-xs text-rose-600 dark:text-rose-300" role="alert">
                               {step.errorMessage}
                             </div>
                           ) : null}
@@ -240,7 +240,7 @@ export function MessagePresentationView({
             })}
           </div>
           {presentation.status === 'streaming' && (
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 pt-1" role="status">
               <svg className="h-3 w-3 shrink-0 animate-spin text-cyan-600 dark:text-cyan-300" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
