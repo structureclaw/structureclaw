@@ -13,6 +13,9 @@ import { emptySessionState, type AgentState } from './state.js';
 import { getCheckpointerDataDir, getWorkspaceRoot } from './config.js';
 import type { AgentStreamChunk } from '../services/agent.js';
 import type { AppLocale } from '../services/locale.js';
+import { createLocalAnalysisEngineClient } from '../services/analysis-execution.js';
+import { createLocalCodeCheckClient } from '../services/code-check-execution.js';
+import { createLocalStructureProtocolClient } from '../services/structure-protocol-execution.js';
 import { logger } from '../utils/logger.js';
 
 // ---------------------------------------------------------------------------
@@ -65,9 +68,12 @@ export class LangGraphAgentService {
     this.checkpointer = new FileCheckpointer(getCheckpointerDataDir());
     this.workspaceRoot = getWorkspaceRoot();
 
-    // Expose skillRuntime globally for tool factories
-    // (tools need access but can't receive it via state in the current MVP)
+    // Expose skillRuntime and execution clients globally for tool factories.
+    // Tools need access but can't receive it via LangGraph state in the current MVP.
     (globalThis as any).__skillRuntime = skillRuntime;
+    (globalThis as any).__engineClient = createLocalAnalysisEngineClient();
+    (globalThis as any).__codeCheckClient = createLocalCodeCheckClient();
+    (globalThis as any).__structureProtocolClient = createLocalStructureProtocolClient();
   }
 
   /**

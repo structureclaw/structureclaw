@@ -333,6 +333,195 @@ export function createUpdateSessionConfigTool() {
 }
 
 // ---------------------------------------------------------------------------
+// Engineering execution tools (wrap AgentSkillRuntime execution methods)
+// ---------------------------------------------------------------------------
+
+export function createValidateModelTool(skillRuntime: AgentSkillRuntime) {
+  return tool(
+    async (input: { modelJson: string; engineId?: string }) => {
+      const model = JSON.parse(input.modelJson) as Record<string, unknown>;
+      const client = (globalThis as any).__structureProtocolClient;
+      if (!client) {
+        return JSON.stringify({ error: 'Structure protocol client not available' });
+      }
+      const result = await skillRuntime.executeValidationSkill({
+        model,
+        engineId: input.engineId,
+        structureProtocolClient: client,
+      });
+      return JSON.stringify(result);
+    },
+    {
+      name: 'validate_model',
+      description:
+        'Validate a structural model for correctness (connectivity, geometry, loads). ' +
+        'Returns validation errors and warnings.',
+      schema: z.object({
+        modelJson: z.string().describe('JSON string of the structural model to validate'),
+        engineId: z.string().optional().describe('Optional analysis engine ID'),
+      }),
+    },
+  );
+}
+
+export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
+  return tool(
+    async (input: {
+      modelJson: string;
+      analysisType: string;
+      engineId?: string;
+      skillIdsJson?: string;
+    }) => {
+      const model = JSON.parse(input.modelJson) as Record<string, unknown>;
+      const skillIds = input.skillIdsJson
+        ? JSON.parse(input.skillIdsJson) as string[]
+        : undefined;
+      const engineClient = (globalThis as any).__engineClient;
+      if (!engineClient) {
+        return JSON.stringify({ error: 'Analysis engine client not available' });
+      }
+      const analysisType = (input.analysisType || 'static') as 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+      const traceId = `lg-${Date.now()}`;
+
+      const postToEngineWithRetry = async (
+        path: string,
+        payload: Record<string, unknown>,
+        opts: { retries: number; traceId: string; tool: 'run_analysis'; signal?: AbortSignal },
+      ) => {
+        let lastError: unknown;
+        for (let attempt = 0; attempt <= opts.retries; attempt++) {
+          try {
+            return await engineClient.post(path, payload, { signal: opts.signal });
+          } catch (error) {
+            lastError = error;
+            if (attempt === opts.retries) throw error;
+          }
+        }
+        throw lastError;
+      };
+
+      const result = await skillRuntime.executeAnalysisSkill({
+        traceId,
+        analysisType,
+        engineId: input.engineId,
+        model,
+        parameters: {},
+        skillIds,
+        postToEngineWithRetry,
+      });
+      return JSON.stringify(result);
+    },
+    {
+      name: 'run_analysis',
+      description:
+        'Execute a structural analysis (static, dynamic, seismic, or nonlinear). ' +
+        'Requires a validated model JSON. Returns analysis results including displacements, forces, and reactions.',
+      schema: z.object({
+        modelJson: z.string().describe('JSON string of the structural model'),
+        analysisType: z
+          .enum(['static', 'dynamic', 'seismic', 'nonlinear'])
+          .describe('Type of analysis to perform'),
+        engineId: z.string().optional().describe('Analysis engine ID (e.g. builtin-opensees, builtin-pkpm)'),
+        skillIdsJson: z.string().optional().describe('JSON array of selected skill IDs'),
+      }),
+    },
+  );
+}
+
+export function createRunCodeCheckTool(skillRuntime: AgentSkillRuntime) {
+  return tool(
+    async (input: {
+      modelJson: string;
+      analysisJson: string;
+      designCode: string;
+      engineId?: string;
+    }) => {
+      const model = JSON.parse(input.modelJson) as Record<string, unknown>;
+      const analysis = JSON.parse(input.analysisJson);
+      const codeCheckClient = (globalThis as any).__codeCheckClient;
+      if (!codeCheckClient) {
+        return JSON.stringify({ error: 'Code check client not available' });
+      }
+      const traceId = `lg-cc-${Date.now()}`;
+      const result = await skillRuntime.executeCodeCheckSkill({
+        codeCheckClient,
+        traceId,
+        designCode: input.designCode || 'GB50017',
+        model,
+        analysis,
+        analysisParameters: {},
+        engineId: input.engineId,
+      });
+      return JSON.stringify(result);
+    },
+    {
+      name: 'run_code_check',
+      description:
+        'Run code compliance check against a design code (e.g. GB50017, GB50010, GB50011). ' +
+        'Requires a model and analysis results. Returns pass/fail status for each check.',
+      schema: z.object({
+        modelJson: z.string().describe('JSON string of the structural model'),
+        analysisJson: z.string().describe('JSON string of analysis results'),
+        designCode: z
+          .string()
+          .describe('Design code to check against (GB50010, GB50011, GB50017, JGJ3)'),
+        engineId: z.string().optional().describe('Optional engine ID'),
+      }),
+    },
+  );
+}
+
+export function createGenerateReportTool(skillRuntime: AgentSkillRuntime) {
+  return tool(
+    async (input: {
+      message: string;
+      analysisJson: string;
+      analysisType: string;
+      codeCheckJson?: string;
+      locale?: string;
+      draftStateJson?: string;
+      skillIdsJson?: string;
+    }) => {
+      const analysis = JSON.parse(input.analysisJson);
+      const codeCheck = input.codeCheckJson ? JSON.parse(input.codeCheckJson) : undefined;
+      const draftState = input.draftStateJson ? JSON.parse(input.draftStateJson) : undefined;
+      const skillIds = input.skillIdsJson ? JSON.parse(input.skillIdsJson) as string[] : undefined;
+      const locale = (input.locale === 'en' ? 'en' : 'zh') as 'zh' | 'en';
+      const analysisType = (input.analysisType || 'static') as 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+
+      const result = await skillRuntime.executeReportSkill({
+        message: input.message,
+        analysisType,
+        analysis,
+        codeCheck,
+        format: 'both',
+        locale,
+        draft: draftState,
+        skillIds,
+      });
+      return JSON.stringify(result);
+    },
+    {
+      name: 'generate_report',
+      description:
+        'Generate an engineering report with summary, key metrics, and compliance narrative. ' +
+        'Requires analysis results. Optionally includes code check results.',
+      schema: z.object({
+        message: z.string().describe('Original user message / intent'),
+        analysisJson: z.string().describe('JSON string of analysis results'),
+        analysisType: z
+          .enum(['static', 'dynamic', 'seismic', 'nonlinear'])
+          .describe('Analysis type that was performed'),
+        codeCheckJson: z.string().optional().describe('JSON string of code check results'),
+        locale: z.enum(['zh', 'en']).optional().describe('Report language'),
+        draftStateJson: z.string().optional().describe('JSON string of current DraftState'),
+        skillIdsJson: z.string().optional().describe('JSON array of selected skill IDs'),
+      }),
+    },
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Tool aggregation
 // ---------------------------------------------------------------------------
 
@@ -344,10 +533,18 @@ export interface ToolDeps {
 export function createAllTools(deps: ToolDeps) {
   const { skillRuntime } = deps;
   return [
-    // Engineering tools
+    // Engineering detection tools
     createDetectStructureTypeTool(skillRuntime),
     createExtractDraftParamsTool(skillRuntime),
     createBuildModelTool(skillRuntime),
+
+    // Engineering execution tools
+    createValidateModelTool(skillRuntime),
+    createRunAnalysisTool(skillRuntime),
+    createRunCodeCheckTool(skillRuntime),
+    createGenerateReportTool(skillRuntime),
+
+    // Interaction
     createAskUserClarificationTool(),
 
     // Workspace tools
