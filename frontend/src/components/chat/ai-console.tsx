@@ -1,6 +1,7 @@
 'use client'
 
 import dynamic from 'next/dynamic'
+import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { MarkdownBody } from './markdown-body'
@@ -1895,6 +1896,7 @@ export function AIConsole() {
 
   const [probePopupOpen, setProbePopupOpen] = useState(false)
   const [probeAllRunning, setProbeAllRunning] = useState(false)
+  const probeButtonRef = useRef<HTMLButtonElement>(null)
 
   async function probeAllEngines() {
     setProbeAllRunning(true)
@@ -3595,6 +3597,7 @@ export function AIConsole() {
                         })}
                         <div className="relative ml-1">
                           <button
+                            ref={probeButtonRef}
                             type="button"
                             className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground disabled:opacity-50 dark:border-white/10 dark:bg-white/5"
                             onClick={() => {
@@ -3610,52 +3613,6 @@ export function AIConsole() {
                             {probeAllRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
                             {t('engineProbeButton')}
                           </button>
-                          {probePopupOpen && Object.keys(probeResults).length > 0 && (
-                            <div className="absolute left-0 top-full z-50 mt-2 w-80 rounded-xl border border-border/70 bg-card p-4 shadow-xl dark:border-white/10 dark:bg-slate-950">
-                              <div className="mb-3 flex items-center justify-between">
-                                <span className="text-xs font-semibold text-foreground">{t('engineProbeButton')}</span>
-                                <button
-                                  type="button"
-                                  className="text-[11px] text-muted-foreground hover:text-foreground"
-                                  onClick={() => setProbePopupOpen(false)}
-                                  aria-label="Close"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                              <div className="space-y-2.5">
-                                {allEngines.map((engine) => {
-                                  const probe = probeResults[engine.id]
-                                  if (!probe) return null
-                                  return (
-                                    <div key={engine.id} className="rounded-lg border border-border/50 bg-background/60 p-2.5 dark:border-white/5 dark:bg-white/5">
-                                      <div className="flex items-center justify-between gap-2">
-                                        <div className="flex items-center gap-1.5">
-                                          {probe.loading ? (
-                                            <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
-                                          ) : (
-                                            <span className={`inline-block h-2 w-2 rounded-full ${probe.passed ? 'bg-emerald-500' : 'bg-red-400'}`} />
-                                          )}
-                                          <span className="text-xs font-medium text-foreground">{engine.name}</span>
-                                        </div>
-                                        <span className="text-[11px] text-muted-foreground">
-                                          {probe.loading ? t('engineProbeRunning')
-                                            : probe.passed ? t('engineProbePassed')
-                                            : t('engineProbeFailed')}
-                                        </span>
-                                      </div>
-                                      {probe.durationMs != null && !probe.loading && (
-                                        <div className="mt-1 text-[11px] text-muted-foreground">{t('engineProbeDuration')}: {probe.durationMs}ms</div>
-                                      )}
-                                      {probe.error && !probe.loading && (
-                                        <div className="mt-1 text-[11px] leading-4 text-red-600 dark:text-red-400">{probe.error}</div>
-                                      )}
-                                    </div>
-                                  )
-                                })}
-                              </div>
-                            </div>
-                          )}
                         </div>
                       </div>
                     )}
@@ -3757,6 +3714,69 @@ export function AIConsole() {
         snapshot={activeVisualizationSnapshot}
         t={t}
       />
+      {probePopupOpen && Object.keys(probeResults).length > 0 && typeof window !== 'undefined' && createPortal(
+        <>
+          <div
+            className="fixed inset-0 z-[70]"
+            onClick={() => setProbePopupOpen(false)}
+          />
+          <div
+            className="fixed z-[71] w-80 rounded-xl border border-border/70 bg-card p-4 shadow-xl dark:border-white/10 dark:bg-slate-950"
+            style={{
+              top: probeButtonRef.current
+                ? probeButtonRef.current.getBoundingClientRect().bottom + 8
+                : 'auto',
+              left: probeButtonRef.current
+                ? Math.min(probeButtonRef.current.getBoundingClientRect().left, window.innerWidth - 336)
+                : 'auto',
+            }}
+          >
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-xs font-semibold text-foreground">{t('engineProbeButton')}</span>
+              <button
+                type="button"
+                className="text-[11px] text-muted-foreground hover:text-foreground"
+                onClick={() => setProbePopupOpen(false)}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-2.5">
+              {allEngines.map((engine) => {
+                const probe = probeResults[engine.id]
+                if (!probe) return null
+                return (
+                  <div key={engine.id} className="rounded-lg border border-border/50 bg-background/60 p-2.5 dark:border-white/5 dark:bg-white/5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        {probe.loading ? (
+                          <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
+                        ) : (
+                          <span className={`inline-block h-2 w-2 rounded-full ${probe.passed ? 'bg-emerald-500' : 'bg-red-400'}`} />
+                        )}
+                        <span className="text-xs font-medium text-foreground">{engine.name}</span>
+                      </div>
+                      <span className="text-[11px] text-muted-foreground">
+                        {probe.loading ? t('engineProbeRunning')
+                          : probe.passed ? t('engineProbePassed')
+                          : t('engineProbeFailed')}
+                      </span>
+                    </div>
+                    {probe.durationMs != null && !probe.loading && (
+                      <div className="mt-1 text-[11px] text-muted-foreground">{t('engineProbeDuration')}: {probe.durationMs}ms</div>
+                    )}
+                    {probe.error && !probe.loading && (
+                      <div className="mt-1 text-[11px] leading-4 text-red-600 dark:text-red-400">{probe.error}</div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </>,
+        document.body,
+      )}
     </div>
   )
 }
