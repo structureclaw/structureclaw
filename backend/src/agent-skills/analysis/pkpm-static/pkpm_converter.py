@@ -133,24 +133,24 @@ def _make_section_shape(
 
     if sec_kind_attr == "IDSec_I":
         # PKPM I-section: B=tw, H=height, U=flange_width, T=tf, D=flange_width, F=tf
-        if H  is not None: sh.Set_H(int(H))
-        if tw is not None: sh.Set_B(int(tw))     # web thickness → B
-        if B  is not None: sh.Set_U(int(B))      # flange width  → U (top)
-        if tf is not None: sh.Set_T(int(tf))      # flange thick  → T (top)
-        if B  is not None: sh.Set_D(int(B))      # flange width  → D (bottom, symmetric)
-        if tf is not None: sh.Set_F(int(tf))      # flange thick  → F (bottom, symmetric)
+        if H  is not None: sh.Set_H(round(H))
+        if tw is not None: sh.Set_B(round(tw))     # web thickness → B
+        if B  is not None: sh.Set_U(round(B))      # flange width  → U (top)
+        if tf is not None: sh.Set_T(round(tf))      # flange thick  → T (top)
+        if B  is not None: sh.Set_D(round(B))      # flange width  → D (bottom, symmetric)
+        if tf is not None: sh.Set_F(round(tf))      # flange thick  → F (bottom, symmetric)
     elif sec_kind_attr == "IDSec_Box":
-        if H is not None: sh.Set_H(int(H))
-        if B is not None: sh.Set_B(int(B))
-        if T is not None: sh.Set_T(int(T))
+        if H is not None: sh.Set_H(round(H))
+        if B is not None: sh.Set_B(round(B))
+        if T is not None: sh.Set_T(round(T))
     elif sec_kind_attr == "IDSec_Tube":
-        if D is not None: sh.Set_D(int(D))
-        if T is not None: sh.Set_T(int(T))
+        if D is not None: sh.Set_D(round(D))
+        if T is not None: sh.Set_T(round(T))
     else:
-        if H is not None: sh.Set_H(int(H))
-        if B is not None: sh.Set_B(int(B))
-        if T is not None: sh.Set_T(int(T))
-        if D is not None: sh.Set_D(int(D))
+        if H is not None: sh.Set_H(round(H))
+        if B is not None: sh.Set_B(round(B))
+        if T is not None: sh.Set_T(round(T))
+        if D is not None: sh.Set_D(round(D))
 
     # Material type: 5=steel, 6=concrete
     sh.Set_M(5 if material_family == "steel" else 6)
@@ -200,10 +200,7 @@ def _register_section(
             _sec_kind, sh = _make_section_shape(shape_dict, material_family)
             csec.SetUserSect(_sec_kind, sh)
         elif std_name:
-            csec.SetUserSect(
-                APIPyInterface.SectionKind.IDSec_I,
-                APIPyInterface.SectionShape(),
-            )
+            csec.SetStandSteelSect(std_name)
         else:
             raise ValueError(f"Section '{sec['id']}' has no standard_steel_name or shape.")
         pm_idx = model.AddColumnSection(csec)
@@ -213,10 +210,7 @@ def _register_section(
             _sec_kind, sh = _make_section_shape(shape_dict, material_family)
             bsec.SetUserSect(_sec_kind, sh)
         elif std_name:
-            bsec.SetUserSect(
-                APIPyInterface.SectionKind.IDSec_I,
-                APIPyInterface.SectionShape(),
-            )
+            bsec.SetStandSteelSect(std_name)
         else:
             raise ValueError(f"Section '{sec['id']}' has no standard_steel_name or shape.")
         pm_idx = model.AddBeamSection(bsec)
@@ -288,9 +282,7 @@ def _build_plan_nodes(
 
 def _configure_satwe_params(
     model: APIPyInterface.Model,
-    data: dict,
     material_family: str,
-    damping_ratio: float = 0.0,
 ) -> None:
     """Set SATWE design parameters via ProjectPara (KIND field codes).
 
@@ -528,9 +520,9 @@ def convert_v2_to_jws(
         model.AddNaturalFloor(rf)
 
     # ---- Configure SATWE design parameters ----
-    _configure_satwe_params(model, data, material_family, damping_ratio)
-    # Diagnostic: log parameter values for index discovery
-    _log_design_params(model)
+    _configure_satwe_params(model, material_family)
+    if os.environ.get("PKPM_DEBUG_PARAMS"):
+        _log_design_params(model)
 
     model.SavePMModel()
     return jws_path, {

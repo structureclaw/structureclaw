@@ -15,7 +15,6 @@ PKPM_WORK_DIR : str, optional
 from __future__ import annotations
 
 import os
-import re
 import subprocess
 import tempfile
 import uuid
@@ -351,7 +350,7 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
                     pmid = node.GetPmID()
                     node_key = (pmid, node.GetFloorNo())
                     case_node_disps.setdefault(case_name, {})[node_key] = {
-                        "ux": abs(vx), "uy": abs(vy), "uz": abs(vz),
+                        "ux": vx, "uy": vy, "uz": vz,
                         "rx": 0.0, "ry": 0.0, "rz": 0.0,
                     }
                     mag = (vx ** 2 + vy ** 2 + vz ** 2) ** 0.5
@@ -732,16 +731,6 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     envelope: Dict[str, Any] = {}
     if max_disp_node:
         envelope[f"node:{max_disp_node}:maxAbsDisplacement"] = max_disp
-
-    # Build envelope summary with control cases
-    envelope_summary: Dict[str, Any] = {
-        "maxAbsDisplacement": max_disp,
-        "controlCase": {"displacement": ""},
-    }
-    for nid, item in node_displacement_envelope.items():
-        if item["maxAbsDisplacement"] == max_disp:
-            envelope_summary["controlCase"]["displacement"] = item.get("controlCase", "")
-            break
 
     # Build result dict
     result_dict: Dict[str, Any] = {
