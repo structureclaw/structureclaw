@@ -1289,7 +1289,19 @@ function AnalysisPanel({
             onKeyDown={(e) => {
               if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
                 e.preventDefault()
-                onTabChange(activeTab === 'analysis' ? 'report' : 'analysis')
+                const nextTab = activeTab === 'analysis' ? 'report' : 'analysis'
+                onTabChange(nextTab)
+                requestAnimationFrame(() => {
+                  document.getElementById(nextTab === 'analysis' ? 'tab-analysis' : 'tab-report')?.focus()
+                })
+              } else if (e.key === 'Home') {
+                e.preventDefault()
+                onTabChange('analysis')
+                requestAnimationFrame(() => { document.getElementById('tab-analysis')?.focus() })
+              } else if (e.key === 'End') {
+                e.preventDefault()
+                onTabChange('report')
+                requestAnimationFrame(() => { document.getElementById('tab-report')?.focus() })
               }
             }}
           >
@@ -1965,7 +1977,13 @@ export function AIConsole() {
         setProbeResults((prev) => ({ ...prev, [engineId]: { passed: false, error: text || `HTTP ${response.status}`, loading: false } }))
         return
       }
-      const payload = await response.json()
+      let payload: { passed?: unknown; durationMs?: unknown; error?: unknown }
+      try {
+        payload = await response.json()
+      } catch {
+        setProbeResults((prev) => ({ ...prev, [engineId]: { passed: false, error: 'Invalid JSON response', loading: false } }))
+        return
+      }
       setProbeResults((prev) => ({
         ...prev,
         [engineId]: {
@@ -3318,7 +3336,7 @@ export function AIConsole() {
                 </div>
               )}
 
-              {messages.map((message) => (
+              {messages.map((message, msgIdx) => (
                 <div
                   key={message.id}
                   className={cn('flex gap-3', message.role === 'user' ? 'justify-end' : 'justify-start')}
@@ -3380,8 +3398,7 @@ export function AIConsole() {
                           type="button"
                           className="inline-flex items-center gap-1 rounded-full border border-rose-300/40 bg-rose-300/10 px-2.5 py-1 text-[11px] text-rose-800 hover:bg-rose-300/20 dark:text-rose-200"
                           onClick={() => {
-                            const msgIndex = messages.indexOf(message)
-                            const prevUserMsg = msgIndex > 0 ? messages[msgIndex - 1] : null
+                            const prevUserMsg = msgIdx > 0 ? messages[msgIdx - 1] : null
                             if (prevUserMsg?.role === 'user') {
                               setInput(prevUserMsg.content)
                               composerTextareaRef.current?.focus()
@@ -3627,7 +3644,7 @@ export function AIConsole() {
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
                   onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
+                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
                       e.preventDefault()
                       handleSubmit()
                     }
@@ -3642,7 +3659,7 @@ export function AIConsole() {
                       className="rounded-full border border-border bg-background/70 px-3 py-1.5 text-sm text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
                       onClick={() => setContextOpen((current) => !current)}
                       aria-expanded={contextOpen}
-                      aria-controls="context-section"
+                      aria-controls={contextOpen ? 'context-section' : undefined}
                     >
                       {contextOpen ? t('collapseContext') : t('expandContext')}
                     </button>
