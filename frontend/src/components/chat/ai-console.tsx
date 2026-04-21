@@ -1656,7 +1656,6 @@ export function AIConsole() {
   const [hasExplicitToolSelection, setHasExplicitToolSelection] = useState(false)
   const [allEngines, setAllEngines] = useState<Array<{ id: string; name: string; available: boolean; priority: number; status: string; unavailableReason?: string }>>([])
   const [availableEngines, setAvailableEngines] = useState<Array<{ id: string; name: string; available: boolean; priority: number }>>([])
-  const [selectedEngineId, setSelectedEngineId] = useState('')
   const [probeResults, setProbeResults] = useState<Record<string, { passed: boolean; durationMs?: number; error?: string; loading?: boolean }>>({})
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
   const [latestModelVisualizationSnapshot, setLatestModelVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
@@ -2832,7 +2831,7 @@ export function AIConsole() {
         enabledToolIds: effectiveEnabledToolIds,
         model: contextModel,
         modelFormat: contextModel ? 'structuremodel-v2' : undefined,
-        engineId: selectedEngineId || undefined,
+        engineId: undefined,
         autoCodeCheck: hasSelectedCodeCheckSkill || undefined,
         resumeFromMessage,
       }
@@ -3783,39 +3782,6 @@ export function AIConsole() {
                           {t('visualizationModelPreviewHelp')}
                         </div>
                       ) : null}
-                      {availableEngines.length > 1 && (
-                        <div className="space-y-1 pt-2">
-                          <div className="text-sm font-semibold text-foreground">{t('analysisEngineSelectorLabel')}</div>
-                          <div className="text-xs leading-5 text-muted-foreground">{t('analysisEngineSelectorHelp')}</div>
-                          <div className="mt-1 flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              className={`rounded-full border px-3 py-1 text-xs transition ${
-                                !selectedEngineId
-                                  ? 'border-cyan-300/60 bg-cyan-300/15 text-cyan-900 dark:text-cyan-100'
-                                  : 'border-border/70 bg-background/70 text-muted-foreground hover:border-cyan-300/30 hover:text-foreground dark:border-white/10 dark:bg-white/5'
-                              }`}
-                              onClick={() => setSelectedEngineId('')}
-                            >
-                              {t('analysisEngineAutoOption')}
-                            </button>
-                            {availableEngines.map((engine) => (
-                              <button
-                                key={engine.id}
-                                type="button"
-                                className={`rounded-full border px-3 py-1 text-xs transition ${
-                                  selectedEngineId === engine.id
-                                    ? 'border-cyan-300/60 bg-cyan-300/15 text-cyan-900 dark:text-cyan-100'
-                                    : 'border-border/70 bg-background/70 text-muted-foreground hover:border-cyan-300/30 hover:text-foreground dark:border-white/10 dark:bg-white/5'
-                                }`}
-                                onClick={() => setSelectedEngineId(selectedEngineId === engine.id ? '' : engine.id)}
-                              >
-                                {engine.name}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
                     </div>
                   </div>
                 )}
