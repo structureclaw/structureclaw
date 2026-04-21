@@ -109,10 +109,15 @@ function shouldContinue(
 ): 'tools' | typeof END {
   const msgs = Array.isArray(state.messages) ? state.messages : [];
   const lastMessage = msgs[msgs.length - 1];
+  // Use duck typing instead of instanceof AIMessage — LangGraph's StreamMessagesHandler
+  // sets lc_prefer_streaming=true, which causes ChatOpenAI.invoke() to stream internally
+  // and return an AIMessageChunk (extends BaseMessageChunk, NOT AIMessage).
+  // LangGraph's own toolsCondition() uses the same duck-typing approach.
   if (
-    lastMessage instanceof AIMessage &&
-    lastMessage.tool_calls &&
-    lastMessage.tool_calls.length > 0
+    lastMessage != null &&
+    'tool_calls' in lastMessage &&
+    Array.isArray((lastMessage as any).tool_calls) &&
+    (lastMessage as any).tool_calls.length > 0
   ) {
     return 'tools';
   }

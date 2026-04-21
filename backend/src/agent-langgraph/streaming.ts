@@ -161,7 +161,7 @@ export function langGraphEventToChunks(
             } else if (typeof msg.content === 'string' && msg.content.length > 0) {
               chunks.push({
                 type: 'result',
-                content: { summary: msg.content, mode: 'conversation' },
+                content: { response: msg.content, mode: 'conversation' },
               });
             }
           }
