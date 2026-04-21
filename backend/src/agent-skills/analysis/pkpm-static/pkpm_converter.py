@@ -22,6 +22,7 @@ V2 StructureModelV2 JSON → PKPM JWS (via APIPyInterface)
 from __future__ import annotations
 
 import math
+import os
 import re
 import sys
 from pathlib import Path
