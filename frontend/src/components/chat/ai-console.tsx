@@ -89,6 +89,8 @@ type AgentInteraction = {
   recommendedNextStep?: string
   questions?: Array<{ question?: string; label?: string }>
   pending?: { criticalMissing?: string[]; nonCriticalMissing?: string[] }
+  options?: string[]
+  resumeRequired?: boolean
 }
 
 type AgentResult = {
@@ -838,6 +840,7 @@ function buildInteractionMessage(
   const fallbackSupportNote = payload.content?.fallbackSupportNote
   const recommendedNextStep = payload.content?.recommendedNextStep
   const criticalMissing = payload.content?.pending?.criticalMissing || []
+  const options = payload.content?.options || []
   const lines: string[] = []
 
   if (conversationStage) {
@@ -856,6 +859,12 @@ function buildInteractionMessage(
 
   if (criticalMissing.length > 0) {
     lines.push(`${t('interactionMissingInfo')}: ${criticalMissing.join(locale === 'zh' ? '、' : ', ')}`)
+  }
+
+  if (options.length > 0) {
+    lines.push('')
+    lines.push(locale === 'zh' ? '**可选回复：**' : '**Suggested answers:**')
+    lines.push(...options.map((opt, i) => `${i + 1}. \`${opt}\``))
   }
 
   if (recommendedNextStep) {
@@ -2938,14 +2947,17 @@ export function AIConsole() {
           if (payload.type === 'interaction_update') {
             const interactionMessage = buildInteractionMessage(payload, t, locale)
             assistantContent = interactionMessage
-            // Also push the interaction text into the presentation's summaryText
-            // so it appears inside MessagePresentationView. Without this the
-            // exclusive rendering (presentation ? PresentationView : MarkdownBody)
-            // hides message.content when a presentation already exists.
+            // Append interaction text below the existing LLM output in
+            // summaryText so the user sees both the response and the
+            // follow-up questions.
             if (currentPresentationRef.current) {
+              const existingSummary = currentPresentationRef.current.summaryText || ''
+              const combinedSummary = existingSummary
+                ? `${existingSummary}\n\n---\n\n${interactionMessage}`
+                : interactionMessage
               const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
                 type: 'summary_replace',
-                summaryText: interactionMessage,
+                summaryText: combinedSummary,
               })
               syncAssistantPresentationMessage(nextPresentation, 'streaming')
             } else {

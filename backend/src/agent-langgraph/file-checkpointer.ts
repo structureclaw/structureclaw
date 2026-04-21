@@ -44,8 +44,8 @@ interface CheckpointListOptions {
 }
 
 interface StoredCheckpoint {
-  checkpoint: Checkpoint;
-  metadata: CheckpointMetadata;
+  checkpoint: string;   // serde-serialized JSON string
+  metadata: string;     // serde-serialized JSON string
   parentCheckpointId?: string;
 }
 
@@ -107,15 +107,17 @@ export class FileCheckpointer extends BaseCheckpointSaver {
     try {
       const raw = await fs.readFile(targetFile, 'utf-8');
       const stored: StoredCheckpoint = JSON.parse(raw);
+      const deserializedCheckpoint = await this.serde.loadsTyped('json', stored.checkpoint) as Checkpoint;
+      const deserializedMetadata = await this.serde.loadsTyped('json', stored.metadata) as CheckpointMetadata;
       return {
         config: {
           configurable: {
             thread_id: threadId,
-            checkpoint_id: stored.checkpoint.id,
+            checkpoint_id: deserializedCheckpoint.id,
           },
         },
-        checkpoint: stored.checkpoint,
-        metadata: stored.metadata,
+        checkpoint: deserializedCheckpoint,
+        metadata: deserializedMetadata,
         parentConfig: stored.parentCheckpointId
           ? {
               configurable: {
@@ -155,15 +157,17 @@ export class FileCheckpointer extends BaseCheckpointSaver {
       try {
         const raw = await fs.readFile(path.join(dir, file), 'utf-8');
         const stored: StoredCheckpoint = JSON.parse(raw);
+        const deserializedCheckpoint = await this.serde.loadsTyped('json', stored.checkpoint) as Checkpoint;
+        const deserializedMetadata = await this.serde.loadsTyped('json', stored.metadata) as CheckpointMetadata;
         yield {
           config: {
             configurable: {
               thread_id: threadId,
-              checkpoint_id: stored.checkpoint.id,
+              checkpoint_id: deserializedCheckpoint.id,
             },
           },
-          checkpoint: stored.checkpoint,
-          metadata: stored.metadata,
+          checkpoint: deserializedCheckpoint,
+          metadata: deserializedMetadata,
           parentConfig: stored.parentCheckpointId
             ? {
                 configurable: {
@@ -197,9 +201,20 @@ export class FileCheckpointer extends BaseCheckpointSaver {
     const parentCheckpointId = config.configurable?.checkpoint_id as string | undefined;
     const filePath = checkpointPath(this.dataDir, threadId, checkpoint.id);
 
+    // Use serde to serialize so LangChain message objects (BaseMessage etc.)
+    // retain their class identity through serialize → deserialize cycles.
+    const [, serializedCheckpoint] = await this.serde.dumpsTyped(checkpoint);
+    const [, serializedMetadata] = await this.serde.dumpsTyped(metadata);
+    const checkpointStr = typeof serializedCheckpoint === 'string'
+      ? serializedCheckpoint
+      : new TextDecoder().decode(serializedCheckpoint);
+    const metadataStr = typeof serializedMetadata === 'string'
+      ? serializedMetadata
+      : new TextDecoder().decode(serializedMetadata);
+
     const stored: StoredCheckpoint = {
-      checkpoint,
-      metadata,
+      checkpoint: checkpointStr,
+      metadata: metadataStr,
       parentCheckpointId,
     };
 
@@ -229,8 +244,19 @@ export class FileCheckpointer extends BaseCheckpointSaver {
     const dir = writesDir(this.dataDir, threadId, checkpointId);
     await fs.mkdir(dir, { recursive: true });
 
+    // Serialize writes through serde to preserve BaseMessage class identity
+    const serializedWrites = await Promise.all(
+      writes.map(async ([channel, value]) => {
+        const [, serialized] = await this.serde.dumpsTyped(value);
+        const serializedStr = typeof serialized === 'string'
+          ? serialized
+          : new TextDecoder().decode(serialized);
+        return [channel, serializedStr] as PendingWrite;
+      }),
+    );
+
     const filePath = path.join(dir, `${taskId}.json`);
-    await fs.writeFile(filePath, JSON.stringify(writes), 'utf-8');
+    await fs.writeFile(filePath, JSON.stringify(serializedWrites), 'utf-8');
   }
 
   // ----- deleteThread -----
