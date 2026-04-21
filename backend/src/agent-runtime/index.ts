@@ -249,7 +249,7 @@ export class AgentSkillRuntime {
 
     const input = {
       type: options.analysisType,
-      engineId: options.engineId,
+      engineId: options.engineId || selectedSkill?.engineId,
       model: options.model,
       parameters: options.parameters,
     };
