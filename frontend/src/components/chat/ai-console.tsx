@@ -1655,7 +1655,7 @@ export function AIConsole() {
   const [hasExplicitSkillSelection, setHasExplicitSkillSelection] = useState(false)
   const [hasExplicitToolSelection, setHasExplicitToolSelection] = useState(false)
   const [allEngines, setAllEngines] = useState<Array<{ id: string; name: string; available: boolean; priority: number; status: string; unavailableReason?: string }>>([])
-  const [availableEngines, setAvailableEngines] = useState<Array<{ id: string; name: string; available: boolean; priority: number }>>([])
+
   const [probeResults, setProbeResults] = useState<Record<string, { passed: boolean; durationMs?: number; error?: string; loading?: boolean }>>({})
   const [latestResult, setLatestResult] = useState<AgentResult | null>(null)
   const [latestModelVisualizationSnapshot, setLatestModelVisualizationSnapshot] = useState<VisualizationSnapshot | null>(null)
@@ -1931,11 +1931,9 @@ export function AIConsole() {
           unavailableReason: typeof e.unavailableReason === 'string' ? e.unavailableReason : undefined,
         }))
         setAllEngines(engines.sort((a, b) => b.priority - a.priority))
-        setAvailableEngines(engines.filter((e) => e.available))
       } catch {
         if (active) {
           setAllEngines([])
-          setAvailableEngines([])
         }
       }
     }

@@ -245,7 +245,7 @@ describe('AgentService orchestration', () => {
     svc.llm = null;
     stubExecutionClients(svc, {
       analyze: async (_path, payload) => {
-        expect(payload.engineId).toBeUndefined();
+        expect(payload.engineId).toBe('builtin-opensees');
         return {
           data: {
             schema_version: '2.0.0',
