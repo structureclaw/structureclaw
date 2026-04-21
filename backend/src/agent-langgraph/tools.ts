@@ -42,7 +42,7 @@ function safeResolve(workspaceRoot: string, requestedPath: string): string {
 
 export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
   return tool(
-    async (input: { message: string; locale?: string }, config: LangGraphRunnableConfig) => {
+    async (input: { message: string; locale?: string }, _config: LangGraphRunnableConfig) => {
       const state = (globalThis as any).__agentState as AgentState | undefined;
       const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
       // Prefer the user's original message from the graph state — the LLM
