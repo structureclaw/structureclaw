@@ -10,6 +10,9 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { AgentSkillRuntime } from '../agent-runtime/index.js';
 import type { LangGraphRunnableConfig } from '@langchain/langgraph';
+// Workaround: moduleResolution "node" doesn't support package.json exports.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import { interrupt } from '../../node_modules/@langchain/langgraph/dist/interrupt.js';
 import type { AgentState } from './state.js';
 
 // ---------------------------------------------------------------------------
@@ -150,25 +153,32 @@ export function createBuildModelTool(skillRuntime: AgentSkillRuntime) {
 export function createAskUserClarificationTool() {
   return tool(
     async (input: { question: string; optionsJson?: string }) => {
-      // In a full implementation, this would use LangGraph interrupt().
-      // For the MVP, return the question as-is so the agent knows it needs to ask.
-      // The streaming layer will surface this as a clarification event.
       const options = input.optionsJson
         ? JSON.parse(input.optionsJson) as string[]
         : undefined;
-      return JSON.stringify({
+
+      // Use LangGraph interrupt() to pause the graph and wait for user input.
+      // The payload is surfaced in __interrupt__ so the SSE layer can forward it.
+      // The graph resumes when the client sends a Command({ resume: <value> }).
+      const userResponse = interrupt({
         type: 'clarification_needed',
         question: input.question,
         options,
-        note: 'Ask the user directly in your response — do not call this tool again.',
+      }) as string;
+
+      // When resumed, the user's answer is returned here.
+      return JSON.stringify({
+        type: 'clarification_answered',
+        question: input.question,
+        answer: userResponse,
       });
     },
     {
       name: 'ask_user_clarification',
       description:
-        'Signal that critical information is missing and formulate a question for the user. ' +
+        'Pause execution and ask the user a clarification question. ' +
         'Use this when you cannot proceed without user input. ' +
-        'After calling this tool, include the question in your response text.',
+        'The graph will resume once the user provides an answer.',
       schema: z.object({
         question: z.string().describe('The question to ask the user'),
         optionsJson: z

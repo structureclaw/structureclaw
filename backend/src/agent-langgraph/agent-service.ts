@@ -16,6 +16,9 @@ import type { AppLocale } from '../services/locale.js';
 import { createLocalAnalysisEngineClient } from '../services/analysis-execution.js';
 import { createLocalCodeCheckClient } from '../services/code-check-execution.js';
 import { createLocalStructureProtocolClient } from '../services/structure-protocol-execution.js';
+// Workaround: moduleResolution "node" doesn't support package.json exports.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import { Command } from '../../node_modules/@langchain/langgraph/dist/constants.js';
 import { logger } from '../utils/logger.js';
 
 // ---------------------------------------------------------------------------
@@ -90,6 +93,7 @@ export class LangGraphAgentService {
     const graph = buildAgentGraph({
       skillRuntime: this.skillRuntime,
       skillManifests,
+      checkpointer: this.checkpointer,
     });
 
     const config = {
@@ -119,6 +123,39 @@ export class LangGraphAgentService {
   }
 
   /**
+   * Resume a paused agent (e.g. after a human-in-the-loop clarification).
+   * The conversationId identifies the checkpoint to resume from.
+   */
+  async *resumeStream(
+    conversationId: string,
+    resumeValue: string,
+    signal?: AbortSignal,
+  ): AsyncGenerator<AgentStreamChunk> {
+    const skillManifests = await this.skillRuntime.listSkillManifests();
+
+    const graph = buildAgentGraph({
+      skillRuntime: this.skillRuntime,
+      skillManifests,
+      checkpointer: this.checkpointer,
+    });
+
+    const config = {
+      configurable: {
+        thread_id: conversationId,
+      },
+    };
+
+    logger.info({ conversationId }, 'LangGraph agent resume');
+
+    const stream = await graph.stream(
+      new Command({ resume: resumeValue }),
+      { ...config, streamMode: ['updates', 'custom'] as any },
+    );
+
+    yield* streamGraphToChunks(stream, ['updates', 'custom']);
+  }
+
+  /**
    * Run the agent synchronously (non-streaming).
    * Returns the final result after the ReAct loop completes.
    */
@@ -132,6 +169,7 @@ export class LangGraphAgentService {
     const graph = buildAgentGraph({
       skillRuntime: this.skillRuntime,
       skillManifests,
+      checkpointer: this.checkpointer,
     });
 
     const config = {

@@ -109,6 +109,11 @@ const streamMessageSchema = z.object({
   }).optional(),
 });
 
+const resumeStreamSchema = z.object({
+  conversationId: z.string().min(1),
+  resumeValue: z.string().min(1).max(10000),
+});
+
 const persistMessagesSchema = z.object({
   userMessage: z.string().min(1).max(10000),
   assistantContent: z.string().max(10000).default(''),
@@ -802,6 +807,66 @@ export async function chatRoutes(fastify: FastifyInstance) {
     } finally {
       // Ensure messages are persisted even on unexpected errors.
       await persistStreamMessages(abortController.signal.aborted).catch(() => {});
+      reply.raw.off('close', onClose);
+      request.socket.off('close', onClose);
+    }
+  });
+
+  // Resume a paused LangGraph agent (human-in-the-loop clarification response)
+  fastify.post('/stream/resume', {
+    schema: {
+      tags: ['Chat'],
+      summary: 'Resume a paused agent after human clarification',
+    },
+  }, async (request: FastifyRequest<{ Body: z.infer<typeof resumeStreamSchema> }>, reply: FastifyReply) => {
+    if (getAgentEngine() !== 'langgraph') {
+      return reply.code(400).send({ error: 'Resume is only available with the LangGraph agent engine' });
+    }
+
+    const body = resumeStreamSchema.parse(request.body);
+    const userId = request.user?.id;
+
+    reply.hijack();
+    setSseCorsHeaders(request, reply);
+    reply.raw.setHeader('Content-Type', 'text/event-stream');
+    reply.raw.setHeader('Cache-Control', 'no-cache');
+    reply.raw.setHeader('Connection', 'keep-alive');
+    reply.raw.setHeader('X-Accel-Buffering', 'no');
+    reply.raw.flushHeaders?.();
+
+    const abortController = new AbortController();
+    const onClose = () => { abortController.abort(); };
+    reply.raw.on('close', onClose);
+    request.socket.on('close', onClose);
+
+    try {
+      const stream = getLangGraphAgentService().resumeStream(
+        body.conversationId,
+        body.resumeValue,
+        abortController.signal,
+      );
+
+      for await (const chunk of stream) {
+        if (abortController.signal.aborted) break;
+        reply.raw.write(`data: ${JSON.stringify(normalizePublicStreamChunk(chunk))}\n\n`);
+      }
+
+      reply.raw.write('data: [DONE]\n\n');
+      reply.raw.end();
+    } catch (error) {
+      if (abortController.signal.aborted) {
+        request.log.info({ conversationId: body.conversationId }, 'Resume stream aborted by client');
+        reply.raw.end();
+      } else {
+        request.log.error({ err: error }, 'Unexpected error in /api/v1/chat/stream/resume');
+        reply.raw.write(`data: ${JSON.stringify({
+          type: 'error',
+          error: error instanceof Error ? error.message : 'resume failed',
+        })}\n\n`);
+        reply.raw.write('data: [DONE]\n\n');
+        reply.raw.end();
+      }
+    } finally {
       reply.raw.off('close', onClose);
       request.socket.off('close', onClose);
     }

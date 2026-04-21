@@ -56,6 +56,30 @@ export function langGraphEventToChunks(
 ): AgentStreamChunk[] {
   const chunks: AgentStreamChunk[] = [];
 
+  // Handle interrupt events — LangGraph emits these when interrupt() is called
+  if (eventMode === 'updates') {
+    const update = event as Record<string, any>;
+    // Check for __interrupt__ in the update (could be at top level or nested)
+    if (update.__interrupt__) {
+      const interrupts = Array.isArray(update.__interrupt__)
+        ? update.__interrupt__
+        : [update.__interrupt__];
+      for (const interrupt of interrupts) {
+        const value = interrupt.value || interrupt;
+        chunks.push({
+          type: 'interaction_update',
+          content: {
+            interactionType: 'clarification',
+            question: value?.question || 'Please provide additional information',
+            options: value?.options || [],
+            resumeRequired: true,
+          },
+        });
+      }
+      return chunks;
+    }
+  }
+
   if (eventMode === 'updates') {
     // State update: extract the node name and any messages
     const update = event as Record<string, any>;

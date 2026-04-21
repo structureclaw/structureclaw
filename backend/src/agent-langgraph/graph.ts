@@ -19,6 +19,7 @@ import {
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import { ToolNode } from '../../node_modules/@langchain/langgraph/dist/prebuilt/index.js';
 import { AIMessage, type BaseMessage } from '@langchain/core/messages';
+import type { BaseCheckpointSaver } from '@langchain/langgraph';
 import { createChatModel } from '../utils/llm.js';
 import { AgentStateAnnotation, type AgentState } from './state.js';
 import { createAllTools, type ToolDeps } from './tools.js';
@@ -111,10 +112,11 @@ function shouldContinue(
 
 export interface GraphDeps extends ToolDeps {
   skillManifests: SkillManifest[];
+  checkpointer?: BaseCheckpointSaver;
 }
 
 export function buildAgentGraph(deps: GraphDeps) {
-  const { skillManifests } = deps;
+  const { skillManifests, checkpointer } = deps;
 
   const tools = createAllTools({ skillRuntime: deps.skillRuntime });
   const toolNode = new ToolNode(tools);
@@ -128,5 +130,5 @@ export function buildAgentGraph(deps: GraphDeps) {
     .addConditionalEdges('agent', shouldContinue, ['tools', END])
     .addEdge('tools', 'agent');
 
-  return workflow.compile();
+  return workflow.compile({ checkpointer });
 }
