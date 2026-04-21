@@ -2938,11 +2938,23 @@ export function AIConsole() {
           if (payload.type === 'interaction_update') {
             const interactionMessage = buildInteractionMessage(payload, t, locale)
             assistantContent = interactionMessage
-            replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
-              ...message,
-              content: assistantContent,
-              status: 'streaming',
-            }))
+            // Also push the interaction text into the presentation's summaryText
+            // so it appears inside MessagePresentationView. Without this the
+            // exclusive rendering (presentation ? PresentationView : MarkdownBody)
+            // hides message.content when a presentation already exists.
+            if (currentPresentationRef.current) {
+              const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
+                type: 'summary_replace',
+                summaryText: interactionMessage,
+              })
+              syncAssistantPresentationMessage(nextPresentation, 'streaming')
+            } else {
+              replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
+                ...message,
+                content: assistantContent,
+                status: 'streaming',
+              }))
+            }
             // If the agent is paused with interrupt(), track that the next
             // message should be sent to /stream/resume instead of /stream
             if ((payload.content as Record<string, unknown>)?.resumeRequired) {
