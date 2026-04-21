@@ -179,9 +179,9 @@ describe('chat presentation reducer', () => {
   });
 
   test('stream persistence stores presentation in assistant message metadata', async () => {
-    const { AgentService } = await import('../../../dist/services/agent.js');
+    const { LangGraphAgentService } = await import('../../../dist/agent-langgraph/agent-service.js');
     const { chatRoutes } = await import('../../../dist/api/chat.js');
-    const originalRunStream = AgentService.prototype.runStream;
+    const originalRunStream = LangGraphAgentService.prototype.runStream;
     const conversationId = `conv-presentation-${Date.now()}`;
     const traceId = 'trace-presentation-001';
 
@@ -193,7 +193,7 @@ describe('chat presentation reducer', () => {
       },
     });
 
-    AgentService.prototype.runStream = async function* mockRunStream() {
+    LangGraphAgentService.prototype.runStream = async function* mockRunStream() {
       yield {
         type: 'start',
         content: {
@@ -322,7 +322,7 @@ describe('chat presentation reducer', () => {
       expect(modelingPhase?.steps?.some((step) => step.tool === 'draft_model')).toBe(true);
       expect(modelingPhase?.steps?.some((step) => step.skillId === 'frame')).toBe(true);
     } finally {
-      AgentService.prototype.runStream = originalRunStream;
+      LangGraphAgentService.prototype.runStream = originalRunStream;
       await prisma.message.deleteMany({ where: { conversationId } });
       await prisma.conversation.deleteMany({ where: { id: conversationId } });
       await app.close();
