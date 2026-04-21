@@ -107,6 +107,12 @@ export default function LlmSettingsPage() {
     const trimmedModel = model.trim()
     const trimmedToken = token.trim()
 
+    if (!trimmedBaseUrl || !trimmedModel) {
+      setError(t('llmSettingsBaseUrlModelRequired'))
+      setIsSaving(false)
+      return
+    }
+
     if (tokenMode === 'replace' && hasApiKey && trimmedToken.length === 0) {
       setError(t('llmSettingsTokenRequired'))
       setIsSaving(false)

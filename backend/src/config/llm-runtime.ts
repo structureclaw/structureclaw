@@ -107,12 +107,15 @@ function writeRuntimeLlmSettingsToDisk(settings: StoredLlmSettings) {
     return;
   }
 
-  fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
+  fs.mkdirSync(path.dirname(settingsPath), { recursive: true, mode: 0o700 });
   const nextSettings = {
     ...settings,
     updatedAt: new Date().toISOString(),
   };
-  fs.writeFileSync(settingsPath, `${JSON.stringify(nextSettings, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(settingsPath, `${JSON.stringify(nextSettings, null, 2)}\n`, {
+    encoding: 'utf8',
+    mode: 0o600,
+  });
   setCachedRuntimeLlmSettings(settingsPath, nextSettings);
 }
 

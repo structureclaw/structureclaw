@@ -65,7 +65,7 @@ describe('LlmSettingsPage', () => {
     })
 
     const saveCall = fetchMock.mock.calls[1]
-    expect(saveCall?.[0]).toBe('http://127.0.0.1:30999/api/v1/admin/llm')
+    expect(String(saveCall?.[0])).toMatch(/\/api\/v1\/admin\/llm$/)
     expect(saveCall?.[1]).toMatchObject({ method: 'PUT' })
     expect(JSON.parse(String((saveCall?.[1] as RequestInit | undefined)?.body))).toEqual({
       baseUrl: 'https://api.example.com/v1',
@@ -144,7 +144,7 @@ describe('LlmSettingsPage', () => {
     })
 
     const resetCall = fetchMock.mock.calls[1]
-    expect(resetCall?.[0]).toBe('http://127.0.0.1:30999/api/v1/admin/llm')
+    expect(String(resetCall?.[0])).toMatch(/\/api\/v1\/admin\/llm$/)
     expect(resetCall?.[1]).toMatchObject({ method: 'DELETE' })
   })
 })

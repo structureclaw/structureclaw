@@ -23,7 +23,7 @@ export function buildChatModelOptions(modelConfig: ChatModelConfigLike, temperat
 
 export function createChatModel(temperature: number): ChatOpenAI | null {
   const effectiveSettings = getEffectiveLlmSettings();
-  if (!effectiveSettings.llmApiKey) {
+  if (!effectiveSettings.llmApiKey.trim()) {
     return null;
   }
 
@@ -51,14 +51,14 @@ function wrapWithLlmLogging(model: ChatOpenAI): ChatOpenAI {
   (model as any).invoke = async function (input: any, options?: any) {
     const promptStr = typeof input === 'string' ? input : JSON.stringify(input);
     const start = Date.now();
+    const loggedModel = getEffectiveLlmSettings().llmModel;
     try {
       const result = await originalInvoke(input, options);
       const content = typeof result.content === 'string'
         ? result.content
         : JSON.stringify(result.content);
-      const effectiveSettings = getEffectiveLlmSettings();
       llmCallLogger.log({
-        model: effectiveSettings.llmModel,
+        model: loggedModel,
         prompt: promptStr,
         response: content,
         durationMs: Date.now() - start,
@@ -66,9 +66,8 @@ function wrapWithLlmLogging(model: ChatOpenAI): ChatOpenAI {
       });
       return result;
     } catch (error) {
-      const effectiveSettings = getEffectiveLlmSettings();
       llmCallLogger.log({
-        model: effectiveSettings.llmModel,
+        model: loggedModel,
         prompt: promptStr,
         response: null,
         durationMs: Date.now() - start,

@@ -7,7 +7,7 @@ import {
 } from '../config/llm-runtime.js';
 
 const updateLlmSettingsSchema = z.object({
-  baseUrl: z.string().trim().min(1),
+  baseUrl: z.string().trim().url(),
   model: z.string().trim().min(1),
   apiKey: z.string().optional(),
   apiKeyMode: z.enum(['keep', 'replace', 'inherit']).optional(),
