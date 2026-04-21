@@ -290,18 +290,6 @@ export interface AgentSkillPlugin extends AgentSkillBundle {
   handler: SkillHandler;
 }
 
-export interface SkillExecutionResult {
-  inferredType?: InferredModelType;
-  draftPatch?: DraftExtraction;
-  missingCritical?: string[];
-  missingOptional?: string[];
-  questions?: InteractionQuestion[];
-  defaultProposals?: Array<{ paramKey: string; value: unknown; reason: string }>;
-  stage?: 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';
-  supportLevel?: StructuralTypeSupportLevel;
-  supportNote?: string;
-}
-
 export interface AgentSkillExecutorInput {
   message: string;
   locale: AppLocale;
@@ -625,16 +613,6 @@ export interface ProjectPipelineState {
   updatedAt: number;
 }
 
-// --- Session working state (spec section 14) ---
-
-export interface SessionWorkingState {
-  selectedSkillIds: string[];
-  locale: import('../services/locale.js').AppLocale;
-  draftState?: ArtifactEnvelope;
-  checkpoint?: InteractionCheckpoint;
-  updatedAt: number;
-}
-
 // --- Run record ---
 
 export type RunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'blocked' | 'canceled';
@@ -662,25 +640,4 @@ export interface SchedulerStep {
   provides?: ArtifactKind;
   mode: 'reuse' | 'execute' | 'transform' | 'queue-run' | 'ask-user' | 'propose' | 'block' | 'approval';
   reason: string;
-}
-
-export interface SchedulerInput {
-  message: string;
-  locale: AppLocale;
-  selectedSkillIds: string[];
-  bindings: ProviderBindingState;
-  projectPolicy: ProjectExecutionPolicy;
-  targetArtifact: ArtifactKind | 'chatReply';
-  sessionArtifacts: {
-    draftState?: ArtifactEnvelope;
-  };
-  projectArtifacts: Partial<Record<ProjectArtifactKind, ArtifactEnvelope>>;
-  requestOverrides?: RequestExecutionOverrides;
-  structuralSkillId?: string;
-}
-
-export interface SchedulerPlan {
-  targetArtifact: ArtifactKind | 'chatReply';
-  requiredSteps: SchedulerStep[];
-  blockedReason?: string;
 }

@@ -147,10 +147,6 @@ export function getEffectiveLlmSettings(): EffectiveLlmSettings {
   };
 }
 
-export function hasConfiguredLlmApiKey(): boolean {
-  return getEffectiveLlmSettings().llmApiKey.trim().length > 0;
-}
-
 export function getPublicLlmSettings(): PublicLlmSettings {
   const runtimeSettings = getRuntimeLlmSettings();
   const effectiveSettings = getEffectiveLlmSettings();
