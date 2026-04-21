@@ -1,5 +1,6 @@
 import { ChatOpenAI } from '@langchain/openai';
 import { config } from '../config/index.js';
+import { getEffectiveLlmSettings } from '../config/llm-runtime.js';
 import { llmCallLogger } from './llm-logger.js';
 
 type ChatModelConfigLike = Pick<
@@ -21,13 +22,26 @@ export function buildChatModelOptions(modelConfig: ChatModelConfigLike, temperat
 }
 
 export function createChatModel(temperature: number): ChatOpenAI | null {
-  if (!config.llmApiKey) {
+  const effectiveSettings = getEffectiveLlmSettings();
+  if (!effectiveSettings.llmApiKey) {
     return null;
   }
 
-  const model = new ChatOpenAI(buildChatModelOptions(config, temperature));
+  const model = new ChatOpenAI(buildChatModelOptions(effectiveSettings, temperature));
 
   return wrapWithLlmLogging(model);
+}
+
+export function createDynamicChatModel(temperature: number): ChatOpenAI {
+  return {
+    async invoke(input: unknown, options?: unknown) {
+      const model = createChatModel(temperature);
+      if (!model) {
+        throw new Error('LLM is not configured');
+      }
+      return model.invoke(input as any, options as any);
+    },
+  } as ChatOpenAI;
 }
 
 function wrapWithLlmLogging(model: ChatOpenAI): ChatOpenAI {
@@ -41,8 +55,9 @@ function wrapWithLlmLogging(model: ChatOpenAI): ChatOpenAI {
       const content = typeof result.content === 'string'
         ? result.content
         : JSON.stringify(result.content);
+      const effectiveSettings = getEffectiveLlmSettings();
       llmCallLogger.log({
-        model: config.llmModel,
+        model: effectiveSettings.llmModel,
         prompt: promptStr,
         response: content,
         durationMs: Date.now() - start,
@@ -50,8 +65,9 @@ function wrapWithLlmLogging(model: ChatOpenAI): ChatOpenAI {
       });
       return result;
     } catch (error) {
+      const effectiveSettings = getEffectiveLlmSettings();
       llmCallLogger.log({
-        model: config.llmModel,
+        model: effectiveSettings.llmModel,
         prompt: promptStr,
         response: null,
         durationMs: Date.now() - start,

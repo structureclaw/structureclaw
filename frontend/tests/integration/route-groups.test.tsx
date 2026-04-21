@@ -58,6 +58,15 @@ describe('Route Groups (LAYT-03)', () => {
       const content = readFileSync(layoutPath, 'utf-8')
       expect(content).toContain('ThemeToggle')
     })
+
+    it('console layout links to the global LLM settings page', () => {
+      render(
+        <ConsoleLayout>
+          <div>Console Content</div>
+        </ConsoleLayout>
+      )
+      expect(screen.getByRole('link', { name: 'LLM' })).toHaveAttribute('href', '/console/llm')
+    })
   })
 
   describe('Route Group URLs', () => {

@@ -436,7 +436,7 @@ function SceneContent({
     }
 
     return null
-  }, [selectedElementId, selectedNodeId, selectedLoadIndex, snapshot.loads, snapshot.elements, nodeMap, plane, view])
+  }, [selectedElementId, selectedNodeId, selectedLoadIndex, snapshot.loads, snapshot.elements, snapshot.dimension, nodeMap, plane, view])
 
   return (
     <>

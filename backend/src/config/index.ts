@@ -9,6 +9,7 @@ const rootEnvPath = path.resolve(__dirname, '../../../.env');
 const defaultSqliteDatabasePath = path.resolve(__dirname, '../../../.runtime/data/structureclaw.db');
 const defaultSqliteDatabaseUrl = `file:${defaultSqliteDatabasePath}`;
 const defaultUploadDir = path.resolve(__dirname, '../../../.runtime');
+const defaultLlmSettingsPath = path.resolve(__dirname, '../../../.runtime/llm-settings.json');
 
 function resolveReportsDir(rawValue: string | undefined): string {
   const trimmed = rawValue?.trim();
@@ -85,6 +86,7 @@ export const config = {
   // LLM 调用日志（默认关闭，设置 LLM_LOG_ENABLED=true 开启；日志含完整 prompt/response，注意隐私）
   llmLogEnabled: process.env.LLM_LOG_ENABLED === 'true',
   llmLogDir: process.env.LLM_LOG_DIR || '',
+  llmSettingsPath: process.env.LLM_SETTINGS_PATH || defaultLlmSettingsPath,
 };
 
 export type Config = typeof config;
