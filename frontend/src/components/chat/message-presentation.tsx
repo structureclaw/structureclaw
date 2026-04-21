@@ -3,6 +3,7 @@
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
 import type { MessageKey } from '@/lib/i18n'
+import { MarkdownBody } from './markdown-body'
 
 export type PresentationPhase = 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report'
 export type PresentationPhaseStatus = 'pending' | 'running' | 'done' | 'error'
@@ -140,9 +141,7 @@ export function MessagePresentationView({
   return (
     <div className="space-y-3">
       {presentation.summaryText ? (
-        <div className="whitespace-pre-wrap text-sm leading-7">
-          {presentation.summaryText}
-        </div>
+        <MarkdownBody compact content={presentation.summaryText} />
       ) : null}
 
       {isStreamingEmpty && (
