@@ -3599,6 +3599,8 @@ export function AIConsole() {
                           <button
                             ref={probeButtonRef}
                             type="button"
+                            aria-haspopup="dialog"
+                            aria-expanded={probePopupOpen}
                             className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground disabled:opacity-50 dark:border-white/10 dark:bg-white/5"
                             onClick={() => {
                               const hasResults = Object.keys(probeResults).length > 0
@@ -3714,22 +3716,23 @@ export function AIConsole() {
         snapshot={activeVisualizationSnapshot}
         t={t}
       />
-      {probePopupOpen && Object.keys(probeResults).length > 0 && typeof window !== 'undefined' && createPortal(
+      {probePopupOpen && Object.keys(probeResults).length > 0 && probeButtonRef.current && typeof window !== 'undefined' && createPortal(
         <>
           <div
             className="fixed inset-0 z-[70]"
             onClick={() => setProbePopupOpen(false)}
+            onKeyDown={(e) => { if (e.key === 'Escape') setProbePopupOpen(false) }}
           />
           <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t('engineProbeButton')}
             className="fixed z-[71] w-80 rounded-xl border border-border/70 bg-card p-4 shadow-xl dark:border-white/10 dark:bg-slate-950"
             style={{
-              bottom: probeButtonRef.current
-                ? window.innerHeight - probeButtonRef.current.getBoundingClientRect().top + 8
-                : 'auto',
-              left: probeButtonRef.current
-                ? Math.min(probeButtonRef.current.getBoundingClientRect().left, window.innerWidth - 336)
-                : 'auto',
+              bottom: window.innerHeight - probeButtonRef.current.getBoundingClientRect().top + 8,
+              left: Math.max(0, Math.min(probeButtonRef.current.getBoundingClientRect().left, window.innerWidth - 336)),
             }}
+            onKeyDown={(e) => { if (e.key === 'Escape') setProbePopupOpen(false) }}
           >
             <div className="mb-3 flex items-center justify-between">
               <span className="text-xs font-semibold text-foreground">{t('engineProbeButton')}</span>

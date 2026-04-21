@@ -62,7 +62,7 @@ export default function ConsoleLayout({
           </div>
         </div>
       </header>
-      <main className="w-full flex-1 min-h-0 px-4 py-4 sm:px-6 sm:py-6 xl:overflow-hidden xl:px-8 2xl:px-10">
+      <main className="w-full flex-1 min-h-0 px-4 py-4 sm:px-6 sm:py-6 xl:overflow-y-auto xl:px-8 2xl:px-10">
         {children}
       </main>
     </div>
