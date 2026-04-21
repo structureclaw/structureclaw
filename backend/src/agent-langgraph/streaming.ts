@@ -12,6 +12,7 @@
  *     summary_replace, result, presentation_complete, done, error
  */
 import type { AIMessage, AIMessageChunk, BaseMessage } from '@langchain/core/messages';
+import { randomUUID } from 'crypto';
 import {
   createEmptyAssistantPresentation,
   type AssistantPresentation,
@@ -143,12 +144,13 @@ export function langGraphEventToChunks(
           if (isAIMessage(msg)) {
             if (hasToolCalls(msg)) {
               for (const tc of (msg as any).tool_calls) {
+                const phase = mapToolToPhase(tc.name);
                 chunks.push({
                   type: 'step_upsert',
-                  phaseId: `phase-${tc.name}`,
+                  phaseId: `phase-${phase}`,
                   step: {
-                    id: `step-${tc.id || Date.now()}`,
-                    phase: mapToolToPhase(tc.name),
+                    id: `step-${tc.id || randomUUID()}`,
+                    phase,
                     status: 'running',
                     tool: tc.name,
                     title: tc.name,
@@ -174,9 +176,9 @@ export function langGraphEventToChunks(
         for (const msg of messages) {
           chunks.push({
             type: 'step_upsert',
-            phaseId: `phase-tool`,
+            phaseId: `phase-analysis`,
             step: {
-              id: `step-tool-${Date.now()}`,
+              id: `step-tool-${randomUUID()}`,
               phase: 'analysis',
               status: 'done',
               tool: 'tool_execution',

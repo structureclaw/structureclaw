@@ -818,9 +818,38 @@ export async function chatRoutes(fastify: FastifyInstance) {
         body.resumeValue,
       );
 
+      let resumeAssistantContent = '';
+      let resumePresentation: AssistantPresentation | undefined;
+      let resumeLatestResult: Record<string, unknown> | undefined;
+
       for await (const chunk of stream) {
         if (abortController.signal.aborted) break;
+        if (chunk.type === 'token' && 'content' in chunk) {
+          resumeAssistantContent += (chunk as any).content || '';
+        }
+        if (chunk.type === 'presentation_init' && 'presentation' in chunk) {
+          resumePresentation = (chunk as any).presentation;
+        }
+        if (chunk.type === 'result' && 'content' in chunk) {
+          resumeLatestResult = (chunk as any).content;
+        }
         reply.raw.write(`data: ${JSON.stringify(normalizePublicStreamChunk(chunk))}\n\n`);
+      }
+
+      // Persist resume messages to DB
+      await persistConversationMessages({
+        conversationId: body.conversationId,
+        userMessage: body.resumeValue,
+        assistantContent: resumeAssistantContent,
+        traceId: undefined,
+        assistantPresentation: resumePresentation,
+      }).catch(() => {});
+
+      if (resumeLatestResult) {
+        await persistLatestConversationResult({
+          conversationId: body.conversationId,
+          latestResult: resumeLatestResult,
+        }).catch(() => {});
       }
 
       reply.raw.write('data: [DONE]\n\n');

@@ -79,9 +79,26 @@ export class FileCheckpointer extends BaseCheckpointSaver {
     } else {
       try {
         const files = await fs.readdir(dir);
-        const jsonFiles = files.filter((f) => f.endsWith('.json')).sort();
+        const jsonFiles = files.filter((f) => f.endsWith('.json'));
         if (jsonFiles.length === 0) return undefined;
-        targetFile = path.join(dir, jsonFiles[jsonFiles.length - 1]);
+        // Select the most recent checkpoint by file modification time
+        // (lexicographic sort is unreliable for non-monotonic IDs like UUIDs)
+        const latest = (
+          await Promise.all(
+            jsonFiles.map(async (file) => {
+              const filePath = path.join(dir, file);
+              const stat = await fs.stat(filePath);
+              return { file, filePath, mtimeMs: stat.mtimeMs };
+            }),
+          )
+        ).reduce((best, current) => {
+          if (!best) return current;
+          if (current.mtimeMs > best.mtimeMs) return current;
+          if (current.mtimeMs === best.mtimeMs && current.file > best.file) return current;
+          return best;
+        }, undefined as { file: string; filePath: string; mtimeMs: number } | undefined);
+        if (!latest) return undefined;
+        targetFile = latest.filePath;
       } catch {
         return undefined;
       }

@@ -14,6 +14,9 @@ import type { LangGraphRunnableConfig } from '@langchain/langgraph';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import { interrupt } from '../../node_modules/@langchain/langgraph/dist/interrupt.js';
 import type { AgentState } from './state.js';
+// Workaround: moduleResolution "node" doesn't support package.json exports.
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+import { Command } from '../../node_modules/@langchain/langgraph/dist/constants.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -41,10 +44,12 @@ function safeResolve(workspaceRoot: string, requestedPath: string): string {
 
 export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
   return tool(
-    async (input: { message: string }) => {
+    async (input: { message: string; locale?: string }, config: LangGraphRunnableConfig) => {
+      const state = config.configurable?.agentState as AgentState | undefined;
+      const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
       const match = await skillRuntime.detectStructuralType(
         input.message,
-        'zh', // locale will be injected from state via stateModifier
+        locale,
       );
       return JSON.stringify({
         key: match.key,
@@ -61,6 +66,7 @@ export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
         'Returns the matched type key, mapped model type, and the skill ID to use for further processing.',
       schema: z.object({
         message: z.string().describe('The user message describing the structure'),
+        locale: z.enum(['zh', 'en']).optional().describe('User locale (defaults to session locale)'),
       }),
     },
   );
@@ -308,15 +314,31 @@ export function createUpdateSessionConfigTool() {
       designCode?: string;
       skillIdsJson?: string;
     }) => {
-      const updates: Record<string, unknown> = {};
-      if (input.analysisType) updates.analysisType = input.analysisType;
-      if (input.designCode) updates.designCode = input.designCode;
-      if (input.skillIdsJson) updates.selectedSkillIds = JSON.parse(input.skillIdsJson);
+      const stateUpdate: Partial<AgentState> = {} as Partial<AgentState>;
+      const updatedKeys: string[] = [];
 
-      return JSON.stringify({
-        success: true,
-        updated: Object.keys(updates),
-        note: 'Config updated. Use the updated values in subsequent tool calls.',
+      if (input.analysisType) {
+        stateUpdate.policy = {
+          ...(stateUpdate.policy || {}),
+          analysisType: input.analysisType as 'static' | 'dynamic' | 'seismic' | 'nonlinear',
+        };
+        updatedKeys.push('analysisType');
+      }
+      if (input.designCode) {
+        stateUpdate.policy = {
+          ...(stateUpdate.policy || {}),
+          designCode: input.designCode,
+        };
+        updatedKeys.push('designCode');
+      }
+      if (input.skillIdsJson) {
+        stateUpdate.selectedSkillIds = JSON.parse(input.skillIdsJson) as string[];
+        updatedKeys.push('selectedSkillIds');
+      }
+
+      // Return a Command that updates graph state so changes survive across turns
+      return new Command({
+        update: stateUpdate,
       });
     },
     {

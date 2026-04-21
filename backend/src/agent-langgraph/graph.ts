@@ -60,17 +60,30 @@ function createCallModelNode(skillManifests: SkillManifest[]) {
     // Build system prompt
     const systemMessages = buildSystemMessages({ state, skillManifests });
 
-    // Count prior tool calls in this turn to enforce max iterations
-    const msgs = Array.isArray(state.messages) ? state.messages : [];
-    const toolCallCount = msgs.filter(
-      (m): m is BaseMessage => {
-        return m != null
-          && typeof m === 'object'
-          && 'tool_calls' in m
-          && Array.isArray((m as any).tool_calls)
-          && (m as any).tool_calls.length > 0;
-      },
-    ).length;
+    // Count prior tool calls in this turn to enforce max iterations.
+    // Only count calls since the last HumanMessage (per-turn), and sum
+    // individual tool_calls[].length rather than counting messages.
+    const msgs: BaseMessage[] = Array.isArray(state.messages) ? state.messages : [];
+    let lastHumanIndex = -1;
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
+      if (typeof m === 'object' && m !== null && '_getType' in m && (m as any)._getType?.() === 'human') {
+        lastHumanIndex = i;
+        break;
+      }
+    }
+    const currentTurnMessages = lastHumanIndex === -1 ? msgs : msgs.slice(lastHumanIndex + 1);
+    const toolCallCount = currentTurnMessages.reduce((count, m) => {
+      if (
+        m != null
+        && typeof m === 'object'
+        && 'tool_calls' in m
+        && Array.isArray((m as any).tool_calls)
+      ) {
+        return count + (m as any).tool_calls.length;
+      }
+      return count;
+    }, 0);
 
     if (toolCallCount >= MAX_TOOL_CALLS_PER_TURN) {
       const warning = state.locale === 'zh'
