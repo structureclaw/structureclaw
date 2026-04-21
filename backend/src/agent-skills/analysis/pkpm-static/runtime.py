@@ -14,6 +14,7 @@ PKPM_WORK_DIR : str, optional
 """
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import tempfile
@@ -23,6 +24,8 @@ from threading import Lock
 from typing import Any, Dict
 
 from contracts import EngineNotAvailableError
+
+logger = logging.getLogger(__name__)
 
 # Thread lock to serialize DirectorySet.conf write + execution within this process.
 # For multi-process deployments, use an external lock mechanism (e.g., file lock).
@@ -447,6 +450,17 @@ def _extract_results(jws_path: Path, material_family: str = "steel") -> Dict[str
             "satwe_params": _read_satwe_params(result),
         }
     finally:
+        total_beam_keys = sum(len(v) for v in case_beam_forces.values())
+        total_col_keys = sum(len(v) for v in case_col_forces.values())
+        all_force_pmids = {k[0] for d in [case_beam_forces, case_col_forces] for v in d.values() for k in v}
+        logger.info(
+            "Extraction: %d beam results, %d col results, "
+            "%d beam force keys, %d col force keys, "
+            "sample force pmids: %s",
+            len(beam_results), len(column_results),
+            total_beam_keys, total_col_keys,
+            sorted(all_force_pmids)[:10] if all_force_pmids else "none",
+        )
         result.ClearResult()
 
 
@@ -527,6 +541,20 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     v2_node_z: Dict[str, float] = converter_mappings.get("v2_node_z", {})
     elem_map_raw: Dict[str, Any] = converter_mappings.get("elem_map", {})
 
+    # Diagnose pmid overlap before attempting mapping
+    _extracted_pmids = {item.get("pmid") for item in beams + columns if item.get("pmid") is not None}
+    _mapped_pmids = {info["pmid"] for info in elem_map_raw.values() if isinstance(info, dict)}
+    _overlap = _extracted_pmids & _mapped_pmids
+    _sample_extracted = sorted(_extracted_pmids)[:10] if _extracted_pmids else "none"
+    _sample_mapped = sorted(_mapped_pmids)[:10] if _mapped_pmids else "none"
+    logger.info(
+        "Phase 4 pre-map: %d beams, %d cols, %d elem_map entries, "
+        "pmid overlap %d/%d extracted vs %d mapped, extracted=%s, mapped=%s",
+        len(beams), len(columns), len(elem_map_raw),
+        len(_overlap), len(_extracted_pmids), len(_mapped_pmids),
+        _sample_extracted, _sample_mapped,
+    )
+
     # Build story top elevations for floor mapping
     sorted_stories = sorted(
         model_dict.get("stories", []),
@@ -545,7 +573,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             v2_node_floor[v2_id] = 0  # base
             continue
         for i, top_z in enumerate(story_tops):
-            if abs(z - top_z) < 0.01:
+            if abs(z - top_z) < 0.1:
                 v2_node_floor[v2_id] = i + 1
                 break
 
@@ -561,11 +589,10 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     for nd in node_disps:
         pmid = nd.get("pmid", -1)
         floor = nd.get("floor", 0)
-        # Try to remap to V2 node ID
+        # Only include displacement when V2 node mapping succeeds
         v2_id = pm_floor_to_v2.get((pmid, floor))
-        node_key = v2_id if v2_id else str(pmid)
-        if node_key:
-            displacements[node_key] = {
+        if v2_id:
+            displacements[v2_id] = {
                 "ux": nd.get("max_disp_x_mm", 0.0),
                 "uy": nd.get("max_disp_y_mm", 0.0),
                 "uz": nd.get("max_disp_z_mm", 0.0),
@@ -591,6 +618,23 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         pkpm_floor = max(start_floor, end_floor)
         if pkpm_floor > 0:
             pm_floor_elem_to_v2[(pmid, pkpm_floor)] = v2_eid
+
+    # Supplement mapping from PKPM design data (beams/columns carry pmid + floor)
+    if len(pm_floor_elem_to_v2) < len(elem_map_raw):
+        # Build pmid → [v2_eid, ...] index for fast lookup
+        pmid_to_v2: Dict[int, list[str]] = {}
+        for v2_eid, info in elem_map_raw.items():
+            pmid_to_v2.setdefault(info["pmid"], []).append(v2_eid)
+        for item in beams + columns:
+            item_pmid = item.get("pmid", -1)
+            item_floor = item.get("floor", 0)
+            if item_pmid < 0 or item_floor <= 0:
+                continue
+            key = (item_pmid, item_floor)
+            if key not in pm_floor_elem_to_v2:
+                for candidate in pmid_to_v2.get(item_pmid, []):
+                    if key not in pm_floor_elem_to_v2:
+                        pm_floor_elem_to_v2[key] = candidate
 
     # forces: { elementId: { N, V, M, Vy, Vz, My, Mz, T } }
     forces: Dict[str, Dict[str, float]] = {}
@@ -621,6 +665,29 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             "Mz": f["Mz"],
             "T": f["T"],
         }
+
+    logger.info(
+        "Phase 4 mapping: %d/%d nodes mapped to floor, "
+        "%d/%d elem mappings, %d forces, %d displacements",
+        sum(1 for f in v2_node_floor.values() if f >= 0),
+        len(v2_node_z),
+        len(pm_floor_elem_to_v2),
+        len(elem_map_raw),
+        len(forces),
+        len(displacements),
+    )
+
+    # Diagnose pmid overlap between converter elem_map and PKPM extracted data
+    extracted_pmids = {item.get("pmid") for item in beams + columns}
+    mapped_pmids = {info["pmid"] for info in elem_map_raw.values()}
+    overlap = extracted_pmids & mapped_pmids
+    if extracted_pmids or mapped_pmids:
+        logger.info(
+            "pmid overlap: %d common out of %d extracted, %d mapped",
+            len(overlap),
+            len(extracted_pmids),
+            len(mapped_pmids),
+        )
 
     # ---- Build member utilization map (Phase 5) ----
     member_utilization: Dict[str, float] = {}

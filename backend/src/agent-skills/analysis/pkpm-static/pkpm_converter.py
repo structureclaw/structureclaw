@@ -468,7 +468,7 @@ def convert_v2_to_jws(
                                          f"for column at node {pm_node_id}\n")
                 plan_nodes_with_col.add(pm_node_id)
             elem_map[elem.get("id", "")] = {
-                "pmid": pm_node_id,
+                "pmid": getattr(col_obj, 'GetPmid', lambda: pm_node_id)(),
                 "type": "col",
                 "floor_nodes": node_ids,
             }
@@ -497,7 +497,7 @@ def convert_v2_to_jws(
                 cg_name = mat_id_to_grade.get(elem.get("material", ""), "C30")
                 beam_obj.SetConcreteGrade(_resolve_concrete_grade(cg_name))
             elem_map[elem.get("id", "")] = {
-                "pmid": net_id,
+                "pmid": getattr(beam_obj, 'GetPmid', lambda: net_id)(),
                 "type": "beam",
                 "floor_nodes": node_ids,
             }
