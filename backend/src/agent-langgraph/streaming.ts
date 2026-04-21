@@ -65,6 +65,23 @@ function hasToolCalls(msg: BaseMessage): boolean {
   );
 }
 
+/**
+ * Extract plain text from message content which may be a string
+ * or an array of content blocks like [{type:"text", text:"..."}].
+ */
+function extractTextContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .filter((block): block is { type: string; text: string } =>
+        typeof block === 'object' && block !== null && 'text' in block,
+      )
+      .map((block) => block.text)
+      .join('');
+  }
+  return '';
+}
+
 // ---------------------------------------------------------------------------
 // Stream adapter
 // ---------------------------------------------------------------------------
@@ -86,7 +103,7 @@ export function langGraphEventToChunks(
     // LangGraph messages mode yields [message, metadata] or just the message
     const msg = Array.isArray(event) ? event[0] : event;
     if (isAIMessageChunk(msg) && !hasToolCalls(msg as any)) {
-      const content = typeof msg.content === 'string' ? msg.content : '';
+      const content = extractTextContent(msg.content);
       if (content.length > 0) {
         chunks.push({ type: 'token', content });
       }
@@ -163,6 +180,15 @@ export function langGraphEventToChunks(
                 type: 'result',
                 content: { response: msg.content, mode: 'conversation' },
               });
+            } else {
+              // Handle array content blocks (e.g. [{type:"text", text:"..."}])
+              const text = extractTextContent(msg.content);
+              if (text.length > 0) {
+                chunks.push({
+                  type: 'result',
+                  content: { response: text, mode: 'conversation' },
+                });
+              }
             }
           }
         }

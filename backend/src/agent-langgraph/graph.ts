@@ -57,6 +57,10 @@ function createCallModelNode(skillManifests: SkillManifest[]) {
     const tools = createAllTools({ skillRuntime: (globalThis as any).__skillRuntime as AgentSkillRuntime });
     const modelWithTools = model.bindTools(tools);
 
+    // Expose current state so tools can access lastUserMessage etc.
+    // TODO: Replace with proper DI via config.configurable.
+    (globalThis as any).__agentState = state;
+
     // Build system prompt
     const systemMessages = buildSystemMessages({ state, skillManifests });
 

@@ -45,10 +45,13 @@ function safeResolve(workspaceRoot: string, requestedPath: string): string {
 export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
   return tool(
     async (input: { message: string; locale?: string }, config: LangGraphRunnableConfig) => {
-      const state = config.configurable?.agentState as AgentState | undefined;
+      const state = (globalThis as any).__agentState as AgentState | undefined;
       const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
+      // Prefer the tool input, but fall back to the user's original message
+      // from the graph state so detection works even when the LLM paraphrases.
+      const message = input.message || state?.lastUserMessage || '';
       const match = await skillRuntime.detectStructuralType(
-        input.message,
+        message,
         locale,
       );
       return JSON.stringify({
@@ -80,17 +83,20 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
       locale?: string;
       skillIdsJson?: string;
     }) => {
+      const state = (globalThis as any).__agentState as AgentState | undefined;
       const existingState = input.existingStateJson
         ? JSON.parse(input.existingStateJson)
         : undefined;
       const skillIds = input.skillIdsJson
         ? JSON.parse(input.skillIdsJson) as string[]
         : undefined;
-      const locale = (input.locale === 'en' ? 'en' : 'zh') as 'zh' | 'en';
+      const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
+      // Fall back to the user's original message from the graph state.
+      const message = input.message || state?.lastUserMessage || '';
 
       const result = await skillRuntime.extractDraftParameters(
         null, // llm — the executor handles LLM internally
-        input.message,
+        message,
         existingState,
         locale,
         skillIds,
