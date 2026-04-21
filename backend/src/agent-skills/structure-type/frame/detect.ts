@@ -18,6 +18,25 @@ export function detectFrameStructuralType({ message, locale, currentState }: Ski
   if (text.includes('frame') || text.includes('框架')) {
     return buildStructuralTypeMatch('frame', 'frame', 'frame', 'supported', locale);
   }
+  // Common Chinese structural descriptions that imply a frame structure:
+  // - 钢结构 + multi-story → steel frame
+  // - 柱网 (column grid) → frame layout
+  // - 办公楼 / 住宅 + multi-story → frame
+  // - N层M跨 pattern → multi-story multi-span frame
+  const isSteel = text.includes('钢结') || text.includes('钢柱') || text.includes('钢梁');
+  const hasFrameContext = text.includes('柱网')
+    || text.includes('办公楼')
+    || text.includes('住宅楼')
+    || text.includes('商住')
+    || /\d+层.*\d+跨/.test(text)
+    || /\d+跨.*\d+层/.test(text)
+    || (text.includes('层') && text.includes('跨'));
+  if (isSteel && hasFrameContext) {
+    return buildStructuralTypeMatch('steel-frame', 'frame', 'frame', 'supported', locale);
+  }
+  if (hasFrameContext) {
+    return buildStructuralTypeMatch('frame', 'frame', 'frame', 'supported', locale);
+  }
   if (currentState?.inferredType === 'frame' && currentState.supportLevel !== 'unsupported') {
     const key = (currentState.structuralTypeKey === 'steel-frame' ? 'steel-frame' : 'frame') as StructuralTypeMatch['key'];
     return buildStructuralTypeMatch(key, 'frame', 'frame', 'supported', locale);

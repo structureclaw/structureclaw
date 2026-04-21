@@ -10,6 +10,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { AgentSkillRuntime } from '../agent-runtime/index.js';
 import type { LangGraphRunnableConfig } from '@langchain/langgraph';
+import { logger } from '../utils/logger.js';
 // Workaround: moduleResolution "node" doesn't support package.json exports.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import { interrupt } from '../../node_modules/@langchain/langgraph/dist/interrupt.js';
@@ -47,9 +48,11 @@ export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
     async (input: { message: string; locale?: string }, config: LangGraphRunnableConfig) => {
       const state = (globalThis as any).__agentState as AgentState | undefined;
       const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
-      // Prefer the tool input, but fall back to the user's original message
-      // from the graph state so detection works even when the LLM paraphrases.
-      const message = input.message || state?.lastUserMessage || '';
+      // Prefer the user's original message from the graph state — the LLM
+      // often paraphrases or truncates the input, causing detection failures.
+      // Only fall back to the LLM-provided message if state is unavailable.
+      const message = state?.lastUserMessage || input.message || '';
+      logger.info({ toolInputMessage: input.message, stateMessage: state?.lastUserMessage, finalMessage: message }, 'detect_structure_type input');
       const match = await skillRuntime.detectStructuralType(
         message,
         locale,
@@ -91,8 +94,8 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
         ? JSON.parse(input.skillIdsJson) as string[]
         : undefined;
       const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
-      // Fall back to the user's original message from the graph state.
-      const message = input.message || state?.lastUserMessage || '';
+      // Prefer the user's original message from the graph state for reliability.
+      const message = state?.lastUserMessage || input.message || '';
 
       const result = await skillRuntime.extractDraftParameters(
         null, // llm — the executor handles LLM internally
