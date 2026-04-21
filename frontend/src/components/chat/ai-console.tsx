@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { MarkdownBody } from './markdown-body'
-import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, Maximize2, MessageSquarePlus, Orbit, Sparkles, Square, Trash2, User } from 'lucide-react'
+import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, Maximize2, MessageSquarePlus, Orbit, RefreshCw, Sparkles, Square, Trash2, User } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -1284,7 +1284,27 @@ function AnalysisPanel({
               {!visualizationSnapshot && modelVisualizationSnapshot ? t('visualizationPreviewModel') : t('visualizationOpen')}
             </Button>
           )}
-          <div className="grid w-full grid-cols-2 rounded-2xl border border-border/70 bg-background/70 p-1 sm:w-auto dark:border-white/10 dark:bg-white/5">
+          <div className="grid w-full grid-cols-2 rounded-2xl border border-border/70 bg-background/70 p-1 sm:w-auto dark:border-white/10 dark:bg-white/5"
+            role="tablist" aria-label={t('tabPanelAnalysisLabel')}
+            onKeyDown={(e) => {
+              if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+                e.preventDefault()
+                const nextTab = activeTab === 'analysis' ? 'report' : 'analysis'
+                onTabChange(nextTab)
+                requestAnimationFrame(() => {
+                  document.getElementById(nextTab === 'analysis' ? 'tab-analysis' : 'tab-report')?.focus()
+                })
+              } else if (e.key === 'Home') {
+                e.preventDefault()
+                onTabChange('analysis')
+                requestAnimationFrame(() => { document.getElementById('tab-analysis')?.focus() })
+              } else if (e.key === 'End') {
+                e.preventDefault()
+                onTabChange('report')
+                requestAnimationFrame(() => { document.getElementById('tab-report')?.focus() })
+              }
+            }}
+          >
             <button
               className={cn(
                 'rounded-xl px-4 py-2.5 text-sm font-medium transition',
@@ -1294,6 +1314,11 @@ function AnalysisPanel({
               )}
               onClick={() => onTabChange('analysis')}
               type="button"
+              role="tab"
+              id="tab-analysis"
+              aria-selected={activeTab === 'analysis'}
+              aria-controls="tabpanel-output"
+              tabIndex={activeTab === 'analysis' ? 0 : -1}
             >
               {t('analysisTab')}
             </button>
@@ -1306,6 +1331,11 @@ function AnalysisPanel({
               )}
               onClick={() => onTabChange('report')}
               type="button"
+              role="tab"
+              id="tab-report"
+              aria-selected={activeTab === 'report'}
+              aria-controls="tabpanel-output"
+              tabIndex={activeTab === 'report' ? 0 : -1}
             >
               {t('reportTab')}
             </button>
@@ -1313,7 +1343,7 @@ function AnalysisPanel({
         </div>
       </div>
 
-      <div data-testid="console-output-scroll" className="flex-1 overflow-auto p-5 xl:min-h-0">
+      <div data-testid="console-output-scroll" className="flex-1 overflow-auto p-5 xl:min-h-0" role="tabpanel" id="tabpanel-output" aria-labelledby={`tab-${activeTab}`}>
         {!result && (
           <Card className="border-border/70 bg-card/85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/40">
             <CardHeader>
@@ -1899,6 +1929,7 @@ export function AIConsole() {
   const [probePopupOpen, setProbePopupOpen] = useState(false)
   const [probeAllRunning, setProbeAllRunning] = useState(false)
   const probeButtonRef = useRef<HTMLButtonElement>(null)
+  const composerTextareaRef = useRef<HTMLTextAreaElement>(null)
 
   async function probeAllEngines() {
     setProbeAllRunning(true)
@@ -1937,6 +1968,36 @@ export function AIConsole() {
     )
 
     if (active) setProbeAllRunning(false)
+  }
+
+  async function probeSingleEngine(engineId: string) {
+    setProbeResults((prev) => ({ ...prev, [engineId]: { passed: false, loading: true } }))
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/analysis-engines/${encodeURIComponent(engineId)}/probe`, { method: 'POST' })
+      if (!response.ok) {
+        const text = await response.text()
+        setProbeResults((prev) => ({ ...prev, [engineId]: { passed: false, error: text || `HTTP ${response.status}`, loading: false } }))
+        return
+      }
+      let payload: { passed?: unknown; durationMs?: unknown; error?: unknown }
+      try {
+        payload = await response.json()
+      } catch {
+        setProbeResults((prev) => ({ ...prev, [engineId]: { passed: false, error: 'Invalid JSON response', loading: false } }))
+        return
+      }
+      setProbeResults((prev) => ({
+        ...prev,
+        [engineId]: {
+          passed: Boolean(payload.passed),
+          durationMs: typeof payload.durationMs === 'number' ? payload.durationMs : undefined,
+          error: typeof payload.error === 'string' ? payload.error : undefined,
+          loading: false,
+        },
+      }))
+    } catch (err) {
+      setProbeResults((prev) => ({ ...prev, [engineId]: { passed: false, error: String(err), loading: false } }))
+    }
   }
 
 
@@ -3297,7 +3358,7 @@ export function AIConsole() {
                 </div>
               )}
 
-              {messages.map((message) => (
+              {messages.map((message, msgIdx) => (
                 <div
                   key={message.id}
                   className={cn('flex gap-3', message.role === 'user' ? 'justify-end' : 'justify-start')}
@@ -3338,7 +3399,7 @@ export function AIConsole() {
                         : <div className="whitespace-pre-wrap text-sm leading-7">{message.content}</div>
                     )}
                     {message.status === 'streaming' && !message.presentation && (
-                      <div className="flex items-center gap-2 mt-2">
+                      <div className="flex items-center gap-2 mt-2" role="status">
                         <svg className="h-3.5 w-3.5 shrink-0 animate-spin text-cyan-600 dark:text-cyan-300" viewBox="0 0 24 24" fill="none">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
@@ -3351,6 +3412,25 @@ export function AIConsole() {
                         <Square className="h-2.5 w-2.5" />
                         {t('streamAborted')}
                       </span>
+                    )}
+                    {message.status === 'error' && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span className="text-xs text-rose-500 dark:text-rose-400">{t('streamAborted')}</span>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 rounded-full border border-rose-300/40 bg-rose-300/10 px-2.5 py-1 text-[11px] text-rose-800 hover:bg-rose-300/20 dark:text-rose-200"
+                          onClick={() => {
+                            const prevUserMsg = msgIdx > 0 ? messages[msgIdx - 1] : null
+                            if (prevUserMsg?.role === 'user') {
+                              setInput(prevUserMsg.content)
+                              composerTextareaRef.current?.focus()
+                            }
+                          }}
+                        >
+                          <RefreshCw className="h-3 w-3" />
+                          {t('retrySend')}
+                        </button>
+                      </div>
                     )}
                     {message.role === 'assistant' && extractPdfUrl(message.content) && (
                       <div className="group/pdf mt-3 overflow-hidden rounded-xl border border-border/70 dark:border-white/10">
@@ -3523,7 +3603,7 @@ export function AIConsole() {
           <div data-testid="console-composer" className="border-t border-border/70 px-4 py-3 dark:border-white/10 overflow-y-auto max-h-[40vh]">
             <div className="w-full space-y-3">
               {errorMessage && (
-                <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+                <div role="alert" className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
                   {errorMessage}
                 </div>
               )}
@@ -3580,10 +3660,17 @@ export function AIConsole() {
                 </div>
 
                 <Textarea
+                  ref={composerTextareaRef}
                   className="min-h-[96px] resize-none border-0 bg-transparent px-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0"
                   placeholder={t('composerPlaceholder')}
                   value={input}
                   onChange={(event) => setInput(event.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                      e.preventDefault()
+                      handleSubmit()
+                    }
+                  }}
                 />
                 <Separator className="bg-border dark:bg-white/10" />
 
@@ -3593,6 +3680,8 @@ export function AIConsole() {
                       type="button"
                       className="rounded-full border border-border bg-background/70 px-3 py-1.5 text-sm text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
                       onClick={() => setContextOpen((current) => !current)}
+                      aria-expanded={contextOpen}
+                      aria-controls={contextOpen ? 'context-section' : undefined}
                     >
                       {contextOpen ? t('collapseContext') : t('expandContext')}
                     </button>
@@ -3666,7 +3755,7 @@ export function AIConsole() {
                 </div>
 
                 {contextOpen && (
-                  <div className="mt-3 max-h-[50vh] overflow-y-auto rounded-[24px] border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
+                  <div id="context-section" role="region" aria-label={t('contextPanelLabel')} className="mt-3 max-h-[50vh] overflow-y-auto rounded-[24px] border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
                     <div className="space-y-2">
                       <div>
                         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -3748,7 +3837,7 @@ export function AIConsole() {
           <div
             role="dialog"
             aria-modal="true"
-            aria-label={t('engineProbeButton')}
+            aria-label={t('probeResultsDialogTitle')}
             className="fixed z-[71] w-80 rounded-xl border border-border/70 bg-card p-4 shadow-xl dark:border-white/10 dark:bg-slate-950"
             style={{
               bottom: window.innerHeight - probeButtonRef.current.getBoundingClientRect().top + 8,
@@ -3762,7 +3851,7 @@ export function AIConsole() {
                 type="button"
                 className="text-[11px] text-muted-foreground hover:text-foreground"
                 onClick={() => setProbePopupOpen(false)}
-                aria-label="Close"
+                aria-label={t('closeLabel')}
               >
                 ✕
               </button>
@@ -3782,17 +3871,30 @@ export function AIConsole() {
                         )}
                         <span className="text-xs font-medium text-foreground">{engine.name}</span>
                       </div>
-                      <span className="text-[11px] text-muted-foreground">
-                        {probe.loading ? t('engineProbeRunning')
-                          : probe.passed ? t('engineProbePassed')
-                          : t('engineProbeFailed')}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-muted-foreground">
+                          {probe.loading ? t('engineProbeRunning')
+                            : probe.passed ? t('engineProbePassed')
+                            : t('engineProbeFailed')}
+                        </span>
+                        {!probe.loading && !probe.passed && (
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-medium text-cyan-700 hover:bg-cyan-50 dark:text-cyan-300 dark:hover:bg-cyan-900/30"
+                            onClick={() => probeSingleEngine(engine.id)}
+                            aria-label={`${t('retryLabel')} ${engine.name}`}
+                          >
+                            <RefreshCw className="h-2.5 w-2.5" />
+                            {t('retryLabel')}
+                          </button>
+                        )}
+                      </div>
                     </div>
                     {probe.durationMs != null && !probe.loading && (
                       <div className="mt-1 text-[11px] text-muted-foreground">{t('engineProbeDuration')}: {probe.durationMs}ms</div>
                     )}
                     {probe.error && !probe.loading && (
-                      <div className="mt-1 text-[11px] leading-4 text-red-600 dark:text-red-400">{probe.error}</div>
+                      <div className="mt-1 text-[11px] leading-4 text-red-600 dark:text-red-400" role="alert">{probe.error}</div>
                     )}
                   </div>
                 )
