@@ -1556,7 +1556,6 @@ function AnalysisPanel({
   )
 }
 
-const LINK_RE = /\[([^\]]+)\]\(([^)\s]+)\)/g
 const PDF_LINK_RE = /\[PDF[^\]]*\]\(([^)\s]+)\)/
 
 function extractPdfUrl(content: string): string | null {
@@ -1565,24 +1564,6 @@ function extractPdfUrl(content: string): string | null {
   const relative = m[1]
   if (relative.startsWith('http') || relative.startsWith('//')) return relative
   return `${API_BASE}${relative}`
-}
-
-function renderContentWithLinks(content: string) {
-  const parts: (string | JSX.Element)[] = []
-  let last = 0
-  for (const m of content.matchAll(LINK_RE)) {
-    if (m.index > last) parts.push(content.slice(last, m.index))
-    const rawUrl = m[2]
-    const label = m[1]
-    const url = rawUrl.startsWith('/') ? `${API_BASE}${rawUrl}` : rawUrl
-    parts.push(
-      <a key={m.index} href={url} target="_blank" rel="noopener noreferrer" className="text-cyan-400 underline hover:text-cyan-300">{label}</a>,
-    )
-    last = (m.index ?? 0) + m[0].length
-  }
-  if (parts.length === 0) return content
-  if (last < content.length) parts.push(content.slice(last))
-  return <>{parts}</>
 }
 
 export function AIConsole() {
