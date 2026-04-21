@@ -3723,8 +3723,8 @@ export function AIConsole() {
           <div
             className="fixed z-[71] w-80 rounded-xl border border-border/70 bg-card p-4 shadow-xl dark:border-white/10 dark:bg-slate-950"
             style={{
-              top: probeButtonRef.current
-                ? probeButtonRef.current.getBoundingClientRect().bottom + 8
+              bottom: probeButtonRef.current
+                ? window.innerHeight - probeButtonRef.current.getBoundingClientRect().top + 8
                 : 'auto',
               left: probeButtonRef.current
                 ? Math.min(probeButtonRef.current.getBoundingClientRect().left, window.innerWidth - 336)
