@@ -395,6 +395,15 @@ export async function* streamGraphToChunks(
     if (chunk.type === 'token' && 'content' in chunk) {
       tokenBuffer += (chunk as { content: string }).content;
     }
+
+    // Reset tokenBuffer when a tool starts so the next text bubble
+    // only contains tokens generated after the tool call.
+    if (chunk.type === 'step_upsert') {
+      const step = (chunk as { step: { status: string } }).step;
+      if (step.status === 'running') {
+        tokenBuffer = '';
+      }
+    }
   }
 
   try {
