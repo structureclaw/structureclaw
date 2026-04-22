@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { MarkdownBody } from './markdown-body'
+import { ToolCallCard } from './tool-call-card'
 import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, Maximize2, MessageSquarePlus, Orbit, RefreshCw, Sparkles, Square, Trash2, User } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -40,12 +41,13 @@ type PanelTab = 'analysis' | 'report'
 
 type Message = {
   id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'tool'
   content: string
   status?: 'streaming' | 'done' | 'error' | 'aborted'
   timestamp: string
   debugDetails?: MessageDebugDetails
   presentation?: AssistantPresentation
+  toolStep?: TimelineStepItem
 }
 
 type AgentToolCall = {
@@ -2746,7 +2748,31 @@ export function AIConsole() {
     const traceId = assistantMessageId
     setIsStreaming(true)
 
-    const syncAssistantPresentationMessage = (
+    // --- Multi-bubble tracking ---
+    // currentTextMessageId: the active text assistant message being appended to.
+    // Set to '' when a tool call starts (text finalized). Next token creates a new one.
+    let currentTextMessageId = assistantMessageId
+    // toolMessageIds: maps stepId → messageId for tool bubbles
+    const toolMessageIds = new Map<string, string>()
+    // turnMessageIds: all message IDs created during this turn (for finalization)
+    const turnMessageIds = new Set<string>([assistantMessageId])
+
+    /** Ensure a text assistant message exists for writing. Creates one if needed. */
+    const ensureTextMessage = () => {
+      if (!currentTextMessageId) {
+        currentTextMessageId = createId('assistant')
+        turnMessageIds.add(currentTextMessageId)
+        appendMessageForConversation(activeConversationId, {
+          id: currentTextMessageId,
+          role: 'assistant',
+          content: '',
+          status: 'streaming',
+          timestamp: new Date().toISOString(),
+        })
+      }
+    }
+
+    const syncTextPresentation = (
       nextPresentation: AssistantPresentation,
       nextStatus: Message['status'] = nextPresentation.status === 'done'
         ? 'done'
@@ -2757,7 +2783,8 @@ export function AIConsole() {
             : 'streaming',
     ) => {
       currentPresentationRef.current = nextPresentation
-      replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
+      ensureTextMessage()
+      replaceMessageForConversation(activeConversationId, currentTextMessageId, (message) => ({
         ...message,
         content: nextPresentation.summaryText || assistantContent,
         status: nextStatus,
@@ -2776,19 +2803,20 @@ export function AIConsole() {
           }
         : undefined
 
-      replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
-        ...message,
-        content: abortedContent,
-        status: 'aborted',
-        presentation: abortedPresentation ?? message.presentation,
-      }))
-
-      // Note: manual localStorage write removed — replaceMessageForConversation
-      // updates React state (which feeds the auto-persist useEffect), and the
-      // backend persistence below ensures the conversation survives across
-      // browser sessions.  The old approach read from messagesRef.current which
-      // points to the *currently viewed* conversation, causing data corruption
-      // when a background stream was aborted while the user had switched away.
+      // Finalize ALL messages created during this turn
+      for (const msgId of turnMessageIds) {
+        replaceMessageForConversation(activeConversationId, msgId, (message) => {
+          if (message.status !== 'streaming') return message
+          return message.role === 'tool'
+            ? { ...message, status: 'aborted' as const }
+            : {
+                ...message,
+                content: message.id === currentTextMessageId ? abortedContent : message.content || abortedContent,
+                status: 'aborted' as const,
+                presentation: abortedPresentation ?? message.presentation,
+              }
+        })
+      }
 
       if (activeConversationId) {
         await saveConversationMessagesToBackend(activeConversationId, {
@@ -2936,7 +2964,8 @@ export function AIConsole() {
             const token = typeof payload.content === 'string' ? payload.content : ''
             chatBuffer += token
             assistantContent = chatBuffer || assistantSeed
-            replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
+            ensureTextMessage()
+            replaceMessageForConversation(activeConversationId, currentTextMessageId, (message) => ({
               ...message,
               content: assistantContent,
               status: 'streaming',
@@ -2946,9 +2975,6 @@ export function AIConsole() {
           if (payload.type === 'interaction_update') {
             const interactionMessage = buildInteractionMessage(payload, t, locale)
             assistantContent = interactionMessage
-            // Append interaction text below the existing LLM output in
-            // summaryText so the user sees both the response and the
-            // follow-up questions.
             if (currentPresentationRef.current) {
               const existingSummary = currentPresentationRef.current.summaryText || ''
               const combinedSummary = existingSummary
@@ -2958,20 +2984,18 @@ export function AIConsole() {
                 type: 'summary_replace',
                 summaryText: combinedSummary,
               })
-              syncAssistantPresentationMessage(nextPresentation, 'streaming')
+              syncTextPresentation(nextPresentation, 'streaming')
             } else {
-              replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
+              ensureTextMessage()
+              replaceMessageForConversation(activeConversationId, currentTextMessageId, (message) => ({
                 ...message,
                 content: assistantContent,
                 status: 'streaming',
               }))
             }
-            // If the agent is paused with interrupt(), track that the next
-            // message should be sent to /stream/resume instead of /stream
             if ((payload.content as Record<string, unknown>)?.resumeRequired) {
               resumeRequiredRef.current = true
             }
-            // Store options for interactive chip rendering
             const interactionOpts = (payload.content as AgentInteraction)?.options || []
             if (interactionOpts.length > 0) setPendingOptions(interactionOpts)
           }
@@ -2979,15 +3003,13 @@ export function AIConsole() {
           // 处理 'start' 类型消息（包含 conversationId）
           if (payload.type === 'start' && payload.content && typeof payload.content === 'object') {
             const { conversationId: newConversationId } = payload.content as { conversationId?: string; startedAt?: string }
-            // Only update the active conversationId if this stream belongs to the
-            // currently viewed conversation (or we had no conversation selected yet).
             if (newConversationId && (!conversationIdRef.current || activeConversationId === conversationIdRef.current)) {
               setConversationId(newConversationId)
             }
           }
 
           if (payload.type === 'presentation_init' && payload.presentation) {
-            syncAssistantPresentationMessage(payload.presentation, 'streaming')
+            syncTextPresentation(payload.presentation, 'streaming')
           }
 
           if (payload.type === 'phase_upsert' && payload.phase && currentPresentationRef.current) {
@@ -2995,16 +3017,60 @@ export function AIConsole() {
               type: 'phase_upsert',
               phase: payload.phase,
             })
-            syncAssistantPresentationMessage(nextPresentation, 'streaming')
+            syncTextPresentation(nextPresentation, 'streaming')
           }
 
-          if (payload.type === 'step_upsert' && payload.phaseId && payload.step && currentPresentationRef.current) {
-            const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
-              type: 'step_upsert',
-              phaseId: payload.phaseId,
-              step: payload.step,
-            })
-            syncAssistantPresentationMessage(nextPresentation, 'streaming')
+          if (payload.type === 'step_upsert' && payload.phaseId && payload.step) {
+            if (payload.step.status === 'running') {
+              // Finalize current text message
+              if (currentTextMessageId) {
+                replaceMessageForConversation(activeConversationId, currentTextMessageId, (msg) => {
+                  if (msg.status !== 'streaming') return msg
+                  return { ...msg, status: 'done' as const }
+                })
+                currentTextMessageId = ''
+              }
+              // Create a new tool message bubble
+              const toolMsgId = createId('tool')
+              toolMessageIds.set(payload.step.id, toolMsgId)
+              turnMessageIds.add(toolMsgId)
+              appendMessageForConversation(activeConversationId, {
+                id: toolMsgId,
+                role: 'tool',
+                content: '',
+                status: 'streaming',
+                timestamp: new Date().toISOString(),
+                toolStep: payload.step,
+              })
+              // Also track in presentation (for data continuity)
+              if (currentPresentationRef.current) {
+                const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
+                  type: 'step_upsert',
+                  phaseId: payload.phaseId,
+                  step: payload.step,
+                })
+                currentPresentationRef.current = nextPresentation
+              }
+            } else {
+              // Update existing tool message (done / error)
+              const toolMsgId = toolMessageIds.get(payload.step.id)
+              if (toolMsgId) {
+                replaceMessageForConversation(activeConversationId, toolMsgId, (msg) => ({
+                  ...msg,
+                  status: (payload.step!.status === 'error' ? 'error' : 'done') as Message['status'],
+                  toolStep: { ...msg.toolStep!, ...payload.step },
+                }))
+              }
+              // Also track in presentation
+              if (currentPresentationRef.current) {
+                const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
+                  type: 'step_upsert',
+                  phaseId: payload.phaseId,
+                  step: payload.step,
+                })
+                currentPresentationRef.current = nextPresentation
+              }
+            }
           }
 
           if (payload.type === 'artifact_upsert' && payload.artifact && currentPresentationRef.current) {
@@ -3012,7 +3078,7 @@ export function AIConsole() {
               type: 'artifact_upsert',
               artifact: payload.artifact,
             })
-            syncAssistantPresentationMessage(nextPresentation, 'streaming')
+            syncTextPresentation(nextPresentation, 'streaming')
           }
 
           if (payload.type === 'summary_replace' && typeof payload.summaryText === 'string' && currentPresentationRef.current) {
@@ -3021,7 +3087,7 @@ export function AIConsole() {
               type: 'summary_replace',
               summaryText: payload.summaryText,
             })
-            syncAssistantPresentationMessage(nextPresentation, 'streaming')
+            syncTextPresentation(nextPresentation, 'streaming')
           }
 
           if (payload.type === 'presentation_complete' && typeof payload.completedAt === 'string' && currentPresentationRef.current) {
@@ -3029,7 +3095,7 @@ export function AIConsole() {
               type: 'presentation_complete',
               completedAt: payload.completedAt,
             })
-            syncAssistantPresentationMessage(nextPresentation, 'done')
+            syncTextPresentation(nextPresentation, 'done')
           }
 
           if (payload.type === 'presentation_error' && payload.phase && payload.message && currentPresentationRef.current) {
@@ -3039,7 +3105,7 @@ export function AIConsole() {
               phase: payload.phase as 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report',
               message: payload.message,
             })
-            syncAssistantPresentationMessage(nextPresentation, 'error')
+            syncTextPresentation(nextPresentation, 'error')
           }
 
           if (payload.type === 'artifact_payload_sync') {
@@ -3115,7 +3181,8 @@ export function AIConsole() {
               })
               currentPresentationRef.current = nextPresentation
             }
-            replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
+            ensureTextMessage()
+            replaceMessageForConversation(activeConversationId, currentTextMessageId, (message) => ({
               ...message,
               content: assistantContent,
               status: 'done',
@@ -3132,7 +3199,8 @@ export function AIConsole() {
             if (activeConversationId === conversationIdRef.current) {
               setErrorMessage(nextError)
             }
-            replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
+            ensureTextMessage()
+            replaceMessageForConversation(activeConversationId, currentTextMessageId, (message) => ({
               ...message,
               content: assistantContent,
               status: 'error',
@@ -3146,12 +3214,18 @@ export function AIConsole() {
       if (abortController.signal.aborted) {
         await finalizeAbortedTurn()
       } else {
-        replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
-          ...message,
-          content: message.content || assistantSeed,
-          status: message.status === 'error' ? 'error' : 'done',
-          presentation: currentPresentationRef.current ?? message.presentation,
-        }))
+        // Finalize all still-streaming messages from this turn
+        for (const msgId of turnMessageIds) {
+          replaceMessageForConversation(activeConversationId, msgId, (message) => {
+            if (message.status !== 'streaming') return message
+            return {
+              ...message,
+              content: message.content || assistantSeed,
+              status: 'done' as const,
+              presentation: message.role === 'tool' ? undefined : (currentPresentationRef.current ?? message.presentation),
+            }
+          })
+        }
         if (assistantContent !== assistantSeed || receivedResult) {
           shouldBumpConversationActivity = true
         }
@@ -3163,16 +3237,22 @@ export function AIConsole() {
         const nextError = error instanceof Error ? error.message : t('requestFailed')
 
         if ((receivedResult || assistantContent !== assistantSeed) && nextError === 'Failed to fetch') {
-          replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
-            ...message,
-            status: message.status === 'error' ? 'error' : 'done',
-            presentation: currentPresentationRef.current ?? message.presentation,
-          }))
+          for (const msgId of turnMessageIds) {
+            replaceMessageForConversation(activeConversationId, msgId, (message) => {
+              if (message.status !== 'streaming') return message
+              return {
+                ...message,
+                status: 'done' as const,
+                presentation: message.role === 'tool' ? undefined : (currentPresentationRef.current ?? message.presentation),
+              }
+            })
+          }
         } else {
           if (activeConversationId === conversationIdRef.current) {
             setErrorMessage(nextError)
           }
-          replaceMessageForConversation(activeConversationId, assistantMessageId, (message) => ({
+          ensureTextMessage()
+          replaceMessageForConversation(activeConversationId, currentTextMessageId, (message) => ({
             ...message,
             content: nextError,
             status: 'error',
@@ -3390,59 +3470,76 @@ export function AIConsole() {
                   key={message.id}
                   className={cn('flex gap-3', message.role === 'user' ? 'justify-end' : 'justify-start')}
                 >
-                  {message.role === 'assistant' && (
-                    <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-700 dark:text-cyan-200">
-                      <Bot className="h-5 w-5" />
+                  {/* Tool message — compact card, no avatar/header */}
+                  {message.role === 'tool' && (
+                    <div className="max-w-[82%]">
+                      {message.toolStep && (
+                        <ToolCallCard step={message.toolStep} t={t} />
+                      )}
+                      {message.status === 'streaming' && !message.toolStep && (
+                        <span className="inline-flex items-center gap-1.5" role="status">
+                          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500 dark:bg-cyan-400" />
+                          <span className="text-xs text-muted-foreground animate-pulse">{t('streamingInProgress')}</span>
+                        </span>
+                      )}
                     </div>
                   )}
 
-                  <div
-                    className={cn(
-                      'max-w-[82%] rounded-[26px] border px-5 py-4 shadow-lg',
-                      message.role === 'user'
-                        ? 'border-cyan-400/30 bg-cyan-400/15 text-foreground dark:text-white'
-                        : 'border-border/70 bg-background/70 text-foreground dark:border-white/10 dark:bg-white/5'
-                    )}
-                  >
-                    <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                      {message.role === 'user' ? <User className="h-3.5 w-3.5" /> : <BrainCircuit className="h-3.5 w-3.5" />}
-                      <span>{message.role === 'user' ? t('you') : t('structureClawAi')}</span>
-                      <span className="text-slate-500">{formatDate(message.timestamp, locale)}</span>
-                    </div>
-                    {message.presentation && (
-                      <MessagePresentationView
-                        presentation={message.presentation}
-                        t={t}
-                        resolveSkillName={(skillId: string) => {
-                          const skill = availableSkills.find((s) => s.id === skillId)
-                          if (!skill) return skillId
-                          return locale === 'zh' ? (skill.name.zh || skill.name.en || skillId) : (skill.name.en || skill.name.zh || skillId)
-                        }}
-                      />
-                    )}
-                    {!message.presentation && message.content && (
-                      message.role === 'assistant'
-                        ? <MarkdownBody compact content={message.content} />
-                        : <div className="whitespace-pre-wrap text-sm leading-7">{message.content}</div>
-                    )}
-                    {message.status === 'streaming' && (
-                      <span className="inline-flex items-center gap-1.5 mt-1" role="status">
-                        <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500 dark:bg-cyan-400" />
-                        <span className="text-xs text-muted-foreground animate-pulse">{t('streamingInProgress')}</span>
-                      </span>
-                    )}
-                    {message.status === 'aborted' && (
-                      <span className="ml-2 inline-flex items-center gap-1 text-xs text-rose-500 dark:text-rose-400">
-                        <Square className="h-2.5 w-2.5" />
-                        {t('streamAborted')}
-                      </span>
-                    )}
-                    {message.status === 'error' && (
-                      <div className="mt-2 flex items-center gap-2">
-                        <span className="text-xs text-rose-500 dark:text-rose-400">{t('streamAborted')}</span>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 rounded-full border border-rose-300/40 bg-rose-300/10 px-2.5 py-1 text-[11px] text-rose-800 hover:bg-rose-300/20 dark:text-rose-200"
+                  {/* User and assistant messages */}
+                  {message.role !== 'tool' && (
+                    <>
+                      {message.role === 'assistant' && (
+                        <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-700 dark:text-cyan-200">
+                          <Bot className="h-5 w-5" />
+                        </div>
+                      )}
+
+                      <div
+                        className={cn(
+                          'max-w-[82%] rounded-[26px] border px-5 py-4 shadow-lg',
+                          message.role === 'user'
+                            ? 'border-cyan-400/30 bg-cyan-400/15 text-foreground dark:text-white'
+                            : 'border-border/70 bg-background/70 text-foreground dark:border-white/10 dark:bg-white/5'
+                        )}
+                      >
+                        <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                          {message.role === 'user' ? <User className="h-3.5 w-3.5" /> : <BrainCircuit className="h-3.5 w-3.5" />}
+                          <span>{message.role === 'user' ? t('you') : t('structureClawAi')}</span>
+                          <span className="text-slate-500">{formatDate(message.timestamp, locale)}</span>
+                        </div>
+                        {message.presentation ? (
+                          <MessagePresentationView
+                            presentation={message.presentation}
+                            t={t}
+                            resolveSkillName={(skillId: string) => {
+                              const skill = availableSkills.find((s) => s.id === skillId)
+                              if (!skill) return skillId
+                              return locale === 'zh' ? (skill.name.zh || skill.name.en || skillId) : (skill.name.en || skill.name.zh || skillId)
+                            }}
+                          />
+                        ) : message.content ? (
+                          message.role === 'assistant'
+                            ? <MarkdownBody compact content={message.content} />
+                            : <div className="whitespace-pre-wrap text-sm leading-7">{message.content}</div>
+                        ) : null}
+                        {message.status === 'streaming' && (
+                          <span className="inline-flex items-center gap-1.5 mt-1" role="status">
+                            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500 dark:bg-cyan-400" />
+                            <span className="text-xs text-muted-foreground animate-pulse">{t('streamingInProgress')}</span>
+                          </span>
+                        )}
+                        {message.status === 'aborted' && (
+                          <span className="ml-2 inline-flex items-center gap-1 text-xs text-rose-500 dark:text-rose-400">
+                            <Square className="h-2.5 w-2.5" />
+                            {t('streamAborted')}
+                          </span>
+                        )}
+                        {message.status === 'error' && (
+                          <div className="mt-2 flex items-center gap-2">
+                            <span className="text-xs text-rose-500 dark:text-rose-400">{t('streamAborted')}</span>
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 rounded-full border border-rose-300/40 bg-rose-300/10 px-2.5 py-1 text-[11px] text-rose-800 hover:bg-rose-300/20 dark:text-rose-200"
                           onClick={() => {
                             const prevUserMsg = msgIdx > 0 ? messages[msgIdx - 1] : null
                             if (prevUserMsg?.role === 'user') {
@@ -3617,6 +3714,8 @@ export function AIConsole() {
                     <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-muted/70 text-muted-foreground dark:bg-white/10 dark:text-slate-200">
                       <User className="h-5 w-5" />
                     </div>
+                  )}
+                  </>
                   )}
                 </div>
               ))}
