@@ -419,6 +419,8 @@ def convert_v2_to_jws(
 
     # Track which plan nodes already have a column so we don't double-add
     plan_nodes_with_col: set[int] = set()
+    # Cache PKPM-assigned pmid per plan node (avoids stale col_obj reference)
+    _col_pmid_cache: dict[int, int] = {}
     # Track beam nets to avoid duplicates
     added_nets: dict[tuple[int, int], int] = {}  # (pm_a, pm_b) → net_id
     # Track V2 element → PKPM mapping for result remapping
@@ -467,8 +469,9 @@ def convert_v2_to_jws(
                         sys.stderr.write(f"[pkpm_converter] SetSpecial(IDSp_Constrain_Support) failed "
                                          f"for column at node {pm_node_id}\n")
                 plan_nodes_with_col.add(pm_node_id)
+                _col_pmid_cache[pm_node_id] = getattr(col_obj, 'GetPmid', lambda: pm_node_id)()
             elem_map[elem.get("id", "")] = {
-                "pmid": getattr(col_obj, 'GetPmid', lambda: pm_node_id)(),
+                "pmid": _col_pmid_cache.get(pm_node_id, pm_node_id),
                 "type": "col",
                 "floor_nodes": node_ids,
             }

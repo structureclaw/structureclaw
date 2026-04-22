@@ -574,8 +574,16 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             key = (item_pmid, item_floor)
             if key not in pm_floor_elem_to_v2:
                 for candidate in pmid_to_v2.get(item_pmid, []):
-                    if key not in pm_floor_elem_to_v2:
+                    c_data = v2_elem_by_id.get(candidate)
+                    if not c_data:
+                        continue
+                    c_nodes = c_data.get("nodes", [])
+                    c_floor = max(
+                        (v2_node_floor.get(n, 0) for n in c_nodes), default=0
+                    )
+                    if c_floor == item_floor:
                         pm_floor_elem_to_v2[key] = candidate
+                        break
 
     # Fallback: if extracted pmids don't overlap with converter pmids,
     # PKPM renumbered elements after analysis. Match by floor+type+sequential order.
@@ -596,6 +604,8 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             etype = info.get("type", "beam")
             if pkpm_floor > 0:
                 elem_by_floor_type[(pkpm_floor, etype)].append(v2_eid)
+        for k in elem_by_floor_type:
+            elem_by_floor_type[k].sort()
 
         # Group extracted elements by (floor, type) sorted by pmid
         ext_by_floor_type: Dict[tuple[int, str], list[dict]] = defaultdict(list)
@@ -654,7 +664,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             "T": f["T"],
         }
 
-    logger.info(
+    logger.debug(
         "Phase 4 mapping: %d/%d nodes mapped to floor, "
         "%d/%d elem mappings, %d forces, %d displacements",
         sum(1 for f in v2_node_floor.values() if f >= 0),
