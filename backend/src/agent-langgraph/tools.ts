@@ -1,8 +1,15 @@
 /**
  * LangGraph tool definitions for the StructureClaw ReAct agent.
  *
- * Each tool wraps an existing AgentSkillRuntime method or provides new
- * workspace file capabilities. All tools use Zod schemas for input validation.
+ * Tools read dependencies from config.configurable (AgentConfigurable)
+ * and state from the graph state via config.configurable.agentState.
+ *
+ * Artifact-writing tools (build_model, run_analysis, etc.) return
+ * Command({ update }) objects to write directly into graph state channels,
+ * eliminating the need for an extract_artifacts intermediary node.
+ *
+ * Custom streaming events are emitted via config.writer for real-time
+ * tool status updates to the frontend.
  */
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
@@ -10,21 +17,33 @@ import fs from 'fs/promises';
 import path from 'path';
 import type { AgentSkillRuntime } from '../agent-runtime/index.js';
 import type { LangGraphRunnableConfig } from '@langchain/langgraph';
+import { Command, interrupt } from '@langchain/langgraph';
+import { ToolMessage } from '@langchain/core/messages';
 import { logger } from '../utils/logger.js';
-// Workaround: moduleResolution "node" doesn't support package.json exports.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import { interrupt } from '../../node_modules/@langchain/langgraph/dist/interrupt.js';
 import type { AgentState } from './state.js';
+import type { AgentConfigurable } from './configurable.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-/** Extract workspace root from config or state, with safety fallback. */
-function getWorkspaceRoot(config: LangGraphRunnableConfig, state?: AgentState): string {
-  const root = state?.workspaceRoot || config.configurable?.workspaceRoot || '';
+/** Get the AgentConfigurable from the LangGraph run config. */
+function getConfigurable(config: LangGraphRunnableConfig): AgentConfigurable & { agentState?: AgentState } {
+  return config.configurable as AgentConfigurable & { agentState?: AgentState };
+}
+
+/** Get workspace root from config. */
+function getWorkspaceRoot(config: LangGraphRunnableConfig): string {
+  const root = (config.configurable as Partial<AgentConfigurable>)?.workspaceRoot || '';
   if (!root) throw new Error('workspaceRoot is not configured');
   return root;
+}
+
+/** Get the tool call ID from the LangChain config. */
+function getToolCallId(config: LangGraphRunnableConfig): string {
+  const id = (config as any).toolCall?.id;
+  if (!id) throw new Error('Tool call ID not available in config');
+  return id;
 }
 
 /** Validate that a resolved path stays within the workspace root. */
@@ -36,18 +55,44 @@ function safeResolve(workspaceRoot: string, requestedPath: string): string {
   return resolved;
 }
 
+/** Emit a custom streaming event via config.writer. */
+function emitStreamEvent(config: LangGraphRunnableConfig, event: unknown): void {
+  if (typeof (config as any).writer === 'function') {
+    (config as any).writer(event);
+  }
+}
+
+/**
+ * Create a Command that updates graph state channels AND adds a ToolMessage.
+ * This is the recommended LangGraph pattern for tools that produce artifacts.
+ */
+function toolResult(
+  toolCallId: string,
+  toolName: string,
+  content: string,
+  stateUpdate?: Partial<AgentState>,
+): Command {
+  return new Command({
+    update: {
+      ...(stateUpdate || {}),
+      messages: [new ToolMessage({
+        content,
+        tool_call_id: toolCallId,
+        name: toolName,
+      })],
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Engineering tools (wrap AgentSkillRuntime)
 // ---------------------------------------------------------------------------
 
 export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
   return tool(
-    async (input: { message: string; locale?: string }, _config: LangGraphRunnableConfig) => {
-      const state = (globalThis as any).__agentState as AgentState | undefined;
+    async (input: { message: string; locale?: string }, config: LangGraphRunnableConfig) => {
+      const state = getConfigurable(config).agentState;
       const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
-      // Prefer the user's original message from the graph state — the LLM
-      // often paraphrases or truncates the input, causing detection failures.
-      // Only fall back to the LLM-provided message if state is unavailable.
       const message = state?.lastUserMessage || input.message || '';
       logger.info({ toolInputMessage: input.message, stateMessage: state?.lastUserMessage, finalMessage: message }, 'detect_structure_type input');
       const match = await skillRuntime.detectStructuralType(
@@ -79,49 +124,62 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
   return tool(
     async (input: {
       message: string;
-      existingStateJson?: string;
       locale?: string;
       skillIdsJson?: string;
-    }) => {
-      const state = (globalThis as any).__agentState as AgentState | undefined;
-      const existingState = input.existingStateJson
-        ? JSON.parse(input.existingStateJson)
-        : undefined;
+    }, config: LangGraphRunnableConfig) => {
+      const configurable = getConfigurable(config);
+      const state = configurable.agentState;
+      const toolCallId = getToolCallId(config);
+
+      // Read existing draft state from graph state channel
+      const existingState = state?.draftState || undefined;
       const skillIds = input.skillIdsJson
         ? JSON.parse(input.skillIdsJson) as string[]
         : undefined;
       const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
-      // Prefer the user's original message from the graph state for reliability.
       const message = state?.lastUserMessage || input.message || '';
 
       const result = await skillRuntime.extractDraftParameters(
-        null, // llm — the executor handles LLM internally
+        null,
         message,
         existingState,
         locale,
         skillIds,
       );
 
-      return JSON.stringify({
+      const responseJson = {
         nextState: result.nextState,
         criticalMissing: result.missing.critical,
         optionalMissing: result.missing.optional,
         structuralTypeMatch: result.structuralTypeMatch,
         skillId: result.plugin?.id,
         extractionMode: result.extractionMode,
-      });
+      };
+
+      // Update draft state and structural type key via Command
+      const stateUpdate: Partial<AgentState> = {};
+      if (result.nextState) {
+        stateUpdate.draftState = result.nextState;
+      }
+      if (result.structuralTypeMatch?.key) {
+        stateUpdate.structuralTypeKey = result.structuralTypeMatch.key;
+      }
+
+      return toolResult(
+        toolCallId,
+        'extract_draft_params',
+        JSON.stringify(responseJson),
+        stateUpdate,
+      );
     },
     {
       name: 'extract_draft_params',
       description:
         'Extract structural engineering parameters from a user message and merge them into the draft state. ' +
+        'Reads existing draft state from conversation state automatically — do NOT pass it as a parameter. ' +
         'Returns updated draft state, missing fields, and the matched structural type.',
       schema: z.object({
         message: z.string().describe('The user message to extract parameters from'),
-        existingStateJson: z
-          .string()
-          .optional()
-          .describe('JSON string of existing DraftState (omit if first message)'),
         locale: z.enum(['zh', 'en']).optional().describe('User locale'),
         skillIdsJson: z
           .string()
@@ -134,25 +192,45 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
 
 export function createBuildModelTool(skillRuntime: AgentSkillRuntime) {
   return tool(
-    async (input: { stateJson: string; skillIdsJson?: string }) => {
-      const draftState = JSON.parse(input.stateJson);
+    async (input: { skillIdsJson?: string }, config: LangGraphRunnableConfig) => {
+      const state = getConfigurable(config).agentState;
+      const toolCallId = getToolCallId(config);
+
+      // Read draft state from graph state channel
+      const draftState = state?.draftState;
+      if (!draftState) {
+        return toolResult(toolCallId, 'build_model', JSON.stringify({ success: false, error: 'No draft state available. Run extract_draft_params first.' }));
+      }
       const skillIds = input.skillIdsJson
         ? JSON.parse(input.skillIdsJson) as string[]
         : undefined;
 
+      emitStreamEvent(config, {
+        type: 'step_upsert',
+        phaseId: 'phase-modeling',
+        step: { id: `step-${toolCallId}`, phase: 'modeling', status: 'running', tool: 'build_model', title: 'build_model', startedAt: new Date().toISOString() },
+      });
+
       const model = await skillRuntime.buildModel(draftState, skillIds);
       if (!model) {
-        return JSON.stringify({ success: false, error: 'Model build returned undefined — draft may be incomplete' });
+        return toolResult(toolCallId, 'build_model', JSON.stringify({ success: false, error: 'Model build returned undefined — draft may be incomplete' }));
       }
-      return JSON.stringify({ success: true, model });
+
+      // Store model in graph state via Command
+      return toolResult(
+        toolCallId,
+        'build_model',
+        JSON.stringify({ success: true }),
+        { model },
+      );
     },
     {
       name: 'build_model',
       description:
-        'Build a computable structural model JSON from the current draft state. ' +
+        'Build a computable structural model from the current draft state. ' +
+        'Reads draft state from conversation state automatically — do NOT pass it as a parameter. ' +
         'Returns the model if all critical parameters are present, or an error if the draft is incomplete.',
       schema: z.object({
-        stateJson: z.string().describe('JSON string of current DraftState'),
         skillIdsJson: z
           .string()
           .optional()
@@ -169,16 +247,12 @@ export function createAskUserClarificationTool() {
         ? JSON.parse(input.optionsJson) as string[]
         : undefined;
 
-      // Use LangGraph interrupt() to pause the graph and wait for user input.
-      // The payload is surfaced in __interrupt__ so the SSE layer can forward it.
-      // The graph resumes when the client sends a Command({ resume: <value> }).
       const userResponse = interrupt({
         type: 'clarification_needed',
         question: input.question,
         options,
       }) as string;
 
-      // When resumed, the user's answer is returned here.
       return JSON.stringify({
         type: 'clarification_answered',
         question: input.question,
@@ -209,8 +283,7 @@ export function createAskUserClarificationTool() {
 export function createReadWorkspaceFileTool() {
   return tool(
     async (input: { filePath: string }, config: LangGraphRunnableConfig) => {
-      const state = config.configurable?.agentState as AgentState | undefined;
-      const root = getWorkspaceRoot(config, state);
+      const root = getWorkspaceRoot(config);
       const resolved = safeResolve(root, input.filePath);
 
       const stat = await fs.stat(resolved);
@@ -237,11 +310,9 @@ export function createReadWorkspaceFileTool() {
 export function createWriteWorkspaceFileTool() {
   return tool(
     async (input: { filePath: string; content: string }, config: LangGraphRunnableConfig) => {
-      const state = config.configurable?.agentState as AgentState | undefined;
-      const root = getWorkspaceRoot(config, state);
+      const root = getWorkspaceRoot(config);
       const resolved = safeResolve(root, input.filePath);
 
-      // Ensure parent directory exists
       await fs.mkdir(path.dirname(resolved), { recursive: true });
       await fs.writeFile(resolved, input.content, 'utf-8');
 
@@ -269,8 +340,7 @@ export function createWriteWorkspaceFileTool() {
 export function createListWorkspaceFilesTool() {
   return tool(
     async (input: { dirPath?: string; maxDepth?: number }, config: LangGraphRunnableConfig) => {
-      const state = config.configurable?.agentState as AgentState | undefined;
-      const root = getWorkspaceRoot(config, state);
+      const root = getWorkspaceRoot(config);
       const target = input.dirPath ? safeResolve(root, input.dirPath) : root;
       const maxDepth = input.maxDepth ?? 3;
 
@@ -319,19 +389,23 @@ export function createUpdateSessionConfigTool() {
       analysisType?: string;
       designCode?: string;
       skillIdsJson?: string;
-    }) => {
-      const stateUpdate: Partial<AgentState> = {} as Partial<AgentState>;
+    }, config: LangGraphRunnableConfig) => {
+      const state = getConfigurable(config).agentState;
+      const toolCallId = getToolCallId(config);
+
       const updatedKeys: string[] = [];
+      const stateUpdate: Partial<AgentState> = {};
 
       if (input.analysisType) {
         stateUpdate.policy = {
-          ...(stateUpdate.policy || {}),
+          ...(state?.policy || {}),
           analysisType: input.analysisType as 'static' | 'dynamic' | 'seismic' | 'nonlinear',
         };
         updatedKeys.push('analysisType');
       }
       if (input.designCode) {
         stateUpdate.policy = {
+          ...(state?.policy || {}),
           ...(stateUpdate.policy || {}),
           designCode: input.designCode,
         };
@@ -342,24 +416,17 @@ export function createUpdateSessionConfigTool() {
         updatedKeys.push('selectedSkillIds');
       }
 
-      // Apply state update via globalThis so tools can read the updated config.
-      // We cannot return Command() here because it breaks the ToolNode message chain —
-      // the ToolNode expects a string/serialisable value to wrap in a ToolMessage.
-      const currentState = (globalThis as any).__agentState as AgentState | undefined;
-      if (currentState) {
-        if (stateUpdate.policy) {
-          (currentState as any).policy = { ...(currentState as any).policy, ...stateUpdate.policy };
-        }
-        if (stateUpdate.selectedSkillIds) {
-          (currentState as any).selectedSkillIds = stateUpdate.selectedSkillIds;
-        }
-      }
-
-      return JSON.stringify({
+      const responseJson = {
         success: true,
         updatedKeys,
         message: `Updated: ${updatedKeys.join(', ') || 'nothing'}`,
-      });
+      };
+
+      // Only return Command if there are actual updates
+      if (updatedKeys.length > 0) {
+        return toolResult(toolCallId, 'update_session_config', JSON.stringify(responseJson), stateUpdate);
+      }
+      return JSON.stringify(responseJson);
     },
     {
       name: 'update_session_config',
@@ -390,26 +457,28 @@ export function createUpdateSessionConfigTool() {
 
 export function createValidateModelTool(skillRuntime: AgentSkillRuntime) {
   return tool(
-    async (input: { modelJson: string; engineId?: string }) => {
-      const model = JSON.parse(input.modelJson) as Record<string, unknown>;
-      const client = (globalThis as any).__structureProtocolClient;
-      if (!client) {
-        return JSON.stringify({ error: 'Structure protocol client not available' });
+    async (input: { engineId?: string }, config: LangGraphRunnableConfig) => {
+      const configurable = getConfigurable(config);
+      const state = configurable.agentState;
+      // Read model from graph state channel
+      const model = state?.model;
+      if (!model) {
+        return JSON.stringify({ error: 'No model available. Run build_model first.' });
       }
       const result = await skillRuntime.executeValidationSkill({
         model,
         engineId: input.engineId,
-        structureProtocolClient: client,
+        structureProtocolClient: configurable.structureProtocolClient,
       });
       return JSON.stringify(result);
     },
     {
       name: 'validate_model',
       description:
-        'Validate a structural model for correctness (connectivity, geometry, loads). ' +
+        'Validate the current structural model for correctness (connectivity, geometry, loads). ' +
+        'Reads the model from conversation state automatically — do NOT pass it as a parameter. ' +
         'Returns validation errors and warnings.',
       schema: z.object({
-        modelJson: z.string().describe('JSON string of the structural model to validate'),
         engineId: z.string().optional().describe('Optional analysis engine ID'),
       }),
     },
@@ -419,31 +488,42 @@ export function createValidateModelTool(skillRuntime: AgentSkillRuntime) {
 export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
   return tool(
     async (input: {
-      modelJson: string;
       analysisType: string;
       engineId?: string;
       skillIdsJson?: string;
-    }) => {
-      const model = JSON.parse(input.modelJson) as Record<string, unknown>;
+    }, config: LangGraphRunnableConfig) => {
+      const configurable = getConfigurable(config);
+      const state = configurable.agentState;
+      const toolCallId = getToolCallId(config);
+
+      // Read model from graph state channel
+      const model = state?.model;
+      if (!model) {
+        return toolResult(toolCallId, 'run_analysis', JSON.stringify({ error: 'No model available. Run build_model first.' }));
+      }
       const skillIds = input.skillIdsJson
         ? JSON.parse(input.skillIdsJson) as string[]
         : undefined;
-      const engineClient = (globalThis as any).__engineClient;
-      if (!engineClient) {
-        return JSON.stringify({ error: 'Analysis engine client not available' });
-      }
       const analysisType = (input.analysisType || 'static') as 'static' | 'dynamic' | 'seismic' | 'nonlinear';
       const traceId = `lg-${Date.now()}`;
 
+      // Emit streaming event: analysis starting
+      emitStreamEvent(config, {
+        type: 'step_upsert',
+        phaseId: 'phase-analysis',
+        step: { id: `step-${toolCallId}`, phase: 'analysis', status: 'running', tool: 'run_analysis', title: 'run_analysis', startedAt: new Date().toISOString() },
+      });
+
+      const engineClient = configurable.engineClient;
       const postToEngineWithRetry = async (
-        path: string,
+        p: string,
         payload: Record<string, unknown>,
         opts: { retries: number; traceId: string; tool: 'run_analysis'; signal?: AbortSignal },
       ) => {
         let lastError: unknown;
         for (let attempt = 0; attempt <= opts.retries; attempt++) {
           try {
-            return await engineClient.post(path, payload, { signal: opts.signal });
+            return await engineClient.post(p, payload, { signal: opts.signal });
           } catch (error) {
             lastError = error;
             if (attempt === opts.retries) throw error;
@@ -461,15 +541,22 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
         skillIds,
         postToEngineWithRetry,
       });
-      return JSON.stringify(result);
+
+      // Store analysis result in graph state via Command
+      return toolResult(
+        toolCallId,
+        'run_analysis',
+        JSON.stringify({ success: true, input: result.input, skillId: result.skillId }),
+        { analysisResult: result.result as Record<string, unknown> },
+      );
     },
     {
       name: 'run_analysis',
       description:
         'Execute a structural analysis (static, dynamic, seismic, or nonlinear). ' +
-        'Requires a validated model JSON. Returns analysis results including displacements, forces, and reactions.',
+        'Reads the model from conversation state automatically — do NOT pass it as a parameter. ' +
+        'Returns analysis results including displacements, forces, and reactions.',
       schema: z.object({
-        modelJson: z.string().describe('JSON string of the structural model'),
         analysisType: z
           .enum(['static', 'dynamic', 'seismic', 'nonlinear'])
           .describe('Type of analysis to perform'),
@@ -483,20 +570,33 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
 export function createRunCodeCheckTool(skillRuntime: AgentSkillRuntime) {
   return tool(
     async (input: {
-      modelJson: string;
-      analysisJson: string;
       designCode: string;
       engineId?: string;
-    }) => {
-      const model = JSON.parse(input.modelJson) as Record<string, unknown>;
-      const analysis = JSON.parse(input.analysisJson);
-      const codeCheckClient = (globalThis as any).__codeCheckClient;
-      if (!codeCheckClient) {
-        return JSON.stringify({ error: 'Code check client not available' });
+    }, config: LangGraphRunnableConfig) => {
+      const configurable = getConfigurable(config);
+      const state = configurable.agentState;
+      const toolCallId = getToolCallId(config);
+
+      // Read model and analysis from graph state channels
+      const model = state?.model;
+      if (!model) {
+        return toolResult(toolCallId, 'run_code_check', JSON.stringify({ error: 'No model available. Run build_model first.' }));
+      }
+      const analysis = state?.analysisResult;
+      if (!analysis) {
+        return toolResult(toolCallId, 'run_code_check', JSON.stringify({ error: 'No analysis results available. Run run_analysis first.' }));
       }
       const traceId = `lg-cc-${Date.now()}`;
+
+      // Emit streaming event
+      emitStreamEvent(config, {
+        type: 'step_upsert',
+        phaseId: 'phase-analysis',
+        step: { id: `step-${toolCallId}`, phase: 'analysis', status: 'running', tool: 'run_code_check', title: 'run_code_check', startedAt: new Date().toISOString() },
+      });
+
       const result = await skillRuntime.executeCodeCheckSkill({
-        codeCheckClient,
+        codeCheckClient: configurable.codeCheckClient,
         traceId,
         designCode: input.designCode || 'GB50017',
         model,
@@ -504,16 +604,22 @@ export function createRunCodeCheckTool(skillRuntime: AgentSkillRuntime) {
         analysisParameters: {},
         engineId: input.engineId,
       });
-      return JSON.stringify(result);
+
+      // Store code check result in graph state via Command
+      return toolResult(
+        toolCallId,
+        'run_code_check',
+        JSON.stringify({ success: true, skillId: result.skillId }),
+        { codeCheckResult: result.result as Record<string, unknown> },
+      );
     },
     {
       name: 'run_code_check',
       description:
         'Run code compliance check against a design code (e.g. GB50017, GB50010, GB50011). ' +
-        'Requires a model and analysis results. Returns pass/fail status for each check.',
+        'Reads model and analysis results from conversation state automatically — do NOT pass them as parameters. ' +
+        'Returns pass/fail status for each check.',
       schema: z.object({
-        modelJson: z.string().describe('JSON string of the structural model'),
-        analysisJson: z.string().describe('JSON string of analysis results'),
         designCode: z
           .string()
           .describe('Design code to check against (GB50010, GB50011, GB50017, JGJ3)'),
@@ -527,19 +633,30 @@ export function createGenerateReportTool(skillRuntime: AgentSkillRuntime) {
   return tool(
     async (input: {
       message: string;
-      analysisJson: string;
       analysisType: string;
-      codeCheckJson?: string;
       locale?: string;
-      draftStateJson?: string;
       skillIdsJson?: string;
-    }) => {
-      const analysis = JSON.parse(input.analysisJson);
-      const codeCheck = input.codeCheckJson ? JSON.parse(input.codeCheckJson) : undefined;
-      const draftState = input.draftStateJson ? JSON.parse(input.draftStateJson) : undefined;
+    }, config: LangGraphRunnableConfig) => {
+      const state = getConfigurable(config).agentState;
+      const toolCallId = getToolCallId(config);
+
+      // Read analysis, codeCheck, draftState from graph state channels
+      const analysis = state?.analysisResult;
+      if (!analysis) {
+        return toolResult(toolCallId, 'generate_report', JSON.stringify({ error: 'No analysis results available. Run run_analysis first.' }));
+      }
+      const codeCheck = state?.codeCheckResult || undefined;
+      const draftState = state?.draftState || undefined;
       const skillIds = input.skillIdsJson ? JSON.parse(input.skillIdsJson) as string[] : undefined;
-      const locale = (input.locale === 'en' ? 'en' : 'zh') as 'zh' | 'en';
+      const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
       const analysisType = (input.analysisType || 'static') as 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+
+      // Emit streaming event
+      emitStreamEvent(config, {
+        type: 'step_upsert',
+        phaseId: 'phase-report',
+        step: { id: `step-${toolCallId}`, phase: 'report', status: 'running', tool: 'generate_report', title: 'generate_report', startedAt: new Date().toISOString() },
+      });
 
       const result = await skillRuntime.executeReportSkill({
         message: input.message,
@@ -551,22 +668,28 @@ export function createGenerateReportTool(skillRuntime: AgentSkillRuntime) {
         draft: draftState,
         skillIds,
       });
-      return JSON.stringify(result);
+
+      // Store report in graph state via Command
+      return toolResult(
+        toolCallId,
+        'generate_report',
+        JSON.stringify({ success: true, summary: result.report.summary }),
+        { report: result.report as unknown as Record<string, unknown> },
+      );
     },
     {
       name: 'generate_report',
       description:
         'Generate an engineering report with summary, key metrics, and compliance narrative. ' +
-        'Requires analysis results. Optionally includes code check results.',
+        'Reads analysis results, code check results, and draft state from conversation state automatically — ' +
+        'do NOT pass them as parameters. ' +
+        'Requires run_analysis to have been called first.',
       schema: z.object({
         message: z.string().describe('Original user message / intent'),
-        analysisJson: z.string().describe('JSON string of analysis results'),
         analysisType: z
           .enum(['static', 'dynamic', 'seismic', 'nonlinear'])
           .describe('Analysis type that was performed'),
-        codeCheckJson: z.string().optional().describe('JSON string of code check results'),
         locale: z.enum(['zh', 'en']).optional().describe('Report language'),
-        draftStateJson: z.string().optional().describe('JSON string of current DraftState'),
         skillIdsJson: z.string().optional().describe('JSON array of selected skill IDs'),
       }),
     },

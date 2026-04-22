@@ -2,12 +2,14 @@
  * LangGraph-based AgentService — the sole agent implementation.
  *
  * Provides streaming, synchronous, and resumption entry points for the
- * LangGraph ReAct agent, plus conversation/session management methods
- * previously handled by the legacy AgentService.
+ * LangGraph ReAct agent, plus conversation/session management methods.
+ *
+ * Dependency injection uses config.configurable (no globalThis).
+ * The graph is built once and cached for the process lifetime.
  */
 import { HumanMessage } from '@langchain/core/messages';
 import { randomUUID } from 'crypto';
-import type { AgentSkillRuntime } from '../agent-runtime/index.js';
+import { AgentSkillRuntime } from '../agent-runtime/index.js';
 import type { SkillManifest } from '../agent-runtime/types.js';
 import { buildAgentGraph } from './graph.js';
 import { FileCheckpointer } from './file-checkpointer.js';
@@ -20,10 +22,9 @@ import { createLocalAnalysisEngineClient } from '../services/analysis-execution.
 import { createLocalCodeCheckClient } from '../services/code-check-execution.js';
 import { createLocalStructureProtocolClient } from '../services/structure-protocol-execution.js';
 import { prisma } from '../utils/database.js';
-// Workaround: moduleResolution "node" doesn't support package.json exports.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import { Command } from '../../node_modules/@langchain/langgraph/dist/constants.js';
+import { Command } from '@langchain/langgraph';
 import { logger } from '../utils/logger.js';
+import type { AgentConfigurable } from './configurable.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -51,7 +52,6 @@ export interface LangGraphRunInput {
 }
 
 export interface LangGraphRunResult {
-  // Core fields (used by /message and /run endpoints)
   conversationId: string;
   traceId: string;
   startedAt: string;
@@ -60,12 +60,24 @@ export interface LangGraphRunResult {
   response: string;
   mode: 'conversation' | 'execution';
   toolCalls: unknown[];
-  // Optional domain artifacts
   model?: Record<string, unknown>;
   analysis?: Record<string, unknown>;
   report?: Record<string, unknown>;
   draftState?: Record<string, unknown>;
   presentation?: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// Singleton factory
+// ---------------------------------------------------------------------------
+
+let singleton: LangGraphAgentService | undefined;
+
+export function getAgentService(): LangGraphAgentService {
+  if (!singleton) {
+    singleton = new LangGraphAgentService(new AgentSkillRuntime());
+  }
+  return singleton;
 }
 
 // ---------------------------------------------------------------------------
@@ -77,17 +89,37 @@ export class LangGraphAgentService {
   private readonly checkpointer: FileCheckpointer;
   private readonly workspaceRoot: string;
 
+  // Execution clients (created once, injected via config.configurable)
+  private readonly engineClient: ReturnType<typeof createLocalAnalysisEngineClient>;
+  private readonly codeCheckClient: ReturnType<typeof createLocalCodeCheckClient>;
+  private readonly structureProtocolClient: ReturnType<typeof createLocalStructureProtocolClient>;
+
+  // Cached graph — built once, reused across requests
+  private graphPromise: Promise<ReturnType<typeof buildAgentGraph>> | undefined;
+
   constructor(skillRuntime: AgentSkillRuntime) {
     this.skillRuntime = skillRuntime;
     this.checkpointer = new FileCheckpointer(getCheckpointerDataDir());
     this.workspaceRoot = getWorkspaceRoot();
 
-    // Expose skillRuntime and execution clients globally for tool factories.
-    // TODO: Replace with proper DI via LangGraph config.configurable.
-    (globalThis as any).__skillRuntime = skillRuntime;
-    (globalThis as any).__engineClient = createLocalAnalysisEngineClient();
-    (globalThis as any).__codeCheckClient = createLocalCodeCheckClient();
-    (globalThis as any).__structureProtocolClient = createLocalStructureProtocolClient();
+    // Create execution clients once (lifetime of the process)
+    this.engineClient = createLocalAnalysisEngineClient();
+    this.codeCheckClient = createLocalCodeCheckClient();
+    this.structureProtocolClient = createLocalStructureProtocolClient();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Configurable builder (DI container for tools/nodes)
+  // ---------------------------------------------------------------------------
+
+  private buildConfigurable(): AgentConfigurable {
+    return {
+      skillRuntime: this.skillRuntime,
+      engineClient: this.engineClient,
+      codeCheckClient: this.codeCheckClient,
+      structureProtocolClient: this.structureProtocolClient,
+      workspaceRoot: this.workspaceRoot,
+    };
   }
 
   // ---------------------------------------------------------------------------
@@ -112,16 +144,27 @@ export class LangGraphAgentService {
   }
 
   // ---------------------------------------------------------------------------
-  // Graph construction helper
+  // Graph construction (cached)
   // ---------------------------------------------------------------------------
 
-  private async buildGraph() {
-    const skillManifests = await this.skillRuntime.listSkillManifests();
-    return buildAgentGraph({
-      skillRuntime: this.skillRuntime,
-      skillManifests,
-      checkpointer: this.checkpointer,
-    });
+  /** Get or build the compiled graph. Thread-safe for concurrent first calls. */
+  private async getGraph(): Promise<ReturnType<typeof buildAgentGraph>> {
+    if (!this.graphPromise) {
+      this.graphPromise = (async () => {
+        const skillManifests = await this.skillRuntime.listSkillManifests();
+        return buildAgentGraph({
+          skillRuntime: this.skillRuntime,
+          skillManifests,
+          checkpointer: this.checkpointer,
+        });
+      })();
+    }
+    return this.graphPromise;
+  }
+
+  /** Force rebuild the graph (e.g. after skill install/uninstall). */
+  resetGraph(): void {
+    this.graphPromise = undefined;
   }
 
   // ---------------------------------------------------------------------------
@@ -137,10 +180,13 @@ export class LangGraphAgentService {
     const traceId = input.traceId || randomUUID();
     const startedAt = new Date().toISOString();
 
-    const graph = await this.buildGraph();
+    const graph = await this.getGraph();
 
     const config = {
-      configurable: { thread_id: conversationId },
+      configurable: {
+        thread_id: conversationId,
+        ...this.buildConfigurable(),
+      },
     };
 
     logger.info({ conversationId, message: input.message.slice(0, 100) }, 'LangGraph agent stream');
@@ -175,10 +221,13 @@ export class LangGraphAgentService {
     const traceId = randomUUID();
     const startedAt = new Date().toISOString();
 
-    const graph = await this.buildGraph();
+    const graph = await this.getGraph();
 
     const config = {
-      configurable: { thread_id: conversationId },
+      configurable: {
+        thread_id: conversationId,
+        ...this.buildConfigurable(),
+      },
     };
 
     logger.info({ conversationId }, 'LangGraph agent resume');
@@ -205,10 +254,13 @@ export class LangGraphAgentService {
     const traceId = input.traceId || randomUUID();
     const startedAt = new Date().toISOString();
 
-    const graph = await this.buildGraph();
+    const graph = await this.getGraph();
 
     const config = {
-      configurable: { thread_id: conversationId },
+      configurable: {
+        thread_id: conversationId,
+        ...this.buildConfigurable(),
+      },
     };
 
     logger.info({ conversationId, message: input.message.slice(0, 100) }, 'LangGraph agent run');
@@ -232,13 +284,9 @@ export class LangGraphAgentService {
   }
 
   // ---------------------------------------------------------------------------
-  // Session management (replaces legacy AgentService methods)
+  // Session management
   // ---------------------------------------------------------------------------
 
-  /**
-   * Get a conversation's session state from the LangGraph checkpoint.
-   * Used by GET /conversation/:id.
-   */
   async getConversationSessionSnapshot(
     conversationId: string,
     _locale: AppLocale,
@@ -249,7 +297,6 @@ export class LangGraphAgentService {
       });
       if (!tuple?.checkpoint) return undefined;
 
-      // Extract state from checkpoint channel_values
       const channelValues = (tuple.checkpoint as any).channel_values ||
         (tuple.checkpoint as any).channelValues || {};
 
@@ -269,18 +316,10 @@ export class LangGraphAgentService {
     }
   }
 
-  /**
-   * Clear conversation session by deleting all checkpoint files.
-   * Used by DELETE /conversation/:id.
-   */
   async clearConversationSession(conversationId: string): Promise<void> {
     await this.checkpointer.deleteThread(conversationId);
   }
 
-  /**
-   * List available skills.
-   * Used by GET /skills.
-   */
   async listSkills(): Promise<{ skills: SkillManifest[] }> {
     const manifests = await this.skillRuntime.listSkillManifests();
     return { skills: manifests };
@@ -288,26 +327,16 @@ export class LangGraphAgentService {
 
   /**
    * Get the agent protocol (tool schemas).
-   * Used by GET /tools.
+   * Dynamically reads from createAllTools() so it stays in sync.
    */
-  static getProtocol(): { tools: Array<{ name: string; description: string }> } {
-    // Build a lightweight protocol description without instantiating the full tool set.
-    // The full tools are created per-request in graph.ts.
+  async getProtocol(): Promise<{ tools: Array<{ name: string; description: string }> }> {
+    const { createAllTools } = await import('./tools.js');
+    const tools = createAllTools({ skillRuntime: this.skillRuntime });
     return {
-      tools: [
-        { name: 'detect_structure_type', description: 'Detect structural type from user description' },
-        { name: 'extract_draft_params', description: 'Extract engineering parameters from user message' },
-        { name: 'build_model', description: 'Build structural model from draft state' },
-        { name: 'validate_model', description: 'Validate structural model' },
-        { name: 'run_analysis', description: 'Execute structural analysis' },
-        { name: 'run_code_check', description: 'Run code compliance check' },
-        { name: 'generate_report', description: 'Generate engineering report' },
-        { name: 'ask_user_clarification', description: 'Ask user for clarification' },
-        { name: 'read_workspace_file', description: 'Read file from workspace' },
-        { name: 'write_workspace_file', description: 'Write file to workspace' },
-        { name: 'list_workspace_files', description: 'List workspace directory' },
-        { name: 'update_session_config', description: 'Update session configuration' },
-      ],
+      tools: tools.map((t) => ({
+        name: t.name,
+        description: t.description,
+      })),
     };
   }
 

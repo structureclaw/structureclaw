@@ -6,26 +6,27 @@
  *     → Yes  → tools (execute tool) → agent (loop back)
  *     → No   → END (final response)
  *
- * This implements the core ReAct loop:
- *   Reason → Tool Selection → Execute → Observe → loop
+ * Dependency injection: services are passed via config.configurable
+ * (AgentConfigurable) so tools and nodes never read globalThis.
+ *
+ * Artifact-writing tools return Command({ update }) objects to write
+ * directly into graph state channels — no intermediary node needed.
  */
 import {
   StateGraph,
   START,
   END,
+  type LangGraphRunnableConfig,
 } from '@langchain/langgraph';
-// Workaround: moduleResolution "node" doesn't support package.json exports.
-// Import directly from the resolved dist path.
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-import { ToolNode } from '../../node_modules/@langchain/langgraph/dist/prebuilt/index.js';
+import { ToolNode } from '@langchain/langgraph/prebuilt';
 import { AIMessage, type BaseMessage } from '@langchain/core/messages';
 import type { BaseCheckpointSaver } from '@langchain/langgraph';
 import { createChatModel } from '../utils/llm.js';
 import { AgentStateAnnotation, type AgentState } from './state.js';
 import { createAllTools, type ToolDeps } from './tools.js';
 import { buildSystemMessages } from './system-prompt.js';
-import type { AgentSkillRuntime } from '../agent-runtime/index.js';
 import type { SkillManifest } from '../agent-runtime/types.js';
+import type { AgentConfigurable } from './configurable.js';
 
 // ---------------------------------------------------------------------------
 // Max ReAct iterations guard
@@ -37,10 +38,15 @@ const MAX_TOOL_CALLS_PER_TURN = 15;
 // Node: agent (LLM reasoning)
 // ---------------------------------------------------------------------------
 
-function createCallModelNode(skillManifests: SkillManifest[]) {
+function createCallModelNode(
+  skillManifests: SkillManifest[],
+  tools: ReturnType<typeof createAllTools>,
+) {
   return async function callModel(
     state: AgentState,
+    config: LangGraphRunnableConfig,
   ): Promise<Partial<AgentState>> {
+    const configurable = config.configurable as Partial<AgentConfigurable> | undefined;
     const model = createChatModel(0);
     if (!model) {
       return {
@@ -54,12 +60,21 @@ function createCallModelNode(skillManifests: SkillManifest[]) {
       };
     }
 
-    const tools = createAllTools({ skillRuntime: (globalThis as any).__skillRuntime as AgentSkillRuntime });
-    const modelWithTools = model.bindTools(tools);
+    const skillRuntime = configurable?.skillRuntime;
+    if (!skillRuntime) {
+      return {
+        messages: [
+          new AIMessage(
+            state.locale === 'zh'
+              ? '技能运行时未配置。'
+              : 'Skill runtime is not configured.',
+          ),
+        ],
+      };
+    }
 
-    // Expose current state so tools can access lastUserMessage etc.
-    // TODO: Replace with proper DI via config.configurable.
-    (globalThis as any).__agentState = state;
+    // Bind tools to model (tools are shared, created once in buildAgentGraph)
+    const modelWithTools = model.bindTools(tools);
 
     // Build system prompt
     const systemMessages = buildSystemMessages({ state, skillManifests });
@@ -75,8 +90,6 @@ function createCallModelNode(skillManifests: SkillManifest[]) {
     );
 
     // Count prior tool calls in this turn to enforce max iterations.
-    // Only count calls since the last HumanMessage (per-turn), and sum
-    // individual tool_calls[].length rather than counting messages.
     let lastHumanIndex = -1;
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i];
@@ -105,9 +118,19 @@ function createCallModelNode(skillManifests: SkillManifest[]) {
       return { messages: [new AIMessage(warning)] };
     }
 
-    // Invoke LLM
+    // Inject current state into configurable so tools can read state channels.
+    // Tools access it via config.configurable.agentState.
+    const configWithState = {
+      ...config,
+      configurable: {
+        ...config.configurable,
+        agentState: state,
+      },
+    };
+
+    // Invoke LLM — pass state-injected config so tools can read state
     const allMessages = [...systemMessages, ...msgs];
-    const response = await modelWithTools.invoke(allMessages);
+    const response = await modelWithTools.invoke(allMessages, configWithState);
 
     return { messages: [response] };
   };
@@ -122,10 +145,6 @@ function shouldContinue(
 ): 'tools' | typeof END {
   const msgs = Array.isArray(state.messages) ? state.messages : [];
   const lastMessage = msgs[msgs.length - 1];
-  // Use duck typing instead of instanceof AIMessage — LangGraph's StreamMessagesHandler
-  // sets lc_prefer_streaming=true, which causes ChatOpenAI.invoke() to stream internally
-  // and return an AIMessageChunk (extends BaseMessageChunk, NOT AIMessage).
-  // LangGraph's own toolsCondition() uses the same duck-typing approach.
   if (
     lastMessage != null &&
     'tool_calls' in lastMessage &&
@@ -149,10 +168,11 @@ export interface GraphDeps extends ToolDeps {
 export function buildAgentGraph(deps: GraphDeps) {
   const { skillManifests, checkpointer } = deps;
 
+  // Create tools ONCE — shared between ToolNode and callModel
   const tools = createAllTools({ skillRuntime: deps.skillRuntime });
   const toolNode = new ToolNode(tools);
 
-  const callModel = createCallModelNode(skillManifests);
+  const callModel = createCallModelNode(skillManifests, tools);
 
   const workflow = new StateGraph(AgentStateAnnotation)
     .addNode('agent', callModel)

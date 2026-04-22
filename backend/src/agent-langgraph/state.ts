@@ -100,6 +100,26 @@ export const AgentStateAnnotation = Annotation.Root({
     reducer: (_prev, next) => next,
     default: () => null,
   }),
+  /** Built structural model (written by build_model tool via Command). */
+  model: Annotation<Record<string, unknown> | null>({
+    reducer: (_prev, next) => next,
+    default: () => null,
+  }),
+  /** Analysis results (written by run_analysis tool via Command). */
+  analysisResult: Annotation<Record<string, unknown> | null>({
+    reducer: (_prev, next) => next,
+    default: () => null,
+  }),
+  /** Code check results (written by run_code_check tool via Command). */
+  codeCheckResult: Annotation<Record<string, unknown> | null>({
+    reducer: (_prev, next) => next,
+    default: () => null,
+  }),
+  /** Generated report (written by generate_report tool via Command). */
+  report: Annotation<Record<string, unknown> | null>({
+    reducer: (_prev, next) => next,
+    default: () => null,
+  }),
 });
 
 /** Inferred TypeScript type from the annotation. */

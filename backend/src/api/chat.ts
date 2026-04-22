@@ -11,11 +11,10 @@ import {
   reducePresentationEvent,
   type AssistantPresentation,
 } from '../services/chat-presentation.js';
-import { LangGraphAgentService } from '../agent-langgraph/index.js';
-import { AgentSkillRuntime } from '../agent-runtime/index.js';
+import { getAgentService } from '../agent-langgraph/index.js';
 
 const conversationService = new ConversationService();
-const agentService = new LangGraphAgentService(new AgentSkillRuntime());
+const agentService = getAgentService();
 
 const optionalIdSchema = z.preprocess((value) => {
   if (value === null || value === undefined) {

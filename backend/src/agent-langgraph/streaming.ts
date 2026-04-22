@@ -11,8 +11,9 @@
  *   - start, presentation_init, phase_upsert, step_upsert, artifact_upsert,
  *     summary_replace, result, presentation_complete, done, error
  */
-import type { AIMessage, AIMessageChunk, BaseMessage } from '@langchain/core/messages';
+import type { AIMessageChunk, BaseMessage } from '@langchain/core/messages';
 import { randomUUID } from 'crypto';
+import { isCommand } from '@langchain/langgraph';
 import {
   createEmptyAssistantPresentation,
   type AssistantPresentation,
@@ -36,16 +37,6 @@ export interface StreamContext {
 // ---------------------------------------------------------------------------
 // Event classification helpers
 // ---------------------------------------------------------------------------
-
-function isAIMessage(msg: unknown): msg is AIMessage {
-  return (
-    typeof msg === 'object' &&
-    msg !== null &&
-    '_getType' in msg &&
-    typeof (msg as any)._getType === 'function' &&
-    (msg as any)._getType() === 'ai'
-  );
-}
 
 function isAIMessageChunk(msg: unknown): msg is AIMessageChunk {
   return (
@@ -158,10 +149,8 @@ export function langGraphEventToChunks(
           : [nodeState.messages];
 
         for (const msg of messages) {
-          // Use duck-typing instead of isAIMessage() — when streamMode includes
-          // 'messages', LangGraph's StreamMessagesHandler sets lc_prefer_streaming=true,
-          // causing invoke() to return AIMessageChunk (extends BaseMessageChunk, NOT
-          // AIMessage). Same fix as shouldContinue() in graph.ts.
+          // Use duck-typing — when streamMode includes 'messages',
+          // LangGraph's StreamMessagesHandler may return AIMessageChunk
           const isAI = msg != null && typeof msg === 'object' && typeof (msg as any)._getType === 'function' && (msg as any)._getType() === 'ai';
           if (isAI) {
             if (hasToolCalls(msg)) {
@@ -200,17 +189,18 @@ export function langGraphEventToChunks(
       }
 
       if (nodeName === 'tools') {
-        const messages: BaseMessage[] = Array.isArray(nodeState?.messages)
-          ? nodeState.messages
-          : nodeState?.messages ? [nodeState.messages] : [];
-
-        for (const msg of messages) {
-          // ToolMessage.name = tool name, ToolMessage.id = matches the
-          // original tool_calls[].id from the AI message. Use these to
-          // correlate with the "running" step_upsert emitted earlier.
+        // ToolNode now returns Command objects mixed with { messages: [...] }.
+        // With Command-based tools, the "tools" update may contain:
+        //   - Command objects (with state updates)
+        //   - { messages: [ToolMessage] } objects
+        // We extract ToolMessages from both patterns.
+        const toolMessages = extractToolMessages(nodeState);
+        for (const msg of toolMessages) {
           const toolName = (msg as any).name || 'tool_execution';
-          const toolCallId = (msg as any).id;
+          const toolCallId = (msg as any).tool_call_id || (msg as any).id;
           const phase = mapToolToPhase(toolName);
+          const content = typeof msg.content === 'string' ? msg.content : '';
+
           chunks.push({
             type: 'step_upsert',
             phaseId: `phase-${phase}`,
@@ -221,13 +211,13 @@ export function langGraphEventToChunks(
               tool: toolName,
               title: toolName,
               completedAt: new Date().toISOString(),
-              output: typeof msg.content === 'string' ? truncate(msg.content, 500) : msg.content,
+              output: truncate(content, 500),
             },
           });
 
           // Emit artifact_payload_sync for tool outputs containing model/analysis/report
-          if (typeof msg.content === 'string') {
-            chunks.push(...emitArtifactSync(msg.content));
+          if (content) {
+            chunks.push(...emitArtifactSync(content, nodeState));
           }
         }
       }
@@ -238,22 +228,93 @@ export function langGraphEventToChunks(
 }
 
 // ---------------------------------------------------------------------------
+// Tool message extraction helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract ToolMessages from ToolNode output.
+ *
+ * ToolNode may return several patterns depending on whether tools return
+ * Commands or plain strings:
+ *   1. Resolved state update: { messages: [ToolMessage, ...], model?: ... }
+ *      — LangGraph processes Commands and emits the merged state
+ *   2. Mixed array: [Command, { messages: [ToolMessage] }, ...]
+ *      — raw ToolNode output before graph processing
+ *   3. Simple pattern: { messages: [ToolMessage, ...] }
+ *      — when no tools return Commands
+ */
+function extractToolMessages(nodeState: any): any[] {
+  if (!nodeState) return [];
+
+  const isToolMessage = (m: any) =>
+    m && typeof m === 'object' && typeof m._getType === 'function' && m._getType() === 'tool';
+
+  // Pattern 1 & 3: object with .messages (resolved or simple)
+  if (!Array.isArray(nodeState) && nodeState.messages) {
+    const messages: any[] = Array.isArray(nodeState.messages)
+      ? nodeState.messages
+      : [nodeState.messages];
+    return messages.filter(isToolMessage);
+  }
+
+  // Pattern 2: mixed array of Command objects and { messages: [...] } objects
+  if (Array.isArray(nodeState)) {
+    const messages: any[] = [];
+    for (const item of nodeState) {
+      if (!item || typeof item !== 'object') continue;
+
+      if (isCommand(item)) {
+        // Command.update.messages contains the ToolMessage
+        const update = (item as any).update;
+        if (update && update.messages && Array.isArray(update.messages)) {
+          messages.push(...update.messages.filter(isToolMessage));
+        }
+      } else if ('messages' in item && Array.isArray(item.messages)) {
+        messages.push(...item.messages.filter(isToolMessage));
+      }
+    }
+    return messages;
+  }
+
+  return [];
+}
+
+// ---------------------------------------------------------------------------
 // Artifact sync helper
 // ---------------------------------------------------------------------------
 
-function emitArtifactSync(toolOutput: string): AgentStreamChunk[] {
+function emitArtifactSync(toolOutput: string, nodeState?: any): AgentStreamChunk[] {
   const chunks: AgentStreamChunk[] = [];
   try {
     const parsed = JSON.parse(toolOutput);
-    if (parsed && typeof parsed === 'object') {
-      if (parsed.success && parsed.model) {
+    if (parsed && typeof parsed === 'object' && parsed.success) {
+      // With Command-based tools, artifacts are stored in graph state channels,
+      // not in the tool response JSON. Detect success and emit artifact sync
+      // from the resolved state if available.
+      if (nodeState?.model) {
+        chunks.push({
+          type: 'artifact_payload_sync',
+          artifact: 'model',
+          model: nodeState.model,
+        });
+      }
+      if (nodeState?.analysisResult) {
+        chunks.push({
+          type: 'artifact_payload_sync',
+          artifact: 'analysis',
+          latestResult: { analysis: nodeState.analysisResult },
+        });
+      }
+      // Legacy path: some tools (validate_model, detect_structure_type)
+      // still return data inline
+      if (parsed.model && !nodeState?.model) {
         chunks.push({
           type: 'artifact_payload_sync',
           artifact: 'model',
           model: parsed.model,
         });
       }
-      if (parsed.success && (parsed.result || parsed.analysis)) {
+      if ((parsed.result || parsed.analysis) && !nodeState?.analysisResult) {
         chunks.push({
           type: 'artifact_payload_sync',
           artifact: 'analysis',

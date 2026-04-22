@@ -130,7 +130,9 @@ ${summarizeArtifacts(state)}
 4. 调用 validate_model 验证模型
 5. 调用 run_analysis 执行分析
 6. （可选）调用 run_code_check 进行规范校核
-7. （可选）调用 generate_report 生成报告`;
+7. （可选）调用 generate_report 生成报告
+
+**重要**: 工具从会话状态中自动读取数据（模型、分析结果、草稿状态等）。不要将 modelJson、analysisJson、stateJson 等参数传递给工具。工具会自动使用上一步的结果。`;
 }
 
 function buildEnPrompt(state: AgentState, skillList: string): string {
@@ -174,5 +176,7 @@ When the user makes a structural design or analysis request, follow this workflo
 4. Call validate_model to validate the model
 5. Call run_analysis to execute the analysis
 6. (Optional) Call run_code_check for code compliance
-7. (Optional) Call generate_report to produce a report`;
+7. (Optional) Call generate_report to produce a report
+
+**IMPORTANT**: Tools read data (model, analysis results, draft state, etc.) from conversation state automatically. Do NOT pass modelJson, analysisJson, stateJson, or other JSON string parameters to tools. Tools automatically use results from previous steps.`;
 }
