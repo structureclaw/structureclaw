@@ -64,10 +64,19 @@ function createCallModelNode(skillManifests: SkillManifest[]) {
     // Build system prompt
     const systemMessages = buildSystemMessages({ state, skillManifests });
 
+    // Validate messages — skip any that lost class identity during
+    // checkpoint deserialization (they won't have _getType() and would
+    // cause "role information cannot be empty" from the LLM API).
+    const rawMsgs: BaseMessage[] = Array.isArray(state.messages) ? state.messages : [];
+    const msgs: BaseMessage[] = rawMsgs.filter((m) =>
+      m != null
+      && typeof m === 'object'
+      && typeof (m as any)._getType === 'function',
+    );
+
     // Count prior tool calls in this turn to enforce max iterations.
     // Only count calls since the last HumanMessage (per-turn), and sum
     // individual tool_calls[].length rather than counting messages.
-    const msgs: BaseMessage[] = Array.isArray(state.messages) ? state.messages : [];
     let lastHumanIndex = -1;
     for (let i = msgs.length - 1; i >= 0; i--) {
       const m = msgs[i];

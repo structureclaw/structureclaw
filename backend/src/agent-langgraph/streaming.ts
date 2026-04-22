@@ -158,7 +158,12 @@ export function langGraphEventToChunks(
           : [nodeState.messages];
 
         for (const msg of messages) {
-          if (isAIMessage(msg)) {
+          // Use duck-typing instead of isAIMessage() — when streamMode includes
+          // 'messages', LangGraph's StreamMessagesHandler sets lc_prefer_streaming=true,
+          // causing invoke() to return AIMessageChunk (extends BaseMessageChunk, NOT
+          // AIMessage). Same fix as shouldContinue() in graph.ts.
+          const isAI = msg != null && typeof msg === 'object' && typeof (msg as any)._getType === 'function' && (msg as any)._getType() === 'ai';
+          if (isAI) {
             if (hasToolCalls(msg)) {
               for (const tc of (msg as any).tool_calls) {
                 const phase = mapToolToPhase(tc.name);
@@ -317,34 +322,67 @@ export async function* streamGraphToChunks(
   let interrupted = false;
   let tokenBuffer = '';
 
+  // Track active tools by step ID so we can update inline status
+  const activeTools = new Map<string, { toolName: string; runningLine: string }>();
+
+  function processChunk(chunk: AgentStreamChunk): void {
+    if (chunk.type === 'interaction_update') {
+      interrupted = true;
+      return;
+    }
+
+    // Mirror token text into presentation.summaryText so the
+    // timeline view shows the LLM's streaming output in real time.
+    if (chunk.type === 'token' && 'content' in chunk) {
+      tokenBuffer += (chunk as { content: string }).content;
+    }
+
+    // Embed tool status inline into tokenBuffer
+    if (chunk.type === 'step_upsert') {
+      const step = (chunk as { phaseId: string; step: { id: string; status: string; tool: string; title: string } }).step;
+      if (step.status === 'running') {
+        const toolName = step.tool || step.title || 'tool';
+        const runningLine = `\n> **${toolName}** Running...\n`;
+        activeTools.set(step.id, { toolName, runningLine });
+        tokenBuffer += runningLine;
+      } else if (step.status === 'done') {
+        const active = activeTools.get(step.id);
+        if (active) {
+          const doneLine = `\n> **${active.toolName}** Done\n`;
+          tokenBuffer = tokenBuffer.replace(active.runningLine, doneLine);
+          activeTools.delete(step.id);
+        }
+      } else if (step.status === 'error') {
+        const active = activeTools.get(step.id);
+        if (active) {
+          const errLine = `\n> **${active.toolName}** Error\n`;
+          tokenBuffer = tokenBuffer.replace(active.runningLine, errLine);
+          activeTools.delete(step.id);
+        }
+      }
+    }
+  }
+
   try {
     for await (const event of graphStream) {
       // LangGraph stream with multiple modes yields [mode, data] tuples
+      let chunks: AgentStreamChunk[];
       if (Array.isArray(event) && event.length === 2) {
         const [mode, data] = event;
-        const modeStr = String(mode);
-        const chunks = langGraphEventToChunks(data, modeStr);
-        for (const chunk of chunks) {
-          if (chunk.type === 'interaction_update') interrupted = true;
-          yield chunk;
-          // Mirror token text into presentation.summaryText so the
-          // timeline view shows the LLM's streaming output in real time.
-          if (chunk.type === 'token' && 'content' in chunk) {
-            tokenBuffer += (chunk as { content: string }).content;
-            yield { type: 'summary_replace', summaryText: tokenBuffer };
-          }
-        }
+        chunks = langGraphEventToChunks(data, String(mode));
       } else {
         const mode = streamModes.length === 1 ? streamModes[0] : 'updates';
-        const chunks = langGraphEventToChunks(event, mode);
-        for (const chunk of chunks) {
-          if (chunk.type === 'interaction_update') interrupted = true;
-          yield chunk;
-          if (chunk.type === 'token' && 'content' in chunk) {
-            tokenBuffer += (chunk as { content: string }).content;
-            yield { type: 'summary_replace', summaryText: tokenBuffer };
-          }
-        }
+        chunks = langGraphEventToChunks(event, mode);
+      }
+
+      for (const chunk of chunks) {
+        processChunk(chunk);
+        yield chunk;
+      }
+
+      // Yield a single summary_replace after processing all chunks from this event
+      if (chunks.some(c => c.type === 'token' || c.type === 'step_upsert')) {
+        yield { type: 'summary_replace', summaryText: tokenBuffer };
       }
     }
 

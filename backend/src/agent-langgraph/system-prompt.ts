@@ -9,7 +9,7 @@
  *   - Workspace context
  *   - Safety constraints
  */
-import type { BaseMessageLike } from '@langchain/core/messages';
+import { SystemMessage, type BaseMessageLike } from '@langchain/core/messages';
 import type { AgentState } from './state.js';
 import type { SkillManifest } from '../agent-runtime/types.js';
 
@@ -82,7 +82,7 @@ export function buildSystemMessages(ctx: SystemPromptContext): BaseMessageLike[]
     ? buildZhPrompt(state, skillList)
     : buildEnPrompt(state, skillList);
 
-  return [{ role: 'system' as const, content: systemContent }];
+  return [new SystemMessage(systemContent)];
 }
 
 // ---------------------------------------------------------------------------
