@@ -3029,6 +3029,7 @@ export function AIConsole() {
                   return { ...msg, status: 'done' as const }
                 })
                 currentTextMessageId = ''
+                chatBuffer = ''  // Reset so next text bubble only contains new tokens
               }
               // Create a new tool message bubble
               const toolMsgId = createId('tool')
