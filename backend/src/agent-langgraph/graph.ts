@@ -120,17 +120,13 @@ function createCallModelNode(
 
     // Inject current state into configurable so tools can read state channels.
     // Tools access it via config.configurable.agentState.
-    const configWithState = {
-      ...config,
-      configurable: {
-        ...config.configurable,
-        agentState: state,
-      },
-    };
+    // IMPORTANT: mutate config.configurable in-place so the ToolNode (which
+    // receives the same config object) also sees agentState.
+    const configurableAny = config.configurable as Record<string, unknown>;
+    configurableAny.agentState = state;
 
-    // Invoke LLM — pass state-injected config so tools can read state
     const allMessages = [...systemMessages, ...msgs];
-    const response = await modelWithTools.invoke(allMessages, configWithState);
+    const response = await modelWithTools.invoke(allMessages, config);
 
     return { messages: [response] };
   };
