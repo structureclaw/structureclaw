@@ -200,15 +200,21 @@ export function langGraphEventToChunks(
           : nodeState?.messages ? [nodeState.messages] : [];
 
         for (const msg of messages) {
+          // ToolMessage.name = tool name, ToolMessage.id = matches the
+          // original tool_calls[].id from the AI message. Use these to
+          // correlate with the "running" step_upsert emitted earlier.
+          const toolName = (msg as any).name || 'tool_execution';
+          const toolCallId = (msg as any).id;
+          const phase = mapToolToPhase(toolName);
           chunks.push({
             type: 'step_upsert',
-            phaseId: `phase-analysis`,
+            phaseId: `phase-${phase}`,
             step: {
-              id: `step-tool-${randomUUID()}`,
-              phase: 'analysis',
+              id: toolCallId ? `step-${toolCallId}` : `step-tool-${randomUUID()}`,
+              phase,
               status: 'done',
-              tool: 'tool_execution',
-              title: 'Tool completed',
+              tool: toolName,
+              title: toolName,
               completedAt: new Date().toISOString(),
               output: typeof msg.content === 'string' ? truncate(msg.content, 500) : msg.content,
             },

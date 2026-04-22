@@ -111,7 +111,17 @@ export function reducePresentationEvent(
         phases: state.phases.map((phase) =>
           phase.status === 'error'
             ? phase
-            : { ...phase, status: 'done' as const, completedAt: phase.completedAt ?? event.completedAt }
+            : {
+                ...phase,
+                status: 'done' as const,
+                completedAt: phase.completedAt ?? event.completedAt,
+                // Also mark any still-running steps as done
+                steps: phase.steps.map((step) =>
+                  step.status === 'running'
+                    ? { ...step, status: 'done' as const, completedAt: event.completedAt }
+                    : step
+                ),
+              }
         ),
       }
     case 'presentation_error':
@@ -294,7 +304,15 @@ function upsertPhase(phases: TimelinePhaseGroup[], nextPhase: TimelinePhaseGroup
 function upsertStep(phases: TimelinePhaseGroup[], phaseId: string, step: TimelineStepItem): TimelinePhaseGroup[] {
   const phaseIndex = phases.findIndex((p) => p.phaseId === phaseId)
   if (phaseIndex === -1) {
-    return phases
+    // Auto-create the missing phase so step_upsert always works,
+    // even if the backend didn't emit phase_upsert first.
+    const newPhase: TimelinePhaseGroup = {
+      phaseId,
+      phase: step.phase,
+      status: 'running',
+      steps: [step],
+    }
+    return orderedPhases([...phases, newPhase])
   }
   const next = [...phases]
   const phase = next[phaseIndex]
