@@ -165,6 +165,7 @@ export function langGraphEventToChunks(
                     status: 'running',
                     tool: tc.name,
                     title: tc.name,
+                    args: tc.args ?? undefined,
                     startedAt: new Date().toISOString(),
                   },
                 });
@@ -383,9 +384,6 @@ export async function* streamGraphToChunks(
   let interrupted = false;
   let tokenBuffer = '';
 
-  // Track active tools by step ID so we can update inline status
-  const activeTools = new Map<string, { toolName: string; runningLine: string }>();
-
   function processChunk(chunk: AgentStreamChunk): void {
     if (chunk.type === 'interaction_update') {
       interrupted = true;
@@ -396,31 +394,6 @@ export async function* streamGraphToChunks(
     // timeline view shows the LLM's streaming output in real time.
     if (chunk.type === 'token' && 'content' in chunk) {
       tokenBuffer += (chunk as { content: string }).content;
-    }
-
-    // Embed tool status inline into tokenBuffer
-    if (chunk.type === 'step_upsert') {
-      const step = (chunk as { phaseId: string; step: { id: string; status: string; tool: string; title: string } }).step;
-      if (step.status === 'running') {
-        const toolName = step.tool || step.title || 'tool';
-        const runningLine = `\n> **${toolName}** Running...\n`;
-        activeTools.set(step.id, { toolName, runningLine });
-        tokenBuffer += runningLine;
-      } else if (step.status === 'done') {
-        const active = activeTools.get(step.id);
-        if (active) {
-          const doneLine = `\n> **${active.toolName}** Done\n`;
-          tokenBuffer = tokenBuffer.replace(active.runningLine, doneLine);
-          activeTools.delete(step.id);
-        }
-      } else if (step.status === 'error') {
-        const active = activeTools.get(step.id);
-        if (active) {
-          const errLine = `\n> **${active.toolName}** Error\n`;
-          tokenBuffer = tokenBuffer.replace(active.runningLine, errLine);
-          activeTools.delete(step.id);
-        }
-      }
     }
   }
 
@@ -442,7 +415,7 @@ export async function* streamGraphToChunks(
       }
 
       // Yield a single summary_replace after processing all chunks from this event
-      if (chunks.some(c => c.type === 'token' || c.type === 'step_upsert')) {
+      if (chunks.some(c => c.type === 'token')) {
         yield { type: 'summary_replace', summaryText: tokenBuffer };
       }
     }

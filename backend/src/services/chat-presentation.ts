@@ -12,6 +12,7 @@ export interface TimelineStepItem {
   tool: string;
   skillId?: string;
   title: string;
+  args?: Record<string, unknown>;
   reason?: string;
   output?: unknown;
   errorMessage?: string;

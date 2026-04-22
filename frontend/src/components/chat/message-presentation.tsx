@@ -2,6 +2,7 @@
 
 import type { MessageKey } from '@/lib/i18n'
 import { MarkdownBody } from './markdown-body'
+import { ToolCallCard } from './tool-call-card'
 
 export type PresentationPhase = 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report'
 export type PresentationPhaseStatus = 'pending' | 'running' | 'done' | 'error'
@@ -18,6 +19,7 @@ export type TimelineStepItem = {
   tool: string
   skillId?: string
   title: string
+  args?: Record<string, unknown>
   reason?: string
   output?: unknown
   errorMessage?: string
@@ -137,24 +139,46 @@ export type SkillNameResolver = (skillId: string) => string | undefined
 
 export function MessagePresentationView({
   presentation,
+  t,
 }: {
   presentation: AssistantPresentation
   t?: (key: MessageKey) => string
   resolveSkillName?: SkillNameResolver
 }) {
-  // Tool calls are now embedded inline within summaryText as markdown
-  // blockquotes. The step_upsert events still fire for data tracking, but
-  // visual rendering comes from the markdown.
+  const allSteps = presentation.phases.flatMap(p => p.steps)
+  // Strip tool status blockquotes from summaryText — rendered as ToolCallCards instead
+  const cleanText = stripToolStatusBlockquotes(presentation.summaryText)
+  const hasText = cleanText.trim().length > 0
+  const translate = t ?? (() => '')
+
   return (
-    <div className="space-y-2">
-      {presentation.summaryText ? (
-        <MarkdownBody compact content={presentation.summaryText} />
+    <div className="space-y-3">
+      {hasText ? (
+        <MarkdownBody compact content={cleanText} />
       ) : null}
+      {allSteps.length > 0 && (
+        <div className="space-y-2">
+          {allSteps.map(step => (
+            <ToolCallCard key={step.id} step={step} t={translate} />
+          ))}
+        </div>
+      )}
     </div>
   )
 }
 
 // --- Helpers ---
+
+/** Remove tool status blockquotes like `> **tool_name** Running...` / `Done` / `Error` from text. */
+const TOOL_STATUS_LINE = /^>\s*\*\*[^*]+\*\*\s*(Running\.\.\.|Done|Error)\s*$/
+
+function stripToolStatusBlockquotes(text: string): string {
+  return text
+    .split('\n')
+    .filter(line => !TOOL_STATUS_LINE.test(line.trim()))
+    .join('\n')
+    .trim()
+}
 
 function orderedPhases(phases: TimelinePhaseGroup[]): TimelinePhaseGroup[] {
   return [...phases].sort((a, b) => PHASE_ORDER.indexOf(a.phase) - PHASE_ORDER.indexOf(b.phase))
