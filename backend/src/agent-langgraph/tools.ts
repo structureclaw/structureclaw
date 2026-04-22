@@ -310,17 +310,26 @@ export function createReadWorkspaceFileTool() {
 export function createWriteWorkspaceFileTool() {
   return tool(
     async (input: { filePath: string; content: string }, config: LangGraphRunnableConfig) => {
-      const root = getWorkspaceRoot(config);
-      const resolved = safeResolve(root, input.filePath);
+      try {
+        const root = getWorkspaceRoot(config);
+        const resolved = safeResolve(root, input.filePath);
 
-      await fs.mkdir(path.dirname(resolved), { recursive: true });
-      await fs.writeFile(resolved, input.content, 'utf-8');
+        await fs.mkdir(path.dirname(resolved), { recursive: true });
+        await fs.writeFile(resolved, input.content, 'utf-8');
 
-      return JSON.stringify({
-        success: true,
-        path: input.filePath,
-        bytesWritten: Buffer.byteLength(input.content, 'utf-8'),
-      });
+        return JSON.stringify({
+          success: true,
+          path: input.filePath,
+          bytesWritten: Buffer.byteLength(input.content, 'utf-8'),
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        return JSON.stringify({
+          success: false,
+          error: `write_workspace_file failed: ${msg}`,
+          path: input.filePath,
+        });
+      }
     },
     {
       name: 'write_workspace_file',

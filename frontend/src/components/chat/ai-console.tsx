@@ -3062,6 +3062,19 @@ export function AIConsole() {
                   toolStep: { ...msg.toolStep!, ...payload.step },
                 }))
               }
+              // On tool done, create a "thinking" text bubble so the user sees
+              // the LLM is still running. The next token will replace this content.
+              if (payload.step.status === 'done' && !currentTextMessageId) {
+                currentTextMessageId = createId('assistant')
+                turnMessageIds.add(currentTextMessageId)
+                appendMessageForConversation(activeConversationId, {
+                  id: currentTextMessageId,
+                  role: 'assistant',
+                  content: '',
+                  status: 'streaming',
+                  timestamp: new Date().toISOString(),
+                })
+              }
               // Also track in presentation
               if (currentPresentationRef.current) {
                 const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
