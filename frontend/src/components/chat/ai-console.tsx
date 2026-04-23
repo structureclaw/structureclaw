@@ -138,7 +138,7 @@ type StreamPayload =
   | { type: 'presentation_error'; phase?: string; message?: string }
   | { type: 'result'; content?: AgentResult }
   | { type: 'done' }
-  | { type: 'error'; error?: string }
+  | { type: 'error'; error?: string; code?: string; retriable?: boolean }
 
 type StreamSession = {
   conversationId: string
@@ -3297,7 +3297,10 @@ export function AIConsole() {
           }
 
           if (payload.type === 'error') {
-            const nextError = typeof payload.error === 'string' ? payload.error : t('requestFailed')
+            let nextError = typeof payload.error === 'string' ? payload.error : t('requestFailed')
+            if (payload.code === 'CONTEXT_OVERFLOW') {
+              nextError = t('contextOverflowError')
+            }
             assistantContent = nextError
             setPendingOptions([])
             if (activeConversationId === conversationIdRef.current) {

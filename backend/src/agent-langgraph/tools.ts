@@ -414,56 +414,77 @@ export function createWriteWorkspaceFileTool() {
   );
 }
 
+function globToRegex(pattern: string): RegExp {
+  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
+  const expanded = escaped
+    .replace(/\*\*/g, '{{GLOBSTAR}}')
+    .replace(/\*/g, '[^/]*')
+    .replace(/\?/g, '[^/]')
+    .replace(/\{\{GLOBSTAR\}\}/g, '(?:[^/]*/)*');
+  return new RegExp(`^${expanded}$`, 'i');
+}
+
 export function createListWorkspaceFilesTool() {
   return tool(
-    async (input: { dirPath?: string; maxDepth?: number }, config: LangGraphRunnableConfig) => {
+    async (input: { pattern?: string; maxResults?: number; offset?: number; dirPath?: string }, config: LangGraphRunnableConfig) => {
       const root = getWorkspaceRoot(config);
-      const target = input.dirPath ? safeResolve(root, input.dirPath) : root;
-      const maxDepth = input.maxDepth ?? 3;
+      const searchRoot = input.dirPath ? safeResolve(root, input.dirPath) : root;
+      const maxResults = Math.min(input.maxResults ?? 100, 200);
+      const offset = input.offset ?? 0;
+      const pattern = input.pattern ?? '*';
+      const regex = globToRegex(pattern);
 
-      async function walk(dir: string, depth: number): Promise<string[]> {
-        if (depth > maxDepth) return [];
-        const entries = await fs.readdir(dir, { withFileTypes: true });
-        const result: string[] = [];
+      const SKIP_DIRS = new Set(['.git', 'node_modules', '.venv', '__pycache__', '.runtime']);
+
+      const allFiles: string[] = [];
+      async function walk(dir: string, depth: number): Promise<void> {
+        if (depth > 10) return;
+        let entries: import('fs').Dirent[];
+        try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
         for (const entry of entries) {
-          const rel = path.relative(root, path.join(dir, entry.name));
-          if (entry.name.startsWith('.') || entry.name === 'node_modules') continue;
+          if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue;
+          const full = path.join(dir, entry.name);
+          const rel = path.relative(root, full).replace(/\\/g, '/');
           if (entry.isDirectory()) {
-            result.push(`${rel}/`);
-            result.push(...await walk(path.join(dir, entry.name), depth + 1));
-          } else {
-            result.push(rel);
+            await walk(full, depth + 1);
+          } else if (regex.test(rel)) {
+            allFiles.push(rel);
           }
         }
-        return result;
       }
 
-      const files = await walk(target, 0);
-      const MAX_FILES = 200;
-      const truncated = files.length > MAX_FILES;
-      const shown = truncated ? files.slice(0, MAX_FILES) : files;
+      await walk(searchRoot, 0);
+
+      allFiles.sort();
+      const totalMatches = allFiles.length;
+      const sliced = allFiles.slice(offset, offset + maxResults);
+      const truncated = offset + maxResults < totalMatches;
+
       return JSON.stringify({
-        dir: input.dirPath || '.',
-        fileCount: files.length,
-        shownCount: shown.length,
-        ...(truncated ? { truncated: true, hint: `Showing first ${MAX_FILES} of ${files.length} files. Use a more specific dirPath or smaller maxDepth to narrow results.` } : {}),
-        files: shown,
+        totalMatches,
+        shownCount: sliced.length,
+        offset,
+        ...(truncated ? { hint: `Showing ${sliced.length} of ${totalMatches} matches. Use offset=${offset + maxResults} for next page or narrow the pattern.` } : {}),
+        files: sliced,
       });
     },
     {
       name: 'list_workspace_files',
       description:
-        'List files and directories in the workspace. ' +
-        'Returns relative paths; directories end with /. Skips hidden files and node_modules.',
+        'List files in the workspace matching a glob pattern. ' +
+        'Supports * (any segment), ** (any path depth), and ? (single char). ' +
+        'Returns relative paths sorted alphabetically with pagination. ' +
+        'Examples: "**/*.pdf" finds all PDFs, "output/**/*.json" finds JSONs under output/. ' +
+        'Skips .git, node_modules, .venv, __pycache__, and .runtime.',
       schema: z.object({
-        dirPath: z
-          .string()
-          .optional()
-          .describe('Relative directory path (defaults to workspace root)'),
-        maxDepth: z
-          .number()
-          .optional()
-          .describe('Maximum recursion depth (default 3)'),
+        pattern: z.string().optional()
+          .describe('Glob pattern (default "*"). E.g. "**/*.pdf", "report/**/*.json", "output/*/result.txt"'),
+        maxResults: z.number().optional()
+          .describe('Max results to return (default 100, max 200)'),
+        offset: z.number().optional()
+          .describe('Skip first N results for pagination'),
+        dirPath: z.string().optional()
+          .describe('Root directory to search from (relative to workspace root)'),
       }),
     },
   );

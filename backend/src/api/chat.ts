@@ -2,7 +2,7 @@ import { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { ConversationService } from '../services/conversation.js';
 import { config } from '../config/index.js';
-import { isLlmTimeoutError, toLlmApiError } from '../utils/llm-error.js';
+import { isLlmTimeoutError, isContextOverflowError, toLlmApiError } from '../utils/llm-error.js';
 import { prisma } from '../utils/database.js';
 import type { InputJsonValue } from '../utils/json.js';
 import {
@@ -1026,6 +1026,14 @@ function normalizePublicStreamChunk(chunk: unknown): unknown {
       ...value,
       code: 'LLM_TIMEOUT',
       retriable: true,
+    };
+  }
+
+  if (isContextOverflowError(value.error)) {
+    return {
+      ...value,
+      code: 'CONTEXT_OVERFLOW',
+      retriable: false,
     };
   }
 
