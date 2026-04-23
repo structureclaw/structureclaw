@@ -75,6 +75,8 @@ Commands:
   analysis-regression   Full analysis regression suite
   llm-integration       LLM integration tests (requires LLM_API_KEY)
                         supports: node tests/runner.mjs llm-integration [category]
+                        default: routing (only routing tests pass under LangGraph)
+                        categories: routing | extraction | pipeline | clarification
                           [--family <family>]  (alias: --skill)
                           [--variant <specific|generic|auto>]
                           [--scenario <scenarioId>]

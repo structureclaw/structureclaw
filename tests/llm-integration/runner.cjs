@@ -63,9 +63,12 @@ async function runLlmIntegrationTests(rootDir, args) {
     stdio: "pipe",
   });
 
-  // Load test cases
+  // Load test cases — default to routing-only since extraction/pipeline/clarification
+  // categories depend on the legacy AgentService API (textToModelDraft etc.)
+  // which no longer exists under the LangGraph ReAct architecture.
+  const effectiveCategory = options.category || "routing";
   const allCases = loadLlmFixtures(rootDir);
-  const cases = filterLlmTestCases(allCases, options);
+  const cases = filterLlmTestCases(allCases, { ...options, category: effectiveCategory });
 
   if (cases.length === 0) {
     process.stdout.write("No test cases matched.\n");
