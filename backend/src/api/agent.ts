@@ -1,6 +1,6 @@
 import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { getAgentService } from '../agent-langgraph/index.js';
+import { getAgentService, LangGraphAgentService } from '../agent-langgraph/index.js';
 import { AgentCapabilityService } from '../services/agent-capability.js';
 import { AgentSkillHubService } from '../services/agent-skillhub.js';
 import type { SkillDomain } from '../agent-runtime/types.js';
@@ -83,7 +83,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
       summary: '查询 Agent 工具协议与错误码',
     },
   }, async (_request: FastifyRequest, reply: FastifyReply) => {
-    return reply.send(await agentService.getProtocol());
+    return reply.send(LangGraphAgentService.getProtocol());
   });
 
   fastify.get('/skills', {

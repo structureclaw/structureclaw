@@ -12,6 +12,7 @@ import { randomUUID } from 'crypto';
 import { AgentSkillRuntime } from '../agent-runtime/index.js';
 import type { SkillManifest } from '../agent-runtime/types.js';
 import { buildAgentGraph } from './graph.js';
+import { createAllTools } from './tools.js';
 import { FileCheckpointer } from './file-checkpointer.js';
 import { streamGraphToChunks, type StreamContext } from './streaming.js';
 import { type AgentState } from './state.js';
@@ -326,12 +327,14 @@ export class LangGraphAgentService {
   }
 
   /**
-   * Get the agent protocol (tool schemas).
+   * Get the agent protocol (tool schemas) as a static method.
    * Dynamically reads from createAllTools() so it stays in sync.
+   * No skillRuntime needed — only returns name + description metadata.
    */
-  async getProtocol(): Promise<{ tools: Array<{ name: string; description: string }> }> {
-    const { createAllTools } = await import('./tools.js');
-    const tools = createAllTools({ skillRuntime: this.skillRuntime });
+  static getProtocol(): { tools: Array<{ name: string; description: string }> } {
+    // createAllTools captures skillRuntime in closures but doesn't call it at
+    // creation time, so passing undefined is safe for metadata-only access.
+    const tools = createAllTools({ skillRuntime: undefined as any });
     return {
       tools: tools.map((t) => ({
         name: t.name,
