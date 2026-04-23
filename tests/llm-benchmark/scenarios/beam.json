@@ -11,5 +11,31 @@
       "minNodes": 2,
       "minElements": 1
     }
+  },
+  {
+    "id": "beam-cantilever-point-load",
+    "description": "悬臂梁端部集中力静力分析",
+    "message": "一根悬臂梁，长3米，端部集中力10kN，请进行静力分析",
+    "locale": "zh",
+    "expect": {
+      "structuralType": "beam",
+      "hasModel": true,
+      "hasAnalysis": true,
+      "minNodes": 2,
+      "minElements": 1
+    }
+  },
+  {
+    "id": "beam-simply-supported-en",
+    "description": "Simply supported beam with UDL static analysis",
+    "message": "A simply supported beam, span 8m, uniformly distributed load 15kN/m, please run a static analysis",
+    "locale": "en",
+    "expect": {
+      "structuralType": "beam",
+      "hasModel": true,
+      "hasAnalysis": true,
+      "minNodes": 2,
+      "minElements": 1
+    }
   }
 ]

@@ -1,0 +1,28 @@
+[
+  {
+    "id": "portal-frame-static-18m",
+    "description": "门式刚架18米跨度静力分析",
+    "message": "门式刚架，跨度18m，高度7m，屋面荷载6kN/m，做静力分析",
+    "locale": "zh",
+    "expect": {
+      "structuralType": "portal-frame",
+      "hasModel": true,
+      "hasAnalysis": true,
+      "minNodes": 3,
+      "minElements": 3
+    }
+  },
+  {
+    "id": "portal-frame-static-en",
+    "description": "Portal frame 21m span static analysis",
+    "message": "Portal frame, span 21m, height 7.5m, roof load 8kN/m, please run a static analysis",
+    "locale": "en",
+    "expect": {
+      "structuralType": "portal-frame",
+      "hasModel": true,
+      "hasAnalysis": true,
+      "minNodes": 3,
+      "minElements": 3
+    }
+  }
+]

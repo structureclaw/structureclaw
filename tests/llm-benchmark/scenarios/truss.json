@@ -1,0 +1,15 @@
+[
+  {
+    "id": "truss-triangle-static",
+    "description": "三角桁架静力分析",
+    "message": "三角桁架，跨度12m，高3m，节点荷载20kN，做静力分析",
+    "locale": "zh",
+    "expect": {
+      "structuralType": "truss",
+      "hasModel": true,
+      "hasAnalysis": true,
+      "minNodes": 3,
+      "minElements": 3
+    }
+  }
+]

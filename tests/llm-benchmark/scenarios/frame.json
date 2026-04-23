@@ -1,0 +1,41 @@
+[
+  {
+    "id": "frame-2story-1bay-static",
+    "description": "2层单跨钢框架静力分析",
+    "message": "2层单跨钢框架，层高3.6m，跨度6m，每层楼面荷载10kN/m2，请进行静力分析",
+    "locale": "zh",
+    "expect": {
+      "structuralType": "frame",
+      "hasModel": true,
+      "hasAnalysis": true,
+      "minNodes": 6,
+      "minElements": 6
+    }
+  },
+  {
+    "id": "frame-3story-2bay-static",
+    "description": "3层2跨框架静力分析",
+    "message": "3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m，请进行静力分析",
+    "locale": "zh",
+    "expect": {
+      "structuralType": "frame",
+      "hasModel": true,
+      "hasAnalysis": true,
+      "minNodes": 12,
+      "minElements": 12
+    }
+  },
+  {
+    "id": "frame-steel-en",
+    "description": "2-story single-bay steel frame static analysis",
+    "message": "2-story single-bay steel frame, story height 3.6m, bay width 6m, floor load 10kN/m2, please run a static analysis",
+    "locale": "en",
+    "expect": {
+      "structuralType": "frame",
+      "hasModel": true,
+      "hasAnalysis": true,
+      "minNodes": 6,
+      "minElements": 6
+    }
+  }
+]
