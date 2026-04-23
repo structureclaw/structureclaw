@@ -12,6 +12,8 @@ import {
   type AssistantPresentation,
 } from '../services/chat-presentation.js';
 import { getAgentService } from '../agent-langgraph/index.js';
+import type { AgentState } from '../agent-langgraph/state.js';
+import type { BaseMessage } from '@langchain/core/messages';
 
 const conversationService = new ConversationService();
 const agentService = getAgentService();
@@ -316,6 +318,82 @@ async function persistConversationMessages(params: {
   }
 }
 
+/**
+ * Persist the full LangGraph message history (including tool calls) into the
+ * DB. This is called after streaming completes so that conversation restore
+ * includes all intermediate tool messages, not just the final user/assistant
+ * pair written by persistConversationMessages.
+ *
+ * Strategy: incremental append — compare DB message count against graph state
+ * message count and only insert the delta.
+ */
+async function persistFullConversationMessages(params: {
+  conversationId: string;
+  state: AgentState;
+}): Promise<void> {
+  const { conversationId, state } = params;
+  if (!conversationId || !Array.isArray(state.messages)) return;
+
+  try {
+    const existingCount = await prisma.message.count({
+      where: { conversationId },
+    });
+
+    const allMessages: BaseMessage[] = state.messages;
+    if (allMessages.length <= existingCount) return;
+
+    const newMessages = allMessages.slice(existingCount);
+    const records = newMessages.map((msg): Record<string, unknown> | null => {
+      if (msg == null || typeof msg !== 'object') return null;
+
+      const getType = typeof (msg as any)._getType === 'function' ? (msg as any)._getType() : null;
+      const content = typeof msg.content === 'string'
+        ? msg.content
+        : Array.isArray(msg.content)
+          ? msg.content
+              .filter((b: unknown): b is { type: string; text: string } =>
+                typeof b === 'object' && b !== null && 'text' in b)
+              .map((b) => b.text)
+              .join('')
+          : JSON.stringify(msg.content);
+
+      if (getType === 'human') {
+        return {
+          conversationId,
+          role: 'user',
+          content: typeof content === 'string' ? content : JSON.stringify(content),
+        };
+      }
+      if (getType === 'ai') {
+        const toolCalls = (msg as any).tool_calls;
+        return {
+          conversationId,
+          role: 'assistant',
+          content: typeof content === 'string' ? content : JSON.stringify(content),
+          toolCalls: Array.isArray(toolCalls) && toolCalls.length > 0 ? toolCalls : undefined,
+        };
+      }
+      if (getType === 'tool') {
+        return {
+          conversationId,
+          role: 'tool',
+          content: typeof content === 'string' ? content : JSON.stringify(content),
+          name: (msg as any).name || undefined,
+          toolCallId: (msg as any).tool_call_id || undefined,
+        };
+      }
+      // Skip system messages and unknown types
+      return null;
+    }).filter((r): r is Record<string, unknown> => r !== null);
+
+    if (records.length > 0) {
+      await prisma.message.createMany({ data: records as any });
+    }
+  } catch (error) {
+    console.warn('[chat] skip full message persistence:', error instanceof Error ? error.message : String(error));
+  }
+}
+
 export async function chatRoutes(fastify: FastifyInstance) {
   // 发送消息
   fastify.post('/message', {
@@ -376,6 +454,21 @@ export async function chatRoutes(fastify: FastifyInstance) {
         assistantMetadata: debugDetails ? { debugDetails } : undefined,
         assistantPresentation,
       });
+
+      // Persist full LangGraph message history for conversation restore
+      try {
+        const snapshot = await agentService.getConversationSessionSnapshot(
+          result.conversationId,
+          body.context?.locale ?? 'en',
+        );
+        if (snapshot?.state) {
+          await persistFullConversationMessages({
+            conversationId: result.conversationId,
+            state: snapshot.state,
+          });
+        }
+      } catch { /* best-effort */ }
+
       return reply.send({ result });
     } catch (error) {
       const mappedError = toLlmApiError(error);
@@ -775,6 +868,23 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const wasAborted = abortController.signal.aborted;
       await persistStreamMessages(wasAborted);
 
+      // Persist full LangGraph message history (including tool calls) for
+      // conversation restore. Best-effort — don't block the response.
+      if (!wasAborted && streamConversationId) {
+        try {
+          const snapshot = await agentService.getConversationSessionSnapshot(
+            streamConversationId,
+            body.context?.locale ?? 'en',
+          );
+          if (snapshot?.state) {
+            await persistFullConversationMessages({
+              conversationId: streamConversationId,
+              state: snapshot.state,
+            });
+          }
+        } catch { /* best-effort */ }
+      }
+
       reply.raw.write('data: [DONE]\n\n');
       reply.raw.end();
     } catch (error) {
@@ -859,6 +969,20 @@ export async function chatRoutes(fastify: FastifyInstance) {
           latestResult: resumeLatestResult,
         }).catch(() => {});
       }
+
+      // Persist full LangGraph message history for conversation restore
+      try {
+        const snapshot = await agentService.getConversationSessionSnapshot(
+          body.conversationId,
+          'en',
+        );
+        if (snapshot?.state) {
+          await persistFullConversationMessages({
+            conversationId: body.conversationId,
+            state: snapshot.state,
+          });
+        }
+      } catch { /* best-effort */ }
 
       reply.raw.write('data: [DONE]\n\n');
       reply.raw.end();

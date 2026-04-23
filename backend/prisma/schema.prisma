@@ -128,8 +128,11 @@ model Conversation {
 // 消息
 model Message {
   id         String   @id @default(cuid())
-  role       String
+  role       String   // "user" | "assistant" | "system" | "tool"
   content    String
+  name       String?  // tool name (for tool role)
+  toolCallId String?  // tool_call_id (for tool role, links to AIMessage.toolCalls[].id)
+  toolCalls  Json?    // tool_calls array on AIMessage [{id, name, args}]
   metadata   Json?
   tokenCount Int?
   createdAt  DateTime @default(now())

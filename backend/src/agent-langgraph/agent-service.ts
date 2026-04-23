@@ -290,25 +290,25 @@ export class LangGraphAgentService {
   async getConversationSessionSnapshot(
     conversationId: string,
     _locale: AppLocale,
-  ): Promise<Record<string, unknown> | undefined> {
+  ): Promise<{ snapshot: Record<string, unknown>; state?: AgentState } | undefined> {
     try {
-      const tuple = await this.checkpointer.getTuple({
-        configurable: { thread_id: conversationId },
-      });
-      if (!tuple?.checkpoint) return undefined;
-
-      const channelValues = (tuple.checkpoint as any).channel_values ||
-        (tuple.checkpoint as any).channelValues || {};
+      const graph = await this.getGraph();
+      const config = { configurable: { thread_id: conversationId } };
+      const stateSnapshot = await graph.getState(config);
+      const state = stateSnapshot.values as AgentState;
 
       return {
-        draft: channelValues.draftState || null,
-        interaction: {
-          state: 'ready',
-          stage: 'model',
-          turnId: conversationId,
+        snapshot: {
+          draft: state.draftState || null,
+          interaction: {
+            state: 'ready',
+            stage: 'model',
+            turnId: conversationId,
+          },
+          model: undefined,
+          updatedAt: new Date().toISOString(),
         },
-        model: undefined,
-        updatedAt: new Date().toISOString(),
+        state,
       };
     } catch (error) {
       logger.debug({ conversationId, error }, 'Failed to load session snapshot');
