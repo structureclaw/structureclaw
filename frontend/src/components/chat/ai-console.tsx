@@ -1574,9 +1574,20 @@ function AnalysisPanel({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
+                  <div className="flex items-center justify-between border-b border-border/50 px-3 py-1.5 dark:border-white/10">
+                    <span className="text-xs font-medium text-muted-foreground">PDF</span>
+                    <button
+                      type="button"
+                      onClick={() => window.open(`${API_BASE}${reportPdfUrl}`, '_blank')}
+                      className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      <Maximize2 className="h-3 w-3" />
+                      {locale === 'zh' ? '全屏查看' : 'Fullscreen'}
+                    </button>
+                  </div>
                   <iframe
                     src={`${API_BASE}${reportPdfUrl}`}
-                    className="h-[600px] w-full rounded-b-2xl border-0"
+                    className="h-[600px] w-full border-0"
                     title="PDF Preview"
                   />
                 </CardContent>
