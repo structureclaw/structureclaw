@@ -12,6 +12,7 @@ const { runAnalysisRegression } = require("./regression/analysis-regression.js")
 const { runDockerComposeSmoke, runNativeInstallSmoke } = require("./smoke/install-smoke.cjs");
 const { runLlmIntegrationTests } = require("./llm-integration/runner.cjs");
 const { summarizeArtifacts, printSummary } = require("./llm-integration/summarize.cjs");
+const { runBenchmark } = require("./llm-benchmark/runner.cjs");
 
 function parseCliOptions(args) {
   const positionals = [];
@@ -81,6 +82,10 @@ Commands:
                           [--variant <specific|generic|auto>]
                           [--scenario <scenarioId>]
                           [--output <artifact.json>]
+  llm-benchmark         LangGraph agent benchmark (requires LLM_API_KEY)
+                        runs full ReAct agent, evaluates end-to-end quality
+                          [--scenario <scenarioId>]
+                          [--output <results.json>]
   llm-summary <path>   Summarize LLM test artifacts by family/variant
   smoke-native          CI-style native install smoke (npm ci + build)
   smoke-docker          Docker compose smoke test
@@ -147,6 +152,9 @@ async function main() {
       return;
     case "llm-integration":
       await runLlmIntegrationTests(rootDir, rawArgs);
+      return;
+    case "llm-benchmark":
+      await runBenchmark(rootDir, rawArgs);
       return;
     case "llm-summary": {
       const artifactPath = rawArgs[0];

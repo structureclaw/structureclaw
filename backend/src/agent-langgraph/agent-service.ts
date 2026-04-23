@@ -284,6 +284,37 @@ export class LangGraphAgentService {
     return this.extractResult(result, conversationId, traceId, startedAt);
   }
 
+  /**
+   * Run the agent and return the full final AgentState (not just the summary).
+   * Used by benchmark tooling that needs access to model, analysisResult, report etc.
+   */
+  async runFull(input: LangGraphRunInput): Promise<AgentState> {
+    const locale = input.context?.locale || 'zh';
+    const conversationId = input.conversationId || `bench-${randomUUID()}`;
+    const graph = await this.getGraph();
+    const config = {
+      configurable: {
+        thread_id: conversationId,
+        ...this.buildConfigurable(),
+      },
+    };
+
+    return await graph.invoke(
+      {
+        messages: [new HumanMessage(input.message)],
+        locale,
+        workspaceRoot: this.workspaceRoot,
+        selectedSkillIds: input.context?.skillIds || [],
+        lastUserMessage: input.message,
+        policy: {
+          analysisType: input.context?.analysisType,
+          designCode: input.context?.designCode,
+        },
+      },
+      config,
+    ) as AgentState;
+  }
+
   // ---------------------------------------------------------------------------
   // Session management
   // ---------------------------------------------------------------------------
