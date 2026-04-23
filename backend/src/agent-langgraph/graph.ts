@@ -19,7 +19,7 @@ import {
   type LangGraphRunnableConfig,
 } from '@langchain/langgraph';
 import { ToolNode } from '@langchain/langgraph/prebuilt';
-import { AIMessage, type BaseMessage } from '@langchain/core/messages';
+import { AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage } from '@langchain/core/messages';
 import type { BaseCheckpointSaver } from '@langchain/langgraph';
 import { createChatModel } from '../utils/llm.js';
 import { AgentStateAnnotation, type AgentState } from './state.js';
@@ -79,15 +79,58 @@ function createCallModelNode(
     // Build system prompt
     const systemMessages = buildSystemMessages({ state, skillManifests });
 
-    // Validate messages — skip any that lost class identity during
-    // checkpoint deserialization (they won't have _getType() and would
-    // cause "role information cannot be empty" from the LLM API).
+    // Validate and reconstruct messages — checkpoint deserialization may
+    // strip class methods (_getType), leaving plain objects that the LLM API
+    // rejects with "role information cannot be empty". Rebuild them here.
     const rawMsgs: BaseMessage[] = Array.isArray(state.messages) ? state.messages : [];
-    const msgs: BaseMessage[] = rawMsgs.filter((m) =>
-      m != null
-      && typeof m === 'object'
-      && typeof (m as any)._getType === 'function',
-    );
+    const msgs: BaseMessage[] = rawMsgs.map((m): BaseMessage | null => {
+      if (m == null || typeof m !== 'object') return null;
+      // Check if already a proper class instance with a usable role.
+      // ChatMessageChunk / ChatMessage with _getType "generic" and missing
+      // role must be reconstructed — the LLM provider rejects them.
+      if (typeof (m as any)._getType === 'function') {
+        const t = (m as any)._getType();
+        if (t === 'generic') {
+          // ChatMessage(ChatChunk) — treat as AI if role is missing/assistant
+          const role = (m as any).role;
+          if (role === 'assistant' || !role) {
+            const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
+            // Skip empty ChatMessageChunks (streaming artifacts)
+            if (!content) return null;
+            return new AIMessage({ content });
+          }
+        }
+        return m;
+      }
+      // Normalize: LangChain serde uses {lc:1, type:"constructor", id:[...], kwargs:{...}}
+      const raw = m as unknown as Record<string, unknown>;
+      const isLcFormat = raw.lc === 1 && raw.type === 'constructor';
+      const plain = isLcFormat ? (raw.kwargs as Record<string, unknown>) ?? {} : raw;
+      const lcId = Array.isArray(raw.id) ? (raw.id as string[]).join('/') : '';
+      const id = lcId || (plain.id as string) || '';
+      const content = plain.content ?? '';
+      const name = plain.name as string | undefined;
+      if (id.includes('HumanMessage') || plain.role === 'user' || plain.type === 'human') {
+        return typeof content === 'string' ? new HumanMessage({ content, name }) : new HumanMessage({ content: content as any[], name });
+      }
+      if (id.includes('AIMessage') || plain.role === 'assistant' || plain.type === 'ai') {
+        const aiMsg = typeof content === 'string' ? new AIMessage({ content, name }) : new AIMessage({ content: content as any[], name });
+        if (Array.isArray(plain.tool_calls)) (aiMsg as any).tool_calls = plain.tool_calls;
+        return aiMsg;
+      }
+      if (id.includes('SystemMessage') || plain.role === 'system' || plain.type === 'system') {
+        return new SystemMessage(typeof content === 'string' ? content : JSON.stringify(content));
+      }
+      if (id.includes('ToolMessage') || plain.role === 'tool' || plain.type === 'tool') {
+        return new ToolMessage({
+          content: typeof content === 'string' ? content : JSON.stringify(content),
+          tool_call_id: (plain.tool_call_id as string) || (plain.id as string) || '',
+          name,
+        });
+      }
+      // Unknown — skip
+      return null;
+    }).filter((m): m is BaseMessage => m !== null);
 
     // Count prior tool calls in this turn to enforce max iterations.
     let lastHumanIndex = -1;
@@ -170,9 +213,19 @@ export function buildAgentGraph(deps: GraphDeps) {
 
   const callModel = createCallModelNode(skillManifests, tools);
 
+  // Wrap ToolNode so that the current graph state is injected into
+  // config.configurable.agentState before each tool runs.  LangGraph
+  // does not propagate config mutations across nodes, so the injection
+  // done in callModel is invisible to the raw ToolNode.
+  const toolsNode = async (state: AgentState, config: LangGraphRunnableConfig) => {
+    const configurableAny = config.configurable as Record<string, unknown>;
+    configurableAny.agentState = state;
+    return toolNode.invoke(state, config);
+  };
+
   const workflow = new StateGraph(AgentStateAnnotation)
     .addNode('agent', callModel)
-    .addNode('tools', toolNode)
+    .addNode('tools', toolsNode)
     .addEdge(START, 'agent')
     .addConditionalEdges('agent', shouldContinue, ['tools', END])
     .addEdge('tools', 'agent');
