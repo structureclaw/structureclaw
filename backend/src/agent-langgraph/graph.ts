@@ -105,6 +105,9 @@ function createCallModelNode(
         // errors on some providers (e.g. GLM).
         if (t === 'ai' && !(m instanceof AIMessage)) {
           const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
+          // Skip empty AIMessageChunks — they are streaming artifacts
+          // (e.g. the final empty chunk after tool calls) with no value.
+          if (!content) return null;
           const aiMsg = new AIMessage({ content, name: (m as any).name || undefined });
           if (Array.isArray((m as any).tool_calls)) (aiMsg as any).tool_calls = (m as any).tool_calls;
           return aiMsg;

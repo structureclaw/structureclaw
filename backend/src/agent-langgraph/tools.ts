@@ -439,7 +439,16 @@ export function createListWorkspaceFilesTool() {
       }
 
       const files = await walk(target, 0);
-      return JSON.stringify({ dir: input.dirPath || '.', fileCount: files.length, files });
+      const MAX_FILES = 200;
+      const truncated = files.length > MAX_FILES;
+      const shown = truncated ? files.slice(0, MAX_FILES) : files;
+      return JSON.stringify({
+        dir: input.dirPath || '.',
+        fileCount: files.length,
+        shownCount: shown.length,
+        ...(truncated ? { truncated: true, hint: `Showing first ${MAX_FILES} of ${files.length} files. Use a more specific dirPath or smaller maxDepth to narrow results.` } : {}),
+        files: shown,
+      });
     },
     {
       name: 'list_workspace_files',
