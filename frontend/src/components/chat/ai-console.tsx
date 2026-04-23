@@ -48,6 +48,7 @@ type Message = {
   debugDetails?: MessageDebugDetails
   presentation?: AssistantPresentation
   toolStep?: TimelineStepItem
+  toolCalls?: Array<{ id?: string; name: string; args?: Record<string, unknown> }>
 }
 
 type AgentToolCall = {
@@ -586,6 +587,15 @@ const LEGACY_ABORTED_SUFFIX_PATTERNS = [
 
 function stripLegacyAbortedSuffix(content: string) {
   return LEGACY_ABORTED_SUFFIX_PATTERNS.reduce((current, pattern) => current.replace(pattern, ''), content)
+}
+
+function mapToolNameToPhase(toolName: string): 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report' {
+  if (toolName.includes('detect') || toolName.includes('extract') || toolName.includes('clarification')) return 'understanding'
+  if (toolName.includes('draft') || toolName.includes('build_model') || toolName.includes('model')) return 'modeling'
+  if (toolName.includes('validate')) return 'validation'
+  if (toolName.includes('analysis') || toolName.includes('code_check')) return 'analysis'
+  if (toolName.includes('report')) return 'report'
+  return 'understanding'
 }
 
 function hasLegacyAbortedSuffix(content: string) {
@@ -2447,15 +2457,58 @@ export function AIConsole() {
 
       const payload = await response.json() as ConversationDetail | null
       const backendMessages = Array.isArray(payload?.messages)
-        ? payload.messages.map((message) => ({
-            id: message.id,
-            role: (message.role === 'assistant' ? 'assistant' : 'user') as Message['role'],
-            content: stripLegacyAbortedSuffix(message.content),
-            status: parsePersistedMessageStatus(message.metadata, message.content),
-            timestamp: message.createdAt,
-            debugDetails: parsePersistedDebugDetails(message.metadata),
-            presentation: parsePersistedPresentation(message.metadata),
-          }))
+        ? payload.messages.flatMap((message): Message[] => {
+            // Handle tool messages — these come from persistFullConversationMessages
+            if (message.role === 'tool') {
+              return [{
+                id: message.id,
+                role: 'tool' as const,
+                content: message.content,
+                status: 'done' as const,
+                timestamp: message.createdAt,
+                toolStep: {
+                  id: (message as any).toolCallId || message.id,
+                  phase: mapToolNameToPhase((message as any).name || 'unknown'),
+                  status: 'done' as const,
+                  tool: (message as any).name || 'unknown',
+                  title: (message as any).name || 'unknown',
+                  output: message.content,
+                  completedAt: message.createdAt,
+                },
+              }]
+            }
+            // Handle assistant messages with toolCalls metadata
+            if (message.role === 'assistant') {
+              const toolCalls = (message as any).toolCalls as Array<{ id?: string; name: string; args?: Record<string, unknown> }> | undefined
+              const mapped: Message = {
+                id: message.id,
+                role: 'assistant' as const,
+                content: stripLegacyAbortedSuffix(message.content),
+                status: parsePersistedMessageStatus(message.metadata, message.content),
+                timestamp: message.createdAt,
+                debugDetails: parsePersistedDebugDetails(message.metadata),
+                presentation: parsePersistedPresentation(message.metadata),
+              }
+              // Store toolCalls on the assistant message so ToolCallCard can
+              // render the expandable args section.  Do NOT emit separate
+              // "running" step messages — the DB already has tool-role
+              // messages that carry the completion status.
+              if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+                mapped.toolCalls = toolCalls
+              }
+              return [mapped]
+            }
+            // User messages
+            return [{
+              id: message.id,
+              role: 'user' as const,
+              content: message.content,
+              status: parsePersistedMessageStatus(message.metadata, message.content),
+              timestamp: message.createdAt,
+              debugDetails: parsePersistedDebugDetails(message.metadata),
+              presentation: parsePersistedPresentation(message.metadata),
+            }]
+          })
         : []
       const archivedMessages = archived?.messages || []
       const archiveHasOnlyWelcome =
