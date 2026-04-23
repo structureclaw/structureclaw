@@ -95,10 +95,19 @@ function createCallModelNode(
           const role = (m as any).role;
           if (role === 'assistant' || !role) {
             const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
-            // Skip empty ChatMessageChunks (streaming artifacts)
             if (!content) return null;
             return new AIMessage({ content });
           }
+        }
+        // AIMessageChunk is not a proper AIMessage — convert it so the LLM
+        // provider receives a message with a well-defined role.  Chunk
+        // instances have undefined .role which causes "角色信息不能为空"
+        // errors on some providers (e.g. GLM).
+        if (t === 'ai' && !(m instanceof AIMessage)) {
+          const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
+          const aiMsg = new AIMessage({ content, name: (m as any).name || undefined });
+          if (Array.isArray((m as any).tool_calls)) (aiMsg as any).tool_calls = (m as any).tool_calls;
+          return aiMsg;
         }
         return m;
       }

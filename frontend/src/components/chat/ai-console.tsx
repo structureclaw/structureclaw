@@ -1267,6 +1267,7 @@ function AnalysisPanel({
   const engineInfo = extractEngineLabel(analysis, result, t)
   const reportMarkdown = result?.report?.markdown?.trim()
   const reportSummary = result?.report?.summary?.trim()
+  const reportPdfUrl = (result?.report as Record<string, unknown>)?.pdfUrl as string | undefined
   const guidance = result?.interaction
   const hasVisualizationData = Boolean(visualizationSnapshot || modelVisualizationSnapshot)
   const showVisualizationAction = Boolean(result || visualizationSnapshot)
@@ -1564,6 +1565,24 @@ function AnalysisPanel({
 
         {result && activeTab === 'report' && (
           <div className="space-y-4">
+            {reportPdfUrl && (
+              <Card className="border-border\70 bg-card\85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/50">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <FileText className="h-5 w-5 text-cyan-500 dark:text-cyan-300" />
+                    {t('calculationBookPdf')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-0">
+                  <iframe
+                    src={`${API_BASE}${reportPdfUrl}`}
+                    className="h-[600px] w-full rounded-b-2xl border-0"
+                    title="PDF Preview"
+                  />
+                </CardContent>
+              </Card>
+            )}
+
             {reportSummary && (
               <Card className="border-border/70 bg-card/85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/50">
                 <CardHeader>

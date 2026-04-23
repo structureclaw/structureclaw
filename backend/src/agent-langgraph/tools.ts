@@ -779,9 +779,14 @@ export function createGenerateReportTool(skillRuntime: AgentSkillRuntime) {
         if (jwsPath) {
           try {
             const calcbook = await runPkpmCalcbook(jwsPath);
-            if (calcbook?.markdown && result.report.json) {
-              const jsonReport = result.report.json as Record<string, unknown>;
-              jsonReport.calcbookMarkdown = calcbook.markdown;
+            if (calcbook) {
+              if (calcbook.markdown && result.report.json) {
+                const jsonReport = result.report.json as Record<string, unknown>;
+                jsonReport.calcbookMarkdown = calcbook.markdown;
+              }
+              if (calcbook.summary?.pdf_path) {
+                (result.report as Record<string, unknown>).pdfUrl = `/api/v1/files/serve?path=${encodeURIComponent(calcbook.summary.pdf_path)}`;
+              }
             }
           } catch (err) {
             logger.warn({ err }, 'PKPM calcbook generation failed, skipping');
