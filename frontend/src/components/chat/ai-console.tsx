@@ -3187,6 +3187,13 @@ export function AIConsole() {
                 ...(payload.latestResult || {}),
               }))
             }
+            if (payload.artifact === 'report' && payload.latestResult && activeConversationId === conversationIdRef.current) {
+              setLatestResult((current) => ({
+                ...(current || {}),
+                ...(payload.latestResult || {}),
+              }))
+              setActivePanel(payload.latestResult.report?.markdown ? 'report' : 'analysis')
+            }
           }
 
           if (payload.type === 'result' && payload.content && typeof payload.content === 'object') {
