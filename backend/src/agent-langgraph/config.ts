@@ -10,8 +10,8 @@ export function getCheckpointerDataDir(): string {
     || path.resolve(config.reportsDir, '..', 'agent-checkpoints');
 }
 
-/** Resolve the workspace root for file operations. */
+/** Resolve the workspace root for file operations. Defaults to the repository root. */
 export function getWorkspaceRoot(): string {
   return process.env.WORKSPACE_ROOT?.trim()
-    || path.resolve(config.reportsDir, '..', '..', '..');
+    || path.resolve(config.reportsDir, '..', '..');
 }

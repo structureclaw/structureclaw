@@ -22,6 +22,7 @@ import { ToolMessage } from '@langchain/core/messages';
 import { logger } from '../utils/logger.js';
 import type { AgentState } from './state.js';
 import type { AgentConfigurable } from './configurable.js';
+import { runPkpmCalcbook } from '../agent-skills/report-export/calculation-book/pkpm-calcbook/runner.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -49,7 +50,9 @@ function getToolCallId(config: LangGraphRunnableConfig): string {
 /** Validate that a resolved path stays within the workspace root. */
 function safeResolve(workspaceRoot: string, requestedPath: string): string {
   const resolved = path.resolve(workspaceRoot, requestedPath);
-  if (!resolved.startsWith(workspaceRoot + path.sep) && resolved !== workspaceRoot) {
+  const root = path.resolve(workspaceRoot);
+  const prefix = root.endsWith(path.sep) ? root : root + path.sep;
+  if (!resolved.startsWith(prefix) && resolved !== root) {
     throw new Error(`Path traversal blocked: ${requestedPath} is outside workspace`);
   }
   return resolved;
@@ -131,7 +134,6 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
       const state = configurable.agentState;
       const toolCallId = getToolCallId(config);
 
-      // Read existing draft state from graph state channel
       const existingState = state?.draftState || undefined;
       const skillIds = input.skillIdsJson
         ? JSON.parse(input.skillIdsJson) as string[]
@@ -139,31 +141,93 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
       const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
       const message = state?.lastUserMessage || input.message || '';
 
-      const result = await skillRuntime.extractDraftParameters(
-        null,
-        message,
-        existingState,
-        locale,
-        skillIds,
+      // Step 1: Detect structural type
+      const match = await skillRuntime.detectStructuralType(
+        message, locale, existingState, skillIds,
       );
 
+      // Early return when no skill matched
+      if (!match.skillId) {
+        const nextState = {
+          ...(existingState || { inferredType: 'unknown' as const }),
+          structuralTypeKey: match.key,
+          supportLevel: match.supportLevel,
+          supportNote: match.supportNote,
+          updatedAt: Date.now(),
+        };
+        const responseJson = {
+          nextState,
+          criticalMissing: ['inferredType'],
+          optionalMissing: [],
+          structuralTypeMatch: match,
+          skillId: undefined,
+          extractionMode: 'deterministic',
+        };
+        const stateUpdate: Partial<AgentState> = { draftState: nextState };
+        if (match.key) stateUpdate.structuralTypeKey = match.key;
+        return toolResult(toolCallId, 'extract_draft_params', JSON.stringify(responseJson), stateUpdate);
+      }
+
+      // Step 2: Resolve plugin
+      const plugin = await skillRuntime.resolvePluginForType(match.skillId, skillIds);
+      if (!plugin) {
+        const nextState = existingState || { inferredType: 'unknown' as const, updatedAt: Date.now() };
+        const responseJson = {
+          nextState,
+          criticalMissing: ['inferredType'],
+          optionalMissing: [],
+          structuralTypeMatch: match,
+          skillId: undefined,
+          extractionMode: 'deterministic',
+        };
+        return toolResult(toolCallId, 'extract_draft_params', JSON.stringify(responseJson), { draftState: nextState });
+      }
+
+      // Generic skill: deterministic path (no LLM extraction needed)
+      if (plugin.id === 'generic' && existingState?.inferredType && existingState.inferredType !== 'unknown') {
+        const { withStructuralTypeState } = await import('../agent-runtime/plugin-helpers.js');
+        const nextState = withStructuralTypeState(plugin.handler.mergeState(existingState, {}), match);
+        const missing = plugin.handler.computeMissing(nextState, 'execution');
+        const responseJson = {
+          nextState,
+          criticalMissing: missing.critical,
+          optionalMissing: missing.optional,
+          structuralTypeMatch: match,
+          skillId: plugin.id,
+          extractionMode: 'deterministic',
+        };
+        const stateUpdate: Partial<AgentState> = { draftState: nextState, structuralTypeKey: match.key };
+        return toolResult(toolCallId, 'extract_draft_params', JSON.stringify(responseJson), stateUpdate);
+      }
+
+      // Step 3: Sub-agent extracts parameters (skill manifest driven)
+      const { invokeParamExtractor } = await import('./param-extractor.js');
+      const draftPatch = await invokeParamExtractor({ message, existingState, locale, plugin });
+
+      // Step 4: Handler pipeline (extractDraft → mergeState → computeMissing)
+      const patch = plugin.handler.extractDraft({
+        message,
+        locale,
+        currentState: existingState,
+        llmDraftPatch: draftPatch,
+        structuralTypeMatch: match,
+      });
+      const { withStructuralTypeState } = await import('../agent-runtime/plugin-helpers.js');
+      const nextState = withStructuralTypeState(plugin.handler.mergeState(existingState, patch), match);
+      const missing = plugin.handler.computeMissing(nextState, 'execution');
+
       const responseJson = {
-        nextState: result.nextState,
-        criticalMissing: result.missing.critical,
-        optionalMissing: result.missing.optional,
-        structuralTypeMatch: result.structuralTypeMatch,
-        skillId: result.plugin?.id,
-        extractionMode: result.extractionMode,
+        nextState,
+        criticalMissing: missing.critical,
+        optionalMissing: missing.optional,
+        structuralTypeMatch: match,
+        skillId: plugin.id,
+        extractionMode: draftPatch ? 'llm' : 'deterministic',
       };
 
-      // Update draft state and structural type key via Command
       const stateUpdate: Partial<AgentState> = {};
-      if (result.nextState) {
-        stateUpdate.draftState = result.nextState;
-      }
-      if (result.structuralTypeMatch?.key) {
-        stateUpdate.structuralTypeKey = result.structuralTypeMatch.key;
-      }
+      if (nextState) stateUpdate.draftState = nextState;
+      if (match.key) stateUpdate.structuralTypeKey = match.key;
 
       return toolResult(
         toolCallId,
@@ -199,7 +263,7 @@ export function createBuildModelTool(skillRuntime: AgentSkillRuntime) {
       // Read draft state from graph state channel
       const draftState = state?.draftState;
       if (!draftState) {
-        return toolResult(toolCallId, 'build_model', JSON.stringify({ success: false, error: 'No draft state available. Run extract_draft_params first.' }));
+        throw new Error('No draft state available. Run extract_draft_params first.');
       }
       const skillIds = input.skillIdsJson
         ? JSON.parse(input.skillIdsJson) as string[]
@@ -213,14 +277,18 @@ export function createBuildModelTool(skillRuntime: AgentSkillRuntime) {
 
       const model = await skillRuntime.buildModel(draftState, skillIds);
       if (!model) {
-        return toolResult(toolCallId, 'build_model', JSON.stringify({ success: false, error: 'Model build returned undefined — draft may be incomplete' }));
+        throw new Error('Model build returned undefined — draft may be incomplete. Try running extract_draft_params again with more explicit parameters.');
       }
 
-      // Store model in graph state via Command
+      // Store model in graph state via Command.
+      // Keep ToolMessage content compact — full model lives in graph state.
+      // The streaming layer reads model from nodeState for artifact_payload_sync.
+      const nodeCount = Array.isArray(model.nodes) ? model.nodes.length : 0;
+      const elementCount = Array.isArray(model.elements) ? model.elements.length : 0;
       return toolResult(
         toolCallId,
         'build_model',
-        JSON.stringify({ success: true }),
+        JSON.stringify({ success: true, nodeCount, elementCount, schemaVersion: model.schema_version }),
         { model },
       );
     },
@@ -479,7 +547,16 @@ export function createValidateModelTool(skillRuntime: AgentSkillRuntime) {
         engineId: input.engineId,
         structureProtocolClient: configurable.structureProtocolClient,
       });
-      return JSON.stringify(result);
+      // Keep output compact — trim large model echo from validation result
+      const compact: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(result as Record<string, unknown>)) {
+        if (k === 'input') {
+          compact[k] = { model: '(model stored in state)' };
+        } else {
+          compact[k] = v;
+        }
+      }
+      return JSON.stringify(compact);
     },
     {
       name: 'validate_model',
@@ -551,11 +628,18 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
         postToEngineWithRetry,
       });
 
-      // Store analysis result in graph state via Command
+      // Store analysis result in graph state via Command.
+      // Keep ToolMessage content compact — the full data lives in graph state.
+      // The streaming layer reads analysisResult from nodeState for artifact_payload_sync.
+      const analysisSummary = typeof result.result === 'object' && result.result !== null
+        ? { success: true, skillId: result.skillId, analysisMode: (result.result as Record<string, unknown>)?.data
+            ? ((result.result as Record<string, unknown>).data as Record<string, unknown>)?.analysisMode
+            : undefined }
+        : { success: true, skillId: result.skillId };
       return toolResult(
         toolCallId,
         'run_analysis',
-        JSON.stringify({ success: true, input: result.input, skillId: result.skillId }),
+        JSON.stringify(analysisSummary),
         { analysisResult: result.result as Record<string, unknown> },
       );
     },
@@ -564,12 +648,17 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
       description:
         'Execute a structural analysis (static, dynamic, seismic, or nonlinear). ' +
         'Reads the model from conversation state automatically — do NOT pass it as a parameter. ' +
-        'Returns analysis results including displacements, forces, and reactions.',
+        'Returns analysis results including displacements, forces, and reactions. ' +
+        'IMPORTANT: Valid engineId values are ONLY: "builtin-opensees", "builtin-pkpm", "builtin-yjk", "builtin-simplified". ' +
+        'Do NOT use skill IDs like "pkpm-static" as engineId — use "builtin-pkpm" instead.',
       schema: z.object({
         analysisType: z
           .enum(['static', 'dynamic', 'seismic', 'nonlinear'])
           .describe('Type of analysis to perform'),
-        engineId: z.string().optional().describe('Analysis engine ID (e.g. builtin-opensees, builtin-pkpm)'),
+        engineId: z
+          .enum(['builtin-opensees', 'builtin-pkpm', 'builtin-yjk', 'builtin-simplified'])
+          .optional()
+          .describe('Analysis engine. Must be one of: builtin-opensees, builtin-pkpm, builtin-yjk, builtin-simplified. For PKPM use "builtin-pkpm".'),
         skillIdsJson: z.string().optional().describe('JSON array of selected skill IDs'),
       }),
     },
@@ -677,6 +766,28 @@ export function createGenerateReportTool(skillRuntime: AgentSkillRuntime) {
         draft: draftState,
         skillIds,
       });
+
+      // For PKPM analysis, also generate the dedicated calculation book
+      const analysisData = (analysis as Record<string, unknown>)?.data as Record<string, unknown> | undefined;
+      const analysisMode = analysisData?.analysisMode as string | undefined;
+      const isPkpm = analysisMode === 'pkpm-satwe'
+        || (analysis as Record<string, unknown>)?.meta != null
+          && typeof (analysis as Record<string, unknown>).meta === 'object'
+          && ((analysis as Record<string, unknown>).meta as Record<string, unknown>)?.analysisAdapterKey === 'builtin-pkpm';
+      if (isPkpm && analysisData?.summary) {
+        const jwsPath = (analysisData.summary as Record<string, unknown>)?.jws_path as string | undefined;
+        if (jwsPath) {
+          try {
+            const calcbook = await runPkpmCalcbook(jwsPath);
+            if (calcbook?.markdown && result.report.json) {
+              const jsonReport = result.report.json as Record<string, unknown>;
+              jsonReport.calcbookMarkdown = calcbook.markdown;
+            }
+          } catch (err) {
+            logger.warn({ err }, 'PKPM calcbook generation failed, skipping');
+          }
+        }
+      }
 
       // Store report in graph state via Command
       return toolResult(

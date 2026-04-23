@@ -432,6 +432,10 @@ export class AgentSkillRuntime {
     return this.registry.detectStructuralType(message, locale, currentState, skillIds);
   }
 
+  async resolvePluginForType(skillId: string, skillIds?: string[]): Promise<import('./types.js').AgentSkillPlugin | null> {
+    return this.registry.resolvePluginForIdentifier(skillId, skillIds);
+  }
+
   async extractDraftParameters(
     llm: ChatOpenAI | null,
     message: string,

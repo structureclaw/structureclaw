@@ -130,7 +130,13 @@ ${summarizeArtifacts(state)}
 4. 调用 validate_model 验证模型
 5. 调用 run_analysis 执行分析
 6. （可选）调用 run_code_check 进行规范校核
-7. （可选）调用 generate_report 生成报告
+7. 调用 generate_report 生成报告
+
+**关键规则**:
+- 步骤 1-5 和 7 是必选的，不要跳过。步骤 6（规范校核）是可选的。
+- 如果用户明确要求"生成报告"、"生成计算书"、"出报告"等，generate_report 是**必须**调用的，不是可选的。
+- 分析完成后必须继续调用 generate_report，不要在分析步骤就停止。
+- run_analysis 完成后，立即调用 generate_report 生成报告，不要输出总结文字后停止。
 
 **重要**: 工具从会话状态中自动读取数据（模型、分析结果、草稿状态等）。不要将 modelJson、analysisJson、stateJson 等参数传递给工具。工具会自动使用上一步的结果。`;
 }
@@ -176,7 +182,13 @@ When the user makes a structural design or analysis request, follow this workflo
 4. Call validate_model to validate the model
 5. Call run_analysis to execute the analysis
 6. (Optional) Call run_code_check for code compliance
-7. (Optional) Call generate_report to produce a report
+7. Call generate_report to produce a report
+
+**Critical rules**:
+- Steps 1-5 and 7 are REQUIRED — do not skip them. Only step 6 (code check) is optional.
+- If the user explicitly asks for a "report", "calculation book", or similar, generate_report is MANDATORY.
+- After run_analysis completes, immediately call generate_report — do NOT stop after outputting a summary.
+- Never end the conversation after analysis without generating a report.
 
 **IMPORTANT**: Tools read data (model, analysis results, draft state, etc.) from conversation state automatically. Do NOT pass modelJson, analysisJson, stateJson, or other JSON string parameters to tools. Tools automatically use results from previous steps.`;
 }

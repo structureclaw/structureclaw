@@ -732,6 +732,41 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     if max_disp_node:
         envelope[f"node:{max_disp_node}:maxAbsDisplacement"] = max_disp
 
+    # Standard envelope keys for TS compatibility (extractKeyMetrics / extractControllingCases)
+    envelope["maxAbsDisplacement"] = max_disp
+    envelope["controlNodeDisplacement"] = max_disp_node or None
+
+    # Global max forces from envelopeTables
+    g_max_axial = 0.0
+    g_max_shear = 0.0
+    g_max_moment = 0.0
+    control_elem_axial = ""
+    control_elem_shear = ""
+    control_elem_moment = ""
+    for eid, ef in element_force_envelope.items():
+        a = ef.get("maxAbsAxialForce", 0.0)
+        s = ef.get("maxAbsShearForce", 0.0)
+        m = ef.get("maxAbsMoment", 0.0)
+        if a > g_max_axial:
+            g_max_axial = a
+            control_elem_axial = eid
+        if s > g_max_shear:
+            g_max_shear = s
+            control_elem_shear = eid
+        if m > g_max_moment:
+            g_max_moment = m
+            control_elem_moment = eid
+    envelope["maxAbsAxialForce"] = g_max_axial
+    envelope["maxAbsShearForce"] = g_max_shear
+    envelope["maxAbsMoment"] = g_max_moment
+    envelope["maxAbsReaction"] = 0.0
+    envelope["controlElementAxialForce"] = control_elem_axial
+    envelope["controlElementShearForce"] = control_elem_shear
+    envelope["controlElementMoment"] = control_elem_moment
+
+    if member_utilization:
+        envelope["elementUtilization"] = member_utilization
+
     # Build result dict
     result_dict: Dict[str, Any] = {
         "status": "success",

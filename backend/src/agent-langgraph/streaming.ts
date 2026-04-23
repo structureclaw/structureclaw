@@ -284,42 +284,76 @@ function extractToolMessages(nodeState: any): any[] {
 // Artifact sync helper
 // ---------------------------------------------------------------------------
 
+/**
+ * Resolve a state value from nodeState, handling all output patterns:
+ *  - Resolved state: { messages, model, ... }
+ *  - Command array: [Command({ update: { model, messages } })]
+ *  - Single Command: Command({ update: { model, messages } })
+ */
+function resolveStateValue(nodeState: unknown, key: string): unknown {
+  if (!nodeState || typeof nodeState !== 'object') return undefined;
+
+  // Pattern A: plain object with key directly (resolved state)
+  if (!Array.isArray(nodeState) && key in (nodeState as Record<string, unknown>)) {
+    return (nodeState as Record<string, unknown>)[key];
+  }
+
+  // Pattern B: array of items (Commands or state objects)
+  if (Array.isArray(nodeState)) {
+    for (const item of nodeState) {
+      if (!item || typeof item !== 'object') continue;
+      if (isCommand(item)) {
+        const update = (item as any).update;
+        if (update && typeof update === 'object' && key in update) {
+          return update[key];
+        }
+      }
+      if (key in (item as Record<string, unknown>)) {
+        return (item as Record<string, unknown>)[key];
+      }
+    }
+    return undefined;
+  }
+
+  // Pattern C: single Command
+  if (isCommand(nodeState)) {
+    const update = (nodeState as any).update;
+    if (update && typeof update === 'object' && key in update) {
+      return update[key];
+    }
+  }
+
+  return undefined;
+}
+
 function emitArtifactSync(toolOutput: string, nodeState?: any): AgentStreamChunk[] {
   const chunks: AgentStreamChunk[] = [];
   try {
     const parsed = JSON.parse(toolOutput);
     if (parsed && typeof parsed === 'object' && parsed.success) {
-      // With Command-based tools, artifacts are stored in graph state channels,
-      // not in the tool response JSON. Detect success and emit artifact sync
-      // from the resolved state if available.
-      if (nodeState?.model) {
+      const model = resolveStateValue(nodeState, 'model');
+      const analysisResult = resolveStateValue(nodeState, 'analysisResult');
+      const report = resolveStateValue(nodeState, 'report');
+
+      if (model) {
         chunks.push({
           type: 'artifact_payload_sync',
           artifact: 'model',
-          model: nodeState.model,
+          model: model as Record<string, unknown>,
         });
       }
-      if (nodeState?.analysisResult) {
+      if (analysisResult) {
         chunks.push({
           type: 'artifact_payload_sync',
           artifact: 'analysis',
-          latestResult: { analysis: nodeState.analysisResult },
+          latestResult: { analysis: analysisResult as Record<string, unknown> },
         });
       }
-      // Legacy path: some tools (validate_model, detect_structure_type)
-      // still return data inline
-      if (parsed.model && !nodeState?.model) {
+      if (report) {
         chunks.push({
           type: 'artifact_payload_sync',
-          artifact: 'model',
-          model: parsed.model,
-        });
-      }
-      if ((parsed.result || parsed.analysis) && !nodeState?.analysisResult) {
-        chunks.push({
-          type: 'artifact_payload_sync',
-          artifact: 'analysis',
-          latestResult: { analysis: parsed.result || parsed },
+          artifact: 'report',
+          latestResult: { report: report as Record<string, unknown> },
         });
       }
     }
@@ -384,6 +418,13 @@ export async function* streamGraphToChunks(
   let interrupted = false;
   let tokenBuffer = '';
 
+  // Track accumulated artifacts from artifact_payload_sync events so
+  // the final result event can include model/analysis/report data for
+  // the frontend to build VisualizationSnapshots.
+  let accumulatedModel: Record<string, unknown> | undefined;
+  let accumulatedAnalysis: Record<string, unknown> | undefined;
+  let accumulatedReport: Record<string, unknown> | undefined;
+
   function processChunk(chunk: AgentStreamChunk): void {
     if (chunk.type === 'interaction_update') {
       interrupted = true;
@@ -404,6 +445,20 @@ export async function* streamGraphToChunks(
         tokenBuffer = '';
       }
     }
+
+    // Track artifact data for result event enrichment
+    if (chunk.type === 'artifact_payload_sync') {
+      const sync = chunk as { artifact?: string; model?: Record<string, unknown>; latestResult?: Record<string, unknown> };
+      if (sync.artifact === 'model' && sync.model) {
+        accumulatedModel = sync.model;
+      }
+      if (sync.artifact === 'analysis' && sync.latestResult?.analysis) {
+        accumulatedAnalysis = sync.latestResult.analysis as Record<string, unknown>;
+      }
+      if (sync.artifact === 'report' && sync.latestResult?.report) {
+        accumulatedReport = sync.latestResult.report as Record<string, unknown>;
+      }
+    }
   }
 
   try {
@@ -420,6 +475,19 @@ export async function* streamGraphToChunks(
 
       for (const chunk of chunks) {
         processChunk(chunk);
+
+        // Enrich the final result event with accumulated artifact data
+        // so the frontend can build VisualizationSnapshots.
+        if (chunk.type === 'result' && chunk.content && typeof chunk.content === 'object') {
+          const enriched = { ...(chunk.content as Record<string, unknown>) };
+          if (accumulatedModel) enriched.model = accumulatedModel;
+          if (accumulatedAnalysis) enriched.analysis = accumulatedAnalysis;
+          if (accumulatedReport) enriched.report = accumulatedReport;
+          enriched.completedAt = new Date().toISOString();
+          yield { ...chunk, content: enriched } as AgentStreamChunk;
+          continue;
+        }
+
         yield chunk;
       }
 
