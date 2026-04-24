@@ -21,6 +21,7 @@ import {
   createReplaceInFileTool,
   createWriteFileTool,
 } from './workspace-tools.js';
+import { createShellTool } from './shell-tool.js';
 
 export type AgentToolRisk = 'low' | 'workspace-read' | 'workspace-write' | 'destructive' | 'shell';
 export type AgentToolCategory = 'engineering' | 'interaction' | 'session' | 'workspace' | 'memory' | 'shell';
@@ -226,6 +227,17 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
     displayName: { zh: '删除文件', en: 'Delete File' },
     description: { zh: '删除工作区内单个文件。', en: 'Delete one file inside the workspace.' },
     create: () => createDeletePathTool(),
+  },
+  {
+    id: 'shell',
+    category: 'shell',
+    risk: 'shell',
+    defaultEnabled: false,
+    requiresExplicitEnable: true,
+    requiresShellGate: true,
+    displayName: { zh: '受限命令执行', en: 'Restricted Shell Execution' },
+    description: { zh: '在工作区中执行白名单命令。', en: 'Run allowlisted commands inside the workspace.' },
+    create: () => createShellTool(),
   },
 ];
 

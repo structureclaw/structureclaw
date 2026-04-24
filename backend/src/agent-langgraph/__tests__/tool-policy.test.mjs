@@ -32,6 +32,9 @@ describe("LangGraph tool policy", () => {
       "detect_structure_type",
       "extract_draft_params",
       "generate_report",
+      "glob_files",
+      "grep_files",
+      "read_file",
       "run_analysis",
       "run_code_check",
       "set_session_config",
@@ -66,7 +69,8 @@ describe("LangGraph tool policy", () => {
     });
 
     expect(result.activeToolIds).toEqual(["detect_structure_type"]);
-    expect(result.unknownToolIds).toEqual(["missing_tool", "shell"]);
+    expect(result.unknownToolIds).toEqual(["missing_tool"]);
+    expect(result.deniedToolIds.shell).toContain("SHELL_DISABLED");
   });
 
   test("legacy frontend tool selections keep default core tools during migration", async () => {
@@ -85,6 +89,9 @@ describe("LangGraph tool policy", () => {
       "detect_structure_type",
       "extract_draft_params",
       "generate_report",
+      "glob_files",
+      "grep_files",
+      "read_file",
       "run_analysis",
       "run_code_check",
       "set_session_config",
