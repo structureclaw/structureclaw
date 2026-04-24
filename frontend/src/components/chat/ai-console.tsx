@@ -2996,6 +2996,19 @@ export function AIConsole() {
     let shouldBumpConversationActivity = false
     const abortController = new AbortController()
     const traceId = assistantMessageId
+
+    function finalizeStreamingMessage(message: Message, contentFallback: string, presentation: AssistantPresentation | null | undefined): Message {
+      if (message.status !== 'streaming') return message
+      return {
+        ...message,
+        content: message.content || contentFallback,
+        status: 'done' as const,
+        toolStep: message.role === 'tool' && message.toolStep?.status === 'running'
+          ? { ...message.toolStep, status: 'done' as const }
+          : message.toolStep,
+        presentation: message.role === 'tool' ? undefined : (presentation ?? message.presentation),
+      }
+    }
     setIsStreaming(true)
 
     // --- Multi-bubble tracking ---
@@ -3500,18 +3513,9 @@ export function AIConsole() {
       } else {
         // Finalize all still-streaming messages from this turn
         for (const msgId of turnMessageIds) {
-          replaceMessageForConversation(activeConversationId, msgId, (message) => {
-            if (message.status !== 'streaming') return message
-            return {
-              ...message,
-              content: message.content || assistantSeed,
-              status: 'done' as const,
-              toolStep: message.role === 'tool' && message.toolStep?.status === 'running'
-                ? { ...message.toolStep, status: 'done' as const }
-                : message.toolStep,
-              presentation: message.role === 'tool' ? undefined : (currentPresentationRef.current ?? message.presentation),
-            }
-          })
+          replaceMessageForConversation(activeConversationId, msgId, (message) =>
+            finalizeStreamingMessage(message, assistantSeed, currentPresentationRef.current)
+          )
         }
         if (assistantContent !== assistantSeed || receivedResult) {
           shouldBumpConversationActivity = true
@@ -3525,17 +3529,9 @@ export function AIConsole() {
 
         if ((receivedResult || assistantContent !== assistantSeed) && nextError === 'Failed to fetch') {
           for (const msgId of turnMessageIds) {
-            replaceMessageForConversation(activeConversationId, msgId, (message) => {
-              if (message.status !== 'streaming') return message
-              return {
-                ...message,
-                status: 'done' as const,
-                toolStep: message.role === 'tool' && message.toolStep?.status === 'running'
-                  ? { ...message.toolStep, status: 'done' as const }
-                  : message.toolStep,
-                presentation: message.role === 'tool' ? undefined : (currentPresentationRef.current ?? message.presentation),
-              }
-            })
+            replaceMessageForConversation(activeConversationId, msgId, (message) =>
+              finalizeStreamingMessage(message, '', currentPresentationRef.current)
+            )
           }
         } else {
           if (activeConversationId === conversationIdRef.current) {

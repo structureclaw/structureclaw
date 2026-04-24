@@ -1,6 +1,6 @@
 'use client'
 
-import { useId } from 'react'
+import { type ReactNode, useId } from 'react'
 import { CapabilitySettingsPanel } from '@/components/chat/capability-settings-panel'
 import { DialogShell } from '@/components/ui/dialog-shell'
 import { Button } from '@/components/ui/button'
@@ -10,8 +10,20 @@ import { useI18n } from '@/lib/i18n'
 import { useStore } from '@/lib/stores/context'
 import { cn } from '@/lib/utils'
 import type { WorkspaceSettingsTab } from '@/lib/stores/slices/preferences'
+import type { MessageKey } from '@/lib/i18n'
 
-const SETTINGS_TABS: WorkspaceSettingsTab[] = ['capabilities', 'llm', 'database']
+type TabConfig = {
+  labelKey: MessageKey
+  panel: ReactNode
+}
+
+const TAB_CONFIG: Record<WorkspaceSettingsTab, TabConfig> = {
+  capabilities: { labelKey: 'capabilitySettingsNav', panel: <CapabilitySettingsPanel /> },
+  llm: { labelKey: 'llmSettingsNav', panel: <LlmSettingsPanel /> },
+  database: { labelKey: 'databaseAdminNav', panel: <DatabaseSettingsPanel /> },
+}
+
+const SETTINGS_TABS = Object.keys(TAB_CONFIG) as WorkspaceSettingsTab[]
 
 export function WorkspaceSettingsDialog() {
   const { t } = useI18n()
@@ -46,7 +58,7 @@ export function WorkspaceSettingsDialog() {
             )}
             onClick={() => openWorkspaceSettings(tab)}
           >
-            {tab === 'capabilities' ? t('capabilitySettingsNav') : tab === 'llm' ? t('llmSettingsNav') : t('databaseAdminNav')}
+            {t(TAB_CONFIG[tab].labelKey)}
           </Button>
         ))}
       </div>
@@ -55,7 +67,7 @@ export function WorkspaceSettingsDialog() {
         id={`${tabBaseId}-panel-${activeTab}`}
         aria-labelledby={`${tabBaseId}-tab-${activeTab}`}
       >
-        {activeTab === 'capabilities' ? <CapabilitySettingsPanel /> : activeTab === 'llm' ? <LlmSettingsPanel /> : <DatabaseSettingsPanel />}
+        {TAB_CONFIG[activeTab].panel}
       </div>
     </DialogShell>
   )

@@ -38,21 +38,21 @@ const FALLBACK_STATUS: DatabaseAdminStatus = {
 
 function formatBytes(sizeBytes: number | undefined, locale: string) {
   const size = sizeBytes ?? 0
+  const fmt = new Intl.NumberFormat(locale, { maximumFractionDigits: 1 })
+
   if (size <= 0) {
     return '0 B'
   }
 
   if (size < 1024) {
-    return `${size} B`
+    return `${fmt.format(size)} B`
   }
 
   if (size < 1024 * 1024) {
-    return `${(size / 1024).toFixed(1)} KB`
+    return `${fmt.format(size / 1024)} KB`
   }
 
-  return new Intl.NumberFormat(locale, {
-    maximumFractionDigits: 1,
-  }).format(size / (1024 * 1024)) + ' MB'
+  return `${fmt.format(size / (1024 * 1024))} MB`
 }
 
 export function DatabaseSettingsPanel() {
@@ -133,9 +133,12 @@ export function DatabaseSettingsPanel() {
               </p>
             )}
             {error && (
-              <p className="mt-2 text-sm leading-6 text-amber-700 dark:text-amber-200">
-                {t('databaseAdminFetchFailed')}
-              </p>
+              <div className="mt-2 text-sm leading-6 text-amber-700 dark:text-amber-200">
+                <p>{t('databaseAdminFetchFailed')}</p>
+                <pre className="mt-2 whitespace-pre-wrap break-words rounded-md bg-amber-50/80 p-3 text-xs leading-5 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                  {error}
+                </pre>
+              </div>
             )}
           </div>
           <div className="rounded-[24px] border border-border/70 bg-background/75 p-5 dark:border-white/10 dark:bg-white/5">

@@ -58,13 +58,6 @@ function safeResolve(workspaceRoot: string, requestedPath: string): string {
   return resolved;
 }
 
-/** Emit a custom streaming event via config.writer. */
-function emitStreamEvent(config: LangGraphRunnableConfig, event: unknown): void {
-  if (typeof (config as any).writer === 'function') {
-    (config as any).writer(event);
-  }
-}
-
 /**
  * Create a Command that updates graph state channels AND adds a ToolMessage.
  * This is the recommended LangGraph pattern for tools that produce artifacts.
