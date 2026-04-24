@@ -13,8 +13,6 @@
  */
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
-import fs from 'fs/promises';
-import path from 'path';
 import type { AgentSkillRuntime } from '../agent-runtime/index.js';
 import type { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { Command, interrupt } from '@langchain/langgraph';
@@ -34,29 +32,11 @@ function getConfigurable(config: LangGraphRunnableConfig): AgentConfigurable & {
   return config.configurable as AgentConfigurable & { agentState?: AgentState };
 }
 
-/** Get workspace root from config. */
-function getWorkspaceRoot(config: LangGraphRunnableConfig): string {
-  const root = (config.configurable as Partial<AgentConfigurable>)?.workspaceRoot || '';
-  if (!root) throw new Error('workspaceRoot is not configured');
-  return root;
-}
-
 /** Get the tool call ID from the LangChain config. */
 function getToolCallId(config: LangGraphRunnableConfig): string {
   const id = (config as any).toolCall?.id;
   if (!id) throw new Error('Tool call ID not available in config');
   return id;
-}
-
-/** Validate that a resolved path stays within the workspace root. */
-function safeResolve(workspaceRoot: string, requestedPath: string): string {
-  const resolved = path.resolve(workspaceRoot, requestedPath);
-  const root = path.resolve(workspaceRoot);
-  const prefix = root.endsWith(path.sep) ? root : root + path.sep;
-  if (!resolved.startsWith(prefix) && resolved !== root) {
-    throw new Error(`Path traversal blocked: ${requestedPath} is outside workspace`);
-  }
-  return resolved;
 }
 
 /**
@@ -327,152 +307,6 @@ export function createAskUserClarificationTool() {
           .string()
           .optional()
           .describe('JSON array of suggested answer options'),
-      }),
-    },
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Workspace file tools
-// ---------------------------------------------------------------------------
-
-export function createReadWorkspaceFileTool() {
-  return tool(
-    async (input: { filePath: string }, config: LangGraphRunnableConfig) => {
-      const root = getWorkspaceRoot(config);
-      const resolved = safeResolve(root, input.filePath);
-
-      const stat = await fs.stat(resolved);
-      if (stat.size > 2 * 1024 * 1024) {
-        return JSON.stringify({ error: 'File too large (max 2 MB)', size: stat.size });
-      }
-      const content = await fs.readFile(resolved, 'utf-8');
-      return JSON.stringify({ path: input.filePath, content, size: stat.size });
-    },
-    {
-      name: 'read_workspace_file',
-      description:
-        'Read the contents of a file in the workspace directory. ' +
-        'The path is relative to the workspace root. Max file size: 2 MB.',
-      schema: z.object({
-        filePath: z
-          .string()
-          .describe('Relative path from workspace root to the file'),
-      }),
-    },
-  );
-}
-
-export function createWriteWorkspaceFileTool() {
-  return tool(
-    async (input: { filePath: string; content: string }, config: LangGraphRunnableConfig) => {
-      try {
-        const root = getWorkspaceRoot(config);
-        const resolved = safeResolve(root, input.filePath);
-
-        await fs.mkdir(path.dirname(resolved), { recursive: true });
-        await fs.writeFile(resolved, input.content, 'utf-8');
-
-        return JSON.stringify({
-          success: true,
-          path: input.filePath,
-          bytesWritten: Buffer.byteLength(input.content, 'utf-8'),
-        });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        return JSON.stringify({
-          success: false,
-          error: `write_workspace_file failed: ${msg}`,
-          path: input.filePath,
-        });
-      }
-    },
-    {
-      name: 'write_workspace_file',
-      description:
-        'Write content to a file in the workspace directory. ' +
-        'Creates parent directories if needed. The path is relative to the workspace root.',
-      schema: z.object({
-        filePath: z
-          .string()
-          .describe('Relative path from workspace root to the file'),
-        content: z.string().describe('Content to write to the file'),
-      }),
-    },
-  );
-}
-
-function globToRegex(pattern: string): RegExp {
-  const escaped = pattern.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  const expanded = escaped
-    .replace(/\*\*/g, '{{GLOBSTAR}}')
-    .replace(/\*/g, '[^/]*')
-    .replace(/\?/g, '[^/]')
-    .replace(/\{\{GLOBSTAR\}\}/g, '(?:[^/]*/)*');
-  return new RegExp(`^${expanded}$`, 'i');
-}
-
-export function createListWorkspaceFilesTool() {
-  return tool(
-    async (input: { pattern?: string; maxResults?: number; offset?: number; dirPath?: string }, config: LangGraphRunnableConfig) => {
-      const root = getWorkspaceRoot(config);
-      const searchRoot = input.dirPath ? safeResolve(root, input.dirPath) : root;
-      const maxResults = Math.min(input.maxResults ?? 100, 200);
-      const offset = input.offset ?? 0;
-      const pattern = input.pattern ?? '*';
-      const regex = globToRegex(pattern);
-
-      const SKIP_DIRS = new Set(['.git', 'node_modules', '.venv', '__pycache__', '.runtime']);
-
-      const allFiles: string[] = [];
-      async function walk(dir: string, depth: number): Promise<void> {
-        if (depth > 10) return;
-        let entries: import('fs').Dirent[];
-        try { entries = await fs.readdir(dir, { withFileTypes: true }); } catch { return; }
-        for (const entry of entries) {
-          if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue;
-          const full = path.join(dir, entry.name);
-          const rel = path.relative(root, full).replace(/\\/g, '/');
-          if (entry.isDirectory()) {
-            await walk(full, depth + 1);
-          } else if (regex.test(rel)) {
-            allFiles.push(rel);
-          }
-        }
-      }
-
-      await walk(searchRoot, 0);
-
-      allFiles.sort();
-      const totalMatches = allFiles.length;
-      const sliced = allFiles.slice(offset, offset + maxResults);
-      const truncated = offset + maxResults < totalMatches;
-
-      return JSON.stringify({
-        totalMatches,
-        shownCount: sliced.length,
-        offset,
-        ...(truncated ? { hint: `Showing ${sliced.length} of ${totalMatches} matches. Use offset=${offset + maxResults} for next page or narrow the pattern.` } : {}),
-        files: sliced,
-      });
-    },
-    {
-      name: 'list_workspace_files',
-      description:
-        'List files in the workspace matching a glob pattern. ' +
-        'Supports * (any segment), ** (any path depth), and ? (single char). ' +
-        'Returns relative paths sorted alphabetically with pagination. ' +
-        'Examples: "**/*.pdf" finds all PDFs, "output/**/*.json" finds JSONs under output/. ' +
-        'Skips .git, node_modules, .venv, __pycache__, and .runtime.',
-      schema: z.object({
-        pattern: z.string().optional()
-          .describe('Glob pattern (default "*"). E.g. "**/*.pdf", "report/**/*.json", "output/*/result.txt"'),
-        maxResults: z.number().optional()
-          .describe('Max results to return (default 100, max 200)'),
-        offset: z.number().optional()
-          .describe('Skip first N results for pagination'),
-        dirPath: z.string().optional()
-          .describe('Root directory to search from (relative to workspace root)'),
       }),
     },
   );

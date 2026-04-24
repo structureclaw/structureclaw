@@ -10,10 +10,19 @@ const CURRENT_TOOL_IDS = [
   'detect_structure_type',
   'extract_draft_params',
   'generate_report',
+  'glob_files',
+  'grep_files',
+  'memory',
+  'move_path',
+  'read_file',
+  'replace_in_file',
   'run_analysis',
   'run_code_check',
   'set_session_config',
+  'shell',
   'validate_model',
+  'write_file',
+  'delete_path',
 ];
 
 describe('code-owned agent tool registry', () => {
