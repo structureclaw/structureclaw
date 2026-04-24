@@ -377,7 +377,7 @@ When zero skills are loaded (`skillIds` is an empty array), the system stays on 
 
 1. **Engineering session reset**: Skill-specific draft state, structural-type carry-over, and cached engineering model state are cleared.
 2. **Conversation-only response**: The agent can still clarify the user's needs in plain language.
-3. **No implicit execution**: External tools such as `draft_model`, `run_analysis`, `run_code_check`, and `generate_report` are not callable until an enabled skill authorizes them.
+3. **No implicit execution**: External tools such as `build_model`, `run_analysis`, `run_code_check`, and `generate_report` are not callable until an enabled skill authorizes them.
 4. If the caller forces tool execution while no skills are enabled, the request is blocked with `NO_EXECUTABLE_TOOL`.
 
 ### 5.5 Failure Strategy Summary

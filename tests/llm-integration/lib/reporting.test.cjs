@@ -14,7 +14,7 @@ test("formatCaseSummary produces expected multi-line output", () => {
       activatedSkillIds: ["frame"],
       structuralSkillId: "frame",
       analysisSkillId: "opensees-static",
-      toolCalls: [{ tool: "draft_model", status: "success" }, { tool: "run_analysis", status: "success" }]
+      toolCalls: [{ tool: "build_model", status: "success" }, { tool: "run_analysis", status: "success" }]
     },
     "PASS"
   );
@@ -23,7 +23,7 @@ test("formatCaseSummary produces expected multi-line output", () => {
   nodeAssert.ok(summary.includes("[pipeline/specific]"));
   nodeAssert.ok(summary.includes("enabled: frame, opensees-static"));
   nodeAssert.ok(summary.includes("structural: frame"));
-  nodeAssert.ok(summary.includes("tools: draft_model -> run_analysis"));
+  nodeAssert.ok(summary.includes("tools: build_model -> run_analysis"));
 });
 
 test("formatCaseSummary handles empty tool calls", () => {

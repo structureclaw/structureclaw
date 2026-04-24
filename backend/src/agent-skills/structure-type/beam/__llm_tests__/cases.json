@@ -188,7 +188,7 @@
             },
             "success": true,
             "toolCalls": [
-              "draft_model",
+              "build_model",
               "run_analysis"
             ],
             "modelBuilt": true,

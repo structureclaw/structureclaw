@@ -197,9 +197,9 @@ Tool 是 agent 可调用的动作接口。
 
 当前正式暴露并受治理的 canonical tool id 包括：
 
-- `convert_model`
-- `draft_model`
-- `update_model`
+- `detect_structure_type`
+- `build_model`
+- `extract_draft_params`
 - `validate_model`
 - `run_analysis`
 - `run_code_check`
@@ -340,10 +340,10 @@ Agent 只能在“当前可用 tool 集”内做决策。
 
 - `foundation`
   - 平台基础工具，可在平台策略下保持可用
-  - 当前例子：`convert_model`
+  - 当前例子：`detect_structure_type`
 - `domain`
   - 平台 canonical 工程工具，但必须通过 runtime policy 才能调用
-  - 例子：`draft_model`、`update_model`、`validate_model`、`run_analysis`、`run_code_check`、`generate_report`
+  - 例子：`build_model`、`extract_draft_params`、`validate_model`、`run_analysis`、`run_code_check`、`generate_report`
 - `extension`
   - 外部能力带来的扩展工具
 
@@ -364,7 +364,7 @@ Agent 只能在“当前可用 tool 集”内做决策。
 
 当前轮次可用工具集合定义为：
 
-- 平台基础内置 tool（当前为 `convert_model`，受平台护栏约束）
+- 平台基础内置 tool（当前为 `detect_structure_type`，受平台护栏约束）
 - 当前 runtime policy 允许的 domain 内置 tool
 - 未来显式策略边界允许的 extension tool
 
@@ -402,7 +402,7 @@ Agent 只能在“当前可用 tool 集”内做决策。
 
 2. tool 现状
 
-- 当前线上治理口径中，`convert_model` 作为平台基础内置 tool，可在平台护栏下直接调用。
+- 当前线上治理口径中，`detect_structure_type` 作为平台基础内置 tool，可在平台护栏下直接调用。
 - 当前 canonical tools 均由 TypeScript 注册表注册，并必须通过 runtime policy 后方可调用。
 
 3. 当前有效授权规则

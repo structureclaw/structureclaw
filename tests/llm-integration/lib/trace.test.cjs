@@ -27,7 +27,7 @@ test("resolveObservedTrace normalizes pipeline observations", () => {
         analysisSkillId: "opensees-static"
       },
       toolCalls: [
-        { tool: "draft_model", status: "success", authorizedBySkillIds: ["frame"] },
+        { tool: "build_model", status: "success", authorizedBySkillIds: ["frame"] },
         { tool: "run_analysis", status: "success", authorizedBySkillIds: ["opensees-static"] }
       ]
     }

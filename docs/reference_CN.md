@@ -8,7 +8,7 @@
 
 - 入口：`POST /api/v1/agent/run`
 - 当前内部编排已切换为能力驱动，planner 结果收敛为 `reply`、`ask` 和 `tool_call`
-- 执行链路：`draft_model -> convert_model -> validate_model -> run_analysis -> run_code_check -> generate_report`
+- 执行链路：`detect_structure_type -> extract_draft_params -> build_model -> validate_model -> run_analysis -> run_code_check -> generate_report`
 
 架构方向：
 

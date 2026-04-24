@@ -8,7 +8,7 @@ Protocol and contract quick reference for API integration, troubleshooting, and 
 
 - Endpoint: `POST /api/v1/agent/run`
 - Current orchestration is capability-driven; planner outcomes converge on `reply`, `ask`, and `tool_call`
-- Execution chain: `draft_model -> convert_model -> validate_model -> run_analysis -> run_code_check -> generate_report`
+- Execution chain: `detect_structure_type -> extract_draft_params -> build_model -> validate_model -> run_analysis -> run_code_check -> generate_report`
 
 Architecture direction:
 

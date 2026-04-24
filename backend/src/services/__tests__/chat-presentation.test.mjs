@@ -64,10 +64,10 @@ describe('chat presentation reducer', () => {
       type: 'step_upsert',
       phaseId: 'phase:modeling',
       step: {
-        id: 'step:draft_model:2026-04-19T10:00:00.010Z',
+        id: 'step:build_model:2026-04-19T10:00:00.010Z',
         phase: 'modeling',
         status: 'running',
-        tool: 'draft_model',
+        tool: 'build_model',
         skillId: 'frame',
         title: '生成结构模型',
         reason: 'draft model',
@@ -79,10 +79,10 @@ describe('chat presentation reducer', () => {
       type: 'step_upsert',
       phaseId: 'phase:modeling',
       step: {
-        id: 'step:draft_model:2026-04-19T10:00:00.010Z',
+        id: 'step:build_model:2026-04-19T10:00:00.010Z',
         phase: 'modeling',
         status: 'done',
-        tool: 'draft_model',
+        tool: 'build_model',
         skillId: 'frame',
         title: '结构模型已生成',
         reason: 'draft model',
@@ -118,7 +118,7 @@ describe('chat presentation reducer', () => {
     expect(state.phases).toHaveLength(1);
     expect(state.phases[0].phaseId).toBe('phase:modeling');
     expect(state.phases[0].steps).toHaveLength(1);
-    expect(state.phases[0].steps[0].tool).toBe('draft_model');
+    expect(state.phases[0].steps[0].tool).toBe('build_model');
     expect(state.phases[0].steps[0].skillId).toBe('frame');
     expect(state.phases[0].steps[0].status).toBe('done');
     expect(state.artifacts[0].artifact).toBe('model');
@@ -224,10 +224,10 @@ describe('chat presentation reducer', () => {
         type: 'step_upsert',
         phaseId: 'phase:modeling',
         step: {
-          id: 'step:draft_model:2026-04-19T10:00:00.015Z',
+          id: 'step:build_model:2026-04-19T10:00:00.015Z',
           phase: 'modeling',
           status: 'running',
-          tool: 'draft_model',
+          tool: 'build_model',
           skillId: 'frame',
           title: '生成结构模型',
           startedAt: '2026-04-19T10:00:00.015Z',
@@ -256,7 +256,7 @@ describe('chat presentation reducer', () => {
           },
           toolCalls: [
             {
-              tool: 'draft_model',
+              tool: 'build_model',
               status: 'success',
               startedAt: '2026-04-19T10:00:00.015Z',
               completedAt: '2026-04-19T10:00:00.030Z',
@@ -319,7 +319,7 @@ describe('chat presentation reducer', () => {
       expect(assistantMessage?.metadata?.presentation?.phases?.some((phase) => phase.phase === 'modeling')).toBe(true);
       const modelingPhase = assistantMessage?.metadata?.presentation?.phases?.find((phase) => phase.phase === 'modeling');
       expect(modelingPhase).toBeTruthy();
-      expect(modelingPhase?.steps?.some((step) => step.tool === 'draft_model')).toBe(true);
+      expect(modelingPhase?.steps?.some((step) => step.tool === 'build_model')).toBe(true);
       expect(modelingPhase?.steps?.some((step) => step.skillId === 'frame')).toBe(true);
     } finally {
       LangGraphAgentService.prototype.runStream = originalRunStream;

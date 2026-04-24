@@ -88,7 +88,7 @@ test("runPipelineTest derives context from normalized expect blocks", async () =
       calls.push(input);
       return {
         toolCalls: [
-          { tool: "draft_model", status: "success" },
+          { tool: "build_model", status: "success" },
           { tool: "run_analysis", status: "success" },
         ],
       };
@@ -101,7 +101,7 @@ test("runPipelineTest derives context from normalized expect blocks", async () =
     messages: ["3-story steel frame"],
     enabledSkillIds: ["frame", "opensees-static"],
     expect: {
-      toolCalls: ["draft_model", "run_analysis"],
+      toolCalls: ["build_model", "run_analysis"],
       expectReport: false,
     },
     assertions: {
@@ -123,7 +123,7 @@ test("runPipelineTest enables code check when the fixture expects run_code_check
       calls.push(input);
       return {
         toolCalls: [
-          { tool: "draft_model", status: "success" },
+          { tool: "build_model", status: "success" },
           { tool: "run_analysis", status: "success" },
           { tool: "run_code_check", status: "success" },
         ],
@@ -137,7 +137,7 @@ test("runPipelineTest enables code check when the fixture expects run_code_check
     messages: ["2-story single-bay steel frame"],
     enabledSkillIds: ["frame", "opensees-static"],
     expect: {
-      toolCalls: ["draft_model", "run_analysis", "run_code_check"],
+      toolCalls: ["build_model", "run_analysis", "run_code_check"],
     },
   });
 
@@ -150,7 +150,7 @@ test("runPipelineTest attaches pipeline results to assertion failures", async ()
     async run() {
       return {
         toolCalls: [
-          { tool: "draft_model", status: "success" },
+          { tool: "build_model", status: "success" },
           { tool: "run_analysis", status: "success" },
         ],
       };
@@ -165,7 +165,7 @@ test("runPipelineTest attaches pipeline results to assertion failures", async ()
       messages: ["2-story single-bay steel frame"],
       enabledSkillIds: ["frame", "opensees-static", "code-check-gb50017"],
       expect: {
-        toolCalls: ["draft_model", "run_analysis", "run_code_check"],
+        toolCalls: ["build_model", "run_analysis", "run_code_check"],
       },
     });
   } catch (err) {
@@ -175,7 +175,7 @@ test("runPipelineTest attaches pipeline results to assertion failures", async ()
   nodeAssert.ok(error.pipelineResult);
   nodeAssert.deepEqual(
     error.pipelineResult.toolCalls.map((call) => call.tool),
-    ["draft_model", "run_analysis"],
+    ["build_model", "run_analysis"],
   );
 });
 
@@ -185,7 +185,7 @@ test("runPipelineTest asserts explicit pipeline success flags", async () => {
       return {
         success: false,
         toolCalls: [
-          { tool: "draft_model", status: "success" },
+          { tool: "build_model", status: "success" },
           { tool: "run_analysis", status: "success" },
         ],
       };
@@ -200,7 +200,7 @@ test("runPipelineTest asserts explicit pipeline success flags", async () => {
       enabledSkillIds: ["truss", "opensees-static"],
       expect: {
         success: true,
-        toolCalls: ["draft_model", "run_analysis"],
+        toolCalls: ["build_model", "run_analysis"],
       },
     }),
     /expected pipeline success=true, got false/,
@@ -213,7 +213,7 @@ test("runPipelineTest requires run_analysis when analysisSuccess is true", async
       return {
         success: true,
         toolCalls: [
-          { tool: "draft_model", status: "success" },
+          { tool: "build_model", status: "success" },
         ],
       };
     },

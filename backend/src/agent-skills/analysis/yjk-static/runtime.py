@@ -132,7 +132,7 @@ def _ensure_v2_model(model_dict: dict) -> dict:
     """Convert a V1 model dict to V2-compatible format for the YJK converter.
 
     The YJK converter expects V2 fields (stories, V2-style sections with
-    width/height, materials with category).  V1 models from draft_model
+    width/height, materials with category).  V1 models from build_model
     lack these.  This function synthesizes the missing V2 fields from V1
     data so the converter can proceed.
 

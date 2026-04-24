@@ -49,7 +49,7 @@ test("loadLlmFixtures normalizes spec-shaped v2 docs and preserves legacy v1 doc
             specific: {
               enabledSkillIds: ["frame"],
               fallbackPolicy: "forbid-generic",
-              expect: { success: true, toolCalls: ["draft_model", "run_analysis"] },
+              expect: { success: true, toolCalls: ["build_model", "run_analysis"] },
             },
             generic: {
               enabledSkillIds: ["frame", "generic"],
@@ -100,7 +100,7 @@ test("loadLlmFixtures normalizes spec-shaped v2 docs and preserves legacy v1 doc
       variant: "specific",
       enabledSkillIds: ["frame"],
       fallbackPolicy: "forbid-generic",
-      expect: { success: true, toolCalls: ["draft_model", "run_analysis"] },
+      expect: { success: true, toolCalls: ["build_model", "run_analysis"] },
       sourceFile: path.join(rootDir, "backend/src/agent-skills/structure-type/frame/__llm_tests__/frame.json"),
     }
   );

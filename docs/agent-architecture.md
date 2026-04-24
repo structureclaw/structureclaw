@@ -197,9 +197,9 @@ A tool is an invokable action interface available to the agent.
 
 The currently governed canonical tool ids are:
 
-- `convert_model`
-- `draft_model`
-- `update_model`
+- `detect_structure_type`
+- `build_model`
+- `extract_draft_params`
 - `validate_model`
 - `run_analysis`
 - `run_code_check`
@@ -337,10 +337,10 @@ Built-in and external source must be kept distinct from tool tier:
 
 - `foundation`
   - platform base tools that may remain available under platform policy
-  - current example: `convert_model`
+  - current example: `detect_structure_type`
 - `domain`
   - platform canonical engineering tools that require runtime policy checks
-  - examples: `draft_model`, `update_model`, `validate_model`, `run_analysis`, `run_code_check`, `generate_report`
+  - examples: `build_model`, `extract_draft_params`, `validate_model`, `run_analysis`, `run_code_check`, `generate_report`
 - `extension`
   - tools introduced by external capabilities
 
@@ -361,7 +361,7 @@ The expected source/tier combinations are:
 
 For each turn, the available tool set is defined as:
 
-- platform foundation built-in tools (currently `convert_model`, still constrained by platform guards)
+- platform foundation built-in tools (currently `detect_structure_type`, still constrained by platform guards)
 - domain built-in tools allowed by the current runtime policy
 - extension tools allowed by a future explicit policy boundary
 
@@ -399,7 +399,7 @@ To avoid confusion between the target architecture and the current implementatio
 
 2. Current tool status
 
-- In the current production governance model, `convert_model` is the active platform foundation built-in tool.
+- In the current production governance model, `detect_structure_type` is the active platform foundation built-in tool.
 - Current canonical tools are registered in the TypeScript registry and must pass runtime policy before invocation.
 
 3. Effective authorization rule for this phase

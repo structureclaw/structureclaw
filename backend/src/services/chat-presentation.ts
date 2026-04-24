@@ -477,7 +477,7 @@ function phaseForToolCall(tool: string): PresentationPhase {
 }
 
 export function skillIdForToolCall(tool: string, routing?: PresentationResultLike['routing']): string | undefined {
-  if (tool === 'draft_model' || tool === 'update_model' || tool === 'convert_model') {
+  if (tool === 'build_model' || tool === 'extract_draft_params' || tool === 'detect_structure_type') {
     return routing?.structuralSkillId;
   }
   if (tool === 'validate_model') {
@@ -496,7 +496,7 @@ function artifactFromToolCall(
   call: PresentationToolCallLike,
   result: PresentationResultLike,
 ): { phase: PresentationPhase; state: ArtifactState } | undefined {
-  if (call.tool === 'draft_model' || call.tool === 'update_model' || call.tool === 'convert_model') {
+  if (call.tool === 'build_model' || call.tool === 'extract_draft_params' || call.tool === 'detect_structure_type') {
     return {
       phase: 'modeling',
       state: {
@@ -609,19 +609,19 @@ export function toolTitle(tool: string, status: 'running' | 'done' | 'error', lo
 }
 
 function toolStartTitle(tool: string, locale: 'en' | 'zh'): string {
-  if (tool === 'draft_model') {
+  if (tool === 'build_model') {
     return locale === 'zh' ? '生成结构模型' : 'Generating structural model';
   }
-  if (tool === 'update_model') {
-    return locale === 'zh' ? '更新结构模型' : 'Updating structural model';
+  if (tool === 'extract_draft_params') {
+    return locale === 'zh' ? '提取设计参数' : 'Extracting design parameters';
   }
-  if (tool === 'convert_model') {
-    return locale === 'zh' ? '转换分析模型' : 'Converting analysis model';
+  if (tool === 'detect_structure_type') {
+    return locale === 'zh' ? '识别结构类型' : 'Detecting structure type';
   }
   if (tool === 'validate_model') {
     return locale === 'zh' ? '校验模型' : 'Validating model';
   }
-  if (tool === 'run_analysis' || tool === 'postprocess_result' || tool === 'run_code_check') {
+  if (tool === 'run_analysis' || tool === 'run_code_check') {
     return locale === 'zh' ? '执行分析' : 'Running analysis';
   }
   if (tool === 'generate_report') {
@@ -631,19 +631,19 @@ function toolStartTitle(tool: string, locale: 'en' | 'zh'): string {
 }
 
 function toolDoneTitle(tool: string, locale: 'en' | 'zh'): string {
-  if (tool === 'draft_model') {
+  if (tool === 'build_model') {
     return locale === 'zh' ? '结构模型已生成' : 'Structural model generated';
   }
-  if (tool === 'update_model') {
-    return locale === 'zh' ? '结构模型已更新' : 'Structural model updated';
+  if (tool === 'extract_draft_params') {
+    return locale === 'zh' ? '设计参数已提取' : 'Design parameters extracted';
   }
-  if (tool === 'convert_model') {
-    return locale === 'zh' ? '分析模型已转换' : 'Analysis model converted';
+  if (tool === 'detect_structure_type') {
+    return locale === 'zh' ? '结构类型已识别' : 'Structure type detected';
   }
   if (tool === 'validate_model') {
     return locale === 'zh' ? '模型校验完成' : 'Model validation completed';
   }
-  if (tool === 'run_analysis' || tool === 'postprocess_result' || tool === 'run_code_check') {
+  if (tool === 'run_analysis' || tool === 'run_code_check') {
     return locale === 'zh' ? '分析执行完成' : 'Analysis completed';
   }
   if (tool === 'generate_report') {
@@ -653,19 +653,19 @@ function toolDoneTitle(tool: string, locale: 'en' | 'zh'): string {
 }
 
 function toolErrorTitle(tool: string, locale: 'en' | 'zh'): string {
-  if (tool === 'draft_model') {
+  if (tool === 'build_model') {
     return locale === 'zh' ? '结构模型生成失败' : 'Structural model generation failed';
   }
-  if (tool === 'update_model') {
-    return locale === 'zh' ? '结构模型更新失败' : 'Structural model update failed';
+  if (tool === 'extract_draft_params') {
+    return locale === 'zh' ? '设计参数提取失败' : 'Design parameter extraction failed';
   }
-  if (tool === 'convert_model') {
-    return locale === 'zh' ? '分析模型转换失败' : 'Analysis model conversion failed';
+  if (tool === 'detect_structure_type') {
+    return locale === 'zh' ? '结构类型识别失败' : 'Structure type detection failed';
   }
   if (tool === 'validate_model') {
     return locale === 'zh' ? '模型校验失败' : 'Model validation failed';
   }
-  if (tool === 'run_analysis' || tool === 'postprocess_result' || tool === 'run_code_check') {
+  if (tool === 'run_analysis' || tool === 'run_code_check') {
     return locale === 'zh' ? '分析执行失败' : 'Analysis failed';
   }
   if (tool === 'generate_report') {

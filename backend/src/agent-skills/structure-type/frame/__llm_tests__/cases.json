@@ -132,9 +132,9 @@
               "structuralSkillId": "frame",
               "analysisSkillId": "opensees-static"
             },
-            "toolCalls": ["draft_model", "run_analysis", "run_code_check"],
+            "toolCalls": ["build_model", "run_analysis", "run_code_check"],
             "toolAuthorizers": {
-              "draft_model": ["frame"],
+              "build_model": ["frame"],
               "run_analysis": ["opensees-static"],
               "run_code_check": ["code-check-gb50017"]
             }
@@ -149,7 +149,7 @@
               "structuralSkillId": "generic",
               "analysisSkillId": "opensees-static"
             },
-            "toolCalls": ["draft_model", "run_analysis", "run_code_check"],
+            "toolCalls": ["build_model", "run_analysis", "run_code_check"],
             "toolAuthorizers": {
               "run_code_check": ["code-check-gb50017"]
             }
@@ -167,7 +167,7 @@
         "legacy": {
           "expect": {
             "success": true,
-            "toolCalls": ["draft_model", "run_analysis"],
+            "toolCalls": ["build_model", "run_analysis"],
             "modelBuilt": true,
             "analysisSuccess": true
           }

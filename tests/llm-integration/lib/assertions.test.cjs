@@ -93,10 +93,10 @@ test("assertRoutingTrace throws when structuralSkillId mismatches", () => {
 test("assertToolAuthorizers checks the skill ids attached to each tool call", () => {
   nodeAssert.doesNotThrow(() => {
     assertToolAuthorizers([
-      { tool: "draft_model", authorizedBySkillIds: ["frame"] },
+      { tool: "build_model", authorizedBySkillIds: ["frame"] },
       { tool: "run_analysis", authorizedBySkillIds: ["opensees-static"] }
     ], {
-      draft_model: ["frame"],
+      build_model: ["frame"],
       run_analysis: ["opensees-static"]
     });
   });
@@ -105,7 +105,7 @@ test("assertToolAuthorizers checks the skill ids attached to each tool call", ()
 test("assertToolAuthorizers throws when expected tool call is missing", () => {
   nodeAssert.throws(() => {
     assertToolAuthorizers([
-      { tool: "draft_model", authorizedBySkillIds: ["frame"] }
+      { tool: "build_model", authorizedBySkillIds: ["frame"] }
     ], {
       run_analysis: ["opensees-static"]
     });

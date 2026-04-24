@@ -17,7 +17,7 @@ test("normalizeFixtureDocument expands v2 scenarios into runnable variant cases"
           specific: {
             enabledSkillIds: ["frame"],
             fallbackPolicy: "forbid-generic",
-            expect: { success: true, toolCalls: ["draft_model", "run_analysis"] },
+            expect: { success: true, toolCalls: ["build_model", "run_analysis"] },
           },
           generic: {
             fallbackPolicy: "require-generic",
@@ -38,7 +38,7 @@ test("normalizeFixtureDocument expands v2 scenarios into runnable variant cases"
   assert.deepEqual(cases.map((entry) => entry.enabledSkillIds), [["frame"], undefined]);
   assert.deepEqual(cases.map((entry) => entry.fallbackPolicy), ["forbid-generic", "require-generic"]);
   assert.deepEqual(cases.map((entry) => entry.expect), [
-    { success: true, toolCalls: ["draft_model", "run_analysis"] },
+    { success: true, toolCalls: ["build_model", "run_analysis"] },
     { success: true, modelBuilt: true },
   ]);
   assert.deepEqual(cases.map((entry) => entry.sourceFile), ["/tmp/frame.json", "/tmp/frame.json"]);
