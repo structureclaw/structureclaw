@@ -11,6 +11,7 @@ import {
   createSetSessionConfigTool,
   createValidateModelTool,
 } from './tools.js';
+import { createMemoryTool } from './memory-tool.js';
 
 export type AgentToolRisk = 'low' | 'workspace-read' | 'workspace-write' | 'destructive' | 'shell';
 export type AgentToolCategory = 'engineering' | 'interaction' | 'session' | 'workspace' | 'memory' | 'shell';
@@ -139,6 +140,16 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       en: 'Set current-session analysis type, design code, and selected skills.',
     },
     create: () => createSetSessionConfigTool(),
+  },
+  {
+    id: 'memory',
+    category: 'memory',
+    risk: 'low',
+    defaultEnabled: false,
+    requiresExplicitEnable: true,
+    displayName: { zh: '持久记忆', en: 'Persistent Memory' },
+    description: { zh: '存储和检索用户或项目级持久上下文。', en: 'Store and retrieve durable user or project context.' },
+    create: () => createMemoryTool(),
   },
 ];
 

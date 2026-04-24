@@ -165,3 +165,18 @@ model AgentPipelineRun {
   @@index([conversationId, createdAt])
   @@map("agent_pipeline_runs")
 }
+
+// Agent persistent memory entries
+model AgentMemoryEntry {
+  id        String   @id @default(cuid())
+  scopeType String
+  scopeId   String
+  key       String
+  value     Json
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([scopeType, scopeId, key])
+  @@index([scopeType, scopeId, updatedAt])
+  @@map("agent_memory_entries")
+}
