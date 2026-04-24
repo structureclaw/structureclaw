@@ -299,7 +299,6 @@ type CapabilityMatrixPayload = {
   tools?: CapabilityToolSummary[]
   domainSummaries?: CapabilityDomainSummary[]
   skillDomainById?: Record<string, SkillDomain>
-  foundationToolIds?: string[]
   enabledToolIdsBySkill?: Record<string, string[]>
   validEngineIdsBySkill?: Record<string, string[]>
   filteredEngineReasonsBySkill?: Record<string, Record<string, string[]>>

@@ -35,7 +35,6 @@ export interface AgentToolDefinition {
   category: AgentToolCategory;
   risk: AgentToolRisk;
   defaultEnabled: boolean;
-  requiresExplicitEnable?: boolean;
   requiresShellGate?: boolean;
   displayName: { zh: string; en: string };
   description: { zh: string; en: string };

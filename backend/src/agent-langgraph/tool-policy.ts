@@ -3,7 +3,6 @@ import { listAgentToolDefinitions } from './tool-registry.js';
 export interface ResolveActiveToolIdsInput {
   requestedEnabledToolIds?: string[];
   requestedDisabledToolIds?: string[];
-  selectedSkillIds?: string[];
   allowShell: boolean;
 }
 
@@ -55,10 +54,6 @@ export function resolveActiveToolIds(input: ResolveActiveToolIdsInput): ResolveA
     }
     if (definition.requiresShellGate && !input.allowShell) {
       addDenied(deniedToolIds, toolId, 'SHELL_DISABLED');
-      continue;
-    }
-    if (definition.requiresExplicitEnable && requestedEnabled === undefined) {
-      addDenied(deniedToolIds, toolId, 'EXPLICIT_ENABLE_REQUIRED');
       continue;
     }
     activeToolIds.push(toolId);

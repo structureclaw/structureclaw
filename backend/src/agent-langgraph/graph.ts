@@ -75,7 +75,7 @@ function createCallModelNode(
       };
     }
 
-    const activeTools = resolveActiveTools(tools, configurable, state);
+    const activeTools = resolveActiveTools(tools, configurable);
     const modelWithTools = model.bindTools(activeTools);
 
     // Build system prompt
@@ -221,12 +221,10 @@ export interface GraphDeps extends ToolDeps {
 function resolveActiveTools(
   tools: StructuredToolInterface[],
   configurable: Partial<AgentConfigurable> | undefined,
-  state: AgentState,
 ): StructuredToolInterface[] {
   const result = resolveActiveToolIds({
     requestedEnabledToolIds: configurable?.enabledToolIds,
     requestedDisabledToolIds: configurable?.disabledToolIds,
-    selectedSkillIds: state.selectedSkillIds,
     allowShell: configurable?.allowShell ?? false,
   });
   const activeIds = new Set(result.activeToolIds);
@@ -250,7 +248,6 @@ export function buildAgentGraph(deps: GraphDeps) {
     const activeTools = resolveActiveTools(
       tools,
       config.configurable as Partial<AgentConfigurable> | undefined,
-      state,
     );
     const toolNode = new ToolNode(activeTools);
     return toolNode.invoke(state, config);

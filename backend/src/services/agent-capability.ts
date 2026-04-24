@@ -122,10 +122,6 @@ function toFrontendToolCategory(tool: AgentToolDefinition): string {
   return 'utility';
 }
 
-function isFoundationToolCategory(category: AgentToolCategory): boolean {
-  return category === 'interaction' || category === 'session' || category === 'memory' || category === 'workspace' || category === 'shell';
-}
-
 function assertLocalizedField(value: unknown, field: 'zh' | 'en', ownerLabel: string): void {
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new Error(`Malformed capability metadata: ${ownerLabel} is missing a non-empty ${field} value.`);
@@ -338,17 +334,9 @@ export class AgentCapabilityService {
       .filter((tool) => tool.defaultEnabled)
       .map((tool) => tool.id)
       .sort();
-    const foundationToolIds = toolDefinitions
-      .filter((tool) => tool.defaultEnabled && isFoundationToolCategory(tool.category))
-      .map((tool) => tool.id)
-      .sort();
     const tools = toolDefinitions
       .map((tool) => toCapabilityTool(tool))
       .sort((a, b) => a.id.localeCompare(b.id));
-    const providedToolIdsBySkill = catalogEntries.reduce<Record<string, string[]>>((acc, entry) => {
-      acc[entry.canonicalId] = [];
-      return acc;
-    }, {});
     const skillIdsByToolId = defaultToolIds.reduce<Record<string, string[]>>((acc, toolId) => {
       acc[toolId] = catalogEntries.map((entry) => entry.canonicalId);
       return acc;
@@ -526,9 +514,7 @@ export class AgentCapabilityService {
       filteredEngineReasonsBySkill,
       validSkillIdsByEngine,
       skillDomainById,
-      foundationToolIds,
       enabledToolIdsBySkill,
-      providedToolIdsBySkill,
       skillIdsByToolId,
       skillAliasesByCanonicalId,
       canonicalSkillIdByAlias,

@@ -8,7 +8,6 @@ describe("LangGraph tool policy", () => {
       requestedEnabledToolIds: [],
       requestedDisabledToolIds: undefined,
       allowShell: false,
-      selectedSkillIds: [],
     });
 
     expect(result.activeToolIds).toEqual([]);
@@ -23,7 +22,6 @@ describe("LangGraph tool policy", () => {
       requestedEnabledToolIds: undefined,
       requestedDisabledToolIds: undefined,
       allowShell: false,
-      selectedSkillIds: [],
     });
 
     expect(result.activeToolIds).toEqual([
@@ -55,7 +53,6 @@ describe("LangGraph tool policy", () => {
       requestedEnabledToolIds: undefined,
       requestedDisabledToolIds: ["run_analysis", "set_session_config"],
       allowShell: false,
-      selectedSkillIds: [],
     });
 
     expect(result.activeToolIds).not.toContain("run_analysis");
@@ -71,7 +68,6 @@ describe("LangGraph tool policy", () => {
       requestedEnabledToolIds: ["detect_structure_type", "shell"],
       requestedDisabledToolIds: ["missing_tool"],
       allowShell: false,
-      selectedSkillIds: [],
     });
 
     expect(result.activeToolIds).toEqual(["detect_structure_type"]);

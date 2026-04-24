@@ -207,7 +207,6 @@ describe('Capability settings and console integration', () => {
           json: async () => ({
             skills: [],
             tools: [],
-            foundationToolIds: [],
             enabledToolIdsBySkill: {},
             skillDomainById: {},
             domainSummaries: [
@@ -287,7 +286,6 @@ describe('Capability settings and console integration', () => {
                 requiresTools: ['build_model'],
               },
             ],
-            foundationToolIds: ['build_model'],
             enabledToolIdsBySkill: {
               generic: ['build_model'],
               beam: ['build_model'],
@@ -460,7 +458,6 @@ describe('Capability settings and console integration', () => {
                 description: { zh: '校验结构模型', en: 'Validate the structural model' },
               },
             ],
-            foundationToolIds: [],
             enabledToolIdsBySkill: {
               'validation-structure-model': ['validate_model'],
             },
@@ -601,7 +598,6 @@ describe('Capability settings and console integration', () => {
                 description: { zh: '执行分析求解', en: 'Execute analysis' },
               },
             ],
-            foundationToolIds: ['detect_structure_type'],
             enabledToolIdsBySkill: {
               generic: ['build_model', 'extract_draft_params'],
               'opensees-static': ['run_analysis'],
@@ -782,7 +778,6 @@ describe('Capability settings and console integration', () => {
             description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' },
           },
         ],
-        foundationToolIds: [],
         enabledToolIdsBySkill: {
           generic: ['build_model'],
         },
@@ -908,7 +903,6 @@ describe('Capability settings and console integration', () => {
               { id: 'extract_draft_params', category: 'modeling', displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' }, description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' } },
               { id: 'run_analysis', category: 'analysis', displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' }, description: { zh: '执行分析求解', en: 'Execute analysis' } },
             ],
-            foundationToolIds: [],
             enabledToolIdsBySkill: {
               generic: ['build_model', 'extract_draft_params'],
               'opensees-static': ['run_analysis'],
@@ -992,7 +986,6 @@ describe('Capability settings and console integration', () => {
               { id: 'extract_draft_params', category: 'modeling', displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' }, description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' } },
               { id: 'run_analysis', category: 'analysis', displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' }, description: { zh: '执行分析求解', en: 'Execute analysis' } },
             ],
-            foundationToolIds: [],
             enabledToolIdsBySkill: {
               generic: ['build_model', 'extract_draft_params'],
               'opensees-static': ['run_analysis'],
@@ -1206,7 +1199,6 @@ describe('Capability settings and console integration', () => {
                 description: { zh: '执行分析求解', en: 'Execute analysis' },
               },
             ],
-            foundationToolIds: ['detect_structure_type'],
             enabledToolIdsBySkill: {
               generic: ['build_model', 'extract_draft_params'],
               'opensees-static': ['run_analysis'],
@@ -1241,7 +1233,7 @@ describe('Capability settings and console integration', () => {
     })
   })
 
-  it('does not treat duplicated stored skill ids as the default skill set during repair', async () => {    window.localStorage.setItem(CAPABILITY_PREFERENCE_STORAGE_KEY, JSON.stringify({
+  it('does not treat duplicated stored skill ids as the default skill set during repair', async () {    window.localStorage.setItem(CAPABILITY_PREFERENCE_STORAGE_KEY, JSON.stringify({
       skillIds: ['generic', 'generic'],
       toolIds: ['detect_structure_type'],
     }))
@@ -1303,7 +1295,6 @@ describe('Capability settings and console integration', () => {
                 description: { zh: '执行分析求解', en: 'Execute analysis' },
               },
             ],
-            foundationToolIds: ['detect_structure_type'],
             enabledToolIdsBySkill: {
               generic: ['build_model', 'extract_draft_params'],
               'opensees-static': ['run_analysis'],

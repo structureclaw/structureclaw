@@ -49,7 +49,6 @@ type CapabilityMatrixPayload = {
   tools?: CapabilityToolSummary[]
   domainSummaries?: CapabilityDomainSummary[]
   skillDomainById?: Record<string, SkillDomain>
-  foundationToolIds?: string[]
   enabledToolIdsBySkill?: Record<string, string[]>
   canonicalSkillIdByAlias?: Record<string, string>
   skillAliasesByCanonicalId?: Record<string, string[]>
@@ -114,10 +113,6 @@ function resolveToolLabel(tool: CapabilityToolSummary, locale: AppLocale) {
     .filter(Boolean)
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(' ')
-}
-
-function toToolIdList(tools: CapabilityToolSummary[]) {
-  return tools.map((tool) => tool.id)
 }
 
 export function CapabilitySettingsPanel() {
