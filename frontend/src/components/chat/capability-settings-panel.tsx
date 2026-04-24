@@ -31,6 +31,7 @@ type CapabilityToolSummary = {
   id: string
   category?: ToolCategory
   source?: 'builtin' | 'skill'
+  enabledByDefault?: boolean
   requiresTools?: string[]
   displayName?: { zh?: string; en?: string }
   description?: { zh?: string; en?: string }
@@ -115,56 +116,8 @@ function resolveToolLabel(tool: CapabilityToolSummary, locale: AppLocale) {
     .join(' ')
 }
 
-function resolveCallableTools(
-  matrix: CapabilityMatrixPayload | null,
-  selectedSkillIds: string[],
-  skillDomainById: Record<string, SkillDomain>,
-) {
-  const matrixTools = Array.isArray(matrix?.tools) ? matrix.tools : []
-  const foundationToolIds = new Set(Array.isArray(matrix?.foundationToolIds) ? matrix.foundationToolIds : [])
-  const enabledToolIdsBySkill = matrix?.enabledToolIdsBySkill && typeof matrix.enabledToolIdsBySkill === 'object'
-    ? matrix.enabledToolIdsBySkill
-    : {}
-  if (Object.keys(enabledToolIdsBySkill).length === 0) {
-    return matrixTools
-  }
-  const callableToolIds = new Set<string>(foundationToolIds)
-
-  selectedSkillIds.forEach((skillId) => {
-    const toolIds = enabledToolIdsBySkill[skillId]
-    if (!Array.isArray(toolIds)) {
-      return
-    }
-    toolIds.forEach((toolId) => {
-      if (typeof toolId === 'string' && toolId.trim().length > 0) {
-        callableToolIds.add(toolId)
-      }
-    })
-  })
-
-  const toolById = new Map(matrixTools.map((tool) => [tool.id, tool]))
-
-  return matrixTools.filter((tool) => callableToolIds.has(tool.id))
-}
-
 function toToolIdList(tools: CapabilityToolSummary[]) {
   return tools.map((tool) => tool.id)
-}
-
-function hasSameIds(left: string[], right: string[]) {
-  const leftSet = new Set(left)
-  const rightSet = new Set(right)
-  if (leftSet.size !== rightSet.size) {
-    return false
-  }
-
-  for (const item of leftSet) {
-    if (!rightSet.has(item)) {
-      return false
-    }
-  }
-
-  return true
 }
 
 export function CapabilitySettingsPanel() {
@@ -185,26 +138,19 @@ export function CapabilitySettingsPanel() {
   const skillDomainById = skillNormalization.skillDomainById
 
   const availableTools = useMemo(() => {
-    return [...resolveCallableTools(capabilityMatrix, selectedSkillIds, skillDomainById)]
-      .sort((a, b) => resolveToolLabel(a, locale).localeCompare(resolveToolLabel(b, locale)))
-  }, [capabilityMatrix, locale, selectedSkillIds, skillDomainById])
+    const allTools = Array.isArray(capabilityMatrix?.tools) ? capabilityMatrix.tools : []
+    return [...allTools].sort((a, b) => resolveToolLabel(a, locale).localeCompare(resolveToolLabel(b, locale)))
+  }, [capabilityMatrix, locale])
 
   const defaultSelectedSkillIds = useMemo(() => {
     const available = new Set(availableSkills.map((skill) => skill.id))
     return [...DEFAULT_CONSOLE_SKILL_IDS].filter((skillId) => available.has(skillId))
   }, [availableSkills])
 
-  const initialDefaultToolIds = useMemo(
-    () => toToolIdList(resolveCallableTools(capabilityMatrix, defaultSelectedSkillIds, skillDomainById)),
-    [capabilityMatrix, defaultSelectedSkillIds, skillDomainById]
+  const defaultSelectedToolIds = useMemo(
+    () => availableTools.filter((tool) => tool.enabledByDefault).map((tool) => tool.id),
+    [availableTools]
   )
-
-  const baseCallableToolIds = useMemo(
-    () => toToolIdList(resolveCallableTools(capabilityMatrix, [], skillDomainById)),
-    [capabilityMatrix, skillDomainById]
-  )
-
-  const defaultSelectedToolIds = useMemo(() => availableTools.map((tool) => tool.id), [availableTools])
 
   useEffect(() => {
     let active = true
@@ -273,21 +219,17 @@ export function CapabilitySettingsPanel() {
     if (stored) {
       const validSkillIds = skillNormalization.normalizeSkillIds(stored.skillIds)
         .filter((skillId) => availableSkills.some((skill) => skill.id === skillId))
-      const resolvedTools = resolveCallableTools(capabilityMatrix, validSkillIds, skillDomainById)
-      const validToolIds = stored.toolIds.filter((toolId) => resolvedTools.some((tool) => tool.id === toolId))
-      const shouldRepairLegacyDefaultTools =
-        hasSameIds(validSkillIds, defaultSelectedSkillIds)
-        && hasSameIds(validToolIds, baseCallableToolIds)
-        && initialDefaultToolIds.length > baseCallableToolIds.length
+      const allToolIds = new Set(availableTools.map((tool) => tool.id))
+      const validToolIds = stored.toolIds.filter((toolId) => allToolIds.has(toolId))
 
       setSelectedSkillIds(validSkillIds)
-      setSelectedToolIds(shouldRepairLegacyDefaultTools ? initialDefaultToolIds : validToolIds)
+      setSelectedToolIds(validToolIds)
     } else {
       setSelectedSkillIds(defaultSelectedSkillIds)
-      setSelectedToolIds(initialDefaultToolIds)
+      setSelectedToolIds(defaultSelectedToolIds)
     }
     preferencesHydratedRef.current = true
-  }, [availableSkills, baseCallableToolIds, capabilityMatrix, capabilityMatrixLoaded, defaultSelectedSkillIds, initialDefaultToolIds, skillDomainById, skillNormalization, skillsLoaded])
+  }, [availableSkills, availableTools, capabilityMatrix, capabilityMatrixLoaded, defaultSelectedSkillIds, defaultSelectedToolIds, skillNormalization, skillsLoaded])
 
   useEffect(() => {
     if (!preferencesHydratedRef.current) {
