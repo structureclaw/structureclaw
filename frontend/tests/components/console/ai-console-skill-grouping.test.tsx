@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AIConsole } from '@/components/chat/ai-console'
+import { AppStoreProvider } from '@/lib/stores/context'
 import { CapabilitySettingsPanel } from '@/components/chat/capability-settings-panel'
 import { API_BASE } from '@/lib/api-base'
 import { CAPABILITY_PREFERENCE_STORAGE_KEY } from '@/lib/capability-preference'
@@ -393,7 +394,7 @@ describe('Capability settings and console integration', () => {
       return { ok: true, json: async () => ({}) } as Response
     })
 
-    render(<AIConsole />)
+    render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
 
     await waitFor(() => {
       expect(screen.getByRole('link', { name: /manage capabilities/i })).toBeInTheDocument()
@@ -515,7 +516,7 @@ describe('Capability settings and console integration', () => {
       } as Response
     })
 
-    render(<AIConsole />)
+    render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
 
     await waitFor(() => {
       expect(screen.getByRole('link', { name: /manage capabilities/i })).toBeInTheDocument()
@@ -655,7 +656,7 @@ describe('Capability settings and console integration', () => {
       } as Response
     })
 
-    render(<AIConsole />)
+    render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
 
     const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
     await user.type(composer, 'use the full default tool set')
@@ -729,7 +730,7 @@ describe('Capability settings and console integration', () => {
       } as Response
     })
 
-    render(<AIConsole />)
+    render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
 
     const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
     await user.type(composer, 'design immediately')
@@ -857,7 +858,7 @@ describe('Capability settings and console integration', () => {
     })
     const fetchMock = vi.mocked(globalThis.fetch)
 
-    render(<AIConsole />)
+    render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
 
     const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
     await user.type(composer, 'Analyze this beam with the default policy selection')
@@ -1028,7 +1029,7 @@ describe('Capability settings and console integration', () => {
       return { ok: true, json: async () => ({}) } as Response
     })
 
-    render(<AIConsole />)
+    render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
     const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
     await user.type(composer, 'run it when ready')
     await user.click(screen.getByRole('button', { name: /send/i }))

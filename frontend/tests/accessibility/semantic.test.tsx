@@ -1,12 +1,13 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import ConsolePage from '@/app/(console)/console/page'
+import { AppStoreProvider } from '@/lib/stores/context'
 
 describe('Semantic HTML (ACCS-03)', () => {
   Element.prototype.scrollIntoView = vi.fn()
 
   async function renderConsolePage() {
-    render(<ConsolePage />)
+    render(<AppStoreProvider><ConsolePage /></AppStoreProvider>)
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /Structural Engineering|结构工程/ })).toBeInTheDocument()
     }, { timeout: 15_000 })

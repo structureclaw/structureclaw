@@ -407,7 +407,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     expect(screen.getByPlaceholderText(/Describe your structural goal/)).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Manage Capabilities' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Manage Capabilities' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Expand Engineering Context' })).toBeInTheDocument()
     expect(screen.getByText('Database tools')).toBeInTheDocument()
     expect(screen.getByText(/Review SQLite file health/i)).toBeInTheDocument()
@@ -445,7 +445,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     expect(screen.getByText('Current capabilities')).toBeInTheDocument()
     expect(screen.getByText('Capability selection moved into a dedicated settings page so the chat workspace stays focused on conversation and results.')).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: 'Manage Capabilities' })).toHaveAttribute('href', '/console/capabilities')
+    expect(screen.getByRole('button', { name: 'Manage Capabilities' })).toBeInTheDocument()
     expect(screen.queryByText('Beam Helper')).not.toBeInTheDocument()
     expect(screen.queryByText('Frame Checker')).not.toBeInTheDocument()
   })
@@ -818,7 +818,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
       throw new Error(`Unexpected fetch: ${url}`)
     })
 
-    render(<ConsolePage />)
+    render(<AppStoreProvider><ConsolePage /></AppStoreProvider>)
 
     expect(screen.getByText(/Loading conversation list|正在加载会话列表/)).toBeInTheDocument()
 
@@ -1429,7 +1429,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     expect(screen.getByText('历史会话')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '发送' })).toBeInTheDocument()
-    expect(screen.getByRole('link', { name: '管理能力' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '管理能力' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '展开工程上下文' })).toBeInTheDocument()
     expect(screen.queryByText('计算引擎 自动选择')).not.toBeInTheDocument()
     expect(screen.queryByText('已选择技能')).not.toBeInTheDocument()

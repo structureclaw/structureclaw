@@ -2,6 +2,7 @@ import { describe, it, expect, vi, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AIConsole } from '@/components/chat/ai-console'
+import { AppStoreProvider } from '@/lib/stores/context'
 import { hasLlmKey } from '../../helpers/backend-fixture'
 
 function createSseResponse(events: unknown[]) {
@@ -73,7 +74,7 @@ describe('AIConsole prompt and thinking details', () => {
       return realFetch(input, init)
     })
 
-    render(<AIConsole />)
+    render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
 
     const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
     await user.click(screen.getByRole('button', { name: /expand engineering context/i }))

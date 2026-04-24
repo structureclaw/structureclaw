@@ -2,18 +2,19 @@ import { describe, it, expect } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AIConsole } from '@/components/chat/ai-console'
+import { AppStoreProvider } from '@/lib/stores/context'
 
 describe('AIConsole SkillHub actions', () => {
   it('shows capability settings entrypoint in console', async () => {
-    render(<AIConsole />)
+    render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: /manage capabilities/i })).toHaveAttribute('href', '/console/capabilities')
+      expect(screen.getByRole('button', { name: /manage capabilities/i })).toBeInTheDocument()
     }, { timeout: 15_000 })
   })
 
   it('moves capability editing out of inline console controls', async () => {
-    render(<AIConsole />)
+    render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
 
     await waitFor(() => {
       expect(screen.getByText(/selected skills:/i)).toBeInTheDocument()
