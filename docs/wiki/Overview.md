@@ -13,7 +13,7 @@ StructureClaw is an AI-assisted structural engineering workspace for AEC workflo
 
 Skills are discovered and loaded from `backend/src/agent-skills/` using a manifest-first architecture:
 
-- **Static metadata layer**: `skill.yaml` is the canonical source for skill identity, domain, capabilities, and tool grants
+- **Static metadata layer**: `skill.yaml` is the canonical source for skill identity, domain, and capabilities
 - **Content layer**: stage Markdown files such as `intent.md`, `draft.md`, `analysis.md`, and `design.md` provide prompts and guidance content
 - **Runtime layer**: executable plugins such as `handler.ts` or `runtime.py` implement skill behavior without redefining the static identity
 

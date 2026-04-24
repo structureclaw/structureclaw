@@ -88,7 +88,7 @@ node tests/runner.mjs llm-integration                        # LLM integration t
 | API routes | `backend/src/api/` |
 | Agent orchestration | `backend/src/services/` and `backend/src/agent-runtime/` |
 | Skill domains | `backend/src/agent-skills/<domain>/` |
-| Executable agent tools | `backend/src/agent-tools/<tool>/` (run_analysis, validate_model, etc.) |
+| Executable agent tools | `backend/src/agent-langgraph/tool-registry.ts` and `backend/src/agent-langgraph/tools.ts` |
 | Shared skill utilities | `backend/src/skill-shared/` |
 | Shared helpers | `backend/src/utils/` |
 | Frontend pages | `frontend/src/app/` |

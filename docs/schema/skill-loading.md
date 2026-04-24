@@ -19,7 +19,7 @@ Every builtin skill directory must contain:
 
 | File | Required | Purpose |
 |------|----------|---------|
-| `skill.yaml` | Yes | Canonical static metadata: `id`, `domain`, `capabilities`, `grants`, compatibility, and domain-specific fields |
+| `skill.yaml` | Yes | Canonical static metadata: `id`, `domain`, `capabilities`, compatibility, and domain-specific fields |
 | Stage Markdown such as `intent.md`, `draft.md`, `analysis.md`, `design.md` | Optional but typical | Prompt/content assets loaded by the runtime |
 
 Additional runtime files remain domain-specific, for example:
@@ -65,12 +65,7 @@ Builtin skill loading now follows one canonical catalog rule:
 
 In the current implementation, `AgentSkillRuntime.listSkillManifests()` uses builtin `skill.yaml` manifests as the primary runtime manifest source. Executable plugin manifests are only appended when a plugin does not already have a corresponding `skill.yaml`.
 
-Builtin `structure-type` manifests now directly authorize modeling tools only:
-
-- `draft_model`
-- `update_model`
-
-Execution-chain tools such as `validate_model`, `run_analysis`, `run_code_check`, and `generate_report` are no longer granted directly by `structure-type` manifests. They are authorized through the downstream domain manifests activated for the current turn.
+Builtin skill manifests do not authorize tools. Executable tools are owned by the TypeScript registry and runtime policy layer under `backend/src/agent-langgraph/`.
 
 Before entering the execution chain, the agent now derives the downstream domain skill set explicitly for the current turn:
 
@@ -80,22 +75,11 @@ Before entering the execution chain, the agent now derives the downstream domain
 
 In the current implementation, the actual `validation`, `analysis`, `code-check`, and `report-export` execution entrypoints are wrapped by `AgentSkillRuntime`: the agent no longer assembles those domain registries or report-domain details directly, and the selected downstream skill id is written back into result `meta` and tool-trace attribution.
 
-## 2.4 Builtin Tool Discovery
+## 2.4 Builtin Tool Registration
 
-Builtin tools live under `backend/src/agent-tools/<tool-id>/`.
+Builtin tools are registered in TypeScript code under `backend/src/agent-langgraph/tool-registry.ts`.
 
-Every builtin tool directory must contain:
-
-| File | Required | Purpose |
-|------|----------|---------|
-| `tool.yaml` | Yes | Canonical static metadata: `id`, `tier`, `category`, dependencies, schemas, and error codes |
-
-Builtin tool loading follows the same manifest-first rule:
-
-1. The runtime scans `backend/src/agent-tools/` recursively.
-2. A directory is considered a builtin tool only if it contains `tool.yaml`.
-3. `tool.yaml` becomes the source of truth for protocol metadata, builtin tool catalogs, and runtime tool resolution.
-4. Old TypeScript manifest constants are no longer used as the runtime source of truth.
+There is no YAML discovery path for tools. Adding a tool requires editing the code-owned registry, implementing the handler in `backend/src/agent-langgraph/tools.ts`, and adding tests for runtime policy and exposed protocol metadata.
 
 ## 2.5 Runtime Status Projection
 

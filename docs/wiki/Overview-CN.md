@@ -13,7 +13,7 @@ StructureClaw 是一个面向 AEC 工作流的 AI 协同结构工程工作台。
 
 技能从 `backend/src/agent-skills/` 自动发现和加载，当前采用 manifest-first 架构：
 
-- **静态元数据层**：`skill.yaml` 是 skill 身份、domain、capabilities 与 tool grants 的真源
+- **静态元数据层**：`skill.yaml` 是 skill 身份、domain 与 capabilities 的真源
 - **内容层**：`intent.md`、`draft.md`、`analysis.md`、`design.md` 等阶段 Markdown 提供提示词与说明内容
 - **运行时层**：`handler.ts`、`runtime.py` 等可执行模块实现 skill 行为，但不再重新定义静态身份
 

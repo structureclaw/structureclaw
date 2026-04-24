@@ -4,7 +4,6 @@ import os from 'os';
 import path from 'path';
 import { AgentSkillRuntime } from '../dist/agent-runtime/index.js';
 import { AgentSkillCatalogService } from '../dist/services/agent-skill-catalog.js';
-import { AgentToolCatalogService } from '../dist/services/agent-tool-catalog.js';
 
 async function writeSkillManifest(rootDir, relativeDir, skillId) {
   const skillDir = path.join(rootDir, relativeDir);
@@ -27,8 +26,6 @@ async function writeSkillManifest(rootDir, relativeDir, skillId) {
       'structureType: generic',
       'structuralTypeKeys: [generic]',
       'capabilities: []',
-      'grants: [run_analysis]',
-      'providesTools: []',
       'requires: []',
       'conflicts: []',
       'autoLoadByDefault: false',
@@ -46,35 +43,6 @@ async function writeSkillManifest(rootDir, relativeDir, skillId) {
       'materialFamilies: []',
       'toolHints: {}',
       'aliases: []',
-    ].join('\n'),
-  );
-  return manifestPath;
-}
-
-async function writeToolManifest(rootDir, relativeDir, toolId) {
-  const toolDir = path.join(rootDir, relativeDir);
-  await mkdir(toolDir, { recursive: true });
-  const manifestPath = path.join(toolDir, 'tool.yaml');
-  await writeFile(
-    manifestPath,
-    [
-      `id: ${toolId}`,
-      'source: builtin',
-      'tier: foundation',
-      'category: utility',
-      'enabledByDefault: false',
-      'displayName:',
-      '  zh: 缓存测试工具',
-      '  en: Cache Test Tool',
-      'description:',
-      '  zh: 用于测试 tool manifest 缓存',
-      '  en: Used to test tool manifest caching',
-      'requiresSkills: []',
-      'requiresTools: []',
-      'tags: [cache]',
-      'inputSchema: {}',
-      'outputSchema: {}',
-      'errorCodes: []',
     ].join('\n'),
   );
   return manifestPath;
@@ -116,22 +84,4 @@ describe('agent manifest caching', () => {
     }
   });
 
-  test('should cache builtin tool catalog entries after the first load', async () => {
-    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'structureclaw-tool-catalog-cache-'));
-
-    try {
-      const manifestPath = await writeToolManifest(tempRoot, path.join('utility', 'cache-tool'), 'cache-tool');
-      const service = new AgentToolCatalogService(tempRoot);
-
-      const first = await service.listBuiltinTools();
-      await unlink(manifestPath);
-      const second = await service.listBuiltinTools();
-
-      expect(first.map((entry) => entry.id)).toEqual(['cache-tool']);
-      expect(second.map((entry) => entry.id)).toEqual(['cache-tool']);
-      expect(second).toBe(first);
-    } finally {
-      await rm(tempRoot, { recursive: true, force: true });
-    }
-  });
 });

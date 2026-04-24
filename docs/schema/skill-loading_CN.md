@@ -19,7 +19,7 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 
 | 文件 | 是否必需 | 用途 |
 |------|----------|------|
-| `skill.yaml` | 是 | canonical 静态元数据：`id`、`domain`、`capabilities`、`grants`、兼容性以及域专属字段 |
+| `skill.yaml` | 是 | canonical 静态元数据：`id`、`domain`、`capabilities`、兼容性以及域专属字段 |
 | `intent.md` / `draft.md` / `analysis.md` / `design.md` 等阶段 Markdown | 可选但通常存在 | 运行时加载的提示词 / 内容资产 |
 
 额外运行时文件仍然由具体域决定，例如：
@@ -80,22 +80,11 @@ StructureClaw 的技能（Skill）是模块化、可拆卸的插件，用于扩�
 
 当前实现里，`validation`、`analysis`、`code-check`、`report-export` 的实际执行入口都已经通过 `AgentSkillRuntime` 统一封装：Agent 不再直接拼接这些域的 registry / artifact 细节，而是通过 runtime 选择 skill、执行 domain，并把选中的 skill id 回写到结果 `meta` 与 tool trace。
 
-## 2.4 内置 Tool 发现
+## 2.4 内置 Tool 注册
 
-内置 tool 位于 `backend/src/agent-tools/<tool-id>/`。
+内置 tool 通过 `backend/src/agent-langgraph/tool-registry.ts` 中的 TypeScript 代码注册。
 
-每个内置 tool 目录必须包含：
-
-| 文件 | 是否必需 | 用途 |
-|------|----------|------|
-| `tool.yaml` | 是 | canonical 静态元数据：`id`、`tier`、`category`、依赖、schema 与 error code |
-
-当前内置 tool 加载同样遵循 manifest-first：
-
-1. runtime 递归扫描 `backend/src/agent-tools/`。
-2. 只有目录中存在 `tool.yaml`，才会被视为合法内置 tool。
-3. `tool.yaml` 成为 protocol metadata、builtin tool catalog 与 runtime tool resolution 的真源。
-4. 旧的 TypeScript manifest 常量不再作为运行时静态真源。
+tool 不存在 YAML 发现路径。新增 tool 必须修改代码注册表，在 `backend/src/agent-langgraph/tools.ts` 中实现 handler，并补充 runtime policy 与协议元数据暴露测试。
 
 ## 2.5 Runtime 状态投影
 

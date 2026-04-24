@@ -6,8 +6,8 @@ StructureClaw provides 6 foundation-tier utility tools for infrastructure
 capabilities. These tools are always available via the platform tool catalog and
 do not require domain-specific skill authorization.
 
-Each utility tool has a matching skill manifest under `backend/src/agent-skills/general/`
-that provides the orchestration layer (triggers, stage constraints, grants).
+Each utility skill has a matching skill manifest under `backend/src/agent-skills/general/`
+that provides orchestration metadata such as triggers and stage constraints.
 
 ## Tool Inventory
 
@@ -20,16 +20,11 @@ that provides the orchestration layer (triggers, stage constraints, grants).
 | `replace` | utility | foundation | enabled | read-write-local |
 | `shell` | utility | foundation | disabled | restricted-exec |
 
-## Skill-Tool Mapping
+## Skill Metadata
 
-| Skill ID | Domain | Grants | Stages |
-|----------|--------|--------|--------|
-| `memory` | general | `memory` | intent, draft, analysis, design |
-| `planning` | general | `planning` | intent, draft |
-| `read-file` | general | `read_file` | intent, draft, analysis |
-| `write-file` | general | `write_file` | analysis |
-| `replace` | general | `replace` | draft, analysis |
-| `shell` | general | `shell` | analysis |
+Utility skill manifests describe user-facing capability metadata and routing hints.
+They do not attach executable tools; tool availability is controlled by the
+code-owned registry and runtime policy.
 
 ## Safety Boundaries
 
@@ -50,11 +45,9 @@ that provides the orchestration layer (triggers, stage constraints, grants).
 
 ## Architecture Alignment
 
-These utility tools follow the manifest-first architecture defined in
+These utility tools follow the code-owned registry architecture defined in
 `docs/agent-architecture.md`:
 
-- Tool manifests live in `backend/src/agent-tools/{tool_id}/tool.yaml`
 - Skill manifests live in `backend/src/agent-skills/general/{skill-id}/skill.yaml`
-- Skills reference tools via the `grants` field in `skill.yaml`
-- The `tool-manifest-loader` discovers and validates all `tool.yaml` files
-- The `tool-registry` resolves the final available tool set at runtime
+- Tool definitions live in `backend/src/agent-langgraph/tool-registry.ts`
+- The runtime policy resolves the final available tool set at runtime

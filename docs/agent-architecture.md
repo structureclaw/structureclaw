@@ -219,8 +219,7 @@ Each skill may declare:
 
 - whether it is enabled by default
 - which other skills it requires or conflicts with
-- which tools it grants to the agent in its context
-- optional tool policy hints for runtime binding
+- which capabilities and runtime contract it exposes
 
 Manifest-first rule:
 
@@ -250,7 +249,6 @@ backend/src/agent-skills/<domain>/<skill-id>/
 - stages and triggers
 - enablement defaults
 - capabilities
-- explicit tool grants
 - dependency and compatibility metadata
 - model, analysis, and engine hints
 
@@ -266,34 +264,27 @@ Each tool should declare:
 - its input and output contract
 - any required guards or prerequisites
 
-Manifest-first rule:
+Code-owned registration rule:
 
-- every tool must live in its own directory
-- every tool directory must contain `tool.yaml`
-- if a directory does not contain `tool.yaml`, it is not a valid tool
-
-Recommended built-in layout:
+- every built-in tool must be registered in `backend/src/agent-langgraph/tool-registry.ts`
+- every built-in tool implementation must live in `backend/src/agent-langgraph/tools.ts` or a module imported by it
+- there is no YAML discovery path for tools
 
 ```text
-backend/src/agent-tools/<tool-id>/
-  tool.yaml
-  handler.ts
-  schema.ts
+backend/src/agent-langgraph/
+  tool-registry.ts
+  tools.ts
+  tool-policy.ts
 ```
 
-`tool.yaml` is the static truth for:
+The TypeScript registry is the static truth for:
 
 - tool id
-- source (`builtin` or `external`)
-- tier (`foundation`, `domain`, or `extension`)
 - category
 - localized display metadata
-- input and output schema references
-- guard and dependency metadata
+- guard and dependency metadata used by runtime policy
 - audit and trace metadata
-- implementation entry references
-
-`tool.yaml` must not decide which skills grant the tool or whether the current turn is allowed to use it.
+- implementation factory references
 
 ### 8.3 Agent Rule
 
@@ -302,7 +293,7 @@ The agent must make decisions only within the currently available tool set.
 The currently available tool set is composed of:
 
 - a platform foundation tool allowlist (always-on platform tools)
-- domain tools granted by currently enabled and matched skills
+- engineering tools allowed by the code-owned runtime policy
 
 It must not assume the full platform capability set is always available.
 
@@ -348,7 +339,7 @@ Built-in and external source must be kept distinct from tool tier:
   - platform base tools that may remain available under platform policy
   - current example: `convert_model`
 - `domain`
-  - platform canonical engineering tools that require skill grants
+  - platform canonical engineering tools that require runtime policy checks
   - examples: `draft_model`, `update_model`, `validate_model`, `run_analysis`, `run_code_check`, `generate_report`
 - `extension`
   - tools introduced by external capabilities
@@ -361,9 +352,9 @@ The expected source/tier combinations are:
 3. Authorization rules
 
 - Foundation built-in tools may remain available under platform policy, but they must not take over domain decision-making.
-- Domain built-in tools must be explicitly granted by currently matched skills before invocation.
-- Extension tools must be explicitly granted by currently matched skills before invocation.
-- Any granted tool call must also pass dependency and sequencing guards.
+- Domain built-in tools must pass the code-owned runtime policy before invocation.
+- Extension tools are not enabled through YAML metadata; any future extension path must go through an explicit code-owned policy boundary.
+- Any tool call must also pass dependency and sequencing guards.
 - User manual toggles (skill/tool enable/disable) have the highest priority and override automatic activation, platform default allowlists, and policy suggestions.
 
 4. Available tool set
@@ -371,8 +362,8 @@ The expected source/tier combinations are:
 For each turn, the available tool set is defined as:
 
 - platform foundation built-in tools (currently `convert_model`, still constrained by platform guards)
-- domain built-in tools explicitly granted by currently active skills
-- extension tools explicitly granted by currently active skills
+- domain built-in tools allowed by the current runtime policy
+- extension tools allowed by a future explicit policy boundary
 
 The final usable set must be intersected with the user-enabled set; any skill or tool manually disabled by the user must become immediately unavailable.
 
@@ -384,7 +375,7 @@ Every tool invocation should record:
 
 - tool source (built-in or external)
 - tool tier (`foundation`, `domain`, or `extension`)
-- for any granted tool, the granting skill id
+- policy decision metadata for the selected tool
 - if blocked, a stable blocked-reason code
 
 ### 8.6 Invocation Matrix
@@ -392,10 +383,10 @@ Every tool invocation should record:
 To prevent ambiguity, the invocation matrix is fixed as follows:
 
 - Any skill -> foundation built-in tool: allowed under platform policy
-- Any skill -> domain built-in tool: allowed only when granted by the current active skill set
-- Any skill -> extension tool: allowed only when granted by the current active skill set
+- Any skill -> domain built-in tool: allowed only when the code-owned policy allows it
+- Any skill -> extension tool: disallowed unless a future explicit policy boundary allows it
 
-Any implicit allow path for ungranted domain or extension tools is prohibited.
+Any implicit allow path outside the code-owned registry and policy is prohibited.
 
 ### 8.7 Current-Phase Operating Constraints (2026-04)
 
@@ -409,11 +400,11 @@ To avoid confusion between the target architecture and the current implementatio
 2. Current tool status
 
 - In the current production governance model, `convert_model` is the active platform foundation built-in tool.
-- All other current canonical tools are treated as granted tools and must be skill-granted before invocation, even while the runtime is still migrating toward explicit manifest-backed tool tiers.
+- Current canonical tools are registered in the TypeScript registry and must pass runtime policy before invocation.
 
 3. Effective authorization rule for this phase
 
-- During this phase, tool invocation must pass current-skill grants and guard checks.
+- During this phase, tool invocation must pass runtime policy and guard checks.
 - Any skill or tool manually disabled by the user must become immediately unavailable.
 
 4. Priority rule
@@ -421,16 +412,16 @@ To avoid confusion between the target architecture and the current implementatio
 - User manual toggles (skill/tool enable/disable) have the highest priority.
 - Manual toggles must override automatic activation, default sets, and policy suggestions.
 
-### 8.8 Manifest-First Catalog Architecture
+### 8.8 Code-Owned Tool Catalog Architecture
 
-The loading architecture is manifest-first and directory-driven.
+Skill loading remains manifest-first and directory-driven. Tool loading is code-owned.
 
 Two static catalogs must exist:
 
 - `skill catalog`
 - `tool catalog`
 
-The catalogs are built from manifest discovery, not from runtime execution state.
+The skill catalog is built from skill manifest discovery. The tool catalog is built from the TypeScript registry, not from runtime execution state.
 
 Normalized catalog projections must be the single metadata source for both frontend and backend surfaces:
 
@@ -445,7 +436,6 @@ Static manifests do not directly decide the final available tool set. That respo
 The runtime binder combines:
 
 - active or selected skill ids
-- explicit skill grants
 - user skill/tool toggles
 - current model family
 - current analysis type
@@ -464,7 +454,7 @@ The binding order is:
 1. Load normalized skill and tool catalogs.
 2. Resolve aliases to canonical ids.
 3. Determine active skills from routing, defaults, and user selection.
-4. Collect explicit tool grants from active skills.
+4. Resolve the code-owned tool policy for the active skills and session context.
 5. Add foundation tools allowed by platform policy.
 6. Intersect with user-enabled skills and tools.
 7. Apply tool dependency and guard rules.
@@ -473,7 +463,7 @@ The binding order is:
 
 Under the target scheduler architecture, the binder resolves **explicit provider slots** for each artifact the scheduler requests. There is no auto-activation: a provider is wired only when the scheduler explicitly asks for it via a declared `providerSlot` in the skill's `runtimeContract` (see section on `runtimeContract` in the skill-loading documentation).
 
-This means non-foundation tools never become available only because a domain exists. They become available because active skills grant them and runtime checks allow them.
+This means non-foundation tools never become available only because a domain exists. They become available only when the code-owned registry and runtime checks allow them.
 
 ### 8.10 Role of Registries and Adapters
 
@@ -489,9 +479,9 @@ Unacceptable roles:
 
 - deciding whether a directory counts as a skill
 - inventing skill identity outside manifest metadata
-- assigning implicit tool grants not declared by the skill
+- inventing tool availability outside the code-owned registry and runtime policy
 
-Capability identity belongs to manifests and catalogs. Runtime execution binding belongs to the runtime binder.
+Skill identity belongs to manifests and catalogs. Tool identity belongs to the code registry. Runtime execution binding belongs to the runtime binder.
 
 ### 8.11 Contributor Workflow
 
@@ -500,11 +490,11 @@ The default contributor workflow should be:
 1. create a new skill directory
 2. write `skill.yaml`
 3. add the skill's prompts, handler, and runtime files
-4. grant existing canonical tools where needed
+4. rely on the code-owned runtime policy for tool availability
 
-In the common case, contributors should not need to edit central registry files or central mapping tables.
+In the common case, skill contributors should not need to edit central registry files or central mapping tables.
 
-Adding a new tool is a separate, less common path. It is needed only when existing tools cannot express a new action contract. In that case the contributor must create a tool directory, add `tool.yaml`, implement the handler and schema, and extend tests and governance for the new tool.
+Adding a new tool is a separate, less common path. It is needed only when existing tools cannot express a new action contract. In that case the contributor must update the TypeScript tool registry, implement the handler and schema, and extend tests and governance for the new tool.
 
 ### 8.12 Decision Summary
 
@@ -512,10 +502,10 @@ This architecture fixes the following rules:
 
 - `skill` and `tool` remain distinct
 - both support built-in and external sources
-- both use manifest-first, directory-driven discovery
-- valid manifests are required; no manifest means no capability
-- skills grant tools explicitly
-- multiple skills may grant the same tool
+- skills use manifest-first, directory-driven discovery
+- tools use code-owned registration
+- valid skill manifests are required; no skill manifest means no skill capability
+- tools cannot be added through skill metadata
 - canonical platform tools remain platform-owned
 - runtime binding, not registries, decides the final available tool set
 - the default contributor workflow is “write a skill and reuse existing tools”
@@ -803,7 +793,7 @@ The runtime has already aligned key orchestration behavior with the target desig
 - planner output no longer decides concrete `toolId`; concrete tool selection is runtime-owned and skill-driven
 - `force_tool` bypasses planner branching and enters the skill-first execution path
 - service entrypoints are now consolidated to `run` and `runStream`; interactive/tool-call compatibility wrappers are removed
-- in skill-enabled flows, drafting tools are no longer globally default-enabled and must come from skill capability grants; the core execution pipeline tools remain platform-provided
+- in skill-enabled flows, current tool availability comes from the code-owned registry and runtime policy
 
 ### Multi-Round Architecture Status (2026-04)
 
@@ -826,8 +816,8 @@ The following orchestration improvements have been completed:
 
 ### Stage 2: Add Skill and Tool Registration Metadata
 
-- extend skill manifests with enablement and tool-binding metadata
-- introduce a tool manifest model for built-in and external tools
+- extend skill manifests with enablement and runtime-contract metadata
+- introduce a code-owned registry model for built-in tools
 - make the runtime compute the active capability set per request or session
 
 ### Stage 3: Make `structure-type` the Stable First Step

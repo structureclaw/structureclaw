@@ -6,6 +6,7 @@ import { normalizeMaterialFamilies as normalizeDomainMaterialFamilies } from '..
 import { ALL_SKILL_DOMAINS } from '../agent-runtime/types.js';
 import { listAgentToolDefinitions } from '../agent-langgraph/tool-registry.js';
 import type { AgentAnalysisType, MaterialFamily, SkillDomain, SkillManifest, SkillRuntimeStatus } from '../agent-runtime/types.js';
+import type { AgentToolCategory, AgentToolDefinition } from '../agent-langgraph/tool-registry.js';
 import type { BuiltinSkillCatalogEntry } from './agent-skill-catalog.js';
 
 const ACTIVE_RUNTIME_DOMAINS = new Set<SkillDomain>([
@@ -105,6 +106,26 @@ function uniqueStrings(values: readonly string[]): string[] {
   return Array.from(new Set(values.filter((value) => typeof value === 'string' && value.trim().length > 0)));
 }
 
+function toFrontendToolCategory(tool: AgentToolDefinition): string {
+  if (tool.id === 'run_analysis') {
+    return 'analysis';
+  }
+  if (tool.id === 'run_code_check') {
+    return 'code-check';
+  }
+  if (tool.id === 'generate_report') {
+    return 'report';
+  }
+  if (tool.category === 'engineering') {
+    return 'modeling';
+  }
+  return 'utility';
+}
+
+function isFoundationToolCategory(category: AgentToolCategory): boolean {
+  return category === 'interaction' || category === 'session' || category === 'memory' || category === 'workspace' || category === 'shell';
+}
+
 function assertLocalizedField(value: unknown, field: 'zh' | 'en', ownerLabel: string): void {
   if (typeof value !== 'string' || value.trim().length === 0) {
     throw new Error(`Malformed capability metadata: ${ownerLabel} is missing a non-empty ${field} value.`);
@@ -196,11 +217,12 @@ function buildCatalogEntryFromManifest(
   };
 }
 
-function toCapabilityTool(tool: ReturnType<typeof listAgentToolDefinitions>[number]): CapabilityTool {
+function toCapabilityTool(tool: AgentToolDefinition): CapabilityTool {
+  const category = toFrontendToolCategory(tool);
   return {
     id: tool.id,
     source: 'builtin',
-    category: tool.category,
+    category,
     enabledByDefault: tool.defaultEnabled,
     requiresSkills: [],
     requiresTools: [],
@@ -292,18 +314,30 @@ export class AgentCapabilityService {
     const manifestByCanonicalId = new Map<string, SkillManifest>(
       manifests.map((manifest) => [resolveCanonicalSkillId(manifest.id), manifest]),
     );
-    const tools = listAgentToolDefinitions()
+    const toolDefinitions = listAgentToolDefinitions();
+    const defaultToolIds = toolDefinitions
+      .filter((tool) => tool.defaultEnabled)
+      .map((tool) => tool.id)
+      .sort();
+    const foundationToolIds = toolDefinitions
+      .filter((tool) => tool.defaultEnabled && isFoundationToolCategory(tool.category))
+      .map((tool) => tool.id)
+      .sort();
+    const tools = toolDefinitions
       .map((tool) => toCapabilityTool(tool))
       .sort((a, b) => a.id.localeCompare(b.id));
     const enabledToolIdsBySkill = catalogEntries.reduce<Record<string, string[]>>((acc, entry) => {
-      acc[entry.canonicalId] = [];
+      acc[entry.canonicalId] = [...defaultToolIds];
       return acc;
     }, {});
     const providedToolIdsBySkill = catalogEntries.reduce<Record<string, string[]>>((acc, entry) => {
       acc[entry.canonicalId] = [];
       return acc;
     }, {});
-    const skillIdsByToolId: Record<string, string[]> = {};
+    const skillIdsByToolId = defaultToolIds.reduce<Record<string, string[]>>((acc, toolId) => {
+      acc[toolId] = catalogEntries.map((entry) => entry.canonicalId);
+      return acc;
+    }, {});
 
     const skills: CapabilitySkill[] = catalogEntries.map((entry: BuiltinSkillCatalogEntry) => {
       const manifest = manifestByCanonicalId.get(entry.canonicalId);
@@ -473,7 +507,7 @@ export class AgentCapabilityService {
       filteredEngineReasonsBySkill,
       validSkillIdsByEngine,
       skillDomainById,
-      foundationToolIds: [],
+      foundationToolIds,
       enabledToolIdsBySkill,
       providedToolIdsBySkill,
       skillIdsByToolId,

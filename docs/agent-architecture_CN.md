@@ -220,8 +220,7 @@ Skill 与 Tool 都是可选的。
 - 是否默认启用
 - 依赖哪些其它 skill
 - 与哪些 skill 冲突
-- 自己授予 agent 哪些 tool
-- 供运行时绑定使用的可选 tool 策略提示
+- 暴露哪些 capabilities 和 runtime contract
 
 Manifest-first 规则：
 
@@ -242,7 +241,7 @@ backend/src/agent-skills/<domain>/<skill-id>/
   runtime.py
 ```
 
-`skill.yaml` 是 skill 静态身份与授权的真源，负责定义：
+`skill.yaml` 是 skill 静态身份的真源，负责定义：
 
 - skill id 与 aliases
 - 来源（`builtin` 或 `external`）
@@ -251,7 +250,6 @@ backend/src/agent-skills/<domain>/<skill-id>/
 - stages 与 triggers
 - 默认启用状态
 - capabilities
-- 显式 tool grants
 - 依赖与兼容性元数据
 - model、analysis、engine 提示
 
@@ -267,34 +265,29 @@ backend/src/agent-skills/<domain>/<skill-id>/
 - 输入输出契约
 - 所需前置条件和执行护栏
 
-Manifest-first 规则：
+代码注册规则：
 
-- 每个 tool 必须位于自己的目录中
-- 每个 tool 目录必须包含 `tool.yaml`
-- 如果目录中没有 `tool.yaml`，它就不是合法 tool
+- 每个内置 tool 必须注册在 `backend/src/agent-langgraph/tool-registry.ts`
+- 每个内置 tool 实现必须位于 `backend/src/agent-langgraph/tools.ts` 或其导入的模块
+- tool 不存在 YAML 发现路径
 
 建议的内置目录结构：
 
 ```text
-backend/src/agent-tools/<tool-id>/
-  tool.yaml
-  handler.ts
-  schema.ts
+backend/src/agent-langgraph/
+  tool-registry.ts
+  tools.ts
+  tool-policy.ts
 ```
 
-`tool.yaml` 是 tool 静态身份与动作契约的真源，负责定义：
+TypeScript 注册表是 tool 静态身份与动作契约的真源，负责定义：
 
 - tool id
-- 来源（`builtin` 或 `external`）
-- 层级（`foundation`、`domain`、`extension`）
 - category
 - 本地化展示元数据
-- 输入输出 schema 引用
-- guard 与依赖元数据
+- runtime policy 使用的 guard 与依赖元数据
 - 审计与 trace 元数据
-- 实现入口引用
-
-`tool.yaml` 不负责决定哪些 skill 授权该 tool，也不负责决定当前轮次是否允许调用。
+- 实现 factory 引用
 
 ### 8.3 Agent 规则
 
@@ -303,7 +296,7 @@ Agent 只能在“当前可用 tool 集”内做决策。
 其中“当前可用 tool 集”由两部分组成：
 
 - 平台基础工具白名单（平台常开）
-- 当前启用 skill 授权的领域工具
+- 代码 runtime policy 允许的工程工具
 
 它不能默认假设整个平台的所有能力始终可用。
 
@@ -340,7 +333,7 @@ Agent 只能在“当前可用 tool 集”内做决策。
 
 2. Tool 分类
 
-- 内置 tool：由平台 manifest 定义的动作接口。
+- 内置 tool：由平台代码注册表定义的动作接口。
 - 外接 tool：由外接 skill 或外部扩展提供的动作接口。
 
 需要继续区分“来源”和“层级”：
@@ -349,7 +342,7 @@ Agent 只能在“当前可用 tool 集”内做决策。
   - 平台基础工具，可在平台策略下保持可用
   - 当前例子：`convert_model`
 - `domain`
-  - 平台 canonical 工程工具，但必须由 skill grant 才能调用
+  - 平台 canonical 工程工具，但必须通过 runtime policy 才能调用
   - 例子：`draft_model`、`update_model`、`validate_model`、`run_analysis`、`run_code_check`、`generate_report`
 - `extension`
   - 外部能力带来的扩展工具
@@ -362,9 +355,9 @@ Agent 只能在“当前可用 tool 集”内做决策。
 3. 权限原则
 
 - foundation 内置 tool 可在平台策略下保持可用，但不得承担领域决策。
-- domain 内置 tool 必须由当前已命中的 skill 显式授权后方可调用。
-- extension tool 必须由当前已命中的 skill 显式授权后方可调用。
-- 任何被授权的 tool 调用都需要通过依赖与顺序护栏校验。
+- domain 内置 tool 必须通过代码 runtime policy 后方可调用。
+- extension tool 不通过 YAML 元数据启用；未来扩展路径必须经过显式代码策略边界。
+- 任何 tool 调用都需要通过依赖与顺序护栏校验。
 - 用户手动开关（skill/tool enable/disable）优先级最高，覆盖自动激活、平台默认白名单与策略建议。
 
 4. 可用工具集合
@@ -372,8 +365,8 @@ Agent 只能在“当前可用 tool 集”内做决策。
 当前轮次可用工具集合定义为：
 
 - 平台基础内置 tool（当前为 `convert_model`，受平台护栏约束）
-- 当前激活 skill 显式授权的 domain 内置 tool
-- 当前激活 skill 显式授权的 extension tool
+- 当前 runtime policy 允许的 domain 内置 tool
+- 未来显式策略边界允许的 extension tool
 
 最终可用集合需再与“用户手动开启集合”求交集；被用户手动关闭的 skill 或 tool 必须立即失效。
 
@@ -385,7 +378,7 @@ Agent 只能在“当前可用 tool 集”内做决策。
 
 - tool 来源（内置或外接）
 - tool 层级（`foundation`、`domain`、`extension`）
-- 若为需要授权的 tool，则记录授权的 skill id
+- 记录该 tool 的策略决策元数据
 - 若被阻断，则记录阻断原因码
 
 ### 8.6 调用矩阵
@@ -393,10 +386,10 @@ Agent 只能在“当前可用 tool 集”内做决策。
 为避免歧义，调用矩阵固定如下：
 
 - 任意 skill -> foundation 内置 tool：在平台策略下允许
-- 任意 skill -> domain 内置 tool：仅在当前激活 skill 集显式授权时允许
-- 任意 skill -> extension tool：仅在当前激活 skill 集显式授权时允许
+- 任意 skill -> domain 内置 tool：仅在代码 runtime policy 允许时允许
+- 任意 skill -> extension tool：默认不允许，除非未来显式策略边界允许
 
-禁止任何“未授权 domain/extension tool 隐式放行”的路径。
+禁止任何绕过代码注册表与 runtime policy 的隐式放行路径。
 
 ### 8.7 当前阶段落地约束（2026-04）
 
@@ -410,11 +403,11 @@ Agent 只能在“当前可用 tool 集”内做决策。
 2. tool 现状
 
 - 当前线上治理口径中，`convert_model` 作为平台基础内置 tool，可在平台护栏下直接调用。
-- 其余当前 canonical tools 均按“需要 grant 的工具”处理，在运行时向显式 manifest-backed tool tiers 迁移完成前，仍必须由 skill 授权后方可调用。
+- 当前 canonical tools 均由 TypeScript 注册表注册，并必须通过 runtime policy 后方可调用。
 
 3. 当前有效授权规则
 
-- 当前阶段中，tool 调用必须经过当前激活 skill 的授权与护栏校验。
+- 当前阶段中，tool 调用必须经过 runtime policy 与护栏校验。
 - 对于用户手动关闭的 skill 或 tool，必须立即失效并禁止调用。
 
 4. 优先级规则
@@ -422,7 +415,7 @@ Agent 只能在“当前可用 tool 集”内做决策。
 - 用户手动开关（skill/tool enable/disable）优先级最高。
 - 手动开关必须覆盖自动激活、默认集合与策略建议。
 
-### 8.8 Manifest-First Catalog 架构
+### 8.8 代码 Tool Catalog 架构
 
 加载架构应当是 manifest-first、目录驱动。
 
@@ -446,7 +439,6 @@ Agent 只能在“当前可用 tool 集”内做决策。
 runtime binder 组合以下输入：
 
 - 当前激活或选中的 skill ids
-- skill 的显式 grants
 - 用户 skill/tool 开关
 - 当前 model family
 - 当前 analysis type
@@ -465,7 +457,7 @@ runtime binder 组合以下输入：
 1. 加载归一化 skill 与 tool catalogs
 2. 将 aliases 解析为 canonical ids
 3. 根据路由、默认值和用户选择确定 active skills
-4. 从 active skills 收集显式 tool grants
+4. 按 active skills 与会话上下文解析代码 runtime policy
 5. 叠加平台策略允许的 foundation tools
 6. 与用户启用的 skill/tool 集求交
 7. 应用 tool dependency 与 guard 规则
@@ -474,7 +466,7 @@ runtime binder 组合以下输入：
 
 在目标调度器架构下，binder 为调度器请求的每个工件解析**显式提供者槽位**。不存在自动激活：只有当调度器通过 skill 的 `runtimeContract` 中声明的 `providerSlot` 显式请求时，才会接入提供者（详见 skill-loading 文档中关于 `runtimeContract` 的说明）。
 
-这意味着非 foundation tool 绝不能只因为某个 domain 存在就自动可用。它必须由 active skill grant，并通过 runtime 检查后才可用。
+这意味着非 foundation tool 绝不能只因为某个 domain 存在就自动可用。它必须由代码注册表和 runtime 检查允许后才可用。
 
 ### 8.10 Registry 与 Adapter 的角色
 
@@ -490,9 +482,9 @@ Registry 可以保留，但只能作为执行层辅助。
 
 - 决定某个目录是否算作 skill
 - 在 manifest 之外发明 skill 身份
-- 给 skill 分配未在 manifest 中声明的隐式 tool grants
+- 在代码注册表和 runtime policy 之外发明 tool 可用性
 
-能力身份归 manifests 与 catalogs，执行时绑定归 runtime binder。
+Skill 身份归 manifests 与 catalogs，tool 身份归代码注册表，执行时绑定归 runtime binder。
 
 ### 8.11 Contributor Workflow
 
@@ -501,11 +493,11 @@ Registry 可以保留，但只能作为执行层辅助。
 1. 创建新的 skill 目录
 2. 编写 `skill.yaml`
 3. 添加该 skill 的 prompts、handler 与 runtime 文件
-4. 在需要时 grant 现有 canonical tools
+4. 依赖代码 runtime policy 提供 tool 可用性
 
-在常见场景下，贡献者不应再去改中心 registry 文件或中心映射表。
+在常见场景下，skill 贡献者不应再去改中心 registry 文件或中心映射表。
 
-新增 tool 是单独、较少见的路径。只有现有 tool 无法表达新的动作契约时，才需要新增 tool。此时贡献者需要创建 tool 目录、编写 `tool.yaml`、实现 handler 与 schema，并补充对应测试与治理规则。
+新增 tool 是单独、较少见的路径。只有现有 tool 无法表达新的动作契约时，才需要新增 tool。此时贡献者需要更新 TypeScript tool 注册表、实现 handler 与 schema，并补充对应测试与治理规则。
 
 ### 8.12 决策总结
 
@@ -827,8 +819,8 @@ Router -> Scheduler -> Binder -> Executor
 
 ### 阶段 2：补全 Skill 与 Tool 注册元数据
 
-- 扩展 skill manifest，增加启用状态与 tool 绑定信息
-- 引入 tool manifest，支持平台内置与 skill 扩展 tool
+- 扩展 skill manifest，增加启用状态与 runtime contract 元数据
+- 引入代码注册表模型管理平台内置 tool
 - 让 runtime 能按请求或会话计算当前能力集
 
 ### 阶段 3：让 `structure-type` 成为稳定首站

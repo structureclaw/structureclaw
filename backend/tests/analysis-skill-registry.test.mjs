@@ -33,7 +33,7 @@ describe('analysis skill registry', () => {
       expect(fs.existsSync(manifestPath)).toBe(true);
       expect(fs.existsSync(runtimePath)).toBe(true);
       expect(skill.stages).toContain('analysis');
-      expect(skill.enabledTools).toContain('run_analysis');
+      expect(skill.capabilities.length).toBeGreaterThan(0);
     }
   });
 

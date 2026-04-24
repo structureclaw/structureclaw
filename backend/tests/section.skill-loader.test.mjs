@@ -69,8 +69,6 @@ describe('section skill loader', () => {
           'structureType: beam',
           'structuralTypeKeys: [beam]',
           'capabilities: []',
-          'grants: [draft_model]',
-          'providesTools: []',
           'requires: []',
           'conflicts: []',
           'autoLoadByDefault: false',

@@ -605,6 +605,17 @@ async function validateAgentCapabilityMatrix(context) {
     assert(toolIds.has("generate_report"), "capability matrix should expose generate_report from the code-owned registry");
     assert(toolIds.has("run_code_check"), "capability matrix should expose run_code_check from the code-owned registry");
     assert(payload.tools.every((tool) => tool.source === "builtin"), "capability matrix tools should be marked as builtin code-owned tools");
+    const frontendCategories = new Set(["modeling", "analysis", "code-check", "report", "utility"]);
+    assert(payload.tools.every((tool) => frontendCategories.has(tool.category)), "capability matrix tools should use frontend-compatible categories");
+    assert(payload.tools.find((tool) => tool.id === "run_analysis")?.category === "analysis", "run_analysis should be categorized for analysis UI");
+    assert(payload.tools.find((tool) => tool.id === "run_code_check")?.category === "code-check", "run_code_check should be categorized for code-check UI");
+    assert(payload.tools.find((tool) => tool.id === "generate_report")?.category === "report", "generate_report should be categorized for report UI");
+    assert(Array.isArray(payload.foundationToolIds) && payload.foundationToolIds.includes("ask_user_clarification"), "foundationToolIds should include interaction foundation tools");
+    assert(payload.foundationToolIds.includes("set_session_config"), "foundationToolIds should include session foundation tools");
+    assert(payload.enabledToolIdsBySkill?.beam?.includes("run_analysis"), "beam should expose analysis tools through code-owned policy mapping");
+    assert(payload.enabledToolIdsBySkill?.beam?.includes("generate_report"), "beam should expose report tools through code-owned policy mapping");
+    assert(Array.isArray(payload.skillIdsByToolId?.run_analysis) && payload.skillIdsByToolId.run_analysis.includes("beam"), "skillIdsByToolId should invert enabled tool mappings");
+    assert(payload.tools.every((tool) => Array.isArray(tool.requiresTools)), "capability matrix tools should expose requiresTools arrays");
     assert(payload.skillDomainById.beam === "structure-type", "beam should have structure-type domain mapping");
     assert(payload.skillDomainById["dead-load"] === "load-boundary", "discoverable load-boundary skills should be exposed in skillDomainById");
     assert(payload.skills.find((skill) => skill.id === "beam")?.runtimeStatus === "active", "beam should be marked active");
