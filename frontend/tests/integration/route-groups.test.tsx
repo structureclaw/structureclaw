@@ -59,13 +59,13 @@ describe('Route Groups (LAYT-03)', () => {
       expect(content).toContain('ThemeToggle')
     })
 
-    it('console layout links to the global LLM settings page', () => {
+    it('console layout has a button for the LLM settings dialog', () => {
       render(
         <ConsoleLayout>
           <div>Console Content</div>
         </ConsoleLayout>
       )
-      expect(screen.getByRole('link', { name: 'LLM' })).toHaveAttribute('href', '/console/llm')
+      expect(screen.getByRole('button', { name: 'LLM' })).toBeInTheDocument()
     })
   })
 

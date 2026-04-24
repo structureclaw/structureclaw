@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic'
 import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
-import Link from 'next/link'
+import { useStore } from '@/lib/stores/context'
 import { MarkdownBody } from './markdown-body'
 import { ToolCallCard } from './tool-call-card'
 import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, Maximize2, MessageSquarePlus, Orbit, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Sparkles, Square, Trash2, User } from 'lucide-react'
@@ -1716,6 +1716,7 @@ function extractPdfUrl(content: string): string | null {
 
 export function AIConsole() {
   const { t, locale } = useI18n()
+  const openWorkspaceSettings = useStore((state) => state.openWorkspaceSettings)
   const initialAssistantMessage = useMemo<Message>(() => ({
     id: 'welcome',
     role: 'assistant',
@@ -4088,12 +4089,13 @@ export function AIConsole() {
                       </div>
                       <p className="mt-1 text-xs leading-5 text-muted-foreground">{t('capabilitySettingsSummaryBody')}</p>
                     </div>
-                    <Link
-                      href="/console/capabilities"
+                    <button
+                      type="button"
                       className="rounded-full border border-cyan-300/35 bg-cyan-300/10 px-4 py-2 text-sm text-cyan-800 transition hover:bg-cyan-300/20 dark:text-cyan-100"
+                      onClick={() => openWorkspaceSettings('capabilities')}
                     >
                       {t('capabilitySettingsOpen')}
-                    </Link>
+                    </button>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <Badge variant="outline" className="text-[10px]">
