@@ -12,6 +12,15 @@ import {
   createValidateModelTool,
 } from './tools.js';
 import { createMemoryTool } from './memory-tool.js';
+import {
+  createDeletePathTool,
+  createGlobFilesTool,
+  createGrepFilesTool,
+  createMovePathTool,
+  createReadFileTool,
+  createReplaceInFileTool,
+  createWriteFileTool,
+} from './workspace-tools.js';
 
 export type AgentToolRisk = 'low' | 'workspace-read' | 'workspace-write' | 'destructive' | 'shell';
 export type AgentToolCategory = 'engineering' | 'interaction' | 'session' | 'workspace' | 'memory' | 'shell';
@@ -150,6 +159,73 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
     displayName: { zh: '持久记忆', en: 'Persistent Memory' },
     description: { zh: '存储和检索用户或项目级持久上下文。', en: 'Store and retrieve durable user or project context.' },
     create: () => createMemoryTool(),
+  },
+  {
+    id: 'glob_files',
+    category: 'workspace',
+    risk: 'workspace-read',
+    defaultEnabled: true,
+    displayName: { zh: '查找文件', en: 'Find Files' },
+    description: { zh: '按 glob 模式列出工作区文件。', en: 'List workspace files by glob pattern.' },
+    create: () => createGlobFilesTool(),
+  },
+  {
+    id: 'grep_files',
+    category: 'workspace',
+    risk: 'workspace-read',
+    defaultEnabled: true,
+    displayName: { zh: '搜索内容', en: 'Search Files' },
+    description: { zh: '按文本内容搜索工作区文件。', en: 'Search workspace files by text content.' },
+    create: () => createGrepFilesTool(),
+  },
+  {
+    id: 'read_file',
+    category: 'workspace',
+    risk: 'workspace-read',
+    defaultEnabled: true,
+    displayName: { zh: '读取文件', en: 'Read File' },
+    description: { zh: '读取工作区内文本文件。', en: 'Read a text file inside the workspace.' },
+    create: () => createReadFileTool(),
+  },
+  {
+    id: 'write_file',
+    category: 'workspace',
+    risk: 'workspace-write',
+    defaultEnabled: false,
+    requiresExplicitEnable: true,
+    displayName: { zh: '写入文件', en: 'Write File' },
+    description: { zh: '写入工作区内文本文件。', en: 'Write a text file inside the workspace.' },
+    create: () => createWriteFileTool(),
+  },
+  {
+    id: 'replace_in_file',
+    category: 'workspace',
+    risk: 'workspace-write',
+    defaultEnabled: false,
+    requiresExplicitEnable: true,
+    displayName: { zh: '替换文本', en: 'Replace In File' },
+    description: { zh: '对单个文件执行精确文本替换。', en: 'Perform exact text replacement in one file.' },
+    create: () => createReplaceInFileTool(),
+  },
+  {
+    id: 'move_path',
+    category: 'workspace',
+    risk: 'workspace-write',
+    defaultEnabled: false,
+    requiresExplicitEnable: true,
+    displayName: { zh: '移动文件', en: 'Move File' },
+    description: { zh: '移动或重命名工作区文件。', en: 'Move or rename a workspace file.' },
+    create: () => createMovePathTool(),
+  },
+  {
+    id: 'delete_path',
+    category: 'workspace',
+    risk: 'destructive',
+    defaultEnabled: false,
+    requiresExplicitEnable: true,
+    displayName: { zh: '删除文件', en: 'Delete File' },
+    description: { zh: '删除工作区内单个文件。', en: 'Delete one file inside the workspace.' },
+    create: () => createDeletePathTool(),
   },
 ];
 
