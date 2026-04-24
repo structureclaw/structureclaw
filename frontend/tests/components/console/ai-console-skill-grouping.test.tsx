@@ -56,7 +56,7 @@ describe('Capability settings and console integration', () => {
               { id: 'opensees-static', domain: 'analysis' },
             ],
             tools: [
-              { id: 'draft_model', category: 'modeling', displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' }, description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' } },
+              { id: 'build_model', category: 'modeling', displayName: { zh: '构建模型', en: 'Build Model' }, description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' } },
               { id: 'run_analysis', category: 'analysis', displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' }, description: { zh: '执行分析求解', en: 'Execute analysis' } },
             ],
             domainSummaries: [
@@ -276,21 +276,21 @@ describe('Capability settings and console integration', () => {
             ],
             tools: [
               {
-                id: 'draft_model',
-                displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' },
-                description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
+                id: 'build_model',
+                displayName: { zh: '构建模型', en: 'Build Model' },
+                description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' },
               },
               {
                 id: 'run_analysis',
                 displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' },
                 description: { zh: '执行分析求解', en: 'Execute analysis' },
-                requiresTools: ['draft_model'],
+                requiresTools: ['build_model'],
               },
             ],
-            foundationToolIds: ['draft_model'],
+            foundationToolIds: ['build_model'],
             enabledToolIdsBySkill: {
-              generic: ['draft_model'],
-              beam: ['draft_model'],
+              generic: ['build_model'],
+              beam: ['build_model'],
               'opensees-static': ['run_analysis'],
             },
             domainSummaries: [
@@ -323,7 +323,7 @@ describe('Capability settings and console integration', () => {
     })
 
     expect(screen.getAllByText(/utility tools/i).length).toBeGreaterThan(0)
-    expect(screen.getAllByRole('button', { name: 'Draft Structural Model' }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: 'Build Model' }).length).toBeGreaterThan(0)
     expect(screen.getAllByRole('button', { name: 'Run Structural Analysis' }).length).toBeGreaterThan(0)
   })
 
@@ -354,8 +354,8 @@ describe('Capability settings and console integration', () => {
               { id: 'opensees-static', domain: 'analysis' },
             ],
             tools: [
-              { id: 'draft_model', category: 'modeling', displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' }, description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' } },
-              { id: 'update_model', category: 'modeling', displayName: { zh: '更新结构模型', en: 'Update Structural Model' }, description: { zh: '根据当前会话更新模型', en: 'Update the model from session context' } },
+              { id: 'build_model', category: 'modeling', displayName: { zh: '构建模型', en: 'Build Model' }, description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' } },
+              { id: 'extract_draft_params', category: 'modeling', displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' }, description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' } },
               { id: 'run_analysis', category: 'analysis', displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' }, description: { zh: '执行分析求解', en: 'Execute analysis' } },
             ],
             domainSummaries: [
@@ -577,22 +577,22 @@ describe('Capability settings and console integration', () => {
             ],
             tools: [
               {
-                id: 'convert_model',
+                id: 'detect_structure_type',
                 category: 'modeling',
-                displayName: { zh: '转换结构模型', en: 'Convert Structural Model' },
-                description: { zh: '转换模型格式', en: 'Convert model formats' },
+                displayName: { zh: '识别结构类型', en: 'Detect Structure Type' },
+                description: { zh: '识别结构类型', en: 'Detect structure types from user text' },
               },
               {
-                id: 'draft_model',
+                id: 'build_model',
                 category: 'modeling',
-                displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' },
-                description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
+                displayName: { zh: '构建模型', en: 'Build Model' },
+                description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' },
               },
               {
-                id: 'update_model',
+                id: 'extract_draft_params',
                 category: 'modeling',
-                displayName: { zh: '更新结构模型', en: 'Update Structural Model' },
-                description: { zh: '根据当前会话更新模型', en: 'Update the model from session context' },
+                displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' },
+                description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' },
               },
               {
                 id: 'run_analysis',
@@ -601,9 +601,9 @@ describe('Capability settings and console integration', () => {
                 description: { zh: '执行分析求解', en: 'Execute analysis' },
               },
             ],
-            foundationToolIds: ['convert_model'],
+            foundationToolIds: ['detect_structure_type'],
             enabledToolIdsBySkill: {
-              generic: ['draft_model', 'update_model'],
+              generic: ['build_model', 'extract_draft_params'],
               'opensees-static': ['run_analysis'],
             },
             skillDomainById: {
@@ -675,7 +675,7 @@ describe('Capability settings and console integration', () => {
     expect(streamCall).toBeTruthy()
     const requestInit = streamCall?.[1] as RequestInit | undefined
     const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { enabledToolIds?: string[] } }
-    expect([...(body.context?.enabledToolIds ?? [])].sort()).toEqual(['convert_model', 'draft_model', 'run_analysis', 'update_model'])
+    expect([...(body.context?.enabledToolIds ?? [])].sort()).toEqual(['detect_structure_type', 'build_model', 'run_analysis', 'extract_draft_params'])
   })
 
   it('falls back to default engineering skills when the console submits before capability hydration finishes', async () => {
@@ -776,15 +776,15 @@ describe('Capability settings and console integration', () => {
         ],
         tools: [
           {
-            id: 'draft_model',
+            id: 'build_model',
             category: 'modeling',
-            displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' },
-            description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
+            displayName: { zh: '构建模型', en: 'Build Model' },
+            description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' },
           },
         ],
         foundationToolIds: [],
         enabledToolIdsBySkill: {
-          generic: ['draft_model'],
+          generic: ['build_model'],
         },
         skillDomainById: {
           generic: 'structure-type',
@@ -904,13 +904,13 @@ describe('Capability settings and console integration', () => {
               { id: 'opensees-static', domain: 'analysis' },
             ],
             tools: [
-              { id: 'draft_model', category: 'modeling', displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' }, description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' } },
-              { id: 'update_model', category: 'modeling', displayName: { zh: '更新结构模型', en: 'Update Structural Model' }, description: { zh: '根据当前会话更新模型', en: 'Update the model from session context' } },
+              { id: 'build_model', category: 'modeling', displayName: { zh: '构建模型', en: 'Build Model' }, description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' } },
+              { id: 'extract_draft_params', category: 'modeling', displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' }, description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' } },
               { id: 'run_analysis', category: 'analysis', displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' }, description: { zh: '执行分析求解', en: 'Execute analysis' } },
             ],
             foundationToolIds: [],
             enabledToolIdsBySkill: {
-              generic: ['draft_model', 'update_model'],
+              generic: ['build_model', 'extract_draft_params'],
               'opensees-static': ['run_analysis'],
             },
             skillDomainById: { generic: 'structure-type', 'opensees-static': 'analysis' },
@@ -963,7 +963,7 @@ describe('Capability settings and console integration', () => {
     const stored = JSON.parse(window.localStorage.getItem(CAPABILITY_PREFERENCE_STORAGE_KEY) || '{}') as { skillIds?: string[]; toolIds?: string[] }
     // Clicking a tool button toggles it off — run_analysis should be removed from the enabled list
     expect(stored.toolIds).not.toContain('run_analysis')
-    expect(stored.toolIds).toEqual(expect.arrayContaining(['draft_model', 'update_model']))
+    expect(stored.toolIds).toEqual(expect.arrayContaining(['build_model', 'extract_draft_params']))
 
     view.unmount()
 
@@ -988,13 +988,13 @@ describe('Capability settings and console integration', () => {
               { id: 'opensees-static', domain: 'analysis' },
             ],
             tools: [
-              { id: 'draft_model', category: 'modeling', displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' }, description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' } },
-              { id: 'update_model', category: 'modeling', displayName: { zh: '更新结构模型', en: 'Update Structural Model' }, description: { zh: '根据当前会话更新模型', en: 'Update the model from session context' } },
+              { id: 'build_model', category: 'modeling', displayName: { zh: '构建模型', en: 'Build Model' }, description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' } },
+              { id: 'extract_draft_params', category: 'modeling', displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' }, description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' } },
               { id: 'run_analysis', category: 'analysis', displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' }, description: { zh: '执行分析求解', en: 'Execute analysis' } },
             ],
             foundationToolIds: [],
             enabledToolIdsBySkill: {
-              generic: ['draft_model', 'update_model'],
+              generic: ['build_model', 'extract_draft_params'],
               'opensees-static': ['run_analysis'],
             },
             skillDomainById: { generic: 'structure-type', 'opensees-static': 'analysis' },
@@ -1108,16 +1108,16 @@ describe('Capability settings and console integration', () => {
           ],
           tools: [
             {
-              id: 'draft_model',
+              id: 'build_model',
               category: 'modeling',
-              displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' },
-              description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
+              displayName: { zh: '构建模型', en: 'Build Model' },
+              description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' },
             },
             {
-              id: 'update_model',
+              id: 'extract_draft_params',
               category: 'modeling',
-              displayName: { zh: '更新结构模型', en: 'Update Structural Model' },
-              description: { zh: '根据当前会话更新模型', en: 'Update the model from session context' },
+              displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' },
+              description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' },
             },
             {
               id: 'run_analysis',
@@ -1140,13 +1140,13 @@ describe('Capability settings and console integration', () => {
 
     await waitFor(() => {
       const stored = JSON.parse(window.localStorage.getItem(CAPABILITY_PREFERENCE_STORAGE_KEY) || '{}') as { toolIds?: string[] }
-      expect([...(stored.toolIds ?? [])].sort()).toEqual(['draft_model', 'run_analysis', 'update_model'])
+      expect([...(stored.toolIds ?? [])].sort()).toEqual(['build_model', 'run_analysis', 'extract_draft_params'])
     })
   })
 
   it('repairs legacy foundation-only default tool preferences on the capability settings page', async () => {    window.localStorage.setItem(CAPABILITY_PREFERENCE_STORAGE_KEY, JSON.stringify({
       skillIds: ['opensees-static', 'generic'],
-      toolIds: ['convert_model'],
+      toolIds: ['detect_structure_type'],
     }))
 
     vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
@@ -1182,22 +1182,22 @@ describe('Capability settings and console integration', () => {
             ],
             tools: [
               {
-                id: 'convert_model',
+                id: 'detect_structure_type',
                 category: 'modeling',
-                displayName: { zh: '转换结构模型', en: 'Convert Structural Model' },
-                description: { zh: '转换模型格式', en: 'Convert model formats' },
+                displayName: { zh: '识别结构类型', en: 'Detect Structure Type' },
+                description: { zh: '识别结构类型', en: 'Detect structure types from user text' },
               },
               {
-                id: 'draft_model',
+                id: 'build_model',
                 category: 'modeling',
-                displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' },
-                description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
+                displayName: { zh: '构建模型', en: 'Build Model' },
+                description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' },
               },
               {
-                id: 'update_model',
+                id: 'extract_draft_params',
                 category: 'modeling',
-                displayName: { zh: '更新结构模型', en: 'Update Structural Model' },
-                description: { zh: '根据当前会话更新模型', en: 'Update the model from session context' },
+                displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' },
+                description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' },
               },
               {
                 id: 'run_analysis',
@@ -1206,9 +1206,9 @@ describe('Capability settings and console integration', () => {
                 description: { zh: '执行分析求解', en: 'Execute analysis' },
               },
             ],
-            foundationToolIds: ['convert_model'],
+            foundationToolIds: ['detect_structure_type'],
             enabledToolIdsBySkill: {
-              generic: ['draft_model', 'update_model'],
+              generic: ['build_model', 'extract_draft_params'],
               'opensees-static': ['run_analysis'],
             },
             skillDomainById: {
@@ -1237,13 +1237,13 @@ describe('Capability settings and console integration', () => {
 
     await waitFor(() => {
       const stored = JSON.parse(window.localStorage.getItem(CAPABILITY_PREFERENCE_STORAGE_KEY) || '{}') as { toolIds?: string[] }
-      expect([...(stored.toolIds ?? [])].sort()).toEqual(['convert_model', 'draft_model', 'run_analysis', 'update_model'])
+      expect([...(stored.toolIds ?? [])].sort()).toEqual(['detect_structure_type', 'build_model', 'run_analysis', 'extract_draft_params'])
     })
   })
 
   it('does not treat duplicated stored skill ids as the default skill set during repair', async () => {    window.localStorage.setItem(CAPABILITY_PREFERENCE_STORAGE_KEY, JSON.stringify({
       skillIds: ['generic', 'generic'],
-      toolIds: ['convert_model'],
+      toolIds: ['detect_structure_type'],
     }))
 
     vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
@@ -1279,22 +1279,22 @@ describe('Capability settings and console integration', () => {
             ],
             tools: [
               {
-                id: 'convert_model',
+                id: 'detect_structure_type',
                 category: 'modeling',
-                displayName: { zh: '转换结构模型', en: 'Convert Structural Model' },
-                description: { zh: '转换模型格式', en: 'Convert model formats' },
+                displayName: { zh: '识别结构类型', en: 'Detect Structure Type' },
+                description: { zh: '识别结构类型', en: 'Detect structure types from user text' },
               },
               {
-                id: 'draft_model',
+                id: 'build_model',
                 category: 'modeling',
-                displayName: { zh: '草拟结构模型', en: 'Draft Structural Model' },
-                description: { zh: '根据文本生成模型草稿', en: 'Draft a model from text' },
+                displayName: { zh: '构建模型', en: 'Build Model' },
+                description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' },
               },
               {
-                id: 'update_model',
+                id: 'extract_draft_params',
                 category: 'modeling',
-                displayName: { zh: '更新结构模型', en: 'Update Structural Model' },
-                description: { zh: '根据当前会话更新模型', en: 'Update the model from session context' },
+                displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' },
+                description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' },
               },
               {
                 id: 'run_analysis',
@@ -1303,9 +1303,9 @@ describe('Capability settings and console integration', () => {
                 description: { zh: '执行分析求解', en: 'Execute analysis' },
               },
             ],
-            foundationToolIds: ['convert_model'],
+            foundationToolIds: ['detect_structure_type'],
             enabledToolIdsBySkill: {
-              generic: ['draft_model', 'update_model'],
+              generic: ['build_model', 'extract_draft_params'],
               'opensees-static': ['run_analysis'],
             },
             skillDomainById: {
@@ -1334,7 +1334,7 @@ describe('Capability settings and console integration', () => {
 
     await waitFor(() => {
       const stored = JSON.parse(window.localStorage.getItem(CAPABILITY_PREFERENCE_STORAGE_KEY) || '{}') as { toolIds?: string[] }
-      expect(stored.toolIds).toEqual(['convert_model'])
+      expect(stored.toolIds).toEqual(['detect_structure_type'])
     })
   })
 })

@@ -265,6 +265,25 @@ function evaluateEngineForSkill(
   };
 }
 
+function recommendedToolIdsForSkill(skill: CapabilitySkill): string[] {
+  if (skill.domain === 'analysis') {
+    return ['build_model', 'validate_model', 'run_analysis', 'generate_report'];
+  }
+  if (skill.domain === 'code-check') {
+    return ['build_model', 'validate_model', 'run_analysis', 'run_code_check', 'generate_report'];
+  }
+  if (skill.domain === 'report-export') {
+    return ['generate_report'];
+  }
+  if (skill.domain === 'validation') {
+    return ['validate_model'];
+  }
+  if (skill.domain === 'structure-type') {
+    return ['detect_structure_type', 'extract_draft_params', 'build_model'];
+  }
+  return [];
+}
+
 export class AgentCapabilityService {
   private readonly skillRuntime: AgentSkillRuntime;
   private readonly skillCatalog: AgentSkillCatalogService;
@@ -326,10 +345,6 @@ export class AgentCapabilityService {
     const tools = toolDefinitions
       .map((tool) => toCapabilityTool(tool))
       .sort((a, b) => a.id.localeCompare(b.id));
-    const enabledToolIdsBySkill = catalogEntries.reduce<Record<string, string[]>>((acc, entry) => {
-      acc[entry.canonicalId] = [...defaultToolIds];
-      return acc;
-    }, {});
     const providedToolIdsBySkill = catalogEntries.reduce<Record<string, string[]>>((acc, entry) => {
       acc[entry.canonicalId] = [];
       return acc;
@@ -367,6 +382,10 @@ export class AgentCapabilityService {
         },
       };
     });
+    const enabledToolIdsBySkill = skills.reduce<Record<string, string[]>>((acc, skill) => {
+      acc[skill.id] = recommendedToolIdsForSkill(skill);
+      return acc;
+    }, {});
     const skillAliasesByCanonicalId = catalogEntries.reduce<Record<string, string[]>>((acc, entry) => {
       acc[entry.canonicalId] = uniqueStrings(entry.aliases).sort();
       return acc;

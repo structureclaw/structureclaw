@@ -187,8 +187,8 @@ function mockConsoleSupportRequest(url: string) {
           { id: 'code-check-gb50017', domain: 'code-check' },
         ],
         tools: [
-          { id: 'draft_model', category: 'modeling' },
-          { id: 'update_model', category: 'modeling' },
+          { id: 'build_model', category: 'modeling' },
+          { id: 'extract_draft_params', category: 'modeling' },
           { id: 'validate_model', category: 'modeling' },
           { id: 'run_analysis', category: 'analysis' },
           { id: 'run_code_check', category: 'checking' },
@@ -273,7 +273,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     return view
   }
 
-  function setCapabilityPreferences(skillIds: string[], toolIds: string[] = ['draft_model', 'update_model', 'validate_model', 'run_analysis', 'run_code_check', 'generate_report']) {
+  function setCapabilityPreferences(skillIds: string[], toolIds: string[] = ['build_model', 'extract_draft_params', 'validate_model', 'run_analysis', 'run_code_check', 'generate_report']) {
     window.localStorage.setItem(
       CAPABILITY_PREFERENCE_STORAGE_KEY,
       JSON.stringify({

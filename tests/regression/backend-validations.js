@@ -336,6 +336,8 @@ async function validateAgentToolCatalog(context) {
   assert(toolIds.includes("validate_model"), "code-owned tool registry should expose validate_model");
   assert(toolIds.includes("generate_report"), "code-owned tool registry should expose generate_report");
   assert(toolIds.includes("run_code_check"), "code-owned tool registry should expose run_code_check");
+  assert(toolIds.includes("set_session_config"), "code-owned tool registry should expose set_session_config");
+  assert(!toolIds.includes("update_session_config"), "code-owned tool registry should not expose legacy update_session_config");
   assert(tools.every((tool) => tool.source === undefined), "code-owned registry should not depend on file-declared source metadata");
   console.log("[ok] agent code-owned tool catalog contract");
 }
@@ -990,10 +992,10 @@ async function validateChatStreamContract(context) {
     yield {
       type: "step_upsert",
       step: {
-        id: "step:draft_model:2026-03-09T00:00:00.002Z",
+        id: "step:build_model:2026-03-09T00:00:00.002Z",
         phase: "modeling",
         status: "done",
-        tool: "draft_model",
+        tool: "build_model",
         title: "已选择建模技能",
         reason: "routing",
         startedAt: "2026-03-09T00:00:00.002Z",
@@ -1004,9 +1006,9 @@ async function validateChatStreamContract(context) {
       type: "step_upsert",
       phaseId: "phase:modeling",
       step: {
-        id: "step:draft_model:2026-03-09T00:00:00.003Z",
+        id: "step:build_model:2026-03-09T00:00:00.003Z",
         phase: "modeling",
-        tool: "draft_model",
+        tool: "build_model",
         status: "running",
         title: "开始生成结构模型",
         reason: "draft model",
@@ -1044,9 +1046,9 @@ async function validateChatStreamContract(context) {
       type: "step_upsert",
       phaseId: "phase:modeling",
       step: {
-        id: "step:draft_model:2026-03-09T00:00:00.015Z",
+        id: "step:build_model:2026-03-09T00:00:00.015Z",
         phase: "modeling",
-        tool: "draft_model",
+        tool: "build_model",
         status: "done",
         title: "结构模型已生成",
         output: { model: { schema_version: "1.0.0" } },
@@ -1132,7 +1134,7 @@ async function validateChatStreamContract(context) {
     );
     assert(
       Array.isArray(persistedAssistantMetadata?.presentation?.phases)
-        && persistedAssistantMetadata.presentation.phases.some((phase) => phase.phase === "modeling" && phase.steps.some((step) => step.tool === "draft_model")),
+        && persistedAssistantMetadata.presentation.phases.some((phase) => phase.phase === "modeling" && phase.steps.some((step) => step.tool === "build_model")),
       "chat/stream should persist modeling steps inside assistant presentation metadata",
     );
 

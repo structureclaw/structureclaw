@@ -58,9 +58,9 @@ describe('AIConsole presentation rendering', () => {
             type: 'step_upsert',
             phaseId: 'phase:modeling',
             step: {
-              id: 'step:draft_model:2026-04-19T10:00:01.000Z',
+              id: 'step:build_model:2026-04-19T10:00:01.000Z',
               phase: 'modeling',
-              tool: 'draft_model',
+              tool: 'build_model',
               status: 'done',
               title: '结构模型已生成',
               startedAt: '2026-04-19T10:00:01.000Z',
@@ -233,9 +233,9 @@ describe('AIConsole presentation rendering', () => {
                       status: 'done',
                       steps: [
                         {
-                          id: 'step:draft_model:2026-04-19T10:00:01.000Z',
+                          id: 'step:build_model:2026-04-19T10:00:01.000Z',
                           phase: 'understanding',
-                          tool: 'draft_model',
+                          tool: 'build_model',
                           status: 'done',
                           title: '参数收集完成',
                         },
