@@ -3272,27 +3272,37 @@ export function AIConsole() {
 
           if (payload.type === 'step_upsert' && payload.phaseId && payload.step) {
             if (payload.step.status === 'running') {
-              // Finalize current text message
-              if (currentTextMessageId) {
-                replaceMessageForConversation(activeConversationId, currentTextMessageId, (msg) => {
-                  if (msg.status !== 'streaming') return msg
-                  return { ...msg, status: 'done' as const }
+              const existingToolMsgId = toolMessageIds.get(payload.step.id)
+
+              if (existingToolMsgId) {
+                // Duplicate running event — update existing message instead of creating a new one
+                replaceMessageForConversation(activeConversationId, existingToolMsgId, (msg) => ({
+                  ...msg,
+                  toolStep: { ...msg.toolStep!, ...payload.step },
+                }))
+              } else {
+                // Finalize current text message
+                if (currentTextMessageId) {
+                  replaceMessageForConversation(activeConversationId, currentTextMessageId, (msg) => {
+                    if (msg.status !== 'streaming') return msg
+                    return { ...msg, status: 'done' as const }
+                  })
+                  currentTextMessageId = ''
+                  chatBuffer = ''  // Reset so next text bubble only contains new tokens
+                }
+                // Create a new tool message bubble
+                const toolMsgId = createId('tool')
+                toolMessageIds.set(payload.step.id, toolMsgId)
+                turnMessageIds.add(toolMsgId)
+                appendMessageForConversation(activeConversationId, {
+                  id: toolMsgId,
+                  role: 'tool',
+                  content: '',
+                  status: 'streaming',
+                  timestamp: new Date().toISOString(),
+                  toolStep: payload.step,
                 })
-                currentTextMessageId = ''
-                chatBuffer = ''  // Reset so next text bubble only contains new tokens
               }
-              // Create a new tool message bubble
-              const toolMsgId = createId('tool')
-              toolMessageIds.set(payload.step.id, toolMsgId)
-              turnMessageIds.add(toolMsgId)
-              appendMessageForConversation(activeConversationId, {
-                id: toolMsgId,
-                role: 'tool',
-                content: '',
-                status: 'streaming',
-                timestamp: new Date().toISOString(),
-                toolStep: payload.step,
-              })
               // Also track in presentation (for data continuity)
               if (currentPresentationRef.current) {
                 const nextPresentation = reducePresentationEvent(currentPresentationRef.current, {
