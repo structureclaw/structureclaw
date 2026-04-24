@@ -370,6 +370,8 @@ export class LangGraphAgentService {
     tools: Array<{
       name: string;
       description: string;
+      displayName: { zh: string; en: string };
+      localizedDescription: { zh: string; en: string };
       category: string;
       risk: string;
       defaultEnabled: boolean;
@@ -378,7 +380,9 @@ export class LangGraphAgentService {
     return {
       tools: listAgentToolDefinitions().map((definition) => ({
         name: definition.id,
-        description: definition.description.zh,
+        description: definition.description.en,
+        displayName: definition.displayName,
+        localizedDescription: definition.description,
         category: definition.category,
         risk: definition.risk,
         defaultEnabled: definition.defaultEnabled,

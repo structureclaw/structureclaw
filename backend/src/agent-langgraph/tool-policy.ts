@@ -26,6 +26,20 @@ function addDenied(deniedToolIds: Record<string, string[]>, toolId: string, reas
   deniedToolIds[toolId] = [...(deniedToolIds[toolId] || []), reason];
 }
 
+const LEGACY_TOOL_IDS = new Set([
+  'convert_model',
+  'draft_model',
+  'enrich_model',
+  'generate_drawing',
+  'postprocess_result',
+  'read_workspace_file',
+  'synthesize_design',
+  'update_model',
+  'update_session_config',
+  'write_workspace_file',
+  'list_workspace_files',
+]);
+
 export function resolveActiveToolIds(input: ResolveActiveToolIdsInput): ResolveActiveToolIdsResult {
   const definitions = listAgentToolDefinitions();
   const known = new Map(definitions.map((definition) => [definition.id, definition]));
@@ -33,14 +47,24 @@ export function resolveActiveToolIds(input: ResolveActiveToolIdsInput): ResolveA
     ? undefined
     : uniqueStrings(input.requestedEnabledToolIds);
   const requestedDisabled = new Set(uniqueStrings(input.requestedDisabledToolIds));
+  const defaultToolIds = definitions
+    .filter((definition) => definition.defaultEnabled)
+    .map((definition) => definition.id);
+  const containsLegacyToolIds = requestedEnabled?.some((toolId) => LEGACY_TOOL_IDS.has(toolId)) ?? false;
   const baseIds = requestedEnabled === undefined
-    ? definitions.filter((definition) => definition.defaultEnabled).map((definition) => definition.id)
-    : requestedEnabled;
+    ? defaultToolIds
+    : containsLegacyToolIds
+      ? [...defaultToolIds, ...requestedEnabled]
+      : requestedEnabled;
   const deniedToolIds: Record<string, string[]> = {};
   const activeToolIds: string[] = [];
   const unknownToolIds: string[] = [];
 
   for (const toolId of baseIds) {
+    if (LEGACY_TOOL_IDS.has(toolId)) {
+      addDenied(deniedToolIds, toolId, 'LEGACY_TOOL_ID_IGNORED');
+      continue;
+    }
     const definition = known.get(toolId);
     if (!definition) {
       unknownToolIds.push(toolId);

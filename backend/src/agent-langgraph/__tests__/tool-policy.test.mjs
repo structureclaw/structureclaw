@@ -68,4 +68,31 @@ describe("LangGraph tool policy", () => {
     expect(result.activeToolIds).toEqual(["detect_structure_type"]);
     expect(result.unknownToolIds).toEqual(["missing_tool", "shell"]);
   });
+
+  test("legacy frontend tool selections keep default core tools during migration", async () => {
+    const { resolveActiveToolIds } = await import("../../../dist/agent-langgraph/tool-policy.js");
+
+    const result = resolveActiveToolIds({
+      requestedEnabledToolIds: ["convert_model", "draft_model", "update_model", "run_analysis"],
+      requestedDisabledToolIds: undefined,
+      allowShell: false,
+      selectedSkillIds: ["generic", "opensees-static"],
+    });
+
+    expect(result.activeToolIds).toEqual([
+      "ask_user_clarification",
+      "build_model",
+      "detect_structure_type",
+      "extract_draft_params",
+      "generate_report",
+      "run_analysis",
+      "run_code_check",
+      "set_session_config",
+      "validate_model",
+    ]);
+    expect(result.unknownToolIds).toEqual([]);
+    expect(result.deniedToolIds.convert_model).toContain("LEGACY_TOOL_ID_IGNORED");
+    expect(result.deniedToolIds.draft_model).toContain("LEGACY_TOOL_ID_IGNORED");
+    expect(result.deniedToolIds.update_model).toContain("LEGACY_TOOL_ID_IGNORED");
+  });
 });
