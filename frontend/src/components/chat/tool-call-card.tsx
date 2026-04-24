@@ -4,10 +4,12 @@ import { useState } from 'react'
 import { ChevronDown, ChevronRight, CheckCircle2, AlertCircle, Loader2 } from 'lucide-react'
 import type { TimelineStepItem } from './message-presentation'
 import type { MessageKey } from '@/lib/i18n'
+import { cn } from '@/lib/utils'
 
 export type ToolCallCardProps = {
   step: TimelineStepItem
   t: (key: MessageKey) => string
+  attached?: boolean
 }
 
 function formatArgs(args: Record<string, unknown>): string {
@@ -20,7 +22,7 @@ function truncateOutput(output: unknown, maxLen = 300): string {
   return str.length <= maxLen ? str : str.slice(0, maxLen) + '...'
 }
 
-export function ToolCallCard({ step, t }: ToolCallCardProps) {
+export function ToolCallCard({ step, t, attached = false }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false)
   const hasArgs = !!(step.args && Object.keys(step.args).length > 0)
   const argsJson = hasArgs ? formatArgs(step.args!) : ''
@@ -54,7 +56,7 @@ export function ToolCallCard({ step, t }: ToolCallCardProps) {
   })()
 
   return (
-    <div className={`rounded-lg border ${borderColor} ${bgColor} overflow-hidden`}>
+    <div className={cn('rounded-lg border overflow-hidden', borderColor, bgColor, attached ? 'shadow-none' : '')}>
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2">
         {statusIcon}

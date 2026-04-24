@@ -2,6 +2,7 @@ import { describe, expect, it, vi, afterEach } from 'vitest'
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { AIConsole } from '@/components/chat/ai-console'
+import { AppStoreProvider } from '@/lib/stores/context'
 
 function createSseResponse(events: unknown[]) {
   const encoder = new TextEncoder()
@@ -135,7 +136,7 @@ describe('AIConsole presentation rendering', () => {
       return Response.json({})
     })
 
-    render(<AIConsole />)
+    render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
 
     const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
     await user.type(composer, 'Create a portal frame')
@@ -272,7 +273,7 @@ describe('AIConsole presentation rendering', () => {
       return Response.json({})
     })
 
-    render(<AIConsole />)
+    render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
 
     await user.click(await screen.findByRole('button', { name: /portal frame restore test/i }))
 
@@ -372,7 +373,7 @@ describe('AIConsole presentation rendering', () => {
       return Response.json({})
     })
 
-    render(<AIConsole />)
+    render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
 
     await user.click(screen.getByRole('button', { name: /expand engineering context/i }))
     const composer = await screen.findByPlaceholderText(/describe your structural goal/i)

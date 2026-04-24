@@ -456,6 +456,46 @@ function saveConsoleUiPreferences(preferences: ConsoleUiPreferences) {
   }
 }
 
+type MessageRenderGroup =
+  | { type: 'single'; message: Message }
+  | { type: 'assistant-execution'; assistant: Message; tools: Message[] }
+
+function groupMessagesForRendering(messages: Message[]): MessageRenderGroup[] {
+  const groups: MessageRenderGroup[] = []
+
+  messages.forEach((message) => {
+    if (message.role === 'tool') {
+      const previous = groups[groups.length - 1]
+      if (previous?.type === 'assistant-execution') {
+        groups[groups.length - 1] = {
+          ...previous,
+          tools: [...previous.tools, message],
+        }
+        return
+      }
+      groups.push({ type: 'single', message })
+      return
+    }
+
+    if (message.role === 'assistant' && message.presentation?.mode === 'execution') {
+      groups.push({ type: 'assistant-execution', assistant: message, tools: [] })
+      return
+    }
+
+    groups.push({ type: 'single', message })
+  })
+
+  return groups
+}
+
+function findPreviousUserMessage(messages: Message[], messageId: string): Message | null {
+  const index = messages.findIndex((message) => message.id === messageId)
+  for (let i = index - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'user') return messages[i]
+  }
+  return null
+}
+
 function getIsSidebarLayout() {
   if (typeof window === 'undefined') {
     return false
@@ -1785,6 +1825,8 @@ export function AIConsole() {
   const [pendingOptions, setPendingOptions] = useState<string[]>([])
 
   const outputMode = uiPreferences.outputMode
+
+  const messageRenderGroups = useMemo(() => groupMessagesForRendering(messages), [messages])
 
   function setOutputMode(nextMode: ConsoleOutputMode) {
     setUiPreferences((current) => ({
@@ -3783,7 +3825,87 @@ export function AIConsole() {
                 </div>
               )}
 
-              {messages.map((message, msgIdx) => (
+              {messageRenderGroups.map((group, groupIndex) => {
+                if (group.type === 'assistant-execution') {
+                  const message = group.assistant
+                  return (
+                    <div key={message.id} data-testid="assistant-execution-group" className="flex justify-start gap-3">
+                      <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-700 dark:text-cyan-200">
+                        <Bot className="h-5 w-5" />
+                      </div>
+                      <div className="max-w-[88%] space-y-2">
+                        <div className="rounded-[26px] border border-border/70 bg-background/70 px-5 py-4 text-foreground shadow-lg dark:border-white/10 dark:bg-white/5">
+                          <div className="mb-2 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+                            <BrainCircuit className="h-3.5 w-3.5" />
+                            <span>{t('structureClawAi')}</span>
+                            <span className="text-slate-500">{formatDate(message.timestamp, locale)}</span>
+                          </div>
+                          {message.presentation ? (
+                            <MessagePresentationView
+                              presentation={message.presentation}
+                              t={t}
+                              resolveSkillName={(skillId: string) => {
+                                const skill = availableSkills.find((s) => s.id === skillId)
+                                if (!skill) return skillId
+                                return locale === 'zh' ? (skill.name.zh || skill.name.en || skillId) : (skill.name.en || skill.name.zh || skillId)
+                              }}
+                            />
+                          ) : message.content ? (
+                            <MarkdownBody compact content={message.content} />
+                          ) : null}
+                          {message.status === 'streaming' && (
+                            <span className="inline-flex items-center gap-1.5 mt-1" role="status">
+                              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500 dark:bg-cyan-400" />
+                              <span className="text-xs text-muted-foreground animate-pulse">{t('streamingInProgress')}</span>
+                            </span>
+                          )}
+                          {message.status === 'aborted' && (
+                            <span className="ml-2 inline-flex items-center gap-1 text-xs text-rose-500 dark:text-rose-400">
+                              <Square className="h-2.5 w-2.5" />
+                              {t('streamAborted')}
+                            </span>
+                          )}
+                          {message.status === 'error' && (
+                            <div className="mt-2 flex items-center gap-2">
+                              <span className="text-xs text-rose-500 dark:text-rose-400">{t('streamAborted')}</span>
+                              <button
+                                type="button"
+                                className="inline-flex items-center gap-1 rounded-full border border-rose-300/40 bg-rose-300/10 px-2.5 py-1 text-[11px] text-rose-800 hover:bg-rose-300/20 dark:text-rose-200"
+                                onClick={() => {
+                                  const prevUserMsg = findPreviousUserMessage(messages, message.id)
+                                  if (prevUserMsg) {
+                                    setInput(prevUserMsg.content)
+                                    composerTextareaRef.current?.focus()
+                                  }
+                                }}
+                              >
+                                <RefreshCw className="h-3 w-3" />
+                                {t('retrySend')}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {group.tools.length > 0 ? (
+                          <div className="ml-4 space-y-2 border-l border-cyan-300/30 pl-4">
+                            {group.tools.map((toolMessage) => (
+                              toolMessage.toolStep ? (
+                                <ToolCallCard key={toolMessage.id} step={toolMessage.toolStep} t={t} attached />
+                              ) : toolMessage.status === 'streaming' ? (
+                                <span key={toolMessage.id} className="inline-flex items-center gap-1.5" role="status">
+                                  <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500 dark:bg-cyan-400" />
+                                  <span className="text-xs text-muted-foreground animate-pulse">{t('streamingInProgress')}</span>
+                                </span>
+                              ) : null
+                            ))}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  )
+                }
+
+                const message = group.message
+                return (
                 <div
                   key={message.id}
                   className={cn('flex gap-3', message.role === 'user' ? 'justify-end' : 'justify-start')}
@@ -3859,8 +3981,8 @@ export function AIConsole() {
                               type="button"
                               className="inline-flex items-center gap-1 rounded-full border border-rose-300/40 bg-rose-300/10 px-2.5 py-1 text-[11px] text-rose-800 hover:bg-rose-300/20 dark:text-rose-200"
                           onClick={() => {
-                            const prevUserMsg = msgIdx > 0 ? messages[msgIdx - 1] : null
-                            if (prevUserMsg?.role === 'user') {
+                            const prevUserMsg = findPreviousUserMessage(messages, message.id)
+                            if (prevUserMsg) {
                               setInput(prevUserMsg.content)
                               composerTextareaRef.current?.focus()
                             }
@@ -4036,7 +4158,8 @@ export function AIConsole() {
                   </>
                   )}
                 </div>
-              ))}
+                )
+              })}
               <div ref={messagesEndRef} />
             </div>
           </div>
