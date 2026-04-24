@@ -5,12 +5,13 @@ import { CapabilitySettingsPanel } from '@/components/chat/capability-settings-p
 import { DialogShell } from '@/components/ui/dialog-shell'
 import { Button } from '@/components/ui/button'
 import { LlmSettingsPanel } from '@/components/settings/llm-settings-panel'
+import { DatabaseSettingsPanel } from '@/components/settings/database-settings-panel'
 import { useI18n } from '@/lib/i18n'
 import { useStore } from '@/lib/stores/context'
 import { cn } from '@/lib/utils'
 import type { WorkspaceSettingsTab } from '@/lib/stores/slices/preferences'
 
-const SETTINGS_TABS: WorkspaceSettingsTab[] = ['capabilities', 'llm']
+const SETTINGS_TABS: WorkspaceSettingsTab[] = ['capabilities', 'llm', 'database']
 
 export function WorkspaceSettingsDialog() {
   const { t } = useI18n()
@@ -45,7 +46,7 @@ export function WorkspaceSettingsDialog() {
             )}
             onClick={() => openWorkspaceSettings(tab)}
           >
-            {tab === 'capabilities' ? t('capabilitySettingsNav') : t('llmSettingsNav')}
+            {tab === 'capabilities' ? t('capabilitySettingsNav') : tab === 'llm' ? t('llmSettingsNav') : t('databaseAdminNav')}
           </Button>
         ))}
       </div>
@@ -54,7 +55,7 @@ export function WorkspaceSettingsDialog() {
         id={`${tabBaseId}-panel-${activeTab}`}
         aria-labelledby={`${tabBaseId}-tab-${activeTab}`}
       >
-        {activeTab === 'capabilities' ? <CapabilitySettingsPanel /> : <LlmSettingsPanel />}
+        {activeTab === 'capabilities' ? <CapabilitySettingsPanel /> : activeTab === 'llm' ? <LlmSettingsPanel /> : <DatabaseSettingsPanel />}
       </div>
     </DialogShell>
   )

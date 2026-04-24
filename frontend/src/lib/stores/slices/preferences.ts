@@ -1,7 +1,7 @@
 import { type StateCreator } from 'zustand'
 
 export type AppLocale = 'en' | 'zh'
-export type WorkspaceSettingsTab = 'capabilities' | 'llm'
+export type WorkspaceSettingsTab = 'capabilities' | 'llm' | 'database'
 
 /**
  * Preferences State Interface
