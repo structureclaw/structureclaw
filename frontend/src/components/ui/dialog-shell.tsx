@@ -32,6 +32,8 @@ export function DialogShell({
   const containerRef = useRef<HTMLDivElement | null>(null)
   const closeButtonRef = useRef<HTMLButtonElement | null>(null)
   const lastActiveElementRef = useRef<HTMLElement | null>(null)
+  const onCloseRef = useRef(onClose)
+  onCloseRef.current = onClose
 
   function handleOutsideClick(event: MouseEvent<HTMLDivElement>) {
     if (event.target === event.currentTarget) {
@@ -50,7 +52,7 @@ export function DialogShell({
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === 'Escape') {
         event.preventDefault()
-        onClose()
+        onCloseRef.current()
         return
       }
 
@@ -83,7 +85,7 @@ export function DialogShell({
       window.removeEventListener('keydown', handleKeyDown)
       lastActiveElementRef.current?.focus()
     }
-  }, [onClose, open])
+  }, [open])
 
   if (!open || typeof document === 'undefined') return null
 

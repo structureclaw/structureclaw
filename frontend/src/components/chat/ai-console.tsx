@@ -3768,15 +3768,17 @@ export function AIConsole() {
                 <h1 className="mt-1 text-2xl font-semibold text-foreground">{t('aiConsoleTitle')}</h1>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="rounded-full border-cyan-300/35 bg-cyan-300/10 text-cyan-800 hover:bg-cyan-300/20 dark:text-cyan-100"
-                  onClick={() => setResultDialogOpen(true)}
-                >
-                  <PanelRightOpen className="h-4 w-4" />
-                  {t('openResultPanel')}
-                </Button>
+                {outputMode === 'modal' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="rounded-full border-cyan-300/35 bg-cyan-300/10 text-cyan-800 hover:bg-cyan-300/20 dark:text-cyan-100"
+                    onClick={() => setResultDialogOpen(true)}
+                  >
+                    <PanelRightOpen className="h-4 w-4" />
+                    {t('openResultPanel')}
+                  </Button>
+                )}
                 <Button
                   type="button"
                   variant="outline"

@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Bot, KeyRound, Link2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -30,6 +30,8 @@ function inputClassName() {
 
 export function LlmSettingsPanel() {
   const { t } = useI18n()
+  const tRef = useRef(t)
+  tRef.current = t
   const [baseUrl, setBaseUrl] = useState('')
   const [model, setModel] = useState('')
   const [token, setToken] = useState('')
@@ -63,7 +65,7 @@ export function LlmSettingsPanel() {
       try {
         const response = await fetch(`${API_BASE}/api/v1/admin/llm`, { cache: 'no-store' })
         if (!response.ok) {
-          throw new Error(`${t('requestFailedHttp')} ${response.status}`)
+          throw new Error(`${tRef.current('requestFailedHttp')} ${response.status}`)
         }
 
         const payload = await response.json() as LlmSettingsResponse
@@ -75,7 +77,7 @@ export function LlmSettingsPanel() {
         setError('')
       } catch (nextError) {
         if (!cancelled) {
-          setError(nextError instanceof Error ? nextError.message : t('llmSettingsLoadFailed'))
+          setError(nextError instanceof Error ? nextError.message : tRef.current('llmSettingsLoadFailed'))
         }
       }
     }
@@ -85,7 +87,8 @@ export function LlmSettingsPanel() {
     return () => {
       cancelled = true
     }
-  }, [t])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   function sourceLabel(source: ApiKeySource) {
     if (source === 'runtime') {
