@@ -807,9 +807,6 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     envelope["controlElementShearForce"] = control_elem_shear
     envelope["controlElementMoment"] = control_elem_moment
 
-    if member_utilization:
-        envelope["elementUtilization"] = member_utilization
-
     # Build result dict
     result_dict: Dict[str, Any] = {
         "status": "success",
