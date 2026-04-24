@@ -3555,7 +3555,7 @@ export function AIConsole() {
       data-history-collapsed={String(historyCollapsed)}
       data-output-mode={outputMode}
       className={cn(
-        'grid min-h-[calc(100vh-5.5rem)] gap-4 xl:h-full xl:min-h-0 xl:overflow-hidden',
+        'grid min-h-[calc(100vh-5.5rem)] gap-3 xl:gap-4 xl:h-full xl:min-h-0 xl:overflow-hidden transition-[grid-template-columns] duration-300 ease-in-out',
         outputMode === 'modal'
           ? (
               historyCollapsed
