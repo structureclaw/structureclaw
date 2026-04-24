@@ -6,10 +6,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { MarkdownBody } from './markdown-body'
 import { ToolCallCard } from './tool-call-card'
-import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, Maximize2, MessageSquarePlus, Orbit, PanelLeftClose, PanelLeftOpen, RefreshCw, Sparkles, Square, Trash2, User } from 'lucide-react'
+import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, Maximize2, MessageSquarePlus, Orbit, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Sparkles, Square, Trash2, User } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { DialogShell } from '@/components/ui/dialog-shell'
 import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { toast } from '@/components/ui/toast'
@@ -1316,6 +1317,7 @@ function AnalysisPanel({
   onTabChange,
   t,
   locale,
+  panelIdPrefix = 'output',
 }: {
   result: AgentResult | null
   modelVisualizationSnapshot: VisualizationSnapshot | null
@@ -1325,6 +1327,7 @@ function AnalysisPanel({
   onTabChange: (tab: PanelTab) => void
   t: (key: MessageKey) => string
   locale: AppLocale
+  panelIdPrefix?: string
 }) {
   const analysis = extractAnalysis(result)
   const stats = extractSummaryStats(analysis, t, locale)
@@ -1335,6 +1338,9 @@ function AnalysisPanel({
   const guidance = result?.interaction
   const hasVisualizationData = Boolean(visualizationSnapshot || modelVisualizationSnapshot)
   const showVisualizationAction = Boolean(result || visualizationSnapshot)
+  const analysisTabId = `${panelIdPrefix}-tab-analysis`
+  const reportTabId = `${panelIdPrefix}-tab-report`
+  const tabPanelId = `${panelIdPrefix}-tabpanel-output`
 
   return (
     <div
@@ -1374,16 +1380,16 @@ function AnalysisPanel({
                 const nextTab = activeTab === 'analysis' ? 'report' : 'analysis'
                 onTabChange(nextTab)
                 requestAnimationFrame(() => {
-                  document.getElementById(nextTab === 'analysis' ? 'tab-analysis' : 'tab-report')?.focus()
+                  document.getElementById(nextTab === 'analysis' ? analysisTabId : reportTabId)?.focus()
                 })
               } else if (e.key === 'Home') {
                 e.preventDefault()
                 onTabChange('analysis')
-                requestAnimationFrame(() => { document.getElementById('tab-analysis')?.focus() })
+                requestAnimationFrame(() => { document.getElementById(analysisTabId)?.focus() })
               } else if (e.key === 'End') {
                 e.preventDefault()
                 onTabChange('report')
-                requestAnimationFrame(() => { document.getElementById('tab-report')?.focus() })
+                requestAnimationFrame(() => { document.getElementById(reportTabId)?.focus() })
               }
             }}
           >
@@ -1397,9 +1403,9 @@ function AnalysisPanel({
               onClick={() => onTabChange('analysis')}
               type="button"
               role="tab"
-              id="tab-analysis"
+              id={analysisTabId}
               aria-selected={activeTab === 'analysis'}
-              aria-controls="tabpanel-output"
+              aria-controls={tabPanelId}
               tabIndex={activeTab === 'analysis' ? 0 : -1}
             >
               {t('analysisTab')}
@@ -1414,9 +1420,9 @@ function AnalysisPanel({
               onClick={() => onTabChange('report')}
               type="button"
               role="tab"
-              id="tab-report"
+              id={reportTabId}
               aria-selected={activeTab === 'report'}
-              aria-controls="tabpanel-output"
+              aria-controls={tabPanelId}
               tabIndex={activeTab === 'report' ? 0 : -1}
             >
               {t('reportTab')}
@@ -1425,7 +1431,7 @@ function AnalysisPanel({
         </div>
       </div>
 
-      <div data-testid="console-output-scroll" className="flex-1 overflow-auto p-5 xl:min-h-0" role="tabpanel" id="tabpanel-output" aria-labelledby={`tab-${activeTab}`}>
+      <div data-testid="console-output-scroll" className="flex-1 overflow-auto p-5 xl:min-h-0" role="tabpanel" id={tabPanelId} aria-labelledby={activeTab === 'analysis' ? analysisTabId : reportTabId}>
         {!result && (
           <Card className="border-border/70 bg-card/85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/40">
             <CardHeader>
@@ -1761,6 +1767,7 @@ export function AIConsole() {
   const [conversationActivityAt, setConversationActivityAt] = useState<Record<string, string>>({})
   const [uiPreferences, setUiPreferences] = useState<ConsoleUiPreferences>(DEFAULT_CONSOLE_UI_PREFERENCES)
   const [uiPreferencesHydrated, setUiPreferencesHydrated] = useState(false)
+  const [resultDialogOpen, setResultDialogOpen] = useState(false)
   const [isSidebarLayout, setIsSidebarLayout] = useState(getIsSidebarLayout)
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
   const messagesEndRef = useRef<HTMLDivElement | null>(null)
@@ -1775,6 +1782,15 @@ export function AIConsole() {
   const resumeRequiredRef = useRef(false)
   // Interaction option chips from ask_user_clarification
   const [pendingOptions, setPendingOptions] = useState<string[]>([])
+
+  const outputMode = uiPreferences.outputMode
+
+  function setOutputMode(nextMode: ConsoleOutputMode) {
+    setUiPreferences((current) => ({
+      ...current,
+      outputMode: nextMode,
+    }))
+  }
 
   useEffect(() => {
     setUiPreferences(loadConsoleUiPreferences())
@@ -3494,11 +3510,20 @@ export function AIConsole() {
     <div
       data-testid="console-layout-grid"
       data-history-collapsed={String(historyCollapsed)}
+      data-output-mode={outputMode}
       className={cn(
         'grid min-h-[calc(100vh-5.5rem)] gap-4 xl:h-full xl:min-h-0 xl:overflow-hidden',
-        historyCollapsed
-          ? 'xl:grid-cols-[72px_minmax(0,2.6fr)_420px] 2xl:grid-cols-[80px_minmax(0,2.8fr)_460px]'
-          : 'xl:grid-cols-[260px_minmax(0,2.2fr)_420px] 2xl:grid-cols-[280px_minmax(0,2.4fr)_460px]'
+        outputMode === 'modal'
+          ? (
+              historyCollapsed
+                ? 'xl:grid-cols-[72px_minmax(0,1fr)] 2xl:grid-cols-[80px_minmax(0,1fr)]'
+                : 'xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]'
+            )
+          : (
+              historyCollapsed
+                ? 'xl:grid-cols-[72px_minmax(0,2.6fr)_420px] 2xl:grid-cols-[80px_minmax(0,2.8fr)_460px]'
+                : 'xl:grid-cols-[260px_minmax(0,2.2fr)_420px] 2xl:grid-cols-[280px_minmax(0,2.4fr)_460px]'
+            )
       )}
     >
       <aside
@@ -3700,6 +3725,24 @@ export function AIConsole() {
                 <h1 className="mt-1 text-2xl font-semibold text-foreground">{t('aiConsoleTitle')}</h1>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-full border-cyan-300/35 bg-cyan-300/10 text-cyan-800 hover:bg-cyan-300/20 dark:text-cyan-100"
+                  onClick={() => setResultDialogOpen(true)}
+                >
+                  <PanelRightOpen className="h-4 w-4" />
+                  {t('openResultPanel')}
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-full"
+                  onClick={() => setOutputMode(outputMode === 'dock' ? 'modal' : 'dock')}
+                >
+                  {outputMode === 'dock' ? <PanelRightClose className="h-4 w-4" /> : <PanelRightOpen className="h-4 w-4" />}
+                  {outputMode === 'dock' ? t('usePopupResults') : t('dockResultPanel')}
+                </Button>
                 <Badge className="border-cyan-400/20 bg-cyan-400/10 text-cyan-700 dark:text-cyan-100" variant="outline">
                   {t('aiConsoleBadgePrimary')}
                 </Badge>
@@ -4224,16 +4267,21 @@ export function AIConsole() {
         </div>
       </section>
 
-      <AnalysisPanel
-        activeTab={activePanel}
-        locale={locale}
-        modelVisualizationSnapshot={latestModelVisualizationSnapshot}
-        onOpenVisualization={openVisualization}
-        onTabChange={setActivePanel}
-        result={latestResult}
-        t={t}
-        visualizationSnapshot={latestResultVisualizationSnapshot}
-      />
+      {outputMode === 'dock' && (
+        <div data-testid="console-output-dock" className="xl:min-h-0">
+          <AnalysisPanel
+            activeTab={activePanel}
+            locale={locale}
+            modelVisualizationSnapshot={latestModelVisualizationSnapshot}
+            onOpenVisualization={openVisualization}
+            onTabChange={setActivePanel}
+            panelIdPrefix="dock-output"
+            result={latestResult}
+            t={t}
+            visualizationSnapshot={latestResultVisualizationSnapshot}
+          />
+        </div>
+      )}
       <StructuralVisualizationModal
         locale={locale}
         onClose={() => setVisualizationOpen(false)}
@@ -4241,6 +4289,28 @@ export function AIConsole() {
         snapshot={activeVisualizationSnapshot}
         t={t}
       />
+      <DialogShell
+        open={resultDialogOpen}
+        title={t('resultPanelDialogTitle')}
+        closeLabel={t('closeResultPanel')}
+        onClose={() => setResultDialogOpen(false)}
+        className="max-w-7xl"
+        contentClassName="p-0"
+      >
+        <div className="h-full p-2 sm:p-4">
+          <AnalysisPanel
+            activeTab={activePanel}
+            locale={locale}
+            modelVisualizationSnapshot={latestModelVisualizationSnapshot}
+            onOpenVisualization={openVisualization}
+            onTabChange={setActivePanel}
+            panelIdPrefix="dialog-output"
+            result={latestResult}
+            t={t}
+            visualizationSnapshot={latestResultVisualizationSnapshot}
+          />
+        </div>
+      </DialogShell>
       {probePopupOpen && Object.keys(probeResults).length > 0 && probeButtonRef.current && typeof window !== 'undefined' && createPortal(
         <>
           <div

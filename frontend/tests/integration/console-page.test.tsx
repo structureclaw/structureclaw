@@ -307,6 +307,34 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByRole('heading', { name: /^History$|^历史$/ })).toBeInTheDocument()
   })
 
+  it('opens the analysis result panel in a dialog', async () => {
+    await renderConsolePage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Results' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Analysis Results & Report' })
+    expect(dialog).toBeInTheDocument()
+    expect(within(dialog).getByTestId('console-output-panel')).toBeInTheDocument()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close Results' }))
+    expect(screen.queryByRole('dialog', { name: 'Analysis Results & Report' })).not.toBeInTheDocument()
+  })
+
+  it('switches between docked and popup result modes', async () => {
+    await renderConsolePage()
+
+    expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-output-mode', 'dock')
+    expect(screen.getByTestId('console-output-dock')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Use Popup Results' }))
+    expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-output-mode', 'modal')
+    expect(screen.queryByTestId('console-output-dock')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Dock Results' }))
+    expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-output-mode', 'dock')
+    expect(screen.getByTestId('console-output-dock')).toBeInTheDocument()
+  })
+
   it('restores the collapsed history preference from localStorage', async () => {
     setViewportWidth(1366)
     window.localStorage.setItem('structureclaw.console.ui-preferences', JSON.stringify({

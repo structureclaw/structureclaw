@@ -28,6 +28,17 @@ test.describe('Console chat flow', () => {
     await expect(page.locator('[data-testid="console-layout-grid"]')).toHaveAttribute('data-history-collapsed', 'false');
   });
 
+  test('uses popup result mode without horizontal scrolling at laptop size', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await consolePage.goto();
+
+    await page.getByRole('button', { name: /Use Popup Results|弹窗显示结果/ }).click();
+    await expect(page.locator('[data-testid="console-layout-grid"]')).toHaveAttribute('data-output-mode', 'modal');
+
+    const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+    expect(hasHorizontalOverflow).toBe(false);
+  });
+
   test('shows empty chat state with quick prompts', async ({ page }) => {
     await consolePage.goto();
     // Chat panel should be visible in the center
