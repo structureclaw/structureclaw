@@ -26,9 +26,6 @@ capabilities:
   - schema-validation
   - semantic-validation
   - missing-field-detection
-grants:
-  - validate_model
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: true

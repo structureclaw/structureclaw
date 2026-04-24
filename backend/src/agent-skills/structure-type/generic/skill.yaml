@@ -39,10 +39,6 @@ capabilities:
   - model-build
   - report-narrative
   - fallback-routing
-grants:
-  - draft_model
-  - update_model
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: true

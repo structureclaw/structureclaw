@@ -24,8 +24,6 @@ structuralTypeKeys: []
 capabilities:
   - result-visualization
   - summary-rendering
-grants: []
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: true

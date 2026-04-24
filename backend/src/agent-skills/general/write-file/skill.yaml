@@ -19,9 +19,6 @@ structuralTypeKeys: []
 capabilities:
   - file-write-text
   - file-write-json
-grants:
-  - write_file
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: true

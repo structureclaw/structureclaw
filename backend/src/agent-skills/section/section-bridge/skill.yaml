@@ -35,12 +35,6 @@ capabilities:
   - section.draft
   - section.validate
   - section.analysis-handoff
-grants:
-  - draft_model
-  - update_model
-  - validate_model
-  - run_analysis
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: false

@@ -22,8 +22,6 @@ structuralTypeKeys: []
 capabilities:
   - result-visualization
   - image-export
-grants: []
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: true

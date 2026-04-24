@@ -22,9 +22,6 @@ capabilities:
   - file-read-text
   - file-read-json
   - file-list-dir
-grants:
-  - read_file
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: true

@@ -57,7 +57,7 @@ seismic-load/
 └── README.md                    # 本文档
 ```
 
-`skill.yaml` is the canonical builtin skill definition for routing, grants, stages, and compatibility.
+`skill.yaml` is the canonical builtin skill definition for routing, stages, and compatibility.
 `intent.md` is prompt/content only.
 
 `skill.yaml` 是内置技能的唯一静态真源，用于定义路由、授权、阶段和兼容性。

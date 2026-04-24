@@ -32,11 +32,6 @@ capabilities:
   - section.draft
   - section.model
   - section.validate
-grants:
-  - draft_model
-  - update_model
-  - validate_model
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: false

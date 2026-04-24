@@ -104,8 +104,6 @@ export function toRuntimeSkillManifest(manifest: LoadedSkillManifest): SkillMani
     requires: [...manifest.requires],
     conflicts: [...manifest.conflicts],
     capabilities: [...manifest.capabilities],
-    enabledTools: [...manifest.grants],
-    providedTools: [...manifest.providesTools],
     supportedAnalysisTypes: [...manifest.supportedAnalysisTypes] as SkillManifest['supportedAnalysisTypes'],
     supportedModelFamilies: [...manifest.supportedModelFamilies],
     materialFamilies: [...manifest.materialFamilies] as SkillManifest['materialFamilies'],

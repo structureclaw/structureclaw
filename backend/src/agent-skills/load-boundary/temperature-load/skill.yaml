@@ -21,8 +21,6 @@ structureType: unknown
 structuralTypeKeys: []
 capabilities:
   - load-generation
-grants: []
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: false

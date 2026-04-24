@@ -22,9 +22,6 @@ capabilities:
   - envelope-extraction
   - key-metric-extraction
   - controlling-case-extraction
-grants:
-  - postprocess_result
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: true

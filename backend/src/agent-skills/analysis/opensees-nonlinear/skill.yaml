@@ -21,9 +21,6 @@ structuralTypeKeys: []
 capabilities:
   - analysis-policy
   - analysis-execution
-grants:
-  - run_analysis
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: true

@@ -5,7 +5,7 @@
 > Manifest-first note / 清单优先说明
 >
 > Builtin load-boundary skills are now defined by `skill.yaml`. Stage Markdown files such as `intent.md`
-> are content assets only and no longer provide canonical ids, grants, stages, or routing metadata.
+> are content assets only and no longer provide canonical ids, stages, or routing metadata.
 >
 > 内置 load-boundary 技能现在以 `skill.yaml` 为唯一静态真源。`intent.md` 等阶段 Markdown
 > 仅承载内容，不再定义 canonical id、授权工具、阶段或路由元数据。

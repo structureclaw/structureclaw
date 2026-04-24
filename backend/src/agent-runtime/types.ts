@@ -10,7 +10,6 @@ export type FrameDimension = '2d' | '3d';
 export type FrameBaseSupportType = 'fixed' | 'pinned';
 export type AgentAnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear';
 export type MaterialFamily = 'steel' | 'concrete' | 'composite' | 'timber' | 'masonry' | 'generic';
-export type AgentToolSource = 'builtin' | 'external';
 
 export interface DraftFloorLoad {
   story: number;
@@ -206,31 +205,12 @@ export interface SkillManifest extends AgentSkillMetadata {
   requires: string[];
   conflicts: string[];
   capabilities: string[];
-  enabledTools?: string[];
-  providedTools?: string[];
   supportedAnalysisTypes?: AgentAnalysisType[];
   supportedModelFamilies?: string[];
   materialFamilies?: MaterialFamily[];
   priority: number;
   compatibility: SkillCompatibility;
   runtimeContract?: SkillRuntimeContract;
-}
-
-export interface ToolManifest {
-  id: string;
-  source: AgentToolSource;
-  enabledByDefault: boolean;
-  tier?: 'foundation' | 'domain' | 'extension';
-  displayName: LocalizedText;
-  description: LocalizedText;
-  category?: 'modeling' | 'analysis' | 'code-check' | 'report' | 'utility' | 'drawing';
-  providedBySkillId?: string;
-  requiresSkills?: string[];
-  requiresTools?: string[];
-  tags?: string[];
-  inputSchema?: Record<string, unknown>;
-  outputSchema?: Record<string, unknown>;
-  errorCodes?: string[];
 }
 
 export interface SkillDetectionInput {

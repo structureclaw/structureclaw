@@ -24,8 +24,6 @@ structuralTypeKeys: []
 capabilities:
   - load-combination
   - load-validation
-grants: []
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: true

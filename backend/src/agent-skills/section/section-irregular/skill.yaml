@@ -35,11 +35,6 @@ capabilities:
   - section.irregular-model
   - section.outline
   - section.validate
-grants:
-  - draft_model
-  - update_model
-  - validate_model
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: false

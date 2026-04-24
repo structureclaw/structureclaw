@@ -19,9 +19,6 @@ structureType: unknown
 structuralTypeKeys: []
 capabilities:
   - shell-exec
-grants:
-  - shell
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: false

@@ -25,9 +25,6 @@ capabilities:
   - context-store
   - context-retrieve
   - context-clear
-grants:
-  - memory
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: true

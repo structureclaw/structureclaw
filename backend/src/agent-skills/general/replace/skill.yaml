@@ -17,9 +17,6 @@ structureType: unknown
 structuralTypeKeys: []
 capabilities:
   - text-replace
-grants:
-  - replace
-providesTools: []
 requires:
   - read-file
   - write-file

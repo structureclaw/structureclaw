@@ -21,9 +21,6 @@ structuralTypeKeys: []
 capabilities:
   - design-feedback
   - model-revision-proposal
-grants:
-  - synthesize_design
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: true

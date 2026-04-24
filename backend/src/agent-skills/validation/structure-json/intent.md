@@ -3,7 +3,7 @@
 > Manifest-first note / 清单优先说明
 >
 > Canonical skill metadata for this builtin validation skill lives in `skill.yaml`.
-> This file is content-only and no longer defines the skill id, stages, grants, or runtime metadata.
+> This file is content-only and no longer defines the skill id, stages, or runtime metadata.
 >
 > 此内置校验技能的 canonical 元数据以 `skill.yaml` 为准。
 > 当前文件仅承载内容，不再定义技能 id、阶段、授权工具或运行时元数据。

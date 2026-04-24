@@ -29,10 +29,6 @@ capabilities:
   - interaction-questions
   - model-build
   - report-narrative
-grants:
-  - draft_model
-  - update_model
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: true

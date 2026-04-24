@@ -9,10 +9,7 @@ const localizedTextSchema = z.object({
 const skillStageSchema = z.enum(['intent', 'draft', 'analysis', 'design']);
 const analysisTypeSchema = z.enum(['static', 'dynamic', 'seismic', 'nonlinear']);
 const materialFamilySchema = z.enum(['steel', 'concrete', 'composite', 'timber', 'masonry', 'generic']);
-const toolSourceSchema = z.enum(['builtin', 'external']);
 const skillSourceSchema = z.enum(['builtin', 'external']);
-const toolTierSchema = z.enum(['foundation', 'domain', 'extension']);
-const toolCategorySchema = z.enum(['modeling', 'analysis', 'code-check', 'report', 'utility', 'drawing']);
 
 // --- Runtime contract schemas ---
 
@@ -99,8 +96,6 @@ export const skillManifestFileSchema = z.object({
   structureType: z.string().trim().min(1).default('unknown'),
   structuralTypeKeys: z.array(z.string().trim().min(1)).default([]),
   capabilities: z.array(z.string().trim().min(1)).default([]),
-  grants: z.array(z.string().trim().min(1)).default([]),
-  providesTools: z.array(z.string().trim().min(1)).default([]),
   requires: z.array(z.string().trim().min(1)).default([]),
   conflicts: z.array(z.string().trim().min(1)).default([]),
   autoLoadByDefault: z.boolean().default(false),
@@ -130,26 +125,9 @@ export const skillManifestFileSchema = z.object({
   toolHints: z.record(z.unknown()).default({}),
   aliases: z.array(z.string().trim().min(1)).default([]),
   runtimeContract: runtimeContractSchema,
-});
-
-export const toolManifestFileSchema = z.object({
-  id: z.string().trim().min(1),
-  source: toolSourceSchema.default('builtin'),
-  tier: toolTierSchema,
-  category: toolCategorySchema,
-  enabledByDefault: z.boolean().default(false),
-  displayName: localizedTextSchema,
-  description: localizedTextSchema,
-  requiresSkills: z.array(z.string().trim().min(1)).default([]),
-  requiresTools: z.array(z.string().trim().min(1)).default([]),
-  tags: z.array(z.string().trim().min(1)).default([]),
-  inputSchema: z.record(z.unknown()).default({}),
-  outputSchema: z.record(z.unknown()).default({}),
-  errorCodes: z.array(z.string().trim().min(1)).default([]),
-});
+}).strict();
 
 export type SkillManifestFile = z.infer<typeof skillManifestFileSchema>;
-export type ToolManifestFile = z.infer<typeof toolManifestFileSchema>;
 
 export function formatManifestIssues(error: z.ZodError): string {
   return error.issues

@@ -32,8 +32,6 @@ export interface BuiltinSkillCatalogEntry {
   autoLoadByDefault: boolean;
   structureType?: string;
   capabilities: string[];
-  enabledTools: string[];
-  providedTools: string[];
   supportedAnalysisTypes: string[];
   supportedModelFamilies: string[];
   materialFamilies: string[];
@@ -129,8 +127,6 @@ export class AgentSkillCatalogService {
       autoLoadByDefault: Boolean(manifest.autoLoadByDefault),
       structureType: manifest.structureType,
       capabilities: Array.isArray(manifest.capabilities) ? [...manifest.capabilities] : [],
-      enabledTools: Array.isArray(manifest.grants) ? [...manifest.grants] : [],
-      providedTools: Array.isArray(manifest.providesTools) ? [...manifest.providesTools] : [],
       supportedAnalysisTypes: this.normalizeAnalysisTypes(manifest.supportedAnalysisTypes as AgentAnalysisType[]),
       supportedModelFamilies: uniqueStrings(manifest.supportedModelFamilies ?? []),
       materialFamilies: this.normalizeMaterialFamilies(manifest.materialFamilies as MaterialFamily[]),

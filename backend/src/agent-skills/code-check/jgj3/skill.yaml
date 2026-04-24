@@ -20,9 +20,6 @@ structuralTypeKeys: []
 capabilities:
   - code-check-policy
   - code-check-execution
-grants:
-  - run_code_check
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: false

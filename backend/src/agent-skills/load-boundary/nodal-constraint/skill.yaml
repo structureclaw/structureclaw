@@ -23,8 +23,6 @@ structuralTypeKeys: []
 capabilities:
   - boundary-definition
   - constraint-validation
-grants: []
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: true

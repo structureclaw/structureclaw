@@ -21,8 +21,6 @@ structuralTypeKeys: []
 capabilities:
   - drawing-export
   - vendor-api-integration
-grants: []
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: false

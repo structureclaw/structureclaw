@@ -27,8 +27,6 @@ structuralTypeKeys: []
 capabilities:
   - result-visualization
   - scene-rendering
-grants: []
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: true

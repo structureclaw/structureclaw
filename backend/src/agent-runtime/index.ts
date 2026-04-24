@@ -8,7 +8,6 @@ import {
 import type { CodeCheckClient } from '../agent-skills/code-check/rule.js';
 import { AgentSkillRegistry } from './registry.js';
 import { AgentSkillExecutor } from './executor.js';
-import { listBuiltinToolManifests, resolveToolingForSkillManifests } from './tool-registry.js';
 import { buildDefaultReportNarrative } from './report-template.js';
 import { withStructuralTypeState } from './plugin-helpers.js';
 import {
@@ -24,7 +23,6 @@ import type {
   StructuralTypeMatch,
   SkillReportNarrativeInput,
   SkillManifest,
-  ToolManifest,
 } from './types.js';
 
 export type {
@@ -49,7 +47,6 @@ export type {
   SkillHandler,
   SkillManifest,
   SkillReportNarrativeInput,
-  ToolManifest,
 } from './types.js';
 
 export class AgentSkillRuntime {
@@ -78,20 +75,6 @@ export class AgentSkillRuntime {
         .filter((plugin) => !fileManifestIds.has(plugin.id))
         .map((plugin) => plugin.manifest),
     ];
-  }
-
-  listBuiltinToolManifests(): ToolManifest[] {
-    return listBuiltinToolManifests();
-  }
-
-  async listToolManifests(skillIds?: string[]): Promise<ToolManifest[]> {
-    const manifests = await this.listSkillManifests();
-    return resolveToolingForSkillManifests(manifests, skillIds).tools;
-  }
-
-  async resolveSkillTooling(skillIds?: string[]) {
-    const manifests = await this.listSkillManifests();
-    return resolveToolingForSkillManifests(manifests, skillIds);
   }
 
   listAnalysisSkillIds(): string[] {

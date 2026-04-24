@@ -23,9 +23,6 @@ capabilities:
   - task-decompose
   - step-sequence
   - condition-gate
-grants:
-  - planning
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: true

@@ -9,17 +9,17 @@ domain but are essential for orchestration and automation.
 
 ## Skills
 
-| Skill | Tool Grant | Stages | Default |
-|-------|-----------|--------|---------|
-| `memory` | `memory` | intent, draft, analysis, design | enabled |
-| `planning` | `planning` | intent, draft | enabled |
-| `read-file` | `read_file` | intent, draft, analysis | enabled |
-| `write-file` | `write_file` | analysis | enabled |
-| `replace` | `replace` | draft, analysis | enabled |
-| `shell` | `shell` | analysis | disabled |
+| Skill | Stages | Default |
+|-------|--------|---------|
+| `memory` | intent, draft, analysis, design | enabled |
+| `planning` | intent, draft | enabled |
+| `read-file` | intent, draft, analysis | enabled |
+| `write-file` | analysis | enabled |
+| `replace` | draft, analysis | enabled |
+| `shell` | analysis | disabled |
 
-Each utility skill grants a corresponding foundation-tier tool via `skill.yaml`.
-Tool manifests live in `backend/src/agent-tools/` alongside the domain tools.
+Utility skills now declare skill metadata only. Executable tools are registered
+in code by the LangGraph agent runtime.
 
 ## Safety Boundaries
 

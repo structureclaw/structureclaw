@@ -19,9 +19,6 @@ structuralTypeKeys: []
 capabilities:
   - report-export
   - result-summarization
-grants:
-  - generate_report
-providesTools: []
 requires: []
 conflicts: []
 autoLoadByDefault: false

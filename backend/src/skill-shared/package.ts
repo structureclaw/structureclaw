@@ -18,8 +18,6 @@ export interface SkillPackageMetadata<TDomain extends string = SkillDomain> {
   version: string;
   source: SkillProviderSource;
   capabilities: string[];
-  enabledTools?: string[];
-  providedTools?: string[];
   compatibility: SkillCompatibility;
   entrypoints: SkillPackageEntrypoints;
   enabledByDefault: boolean;
