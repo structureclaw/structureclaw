@@ -16,6 +16,18 @@ test.describe('Console chat flow', () => {
     await expect(consolePage.chatPanel).toBeVisible();
   });
 
+  test('collapses and expands the history panel at laptop size', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await consolePage.goto();
+
+    await consolePage.collapseHistoryButton.click();
+    await expect(page.locator('[data-testid="console-layout-grid"]')).toHaveAttribute('data-history-collapsed', 'true');
+    await expect(consolePage.expandHistoryButton).toBeVisible();
+
+    await consolePage.expandHistoryButton.click();
+    await expect(page.locator('[data-testid="console-layout-grid"]')).toHaveAttribute('data-history-collapsed', 'false');
+  });
+
   test('shows empty chat state with quick prompts', async ({ page }) => {
     await consolePage.goto();
     // Chat panel should be visible in the center

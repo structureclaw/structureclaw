@@ -235,11 +235,21 @@ function mockConsoleSupportRequest(url: string) {
 }
 
 describe('ConsolePage Integration (CONS-13)', () => {
+  function setViewportWidth(width: number) {
+    Object.defineProperty(window, 'innerWidth', {
+      configurable: true,
+      value: width,
+      writable: true,
+    })
+    window.dispatchEvent(new Event('resize'))
+  }
+
   beforeEach(() => {
     // Real backend provides all API responses (skills, capabilities, conversations, etc.)
     // Individual tests may spy on fetch for specific mock scenarios.
     window.localStorage.clear()
     clearLocaleCookie()
+    setViewportWidth(1366)
     Element.prototype.scrollIntoView = vi.fn()
   })
 
@@ -279,6 +289,90 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(await screen.findByRole('heading', { name: 'Structural Engineering Conversation Workspace' })).toBeInTheDocument()
     expect(screen.getByText('History')).toBeInTheDocument()
     expect(screen.getByText('Analysis Results & Report')).toBeInTheDocument()
+  })
+
+  it('collapses and restores the conversation history panel', async () => {
+    setViewportWidth(1366)
+    await renderConsolePage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse History' }))
+
+    expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-history-collapsed', 'true')
+    expect(screen.getByRole('button', { name: 'Expand History' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: /^History$|^历史$/ })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand History' }))
+
+    expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-history-collapsed', 'false')
+    expect(screen.getByRole('heading', { name: /^History$|^历史$/ })).toBeInTheDocument()
+  })
+
+  it('restores the collapsed history preference from localStorage', async () => {
+    setViewportWidth(1366)
+    window.localStorage.setItem('structureclaw.console.ui-preferences', JSON.stringify({
+      historyCollapsed: true,
+      outputMode: 'dock',
+    }))
+
+    await renderConsolePage()
+
+    expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-history-collapsed', 'true')
+    expect(screen.getByRole('button', { name: 'Expand History' })).toBeInTheDocument()
+  })
+
+  it('keeps history expanded below the sidebar breakpoint', async () => {
+    setViewportWidth(1024)
+    window.localStorage.setItem('structureclaw.console.ui-preferences', JSON.stringify({
+      historyCollapsed: true,
+      outputMode: 'dock',
+    }))
+
+    await renderConsolePage()
+
+    expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-history-collapsed', 'false')
+    expect(screen.getByRole('heading', { name: /^History$|^历史$/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Expand History' })).not.toBeInTheDocument()
+  })
+
+  it('persists collapsed history changes', async () => {
+    setViewportWidth(1366)
+    await renderConsolePage()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse History' }))
+
+    await waitFor(() => {
+      expect(JSON.parse(window.localStorage.getItem('structureclaw.console.ui-preferences') || '{}')).toMatchObject({
+        historyCollapsed: true,
+        outputMode: 'dock',
+      })
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Expand History' }))
+
+    await waitFor(() => {
+      expect(JSON.parse(window.localStorage.getItem('structureclaw.console.ui-preferences') || '{}')).toMatchObject({
+        historyCollapsed: false,
+        outputMode: 'dock',
+      })
+    })
+  })
+
+  it('ignores blocked console UI preference saves', async () => {
+    setViewportWidth(1366)
+    await renderConsolePage()
+
+    const originalSetItem = Storage.prototype.setItem
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function setItem(key: string, value: string) {
+      if (key === 'structureclaw.console.ui-preferences') {
+        throw new DOMException('Blocked', 'QuotaExceededError')
+      }
+      return originalSetItem.call(this, key, value)
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse History' }))
+
+    expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-history-collapsed', 'true')
+    expect(screen.getByRole('button', { name: 'Expand History' })).toBeInTheDocument()
   })
 
   it('shows the conversational composer controls', async () => {
