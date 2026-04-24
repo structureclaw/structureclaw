@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { createAppStore } from '@/lib/stores/context'
 import {
   createPreferencesSlice,
   initialPreferencesState,
@@ -25,6 +26,20 @@ describe('Preferences Slice (STAT-04)', () => {
 
     state.setLocale('zh')
     expect(state.locale).toBe('zh')
+  })
+
+  it('opens and closes the workspace settings dialog', () => {
+    const store = createAppStore()
+
+    store.getState().openWorkspaceSettings('llm')
+    expect(store.getState().workspaceSettingsOpen).toBe(true)
+    expect(store.getState().workspaceSettingsTab).toBe('llm')
+
+    store.getState().openWorkspaceSettings('capabilities')
+    expect(store.getState().workspaceSettingsTab).toBe('capabilities')
+
+    store.getState().closeWorkspaceSettings()
+    expect(store.getState().workspaceSettingsOpen).toBe(false)
   })
 })
 

@@ -1,6 +1,7 @@
 import { type StateCreator } from 'zustand'
 
 export type AppLocale = 'en' | 'zh'
+export type WorkspaceSettingsTab = 'capabilities' | 'llm'
 
 /**
  * Preferences State Interface
@@ -15,10 +16,14 @@ export type AppLocale = 'en' | 'zh'
  */
 export interface PreferencesState {
   locale: AppLocale
+  workspaceSettingsOpen: boolean
+  workspaceSettingsTab: WorkspaceSettingsTab
 }
 
 export interface PreferencesActions {
   setLocale: (locale: AppLocale) => void
+  openWorkspaceSettings: (tab?: WorkspaceSettingsTab) => void
+  closeWorkspaceSettings: () => void
 }
 
 export type PreferencesSlice = PreferencesState & PreferencesActions
@@ -29,6 +34,8 @@ export type PreferencesSlice = PreferencesState & PreferencesActions
  */
 export const initialPreferencesState: PreferencesState = {
   locale: 'en',
+  workspaceSettingsOpen: false,
+  workspaceSettingsTab: 'capabilities',
 }
 
 /**
@@ -43,4 +50,9 @@ export const createPreferencesSlice: StateCreator<
 > = (set) => ({
   ...initialPreferencesState,
   setLocale: (locale) => set({ locale }),
+  openWorkspaceSettings: (tab = 'capabilities') => set({
+    workspaceSettingsOpen: true,
+    workspaceSettingsTab: tab,
+  }),
+  closeWorkspaceSettings: () => set({ workspaceSettingsOpen: false }),
 })
