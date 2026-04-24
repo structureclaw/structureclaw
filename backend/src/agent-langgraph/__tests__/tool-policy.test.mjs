@@ -29,17 +29,23 @@ describe("LangGraph tool policy", () => {
     expect(result.activeToolIds).toEqual([
       "ask_user_clarification",
       "build_model",
+      "delete_path",
       "detect_structure_type",
       "extract_draft_params",
       "generate_report",
       "glob_files",
       "grep_files",
+      "memory",
+      "move_path",
       "read_file",
+      "replace_in_file",
       "run_analysis",
       "run_code_check",
       "set_session_config",
       "validate_model",
+      "write_file",
     ]);
+    expect(result.deniedToolIds.shell).toContain("SHELL_DISABLED");
   });
 
   test("disabledToolIds remove tools from the active set", async () => {
