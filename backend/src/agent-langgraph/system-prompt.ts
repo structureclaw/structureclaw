@@ -70,7 +70,12 @@ export function buildSystemMessages(ctx: SystemPromptContext): BaseMessageLike[]
   const { state, skillManifests } = ctx;
   const isZh = state.locale === 'zh';
 
-  const skillList = skillManifests
+  const selectedIds = new Set(state.selectedSkillIds);
+  const activeManifests = selectedIds.size > 0
+    ? skillManifests.filter((s) => selectedIds.has(s.id))
+    : [];
+
+  const skillList = activeManifests
     .map((s) => {
       const name = isZh ? s.name.zh : s.name.en;
       const desc = isZh ? s.description.zh : s.description.en;
