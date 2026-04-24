@@ -3761,7 +3761,7 @@ export function AIConsole() {
       >
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.18),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.12),transparent_30%)] dark:bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.22),transparent_30%),radial-gradient(circle_at_bottom_right,rgba(249,115,22,0.18),transparent_30%)]" />
         <div className="relative flex h-full min-h-[320px] flex-col xl:min-h-0">
-          <div className="border-b border-border/70 px-5 py-4 dark:border-white/10">
+          <div className="border-b border-border/70 px-4 py-3 2xl:px-5 2xl:py-4 dark:border-white/10">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs uppercase tracking-[0.28em] text-cyan-700/80 dark:text-cyan-200/70">{t('aiConsoleEyebrow')}</p>
@@ -3806,7 +3806,7 @@ export function AIConsole() {
           <div
             ref={chatScrollRef}
             data-testid="console-chat-scroll"
-            className="flex-1 overflow-auto px-5 py-5 xl:min-h-0"
+            className="flex-1 overflow-auto px-4 py-4 2xl:px-5 2xl:py-5 xl:min-h-0"
           >
             <div className="flex w-full flex-col gap-4">
               {messages.length === 1 && (
@@ -4181,7 +4181,7 @@ export function AIConsole() {
             </div>
           )}
 
-          <div data-testid="console-composer" className="border-t border-border/70 px-4 py-3 dark:border-white/10 overflow-y-auto max-h-[40vh]">
+          <div data-testid="console-composer" className="border-t border-border/70 px-3 py-3 2xl:px-4 dark:border-white/10 overflow-y-auto max-h-[40vh]">
             <div className="w-full space-y-3">
               {errorMessage && (
                 <div role="alert" className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
@@ -4210,7 +4210,7 @@ export function AIConsole() {
                           {t('toolShortLabel')}
                         </button>
                       </div>
-                      <p className="mt-1 text-xs leading-5 text-muted-foreground">{t('capabilitySettingsSummaryBody')}</p>
+                      <p className="mt-1 text-xs leading-5 text-muted-foreground hidden 2xl:block">{t('capabilitySettingsSummaryBody')}</p>
                     </div>
                     <button
                       type="button"

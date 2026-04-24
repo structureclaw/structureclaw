@@ -74,4 +74,17 @@ test.describe('Console chat flow', () => {
     // The output panel is part of the 3-column layout
     await expect(consolePage.outputPanel).toBeVisible({ timeout: 15_000 });
   });
+
+  for (const viewport of [
+    { width: 1366, height: 768 },
+    { width: 1920, height: 1080 },
+  ]) {
+    test(`console has no horizontal overflow at ${viewport.width}x${viewport.height}`, async ({ page }) => {
+      await page.setViewportSize(viewport);
+      await consolePage.goto();
+
+      const hasHorizontalOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth);
+      expect(hasHorizontalOverflow).toBe(false);
+    });
+  }
 });
