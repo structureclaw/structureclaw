@@ -12,11 +12,10 @@ import { randomUUID } from 'crypto';
 import { AgentSkillRuntime } from '../agent-runtime/index.js';
 import type { SkillManifest } from '../agent-runtime/types.js';
 import { buildAgentGraph } from './graph.js';
-import { createAllTools } from './tools.js';
 import { FileCheckpointer } from './file-checkpointer.js';
 import { streamGraphToChunks, type StreamContext } from './streaming.js';
 import { type AgentState } from './state.js';
-import { getCheckpointerDataDir, getWorkspaceRoot } from './config.js';
+import { getAllowShellTools, getCheckpointerDataDir, getWorkspaceRoot } from './config.js';
 import type { AgentStreamChunk } from '../types/agent-stream.js';
 import type { AppLocale } from '../services/locale.js';
 import { createLocalAnalysisEngineClient } from '../services/analysis-execution.js';
@@ -26,6 +25,7 @@ import { prisma } from '../utils/database.js';
 import { Command } from '@langchain/langgraph';
 import { logger } from '../utils/logger.js';
 import type { AgentConfigurable } from './configurable.js';
+import { listAgentToolDefinitions } from './tool-registry.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -113,13 +113,18 @@ export class LangGraphAgentService {
   // Configurable builder (DI container for tools/nodes)
   // ---------------------------------------------------------------------------
 
-  private buildConfigurable(): AgentConfigurable {
+  private buildConfigurable(input?: LangGraphRunInput): AgentConfigurable {
     return {
       skillRuntime: this.skillRuntime,
       engineClient: this.engineClient,
       codeCheckClient: this.codeCheckClient,
       structureProtocolClient: this.structureProtocolClient,
       workspaceRoot: this.workspaceRoot,
+      enabledToolIds: input?.context?.enabledToolIds,
+      disabledToolIds: input?.context?.disabledToolIds,
+      allowShell: getAllowShellTools(),
+      projectId: input?.context?.projectId,
+      userId: input?.userId,
     };
   }
 
@@ -186,7 +191,7 @@ export class LangGraphAgentService {
     const config = {
       configurable: {
         thread_id: conversationId,
-        ...this.buildConfigurable(),
+        ...this.buildConfigurable(input),
       },
     };
 
@@ -260,7 +265,7 @@ export class LangGraphAgentService {
     const config = {
       configurable: {
         thread_id: conversationId,
-        ...this.buildConfigurable(),
+        ...this.buildConfigurable(input),
       },
     };
 
@@ -295,7 +300,7 @@ export class LangGraphAgentService {
     const config = {
       configurable: {
         thread_id: conversationId,
-        ...this.buildConfigurable(),
+        ...this.buildConfigurable(input),
       },
     };
 
@@ -358,18 +363,25 @@ export class LangGraphAgentService {
   }
 
   /**
-   * Get the agent protocol (tool schemas) as a static method.
-   * Dynamically reads from createAllTools() so it stays in sync.
-   * No skillRuntime needed — only returns name + description metadata.
+   * Get the agent protocol (tool metadata) as a static method.
+   * Keeps name/description route compatibility while sourcing from registry.
    */
-  static getProtocol(): { tools: Array<{ name: string; description: string }> } {
-    // createAllTools captures skillRuntime in closures but doesn't call it at
-    // creation time, so passing undefined is safe for metadata-only access.
-    const tools = createAllTools({ skillRuntime: undefined as any });
+  static getProtocol(): {
+    tools: Array<{
+      name: string;
+      description: string;
+      category: string;
+      risk: string;
+      defaultEnabled: boolean;
+    }>;
+  } {
     return {
-      tools: tools.map((t) => ({
-        name: t.name,
-        description: t.description,
+      tools: listAgentToolDefinitions().map((definition) => ({
+        name: definition.id,
+        description: definition.description.zh,
+        category: definition.category,
+        risk: definition.risk,
+        defaultEnabled: definition.defaultEnabled,
       })),
     };
   }

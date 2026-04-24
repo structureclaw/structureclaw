@@ -27,6 +27,8 @@ import { createAllTools, type ToolDeps } from './tools.js';
 import { buildSystemMessages } from './system-prompt.js';
 import type { SkillManifest } from '../agent-runtime/types.js';
 import type { AgentConfigurable } from './configurable.js';
+import { resolveActiveToolIds } from './tool-policy.js';
+import type { StructuredToolInterface } from '@langchain/core/tools';
 
 // ---------------------------------------------------------------------------
 // Max ReAct iterations guard
@@ -73,8 +75,8 @@ function createCallModelNode(
       };
     }
 
-    // Bind tools to model (tools are shared, created once in buildAgentGraph)
-    const modelWithTools = model.bindTools(tools);
+    const activeTools = resolveActiveTools(tools, configurable, state);
+    const modelWithTools = model.bindTools(activeTools);
 
     // Build system prompt
     const systemMessages = buildSystemMessages({ state, skillManifests });
@@ -216,13 +218,26 @@ export interface GraphDeps extends ToolDeps {
   checkpointer?: BaseCheckpointSaver;
 }
 
+function resolveActiveTools(
+  tools: StructuredToolInterface[],
+  configurable: Partial<AgentConfigurable> | undefined,
+  state: AgentState,
+): StructuredToolInterface[] {
+  const result = resolveActiveToolIds({
+    requestedEnabledToolIds: configurable?.enabledToolIds,
+    requestedDisabledToolIds: configurable?.disabledToolIds,
+    selectedSkillIds: state.selectedSkillIds,
+    allowShell: configurable?.allowShell ?? false,
+  });
+  const activeIds = new Set(result.activeToolIds);
+  return tools.filter((toolDefinition) => activeIds.has(toolDefinition.name));
+}
+
 export function buildAgentGraph(deps: GraphDeps) {
   const { skillManifests, checkpointer } = deps;
 
   // Create tools ONCE — shared between ToolNode and callModel
   const tools = createAllTools({ skillRuntime: deps.skillRuntime });
-  const toolNode = new ToolNode(tools);
-
   const callModel = createCallModelNode(skillManifests, tools);
 
   // Wrap ToolNode so that the current graph state is injected into
@@ -232,6 +247,12 @@ export function buildAgentGraph(deps: GraphDeps) {
   const toolsNode = async (state: AgentState, config: LangGraphRunnableConfig) => {
     const configurableAny = config.configurable as Record<string, unknown>;
     configurableAny.agentState = state;
+    const activeTools = resolveActiveTools(
+      tools,
+      config.configurable as Partial<AgentConfigurable> | undefined,
+      state,
+    );
+    const toolNode = new ToolNode(activeTools);
     return toolNode.invoke(state, config);
   };
 

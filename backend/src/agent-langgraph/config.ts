@@ -15,3 +15,8 @@ export function getWorkspaceRoot(): string {
   return process.env.WORKSPACE_ROOT?.trim()
     || path.resolve(config.reportsDir, '..', '..');
 }
+
+/** Shell execution is intentionally disabled unless explicitly gated on. */
+export function getAllowShellTools(): boolean {
+  return process.env.AGENT_ALLOW_SHELL === 'true';
+}

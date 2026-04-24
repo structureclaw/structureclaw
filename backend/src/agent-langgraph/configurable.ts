@@ -20,4 +20,14 @@ export interface AgentConfigurable {
   structureProtocolClient: LocalStructureProtocolClient;
   /** Absolute path to the workspace root. */
   workspaceRoot: string;
+  /** Requested allow-list of tool IDs for this run; undefined means registry defaults. */
+  enabledToolIds?: string[];
+  /** Requested deny-list of tool IDs for this run. */
+  disabledToolIds?: string[];
+  /** Whether shell-risk tools may be activated for this run. */
+  allowShell: boolean;
+  /** Current project context for future scoped tools. */
+  projectId?: string;
+  /** Current user context for future scoped tools. */
+  userId?: string;
 }

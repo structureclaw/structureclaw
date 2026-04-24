@@ -23,6 +23,7 @@ import { logger } from '../utils/logger.js';
 import type { AgentState } from './state.js';
 import type { AgentConfigurable } from './configurable.js';
 import { runPkpmCalcbook } from '../agent-skills/report-export/calculation-book/pkpm-calcbook/runner.js';
+import { createRegisteredTools } from './tool-registry.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -477,7 +478,7 @@ export function createListWorkspaceFilesTool() {
   );
 }
 
-export function createUpdateSessionConfigTool() {
+export function createSetSessionConfigTool() {
   return tool(
     async (input: {
       analysisType?: string;
@@ -518,15 +519,16 @@ export function createUpdateSessionConfigTool() {
 
       // Only return Command if there are actual updates
       if (updatedKeys.length > 0) {
-        return toolResult(toolCallId, 'update_session_config', JSON.stringify(responseJson), stateUpdate);
+        return toolResult(toolCallId, 'set_session_config', JSON.stringify(responseJson), stateUpdate);
       }
       return JSON.stringify(responseJson);
     },
     {
-      name: 'update_session_config',
+      name: 'set_session_config',
       description:
-        'Update session-level configuration: analysis type (static/dynamic/seismic/nonlinear), ' +
-        'design code (GB50010/GB50011/GB50017), or selected skill IDs.',
+        'Update current-session configuration: analysis type (static/dynamic/seismic/nonlinear), ' +
+        'design code (GB50010/GB50011/GB50017), or selected skill IDs. ' +
+        'This does not create persistent memory.',
       schema: z.object({
         analysisType: z
           .enum(['static', 'dynamic', 'seismic', 'nonlinear'])
@@ -827,28 +829,5 @@ export interface ToolDeps {
 
 /** Create all LangGraph tools for the agent. */
 export function createAllTools(deps: ToolDeps) {
-  const { skillRuntime } = deps;
-  return [
-    // Engineering detection tools
-    createDetectStructureTypeTool(skillRuntime),
-    createExtractDraftParamsTool(skillRuntime),
-    createBuildModelTool(skillRuntime),
-
-    // Engineering execution tools
-    createValidateModelTool(skillRuntime),
-    createRunAnalysisTool(skillRuntime),
-    createRunCodeCheckTool(skillRuntime),
-    createGenerateReportTool(skillRuntime),
-
-    // Interaction
-    createAskUserClarificationTool(),
-
-    // Workspace tools
-    createReadWorkspaceFileTool(),
-    createWriteWorkspaceFileTool(),
-    createListWorkspaceFilesTool(),
-
-    // Session config
-    createUpdateSessionConfigTool(),
-  ];
+  return createRegisteredTools(deps);
 }
