@@ -3496,6 +3496,9 @@ export function AIConsole() {
               ...message,
               content: message.content || assistantSeed,
               status: 'done' as const,
+              toolStep: message.role === 'tool' && message.toolStep?.status === 'running'
+                ? { ...message.toolStep, status: 'done' as const }
+                : message.toolStep,
               presentation: message.role === 'tool' ? undefined : (currentPresentationRef.current ?? message.presentation),
             }
           })
@@ -3517,6 +3520,9 @@ export function AIConsole() {
               return {
                 ...message,
                 status: 'done' as const,
+                toolStep: message.role === 'tool' && message.toolStep?.status === 'running'
+                  ? { ...message.toolStep, status: 'done' as const }
+                  : message.toolStep,
                 presentation: message.role === 'tool' ? undefined : (currentPresentationRef.current ?? message.presentation),
               }
             })
@@ -3912,19 +3918,22 @@ export function AIConsole() {
                   key={message.id}
                   className={cn('flex gap-3', message.role === 'user' ? 'justify-end' : 'justify-start')}
                 >
-                  {/* Tool message — compact card, no avatar/header */}
+                  {/* Tool message — compact card, aligned with grouped tools */}
                   {message.role === 'tool' && (
-                    <div className="max-w-[82%]">
-                      {message.toolStep && (
-                        <ToolCallCard step={message.toolStep} t={t} />
-                      )}
-                      {message.status === 'streaming' && !message.toolStep && (
-                        <span className="inline-flex items-center gap-1.5" role="status">
-                          <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500 dark:bg-cyan-400" />
-                          <span className="text-xs text-muted-foreground animate-pulse">{t('streamingInProgress')}</span>
-                        </span>
-                      )}
-                    </div>
+                    <>
+                      <div className="w-10 shrink-0" />
+                      <div className="max-w-[82%]">
+                        {message.toolStep && (
+                          <ToolCallCard step={message.toolStep} t={t} />
+                        )}
+                        {message.status === 'streaming' && !message.toolStep && (
+                          <span className="inline-flex items-center gap-1.5" role="status">
+                            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500 dark:bg-cyan-400" />
+                            <span className="text-xs text-muted-foreground animate-pulse">{t('streamingInProgress')}</span>
+                          </span>
+                        )}
+                      </div>
+                    </>
                   )}
 
                   {/* User and assistant messages */}
