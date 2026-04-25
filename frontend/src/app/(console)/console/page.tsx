@@ -1,9 +1,5 @@
-import { AIConsole } from '@/components/chat'
+import { redirect } from 'next/navigation'
 
 export default function ConsolePage() {
-  return (
-    <div className="h-full">
-      <AIConsole />
-    </div>
-  )
+  redirect('/')
 }
