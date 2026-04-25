@@ -3993,7 +3993,7 @@ export function AIConsole() {
                           )}
                         </div>
                         {group.tools.length > 0 ? (
-                          <div className="ml-4 space-y-2 border-l border-cyan-300/30 pl-4">
+                          <div className="space-y-2">
                             {group.tools.map((toolMessage) => (
                               toolMessage.toolStep ? (
                                 <ToolCallCard key={toolMessage.id} step={toolMessage.toolStep} t={t} attached />
@@ -4024,7 +4024,7 @@ export function AIConsole() {
                         <Bot className="h-5 w-5" />
                       </div>
                       <div className="max-w-[88%] space-y-2">
-                        <div className="ml-4 space-y-2 border-l border-cyan-300/30 pl-4">
+                        <div className="space-y-2">
                           {message.toolStep && (
                             <ToolCallCard step={message.toolStep} t={t} attached />
                           )}
