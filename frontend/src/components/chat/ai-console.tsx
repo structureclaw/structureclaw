@@ -4020,17 +4020,21 @@ export function AIConsole() {
                   {/* Tool message — compact card, aligned with grouped tools */}
                   {message.role === 'tool' && (
                     <>
-                      <div className="w-10 shrink-0" />
-                      <div className="max-w-[82%]">
-                        {message.toolStep && (
-                          <ToolCallCard step={message.toolStep} t={t} />
-                        )}
-                        {message.status === 'streaming' && !message.toolStep && (
-                          <span className="inline-flex items-center gap-1.5" role="status">
-                            <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500 dark:bg-cyan-400" />
-                            <span className="text-xs text-muted-foreground animate-pulse">{t('streamingInProgress')}</span>
-                          </span>
-                        )}
+                      <div className="mt-1 flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-400/15 text-cyan-700 dark:text-cyan-200">
+                        <Bot className="h-5 w-5" />
+                      </div>
+                      <div className="max-w-[88%] space-y-2">
+                        <div className="ml-4 space-y-2 border-l border-cyan-300/30 pl-4">
+                          {message.toolStep && (
+                            <ToolCallCard step={message.toolStep} t={t} attached />
+                          )}
+                          {message.status === 'streaming' && !message.toolStep && (
+                            <span className="inline-flex items-center gap-1.5" role="status">
+                              <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-500 dark:bg-cyan-400" />
+                              <span className="text-xs text-muted-foreground animate-pulse">{t('streamingInProgress')}</span>
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </>
                   )}
