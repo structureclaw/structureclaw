@@ -6,7 +6,7 @@ import { normalizeMaterialFamilies as normalizeDomainMaterialFamilies } from '..
 import { ALL_SKILL_DOMAINS } from '../agent-runtime/types.js';
 import { listAgentToolDefinitions } from '../agent-langgraph/tool-registry.js';
 import type { AgentAnalysisType, MaterialFamily, SkillDomain, SkillManifest, SkillRuntimeStatus } from '../agent-runtime/types.js';
-import type { AgentToolCategory, AgentToolDefinition } from '../agent-langgraph/tool-registry.js';
+import type { AgentToolDefinition } from '../agent-langgraph/tool-registry.js';
 import type { BuiltinSkillCatalogEntry } from './agent-skill-catalog.js';
 
 const ACTIVE_RUNTIME_DOMAINS = new Set<SkillDomain>([

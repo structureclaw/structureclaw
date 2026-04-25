@@ -176,6 +176,7 @@ export function createGrepFilesTool() {
         if (stat.size > MAX_SEARCH_BYTES) continue;
         const lines = (await fs.readFile(full, 'utf-8')).split(/\r?\n/);
         for (let index = 0; index < lines.length; index += 1) {
+          if (matches.length >= 1000) break;
           if (lines[index].toLowerCase().includes(needle)) {
             matches.push({ path: rel, line: index + 1, preview: lines[index].slice(0, 240) });
           }

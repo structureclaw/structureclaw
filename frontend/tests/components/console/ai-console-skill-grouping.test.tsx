@@ -1233,7 +1233,8 @@ describe('Capability settings and console integration', () => {
     })
   })
 
-  it('does not treat duplicated stored skill ids as the default skill set during repair', async () {    window.localStorage.setItem(CAPABILITY_PREFERENCE_STORAGE_KEY, JSON.stringify({
+  it('does not treat duplicated stored skill ids as the default skill set during repair', async () => {
+    window.localStorage.setItem(CAPABILITY_PREFERENCE_STORAGE_KEY, JSON.stringify({
       skillIds: ['generic', 'generic'],
       toolIds: ['detect_structure_type'],
     }))

@@ -23,6 +23,7 @@ export function createMemoryTool() {
       const scope = resolveScope(config);
       if (input.action === 'store') {
         if (!input.key) throw new Error('key is required for store');
+        if (input.value === undefined) throw new Error('value is required for store');
         const entry = await memoryService.store(scope, input.key, input.value as never);
         return JSON.stringify({ success: true, entry });
       }

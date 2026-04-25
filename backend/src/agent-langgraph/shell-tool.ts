@@ -11,10 +11,10 @@ function isCommandAllowed(command: string): boolean {
   return getAllowedShellCommands().includes(command);
 }
 
-function truncateOutput(value: string): { output: string; truncated: boolean } {
-  const bytes = Buffer.byteLength(value, 'utf-8');
-  if (bytes <= MAX_OUTPUT_BYTES) return { output: value, truncated: false };
-  return { output: value.slice(0, MAX_OUTPUT_BYTES), truncated: true };
+function truncateByBytes(value: string, maxBytes: number): { output: string; truncated: boolean } {
+  const buf = Buffer.from(value, 'utf-8');
+  if (buf.length <= maxBytes) return { output: value, truncated: false };
+  return { output: buf.subarray(0, maxBytes).toString('utf-8'), truncated: true };
 }
 
 export function createShellTool() {
@@ -46,13 +46,21 @@ export function createShellTool() {
           resolve(JSON.stringify({ success: false, error: 'COMMAND_TIMEOUT', stdout, stderr }));
         }, timeoutMs);
 
-        child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString('utf-8'); });
-        child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString('utf-8'); });
+        child.stdout.on('data', (chunk: Buffer) => {
+          if (Buffer.byteLength(stdout, 'utf-8') < MAX_OUTPUT_BYTES) {
+            stdout += chunk.toString('utf-8');
+          }
+        });
+        child.stderr.on('data', (chunk: Buffer) => {
+          if (Buffer.byteLength(stderr, 'utf-8') < MAX_OUTPUT_BYTES) {
+            stderr += chunk.toString('utf-8');
+          }
+        });
         child.on('close', (exitCode) => {
           if (settled) return;
           clearTimeout(timeout);
-          const stdoutResult = truncateOutput(stdout);
-          const stderrResult = truncateOutput(stderr);
+          const stdoutResult = truncateByBytes(stdout, MAX_OUTPUT_BYTES);
+          const stderrResult = truncateByBytes(stderr, MAX_OUTPUT_BYTES);
           resolve(JSON.stringify({
             success: exitCode === 0,
             exitCode,

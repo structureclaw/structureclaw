@@ -17,5 +17,5 @@ All agent tools are registered in TypeScript under `backend/src/agent-langgraph/
 
 - File tools operate under `WORKSPACE_ROOT`.
 - File search skips `.git`, `node_modules`, `.venv`, `__pycache__`, and `.runtime`.
-- Write, replace, move, delete, memory, and shell tools require explicit enablement.
-- Shell execution is disabled unless `AGENT_ALLOW_SHELL` is true.
+- All tools are enabled by default. Individual tools may be toggled off by the user.
+- Shell execution requires `AGENT_ALLOW_SHELL=true` even when the tool is toggled on.
