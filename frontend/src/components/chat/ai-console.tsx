@@ -1304,6 +1304,7 @@ function AnalysisPanel({
   const guidance = result?.interaction
   const hasVisualizationData = Boolean(visualizationSnapshot || modelVisualizationSnapshot)
   const showVisualizationAction = Boolean(result || visualizationSnapshot)
+  const contextTabId = `${panelIdPrefix}-tab-context`
   const analysisTabId = `${panelIdPrefix}-tab-analysis`
   const reportTabId = `${panelIdPrefix}-tab-report`
   const tabPanelId = `${panelIdPrefix}-tabpanel-output`
@@ -1339,18 +1340,19 @@ function AnalysisPanel({
             </Button>
           )}
           <div className="grid w-full grid-cols-3 rounded-2xl border border-border/70 bg-background/70 p-1 sm:w-auto dark:border-white/10 dark:bg-white/5"
-            role="tablist" aria-label={t('tabPanelAnalysisLabel')}
+            role="tablist" aria-label={t('workspaceOutput')}
             onKeyDown={(e) => {
               const tabs: PanelTab[] = ['context', 'analysis', 'report']
               const currentIndex = tabs.indexOf(activeTab)
+              const tabCount = tabs.length
               if (e.key === 'ArrowRight') {
                 e.preventDefault()
-                const nextTab = tabs[(currentIndex + 1) % 3]
+                const nextTab = tabs[(currentIndex + 1) % tabCount]
                 onTabChange(nextTab)
                 requestAnimationFrame(() => { document.getElementById(`${panelIdPrefix}-tab-${nextTab}`)?.focus() })
               } else if (e.key === 'ArrowLeft') {
                 e.preventDefault()
-                const prevTab = tabs[(currentIndex - 1 + 3) % 3]
+                const prevTab = tabs[(currentIndex - 1 + tabCount) % tabCount]
                 onTabChange(prevTab)
                 requestAnimationFrame(() => { document.getElementById(`${panelIdPrefix}-tab-${prevTab}`)?.focus() })
               } else if (e.key === 'Home') {
@@ -1419,7 +1421,7 @@ function AnalysisPanel({
         </div>
       </div>
 
-      <div data-testid="console-output-scroll" className={cn('flex-1 overflow-auto p-5 xl:min-h-0', activeTab === 'context' && 'flex flex-col')} role="tabpanel" id={tabPanelId} aria-labelledby={activeTab === 'analysis' ? analysisTabId : reportTabId}>
+      <div data-testid="console-output-scroll" className={cn('flex-1 overflow-auto p-5 xl:min-h-0', activeTab === 'context' && 'flex flex-col')} role="tabpanel" id={tabPanelId} aria-labelledby={activeTab === 'context' ? contextTabId : activeTab === 'analysis' ? analysisTabId : reportTabId}>
         {!result && (
           <Card className="border-border/70 bg-card/85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/40">
             <CardHeader>
@@ -1711,7 +1713,7 @@ function AnalysisPanel({
                 )}
                 <Textarea
                   className="min-h-0 flex-1 resize-none rounded-xl border border-border/70 bg-background/70 font-mono text-xs dark:border-white/10 dark:bg-white/5"
-                  placeholder='{"nodes":[],"elements":[]}'
+                  placeholder={t('modelJsonPlaceholder')}
                   value={modelText || ''}
                   onChange={(e) => onModelTextChange?.(e.target.value)}
                 />
@@ -3683,6 +3685,8 @@ export function AIConsole() {
                 type="button"
                 className="h-9 w-9 rounded-full text-muted-foreground hover:bg-cyan-300/10 hover:text-foreground"
                 aria-label={t('sidebarGearAriaLabel')}
+                aria-haspopup="menu"
+                aria-expanded={gearMenuOpen}
                 onClick={() => setGearMenuOpen((v) => !v)}
               >
                 <Settings className="h-4 w-4" />
@@ -3851,6 +3855,8 @@ export function AIConsole() {
                   type="button"
                   className="h-9 w-9 rounded-full text-muted-foreground hover:bg-cyan-300/10 hover:text-foreground"
                   aria-label={t('sidebarGearAriaLabel')}
+                  aria-haspopup="menu"
+                  aria-expanded={gearMenuOpen}
                   onClick={() => setGearMenuOpen((v) => !v)}
                 >
                   <Settings className="h-4 w-4" />
@@ -4337,7 +4343,7 @@ export function AIConsole() {
             t={t}
             visualizationSnapshot={latestResultVisualizationSnapshot}
             modelText={modelText}
-            onModelTextChange={setModelText}
+            onModelTextChange={(val) => { setModelText(val); setModelSyncMessage('') }}
             modelSyncMessage={modelSyncMessage}
             parsedComposerModelError={parsedComposerModelError}
           />
@@ -4425,11 +4431,13 @@ export function AIConsole() {
           <div
             className="fixed inset-0 z-[70]"
             onClick={() => setGearMenuOpen(false)}
-            onKeyDown={(e) => { if (e.key === 'Escape') setGearMenuOpen(false) }}
           />
           <div
             role="menu"
             aria-label={t('sidebarGearAriaLabel')}
+            tabIndex={-1}
+            autoFocus
+            onKeyDown={(e) => { if (e.key === 'Escape') setGearMenuOpen(false) }}
             className="fixed z-[71] w-48 rounded-xl border border-border/70 bg-card p-2 shadow-xl dark:border-white/10 dark:bg-slate-950"
             style={{
               bottom: window.innerHeight - gearButtonRef.current.getBoundingClientRect().top + 8,
