@@ -456,6 +456,12 @@ export const messages = {
     contextPanelLabel: 'Engineering context',
     tabPanelAnalysisLabel: 'Analysis results',
     tabPanelReportLabel: 'Report',
+    sidebarCapabilitySummary: '{skillCount} skills · {toolCount} tools',
+    sidebarGearMenuCapabilities: 'Capabilities',
+    sidebarGearMenuLlm: 'LLM Settings',
+    sidebarGearMenuDatabase: 'Database Admin',
+    sidebarGearAriaLabel: 'Open settings menu',
+    contextTab: 'Context',
   },
   zh: {
     appName: 'StructureClaw',
@@ -901,6 +907,12 @@ export const messages = {
     contextPanelLabel: '工程上下文面板',
     tabPanelAnalysisLabel: '分析结果面板',
     tabPanelReportLabel: '报告面板',
+    sidebarCapabilitySummary: '{skillCount} 技能 · {toolCount} 工具',
+    sidebarGearMenuCapabilities: '能力设置',
+    sidebarGearMenuLlm: 'LLM 设置',
+    sidebarGearMenuDatabase: '数据库管理',
+    sidebarGearAriaLabel: '打开设置菜单',
+    contextTab: '工程上下文',
   },
 } as const
 
