@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '@/lib/stores/context'
 import { MarkdownBody } from './markdown-body'
 import { ToolCallCard } from './tool-call-card'
-import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, Maximize2, MessageSquarePlus, Orbit, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, RefreshCw, Settings, Sparkles, Square, Trash2, User } from 'lucide-react'
+import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, Maximize2, MessageSquarePlus, Orbit, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Settings, Sparkles, Square, Trash2, User } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -328,14 +328,11 @@ function resolveSkillDomainLabel(domain: SkillDomain, t: (key: MessageKey) => st
 const STORAGE_KEY = 'structureclaw.console.conversations'
 const CONSOLE_UI_PREFERENCES_STORAGE_KEY = 'structureclaw.console.ui-preferences'
 const SIDEBAR_LAYOUT_MIN_WIDTH = 1280
-type ConsoleOutputMode = 'dock' | 'modal'
 type ConsoleUiPreferences = {
   historyCollapsed: boolean
-  outputMode: ConsoleOutputMode
 }
 const DEFAULT_CONSOLE_UI_PREFERENCES: ConsoleUiPreferences = {
   historyCollapsed: false,
-  outputMode: 'dock',
 }
 
 function loadConsoleUiPreferences(): ConsoleUiPreferences {
@@ -357,9 +354,6 @@ function loadConsoleUiPreferences(): ConsoleUiPreferences {
       historyCollapsed: typeof parsed.historyCollapsed === 'boolean'
         ? parsed.historyCollapsed
         : DEFAULT_CONSOLE_UI_PREFERENCES.historyCollapsed,
-      outputMode: parsed.outputMode === 'modal' || parsed.outputMode === 'dock'
-        ? parsed.outputMode
-        : DEFAULT_CONSOLE_UI_PREFERENCES.outputMode,
     }
   } catch {
     return DEFAULT_CONSOLE_UI_PREFERENCES
@@ -1822,16 +1816,8 @@ export function AIConsole() {
   // Interaction option chips from ask_user_clarification
   const [pendingOptions, setPendingOptions] = useState<string[]>([])
 
-  const outputMode = uiPreferences.outputMode
 
   const messageRenderGroups = useMemo(() => groupMessagesForRendering(messages), [messages])
-
-  function setOutputMode(nextMode: ConsoleOutputMode) {
-    setUiPreferences((current) => ({
-      ...current,
-      outputMode: nextMode,
-    }))
-  }
 
   useEffect(() => {
     setUiPreferences(loadConsoleUiPreferences())
@@ -3597,10 +3583,10 @@ export function AIConsole() {
               type="button"
               variant="outline"
               className="rounded-full text-xs"
-              onClick={() => setOutputMode(outputMode === 'dock' ? 'modal' : 'dock')}
+              onClick={() => setResultDialogOpen(true)}
             >
-              {outputMode === 'dock' ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}
-              {outputMode === 'dock' ? t('usePopupResults') : t('dockResultPanel')}
+              <PanelRightOpen className="h-3.5 w-3.5" />
+              {t('showResults')}
             </Button>
           )}
           {streamingSessions.get(conversationId)?.status === 'streaming' ? (
@@ -3628,32 +3614,14 @@ export function AIConsole() {
     </div>
   )
 
-  // ── Grid columns: idle = 2-col (sidebar + center), active = 3-col (sidebar + center + right) ──
-  const gridCols = isIdle
-    ? (
-        historyCollapsed
-          ? 'xl:grid-cols-[72px_minmax(0,1fr)] 2xl:grid-cols-[80px_minmax(0,1fr)]'
-          : 'xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]'
-      )
-    : (
-        outputMode === 'modal'
-          ? (
-              historyCollapsed
-                ? 'xl:grid-cols-[72px_minmax(0,1fr)] 2xl:grid-cols-[80px_minmax(0,1fr)]'
-                : 'xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]'
-            )
-          : (
-              historyCollapsed
-                ? 'xl:grid-cols-[72px_minmax(0,2.6fr)_420px] 2xl:grid-cols-[80px_minmax(0,2.8fr)_460px]'
-                : 'xl:grid-cols-[260px_minmax(0,2.2fr)_420px] 2xl:grid-cols-[280px_minmax(0,2.4fr)_460px]'
-            )
-      )
+  const gridCols = historyCollapsed
+    ? 'xl:grid-cols-[72px_minmax(0,1fr)] 2xl:grid-cols-[80px_minmax(0,1fr)]'
+    : 'xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]'
 
   return (
     <div
       data-testid="console-layout-grid"
       data-history-collapsed={String(historyCollapsed)}
-      data-output-mode={outputMode}
       className={cn(
         'grid h-full min-h-screen xl:min-h-0 xl:overflow-hidden transition-[grid-template-columns] duration-300 ease-in-out',
         gridCols
@@ -4329,25 +4297,6 @@ export function AIConsole() {
         )}
       </section>
 
-      {!isIdle && outputMode === 'dock' && (
-        <div data-testid="console-output-dock" className="xl:min-h-0">
-          <AnalysisPanel
-            activeTab={activePanel}
-            locale={locale}
-            modelVisualizationSnapshot={latestModelVisualizationSnapshot}
-            onOpenVisualization={openVisualization}
-            onTabChange={setActivePanel}
-            panelIdPrefix="dock-output"
-            result={latestResult}
-            t={t}
-            visualizationSnapshot={latestResultVisualizationSnapshot}
-            modelText={modelText}
-            onModelTextChange={setModelText}
-            modelSyncMessage={modelSyncMessage}
-            parsedComposerModelError={parsedComposerModelError}
-          />
-        </div>
-      )}
       <StructuralVisualizationModal
         locale={locale}
         onClose={() => setVisualizationOpen(false)}
