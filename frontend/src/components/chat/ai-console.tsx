@@ -3655,7 +3655,7 @@ export function AIConsole() {
       data-history-collapsed={String(historyCollapsed)}
       data-output-mode={outputMode}
       className={cn(
-        'grid min-h-[calc(100vh-5.5rem)] xl:h-full xl:min-h-0 xl:overflow-hidden transition-[grid-template-columns] duration-300 ease-in-out',
+        'grid h-full min-h-screen xl:min-h-0 xl:overflow-hidden transition-[grid-template-columns] duration-300 ease-in-out',
         gridCols
       )}
     >
@@ -3678,22 +3678,31 @@ export function AIConsole() {
             >
               <PanelLeftOpen className="h-4 w-4" />
             </Button>
+            <button
+              type="button"
+              className="mt-2 h-9 w-9 rounded-lg overflow-hidden"
+              aria-label={t('expandHistoryPanel')}
+              onClick={() => setUiPreferences((current) => ({ ...current, historyCollapsed: false }))}
+            >
+              <img
+                src="/logo.png"
+                alt=""
+                className="h-full w-full object-cover brightness-0 opacity-70 dark:invert dark:opacity-60"
+              />
+            </button>
             <Button
               type="button"
               size="icon"
-              className="mt-3 h-10 w-10 rounded-full bg-cyan-300 text-slate-950 hover:bg-cyan-200"
+              className="mt-2 h-10 w-10 rounded-full bg-cyan-300 text-slate-950 hover:bg-cyan-200"
               aria-label={t('newConversation')}
               onClick={handleNewConversation}
             >
               <MessageSquarePlus className="h-4 w-4" />
             </Button>
-            <div className="mt-5 flex flex-1 items-center justify-center">
-              <div className="flex items-center gap-3 [writing-mode:vertical-rl]">
-                <span className="text-xs font-medium uppercase tracking-[0.18em] text-cyan-700/80 dark:text-cyan-200/70">
-                  {t('historyCollapsedTitle')}
-                </span>
-                <span className="sr-only">{t('historyCollapsedBody')}</span>
-              </div>
+            <div className="mt-4 flex flex-1 items-center justify-center">
+              <span className="text-xs font-medium uppercase tracking-[0.18em] text-cyan-700/80 dark:text-cyan-200/70 [writing-mode:vertical-rl]">
+                StructureClaw
+              </span>
             </div>
             <div className="mt-auto pt-3 flex flex-col items-center gap-2">
               <span className="text-[10px] text-muted-foreground text-center leading-tight">
@@ -3712,11 +3721,15 @@ export function AIConsole() {
           </>
         ) : (
           <>
-            <div className="border-b border-border/70 px-5 py-4 dark:border-white/10">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs uppercase tracking-[0.24em] text-cyan-700/80 dark:text-cyan-200/70">{t('conversationMemory')}</p>
-                  <h2 className="mt-1 text-lg font-semibold text-foreground">{t('conversationHistory')}</h2>
+            <div className="px-5 py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <img
+                    src="/logo.png"
+                    alt="StructureClaw"
+                    className="h-8 w-8 rounded-lg brightness-0 opacity-70 dark:invert dark:opacity-60"
+                  />
+                  <span className="text-xs uppercase tracking-[0.28em] text-cyan-700/80 dark:text-cyan-200/70">StructureClaw</span>
                 </div>
                 <Button
                   type="button"
@@ -3729,9 +3742,6 @@ export function AIConsole() {
                   <PanelLeftClose className="h-4 w-4" />
                 </Button>
               </div>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {t('conversationHistoryDesc')}
-              </p>
               <Button
                 type="button"
                 className="mt-4 w-full rounded-full bg-cyan-300 text-slate-950 hover:bg-cyan-200"
@@ -3890,9 +3900,11 @@ export function AIConsole() {
           <div className="flex h-full flex-col items-center justify-center px-4">
             <div className="w-full max-w-3xl flex flex-col items-center gap-8 py-12">
               <div className="flex flex-col items-center gap-3">
-                <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-400/20 bg-cyan-400/10 text-cyan-700 text-xl dark:text-cyan-200">
-                  SC
-                </span>
+                <img
+                  src="/logo.png"
+                  alt="StructureClaw"
+                  className="h-14 w-14 rounded-2xl brightness-0 opacity-70 dark:invert dark:opacity-60"
+                />
                 <h1 className="text-2xl font-semibold text-foreground">{t('welcomeHeading')}</h1>
                 <p className="text-sm text-muted-foreground text-center max-w-md leading-relaxed">{t('welcomeMessage')}</p>
               </div>
