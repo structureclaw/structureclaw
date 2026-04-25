@@ -119,7 +119,6 @@ export function CapabilitySettingsPanel() {
   const { t, locale } = useI18n()
   const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([])
   const [capabilityMatrix, setCapabilityMatrix] = useState<CapabilityMatrixPayload | null>(null)
-  const [skillDomainView, setSkillDomainView] = useState<SkillDomain>('structure-type')
   const initializedRef = useRef(false)
   const [skillsLoaded, setSkillsLoaded] = useState(false)
   const [capabilityMatrixLoaded, setCapabilityMatrixLoaded] = useState(false)
@@ -289,10 +288,6 @@ export function CapabilitySettingsPanel() {
     }).filter((group) => group.tools.length > 0)
   }, [availableTools, selectedToolIds, t])
 
-  const visibleGroupedSkills = useMemo(
-    () => groupedSkills.filter((group) => group.domain === skillDomainView),
-    [groupedSkills, skillDomainView]
-  )
 
   const selectedSkills = useMemo(
     () => availableSkills.filter((skill) => selectedSkillIds.includes(skill.id)),
@@ -434,23 +429,13 @@ export function CapabilitySettingsPanel() {
 
           <div className="rounded-[24px] border border-border/70 bg-background/75 p-5 dark:border-white/10 dark:bg-white/5">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <label className="text-xs font-medium text-foreground" htmlFor="capability-domain-view-select">{t('skillSelectionDomainViewLabel')}</label>
-              <select
-                id="capability-domain-view-select"
-                value={skillDomainView}
-                onChange={(event) => setSkillDomainView(event.target.value as SkillDomain)}
-                className="h-9 min-w-[220px] rounded-md border border-border/70 bg-background px-3 text-xs text-foreground dark:border-white/10 dark:bg-black/20"
-              >
-                {groupedSkills.map((group) => (
-                  <option key={group.domain} value={group.domain}>{group.label}</option>
-                ))}
-              </select>
+              <label className="text-xs font-medium text-foreground">{t('skillSelectionDomainViewLabel')}</label>
             </div>
             <div className="space-y-3">
-              {visibleGroupedSkills.length === 0 && (
+              {groupedSkills.filter((group) => group.skills.length > 0).length === 0 && (
                 <p className="text-xs text-muted-foreground">{t('skillDomainNoInstalledSkills')}</p>
               )}
-              {visibleGroupedSkills.map((group) => {
+              {groupedSkills.filter((group) => group.skills.length > 0).map((group) => {
                 const allSelected = group.skills.length > 0 && group.selectedCount === group.skills.length
                 return (
                   <div key={group.domain} className="rounded-2xl border border-border/70 bg-background/70 p-3 dark:border-white/10 dark:bg-black/20">
