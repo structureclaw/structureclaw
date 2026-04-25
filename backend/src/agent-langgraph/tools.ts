@@ -21,8 +21,6 @@ import { logger } from '../utils/logger.js';
 import type { AgentState } from './state.js';
 import type { AgentConfigurable } from './configurable.js';
 import { runPkpmCalcbook } from '../agent-skills/report-export/calculation-book/pkpm-calcbook/runner.js';
-import { createRegisteredTools } from './tool-registry.js';
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -640,15 +638,3 @@ export function createGenerateReportTool(skillRuntime: AgentSkillRuntime) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Tool aggregation
-// ---------------------------------------------------------------------------
-
-export interface ToolDeps {
-  skillRuntime: AgentSkillRuntime;
-}
-
-/** Create all LangGraph tools for the agent. */
-export function createAllTools(deps: ToolDeps) {
-  return createRegisteredTools(deps);
-}

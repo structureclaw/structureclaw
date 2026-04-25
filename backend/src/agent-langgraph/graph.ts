@@ -23,7 +23,7 @@ import { AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage }
 import type { BaseCheckpointSaver } from '@langchain/langgraph';
 import { createChatModel } from '../utils/llm.js';
 import { AgentStateAnnotation, type AgentState } from './state.js';
-import { createAllTools, type ToolDeps } from './tools.js';
+import { createRegisteredTools, type AgentToolFactoryDeps } from './tool-registry.js';
 import { buildSystemMessages } from './system-prompt.js';
 import type { SkillManifest } from '../agent-runtime/types.js';
 import type { AgentConfigurable } from './configurable.js';
@@ -42,7 +42,7 @@ const MAX_TOOL_CALLS_PER_TURN = 15;
 
 function createCallModelNode(
   skillManifests: SkillManifest[],
-  tools: ReturnType<typeof createAllTools>,
+  tools: ReturnType<typeof createRegisteredTools>,
 ) {
   return async function callModel(
     state: AgentState,
@@ -213,7 +213,7 @@ function shouldContinue(
 // Graph builder
 // ---------------------------------------------------------------------------
 
-export interface GraphDeps extends ToolDeps {
+export interface GraphDeps extends AgentToolFactoryDeps {
   skillManifests: SkillManifest[];
   checkpointer?: BaseCheckpointSaver;
 }
@@ -235,7 +235,7 @@ export function buildAgentGraph(deps: GraphDeps) {
   const { skillManifests, checkpointer } = deps;
 
   // Create tools ONCE — shared between ToolNode and callModel
-  const tools = createAllTools({ skillRuntime: deps.skillRuntime });
+  const tools = createRegisteredTools({ skillRuntime: deps.skillRuntime });
   const callModel = createCallModelNode(skillManifests, tools);
 
   // Wrap ToolNode so that the current graph state is injected into
