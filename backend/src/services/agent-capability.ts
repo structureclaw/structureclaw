@@ -275,7 +275,7 @@ function recommendedToolIdsForSkill(skill: CapabilitySkill): string[] {
     return ['validate_model'];
   }
   if (skill.domain === 'structure-type') {
-    return ['detect_structure_type', 'extract_draft_params', 'build_model'];
+    return ['detect_structure_type', 'extract_draft_params', 'build_model', 'validate_model', 'run_analysis', 'generate_report'];
   }
   return [];
 }
