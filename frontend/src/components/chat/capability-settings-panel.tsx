@@ -160,8 +160,9 @@ export function CapabilitySettingsPanel() {
         return
       }
       const payload = await response.json()
-      if (active && Array.isArray(payload)) {
-        setAvailableSkills(payload as AgentSkillSummary[])
+      const skillsArray = Array.isArray(payload) ? payload : Array.isArray(payload?.skills) ? payload.skills : null
+      if (active && skillsArray) {
+        setAvailableSkills(skillsArray as AgentSkillSummary[])
         setSkillsLoaded(true)
       }
     }

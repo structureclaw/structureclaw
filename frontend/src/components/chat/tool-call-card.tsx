@@ -61,6 +61,11 @@ export function ToolCallCard({ step, t, attached = false }: ToolCallCardProps) {
       <div className="flex items-center gap-2 px-3 py-2">
         {statusIcon}
         <span className="font-mono text-xs font-medium text-foreground">{step.tool}</span>
+        {step.skillId && (
+          <span className="rounded-full border border-cyan-300/35 bg-cyan-300/10 px-1.5 py-0.5 text-[10px] text-cyan-700 dark:text-cyan-300">
+            {step.skillId}
+          </span>
+        )}
         <span className={`text-[10px] uppercase tracking-wide ${step.status === 'running' ? 'text-cyan-600 dark:text-cyan-400' : step.status === 'done' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
           {statusLabel}
         </span>

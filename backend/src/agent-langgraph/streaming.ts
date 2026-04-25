@@ -73,6 +73,20 @@ function extractTextContent(content: unknown): string {
   return '';
 }
 
+/**
+ * Extract skillId from tool output JSON content.
+ * Many tools (detect_structure_type, run_analysis, etc.) include
+ * { skillId: "..." } in their output JSON.
+ */
+function extractSkillIdFromContent(content: string): string | undefined {
+  try {
+    const parsed = JSON.parse(content);
+    return typeof parsed?.skillId === 'string' ? parsed.skillId : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Stream adapter
 // ---------------------------------------------------------------------------
@@ -211,6 +225,7 @@ export function langGraphEventToChunks(
               status: 'done',
               tool: toolName,
               title: toolName,
+              skillId: extractSkillIdFromContent(content),
               completedAt: new Date().toISOString(),
               output: truncate(content, 500),
             },

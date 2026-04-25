@@ -495,12 +495,33 @@ export class AgentSkillRuntime {
   async buildModel(
     state: DraftState,
     skillIds?: string[],
+    context?: { message?: string; locale?: AppLocale },
   ): Promise<Record<string, unknown> | undefined> {
     const plugin = await this.registry.resolvePluginForState(state, skillIds);
     if (!plugin) {
       return undefined;
     }
-    return plugin.handler.buildModel(state);
+
+    // Deterministic model building (beam, truss, frame, etc.)
+    const model = plugin.handler.buildModel(state);
+    if (model) {
+      return model;
+    }
+
+    // Generic skill: fall back to LLM model builder
+    if (plugin.id === 'generic' && context) {
+      const { tryBuildGenericModelWithLlm } = await import('../agent-skills/structure-type/generic/llm-model-builder.js');
+      const { createChatModel } = await import('../utils/llm.js');
+      const llm = createChatModel(0);
+      if (!llm) {
+        return undefined;
+      }
+      return tryBuildGenericModelWithLlm(
+        llm, context.message || '', state, context.locale || 'zh',
+      );
+    }
+
+    return undefined;
   }
 
   async buildReportNarrative(

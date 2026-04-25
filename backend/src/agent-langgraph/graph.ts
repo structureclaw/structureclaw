@@ -245,6 +245,10 @@ export function buildAgentGraph(deps: GraphDeps) {
   const toolsNode = async (state: AgentState, config: LangGraphRunnableConfig) => {
     const configurableAny = config.configurable as Record<string, unknown>;
     configurableAny.agentState = state;
+    // Resolve skill scope once for all tools in this invocation
+    configurableAny.skillScope = state.selectedSkillIds?.length
+      ? state.selectedSkillIds
+      : undefined;
     const activeTools = resolveActiveTools(
       tools,
       config.configurable as Partial<AgentConfigurable> | undefined,

@@ -30,4 +30,10 @@ export interface AgentConfigurable {
   projectId?: string;
   /** Current user context for future scoped tools. */
   userId?: string;
+  /**
+   * Skill scope resolved from the user's selected skills.
+   * Set once per tool-node invocation by the graph; all tools read this
+   * instead of independently extracting skillIds from state.
+   */
+  skillScope?: string[];
 }
