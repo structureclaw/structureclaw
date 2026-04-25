@@ -3687,7 +3687,7 @@ export function AIConsole() {
               <img
                 src="/logo.png"
                 alt=""
-                className="h-full w-full object-cover brightness-0 opacity-70 dark:invert dark:opacity-60"
+                className="h-full w-full object-cover opacity-90"
               />
             </button>
             <Button
@@ -3727,7 +3727,7 @@ export function AIConsole() {
                   <img
                     src="/logo.png"
                     alt="StructureClaw"
-                    className="h-8 w-8 rounded-lg brightness-0 opacity-70 dark:invert dark:opacity-60"
+                    className="h-8 w-8 rounded-lg opacity-90"
                   />
                   <span className="text-xs uppercase tracking-[0.28em] text-cyan-700/80 dark:text-cyan-200/70">StructureClaw</span>
                 </div>
@@ -3903,7 +3903,7 @@ export function AIConsole() {
                 <img
                   src="/logo.png"
                   alt="StructureClaw"
-                  className="h-14 w-14 rounded-2xl brightness-0 opacity-70 dark:invert dark:opacity-60"
+                  className="h-14 w-14 rounded-2xl opacity-90"
                 />
                 <h1 className="text-2xl font-semibold text-foreground">{t('welcomeHeading')}</h1>
                 <p className="text-sm text-muted-foreground text-center max-w-md leading-relaxed">{t('welcomeMessage')}</p>
