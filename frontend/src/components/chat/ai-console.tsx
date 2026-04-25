@@ -2019,7 +2019,11 @@ export function AIConsole() {
         }
         const payload = await response.json()
         const skillsArray = Array.isArray(payload) ? payload : Array.isArray(payload?.skills) ? payload.skills : null
-        if (!active || !skillsArray) {
+        if (!active) {
+          return
+        }
+        if (!skillsArray) {
+          setSkillsLoaded(true)
           return
         }
         const skills = skillsArray as AgentSkillSummary[]

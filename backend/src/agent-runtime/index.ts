@@ -514,7 +514,11 @@ export class AgentSkillRuntime {
       const { createChatModel } = await import('../utils/llm.js');
       const llm = createChatModel(0);
       if (!llm) {
-        return undefined;
+        throw new Error(
+          context.locale === 'zh'
+            ? 'LLM 未配置，无法为通用技能构建模型。请检查 LLM_API_KEY 设置。'
+            : 'LLM is not configured — cannot build model for generic skill. Please check LLM_API_KEY settings.',
+        );
       }
       return tryBuildGenericModelWithLlm(
         llm, context.message || '', state, context.locale || 'zh',
