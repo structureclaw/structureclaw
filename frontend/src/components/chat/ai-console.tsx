@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '@/lib/stores/context'
 import { MarkdownBody } from './markdown-body'
 import { ToolCallCard } from './tool-call-card'
+import { LanguageToggle } from '@/components/language-toggle'
+import { ThemeToggle } from '@/components/theme-toggle'
 import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, Maximize2, MessageSquarePlus, Orbit, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Settings, Sparkles, Square, Trash2, User } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -3859,7 +3861,13 @@ export function AIConsole() {
         )}
       </aside>
 
-      <section
+      <div className="flex min-h-0 flex-col xl:min-h-0">
+        <div className="flex items-center justify-end gap-1.5 px-3 py-2">
+          <LanguageToggle />
+          <ThemeToggle />
+        </div>
+
+        <section
         data-testid="console-chat-panel"
         className="relative flex h-full flex-col overflow-hidden border-x border-border/50 bg-card/95 xl:min-h-0 dark:border-white/5 dark:bg-slate-950/90"
       >
@@ -4296,6 +4304,7 @@ export function AIConsole() {
         </div>
         )}
       </section>
+      </div>
 
       <StructuralVisualizationModal
         locale={locale}
