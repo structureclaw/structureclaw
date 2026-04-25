@@ -1419,7 +1419,7 @@ function AnalysisPanel({
         </div>
       </div>
 
-      <div data-testid="console-output-scroll" className="flex-1 overflow-auto p-5 xl:min-h-0" role="tabpanel" id={tabPanelId} aria-labelledby={activeTab === 'analysis' ? analysisTabId : reportTabId}>
+      <div data-testid="console-output-scroll" className={cn('flex-1 overflow-auto p-5 xl:min-h-0', activeTab === 'context' && 'flex flex-col')} role="tabpanel" id={tabPanelId} aria-labelledby={activeTab === 'analysis' ? analysisTabId : reportTabId}>
         {!result && (
           <Card className="border-border/70 bg-card/85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/40">
             <CardHeader>
@@ -1689,20 +1689,20 @@ function AnalysisPanel({
         )}
 
         {activeTab === 'context' && (
-          <div className="space-y-4">
-            <Card className="border-border/70 bg-card/85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/50">
-              <CardHeader>
+          <div className="flex h-full flex-col">
+            <Card className="flex flex-1 flex-col border-border/70 bg-card/85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/50">
+              <CardHeader className="shrink-0">
                 <CardTitle className="flex items-center gap-2 text-lg">
                   <Cuboid className="h-5 w-5 text-cyan-500 dark:text-cyan-300" />
                   {t('contextSectionModel')}
                 </CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3">
-                <p className="text-xs leading-5 text-muted-foreground">{t('contextSectionModelHelp')}</p>
+              <CardContent className="flex min-h-0 flex-1 flex-col gap-3">
+                <p className="shrink-0 text-xs leading-5 text-muted-foreground">{t('contextSectionModelHelp')}</p>
                 {modelVisualizationSnapshot && (
                   <Button
                     type="button"
-                    className="rounded-2xl border border-cyan-300/35 bg-cyan-300/10 px-4 text-cyan-800 hover:bg-cyan-300/20 dark:text-cyan-100"
+                    className="shrink-0 rounded-2xl border border-cyan-300/35 bg-cyan-300/10 px-4 text-cyan-800 hover:bg-cyan-300/20 dark:text-cyan-100"
                     onClick={() => onOpenVisualization('model')}
                   >
                     <Cuboid className="h-4 w-4" />
@@ -1710,23 +1710,23 @@ function AnalysisPanel({
                   </Button>
                 )}
                 <Textarea
-                  className="min-h-[200px] resize-y rounded-xl border border-border/70 bg-background/70 font-mono text-xs dark:border-white/10 dark:bg-white/5"
+                  className="min-h-0 flex-1 resize-none rounded-xl border border-border/70 bg-background/70 font-mono text-xs dark:border-white/10 dark:bg-white/5"
                   placeholder='{"nodes":[],"elements":[]}'
                   value={modelText || ''}
                   onChange={(e) => onModelTextChange?.(e.target.value)}
                 />
                 {modelSyncMessage && (
-                  <div className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-xs leading-5 text-cyan-900 dark:text-cyan-100">
+                  <div className="shrink-0 rounded-2xl border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-xs leading-5 text-cyan-900 dark:text-cyan-100">
                     {modelSyncMessage}
                   </div>
                 )}
                 {parsedComposerModelError ? (
-                  <div className="rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs leading-5 text-amber-900 dark:text-amber-100">
+                  <div className="shrink-0 rounded-2xl border border-amber-300/30 bg-amber-300/10 px-3 py-2 text-xs leading-5 text-amber-900 dark:text-amber-100">
                     {parsedComposerModelError}
                     {modelVisualizationSnapshot ? ` ${t('visualizationModelInvalidKeepingLast')}` : ''}
                   </div>
                 ) : modelVisualizationSnapshot ? (
-                  <div className="text-xs leading-5 text-muted-foreground">
+                  <div className="shrink-0 text-xs leading-5 text-muted-foreground">
                     {t('visualizationModelPreviewHelp')}
                   </div>
                 ) : null}
