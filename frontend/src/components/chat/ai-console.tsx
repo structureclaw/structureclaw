@@ -3525,14 +3525,117 @@ export function AIConsole() {
   }
 
   const historyCollapsed = uiPreferences.historyCollapsed && isSidebarLayout
+  const isIdle = messages.length <= 1
 
-  return (
-    <div
-      data-testid="console-layout-grid"
-      data-history-collapsed={String(historyCollapsed)}
-      data-output-mode={outputMode}
-      className={cn(
-        'grid min-h-[calc(100vh-5.5rem)] xl:h-full xl:min-h-0 xl:overflow-hidden transition-[grid-template-columns] duration-300 ease-in-out',
+  // ── Composer input (shared between idle and active layouts) ──
+  const composerInput = (
+    <div className="rounded-[24px] border border-border/70 bg-background/70 p-2.5 dark:border-white/10 dark:bg-black/20">
+      <Textarea
+        ref={composerTextareaRef}
+        className="min-h-[96px] resize-none border-0 bg-transparent px-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0"
+        placeholder={t('composerPlaceholder')}
+        value={input}
+        onChange={(event) => setInput(event.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+            e.preventDefault()
+            handleSubmit()
+          }
+        }}
+      />
+      <Separator className="bg-border dark:bg-white/10" />
+      <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
+            {t('conversationIdShort')} {conversationId ? conversationId.slice(0, 8) : t('notCreated')}
+          </Badge>
+          {allEngines.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              {allEngines.map((engine) => {
+                const probe = probeResults[engine.id]
+                const dotColor = probe
+                  ? (probe.loading ? 'bg-amber-400 dark:bg-amber-300' : (probe.passed ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-red-400 dark:bg-red-500'))
+                  : 'bg-gray-400 dark:bg-gray-500'
+                return (
+                  <span
+                    key={engine.id}
+                    className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"
+                    title={probe ? undefined : (engine.unavailableReason || (engine.available ? t('engineStatusAvailable') : t('engineStatusUnavailable')))}
+                  >
+                    <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`} />
+                    <span className={probe ? (probe.passed ? '' : 'opacity-50') : 'opacity-60'}>{engine.name}</span>
+                  </span>
+                )
+              })}
+              <div className="relative ml-1">
+                <button
+                  ref={probeButtonRef}
+                  type="button"
+                  aria-haspopup="dialog"
+                  aria-expanded={probePopupOpen}
+                  className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground disabled:opacity-50 dark:border-white/10 dark:bg-white/5"
+                  onClick={() => {
+                    const hasResults = Object.keys(probeResults).length > 0
+                    if (hasResults) {
+                      setProbePopupOpen((v) => !v)
+                    } else {
+                      probeAllEngines()
+                    }
+                  }}
+                  disabled={probeAllRunning}
+                >
+                  {probeAllRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                  {t('engineProbeButton')}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {!isIdle && (
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-full text-xs"
+              onClick={() => setOutputMode(outputMode === 'dock' ? 'modal' : 'dock')}
+            >
+              {outputMode === 'dock' ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}
+              {outputMode === 'dock' ? t('usePopupResults') : t('dockResultPanel')}
+            </Button>
+          )}
+          {streamingSessions.get(conversationId)?.status === 'streaming' ? (
+            <Button
+              type="button"
+              className="rounded-full bg-rose-500 px-5 text-white hover:bg-rose-400"
+              onClick={() => stopStream()}
+            >
+              <Square className="h-4 w-4" />
+              {t('stopStreaming')}
+            </Button>
+          ) : (
+            <Button
+              type="button"
+              className="rounded-full bg-cyan-300 px-5 text-slate-950 hover:bg-cyan-200"
+              onClick={() => handleSubmit()}
+              disabled={!input.trim() || submittingRef.current}
+            >
+              <ArrowUp className="h-4 w-4" />
+              {t('sendMessage')}
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+
+  // ── Grid columns: idle = 2-col (sidebar + center), active = 3-col (sidebar + center + right) ──
+  const gridCols = isIdle
+    ? (
+        historyCollapsed
+          ? 'xl:grid-cols-[72px_minmax(0,1fr)] 2xl:grid-cols-[80px_minmax(0,1fr)]'
+          : 'xl:grid-cols-[260px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]'
+      )
+    : (
         outputMode === 'modal'
           ? (
               historyCollapsed
@@ -3544,6 +3647,16 @@ export function AIConsole() {
                 ? 'xl:grid-cols-[72px_minmax(0,2.6fr)_420px] 2xl:grid-cols-[80px_minmax(0,2.8fr)_460px]'
                 : 'xl:grid-cols-[260px_minmax(0,2.2fr)_420px] 2xl:grid-cols-[280px_minmax(0,2.4fr)_460px]'
             )
+      )
+
+  return (
+    <div
+      data-testid="console-layout-grid"
+      data-history-collapsed={String(historyCollapsed)}
+      data-output-mode={outputMode}
+      className={cn(
+        'grid min-h-[calc(100vh-5.5rem)] xl:h-full xl:min-h-0 xl:overflow-hidden transition-[grid-template-columns] duration-300 ease-in-out',
+        gridCols
       )}
     >
       <aside
@@ -3772,6 +3885,42 @@ export function AIConsole() {
         data-testid="console-chat-panel"
         className="relative flex h-full flex-col overflow-hidden border-x border-border/50 bg-card/95 xl:min-h-0 dark:border-white/5 dark:bg-slate-950/90"
       >
+        {isIdle ? (
+          /* ── Idle state: centered welcome + composer ── */
+          <div className="flex h-full flex-col items-center justify-center px-4">
+            <div className="w-full max-w-3xl flex flex-col items-center gap-8 py-12">
+              <div className="flex flex-col items-center gap-3">
+                <span className="flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-400/20 bg-cyan-400/10 text-cyan-700 text-xl dark:text-cyan-200">
+                  SC
+                </span>
+                <h1 className="text-2xl font-semibold text-foreground">{t('welcomeHeading')}</h1>
+                <p className="text-sm text-muted-foreground text-center max-w-md leading-relaxed">{t('welcomeMessage')}</p>
+              </div>
+              <div className="w-full grid gap-3 sm:grid-cols-3">
+                {quickPrompts.map((prompt) => (
+                  <button
+                    key={prompt}
+                    type="button"
+                    onClick={() => setInput(prompt)}
+                    className="rounded-2xl border border-border/70 bg-background/70 p-4 text-left text-sm text-muted-foreground transition hover:border-cyan-300/40 hover:bg-cyan-300/10 hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:text-white"
+                  >
+                    <Sparkles className="mb-3 h-4 w-4 text-cyan-500 dark:text-cyan-300" />
+                    {prompt}
+                  </button>
+                ))}
+              </div>
+              <div className="w-full space-y-3">
+                {errorMessage && (
+                  <div role="alert" className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">
+                    {errorMessage}
+                  </div>
+                )}
+                {composerInput}
+              </div>
+            </div>
+          </div>
+        ) : (
+        /* ── Active state: chat messages + composer ── */
         <div className="relative flex h-full min-h-[320px] flex-col xl:min-h-0">
           <div className="px-4 py-2 2xl:px-5">
             <div className="flex flex-wrap items-center justify-end gap-2">
@@ -4177,110 +4326,14 @@ export function AIConsole() {
                   {errorMessage}
                 </div>
               )}
-
-              <div className="rounded-[24px] border border-border/70 bg-background/70 p-2.5 dark:border-white/10 dark:bg-black/20">
-                <Textarea
-                  ref={composerTextareaRef}
-                  className="min-h-[96px] resize-none border-0 bg-transparent px-3 py-2.5 text-base text-foreground placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0"
-                  placeholder={t('composerPlaceholder')}
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                      e.preventDefault()
-                      handleSubmit()
-                    }
-                  }}
-                />
-                <Separator className="bg-border dark:bg-white/10" />
-
-                <div className="mt-2.5 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
-                      {t('conversationIdShort')} {conversationId ? conversationId.slice(0, 8) : t('notCreated')}
-                    </Badge>
-                    {allEngines.length > 0 && (
-                      <div className="flex items-center gap-1.5">
-                        {allEngines.map((engine) => {
-                          const probe = probeResults[engine.id]
-                          const dotColor = probe
-                            ? (probe.loading ? 'bg-amber-400 dark:bg-amber-300' : (probe.passed ? 'bg-emerald-500 dark:bg-emerald-400' : 'bg-red-400 dark:bg-red-500'))
-                            : 'bg-gray-400 dark:bg-gray-500'
-                          return (
-                            <span
-                              key={engine.id}
-                              className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"
-                              title={probe ? undefined : (engine.unavailableReason || (engine.available ? t('engineStatusAvailable') : t('engineStatusUnavailable')))}
-                            >
-                              <span className={`inline-block h-1.5 w-1.5 rounded-full ${dotColor}`} />
-                              <span className={probe ? (probe.passed ? '' : 'opacity-50') : 'opacity-60'}>{engine.name}</span>
-                            </span>
-                          )
-                        })}
-                        <div className="relative ml-1">
-                          <button
-                            ref={probeButtonRef}
-                            type="button"
-                            aria-haspopup="dialog"
-                            aria-expanded={probePopupOpen}
-                            className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-background/70 px-2 py-0.5 text-[11px] text-muted-foreground transition hover:border-cyan-300/30 hover:text-foreground disabled:opacity-50 dark:border-white/10 dark:bg-white/5"
-                            onClick={() => {
-                              const hasResults = Object.keys(probeResults).length > 0
-                              if (hasResults) {
-                                setProbePopupOpen((v) => !v)
-                              } else {
-                                probeAllEngines()
-                              }
-                            }}
-                            disabled={probeAllRunning}
-                          >
-                            {probeAllRunning ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
-                            {t('engineProbeButton')}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="rounded-full text-xs"
-                      onClick={() => setOutputMode(outputMode === 'dock' ? 'modal' : 'dock')}
-                    >
-                      {outputMode === 'dock' ? <PanelRightClose className="h-3.5 w-3.5" /> : <PanelRightOpen className="h-3.5 w-3.5" />}
-                      {outputMode === 'dock' ? t('usePopupResults') : t('dockResultPanel')}
-                    </Button>
-                    {streamingSessions.get(conversationId)?.status === 'streaming' ? (
-                      <Button
-                        type="button"
-                        className="rounded-full bg-rose-500 px-5 text-white hover:bg-rose-400"
-                        onClick={() => stopStream()}
-                      >
-                        <Square className="h-4 w-4" />
-                        {t('stopStreaming')}
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        className="rounded-full bg-cyan-300 px-5 text-slate-950 hover:bg-cyan-200"
-                        onClick={() => handleSubmit()}
-                        disabled={!input.trim() || submittingRef.current}
-                      >
-                        <ArrowUp className="h-4 w-4" />
-                        {t('sendMessage')}
-                      </Button>
-                    )}
-                  </div>
-                </div>
-
-              </div>
+              {composerInput}
             </div>
           </div>
         </div>
+        )}
       </section>
 
-      {outputMode === 'dock' && (
+      {!isIdle && outputMode === 'dock' && (
         <div data-testid="console-output-dock" className="xl:min-h-0">
           <AnalysisPanel
             activeTab={activePanel}
