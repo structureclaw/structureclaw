@@ -5,10 +5,10 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { API_BASE } from '@/lib/api-base'
-import { loadCapabilityPreferences, saveCapabilityPreferences } from '@/lib/capability-preference'
 import { ALL_SKILL_DOMAINS, buildSkillNormalizationContext, DEFAULT_CONSOLE_SKILL_IDS, normalizeSkillDomain, type SkillDomain, type SkillMetadataLike } from '@/lib/skill-normalization'
 import { useI18n, type MessageKey } from '@/lib/i18n'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
+import { useStore } from '@/lib/stores/context'
 import { cn } from '@/lib/utils'
 
 type AgentSkillSummary = SkillMetadataLike & {
@@ -119,12 +119,15 @@ export function CapabilitySettingsPanel() {
   const { t, locale } = useI18n()
   const [availableSkills, setAvailableSkills] = useState<AgentSkillSummary[]>([])
   const [capabilityMatrix, setCapabilityMatrix] = useState<CapabilityMatrixPayload | null>(null)
-  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([])
-  const [selectedToolIds, setSelectedToolIds] = useState<string[]>([])
   const [skillDomainView, setSkillDomainView] = useState<SkillDomain>('structure-type')
-  const preferencesHydratedRef = useRef(false)
+  const initializedRef = useRef(false)
   const [skillsLoaded, setSkillsLoaded] = useState(false)
   const [capabilityMatrixLoaded, setCapabilityMatrixLoaded] = useState(false)
+
+  const storeSkillIds = useStore((s) => s.capabilitySkillIds)
+  const storeToolIds = useStore((s) => s.capabilityToolIds)
+  const storeExplicit = useStore((s) => s.capabilityExplicit)
+  const setCapabilityPreferences = useStore((s) => s.setCapabilityPreferences)
 
   const skillNormalization = useMemo(
     () => buildSkillNormalizationContext(availableSkills, capabilityMatrix),
@@ -203,41 +206,33 @@ export function CapabilitySettingsPanel() {
     }
   }, [])
 
+  // One-time initialization: normalize store IDs and apply defaults if needed
   useEffect(() => {
-    if (preferencesHydratedRef.current) {
-      return
-    }
-    if (!skillsLoaded || !capabilityMatrixLoaded) {
-      return
-    }
-    const stored = loadCapabilityPreferences()
-    if (stored) {
-      const validSkillIds = skillNormalization.normalizeSkillIds(stored.skillIds)
+    if (initializedRef.current) return
+    if (!skillsLoaded || !capabilityMatrixLoaded) return
+    initializedRef.current = true
+
+    if (storeSkillIds.length === 0 && storeToolIds.length === 0 && !storeExplicit) {
+      setCapabilityPreferences(defaultSelectedSkillIds, defaultSelectedToolIds, false)
+    } else {
+      const validSkillIds = skillNormalization.normalizeSkillIds(storeSkillIds)
         .filter((skillId) => availableSkills.some((skill) => skill.id === skillId))
       const allToolIds = new Set(availableTools.map((tool) => tool.id))
-      const validToolIds = stored.toolIds.filter((toolId) => allToolIds.has(toolId))
+      const validToolIds = storeToolIds.filter((toolId) => allToolIds.has(toolId))
+      setCapabilityPreferences(validSkillIds, validToolIds, storeExplicit)
+    }
+  }, [availableSkills, availableTools, capabilityMatrixLoaded, defaultSelectedSkillIds, defaultSelectedToolIds, setCapabilityPreferences, skillNormalization, skillsLoaded, storeExplicit, storeSkillIds, storeToolIds])
 
-      setSelectedSkillIds(validSkillIds)
-      setSelectedToolIds(validToolIds)
-    } else {
-      setSelectedSkillIds(defaultSelectedSkillIds)
-      setSelectedToolIds(defaultSelectedToolIds)
-    }
-    preferencesHydratedRef.current = true
-  }, [availableSkills, availableTools, capabilityMatrix, capabilityMatrixLoaded, defaultSelectedSkillIds, defaultSelectedToolIds, skillNormalization, skillsLoaded])
+  // Derive normalized selections from store
+  const selectedSkillIds = useMemo(() => {
+    return skillNormalization.normalizeSkillIds(storeSkillIds)
+      .filter((skillId) => availableSkills.some((skill) => skill.id === skillId))
+  }, [skillNormalization, storeSkillIds, availableSkills])
 
-  useEffect(() => {
-    if (!preferencesHydratedRef.current) {
-      return
-    }
-    if (!skillsLoaded || !capabilityMatrixLoaded) {
-      return
-    }
-    saveCapabilityPreferences({
-      skillIds: skillNormalization.normalizeSkillIds(selectedSkillIds),
-      toolIds: selectedToolIds,
-    })
-  }, [capabilityMatrixLoaded, selectedSkillIds, selectedToolIds, skillNormalization, skillsLoaded])
+  const selectedToolIds = useMemo(() => {
+    const allToolIds = new Set(availableTools.map((tool) => tool.id))
+    return storeToolIds.filter((toolId) => allToolIds.has(toolId))
+  }, [storeToolIds, availableTools])
 
   const groupedSkills = useMemo(() => {
     const bucket = new Map<SkillDomain, AgentSkillSummary[]>()
@@ -307,40 +302,43 @@ export function CapabilitySettingsPanel() {
   )
 
   function toggleSkill(skillId: string) {
-    setSelectedSkillIds((current) => (
-      current.includes(skillId)
-        ? current.filter((item) => item !== skillId)
-        : [...current, skillId]
-    ))
+    const newIds = selectedSkillIds.includes(skillId)
+      ? selectedSkillIds.filter((item) => item !== skillId)
+      : [...selectedSkillIds, skillId]
+    setCapabilityPreferences(newIds, storeToolIds, true)
   }
 
   function toggleSkillDomain(skillIds: string[]) {
     if (skillIds.length === 0) return
-    setSelectedSkillIds((current) => {
-      const allSelected = skillIds.every((skillId) => current.includes(skillId))
-      if (allSelected) {
-        return current.filter((skillId) => !skillIds.includes(skillId))
-      }
-      return Array.from(new Set([...current, ...skillIds]))
-    })
+    const allSelected = skillIds.every((skillId) => selectedSkillIds.includes(skillId))
+    const newIds = allSelected
+      ? selectedSkillIds.filter((skillId) => !skillIds.includes(skillId))
+      : Array.from(new Set([...selectedSkillIds, ...skillIds]))
+    setCapabilityPreferences(newIds, storeToolIds, true)
   }
 
   function toggleTool(toolId: string) {
-    setSelectedToolIds((current) => (
-      current.includes(toolId)
-        ? current.filter((item) => item !== toolId)
-        : [...current, toolId]
-    ))
+    const newIds = selectedToolIds.includes(toolId)
+      ? selectedToolIds.filter((item) => item !== toolId)
+      : [...selectedToolIds, toolId]
+    setCapabilityPreferences(storeSkillIds, newIds, true)
   }
 
   function toggleToolCategory(toolIds: string[]) {
     if (toolIds.length === 0) return
-    setSelectedToolIds((current) => {
-      const allSelected = toolIds.every((toolId) => current.includes(toolId))
-      return allSelected
-        ? current.filter((toolId) => !toolIds.includes(toolId))
-        : Array.from(new Set([...current, ...toolIds]))
-    })
+    const allSelected = toolIds.every((toolId) => selectedToolIds.includes(toolId))
+    const newIds = allSelected
+      ? selectedToolIds.filter((toolId) => !toolIds.includes(toolId))
+      : Array.from(new Set([...selectedToolIds, ...toolIds]))
+    setCapabilityPreferences(storeSkillIds, newIds, true)
+  }
+
+  function resetSkillDefaults() {
+    setCapabilityPreferences(defaultSelectedSkillIds, storeToolIds, true)
+  }
+
+  function resetToolDefaults() {
+    setCapabilityPreferences(storeSkillIds, defaultSelectedToolIds, true)
   }
 
   return (
@@ -383,7 +381,7 @@ export function CapabilitySettingsPanel() {
                 <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">{t('loadedSkillsTitle')}</div>
                 <div className="mt-1 text-sm text-muted-foreground">{t('loadedSkillsHint')}</div>
               </div>
-              <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={() => setSelectedSkillIds(defaultSelectedSkillIds)}>
+              <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={resetSkillDefaults}>
                 {t('useDefaultSkillSelection')}
               </Button>
             </div>
@@ -410,7 +408,7 @@ export function CapabilitySettingsPanel() {
                 <div className="text-xs uppercase tracking-[0.22em] text-muted-foreground">{t('loadedToolsTitle')}</div>
                 <div className="mt-1 text-sm text-muted-foreground">{t('loadedToolsHint')}</div>
               </div>
-              <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={() => setSelectedToolIds(defaultSelectedToolIds)}>
+              <Button type="button" variant="outline" size="sm" className="rounded-full" onClick={resetToolDefaults}>
                 {t('useDefaultToolSelection')}
               </Button>
             </div>
