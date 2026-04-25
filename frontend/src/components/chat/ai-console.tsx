@@ -3934,22 +3934,6 @@ export function AIConsole() {
         ) : (
         /* ── Active state: chat messages + composer ── */
         <div className="relative flex h-full min-h-[320px] flex-col xl:min-h-0">
-          <div className="px-4 py-2 2xl:px-5">
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {outputMode === 'modal' && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="rounded-full border-cyan-300/35 bg-cyan-300/10 text-cyan-800 hover:bg-cyan-300/20 dark:text-cyan-100"
-                  onClick={() => setResultDialogOpen(true)}
-                >
-                  <PanelRightOpen className="h-4 w-4" />
-                  {t('openResultPanel')}
-                </Button>
-              )}
-            </div>
-          </div>
-
           <div
             ref={chatScrollRef}
             data-testid="console-chat-scroll"
