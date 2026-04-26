@@ -44,12 +44,6 @@ ENGINE_DEFAULTS = {
         "routingHints": ["commercial", "design-code"],
         "constraints": {"requiresYJK": True},
     },
-    "builtin-simplified": {
-        "name": "Simplified Builtin",
-        "priority": 10,
-        "routingHints": ["fallback", "fast"],
-        "constraints": {},
-    },
 }
 
 
@@ -120,8 +114,6 @@ class AnalysisEngineRegistry:
             result = self._probe_opensees()
         elif engine_id == "builtin-pkpm":
             result = self._probe_pkpm()
-        elif engine_id == "builtin-simplified":
-            result = self._probe_simplified()
         elif engine_id == "builtin-yjk":
             result = {"passed": False, "error": "YJK engine is not yet implemented"}
         else:
@@ -286,16 +278,6 @@ class AnalysisEngineRegistry:
             stderr_snippet = (proc.stderr or "")[:500]
             raise RuntimeError(f"JWSCYCLE.exe exited with code {proc.returncode}. stderr: {stderr_snippet}")
 
-    def _probe_simplified(self) -> Dict[str, Any]:
-        try:
-            import numpy as np
-            a = np.array([[1.0, 0.0], [0.0, 1.0]])
-            b = np.array([2.0, 3.0])
-            _ = np.linalg.solve(a, b)
-            return {"passed": True, "details": "Simplified engine probe: numpy.linalg.solve OK"}
-        except Exception as error:
-            return {"passed": False, "error": str(error)}
-
     def validate_model(self, model_payload: Dict[str, Any], engine_id: Optional[str] = None) -> Dict[str, Any]:
         selection = self._select_engine_for("validate", None, model_payload, engine_id)
         manifest = selection.engine
@@ -337,25 +319,7 @@ class AnalysisEngineRegistry:
                 },
             )
         selection = self._select_engine_for("analyze", analysis_type, model.model_dump(mode="json"), engine_id)
-        try:
-            result = self._execute_analysis_selection(selection, analysis_type, model, parameters, engine_id)
-        except Exception as error:
-            fallback_selection = self._select_runtime_fallback_for_analysis(
-                selection,
-                analysis_type,
-                model,
-                engine_id,
-            )
-            if fallback_selection is None:
-                raise
-            logger.warning(
-                "Analysis engine '%s' failed during auto selection; retrying with '%s': %s",
-                selection.engine["id"],
-                fallback_selection.engine["id"],
-                error,
-            )
-            selection = fallback_selection
-            result = self._execute_analysis_selection(selection, analysis_type, model, parameters, engine_id)
+        result = self._execute_analysis_selection(selection, analysis_type, model, parameters, engine_id)
 
         meta = self._build_engine_meta(selection)
         existing_meta = result.get("meta") if isinstance(result, dict) else None
@@ -387,30 +351,6 @@ class AnalysisEngineRegistry:
 
         adapter_key = manifest.get("adapterKey")
         return self._run_python_analysis(adapter_key, analysis_type, model, parameters)
-
-    def _select_runtime_fallback_for_analysis(
-        self,
-        selection: EngineSelection,
-        analysis_type: str,
-        model: StructureModelV2,
-        engine_id: Optional[str],
-    ) -> Optional[EngineSelection]:
-        if engine_id is not None:
-            return None
-        if selection.engine.get("id") != "builtin-opensees":
-            return None
-
-        fallback_engine = self.get_engine("builtin-simplified")
-        if fallback_engine is None:
-            return None
-        if not self._supports_request(fallback_engine, "analyze", analysis_type, model.model_dump(mode="json")):
-            return None
-
-        return EngineSelection(
-            engine=fallback_engine,
-            selection_mode="fallback",
-            fallback_from=selection.engine["id"],
-        )
 
     def run_code_check(
         self,

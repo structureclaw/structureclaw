@@ -135,13 +135,6 @@ export const BUILTIN_ANALYSIS_ENGINES: AnalysisEngineDefinition[] = [
     routingHints: ['commercial', 'design-code'],
     constraints: { requiresYJK: true },
   }),
-  buildEngineDefinition(BUILTIN_ANALYSIS_SKILLS, {
-    id: 'builtin-simplified',
-    name: 'Simplified Builtin',
-    priority: 10,
-    routingHints: ['fallback', 'fast'],
-    constraints: {},
-  }),
 ];
 
 export const BUILTIN_ANALYSIS_ENGINE_IDS = BUILTIN_ANALYSIS_ENGINES.map((engine) => engine.id);

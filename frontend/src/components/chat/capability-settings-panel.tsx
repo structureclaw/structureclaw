@@ -60,7 +60,7 @@ const ALL_TOOL_CATEGORIES: ToolCategory[] = ['modeling', 'analysis', 'code-check
 function inferDomainFromSkillId(id: string): SkillDomain {
   if (id.startsWith('code-check-')) return 'code-check'
   if (id.startsWith('visualization-')) return 'visualization'
-  if (id.startsWith('opensees-') || id.startsWith('simplified-')) return 'analysis'
+  if (id.startsWith('opensees-')) return 'analysis'
   if (id === 'load-combination' || id === 'boundary-condition' || id.endsWith('-load')) return 'load-boundary'
   if (id === 'structure-json') return 'validation'
   if (id === 'png-export') return 'report-export'

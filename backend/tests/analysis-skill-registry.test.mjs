@@ -42,13 +42,10 @@ describe('analysis skill registry', () => {
     expect(engineIds).toContain('builtin-opensees');
     expect(engineIds).toContain('builtin-pkpm');
     expect(engineIds).toContain('builtin-yjk');
-    expect(engineIds).toContain('builtin-simplified');
     expect(BUILTIN_ANALYSIS_RUNTIME_ADAPTER_KEYS).toContain('builtin-opensees');
     expect(BUILTIN_ANALYSIS_RUNTIME_ADAPTER_KEYS).toContain('builtin-pkpm');
     expect(BUILTIN_ANALYSIS_RUNTIME_ADAPTER_KEYS).toContain('builtin-yjk');
-    expect(BUILTIN_ANALYSIS_RUNTIME_ADAPTER_KEYS).toContain('builtin-simplified');
     expect(BUILTIN_ANALYSIS_ENGINES.find((e) => e.id === 'builtin-opensees').skillIds).toContain('opensees-static');
-    expect(BUILTIN_ANALYSIS_ENGINES.find((e) => e.id === 'builtin-simplified').skillIds).toContain('simplified-static');
     expect(BUILTIN_ANALYSIS_ENGINES.find((e) => e.id === 'builtin-yjk').skillIds).toContain('yjk-static');
     expect(BUILTIN_ANALYSIS_ENGINES.find((e) => e.id === 'builtin-pkpm').skillIds).toContain('pkpm-static');
   });

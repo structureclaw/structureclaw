@@ -1616,13 +1616,11 @@ describe('ConsolePage Integration (CONS-13)', () => {
               analysis: {
                 success: true,
                 meta: {
-                  engineId: 'builtin-simplified',
-                  engineName: 'StructureClaw Analysis Engine',
-                  engineVersion: '0.1.0',
+                  engineId: 'builtin-opensees',
+                  engineName: 'OpenSees Builtin',
+                  engineVersion: '3.7.0',
                   engineKind: 'python',
-                  selectionMode: 'fallback',
-                  fallbackFrom: 'builtin-opensees',
-                  unavailableReason: 'OpenSees runtime is unavailable',
+                  selectionMode: 'auto',
                 },
                 data: {
                   summary: {
@@ -1646,12 +1644,9 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Send|发送/ }))
 
     await waitFor(() => {
-      expect(screen.getByText('StructureClaw Analysis Engine v0.1.0')).toBeInTheDocument()
+      expect(screen.getByText('OpenSees Builtin v3.7.0')).toBeInTheDocument()
     })
-    expect(screen.getByText(/Fallback engine used|已使用降级引擎/)).toBeInTheDocument()
-    expect(screen.getByText(/Fallback from builtin-opensees|原优先引擎 builtin-opensees/)).toBeInTheDocument()
-    expect(screen.getByText(/Requested engine builtin-opensees|请求引擎 builtin-opensees/)).toBeInTheDocument()
-    expect(screen.getByText(/Actual engine builtin-simplified|实际引擎 builtin-simplified/)).toBeInTheDocument()
+    expect(screen.getByText(/Selected automatically|系统自动选择/)).toBeInTheDocument()
   })
 
   it('renders markdown body fields in the execution summary and guidance panel', async () => {

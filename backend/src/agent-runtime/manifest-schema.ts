@@ -104,7 +104,7 @@ export const skillManifestFileSchema = z.object({
     minRuntimeVersion: z.string().trim().min(1),
     skillApiVersion: z.string().trim().min(1),
   }),
-  software: z.enum(['opensees', 'pkpm', 'yjk', 'simplified']).optional(),
+  software: z.enum(['opensees', 'pkpm', 'yjk']).optional(),
   analysisType: analysisTypeSchema.optional(),
   engineId: z.string().trim().min(1).optional(),
   adapterKey: z.string().trim().min(1).optional(),

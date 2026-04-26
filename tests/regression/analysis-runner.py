@@ -44,7 +44,6 @@ def get_by_path(obj, dotted):
 
 
 def validate_opensees_runtime_and_routing():
-    import types
 
     def run_request(payload, engine_id="builtin-opensees"):
         request = AnalysisRequest.model_validate(
@@ -166,90 +165,8 @@ def validate_opensees_runtime_and_routing():
         roof_uy = float(portal_result["data"]["displacements"]["3"]["uy"])
         assert_true(math.isfinite(roof_uy) and roof_uy < 0.0, f"Portal-frame roof displacement invalid: {roof_uy}")
         print("[ok] portal frame solves with builtin-opensees")
-
-        def fake_execute(self, selection, analysis_type, model, parameters, engine_id):
-            if selection.engine["id"] == "builtin-opensees":
-                raise RuntimeError("simulated runtime failure")
-            return {
-                "status": "success",
-                "analysisMode": "linear_2d_frame",
-                "displacements": {},
-                "forces": {},
-                "reactions": {},
-                "envelope": {},
-                "summary": {},
-            }
-
-        registry._execute_analysis_selection = types.MethodType(fake_execute, registry)
-
-        auto_result = registry.run_analysis("static", model, {"loadCaseIds": ["LC1"]}, None)
-        assert_true(auto_result["meta"]["engineId"] == "builtin-simplified", f"Expected fallback engine, got {auto_result['meta']['engineId']}")
-        assert_true(auto_result["meta"]["selectionMode"] == "fallback", f"Expected fallback selectionMode, got {auto_result['meta']['selectionMode']}")
-        assert_true(auto_result["meta"]["fallbackFrom"] == "builtin-opensees", f"Expected fallbackFrom builtin-opensees, got {auto_result['meta']['fallbackFrom']}")
-        print("[ok] auto engine falls back on runtime failure")
-
-        try:
-            registry.run_analysis("static", model, {"loadCaseIds": ["LC1"]}, "builtin-opensees")
-        except RuntimeError as error:
-            assert_true("simulated runtime failure" in str(error), f"Unexpected manual failure reason: {error}")
-            print("[ok] manual engine selection does not fall back")
-        else:
-            raise SystemExit("Manual builtin-opensees selection should not fall back")
     else:
         print(f"[skip] OpenSees runtime smoke test unavailable: {issue}")
-        engines = {engine["id"]: engine for engine in registry.list_engines()}
-        opensees = engines.get("builtin-opensees")
-        simplified = engines.get("builtin-simplified")
-        assert_true(opensees is not None, "builtin-opensees manifest missing")
-        assert_true(simplified is not None, "builtin-simplified manifest missing")
-        assert_true(opensees["available"] is False, "builtin-opensees should be marked unavailable when runtime probe fails")
-        assert_true(opensees["status"] == "unavailable", f"Unexpected builtin-opensees status: {opensees['status']}")
-        assert_true(isinstance(opensees.get("unavailableReason"), str) and opensees["unavailableReason"], "builtin-opensees should expose unavailableReason")
-        assert_true(simplified["available"] is True, "builtin-simplified should remain available when OpenSees is unavailable")
-
-        auto_result = registry.run_analysis("static", model, {"loadCaseIds": ["LC1"]}, None)
-        assert_true(auto_result["meta"]["engineId"] == "builtin-simplified", f"Expected builtin-simplified auto selection, got {auto_result['meta']['engineId']}")
-        assert_true(auto_result["meta"]["selectionMode"] == "fallback", f"Expected fallback selectionMode, got {auto_result['meta']['selectionMode']}")
-        assert_true(auto_result["meta"]["fallbackFrom"] == "builtin-opensees", f"Expected fallbackFrom builtin-opensees, got {auto_result['meta']['fallbackFrom']}")
-        print("[ok] auto engine pre-routes away from unavailable OpenSees runtime")
-
-        manual_request = AnalysisRequest.model_validate(
-            {
-                "type": "static",
-                "model": simply_supported,
-                "parameters": {"loadCaseIds": ["LC1"]},
-                "engineId": "builtin-opensees",
-            }
-        )
-        try:
-            asyncio.run(analyze(manual_request))
-        except Exception as error:
-            status_code = getattr(error, "status_code", None)
-            detail = getattr(error, "detail", {})
-            assert_true(status_code == 422, f"Expected manual unavailable engine to raise 422, got {status_code}")
-            assert_true(isinstance(detail, dict) and detail.get("errorCode") == "ENGINE_UNAVAILABLE", f"Unexpected manual unavailable detail: {detail}")
-            print("[ok] manual builtin-opensees selection reports unavailable runtime")
-        else:
-            raise SystemExit("Manual builtin-opensees selection should fail when runtime is unavailable")
-
-        unsupported_request = AnalysisRequest.model_validate(
-            {
-                "type": "nonlinear",
-                "model": simply_supported,
-                "parameters": {"loadCaseIds": ["LC1"]},
-                "engineId": "builtin-simplified",
-            }
-        )
-        try:
-            asyncio.run(analyze(unsupported_request))
-        except Exception as error:
-            status_code = getattr(error, "status_code", None)
-            detail = getattr(error, "detail", {})
-            assert_true(status_code == 422, f"Expected unsupported engine request to raise 422, got {status_code}")
-            assert_true(isinstance(detail, dict) and detail.get("errorCode") == "ENGINE_UNSUPPORTED", f"Unexpected unsupported engine detail: {detail}")
-            print("[ok] manual unsupported engine selection reports unsupported request")
-        else:
-            raise SystemExit("Manual builtin-simplified nonlinear selection should fail as unsupported")
 
 
 def validate_analyze_contract():
@@ -342,7 +259,7 @@ def validate_analyze_contract():
         type="static",
         model=frame_3d_model,
         parameters={"loadCaseIds": ["LC1"]},
-        engineId="builtin-simplified",
+        engineId="builtin-opensees",
     )
     frame_3d_result = asyncio.run(analyze(frame_3d_request)).model_dump()
     if frame_3d_result["success"] is not True:
@@ -372,7 +289,7 @@ def validate_analyze_contract():
         type="static",
         model=simplified_planar_beam_model,
         parameters={"loadCaseIds": ["LC1"]},
-        engineId="builtin-simplified",
+        engineId="builtin-opensees",
     )
     simplified_planar_result = asyncio.run(analyze(simplified_planar_request)).model_dump()
     if simplified_planar_result["success"] is not True:
@@ -435,7 +352,7 @@ def validate_static_regression():
     for file_path in cases:
         payload = json.loads(file_path.read_text(encoding="utf-8"))
         request_payload = dict(payload["request"])
-        request_payload["engineId"] = "builtin-simplified"
+        request_payload["engineId"] = "builtin-opensees"
         request = AnalysisRequest.model_validate(request_payload)
         result = asyncio.run(analyze(request)).model_dump(mode="json")
         if result.get("success") is not True:
@@ -468,7 +385,7 @@ def validate_static_3d_regression():
     for file_path in cases:
         payload = json.loads(file_path.read_text(encoding="utf-8"))
         request_payload = dict(payload["request"])
-        request_payload["engineId"] = "builtin-simplified"
+        request_payload["engineId"] = "builtin-opensees"
         request = AnalysisRequest.model_validate(request_payload)
         result = asyncio.run(analyze(request)).model_dump(mode="json")
         if result.get("success") is not True:

@@ -8,7 +8,6 @@ Purpose:
 
 Layout:
 - `opensees-static`, `opensees-dynamic`, `opensees-seismic`, `opensees-nonlinear`
-- `simplified-static`, `simplified-dynamic`, `simplified-seismic`
 - `runtime/` contains Python worker, API, and runtime registry only
 
 Rules:
