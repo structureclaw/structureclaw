@@ -18,6 +18,15 @@ describe('section skill loader', () => {
     expect(ids).not.toContain('section');
   });
 
+  test('should discover the memory utility skill bundle', () => {
+    const loader = new AgentSkillLoader();
+    const bundle = loader.loadBundles().find((entry) => entry.id === 'memory');
+
+    expect(bundle).toBeDefined();
+    expect(bundle?.domain).toBe('general');
+    expect(bundle?.markdownByStage.intent).toContain('persistent memory');
+  });
+
   test('should load modular section plugins and keep legacy root plugin removed', async () => {
     const loader = new AgentSkillLoader();
     const plugins = await loader.loadPlugins();
