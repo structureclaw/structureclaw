@@ -6,12 +6,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { PrismaClient } from '@prisma/client';
 import pg from 'pg';
-import {
-  buildPostAttachmentRows,
-  buildPostTagRows,
-  buildSkillTagRows,
-  stripLegacyScalarLists,
-} from './postgres-to-sqlite-lib.mjs';
+import { stripLegacyScalarLists } from './postgres-to-sqlite-lib.mjs';
 
 const { Client } = pg;
 const __filename = fileURLToPath(import.meta.url);
@@ -130,33 +125,11 @@ async function queryRows(client, sql) {
 }
 
 async function loadSourceData(client) {
-  const hasSkillTagsTable = await tableExists(client, 'skill_tags');
-  const hasPostTagsTable = await tableExists(client, 'post_tags');
-  const hasPostAttachmentsTable = await tableExists(client, 'post_attachments');
-  const hasSkillsTagsColumn = await columnExists(client, 'skills', 'tags');
-  const hasPostsTagsColumn = await columnExists(client, 'posts', 'tags');
-  const hasPostsAttachmentsColumn = await columnExists(client, 'posts', 'attachments');
-
   return {
     structuralModels: await queryRows(client, 'select * from "structural_models" order by "createdAt" asc'),
     analyses: await queryRows(client, 'select * from "analyses" order by "createdAt" asc'),
     conversations: await queryRows(client, 'select * from "conversations" order by "createdAt" asc'),
     messages: await queryRows(client, 'select * from "messages" order by "createdAt" asc'),
-    skills: await queryRows(client, 'select * from "skills" order by "createdAt" asc'),
-    skillReviews: await queryRows(client, 'select * from "skill_reviews" order by "createdAt" asc'),
-    skillExecutions: await queryRows(client, 'select * from "skill_executions" order by "createdAt" asc'),
-    posts: await queryRows(client, 'select * from "posts" order by "createdAt" asc'),
-    comments: await queryRows(client, 'select * from "comments" order by "createdAt" asc'),
-    postLikes: await queryRows(client, 'select * from "post_likes" order by "createdAt" asc'),
-    skillTags: hasSkillTagsTable
-      ? await queryRows(client, 'select * from "skill_tags" order by "skillId" asc, "createdAt" asc')
-      : (hasSkillsTagsColumn ? [] : []),
-    postTags: hasPostTagsTable
-      ? await queryRows(client, 'select * from "post_tags" order by "postId" asc, "createdAt" asc')
-      : (hasPostsTagsColumn ? [] : []),
-    postAttachments: hasPostAttachmentsTable
-      ? await queryRows(client, 'select * from "post_attachments" order by "postId" asc, "position" asc, "createdAt" asc')
-      : (hasPostsAttachmentsColumn ? [] : []),
   };
 }
 
@@ -174,15 +147,6 @@ async function insertMany(delegate, rows) {
 }
 
 async function clearTarget(prisma) {
-  await prisma.postLike.deleteMany();
-  await prisma.comment.deleteMany();
-  await prisma.postAttachment.deleteMany();
-  await prisma.postTag.deleteMany();
-  await prisma.post.deleteMany();
-  await prisma.skillExecution.deleteMany();
-  await prisma.skillReview.deleteMany();
-  await prisma.skillTag.deleteMany();
-  await prisma.skill.deleteMany();
   await prisma.message.deleteMany();
   await prisma.conversation.deleteMany();
   await prisma.analysis.deleteMany();
@@ -190,12 +154,8 @@ async function clearTarget(prisma) {
 }
 
 async function targetHasData(prisma) {
-  const counts = await Promise.all([
-    prisma.conversation.count(),
-    prisma.skill.count(),
-    prisma.post.count(),
-  ]);
-  return counts.some((count) => count > 0);
+  const count = await prisma.conversation.count();
+  return count > 0;
 }
 
 function ensureSourceUrl(sourceUrl) {
@@ -272,9 +232,6 @@ async function main() {
     try {
       const source = await loadSourceData(sourceClient);
       const normalizedSource = stripLegacyScalarLists(source);
-      const skillTagRows = buildSkillTagRows(source.skills, source.skillTags);
-      const postTagRows = buildPostTagRows(source.posts, source.postTags);
-      const postAttachmentRows = buildPostAttachmentRows(source.posts, source.postAttachments);
 
       const structuralModels = normalizedSource.structuralModels.filter(
         (row) => typeof row.conversationId === 'string' && row.conversationId.length > 0,
@@ -288,30 +245,12 @@ async function main() {
       await insertMany(prisma.analysis, normalizedSource.analyses);
       await insertMany(prisma.conversation, normalizedSource.conversations);
       await insertMany(prisma.message, normalizedSource.messages);
-      await insertMany(prisma.skill, normalizedSource.skills);
-      await insertMany(prisma.skillTag, skillTagRows);
-      await insertMany(prisma.skillReview, normalizedSource.skillReviews);
-      await insertMany(prisma.skillExecution, normalizedSource.skillExecutions);
-      await insertMany(prisma.post, normalizedSource.posts);
-      await insertMany(prisma.postTag, postTagRows);
-      await insertMany(prisma.postAttachment, postAttachmentRows);
-      await insertMany(prisma.comment, normalizedSource.comments);
-      await insertMany(prisma.postLike, normalizedSource.postLikes);
 
       logSummary({
         structuralModels: structuralModels.length,
         analyses: source.analyses.length,
         conversations: source.conversations.length,
         messages: source.messages.length,
-        skills: source.skills.length,
-        skillTags: skillTagRows.length,
-        skillReviews: source.skillReviews.length,
-        skillExecutions: source.skillExecutions.length,
-        posts: source.posts.length,
-        postTags: postTagRows.length,
-        postAttachments: postAttachmentRows.length,
-        comments: source.comments.length,
-        postLikes: source.postLikes.length,
       });
     } finally {
       await sourceClient.end();

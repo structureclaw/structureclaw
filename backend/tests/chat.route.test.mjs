@@ -153,7 +153,6 @@ describe('chat routes message persistence', () => {
       data: {
         title: 'Design a steel frame',
         type: 'general',
-        userId: undefined,
       },
     });
     expect(agentRunSpy).toHaveBeenCalledWith(expect.objectContaining({
@@ -192,7 +191,6 @@ describe('chat routes message persistence', () => {
       data: {
         title: 'Stream a steel frame design',
         type: 'general',
-        userId: undefined,
       },
     });
     expect(agentRunStreamSpy).toHaveBeenCalledWith(expect.objectContaining({
