@@ -124,8 +124,6 @@ export class LangGraphAgentService {
       enabledToolIds: input?.context?.enabledToolIds,
       disabledToolIds: input?.context?.disabledToolIds,
       allowShell: getAllowShellTools(),
-      projectId: input?.context?.projectId,
-      userId: input?.userId,
       _logger: childLogger,
     };
   }
