@@ -68,14 +68,17 @@ describe('log-rotation', () => {
     const filePath = path.join(dir, 'test.log');
     const { createRotatingFileStream } = await import('../dist/utils/log-rotation.js');
 
+    // Pre-fill the log file to near maxSize so rotation triggers early
+    fs.writeFileSync(filePath, 'x'.repeat(400));
+
     // Use a very small maxSize to force rotation quickly
     const stream = createRotatingFileStream(filePath, {
       maxSize: 500,
       maxAgeDays: 7,
     });
 
-    // Write enough data to exceed 500 bytes
-    writeLines(stream, 10, 100);
+    // Write enough lines to exceed both maxSize and the rotation check interval (100 writes)
+    writeLines(stream, 110, 100);
 
     await new Promise((resolve) => stream.end(resolve));
 
@@ -119,7 +122,8 @@ describe('log-rotation', () => {
     });
 
     // Write enough to exceed maxSize and trigger rotation + purge
-    writeLines(stream, 3, 100);
+    // Must exceed both maxSize and the rotation check interval (100 writes)
+    writeLines(stream, 110, 100);
 
     await new Promise((resolve) => stream.end(resolve));
 

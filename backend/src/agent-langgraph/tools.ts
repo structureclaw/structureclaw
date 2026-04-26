@@ -94,7 +94,7 @@ export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
         logToolCall(log, { tool: 'detect_structure_type', durationMs: Date.now() - start, extra: { matchedKey: match.key, skillId: match.skillId } });
         return toolResult(toolCallId, 'detect_structure_type', JSON.stringify(result), stateUpdate);
       } catch (error) {
-        logToolCall(log, { tool: 'detect_structure_type', durationMs: Date.now() - start, level: 'info', extra: { error: error instanceof Error ? error.message : String(error) } });
+        logToolCall(log, { tool: 'detect_structure_type', durationMs: Date.now() - start, success: false, extra: { error: error instanceof Error ? error.message : String(error) } });
         throw error;
       }
     },
@@ -228,7 +228,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
           stateUpdate,
         );
       } catch (error) {
-        logToolCall(log, { tool: 'extract_draft_params', durationMs: Date.now() - start, extra: { error: error instanceof Error ? error.message : String(error) } });
+        logToolCall(log, { tool: 'extract_draft_params', durationMs: Date.now() - start, success: false, extra: { error: error instanceof Error ? error.message : String(error) } });
         throw error;
       }
     },

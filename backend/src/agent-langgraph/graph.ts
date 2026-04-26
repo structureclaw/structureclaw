@@ -29,7 +29,7 @@ import type { SkillManifest } from '../agent-runtime/types.js';
 import type { AgentConfigurable } from './configurable.js';
 import { resolveActiveToolIds } from './tool-policy.js';
 import type { StructuredToolInterface } from '@langchain/core/tools';
-import { getLogger, logStateTransition } from '../utils/agent-logger.js';
+import { getLogger } from '../utils/agent-logger.js';
 
 function getAgentLogger(config: LangGraphRunnableConfig) {
   return getLogger(config.configurable as Partial<AgentConfigurable> | undefined);

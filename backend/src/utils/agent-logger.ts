@@ -42,6 +42,8 @@ export interface ToolCallParams {
   durationMs: number;
   extra?: Record<string, unknown>;
   level?: 'info' | 'debug' | 'trace';
+  /** When true, tool executed successfully (default). When false, log as failure. */
+  success?: boolean;
 }
 
 /**
@@ -49,15 +51,24 @@ export interface ToolCallParams {
  * - info (default): tool name + duration
  * - debug:          + truncated input/output
  * - trace:          + full input/output (no truncation)
+ * - success=false:  warn level with "failed" message
  */
 export function logToolCall(log: Logger, params: ToolCallParams): void {
-  const { tool, durationMs, extra, level = 'info' } = params;
+  const { tool, durationMs, extra, success = true } = params;
 
   const base: Record<string, unknown> = {
     tool,
     durationMs,
+    success,
     ...extra,
   };
+
+  if (!success) {
+    log.warn(base, `tool:${tool} failed`);
+    return;
+  }
+
+  const level = params.level || 'info';
 
   if (level === 'info') {
     log.info(base, `tool:${tool} completed`);
@@ -91,6 +102,8 @@ export interface LlmCallParams {
   response?: unknown;
   extra?: Record<string, unknown>;
   level?: 'info' | 'debug' | 'trace';
+  /** When true, log as a failure (warn level, "failed" message) */
+  success?: boolean;
 }
 
 /**
@@ -98,17 +111,26 @@ export interface LlmCallParams {
  * - info (default): model + token counts + latency
  * - debug:          + truncated request/response
  * - trace:          + full request/response
+ * - success=false:  warn level with "failed" message
  */
 export function logLlmCall(log: Logger, params: LlmCallParams): void {
-  const { model, promptTokens, completionTokens, durationMs, extra, level = 'info' } = params;
+  const { model, promptTokens, completionTokens, durationMs, extra, success = true } = params;
 
   const base: Record<string, unknown> = {
     model,
     durationMs,
+    success,
     ...extra,
   };
   if (promptTokens !== undefined) base.promptTokens = promptTokens;
   if (completionTokens !== undefined) base.completionTokens = completionTokens;
+
+  if (!success) {
+    log.warn(base, `llm:${model} call failed`);
+    return;
+  }
+
+  const level = params.level || 'info';
 
   if (level === 'info') {
     log.info(base, `llm:${model} call completed`);

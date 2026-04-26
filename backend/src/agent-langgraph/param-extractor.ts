@@ -10,7 +10,8 @@ import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { HumanMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import { createChatModel } from '../utils/llm.js';
-import { logger } from '../utils/agent-logger.js';
+import { logger as rootLogger } from '../utils/agent-logger.js';
+import type { Logger } from 'pino';
 import type { AgentSkillPlugin, DraftState } from '../agent-runtime/types.js';
 
 // ---------------------------------------------------------------------------
@@ -163,14 +164,17 @@ export interface ParamExtractorInput {
   existingState: DraftState | undefined;
   locale: 'zh' | 'en';
   plugin: AgentSkillPlugin;
+  /** Per-request logger with traceId/conversationId. Falls back to root logger. */
+  traceLogger?: Logger;
 }
 
 export async function invokeParamExtractor(
   input: ParamExtractorInput,
 ): Promise<Record<string, unknown> | null> {
+  const log = input.traceLogger ?? rootLogger;
   const pluginId = input.plugin.id;
   const locale = input.locale;
-  logger.info({ pluginId, locale }, 'param extractor started');
+  log.info({ pluginId, locale }, 'param extractor started');
 
   const llm = createChatModel(0);
   if (!llm) return null;
@@ -188,6 +192,6 @@ export async function invokeParamExtractor(
   });
 
   const patch = parseDraftPatchFromMessages(result.messages);
-  logger.debug({ pluginId, durationMs: Date.now() - start, hasDraftPatch: !!patch }, 'param extractor completed');
+  log.debug({ pluginId, durationMs: Date.now() - start, hasDraftPatch: !!patch }, 'param extractor completed');
   return patch;
 }

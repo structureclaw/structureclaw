@@ -529,7 +529,7 @@ export async function* streamGraphToChunks(
       streamLog.debug({ totalChunks, durationMs: Date.now() - streamStart, interrupted: true }, 'stream processing interrupted (human-in-the-loop)');
     }
   } catch (error) {
-    streamLog.error({ error, totalChunks, durationMs: Date.now() - streamStart }, 'LangGraph stream error');
+    streamLog.error({ err: error, totalChunks, durationMs: Date.now() - streamStart }, 'LangGraph stream error');
     yield { type: 'presentation_error', phase: 'modeling' as const, message: error instanceof Error ? error.message : String(error) };
     yield { type: 'error', error: String(error) };
   }

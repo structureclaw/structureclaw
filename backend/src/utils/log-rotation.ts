@@ -3,11 +3,13 @@ import path from 'path';
 import { Writable } from 'stream';
 
 export interface RotationOptions {
-  /** Max file size in bytes before rotation (default 100MB) */
+  /** Max file size in bytes before rotation. Caller must provide a positive integer. */
   maxSize: number;
-  /** Max age in days for old log files (default 7) */
+  /** Max age in days for old log files. Caller must provide a positive integer. */
   maxAgeDays: number;
 }
+
+const ROTATION_CHECK_INTERVAL = 100;
 
 /**
  * Create a writable stream that rotates the log file when it exceeds maxSize.
@@ -16,6 +18,9 @@ export interface RotationOptions {
  * Graceful degradation: if rotation fails, the stream continues writing to
  * the current file. Write errors are silently ignored — logging must never
  * crash the application.
+ *
+ * Rotation checks are performed every ROTATION_CHECK_INTERVAL writes to
+ * avoid synchronous fs.statSync on every single log line.
  */
 export function createRotatingFileStream(
   filePath: string,
@@ -34,9 +39,14 @@ export function createRotatingFileStream(
   let currentStream = fs.createWriteStream(filePath, { flags: 'a' });
   currentStream.on('error', () => {});
 
+  let writeCount = 0;
+
   const stream = new Writable({
     write(chunk: Buffer, _encoding: string, callback: (error?: Error | null) => void) {
-      tryRotate();
+      writeCount++;
+      if (writeCount % ROTATION_CHECK_INTERVAL === 0) {
+        tryRotate();
+      }
       if (currentStream.destroyed) {
         // Reopen if the underlying stream was destroyed
         currentStream = fs.createWriteStream(filePath, { flags: 'a' });
@@ -59,14 +69,11 @@ export function createRotatingFileStream(
       const stat = fs.statSync(filePath);
       if (stat.size < opts.maxSize) return;
 
-      // Rename current file with timestamp suffix
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const rotatedName = `${base}.${timestamp}`;
-      const rotatedPath = path.join(dir, rotatedName);
-      fs.renameSync(filePath, rotatedPath);
+      // Close current stream before renaming (required for Windows)
+      currentStream.end();
+      fs.renameSync(filePath, path.join(dir, `${base}.${new Date().toISOString().replace(/[:.]/g, '-')}`));
 
       // Open a fresh stream for new writes
-      currentStream.end();
       currentStream = fs.createWriteStream(filePath, { flags: 'a' });
       currentStream.on('error', () => {});
 

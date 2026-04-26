@@ -43,7 +43,7 @@ if (config.nodeEnv === 'development') {
 if (logFilePath) {
   const rotatingStream = createRotatingFileStream(logFilePath, {
     maxSize: config.logMaxSize,
-    maxAgeDays: config.logMaxFiles,
+    maxAgeDays: config.logMaxAgeDays,
   });
   streams.push({
     level: config.logLevel as pino.Level,
@@ -53,7 +53,9 @@ if (logFilePath) {
 
 export const logger: Logger = streams.length > 1
   ? pino({ level: config.logLevel }, pino.multistream(streams))
-  : pino({ level: config.logLevel });
+  : streams.length === 1
+    ? pino({ level: config.logLevel }, streams[0].stream)
+    : pino({ level: config.logLevel });
 
 /** Create a child logger with extra bound context (e.g. traceId, conversationId). */
 export function createChildLogger(bindings: Record<string, unknown>): Logger {

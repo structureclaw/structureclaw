@@ -78,7 +78,7 @@ function wrapWithLlmLogging(model: ChatOpenAI): ChatOpenAI {
         success: false,
         error: String(error),
       });
-      logLlmCall(logger, { model: loggedModel, durationMs });
+      logLlmCall(logger, { model: loggedModel, durationMs, success: false });
       throw error;
     }
   };
