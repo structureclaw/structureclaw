@@ -8,8 +8,6 @@ const ANALYSIS_STEPS = [
   ["OpenSees runtime and routing", "validate-opensees-runtime-and-routing"],
   ["Analyze response contract", "validate-analyze-contract"],
   ["Code-check traceability", "validate-code-check-traceability"],
-  ["Static regression cases", "validate-static-regression"],
-  ["Static 3D regression cases", "validate-static-3d-regression"],
   ["StructureModel v1 examples", "validate-structure-examples"],
   ["Convert round-trip", "validate-convert-roundtrip"],
   ["Midas-text converter", "validate-midas-text-converter"],

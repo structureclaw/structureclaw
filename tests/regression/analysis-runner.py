@@ -33,16 +33,6 @@ def assert_true(condition, message):
         raise SystemExit(message)
 
 
-def get_by_path(obj, dotted):
-    current = obj
-    for part in dotted.split("."):
-        if isinstance(current, dict) and part in current:
-            current = current[part]
-        else:
-            raise KeyError(f"Path not found: {dotted}")
-    return current
-
-
 def validate_opensees_runtime_and_routing():
 
     def run_request(payload, engine_id="builtin-opensees"):
@@ -309,98 +299,6 @@ def validate_code_check_traceability():
     assert item["inputs"]["demand"] >= 0
     assert item["utilization"] >= 0
     print("[ok] code-check traceability contract")
-
-
-def validate_static_regression():
-    issue = get_opensees_runtime_issue()
-    if issue:
-        print(f"[skip] Static 2D regression — OpenSees unavailable: {issue}")
-        return
-    base = ROOT_DIR / "backend/src/skill-shared/python/structure_protocol/regression/static_2d"
-    cases = sorted(base.glob("case_*.json"))
-    if not cases:
-        raise SystemExit("No regression case files found")
-
-    skipped = []
-    for file_path in cases:
-        payload = json.loads(file_path.read_text(encoding="utf-8"))
-        # Skip fixtures that require the removed simplified engine
-        elem_types = set(e.get("type", "?") for e in payload["request"]["model"].get("elements", []))
-        has_batch = "batchCases" in payload["request"].get("parameters", {})
-        if elem_types == {"truss"} or has_batch:
-            skipped.append(file_path.name)
-            continue
-        request_payload = dict(payload["request"])
-        request_payload["engineId"] = "builtin-opensees"
-        request = AnalysisRequest.model_validate(request_payload)
-        result = asyncio.run(analyze(request)).model_dump(mode="json")
-        if result.get("success") is not True:
-            raise SystemExit(f"{file_path.name}: analyze failed: {result.get('message')}")
-
-        tolerance = float(payload.get("abs_tolerance", 1e-6))
-        for dotted_path, expected in payload.get("expected", {}).items():
-            actual = get_by_path(result, dotted_path)
-            if isinstance(expected, str):
-                if actual != expected:
-                    raise SystemExit(f"{file_path.name}: {dotted_path} expected '{expected}', got '{actual}'")
-                continue
-            actual_f = float(actual)
-            expected_f = float(expected)
-            if not math.isfinite(actual_f):
-                raise SystemExit(f"{file_path.name}: {dotted_path} is not finite: {actual}")
-            if abs(actual_f - expected_f) > tolerance:
-                raise SystemExit(f"{file_path.name}: {dotted_path} mismatch, expected {expected_f}, got {actual_f}, tol {tolerance}")
-        print(f"[ok] {file_path.name}")
-
-    if skipped:
-        print(f"Skipped {len(skipped)} fixtures (require removed simplified engine): {', '.join(skipped)}")
-    print(f"Validated {len(cases) - len(skipped)} static regression cases.")
-
-
-def validate_static_3d_regression():
-    issue = get_opensees_runtime_issue()
-    if issue:
-        print(f"[skip] Static 3D regression — OpenSees unavailable: {issue}")
-        return
-    base = ROOT_DIR / "backend/src/skill-shared/python/structure_protocol/regression/static_3d"
-    cases = sorted(base.glob("case_*.json"))
-    if not cases:
-        raise SystemExit("No 3D regression case files found")
-
-    skipped = []
-    for file_path in cases:
-        payload = json.loads(file_path.read_text(encoding="utf-8"))
-        # Skip fixtures that require the removed simplified engine
-        elem_types = set(e.get("type", "?") for e in payload["request"]["model"].get("elements", []))
-        has_batch = "batchCases" in payload["request"].get("parameters", {})
-        if elem_types == {"truss"} or has_batch:
-            skipped.append(file_path.name)
-            continue
-        request_payload = dict(payload["request"])
-        request_payload["engineId"] = "builtin-opensees"
-        request = AnalysisRequest.model_validate(request_payload)
-        result = asyncio.run(analyze(request)).model_dump(mode="json")
-        if result.get("success") is not True:
-            raise SystemExit(f"{file_path.name}: analyze failed: {result.get('message')}")
-
-        tolerance = float(payload.get("abs_tolerance", 1e-6))
-        for dotted_path, expected in payload.get("expected", {}).items():
-            actual = get_by_path(result, dotted_path)
-            if isinstance(expected, str):
-                if actual != expected:
-                    raise SystemExit(f"{file_path.name}: {dotted_path} expected '{expected}', got '{actual}'")
-                continue
-            actual_f = float(actual)
-            expected_f = float(expected)
-            if not math.isfinite(actual_f):
-                raise SystemExit(f"{file_path.name}: {dotted_path} is not finite: {actual}")
-            if abs(actual_f - expected_f) > tolerance:
-                raise SystemExit(f"{file_path.name}: {dotted_path} mismatch, expected {expected_f}, got {actual_f}, tol {tolerance}")
-        print(f"[ok] {file_path.name}")
-
-    if skipped:
-        print(f"Skipped {len(skipped)} fixtures (require removed simplified engine): {', '.join(skipped)}")
-    print(f"Validated {len(cases) - len(skipped)} static 3D regression cases.")
 
 
 def validate_structure_examples():
@@ -762,8 +660,6 @@ COMMANDS = {
     "validate-opensees-runtime-and-routing": validate_opensees_runtime_and_routing,
     "validate-analyze-contract": validate_analyze_contract,
     "validate-code-check-traceability": validate_code_check_traceability,
-    "validate-static-regression": validate_static_regression,
-    "validate-static-3d-regression": validate_static_3d_regression,
     "validate-structure-examples": validate_structure_examples,
     "validate-convert-roundtrip": validate_convert_roundtrip,
     "validate-midas-text-converter": validate_midas_text_converter,

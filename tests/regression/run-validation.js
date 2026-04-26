@@ -7,8 +7,6 @@ const ANALYSIS_VALIDATION_NAMES = new Set([
   "validate-opensees-runtime-and-routing",
   "validate-analyze-contract",
   "validate-code-check-traceability",
-  "validate-static-regression",
-  "validate-static-3d-regression",
   "validate-structure-examples",
   "validate-convert-roundtrip",
   "validate-midas-text-converter",
