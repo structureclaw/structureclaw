@@ -52,7 +52,6 @@ export function useSkillState(skillId: string): SkillStateApi {
       set: <T,>(key: string, value: T): void => {
         skillStateStore.getState().setValue(namespaced(skillId, key), value)
       },
-      use: <T,>(key: string, fallback: T) => useSkillStateValue<T>(skillId, key, fallback),
     }),
     [skillId]
   )

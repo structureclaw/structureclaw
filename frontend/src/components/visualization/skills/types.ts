@@ -16,7 +16,6 @@ export type SkillCategory = 'metric' | 'shape' | 'interaction'
 export type SkillStateApi = {
   get: <T>(key: string, fallback: T) => T
   set: <T>(key: string, value: T) => void
-  use: <T>(key: string, fallback: T) => [T, (value: T) => void]
 }
 
 export type SkillActions = {
