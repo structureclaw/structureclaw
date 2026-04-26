@@ -1,6 +1,5 @@
 import { FastifyInstance } from 'fastify';
 import { chatRoutes } from './chat.js';
-import { projectRoutes } from './project.js';
 import { analysisRoutes } from './analysis.js';
 import { agentRoutes } from './agent.js';
 import { analysisEngineRoutes } from './analysis-engine.js';
@@ -17,7 +16,6 @@ export async function registerRoutes(fastify: FastifyInstance) {
 
   // 注册各模块路由
   await fastify.register(chatRoutes, { prefix: `${apiPrefix}/chat` });
-  await fastify.register(projectRoutes, { prefix: `${apiPrefix}/projects` });
   await fastify.register(analysisRoutes, { prefix: `${apiPrefix}/analysis` });
   await fastify.register(analysisEngineRoutes, { prefix: `${apiPrefix}/analysis-engines` });
   await fastify.register(agentRoutes, { prefix: `${apiPrefix}/agent` });
@@ -32,7 +30,6 @@ export async function registerRoutes(fastify: FastifyInstance) {
     description: '建筑结构分析设计平台 API',
     endpoints: {
       chat: `${apiPrefix}/chat`,
-      projects: `${apiPrefix}/projects`,
       analysis: `${apiPrefix}/analysis`,
       analysisEngines: `${apiPrefix}/analysis-engines`,
       agent: `${apiPrefix}/agent`,

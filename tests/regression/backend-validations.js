@@ -78,19 +78,26 @@ async function validateAgentOrchestration(context) {
   {
     const chatPath = path.join(context.rootDir, 'backend', 'src', 'api', 'chat.ts');
     const chatSource = fs.readFileSync(chatPath, 'utf8');
+    const agentPath = path.join(context.rootDir, 'backend', 'src', 'api', 'agent.ts');
+    const agentSource = fs.readFileSync(agentPath, 'utf8');
+    const routesPath = path.join(context.rootDir, 'backend', 'src', 'api', 'routes.ts');
+    const routesSource = fs.readFileSync(routesPath, 'utf8');
 
     const conversationPath = path.join(context.rootDir, 'backend', 'src', 'services', 'conversation.ts');
     const conversationSource = fs.readFileSync(conversationPath, 'utf8');
 
+    assert(!chatSource.includes('projectId'), '/api/v1/chat must not accept projectId');
+    assert(!agentSource.includes('projectId'), '/api/v1/agent/run must not accept projectId');
+    assert(!routesSource.includes('projectRoutes'), '/api/v1/projects must not be registered');
     assert(
-      chatSource.includes('projectId'),
-      '/api/v1/chat must accept projectId to align with /api/v1/agent/run',
+      chatSource.includes('conversationId'),
+      '/api/v1/chat must keep conversationId as the engineering task scope',
     );
     assert(
       conversationSource.includes('PROJECTION CACHE') || conversationSource.includes('projection cache'),
       'conversation.ts must document that snapshots are projection caches, not pipeline truth',
     );
-    console.log("[ok] chat projectId passthrough and snapshot boundary");
+    console.log("[ok] conversation-owned agent scope");
   }
 
   // --- Domain-to-role mapping for runtimeContract ---
