@@ -3,7 +3,7 @@
  * Scans <workspaceRoot>/tools/<name>/tool.yaml + tool.js, validates,
  * and wraps them into AgentToolDefinition objects for the tool registry.
  */
-import { existsSync, readdirSync, readFileSync, statSync } from 'fs';
+import { existsSync, readdirSync, readFileSync } from 'fs';
 import path from 'path';
 import { parse as parseYaml } from 'yaml';
 import { DynamicStructuredTool } from '@langchain/core/tools';
