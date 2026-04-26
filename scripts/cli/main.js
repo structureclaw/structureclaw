@@ -1076,6 +1076,8 @@ async function invokeLocalUp(rootDir, env, options = {}) {
     runtime.ensureDirectory(paths.dataDir);
     runtime.ensureDirectory(paths.logDir);
     runtime.ensureDirectory(paths.pidDir);
+    runtime.ensureDirectory(path.join(paths.dataDir, "skills"));
+    runtime.ensureDirectory(path.join(paths.dataDir, "tools"));
     runtime.ensureFileFromExample(paths.envFile, paths.envExampleFile, log);
   }
 
@@ -1345,6 +1347,8 @@ async function invokeDoctor(rootDir, env) {
     runtime.ensureDirectory(paths.pidDir);
     runtime.ensureDirectory(path.join(paths.runtimeDir, "workspace"));
     runtime.ensureDirectory(path.join(paths.runtimeDir, "checkpoints"));
+    runtime.ensureDirectory(path.join(paths.dataDir, "skills"));
+    runtime.ensureDirectory(path.join(paths.dataDir, "tools"));
 
     // Migrate from old .runtime/ layout if present
     migrateFromRuntimeDir(paths, rootDir);

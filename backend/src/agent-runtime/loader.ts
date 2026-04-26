@@ -132,18 +132,98 @@ function normalizeRelativePath(rootDir: string, targetPath: string): string {
   return path.relative(rootDir, targetPath).split(path.sep).join('/');
 }
 
+/**
+ * Load stage markdown files from a skill directory into the bundles map.
+ * Returns the number of bundles added.
+ */
+function loadBundlesFromRoot(
+  root: string,
+  bundlesById: Map<string, AgentSkillBundle>,
+  options?: { skipExisting?: boolean },
+): number {
+  if (!existsSync(root)) return 0;
+
+  const entries = collectDirectories(root);
+  let added = 0;
+
+  for (const skillDir of entries) {
+    if (!isSkillMarkdownDirectory(skillDir)) continue;
+    const skillStat = statSync(skillDir);
+    if (!skillStat.isDirectory()) continue;
+
+    let manifest: ReturnType<typeof readSkillManifest>;
+    try {
+      manifest = readSkillManifest(skillDir);
+    } catch (err) {
+      console.warn(`[skill-loader] Skipping invalid workspace skill at ${skillDir}: ${err instanceof Error ? err.message : err}`);
+      continue;
+    }
+
+    if (options?.skipExisting && bundlesById.has(manifest.id)) continue;
+
+    const stageEntries = readdirSync(skillDir, { withFileTypes: true });
+    for (const stageEntry of stageEntries) {
+      if (!stageEntry.isFile() || !stageEntry.name.endsWith('.md')) continue;
+      const stage = normalizeStage(stageEntry.name.replace(/\.md$/, ''));
+      if (!stage) continue;
+
+      const raw = readFileSync(path.join(skillDir, stageEntry.name), 'utf-8');
+      const file: AgentSkillFile = {
+        id: manifest.id,
+        structureType: manifest.structureType,
+        name: manifest.name,
+        description: manifest.description,
+        triggers: manifest.triggers,
+        stages: manifest.stages,
+        domain: manifest.domain,
+        stage,
+        markdown: stripLegacyMarkdownHeader(raw),
+      };
+
+      const existing = bundlesById.get(file.id);
+      if (existing) {
+        existing.markdownByStage[file.stage] = file.markdown;
+        existing.stages = Array.from(new Set([...existing.stages, ...file.stages, file.stage])) as SkillStage[];
+      } else {
+        bundlesById.set(file.id, {
+          id: file.id,
+          structureType: file.structureType,
+          name: file.name,
+          description: file.description,
+          triggers: file.triggers,
+          stages: Array.from(new Set([...file.stages, file.stage])) as SkillStage[],
+          domain: file.domain,
+          markdownByStage: { [file.stage]: file.markdown },
+        });
+        added += 1;
+      }
+    }
+  }
+
+  return added;
+}
+
 export class AgentSkillLoader {
   private cache: AgentSkillBundle[] | null = null;
   private pluginCache: Promise<AgentSkillPlugin[]> | null = null;
   private readonly moduleSkillRoot: string;
   private readonly markdownSkillRoot: string;
+  private readonly workspaceSkillRoot: string | undefined;
 
   constructor(options?: {
     moduleSkillRoot?: string;
     markdownSkillRoot?: string;
+    workspaceSkillRoot?: string;
   }) {
     this.moduleSkillRoot = options?.moduleSkillRoot || MODULE_SKILL_ROOT;
     this.markdownSkillRoot = options?.markdownSkillRoot || MARKDOWN_SKILL_ROOT;
+    this.workspaceSkillRoot = options?.workspaceSkillRoot;
+  }
+
+  /** Invalidate cached bundles and plugins so the next load re-scans disk. */
+  invalidateCache(): void {
+    this.cache = null;
+    this.pluginCache = null;
   }
 
   loadBundles(): AgentSkillBundle[] {
@@ -151,63 +231,14 @@ export class AgentSkillLoader {
       return this.cache;
     }
 
-    const entries = collectDirectories(this.markdownSkillRoot);
-    const files: AgentSkillFile[] = [];
-
-    for (const skillDir of entries) {
-      if (!isSkillMarkdownDirectory(skillDir)) {
-        continue;
-      }
-      const skillStat = statSync(skillDir);
-      if (!skillStat.isDirectory()) {
-        continue;
-      }
-      const manifest = readSkillManifest(skillDir);
-      const stageEntries = readdirSync(skillDir, { withFileTypes: true });
-      for (const stageEntry of stageEntries) {
-        if (!stageEntry.isFile() || !stageEntry.name.endsWith('.md')) {
-          continue;
-        }
-        const stage = normalizeStage(stageEntry.name.replace(/\.md$/, ''));
-        if (!stage) {
-          continue;
-        }
-        const raw = readFileSync(path.join(skillDir, stageEntry.name), 'utf-8');
-        const file: AgentSkillFile = {
-          id: manifest.id,
-          structureType: manifest.structureType,
-          name: manifest.name,
-          description: manifest.description,
-          triggers: manifest.triggers,
-          stages: manifest.stages,
-          domain: manifest.domain,
-          stage,
-          markdown: stripLegacyMarkdownHeader(raw),
-        };
-        files.push(file);
-      }
-    }
-
     const bundlesById = new Map<string, AgentSkillBundle>();
-    for (const file of files) {
-      const existing = bundlesById.get(file.id);
-      if (existing) {
-        existing.markdownByStage[file.stage] = file.markdown;
-        existing.stages = Array.from(new Set([...existing.stages, ...file.stages, file.stage])) as SkillStage[];
-        continue;
-      }
-      bundlesById.set(file.id, {
-        id: file.id,
-        structureType: file.structureType,
-        name: file.name,
-        description: file.description,
-        triggers: file.triggers,
-        stages: Array.from(new Set([...file.stages, file.stage])) as SkillStage[],
-        domain: file.domain,
-        markdownByStage: {
-          [file.stage]: file.markdown,
-        },
-      });
+
+    // Load builtin bundles first (highest priority)
+    loadBundlesFromRoot(this.markdownSkillRoot, bundlesById);
+
+    // Load workspace bundles (builtin wins on id collision)
+    if (this.workspaceSkillRoot) {
+      loadBundlesFromRoot(this.workspaceSkillRoot, bundlesById, { skipExisting: true });
     }
 
     this.cache = [...bundlesById.values()].sort((a, b) => a.id.localeCompare(b.id));
@@ -222,35 +253,29 @@ export class AgentSkillLoader {
     this.pluginCache = (async () => {
       const bundles = this.loadBundles();
       const bundleById = new Map(bundles.map((bundle) => [bundle.id, bundle]));
-      const manifestByRelativePath = new Map(
-        loadSkillManifestsFromDirectorySync(this.markdownSkillRoot).map((manifest) => [
-          normalizeRelativePath(this.markdownSkillRoot, path.dirname(manifest.manifestPath)),
-          toRuntimeSkillManifest(manifest),
-        ]),
-      );
+
+      // --- Builtin plugins ---
+      const builtinManifests = loadSkillManifestsFromDirectorySync(this.markdownSkillRoot).map((manifest) => [
+        normalizeRelativePath(this.markdownSkillRoot, path.dirname(manifest.manifestPath)),
+        toRuntimeSkillManifest(manifest),
+      ] as const);
+      const manifestByRelativePath = new Map(builtinManifests);
+
       const entries = collectDirectories(this.moduleSkillRoot);
       const allowedTopLevelDirectories = listTopLevelDirectories(this.markdownSkillRoot);
       const plugins: AgentSkillPlugin[] = [];
 
       for (const skillDir of entries) {
-        if (!isSkillModuleDirectory(skillDir)) {
-          continue;
-        }
+        if (!isSkillModuleDirectory(skillDir)) continue;
         const relativePath = normalizeRelativePath(this.moduleSkillRoot, skillDir);
         const topLevel = relativePath.split('/')[0] || '';
-        if (!allowedTopLevelDirectories.has(topLevel)) {
-          continue;
-        }
+        if (!allowedTopLevelDirectories.has(topLevel)) continue;
         const manifest = manifestByRelativePath.get(relativePath);
         const bundle = manifest ? bundleById.get(manifest.id) : undefined;
-        if (!bundle || !manifest) {
-          continue;
-        }
+        if (!bundle || !manifest) continue;
         const handlerModule = await this.importSkillModule(skillDir, 'handler');
         const handler = (handlerModule?.handler ?? handlerModule?.default) as AgentSkillPlugin['handler'] | undefined;
-        if (!handler) {
-          continue;
-        }
+        if (!handler) continue;
         plugins.push({
           ...bundle,
           ...manifest,
@@ -258,6 +283,53 @@ export class AgentSkillLoader {
           manifest,
           handler,
         });
+      }
+
+      // --- Workspace plugins ---
+      if (this.workspaceSkillRoot && existsSync(this.workspaceSkillRoot)) {
+        const builtinIds = new Set(plugins.map((p) => p.id));
+        const wsEntries = collectDirectories(this.workspaceSkillRoot);
+
+        for (const skillDir of wsEntries) {
+          if (!isSkillModuleDirectory(skillDir)) continue;
+          let manifest: ReturnType<typeof readSkillManifest>;
+          try {
+            manifest = readSkillManifest(skillDir);
+          } catch {
+            continue;
+          }
+          if (builtinIds.has(manifest.id)) continue; // builtin wins
+
+          const bundle = bundleById.get(manifest.id);
+          if (!bundle) continue; // must have markdown bundle
+
+          const handlerModule = await this.importSkillModule(skillDir, 'handler');
+          const handler = (handlerModule?.handler ?? handlerModule?.default) as AgentSkillPlugin['handler'] | undefined;
+          if (!handler) continue;
+
+          const runtimeManifest: import('./types.js').SkillManifest = {
+            id: manifest.id,
+            structureType: manifest.structureType,
+            name: manifest.name,
+            description: manifest.description,
+            triggers: manifest.triggers,
+            stages: manifest.stages,
+            domain: manifest.domain,
+            structuralTypeKeys: [],
+            requires: [],
+            conflicts: [],
+            capabilities: [],
+            priority: manifest.stages?.length ?? 0,
+            compatibility: { minRuntimeVersion: '0.1.0', skillApiVersion: 'v1' },
+          };
+          plugins.push({
+            ...bundle,
+            ...runtimeManifest,
+            markdownByStage: bundle.markdownByStage,
+            manifest: runtimeManifest,
+            handler,
+          });
+        }
       }
 
       return plugins.sort((a, b) => b.manifest.priority - a.manifest.priority || a.id.localeCompare(b.id));

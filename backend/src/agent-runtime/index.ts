@@ -7,6 +7,7 @@ import {
 } from '../agent-skills/code-check/entry.js';
 import type { CodeCheckClient } from '../agent-skills/code-check/rule.js';
 import { AgentSkillRegistry } from './registry.js';
+import { AgentSkillLoader } from './loader.js';
 import { AgentSkillExecutor } from './executor.js';
 import { buildDefaultReportNarrative } from './report-template.js';
 import { withStructuralTypeState } from './plugin-helpers.js';
@@ -51,11 +52,13 @@ export type {
 
 export class AgentSkillRuntime {
   private readonly registry: AgentSkillRegistry;
-  private readonly builtinSkillFileManifests: LoadedSkillManifest[];
-  private readonly builtinRuntimeSkillManifests: SkillManifest[];
+  readonly builtinSkillFileManifests: LoadedSkillManifest[];
+  readonly builtinRuntimeSkillManifests: SkillManifest[];
 
-  constructor(options?: { builtinSkillManifestRoot?: string }) {
-    this.registry = new AgentSkillRegistry();
+  constructor(options?: { builtinSkillManifestRoot?: string; workspaceSkillRoot?: string }) {
+    this.registry = new AgentSkillRegistry(new AgentSkillLoader({
+      workspaceSkillRoot: options?.workspaceSkillRoot,
+    }));
     const builtinSkillManifestRoot = options?.builtinSkillManifestRoot || resolveBuiltinSkillManifestRoot();
     this.builtinSkillFileManifests = loadSkillManifestsFromDirectorySync(builtinSkillManifestRoot);
     this.builtinRuntimeSkillManifests = this.builtinSkillFileManifests.map((manifest) => toRuntimeSkillManifest(manifest));
@@ -63,6 +66,16 @@ export class AgentSkillRuntime {
 
   listSkills(): AgentSkillBundle[] {
     return this.registry.listSkills();
+  }
+
+  /** Invalidate cached bundles and plugins so the next load re-scans disk. */
+  invalidateSkillCache(): void {
+    this.registry.invalidateCache();
+  }
+
+  /** Access the underlying registry for advanced queries. */
+  getRegistry(): AgentSkillRegistry {
+    return this.registry;
   }
 
   async listSkillManifests(): Promise<SkillManifest[]> {

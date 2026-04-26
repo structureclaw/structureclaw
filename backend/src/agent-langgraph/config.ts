@@ -15,6 +15,16 @@ export function getWorkspaceRoot(): string {
   return process.env.WORKSPACE_ROOT?.trim() || runtimeBaseDir;
 }
 
+/** Resolve the directory for user-defined workspace skills. */
+export function getWorkspaceSkillRoot(): string {
+  return path.join(getWorkspaceRoot(), 'skills');
+}
+
+/** Resolve the directory for user-defined workspace tools. */
+export function getWorkspaceToolRoot(): string {
+  return path.join(getWorkspaceRoot(), 'tools');
+}
+
 /** Shell execution is intentionally disabled unless explicitly gated on. */
 export function getAllowShellTools(): boolean {
   return process.env.AGENT_ALLOW_SHELL === 'true';

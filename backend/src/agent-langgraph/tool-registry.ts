@@ -29,6 +29,7 @@ export type AgentToolCategory = 'engineering' | 'interaction' | 'session' | 'wor
 
 export interface AgentToolFactoryDeps {
   skillRuntime: AgentSkillRuntime;
+  workspaceRoot?: string;
 }
 
 export interface AgentToolDefinition {
@@ -242,6 +243,8 @@ export function listAgentToolDefinitions(): AgentToolDefinition[] {
   return AGENT_TOOL_DEFINITIONS.map((definition) => ({ ...definition }));
 }
 
-export function createRegisteredTools(deps: AgentToolFactoryDeps): StructuredToolInterface[] {
-  return AGENT_TOOL_DEFINITIONS.map((definition) => definition.create(deps));
+export function createRegisteredTools(deps: AgentToolFactoryDeps, userTools?: AgentToolDefinition[]): StructuredToolInterface[] {
+  const builtinTools = AGENT_TOOL_DEFINITIONS.map((definition) => definition.create(deps));
+  const customTools = (userTools ?? []).map((definition) => definition.create(deps));
+  return [...builtinTools, ...customTools];
 }

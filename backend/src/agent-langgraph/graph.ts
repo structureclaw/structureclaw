@@ -24,6 +24,8 @@ import type { BaseCheckpointSaver } from '@langchain/langgraph';
 import { createChatModel } from '../utils/llm.js';
 import { AgentStateAnnotation, type AgentState } from './state.js';
 import { createRegisteredTools, type AgentToolFactoryDeps } from './tool-registry.js';
+import { loadUserTools } from './user-tool-loader.js';
+import { getWorkspaceToolRoot } from './config.js';
 import { buildSystemMessages } from './system-prompt.js';
 import type { SkillManifest } from '../agent-runtime/types.js';
 import type { AgentConfigurable } from './configurable.js';
@@ -231,11 +233,26 @@ function resolveActiveTools(
   return tools.filter((toolDefinition) => activeIds.has(toolDefinition.name));
 }
 
-export function buildAgentGraph(deps: GraphDeps) {
+export async function buildAgentGraph(deps: GraphDeps) {
   const { skillManifests, checkpointer } = deps;
 
+  // Load user-defined tools from workspace
+  let userToolDefinitions: import('./tool-registry.js').AgentToolDefinition[] = [];
+  try {
+    const workspaceToolRoot = getWorkspaceToolRoot();
+    const result = await loadUserTools(workspaceToolRoot);
+    userToolDefinitions = result.tools;
+    if (result.failures.length > 0) {
+      for (const failure of result.failures) {
+        console.warn(`[user-tools] Failed to load tool from ${failure.toolDir}: ${failure.reason} ${failure.detail ?? ''}`);
+      }
+    }
+  } catch (err) {
+    console.warn(`[user-tools] Failed to scan workspace tools: ${err instanceof Error ? err.message : err}`);
+  }
+
   // Create tools ONCE — shared between ToolNode and callModel
-  const tools = createRegisteredTools({ skillRuntime: deps.skillRuntime });
+  const tools = createRegisteredTools({ skillRuntime: deps.skillRuntime, workspaceRoot: deps.workspaceRoot }, userToolDefinitions);
   const callModel = createCallModelNode(skillManifests, tools);
 
   // Wrap ToolNode so that the current graph state is injected into

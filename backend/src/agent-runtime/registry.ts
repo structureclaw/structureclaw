@@ -8,6 +8,11 @@ import type { AgentSkillBundle, AgentSkillPlugin, DraftState, InferredModelType,
 export class AgentSkillRegistry {
   constructor(private readonly loader = new AgentSkillLoader()) {}
 
+  /** Invalidate cached bundles and plugins so the next load re-scans disk. */
+  invalidateCache(): void {
+    this.loader.invalidateCache();
+  }
+
   listSkills(): AgentSkillBundle[] {
     return this.loader.loadBundles();
   }

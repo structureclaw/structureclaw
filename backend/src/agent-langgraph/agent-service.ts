@@ -15,7 +15,7 @@ import { buildAgentGraph } from './graph.js';
 import { FileCheckpointer } from './file-checkpointer.js';
 import { streamGraphToChunks, type StreamContext } from './streaming.js';
 import { type AgentState } from './state.js';
-import { getAllowShellTools, getCheckpointerDataDir, getWorkspaceRoot } from './config.js';
+import { getAllowShellTools, getCheckpointerDataDir, getWorkspaceRoot, getWorkspaceSkillRoot } from './config.js';
 import type { AgentStreamChunk } from '../types/agent-stream.js';
 import type { AppLocale } from '../services/locale.js';
 import { createLocalAnalysisEngineClient } from '../services/analysis-execution.js';
@@ -73,7 +73,9 @@ let singleton: LangGraphAgentService | undefined;
 
 export function getAgentService(): LangGraphAgentService {
   if (!singleton) {
-    singleton = new LangGraphAgentService(new AgentSkillRuntime());
+    singleton = new LangGraphAgentService(new AgentSkillRuntime({
+      workspaceSkillRoot: getWorkspaceSkillRoot(),
+    }));
   }
   return singleton;
 }
@@ -83,7 +85,7 @@ export function getAgentService(): LangGraphAgentService {
 // ---------------------------------------------------------------------------
 
 export class LangGraphAgentService {
-  private readonly skillRuntime: AgentSkillRuntime;
+  readonly skillRuntime: AgentSkillRuntime;
   private readonly checkpointer: FileCheckpointer;
   private readonly workspaceRoot: string;
 
@@ -93,7 +95,7 @@ export class LangGraphAgentService {
   private readonly structureProtocolClient: ReturnType<typeof createLocalStructureProtocolClient>;
 
   // Cached graph — built once, reused across requests
-  private graphPromise: Promise<ReturnType<typeof buildAgentGraph>> | undefined;
+  private graphPromise: Promise<Awaited<ReturnType<typeof buildAgentGraph>>> | undefined;
 
   constructor(skillRuntime: AgentSkillRuntime) {
     this.skillRuntime = skillRuntime;
@@ -147,11 +149,11 @@ export class LangGraphAgentService {
   // ---------------------------------------------------------------------------
 
   /** Get or build the compiled graph. Thread-safe for concurrent first calls. */
-  private async getGraph(): Promise<ReturnType<typeof buildAgentGraph>> {
+  private async getGraph(): Promise<Awaited<ReturnType<typeof buildAgentGraph>>> {
     if (!this.graphPromise) {
       this.graphPromise = (async () => {
         const skillManifests = await this.skillRuntime.listSkillManifests();
-        return buildAgentGraph({
+        return await buildAgentGraph({
           skillRuntime: this.skillRuntime,
           skillManifests,
           checkpointer: this.checkpointer,
