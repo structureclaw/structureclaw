@@ -2910,6 +2910,7 @@ export function AIConsole() {
     if (source === 'conversation') {
       setModelSyncMessage(t('modelSyncFromChat'))
       setActivePanel('context')
+      setResultDialogOpen(true)
     }
     setErrorMessage('')
   }
@@ -2925,6 +2926,7 @@ export function AIConsole() {
     if (parsedModel.error) {
       setErrorMessage(parsedModel.error)
       setActivePanel('context')
+      setResultDialogOpen(true)
     }
     const contextModel = parsedModel.error ? undefined : parsedModel.model
     const resumeFromMessage = resolveResumeFromMessage(messagesRef.current, trimmedInput)

@@ -429,7 +429,7 @@ export function CapabilitySettingsPanel() {
 
           <div className="rounded-[24px] border border-border/70 bg-background/75 p-5 dark:border-white/10 dark:bg-white/5">
             <div className="mb-3 flex flex-wrap items-center gap-2">
-              <label className="text-xs font-medium text-foreground">{t('skillSelectionDomainViewLabel')}</label>
+              <p className="text-xs font-medium text-foreground">{t('skillSelectionDomainViewLabel')}</p>
             </div>
             <div className="space-y-3">
               {groupedSkills.filter((group) => group.skills.length > 0).length === 0 && (
