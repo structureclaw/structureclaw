@@ -26,6 +26,15 @@ jobs:
       - name: Install frontend dependencies
         run: npm install --prefix frontend
 
+      - name: Backend lint
+        run: npm run lint --prefix backend
+
+      - name: Backend tests
+        run: npm test --prefix backend -- --runInBand
+
+      - name: Frontend type check
+        run: npm run type-check --prefix frontend
+
       - name: Build backend
         run: npm run build --prefix backend
 
