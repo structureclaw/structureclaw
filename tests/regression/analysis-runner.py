@@ -156,13 +156,52 @@ def validate_opensees_runtime_and_routing():
         assert_true(math.isfinite(roof_uy) and roof_uy < 0.0, f"Portal-frame roof displacement invalid: {roof_uy}")
         print("[ok] portal frame solves with builtin-opensees")
     else:
-        print(f"[skip] OpenSees runtime smoke test unavailable: {issue}")
+        # Verify unavailable engine surfaces clearly
+        engines = registry.list_engines()
+        opensees = next((e for e in engines if e["id"] == "builtin-opensees"), None)
+        assert_true(opensees is not None, "builtin-opensees missing from engine list")
+        assert_true(opensees["available"] is False, f"Expected available=False, got {opensees['available']}")
+        assert_true(opensees.get("unavailableReason"), "Expected non-empty unavailableReason")
+        print(f"[ok] list_engines marks builtin-opensees unavailable: {opensees['unavailableReason']}")
+
+        # Verify explicit engineId request fails with ENGINE_UNAVAILABLE
+        try:
+            run_request(cantilever, engine_id="builtin-opensees")
+            raise SystemExit("Expected HTTPException for unavailable engine")
+        except HTTPException as exc:
+            assert_true(exc.status_code == 422, f"Expected HTTP 422, got {exc.status_code}")
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            assert_true(detail.get("errorCode") == "ENGINE_UNAVAILABLE", f"Expected ENGINE_UNAVAILABLE, got {detail.get('errorCode')}")
+        print("[ok] explicit engineId=builtin-opensees raises ENGINE_UNAVAILABLE")
 
 
 def validate_analyze_contract():
     issue = get_opensees_runtime_issue()
     if issue:
-        print(f"[skip] Analyze response contract — OpenSees unavailable: {issue}")
+        # Verify unavailable engine contract even without OpenSees runtime
+        registry = AnalysisEngineRegistry("StructureClaw Analysis Engine", "0.1.0")
+        engines = registry.list_engines()
+        opensees = next((e for e in engines if e["id"] == "builtin-opensees"), None)
+        assert_true(opensees is not None, "builtin-opensees missing from engine list")
+        assert_true(opensees["available"] is False, f"Expected available=False, got {opensees['available']}")
+        assert_true(opensees.get("unavailableReason"), "Expected non-empty unavailableReason")
+
+        model = StructureModelV2(
+            schema_version="2.0.0",
+            nodes=[Node(id="1", x=0, y=0, z=0, restraints=[True, True, True, True, True, True])],
+            elements=[],
+            materials=[],
+            sections=[],
+        )
+        request = AnalysisRequest(type="static", model=model, parameters={}, engineId="builtin-opensees")
+        try:
+            asyncio.run(analyze(request))
+            raise SystemExit("Expected HTTPException for unavailable engine")
+        except HTTPException as exc:
+            assert_true(exc.status_code == 422, f"Expected HTTP 422, got {exc.status_code}")
+            detail = exc.detail if isinstance(exc.detail, dict) else {}
+            assert_true(detail.get("errorCode") == "ENGINE_UNAVAILABLE", f"Expected ENGINE_UNAVAILABLE, got {detail.get('errorCode')}")
+        print("[ok] analyze contract: explicit builtin-opensees raises ENGINE_UNAVAILABLE when unavailable")
         return
     model = StructureModelV2(
         schema_version="2.0.0",
