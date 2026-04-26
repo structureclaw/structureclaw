@@ -19,6 +19,7 @@ import {
   type AssistantPresentation,
 } from '../services/chat-presentation.js';
 import { logger } from '../utils/logger.js';
+import { createAgentLogger } from '../utils/agent-logger.js';
 
 // Re-export the stream chunk type for convenience
 export type { AgentStreamChunk } from '../types/agent-stream.js';
@@ -432,6 +433,10 @@ export async function* streamGraphToChunks(
 
   let interrupted = false;
   let tokenBuffer = '';
+  let totalChunks = 0;
+  const streamStart = Date.now();
+  const streamLog = createAgentLogger(ctx.traceId, ctx.conversationId);
+  streamLog.debug({ streamModes }, 'stream processing started');
 
   // Track accumulated artifacts from artifact_payload_sync events so
   // the final result event can include model/analysis/report data for
@@ -489,6 +494,7 @@ export async function* streamGraphToChunks(
       }
 
       for (const chunk of chunks) {
+        totalChunks += 1;
         processChunk(chunk);
 
         // Enrich the final result event with accumulated artifact data
@@ -516,11 +522,14 @@ export async function* streamGraphToChunks(
     // On interrupt (human-in-the-loop), the frontend should show the
     // interaction UI and wait for the user to respond via /stream/resume.
     if (!interrupted) {
+      streamLog.debug({ totalChunks, durationMs: Date.now() - streamStart, interrupted: false }, 'stream processing completed');
       yield { type: 'presentation_complete', completedAt: new Date().toISOString() };
       yield { type: 'done' };
+    } else {
+      streamLog.debug({ totalChunks, durationMs: Date.now() - streamStart, interrupted: true }, 'stream processing interrupted (human-in-the-loop)');
     }
   } catch (error) {
-    logger.error({ error }, 'LangGraph stream error');
+    streamLog.error({ error, totalChunks, durationMs: Date.now() - streamStart }, 'LangGraph stream error');
     yield { type: 'presentation_error', phase: 'modeling' as const, message: error instanceof Error ? error.message : String(error) };
     yield { type: 'error', error: String(error) };
   }

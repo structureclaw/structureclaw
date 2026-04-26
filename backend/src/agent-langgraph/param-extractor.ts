@@ -10,6 +10,7 @@ import { createReactAgent } from '@langchain/langgraph/prebuilt';
 import { HumanMessage } from '@langchain/core/messages';
 import { z } from 'zod';
 import { createChatModel } from '../utils/llm.js';
+import { logger } from '../utils/agent-logger.js';
 import type { AgentSkillPlugin, DraftState } from '../agent-runtime/types.js';
 
 // ---------------------------------------------------------------------------
@@ -167,9 +168,14 @@ export interface ParamExtractorInput {
 export async function invokeParamExtractor(
   input: ParamExtractorInput,
 ): Promise<Record<string, unknown> | null> {
+  const pluginId = input.plugin.id;
+  const locale = input.locale;
+  logger.info({ pluginId, locale }, 'param extractor started');
+
   const llm = createChatModel(0);
   if (!llm) return null;
 
+  const start = Date.now();
   const skillInfoTool = createSkillInfoTool(input.plugin);
   const agent = createReactAgent({
     llm,
@@ -181,5 +187,7 @@ export async function invokeParamExtractor(
     messages: [new HumanMessage(input.message)],
   });
 
-  return parseDraftPatchFromMessages(result.messages);
+  const patch = parseDraftPatchFromMessages(result.messages);
+  logger.debug({ pluginId, durationMs: Date.now() - start, hasDraftPatch: !!patch }, 'param extractor completed');
+  return patch;
 }

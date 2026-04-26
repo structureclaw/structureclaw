@@ -20,6 +20,7 @@ import {
 } from '@langchain/langgraph';
 import type { PendingWrite } from '@langchain/langgraph-checkpoint';
 import { logger } from '../utils/logger.js';
+import { logStateTransition } from '../utils/agent-logger.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -109,6 +110,7 @@ export class FileCheckpointer extends BaseCheckpointSaver {
       const stored: StoredCheckpoint = JSON.parse(raw);
       const deserializedCheckpoint = await this.serde.loadsTyped('json', stored.checkpoint) as Checkpoint;
       const deserializedMetadata = await this.serde.loadsTyped('json', stored.metadata) as CheckpointMetadata;
+      logStateTransition(logger, { node: 'checkpoint:getTuple', extra: { threadId, found: true } });
       return {
         config: {
           configurable: {
@@ -221,6 +223,7 @@ export class FileCheckpointer extends BaseCheckpointSaver {
     await fs.writeFile(filePath, JSON.stringify(stored), 'utf-8');
 
     logger.debug({ threadId, checkpointId: checkpoint.id }, 'Checkpoint saved');
+    logStateTransition(logger, { node: 'checkpoint:put', extra: { threadId, checkpointId: checkpoint.id } });
 
     return {
       configurable: {
@@ -257,6 +260,7 @@ export class FileCheckpointer extends BaseCheckpointSaver {
 
     const filePath = path.join(dir, `${taskId}.json`);
     await fs.writeFile(filePath, JSON.stringify(serializedWrites), 'utf-8');
+    logStateTransition(logger, { node: 'checkpoint:putWrites', extra: { threadId, checkpointId, writeCount: writes.length } });
   }
 
   // ----- deleteThread -----
@@ -267,5 +271,6 @@ export class FileCheckpointer extends BaseCheckpointSaver {
 
     await fs.rm(cpDir, { recursive: true, force: true }).catch(() => {});
     await fs.rm(wDir, { recursive: true, force: true }).catch(() => {});
+    logger.info({ threadId }, 'checkpoint thread deleted');
   }
 }

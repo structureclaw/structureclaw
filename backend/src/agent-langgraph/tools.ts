@@ -18,6 +18,7 @@ import type { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { Command, interrupt } from '@langchain/langgraph';
 import { ToolMessage } from '@langchain/core/messages';
 import { logger } from '../utils/logger.js';
+import { getLogger, logToolCall } from '../utils/agent-logger.js';
 import type { AgentState } from './state.js';
 import type { AgentConfigurable } from './configurable.js';
 import { runPkpmCalcbook } from '../agent-skills/report-export/calculation-book/pkpm-calcbook/runner.js';
@@ -66,29 +67,36 @@ function toolResult(
 export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
   return tool(
     async (input: { message: string; locale?: string }, config: LangGraphRunnableConfig) => {
+      const log = getLogger(config.configurable as Partial<AgentConfigurable> | undefined);
+      const start = Date.now();
       const configurable = getConfigurable(config);
       const state = configurable.agentState;
       const toolCallId = getToolCallId(config);
       const skillIds = configurable.skillScope;
       const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
       const message = state?.lastUserMessage || input.message || '';
-      logger.info({ toolInputMessage: input.message, stateMessage: state?.lastUserMessage, finalMessage: message }, 'detect_structure_type input');
-      const match = await skillRuntime.detectStructuralType(
-        message,
-        locale,
-        undefined,
-        skillIds,
-      );
-      const result = {
-        key: match.key,
-        mappedType: match.mappedType,
-        skillId: match.skillId,
-        supportLevel: match.supportLevel,
-        supportNote: match.supportNote,
-      };
-      const stateUpdate: Partial<AgentState> = {};
-      if (match.key) stateUpdate.structuralTypeKey = match.key;
-      return toolResult(toolCallId, 'detect_structure_type', JSON.stringify(result), stateUpdate);
+      try {
+        const match = await skillRuntime.detectStructuralType(
+          message,
+          locale,
+          undefined,
+          skillIds,
+        );
+        const result = {
+          key: match.key,
+          mappedType: match.mappedType,
+          skillId: match.skillId,
+          supportLevel: match.supportLevel,
+          supportNote: match.supportNote,
+        };
+        const stateUpdate: Partial<AgentState> = {};
+        if (match.key) stateUpdate.structuralTypeKey = match.key;
+        logToolCall(log, { tool: 'detect_structure_type', durationMs: Date.now() - start, extra: { matchedKey: match.key, skillId: match.skillId } });
+        return toolResult(toolCallId, 'detect_structure_type', JSON.stringify(result), stateUpdate);
+      } catch (error) {
+        logToolCall(log, { tool: 'detect_structure_type', durationMs: Date.now() - start, level: 'info', extra: { error: error instanceof Error ? error.message : String(error) } });
+        throw error;
+      }
     },
     {
       name: 'detect_structure_type',
@@ -109,6 +117,8 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
       message: string;
       locale?: string;
     }, config: LangGraphRunnableConfig) => {
+      const log = getLogger(config.configurable as Partial<AgentConfigurable> | undefined);
+      const start = Date.now();
       const configurable = getConfigurable(config);
       const state = configurable.agentState;
       const toolCallId = getToolCallId(config);
@@ -118,100 +128,109 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
       const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
       const message = state?.lastUserMessage || input.message || '';
 
-      // Step 1: Detect structural type
-      const match = await skillRuntime.detectStructuralType(
-        message, locale, existingState, skillIds,
-      );
+      try {
+        // Step 1: Detect structural type
+        const match = await skillRuntime.detectStructuralType(
+          message, locale, existingState, skillIds,
+        );
 
-      // Early return when no skill matched
-      if (!match.skillId) {
-        const nextState = {
-          ...(existingState || { inferredType: 'unknown' as const }),
-          structuralTypeKey: match.key,
-          supportLevel: match.supportLevel,
-          supportNote: match.supportNote,
-          updatedAt: Date.now(),
-        };
-        const responseJson = {
-          nextState,
-          criticalMissing: ['inferredType'],
-          optionalMissing: [],
+        // Early return when no skill matched
+        if (!match.skillId) {
+          const nextState = {
+            ...(existingState || { inferredType: 'unknown' as const }),
+            structuralTypeKey: match.key,
+            supportLevel: match.supportLevel,
+            supportNote: match.supportNote,
+            updatedAt: Date.now(),
+          };
+          const responseJson = {
+            nextState,
+            criticalMissing: ['inferredType'],
+            optionalMissing: [],
+            structuralTypeMatch: match,
+            skillId: undefined,
+            extractionMode: 'deterministic',
+          };
+          const stateUpdate: Partial<AgentState> = { draftState: nextState };
+          if (match.key) stateUpdate.structuralTypeKey = match.key;
+          logToolCall(log, { tool: 'extract_draft_params', durationMs: Date.now() - start, extra: { skillId: undefined, criticalMissing: 1 } });
+          return toolResult(toolCallId, 'extract_draft_params', JSON.stringify(responseJson), stateUpdate);
+        }
+
+        // Step 2: Resolve plugin
+        const plugin = await skillRuntime.resolvePluginForType(match.skillId, skillIds);
+        if (!plugin) {
+          const nextState = existingState || { inferredType: 'unknown' as const, updatedAt: Date.now() };
+          const responseJson = {
+            nextState,
+            criticalMissing: ['inferredType'],
+            optionalMissing: [],
+            structuralTypeMatch: match,
+            skillId: undefined,
+            extractionMode: 'deterministic',
+          };
+          logToolCall(log, { tool: 'extract_draft_params', durationMs: Date.now() - start, extra: { skillId: match.skillId, pluginResolved: false } });
+          return toolResult(toolCallId, 'extract_draft_params', JSON.stringify(responseJson), { draftState: nextState });
+        }
+
+        // Generic skill: deterministic path (no LLM extraction needed)
+        if (plugin.id === 'generic' && existingState?.inferredType && existingState.inferredType !== 'unknown') {
+          const { withStructuralTypeState } = await import('../agent-runtime/plugin-helpers.js');
+          const nextState = withStructuralTypeState(plugin.handler.mergeState(existingState, {}), match);
+          const missing = plugin.handler.computeMissing(nextState, 'execution');
+          const responseJson = {
+            nextState,
+            criticalMissing: missing.critical,
+            optionalMissing: missing.optional,
+            structuralTypeMatch: match,
+            skillId: plugin.id,
+            extractionMode: 'deterministic',
+          };
+          const stateUpdate: Partial<AgentState> = { draftState: nextState, structuralTypeKey: match.key };
+          logToolCall(log, { tool: 'extract_draft_params', durationMs: Date.now() - start, extra: { skillId: plugin.id, extractionMode: 'deterministic', criticalMissing: missing.critical.length } });
+          return toolResult(toolCallId, 'extract_draft_params', JSON.stringify(responseJson), stateUpdate);
+        }
+
+        // Step 3: Sub-agent extracts parameters (skill manifest driven)
+        const { invokeParamExtractor } = await import('./param-extractor.js');
+        const draftPatch = await invokeParamExtractor({ message, existingState, locale, plugin });
+
+        // Step 4: Handler pipeline (extractDraft → mergeState → computeMissing)
+        const patch = plugin.handler.extractDraft({
+          message,
+          locale,
+          currentState: existingState,
+          llmDraftPatch: draftPatch,
           structuralTypeMatch: match,
-          skillId: undefined,
-          extractionMode: 'deterministic',
-        };
-        const stateUpdate: Partial<AgentState> = { draftState: nextState };
-        if (match.key) stateUpdate.structuralTypeKey = match.key;
-        return toolResult(toolCallId, 'extract_draft_params', JSON.stringify(responseJson), stateUpdate);
-      }
-
-      // Step 2: Resolve plugin
-      const plugin = await skillRuntime.resolvePluginForType(match.skillId, skillIds);
-      if (!plugin) {
-        const nextState = existingState || { inferredType: 'unknown' as const, updatedAt: Date.now() };
-        const responseJson = {
-          nextState,
-          criticalMissing: ['inferredType'],
-          optionalMissing: [],
-          structuralTypeMatch: match,
-          skillId: undefined,
-          extractionMode: 'deterministic',
-        };
-        return toolResult(toolCallId, 'extract_draft_params', JSON.stringify(responseJson), { draftState: nextState });
-      }
-
-      // Generic skill: deterministic path (no LLM extraction needed)
-      if (plugin.id === 'generic' && existingState?.inferredType && existingState.inferredType !== 'unknown') {
+        });
         const { withStructuralTypeState } = await import('../agent-runtime/plugin-helpers.js');
-        const nextState = withStructuralTypeState(plugin.handler.mergeState(existingState, {}), match);
+        const nextState = withStructuralTypeState(plugin.handler.mergeState(existingState, patch), match);
         const missing = plugin.handler.computeMissing(nextState, 'execution');
+
         const responseJson = {
           nextState,
           criticalMissing: missing.critical,
           optionalMissing: missing.optional,
           structuralTypeMatch: match,
           skillId: plugin.id,
-          extractionMode: 'deterministic',
+          extractionMode: draftPatch ? 'llm' : 'deterministic',
         };
-        const stateUpdate: Partial<AgentState> = { draftState: nextState, structuralTypeKey: match.key };
-        return toolResult(toolCallId, 'extract_draft_params', JSON.stringify(responseJson), stateUpdate);
+
+        const stateUpdate: Partial<AgentState> = {};
+        if (nextState) stateUpdate.draftState = nextState;
+        if (match.key) stateUpdate.structuralTypeKey = match.key;
+
+        logToolCall(log, { tool: 'extract_draft_params', durationMs: Date.now() - start, extra: { skillId: plugin.id, extractionMode: responseJson.extractionMode, criticalMissing: missing.critical.length } });
+        return toolResult(
+          toolCallId,
+          'extract_draft_params',
+          JSON.stringify(responseJson),
+          stateUpdate,
+        );
+      } catch (error) {
+        logToolCall(log, { tool: 'extract_draft_params', durationMs: Date.now() - start, extra: { error: error instanceof Error ? error.message : String(error) } });
+        throw error;
       }
-
-      // Step 3: Sub-agent extracts parameters (skill manifest driven)
-      const { invokeParamExtractor } = await import('./param-extractor.js');
-      const draftPatch = await invokeParamExtractor({ message, existingState, locale, plugin });
-
-      // Step 4: Handler pipeline (extractDraft → mergeState → computeMissing)
-      const patch = plugin.handler.extractDraft({
-        message,
-        locale,
-        currentState: existingState,
-        llmDraftPatch: draftPatch,
-        structuralTypeMatch: match,
-      });
-      const { withStructuralTypeState } = await import('../agent-runtime/plugin-helpers.js');
-      const nextState = withStructuralTypeState(plugin.handler.mergeState(existingState, patch), match);
-      const missing = plugin.handler.computeMissing(nextState, 'execution');
-
-      const responseJson = {
-        nextState,
-        criticalMissing: missing.critical,
-        optionalMissing: missing.optional,
-        structuralTypeMatch: match,
-        skillId: plugin.id,
-        extractionMode: draftPatch ? 'llm' : 'deterministic',
-      };
-
-      const stateUpdate: Partial<AgentState> = {};
-      if (nextState) stateUpdate.draftState = nextState;
-      if (match.key) stateUpdate.structuralTypeKey = match.key;
-
-      return toolResult(
-        toolCallId,
-        'extract_draft_params',
-        JSON.stringify(responseJson),
-        stateUpdate,
-      );
     },
     {
       name: 'extract_draft_params',
@@ -230,6 +249,8 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
 export function createBuildModelTool(skillRuntime: AgentSkillRuntime) {
   return tool(
     async (_input: Record<string, unknown>, config: LangGraphRunnableConfig) => {
+      const log = getLogger(config.configurable as Partial<AgentConfigurable> | undefined);
+      const start = Date.now();
       const configurable = getConfigurable(config);
       const state = configurable.agentState;
       const toolCallId = getToolCallId(config);
@@ -246,6 +267,7 @@ export function createBuildModelTool(skillRuntime: AgentSkillRuntime) {
         locale: state?.locale || 'zh',
       });
       if (!model) {
+        logToolCall(log, { tool: 'build_model', durationMs: Date.now() - start, extra: { success: false } });
         throw new Error('Model build returned undefined — draft may be incomplete. Try running extract_draft_params again with more explicit parameters.');
       }
 
@@ -254,6 +276,7 @@ export function createBuildModelTool(skillRuntime: AgentSkillRuntime) {
       // The streaming layer reads model from nodeState for artifact_payload_sync.
       const nodeCount = Array.isArray(model.nodes) ? model.nodes.length : 0;
       const elementCount = Array.isArray(model.elements) ? model.elements.length : 0;
+      logToolCall(log, { tool: 'build_model', durationMs: Date.now() - start, extra: { success: true, nodeCount, elementCount, schemaVersion: model.schema_version } });
       return toolResult(
         toolCallId,
         'build_model',
@@ -425,6 +448,8 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
     async (input: {
       analysisType: string;
     }, config: LangGraphRunnableConfig) => {
+      const log = getLogger(config.configurable as Partial<AgentConfigurable> | undefined);
+      const start = Date.now();
       const configurable = getConfigurable(config);
       const state = configurable.agentState;
       const toolCallId = getToolCallId(config);
@@ -474,6 +499,7 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
             ? ((result.result as Record<string, unknown>).data as Record<string, unknown>)?.analysisMode
             : undefined }
         : { success: true, skillId: result.skillId };
+      logToolCall(log, { tool: 'run_analysis', durationMs: Date.now() - start, extra: { analysisType, skillId: result.skillId, success: true } });
       return toolResult(
         toolCallId,
         'run_analysis',
@@ -503,6 +529,8 @@ export function createRunCodeCheckTool(skillRuntime: AgentSkillRuntime) {
       designCode: string;
       engineId?: string;
     }, config: LangGraphRunnableConfig) => {
+      const log = getLogger(config.configurable as Partial<AgentConfigurable> | undefined);
+      const start = Date.now();
       const configurable = getConfigurable(config);
       const state = configurable.agentState;
       const toolCallId = getToolCallId(config);
@@ -529,6 +557,7 @@ export function createRunCodeCheckTool(skillRuntime: AgentSkillRuntime) {
       });
 
       // Store code check result in graph state via Command
+      logToolCall(log, { tool: 'run_code_check', durationMs: Date.now() - start, extra: { designCode: input.designCode, skillId: result.skillId, success: true } });
       return toolResult(
         toolCallId,
         'run_code_check',
@@ -559,6 +588,8 @@ export function createGenerateReportTool(skillRuntime: AgentSkillRuntime) {
       analysisType: string;
       locale?: string;
     }, config: LangGraphRunnableConfig) => {
+      const log = getLogger(config.configurable as Partial<AgentConfigurable> | undefined);
+      const start = Date.now();
       const configurable = getConfigurable(config);
       const state = configurable.agentState;
       const toolCallId = getToolCallId(config);
@@ -613,6 +644,7 @@ export function createGenerateReportTool(skillRuntime: AgentSkillRuntime) {
       }
 
       // Store report in graph state via Command
+      logToolCall(log, { tool: 'generate_report', durationMs: Date.now() - start, extra: { analysisType, locale, success: true } });
       return toolResult(
         toolCallId,
         'generate_report',

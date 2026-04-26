@@ -24,6 +24,7 @@ import { createLocalStructureProtocolClient } from '../services/structure-protoc
 import { prisma } from '../utils/database.js';
 import { Command } from '@langchain/langgraph';
 import { logger } from '../utils/logger.js';
+import { createAgentLogger } from '../utils/agent-logger.js';
 import type { AgentConfigurable } from './configurable.js';
 import { listAgentToolDefinitions } from './tool-registry.js';
 
@@ -110,7 +111,10 @@ export class LangGraphAgentService {
   // Configurable builder (DI container for tools/nodes)
   // ---------------------------------------------------------------------------
 
-  private buildConfigurable(input?: LangGraphRunInput): AgentConfigurable {
+  private buildConfigurable(input?: LangGraphRunInput, traceId?: string, conversationId?: string): AgentConfigurable & { _logger?: unknown } {
+    const childLogger = (traceId && conversationId)
+      ? createAgentLogger(traceId, conversationId)
+      : undefined;
     return {
       skillRuntime: this.skillRuntime,
       engineClient: this.engineClient,
@@ -120,6 +124,9 @@ export class LangGraphAgentService {
       enabledToolIds: input?.context?.enabledToolIds,
       disabledToolIds: input?.context?.disabledToolIds,
       allowShell: getAllowShellTools(),
+      projectId: input?.context?.projectId,
+      userId: input?.userId,
+      _logger: childLogger,
     };
   }
 
@@ -178,17 +185,19 @@ export class LangGraphAgentService {
     const skillIds = input.context?.skillIds || [];
     const traceId = input.traceId || randomUUID();
     const startedAt = new Date().toISOString();
+    const reqStart = Date.now();
 
     const graph = await this.getGraph();
 
     const config = {
       configurable: {
         thread_id: conversationId,
-        ...this.buildConfigurable(input),
+        ...this.buildConfigurable(input, traceId, conversationId),
       },
     };
 
-    logger.info({ conversationId, message: input.message.slice(0, 100) }, 'LangGraph agent stream');
+    const reqLogger = createAgentLogger(traceId, conversationId);
+    reqLogger.info({ message: input.message.slice(0, 100) }, 'LangGraph agent stream started');
 
     const stream = await graph.stream(
       {
@@ -206,7 +215,11 @@ export class LangGraphAgentService {
     );
 
     const ctx: StreamContext = { conversationId, traceId, startedAt };
-    yield* streamGraphToChunks(stream, ['messages', 'updates', 'custom'], ctx);
+    try {
+      yield* streamGraphToChunks(stream, ['messages', 'updates', 'custom'], ctx);
+    } finally {
+      reqLogger.info({ durationMs: Date.now() - reqStart, mode: 'stream' }, 'LangGraph agent stream completed');
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -219,17 +232,19 @@ export class LangGraphAgentService {
   ): AsyncGenerator<AgentStreamChunk> {
     const traceId = randomUUID();
     const startedAt = new Date().toISOString();
+    const reqStart = Date.now();
 
     const graph = await this.getGraph();
 
     const config = {
       configurable: {
         thread_id: conversationId,
-        ...this.buildConfigurable(),
+        ...this.buildConfigurable(undefined, traceId, conversationId),
       },
     };
 
-    logger.info({ conversationId }, 'LangGraph agent resume');
+    const reqLogger = createAgentLogger(traceId, conversationId);
+    reqLogger.info('LangGraph agent resume started');
 
     const stream = await graph.stream(
       new Command({ resume: resumeValue }),
@@ -237,7 +252,11 @@ export class LangGraphAgentService {
     );
 
     const ctx: StreamContext = { conversationId, traceId, startedAt };
-    yield* streamGraphToChunks(stream, ['messages', 'updates', 'custom'], ctx);
+    try {
+      yield* streamGraphToChunks(stream, ['messages', 'updates', 'custom'], ctx);
+    } finally {
+      reqLogger.info({ durationMs: Date.now() - reqStart, mode: 'resume' }, 'LangGraph agent resume completed');
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -252,17 +271,19 @@ export class LangGraphAgentService {
     const skillIds = input.context?.skillIds || [];
     const traceId = input.traceId || randomUUID();
     const startedAt = new Date().toISOString();
+    const reqStart = Date.now();
 
     const graph = await this.getGraph();
 
     const config = {
       configurable: {
         thread_id: conversationId,
-        ...this.buildConfigurable(input),
+        ...this.buildConfigurable(input, traceId, conversationId),
       },
     };
 
-    logger.info({ conversationId, message: input.message.slice(0, 100) }, 'LangGraph agent run');
+    const reqLogger = createAgentLogger(traceId, conversationId);
+    reqLogger.info({ message: input.message.slice(0, 100) }, 'LangGraph agent run started');
 
     const result = await graph.invoke(
       {
@@ -279,7 +300,9 @@ export class LangGraphAgentService {
       config,
     );
 
-    return this.extractResult(result, conversationId, traceId, startedAt);
+    const runResult = this.extractResult(result, conversationId, traceId, startedAt);
+    reqLogger.info({ durationMs: Date.now() - reqStart, mode: runResult.mode, toolCallCount: runResult.toolCalls.length, success: runResult.success }, 'LangGraph agent run completed');
+    return runResult;
   }
 
   /**
@@ -289,15 +312,20 @@ export class LangGraphAgentService {
   async runFull(input: LangGraphRunInput): Promise<AgentState> {
     const locale = input.context?.locale || 'zh';
     const conversationId = input.conversationId || `bench-${randomUUID()}`;
+    const traceId = input.traceId || randomUUID();
+    const reqStart = Date.now();
     const graph = await this.getGraph();
     const config = {
       configurable: {
         thread_id: conversationId,
-        ...this.buildConfigurable(input),
+        ...this.buildConfigurable(input, traceId, conversationId),
       },
     };
 
-    return await graph.invoke(
+    const reqLogger = createAgentLogger(traceId, conversationId);
+    reqLogger.info({ message: input.message.slice(0, 100) }, 'LangGraph agent runFull started');
+
+    const result = await graph.invoke(
       {
         messages: [new HumanMessage(input.message)],
         locale,
@@ -311,6 +339,9 @@ export class LangGraphAgentService {
       },
       config,
     ) as AgentState;
+
+    reqLogger.info({ durationMs: Date.now() - reqStart, mode: 'full' }, 'LangGraph agent runFull completed');
+    return result;
   }
 
   // ---------------------------------------------------------------------------

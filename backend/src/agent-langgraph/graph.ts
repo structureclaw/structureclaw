@@ -29,6 +29,11 @@ import type { SkillManifest } from '../agent-runtime/types.js';
 import type { AgentConfigurable } from './configurable.js';
 import { resolveActiveToolIds } from './tool-policy.js';
 import type { StructuredToolInterface } from '@langchain/core/tools';
+import { getLogger, logStateTransition } from '../utils/agent-logger.js';
+
+function getAgentLogger(config: LangGraphRunnableConfig) {
+  return getLogger(config.configurable as Partial<AgentConfigurable> | undefined);
+}
 
 // ---------------------------------------------------------------------------
 // Max ReAct iterations guard
@@ -48,6 +53,7 @@ function createCallModelNode(
     state: AgentState,
     config: LangGraphRunnableConfig,
   ): Promise<Partial<AgentState>> {
+    const log = getAgentLogger(config);
     const configurable = config.configurable as Partial<AgentConfigurable> | undefined;
     const model = createChatModel(0);
     if (!model) {
@@ -169,6 +175,7 @@ function createCallModelNode(
     }, 0);
 
     if (toolCallCount >= MAX_TOOL_CALLS_PER_TURN) {
+      log.warn({ node: 'agent', toolCallCount, max: MAX_TOOL_CALLS_PER_TURN }, 'max tool call limit reached');
       const warning = state.locale === 'zh'
         ? '已达到本轮最大工具调用次数限制。我将根据已有信息给出回复。'
         : 'Reached the maximum tool call limit for this turn. I will respond with the information gathered so far.';
@@ -183,7 +190,14 @@ function createCallModelNode(
     configurableAny.agentState = state;
 
     const allMessages = [...systemMessages, ...msgs];
+
+    log.info({ node: 'agent', messageCount: allMessages.length, activeToolCount: activeTools.length, toolCallCount }, 'agent node invoking LLM');
+    const llmStart = Date.now();
     const response = await modelWithTools.invoke(allMessages, config);
+    const llmDuration = Date.now() - llmStart;
+
+    const hasToolCalls = 'tool_calls' in response && Array.isArray((response as any).tool_calls) && (response as any).tool_calls.length > 0;
+    log.info({ node: 'agent', durationMs: llmDuration, hasToolCalls }, 'agent node LLM response received');
 
     return { messages: [response] };
   };
@@ -198,15 +212,13 @@ function shouldContinue(
 ): 'tools' | typeof END {
   const msgs = Array.isArray(state.messages) ? state.messages : [];
   const lastMessage = msgs[msgs.length - 1];
-  if (
+  const hasToolCalls = (
     lastMessage != null &&
     'tool_calls' in lastMessage &&
     Array.isArray((lastMessage as any).tool_calls) &&
     (lastMessage as any).tool_calls.length > 0
-  ) {
-    return 'tools';
-  }
-  return END;
+  );
+  return hasToolCalls ? 'tools' : END;
 }
 
 // ---------------------------------------------------------------------------
@@ -238,11 +250,15 @@ export function buildAgentGraph(deps: GraphDeps) {
   const tools = createRegisteredTools({ skillRuntime: deps.skillRuntime });
   const callModel = createCallModelNode(skillManifests, tools);
 
+  const log = getLogger(undefined);
+  log.info({ toolCount: tools.length, hasCheckpointer: !!checkpointer }, 'building agent graph');
+
   // Wrap ToolNode so that the current graph state is injected into
   // config.configurable.agentState before each tool runs.  LangGraph
   // does not propagate config mutations across nodes, so the injection
   // done in callModel is invisible to the raw ToolNode.
   const toolsNode = async (state: AgentState, config: LangGraphRunnableConfig) => {
+    const nodeLog = getAgentLogger(config);
     const configurableAny = config.configurable as Record<string, unknown>;
     configurableAny.agentState = state;
     // Resolve skill scope once for all tools in this invocation
@@ -253,6 +269,7 @@ export function buildAgentGraph(deps: GraphDeps) {
       tools,
       config.configurable as Partial<AgentConfigurable> | undefined,
     );
+    nodeLog.debug({ node: 'tools', activeToolCount: activeTools.length }, 'tools node executing');
     const toolNode = new ToolNode(activeTools);
     return toolNode.invoke(state, config);
   };

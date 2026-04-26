@@ -1,8 +1,10 @@
+import type { Logger } from 'pino';
 import fs from 'fs';
 import path from 'path';
 import pino from 'pino';
 import { fileURLToPath } from 'url';
 import { config } from '../config/index.js';
+import { createRotatingFileStream } from './log-rotation.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -37,18 +39,23 @@ if (config.nodeEnv === 'development') {
   });
 }
 
-// Stream 2: file output (always, when path is available)
+// Stream 2: rotating file output (always, when path is available)
 if (logFilePath) {
-  const fileStream = fs.createWriteStream(logFilePath, { flags: 'a' });
-  fileStream.on('error', () => {
-    // Silently ignore write errors — logging must never crash the app
+  const rotatingStream = createRotatingFileStream(logFilePath, {
+    maxSize: config.logMaxSize,
+    maxAgeDays: config.logMaxFiles,
   });
   streams.push({
     level: config.logLevel as pino.Level,
-    stream: fileStream,
+    stream: rotatingStream,
   });
 }
 
-export const logger = streams.length > 1
+export const logger: Logger = streams.length > 1
   ? pino({ level: config.logLevel }, pino.multistream(streams))
   : pino({ level: config.logLevel });
+
+/** Create a child logger with extra bound context (e.g. traceId, conversationId). */
+export function createChildLogger(bindings: Record<string, unknown>): Logger {
+  return logger.child(bindings);
+}
