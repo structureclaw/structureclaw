@@ -170,6 +170,10 @@ def validate_opensees_runtime_and_routing():
 
 
 def validate_analyze_contract():
+    issue = get_opensees_runtime_issue()
+    if issue:
+        print(f"[skip] Analyze response contract — OpenSees unavailable: {issue}")
+        return
     model = StructureModelV2(
         schema_version="2.0.0",
         nodes=[
@@ -344,6 +348,10 @@ def validate_code_check_traceability():
 
 
 def validate_static_regression():
+    issue = get_opensees_runtime_issue()
+    if issue:
+        print(f"[skip] Static 2D regression — OpenSees unavailable: {issue}")
+        return
     base = ROOT_DIR / "backend/src/skill-shared/python/structure_protocol/regression/static_2d"
     cases = sorted(base.glob("case_*.json"))
     if not cases:
@@ -377,6 +385,10 @@ def validate_static_regression():
 
 
 def validate_static_3d_regression():
+    issue = get_opensees_runtime_issue()
+    if issue:
+        print(f"[skip] Static 3D regression — OpenSees unavailable: {issue}")
+        return
     base = ROOT_DIR / "backend/src/skill-shared/python/structure_protocol/regression/static_3d"
     cases = sorted(base.glob("case_*.json"))
     if not cases:
