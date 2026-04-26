@@ -23,26 +23,6 @@ function stableId(prefix, parentId, index) {
   return `${prefix}-${parentId}-${index + 1}`;
 }
 
-export function buildUserExpertiseRows(users, explicitRows = []) {
-  if (explicitRows.length > 0) {
-    return explicitRows.map((row, index) => ({
-      id: row.id || stableId('user-expertise', row.userId, index),
-      userId: row.userId,
-      value: row.value,
-      position: row.position ?? index,
-      createdAt: row.createdAt ?? new Date(),
-    }));
-  }
-
-  return users.flatMap((user) => uniqueStrings(user.expertise).map((value, index) => ({
-    id: stableId('legacy-user-expertise', user.id, index),
-    userId: user.id,
-    value,
-    position: index,
-    createdAt: user.createdAt ?? new Date(),
-  })));
-}
-
 export function buildSkillTagRows(skills, explicitRows = []) {
   if (explicitRows.length > 0) {
     return explicitRows.map((row, index) => ({
@@ -99,11 +79,29 @@ export function buildPostAttachmentRows(posts, explicitRows = []) {
   })));
 }
 
+function omitKeys(row, keys) {
+  const copy = { ...row };
+  for (const key of keys) delete copy[key];
+  return copy;
+}
+
 export function stripLegacyScalarLists(source) {
-  return {
-    ...source,
-    users: source.users.map(({ expertise, ...user }) => user),
-    skills: source.skills.map(({ tags, ...skill }) => skill),
-    posts: source.posts.map(({ tags, attachments, ...post }) => post),
-  };
+  const sanitized = { ...source };
+  delete sanitized.users;
+  delete sanitized.projects;
+  delete sanitized.projectMembers;
+  delete sanitized.userExpertise;
+  delete sanitized.projectSkills;
+
+  if (Array.isArray(sanitized.structuralModels)) {
+    sanitized.structuralModels = sanitized.structuralModels.map((row) => omitKeys(row, ['projectId', 'createdBy']));
+  }
+  if (Array.isArray(sanitized.conversations)) {
+    sanitized.conversations = sanitized.conversations.map((row) => omitKeys(row, ['userId']));
+  }
+  if (Array.isArray(sanitized.analyses)) {
+    sanitized.analyses = sanitized.analyses.map((row) => omitKeys(row, ['createdBy']));
+  }
+
+  return sanitized;
 }

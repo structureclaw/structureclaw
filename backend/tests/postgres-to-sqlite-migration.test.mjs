@@ -3,39 +3,10 @@ import {
   buildPostAttachmentRows,
   buildPostTagRows,
   buildSkillTagRows,
-  buildUserExpertiseRows,
   stripLegacyScalarLists,
 } from '../scripts/postgres-to-sqlite-lib.mjs';
 
 describe('postgres to sqlite migration helpers', () => {
-  test('buildUserExpertiseRows normalizes legacy arrays into ordered relation rows', () => {
-    const createdAt = new Date('2026-03-20T00:00:00.000Z');
-    const rows = buildUserExpertiseRows([
-      {
-        id: 'user-1',
-        createdAt,
-        expertise: ['analysis', 'analysis', ' design ', '', null],
-      },
-    ]);
-
-    expect(rows).toEqual([
-      {
-        id: 'legacy-user-expertise-user-1-1',
-        userId: 'user-1',
-        value: 'analysis',
-        position: 0,
-        createdAt,
-      },
-      {
-        id: 'legacy-user-expertise-user-1-2',
-        userId: 'user-1',
-        value: 'design',
-        position: 1,
-        createdAt,
-      },
-    ]);
-  });
-
   test('buildSkillTagRows preserves explicit normalized rows when source already migrated', () => {
     const createdAt = new Date('2026-03-20T00:00:00.000Z');
     const rows = buildSkillTagRows([], [
@@ -101,30 +72,21 @@ describe('postgres to sqlite migration helpers', () => {
     ]);
   });
 
-  test('stripLegacyScalarLists removes array columns before sqlite inserts', () => {
+  test('stripLegacyScalarLists removes removed project and user collections', () => {
     const sanitized = stripLegacyScalarLists({
       users: [{ id: 'user-1', expertise: ['analysis'] }],
-      skills: [{ id: 'skill-1', tags: ['beam'] }],
-      posts: [{ id: 'post-1', tags: ['tip'], attachments: ['a.png'] }],
       projects: [{ id: 'project-1' }],
-      projectMembers: [],
-      structuralModels: [],
-      analyses: [],
-      conversations: [],
-      messages: [],
-      projectSkills: [],
-      skillReviews: [],
-      skillExecutions: [],
-      comments: [],
-      postLikes: [],
-      userExpertise: [],
-      skillTags: [],
-      postTags: [],
-      postAttachments: [],
+      projectMembers: [{ id: 'member-1' }],
+      structuralModels: [{ id: 'model-1', projectId: 'project-1' }],
+      conversations: [{ id: 'conv-1', userId: 'user-1' }],
+      analyses: [{ id: 'analysis-1', createdBy: 'user-1' }],
     });
 
-    expect(sanitized.users).toEqual([{ id: 'user-1' }]);
-    expect(sanitized.skills).toEqual([{ id: 'skill-1' }]);
-    expect(sanitized.posts).toEqual([{ id: 'post-1' }]);
+    expect(sanitized.users).toBeUndefined();
+    expect(sanitized.projects).toBeUndefined();
+    expect(sanitized.projectMembers).toBeUndefined();
+    expect(sanitized.structuralModels).toEqual([{ id: 'model-1' }]);
+    expect(sanitized.conversations).toEqual([{ id: 'conv-1' }]);
+    expect(sanitized.analyses).toEqual([{ id: 'analysis-1' }]);
   });
 });

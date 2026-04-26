@@ -10,7 +10,6 @@ import {
   buildPostAttachmentRows,
   buildPostTagRows,
   buildSkillTagRows,
-  buildUserExpertiseRows,
   stripLegacyScalarLists,
 } from './postgres-to-sqlite-lib.mjs';
 
@@ -131,33 +130,24 @@ async function queryRows(client, sql) {
 }
 
 async function loadSourceData(client) {
-  const hasUserExpertiseTable = await tableExists(client, 'user_expertise');
   const hasSkillTagsTable = await tableExists(client, 'skill_tags');
   const hasPostTagsTable = await tableExists(client, 'post_tags');
   const hasPostAttachmentsTable = await tableExists(client, 'post_attachments');
-  const hasUsersExpertiseColumn = await columnExists(client, 'users', 'expertise');
   const hasSkillsTagsColumn = await columnExists(client, 'skills', 'tags');
   const hasPostsTagsColumn = await columnExists(client, 'posts', 'tags');
   const hasPostsAttachmentsColumn = await columnExists(client, 'posts', 'attachments');
 
   return {
-    users: await queryRows(client, 'select * from "users" order by "createdAt" asc'),
-    projects: await queryRows(client, 'select * from "projects" order by "createdAt" asc'),
-    projectMembers: await queryRows(client, 'select * from "project_members" order by "joinedAt" asc'),
     structuralModels: await queryRows(client, 'select * from "structural_models" order by "createdAt" asc'),
     analyses: await queryRows(client, 'select * from "analyses" order by "createdAt" asc'),
     conversations: await queryRows(client, 'select * from "conversations" order by "createdAt" asc'),
     messages: await queryRows(client, 'select * from "messages" order by "createdAt" asc'),
     skills: await queryRows(client, 'select * from "skills" order by "createdAt" asc'),
-    projectSkills: await queryRows(client, 'select * from "project_skills" order by "installedAt" asc'),
     skillReviews: await queryRows(client, 'select * from "skill_reviews" order by "createdAt" asc'),
     skillExecutions: await queryRows(client, 'select * from "skill_executions" order by "createdAt" asc'),
     posts: await queryRows(client, 'select * from "posts" order by "createdAt" asc'),
     comments: await queryRows(client, 'select * from "comments" order by "createdAt" asc'),
     postLikes: await queryRows(client, 'select * from "post_likes" order by "createdAt" asc'),
-    userExpertise: hasUserExpertiseTable
-      ? await queryRows(client, 'select * from "user_expertise" order by "userId" asc, "position" asc, "createdAt" asc')
-      : (hasUsersExpertiseColumn ? [] : []),
     skillTags: hasSkillTagsTable
       ? await queryRows(client, 'select * from "skill_tags" order by "skillId" asc, "createdAt" asc')
       : (hasSkillsTagsColumn ? [] : []),
@@ -191,23 +181,16 @@ async function clearTarget(prisma) {
   await prisma.post.deleteMany();
   await prisma.skillExecution.deleteMany();
   await prisma.skillReview.deleteMany();
-  await prisma.projectSkill.deleteMany();
   await prisma.skillTag.deleteMany();
   await prisma.skill.deleteMany();
   await prisma.message.deleteMany();
   await prisma.conversation.deleteMany();
   await prisma.analysis.deleteMany();
   await prisma.structuralModel.deleteMany();
-  await prisma.projectMember.deleteMany();
-  await prisma.project.deleteMany();
-  await prisma.userExpertise.deleteMany();
-  await prisma.user.deleteMany();
 }
 
 async function targetHasData(prisma) {
   const counts = await Promise.all([
-    prisma.user.count(),
-    prisma.project.count(),
     prisma.conversation.count(),
     prisma.skill.count(),
     prisma.post.count(),
@@ -289,22 +272,24 @@ async function main() {
     try {
       const source = await loadSourceData(sourceClient);
       const normalizedSource = stripLegacyScalarLists(source);
-      const userExpertiseRows = buildUserExpertiseRows(source.users, source.userExpertise);
       const skillTagRows = buildSkillTagRows(source.skills, source.skillTags);
       const postTagRows = buildPostTagRows(source.posts, source.postTags);
       const postAttachmentRows = buildPostAttachmentRows(source.posts, source.postAttachments);
 
-      await insertMany(prisma.user, normalizedSource.users);
-      await insertMany(prisma.userExpertise, userExpertiseRows);
-      await insertMany(prisma.project, normalizedSource.projects);
-      await insertMany(prisma.projectMember, normalizedSource.projectMembers);
-      await insertMany(prisma.structuralModel, normalizedSource.structuralModels);
+      const structuralModels = normalizedSource.structuralModels.filter(
+        (row) => typeof row.conversationId === 'string' && row.conversationId.length > 0,
+      );
+      const skippedStructuralModels = normalizedSource.structuralModels.length - structuralModels.length;
+      if (skippedStructuralModels > 0) {
+        console.warn(`[warn] skipped ${skippedStructuralModels} structural model rows without conversationId`);
+      }
+
+      await insertMany(prisma.structuralModel, structuralModels);
       await insertMany(prisma.analysis, normalizedSource.analyses);
       await insertMany(prisma.conversation, normalizedSource.conversations);
       await insertMany(prisma.message, normalizedSource.messages);
       await insertMany(prisma.skill, normalizedSource.skills);
       await insertMany(prisma.skillTag, skillTagRows);
-      await insertMany(prisma.projectSkill, normalizedSource.projectSkills);
       await insertMany(prisma.skillReview, normalizedSource.skillReviews);
       await insertMany(prisma.skillExecution, normalizedSource.skillExecutions);
       await insertMany(prisma.post, normalizedSource.posts);
@@ -314,17 +299,12 @@ async function main() {
       await insertMany(prisma.postLike, normalizedSource.postLikes);
 
       logSummary({
-        users: source.users.length,
-        userExpertise: userExpertiseRows.length,
-        projects: source.projects.length,
-        projectMembers: source.projectMembers.length,
-        structuralModels: source.structuralModels.length,
+        structuralModels: structuralModels.length,
         analyses: source.analyses.length,
         conversations: source.conversations.length,
         messages: source.messages.length,
         skills: source.skills.length,
         skillTags: skillTagRows.length,
-        projectSkills: source.projectSkills.length,
         skillReviews: source.skillReviews.length,
         skillExecutions: source.skillExecutions.length,
         posts: source.posts.length,
