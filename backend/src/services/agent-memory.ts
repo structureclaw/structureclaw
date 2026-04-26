@@ -1,7 +1,10 @@
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 import { prisma } from '../utils/database.js';
 import type { InputJsonValue, JsonValue } from '../utils/json.js';
 
-export type AgentMemoryScopeType = 'conversation';
+export type AgentMemoryScopeType = 'conversation' | 'workspace';
 
 export interface AgentMemoryScope {
   scopeType: AgentMemoryScopeType;
@@ -16,8 +19,118 @@ export interface AgentMemoryEntryView {
   updatedAt: string;
 }
 
+// ---------------------------------------------------------------------------
+// Workspace file-backed store (.runtime/workspace-memory.json)
+// ---------------------------------------------------------------------------
+
+interface FileStoreEntry {
+  value: JsonValue;
+  updatedAt: string;
+}
+
+type FileStoreData = Record<string, FileStoreEntry>;
+
+export class AgentMemoryFileStore {
+  private readonly filePath: string;
+
+  constructor(workspaceRoot: string) {
+    const dir = path.join(workspaceRoot, '.runtime');
+    this.filePath = path.join(dir, 'workspace-memory.json');
+  }
+
+  async store(key: string, value: InputJsonValue): Promise<AgentMemoryEntryView> {
+    const normalizedKey = normalizeMemoryKey(key);
+    const data = await this.readData();
+    const updatedAt = new Date().toISOString();
+    data[normalizedKey] = { value: value as JsonValue, updatedAt };
+    await this.writeData(data);
+    return {
+      scopeType: 'workspace',
+      scopeId: 'default',
+      key: normalizedKey,
+      value: value as JsonValue,
+      updatedAt,
+    };
+  }
+
+  async retrieve(key: string): Promise<AgentMemoryEntryView | null> {
+    const normalizedKey = normalizeMemoryKey(key);
+    const data = await this.readData();
+    const entry = data[normalizedKey];
+    return entry
+      ? {
+          scopeType: 'workspace',
+          scopeId: 'default',
+          key: normalizedKey,
+          value: entry.value,
+          updatedAt: entry.updatedAt,
+        }
+      : null;
+  }
+
+  async list(): Promise<AgentMemoryEntryView[]> {
+    const data = await this.readData();
+    return Object.entries(data)
+      .map(([key, entry]) => ({
+        scopeType: 'workspace' as const,
+        scopeId: 'default',
+        key,
+        value: entry.value,
+        updatedAt: entry.updatedAt,
+      }))
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+  }
+
+  async delete(key: string): Promise<boolean> {
+    const normalizedKey = normalizeMemoryKey(key);
+    const data = await this.readData();
+    if (!(normalizedKey in data)) return false;
+    delete data[normalizedKey];
+    await this.writeData(data);
+    return true;
+  }
+
+  /* for testing */
+  getFilePath(): string {
+    return this.filePath;
+  }
+
+  private async readData(): Promise<FileStoreData> {
+    try {
+      const raw = await fs.promises.readFile(this.filePath, 'utf-8');
+      return JSON.parse(raw) as FileStoreData;
+    } catch {
+      return {};
+    }
+  }
+
+  private async writeData(data: FileStoreData): Promise<void> {
+    const dir = path.dirname(this.filePath);
+    await fs.promises.mkdir(dir, { recursive: true });
+    const tmp = path.join(dir, `.workspace-memory-${Date.now()}.tmp`);
+    await fs.promises.writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8');
+    await fs.promises.rename(tmp, this.filePath);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Unified memory service — dispatches by scopeType
+// ---------------------------------------------------------------------------
+
 export class AgentMemoryService {
+  private readonly fileStore?: AgentMemoryFileStore;
+
+  constructor(workspaceRoot?: string) {
+    if (workspaceRoot) {
+      this.fileStore = new AgentMemoryFileStore(workspaceRoot);
+    }
+  }
+
   async store(scope: AgentMemoryScope, key: string, value: InputJsonValue): Promise<AgentMemoryEntryView> {
+    if (scope.scopeType === 'workspace') {
+      if (!this.fileStore) throw new Error('Workspace memory requires a workspaceRoot.');
+      return this.fileStore.store(key, value);
+    }
     const normalizedKey = normalizeMemoryKey(key);
     const entry = await prisma.agentMemoryEntry.upsert({
       where: {
@@ -45,6 +158,10 @@ export class AgentMemoryService {
   }
 
   async retrieve(scope: AgentMemoryScope, key: string): Promise<AgentMemoryEntryView | null> {
+    if (scope.scopeType === 'workspace') {
+      if (!this.fileStore) throw new Error('Workspace memory requires a workspaceRoot.');
+      return this.fileStore.retrieve(key);
+    }
     const normalizedKey = normalizeMemoryKey(key);
     const entry = await prisma.agentMemoryEntry.findUnique({
       where: {
@@ -67,6 +184,10 @@ export class AgentMemoryService {
   }
 
   async list(scope: AgentMemoryScope): Promise<AgentMemoryEntryView[]> {
+    if (scope.scopeType === 'workspace') {
+      if (!this.fileStore) throw new Error('Workspace memory requires a workspaceRoot.');
+      return this.fileStore.list();
+    }
     const entries = await prisma.agentMemoryEntry.findMany({
       where: { scopeType: scope.scopeType, scopeId: scope.scopeId },
       orderBy: { updatedAt: 'desc' },
@@ -82,6 +203,10 @@ export class AgentMemoryService {
   }
 
   async delete(scope: AgentMemoryScope, key: string): Promise<boolean> {
+    if (scope.scopeType === 'workspace') {
+      if (!this.fileStore) throw new Error('Workspace memory requires a workspaceRoot.');
+      return this.fileStore.delete(key);
+    }
     const normalizedKey = normalizeMemoryKey(key);
     const result = await prisma.agentMemoryEntry.deleteMany({
       where: { scopeType: scope.scopeType, scopeId: scope.scopeId, key: normalizedKey },

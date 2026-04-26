@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "@jest/globals";
+import fs from "fs";
+import path from "path";
+import os from "os";
 
 describe("memory tool conversation scope", () => {
   let prisma;
@@ -42,6 +45,71 @@ describe("memory tool conversation scope", () => {
     await expect(tool.invoke(
       { action: "list" },
       { configurable: {} },
-    )).rejects.toThrow(/Persistent memory requires a conversation thread_id/);
+    )).rejects.toThrow(/Conversation-scoped memory requires a conversation thread_id/);
+  });
+});
+
+describe("memory tool workspace scope", () => {
+  let tmpDir;
+  let tool;
+
+  beforeAll(async () => {
+    const { createMemoryTool } = await import("../../../dist/agent-langgraph/memory-tool.js");
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "memory-tool-ws-"));
+    tool = createMemoryTool(tmpDir);
+  });
+
+  afterAll(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test("stores and retrieves workspace memory without thread_id", async () => {
+    const storeRaw = await tool.invoke(
+      { action: "store", key: "default.code", value: { code: "GB50010" }, scope: "workspace" },
+      { configurable: {} },
+    );
+    const storeResult = JSON.parse(storeRaw);
+    expect(storeResult.success).toBe(true);
+    expect(storeResult.entry.scopeType).toBe("workspace");
+    expect(storeResult.entry.scopeId).toBe("default");
+
+    const retrieveRaw = await tool.invoke(
+      { action: "retrieve", key: "default.code", scope: "workspace" },
+      { configurable: {} },
+    );
+    const retrieveResult = JSON.parse(retrieveRaw);
+    expect(retrieveResult.entry.value).toEqual({ code: "GB50010" });
+  });
+
+  test("lists workspace entries", async () => {
+    const listRaw = await tool.invoke(
+      { action: "list", scope: "workspace" },
+      { configurable: {} },
+    );
+    const listResult = JSON.parse(listRaw);
+    expect(listResult.success).toBe(true);
+    expect(listResult.entries.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test("deletes workspace entry", async () => {
+    await tool.invoke(
+      { action: "store", key: "to.delete", value: { x: 1 }, scope: "workspace" },
+      { configurable: {} },
+    );
+    const deleteRaw = await tool.invoke(
+      { action: "delete", key: "to.delete", scope: "workspace" },
+      { configurable: {} },
+    );
+    const deleteResult = JSON.parse(deleteRaw);
+    expect(deleteResult.deleted).toBe(true);
+  });
+
+  test("defaults to conversation scope when scope omitted", async () => {
+    const { createMemoryTool } = await import("../../../dist/agent-langgraph/memory-tool.js");
+    const convTool = createMemoryTool();
+    await expect(convTool.invoke(
+      { action: "list" },
+      { configurable: {} },
+    )).rejects.toThrow(/Conversation-scoped memory requires a conversation thread_id/);
   });
 });

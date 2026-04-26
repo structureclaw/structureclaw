@@ -145,7 +145,7 @@ ${summarizeArtifacts(state)}
 - run_analysis 完成后，立即调用 generate_report 生成报告，不要输出总结文字后停止。
 - 使用 set_session_config 只会更新当前会话配置，不会创建持久记忆。
 - set_session_config 只影响当前会话的分析类型、设计规范和技能选择。
-- memory 用于在当前工程对话中持久保存可复用偏好、长期约束和已确认工程决策；不要把临时草稿参数写入 memory。
+- memory 支持 conversation 和 workspace 两种 scope。conversation scope（默认）存储当前会话的上下文；workspace scope 存储跨会话持久偏好（如默认设计规范、项目约束）。不要把临时草稿参数写入 memory。
 
 **重要**: 工具从会话状态中自动读取数据（模型、分析结果、草稿状态等）。不要将 modelJson、analysisJson、stateJson 等参数传递给工具。工具会自动使用上一步的结果。`;
 }
@@ -201,7 +201,7 @@ When the user makes a structural design or analysis request, follow this workflo
 - Never end the conversation after analysis without generating a report.
 - Use set_session_config only for current-session configuration; it does not create persistent memory.
 - set_session_config only affects the current session's analysis type, design code, and selected skills.
-- memory stores reusable preferences, durable constraints, and confirmed engineering decisions within the current engineering conversation; do not store temporary draft parameters in memory.
+- memory supports conversation and workspace scopes. conversation scope (default) stores current-session context; workspace scope stores cross-session persistent preferences (e.g. default design code, project constraints). Do not store temporary draft parameters in memory.
 
 **IMPORTANT**: Tools read data (model, analysis results, draft state, etc.) from conversation state automatically. Do NOT pass modelJson, analysisJson, stateJson, or other JSON string parameters to tools. Tools automatically use results from previous steps.`;
 }

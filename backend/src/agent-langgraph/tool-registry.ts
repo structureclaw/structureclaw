@@ -12,6 +12,7 @@ import {
   createValidateModelTool,
 } from './tools.js';
 import { createMemoryTool } from './memory-tool.js';
+import { getWorkspaceRoot } from './config.js';
 import {
   createDeletePathTool,
   createGlobFilesTool,
@@ -157,10 +158,10 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
     defaultEnabled: true,
     displayName: { zh: '持久记忆', en: 'Persistent Memory' },
     description: {
-      zh: '存储和检索当前工程对话的持久上下文。',
-      en: 'Store and retrieve durable context for the current engineering conversation.',
+      zh: '存储和检索工程记忆。支持 conversation（当前会话）和 workspace（跨会话持久）两种 scope。',
+      en: 'Store and retrieve engineering memory. Supports conversation (current session) and workspace (cross-session persistent) scopes.',
     },
-    create: () => createMemoryTool(),
+    create: () => createMemoryTool(getWorkspaceRoot()),
   },
   {
     id: 'glob_files',
