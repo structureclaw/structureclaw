@@ -73,7 +73,6 @@ export interface ValidationSkillManifest {
   stages: ['validation'];
   capabilities: string[];
   priority: number;
-  autoLoadByDefault: boolean;
   runtimeRelativePath: string;
   /** Supported schema versions / 支持的 schema 版本 */
   schemaVersions?: string[];

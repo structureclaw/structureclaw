@@ -28,7 +28,6 @@ async function writeSkillManifest(rootDir, relativeDir, skillId) {
       'capabilities: []',
       'requires: []',
       'conflicts: []',
-      'autoLoadByDefault: false',
       'priority: 10',
       'compatibility:',
       '  minRuntimeVersion: 0.1.0',

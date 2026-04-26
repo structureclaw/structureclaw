@@ -92,7 +92,6 @@ function readSkillManifest(skillDir: string): {
   description: AgentSkillMetadata['description'];
   triggers: string[];
   stages: SkillStage[];
-  autoLoadByDefault: boolean;
   domain: SkillDomain;
 } {
   const manifestPath = path.join(skillDir, 'skill.yaml');
@@ -107,7 +106,6 @@ function readSkillManifest(skillDir: string): {
     description: parsed.data.description,
     triggers: [...parsed.data.triggers],
     stages: [...parsed.data.stages] as SkillStage[],
-    autoLoadByDefault: parsed.data.autoLoadByDefault,
     domain: parsed.data.domain as SkillDomain,
   };
 }
@@ -182,7 +180,6 @@ export class AgentSkillLoader {
           description: manifest.description,
           triggers: manifest.triggers,
           stages: manifest.stages,
-          autoLoadByDefault: manifest.autoLoadByDefault,
           domain: manifest.domain,
           stage,
           markdown: stripLegacyMarkdownHeader(raw),
@@ -206,7 +203,6 @@ export class AgentSkillLoader {
         description: file.description,
         triggers: file.triggers,
         stages: Array.from(new Set([...file.stages, file.stage])) as SkillStage[],
-        autoLoadByDefault: file.autoLoadByDefault,
         domain: file.domain,
         markdownByStage: {
           [file.stage]: file.markdown,

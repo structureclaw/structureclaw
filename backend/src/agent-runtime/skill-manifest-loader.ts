@@ -98,7 +98,6 @@ export function toRuntimeSkillManifest(manifest: LoadedSkillManifest): SkillMani
     description: manifest.description,
     triggers: [...manifest.triggers],
     stages: [...manifest.stages],
-    autoLoadByDefault: manifest.autoLoadByDefault,
     structureType: manifest.structureType as SkillManifest['structureType'],
     structuralTypeKeys: [...manifest.structuralTypeKeys] as SkillManifest['structuralTypeKeys'],
     requires: [...manifest.requires],

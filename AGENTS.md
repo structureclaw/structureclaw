@@ -160,7 +160,6 @@ description: { zh: ..., en: ... }
 triggers: [frame, 框架, steel frame] # keywords for intent detection
 stages: [intent, draft, analysis, design]
 structureType: frame               # maps to InferredModelType
-autoLoadByDefault: true
 priority: 70                       # higher = preferred when multiple skills match
 compatibility:
   minRuntimeVersion: "0.1.0"

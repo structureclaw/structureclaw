@@ -28,7 +28,6 @@ capabilities:
   - missing-field-detection
 requires: []
 conflicts: []
-autoLoadByDefault: true
 priority: 100
 compatibility:
   minRuntimeVersion: 0.1.0

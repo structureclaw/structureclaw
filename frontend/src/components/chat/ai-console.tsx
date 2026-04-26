@@ -266,7 +266,6 @@ type AgentSkillSummary = SkillMetadataLike & {
   structureType?: string
   stages?: string[]
   triggers?: string[]
-  autoLoadByDefault?: boolean
   domain?: string
 }
 
@@ -292,7 +291,6 @@ type CapabilityDomainSummary = {
   domain: SkillDomain
   runtimeStatus?: 'active' | 'partial' | 'discoverable' | 'reserved'
   skillIds?: string[]
-  autoLoadSkillIds?: string[]
 }
 
 type CapabilityMatrixPayload = {

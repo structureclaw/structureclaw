@@ -31,7 +31,6 @@ capabilities:
   - report-narrative
 requires: []
 conflicts: []
-autoLoadByDefault: true
 priority: 40
 compatibility:
   minRuntimeVersion: 0.1.0

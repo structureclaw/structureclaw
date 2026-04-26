@@ -21,9 +21,7 @@ export class AgentSkillRegistry {
       builtInPlugins: await this.listPlugins(),
     });
     if (skillIds === undefined) {
-      return providers
-        .filter((provider) => provider.manifest.autoLoadByDefault)
-        .map((provider) => provider.plugin);
+      return providers.map((provider) => provider.plugin);
     }
     if (skillIds.length === 0) {
       return [];

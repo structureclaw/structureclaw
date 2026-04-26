@@ -25,7 +25,6 @@ capabilities:
   - constraint-validation
 requires: []
 conflicts: []
-autoLoadByDefault: true
 priority: 90
 compatibility:
   minRuntimeVersion: 0.1.0

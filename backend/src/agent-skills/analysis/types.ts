@@ -41,7 +41,6 @@ export interface AnalysisSkillManifest {
   capabilities: string[];
   supportedModelFamilies: AnalysisModelFamily[];
   priority: number;
-  autoLoadByDefault: boolean;
   runtimeRelativePath: string;
 }
 

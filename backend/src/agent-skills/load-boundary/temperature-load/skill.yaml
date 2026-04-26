@@ -23,7 +23,6 @@ capabilities:
   - load-generation
 requires: []
 conflicts: []
-autoLoadByDefault: false
 priority: 85
 compatibility:
   minRuntimeVersion: 0.1.0

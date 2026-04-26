@@ -24,7 +24,6 @@ capabilities:
   - load-validation
 requires: []
 conflicts: []
-autoLoadByDefault: false
 priority: 90
 compatibility:
   minRuntimeVersion: 0.1.0

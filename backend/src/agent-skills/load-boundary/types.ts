@@ -46,7 +46,6 @@ export interface LoadBoundarySkillManifest {
   description: LocalizedText;
   triggers: string[];
   stages: SkillStage[];
-  autoLoadByDefault: boolean;
   scenarioKeys: LoadBoundaryScenarioKey[];
   domain: 'load-boundary';
   version: string;

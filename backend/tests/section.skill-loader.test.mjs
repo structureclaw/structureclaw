@@ -46,9 +46,6 @@ describe('section skill loader', () => {
     expect(common?.manifest.domain).toBe('section');
     expect(bridge?.manifest.domain).toBe('section');
     expect(irregular?.manifest.domain).toBe('section');
-    expect(common?.manifest.autoLoadByDefault).toBe(false);
-    expect(bridge?.manifest.autoLoadByDefault).toBe(false);
-    expect(irregular?.manifest.autoLoadByDefault).toBe(false);
   });
 
   test('should load plugins by relative skill path and strip CRLF legacy frontmatter', async () => {
@@ -80,7 +77,6 @@ describe('section skill loader', () => {
           'capabilities: []',
           'requires: []',
           'conflicts: []',
-          'autoLoadByDefault: false',
           'priority: 90',
           'compatibility:',
           '  minRuntimeVersion: 0.1.0',

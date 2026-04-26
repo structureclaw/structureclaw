@@ -22,7 +22,6 @@ capabilities:
   - code-check-execution
 requires: []
 conflicts: []
-autoLoadByDefault: false
 priority: 110
 compatibility:
   minRuntimeVersion: 0.1.0

@@ -52,7 +52,6 @@ function toLoadBoundarySkillManifest(manifest: LoadedSkillManifest): LoadBoundar
     description: { ...manifest.description },
     triggers: [...manifest.triggers],
     stages: [...manifest.stages],
-    autoLoadByDefault: manifest.autoLoadByDefault,
     scenarioKeys: normalizeScenarioKeys(manifest.id, manifest.scenarioKeys ?? []),
     domain: 'load-boundary',
     version: manifest.version ?? DEFAULT_MANIFEST_VERSION,

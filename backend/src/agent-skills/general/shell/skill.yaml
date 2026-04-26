@@ -21,7 +21,6 @@ capabilities:
   - shell-exec
 requires: []
 conflicts: []
-autoLoadByDefault: false
 priority: 5
 compatibility:
   minRuntimeVersion: 0.1.0

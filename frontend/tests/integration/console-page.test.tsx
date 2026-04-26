@@ -15,31 +15,26 @@ const mockSkills = [
     id: 'generic',
     name: { en: 'Generic Structure Type', zh: '通用结构类型' },
     description: { en: 'Generic structure workflow', zh: '通用结构工作流' },
-    autoLoadByDefault: true,
   },
   {
     id: 'opensees-static',
     name: { en: 'OpenSees Static Analysis', zh: 'OpenSees 静力分析' },
     description: { en: 'OpenSees static workflow', zh: 'OpenSees 静力分析工作流' },
-    autoLoadByDefault: true,
   },
   {
     id: 'beam',
     name: { en: 'Beam Helper', zh: '梁助手' },
     description: { en: 'Beam workflow', zh: '梁工作流' },
-    autoLoadByDefault: true,
   },
   {
     id: 'frame',
     name: { en: 'Frame Checker', zh: '框架校核' },
     description: { en: 'Frame workflow', zh: '框架工作流' },
-    autoLoadByDefault: true,
   },
   {
     id: 'code-check-gb50017',
     name: { en: 'Code Check GB50017', zh: '规范校核 GB50017' },
     description: { en: 'GB50017 code check', zh: 'GB50017 规范校核' },
-    autoLoadByDefault: false,
   },
 ] as const
 

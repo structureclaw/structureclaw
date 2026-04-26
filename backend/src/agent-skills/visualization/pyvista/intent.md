@@ -2,7 +2,6 @@
 id: skillhub.pyvista-viz
 domain: visualization
 version: 1.0.0
-autoLoadByDefault: false
 structureType: any
 capabilities:
   - visualization-3d

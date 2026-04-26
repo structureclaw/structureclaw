@@ -29,7 +29,6 @@ export interface BuiltinSkillCatalogEntry {
   description: { zh?: string; en?: string };
   stages: string[];
   triggers: string[];
-  autoLoadByDefault: boolean;
   structureType?: string;
   capabilities: string[];
   supportedAnalysisTypes: string[];
@@ -124,7 +123,6 @@ export class AgentSkillCatalogService {
       },
       stages: Array.isArray(manifest.stages) ? [...manifest.stages] : [],
       triggers: Array.isArray(manifest.triggers) ? [...manifest.triggers] : [],
-      autoLoadByDefault: Boolean(manifest.autoLoadByDefault),
       structureType: manifest.structureType,
       capabilities: Array.isArray(manifest.capabilities) ? [...manifest.capabilities] : [],
       supportedAnalysisTypes: this.normalizeAnalysisTypes(manifest.supportedAnalysisTypes as AgentAnalysisType[]),

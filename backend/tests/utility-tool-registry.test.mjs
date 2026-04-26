@@ -3,7 +3,7 @@ import { loadSkillManifestsFromDirectorySync, resolveBuiltinSkillManifestRoot } 
 import { listAgentToolDefinitions } from '../dist/agent-langgraph/tool-registry.js';
 import path from 'node:path';
 
-const UTILITY_SKILL_IDS = ['memory', 'planning', 'read-file', 'replace', 'shell', 'write-file'];
+const REMAINING_GENERAL_SKILL_IDS = ['memory', 'shell'];
 const CURRENT_TOOL_IDS = [
   'ask_user_clarification',
   'build_model',
@@ -47,16 +47,16 @@ describe('code-owned agent tool registry', () => {
   });
 });
 
-describe('utility skill manifests do not grant tools', () => {
+describe('general skill manifests load correctly', () => {
   const allSkills = loadSkillManifestsFromDirectorySync(path.join(resolveBuiltinSkillManifestRoot(), 'general'));
-  const utilitySkills = allSkills.filter((skill) => UTILITY_SKILL_IDS.includes(skill.id));
+  const generalSkills = allSkills.filter((skill) => REMAINING_GENERAL_SKILL_IDS.includes(skill.id));
 
-  test('utility skill manifests still load successfully', () => {
-    expect(utilitySkills.map((skill) => skill.id).sort()).toEqual([...UTILITY_SKILL_IDS].sort());
+  test('remaining general skill manifests load successfully', () => {
+    expect(generalSkills.map((skill) => skill.id).sort()).toEqual([...REMAINING_GENERAL_SKILL_IDS].sort());
   });
 
-  test('utility skills retain general-domain metadata', () => {
-    for (const skill of utilitySkills) {
+  test('general skills retain general-domain metadata', () => {
+    for (const skill of generalSkills) {
       expect(skill.domain).toBe('general');
       expect(skill.source).toBe('builtin');
       expect(skill.name.zh.length).toBeGreaterThan(0);
@@ -65,18 +65,5 @@ describe('utility skill manifests do not grant tools', () => {
       expect(skill.description.en.length).toBeGreaterThan(0);
       expect(skill.capabilities.length).toBeGreaterThan(0);
     }
-  });
-
-  test('shell skill is not auto-loaded by default', () => {
-    const shell = utilitySkills.find((skill) => skill.id === 'shell');
-    expect(shell).toBeDefined();
-    expect(shell.autoLoadByDefault).toBe(false);
-  });
-
-  test('replace skill still depends on read-file and write-file skills', () => {
-    const replace = utilitySkills.find((skill) => skill.id === 'replace');
-    expect(replace).toBeDefined();
-    expect(replace.requires).toContain('read-file');
-    expect(replace.requires).toContain('write-file');
   });
 });

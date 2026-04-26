@@ -55,7 +55,6 @@ export function toStructureModelingProviderFromModule(
 ): StructureModelingProvider {
   const manifest: SkillManifest = {
     ...module.manifest,
-    autoLoadByDefault: pkg.enabledByDefault,
   };
   const plugin: AgentSkillPlugin = {
     ...manifest,

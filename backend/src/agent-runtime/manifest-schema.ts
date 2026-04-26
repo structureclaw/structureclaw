@@ -98,7 +98,6 @@ export const skillManifestFileSchema = z.object({
   capabilities: z.array(z.string().trim().min(1)).default([]),
   requires: z.array(z.string().trim().min(1)).default([]),
   conflicts: z.array(z.string().trim().min(1)).default([]),
-  autoLoadByDefault: z.boolean().default(false),
   priority: z.number().int().default(0),
   compatibility: z.object({
     minRuntimeVersion: z.string().trim().min(1),

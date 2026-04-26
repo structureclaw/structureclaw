@@ -27,7 +27,6 @@ capabilities:
   - context-clear
 requires: []
 conflicts: []
-autoLoadByDefault: true
 priority: 10
 compatibility:
   minRuntimeVersion: 0.1.0

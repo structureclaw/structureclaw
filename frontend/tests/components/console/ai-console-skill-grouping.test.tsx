@@ -39,9 +39,9 @@ describe('Capability settings and console integration', () => {
         return {
           ok: true,
           json: async () => ([
-            { id: 'beam', name: { zh: '梁', en: 'Beam' }, description: { zh: 'beam', en: 'beam' }, autoLoadByDefault: true },
-            { id: 'truss', name: { zh: '桁架', en: 'Truss' }, description: { zh: 'truss', en: 'truss' }, autoLoadByDefault: true },
-            { id: 'opensees-static', name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' }, description: { zh: 'static', en: 'static' }, autoLoadByDefault: true },
+            { id: 'beam', name: { zh: '梁', en: 'Beam' }, description: { zh: 'beam', en: 'beam' } },
+            { id: 'truss', name: { zh: '桁架', en: 'Truss' }, description: { zh: 'truss', en: 'truss' } },
+            { id: 'opensees-static', name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' }, description: { zh: 'static', en: 'static' } },
           ]),
         } as Response
       }
@@ -60,8 +60,8 @@ describe('Capability settings and console integration', () => {
               { id: 'run_analysis', category: 'analysis', displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' }, description: { zh: '执行分析求解', en: 'Execute analysis' } },
             ],
             domainSummaries: [
-              { domain: 'structure-type', skillIds: ['beam', 'truss'], autoLoadSkillIds: ['beam', 'truss'] },
-              { domain: 'analysis', skillIds: ['opensees-static'], autoLoadSkillIds: ['opensees-static'] },
+              { domain: 'structure-type', skillIds: ['beam', 'truss'] },
+              { domain: 'analysis', skillIds: ['opensees-static'] },
             ],
             skillDomainById: { beam: 'structure-type', truss: 'structure-type', 'opensees-static': 'analysis' },
           }),
@@ -111,7 +111,7 @@ describe('Capability settings and console integration', () => {
         return {
           ok: true,
           json: async () => ([
-            { id: 'beam', name: { zh: '梁', en: 'Beam' }, description: { zh: 'beam', en: 'beam' }, autoLoadByDefault: true },
+            { id: 'beam', name: { zh: '梁', en: 'Beam' }, description: { zh: 'beam', en: 'beam' } },
           ]),
         } as Response
       }
@@ -194,7 +194,6 @@ describe('Capability settings and console integration', () => {
               id: 'dead-load',
               name: { zh: '恒荷载', en: 'Dead Load' },
               description: { zh: 'dead load', en: 'dead load' },
-              autoLoadByDefault: true,
               domain: 'load-boundary',
             },
           ]),
@@ -335,9 +334,9 @@ describe('Capability settings and console integration', () => {
         return {
           ok: true,
           json: async () => ([
-            { id: 'generic', name: { zh: '通用结构类型', en: 'Generic Structure Type' }, description: { zh: 'generic', en: 'generic' }, autoLoadByDefault: true },
-            { id: 'beam', name: { zh: '梁', en: 'Beam' }, description: { zh: 'beam', en: 'beam' }, autoLoadByDefault: true },
-            { id: 'opensees-static', name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' }, description: { zh: 'static', en: 'static' }, autoLoadByDefault: true },
+            { id: 'generic', name: { zh: '通用结构类型', en: 'Generic Structure Type' }, description: { zh: 'generic', en: 'generic' } },
+            { id: 'beam', name: { zh: '梁', en: 'Beam' }, description: { zh: 'beam', en: 'beam' } },
+            { id: 'opensees-static', name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' }, description: { zh: 'static', en: 'static' } },
           ]),
         } as Response
       }
@@ -357,8 +356,8 @@ describe('Capability settings and console integration', () => {
               { id: 'run_analysis', category: 'analysis', displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' }, description: { zh: '执行分析求解', en: 'Execute analysis' } },
             ],
             domainSummaries: [
-              { domain: 'structure-type', skillIds: ['generic', 'beam'], autoLoadSkillIds: ['generic', 'beam'] },
-              { domain: 'analysis', skillIds: ['opensees-static'], autoLoadSkillIds: ['opensees-static'] },
+              { domain: 'structure-type', skillIds: ['generic', 'beam'] },
+              { domain: 'analysis', skillIds: ['opensees-static'] },
             ],
             skillDomainById: { generic: 'structure-type', beam: 'structure-type', 'opensees-static': 'analysis' },
           }),
@@ -436,7 +435,6 @@ describe('Capability settings and console integration', () => {
               aliases: ['structure-json-validation'],
               name: { zh: '结构模型校验', en: 'Structure Model Validation' },
               description: { zh: 'validation', en: 'validation' },
-              autoLoadByDefault: false,
               domain: 'validation',
             },
           ]),
@@ -552,13 +550,11 @@ describe('Capability settings and console integration', () => {
               id: 'generic',
               name: { zh: '通用结构类型', en: 'Generic Structure Type' },
               description: { zh: 'generic', en: 'generic' },
-              autoLoadByDefault: true,
             },
             {
               id: 'opensees-static',
               name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' },
               description: { zh: 'static', en: 'static' },
-              autoLoadByDefault: true,
             },
           ]),
         } as Response
@@ -753,13 +749,11 @@ describe('Capability settings and console integration', () => {
           id: 'generic',
           name: { zh: '通用结构类型', en: 'Generic Structure Type' },
           description: { zh: 'generic', en: 'generic' },
-          autoLoadByDefault: true,
         },
         {
           id: 'opensees-static',
           name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' },
           description: { zh: 'static', en: 'static' },
-          autoLoadByDefault: true,
         },
       ]),
     } as Response)
@@ -803,8 +797,8 @@ describe('Capability settings and console integration', () => {
         return {
           ok: true,
           json: async () => ([
-            { id: 'generic', name: { zh: '通用结构类型', en: 'Generic Structure Type' }, description: { zh: 'generic', en: 'generic' }, autoLoadByDefault: true },
-            { id: 'opensees-static', name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' }, description: { zh: 'static', en: 'static' }, autoLoadByDefault: true },
+            { id: 'generic', name: { zh: '通用结构类型', en: 'Generic Structure Type' }, description: { zh: 'generic', en: 'generic' } },
+            { id: 'opensees-static', name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' }, description: { zh: 'static', en: 'static' } },
           ]),
         } as Response
       }
@@ -885,8 +879,8 @@ describe('Capability settings and console integration', () => {
         return {
           ok: true,
           json: async () => ([
-            { id: 'generic', name: { zh: '通用结构类型', en: 'Generic Structure Type' }, description: { zh: 'generic', en: 'generic' }, autoLoadByDefault: true },
-            { id: 'opensees-static', name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' }, description: { zh: 'static', en: 'static' }, autoLoadByDefault: true },
+            { id: 'generic', name: { zh: '通用结构类型', en: 'Generic Structure Type' }, description: { zh: 'generic', en: 'generic' } },
+            { id: 'opensees-static', name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' }, description: { zh: 'static', en: 'static' } },
           ]),
         } as Response
       }
@@ -968,8 +962,8 @@ describe('Capability settings and console integration', () => {
         return {
           ok: true,
           json: async () => ([
-            { id: 'generic', name: { zh: '通用结构类型', en: 'Generic Structure Type' }, description: { zh: 'generic', en: 'generic' }, autoLoadByDefault: true },
-            { id: 'opensees-static', name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' }, description: { zh: 'static', en: 'static' }, autoLoadByDefault: true },
+            { id: 'generic', name: { zh: '通用结构类型', en: 'Generic Structure Type' }, description: { zh: 'generic', en: 'generic' } },
+            { id: 'opensees-static', name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' }, description: { zh: 'static', en: 'static' } },
           ]),
         } as Response
       }
@@ -1059,13 +1053,11 @@ describe('Capability settings and console integration', () => {
               id: 'generic',
               name: { zh: '通用结构类型', en: 'Generic Structure Type' },
               description: { zh: 'generic', en: 'generic' },
-              autoLoadByDefault: true,
             },
             {
               id: 'opensees-static',
               name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' },
               description: { zh: 'static', en: 'static' },
-              autoLoadByDefault: true,
             },
           ]),
         } as Response
@@ -1153,13 +1145,11 @@ describe('Capability settings and console integration', () => {
               id: 'generic',
               name: { zh: '通用结构类型', en: 'Generic Structure Type' },
               description: { zh: 'generic', en: 'generic' },
-              autoLoadByDefault: true,
             },
             {
               id: 'opensees-static',
               name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' },
               description: { zh: 'static', en: 'static' },
-              autoLoadByDefault: true,
             },
           ]),
         } as Response
@@ -1250,13 +1240,11 @@ describe('Capability settings and console integration', () => {
               id: 'generic',
               name: { zh: '通用结构类型', en: 'Generic Structure Type' },
               description: { zh: 'generic', en: 'generic' },
-              autoLoadByDefault: true,
             },
             {
               id: 'opensees-static',
               name: { zh: 'OpenSees 静力分析', en: 'OpenSees Static Analysis' },
               description: { zh: 'static', en: 'static' },
-              autoLoadByDefault: true,
             },
           ]),
         } as Response

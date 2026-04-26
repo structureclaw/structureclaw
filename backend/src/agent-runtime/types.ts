@@ -146,7 +146,6 @@ export interface AgentSkillMetadata {
   description: LocalizedText;
   triggers: string[];
   stages: SkillStage[];
-  autoLoadByDefault: boolean;
   domain?: SkillDomain;
 }
 

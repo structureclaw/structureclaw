@@ -53,7 +53,6 @@ describe('LoadBoundary Integration Tests', () => {
         expect(skill.version).toBeDefined();
         expect(skill.priority).toBeDefined();
         expect(skill.capabilities).toBeDefined();
-        expect(skill.autoLoadByDefault).toBeDefined();
         expect(skill.compatibility).toBeDefined();
       }
     });

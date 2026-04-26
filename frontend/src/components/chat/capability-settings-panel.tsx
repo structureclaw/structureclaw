@@ -41,7 +41,6 @@ type CapabilityDomainSummary = {
   domain: SkillDomain
   runtimeStatus?: 'active' | 'partial' | 'discoverable' | 'reserved'
   skillIds?: string[]
-  autoLoadSkillIds?: string[]
 }
 
 type CapabilityMatrixPayload = {

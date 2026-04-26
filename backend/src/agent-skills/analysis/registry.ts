@@ -57,7 +57,6 @@ function toAnalysisSkillManifest(manifest: LoadedSkillManifest): AnalysisSkillMa
         : ['generic']
     ) as AnalysisModelFamily[],
     priority: manifest.priority ?? 0,
-    autoLoadByDefault: Boolean(manifest.autoLoadByDefault),
     runtimeRelativePath,
   };
 }

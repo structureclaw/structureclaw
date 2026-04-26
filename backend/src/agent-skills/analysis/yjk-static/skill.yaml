@@ -22,7 +22,6 @@ capabilities:
   - analysis-execution
 requires: []
 conflicts: []
-autoLoadByDefault: false
 priority: 125
 compatibility:
   minRuntimeVersion: 0.1.0

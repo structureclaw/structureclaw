@@ -280,7 +280,7 @@ async function validateAgentManifestLoader(context) {
       "id: analysis-static", "domain: analysis", "source: builtin", "name:", "  zh: 静力分析技能", "  en: Static Analysis Skill",
       "description:", "  zh: 负责静力分析。", "  en: Handles static analysis.", "triggers:", "  - static", "stages:", "  - analysis",
       "structureType: unknown", "structuralTypeKeys: []", "capabilities:", "  - analysis-execution", "requires: []", "conflicts: []",
-      "autoLoadByDefault: false", "priority: 10", "compatibility:", "  minRuntimeVersion: 0.1.0", "  skillApiVersion: v1",
+      "priority: 10", "compatibility:", "  minRuntimeVersion: 0.1.0", "  skillApiVersion: v1",
       "software: opensees", "analysisType: static", "engineId: builtin-opensees", "adapterKey: builtin-opensees", "runtimeRelativePath: runtime.py",
       "supportedAnalysisTypes:", "  - static", "supportedModelFamilies:", "  - generic", "materialFamilies: []", "",
     ].join("\n"));
@@ -289,7 +289,7 @@ async function validateAgentManifestLoader(context) {
     await write(path.join(invalidSkillRoot, "analysis", "invalid-analysis", "skill.yaml"), [
       "id: invalid-analysis", "domain: analysis", "source: builtin", "name:", "  zh: 缺失英文名称", "description:", "  zh: 描述存在", "  en: Description exists",
       "triggers: []", "stages:", "  - analysis", "structureType: unknown", "structuralTypeKeys: []", "capabilities: []", "obsoleteToolKey: []",
-      "requires: []", "conflicts: []", "autoLoadByDefault: false", "priority: 0", "compatibility:", "  minRuntimeVersion: 0.1.0", "  skillApiVersion: v1",
+      "requires: []", "conflicts: []", "priority: 0", "compatibility:", "  minRuntimeVersion: 0.1.0", "  skillApiVersion: v1",
       "supportedAnalysisTypes: []", "supportedModelFamilies:", "  - generic", "materialFamilies: []", "",
     ].join("\n"));
     const { loadSkillManifestsFromDirectory } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "agent-runtime", "skill-manifest-loader.js")).href);
@@ -419,13 +419,13 @@ async function validateAgentRuntimeLoader(context) {
       "id: custom-static", "domain: analysis", "source: builtin", "name:", "  zh: 自定义静力分析", "  en: Custom Static Analysis",
       "description:", "  zh: 仅通过 skill.yaml 声明的静力分析技能。", "  en: Static analysis skill declared only via skill.yaml.", "triggers: []", "stages:", "  - analysis",
       "structureType: frame", "structuralTypeKeys: []", "capabilities:", "  - analysis-policy", "  - analysis-execution", "requires: []", "conflicts: []",
-      "autoLoadByDefault: false", "priority: 999", "compatibility:", "  minRuntimeVersion: 0.1.0", "  skillApiVersion: v1", "software: opensees", "analysisType: static",
+      "priority: 999", "compatibility:", "  minRuntimeVersion: 0.1.0", "  skillApiVersion: v1", "software: opensees", "analysisType: static",
       "engineId: builtin-custom", "adapterKey: builtin-custom", "runtimeRelativePath: runtime.py", "supportedAnalysisTypes:", "  - static", "supportedModelFamilies:", "  - frame", "  - generic", "materialFamilies: []", "",
     ].join("\n"));
     await fsp.writeFile(path.join(manifestOnlySkillRoot, "code-check", "custom-gb50018", "skill.yaml"), [
       "id: code-check-gb50018", "domain: code-check", "source: builtin", "name:", "  zh: GB50018 规范校核", "  en: GB50018 Code Check",
       "description:", "  zh: 仅通过 skill.yaml 声明的规范校核技能。", "  en: Code-check skill declared only via skill.yaml.", "triggers:", "  - GB50018", "stages:", "  - design",
-      "structureType: unknown", "structuralTypeKeys: []", "capabilities:", "  - code-check-policy", "  - code-check-execution", "requires: []", "conflicts: []", "autoLoadByDefault: false", "priority: 999",
+      "structureType: unknown", "structuralTypeKeys: []", "capabilities:", "  - code-check-policy", "  - code-check-execution", "requires: []", "conflicts: []", "priority: 999",
       "compatibility:", "  minRuntimeVersion: 0.1.0", "  skillApiVersion: v1", "designCode: GB50018", "supportedAnalysisTypes: []", "supportedModelFamilies:", "  - generic", "materialFamilies: []", "",
     ].join("\n"));
     const manifestOnlyRuntime = new AgentSkillRuntime({ builtinSkillManifestRoot: manifestOnlySkillRoot });
@@ -1451,7 +1451,6 @@ async function validateStructureJsonSkill(context) {
   assert(skill.domain === "validation", "validation skill should keep validation domain");
   assert(skill.triggers.includes("validate"), "validation skill should keep validate trigger");
   assert(skill.triggers.includes("验证"), "validation skill should keep Chinese validate trigger");
-  assert(skill.autoLoadByDefault === true, "validation skill should auto-load by default");
   assert(skill.priority === 100, "validation skill priority should stay 100");
   assert(typeof entryModule.listBuiltinValidationSkills === "undefined", "validation entry should not re-export static registry metadata helpers");
   assert(typeof entryModule.getBuiltinValidationSkill === "undefined", "validation entry should not expose builtin metadata lookup");

@@ -13,7 +13,6 @@ triggers: ["YJK 静力分析", "YJK 计算", "盈建科", "yjk static", "yjk ana
 stages: ["analysis"]
 capabilities: ["analysis-policy", "analysis-execution"]
 supportedModelFamilies: ["frame", "generic"]
-autoLoadByDefault: false
 runtimeRelativePath: runtime.py
 ---
 # YJK Static Analysis

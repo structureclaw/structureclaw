@@ -41,7 +41,6 @@ capabilities:
   - fallback-routing
 requires: []
 conflicts: []
-autoLoadByDefault: true
 priority: 5
 compatibility:
   minRuntimeVersion: 0.1.0
