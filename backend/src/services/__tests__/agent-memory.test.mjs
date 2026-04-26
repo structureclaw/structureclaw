@@ -12,6 +12,23 @@ describe("AgentMemoryService", () => {
     const dbMod = await import("../../../dist/utils/database.js");
     service = new serviceMod.AgentMemoryService();
     prisma = dbMod.prisma;
+
+    const tables = await prisma.$queryRaw`SELECT name FROM sqlite_master WHERE type='table' AND name='agent_memory_entries'`;
+    if (tables.length === 0) {
+      await prisma.$executeRawUnsafe(`
+        CREATE TABLE agent_memory_entries (
+          id TEXT NOT NULL PRIMARY KEY,
+          scopeType TEXT NOT NULL,
+          scopeId TEXT NOT NULL,
+          key TEXT NOT NULL,
+          value TEXT NOT NULL,
+          createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
+      await prisma.$executeRawUnsafe(`CREATE UNIQUE INDEX agent_memory_entries_scopeType_scopeId_key_idx ON agent_memory_entries(scopeType, scopeId, key)`);
+      await prisma.$executeRawUnsafe(`CREATE INDEX agent_memory_entries_scopeType_scopeId_updatedAt_idx ON agent_memory_entries(scopeType, scopeId, updatedAt)`);
+    }
   }, 15000);
 
   afterAll(async () => {

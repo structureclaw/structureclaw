@@ -17,10 +17,9 @@ describe('chat presentation reducer', () => {
           type TEXT NOT NULL,
           createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-          modelSnapshot JSON,
-          resultSnapshot JSON,
-          latestResult JSON,
-          userId TEXT
+          modelSnapshot TEXT,
+          resultSnapshot TEXT,
+          latestResult TEXT
         )
       `);
     }
@@ -32,7 +31,7 @@ describe('chat presentation reducer', () => {
           id TEXT NOT NULL PRIMARY KEY,
           role TEXT NOT NULL,
           content TEXT NOT NULL,
-          metadata JSON,
+          metadata TEXT,
           tokenCount INTEGER,
           createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
           conversationId TEXT NOT NULL,
