@@ -57,7 +57,6 @@ interface DomainSummary {
   domain: SkillDomain;
   runtimeStatus: SkillRuntimeStatus;
   skillIds: string[];
-  autoLoadSkillIds: string[];
   capabilities: string[];
 }
 
@@ -442,7 +441,6 @@ export class AgentCapabilityService {
         domain,
         runtimeStatus: resolveDomainRuntimeStatus(domain, discoverableDomains.has(domain)),
         skillIds: [],
-        autoLoadSkillIds: [],
         capabilities: [],
       }]),
     );
@@ -459,7 +457,6 @@ export class AgentCapabilityService {
       .map((summary) => ({
         ...summary,
         skillIds: [...summary.skillIds].sort(),
-        autoLoadSkillIds: [...summary.skillIds].sort(),
         capabilities: [...summary.capabilities].sort(),
       }))
       .sort((a, b) => a.domain.localeCompare(b.domain));

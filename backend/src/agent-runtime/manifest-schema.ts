@@ -124,7 +124,7 @@ export const skillManifestFileSchema = z.object({
   toolHints: z.record(z.unknown()).default({}),
   aliases: z.array(z.string().trim().min(1)).default([]),
   runtimeContract: runtimeContractSchema,
-}).strict();
+}).passthrough();
 
 export type SkillManifestFile = z.infer<typeof skillManifestFileSchema>;
 
