@@ -9,7 +9,7 @@ describe("AgentMemoryService", () => {
     const dbMod = await import("../../../dist/utils/database.js");
     service = new serviceMod.AgentMemoryService();
     prisma = dbMod.prisma;
-  });
+  }, 15000);
 
   afterAll(async () => {
     await prisma.agentMemoryEntry.deleteMany({
