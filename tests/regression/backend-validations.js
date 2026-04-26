@@ -274,7 +274,7 @@ async function validateAgentManifestLoader(context) {
       "description:", "  zh: 负责静力分析。", "  en: Handles static analysis.", "triggers:", "  - static", "stages:", "  - analysis",
       "structureType: unknown", "structuralTypeKeys: []", "capabilities:", "  - analysis-execution", "requires: []", "conflicts: []",
       "autoLoadByDefault: false", "priority: 10", "compatibility:", "  minRuntimeVersion: 0.1.0", "  skillApiVersion: v1",
-      "software: simplified", "analysisType: static", "engineId: builtin-simplified", "adapterKey: builtin-simplified", "runtimeRelativePath: runtime.py",
+      "software: opensees", "analysisType: static", "engineId: builtin-opensees", "adapterKey: builtin-opensees", "runtimeRelativePath: runtime.py",
       "supportedAnalysisTypes:", "  - static", "supportedModelFamilies:", "  - generic", "materialFamilies: []", "",
     ].join("\n"));
     await write(path.join(validSkillRoot, "analysis", "analysis-static", "intent.md"), "# Static analysis prompt");
@@ -291,10 +291,10 @@ async function validateAgentManifestLoader(context) {
     assert(skills.length === 1, "skill manifest loader should only load directories with skill.yaml");
     assert(skills[0].id === "analysis-static", "skill manifest loader should preserve manifest id");
     assert(skills[0].name?.zh === "静力分析技能" && skills[0].name?.en === "Static Analysis Skill", "skill manifest loader should preserve bilingual localized text");
-    assert(skills[0].software === "simplified", "skill manifest loader should preserve optional analysis software metadata");
+    assert(skills[0].software === "opensees", "skill manifest loader should preserve optional analysis software metadata");
     assert(skills[0].analysisType === "static", "skill manifest loader should preserve optional analysisType metadata");
-    assert(skills[0].engineId === "builtin-simplified", "skill manifest loader should preserve optional engineId metadata");
-    assert(skills[0].adapterKey === "builtin-simplified", "skill manifest loader should preserve optional adapterKey metadata");
+    assert(skills[0].engineId === "builtin-opensees", "skill manifest loader should preserve optional engineId metadata");
+    assert(skills[0].adapterKey === "builtin-opensees", "skill manifest loader should preserve optional adapterKey metadata");
     assert(skills[0].runtimeRelativePath === "runtime.py", "skill manifest loader should preserve optional runtimeRelativePath metadata");
     let rejectedInvalidSkill = false;
     try { await loadSkillManifestsFromDirectory(invalidSkillRoot); } catch (_error) { rejectedInvalidSkill = true; }
@@ -357,7 +357,7 @@ async function validateAgentSkillCatalogManifests(context) {
   const validationSkill = skills.find((skill) => skill.canonicalId === "validation-structure-model");
   assert(validationSkill, "skill catalog should include validation-structure-model");
   assert(validationSkill.aliases.includes("structure-json-validation"), "validation-structure-model should preserve legacy alias");
-  for (const skillId of ["opensees-dynamic", "opensees-nonlinear", "opensees-seismic", "opensees-static", "simplified-dynamic", "simplified-seismic", "simplified-static", "code-check-gb50010", "code-check-gb50011", "code-check-gb50017", "code-check-jgj3", "dead-load", "section-common", "visualization-frame-summary"]) {
+  for (const skillId of ["opensees-dynamic", "opensees-nonlinear", "opensees-seismic", "opensees-static", "code-check-gb50010", "code-check-gb50011", "code-check-gb50017", "code-check-jgj3", "dead-load", "section-common", "visualization-frame-summary"]) {
     const skill = skills.find((entry) => entry.canonicalId === skillId);
     assert(skill, "skill catalog should include skill " + skillId);
     assert(typeof skill.manifestPath === "string" && skill.manifestPath.endsWith("skill.yaml"), skillId + " should retain its skill.yaml path");
@@ -412,7 +412,7 @@ async function validateAgentRuntimeLoader(context) {
       "id: custom-static", "domain: analysis", "source: builtin", "name:", "  zh: 自定义静力分析", "  en: Custom Static Analysis",
       "description:", "  zh: 仅通过 skill.yaml 声明的静力分析技能。", "  en: Static analysis skill declared only via skill.yaml.", "triggers: []", "stages:", "  - analysis",
       "structureType: frame", "structuralTypeKeys: []", "capabilities:", "  - analysis-policy", "  - analysis-execution", "requires: []", "conflicts: []",
-      "autoLoadByDefault: false", "priority: 999", "compatibility:", "  minRuntimeVersion: 0.1.0", "  skillApiVersion: v1", "software: simplified", "analysisType: static",
+      "autoLoadByDefault: false", "priority: 999", "compatibility:", "  minRuntimeVersion: 0.1.0", "  skillApiVersion: v1", "software: opensees", "analysisType: static",
       "engineId: builtin-custom", "adapterKey: builtin-custom", "runtimeRelativePath: runtime.py", "supportedAnalysisTypes:", "  - static", "supportedModelFamilies:", "  - frame", "  - generic", "materialFamilies: []", "",
     ].join("\n"));
     await fsp.writeFile(path.join(manifestOnlySkillRoot, "code-check", "custom-gb50018", "skill.yaml"), [
