@@ -14,76 +14,16 @@ process.env.DATABASE_URL = process.env.DATABASE_URL || `file:${defaultSqliteData
 const prisma = new PrismaClient();
 
 async function main() {
-  const demoUser = await prisma.user.upsert({
-    where: { id: 'seed-user-demo' },
+  const demoConversation = await prisma.conversation.upsert({
+    where: { id: 'seed-conversation-demo' },
     update: {
-      name: 'Demo User',
-      organization: 'StructureClaw',
-      title: 'Structural Engineer',
-      bio: 'Local seeded user for development.',
+      title: 'Demo Analysis',
+      type: 'analysis',
     },
     create: {
-      id: 'seed-user-demo',
-      email: 'demo@structureclaw.local',
-      name: 'Demo User',
-      organization: 'StructureClaw',
-      title: 'Structural Engineer',
-      bio: 'Local seeded user for development.',
-    },
-  });
-
-  const demoProject = await prisma.project.upsert({
-    where: { id: 'seed-project-demo' },
-    update: {
-      name: 'Demo Project',
-      description: 'Seeded development project.',
-      type: 'building',
-      location: {
-        city: 'Shanghai',
-        province: 'Shanghai',
-        seismicZone: 8,
-        windZone: 2,
-      },
-      settings: {
-        designCode: 'GB50010',
-        concreteGrade: 'C30',
-      },
-      ownerId: demoUser.id,
-    },
-    create: {
-      id: 'seed-project-demo',
-      name: 'Demo Project',
-      description: 'Seeded development project.',
-      type: 'building',
-      location: {
-        city: 'Shanghai',
-        province: 'Shanghai',
-        seismicZone: 8,
-        windZone: 2,
-      },
-      settings: {
-        designCode: 'GB50010',
-        concreteGrade: 'C30',
-      },
-      ownerId: demoUser.id,
-    },
-  });
-
-  await prisma.projectMember.upsert({
-    where: {
-      projectId_userId: {
-        projectId: demoProject.id,
-        userId: demoUser.id,
-      },
-    },
-    update: {
-      role: 'owner',
-    },
-    create: {
-      id: 'seed-project-member-demo',
-      projectId: demoProject.id,
-      userId: demoUser.id,
-      role: 'owner',
+      id: 'seed-conversation-demo',
+      title: 'Demo Analysis',
+      type: 'analysis',
     },
   });
 
@@ -92,8 +32,7 @@ async function main() {
     update: {
       name: 'Three-Story Frame',
       description: 'Seeded structural model for local testing.',
-      projectId: demoProject.id,
-      createdBy: demoUser.id,
+      conversationId: demoConversation.id,
       nodes: [
         { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
         { id: '2', x: 6000, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
@@ -117,8 +56,7 @@ async function main() {
       id: 'seed-model-demo',
       name: 'Three-Story Frame',
       description: 'Seeded structural model for local testing.',
-      projectId: demoProject.id,
-      createdBy: demoUser.id,
+      conversationId: demoConversation.id,
       nodes: [
         { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
         { id: '2', x: 6000, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
@@ -147,7 +85,6 @@ async function main() {
       type: 'static',
       status: 'completed',
       modelId: demoModel.id,
-      createdBy: demoUser.id,
       parameters: {
         loadCases: [
           {
@@ -168,7 +105,6 @@ async function main() {
       type: 'static',
       status: 'completed',
       modelId: demoModel.id,
-      createdBy: demoUser.id,
       parameters: {
         loadCases: [
           {
@@ -188,8 +124,7 @@ async function main() {
   });
 
   console.log('Seed completed.');
-  console.log('Demo user: demo@structureclaw.local');
-  console.log(`Demo project id: ${demoProject.id}`);
+  console.log(`Demo conversation id: ${demoConversation.id}`);
   console.log(`Demo model id: ${demoModel.id}`);
 }
 

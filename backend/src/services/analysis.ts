@@ -1,5 +1,6 @@
 import { prisma } from '../utils/database.js';
 import { cache } from '../utils/cache.js';
+import { ensureConversationId } from '../utils/demo-conversation.js';
 import { AnalysisExecutionService } from './analysis-execution.js';
 import { CodeCheckExecutionService } from './code-check-execution.js';
 
@@ -31,12 +32,7 @@ export class AnalysisService {
 
   // 创建结构模型
   async createModel(params: CreateModelParams) {
-    const conversationId = params.conversationId ?? (await prisma.conversation.create({
-      data: {
-        title: params.name,
-        type: 'analysis',
-      },
-    })).id;
+    const conversationId = await ensureConversationId(params.conversationId, params.name);
 
     const model = await prisma.structuralModel.create({
       data: {
