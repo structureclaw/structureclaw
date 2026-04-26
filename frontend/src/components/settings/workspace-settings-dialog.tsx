@@ -6,6 +6,7 @@ import { DialogShell } from '@/components/ui/dialog-shell'
 import { Button } from '@/components/ui/button'
 import { LlmSettingsPanel } from '@/components/settings/llm-settings-panel'
 import { DatabaseSettingsPanel } from '@/components/settings/database-settings-panel'
+import { GeneralSettingsPanel } from '@/components/settings/general-settings-panel'
 import { useI18n } from '@/lib/i18n'
 import { useStore } from '@/lib/stores/context'
 import { cn } from '@/lib/utils'
@@ -18,6 +19,7 @@ type TabConfig = {
 }
 
 const TAB_CONFIG: Record<WorkspaceSettingsTab, TabConfig> = {
+  general: { labelKey: 'generalSettingsNav', panel: <GeneralSettingsPanel /> },
   capabilities: { labelKey: 'capabilitySettingsNav', panel: <CapabilitySettingsPanel /> },
   llm: { labelKey: 'llmSettingsNav', panel: <LlmSettingsPanel /> },
   database: { labelKey: 'databaseAdminNav', panel: <DatabaseSettingsPanel /> },

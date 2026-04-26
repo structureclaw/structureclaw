@@ -1,16 +1,26 @@
-import fs from 'node:fs';
-import path from 'node:path';
+/**
+ * LLM runtime settings — reads/writes LLM overrides from the unified
+ * settings.json file.  Falls back to .env defaults when no override exists.
+ *
+ * Public API unchanged: getEffectiveLlmSettings / getPublicLlmSettings /
+ * updateRuntimeLlmSettings / clearRuntimeLlmSettings.
+ */
 import { config } from './index.js';
+import {
+  readSettingsFile,
+  writeSettingsFile,
+  type SettingsFileLlm,
+} from './settings-file.js';
+
+// ---------------------------------------------------------------------------
+// Types (unchanged public API)
+// ---------------------------------------------------------------------------
 
 type StoredLlmSettings = {
   baseUrl?: string;
   model?: string;
   apiKey?: string;
-  updatedAt?: string;
 };
-
-let cachedRuntimeLlmSettings: StoredLlmSettings | null | undefined;
-let cachedRuntimeLlmSettingsPath: string | undefined;
 
 export type EffectiveLlmSettings = Pick<
   typeof config,
@@ -38,110 +48,45 @@ export type UpdateRuntimeLlmSettingsInput = {
   apiKeyMode?: 'keep' | 'replace' | 'inherit';
 };
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function normalizeOptionalString(value: unknown): string | undefined {
-  if (typeof value !== 'string') {
-    return undefined;
-  }
+  if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function getLlmSettingsPath(): string {
-  return process.env.LLM_SETTINGS_PATH || config.llmSettingsPath;
-}
-
 function getEnvDefaults() {
   return {
-    baseUrl: config.llmBaseUrl.trim(),
-    model: config.llmModel.trim(),
-    apiKey: config.llmApiKey.trim(),
+    baseUrl: (process.env.LLM_BASE_URL || '').trim() || config.llmBaseUrl,
+    model: (process.env.LLM_MODEL || '').trim() || config.llmModel,
+    apiKey: (process.env.LLM_API_KEY || '').trim(),
   };
-}
-
-function normalizeStoredLlmSettings(value: unknown): StoredLlmSettings | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null;
-  }
-
-  const record = value as Record<string, unknown>;
-  return {
-    baseUrl: normalizeOptionalString(record.baseUrl),
-    model: normalizeOptionalString(record.model),
-    apiKey: normalizeOptionalString(record.apiKey),
-    updatedAt: normalizeOptionalString(record.updatedAt),
-  };
-}
-
-function readRuntimeLlmSettingsFromDisk(): StoredLlmSettings | null {
-  const settingsPath = getLlmSettingsPath();
-
-  try {
-    if (!fs.existsSync(settingsPath)) {
-      return null;
-    }
-
-    const parsed = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
-    return normalizeStoredLlmSettings(parsed);
-  } catch {
-    return null;
-  }
-}
-
-function setCachedRuntimeLlmSettings(settingsPath: string, settings: StoredLlmSettings | null) {
-  cachedRuntimeLlmSettingsPath = settingsPath;
-  cachedRuntimeLlmSettings = settings;
-}
-
-function hasStoredOverrides(settings: StoredLlmSettings | null | undefined): boolean {
-  return Boolean(settings?.baseUrl || settings?.model || settings?.apiKey);
-}
-
-function writeRuntimeLlmSettingsToDisk(settings: StoredLlmSettings) {
-  const settingsPath = getLlmSettingsPath();
-
-  if (!hasStoredOverrides(settings)) {
-    if (fs.existsSync(settingsPath)) {
-      fs.unlinkSync(settingsPath);
-    }
-    setCachedRuntimeLlmSettings(settingsPath, null);
-    return;
-  }
-
-  fs.mkdirSync(path.dirname(settingsPath), { recursive: true, mode: 0o700 });
-  const nextSettings = {
-    ...settings,
-    updatedAt: new Date().toISOString(),
-  };
-  fs.writeFileSync(settingsPath, `${JSON.stringify(nextSettings, null, 2)}\n`, {
-    encoding: 'utf8',
-    mode: 0o600,
-  });
-  setCachedRuntimeLlmSettings(settingsPath, nextSettings);
-}
-
-function getRuntimeLlmSettings(): StoredLlmSettings | null {
-  const settingsPath = getLlmSettingsPath();
-
-  if (cachedRuntimeLlmSettingsPath === settingsPath && cachedRuntimeLlmSettings !== undefined) {
-    return cachedRuntimeLlmSettings;
-  }
-
-  const settings = readRuntimeLlmSettingsFromDisk();
-  setCachedRuntimeLlmSettings(settingsPath, settings);
-  return settings;
 }
 
 function maskApiKey(apiKey: string | undefined): string {
   return apiKey ? '********' : '';
 }
 
+function getRuntimeLlmSettings(): StoredLlmSettings | null {
+  const file = readSettingsFile();
+  return file?.llm ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
 export function getEffectiveLlmSettings(): EffectiveLlmSettings {
   const runtimeSettings = getRuntimeLlmSettings();
+  const envDefaults = getEnvDefaults();
 
   return {
-    llmApiKey: runtimeSettings?.apiKey ?? config.llmApiKey,
-    llmModel: runtimeSettings?.model ?? config.llmModel,
-    llmBaseUrl: runtimeSettings?.baseUrl ?? config.llmBaseUrl,
+    llmApiKey: runtimeSettings?.apiKey ?? envDefaults.apiKey,
+    llmModel: runtimeSettings?.model ?? envDefaults.model,
+    llmBaseUrl: runtimeSettings?.baseUrl ?? envDefaults.baseUrl,
     llmTimeoutMs: config.llmTimeoutMs,
     llmMaxRetries: config.llmMaxRetries,
   };
@@ -190,18 +135,21 @@ export function updateRuntimeLlmSettings(input: UpdateRuntimeLlmSettingsInput): 
       : undefined;
   }
 
-  const nextSettings: StoredLlmSettings = {
+  const llm: SettingsFileLlm = {
     baseUrl: nextBaseUrl !== envDefaults.baseUrl ? nextBaseUrl : undefined,
     model: nextModel !== envDefaults.model ? nextModel : undefined,
     apiKey: nextApiKey && nextApiKey !== envDefaults.apiKey ? nextApiKey : undefined,
   };
 
-  writeRuntimeLlmSettingsToDisk(nextSettings);
+  // Read current full settings, update llm section only
+  const currentFull = readSettingsFile() ?? {};
+  writeSettingsFile({ ...currentFull, llm });
 
   return getPublicLlmSettings();
 }
 
 export function clearRuntimeLlmSettings(): PublicLlmSettings {
-  writeRuntimeLlmSettingsToDisk({});
+  const currentFull = readSettingsFile() ?? {};
+  writeSettingsFile({ ...currentFull, llm: {} });
   return getPublicLlmSettings();
 }

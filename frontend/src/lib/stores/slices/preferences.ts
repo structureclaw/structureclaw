@@ -2,7 +2,7 @@ import { type StateCreator } from 'zustand'
 import { loadCapabilityPreferences, saveCapabilityPreferences } from '../../capability-preference'
 
 export type AppLocale = 'en' | 'zh'
-export type WorkspaceSettingsTab = 'capabilities' | 'llm' | 'database'
+export type WorkspaceSettingsTab = 'general' | 'capabilities' | 'llm' | 'database'
 
 /**
  * Preferences State Interface
@@ -61,7 +61,7 @@ export const createPreferencesSlice: StateCreator<
 > = (set) => ({
   ...initialPreferencesState,
   setLocale: (locale) => set({ locale }),
-  openWorkspaceSettings: (tab = 'capabilities') => set({
+  openWorkspaceSettings: (tab = 'general') => set({
     workspaceSettingsOpen: true,
     workspaceSettingsTab: tab,
   }),

@@ -918,6 +918,7 @@ module.exports = {
   pidFilePath,
   pythonModuleExists,
   quoteShellArgument,
+  readDotEnv,
   readTrackedPid,
   removeTrackedPid,
   requestUrl,
