@@ -18,7 +18,6 @@ import {
   createEmptyAssistantPresentation,
   type AssistantPresentation,
 } from '../services/chat-presentation.js';
-import { logger } from '../utils/logger.js';
 import { createAgentLogger } from '../utils/agent-logger.js';
 
 // Re-export the stream chunk type for convenience
