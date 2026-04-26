@@ -1,3 +1,4 @@
+const { spawn } = require("node:child_process");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -1076,8 +1077,11 @@ async function invokeLocalUp(rootDir, env, options = {}) {
   } else {
     log("");
     log("StructureClaw started.");
-    log(`UI + API: http://localhost:${env.PORT || runtime.DEFAULT_BACKEND_PORT}`);
+    const url = `http://localhost:${env.PORT || runtime.DEFAULT_BACKEND_PORT}`;
+    log(`UI + API: ${url}`);
     log(`Data: ${paths.dataDir}`);
+    // Auto-open browser in installed mode
+    setTimeout(() => openBrowser(url), 1500);
   }
 }
 
@@ -1119,6 +1123,103 @@ async function promptForFirstRunConfig(envFile, existingEnv) {
   }
 }
 
+/**
+ * Test LLM connectivity by making a lightweight request to the models endpoint.
+ * Non-blocking: warns but does not fail.
+ */
+async function testLlmConnectivity(baseUrl, apiKey) {
+  if (!apiKey) {
+    log("  LLM API key not set — skipping connectivity test.");
+    return;
+  }
+  const url = baseUrl.replace(/\/+$/, "") + "/models";
+  const http = require("node:http");
+  const https = require("node:https");
+  const client = url.startsWith("https:") ? https : http;
+
+  const ok = await new Promise((resolve) => {
+    const req = client.request(
+      url,
+      {
+        method: "GET",
+        headers: { Authorization: `Bearer ${apiKey}` },
+        timeout: 10000,
+      },
+      (res) => {
+        res.resume();
+        resolve(res.statusCode || 0);
+      },
+    );
+    req.on("timeout", () => { req.destroy(); resolve(0); });
+    req.on("error", () => resolve(0));
+    req.end();
+  });
+
+  if (ok >= 200 && ok < 300) {
+    log("  LLM connectivity: OK");
+  } else if (ok === 401 || ok === 403) {
+    log("  LLM connectivity: authentication failed — verify your API key.");
+  } else if (ok === 0) {
+    log("  LLM connectivity: could not reach server — verify your base URL.");
+  } else {
+    log(`  LLM connectivity: HTTP ${ok} — verify your configuration.`);
+  }
+}
+
+/**
+ * Migrate data from old .runtime/ layout to the new ~/.structureclaw/ directory.
+ * Only runs in installed-package mode when no ~/.structureclaw/ data exists yet.
+ */
+function migrateFromRuntimeDir(paths, rootDir) {
+  const oldRuntimeDir = path.join(rootDir, ".runtime");
+  if (!runtime.pathExists(oldRuntimeDir)) {
+    return;
+  }
+  // Only migrate if the target data dir is empty
+  if (runtime.pathExists(path.join(paths.dataDir, "structureclaw.db"))) {
+    return;
+  }
+
+  log(`Detected legacy .runtime/ directory. Migrating to ${paths.runtimeDir}...`);
+
+  // Migrate .env
+  const oldEnv = path.join(rootDir, ".env");
+  if (runtime.pathExists(oldEnv) && !runtime.pathExists(paths.envFile)) {
+    fs.copyFileSync(oldEnv, paths.envFile);
+    log("  Migrated .env");
+  }
+
+  // Migrate database
+  const oldDb = path.join(oldRuntimeDir, "data", "structureclaw.db");
+  if (runtime.pathExists(oldDb)) {
+    runtime.ensureDirectory(paths.dataDir);
+    fs.copyFileSync(oldDb, path.join(paths.dataDir, "structureclaw.db"));
+    log("  Migrated database");
+  }
+
+  log("  Migration complete.");
+}
+
+/**
+ * Open a URL in the default browser.
+ */
+function openBrowser(url) {
+  const platform = process.platform;
+  let command;
+  if (platform === "darwin") {
+    command = "open";
+  } else if (platform === "win32") {
+    command = "start";
+  } else {
+    command = "xdg-open";
+  }
+  try {
+    spawn(command, [url], { stdio: "ignore", detached: true }).unref();
+  } catch {
+    // Non-critical: browser didn't open, user can navigate manually
+  }
+}
+
 async function invokeDoctor(rootDir, env) {
   runtime.requireCommand("node", "Install Node.js 20+ and retry.");
   runtime.requireCommand("npm", "Install npm and retry.");
@@ -1136,6 +1237,9 @@ async function invokeDoctor(rootDir, env) {
     runtime.ensureDirectory(paths.pidDir);
     runtime.ensureDirectory(path.join(paths.runtimeDir, "workspace"));
     runtime.ensureDirectory(path.join(paths.runtimeDir, "checkpoints"));
+
+    // Migrate from old .runtime/ layout if present
+    migrateFromRuntimeDir(paths, rootDir);
 
     // Interactive first-run wizard if no .env exists
     if (!runtime.pathExists(paths.envFile)) {
@@ -1161,6 +1265,13 @@ async function invokeDoctor(rootDir, env) {
     log("Warning: OpenSees runtime probe failed — analysis features may be limited in this environment.");
   }
   await invokeScopedDbInit(rootDir, env, "doctor");
+
+  // Test LLM connectivity
+  const doctorEnv = runtime.parseDotEnv(paths.envFile);
+  await testLlmConnectivity(
+    doctorEnv.LLM_BASE_URL || env.LLM_BASE_URL || "https://api.openai.com/v1",
+    doctorEnv.LLM_API_KEY || env.LLM_API_KEY || "",
+  );
 
   log("");
   log("=== Setup Summary ===");
