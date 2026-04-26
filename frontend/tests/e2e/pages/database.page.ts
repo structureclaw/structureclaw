@@ -18,7 +18,7 @@ export class DatabasePage {
   }
 
   async goto(): Promise<void> {
-    await this.page.goto('/console/database');
+    await this.page.goto('/database');
     await this.page.waitForLoadState('networkidle');
   }
 }

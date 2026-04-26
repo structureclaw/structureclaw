@@ -18,7 +18,7 @@ export class CapabilitiesPage {
   }
 
   async goto(): Promise<void> {
-    await this.page.goto('/console/capabilities');
+    await this.page.goto('/capabilities');
     await this.page.waitForLoadState('networkidle');
   }
 }

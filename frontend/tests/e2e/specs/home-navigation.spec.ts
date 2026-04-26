@@ -1,35 +1,50 @@
 import { test, expect } from '@playwright/test';
-import { HomePage } from '../pages/home.page';
+import { ConsolePage } from '../pages/console.page';
 
+/**
+ * Home page navigation tests.
+ *
+ * The root URL (/) renders the AIConsole component directly —
+ * there is no separate landing page. These tests verify that the
+ * console loads correctly at the root path.
+ */
 test.describe('Home page navigation', () => {
-  let home: HomePage;
+  let consolePage: ConsolePage;
 
   test.beforeEach(async ({ page }) => {
-    home = new HomePage(page);
-    await home.goto();
+    consolePage = new ConsolePage(page);
   });
 
-  test('displays hero section with CTA button', async () => {
-    await expect(home.heroTitle).toBeVisible();
-    await expect(home.enterConsoleButton.first()).toBeVisible();
+  test('loads console at root URL', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForLoadState('networkidle');
+    await expect(page).toHaveURL(/\//);
+    await expect(consolePage.chatPanel).toBeVisible();
   });
 
-  test('navigates to console via header link', async ({ page }) => {
-    await home.openConsoleLink.click();
-    await expect(page).toHaveURL(/\/console/);
+  test('renders 3-column console layout', async () => {
+    await consolePage.goto();
+    await expect(consolePage.historyPanel).toBeVisible();
+    await expect(consolePage.chatPanel).toBeVisible();
   });
 
-  test('navigates to console via CTA button', async ({ page }) => {
-    await home.enterConsoleButton.first().click();
-    await expect(page).toHaveURL(/\/console/);
+  test('shows welcome heading and quick prompts in idle state', async ({ page }) => {
+    await consolePage.goto();
+    await expect(page.locator('h1')).toBeVisible();
+    // Quick prompt buttons should be visible
+    const promptButtons = page.locator('[data-testid="console-chat-panel"] button');
+    await expect(promptButtons.first()).toBeVisible();
   });
 
-  test('shows feature cards in workflow section', async () => {
-    await expect(home.featureCards).toHaveCount(3);
+  test('has text input for messages', async ({ page }) => {
+    await consolePage.goto();
+    const textarea = page.locator('textarea');
+    await expect(textarea).toBeVisible();
   });
 
-  test('shows quick prompt cards', async () => {
-    const count = await home.promptCards.count();
-    expect(count).toBeGreaterThanOrEqual(3);
+  test('has history panel with conversation list', async () => {
+    await consolePage.goto();
+    const historyScroll = consolePage.page.locator('[data-testid="console-history-scroll"]');
+    await expect(historyScroll).toBeVisible();
   });
 });

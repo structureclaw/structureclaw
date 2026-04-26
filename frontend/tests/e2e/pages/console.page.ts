@@ -23,8 +23,8 @@ export class ConsolePage {
     this.historyPanel = page.locator('[data-testid="console-history-panel"]');
     this.chatPanel = page.locator('[data-testid="console-chat-panel"]');
     this.outputPanel = page.locator('[data-testid="console-output-panel"]');
-    this.collapseHistoryButton = page.getByRole('button', { name: /Collapse History|收起历史/ });
-    this.expandHistoryButton = page.getByRole('button', { name: /Expand History|展开历史/ });
+    this.collapseHistoryButton = page.getByRole('button', { name: /Collapse History|收起历史/ }).first();
+    this.expandHistoryButton = page.getByRole('button', { name: /Expand History|展开历史/ }).first();
     this.newConversationButton = page.locator('button:has-text("New"), button:has-text("新建")');
     this.messageInput = page.locator('[data-testid="console-composer"] textarea, textarea[placeholder]');
     this.sendButton = page.getByRole('button', { name: 'Send' });
@@ -38,7 +38,7 @@ export class ConsolePage {
   }
 
   async goto(): Promise<void> {
-    await this.page.goto('/console');
+    await this.page.goto('/');
     await this.page.waitForLoadState('networkidle');
   }
 

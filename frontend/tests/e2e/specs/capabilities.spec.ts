@@ -10,7 +10,7 @@ test.describe('Capabilities settings page', () => {
 
   test('loads capability settings page', async ({ page }) => {
     await capsPage.goto();
-    await expect(page).toHaveURL(/\/console\/capabilities/);
+    await expect(page).toHaveURL(/\/capabilities/);
   });
 
   test('displays skill domains from real backend', async () => {
