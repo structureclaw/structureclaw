@@ -5,6 +5,7 @@
  */
 import { existsSync, readdirSync, readFileSync } from 'fs';
 import path from 'path';
+import { pathToFileURL } from 'url';
 import { parse as parseYaml } from 'yaml';
 import { DynamicStructuredTool } from '@langchain/core/tools';
 import { z } from 'zod';
@@ -17,33 +18,50 @@ type UserToolModule = {
 };
 
 function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodTypeAny {
-  // Convert a simple JSON Schema object to a Zod object schema.
-  // Supports: string, number, boolean, array, object (1 level deep).
+  // Convert a JSON Schema object to a Zod object schema.
+  // Supports: string, number, integer, boolean, array, object (recursive).
   const properties = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
   const required = new Set((schema.required ?? []) as string[]);
 
-  const shape: Record<string, z.ZodTypeAny> = {};
-  for (const [key, prop] of Object.entries(properties)) {
-    let field: z.ZodTypeAny;
+  function propToZod(prop: Record<string, unknown>): z.ZodTypeAny {
     switch (prop.type) {
       case 'string':
-        field = z.string();
-        break;
+        return z.string();
+      case 'integer':
+        return z.number().int();
       case 'number':
-        field = z.number();
-        break;
+        return z.number();
       case 'boolean':
-        field = z.boolean();
-        break;
-      case 'array':
-        field = z.array(z.unknown());
-        break;
-      case 'object':
-        field = z.record(z.unknown());
-        break;
+        return z.boolean();
+      case 'array': {
+        const items = prop.items as Record<string, unknown> | undefined;
+        const itemSchema = items ? propToZod(items) : z.unknown();
+        return z.array(itemSchema);
+      }
+      case 'object': {
+        const subProps = (prop.properties ?? {}) as Record<string, Record<string, unknown>>;
+        const subRequired = new Set((prop.required ?? []) as string[]);
+        if (Object.keys(subProps).length === 0) {
+          return z.record(z.unknown());
+        }
+        const shape: Record<string, z.ZodTypeAny> = {};
+        for (const [key, subProp] of Object.entries(subProps)) {
+          let field = propToZod(subProp);
+          if (!subRequired.has(key)) {
+            field = field.optional();
+          }
+          shape[key] = field;
+        }
+        return z.object(shape);
+      }
       default:
-        field = z.unknown();
+        return z.unknown();
     }
+  }
+
+  const shape: Record<string, z.ZodTypeAny> = {};
+  for (const [key, prop] of Object.entries(properties)) {
+    let field = propToZod(prop);
     if (!required.has(key)) {
       field = field.optional();
     }
@@ -94,12 +112,15 @@ export async function loadUserTools(
 
     let module: UserToolModule;
     try {
-      const imported = await import(`file://${jsPath}`);
-      if (typeof imported.execute !== 'function') {
+      const fileUrl = pathToFileURL(jsPath).href;
+      const imported = await import(fileUrl);
+      // Support both ESM (imported.execute) and CJS (imported.default.execute) exports
+      const resolved = imported.default ?? imported;
+      if (typeof resolved.execute !== 'function') {
         failures.push({ toolDir, reason: 'no_execute' });
         continue;
       }
-      module = imported as UserToolModule;
+      module = resolved as UserToolModule;
     } catch (err) {
       failures.push({ toolDir, reason: 'import_failed', detail: err instanceof Error ? err.message : String(err) });
       continue;
@@ -127,7 +148,7 @@ export async function loadUserTools(
               const result = await executeFn(input as Record<string, unknown>, {
                 workspaceRoot: deps.workspaceRoot ?? '',
               });
-              return typeof result === 'string' ? result : JSON.stringify(result);
+              return typeof result === 'string' ? result : JSON.stringify(result ?? null);
             } catch (err) {
               const msg = err instanceof Error ? err.message : String(err);
               logger.warn(`User tool '${toolId}' execution failed: ${msg}`);
