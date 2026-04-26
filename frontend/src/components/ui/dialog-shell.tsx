@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useId, useRef, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useId, useRef, type PointerEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -34,11 +34,21 @@ export function DialogShell({
   const lastActiveElementRef = useRef<HTMLElement | null>(null)
   const onCloseRef = useRef(onClose)
   onCloseRef.current = onClose
+  const pointerDownOnOverlayRef = useRef(false)
 
-  function handleOutsideClick(event: MouseEvent<HTMLDivElement>) {
-    if (event.target === event.currentTarget) {
+  function handleOverlayPointerDown(event: PointerEvent<HTMLDivElement>) {
+    pointerDownOnOverlayRef.current = event.target === event.currentTarget
+  }
+
+  function handleOverlayPointerUp(event: PointerEvent<HTMLDivElement>) {
+    if (pointerDownOnOverlayRef.current && event.target === event.currentTarget) {
       onClose()
     }
+    pointerDownOnOverlayRef.current = false
+  }
+
+  function handleDialogPointerDown(event: PointerEvent<HTMLDivElement>) {
+    event.stopPropagation()
   }
 
   useEffect(() => {
@@ -92,7 +102,7 @@ export function DialogShell({
   return createPortal(
     <div className="fixed inset-0 z-[80]">
       <div aria-hidden="true" className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" />
-      <div className="absolute inset-0 p-2 sm:p-4" onClick={handleOutsideClick}>
+      <div className="absolute inset-0 p-2 sm:p-4" onPointerDown={handleOverlayPointerDown} onPointerUp={handleOverlayPointerUp}>
         <div
           ref={containerRef}
           aria-describedby={description ? descriptionId : undefined}
@@ -102,6 +112,7 @@ export function DialogShell({
             'relative mx-auto flex h-full max-w-6xl flex-col overflow-hidden rounded-[24px] border border-border/70 bg-card/95 shadow-[0_40px_120px_-40px_rgba(8,145,178,0.55)] backdrop-blur-xl dark:border-white/10 dark:bg-slate-950/95',
             className
           )}
+          onPointerDown={handleDialogPointerDown}
           role="dialog"
         >
           <div className="flex items-start justify-between gap-4 border-b border-border/70 px-4 py-3 sm:px-5 sm:py-4 dark:border-white/10">

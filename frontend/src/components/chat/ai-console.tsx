@@ -4367,6 +4367,7 @@ export function AIConsole() {
               bottom: window.innerHeight - probeButtonRef.current.getBoundingClientRect().top + 8,
               left: Math.max(0, Math.min(probeButtonRef.current.getBoundingClientRect().left, window.innerWidth - 336)),
             }}
+            onMouseDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => { if (e.key === 'Escape') setProbePopupOpen(false) }}
           >
             <div className="mb-3 flex items-center justify-between">
@@ -4439,6 +4440,7 @@ export function AIConsole() {
             aria-label={t('sidebarGearAriaLabel')}
             tabIndex={-1}
             autoFocus
+            onMouseDown={(e) => e.stopPropagation()}
             onKeyDown={(e) => { if (e.key === 'Escape') setGearMenuOpen(false) }}
             className="fixed z-[71] w-48 rounded-xl border border-border/70 bg-card p-2 shadow-xl dark:border-white/10 dark:bg-slate-950"
             style={{

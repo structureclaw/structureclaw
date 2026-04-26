@@ -12,8 +12,8 @@ export type ToolCallCardProps = {
   attached?: boolean
 }
 
-function formatArgs(args: Record<string, unknown>): string {
-  return JSON.stringify(args, null, 2)
+function formatJson(value: unknown): string {
+  return JSON.stringify(value, null, 2)
 }
 
 function truncateOutput(output: unknown, maxLen = 300): string {
@@ -25,7 +25,8 @@ function truncateOutput(output: unknown, maxLen = 300): string {
 export function ToolCallCard({ step, t, attached = false }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false)
   const hasArgs = !!(step.args && Object.keys(step.args).length > 0)
-  const argsJson = hasArgs ? formatArgs(step.args!) : ''
+  const hasOutput = !!(step.status === 'done' && step.output)
+  const showToggle = hasArgs || hasOutput
 
   const statusIcon = (() => {
     if (step.status === 'running') {
@@ -72,7 +73,7 @@ export function ToolCallCard({ step, t, attached = false }: ToolCallCardProps) {
         {step.durationMs != null && step.status === 'done' && (
           <span className="ml-auto text-[10px] text-muted-foreground">{step.durationMs}ms</span>
         )}
-        {hasArgs && (
+        {showToggle && (
           <button
             type="button"
             onClick={() => setExpanded(!expanded)}
@@ -81,24 +82,42 @@ export function ToolCallCard({ step, t, attached = false }: ToolCallCardProps) {
             {expanded ? (
               <>
                 <ChevronDown className="h-3 w-3" />
-                {t('hideParameters')}
+                {t('hideDetails')}
               </>
             ) : (
               <>
                 <ChevronRight className="h-3 w-3" />
-                {t('showParameters')}
+                {t('showDetails')}
               </>
             )}
           </button>
         )}
       </div>
 
-      {/* Collapsible args */}
+      {/* Expanded: full args */}
       {expanded && hasArgs ? (
         <div className="border-t border-border/30 bg-background/50 px-3 py-2">
+          <div className="mb-1 text-[10px] font-medium text-muted-foreground">{t('inputLabel')}</div>
           <pre className="max-h-48 overflow-auto text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap break-all">
-            {argsJson}
+            {formatJson(step.args!)}
           </pre>
+        </div>
+      ) : null}
+
+      {/* Expanded: full output */}
+      {expanded && hasOutput ? (
+        <div className="border-t border-border/30 bg-background/50 px-3 py-2">
+          <div className="mb-1 text-[10px] font-medium text-muted-foreground">{t('outputLabel')}</div>
+          <pre className="max-h-64 overflow-auto text-[11px] leading-relaxed text-muted-foreground whitespace-pre-wrap break-all">
+            {formatJson(step.output)}
+          </pre>
+        </div>
+      ) : null}
+
+      {/* Collapsed: truncated output preview */}
+      {!expanded && hasOutput ? (
+        <div className="border-t border-border/20 px-3 py-1.5 text-[10px] text-muted-foreground truncate">
+          {truncateOutput(step.output)}
         </div>
       ) : null}
 
@@ -106,13 +125,6 @@ export function ToolCallCard({ step, t, attached = false }: ToolCallCardProps) {
       {step.status === 'error' && step.errorMessage ? (
         <div className="border-t border-rose-500/20 px-3 py-2 text-xs text-rose-600 dark:text-rose-400">
           {step.errorMessage}
-        </div>
-      ) : null}
-
-      {/* Output preview (collapsed) */}
-      {step.status === 'done' && step.output && !expanded ? (
-        <div className="border-t border-border/20 px-3 py-1.5 text-[10px] text-muted-foreground truncate">
-          {truncateOutput(step.output)}
         </div>
       ) : null}
     </div>
