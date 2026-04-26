@@ -38,7 +38,6 @@ const sendMessageSchema = z.object({
   traceId: optionalIdSchema,
   context: z.object({
     locale: localeSchema,
-    projectId: z.string().optional(),
     skillIds: z.array(z.string()).optional(),
     enabledToolIds: z.array(z.string()).optional(),
     disabledToolIds: z.array(z.string()).optional(),
@@ -76,7 +75,6 @@ const streamMessageSchema = z.object({
   traceId: optionalIdSchema,
   context: z.object({
     locale: localeSchema,
-    projectId: z.string().optional(),
     skillIds: z.array(z.string()).optional(),
     enabledToolIds: z.array(z.string()).optional(),
     disabledToolIds: z.array(z.string()).optional(),
@@ -214,7 +212,6 @@ function buildPersistedDebugDetails(params: {
 
 async function persistLatestConversationResult(params: {
   conversationId?: string;
-  userId?: string;
   latestResult: unknown;
 }): Promise<void> {
   const conversationId = params.conversationId?.trim();
@@ -224,7 +221,7 @@ async function persistLatestConversationResult(params: {
 
   try {
     const conversation = await prisma.conversation.findFirst({
-      where: { id: conversationId, userId: params.userId },
+      where: { id: conversationId },
       select: { id: true },
     });
 
@@ -248,7 +245,6 @@ async function persistLatestConversationResult(params: {
 
 async function persistConversationMessages(params: {
   conversationId?: string;
-  userId?: string;
   userMessage: string;
   assistantContent: string;
   assistantAborted?: boolean;
@@ -272,7 +268,7 @@ async function persistConversationMessages(params: {
 
   try {
     const conversation = await prisma.conversation.findFirst({
-      where: { id: conversationId, userId: params.userId },
+      where: { id: conversationId },
       select: { id: true },
     });
 
@@ -414,12 +410,10 @@ export async function chatRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest<{ Body: z.infer<typeof sendMessageSchema> }>, reply: FastifyReply) => {
     try {
       const body = sendMessageSchema.parse(request.body);
-      const userId = request.user?.id;
       const effectiveMessage = buildEffectiveAgentMessage(body.message, body.context?.resumeFromMessage);
       const conversationId = body.conversationId || (await conversationService.createConversation({
         title: body.message.slice(0, 48),
         type: 'general',
-        userId,
         locale: body.context?.locale,
       })).id;
 
@@ -430,7 +424,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
       });
       await persistLatestConversationResult({
         conversationId: result.conversationId,
-        userId,
         latestResult: result,
       });
       const assistantText = result.response || '';
@@ -453,7 +446,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
       });
       await persistConversationMessages({
         conversationId: result.conversationId,
-        userId,
         userMessage: body.message,
         assistantContent: assistantText,
         traceId: body.traceId,
@@ -500,12 +492,10 @@ export async function chatRoutes(fastify: FastifyInstance) {
     },
   }, async (request: FastifyRequest<{ Body: z.infer<typeof createConversationSchema> }>, reply: FastifyReply) => {
     const body = createConversationSchema.parse(request.body);
-    const userId = request.user?.id;
 
     const conversation = await conversationService.createConversation({
       title: body.title,
       type: body.type,
-      userId,
       locale: body.locale,
     });
 
@@ -521,9 +511,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest<{ Params: { id: string }; Querystring: z.infer<typeof conversationDetailQuerySchema> }>, reply: FastifyReply) => {
     const { id } = request.params;
     const query = conversationDetailQuerySchema.parse(request.query);
-    const userId = request.user?.id;
 
-    const conversation = await conversationService.getConversation(id, userId);
+    const conversation = await conversationService.getConversation(id);
     if (!conversation) {
       return reply.send(conversation);
     }
@@ -543,9 +532,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
       tags: ['Chat'],
       summary: '获取用户所有会话',
     },
-  }, async (request: FastifyRequest, reply: FastifyReply) => {
-    const userId = request.user?.id;
-    const conversations = await conversationService.getUserConversations(userId);
+  }, async (_request: FastifyRequest, reply: FastifyReply) => {
+    const conversations = await conversationService.getConversations();
     return reply.send(conversations);
   });
 
@@ -556,9 +544,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
     },
   }, async (request: FastifyRequest<{ Params: { id: string } }>, reply: FastifyReply) => {
     const { id } = request.params;
-    const userId = request.user?.id;
 
-    const deleted = await conversationService.deleteConversation(id, userId);
+    const deleted = await conversationService.deleteConversation(id);
     if (!deleted) {
       return reply.code(404).send({
         error: 'Conversation not found',
@@ -587,10 +574,9 @@ export async function chatRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest<{ Params: { id: string }; Body: z.infer<typeof saveSnapshotSchema> }>, reply: FastifyReply) => {
     const { id } = request.params;
     const body = saveSnapshotSchema.parse(request.body);
-    const userId = request.user?.id;
 
     const conversation = await prisma.conversation.findFirst({
-      where: { id, userId },
+      where: { id },
     });
 
     if (!conversation) {
@@ -615,11 +601,9 @@ export async function chatRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest<{ Params: { id: string }; Body: z.infer<typeof persistMessagesSchema> }>, reply: FastifyReply) => {
     const { id } = request.params;
     const body = persistMessagesSchema.parse(request.body);
-    const userId = request.user?.id;
 
     await persistConversationMessages({
       conversationId: id,
-      userId,
       userMessage: body.userMessage,
       assistantContent: body.assistantContent,
       assistantAborted: body.assistantAborted,
@@ -638,11 +622,9 @@ export async function chatRoutes(fastify: FastifyInstance) {
     },
   }, async (request: FastifyRequest<{ Body: z.infer<typeof streamMessageSchema> }>, reply: FastifyReply) => {
     const body = streamMessageSchema.parse(request.body);
-    const userId = request.user?.id;
     const conversationId = body.conversationId || (await conversationService.createConversation({
       title: body.message.slice(0, 48),
       type: 'general',
-      userId,
       locale: body.context?.locale,
     })).id;
     let streamConversationId = conversationId;
@@ -686,7 +668,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
         : assistantPresentation;
       await persistConversationMessages({
         conversationId: streamConversationId,
-        userId,
         userMessage: body.message,
         assistantContent,
         assistantAborted,
@@ -811,7 +792,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
         ) {
           await persistLatestConversationResult({
             conversationId: streamConversationId,
-            userId,
             latestResult: (chunk as { content?: unknown }).content,
           });
           const resultContent = (chunk as { content?: { response?: string; clarification?: { question?: string } } }).content;

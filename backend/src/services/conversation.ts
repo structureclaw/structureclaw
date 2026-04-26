@@ -6,8 +6,8 @@ import { resolveLocale, type AppLocale } from './locale.js';
 /**
  * Conversation snapshots (latestResult, modelSnapshot, resultSnapshot) are
  * PROJECTION CACHES for chat recovery and UI rendering only. They are NOT the
- * source of truth for project pipeline state. Pipeline truth lives in
- * Project.settings.agentPipelineState and AgentPipelineRun records.
+ * source of truth for agent pipeline state. Pipeline truth lives in
+ * AgentPipelineRun records.
  *
  * Do NOT write pipeline state into conversation snapshots.
  * Do NOT read pipeline state from conversation snapshots for orchestration decisions.
@@ -176,20 +176,19 @@ function getDefaultConversationTitle(locale: AppLocale): string {
 }
 
 export class ConversationService {
-  async createConversation(params: { title?: string; type: string; userId?: string; locale?: AppLocale }) {
+  async createConversation(params: { title?: string; type: string; locale?: AppLocale }) {
     const locale = resolveLocale(params.locale);
     return prisma.conversation.create({
       data: {
         title: params.title || getDefaultConversationTitle(locale),
         type: params.type,
-        userId: params.userId,
       },
     });
   }
 
-  async getConversation(id: string, userId?: string) {
+  async getConversation(id: string) {
     return prisma.conversation.findFirst({
-      where: { id, userId },
+      where: { id },
       include: {
         messages: {
           orderBy: { createdAt: 'asc' },
@@ -198,9 +197,9 @@ export class ConversationService {
     });
   }
 
-  async getUserConversations(userId?: string) {
+  async getConversations() {
     return prisma.conversation.findMany({
-      where: { userId },
+      where: {},
       orderBy: { updatedAt: 'desc' },
       take: 50,
       select: {
@@ -213,9 +212,9 @@ export class ConversationService {
     });
   }
 
-  async deleteConversation(id: string, userId?: string) {
+  async deleteConversation(id: string) {
     const conversation = await prisma.conversation.findFirst({
-      where: { id, userId },
+      where: { id },
       select: { id: true },
     });
 
