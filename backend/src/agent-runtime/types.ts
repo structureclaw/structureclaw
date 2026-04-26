@@ -433,7 +433,7 @@ export interface AutoDesignIterationPolicy {
   allowedDomains: string[];
 }
 
-export interface ProjectExecutionPolicy {
+export interface AgentExecutionPolicy {
   analysisType?: AgentAnalysisType;
   designCode?: string;
   analysisProviderPreference?: string;
@@ -534,7 +534,7 @@ export type SkillRuntimeContract =
 
 // --- Pipeline state ---
 
-export interface ProjectArtifactState {
+export interface AgentArtifactState {
   designBasis?: ArtifactEnvelope;
   normalizedModel?: ArtifactEnvelope;
   analysisModel?: ArtifactEnvelope;
@@ -545,10 +545,10 @@ export interface ProjectArtifactState {
   reportArtifact?: ArtifactEnvelope;
 }
 
-export interface ProjectPipelineState {
-  policy: ProjectExecutionPolicy;
+export interface ConversationPipelineState {
+  policy: AgentExecutionPolicy;
   bindings: ProviderBindingState;
-  artifacts: ProjectArtifactState;
+  artifacts: AgentArtifactState;
   patches?: ModelPatchRecord[];
   updatedAt: number;
 }

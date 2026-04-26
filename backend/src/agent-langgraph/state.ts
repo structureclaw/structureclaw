@@ -8,8 +8,8 @@ import { Annotation, messagesStateReducer } from '@langchain/langgraph';
 import type { BaseMessage } from '@langchain/core/messages';
 import type {
   DraftState,
-  ProjectArtifactState,
-  ProjectExecutionPolicy,
+  AgentArtifactState,
+  AgentExecutionPolicy,
   ProviderBindingState,
 } from '../agent-runtime/types.js';
 import type { AppLocale } from '../services/locale.js';
@@ -19,7 +19,7 @@ export interface AgentSessionState {
   /** Accumulated structural draft parameters. */
   draftState: DraftState | null;
   /** Pipeline artifact envelopes keyed by kind. */
-  artifacts: ProjectArtifactState;
+  artifacts: AgentArtifactState;
   /** Currently selected skill IDs (user-chosen or auto-detected). */
   selectedSkillIds: string[];
   /** User locale (zh / en). */
@@ -27,7 +27,7 @@ export interface AgentSessionState {
   /** Absolute path of the workspace root directory. */
   workspaceRoot: string;
   /** Pipeline execution policy for the current project. */
-  policy: ProjectExecutionPolicy;
+  policy: AgentExecutionPolicy;
   /** Provider skill bindings. */
   bindings: ProviderBindingState;
   /** Last user message (for context in tool calls). */
@@ -68,7 +68,7 @@ export const AgentStateAnnotation = Annotation.Root({
     reducer: (_prev, next) => next,
     default: () => null,
   }),
-  artifacts: Annotation<ProjectArtifactState>({
+  artifacts: Annotation<AgentArtifactState>({
     reducer: (prev, next) => ({ ...(prev ?? {}), ...next }),
     default: () => ({}),
   }),
@@ -84,7 +84,7 @@ export const AgentStateAnnotation = Annotation.Root({
     reducer: (_prev, next) => next,
     default: () => '',
   }),
-  policy: Annotation<ProjectExecutionPolicy>({
+  policy: Annotation<AgentExecutionPolicy>({
     reducer: (_prev, next) => next,
     default: () => ({}),
   }),

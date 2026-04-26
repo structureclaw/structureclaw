@@ -1,9 +1,9 @@
 import type {
-  ProjectExecutionPolicy,
-  ProjectPipelineState,
+  AgentExecutionPolicy,
+  ConversationPipelineState,
 } from '../agent-runtime/types.js';
 
-export const BOOTSTRAP_EXECUTION_DEFAULTS: ProjectExecutionPolicy = {
+export const BOOTSTRAP_EXECUTION_DEFAULTS: AgentExecutionPolicy = {
   analysisType: 'static',
   allowAsync: false,
   autoDesignIterationPolicy: {
@@ -14,9 +14,9 @@ export const BOOTSTRAP_EXECUTION_DEFAULTS: ProjectExecutionPolicy = {
   },
 };
 
-export function createEmptyProjectPipelineState(
-  policy: ProjectExecutionPolicy = {},
-): ProjectPipelineState {
+export function createEmptyConversationPipelineState(
+  policy: AgentExecutionPolicy = {},
+): ConversationPipelineState {
   return {
     policy,
     bindings: {},

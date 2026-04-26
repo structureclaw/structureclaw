@@ -1,14 +1,14 @@
 import { describe, expect, test } from '@jest/globals';
 import {
-  createEmptyProjectPipelineState,
+  createEmptyConversationPipelineState,
 } from '../../../dist/services/agent-pipeline-state.js';
 import {
   computeDependencyFingerprint,
 } from '../../../dist/agent-runtime/artifact-helpers.js';
 
 describe('agent pipeline state helpers', () => {
-  test('createEmptyProjectPipelineState returns empty but valid state', () => {
-    const state = createEmptyProjectPipelineState({ designCode: 'GB50017' });
+  test('createEmptyConversationPipelineState returns empty but valid state', () => {
+    const state = createEmptyConversationPipelineState({ designCode: 'GB50017' });
     expect(state.policy.designCode).toBe('GB50017');
     expect(state.bindings).toEqual({});
     expect(state.artifacts).toEqual({});
