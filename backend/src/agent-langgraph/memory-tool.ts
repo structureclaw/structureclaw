@@ -1,20 +1,17 @@
 import { tool } from '@langchain/core/tools';
 import { z } from 'zod';
 import type { LangGraphRunnableConfig } from '@langchain/langgraph';
-import type { AgentConfigurable } from './configurable.js';
 import { AgentMemoryService, type AgentMemoryScope } from '../services/agent-memory.js';
 
 const memoryService = new AgentMemoryService();
 
 function resolveScope(config: LangGraphRunnableConfig): AgentMemoryScope {
-  const configurable = config.configurable as Partial<AgentConfigurable> | undefined;
-  if (configurable?.projectId) {
-    return { scopeType: 'project', scopeId: configurable.projectId };
+  const configurable = config.configurable as { thread_id?: unknown } | undefined;
+  const threadId = typeof configurable?.thread_id === 'string' ? configurable.thread_id.trim() : '';
+  if (!threadId) {
+    throw new Error('Persistent memory requires a conversation thread_id.');
   }
-  if (configurable?.userId) {
-    return { scopeType: 'user', scopeId: configurable.userId };
-  }
-  throw new Error('Persistent memory requires a projectId or authenticated userId.');
+  return { scopeType: 'conversation', scopeId: threadId };
 }
 
 export function createMemoryTool() {
@@ -43,8 +40,8 @@ export function createMemoryTool() {
     {
       name: 'memory',
       description:
-        'Store, retrieve, list, or delete persistent user/project memory. ' +
-        'Use for durable preferences, project context, and past decisions. ' +
+        'Store, retrieve, list, or delete persistent memory for the current engineering conversation. ' +
+        'Use for durable preferences, constraints, and confirmed engineering decisions. ' +
         'Do not use for current-turn draft parameters; those live in session state.',
       schema: z.object({
         action: z.enum(['store', 'retrieve', 'list', 'delete']),

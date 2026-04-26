@@ -1,7 +1,7 @@
 import { prisma } from '../utils/database.js';
 import type { InputJsonValue, JsonValue } from '../utils/json.js';
 
-export type AgentMemoryScopeType = 'user' | 'project';
+export type AgentMemoryScopeType = 'conversation';
 
 export interface AgentMemoryScope {
   scopeType: AgentMemoryScopeType;
@@ -9,6 +9,8 @@ export interface AgentMemoryScope {
 }
 
 export interface AgentMemoryEntryView {
+  scopeType: AgentMemoryScopeType;
+  scopeId: string;
   key: string;
   value: JsonValue;
   updatedAt: string;
@@ -33,7 +35,13 @@ export class AgentMemoryService {
       },
       update: { value },
     });
-    return { key: entry.key, value: entry.value, updatedAt: entry.updatedAt.toISOString() };
+    return {
+      scopeType: entry.scopeType as AgentMemoryScopeType,
+      scopeId: entry.scopeId,
+      key: entry.key,
+      value: entry.value,
+      updatedAt: entry.updatedAt.toISOString(),
+    };
   }
 
   async retrieve(scope: AgentMemoryScope, key: string): Promise<AgentMemoryEntryView | null> {
@@ -47,7 +55,15 @@ export class AgentMemoryService {
         },
       },
     });
-    return entry ? { key: entry.key, value: entry.value, updatedAt: entry.updatedAt.toISOString() } : null;
+    return entry
+      ? {
+          scopeType: entry.scopeType as AgentMemoryScopeType,
+          scopeId: entry.scopeId,
+          key: entry.key,
+          value: entry.value,
+          updatedAt: entry.updatedAt.toISOString(),
+        }
+      : null;
   }
 
   async list(scope: AgentMemoryScope): Promise<AgentMemoryEntryView[]> {
@@ -56,7 +72,13 @@ export class AgentMemoryService {
       orderBy: { updatedAt: 'desc' },
       take: 50,
     });
-    return entries.map((entry) => ({ key: entry.key, value: entry.value, updatedAt: entry.updatedAt.toISOString() }));
+    return entries.map((entry) => ({
+      scopeType: entry.scopeType as AgentMemoryScopeType,
+      scopeId: entry.scopeId,
+      key: entry.key,
+      value: entry.value,
+      updatedAt: entry.updatedAt.toISOString(),
+    }));
   }
 
   async delete(scope: AgentMemoryScope, key: string): Promise<boolean> {

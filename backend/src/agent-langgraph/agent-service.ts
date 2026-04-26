@@ -35,11 +35,9 @@ export interface LangGraphRunInput {
   message: string;
   conversationId?: string;
   traceId?: string;
-  userId?: string;
   signal?: AbortSignal;
   context?: {
     locale?: AppLocale;
-    projectId?: string;
     skillIds?: string[];
     enabledToolIds?: string[];
     disabledToolIds?: string[];
@@ -48,7 +46,6 @@ export interface LangGraphRunInput {
     engineId?: string;
     designCode?: string;
     includeReport?: boolean;
-    [key: string]: unknown;
   };
 }
 
@@ -123,8 +120,6 @@ export class LangGraphAgentService {
       enabledToolIds: input?.context?.enabledToolIds,
       disabledToolIds: input?.context?.disabledToolIds,
       allowShell: getAllowShellTools(),
-      projectId: input?.context?.projectId,
-      userId: input?.userId,
     };
   }
 
@@ -134,7 +129,6 @@ export class LangGraphAgentService {
 
   private async ensureConversationRecord(
     conversationId: string | undefined,
-    userId: string | undefined,
     message: string,
   ): Promise<string> {
     if (conversationId) return conversationId;
@@ -143,7 +137,6 @@ export class LangGraphAgentService {
       data: {
         title: message.slice(0, 50),
         type: 'general',
-        userId: userId || undefined,
       },
     });
     return conversation.id;
@@ -180,7 +173,7 @@ export class LangGraphAgentService {
   async *runStream(input: LangGraphRunInput): AsyncGenerator<AgentStreamChunk> {
     const locale = input.context?.locale || 'zh';
     const conversationId = await this.ensureConversationRecord(
-      input.conversationId, input.userId, input.message,
+      input.conversationId, input.message,
     );
     const skillIds = input.context?.skillIds || [];
     const traceId = input.traceId || randomUUID();
@@ -254,7 +247,7 @@ export class LangGraphAgentService {
   async run(input: LangGraphRunInput): Promise<LangGraphRunResult> {
     const locale = input.context?.locale || 'zh';
     const conversationId = await this.ensureConversationRecord(
-      input.conversationId, input.userId, input.message,
+      input.conversationId, input.message,
     );
     const skillIds = input.context?.skillIds || [];
     const traceId = input.traceId || randomUUID();

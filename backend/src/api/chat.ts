@@ -416,11 +416,17 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const body = sendMessageSchema.parse(request.body);
       const userId = request.user?.id;
       const effectiveMessage = buildEffectiveAgentMessage(body.message, body.context?.resumeFromMessage);
+      const conversationId = body.conversationId || (await conversationService.createConversation({
+        title: body.message.slice(0, 48),
+        type: 'general',
+        userId,
+        locale: body.context?.locale,
+      })).id;
 
       const result = await agentService.run({
         ...body,
+        conversationId,
         message: effectiveMessage,
-        userId,
       });
       await persistLatestConversationResult({
         conversationId: result.conversationId,
@@ -633,7 +639,13 @@ export async function chatRoutes(fastify: FastifyInstance) {
   }, async (request: FastifyRequest<{ Body: z.infer<typeof streamMessageSchema> }>, reply: FastifyReply) => {
     const body = streamMessageSchema.parse(request.body);
     const userId = request.user?.id;
-    let streamConversationId = body.conversationId;
+    const conversationId = body.conversationId || (await conversationService.createConversation({
+      title: body.message.slice(0, 48),
+      type: 'general',
+      userId,
+      locale: body.context?.locale,
+    })).id;
+    let streamConversationId = conversationId;
     const effectiveMessage = buildEffectiveAgentMessage(body.message, body.context?.resumeFromMessage);
 
     reply.hijack();
@@ -688,8 +700,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
     try {
       const stream = agentService.runStream({
         ...body,
+        conversationId,
         message: effectiveMessage,
-        userId,
         signal: abortController.signal,
       });
 

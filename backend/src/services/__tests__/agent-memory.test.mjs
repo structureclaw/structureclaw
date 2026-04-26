@@ -13,12 +13,12 @@ describe("AgentMemoryService", () => {
 
   afterAll(async () => {
     await prisma.agentMemoryEntry.deleteMany({
-      where: { scopeType: "user", scopeId: "memory-test-user" },
+      where: { scopeType: "conversation", scopeId: "memory-test-conv" },
     });
   });
 
   test("stores and retrieves a scoped memory value", async () => {
-    const scope = { scopeType: "user", scopeId: "memory-test-user" };
+    const scope = { scopeType: "conversation", scopeId: "memory-test-conv" };
     await service.store(scope, "design.code", { code: "GB50017" });
     const entry = await service.retrieve(scope, "design.code");
 
@@ -27,7 +27,11 @@ describe("AgentMemoryService", () => {
   });
 
   test("rejects invalid keys", async () => {
-    await expect(service.store({ scopeType: "user", scopeId: "memory-test-user" }, "../bad", { value: true }))
+    await expect(service.store(
+      { scopeType: "conversation", scopeId: "memory-test-conv" },
+      "../bad",
+      { value: true },
+    ))
       .rejects.toThrow(/Invalid memory key/);
   });
 });

@@ -156,7 +156,10 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
     risk: 'low',
     defaultEnabled: true,
     displayName: { zh: '持久记忆', en: 'Persistent Memory' },
-    description: { zh: '存储和检索用户或项目级持久上下文。', en: 'Store and retrieve durable user or project context.' },
+    description: {
+      zh: '存储和检索当前工程对话的持久上下文。',
+      en: 'Store and retrieve durable context for the current engineering conversation.',
+    },
     create: () => createMemoryTool(),
   },
   {

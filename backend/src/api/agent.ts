@@ -25,7 +25,6 @@ const agentRunSchema = z.object({
   conversationId: optionalIdSchema,
   traceId: optionalIdSchema,
   context: z.object({
-    projectId: z.string().optional(),
     skillIds: z.array(z.string()).optional(),
     enabledToolIds: z.array(z.string()).optional(),
     disabledToolIds: z.array(z.string()).optional(),
@@ -181,10 +180,7 @@ export async function agentRoutes(fastify: FastifyInstance) {
     },
   }, async (request: FastifyRequest<{ Body: z.infer<typeof agentRunSchema> }>, reply: FastifyReply) => {
     const body = agentRunSchema.parse(request.body);
-    const result = await agentService.run({
-      ...body,
-      userId: request.user?.id,
-    });
+    const result = await agentService.run(body);
     return reply.send(result);
   });
 }
