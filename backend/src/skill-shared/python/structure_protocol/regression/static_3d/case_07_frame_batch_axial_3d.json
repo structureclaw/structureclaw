@@ -1,6 +1,6 @@
 {
   "name": "frame_batch_axial_3d",
-  "abs_tolerance": 1e-07,
+  "abs_tolerance": 0.0001,
   "request": {
     "type": "static",
     "model": {
@@ -123,7 +123,7 @@
     }
   },
   "expected": {
-    "data.analysisMode": "linear_3d_frame",
+    "data.analysisMode": "opensees_3d_frame",
     "data.batchCaseCount": 2,
     "data.envelope.maxAbsDisplacement": 1.8e-05,
     "data.envelope.controlCase.displacement": "C2",

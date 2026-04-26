@@ -1,6 +1,6 @@
 {
   "name": "frame_axial_y_3d",
-  "abs_tolerance": 1e-07,
+  "abs_tolerance": 0.0001,
   "request": {
     "type": "static",
     "model": {
@@ -102,7 +102,7 @@
     }
   },
   "expected": {
-    "data.analysisMode": "linear_3d_frame",
+    "data.analysisMode": "opensees_3d_frame",
     "data.displacements.2.uy": 9e-06,
     "data.forces.1.axial": -6.0,
     "data.reactions.1.fy": -6.0

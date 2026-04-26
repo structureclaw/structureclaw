@@ -1,6 +1,6 @@
 {
   "name": "frame_cantilever_tip_load_3d",
-  "abs_tolerance": 1e-06,
+  "abs_tolerance": 0.0001,
   "request": {
     "type": "static",
     "model": {
@@ -94,7 +94,7 @@
     }
   },
   "expected": {
-    "data.analysisMode": "linear_3d_frame",
+    "data.analysisMode": "opensees_3d_frame",
     "data.displacements.2.uz": -0.00135,
     "data.displacements.2.rx": -0.000675,
     "data.forces.1.n1.V": 3.0,

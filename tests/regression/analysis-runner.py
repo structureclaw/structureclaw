@@ -232,8 +232,8 @@ def validate_analyze_contract():
     frame_3d_result = asyncio.run(analyze(frame_3d_request)).model_dump()
     if frame_3d_result["success"] is not True:
         raise SystemExit("Expected success=true for 3D frame request")
-    if frame_3d_result.get("data", {}).get("analysisMode") != "linear_3d_frame":
-        raise SystemExit(f"Expected analysisMode=linear_3d_frame, got {frame_3d_result.get('data', {}).get('analysisMode')}")
+    if frame_3d_result.get("data", {}).get("analysisMode") != "opensees_3d_frame":
+        raise SystemExit(f"Expected analysisMode=opensees_3d_frame, got {frame_3d_result.get('data', {}).get('analysisMode')}")
     print("[ok] analyze 3d frame envelope contract")
 
     simplified_planar_beam_model = StructureModelV2(
@@ -263,8 +263,8 @@ def validate_analyze_contract():
     if simplified_planar_result["success"] is not True:
         raise SystemExit("Expected success=true for simplified planar beam request")
     simplified_data = simplified_planar_result.get("data", {})
-    if simplified_data.get("analysisMode") != "linear_2d_frame":
-        raise SystemExit(f"Expected simplified planar beam analysisMode=linear_2d_frame, got {simplified_data.get('analysisMode')}")
+    if simplified_data.get("analysisMode") != "opensees_2d_frame":
+        raise SystemExit(f"Expected simplified planar beam analysisMode=opensees_2d_frame, got {simplified_data.get('analysisMode')}")
     # 1D beam models now use xz plane to align with restraint format interpretation (Issue #83 fix)
     if simplified_data.get("plane") != "xz":
         raise SystemExit(f"Expected simplified planar beam plane=xz, got {simplified_data.get('plane')}")
