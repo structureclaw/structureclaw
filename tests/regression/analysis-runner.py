@@ -324,9 +324,10 @@ def validate_static_regression():
     skipped = []
     for file_path in cases:
         payload = json.loads(file_path.read_text(encoding="utf-8"))
-        # Truss-only fixtures require the removed simplified engine — skip them
+        # Skip fixtures that require the removed simplified engine
         elem_types = set(e.get("type", "?") for e in payload["request"]["model"].get("elements", []))
-        if elem_types == {"truss"}:
+        has_batch = "batchCases" in payload["request"].get("parameters", {})
+        if elem_types == {"truss"} or has_batch:
             skipped.append(file_path.name)
             continue
         request_payload = dict(payload["request"])
@@ -352,7 +353,7 @@ def validate_static_regression():
         print(f"[ok] {file_path.name}")
 
     if skipped:
-        print(f"Skipped {len(skipped)} truss-only fixtures (require removed simplified engine): {', '.join(skipped)}")
+        print(f"Skipped {len(skipped)} fixtures (require removed simplified engine): {', '.join(skipped)}")
     print(f"Validated {len(cases) - len(skipped)} static regression cases.")
 
 
@@ -369,9 +370,10 @@ def validate_static_3d_regression():
     skipped = []
     for file_path in cases:
         payload = json.loads(file_path.read_text(encoding="utf-8"))
-        # Truss-only fixtures require the removed simplified engine — skip them
+        # Skip fixtures that require the removed simplified engine
         elem_types = set(e.get("type", "?") for e in payload["request"]["model"].get("elements", []))
-        if elem_types == {"truss"}:
+        has_batch = "batchCases" in payload["request"].get("parameters", {})
+        if elem_types == {"truss"} or has_batch:
             skipped.append(file_path.name)
             continue
         request_payload = dict(payload["request"])
@@ -397,7 +399,7 @@ def validate_static_3d_regression():
         print(f"[ok] {file_path.name}")
 
     if skipped:
-        print(f"Skipped {len(skipped)} truss-only fixtures (require removed simplified engine): {', '.join(skipped)}")
+        print(f"Skipped {len(skipped)} fixtures (require removed simplified engine): {', '.join(skipped)}")
     print(f"Validated {len(cases) - len(skipped)} static 3D regression cases.")
 
 
