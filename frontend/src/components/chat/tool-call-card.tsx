@@ -33,7 +33,7 @@ function truncateOutput(output: unknown, maxLen = 300): string {
 export function ToolCallCard({ step, t, attached = false }: ToolCallCardProps) {
   const [expanded, setExpanded] = useState(false)
   const hasArgs = !!(step.args && Object.keys(step.args).length > 0)
-  const hasOutput = !!(step.status === 'done' && step.output)
+  const hasOutput = step.status === 'done' && step.output !== undefined && step.output !== null
   const showToggle = hasArgs || hasOutput
 
   const statusIcon = (() => {

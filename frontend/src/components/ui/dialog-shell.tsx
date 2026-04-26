@@ -37,17 +37,18 @@ export function DialogShell({
   const pointerDownOnOverlayRef = useRef(false)
 
   function handleOverlayPointerDown(event: PointerEvent<HTMLDivElement>) {
-    pointerDownOnOverlayRef.current = event.target === event.currentTarget
+    pointerDownOnOverlayRef.current = event.button === 0 && event.target === event.currentTarget
   }
 
   function handleOverlayPointerUp(event: PointerEvent<HTMLDivElement>) {
-    if (pointerDownOnOverlayRef.current && event.target === event.currentTarget) {
+    if (pointerDownOnOverlayRef.current && event.button === 0 && event.target === event.currentTarget) {
       onClose()
     }
     pointerDownOnOverlayRef.current = false
   }
 
   function handleDialogPointerDown(event: PointerEvent<HTMLDivElement>) {
+    pointerDownOnOverlayRef.current = false
     event.stopPropagation()
   }
 

@@ -48,10 +48,14 @@ describe('DialogShell', () => {
     const outsideLayer = dialog.parentElement
     expect(outsideLayer).not.toBeNull()
 
-    fireEvent.click(dialog)
+    // Click inside dialog should not close
+    fireEvent.pointerDown(dialog, { button: 0 })
+    fireEvent.pointerUp(dialog, { button: 0 })
     expect(onClose).not.toHaveBeenCalled()
 
-    fireEvent.click(outsideLayer as HTMLElement)
+    // Complete pointerDown + pointerUp on overlay should close
+    fireEvent.pointerDown(outsideLayer as HTMLElement, { button: 0 })
+    fireEvent.pointerUp(outsideLayer as HTMLElement, { button: 0 })
     expect(onClose).toHaveBeenCalledTimes(1)
   })
 
