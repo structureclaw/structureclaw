@@ -708,7 +708,7 @@ async function invokeDbInit(rootDir, env) {
   log(`Running db:init with DATABASE_URL=${env.DATABASE_URL}`);
   await runtime.runCommand(
     runtime.getNpmCommand(),
-    ["run", "db:init", "--prefix", paths.backendDir],
+    ["run", "db:init", "--prefix", path.join(rootDir, "backend")],
     {
       env,
     },

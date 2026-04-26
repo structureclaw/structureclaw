@@ -66,6 +66,8 @@ const corsOrigins = (process.env.CORS_ORIGINS || defaultCorsOrigins.join(','))
   .map((origin) => origin.trim())
   .filter(Boolean);
 
+export { runtimeBaseDir };
+
 export const config = {
   // 服务配置
   port: parseInt(process.env.PORT || '8000', 10),
@@ -98,12 +100,12 @@ export const config = {
 
   // 日志级别
   logLevel: process.env.LOG_LEVEL || 'info',
-  /** 应用日志文件路径；默认 <repo>/.runtime/logs/app.log */
-  logFile: process.env.LOG_FILE || '',
+  /** 应用日志文件路径；默认 <runtimeBaseDir>/logs/app.log */
+  logFile: process.env.LOG_FILE || path.join(runtimeBaseDir, 'logs', 'app.log'),
 
   // LLM 调用日志（默认关闭，设置 LLM_LOG_ENABLED=true 开启；日志含完整 prompt/response，注意隐私）
   llmLogEnabled: process.env.LLM_LOG_ENABLED === 'true',
-  llmLogDir: process.env.LLM_LOG_DIR || '',
+  llmLogDir: process.env.LLM_LOG_DIR || path.join(runtimeBaseDir, 'logs'),
   llmSettingsPath: process.env.LLM_SETTINGS_PATH || defaultLlmSettingsPath,
 };
 
