@@ -1,11 +1,37 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import fastifyStatic from '@fastify/static';
 import swagger from '@fastify/swagger';
 import swaggerUI from '@fastify/swagger-ui';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { existsSync } from 'fs';
 import { config } from './config/index.js';
 import { registerRoutes } from './api/routes.js';
 import { prisma } from './utils/database.js';
 import { logger } from './utils/logger.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+/**
+ * Resolve the frontend static assets directory.
+ * In installed-package mode, dist/frontend/ sits alongside dist/backend/.
+ * In dev mode, there is no static dir (frontend runs separately).
+ */
+function resolveFrontendStaticDir(): string | null {
+  // Check for SCLAW_FRONTEND_DIR override first
+  const override = process.env.SCLAW_FRONTEND_DIR;
+  if (override && existsSync(override)) {
+    return override;
+  }
+  // Installed package layout: dist/frontend/ next to dist/backend/
+  const installedDir = path.resolve(__dirname, '..', 'frontend');
+  if (existsSync(path.join(installedDir, 'index.html'))) {
+    return installedDir;
+  }
+  return null;
+}
 
 const fastify = Fastify({
   logger: logger as any,
@@ -51,6 +77,28 @@ async function start() {
 
     // 注册路由
     await registerRoutes(fastify as any);
+
+    // Serve static frontend (installed-package mode only)
+    const frontendDir = resolveFrontendStaticDir();
+    if (frontendDir) {
+      await fastify.register(fastifyStatic, {
+        root: frontendDir,
+        prefix: '/',
+        wildcard: false,
+        decorateReply: false,
+      });
+
+      // SPA fallback: serve index.html for non-API, non-static routes
+      fastify.setNotFoundHandler((request, reply) => {
+        if (!request.url.startsWith('/api/') && !request.url.startsWith('/docs')) {
+          reply.sendFile('index.html');
+        } else {
+          reply.code(404).send({ error: 'Not found' });
+        }
+      });
+
+      console.log(`🌐 Frontend UI served from ${frontendDir}`);
+    }
 
     // 健康检查
     fastify.get('/health', async () => ({

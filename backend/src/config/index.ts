@@ -1,15 +1,33 @@
 import dotenv from 'dotenv';
+import os from 'os';
 import path from 'path';
 import process from 'process';
+import { existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const rootEnvPath = path.resolve(__dirname, '../../../.env');
-const defaultSqliteDatabasePath = path.resolve(__dirname, '../../../.runtime/data/structureclaw.db');
+
+// Detect installed-package mode: dist/backend/config/index.js -> dist/frontend exists
+const isInstalledPackage = existsSync(path.resolve(__dirname, '../../frontend'));
+
+function getUserDataDir(): string {
+  if (process.platform === 'win32') {
+    return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'structureclaw');
+  }
+  return path.join(os.homedir(), '.structureclaw');
+}
+
+const runtimeBaseDir = process.env.SCLAW_DATA_DIR
+  || (isInstalledPackage ? getUserDataDir() : path.resolve(__dirname, '../../../.runtime'));
+
+const rootEnvPath = isInstalledPackage
+  ? path.join(runtimeBaseDir, '.env')
+  : path.resolve(__dirname, '../../../.env');
+const defaultSqliteDatabasePath = path.join(runtimeBaseDir, 'data', 'structureclaw.db');
 const defaultSqliteDatabaseUrl = `file:${defaultSqliteDatabasePath}`;
-const defaultUploadDir = path.resolve(__dirname, '../../../.runtime');
-const defaultLlmSettingsPath = path.resolve(__dirname, '../../../.runtime/llm-settings.json');
+const defaultUploadDir = runtimeBaseDir;
+const defaultLlmSettingsPath = path.join(runtimeBaseDir, 'llm-settings.json');
 
 function resolveReportsDir(rawValue: string | undefined): string {
   const trimmed = rawValue?.trim();
@@ -31,7 +49,7 @@ const llmModel = process.env.LLM_MODEL || 'gpt-4-turbo-preview';
 const llmBaseUrl = process.env.LLM_BASE_URL || 'https://api.openai.com/v1';
 const frontendPort = process.env.FRONTEND_PORT || '30000';
 const backendPort = process.env.PORT || '8000';
-const analysisEngineManifestPath = process.env.ANALYSIS_ENGINE_MANIFEST_PATH || path.resolve(__dirname, '../../../.runtime/analysis-engines.json');
+const analysisEngineManifestPath = process.env.ANALYSIS_ENGINE_MANIFEST_PATH || path.join(runtimeBaseDir, 'analysis-engines.json');
 const defaultAnalysisPythonBin = process.platform === 'win32'
   ? path.resolve(__dirname, '../../.venv/Scripts/python.exe')
   : path.resolve(__dirname, '../../.venv/bin/python');

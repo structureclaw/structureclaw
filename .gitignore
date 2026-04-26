@@ -30,6 +30,8 @@ core/.venv/
 node_modules/
 backend/dist/
 frontend/.next/
+frontend/out/
+dist/
 backend/coverage/
 frontend/coverage/
 *tsconfig.tsbuildinfo

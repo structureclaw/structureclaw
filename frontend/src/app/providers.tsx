@@ -1,8 +1,10 @@
 'use client'
 
+import { useEffect } from 'react'
 import dynamic from 'next/dynamic'
 import { ThemeProvider } from '@/components/theme-provider'
-import { AppStoreProvider } from '@/lib/stores'
+import { AppStoreProvider, useStore } from '@/lib/stores/context'
+import { readLocaleCookieFromDocument } from '@/lib/locale-preference'
 import type { AppLocale } from '@/lib/stores/slices/preferences'
 
 const ClientToaster = dynamic(
@@ -10,24 +12,37 @@ const ClientToaster = dynamic(
   { ssr: false }
 )
 
+function LocaleSync({ children }: { children: React.ReactNode }) {
+  const setLocale = useStore((s) => s.setLocale)
+
+  useEffect(() => {
+    const saved = readLocaleCookieFromDocument()
+    if (saved) {
+      setLocale(saved)
+    }
+  }, [setLocale])
+
+  return <>{children}</>
+}
+
 export function Providers({
   children,
-  initialLocale = 'en',
 }: {
   children: React.ReactNode
-  initialLocale?: AppLocale
 }) {
   return (
-    <AppStoreProvider initialState={{ locale: initialLocale }}>
-      <ThemeProvider
-        attribute="class"
-        defaultTheme="dark"
-        enableSystem
-        disableTransitionOnChange
-      >
-        {children}
-        <ClientToaster />
-      </ThemeProvider>
+    <AppStoreProvider initialState={{ locale: 'en' }}>
+      <LocaleSync>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="dark"
+          enableSystem
+          disableTransitionOnChange
+        >
+          {children}
+          <ClientToaster />
+        </ThemeProvider>
+      </LocaleSync>
     </AppStoreProvider>
   )
 }

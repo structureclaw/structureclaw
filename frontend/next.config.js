@@ -24,9 +24,8 @@ if (fs.existsSync(rootEnvPath)) {
 const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
-  images: {
-    domains: ['localhost'],
-  },
+  output: 'export',
+  distDir: 'out',
   env: {
     NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000',
   },

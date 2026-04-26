@@ -722,13 +722,27 @@ async function invokeScopedDbInit(rootDir, env, profileName) {
   await invokeDbInit(rootDir, scopedEnv);
 }
 
-function getServiceCommand(name, frontendPort) {
+function getServiceCommand(name, frontendPort, paths) {
+  // Installed package: run compiled backend directly (no npm run dev)
+  if (name === "backend" && paths.installedMode) {
+    return {
+      command: process.execPath,
+      args: [path.join(paths.backendDir, "index.js")],
+      envPatch: {},
+    };
+  }
+
   if (name === "backend") {
     return {
       command: runtime.getNpmCommand(),
       args: ["run", "dev", "--prefix", "backend"],
       envPatch: {},
     };
+  }
+
+  // Frontend not needed in installed mode (backend serves static files)
+  if (paths.installedMode) {
+    return { command: process.execPath, args: ["-e", "process.exit(0)"], envPatch: {} };
   }
 
   return {
@@ -767,7 +781,7 @@ function startTrackedService(paths, env, name, frontendPort) {
     return;
   }
 
-  const { command, args, envPatch } = getServiceCommand(name, frontendPort);
+  const { command, args, envPatch } = getServiceCommand(name, frontendPort, paths);
   const logFile = runtime.logFilePath(paths, name);
   runtime.appendSessionHeader(logFile, name);
   const pid = runtime.spawnDetached(command, args, {
@@ -1016,11 +1030,23 @@ async function invokeLocalUp(rootDir, env, options = {}) {
     programName: env.SCLAW_PROGRAM_NAME,
   });
   const { paths } = context;
+  const isInstalled = paths.installedMode;
+
+  // Ensure runtime data directory structure exists for installed packages
+  if (isInstalled) {
+    runtime.ensureDirectory(paths.dataDir);
+    runtime.ensureDirectory(paths.logDir);
+    runtime.ensureDirectory(paths.pidDir);
+    runtime.ensureFileFromExample(paths.envFile, paths.envExampleFile, log);
+  }
 
   runtime.ensureLocalSqliteConfig(rootDir, env, log, { profileName: "start" });
   runtime.assertSqliteDatabaseUrl(env);
-  await ensureNpmDependencies(paths.backendDir, "backend", ["prisma", "@prisma/client"]);
-  await ensureNpmDependencies(paths.frontendDir, "frontend", ["next"]);
+
+  if (!isInstalled) {
+    await ensureNpmDependencies(paths.backendDir, "backend", ["prisma", "@prisma/client"]);
+    await ensureNpmDependencies(paths.frontendDir, "frontend", ["next"]);
+  }
   await ensureAnalysisPython(rootDir, env);
   await ensureOpenSeesRuntime(rootDir, env);
 
@@ -1032,34 +1058,102 @@ async function invokeLocalUp(rootDir, env, options = {}) {
     await invokeScopedDbInit(rootDir, env, "start");
   }
 
-  // Kill any stale processes on the configured ports before starting
-  const ports = [
-    env.PORT || runtime.DEFAULT_BACKEND_PORT,
-    env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT,
-  ];
+  // Kill stale processes
+  const ports = isInstalled
+    ? [env.PORT || runtime.DEFAULT_BACKEND_PORT]
+    : [env.PORT || runtime.DEFAULT_BACKEND_PORT, env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT];
   runtime.killPortPids(ports, log, getPortCleanupOptions(paths, env));
 
   startTrackedService(paths, env, "backend", env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT);
-  startTrackedService(paths, env, "frontend", env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT);
-  log("");
-  log("Local stack started.");
-  log(`Logs: ${paths.logDir}`);
-  log(`Frontend: http://localhost:${env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT}`);
-  log(`Backend:  http://localhost:${env.PORT || runtime.DEFAULT_BACKEND_PORT}`);
+
+  if (!isInstalled) {
+    startTrackedService(paths, env, "frontend", env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT);
+    log("");
+    log("Local stack started.");
+    log(`Logs: ${paths.logDir}`);
+    log(`Frontend: http://localhost:${env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT}`);
+    log(`Backend:  http://localhost:${env.PORT || runtime.DEFAULT_BACKEND_PORT}`);
+  } else {
+    log("");
+    log("StructureClaw started.");
+    log(`UI + API: http://localhost:${env.PORT || runtime.DEFAULT_BACKEND_PORT}`);
+    log(`Data: ${paths.dataDir}`);
+  }
+}
+
+async function promptForFirstRunConfig(envFile, existingEnv) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+
+  try {
+    console.log("\n=== StructureClaw First-Run Setup ===\n");
+
+    const defaultBaseUrl = existingEnv.LLM_BASE_URL || "https://api.openai.com/v1";
+    const defaultModel = existingEnv.LLM_MODEL || "gpt-4-turbo-preview";
+
+    const baseUrl = (await rl.question(`LLM base URL [${defaultBaseUrl}]: `)).trim() || defaultBaseUrl;
+    const model = (await rl.question(`LLM model [${defaultModel}]: `)).trim() || defaultModel;
+    const apiKeyPrompt = existingEnv.LLM_API_KEY
+      ? `LLM API key [press Enter to keep ${maskSecret(existingEnv.LLM_API_KEY)}]: `
+      : "LLM API key: ";
+    const apiKey = (await rl.question(apiKeyPrompt)).trim() || existingEnv.LLM_API_KEY || "";
+
+    // Write .env file
+    const lines = [
+      `# StructureClaw configuration - generated by sclaw doctor`,
+      `NODE_ENV=production`,
+      `HOST=0.0.0.0`,
+      `PORT=8000`,
+      `LLM_BASE_URL=${baseUrl}`,
+      `LLM_MODEL=${model}`,
+      `LLM_API_KEY=${apiKey}`,
+      `DATABASE_URL=file:${path.join(path.dirname(envFile), "data", "structureclaw.db")}`,
+      ``,
+    ];
+    fs.writeFileSync(envFile, lines.join("\n"), "utf8");
+    console.log(`\nConfiguration written to ${envFile}`);
+  } finally {
+    rl.close();
+  }
 }
 
 async function invokeDoctor(rootDir, env) {
-  runtime.requireCommand("node", "Install Node.js 18+ and retry.");
+  runtime.requireCommand("node", "Install Node.js 20+ and retry.");
   runtime.requireCommand("npm", "Install npm and retry.");
-  runtime.ensureLocalSqliteConfig(rootDir, env, log, { profileName: "doctor" });
-  runtime.assertSqliteDatabaseUrl(env);
 
   const { paths } = runtime.loadProjectEnvironment(rootDir, () => {}, {
     profile: env.SCLAW_PROFILE,
     programName: env.SCLAW_PROGRAM_NAME,
   });
-  await ensureNpmDependencies(paths.backendDir, "backend", ["prisma", "@prisma/client"]);
-  await ensureNpmDependencies(paths.frontendDir, "frontend", ["next"]);
+  const isInstalled = paths.installedMode;
+
+  // Ensure runtime data directory for installed packages
+  if (isInstalled) {
+    runtime.ensureDirectory(paths.dataDir);
+    runtime.ensureDirectory(paths.logDir);
+    runtime.ensureDirectory(paths.pidDir);
+    runtime.ensureDirectory(path.join(paths.runtimeDir, "workspace"));
+    runtime.ensureDirectory(path.join(paths.runtimeDir, "checkpoints"));
+
+    // Interactive first-run wizard if no .env exists
+    if (!runtime.pathExists(paths.envFile)) {
+      if (process.stdin.isTTY && process.stdout.isTTY) {
+        await promptForFirstRunConfig(paths.envFile, {});
+      } else {
+        runtime.ensureFileFromExample(paths.envFile, paths.envExampleFile, log);
+      }
+    }
+  }
+
+  runtime.ensureLocalSqliteConfig(rootDir, env, log, { profileName: "doctor" });
+  runtime.assertSqliteDatabaseUrl(env);
+
+  if (!isInstalled) {
+    await ensureNpmDependencies(paths.backendDir, "backend", ["prisma", "@prisma/client"]);
+    await ensureNpmDependencies(paths.frontendDir, "frontend", ["next"]);
+  }
   await ensureAnalysisPython(rootDir, env);
   try {
     await ensureOpenSeesRuntime(rootDir, env);
@@ -1067,7 +1161,18 @@ async function invokeDoctor(rootDir, env) {
     log("Warning: OpenSees runtime probe failed — analysis features may be limited in this environment.");
   }
   await invokeScopedDbInit(rootDir, env, "doctor");
-  log("Local startup checks passed.");
+
+  log("");
+  log("=== Setup Summary ===");
+  log(`  Data directory: ${paths.dataDir}`);
+  log(`  Configuration:  ${paths.envFile}`);
+  log(`  Database:       ${env.DATABASE_URL || paths.dataDir}`);
+  if (isInstalled) {
+    log("");
+    log("Run `sclaw start` to launch StructureClaw.");
+  } else {
+    log("Local startup checks passed.");
+  }
 }
 
 async function dispatch(commandName, rawArgs, rootDir) {

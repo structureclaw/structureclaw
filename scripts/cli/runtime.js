@@ -158,6 +158,35 @@ function getConfigValue(dotEnv, name, defaultValue) {
   return defaultValue;
 }
 
+/**
+ * Detect whether the project root is an installed npm package (vs source checkout).
+ * Installed packages ship dist/backend/ and dist/frontend/ but no backend/package.json.
+ */
+function isInstalledPackageLayout(resolvedRoot) {
+  return (
+    pathExists(path.join(resolvedRoot, "dist", "backend", "index.js")) &&
+    pathExists(path.join(resolvedRoot, "dist", "frontend")) &&
+    pathExists(path.join(resolvedRoot, "backend", "prisma", "schema.prisma"))
+  );
+}
+
+/**
+ * Return the user-facing runtime data directory.
+ * Installed packages use ~/.structureclaw/; source checkouts use .runtime/.
+ */
+function resolveRuntimeDataDir(rootDir) {
+  if (process.env.SCLAW_DATA_DIR) {
+    return process.env.SCLAW_DATA_DIR;
+  }
+  if (isInstalledPackageLayout(rootDir)) {
+    if (isWindows()) {
+      return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "structureclaw");
+    }
+    return path.join(os.homedir(), ".structureclaw");
+  }
+  return path.join(rootDir, ".runtime");
+}
+
 function resolveProjectRoot(explicitRoot) {
   const candidates = [
     explicitRoot,
@@ -168,6 +197,13 @@ function resolveProjectRoot(explicitRoot) {
 
   for (const candidate of candidates) {
     const resolved = path.resolve(candidate);
+
+    // Installed npm package layout: pre-built dist/ + prisma schema
+    if (isInstalledPackageLayout(resolved)) {
+      return resolved;
+    }
+
+    // Dev monorepo layout (original): source checkout with backend/frontend dirs
     if (
       pathExists(path.join(resolved, "backend", "package.json")) &&
       pathExists(path.join(resolved, "frontend", "package.json")) &&
@@ -183,17 +219,25 @@ function resolveProjectRoot(explicitRoot) {
 }
 
 function resolvePaths(rootDir) {
-  const runtimeDir = path.join(rootDir, ".runtime");
+  const installedMode = isInstalledPackageLayout(rootDir);
+  const runtimeDir = installedMode ? resolveRuntimeDataDir(rootDir) : path.join(rootDir, ".runtime");
+
   return {
     rootDir,
     runtimeDir,
     logDir: path.join(runtimeDir, "logs"),
     pidDir: path.join(runtimeDir, "pids"),
     dataDir: path.join(runtimeDir, "data"),
-    envFile: path.join(rootDir, ".env"),
+    envFile: installedMode
+      ? path.join(runtimeDir, ".env")
+      : path.join(rootDir, ".env"),
     envExampleFile: path.join(rootDir, ".env.example"),
-    backendDir: path.join(rootDir, "backend"),
-    frontendDir: path.join(rootDir, "frontend"),
+    backendDir: installedMode
+      ? path.join(rootDir, "dist", "backend")
+      : path.join(rootDir, "backend"),
+    frontendDir: installedMode
+      ? path.join(rootDir, "dist", "frontend")
+      : path.join(rootDir, "frontend"),
     dockerComposeFile: path.join(rootDir, "docker-compose.yml"),
     dockerComposeCnFile: path.join(rootDir, "docker-compose.cn.yml"),
     analysisRequirementsFile: path.join(
@@ -225,6 +269,7 @@ function resolvePaths(rootDir) {
     dataInputSkillRoot: path.join(rootDir, "backend", "src", "agent-skills", "data-input"),
     codeCheckSkillRoot: path.join(rootDir, "backend", "src", "agent-skills", "code-check"),
     materialSkillRoot: path.join(rootDir, "backend", "src", "agent-skills", "material"),
+    installedMode,
   };
 }
 
