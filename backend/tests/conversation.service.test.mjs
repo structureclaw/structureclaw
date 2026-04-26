@@ -1,5 +1,7 @@
-import { beforeEach, describe, expect, test } from '@jest/globals';
+import { beforeEach, describe, expect, jest, test } from '@jest/globals';
+import { AnalysisService } from '../dist/services/analysis.js';
 import { ConversationService } from '../dist/services/conversation.js';
+import { cache } from '../dist/utils/cache.js';
 import { prisma } from '../dist/utils/database.js';
 
 describe('ConversationService locale handling', () => {
@@ -126,5 +128,37 @@ describe('ConversationService locale handling', () => {
     const snapshot = await svc.getConversationSnapshot('conv-4');
 
     expect(snapshot?.staleStructuralData).toBe(false);
+  });
+
+  test('persists structural models under the provided conversation', async () => {
+    const createdModel = {
+      id: 'model-1',
+      name: 'Portal Frame',
+      conversationId: 'conv-analysis-1',
+    };
+    const structuralModelCreate = jest.fn().mockResolvedValue(createdModel);
+    prisma.structuralModel.create = structuralModelCreate;
+    cache.setex = jest.fn().mockResolvedValue('OK');
+
+    const svc = new AnalysisService();
+
+    const model = await svc.createModel({
+      name: 'Portal Frame',
+      conversationId: 'conv-analysis-1',
+      nodes: [],
+      elements: [],
+      materials: [],
+      sections: [],
+    });
+
+    expect(model).toBe(createdModel);
+    expect(structuralModelCreate).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        name: 'Portal Frame',
+        conversationId: 'conv-analysis-1',
+      }),
+    });
+    expect(structuralModelCreate.mock.calls[0][0].data).not.toHaveProperty('projectId');
+    expect(structuralModelCreate.mock.calls[0][0].data).not.toHaveProperty('createdBy');
   });
 });

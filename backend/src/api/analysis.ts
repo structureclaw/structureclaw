@@ -21,7 +21,7 @@ const createAnalysisSchema = z.object({
 
 const createModelSchema = z.object({
   name: z.string().min(1),
-  projectId: z.string().optional(),
+  conversationId: z.string().optional(),
   nodes: z.array(z.object({
     id: z.string(),
     x: z.number(),
@@ -56,12 +56,8 @@ export async function analysisRoutes(fastify: FastifyInstance) {
     },
   }, async (request: FastifyRequest<{ Body: z.infer<typeof createModelSchema> }>, reply: FastifyReply) => {
     const body = createModelSchema.parse(request.body);
-    const userId = request.user?.id;
 
-    const model = await analysisService.createModel({
-      ...body,
-      createdBy: userId,
-    });
+    const model = await analysisService.createModel(body);
 
     return reply.send(model);
   });
@@ -86,12 +82,8 @@ export async function analysisRoutes(fastify: FastifyInstance) {
     },
   }, async (request: FastifyRequest<{ Body: z.infer<typeof createAnalysisSchema> }>, reply: FastifyReply) => {
     const body = createAnalysisSchema.parse(request.body);
-    const userId = request.user?.id;
 
-    const task = await analysisService.createAnalysisTask({
-      ...body,
-      createdBy: userId,
-    });
+    const task = await analysisService.createAnalysisTask(body);
 
     return reply.send(task);
   });

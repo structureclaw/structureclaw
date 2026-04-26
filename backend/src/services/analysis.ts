@@ -1,6 +1,5 @@
 import { prisma } from '../utils/database.js';
 import { cache } from '../utils/cache.js';
-import { ensureProjectId } from '../utils/demo-data.js';
 import { AnalysisExecutionService } from './analysis-execution.js';
 import { CodeCheckExecutionService } from './code-check-execution.js';
 
@@ -10,8 +9,7 @@ export interface CreateModelParams {
   elements: any[];
   materials: any[];
   sections: any[];
-  projectId?: string;
-  createdBy?: string;
+  conversationId?: string;
 }
 
 export interface CreateAnalysisParams {
@@ -20,7 +18,6 @@ export interface CreateAnalysisParams {
   modelId: string;
   parameters: any;
   engineId?: string;
-  createdBy?: string;
 }
 
 export class AnalysisService {
@@ -34,7 +31,12 @@ export class AnalysisService {
 
   // 创建结构模型
   async createModel(params: CreateModelParams) {
-    const projectId = await ensureProjectId(params.projectId, params.createdBy);
+    const conversationId = params.conversationId ?? (await prisma.conversation.create({
+      data: {
+        title: params.name,
+        type: 'analysis',
+      },
+    })).id;
 
     const model = await prisma.structuralModel.create({
       data: {
@@ -43,8 +45,7 @@ export class AnalysisService {
         elements: params.elements,
         materials: params.materials,
         sections: params.sections,
-        projectId,
-        createdBy: params.createdBy,
+        conversationId,
       },
     });
 
@@ -92,7 +93,6 @@ export class AnalysisService {
         modelId: params.modelId,
         parameters: params.engineId ? { ...(params.parameters || {}), engineId: params.engineId } : params.parameters,
         status: 'pending',
-        createdBy: params.createdBy,
       },
     });
   }
