@@ -5,7 +5,6 @@ import dynamic from 'next/dynamic'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AppStoreProvider, useStore } from '@/lib/stores/context'
 import { readLocaleCookieFromDocument } from '@/lib/locale-preference'
-import type { AppLocale } from '@/lib/stores/slices/preferences'
 
 const ClientToaster = dynamic(
   () => import('@/components/ui/toast').then((mod) => mod.Toaster),
@@ -19,6 +18,7 @@ function LocaleSync({ children }: { children: React.ReactNode }) {
     const saved = readLocaleCookieFromDocument()
     if (saved) {
       setLocale(saved)
+      document.documentElement.lang = saved === 'zh' ? 'zh-CN' : 'en'
     }
   }, [setLocale])
 

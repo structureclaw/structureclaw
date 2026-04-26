@@ -85,7 +85,6 @@ async function start() {
         root: frontendDir,
         prefix: '/',
         wildcard: false,
-        decorateReply: false,
       });
 
       // SPA fallback: serve index.html for non-API, non-static routes

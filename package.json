@@ -61,11 +61,11 @@
     "fastify": "^4.26.2",
     "pino": "^8.19.0",
     "pino-pretty": "^11.0.0",
+    "prisma": "^6.19.2",
     "yaml": "^2.8.1",
     "zod": "^3.22.4"
   },
   "devDependencies": {
-    "prisma": "^6.19.2",
     "typescript": "^5.4.3"
   },
   "optionalDependencies": {
