@@ -1,6 +1,6 @@
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import os from 'os';
 import { prisma } from '../utils/database.js';
 import type { InputJsonValue, JsonValue } from '../utils/json.js';
 
@@ -78,7 +78,10 @@ export class AgentMemoryFileStore {
         value: entry.value,
         updatedAt: entry.updatedAt,
       }))
-      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+      .sort((a, b) => {
+        const cmp = b.updatedAt.localeCompare(a.updatedAt);
+        return cmp !== 0 ? cmp : a.key.localeCompare(b.key);
+      });
   }
 
   async delete(key: string): Promise<boolean> {
@@ -96,18 +99,26 @@ export class AgentMemoryFileStore {
   }
 
   private async readData(): Promise<FileStoreData> {
+    let raw: string;
     try {
-      const raw = await fs.promises.readFile(this.filePath, 'utf-8');
+      raw = await fs.promises.readFile(this.filePath, 'utf-8');
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return {};
+      throw err;
+    }
+    try {
       return JSON.parse(raw) as FileStoreData;
-    } catch {
-      return {};
+    } catch (err) {
+      throw new Error(
+        `Corrupt workspace memory file (${this.filePath}): ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 
   private async writeData(data: FileStoreData): Promise<void> {
     const dir = path.dirname(this.filePath);
     await fs.promises.mkdir(dir, { recursive: true });
-    const tmp = path.join(dir, `.workspace-memory-${Date.now()}.tmp`);
+    const tmp = path.join(dir, `.workspace-memory-${crypto.randomUUID()}.tmp`);
     await fs.promises.writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8');
     await fs.promises.rename(tmp, this.filePath);
   }
