@@ -90,6 +90,9 @@ describe("AgentMemoryFileStore", () => {
 
   test("lists entries sorted by updatedAt desc", async () => {
     await fileStore.store("alpha", { v: 1 });
+    // Ensure distinct timestamps (updatedAt uses millisecond precision,
+    // but same-millisecond inserts would tie-break on key ascending).
+    await new Promise((r) => setTimeout(r, 2));
     await fileStore.store("beta", { v: 2 });
     const entries = await fileStore.list();
     expect(entries.length).toBeGreaterThanOrEqual(2);
