@@ -35,14 +35,18 @@ describe('logger configuration', () => {
         config: {
           logLevel: 'debug',
           nodeEnv: 'production',
+          logFile: '',
+          logMaxAgeDays: 7,
+          logMaxSize: 104857600,
         },
       }));
 
       const { logger } = await import('../dist/utils/logger.js');
 
-      // Verify pino was called with the correct log level
+      // Verify pino was called with the correct log level (may include a stream arg)
       expect(mockPino).toHaveBeenCalledWith(
         expect.objectContaining({ level: 'debug' }),
+        expect.anything(),
       );
 
       // Verify the exported logger is the mock instance
