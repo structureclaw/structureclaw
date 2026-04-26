@@ -46,6 +46,15 @@ export function useSkillStateValue<T>(
 }
 
 export function useSkillState(skillId: string): SkillStateApi {
+  // 订阅整个 values map：任何 skill 的状态变化都会让消费者重渲染。
+  // 这里允许跨 skill 的"过度重渲染"，因为 step 1 还没有任何 skill 注册；
+  // 需要细粒度订阅时使用 useSkillStateValue。
+  useSyncExternalStore(
+    skillStateStore.subscribe,
+    () => skillStateStore.getState().values,
+    () => skillStateStore.getState().values
+  )
+
   return useMemo<SkillStateApi>(
     () => ({
       get: <T,>(key: string, fallback: T): T => readValue(namespaced(skillId, key), fallback),

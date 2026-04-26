@@ -4,6 +4,7 @@ import {
   getVisualizationExtensionByView,
   getVisualizationViewLabelKey,
 } from '../extensions'
+import type { SkillRenderer } from './types'
 
 export {
   visualizationExtensionRegistry as legacyExtensionRegistry,
@@ -12,4 +13,4 @@ export {
   getVisualizationViewLabelKey,
 }
 
-export const visualizationSkillRegistry: ReadonlyArray<never> = []
+export const visualizationSkillRegistry: ReadonlyArray<SkillRenderer> = []
