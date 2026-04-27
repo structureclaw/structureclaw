@@ -1115,12 +1115,8 @@ async function invokeLocalUp(rootDir, env, options = {}) {
     await ensureNpmDependencies(paths.frontendDir, "frontend", ["next"]);
   }
 
-  if (!isInstalled) {
-    await ensureAnalysisPython(rootDir, env);
-    await ensureOpenSeesRuntime(rootDir, env);
-  } else {
-    log("Skipping analysis runtime setup in installed mode.");
-  }
+  await ensureAnalysisPython(rootDir, env);
+  await ensureOpenSeesRuntime(rootDir, env);
 
   if (options.skipInfra) {
     log("Skipping optional infra startup.");
