@@ -116,10 +116,10 @@ node .\sclaw docker-install --non-interactive --llm-base-url https://api.openai.
 
 启动完成后，常用入口如下：
 
-- 前端：`http://localhost:30000`
-- 后端健康检查：`http://localhost:30010/health`
-- 分析接口：`http://localhost:30010/analyze`
-- 数据库状态页：`http://localhost:30000/console/database`
+- 前端：`http://localhost:31416`
+- 后端健康检查：`http://localhost:31415/health`
+- 分析接口：`http://localhost:31415/analyze`
+- 数据库状态页：`http://localhost:31416/console/database`
 
 停止容器：
 

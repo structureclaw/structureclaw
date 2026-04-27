@@ -116,10 +116,10 @@ node .\sclaw docker-install --non-interactive --llm-base-url https://api.openai.
 
 Once the stack is ready, the main entrypoints are:
 
-- Frontend: `http://localhost:30000`
-- Backend health check: `http://localhost:30010/health`
-- Analysis routes: `http://localhost:30010/analyze`
-- Database status page: `http://localhost:30000/console/database`
+- Frontend: `http://localhost:31416`
+- Backend health check: `http://localhost:31415/health`
+- Analysis routes: `http://localhost:31415/analyze`
+- Database status page: `http://localhost:31416/console/database`
 
 To stop the containers:
 

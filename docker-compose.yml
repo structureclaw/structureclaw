@@ -14,7 +14,7 @@ services:
     container_name: structureclaw-backend
     environment:
       - NODE_ENV=production
-      - PORT=${PORT:-8000}
+      - PORT=${PORT:-31415}
       - BACKEND_BODY_LIMIT_MB=${BACKEND_BODY_LIMIT_MB:-20}
       - DATABASE_URL=${DATABASE_URL:-file:/.runtime/data/structureclaw.db}
       - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-change-in-production}
@@ -47,7 +47,7 @@ services:
         done
         npm start
     ports:
-      - "${PORT:-8000}:${PORT:-8000}"
+      - "${PORT:-31415}:${PORT:-31415}"
     volumes:
       - ./.runtime:/app/.runtime
       - ./.runtime/data:/.runtime/data
@@ -62,13 +62,13 @@ services:
       args:
         NODE_IMAGE_REGISTRY_MIRROR: ${DOCKER_REGISTRY_MIRROR:-}
         NPM_CONFIG_REGISTRY: ${NPM_CONFIG_REGISTRY:-https://registry.npmjs.org}
-        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:31415}
     container_name: structureclaw-frontend
     environment:
-      - PORT=${FRONTEND_PORT:-30000}
-      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      - PORT=${FRONTEND_PORT:-31416}
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost:31415}
     ports:
-      - "${FRONTEND_PORT:-30000}:${FRONTEND_PORT:-30000}"
+      - "${FRONTEND_PORT:-31416}:${FRONTEND_PORT:-31416}"
     depends_on:
       - backend
     restart: unless-stopped
