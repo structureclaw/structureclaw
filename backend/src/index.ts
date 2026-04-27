@@ -16,8 +16,8 @@ const __dirname = path.dirname(__filename);
 
 /**
  * Resolve the frontend static assets directory.
- * In installed-package mode, dist/frontend/ sits alongside dist/backend/.
- * In dev mode, there is no static dir (frontend runs separately).
+ * Installed-package: dist/frontend/ sits alongside dist/backend/.
+ * Dev mode: SCLAW_FRONTEND_DIR points to frontend/out/ (static export).
  */
 function resolveFrontendStaticDir(): string | null {
   // Check for SCLAW_FRONTEND_DIR override first

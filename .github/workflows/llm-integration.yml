@@ -23,7 +23,6 @@ on:
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
-      - '.github/actions/setup-env/**'
       - '.github/workflows/llm-integration.yml'
 
 permissions:
@@ -114,8 +113,18 @@ jobs:
         with:
           ref: ${{ needs.check-permission.outputs.pr_sha }}
 
-      - name: Setup environment
-        uses: ./.github/actions/setup-env
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: Setup via sclaw
+        run: node ./sclaw doctor
+
+      - name: Build via sclaw
+        run: node ./sclaw build
 
       - name: Run LLM integration tests
         id: run-tests

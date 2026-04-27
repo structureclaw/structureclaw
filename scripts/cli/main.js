@@ -807,23 +807,14 @@ function getServiceCommand(name, frontendPort, paths) {
     return {
       command: runtime.getNpmCommand(),
       args: ["run", "dev", "--prefix", "backend"],
-      envPatch: {},
+      envPatch: {
+        SCLAW_FRONTEND_DIR: path.join(paths.rootDir, "frontend", "out"),
+      },
     };
   }
 
-  // Frontend not needed in installed mode (backend serves static files)
-  if (paths.installedMode) {
-    return { command: process.execPath, args: ["-e", "process.exit(0)"], envPatch: {} };
-  }
-
-  return {
-    command: runtime.getNpmCommand(),
-    args: ["run", "dev", "--prefix", "frontend", "--", "--port", frontendPort],
-    envPatch: {
-      FRONTEND_PORT: frontendPort,
-      PORT: frontendPort,
-    },
-  };
+  // Frontend is served statically by the backend; no separate process needed
+  return { command: process.execPath, args: ["-e", "process.exit(0)"], envPatch: {} };
 }
 
 function parseBooleanEnvFlag(rawValue) {
@@ -1127,6 +1118,15 @@ async function invokeLocalUp(rootDir, env, options = {}) {
   await ensureAnalysisPython(rootDir, env);
   await ensureOpenSeesRuntime(rootDir, env);
 
+  // In dev mode, ensure frontend is built for static serving
+  if (!isInstalled) {
+    const frontendOutIndex = path.join(paths.frontendDir, "out", "index.html");
+    if (!runtime.pathExists(frontendOutIndex)) {
+      log("Building frontend for static serving...");
+      await runFrontendBuild(paths, env);
+    }
+  }
+
   if (options.skipInfra) {
     log("Skipping optional infra startup.");
   }
@@ -1140,49 +1140,42 @@ async function invokeLocalUp(rootDir, env, options = {}) {
   }
 
   // Kill stale processes
-  const ports = isInstalled
-    ? [env.PORT || runtime.DEFAULT_BACKEND_PORT]
-    : [env.PORT || runtime.DEFAULT_BACKEND_PORT, env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT];
+  const ports = [env.PORT || runtime.DEFAULT_BACKEND_PORT];
   runtime.killPortPids(ports, log, getPortCleanupOptions(paths, env));
 
   startTrackedService(paths, env, "backend", env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT);
 
-  if (!isInstalled) {
-    startTrackedService(paths, env, "frontend", env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT);
-    log("");
-    log("Local stack started.");
-    log(`Logs: ${paths.logDir}`);
-    log(`Frontend: http://localhost:${env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT}`);
-    log(`Backend:  http://localhost:${env.PORT || runtime.DEFAULT_BACKEND_PORT}`);
-  } else {
-    log("");
+  log("");
+  if (isInstalled) {
     log("StructureClaw started.");
-    const backendPort = env.PORT || runtime.DEFAULT_BACKEND_PORT;
-    const url = `http://localhost:${backendPort}`;
-    log(`UI + API: ${url}`);
-    log(`Data: ${paths.dataDir}`);
-    log(`Logs: ${paths.logDir}`);
-
-    // Wait briefly and check if backend is actually listening
-    await runtime.sleep(2000);
-    const backendLog = runtime.logFilePath(paths, "backend");
-    const lastLines = runtime.tailLines(backendLog, 5);
-    const hasStartupError = lastLines.some((line) =>
-      /error|Error|ERR|crashed|ENOENT|Cannot find/i.test(line)
-    );
-    if (hasStartupError) {
-      log("");
-      log("Backend failed to start. Recent log:");
-      for (const line of lastLines) {
-        log(`  ${line}`);
-      }
-      log(`Check full log: ${backendLog}`);
-      return;
-    }
-
-    // Auto-open browser in installed mode
-    setTimeout(() => openBrowser(url), 1500);
+  } else {
+    log("Local stack started.");
   }
+  const backendPort = env.PORT || runtime.DEFAULT_BACKEND_PORT;
+  const url = `http://localhost:${backendPort}`;
+  log(`UI + API: ${url}`);
+  log(`Data: ${paths.dataDir}`);
+  log(`Logs: ${paths.logDir}`);
+
+  // Wait briefly and check if backend is actually listening
+  await runtime.sleep(2000);
+  const backendLog = runtime.logFilePath(paths, "backend");
+  const lastLines = runtime.tailLines(backendLog, 5);
+  const hasStartupError = lastLines.some((line) =>
+    /error|Error|ERR|crashed|ENOENT|Cannot find/i.test(line)
+  );
+  if (hasStartupError) {
+    log("");
+    log("Backend failed to start. Recent log:");
+    for (const line of lastLines) {
+      log(`  ${line}`);
+    }
+    log(`Check full log: ${backendLog}`);
+    return;
+  }
+
+  // Auto-open browser
+  setTimeout(() => openBrowser(url), 1500);
 }
 
 async function promptForFirstRunConfig(envFile, existingEnv) {
