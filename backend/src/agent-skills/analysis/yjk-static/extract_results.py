@@ -2,10 +2,12 @@
 """YJK result extraction -- runs INSIDE the YJK process via yjks_pyload.
 
 Invocation (from remote-control driver):
-    YJKSControl.RunCmd("yjks_pyload", script_path, "extract")
+    YJKSControl.RunCmd("yjks_pyload", script_path)
 
-The script writes ``results.json`` next to itself.  The driver reads
-that file after execution completes.
+The script writes ``results.json`` to ``SC_YJK_RESULTS_PATH`` when set,
+otherwise to ``SC_YJK_WORK_DIR/results.json`` or next to itself.  The driver
+copies this script into the current work directory before loading it, so the
+normal output path is the current run's ``work_dir/results.json``.
 
 JSON schema:
 {
@@ -29,10 +31,22 @@ JSON schema:
 """
 import json
 import os
-
-from YJKAPI import YJKSPrePy, YJKSDsnDataPy
+import traceback
 
 LOAD_CASES = [1, 2, 3, 4]
+
+
+def _results_path():
+    explicit = os.environ.get("SC_YJK_RESULTS_PATH", "").strip()
+    if explicit:
+        return explicit
+
+    work_dir = os.environ.get("SC_YJK_WORK_DIR", "").strip()
+    if work_dir:
+        return os.path.join(work_dir, "results.json")
+
+    out_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(out_dir, "results.json")
 
 
 def _safe(fn, *args, default=None):
@@ -44,12 +58,20 @@ def _safe(fn, *args, default=None):
 
 def extract():
     """Entry point called by ``yjks_pyload``."""
+    try:
+        from YJKAPI import YJKSPrePy, YJKSDsnDataPy
+    except ImportError:
+        yjkapi = __import__("YJKAPI", fromlist=["YJKSPrePy", "YJKSDsnDataPy"])
+        YJKSPrePy = getattr(yjkapi, "YJKSPrePy", None)
+        YJKSDsnDataPy = getattr(yjkapi, "YJKSDsnDataPy", None)
+        if YJKSPrePy is None or YJKSDsnDataPy is None:
+            raise
+
     pre = YJKSPrePy()
     YJKSDsnDataPy.dsnInitData()
 
     n_floors = pre.NZRC()
     n_nodes = pre.NJD()
-    out_dir = os.path.dirname(os.path.abspath(__file__))
 
     result = {
         "meta": {
@@ -187,8 +209,48 @@ def extract():
         })
 
     # 5. Write JSON
-    out_path = os.path.join(out_dir, "results.json")
+    out_path = _results_path()
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
     with open(out_path, "w", encoding="utf-8") as f:
         json.dump(result, f, ensure_ascii=False, indent=2)
     print("Results exported:", out_path)
     return out_path
+
+
+def _write_error(exc):
+    out_path = _results_path()
+    os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
+    payload = {
+        "status": "error",
+        "phase": "result_extraction",
+        "command": "extract_results.py",
+        "error": str(exc),
+        "traceback": traceback.format_exc(),
+    }
+    with open(out_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, ensure_ascii=False, indent=2)
+    print("Result extraction failed:", out_path)
+    return out_path
+
+
+def _autorun():
+    try:
+        return extract()
+    except Exception as exc:
+        return _write_error(exc)
+
+
+def _should_autorun():
+    if os.environ.get("SC_YJK_EXTRACT_NO_AUTORUN", "").strip() == "1":
+        return False
+    if __name__ == "__main__":
+        return True
+    if os.environ.get("SC_YJK_RESULTS_PATH", "").strip():
+        return True
+    if os.environ.get("SC_YJK_WORK_DIR", "").strip():
+        return True
+    return False
+
+
+if _should_autorun():
+    _autorun()

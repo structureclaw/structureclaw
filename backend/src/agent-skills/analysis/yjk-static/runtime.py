@@ -25,6 +25,29 @@ YJK_TIMEOUT_S : str, optional
 YJK_INVISIBLE : str, optional
     Set to ``"1"`` to launch YJK headlessly (no GUI window).
     Default ``"0"`` — YJK GUI is visible so the user can observe the run.
+YJK_START_ONLY / YJK_ASYNC_CALC : str, optional
+    Set either to ``"1"`` to start YJK calculation without waiting for
+    completion or extracting results. Default is synchronous closed-loop run.
+YJK_ATTACH_EXISTING : str, optional
+    Set to ``"1"`` to attach to an already authorized YJK GUI session instead
+    of starting ``yjks.exe`` directly. Start YJK from ``YjkLauncher.exe`` first
+    and enter the ``yjksipccontrol`` command in YJK before running analysis.
+YJK_ATTACH_PID : str, optional
+    PID to attach to when ``YJK_ATTACH_EXISTING=1``. Defaults to ``-1``, which
+    lets YJK prompt for a target process when multiple sessions exist.
+YJK_USE_LAUNCHER : str, optional
+    Set to ``"1"`` to start YJK through ``YjkLauncher.exe`` and automatically
+    attach to the launched ``yjks.exe`` session. When unset, BIT-authorized
+    installations use this mode automatically.
+YJK_DIRECT_RUN : str, optional
+    Set to ``"1"`` to force the SDK ``RunYJK(yjks.exe)`` path.
+YJK_LAUNCHER_EXE : str, optional
+    Direct path to ``YjkLauncher.exe``. Defaults to ``<install_root>/YjkLauncher.exe``.
+YJK_LAUNCHER_WAIT_S / YJK_AUTO_IPC_DELAY_S : str, optional
+    Timeouts for waiting for launcher startup and sending ``yjksipccontrol``.
+YJK_EXTRACT_TIMEOUT_S : str, optional
+    Seconds to wait for ``work_dir/results.json`` after ``yjks_pyload`` returns.
+    Default ``30``.
 """
 from __future__ import annotations
 
@@ -41,7 +64,13 @@ from contracts import EngineNotAvailableError
 
 def _yjk_install_root() -> str:
     """Resolve install root: ``YJK_PATH`` if set, else ``YJKS_ROOT``."""
-    return (os.getenv("YJK_PATH", "").strip() or os.getenv("YJKS_ROOT", "").strip())
+    configured = os.getenv("YJK_PATH", "").strip() or os.getenv("YJKS_ROOT", "").strip()
+    if configured:
+        return configured
+    for candidate in (r"C:\YJKS\YJKS_8_0_0", r"D:\YJKS\YJKS_8_0_0"):
+        if Path(candidate).is_dir():
+            return candidate
+    return ""
 
 
 def _resolve_yjk_python() -> str:
@@ -62,11 +91,21 @@ def _resolve_yjk_python() -> str:
             reason=f"YJK install directory does not exist: {root}",
         )
 
-    python_exe = Path(root) / "Python310" / "python.exe"
-    if not python_exe.is_file():
+    python_exe = next(
+        (
+            candidate
+            for candidate in (
+                Path(root) / "Python310" / "python.exe",
+                Path(root) / "python310" / "python.exe",
+            )
+            if candidate.is_file()
+        ),
+        None,
+    )
+    if python_exe is None:
         raise EngineNotAvailableError(
             engine="yjk",
-            reason=f"YJK Python 3.10 not found at {python_exe}",
+            reason=f"YJK Python 3.10 not found under {root}",
         )
     return str(python_exe)
 
@@ -352,9 +391,26 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     env = os.environ.copy()
     root = _yjk_install_root()
     if root:
-        env.setdefault("YJKS_ROOT", root)
-        env.setdefault("YJK_PATH", root)
-    for key in ("YJKS_EXE", "YJK_VERSION", "YJK_PYTHON_BIN", "YJK_INVISIBLE"):
+        if not env.get("YJKS_ROOT", "").strip():
+            env["YJKS_ROOT"] = root
+        if not env.get("YJK_PATH", "").strip():
+            env["YJK_PATH"] = root
+    for key in (
+        "YJKS_EXE",
+        "YJK_VERSION",
+        "YJK_PYTHON_BIN",
+        "YJK_INVISIBLE",
+        "YJK_ATTACH_EXISTING",
+        "YJK_ATTACH_PID",
+        "YJK_USE_LAUNCHER",
+        "YJK_DIRECT_RUN",
+        "YJK_LAUNCHER_EXE",
+        "YJK_LAUNCHER_CWD",
+        "YJK_LAUNCHER_WAIT_S",
+        "YJK_AUTO_IPC_DELAY_S",
+        "YJK_AUTO_IPC_FOCUS_DELAY_S",
+        "YJK_SKIP_AUTO_IPC",
+    ):
         val = os.getenv(key, "").strip()
         if val:
             env[key] = val
@@ -414,8 +470,17 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
 
     status = output.get("status", "error")
     if status == "error":
-        error_msg = output.get("detailed", {}).get("error", "Unknown YJK error")
-        raise RuntimeError(f"YJK analysis failed: {error_msg}")
+        error_detail = output.get("detailed", {})
+        error_msg = error_detail.get("error", "Unknown YJK error")
+        phase = error_detail.get("phase")
+        command = error_detail.get("command")
+        context = []
+        if phase:
+            context.append(f"phase={phase}")
+        if command:
+            context.append(f"command={command}")
+        context_text = f" ({', '.join(context)})" if context else ""
+        raise RuntimeError(f"YJK analysis failed{context_text}: {error_msg}")
 
     if stderr:
         warnings.append(f"YJK stderr: {stderr[:300]}")
@@ -424,10 +489,13 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     if isinstance(existing_warnings, list):
         warnings.extend(existing_warnings)
 
+    result_payload = {
+        key: value
+        for key, value in output.items()
+        if key not in {"status", "warnings"}
+    }
     return {
         "status": output.get("status", "success"),
-        "summary": output.get("summary", {}),
-        "data": output.get("data", {}),
-        "detailed": output.get("detailed", {}),
+        **result_payload,
         "warnings": warnings,
     }
