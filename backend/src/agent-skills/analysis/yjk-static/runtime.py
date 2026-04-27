@@ -17,7 +17,10 @@ YJK_PYTHON_BIN : str, optional
     Defaults to ``<install_root>/Python310/python.exe``.
 YJK_WORK_DIR : str, optional
     Base directory for YJK project files.
-    Defaults to ``<tempdir>/yjk_projects``.
+    Defaults to repository ``.runtime/yjk_work_dir``.
+YJK_CWD : str, optional
+    Working directory used while calling SDK ``RunYJK(yjks.exe)``.
+    Defaults to the YJK install root.
 YJK_VERSION : str, optional
     YJK version string passed to ControlConfig.  Default ``8.0.0``.
 YJK_TIMEOUT_S : str, optional
@@ -25,13 +28,41 @@ YJK_TIMEOUT_S : str, optional
 YJK_INVISIBLE : str, optional
     Set to ``"1"`` to launch YJK headlessly (no GUI window).
     Default ``"0"`` — YJK GUI is visible so the user can observe the run.
+YJK_START_ONLY / YJK_ASYNC_CALC : str, optional
+    Set either to ``"1"`` to start YJK calculation without waiting for
+    completion or extracting results. Default is synchronous closed-loop run.
+YJK_ATTACH_EXISTING : str, optional
+    Set to ``"1"`` to attach to an already authorized YJK GUI session instead
+    of starting ``yjks.exe`` directly. Start YJK from ``YjkLauncher.exe`` first
+    and enter the ``yjksipccontrol`` command in YJK before running analysis.
+YJK_ATTACH_PID : str, optional
+    PID to attach to when ``YJK_ATTACH_EXISTING=1``. Defaults to ``-1``, which
+    lets YJK prompt for a target process when multiple sessions exist.
+YJK_USE_LAUNCHER : str, optional
+    Set to ``"1"`` to start YJK through ``YjkLauncher.exe`` and wait for an
+    externally launched ``yjks.exe`` session. When unset, the runtime uses the
+    SDK ``RunYJK(yjks.exe)`` direct launch path.
+YJK_LAUNCHER_EXE : str, optional
+    Direct path to ``YjkLauncher.exe``. Defaults to ``<install_root>/YjkLauncher.exe``.
+YJK_LAUNCHER_PREWARM : str, optional
+    ``auto`` (default) retries direct ``RunYJK(yjks.exe)`` after starting the
+    official launcher if YJK shows an authorization failure dialog. ``1`` starts
+    the launcher before the first direct run; ``0`` disables this fallback.
+YJK_DIRECT_READY_TIMEOUT_S / YJK_LAUNCHER_PREWARM_S : str, optional
+    Timeouts for detecting direct-launch authorization failure and waiting for
+    the official launcher to initialize authorization.
+YJK_LAUNCHER_WAIT_S / YJK_AUTO_IPC_DELAY_S : str, optional
+    Timeouts for waiting for launcher startup and sending ``yjksipccontrol``.
+YJK_EXTRACT_TIMEOUT_S : str, optional
+    Seconds to wait for ``work_dir/results.json`` after ``yjks_pyload`` returns.
+    Default ``30``.
 """
 from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
-import tempfile
 import uuid
 from pathlib import Path
 from typing import Any, Dict
@@ -39,14 +70,74 @@ from typing import Any, Dict
 from contracts import EngineNotAvailableError
 
 
+def _env_text(key: str, default: str = "") -> str:
+    """Read an environment variable as stripped text."""
+    value = os.getenv(key)
+    if value is None:
+        return default
+    return str(value).strip()
+
+
+def _env_int(key: str, default: int) -> int:
+    try:
+        return int(_env_text(key, str(default)) or str(default))
+    except ValueError:
+        return default
+
+
+def _repo_root() -> Path:
+    """Resolve the StructureClaw repository root from this runtime module."""
+    return Path(__file__).resolve().parents[5]
+
+
+def _safe_name(value: Any, fallback: str) -> str:
+    """Return a filesystem-safe short name for trace/run identifiers."""
+    text = str(value or "").strip()
+    if not text:
+        return fallback
+    safe = re.sub(r"[^A-Za-z0-9_.-]+", "-", text).strip(".-")
+    return safe[:80] or fallback
+
+
+def _write_json(path: Path, payload: Dict[str, Any]) -> None:
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        return ""
+    except OSError:
+        return ""
+
+
+def _read_json(path: Path) -> dict | None:
+    try:
+        with path.open("r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return None
+    return data if isinstance(data, dict) else None
+
+
 def _yjk_install_root() -> str:
     """Resolve install root: ``YJK_PATH`` if set, else ``YJKS_ROOT``."""
-    return (os.getenv("YJK_PATH", "").strip() or os.getenv("YJKS_ROOT", "").strip())
+    configured = _env_text("YJK_PATH") or _env_text("YJKS_ROOT")
+    if configured:
+        return configured
+    for candidate in (r"C:\YJKS\YJKS_8_0_0", r"D:\YJKS\YJKS_8_0_0"):
+        if Path(candidate).is_dir():
+            return candidate
+    return ""
 
 
 def _resolve_yjk_python() -> str:
     """Return the path to YJK's bundled Python 3.10 executable."""
-    explicit = os.getenv("YJK_PYTHON_BIN", "").strip()
+    explicit = _env_text("YJK_PYTHON_BIN")
     if explicit and Path(explicit).is_file():
         return explicit
 
@@ -62,33 +153,38 @@ def _resolve_yjk_python() -> str:
             reason=f"YJK install directory does not exist: {root}",
         )
 
-    python_exe = Path(root) / "Python310" / "python.exe"
-    if not python_exe.is_file():
+    python_exe = next(
+        (
+            candidate
+            for candidate in (
+                Path(root) / "Python310" / "python.exe",
+                Path(root) / "python310" / "python.exe",
+            )
+            if candidate.is_file()
+        ),
+        None,
+    )
+    if python_exe is None:
         raise EngineNotAvailableError(
             engine="yjk",
-            reason=f"YJK Python 3.10 not found at {python_exe}",
+            reason=f"YJK Python 3.10 not found under {root}",
         )
     return str(python_exe)
 
 
-def _resolve_work_dir() -> Path:
+def _resolve_work_dir(parameters: Dict[str, Any]) -> Path:
     """Return a per-run subdirectory under YJK_WORK_DIR.
 
-    YJK_WORK_DIR should be set by the user so that generated project files,
-    .OUT results, and logs land in a known, reviewable location.
-    Falls back to the system temp directory when unset (not recommended).
+    YJK_WORK_DIR can be set by the user so that generated project files,
+    .OUT results, and logs land in a known, reviewable location. When unset,
+    files are written under the repository .runtime/yjk_work_dir directory.
     """
-    import warnings
-    base = os.getenv("YJK_WORK_DIR", "").strip()
+    base = _env_text("YJK_WORK_DIR")
     if not base:
-        fallback = str(Path(tempfile.gettempdir()) / "yjk_projects")
-        warnings.warn(
-            "YJK_WORK_DIR is not set; using system temp directory as fallback: "
-            f"{fallback}. Set YJK_WORK_DIR in .env to a persistent location.",
-            stacklevel=2,
-        )
-        base = fallback
-    project_name = f"sc_{uuid.uuid4().hex[:8]}"
+        base = str(_repo_root() / ".runtime" / "yjk_work_dir")
+
+    trace_id = _safe_name(parameters.get("traceId"), f"run-{uuid.uuid4().hex[:8]}")
+    project_name = f"sc_{trace_id}"
     work = Path(base) / project_name
     work.mkdir(parents=True, exist_ok=True)
     return work
@@ -98,33 +194,36 @@ def _extract_last_json(text: str) -> dict | None:
     """Extract the last complete JSON object from text.
 
     YJK's Python runtime may print non-JSON lines (copyright banners,
-    init messages) to stdout before our _emit_json() call.  We scan
-    backwards for the last '{' ... '}' block that parses cleanly.
+    init messages) to stdout before our _emit_json() call, and yjks.exe may
+    keep appending progress text after the driver JSON.  Decode any complete
+    driver-shaped JSON object embedded in the stream and ignore trailing text.
     """
     # Fast path: the whole string is valid JSON
     try:
-        return json.loads(text)
+        parsed = json.loads(text)
+        if isinstance(parsed, dict):
+            return parsed
     except json.JSONDecodeError:
         pass
 
-    # Scan for the last '{' and try progressively larger suffixes
-    last_brace = text.rfind('{')
-    if last_brace == -1:
-        return None
-    try:
-        return json.loads(text[last_brace:])
-    except json.JSONDecodeError:
-        pass
-
-    # Fallback: try each line from the end
-    lines = text.splitlines()
-    for i in range(len(lines) - 1, -1, -1):
-        candidate = '\n'.join(lines[i:]).strip()
-        if candidate.startswith('{'):
-            try:
-                return json.loads(candidate)
-            except json.JSONDecodeError:
-                continue
+    decoder = json.JSONDecoder()
+    fallback: dict | None = None
+    for match in re.finditer(r"\{", text):
+        try:
+            parsed, _ = decoder.raw_decode(text[match.start():])
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        if fallback is None:
+            fallback = parsed
+        if "status" not in parsed:
+            continue
+        if "analysisMode" in parsed or "summary" in parsed or "detailed" in parsed:
+            return parsed
+        fallback = parsed
+    if fallback is not None and "status" in fallback:
+        return fallback
     return None
 
 
@@ -330,9 +429,10 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     dict
         AnalysisResult-shaped dict with status / summary / detailed / warnings.
     """
+    parameters = parameters or {}
     yjk_python = _resolve_yjk_python()
-    work_dir = _resolve_work_dir()
-    timeout = int(os.getenv("YJK_TIMEOUT_S", "600").strip() or "600")
+    work_dir = _resolve_work_dir(parameters)
+    timeout = _env_int("YJK_TIMEOUT_S", 600)
 
     # Write V2 model JSON to work directory.
     # `model` may arrive as a Pydantic object (StructureModelV1); serialize it first.
@@ -347,64 +447,139 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     if not driver_path.is_file():
         raise RuntimeError(f"YJK driver script not found: {driver_path}")
 
+    trace_id = parameters.get("traceId")
+    run_meta = {
+        "traceId": trace_id,
+        "workDir": str(work_dir),
+        "modelPath": str(model_path),
+        "driverPath": str(driver_path),
+        "yjkPython": yjk_python,
+        "timeoutSeconds": timeout,
+    }
+    _write_json(work_dir / "run-meta.json", run_meta)
+
     # Build environment for the subprocess.
     # Ensure both YJKS_ROOT and YJK_PATH are set for SDK scripts / driver.
     env = os.environ.copy()
     root = _yjk_install_root()
     if root:
-        env.setdefault("YJKS_ROOT", root)
-        env.setdefault("YJK_PATH", root)
-    for key in ("YJKS_EXE", "YJK_VERSION", "YJK_PYTHON_BIN", "YJK_INVISIBLE"):
-        val = os.getenv(key, "").strip()
+        if not str(env.get("YJKS_ROOT") or "").strip():
+            env["YJKS_ROOT"] = root
+        if not str(env.get("YJK_PATH") or "").strip():
+            env["YJK_PATH"] = root
+    for key in (
+        "YJKS_EXE",
+        "YJK_VERSION",
+        "YJK_PYTHON_BIN",
+        "YJK_INVISIBLE",
+        "YJK_ATTACH_EXISTING",
+        "YJK_ATTACH_PID",
+        "YJK_CWD",
+        "YJK_USE_LAUNCHER",
+        "YJK_LAUNCHER_EXE",
+        "YJK_LAUNCHER_CWD",
+        "YJK_LAUNCHER_PREWARM",
+        "YJK_LAUNCHER_PREWARM_S",
+        "YJK_DIRECT_READY_TIMEOUT_S",
+        "YJK_LAUNCHER_WAIT_S",
+        "YJK_AUTO_IPC_DELAY_S",
+        "YJK_AUTO_IPC_FOCUS_DELAY_S",
+        "YJK_SKIP_AUTO_IPC",
+    ):
+        val = _env_text(key)
         if val:
             env[key] = val
 
     warnings: list[str] = []
 
-    # Launch the driver under YJK's Python 3.10
+    # Launch the driver under YJK's Python 3.10.  Keep stdout/stderr file-backed
+    # instead of pipe-backed: yjks.exe is a GUI child process that can inherit
+    # pipe handles and keep subprocess.run(capture_output=True) waiting for EOF
+    # even after yjk_driver.py has emitted the final JSON and exited.
+    stdout_path = work_dir / "driver.stdout.txt"
+    stderr_path = work_dir / "driver.stderr.txt"
     try:
-        result = subprocess.run(
-            [yjk_python, str(driver_path), str(model_path), str(work_dir)],
-            capture_output=True,
-            text=True,
-            timeout=timeout,
-            env=env,
-            cwd=str(work_dir),
-        )
-    except subprocess.TimeoutExpired:
-        raise RuntimeError(f"YJK analysis timed out after {timeout}s")
+        with stdout_path.open("w", encoding="utf-8") as stdout_file, stderr_path.open(
+            "w",
+            encoding="utf-8",
+        ) as stderr_file:
+            proc = subprocess.Popen(
+                [yjk_python, str(driver_path), str(model_path), str(work_dir)],
+                stdin=subprocess.DEVNULL,
+                stdout=stdout_file,
+                stderr=stderr_file,
+                env=env,
+                cwd=str(work_dir),
+                close_fds=True,
+            )
+            try:
+                returncode = proc.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                try:
+                    proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    pass
+                stdout = _read_text(stdout_path)
+                stderr = _read_text(stderr_path)
+                _write_json(
+                    work_dir / "driver-timeout.json",
+                    {
+                        **run_meta,
+                        "timeoutSeconds": timeout,
+                        "returncode": proc.returncode,
+                        "stdout": stdout,
+                        "stderr": stderr,
+                    },
+                )
+                raise RuntimeError(f"YJK analysis timed out after {timeout}s")
     except FileNotFoundError as exc:
         raise RuntimeError(f"Cannot launch YJK Python: {exc}")
+
+    stdout = _read_text(stdout_path)
+    stderr = _read_text(stderr_path)
+    driver_output_path = work_dir / "driver-output.json"
+    _write_json(
+        work_dir / "driver-result.json",
+        {
+            **run_meta,
+            "returncode": returncode,
+            "stdout": stdout,
+            "stderr": stderr,
+            "driverOutputPath": str(driver_output_path),
+        },
+    )
 
     # Parse stdout as JSON result.
     # The driver writes only ONE JSON blob to stdout; all progress/debug
     # output goes to stderr so the user can see it in the backend log.
-    stdout = result.stdout.strip()
-    stderr = result.stderr.strip()
+    stdout = stdout.strip()
+    stderr = stderr.strip()
 
     if stderr:
         import logging
         logging.getLogger("yjk-runtime").info("YJK driver stderr:\n%s", stderr)
 
-    if result.returncode != 0 and not stdout:
+    # Prefer the driver-written UTF-8 output file. Stdout is kept only as a
+    # compatibility fallback because YJK/YJKS may interleave progress text and
+    # append more bytes after the JSON object.
+    output = _read_json(driver_output_path)
+
+    if returncode != 0 and not stdout and output is None:
         stderr_snippet = stderr[:800] if stderr else "(no stderr)"
         raise RuntimeError(
-            f"YJK driver exited with code {result.returncode}.\n"
+            f"YJK driver exited with code {returncode}.\n"
             f"stderr: {stderr_snippet}"
         )
 
-    if not stdout:
+    if not stdout and output is None:
         stderr_snippet = stderr[:800] if stderr else "(no stderr)"
         raise RuntimeError(
             f"YJK driver produced no stdout output.\n"
             f"stderr: {stderr_snippet}"
         )
 
-    # YJK's Python runtime may print non-JSON text (copyright banners,
-    # init messages) to stdout before our _emit_json() call.  Extract
-    # the last complete JSON object from stdout so those lines don't
-    # break parsing.
-    output = _extract_last_json(stdout)
+    output = output or _extract_last_json(stdout)
     if output is None:
         raise RuntimeError(
             f"YJK driver output is not valid JSON.\n"
@@ -414,8 +589,17 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
 
     status = output.get("status", "error")
     if status == "error":
-        error_msg = output.get("detailed", {}).get("error", "Unknown YJK error")
-        raise RuntimeError(f"YJK analysis failed: {error_msg}")
+        error_detail = output.get("detailed", {})
+        error_msg = error_detail.get("error", "Unknown YJK error")
+        phase = error_detail.get("phase")
+        command = error_detail.get("command")
+        context = []
+        if phase:
+            context.append(f"phase={phase}")
+        if command:
+            context.append(f"command={command}")
+        context_text = f" ({', '.join(context)})" if context else ""
+        raise RuntimeError(f"YJK analysis failed{context_text}: {error_msg}")
 
     if stderr:
         warnings.append(f"YJK stderr: {stderr[:300]}")
@@ -424,10 +608,22 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     if isinstance(existing_warnings, list):
         warnings.extend(existing_warnings)
 
+    result_payload = {
+        key: value
+        for key, value in output.items()
+        if key not in {"status", "warnings"}
+    }
+    existing_meta = result_payload.get("meta")
+    result_payload["meta"] = {
+        **(existing_meta if isinstance(existing_meta, dict) else {}),
+        "traceId": trace_id,
+        "workDir": str(work_dir),
+        "runMetaPath": str(work_dir / "run-meta.json"),
+        "driverResultPath": str(work_dir / "driver-result.json"),
+        "driverOutputPath": str(driver_output_path),
+    }
     return {
         "status": output.get("status", "success"),
-        "summary": output.get("summary", {}),
-        "data": output.get("data", {}),
-        "detailed": output.get("detailed", {}),
+        **result_payload,
         "warnings": warnings,
     }

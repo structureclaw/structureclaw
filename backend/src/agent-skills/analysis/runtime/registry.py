@@ -64,6 +64,7 @@ class AnalysisEngineRegistry:
         self.app_name = app_name
         self.app_version = app_version
         self._opensees_runtime_reason: object = _UNSET
+        self._yjk_runtime_reason: object = _UNSET
 
     def list_engines(self) -> List[Dict[str, Any]]:
         builtin = self._builtin_manifests()
@@ -115,7 +116,7 @@ class AnalysisEngineRegistry:
         elif engine_id == "builtin-pkpm":
             result = self._probe_pkpm()
         elif engine_id == "builtin-yjk":
-            result = {"passed": False, "error": "YJK engine is not yet implemented"}
+            result = self._probe_yjk()
         else:
             result = {"passed": False, "error": f"Unknown engine '{engine_id}' for probe"}
         elapsed = round((perf_counter() - start) * 1000)
@@ -246,6 +247,59 @@ class AnalysisEngineRegistry:
             shutil.rmtree(work_dir, ignore_errors=True)
 
         return {"passed": True, "details": "PKPM probe completed: model created, SATWE ran, results extracted", "steps": steps}
+
+    def _probe_yjk(self) -> Dict[str, Any]:
+        steps: list[Dict[str, Any]] = []
+        env_info = self._resolve_yjk_environment()
+
+        if env_info.get("root"):
+            steps.append({
+                "name": "YJK install root",
+                "passed": True,
+                "details": str(env_info["root"]),
+                "source": env_info.get("rootSource"),
+            })
+        if env_info.get("yjksExe"):
+            steps.append({
+                "name": "yjks.exe path",
+                "passed": True,
+                "details": str(env_info["yjksExe"]),
+                "source": env_info.get("yjksExeSource"),
+            })
+        if env_info.get("pythonExe"):
+            steps.append({
+                "name": "YJK Python 3.10",
+                "passed": True,
+                "details": str(env_info["pythonExe"]),
+                "source": env_info.get("pythonSource"),
+            })
+
+        if env_info.get("error"):
+            steps.append({
+                "name": env_info.get("failedStep", "YJK environment"),
+                "passed": False,
+                "details": env_info["error"],
+            })
+            return {"passed": False, "error": env_info["error"], "steps": steps}
+
+        import_result = self._run_yjk_import_probe(env_info["root"], env_info["pythonExe"])
+        steps.append({
+            "name": "YJKAPI import",
+            "passed": import_result["passed"],
+            "details": (
+                "Imported YJKAPI DataFunc and YJKSControl"
+                if import_result["passed"]
+                else import_result.get("error")
+            ),
+        })
+        if not import_result["passed"]:
+            return {"passed": False, "error": import_result.get("error"), "steps": steps}
+
+        return {
+            "passed": True,
+            "details": "YJK probe completed: environment and YJKAPI imports are available; no heavy analysis was started",
+            "steps": steps,
+        }
 
     @staticmethod
     def _run_jws_cycle_probe(cycle_path: Path, work_dir: Path, timeout: int = 120) -> None:
@@ -658,7 +712,221 @@ class AnalysisEngineRegistry:
         return None
 
     def _yjk_unavailable_reason(self) -> Optional[str]:
-        return "YJK engine is not yet implemented"
+        if self._yjk_runtime_reason is not _UNSET:
+            return self._yjk_runtime_reason if isinstance(self._yjk_runtime_reason, str) else None
+
+        env_info = self._resolve_yjk_environment()
+        if env_info.get("error"):
+            self._yjk_runtime_reason = str(env_info["error"])
+            return self._yjk_runtime_reason
+
+        import_result = self._run_yjk_import_probe(env_info["root"], env_info["pythonExe"])
+        if not import_result["passed"]:
+            self._yjk_runtime_reason = str(import_result.get("error") or "YJKAPI import probe failed")
+            return self._yjk_runtime_reason
+        self._yjk_runtime_reason = None
+        return None
+
+    def _resolve_yjk_environment(self) -> Dict[str, Any]:
+        yjk_path = self._clean_env_path(os.getenv("YJK_PATH", ""))
+        yjks_root = self._clean_env_path(os.getenv("YJKS_ROOT", ""))
+        root_value = yjk_path or yjks_root
+        root_source = "YJK_PATH" if yjk_path else ("YJKS_ROOT" if yjks_root else None)
+
+        if not root_value:
+            for candidate in (Path(r"C:\YJKS\YJKS_8_0_0"), Path(r"D:\YJKS\YJKS_8_0_0")):
+                if candidate.is_dir():
+                    root_value = str(candidate)
+                    root_source = "default install path"
+                    break
+
+        if not root_value:
+            return {
+                "error": "YJK_PATH or YJKS_ROOT environment variable is not set",
+                "failedStep": "YJK install root",
+            }
+
+        root = Path(root_value)
+        if not root.is_dir():
+            return {
+                "root": root,
+                "rootSource": root_source,
+                "error": f"YJK install directory does not exist: {root}",
+                "failedStep": "YJK install root",
+            }
+
+        explicit_exe = self._clean_env_path(os.getenv("YJKS_EXE", ""))
+        if explicit_exe:
+            yjks_exe = Path(explicit_exe)
+            if not yjks_exe.is_file():
+                return {
+                    "root": root,
+                    "rootSource": root_source,
+                    "error": f"YJKS_EXE points to a missing yjks.exe: {yjks_exe}",
+                    "failedStep": "yjks.exe path",
+                }
+            yjks_exe_source = "YJKS_EXE"
+        else:
+            yjks_exe = self._find_yjks_exe(root)
+            if yjks_exe is None:
+                return {
+                    "root": root,
+                    "rootSource": root_source,
+                    "error": f"yjks.exe not found under YJK install root: {root}",
+                    "failedStep": "yjks.exe path",
+                }
+            yjks_exe_source = "install root"
+
+        explicit_python = self._clean_env_path(os.getenv("YJK_PYTHON_BIN", ""))
+        if explicit_python:
+            python_exe = Path(explicit_python)
+            if not python_exe.is_file():
+                return {
+                    "root": root,
+                    "rootSource": root_source,
+                    "yjksExe": yjks_exe,
+                    "yjksExeSource": yjks_exe_source,
+                    "error": f"YJK_PYTHON_BIN points to a missing Python executable: {python_exe}",
+                    "failedStep": "YJK Python 3.10",
+                }
+            python_source = "YJK_PYTHON_BIN"
+        else:
+            python_exe = self._find_yjk_python(root)
+            if python_exe is None:
+                return {
+                    "root": root,
+                    "rootSource": root_source,
+                    "yjksExe": yjks_exe,
+                    "yjksExeSource": yjks_exe_source,
+                    "error": f"YJK Python 3.10 not found under: {root}",
+                    "failedStep": "YJK Python 3.10",
+                }
+            python_source = "install root"
+
+        return {
+            "root": root,
+            "rootSource": root_source,
+            "yjksExe": yjks_exe,
+            "yjksExeSource": yjks_exe_source,
+            "pythonExe": python_exe,
+            "pythonSource": python_source,
+        }
+
+    @staticmethod
+    def _clean_env_path(value: str) -> str:
+        return value.strip().strip('"').strip("'")
+
+    @staticmethod
+    def _find_yjks_exe(root: Path) -> Optional[Path]:
+        for name in ("yjks.exe", "YJKS.exe"):
+            candidate = root / name
+            if candidate.is_file():
+                return candidate
+        return None
+
+    @staticmethod
+    def _find_yjk_python(root: Path) -> Optional[Path]:
+        for relative in (
+            Path("Python310") / "python.exe",
+            Path("python310") / "python.exe",
+        ):
+            candidate = root / relative
+            if candidate.is_file():
+                return candidate
+        return None
+
+    def _run_yjk_import_probe(self, root: Path, python_exe: Path, timeout: int = 20) -> Dict[str, Any]:
+        script = """
+import json
+import os
+import sys
+import traceback
+
+root = os.environ.get("YJKS_ROOT") or os.environ.get("YJK_PATH") or ""
+if root:
+    os.environ["PATH"] = root + os.pathsep + os.environ.get("PATH", "")
+    if root not in sys.path:
+        sys.path.insert(0, root)
+
+try:
+    from YJKAPI import DataFunc, YJKSControl  # noqa: F401
+    print(json.dumps({"available": True, "imports": ["DataFunc", "YJKSControl"]}))
+except Exception as exc:
+    print(json.dumps({
+        "available": False,
+        "error": f"{type(exc).__name__}: {exc}",
+        "traceback": traceback.format_exc(limit=5),
+    }))
+    sys.exit(1)
+"""
+        env = os.environ.copy()
+        env["YJKS_ROOT"] = str(root)
+        env["YJK_PATH"] = str(root)
+        env["PATH"] = f"{root}{os.pathsep}{python_exe.parent}{os.pathsep}{env.get('PATH', '')}"
+        existing_pythonpath = env.get("PYTHONPATH", "").strip()
+        env["PYTHONPATH"] = (
+            f"{root}{os.pathsep}{existing_pythonpath}"
+            if existing_pythonpath
+            else str(root)
+        )
+
+        try:
+            probe = subprocess.run(
+                [str(python_exe), "-c", script],
+                cwd=str(root),
+                env=env,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            return {
+                "passed": False,
+                "error": f"YJKAPI import probe timed out after {timeout}s using {python_exe}",
+            }
+        except (FileNotFoundError, OSError) as exc:
+            return {
+                "passed": False,
+                "error": f"Failed to launch YJK Python at {python_exe}: {exc}",
+            }
+
+        payload = self._extract_last_json_object(probe.stdout)
+        if probe.returncode == 0 and payload.get("available") is True:
+            return {"passed": True, "details": payload}
+
+        payload_error = str(payload.get("error", "")).strip()
+        stderr_snippet = self._short_output(probe.stderr)
+        stdout_snippet = self._short_output(probe.stdout)
+        diagnostics = payload_error or f"probe exited with code {probe.returncode}"
+        if stderr_snippet:
+            diagnostics = f"{diagnostics}; stderr: {stderr_snippet}"
+        if stdout_snippet and payload_error not in stdout_snippet:
+            diagnostics = f"{diagnostics}; stdout: {stdout_snippet}"
+        return {
+            "passed": False,
+            "error": f"YJKAPI import failed using {python_exe}: {diagnostics}",
+        }
+
+    @staticmethod
+    def _extract_last_json_object(text: str) -> Dict[str, Any]:
+        for line in reversed(text.splitlines()):
+            candidate = line.strip()
+            if not candidate.startswith("{"):
+                continue
+            try:
+                payload = json.loads(candidate)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(payload, dict):
+                return payload
+        return {}
+
+    @staticmethod
+    def _short_output(text: str, limit: int = 500) -> str:
+        collapsed = " ".join(text.strip().split())
+        return collapsed[:limit]
 
     def _builtin_manifests(self) -> List[Dict[str, Any]]:
         manifests: List[Dict[str, Any]] = []

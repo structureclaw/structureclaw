@@ -32,6 +32,7 @@ type FileStoreData = Record<string, FileStoreEntry>;
 
 export class AgentMemoryFileStore {
   private readonly filePath: string;
+  private lastUpdatedAtMs = 0;
 
   constructor(workspaceRoot: string) {
     const dir = path.join(workspaceRoot, '.runtime');
@@ -41,7 +42,7 @@ export class AgentMemoryFileStore {
   async store(key: string, value: InputJsonValue): Promise<AgentMemoryEntryView> {
     const normalizedKey = normalizeMemoryKey(key);
     const data = await this.readData();
-    const updatedAt = new Date().toISOString();
+    const updatedAt = this.nextUpdatedAt(data);
     data[normalizedKey] = { value: value as JsonValue, updatedAt };
     await this.writeData(data);
     return {
@@ -121,6 +122,17 @@ export class AgentMemoryFileStore {
     const tmp = path.join(dir, `.workspace-memory-${crypto.randomUUID()}.tmp`);
     await fs.promises.writeFile(tmp, JSON.stringify(data, null, 2), 'utf-8');
     await fs.promises.rename(tmp, this.filePath);
+  }
+
+  private nextUpdatedAt(data: FileStoreData): string {
+    const persistedMaxMs = Object.values(data).reduce((max, entry) => {
+      const ms = Date.parse(entry.updatedAt);
+      return Number.isFinite(ms) && ms > max ? ms : max;
+    }, 0);
+    const nowMs = Date.now();
+    const nextMs = Math.max(nowMs, this.lastUpdatedAtMs + 1, persistedMaxMs + 1);
+    this.lastUpdatedAtMs = nextMs;
+    return new Date(nextMs).toISOString();
   }
 }
 

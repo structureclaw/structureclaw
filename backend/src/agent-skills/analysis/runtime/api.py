@@ -6,6 +6,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from typing import List, Dict, Any, Optional
 import logging
+import os
+import traceback
 
 from registry import AnalysisEngineRegistry
 from structure_protocol.structure_model_v2 import StructureModelV2
@@ -13,6 +15,10 @@ from structure_protocol.structure_model_v2 import StructureModelV2
 # 配置日志
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _include_error_traceback() -> bool:
+    return os.getenv("ANALYSIS_INCLUDE_TRACEBACK", "").strip().lower() in {"1", "true", "yes", "on"}
 
 app = FastAPI(
     title="StructureClaw Analysis Runtime",
@@ -134,8 +140,23 @@ async def analyze(request: AnalysisRequest) -> AnalysisResponse:
         raise
 
     except Exception as e:
-        logger.error(f"Analysis failed: {str(e)}")
+        logger.exception("Analysis failed")
         now = datetime.now(timezone.utc).isoformat()
+        error_meta = {
+            "engineId": request.engine_id or "auto",
+            "engineName": app.title,
+            "engineVersion": app.version,
+            "engineKind": "python",
+            "selectionMode": "manual" if request.engine_id else "auto",
+            "fallbackFrom": None,
+            "timestamp": now,
+            "exceptionType": type(e).__name__,
+        }
+        if _include_error_traceback():
+            traceback_summary = "".join(
+                traceback.format_exception(type(e), e, e.__traceback__, limit=8)
+            )
+            error_meta["traceback"] = traceback_summary[-4000:]
         return AnalysisResponse(
             schema_version=request.model.schema_version,
             analysis_type=request.type,
@@ -143,13 +164,5 @@ async def analyze(request: AnalysisRequest) -> AnalysisResponse:
             error_code="ANALYSIS_EXECUTION_FAILED",
             message=str(e),
             data={},
-            meta={
-                "engineId": request.engine_id or "auto",
-                "engineName": app.title,
-                "engineVersion": app.version,
-                "engineKind": "python",
-                "selectionMode": "manual" if request.engine_id else "auto",
-                "fallbackFrom": None,
-                "timestamp": now,
-            },
+            meta=error_meta,
         )
