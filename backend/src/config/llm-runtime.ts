@@ -1,6 +1,7 @@
 /**
  * LLM runtime settings — reads/writes LLM overrides from the unified
- * settings.json file.  Falls back to .env defaults when no override exists.
+ * settings.json file.  No env fallback; all config goes through settings.json
+ * or hardcoded defaults.
  *
  * Public API unchanged: getEffectiveLlmSettings / getPublicLlmSettings /
  * updateRuntimeLlmSettings / clearRuntimeLlmSettings.
@@ -13,13 +14,15 @@ import {
 } from './settings-file.js';
 
 // ---------------------------------------------------------------------------
-// Types (unchanged public API)
+// Types
 // ---------------------------------------------------------------------------
 
 type StoredLlmSettings = {
   baseUrl?: string;
   model?: string;
   apiKey?: string;
+  timeoutMs?: number;
+  maxRetries?: number;
 };
 
 export type EffectiveLlmSettings = Pick<
@@ -27,8 +30,8 @@ export type EffectiveLlmSettings = Pick<
   'llmApiKey' | 'llmModel' | 'llmBaseUrl' | 'llmTimeoutMs' | 'llmMaxRetries'
 >;
 
-export type LlmValueSource = 'runtime' | 'env';
-export type ApiKeySource = LlmValueSource | 'unset';
+export type LlmValueSource = 'runtime' | 'default';
+export type ApiKeySource = 'runtime' | 'unset';
 
 export type PublicLlmSettings = {
   baseUrl: string;
@@ -49,6 +52,15 @@ export type UpdateRuntimeLlmSettingsInput = {
 };
 
 // ---------------------------------------------------------------------------
+// Hardcoded defaults (used for comparison when storing settings)
+// ---------------------------------------------------------------------------
+
+const LLM_DEFAULTS = {
+  baseUrl: 'https://api.openai.com/v1',
+  model: 'gpt-4-turbo-preview',
+} as const;
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -56,14 +68,6 @@ function normalizeOptionalString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
-}
-
-function getEnvDefaults() {
-  return {
-    baseUrl: (process.env.LLM_BASE_URL || '').trim() || config.llmBaseUrl,
-    model: (process.env.LLM_MODEL || '').trim() || config.llmModel,
-    apiKey: (process.env.LLM_API_KEY || '').trim(),
-  };
 }
 
 function maskApiKey(apiKey: string | undefined): string {
@@ -81,45 +85,37 @@ function getRuntimeLlmSettings(): StoredLlmSettings | null {
 
 export function getEffectiveLlmSettings(): EffectiveLlmSettings {
   const runtimeSettings = getRuntimeLlmSettings();
-  const envDefaults = getEnvDefaults();
-
   return {
-    llmApiKey: runtimeSettings?.apiKey ?? envDefaults.apiKey,
-    llmModel: runtimeSettings?.model ?? envDefaults.model,
-    llmBaseUrl: runtimeSettings?.baseUrl ?? envDefaults.baseUrl,
-    llmTimeoutMs: config.llmTimeoutMs,
-    llmMaxRetries: config.llmMaxRetries,
+    llmApiKey: runtimeSettings?.apiKey ?? '',
+    llmModel: runtimeSettings?.model ?? LLM_DEFAULTS.model,
+    llmBaseUrl: runtimeSettings?.baseUrl ?? LLM_DEFAULTS.baseUrl,
+    llmTimeoutMs: runtimeSettings?.timeoutMs ?? config.llmTimeoutMs,
+    llmMaxRetries: runtimeSettings?.maxRetries ?? config.llmMaxRetries,
   };
 }
 
 export function getPublicLlmSettings(): PublicLlmSettings {
   const runtimeSettings = getRuntimeLlmSettings();
-  const effectiveSettings = getEffectiveLlmSettings();
-  const envDefaults = getEnvDefaults();
-  const hasApiKey = effectiveSettings.llmApiKey.trim().length > 0;
-  const hasBaseUrlOverride = runtimeSettings?.baseUrl !== undefined && runtimeSettings.baseUrl !== envDefaults.baseUrl;
-  const hasModelOverride = runtimeSettings?.model !== undefined && runtimeSettings.model !== envDefaults.model;
-  const hasApiKeyOverride = runtimeSettings?.apiKey !== undefined && runtimeSettings.apiKey !== envDefaults.apiKey;
+  const effective = getEffectiveLlmSettings();
+  const hasApiKey = effective.llmApiKey.trim().length > 0;
+  const hasBaseUrlOverride = runtimeSettings?.baseUrl !== undefined;
+  const hasModelOverride = runtimeSettings?.model !== undefined;
+  const hasApiKeyOverride = runtimeSettings?.apiKey !== undefined && runtimeSettings.apiKey.trim().length > 0;
 
   return {
-    baseUrl: effectiveSettings.llmBaseUrl,
-    model: effectiveSettings.llmModel,
+    baseUrl: effective.llmBaseUrl,
+    model: effective.llmModel,
     hasApiKey,
-    apiKeyMasked: maskApiKey(hasApiKey ? effectiveSettings.llmApiKey : undefined),
+    apiKeyMasked: maskApiKey(hasApiKey ? effective.llmApiKey : undefined),
     hasOverrides: hasBaseUrlOverride || hasModelOverride || hasApiKeyOverride,
-    baseUrlSource: hasBaseUrlOverride ? 'runtime' : 'env',
-    modelSource: hasModelOverride ? 'runtime' : 'env',
-    apiKeySource: hasApiKeyOverride
-      ? 'runtime'
-      : envDefaults.apiKey
-        ? 'env'
-        : 'unset',
+    baseUrlSource: hasBaseUrlOverride ? 'runtime' : 'default',
+    modelSource: hasModelOverride ? 'runtime' : 'default',
+    apiKeySource: hasApiKey ? 'runtime' : 'unset',
   };
 }
 
 export function updateRuntimeLlmSettings(input: UpdateRuntimeLlmSettingsInput): PublicLlmSettings {
   const existingSettings = getRuntimeLlmSettings();
-  const envDefaults = getEnvDefaults();
   const nextBaseUrl = input.baseUrl.trim();
   const nextModel = input.model.trim();
 
@@ -129,16 +125,13 @@ export function updateRuntimeLlmSettings(input: UpdateRuntimeLlmSettingsInput): 
   if (apiKeyMode === 'inherit') {
     nextApiKey = undefined;
   } else if (apiKeyMode === 'replace') {
-    const normalizedApiKey = normalizeOptionalString(input.apiKey);
-    nextApiKey = normalizedApiKey && normalizedApiKey !== envDefaults.apiKey
-      ? normalizedApiKey
-      : undefined;
+    nextApiKey = normalizeOptionalString(input.apiKey);
   }
 
   const llm: SettingsFileLlm = {
-    baseUrl: nextBaseUrl !== envDefaults.baseUrl ? nextBaseUrl : undefined,
-    model: nextModel !== envDefaults.model ? nextModel : undefined,
-    apiKey: nextApiKey && nextApiKey !== envDefaults.apiKey ? nextApiKey : undefined,
+    baseUrl: nextBaseUrl !== LLM_DEFAULTS.baseUrl ? nextBaseUrl : undefined,
+    model: nextModel !== LLM_DEFAULTS.model ? nextModel : undefined,
+    apiKey: nextApiKey,
   };
 
   // Read current full settings, update llm section only

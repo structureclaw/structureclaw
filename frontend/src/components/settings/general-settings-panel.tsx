@@ -13,7 +13,7 @@ import { useI18n, type MessageKey } from '@/lib/i18n'
 // Types
 // ---------------------------------------------------------------------------
 
-type ValueSource = 'runtime' | 'env' | 'default'
+type ValueSource = 'runtime' | 'default'
 type Field<T> = { value: T; source: ValueSource }
 
 type SettingsResponse = {
@@ -133,12 +133,10 @@ const INPUT_CLS = 'mt-2 w-full rounded-2xl border border-border/70 bg-background
 function SourceBadge({ source, t }: { source: ValueSource; t: (key: MessageKey) => string }) {
   const colors: Record<ValueSource, string> = {
     runtime: 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-200',
-    env: 'bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200',
     default: 'bg-gray-100 text-gray-600 dark:bg-gray-800/40 dark:text-gray-400',
   }
   const labels: Record<ValueSource, MessageKey> = {
     runtime: 'generalSettingsSourceRuntime',
-    env: 'generalSettingsSourceEnv',
     default: 'generalSettingsSourceDefault',
   }
   return (
@@ -362,13 +360,10 @@ export function GeneralSettingsPanel() {
         </CardHeader>
         <CardContent className="space-y-3 text-sm leading-6 text-muted-foreground">
           <p>
-            <span className="font-medium text-foreground">settings.json</span> — Runtime overrides saved via this panel or the API. Takes highest priority.
+            <span className="font-medium text-foreground">settings.json</span> — Configuration saved via this panel or the API. All changes are stored here.
           </p>
           <p>
-            <span className="font-medium text-foreground">.env</span> — Environment file for advanced users. Falls through when no runtime override exists.
-          </p>
-          <p>
-            <span className="font-medium text-foreground">Defaults</span> — Built-in defaults used when neither settings.json nor .env provides a value.
+            <span className="font-medium text-foreground">Defaults</span> — Built-in defaults used when settings.json does not provide a value.
           </p>
         </CardContent>
       </Card>

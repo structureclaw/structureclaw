@@ -32,7 +32,6 @@
     "@langchain/langgraph": "^1.2.9",
     "@langchain/openai": "^1.4.4",
     "@prisma/client": "^6.19.2",
-    "dotenv": "^17.3.1",
     "fastify": "^5.8.5",
     "pg": "^8.20.0",
     "pino": "^10.3.1",

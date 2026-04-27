@@ -338,13 +338,23 @@ function applyCnProfileDefaults(env, dotEnv) {
   }
 }
 
+function readSettingsJson(paths) {
+  const settingsPath = path.join(path.dirname(paths.envFile), "settings.json");
+  try {
+    if (pathExists(settingsPath)) {
+      return JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    }
+  } catch { /* return empty */ }
+  return {};
+}
+
 function loadProjectEnvironment(rootDir, logger = () => {}, options = {}) {
   const paths = resolvePaths(rootDir);
   ensureDirectory(paths.runtimeDir);
   ensureDirectory(paths.logDir);
   ensureDirectory(paths.pidDir);
-  ensureFileFromExample(paths.envFile, paths.envExampleFile, logger);
   const dotEnv = readDotEnv(paths.envFile);
+  const settings = readSettingsJson(paths);
   const profile =
     String(options.profile || process.env.SCLAW_PROFILE || dotEnv.SCLAW_PROFILE || "default").toLowerCase();
   const programName = String(options.programName || process.env.SCLAW_PROGRAM_NAME || "sclaw");
@@ -354,6 +364,11 @@ function loadProjectEnvironment(rootDir, logger = () => {}, options = {}) {
     SCLAW_PROFILE: profile,
     SCLAW_PROGRAM_NAME: programName,
   };
+  // Apply settings.json values (take priority over .env for core settings)
+  if (settings.server?.port) env.PORT = String(settings.server.port);
+  if (settings.server?.frontendPort) env.FRONTEND_PORT = String(settings.server.frontendPort);
+  if (settings.server?.host) env.HOST = settings.server.host;
+  if (settings.database?.url) env.DATABASE_URL = settings.database.url;
   applyCnProfileDefaults(env, dotEnv);
   env.DOCKER_REGISTRY_MIRROR = normalizeDockerRegistryMirror(env.DOCKER_REGISTRY_MIRROR);
   env.APT_MIRROR = normalizeAptMirror(env.APT_MIRROR);
@@ -933,6 +948,7 @@ module.exports = {
   requestUrl,
   requireCommand,
   resolveAnalysisPython,
+  readSettingsJson,
   resolvePaths,
   resolveProjectRoot,
   runCommand,

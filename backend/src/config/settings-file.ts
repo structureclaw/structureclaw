@@ -1,7 +1,7 @@
 /**
  * Unified settings file — reads/writes `~/.structureclaw/settings.json`.
  *
- * All fields are optional; missing values fall back to .env / hardcoded defaults.
+ * All fields are optional; missing values fall back to hardcoded defaults.
  * Extends the same cache/read/write pattern as llm-runtime.ts.
  */
 import fs from 'node:fs';

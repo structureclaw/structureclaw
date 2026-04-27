@@ -98,11 +98,13 @@ node tests/runner.mjs llm-integration                        # LLM integration t
 
 ## Configuration
 
-Environment variables live in `.env` (template: `.env.example`). Key variables:
+All user-facing settings are stored in `settings.json` (managed via the frontend Settings UI or the admin API). Key settings:
 
-- `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL`
-- `DATABASE_URL` — SQLite by default (`file:../../.runtime/data/structureclaw.db`)
-- `ANALYSIS_PYTHON_BIN` — leave blank for auto-detected `backend/.venv` Python
+- `llm.apiKey`, `llm.model`, `llm.baseUrl`
+- `database.url` — SQLite by default (`file:~/.structureclaw/data/structureclaw.db`)
+- `analysis.pythonBin` — leave blank for auto-detected `backend/.venv` Python
+
+Infrastructure-only env vars: `SCLAW_DATA_DIR`, `NODE_ENV`.
 
 ## Testing Guidance
 
@@ -124,9 +126,9 @@ See `docs/agent-architecture.md` for the full canonical design reference.
 ## Security and Config
 
 - Never commit live secrets, tokens, or private keys.
-- Use `.env.example` as the template.
-- Backend runtime depends on environment configuration for the OpenAI-compatible LLM interface and infrastructure; document any new defaults or required variables.
-- When documenting LLM setup, prefer the existing OpenAI-compatible `LLM_API_KEY` + `LLM_BASE_URL` + `LLM_MODEL` pattern.
+- All configuration is managed through `settings.json` via the frontend UI or admin API.
+- Backend runtime depends on settings.json for the OpenAI-compatible LLM interface and infrastructure; document any new defaults or required settings.
+- When documenting LLM setup, prefer the existing OpenAI-compatible `llm.apiKey` + `llm.baseUrl` + `llm.model` pattern in settings.json.
 
 ## Commit and PR Guidance
 - Follow conventional commit style, for example:

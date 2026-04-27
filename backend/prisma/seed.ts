@@ -1,15 +1,33 @@
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import dotenv from 'dotenv';
 import { PrismaClient } from '@prisma/client';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const rootEnvPath = path.resolve(__dirname, '../../.env');
-const defaultSqliteDatabasePath = path.resolve(__dirname, '../../.runtime/data/structureclaw.db');
 
-dotenv.config({ path: rootEnvPath, quiet: true });
-process.env.DATABASE_URL = process.env.DATABASE_URL || `file:${defaultSqliteDatabasePath}`;
+// Resolve database URL from settings.json, falling back to default SQLite path
+function resolveDatabaseUrl(): string {
+  const userDataDir = process.env.SCLAW_DATA_DIR || path.join(os.homedir(), '.structureclaw');
+  const settingsPath = path.join(userDataDir, 'settings.json');
+
+  try {
+    if (fs.existsSync(settingsPath)) {
+      const raw = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      if (raw?.database?.url && typeof raw.database.url === 'string') {
+        return raw.database.url.trim();
+      }
+    }
+  } catch {
+    // Fall through to default
+  }
+
+  const defaultSqliteDatabasePath = path.join(userDataDir, 'data', 'structureclaw.db');
+  return `file:${defaultSqliteDatabasePath}`;
+}
+
+process.env.DATABASE_URL = process.env.DATABASE_URL || resolveDatabaseUrl();
 
 const prisma = new PrismaClient();
 

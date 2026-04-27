@@ -7,8 +7,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { API_BASE } from '@/lib/api-base'
 import { useI18n } from '@/lib/i18n'
 
-type LlmValueSource = 'runtime' | 'env'
-type ApiKeySource = LlmValueSource | 'unset'
+type LlmValueSource = 'runtime' | 'default'
+type ApiKeySource = 'runtime' | 'unset'
 type TokenMode = 'keep' | 'replace' | 'inherit'
 
 type LlmSettingsResponse = {
@@ -37,8 +37,8 @@ export function LlmSettingsPanel() {
   const [token, setToken] = useState('')
   const [hasApiKey, setHasApiKey] = useState(false)
   const [hasOverrides, setHasOverrides] = useState(false)
-  const [baseUrlSource, setBaseUrlSource] = useState<LlmValueSource>('env')
-  const [modelSource, setModelSource] = useState<LlmValueSource>('env')
+  const [baseUrlSource, setBaseUrlSource] = useState<LlmValueSource>('default')
+  const [modelSource, setModelSource] = useState<LlmValueSource>('default')
   const [apiKeySource, setApiKeySource] = useState<ApiKeySource>('unset')
   const [tokenMode, setTokenMode] = useState<TokenMode>('replace')
   const [isSaving, setIsSaving] = useState(false)
@@ -90,12 +90,12 @@ export function LlmSettingsPanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function sourceLabel(source: ApiKeySource) {
+  function sourceLabel(source: LlmValueSource | ApiKeySource) {
     if (source === 'runtime') {
       return t('llmSettingsSourceRuntime')
     }
-    if (source === 'env') {
-      return t('llmSettingsSourceEnv')
+    if (source === 'default') {
+      return t('llmSettingsSourceDefault')
     }
     return t('llmSettingsSourceUnset')
   }
@@ -215,7 +215,7 @@ export function LlmSettingsPanel() {
                 onClick={() => void handleResetToEnvDefaults()}
                 disabled={isResetting || isSaving}
               >
-                {t('llmSettingsUseEnvDefaults')}
+                {t('llmSettingsResetDefaults')}
               </Button>
             )}
           </div>
@@ -332,7 +332,7 @@ export function LlmSettingsPanel() {
                         setToken(MASKED_TOKEN)
                       }}
                     >
-                      {t('llmSettingsUseEnvToken')}
+                      {t('llmSettingsClearToken')}
                     </Button>
                   )}
                 </div>

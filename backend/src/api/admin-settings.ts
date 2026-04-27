@@ -20,46 +20,34 @@ import {
 // Source resolution
 // ---------------------------------------------------------------------------
 
-type ValueSource = 'runtime' | 'env' | 'default';
+type ValueSource = 'runtime' | 'default';
 
 function stringSource(
   runtimeValue: string | undefined,
-  envValue: string | undefined,
   defaultValue: string,
 ): { value: string; source: ValueSource } {
   if (runtimeValue !== undefined && runtimeValue !== '') {
     return { value: runtimeValue, source: 'runtime' };
-  }
-  if (envValue !== undefined && envValue !== '') {
-    return { value: envValue, source: 'env' };
   }
   return { value: defaultValue, source: 'default' };
 }
 
 function numberSource(
   runtimeValue: number | undefined,
-  envValue: number | undefined,
   defaultValue: number,
 ): { value: number; source: ValueSource } {
   if (runtimeValue !== undefined) {
     return { value: runtimeValue, source: 'runtime' };
-  }
-  if (envValue !== undefined) {
-    return { value: envValue, source: 'env' };
   }
   return { value: defaultValue, source: 'default' };
 }
 
 function booleanSource(
   runtimeValue: boolean | undefined,
-  envValue: boolean | undefined,
   defaultValue: boolean,
 ): { value: boolean; source: ValueSource } {
   if (runtimeValue !== undefined) {
     return { value: runtimeValue, source: 'runtime' };
-  }
-  if (envValue !== undefined) {
-    return { value: envValue, source: 'env' };
   }
   return { value: defaultValue, source: 'default' };
 }
@@ -81,7 +69,7 @@ type SettingsResponse = {
     baseUrl: ValueField<string>;
     model: ValueField<string>;
     hasApiKey: boolean;
-    apiKeySource: 'runtime' | 'env' | 'unset';
+    apiKeySource: 'runtime' | 'unset';
     timeoutMs: ValueField<number>;
     maxRetries: ValueField<number>;
   };
@@ -169,72 +157,64 @@ function buildSettingsResponse(): SettingsResponse {
   };
 
   const hasApiKey = config.llmApiKey.trim().length > 0;
-  const apiKeyRuntime = file?.llm?.apiKey;
-  const apiKeyEnv = process.env.LLM_API_KEY;
-
-  let apiKeySource: 'runtime' | 'env' | 'unset' = 'unset';
-  if (apiKeyRuntime) {
-    apiKeySource = 'runtime';
-  } else if (apiKeyEnv && apiKeyEnv.trim().length > 0) {
-    apiKeySource = 'env';
-  }
+  const apiKeySource: 'runtime' | 'unset' = hasApiKey ? 'runtime' : 'unset';
 
   return {
     server: {
-      port: numberSource(file?.server?.port, parseInt(process.env.PORT || '', 10) || undefined, defaults.port),
-      host: stringSource(file?.server?.host, process.env.HOST, defaults.host),
-      bodyLimitMb: numberSource(file?.server?.bodyLimitMb, parseInt(process.env.BACKEND_BODY_LIMIT_MB || '', 10) || undefined, defaults.bodyLimitMb),
-      frontendPort: numberSource(file?.server?.frontendPort, parseInt(process.env.FRONTEND_PORT || '', 10) || undefined, defaults.frontendPort),
+      port: numberSource(file?.server?.port, defaults.port),
+      host: stringSource(file?.server?.host, defaults.host),
+      bodyLimitMb: numberSource(file?.server?.bodyLimitMb, defaults.bodyLimitMb),
+      frontendPort: numberSource(file?.server?.frontendPort, defaults.frontendPort),
     },
     llm: {
-      baseUrl: stringSource(file?.llm?.baseUrl, process.env.LLM_BASE_URL, defaults.llmBaseUrl),
-      model: stringSource(file?.llm?.model, process.env.LLM_MODEL, defaults.llmModel),
+      baseUrl: stringSource(file?.llm?.baseUrl, defaults.llmBaseUrl),
+      model: stringSource(file?.llm?.model, defaults.llmModel),
       hasApiKey,
       apiKeySource,
-      timeoutMs: numberSource(file?.llm?.timeoutMs, parseInt(process.env.LLM_TIMEOUT_MS || '', 10) || undefined, defaults.llmTimeoutMs),
-      maxRetries: numberSource(file?.llm?.maxRetries, parseInt(process.env.LLM_MAX_RETRIES || '', 10) || undefined, defaults.llmMaxRetries),
+      timeoutMs: numberSource(file?.llm?.timeoutMs, defaults.llmTimeoutMs),
+      maxRetries: numberSource(file?.llm?.maxRetries, defaults.llmMaxRetries),
     },
     database: {
-      url: stringSource(file?.database?.url, process.env.DATABASE_URL, defaults.databaseUrl),
+      url: stringSource(file?.database?.url, defaults.databaseUrl),
     },
     logging: {
-      level: stringSource(file?.logging?.level, process.env.LOG_LEVEL, defaults.logLevel),
-      llmLogEnabled: booleanSource(file?.logging?.llmLogEnabled, process.env.LLM_LOG_ENABLED === 'true' ? true : undefined, defaults.llmLogEnabled),
-      logMaxAgeDays: numberSource(file?.logging?.logMaxAgeDays, parseInt(process.env.LOG_MAX_AGE_DAYS || '', 10) || undefined, defaults.logMaxAgeDays),
-      logMaxSize: numberSource(file?.logging?.logMaxSize, parseInt(process.env.LOG_MAX_SIZE || '', 10) || undefined, defaults.logMaxSize),
-      llmLogDir: stringSource(file?.logging?.llmLogDir, process.env.LLM_LOG_DIR, defaults.llmLogDir),
+      level: stringSource(file?.logging?.level, defaults.logLevel),
+      llmLogEnabled: booleanSource(file?.logging?.llmLogEnabled, defaults.llmLogEnabled),
+      logMaxAgeDays: numberSource(file?.logging?.logMaxAgeDays, defaults.logMaxAgeDays),
+      logMaxSize: numberSource(file?.logging?.logMaxSize, defaults.logMaxSize),
+      llmLogDir: stringSource(file?.logging?.llmLogDir, defaults.llmLogDir),
     },
     analysis: {
-      pythonBin: stringSource(file?.analysis?.pythonBin, process.env.ANALYSIS_PYTHON_BIN, defaults.pythonBin),
-      pythonTimeoutMs: numberSource(file?.analysis?.pythonTimeoutMs, parseInt(process.env.ANALYSIS_PYTHON_TIMEOUT_MS || '', 10) || undefined, defaults.pythonTimeoutMs),
-      engineManifestPath: stringSource(file?.analysis?.engineManifestPath, process.env.ANALYSIS_ENGINE_MANIFEST_PATH, defaults.engineManifestPath),
+      pythonBin: stringSource(file?.analysis?.pythonBin, defaults.pythonBin),
+      pythonTimeoutMs: numberSource(file?.analysis?.pythonTimeoutMs, defaults.pythonTimeoutMs),
+      engineManifestPath: stringSource(file?.analysis?.engineManifestPath, defaults.engineManifestPath),
     },
     storage: {
-      reportsDir: stringSource(file?.storage?.reportsDir, process.env.REPORTS_DIR, defaults.reportsDir),
-      maxFileSize: numberSource(file?.storage?.maxFileSize, parseInt(process.env.MAX_FILE_SIZE || '', 10) || undefined, defaults.maxFileSize),
+      reportsDir: stringSource(file?.storage?.reportsDir, defaults.reportsDir),
+      maxFileSize: numberSource(file?.storage?.maxFileSize, defaults.maxFileSize),
     },
     cors: {
-      origins: stringSource(file?.cors?.origins, process.env.CORS_ORIGINS, defaults.corsOrigins),
+      origins: stringSource(file?.cors?.origins, defaults.corsOrigins),
     },
     agent: {
-      workspaceRoot: stringSource(file?.agent?.workspaceRoot, process.env.WORKSPACE_ROOT, defaults.workspaceRoot),
-      checkpointDir: stringSource(file?.agent?.checkpointDir, process.env.AGENT_CHECKPOINT_DIR, defaults.checkpointDir),
-      allowShell: booleanSource(file?.agent?.allowShell, process.env.AGENT_ALLOW_SHELL === 'true' ? true : undefined, defaults.allowShell),
-      allowedShellCommands: stringSource(file?.agent?.allowedShellCommands, process.env.AGENT_ALLOWED_SHELL_COMMANDS, defaults.allowedShellCommands),
-      shellTimeoutMs: numberSource(file?.agent?.shellTimeoutMs, parseInt(process.env.AGENT_SHELL_TIMEOUT_MS || '', 10) || undefined, defaults.shellTimeoutMs),
+      workspaceRoot: stringSource(file?.agent?.workspaceRoot, defaults.workspaceRoot),
+      checkpointDir: stringSource(file?.agent?.checkpointDir, defaults.checkpointDir),
+      allowShell: booleanSource(file?.agent?.allowShell, defaults.allowShell),
+      allowedShellCommands: stringSource(file?.agent?.allowedShellCommands, defaults.allowedShellCommands),
+      shellTimeoutMs: numberSource(file?.agent?.shellTimeoutMs, defaults.shellTimeoutMs),
     },
     pkpm: {
-      cyclePath: stringSource(file?.pkpm?.cyclePath, process.env.PKPM_CYCLE_PATH, defaults.pkpmCyclePath),
-      workDir: stringSource(file?.pkpm?.workDir, process.env.PKPM_WORK_DIR, defaults.pkpmWorkDir),
+      cyclePath: stringSource(file?.pkpm?.cyclePath, defaults.pkpmCyclePath),
+      workDir: stringSource(file?.pkpm?.workDir, defaults.pkpmWorkDir),
     },
     yjk: {
-      installRoot: stringSource(file?.yjk?.installRoot, process.env.YJK_PATH || process.env.YJKS_ROOT, defaults.yjkInstallRoot),
-      exePath: stringSource(file?.yjk?.exePath, process.env.YJKS_EXE, defaults.yjkExePath),
-      pythonBin: stringSource(file?.yjk?.pythonBin, process.env.YJK_PYTHON_BIN, defaults.yjkPythonBin),
-      workDir: stringSource(file?.yjk?.workDir, process.env.YJK_WORK_DIR, defaults.yjkWorkDir),
-      version: stringSource(file?.yjk?.version, process.env.YJK_VERSION, defaults.yjkVersion),
-      timeoutS: numberSource(file?.yjk?.timeoutS, parseInt(process.env.YJK_TIMEOUT_S || '', 10) || undefined, defaults.yjkTimeoutS),
-      invisible: booleanSource(file?.yjk?.invisible, process.env.YJK_INVISIBLE === '1' ? true : undefined, defaults.yjkInvisible),
+      installRoot: stringSource(file?.yjk?.installRoot, defaults.yjkInstallRoot),
+      exePath: stringSource(file?.yjk?.exePath, defaults.yjkExePath),
+      pythonBin: stringSource(file?.yjk?.pythonBin, defaults.yjkPythonBin),
+      workDir: stringSource(file?.yjk?.workDir, defaults.yjkWorkDir),
+      version: stringSource(file?.yjk?.version, defaults.yjkVersion),
+      timeoutS: numberSource(file?.yjk?.timeoutS, defaults.yjkTimeoutS),
+      invisible: booleanSource(file?.yjk?.invisible, defaults.yjkInvisible),
     },
   };
 }

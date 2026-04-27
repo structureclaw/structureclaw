@@ -26,7 +26,6 @@
     "backend/scripts/",
     "backend/src/agent-skills/",
     "backend/src/skill-shared/python/",
-    ".env.example",
     "CHANGELOG.md"
   ],
   "scripts": {
@@ -57,7 +56,6 @@
     "@langchain/langgraph": "^1.2.9",
     "@langchain/openai": "^1.4.4",
     "@prisma/client": "^6.19.2",
-    "dotenv": "^17.3.1",
     "fastify": "^5.8.5",
     "pino": "^10.3.1",
     "pino-pretty": "^13.1.3",

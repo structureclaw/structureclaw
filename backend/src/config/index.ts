@@ -1,4 +1,3 @@
-import dotenv from 'dotenv';
 import os from 'os';
 import path from 'path';
 import process from 'process';
@@ -19,17 +18,10 @@ function getUserDataDir(): string {
 const runtimeBaseDir = process.env.SCLAW_DATA_DIR
   || (isInstalledPackage ? getUserDataDir() : path.resolve(__dirname, '../../../.runtime'));
 
-const rootEnvPath = isInstalledPackage
-  ? path.join(runtimeBaseDir, '.env')
-  : path.resolve(__dirname, '../../../.env');
-
-// Load .env as fallback (advanced users can still use it)
-dotenv.config({ path: rootEnvPath });
-
 // Migrate legacy llm-settings.json → settings.json if needed
 migrateLegacyLlmSettings();
 
-// Load unified settings file (takes precedence over .env)
+// Load unified settings file (single source of user-facing truth)
 const fileSettings = readSettingsFile();
 
 const defaultSqliteDatabasePath = path.join(runtimeBaseDir, 'data', 'structureclaw.db');
@@ -50,21 +42,13 @@ function resolveReportsDir(rawValue: string | undefined): string {
   return path.resolve(__dirname, '../../../', trimmed);
 }
 
-const llmApiKey = fileSettings?.llm?.apiKey
-  ?? process.env.LLM_API_KEY
-  ?? '';
-const llmModel = fileSettings?.llm?.model
-  ?? (process.env.LLM_MODEL || undefined)
-  ?? 'gpt-4-turbo-preview';
-const llmBaseUrl = fileSettings?.llm?.baseUrl
-  ?? (process.env.LLM_BASE_URL || undefined)
-  ?? 'https://api.openai.com/v1';
-const frontendPort = fileSettings?.server?.frontendPort?.toString()
-  ?? (process.env.FRONTEND_PORT || '30000');
-const backendPort = fileSettings?.server?.port
-  ?? parseInt(process.env.PORT || '8000', 10);
+const llmApiKey = fileSettings?.llm?.apiKey ?? '';
+const llmModel = fileSettings?.llm?.model ?? 'gpt-4-turbo-preview';
+const llmBaseUrl = fileSettings?.llm?.baseUrl ?? 'https://api.openai.com/v1';
+const frontendPort = fileSettings?.server?.frontendPort?.toString() ?? '30000';
+const backendPort = fileSettings?.server?.port ?? 8000;
 const analysisEngineManifestPath = fileSettings?.analysis?.engineManifestPath
-  ?? (process.env.ANALYSIS_ENGINE_MANIFEST_PATH || path.join(runtimeBaseDir, 'analysis-engines.json'));
+  ?? path.join(runtimeBaseDir, 'analysis-engines.json');
 const defaultAnalysisPythonBin = isInstalledPackage
   ? (process.platform === 'win32'
     ? path.join(runtimeBaseDir, '.venv', 'Scripts', 'python.exe')
@@ -80,7 +64,7 @@ const defaultCorsOrigins = [
   `http://127.0.0.1:${backendPort}`,
 ];
 
-const corsOrigins = (fileSettings?.cors?.origins ?? (process.env.CORS_ORIGINS || defaultCorsOrigins.join(',')))
+const corsOrigins = (fileSettings?.cors?.origins ?? defaultCorsOrigins.join(','))
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
@@ -90,90 +74,69 @@ export { runtimeBaseDir };
 export const config = {
   // 服务配置
   port: typeof backendPort === 'number' ? backendPort : parseInt(String(backendPort), 10),
-  host: fileSettings?.server?.host ?? (process.env.HOST || '0.0.0.0'),
+  host: fileSettings?.server?.host ?? '0.0.0.0',
   nodeEnv: process.env.NODE_ENV || 'development',
-  bodyLimitMb: fileSettings?.server?.bodyLimitMb
-    ?? parseInt(process.env.BACKEND_BODY_LIMIT_MB || '20', 10),
+  bodyLimitMb: fileSettings?.server?.bodyLimitMb ?? 20,
   frontendPort: parseInt(frontendPort, 10),
 
   // 数据库配置
-  databaseUrl: fileSettings?.database?.url ?? (process.env.DATABASE_URL || defaultSqliteDatabaseUrl),
+  databaseUrl: fileSettings?.database?.url ?? defaultSqliteDatabaseUrl,
 
   // AI 配置
   llmApiKey,
   llmModel,
   llmBaseUrl,
-  llmTimeoutMs: fileSettings?.llm?.timeoutMs
-    ?? parseInt(process.env.LLM_TIMEOUT_MS || '180000', 10),
-  llmMaxRetries: fileSettings?.llm?.maxRetries
-    ?? parseInt(process.env.LLM_MAX_RETRIES || '0', 10),
+  llmTimeoutMs: fileSettings?.llm?.timeoutMs ?? 180000,
+  llmMaxRetries: fileSettings?.llm?.maxRetries ?? 0,
 
   // 分析执行配置
-  analysisPythonBin: fileSettings?.analysis?.pythonBin
-    ?? (process.env.ANALYSIS_PYTHON_BIN || defaultAnalysisPythonBin),
-  analysisPythonTimeoutMs: fileSettings?.analysis?.pythonTimeoutMs
-    ?? parseInt(process.env.ANALYSIS_PYTHON_TIMEOUT_MS || '600000', 10),
+  analysisPythonBin: fileSettings?.analysis?.pythonBin ?? defaultAnalysisPythonBin,
+  analysisPythonTimeoutMs: fileSettings?.analysis?.pythonTimeoutMs ?? 600000,
   analysisEngineManifestPath,
 
   // CORS
   corsOrigins,
 
   // 文件存储
-  reportsDir: resolveReportsDir(fileSettings?.storage?.reportsDir ?? process.env.REPORTS_DIR),
-  maxFileSize: fileSettings?.storage?.maxFileSize
-    ?? parseInt(process.env.MAX_FILE_SIZE || '104857600', 10),
+  reportsDir: resolveReportsDir(fileSettings?.storage?.reportsDir),
+  maxFileSize: fileSettings?.storage?.maxFileSize ?? 104857600,
 
   // 日志级别
-  logLevel: fileSettings?.logging?.level ?? (process.env.LOG_LEVEL || 'info'),
+  logLevel: fileSettings?.logging?.level ?? 'info',
   /** 应用日志文件路径；默认 <runtimeBaseDir>/logs/app.log */
-  logFile: process.env.LOG_FILE || path.join(runtimeBaseDir, 'logs', 'app.log'),
+  logFile: path.join(runtimeBaseDir, 'logs', 'app.log'),
   /** 日志轮换：保留天数（默认 7 天） */
-  logMaxAgeDays: fileSettings?.logging?.logMaxAgeDays
-    ?? (Math.max(1, parseInt(process.env.LOG_MAX_AGE_DAYS || '7', 10)) || 7),
+  logMaxAgeDays: fileSettings?.logging?.logMaxAgeDays ?? 7,
   /** 日志轮换：单文件最大字节数（默认 100MB） */
-  logMaxSize: fileSettings?.logging?.logMaxSize
-    ?? (Math.max(1, parseInt(process.env.LOG_MAX_SIZE || '104857600', 10)) || 104857600),
+  logMaxSize: fileSettings?.logging?.logMaxSize ?? 104857600,
 
-  // LLM 调用日志（默认关闭，设置 LLM_LOG_ENABLED=true 开启）
-  llmLogEnabled: fileSettings?.logging?.llmLogEnabled
-    ?? (process.env.LLM_LOG_ENABLED === 'true'),
-  llmLogDir: fileSettings?.logging?.llmLogDir
-    ?? (process.env.LLM_LOG_DIR || path.join(runtimeBaseDir, 'logs')),
-  llmSettingsPath: process.env.LLM_SETTINGS_PATH || defaultLlmSettingsPath,
+  // LLM 调用日志（默认关闭，设置 llmLogEnabled: true 开启）
+  llmLogEnabled: fileSettings?.logging?.llmLogEnabled ?? false,
+  llmLogDir: fileSettings?.logging?.llmLogDir ?? path.join(runtimeBaseDir, 'logs'),
+  llmSettingsPath: defaultLlmSettingsPath,
 
   // Agent 配置
-  agentWorkspaceRoot: fileSettings?.agent?.workspaceRoot
-    ?? (process.env.WORKSPACE_ROOT || ''),
-  agentCheckpointDir: fileSettings?.agent?.checkpointDir
-    ?? (process.env.AGENT_CHECKPOINT_DIR || path.join(runtimeBaseDir, 'agent-checkpoints')),
-  agentAllowShell: fileSettings?.agent?.allowShell
-    ?? (process.env.AGENT_ALLOW_SHELL === 'true'),
-  agentAllowedShell: fileSettings?.agent?.allowedShellCommands
-    ?? (process.env.AGENT_ALLOWED_SHELL_COMMANDS || 'node,npm,python,python3,./sclaw,./sclaw_cn'),
-  agentShellTimeoutMs: fileSettings?.agent?.shellTimeoutMs
-    ?? parseInt(process.env.AGENT_SHELL_TIMEOUT_MS || '300000', 10),
+  agentWorkspaceRoot: fileSettings?.agent?.workspaceRoot ?? '',
+  agentCheckpointDir: fileSettings?.agent?.checkpointDir ?? path.join(runtimeBaseDir, 'agent-checkpoints'),
+  agentAllowShell: fileSettings?.agent?.allowShell ?? false,
+  agentAllowedShells: fileSettings?.agent?.allowedShellCommands ?? 'node,npm,python,python3,./sclaw,./sclaw_cn',
+  agentShellTimeoutMs: fileSettings?.agent?.shellTimeoutMs ?? 300000,
 
   // PKPM 引擎配置
-  pkpmCyclePath: fileSettings?.pkpm?.cyclePath
-    ?? (process.env.PKPM_CYCLE_PATH || ''),
-  pkpmWorkDir: fileSettings?.pkpm?.workDir
-    ?? (process.env.PKPM_WORK_DIR || ''),
+  pkpmCyclePath: fileSettings?.pkpm?.cyclePath ?? '',
+  pkpmWorkDir: fileSettings?.pkpm?.workDir ?? '',
 
   // YJK 引擎配置
-  yjkInstallRoot: fileSettings?.yjk?.installRoot
-    ?? (process.env.YJK_PATH || process.env.YJKS_ROOT || ''),
-  yjkExePath: fileSettings?.yjk?.exePath
-    ?? (process.env.YJKS_EXE || ''),
-  yjkPythonBin: fileSettings?.yjk?.pythonBin
-    ?? (process.env.YJK_PYTHON_BIN || ''),
-  yjkWorkDir: fileSettings?.yjk?.workDir
-    ?? (process.env.YJK_WORK_DIR || ''),
-  yjkVersion: fileSettings?.yjk?.version
-    ?? (process.env.YJK_VERSION || '8.0.0'),
-  yjkTimeoutS: fileSettings?.yjk?.timeoutS
-    ?? parseInt(process.env.YJK_TIMEOUT_S || '600', 10),
-  yjkInvisible: fileSettings?.yjk?.invisible
-    ?? (process.env.YJK_INVISIBLE === '1'),
+  yjkInstallRoot: fileSettings?.yjk?.installRoot ?? '',
+  yjkExePath: fileSettings?.yjk?.exePath ?? '',
+  yjkPythonBin: fileSettings?.yjk?.pythonBin ?? '',
+  yjkWorkDir: fileSettings?.yjk?.workDir ?? '',
+  yjkVersion: fileSettings?.yjk?.version ?? '8.0.0',
+  yjkTimeoutS: fileSettings?.yjk?.timeoutS ?? 600,
+  yjkInvisible: fileSettings?.yjk?.invisible ?? false,
 };
 
 export type Config = typeof config;
+
+// Expose DATABASE_URL for Prisma CLI / tooling that reads process.env directly
+process.env.DATABASE_URL = config.databaseUrl;
