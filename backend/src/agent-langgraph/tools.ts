@@ -486,7 +486,7 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
         traceId,
         analysisType,
         model,
-        parameters: {},
+        parameters: { traceId },
         skillIds,
         postToEngineWithRetry,
       });
@@ -534,6 +534,19 @@ export function createRunCodeCheckTool(skillRuntime: AgentSkillRuntime) {
       const configurable = getConfigurable(config);
       const state = configurable.agentState;
       const toolCallId = getToolCallId(config);
+      const skillIds = configurable.skillScope;
+      const selectedDesignCode = skillRuntime.resolveCodeCheckDesignCodeFromSkillIds(skillIds);
+      const codeCheckSkillId = selectedDesignCode
+        ? skillRuntime.resolveCodeCheckSkillId(selectedDesignCode)
+        : undefined;
+      if (!codeCheckSkillId) {
+        const skipped = {
+          skipped: true,
+          reason: 'No code-check skill is selected in the current skill scope.',
+        };
+        logToolCall(log, { tool: 'run_code_check', durationMs: Date.now() - start, extra: { skipped: true, reason: skipped.reason } });
+        return toolResult(toolCallId, 'run_code_check', JSON.stringify(skipped));
+      }
 
       // Read model and analysis from graph state channels
       const model = state?.model;
@@ -549,11 +562,12 @@ export function createRunCodeCheckTool(skillRuntime: AgentSkillRuntime) {
       const result = await skillRuntime.executeCodeCheckSkill({
         codeCheckClient: configurable.codeCheckClient,
         traceId,
-        designCode: input.designCode || 'GB50017',
+        designCode: selectedDesignCode || input.designCode || 'GB50017',
         model,
         analysis,
         analysisParameters: {},
         engineId: input.engineId,
+        codeCheckSkillId,
       });
 
       // Store code check result in graph state via Command

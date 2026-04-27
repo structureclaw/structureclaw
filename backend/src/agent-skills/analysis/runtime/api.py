@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from typing import List, Dict, Any, Optional
 import logging
+import traceback
 
 from registry import AnalysisEngineRegistry
 from structure_protocol.structure_model_v2 import StructureModelV2
@@ -134,8 +135,11 @@ async def analyze(request: AnalysisRequest) -> AnalysisResponse:
         raise
 
     except Exception as e:
-        logger.error(f"Analysis failed: {str(e)}")
+        logger.exception("Analysis failed")
         now = datetime.now(timezone.utc).isoformat()
+        traceback_summary = "".join(
+            traceback.format_exception(type(e), e, e.__traceback__, limit=8)
+        )
         return AnalysisResponse(
             schema_version=request.model.schema_version,
             analysis_type=request.type,
@@ -151,5 +155,7 @@ async def analyze(request: AnalysisRequest) -> AnalysisResponse:
                 "selectionMode": "manual" if request.engine_id else "auto",
                 "fallbackFrom": None,
                 "timestamp": now,
+                "exceptionType": type(e).__name__,
+                "traceback": traceback_summary[-4000:],
             },
         )

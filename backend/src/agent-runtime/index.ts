@@ -212,8 +212,14 @@ export class AgentSkillRuntime {
       model: options.model,
       parameters: options.parameters,
     };
+    const retries = selectedSkill?.id === 'yjk-static'
+      || selectedSkill?.engineId === 'builtin-yjk'
+      || selectedSkill?.adapterKey === 'builtin-yjk'
+      || input.engineId === 'builtin-yjk'
+      ? 0
+      : 2;
     const analyzed = await options.postToEngineWithRetry('/analyze', input, {
-      retries: 2,
+      retries,
       traceId: options.traceId,
       tool: 'run_analysis',
       signal: options.signal,

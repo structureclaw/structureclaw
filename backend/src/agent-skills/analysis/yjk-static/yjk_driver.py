@@ -26,6 +26,7 @@ import time
 import traceback
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+_CURRENT_WORK_DIR: str | None = None
 
 
 def _record_step(
@@ -54,6 +55,75 @@ def _record_step(
     steps.append(step)
 
 
+def _env_text(name: str, default: str = "") -> str:
+    value = os.environ.get(name, default)
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _env_path(name: str, default: str = "") -> str:
+    return _env_text(name, default).strip('"')
+
+
+def _flush_stdio() -> None:
+    for stream in (sys.stderr, sys.stdout):
+        try:
+            stream.flush()
+        except Exception:
+            pass
+
+
+def _write_steps_json(work_dir: str | None, steps: list[dict] | None) -> None:
+    if not work_dir or steps is None:
+        return
+    steps_path = os.path.join(work_dir, "steps.json")
+    if os.path.exists(steps_path):
+        return
+    try:
+        os.makedirs(work_dir, exist_ok=True)
+        with open(steps_path, "w", encoding="utf-8") as f:
+            json.dump(steps, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+    except Exception as exc:
+        print(
+            f"[yjk_driver] failed to write steps.json: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
+def _finish_after_json(
+    *,
+    work_dir: str | None,
+    steps: list[dict] | None,
+    exit_code: int,
+    force_exit: bool,
+) -> int:
+    _write_steps_json(work_dir, steps)
+    _flush_stdio()
+    if force_exit:
+        os._exit(exit_code)
+    return exit_code
+
+
+def _write_driver_output_json(work_dir: str | None, payload: dict) -> None:
+    if not work_dir:
+        return
+    try:
+        os.makedirs(work_dir, exist_ok=True)
+        output_path = os.path.join(work_dir, "driver-output.json")
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+            f.write("\n")
+    except Exception as exc:
+        print(
+            f"[yjk_driver] failed to write driver-output.json: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+
+
 def _emit_json(payload: dict) -> None:
     """Write the final result JSON to stdout (the ONLY stdout we produce).
 
@@ -61,7 +131,7 @@ def _emit_json(payload: dict) -> None:
     already written, then write our JSON on its own line.
     """
     sys.stderr.flush()
-    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
+    sys.stdout.write(json.dumps(payload, ensure_ascii=True) + "\n")
     sys.stdout.flush()
 
 
@@ -86,14 +156,23 @@ def _error(
     if summary:
         summary_payload.update(summary)
 
-    _emit_json({
+    work_dir = str(summary_payload.get("work_dir") or "") or _CURRENT_WORK_DIR
+    payload = {
         "status": "error",
         "summary": summary_payload,
         "data": {},
         "detailed": detail,
         "warnings": [message],
         "steps": steps or [],
-    })
+    }
+    _write_driver_output_json(work_dir, payload)
+    _emit_json(payload)
+    _finish_after_json(
+        work_dir=work_dir,
+        steps=steps,
+        exit_code=1,
+        force_exit=work_dir is not None,
+    )
 
 
 def _setup_paths() -> str:
@@ -101,17 +180,14 @@ def _setup_paths() -> str:
 
     Returns the resolved YJKS_ROOT directory.
     """
-    yjks_root = (
-        os.environ.get("YJKS_ROOT", "").strip().strip('"')
-        or os.environ.get("YJK_PATH", "").strip().strip('"')
-    )
+    yjks_root = _env_path("YJKS_ROOT") or _env_path("YJK_PATH")
     if not yjks_root:
         for candidate in (r"C:\YJKS\YJKS_8_0_0", r"D:\YJKS\YJKS_8_0_0"):
             if os.path.isdir(candidate):
                 yjks_root = candidate
                 break
 
-    yjks_exe_env = os.environ.get("YJKS_EXE", "").strip().strip('"')
+    yjks_exe_env = _env_path("YJKS_EXE")
     if yjks_exe_env and os.path.isfile(yjks_exe_env):
         root = os.path.dirname(os.path.abspath(yjks_exe_env))
     elif os.path.isdir(yjks_root):
@@ -120,7 +196,7 @@ def _setup_paths() -> str:
         root = yjks_root
 
     # DLL search path
-    os.environ["PATH"] = root + os.pathsep + os.environ.get("PATH", "")
+    os.environ["PATH"] = root + os.pathsep + _env_text("PATH")
 
     # Python import paths: YJKS_ROOT itself (for native wrappers) and
     # the driver's own directory (for yjk_converter).
@@ -140,18 +216,18 @@ def _find_yjks_exe(root: str) -> str | None:
 
 
 def _env_flag(name: str) -> bool:
-    return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+    return _env_text(name).lower() in {"1", "true", "yes", "on"}
 
 
 def _env_float(name: str, default: float) -> float:
     try:
-        return float(os.environ.get(name, "").strip() or default)
+        return float(_env_text(name) or default)
     except ValueError:
         return default
 
 
 def _launcher_prewarm_mode() -> str:
-    value = os.environ.get("YJK_LAUNCHER_PREWARM", "auto").strip().lower()
+    value = _env_text("YJK_LAUNCHER_PREWARM", "auto").lower()
     if value in {"0", "false", "no", "off", "never", "disabled"}:
         return "off"
     if value in {"1", "true", "yes", "on", "always", "force"}:
@@ -160,7 +236,7 @@ def _launcher_prewarm_mode() -> str:
 
 
 def _find_yjk_launcher(root: str) -> str | None:
-    explicit = os.environ.get("YJK_LAUNCHER_EXE", "").strip().strip('"')
+    explicit = _env_path("YJK_LAUNCHER_EXE")
     if explicit and os.path.isfile(explicit):
         return explicit
     for name in ("YjkLauncher.exe", "YJKLauncher.exe"):
@@ -171,21 +247,21 @@ def _find_yjk_launcher(root: str) -> str | None:
 
 
 def _should_launch_with_launcher(root: str) -> bool:
-    explicit = os.environ.get("YJK_USE_LAUNCHER", "").strip()
+    explicit = _env_text("YJK_USE_LAUNCHER")
     if explicit:
         return _env_flag("YJK_USE_LAUNCHER")
     return False
 
 
 def _direct_launch_cwd(yjks_root: str) -> str:
-    configured = os.environ.get("YJK_CWD", "").strip().strip('"')
+    configured = _env_path("YJK_CWD")
     if configured and os.path.isdir(configured):
         return configured
     return yjks_root
 
 
 def _powershell_exe() -> str:
-    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    system_root = _env_text("SystemRoot", r"C:\Windows")
     candidate = os.path.join(
         system_root,
         "System32",
@@ -322,7 +398,7 @@ def _prewarm_yjk_launcher(yjks_root: str, steps: list[dict]) -> bool:
     existing = _get_launcher_processes()
     existing_pid = _process_id(existing[0]) if existing else 0
     started_at = time.monotonic()
-    cwd = os.environ.get("YJK_LAUNCHER_CWD", "").strip().strip('"') or yjks_root
+    cwd = _env_path("YJK_LAUNCHER_CWD") or yjks_root
     try:
         if existing_pid <= 0:
             proc = subprocess.Popen([launcher], cwd=cwd)
@@ -526,7 +602,7 @@ def _activate_yjk_ipc(pid: int) -> bool:
     user32 = ctypes.windll.user32
     user32.ShowWindow(hwnd, 9)  # SW_RESTORE
     user32.SetForegroundWindow(hwnd)
-    time.sleep(float(os.environ.get("YJK_AUTO_IPC_FOCUS_DELAY_S", "1.0").strip() or "1.0"))
+    time.sleep(_env_float("YJK_AUTO_IPC_FOCUS_DELAY_S", 1.0))
     _send_virtual_key(0x1B)  # ESC clears most modal command states.
     time.sleep(0.2)
     _send_unicode_text("yjksipccontrol\n")
@@ -560,7 +636,7 @@ def _launch_yjk_with_launcher_and_attach(
         if int(_safe_float(proc.get("Id"), 0.0)) > 0
     }
     started_at = time.monotonic()
-    cwd = os.environ.get("YJK_LAUNCHER_CWD", "").strip().strip('"') or yjks_root
+    cwd = _env_path("YJK_LAUNCHER_CWD") or yjks_root
     try:
         subprocess.Popen([launcher], cwd=cwd)
     except Exception as exc:
@@ -583,7 +659,7 @@ def _launch_yjk_with_launcher_and_attach(
         started_at=started_at,
     )
 
-    wait_timeout = float(os.environ.get("YJK_LAUNCHER_WAIT_S", "90").strip() or "90")
+    wait_timeout = _env_float("YJK_LAUNCHER_WAIT_S", 90.0)
     proc_info = _wait_for_new_yjks_process(before_pids, wait_timeout)
     if not proc_info:
         _record_step(
@@ -597,7 +673,7 @@ def _launch_yjk_with_launcher_and_attach(
         return None
 
     pid = int(_safe_float(proc_info.get("Id"), 0.0))
-    time.sleep(float(os.environ.get("YJK_AUTO_IPC_DELAY_S", "8").strip() or "8"))
+    time.sleep(_env_float("YJK_AUTO_IPC_DELAY_S", 8.0))
     ipc_enabled = True
     if not _env_flag("YJK_SKIP_AUTO_IPC"):
         ipc_enabled = _activate_yjk_ipc(pid)
@@ -750,6 +826,36 @@ def _load_json_file(path: str) -> dict:
         return {}
 
 
+def _id_candidates(value: object) -> list[str]:
+    if value is None:
+        return []
+    text = str(value).strip()
+    if not text or text.lower() == "none":
+        return []
+    candidates = [text]
+    number = _safe_float(value, None)
+    if number is not None and abs(number - round(number)) < 1e-9:
+        candidates.append(str(int(round(number))))
+    return list(dict.fromkeys(candidates))
+
+
+def _coord_key(x: object, y: object, z: object, *, scale: float = 1.0) -> tuple[int, int, int]:
+    return (
+        int(round(_safe_float(x) * scale)),
+        int(round(_safe_float(y) * scale)),
+        int(round(_safe_float(z) * scale)),
+    )
+
+
+def _coord_candidates(x: object, y: object, z: object) -> list[tuple[int, int, int]]:
+    """Return millimetre-like and raw coordinate keys for YJK result matching."""
+    candidates = [
+        _coord_key(x, y, z),
+        _coord_key(x, y, z, scale=1000.0),
+    ]
+    return list(dict.fromkeys(candidates))
+
+
 def _node_lookup_from_mapping(mapping: dict) -> dict[tuple[int, int, int], str]:
     lookup: dict[tuple[int, int, int], str] = {}
     nodes = mapping.get("nodes", {})
@@ -768,19 +874,69 @@ def _node_lookup_from_mapping(mapping: dict) -> dict[tuple[int, int, int], str]:
     return lookup
 
 
-def _build_result_node_lookup(extracted: dict, mapping: dict) -> dict[str, str]:
-    coord_to_v2 = _node_lookup_from_mapping(mapping)
+def _build_result_node_lookup(
+    extracted: dict,
+    mapping: dict,
+    diagnostics: dict | None = None,
+) -> dict[str, str]:
+    id_to_v2: dict[str, str] = {}
+    coord_to_v2: dict[tuple[int, int, int], str] = {}
+    nodes = mapping.get("nodes", {})
+    if isinstance(nodes, dict):
+        for v2_id, item in nodes.items():
+            if not isinstance(item, dict):
+                continue
+            mapped_id = str(item.get("v2_id") or v2_id)
+            for field in (
+                "yjk_std_floor_node_id",
+                "yjk_node_id",
+                "yjk_model_id",
+                "node_id",
+                "id",
+            ):
+                for candidate in _id_candidates(item.get(field)):
+                    id_to_v2[candidate] = mapped_id
+            coord_keys: list[tuple[int, int, int]] = []
+            if any(item.get(field) is not None for field in ("x_mm", "y_mm", "z_mm")):
+                coord_keys.append(_coord_key(item.get("x_mm"), item.get("y_mm"), item.get("z_mm")))
+            if any(item.get(field) is not None for field in ("x_m", "y_m", "z_m")):
+                coord_keys.append(_coord_key(item.get("x_m"), item.get("y_m"), item.get("z_m"), scale=1000.0))
+            for key in coord_keys:
+                existing = coord_to_v2.get(key)
+                coord_to_v2[key] = mapped_id if existing in (None, mapped_id) else ""
+
     result_lookup: dict[str, str] = {}
+    result_lookup.update(id_to_v2)
+    id_matches = 0
+    coord_matches = 0
+    unmapped = 0
     for node in extracted.get("nodes", []) if isinstance(extracted.get("nodes"), list) else []:
         if not isinstance(node, dict):
             continue
         result_id = str(node.get("id"))
-        key = (
-            int(round(_safe_float(node.get("x")))),
-            int(round(_safe_float(node.get("y")))),
-            int(round(_safe_float(node.get("z")))),
-        )
-        result_lookup[result_id] = coord_to_v2.get(key, result_id)
+        direct = id_to_v2.get(result_id)
+        if direct:
+            result_lookup[result_id] = direct
+            id_matches += 1
+            continue
+
+        matched = None
+        for key in _coord_candidates(node.get("x"), node.get("y"), node.get("z")):
+            candidate = coord_to_v2.get(key)
+            if candidate:
+                matched = candidate
+                break
+        if matched:
+            result_lookup[result_id] = matched
+            coord_matches += 1
+        else:
+            result_lookup[result_id] = result_id
+            unmapped += 1
+    if diagnostics is not None:
+        diagnostics["node_id_matches"] = id_matches
+        diagnostics["node_coord_matches"] = coord_matches
+        diagnostics["node_unmapped"] = unmapped
+        diagnostics["node_id_index_size"] = len(id_to_v2)
     return result_lookup
 
 
@@ -793,12 +949,25 @@ def _element_category(elem_type: object) -> str:
     return "beams"
 
 
-def _build_element_lookups(mapping: dict) -> tuple[dict[tuple[str, int, str], str], dict[tuple[str, int, int], str]]:
+def _endpoint_key(nodes: object) -> tuple[str, str] | None:
+    if not isinstance(nodes, list) or len(nodes) < 2:
+        return None
+    endpoints = [str(nodes[0]), str(nodes[-1])]
+    endpoints.sort()
+    return (endpoints[0], endpoints[1])
+
+
+def _build_element_lookups(mapping: dict) -> dict[str, dict]:
     by_yjk_id: dict[tuple[str, int, str], str] = {}
+    by_endpoint: dict[tuple[str, int, tuple[str, str]], str] = {}
     by_sequence: dict[tuple[str, int, int], str] = {}
     elements = mapping.get("elements", {})
     if not isinstance(elements, dict):
-        return by_yjk_id, by_sequence
+        return {
+            "by_yjk_id": by_yjk_id,
+            "by_endpoint": by_endpoint,
+            "by_sequence": by_sequence,
+        }
 
     for v2_id, item in elements.items():
         if not isinstance(item, dict):
@@ -806,34 +975,89 @@ def _build_element_lookups(mapping: dict) -> tuple[dict[tuple[str, int, str], st
         elem_id = str(item.get("v2_id") or v2_id)
         category = _element_category(item.get("type"))
         floor_index = int(round(_safe_float(item.get("floor_index"), 0.0)))
-        yjk_model_id = item.get("yjk_model_id")
-        if yjk_model_id is not None:
-            by_yjk_id[(category, floor_index, str(yjk_model_id))] = elem_id
+        for field in (
+            "yjk_model_id",
+            "yjk_member_id",
+            "yjk_id",
+            "tot_id",
+            "original_no",
+            "id",
+        ):
+            for candidate in _id_candidates(item.get(field)):
+                by_yjk_id[(category, floor_index, candidate)] = elem_id
+
+        endpoints = _endpoint_key(item.get("nodes"))
+        if endpoints is not None and floor_index > 0:
+            by_endpoint[(category, floor_index, endpoints)] = elem_id
 
         fallback = item.get("fallback_match", {})
         if isinstance(fallback, dict):
             sequence = int(round(_safe_float(fallback.get("sequence_in_floor_type"), 0.0)))
             if floor_index > 0 and sequence > 0:
                 by_sequence[(category, floor_index, sequence)] = elem_id
-    return by_yjk_id, by_sequence
+    return {
+        "by_yjk_id": by_yjk_id,
+        "by_endpoint": by_endpoint,
+        "by_sequence": by_sequence,
+    }
 
 
 def _member_id_for(
     *,
     category: str,
-    floor: int,
-    member_id: object,
+    raw_member: dict,
     sequence: int,
-    by_yjk_id: dict[tuple[str, int, str], str],
-    by_sequence: dict[tuple[str, int, int], str],
-) -> str:
-    direct = by_yjk_id.get((category, floor, str(member_id)))
-    if direct:
-        return direct
-    fallback = by_sequence.get((category, floor, sequence))
-    if fallback:
-        return fallback
-    return f"{category}:{floor}:{member_id}"
+    lookups: dict[str, dict],
+    result_node_lookup: dict[str, str],
+    diagnostics: dict | None = None,
+) -> tuple[str, str]:
+    floor = int(round(_safe_float(raw_member.get("floor"), 0.0)))
+    original_floor = int(round(_safe_float(raw_member.get("original_floor"), 0.0)))
+    floors = [item for item in (floor, original_floor) if item > 0]
+    if not floors:
+        floors = [0]
+
+    by_yjk_id = lookups.get("by_yjk_id", {})
+    for candidate_field in ("tot_id", "id", "original_no"):
+        for candidate in _id_candidates(raw_member.get(candidate_field)):
+            for floor_key in floors:
+                direct = by_yjk_id.get((category, floor_key, candidate))
+                if direct:
+                    if diagnostics is not None:
+                        diagnostics["element_direct_matches"] = diagnostics.get("element_direct_matches", 0) + 1
+                    return direct, "direct"
+
+    node_i = raw_member.get("node_i")
+    node_j = raw_member.get("node_j")
+    endpoint = _endpoint_key([
+        result_node_lookup.get(str(node_i), str(node_i)),
+        result_node_lookup.get(str(node_j), str(node_j)),
+    ])
+    if endpoint is not None:
+        by_endpoint = lookups.get("by_endpoint", {})
+        for floor_key in floors:
+            direct = by_endpoint.get((category, floor_key, endpoint))
+            if direct:
+                if diagnostics is not None:
+                    diagnostics["element_endpoint_matches"] = diagnostics.get("element_endpoint_matches", 0) + 1
+                return direct, "endpoint"
+
+    raw_sequence = int(round(_safe_float(raw_member.get("sequence"), 0.0))) or sequence
+    by_sequence = lookups.get("by_sequence", {})
+    for floor_key in floors:
+        fallback = by_sequence.get((category, floor_key, raw_sequence))
+        if fallback:
+            if diagnostics is not None:
+                diagnostics["element_sequence_matches"] = diagnostics.get("element_sequence_matches", 0) + 1
+            return fallback, "sequence"
+
+    if diagnostics is not None:
+        diagnostics["element_unmapped"] = diagnostics.get("element_unmapped", 0) + 1
+    member_key = next(
+        (str(raw_member.get(field)) for field in ("tot_id", "id", "original_no") if raw_member.get(field) is not None),
+        str(raw_sequence),
+    )
+    return f"{category}:{floors[0]}:{member_key}", "raw"
 
 
 def _force_from_sections(sections: object) -> dict[str, float]:
@@ -844,8 +1068,12 @@ def _force_from_sections(sections: object) -> dict[str, float]:
         force["M"] = 0.0
         return force
 
-    for row in sections:
-        if not isinstance(row, list):
+    rows = sections
+    if sections and all(not isinstance(item, (list, tuple)) for item in sections):
+        rows = [sections]
+
+    for row in rows:
+        if not isinstance(row, (list, tuple)):
             continue
         values = [_safe_float(item) for item in row]
         while len(values) < 6:
@@ -861,6 +1089,29 @@ def _force_from_sections(sections: object) -> dict[str, float]:
     force["V"] = (force["Vy"] ** 2 + force["Vz"] ** 2) ** 0.5
     force["M"] = (force["My"] ** 2 + force["Mz"] ** 2) ** 0.5
     return force
+
+
+def _reaction_from_raw(raw: dict) -> dict[str, float]:
+    reaction = {
+        "Fx": _safe_float(raw.get("Fx", raw.get("fx", raw.get("RX", raw.get("rx"))))),
+        "Fy": _safe_float(raw.get("Fy", raw.get("fy", raw.get("RY", raw.get("ry"))))),
+        "Fz": _safe_float(raw.get("Fz", raw.get("fz", raw.get("RZ", raw.get("rz"))))),
+        "Mx": _safe_float(raw.get("Mx", raw.get("mx"))),
+        "My": _safe_float(raw.get("My", raw.get("my"))),
+        "Mz": _safe_float(raw.get("Mz", raw.get("mz"))),
+    }
+    reaction["R"] = _safe_float(
+        raw.get("R"),
+        (reaction["Fx"] ** 2 + reaction["Fy"] ** 2 + reaction["Fz"] ** 2) ** 0.5,
+    )
+    return reaction
+
+
+def _merge_max_reaction(target: dict[str, float], candidate: dict[str, float]) -> dict[str, float]:
+    merged = dict(target)
+    for key in ("Fx", "Fy", "Fz", "Mx", "My", "Mz", "R"):
+        merged[key] = max(abs(_safe_float(merged.get(key))), abs(_safe_float(candidate.get(key))))
+    return merged
 
 
 def _merge_max_force(target: dict[str, float], candidate: dict[str, float]) -> dict[str, float]:
@@ -918,6 +1169,147 @@ def _accumulate_element_envelope(
         item["controlCaseMoment"] = case_name
 
 
+def _accumulate_reaction_envelope(
+    table: dict[str, dict],
+    node_id: str,
+    case_name: str,
+    reaction: dict[str, float],
+) -> None:
+    item = table.setdefault(
+        str(node_id),
+        {
+            "maxAbsReaction": 0.0,
+            "controlCase": "",
+            "Fx": 0.0,
+            "Fy": 0.0,
+            "Fz": 0.0,
+            "Mx": 0.0,
+            "My": 0.0,
+            "Mz": 0.0,
+            "R": 0.0,
+        },
+    )
+    resultant = abs(_safe_float(reaction.get("R")))
+    if resultant > _safe_float(item.get("maxAbsReaction")):
+        item.update(_round_map(reaction, digits=3))
+        item["maxAbsReaction"] = round(resultant, 3)
+        item["controlCase"] = case_name
+
+
+def _case_descriptors(extracted: dict, raw_case_keys: set[str]) -> list[dict]:
+    meta = extracted.get("meta", {}) if isinstance(extracted.get("meta"), dict) else {}
+    raw_cases = extracted.get("load_cases")
+    if raw_cases is None:
+        raw_cases = meta.get("load_cases")
+    descriptors: list[dict] = []
+    used_result_keys: set[str] = set()
+    claimed_source_keys: set[str] = set()
+
+    if isinstance(raw_cases, list):
+        for index, item in enumerate(raw_cases, start=1):
+            if isinstance(item, dict):
+                case_id = item.get("id")
+                old_id = item.get("oldId")
+                key = str(item.get("key") or f"lc_{case_id}") if case_id is not None else str(item.get("key") or f"case_{index}")
+                label = str(item.get("name") or item.get("expName") or key)
+                source_keys = [
+                    key,
+                    *(f"lc_{value}" for value in _id_candidates(case_id)),
+                    *(f"lc_{value}" for value in _id_candidates(old_id)),
+                    *_id_candidates(case_id),
+                    *_id_candidates(old_id),
+                ]
+                descriptor = {
+                    "result_key": key,
+                    "source_keys": list(dict.fromkeys(source_keys)),
+                    "label": label,
+                    "name": item.get("name"),
+                    "expName": item.get("expName"),
+                    "kind": item.get("kind"),
+                    "id": case_id,
+                    "oldId": old_id,
+                }
+            else:
+                key = f"lc_{item}"
+                descriptor = {
+                    "result_key": key,
+                    "source_keys": [key, str(item)],
+                    "label": key,
+                    "name": key,
+                    "kind": None,
+                    "id": item,
+                    "oldId": None,
+                    "expName": None,
+                }
+
+            result_key = str(descriptor["result_key"])
+            if result_key in used_result_keys:
+                result_key = f"{result_key}_{index}"
+                descriptor["result_key"] = result_key
+            used_result_keys.add(result_key)
+            claimed_source_keys.update(str(value) for value in descriptor["source_keys"])
+            descriptors.append(descriptor)
+
+    for raw_key in sorted(raw_case_keys - claimed_source_keys):
+        descriptors.append({
+            "result_key": raw_key,
+            "source_keys": [raw_key],
+            "label": raw_key,
+            "name": raw_key,
+            "kind": None,
+            "id": None,
+            "oldId": None,
+            "expName": None,
+        })
+    return descriptors
+
+
+def _case_block(block: dict, descriptor: dict) -> object:
+    for key in descriptor.get("source_keys", []):
+        if key in block:
+            return block.get(key)
+    return []
+
+
+def _raw_member_definition_lookup(extracted: dict) -> dict[str, dict[tuple[int, str], dict]]:
+    lookup: dict[str, dict[tuple[int, str], dict]] = {}
+    members = extracted.get("members", {})
+    if not isinstance(members, dict):
+        return lookup
+    for category in ("columns", "beams", "braces"):
+        category_lookup: dict[tuple[int, str], dict] = {}
+        raw_members = members.get(category, [])
+        if not isinstance(raw_members, list):
+            continue
+        for raw in raw_members:
+            if not isinstance(raw, dict):
+                continue
+            floor = int(round(_safe_float(raw.get("floor"), 0.0)))
+            original_floor = int(round(_safe_float(raw.get("original_floor"), 0.0)))
+            floors = [item for item in (floor, original_floor) if item > 0] or [0]
+            for field in ("tot_id", "id", "original_no", "sequence"):
+                for candidate in _id_candidates(raw.get(field)):
+                    for floor_key in floors:
+                        category_lookup[(floor_key, candidate)] = raw
+        lookup[category] = category_lookup
+    return lookup
+
+
+def _merge_member_definition(category_lookup: dict[tuple[int, str], dict], raw_force: dict) -> dict:
+    floor = int(round(_safe_float(raw_force.get("floor"), 0.0)))
+    original_floor = int(round(_safe_float(raw_force.get("original_floor"), 0.0)))
+    floors = [item for item in (floor, original_floor) if item > 0] or [0]
+    for field in ("tot_id", "id", "original_no", "sequence"):
+        for candidate in _id_candidates(raw_force.get(field)):
+            for floor_key in floors:
+                raw_member = category_lookup.get((floor_key, candidate))
+                if raw_member:
+                    merged = dict(raw_member)
+                    merged.update(raw_force)
+                    return merged
+    return raw_force
+
+
 def _build_analysis_result(
     *,
     extracted: dict,
@@ -930,34 +1322,50 @@ def _build_analysis_result(
 ) -> dict:
     """Normalize raw YJK result JSON into the app's analysis result shape."""
     meta = extracted.get("meta", {}) if isinstance(extracted.get("meta"), dict) else {}
-    result_node_lookup = _build_result_node_lookup(extracted, mapping)
-    elem_by_yjk_id, elem_by_sequence = _build_element_lookups(mapping)
+    diagnostics: dict[str, int] = {}
+    result_node_lookup = _build_result_node_lookup(extracted, mapping, diagnostics)
+    element_lookups = _build_element_lookups(mapping)
+    member_definition_lookup = _raw_member_definition_lookup(extracted)
 
     displacements: dict[str, dict[str, float]] = {}
     forces: dict[str, dict[str, float]] = {}
+    reactions: dict[str, dict[str, float]] = {}
     case_results: dict[str, dict] = {}
     node_displacement_envelope: dict[str, dict] = {}
     element_force_envelope: dict[str, dict] = {}
+    node_reaction_envelope: dict[str, dict] = {}
 
     node_disp_cases = extracted.get("node_disp", {})
     if not isinstance(node_disp_cases, dict):
         node_disp_cases = {}
+    node_reaction_cases = extracted.get("node_reactions", {})
+    if not isinstance(node_reaction_cases, dict):
+        node_reaction_cases = {}
     member_force_blocks = extracted.get("member_forces", {})
     if not isinstance(member_force_blocks, dict):
         member_force_blocks = {}
 
-    all_case_names = set(node_disp_cases.keys())
+    raw_case_keys = set(node_disp_cases.keys())
+    raw_case_keys.update(node_reaction_cases.keys())
     for block in member_force_blocks.values():
         if isinstance(block, dict):
-            all_case_names.update(block.keys())
+            raw_case_keys.update(block.keys())
 
-    for case_name in sorted(all_case_names):
+    case_descriptors = _case_descriptors(extracted, raw_case_keys)
+    displacement_rows_seen = 0
+    nonzero_displacement_rows = 0
+    force_rows_seen = 0
+    reaction_rows_seen = 0
+
+    for descriptor in case_descriptors:
+        case_name = str(descriptor["result_key"])
         case_disps: dict[str, dict[str, float]] = {}
-        raw_disps = node_disp_cases.get(case_name, [])
+        raw_disps = _case_block(node_disp_cases, descriptor)
         if isinstance(raw_disps, list):
             for raw_disp in raw_disps:
                 if not isinstance(raw_disp, dict):
                     continue
+                displacement_rows_seen += 1
                 raw_node_id = str(raw_disp.get("id"))
                 node_id = result_node_lookup.get(raw_node_id, raw_node_id)
                 disp = _round_map({
@@ -976,6 +1384,8 @@ def _build_analysis_result(
                     + disp["uy"] ** 2
                     + disp["uz"] ** 2
                 ) ** 0.5
+                if mag > 0:
+                    nonzero_displacement_rows += 1
                 previous = displacements.get(node_id)
                 previous_mag = -1.0
                 if previous:
@@ -988,7 +1398,7 @@ def _build_analysis_result(
         case_forces: dict[str, dict[str, float]] = {}
         for category in ("columns", "beams", "braces"):
             block = member_force_blocks.get(category, {})
-            raw_forces = block.get(case_name, []) if isinstance(block, dict) else []
+            raw_forces = _case_block(block, descriptor) if isinstance(block, dict) else []
             if not isinstance(raw_forces, list):
                 continue
             sequence_by_floor: dict[int, int] = {}
@@ -999,26 +1409,50 @@ def _build_analysis_result(
                     _safe_float(item.get("id"), 0.0),
                 ),
             ):
+                force_rows_seen += 1
+                category_member_lookup = member_definition_lookup.get(category, {})
+                raw_force = _merge_member_definition(category_member_lookup, raw_force)
                 floor = int(round(_safe_float(raw_force.get("floor"), 0.0)))
                 sequence_by_floor[floor] = sequence_by_floor.get(floor, 0) + 1
-                elem_id = _member_id_for(
+                elem_id, _match_method = _member_id_for(
                     category=category,
-                    floor=floor,
-                    member_id=raw_force.get("id"),
+                    raw_member=raw_force,
                     sequence=sequence_by_floor[floor],
-                    by_yjk_id=elem_by_yjk_id,
-                    by_sequence=elem_by_sequence,
+                    lookups=element_lookups,
+                    result_node_lookup=result_node_lookup,
+                    diagnostics=diagnostics,
                 )
                 force = _round_map(_force_from_sections(raw_force.get("sections")), digits=3)
                 case_forces[elem_id] = _merge_max_force(case_forces.get(elem_id, {}), force)
                 forces[elem_id] = _merge_max_force(forces.get(elem_id, {}), force)
                 _accumulate_element_envelope(element_force_envelope, elem_id, case_name, force)
 
+        case_reactions: dict[str, dict[str, float]] = {}
+        raw_reactions = _case_block(node_reaction_cases, descriptor)
+        if isinstance(raw_reactions, list):
+            for raw_reaction in raw_reactions:
+                if not isinstance(raw_reaction, dict):
+                    continue
+                reaction_rows_seen += 1
+                raw_node_id = str(raw_reaction.get("id", raw_reaction.get("node_id")))
+                node_id = result_node_lookup.get(raw_node_id, raw_node_id)
+                reaction = _round_map(_reaction_from_raw(raw_reaction), digits=3)
+                case_reactions[node_id] = _merge_max_reaction(case_reactions.get(node_id, {}), reaction)
+                reactions[node_id] = _merge_max_reaction(reactions.get(node_id, {}), reaction)
+                _accumulate_reaction_envelope(node_reaction_envelope, node_id, case_name, reaction)
+
         case_results[case_name] = {
             "status": "success",
+            "key": case_name,
+            "label": descriptor.get("label"),
+            "name": descriptor.get("name"),
+            "expName": descriptor.get("expName"),
+            "kind": descriptor.get("kind"),
+            "id": descriptor.get("id"),
+            "oldId": descriptor.get("oldId"),
             "displacements": case_disps,
             "forces": case_forces,
-            "reactions": {},
+            "reactions": case_reactions,
             "envelope": {},
         }
 
@@ -1046,16 +1480,25 @@ def _build_analysis_result(
             max_moment = moment
             control_moment = elem_id
 
+    max_reaction = 0.0
+    control_reaction = ""
+    for node_id, item in node_reaction_envelope.items():
+        reaction = _safe_float(item.get("maxAbsReaction"))
+        if reaction > max_reaction:
+            max_reaction = reaction
+            control_reaction = node_id
+
     envelope = {
         "maxAbsDisplacement": round(max_disp, 4),
         "controlNodeDisplacement": max_disp_node,
         "maxAbsAxialForce": round(max_axial, 2),
         "maxAbsShearForce": round(max_shear, 2),
         "maxAbsMoment": round(max_moment, 2),
-        "maxAbsReaction": 0.0,
+        "maxAbsReaction": round(max_reaction, 3),
         "controlElementAxialForce": control_axial or None,
         "controlElementShearForce": control_shear or None,
         "controlElementMoment": control_moment or None,
+        "controlNodeReaction": control_reaction or None,
     }
     if max_disp_node:
         envelope[f"node:{max_disp_node}:maxAbsDisplacement"] = round(max_disp, 4)
@@ -1063,13 +1506,44 @@ def _build_analysis_result(
     warnings: list[str] = []
     if not mapping:
         warnings.append("YJK mapping.json was not found; raw YJK ids were used for result keys.")
+    members = extracted.get("members", {})
+    if not isinstance(members, dict) or all(not members.get(category) for category in ("columns", "beams", "braces")):
+        warnings.append("YJK raw members were empty; element result mapping used force rows and fallbacks.")
+    if force_rows_seen == 0:
+        warnings.append("YJK raw member_forces were empty; top-level forces and element envelopes are empty.")
+    if displacement_rows_seen == 0:
+        warnings.append("YJK raw node_disp was empty; displacement envelopes are empty.")
+    elif nonzero_displacement_rows == 0:
+        warnings.append("YJK raw node_disp values were all zero; check whether the extractor returned solved displacements.")
+    if reaction_rows_seen == 0:
+        warnings.append("YJK raw node_reactions were empty; reaction envelopes are empty.")
+    if diagnostics.get("node_coord_matches", 0) > 0:
+        warnings.append(
+            f"YJK node mapping used coordinate fallback for {diagnostics.get('node_coord_matches', 0)} result nodes."
+        )
+    if diagnostics.get("node_unmapped", 0) > 0:
+        warnings.append(
+            f"YJK node mapping left {diagnostics.get('node_unmapped', 0)} result nodes on raw ids."
+        )
+    if diagnostics.get("element_endpoint_matches", 0) > 0:
+        warnings.append(
+            f"YJK element mapping used endpoint fallback for {diagnostics.get('element_endpoint_matches', 0)} force rows."
+        )
+    if diagnostics.get("element_sequence_matches", 0) > 0:
+        warnings.append(
+            f"YJK element mapping used sequence fallback for {diagnostics.get('element_sequence_matches', 0)} force rows."
+        )
+    if diagnostics.get("element_unmapped", 0) > 0:
+        warnings.append(
+            f"YJK element mapping left {diagnostics.get('element_unmapped', 0)} force rows on raw ids."
+        )
 
     return {
         "status": "success",
         "analysisMode": "yjk-static",
         "displacements": {key: _round_map(value) for key, value in displacements.items()},
         "forces": {key: _round_map(value, digits=3) for key, value in forces.items()},
-        "reactions": {},
+        "reactions": {key: _round_map(value, digits=3) for key, value in reactions.items()},
         "envelope": envelope,
         "summary": {
             "engine": "yjk-static",
@@ -1080,12 +1554,13 @@ def _build_analysis_result(
             "results_path": results_path,
             "nodeCount": len(displacements),
             "elementCount": len(forces),
+            "reactionNodeCount": len(reactions),
             "maxDisplacement": round(max_disp, 4),
             "maxDisplacementNode": max_disp_node,
             "floors_analyzed": meta.get("n_floors"),
             "n_floors": meta.get("n_floors"),
             "n_nodes": meta.get("n_nodes"),
-            "load_cases": meta.get("load_cases"),
+            "load_cases": extracted.get("load_cases", meta.get("load_cases")),
         },
         "data": extracted,
         "detailed": {
@@ -1094,6 +1569,7 @@ def _build_analysis_result(
             "results_path": results_path,
             "extraction": extracted,
             "mapping": mapping,
+            "normalization": diagnostics,
         },
         "yjk_detailed": {
             "raw_results": extracted,
@@ -1105,7 +1581,7 @@ def _build_analysis_result(
         "envelopeTables": {
             "nodeDisplacement": node_displacement_envelope,
             "elementForce": element_force_envelope,
-            "nodeReaction": {},
+            "nodeReaction": node_reaction_envelope,
         },
         "warnings": warnings,
         "steps": steps,
@@ -1113,6 +1589,8 @@ def _build_analysis_result(
 
 
 def main() -> int:
+    global _CURRENT_WORK_DIR
+
     # -- Parse arguments ------------------------------------------------
     if len(sys.argv) < 3:
         _error("Usage: yjk_driver.py <model.json> <work_dir>", phase="arguments")
@@ -1120,6 +1598,7 @@ def main() -> int:
 
     model_path = sys.argv[1]
     work_dir = sys.argv[2]
+    _CURRENT_WORK_DIR = os.path.abspath(work_dir)
 
     # Strip our arguments so YJKAPI sees no stray sys.argv[1]
     sys.argv = [sys.argv[0]]
@@ -1137,8 +1616,11 @@ def main() -> int:
 
 
 def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
+    global _CURRENT_WORK_DIR
+
     steps: list[dict] = []
     work_dir = os.path.abspath(work_dir)
+    _CURRENT_WORK_DIR = work_dir
     results_path = os.path.join(work_dir, "results.json")
     os.makedirs(work_dir, exist_ok=True)
     os.environ["SC_YJK_WORK_DIR"] = work_dir
@@ -1224,7 +1706,7 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
     print(f"[yjk_driver] ydb_path = {ydb_path}", file=sys.stderr, flush=True)
 
     # -- Phase 2: Launch or attach to YJK -------------------------------
-    yjks_exe_env = os.environ.get("YJKS_EXE", "").strip().strip('"')
+    yjks_exe_env = _env_path("YJKS_EXE")
     yjks_exe = (
         yjks_exe_env if yjks_exe_env and os.path.isfile(yjks_exe_env)
         else _find_yjks_exe(yjks_root)
@@ -1239,7 +1721,7 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
         )
         return 1
 
-    version = os.environ.get("YJK_VERSION", "8.0.0").strip()
+    version = _env_text("YJK_VERSION", "8.0.0")
     attach_existing = _env_flag("YJK_ATTACH_EXISTING")
     use_launcher = (not attach_existing) and _should_launch_with_launcher(yjks_root)
     prewarm_mode = _launcher_prewarm_mode()
@@ -1248,10 +1730,10 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
     # Set YJK_INVISIBLE=1 in .env to run fully headless (CI / unattended).
     cfg = ControlConfig()
     cfg.Version = version
-    cfg.Invisible = os.environ.get("YJK_INVISIBLE", "0").strip() == "1"
+    cfg.Invisible = _env_text("YJK_INVISIBLE", "0") == "1"
     if attach_existing:
         try:
-            cfg.Pid = int(os.environ.get("YJK_ATTACH_PID", "-1").strip() or "-1")
+            cfg.Pid = int(_env_text("YJK_ATTACH_PID", "-1") or "-1")
         except ValueError:
             cfg.Pid = -1
 
@@ -1517,7 +1999,7 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
         return 1
 
     async_start_only = any(
-        os.environ.get(name, "").strip() == "1"
+        _env_text(name) == "1"
         for name in ("YJK_START_ONLY", "YJK_ASYNC_CALC", "YJK_ASYNC_START_ONLY")
     )
     if async_start_only:
@@ -1562,7 +2044,7 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
             message="YJK_START_ONLY/YJK_ASYNC_CALC enabled; result extraction skipped.",
         )
 
-        _emit_json({
+        output = {
             "status": "success",
             "summary": {
                 "engine": "yjk-static",
@@ -1580,9 +2062,11 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
                 "YJK calculation was started without waiting; results.json was not extracted."
             ],
             "steps": steps,
-        })
+        }
+        _write_driver_output_json(work_dir, output)
+        _emit_json(output)
         print("[yjk_driver] done — calculation running in YJK", file=sys.stderr, flush=True)
-        os._exit(0)
+        _finish_after_json(work_dir=work_dir, steps=steps, exit_code=0, force_exit=True)
 
     # -- Phase 6: Synchronous design calculation ------------------------
     print("[yjk_driver] Phase 6: synchronous calculation", file=sys.stderr, flush=True)
@@ -1652,7 +2136,7 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
 
     started_at = time.monotonic()
     try:
-        extract_timeout = float(os.environ.get("YJK_EXTRACT_TIMEOUT_S", "30").strip() or "30")
+        extract_timeout = _env_float("YJK_EXTRACT_TIMEOUT_S", 30.0)
         deadline = time.monotonic() + extract_timeout
         while True:
             try:
@@ -1724,9 +2208,10 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
         steps=steps,
     )
 
+    _write_driver_output_json(work_dir, output)
     _emit_json(output)
     print("[yjk_driver] done — calculation and extraction completed", file=sys.stderr, flush=True)
-    return 0
+    return _finish_after_json(work_dir=work_dir, steps=steps, exit_code=0, force_exit=True)
 
 
 if __name__ == "__main__":
