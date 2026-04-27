@@ -154,27 +154,18 @@ def _find_yjk_launcher(root: str) -> str | None:
     return None
 
 
-def _auth_flag(root: str) -> str:
-    path = os.path.join(root, "AuthInformation.ini")
-    try:
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            for line in f:
-                key, sep, value = line.partition("=")
-                if sep and key.strip().lower() == "authflag":
-                    return value.strip()
-    except OSError:
-        pass
-    return ""
-
-
 def _should_launch_with_launcher(root: str) -> bool:
-    if _env_flag("YJK_DIRECT_RUN"):
-        return False
     explicit = os.environ.get("YJK_USE_LAUNCHER", "").strip()
     if explicit:
         return _env_flag("YJK_USE_LAUNCHER")
-    # BIT/online authorization is initialized by YjkLauncher.exe in this install.
-    return _auth_flag(root).upper() == "BIT" and _find_yjk_launcher(root) is not None
+    return False
+
+
+def _direct_launch_cwd(yjks_root: str) -> str:
+    configured = os.environ.get("YJK_CWD", "").strip().strip('"')
+    if configured and os.path.isdir(configured):
+        return configured
+    return yjks_root
 
 
 def _get_yjks_processes() -> list[dict]:
@@ -1075,8 +1066,8 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
                 summary={"work_dir": work_dir},
                 detailed={
                     "hint": (
-                        "Start YJK from the desktop shortcut once to confirm login/authorization. "
-                        "Set YJK_DIRECT_RUN=1 only for installations where RunYJK(yjks.exe) is authorized."
+                        "YJK_USE_LAUNCHER=1 is an explicit launcher attach mode. "
+                        "Unset it to use the default SDK RunYJK(yjks.exe) direct launch path."
                     )
                 },
             )
@@ -1084,7 +1075,10 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
     else:
         print(f"[yjk_driver] Phase 2: RunYJK({yjks_exe})", file=sys.stderr, flush=True)
         started_at = time.monotonic()
+        launch_cwd = _direct_launch_cwd(yjks_root)
+        previous_cwd = os.getcwd()
         try:
+            os.chdir(launch_cwd)
             msg = YJKSControl.RunYJK(yjks_exe)
         except Exception as exc:
             _record_step(
@@ -1104,13 +1098,18 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
                 summary={"work_dir": work_dir},
                 detailed={
                     "hint": (
-                        "If YJK works from the desktop shortcut but not from RunYJK, "
-                        "start YJK with YjkLauncher.exe, enter yjksipccontrol in YJK, "
-                        "then rerun with YJK_ATTACH_EXISTING=1."
+                        "RunYJK accepts only the yjks.exe file path. If this install "
+                        "requires online/BIT launcher authorization, use "
+                        "YJK_ATTACH_EXISTING=1 after starting YJK from the official launcher."
                     )
                 },
             )
             return 1
+        finally:
+            try:
+                os.chdir(previous_cwd)
+            except OSError:
+                pass
         _record_step(
             steps,
             phase="launch",
@@ -1119,6 +1118,7 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
             status="success",
             message=str(msg),
             started_at=started_at,
+            cwd=launch_cwd,
         )
     print(f"[yjk_driver] YJK launch/attach result: {msg}", file=sys.stderr, flush=True)
 

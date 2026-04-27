@@ -18,6 +18,9 @@ YJK_PYTHON_BIN : str, optional
 YJK_WORK_DIR : str, optional
     Base directory for YJK project files.
     Defaults to ``<tempdir>/yjk_projects``.
+YJK_CWD : str, optional
+    Working directory used while calling SDK ``RunYJK(yjks.exe)``.
+    Defaults to the YJK install root.
 YJK_VERSION : str, optional
     YJK version string passed to ControlConfig.  Default ``8.0.0``.
 YJK_TIMEOUT_S : str, optional
@@ -36,11 +39,9 @@ YJK_ATTACH_PID : str, optional
     PID to attach to when ``YJK_ATTACH_EXISTING=1``. Defaults to ``-1``, which
     lets YJK prompt for a target process when multiple sessions exist.
 YJK_USE_LAUNCHER : str, optional
-    Set to ``"1"`` to start YJK through ``YjkLauncher.exe`` and automatically
-    attach to the launched ``yjks.exe`` session. When unset, BIT-authorized
-    installations use this mode automatically.
-YJK_DIRECT_RUN : str, optional
-    Set to ``"1"`` to force the SDK ``RunYJK(yjks.exe)`` path.
+    Set to ``"1"`` to start YJK through ``YjkLauncher.exe`` and wait for an
+    externally launched ``yjks.exe`` session. When unset, the runtime uses the
+    SDK ``RunYJK(yjks.exe)`` direct launch path.
 YJK_LAUNCHER_EXE : str, optional
     Direct path to ``YjkLauncher.exe``. Defaults to ``<install_root>/YjkLauncher.exe``.
 YJK_LAUNCHER_WAIT_S / YJK_AUTO_IPC_DELAY_S : str, optional
@@ -402,8 +403,8 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         "YJK_INVISIBLE",
         "YJK_ATTACH_EXISTING",
         "YJK_ATTACH_PID",
+        "YJK_CWD",
         "YJK_USE_LAUNCHER",
-        "YJK_DIRECT_RUN",
         "YJK_LAUNCHER_EXE",
         "YJK_LAUNCHER_CWD",
         "YJK_LAUNCHER_WAIT_S",
