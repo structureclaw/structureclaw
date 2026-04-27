@@ -449,7 +449,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     # ---- Determine working directory ----
     base_work_dir = Path(
         os.getenv("PKPM_WORK_DIR", "").strip()
-        or Path(tempfile.gettempdir()) / "pkpm_projects"
+        or Path.home() / ".structureclaw" / "analysis" / "pkpm"
     )
     project_name = f"sc_{uuid.uuid4().hex[:8]}"
     work_dir = base_work_dir / project_name

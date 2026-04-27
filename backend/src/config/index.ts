@@ -124,13 +124,13 @@ export const config = {
 
   // PKPM 引擎配置
   pkpmCyclePath: fileSettings?.pkpm?.cyclePath ?? '',
-  pkpmWorkDir: fileSettings?.pkpm?.workDir ?? '',
+  pkpmWorkDir: fileSettings?.pkpm?.workDir ?? path.join(runtimeBaseDir, 'analysis', 'pkpm'),
 
   // YJK 引擎配置
   yjkInstallRoot: fileSettings?.yjk?.installRoot ?? '',
   yjkExePath: fileSettings?.yjk?.exePath ?? '',
   yjkPythonBin: fileSettings?.yjk?.pythonBin ?? '',
-  yjkWorkDir: fileSettings?.yjk?.workDir ?? '',
+  yjkWorkDir: fileSettings?.yjk?.workDir ?? path.join(runtimeBaseDir, 'analysis', 'yjk'),
   yjkVersion: fileSettings?.yjk?.version ?? '8.0.0',
   yjkTimeoutS: fileSettings?.yjk?.timeoutS ?? 600,
   yjkInvisible: fileSettings?.yjk?.invisible ?? false,

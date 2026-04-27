@@ -181,7 +181,7 @@ def _resolve_work_dir(parameters: Dict[str, Any]) -> Path:
     """
     base = _env_text("YJK_WORK_DIR")
     if not base:
-        base = str(_repo_root() / ".runtime" / "yjk_work_dir")
+        base = str(Path.home() / ".structureclaw" / "analysis" / "yjk")
 
     trace_id = _safe_name(parameters.get("traceId"), f"run-{uuid.uuid4().hex[:8]}")
     project_name = f"sc_{trace_id}"

@@ -171,7 +171,10 @@ class AnalysisEngineRegistry:
         import tempfile
         import uuid
 
-        work_dir = Path(tempfile.gettempdir()) / "pkpm_probe" / uuid.uuid4().hex[:8]
+        work_dir = Path(
+            os.getenv("PKPM_WORK_DIR", "").strip()
+            or str(Path.home() / ".structureclaw" / "analysis" / "pkpm")
+        ) / "probe" / uuid.uuid4().hex[:8]
         try:
             work_dir.mkdir(parents=True, exist_ok=True)
             project_name = "probe"
