@@ -98,10 +98,25 @@ export class PythonWorkerRunner<TInput extends object> {
     const pythonCommand = await this.resolvePythonCommand();
     const payload = JSON.stringify(input);
     const { stdout, stderr } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+      // Build child env: inherit process.env + inject settings-driven PKPM/YJK paths
+      const childEnv: Record<string, string> = { ...process.env as Record<string, string>, PYTHONIOENCODING: 'utf-8' };
+      if (config.pkpmCyclePath) childEnv.PKPM_CYCLE_PATH = config.pkpmCyclePath;
+      if (config.pkpmWorkDir) childEnv.PKPM_WORK_DIR = config.pkpmWorkDir;
+      if (config.yjkInstallRoot) {
+        childEnv.YJK_PATH = config.yjkInstallRoot;
+        childEnv.YJKS_ROOT = config.yjkInstallRoot;
+      }
+      if (config.yjkExePath) childEnv.YJKS_EXE = config.yjkExePath;
+      if (config.yjkPythonBin) childEnv.YJK_PYTHON_BIN = config.yjkPythonBin;
+      if (config.yjkWorkDir) childEnv.YJK_WORK_DIR = config.yjkWorkDir;
+      if (config.yjkVersion) childEnv.YJK_VERSION = config.yjkVersion;
+      childEnv.YJK_TIMEOUT_S = String(config.yjkTimeoutS);
+      childEnv.YJK_INVISIBLE = config.yjkInvisible ? '1' : '0';
+
       const child = spawn(pythonCommand.executable, [...pythonCommand.args, this.workerPath], {
         cwd: process.cwd(),
         stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+        env: childEnv,
       });
 
       let stdout = '';

@@ -15,6 +15,8 @@ import { runtimeBaseDir } from './index.js';
 export type SettingsFileServer = {
   port?: number;
   host?: string;
+  bodyLimitMb?: number;
+  frontendPort?: number;
 };
 
 export type SettingsFileLlm = {
@@ -34,11 +36,45 @@ export type SettingsFileLogging = {
   llmLogEnabled?: boolean;
   logMaxAgeDays?: number;
   logMaxSize?: number;
+  llmLogDir?: string;
 };
 
 export type SettingsFileAnalysis = {
   pythonBin?: string;
   pythonTimeoutMs?: number;
+  engineManifestPath?: string;
+};
+
+export type SettingsFileStorage = {
+  reportsDir?: string;
+  maxFileSize?: number;
+};
+
+export type SettingsFileCors = {
+  origins?: string;
+};
+
+export type SettingsFileAgent = {
+  workspaceRoot?: string;
+  checkpointDir?: string;
+  allowShell?: boolean;
+  allowedShellCommands?: string;
+  shellTimeoutMs?: number;
+};
+
+export type SettingsFilePkpm = {
+  cyclePath?: string;
+  workDir?: string;
+};
+
+export type SettingsFileYjk = {
+  installRoot?: string;
+  exePath?: string;
+  pythonBin?: string;
+  workDir?: string;
+  version?: string;
+  timeoutS?: number;
+  invisible?: boolean;
 };
 
 export type SettingsFile = {
@@ -47,6 +83,11 @@ export type SettingsFile = {
   database?: SettingsFileDatabase;
   logging?: SettingsFileLogging;
   analysis?: SettingsFileAnalysis;
+  storage?: SettingsFileStorage;
+  cors?: SettingsFileCors;
+  agent?: SettingsFileAgent;
+  pkpm?: SettingsFilePkpm;
+  yjk?: SettingsFileYjk;
   updatedAt?: string;
 };
 
@@ -91,10 +132,14 @@ function normalizeServerSection(raw: unknown): SettingsFileServer | undefined {
   const record = raw as Record<string, unknown>;
   const port = normalizeOptionalNumber(record.port);
   const host = normalizeOptionalString(record.host);
-  if (port === undefined && host === undefined) return undefined;
+  const bodyLimitMb = normalizeOptionalNumber(record.bodyLimitMb);
+  const frontendPort = normalizeOptionalNumber(record.frontendPort);
+  if (port === undefined && host === undefined && bodyLimitMb === undefined && frontendPort === undefined) return undefined;
   const result: SettingsFileServer = {};
   if (port !== undefined) result.port = port;
   if (host !== undefined) result.host = host;
+  if (bodyLimitMb !== undefined) result.bodyLimitMb = bodyLimitMb;
+  if (frontendPort !== undefined) result.frontendPort = frontendPort;
   return result;
 }
 
@@ -134,12 +179,14 @@ function normalizeLoggingSection(raw: unknown): SettingsFileLogging | undefined 
   const llmLogEnabled = normalizeOptionalBoolean(record.llmLogEnabled);
   const logMaxAgeDays = normalizeOptionalNumber(record.logMaxAgeDays);
   const logMaxSize = normalizeOptionalNumber(record.logMaxSize);
-  if (level === undefined && llmLogEnabled === undefined && logMaxAgeDays === undefined && logMaxSize === undefined) return undefined;
+  const llmLogDir = normalizeOptionalString(record.llmLogDir);
+  if (level === undefined && llmLogEnabled === undefined && logMaxAgeDays === undefined && logMaxSize === undefined && llmLogDir === undefined) return undefined;
   const result: SettingsFileLogging = {};
   if (level !== undefined) result.level = level;
   if (llmLogEnabled !== undefined) result.llmLogEnabled = llmLogEnabled;
   if (logMaxAgeDays !== undefined) result.logMaxAgeDays = logMaxAgeDays;
   if (logMaxSize !== undefined) result.logMaxSize = logMaxSize;
+  if (llmLogDir !== undefined) result.llmLogDir = llmLogDir;
   return result;
 }
 
@@ -148,10 +195,84 @@ function normalizeAnalysisSection(raw: unknown): SettingsFileAnalysis | undefine
   const record = raw as Record<string, unknown>;
   const pythonBin = normalizeOptionalString(record.pythonBin);
   const pythonTimeoutMs = normalizeOptionalNumber(record.pythonTimeoutMs);
-  if (pythonBin === undefined && pythonTimeoutMs === undefined) return undefined;
+  const engineManifestPath = normalizeOptionalString(record.engineManifestPath);
+  if (pythonBin === undefined && pythonTimeoutMs === undefined && engineManifestPath === undefined) return undefined;
   const result: SettingsFileAnalysis = {};
   if (pythonBin !== undefined) result.pythonBin = pythonBin;
   if (pythonTimeoutMs !== undefined) result.pythonTimeoutMs = pythonTimeoutMs;
+  if (engineManifestPath !== undefined) result.engineManifestPath = engineManifestPath;
+  return result;
+}
+
+function normalizeStorageSection(raw: unknown): SettingsFileStorage | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  const reportsDir = normalizeOptionalString(record.reportsDir);
+  const maxFileSize = normalizeOptionalNumber(record.maxFileSize);
+  if (reportsDir === undefined && maxFileSize === undefined) return undefined;
+  const result: SettingsFileStorage = {};
+  if (reportsDir !== undefined) result.reportsDir = reportsDir;
+  if (maxFileSize !== undefined) result.maxFileSize = maxFileSize;
+  return result;
+}
+
+function normalizeCorsSection(raw: unknown): SettingsFileCors | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  const origins = normalizeOptionalString(record.origins);
+  if (origins === undefined) return undefined;
+  return { origins };
+}
+
+function normalizeAgentSection(raw: unknown): SettingsFileAgent | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  const workspaceRoot = normalizeOptionalString(record.workspaceRoot);
+  const checkpointDir = normalizeOptionalString(record.checkpointDir);
+  const allowShell = normalizeOptionalBoolean(record.allowShell);
+  const allowedShellCommands = normalizeOptionalString(record.allowedShellCommands);
+  const shellTimeoutMs = normalizeOptionalNumber(record.shellTimeoutMs);
+  if (workspaceRoot === undefined && checkpointDir === undefined && allowShell === undefined && allowedShellCommands === undefined && shellTimeoutMs === undefined) return undefined;
+  const result: SettingsFileAgent = {};
+  if (workspaceRoot !== undefined) result.workspaceRoot = workspaceRoot;
+  if (checkpointDir !== undefined) result.checkpointDir = checkpointDir;
+  if (allowShell !== undefined) result.allowShell = allowShell;
+  if (allowedShellCommands !== undefined) result.allowedShellCommands = allowedShellCommands;
+  if (shellTimeoutMs !== undefined) result.shellTimeoutMs = shellTimeoutMs;
+  return result;
+}
+
+function normalizePkpmSection(raw: unknown): SettingsFilePkpm | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  const cyclePath = normalizeOptionalString(record.cyclePath);
+  const workDir = normalizeOptionalString(record.workDir);
+  if (cyclePath === undefined && workDir === undefined) return undefined;
+  const result: SettingsFilePkpm = {};
+  if (cyclePath !== undefined) result.cyclePath = cyclePath;
+  if (workDir !== undefined) result.workDir = workDir;
+  return result;
+}
+
+function normalizeYjkSection(raw: unknown): SettingsFileYjk | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const record = raw as Record<string, unknown>;
+  const installRoot = normalizeOptionalString(record.installRoot);
+  const exePath = normalizeOptionalString(record.exePath);
+  const pythonBin = normalizeOptionalString(record.pythonBin);
+  const workDir = normalizeOptionalString(record.workDir);
+  const version = normalizeOptionalString(record.version);
+  const timeoutS = normalizeOptionalNumber(record.timeoutS);
+  const invisible = normalizeOptionalBoolean(record.invisible);
+  if (installRoot === undefined && exePath === undefined && pythonBin === undefined && workDir === undefined && version === undefined && timeoutS === undefined && invisible === undefined) return undefined;
+  const result: SettingsFileYjk = {};
+  if (installRoot !== undefined) result.installRoot = installRoot;
+  if (exePath !== undefined) result.exePath = exePath;
+  if (pythonBin !== undefined) result.pythonBin = pythonBin;
+  if (workDir !== undefined) result.workDir = workDir;
+  if (version !== undefined) result.version = version;
+  if (timeoutS !== undefined) result.timeoutS = timeoutS;
+  if (invisible !== undefined) result.invisible = invisible;
   return result;
 }
 
@@ -163,14 +284,24 @@ function normalizeSettingsFile(raw: unknown): SettingsFile | null {
   const database = normalizeDatabaseSection(record.database);
   const logging = normalizeLoggingSection(record.logging);
   const analysis = normalizeAnalysisSection(record.analysis);
+  const storage = normalizeStorageSection(record.storage);
+  const cors = normalizeCorsSection(record.cors);
+  const agent = normalizeAgentSection(record.agent);
+  const pkpm = normalizePkpmSection(record.pkpm);
+  const yjk = normalizeYjkSection(record.yjk);
   const updatedAt = normalizeOptionalString(record.updatedAt);
-  if (!server && !llm && !database && !logging && !analysis) return null;
+  if (!server && !llm && !database && !logging && !analysis && !storage && !cors && !agent && !pkpm && !yjk) return null;
   const result: SettingsFile = {};
   if (server) result.server = server;
   if (llm) result.llm = llm;
   if (database) result.database = database;
   if (logging) result.logging = logging;
   if (analysis) result.analysis = analysis;
+  if (storage) result.storage = storage;
+  if (cors) result.cors = cors;
+  if (agent) result.agent = agent;
+  if (pkpm) result.pkpm = pkpm;
+  if (yjk) result.yjk = yjk;
   if (updatedAt) result.updatedAt = updatedAt;
   return result;
 }

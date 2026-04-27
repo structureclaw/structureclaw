@@ -62,10 +62,12 @@ const llmModel = fileSettings?.llm?.model
 const llmBaseUrl = fileSettings?.llm?.baseUrl
   ?? (process.env.LLM_BASE_URL || undefined)
   ?? 'https://api.openai.com/v1';
-const frontendPort = process.env.FRONTEND_PORT || '30000';
+const frontendPort = fileSettings?.server?.frontendPort?.toString()
+  ?? (process.env.FRONTEND_PORT || '30000');
 const backendPort = fileSettings?.server?.port
   ?? parseInt(process.env.PORT || '8000', 10);
-const analysisEngineManifestPath = process.env.ANALYSIS_ENGINE_MANIFEST_PATH || path.join(runtimeBaseDir, 'analysis-engines.json');
+const analysisEngineManifestPath = fileSettings?.analysis?.engineManifestPath
+  ?? (process.env.ANALYSIS_ENGINE_MANIFEST_PATH || path.join(runtimeBaseDir, 'analysis-engines.json'));
 const defaultAnalysisPythonBin = process.platform === 'win32'
   ? path.resolve(__dirname, '../../.venv/Scripts/python.exe')
   : path.resolve(__dirname, '../../.venv/bin/python');
@@ -77,7 +79,7 @@ const defaultCorsOrigins = [
   `http://127.0.0.1:${backendPort}`,
 ];
 
-const corsOrigins = (process.env.CORS_ORIGINS || defaultCorsOrigins.join(','))
+const corsOrigins = (fileSettings?.cors?.origins ?? (process.env.CORS_ORIGINS || defaultCorsOrigins.join(',')))
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean);
@@ -89,7 +91,9 @@ export const config = {
   port: typeof backendPort === 'number' ? backendPort : parseInt(String(backendPort), 10),
   host: fileSettings?.server?.host ?? (process.env.HOST || '0.0.0.0'),
   nodeEnv: process.env.NODE_ENV || 'development',
-  bodyLimitMb: parseInt(process.env.BACKEND_BODY_LIMIT_MB || '20', 10),
+  bodyLimitMb: fileSettings?.server?.bodyLimitMb
+    ?? parseInt(process.env.BACKEND_BODY_LIMIT_MB || '20', 10),
+  frontendPort: parseInt(frontendPort, 10),
 
   // 数据库配置
   databaseUrl: fileSettings?.database?.url ?? (process.env.DATABASE_URL || defaultSqliteDatabaseUrl),
@@ -114,8 +118,9 @@ export const config = {
   corsOrigins,
 
   // 文件存储
-  reportsDir: resolveReportsDir(process.env.REPORTS_DIR),
-  maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '104857600', 10),
+  reportsDir: resolveReportsDir(fileSettings?.storage?.reportsDir ?? process.env.REPORTS_DIR),
+  maxFileSize: fileSettings?.storage?.maxFileSize
+    ?? parseInt(process.env.MAX_FILE_SIZE || '104857600', 10),
 
   // 日志级别
   logLevel: fileSettings?.logging?.level ?? (process.env.LOG_LEVEL || 'info'),
@@ -131,8 +136,43 @@ export const config = {
   // LLM 调用日志（默认关闭，设置 LLM_LOG_ENABLED=true 开启）
   llmLogEnabled: fileSettings?.logging?.llmLogEnabled
     ?? (process.env.LLM_LOG_ENABLED === 'true'),
-  llmLogDir: process.env.LLM_LOG_DIR || path.join(runtimeBaseDir, 'logs'),
+  llmLogDir: fileSettings?.logging?.llmLogDir
+    ?? (process.env.LLM_LOG_DIR || path.join(runtimeBaseDir, 'logs')),
   llmSettingsPath: process.env.LLM_SETTINGS_PATH || defaultLlmSettingsPath,
+
+  // Agent 配置
+  agentWorkspaceRoot: fileSettings?.agent?.workspaceRoot
+    ?? (process.env.WORKSPACE_ROOT || ''),
+  agentCheckpointDir: fileSettings?.agent?.checkpointDir
+    ?? (process.env.AGENT_CHECKPOINT_DIR || path.join(runtimeBaseDir, 'agent-checkpoints')),
+  agentAllowShell: fileSettings?.agent?.allowShell
+    ?? (process.env.AGENT_ALLOW_SHELL === 'true'),
+  agentAllowedShell: fileSettings?.agent?.allowedShellCommands
+    ?? (process.env.AGENT_ALLOWED_SHELL_COMMANDS || 'node,npm,python,python3,./sclaw,./sclaw_cn'),
+  agentShellTimeoutMs: fileSettings?.agent?.shellTimeoutMs
+    ?? parseInt(process.env.AGENT_SHELL_TIMEOUT_MS || '300000', 10),
+
+  // PKPM 引擎配置
+  pkpmCyclePath: fileSettings?.pkpm?.cyclePath
+    ?? (process.env.PKPM_CYCLE_PATH || ''),
+  pkpmWorkDir: fileSettings?.pkpm?.workDir
+    ?? (process.env.PKPM_WORK_DIR || ''),
+
+  // YJK 引擎配置
+  yjkInstallRoot: fileSettings?.yjk?.installRoot
+    ?? (process.env.YJK_PATH || process.env.YJKS_ROOT || ''),
+  yjkExePath: fileSettings?.yjk?.exePath
+    ?? (process.env.YJKS_EXE || ''),
+  yjkPythonBin: fileSettings?.yjk?.pythonBin
+    ?? (process.env.YJK_PYTHON_BIN || ''),
+  yjkWorkDir: fileSettings?.yjk?.workDir
+    ?? (process.env.YJK_WORK_DIR || ''),
+  yjkVersion: fileSettings?.yjk?.version
+    ?? (process.env.YJK_VERSION || '8.0.0'),
+  yjkTimeoutS: fileSettings?.yjk?.timeoutS
+    ?? parseInt(process.env.YJK_TIMEOUT_S || '600', 10),
+  yjkInvisible: fileSettings?.yjk?.invisible
+    ?? (process.env.YJK_INVISIBLE === '1'),
 };
 
 export type Config = typeof config;
