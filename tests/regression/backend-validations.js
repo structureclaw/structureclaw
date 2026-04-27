@@ -649,7 +649,7 @@ async function validateAgentCapabilityMatrix(context) {
 async function validateAgentSkillhubContract(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
-  const stateDir = path.join(context.rootDir, ".runtime", "skillhub");
+  const stateDir = path.join(os.homedir(), ".structureclaw", "skillhub");
   const cacheFile = path.join(stateDir, "cache.json");
 
   await fsp.rm(stateDir, { recursive: true, force: true });
