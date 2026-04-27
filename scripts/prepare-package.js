@@ -6,7 +6,7 @@
 "use strict";
 
 const { execSync } = require("node:child_process");
-const { existsSync, mkdirSync, cpSync, rmSync } = require("node:fs");
+const { existsSync, mkdirSync, cpSync, rmSync, writeFileSync } = require("node:fs");
 const path = require("node:path");
 
 const rootDir = path.resolve(__dirname, "..");
@@ -58,7 +58,7 @@ cpSync(path.join(rootDir, "backend", "dist"), distBackend, { recursive: true });
 
 // Write package.json with "type": "module" so Node.js treats dist/backend/*.js as ESM
 const backendPackageJson = JSON.stringify({ type: "module" }, null, 2) + "\n";
-fs.writeFileSync(path.join(distBackend, "package.json"), backendPackageJson, "utf8");
+writeFileSync(path.join(distBackend, "package.json"), backendPackageJson, "utf8");
 console.log("[sclaw] Wrote dist/backend/package.json (type: module)");
 
 // Frontend static export
