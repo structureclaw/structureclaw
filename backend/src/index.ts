@@ -43,6 +43,7 @@ async function registerPlugins() {
   // CORS
   await fastify.register(cors, {
     origin: config.corsOrigins,
+    methods: ['GET', 'HEAD', 'PUT', 'POST', 'DELETE', 'PATCH'],
     credentials: true,
   });
 
