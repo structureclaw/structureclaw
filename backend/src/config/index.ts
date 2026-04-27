@@ -27,7 +27,6 @@ const fileSettings = readSettingsFile();
 const defaultSqliteDatabasePath = path.join(runtimeBaseDir, 'data', 'structureclaw.db');
 const defaultSqliteDatabaseUrl = `file:${defaultSqliteDatabasePath}`;
 const defaultUploadDir = runtimeBaseDir;
-const defaultLlmSettingsPath = path.join(runtimeBaseDir, 'llm-settings.json');
 
 function resolveReportsDir(rawValue: string | undefined): string {
   const trimmed = rawValue?.trim();
@@ -113,7 +112,6 @@ export const config = {
   // LLM 调用日志（默认关闭，设置 llmLogEnabled: true 开启）
   llmLogEnabled: fileSettings?.logging?.llmLogEnabled ?? false,
   llmLogDir: fileSettings?.logging?.llmLogDir ?? path.join(runtimeBaseDir, 'logs'),
-  llmSettingsPath: defaultLlmSettingsPath,
 
   // Agent 配置
   agentWorkspaceRoot: fileSettings?.agent?.workspaceRoot ?? '',

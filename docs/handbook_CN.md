@@ -128,22 +128,22 @@ node .\sclaw stop
 
 以上变量都可在 `.env` 或 shell 环境变量中覆盖。
 
-## 6. 环境变量与配置
+## 6. 配置
 
-请基于 `.env.example` 配置。
+所有设置通过 `settings.json` 管理（由 `sclaw doctor` 或前端设置界面创建）。
 
-关键变量：
+关键设置：
 
-- 运行时：`NODE_ENV`、`PORT`、`FRONTEND_PORT`
-- 数据层：`DATABASE_URL`
-- LLM：`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`（OpenAI-compatible 接口）
-- 集成：`ANALYSIS_PYTHON_BIN`、`ANALYSIS_ENGINE_MANIFEST_PATH`、`CORS_ORIGINS`
+- 运行时：`server.port`、`server.frontendPort`
+- 数据层：`database.url`
+- LLM：`llm.apiKey`、`llm.model`、`llm.baseUrl`（OpenAI-compatible 接口）
+- 集成：`analysis.pythonBin`、`analysis.engineManifestPath`、`cors.origins`
 
 说明：
 
 - `./sclaw start` 和 `./sclaw restart` 默认使用 `.runtime/data/structureclaw.start.db`；`./sclaw doctor` 使用 `.runtime/data/structureclaw.doctor.db`，确保启动预检与实际运行库隔离。
 - 后端的 agent 会话与模型缓存使用当前进程内存存储。
-- `ANALYSIS_PYTHON_BIN` 默认指向 `backend/.venv/bin/python`。
+- `analysis.pythonBin` 默认指向 `backend/.venv/bin/python`。
 
 ## 7. 核心工作流
 

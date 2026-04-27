@@ -130,20 +130,20 @@ You can override any of them in `.env` or shell environment variables.
 
 ## 6. Environment and Configuration
 
-Start with `.env.example`.
+All settings are managed through `settings.json` (created by `sclaw doctor` or the frontend Settings UI).
 
-Important variables:
+Key settings:
 
-- Runtime: `NODE_ENV`, `PORT`, `FRONTEND_PORT`
-- Data: `DATABASE_URL`
-- LLM: `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` (OpenAI-compatible)
-- Integration: `ANALYSIS_PYTHON_BIN`, `ANALYSIS_ENGINE_MANIFEST_PATH`, `CORS_ORIGINS`
+- Runtime: `server.port`, `server.frontendPort`
+- Data: `database.url`
+- LLM: `llm.apiKey`, `llm.model`, `llm.baseUrl` (OpenAI-compatible)
+- Integration: `analysis.pythonBin`, `analysis.engineManifestPath`, `cors.origins`
 
 Notes:
 
 - `./sclaw start` and `./sclaw restart` default to `.runtime/data/structureclaw.start.db`; `./sclaw doctor` uses `.runtime/data/structureclaw.doctor.db` so startup checks stay isolated from the active local runtime database.
 - Backend agent sessions and model cache use an in-memory store in the current process.
-- `ANALYSIS_PYTHON_BIN` defaults to `backend/.venv/bin/python`.
+- `analysis.pythonBin` defaults to `backend/.venv/bin/python`.
 
 ## 7. Primary Workflows
 

@@ -235,7 +235,6 @@ function resolvePaths(rootDir) {
     envFile: installedMode
       ? path.join(runtimeDir, ".env")
       : path.join(rootDir, ".env"),
-    envExampleFile: path.join(rootDir, ".env.example"),
     backendDir: installedMode
       ? path.join(rootDir, "dist", "backend")
       : path.join(rootDir, "backend"),

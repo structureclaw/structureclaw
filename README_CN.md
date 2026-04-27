@@ -133,16 +133,16 @@ node .\sclaw docker-stop
 docker compose down
 ```
 
-## 环境变量
+## 配置
 
-请基于 `.env.example` 配置本地环境。
+所有设置通过 `settings.json` 管理（由 `sclaw doctor` 或前端设置界面创建）。
 
-关键变量包括：
+关键设置包括：
 
-- `PORT`、`FRONTEND_PORT`
-- `DATABASE_URL`、`POSTGRES_SOURCE_DATABASE_URL`
-- `LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`（OpenAI-compatible 接口）
-- `ANALYSIS_PYTHON_BIN`、`ANALYSIS_PYTHON_TIMEOUT_MS`、`ANALYSIS_ENGINE_MANIFEST_PATH`
+- `server.port`、`server.frontendPort`
+- `database.url`（默认 SQLite）
+- `llm.apiKey`、`llm.model`、`llm.baseUrl`（OpenAI-compatible 接口）
+- `analysis.pythonBin`、`analysis.pythonTimeoutMs`、`analysis.engineManifestPath`
 
 ## 主要 API 入口
 

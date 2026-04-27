@@ -10,7 +10,6 @@ on:
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
-      - '.env.example'
       - '.github/actions/setup-env/**'
       - '.github/workflows/backend-regression.yml'
   push:
@@ -23,7 +22,6 @@ on:
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
-      - '.env.example'
       - '.github/actions/setup-env/**'
       - '.github/workflows/backend-regression.yml'
 

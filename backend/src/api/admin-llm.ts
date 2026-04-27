@@ -33,7 +33,7 @@ export async function adminLlmRoutes(fastify: FastifyInstance) {
   fastify.delete('/', {
     schema: {
       tags: ['Admin'],
-      summary: 'Delete global LLM runtime overrides and fall back to .env',
+      summary: 'Delete global LLM runtime overrides and restore defaults',
     },
   }, async () => clearRuntimeLlmSettings());
 }

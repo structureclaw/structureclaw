@@ -95,7 +95,7 @@ export type SettingsFile = {
 // Path resolution
 // ---------------------------------------------------------------------------
 
-export function getSettingsFilePath(): string {
+function getSettingsFilePath(): string {
   // Allow runtime override for testing
   const overrideDir = process.env.SCLAW_DATA_DIR;
   const baseDir = overrideDir || runtimeBaseDir;
@@ -106,7 +106,7 @@ export function getSettingsFilePath(): string {
 // Validation helpers
 // ---------------------------------------------------------------------------
 
-function normalizeOptionalString(value: unknown): string | undefined {
+export function normalizeOptionalString(value: unknown): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
   return trimmed.length > 0 ? trimmed : undefined;
@@ -316,13 +316,6 @@ let cachedSettingsPath: string | undefined;
 function setCache(filePath: string, settings: SettingsFile | null): void {
   cachedSettingsPath = filePath;
   cachedSettings = settings;
-}
-
-export function invalidateSettingsCache(): void {
-  cachedSettingsPath = undefined;
-  cachedSettings = undefined;
-  // Also clear path cache so SCLAW_DATA_DIR changes are picked up
-  cachedSettingsPath = undefined;
 }
 
 function readSettingsFromDisk(): SettingsFile | null {

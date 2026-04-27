@@ -265,12 +265,22 @@ async function collectDockerInstallConfig(rawArgs, env) {
 }
 
 function persistDockerEnv(paths, config) {
-  const templatePath = runtime.pathExists(paths.envFile) ? paths.envFile : paths.envExampleFile;
-  let content = fs.readFileSync(templatePath, "utf8");
-  content = replaceEnvValue(content, "LLM_BASE_URL", config.baseUrl);
-  content = replaceEnvValue(content, "LLM_API_KEY", config.apiKey);
-  content = replaceEnvValue(content, "LLM_MODEL", config.model);
-  fs.writeFileSync(paths.envFile, content);
+  const settingsPath = path.join(path.dirname(paths.envFile), "settings.json");
+  let settings = {};
+  try {
+    if (runtime.pathExists(settingsPath)) {
+      settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    }
+  } catch { /* start fresh */ }
+  settings.llm = {
+    ...(settings.llm || {}),
+    baseUrl: config.baseUrl,
+    apiKey: config.apiKey,
+    model: config.model,
+  };
+  settings.updatedAt = new Date().toISOString();
+  runtime.ensureDirectory(path.dirname(settingsPath));
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
 }
 
 async function showDockerHealth(env) {

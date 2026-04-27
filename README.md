@@ -133,16 +133,16 @@ Or:
 docker compose down
 ```
 
-## Environment
+## Configuration
 
-Copy and adjust environment variables from `.env.example`.
+All settings are managed through `settings.json` (created by `sclaw doctor` or the frontend Settings UI).
 
-Key variables include:
+Key settings include:
 
-- `PORT`, `FRONTEND_PORT`
-- `DATABASE_URL`, `POSTGRES_SOURCE_DATABASE_URL`
-- `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` (OpenAI-compatible)
-- `ANALYSIS_PYTHON_BIN`, `ANALYSIS_PYTHON_TIMEOUT_MS`, `ANALYSIS_ENGINE_MANIFEST_PATH`
+- `server.port`, `server.frontendPort`
+- `database.url` (SQLite default)
+- `llm.apiKey`, `llm.model`, `llm.baseUrl` (OpenAI-compatible)
+- `analysis.pythonBin`, `analysis.pythonTimeoutMs`, `analysis.engineManifestPath`
 
 ## API Entrypoints
 
