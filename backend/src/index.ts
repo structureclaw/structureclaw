@@ -9,7 +9,7 @@ import { existsSync } from 'fs';
 import { config } from './config/index.js';
 import { registerRoutes } from './api/routes.js';
 import { prisma } from './utils/database.js';
-import { logger, getFastifyLoggerConfig } from './utils/logger.js';
+import { getFastifyLoggerConfig } from './utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

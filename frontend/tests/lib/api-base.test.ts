@@ -58,11 +58,11 @@ describe('api-base', () => {
     expect(API_BASE).toBe('not-a-valid-url')
   })
 
-  it('defaults to http://localhost:8000 when env var is unset', async () => {
+  it('returns empty string in browser when env var is unset (same-origin mode)', async () => {
     vi.stubEnv('NEXT_PUBLIC_API_URL', '')
-    // When the env var is empty string, the || fallback kicks in
+    // No explicit URL + jsdom window → same-origin installed-package mode
     const { API_BASE } = await import('@/lib/api-base')
-    expect(API_BASE).toBe('http://127.0.0.1:8000')
+    expect(API_BASE).toBe('')
   })
 
   it('handles localhost URL without port', async () => {

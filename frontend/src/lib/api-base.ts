@@ -15,19 +15,29 @@ const ENV_API_URL = process.env.NEXT_PUBLIC_API_URL || ''
  * When the page is served by the backend itself (installed-package mode),
  * `window.location.origin` IS the backend URL.  We detect this by checking
  * that no explicit NEXT_PUBLIC_API_URL was set at build time.
+ *
+ * The empty-string return in installed-package mode is intentional: browser
+ * fetch('') resolves to the current origin, so no CORS is needed.
+ * Tests that stub ENV_API_URL to '' in a jsdom window should NOT expect a
+ * URL fallback — the module intentionally returns '' for same-origin mode.
  */
 function resolveBrowserApiBase(): string {
-  if (typeof window === 'undefined') {
-    // SSR — fall back to env or default
-    return ENV_API_URL || 'http://localhost:8000'
-  }
-
   // If an explicit API URL was set at build time, use it
   if (ENV_API_URL) {
+    if (typeof window === 'undefined') {
+      // SSR — return as-is (no CORS concern server-side)
+      return ENV_API_URL.replace(/\/$/, '')
+    }
+    // Browser — normalize localhost → 127.0.0.1 for CORS matching
     return normalizeHostname(ENV_API_URL)
   }
 
-  // No explicit URL → assume same-origin (installed-package mode)
+  if (typeof window === 'undefined') {
+    // SSR — fall back to localhost default
+    return 'http://localhost:8000'
+  }
+
+  // No explicit URL + browser → assume same-origin (installed-package mode)
   return ''
 }
 

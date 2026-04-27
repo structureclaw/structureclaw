@@ -11,34 +11,18 @@ function log(message = "") {
 }
 
 function writeDockerSmokeEnv(paths) {
-  if (!runtime.pathExists(paths.envExampleFile)) {
-    throw new Error(`Missing ${paths.envExampleFile}`);
-  }
-
   const outEnv =
     process.env.STRUCTURECLAW_COMPOSE_ENV_FILE ||
     path.join(paths.runtimeDir, "ci-docker-smoke.env");
-  const overrides = new Map([
-    ["DATABASE_URL", "file:/.runtime/data/structureclaw.db"],
-    ["LLM_API_KEY", "ci-dummy-key"],
-    ["LLM_MODEL", "gpt-4.1"],
-    ["LLM_BASE_URL", "https://api.openai.com/v1"],
-  ]);
-  const lines = fs
-    .readFileSync(paths.envExampleFile, "utf8")
-    .split(/\r?\n/u)
-    .map((line) => {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) {
-        return line;
-      }
-      const separator = line.indexOf("=");
-      if (separator < 1) {
-        return line;
-      }
-      const key = line.slice(0, separator);
-      return overrides.has(key) ? `${key}=${overrides.get(key)}` : line;
-    });
+
+  // Generate the Docker env file directly — no longer depends on .env.example
+  const lines = [
+    "# Auto-generated for CI Docker smoke test",
+    `DATABASE_URL=file:/.runtime/data/structureclaw.db`,
+    `LLM_API_KEY=ci-dummy-key`,
+    `LLM_MODEL=gpt-4.1`,
+    `LLM_BASE_URL=https://api.openai.com/v1`,
+  ];
   runtime.ensureDirectory(path.dirname(outEnv));
   fs.writeFileSync(outEnv, lines.join(os.EOL));
   return outEnv;
