@@ -19,6 +19,20 @@ Primary workflow:
 natural language -> detect_structure_type -> extract_draft_params -> build_model -> validate_model -> run_analysis -> run_code_check -> generate_report
 ```
 
+High-level runtime flow:
+
+```mermaid
+flowchart LR
+  User[Engineer] --> Chat[Chat-first UI]
+  Chat --> API[Fastify API]
+  API --> Agent[LangGraph agent]
+  Agent --> Draft[Draft model]
+  Draft --> Validate[Validate]
+  Validate --> Analyze[Analyze]
+  Analyze --> Check[Code check]
+  Check --> Report[Report]
+```
+
 ## 3. Prerequisites
 
 Recommended installed setup:
@@ -172,6 +186,17 @@ Runtime data locations:
 - Installed package: user data directory such as `~/.structureclaw/`
 - Source checkout: `.runtime/`
 
+Configuration resolution:
+
+```mermaid
+flowchart TD
+  Settings[Runtime settings.json] --> Effective[Effective backend config]
+  Env[.env / shell environment] --> Effective
+  Defaults[Built-in defaults] --> Effective
+  UI[General Settings panel] --> Settings
+  Doctor[sclaw doctor] --> Settings
+```
+
 Important settings sections:
 
 - `server`: host, backend port, frontend port, body limit
@@ -228,6 +253,23 @@ Built-in analysis engines:
 | `builtin-opensees` | OpenSeesPy | Default open analysis engine for static, dynamic, seismic, and nonlinear workflows |
 | `builtin-pkpm` | PKPM SATWE | Commercial static-analysis path and SATWE project/result integration |
 | `builtin-yjk` | YJK 8.0 | Commercial static-analysis path with YDB conversion, YJK calculation, and structured result extraction |
+
+Analysis execution shape:
+
+```mermaid
+flowchart TD
+  Request[run_analysis request] --> Registry[Engine registry]
+  Registry --> Selection{Selected engine}
+  Selection -->|builtin-opensees| OpenSees[OpenSees runtime]
+  Selection -->|builtin-pkpm| PKPM[PKPM SATWE adapter]
+  Selection -->|builtin-yjk| YJK[YJK adapter]
+  YJK --> YDB[V2 to YDB]
+  YJK --> Calc[YJK calculation]
+  YJK --> Extract[extract_results.py]
+  OpenSees --> Result[AnalysisResult JSON]
+  PKPM --> Result
+  Extract --> Result
+```
 
 ## 8. StructureModel Governance
 

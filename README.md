@@ -1,30 +1,107 @@
 # StructureClaw
 
-AI-assisted structural engineering workspace for AEC workflows.
+<p align="center">
+  <strong>AI-assisted structural engineering workspace for AEC workflows.</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/structureclaw"><img alt="npm" src="https://img.shields.io/npm/v/structureclaw?color=2563eb"></a>
+  <a href="https://github.com/structureclaw/structureclaw/actions/workflows/backend-regression.yml"><img alt="backend regression" src="https://github.com/structureclaw/structureclaw/actions/workflows/backend-regression.yml/badge.svg"></a>
+  <a href="https://github.com/structureclaw/structureclaw/actions/workflows/analysis-regression.yml"><img alt="analysis regression" src="https://github.com/structureclaw/structureclaw/actions/workflows/analysis-regression.yml/badge.svg"></a>
+  <img alt="Node.js 20+" src="https://img.shields.io/badge/node-%3E%3D20-339933">
+  <a href="./LICENSE"><img alt="license MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
+</p>
+
+<p align="center">
+  <a href="#quick-start">Quick Start</a>
+  · <a href="#why-structureclaw">Why</a>
+  · <a href="#engine-support">Engines</a>
+  · <a href="#architecture">Architecture</a>
+  · <a href="#documentation">Docs</a>
+  · <a href="./README_CN.md">中文</a>
+</p>
 
 ## Demo
 
 https://github.com/user-attachments/assets/031fe757-551d-4775-ab3f-0411037ad5ae
 
-## What You Get
+## Quick Start
 
-- Conversational engineering workflow from natural language to analysis artifacts
-- Unified orchestration loop: draft -> validate -> analyze -> code-check -> report
-- Installable CLI and web workspace: `npm install -g structureclaw && sclaw start`
-- Single-process installed mode where the backend serves the exported frontend
-- Web UI, API backend, agent runtime, and backend-hosted Python analysis runtime in one platform
-- Built-in analysis paths for OpenSees, PKPM SATWE, and YJK static workflows
-- Regression and contract scripts for repeatable engineering validation
+### Install from npm
+
+```bash
+npm install -g structureclaw
+sclaw doctor
+sclaw start
+```
+
+Open the local workspace printed by `sclaw start`. `sclaw doctor` creates the runtime workspace, checks LLM settings, prepares SQLite, and installs the Python analysis environment when needed.
+
+### Run from source
+
+```bash
+git clone https://github.com/structureclaw/structureclaw.git
+cd structureclaw
+./sclaw doctor
+./sclaw start
+./sclaw status
+```
+
+Windows PowerShell from source:
+
+```powershell
+node .\sclaw doctor
+node .\sclaw start
+node .\sclaw status
+```
+
+China mirror entrypoint:
+
+```bash
+sclaw_cn doctor
+sclaw_cn start
+```
+
+## Why StructureClaw
+
+StructureClaw turns a natural-language structural description into a traceable engineering workflow:
+
+```text
+describe -> draft model -> validate -> analyze -> code-check -> report
+```
+
+What makes it useful:
+
+- **Chat-first modeling**: describe a frame, truss, portal frame, or generic structure and let the agent build a computable model.
+- **Real analysis handoff**: run OpenSees, PKPM SATWE, or YJK through the same backend-hosted analysis contract.
+- **Traceable engineering artifacts**: keep model drafts, validation results, tool calls, analysis outputs, checks, and reports visible.
+- **Local-first runtime**: installed mode stores data in the user runtime directory instead of the package directory.
+- **Extensible skills and tools**: combine built-in skills with user-local skills/tools under the runtime workspace.
+
+## Engine Support
+
+| Engine | Skill | Best for | Requirements |
+|---|---|---|---|
+| OpenSees | `opensees-*` | Open, repeatable static/dynamic/seismic/nonlinear analysis | Python analysis environment prepared by `sclaw doctor` |
+| PKPM SATWE | `pkpm-static` | Commercial-engine static checks and SATWE comparison | Local PKPM installation, `JWSCYCLE.exe`, valid license |
+| YJK 8.0 | `yjk-static` | YDB conversion, YJK static calculation, structured result extraction | Local YJK 8.0 installation, bundled Python 3.10, valid authorization |
+
+Commercial engines are explicit selections and require local software installation. StructureClaw does not bundle PKPM or YJK.
 
 ## Architecture
 
-```text
-browser UI
-  -> Fastify backend (API + static frontend in installed mode)
-  -> LangGraph agent runtime
-  -> skill/tool layers
-  -> Python analysis runtime (OpenSees / PKPM / YJK adapters)
-  -> reports / metrics / artifacts
+```mermaid
+flowchart LR
+  User[Engineer in chat UI] --> Web[Next.js workspace]
+  Web --> API[Fastify backend]
+  API --> Agent[LangGraph agent runtime]
+  Agent --> Skills[Skill layer]
+  Agent --> Tools[Tool layer]
+  Tools --> Analysis[Python analysis runtime]
+  Analysis --> OpenSees[OpenSees]
+  Analysis --> PKPM[PKPM SATWE]
+  Analysis --> YJK[YJK 8.0]
+  Tools --> Reports[Reports and artifacts]
 ```
 
 Main directories:
@@ -35,31 +112,13 @@ Main directories:
 - `tests/`: regression runner (`node tests/runner.mjs ...`), install smoke, and CI-covered frontend checks (type-check, Vitest, lint) after native smoke
 - `docs/`: user handbook and protocol references
 
-## Quick Start
+## Runtime Modes
 
-### Install from npm
-
-For normal use, install the CLI globally and let `sclaw doctor` create the runtime workspace:
-
-```bash
-npm install -g structureclaw
-sclaw doctor
-sclaw start
-```
-
-Installed mode stores user data under `~/.structureclaw/` on Unix-like systems and the platform application-data directory on Windows. This keeps databases, logs, reports, generated analysis files, `settings.json`, user skills, and user tools out of the read-only package directory.
-
-### Run from source
-
-For repository development, clone the repo and use the source checkout CLI:
-
-```bash
-./sclaw doctor
-./sclaw start
-./sclaw status
-```
-
-Source mode keeps runtime data under `.runtime/` and runs backend/frontend as development processes.
+| Mode | Command | Data directory | Process model |
+|---|---|---|---|
+| npm install | `sclaw start` | user runtime directory such as `~/.structureclaw/` | backend serves the exported frontend in one process |
+| source checkout | `./sclaw start` | `.runtime/` | backend and frontend run as development processes |
+| Docker | `./sclaw docker-install` then `./sclaw docker-start` | Docker volumes / compose state | containerized stack |
 
 If Node.js is not installed yet, use the helper installer script first:
 
@@ -71,14 +130,6 @@ Windows PowerShell (run as Administrator for first-time package install):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
-```
-
-China mirror flow (same subcommands, mirror defaults enabled):
-
-```bash
-./sclaw_cn doctor
-./sclaw_cn start
-./sclaw_cn status
 ```
 
 Notes:
@@ -93,8 +144,8 @@ Notes:
 Useful follow-up commands:
 
 ```bash
-./sclaw logs
-./sclaw stop
+sclaw logs
+sclaw stop
 node tests/runner.mjs backend-regression
 node tests/runner.mjs analysis-regression
 ```
@@ -102,7 +153,7 @@ node tests/runner.mjs analysis-regression
 Use the built-in CLI batch convert command to transform structure model JSON files and write a summary report:
 
 ```bash
-./sclaw convert-batch --input-dir tmp/input --output-dir tmp/output --report tmp/report.json --target-format compact-1
+sclaw convert-batch --input-dir tmp/input --output-dir tmp/output --report tmp/report.json --target-format compact-1
 ```
 
 Windows PowerShell:
@@ -192,6 +243,7 @@ Backend-hosted analysis:
 - `POST /convert`
 - `POST /analyze`
 - `POST /code-check`
+- `GET /engines`
 
 ## Engineering Principles
 

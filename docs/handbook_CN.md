@@ -19,6 +19,20 @@ StructureClaw 是一个 AI 协同结构工程平台，采用单仓多服务架�
 自然语言需求 -> detect_structure_type -> extract_draft_params -> build_model -> validate_model -> run_analysis -> run_code_check -> generate_report
 ```
 
+高层运行流程：
+
+```mermaid
+flowchart LR
+  User[工程师] --> Chat[Chat-first UI]
+  Chat --> API[Fastify API]
+  API --> Agent[LangGraph agent]
+  Agent --> Draft[模型草案]
+  Draft --> Validate[校验]
+  Validate --> Analyze[分析]
+  Analyze --> Check[规范校核]
+  Check --> Report[报告]
+```
+
 ## 3. 环境要求
 
 推荐安装版环境：
@@ -172,6 +186,17 @@ StructureClaw 1.0 按以下优先级解析配置：
 - 安装版：用户数据目录，例如 `~/.structureclaw/`
 - 源码模式：`.runtime/`
 
+配置解析流程：
+
+```mermaid
+flowchart TD
+  Settings[运行时 settings.json] --> Effective[后端有效配置]
+  Env[.env / shell 环境变量] --> Effective
+  Defaults[内置默认值] --> Effective
+  UI[General Settings 面板] --> Settings
+  Doctor[sclaw doctor] --> Settings
+```
+
 重要 settings section：
 
 - `server`：host、后端端口、前端端口、请求体大小
@@ -228,6 +253,23 @@ StructureClaw 1.0 按以下优先级解析配置：
 | `builtin-opensees` | OpenSeesPy | 默认开源分析引擎，支持静力、动力、地震和非线性工作流 |
 | `builtin-pkpm` | PKPM SATWE | 商业静力分析路径，与 SATWE 项目/结果集成 |
 | `builtin-yjk` | YJK 8.0 | 商业静力分析路径，支持 YDB 转换、YJK 计算与结构化结果抽取 |
+
+分析执行形态：
+
+```mermaid
+flowchart TD
+  Request[run_analysis 请求] --> Registry[Engine registry]
+  Registry --> Selection{选择的 engine}
+  Selection -->|builtin-opensees| OpenSees[OpenSees runtime]
+  Selection -->|builtin-pkpm| PKPM[PKPM SATWE adapter]
+  Selection -->|builtin-yjk| YJK[YJK adapter]
+  YJK --> YDB[V2 转 YDB]
+  YJK --> Calc[YJK 计算]
+  YJK --> Extract[extract_results.py]
+  OpenSees --> Result[AnalysisResult JSON]
+  PKPM --> Result
+  Extract --> Result
+```
 
 ## 8. StructureModel 治理
 

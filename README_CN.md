@@ -1,30 +1,107 @@
-# StructureClaw 中文总览
+# StructureClaw
 
-面向 AEC 场景的 AI 协同结构工程工作台。
+<p align="center">
+  <strong>面向 AEC 场景的 AI 协同结构工程工作台。</strong>
+</p>
+
+<p align="center">
+  <a href="https://www.npmjs.com/package/structureclaw"><img alt="npm" src="https://img.shields.io/npm/v/structureclaw?color=2563eb"></a>
+  <a href="https://github.com/structureclaw/structureclaw/actions/workflows/backend-regression.yml"><img alt="backend regression" src="https://github.com/structureclaw/structureclaw/actions/workflows/backend-regression.yml/badge.svg"></a>
+  <a href="https://github.com/structureclaw/structureclaw/actions/workflows/analysis-regression.yml"><img alt="analysis regression" src="https://github.com/structureclaw/structureclaw/actions/workflows/analysis-regression.yml/badge.svg"></a>
+  <img alt="Node.js 20+" src="https://img.shields.io/badge/node-%3E%3D20-339933">
+  <a href="./LICENSE"><img alt="license MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
+</p>
+
+<p align="center">
+  <a href="#快速启动">快速启动</a>
+  · <a href="#为什么选择-structureclaw">为什么</a>
+  · <a href="#引擎支持">引擎</a>
+  · <a href="#架构概览">架构</a>
+  · <a href="#文档入口">文档</a>
+  · <a href="./README.md">English</a>
+</p>
 
 ## Demo
 
 https://github.com/user-attachments/assets/031fe757-551d-4775-ab3f-0411037ad5ae
 
-## 项目能力
+## 快速启动
 
-- 从自然语言需求到分析工件的结构工程闭环
-- 统一编排链路：建模草案 -> 校验 -> 分析 -> 校核 -> 报告
-- 可安装 CLI 与 Web 工作台：`npm install -g structureclaw && sclaw start`
-- 安装版单进程运行：后端直接托管导出的前端静态资源
-- 单平台能力栈：Web 前端、后端编排 API、Agent runtime、后端托管的 Python 分析运行时
-- 内置 OpenSees、PKPM SATWE、YJK 静力分析路径
-- 具备回归脚本与契约校验脚本，支持可重复验证
+### npm 安装版
+
+```bash
+npm install -g structureclaw
+sclaw doctor
+sclaw start
+```
+
+打开 `sclaw start` 打印出的本地工作台地址。`sclaw doctor` 会创建运行工作区、检查 LLM 配置、准备 SQLite，并在需要时安装 Python 分析环境。
+
+### 源码开发版
+
+```bash
+git clone https://github.com/structureclaw/structureclaw.git
+cd structureclaw
+./sclaw doctor
+./sclaw start
+./sclaw status
+```
+
+Windows PowerShell 源码模式：
+
+```powershell
+node .\sclaw doctor
+node .\sclaw start
+node .\sclaw status
+```
+
+国内镜像入口：
+
+```bash
+sclaw_cn doctor
+sclaw_cn start
+```
+
+## 为什么选择 StructureClaw
+
+StructureClaw 把自然语言结构描述变成可追踪的工程工作流：
+
+```text
+描述 -> 模型草案 -> 校验 -> 分析 -> 规范校核 -> 报告
+```
+
+核心价值：
+
+- **Chat-first 建模**：描述框架、桁架、门式刚架或通用结构，由 agent 生成可计算模型。
+- **真实分析交付**：通过同一后端分析契约调用 OpenSees、PKPM SATWE 或 YJK。
+- **可追踪工程工件**：模型草案、校验结果、tool 调用、分析输出、校核和报告都可见。
+- **本地优先运行**：安装版把数据写入用户运行目录，不污染 npm 包目录。
+- **可扩展 skills/tools**：内置技能可与用户运行目录中的自定义技能和工具组合。
+
+## 引擎支持
+
+| 引擎 | Skill | 适用场景 | 依赖 |
+|---|---|---|---|
+| OpenSees | `opensees-*` | 开源、可复现的静力/动力/地震/非线性分析 | `sclaw doctor` 准备的 Python 分析环境 |
+| PKPM SATWE | `pkpm-static` | 商业引擎静力复核与 SATWE 对比 | 本机 PKPM、`JWSCYCLE.exe`、有效授权 |
+| YJK 8.0 | `yjk-static` | YDB 转换、YJK 静力计算、结构化结果抽取 | 本机 YJK 8.0、内置 Python 3.10、有效授权 |
+
+商业引擎是显式选择项，需要本机软件安装。StructureClaw 不随包分发 PKPM 或 YJK。
 
 ## 架构概览
 
-```text
-浏览器 UI
-  -> Fastify 后端（API + 安装版静态前端托管）
-  -> LangGraph Agent runtime
-  -> skill/tool 能力层
-  -> Python 分析运行时（OpenSees / PKPM / YJK 适配器）
-  -> 报告 / 指标 / 工件输出
+```mermaid
+flowchart LR
+  User[工程师 Chat UI] --> Web[Next.js 工作台]
+  Web --> API[Fastify 后端]
+  API --> Agent[LangGraph Agent runtime]
+  Agent --> Skills[Skill 能力层]
+  Agent --> Tools[Tool 能力层]
+  Tools --> Analysis[Python 分析运行时]
+  Analysis --> OpenSees[OpenSees]
+  Analysis --> PKPM[PKPM SATWE]
+  Analysis --> YJK[YJK 8.0]
+  Tools --> Reports[报告与工件]
 ```
 
 主要目录：
@@ -35,31 +112,13 @@ https://github.com/user-attachments/assets/031fe757-551d-4775-ab3f-0411037ad5ae
 - `tests/`：回归入口（`node tests/runner.mjs ...`）、安装冒烟，以及原生冒烟后在 CI 中执行的前端 type-check、Vitest 与 lint
 - `docs/`：手册与协议参考文档
 
-## 快速启动
+## 运行模式
 
-### npm 安装版
-
-普通用户推荐全局安装 CLI，并让 `sclaw doctor` 创建运行工作区：
-
-```bash
-npm install -g structureclaw
-sclaw doctor
-sclaw start
-```
-
-安装版会把用户数据放在 Unix-like 系统的 `~/.structureclaw/` 或 Windows 的应用数据目录中。数据库、日志、报告、分析生成文件、`settings.json`、用户技能和用户工具都不会写入只读的 npm 包目录。
-
-### 源码开发版
-
-仓库开发时，在源码目录使用本地 CLI：
-
-```bash
-./sclaw doctor
-./sclaw start
-./sclaw status
-```
-
-源码模式把运行数据放在 `.runtime/`，并以开发进程启动 backend/frontend。
+| 模式 | 命令 | 数据目录 | 进程模型 |
+|---|---|---|---|
+| npm 安装版 | `sclaw start` | 用户运行目录，例如 `~/.structureclaw/` | 后端单进程托管导出的前端 |
+| 源码开发版 | `./sclaw start` | `.runtime/` | backend/frontend 以开发进程运行 |
+| Docker | `./sclaw docker-install` 后 `./sclaw docker-start` | Docker volumes / compose 状态 | 容器化服务栈 |
 
 如果你还没有安装 Node.js，可以先运行自动安装脚本：
 
@@ -71,14 +130,6 @@ Windows PowerShell（首次安装建议使用管理员权限）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
-```
-
-国内镜像流程（子命令与 `sclaw` 一致，但默认启用国内镜像）：
-
-```bash
-./sclaw_cn doctor
-./sclaw_cn start
-./sclaw_cn status
 ```
 
 补充说明：
@@ -93,8 +144,8 @@ powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
 常用后续命令：
 
 ```bash
-./sclaw logs
-./sclaw stop
+sclaw logs
+sclaw stop
 node tests/runner.mjs backend-regression
 node tests/runner.mjs analysis-regression
 ```
@@ -102,7 +153,7 @@ node tests/runner.mjs analysis-regression
 使用 CLI 内建批量转换命令处理结构模型 JSON，并输出汇总报告：
 
 ```bash
-./sclaw convert-batch --input-dir tmp/input --output-dir tmp/output --report tmp/report.json --target-format compact-1
+sclaw convert-batch --input-dir tmp/input --output-dir tmp/output --report tmp/report.json --target-format compact-1
 ```
 
 Windows PowerShell：
@@ -192,6 +243,7 @@ StructureClaw 1.0 以 `settings.json` 作为主要用户配置文件。前端 Ge
 - `POST /convert`
 - `POST /analyze`
 - `POST /code-check`
+- `GET /engines`
 
 ## 核心原则
 
