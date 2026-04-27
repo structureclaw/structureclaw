@@ -1104,7 +1104,7 @@ async function validateChatStreamContract(context) {
     const response = await app.inject({
       method: "POST",
       url: "/api/v1/chat/stream",
-      headers: { origin: "http://localhost:30000" },
+      headers: { origin: "http://localhost:31416" },
       payload: {
         message: "analyze this model",
         traceId: "trace-stream-request-1",
@@ -1113,7 +1113,7 @@ async function validateChatStreamContract(context) {
     });
 
     assert(response.statusCode === 200, "chat/stream should return 200");
-    assert(response.headers["access-control-allow-origin"] === "http://localhost:30000", "chat/stream should include access-control-allow-origin for allowed origin");
+    assert(response.headers["access-control-allow-origin"] === "http://localhost:31416", "chat/stream should include access-control-allow-origin for allowed origin");
     assert(response.headers["access-control-allow-credentials"] === "true", "chat/stream should include access-control-allow-credentials for allowed origin");
     assert(String(response.headers.vary || "").includes("Origin"), "chat/stream should include Vary: Origin for allowed origin");
     const events = parseSseEvents(response.body);
