@@ -750,11 +750,13 @@ async function invokeInstalledDbInit(rootDir, env, paths) {
   }
   log("Initializing database (installed mode)...");
   try {
+    // Use shell on Windows so npx.cmd / npx is resolved correctly
+    const shellOpt = process.platform === "win32" ? true : undefined;
     await runtime.runCommand("npx", [
       "prisma", "db", "push",
       `--schema=${prismaSchema}`,
       "--accept-data-loss",
-    ], { env });
+    ], { env, shell: shellOpt });
     log("[ok] Database schema synced.");
   } catch (err) {
     log(`[warn] Database init failed: ${err.message}`);
@@ -1316,15 +1318,19 @@ function migrateEnvToSettingsJson(paths, envFile) {
 function openBrowser(url) {
   const platform = process.platform;
   let command;
+  let args;
   if (platform === "darwin") {
     command = "open";
+    args = [url];
   } else if (platform === "win32") {
-    command = "start";
+    command = process.env.comspec || "cmd.exe";
+    args = ["/c", "start", "", url];
   } else {
     command = "xdg-open";
+    args = [url];
   }
   try {
-    spawn(command, [url], { stdio: "ignore", detached: true }).unref();
+    spawn(command, args, { stdio: "ignore", detached: true }).unref();
   } catch {
     // Non-critical: browser didn't open, user can navigate manually
   }

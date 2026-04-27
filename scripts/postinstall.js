@@ -20,10 +20,13 @@ async function main() {
   }
 
   try {
+    // Use shell on Windows so npx.cmd is resolved correctly
+    const useShell = process.platform === "win32";
     execFileSync("npx", ["prisma", "generate", `--schema=${prismaSchema}`], {
       stdio: "pipe",
       cwd: rootDir,
       timeout: 60000,
+      shell: useShell,
     });
     console.log("[sclaw] Prisma client generated.");
   } catch (err) {
