@@ -32,6 +32,8 @@ export type SettingsFileDatabase = {
 export type SettingsFileLogging = {
   level?: string;
   llmLogEnabled?: boolean;
+  logMaxAgeDays?: number;
+  logMaxSize?: number;
 };
 
 export type SettingsFileAnalysis = {
@@ -130,10 +132,14 @@ function normalizeLoggingSection(raw: unknown): SettingsFileLogging | undefined 
   const record = raw as Record<string, unknown>;
   const level = normalizeOptionalString(record.level);
   const llmLogEnabled = normalizeOptionalBoolean(record.llmLogEnabled);
-  if (level === undefined && llmLogEnabled === undefined) return undefined;
+  const logMaxAgeDays = normalizeOptionalNumber(record.logMaxAgeDays);
+  const logMaxSize = normalizeOptionalNumber(record.logMaxSize);
+  if (level === undefined && llmLogEnabled === undefined && logMaxAgeDays === undefined && logMaxSize === undefined) return undefined;
   const result: SettingsFileLogging = {};
   if (level !== undefined) result.level = level;
   if (llmLogEnabled !== undefined) result.llmLogEnabled = llmLogEnabled;
+  if (logMaxAgeDays !== undefined) result.logMaxAgeDays = logMaxAgeDays;
+  if (logMaxSize !== undefined) result.logMaxSize = logMaxSize;
   return result;
 }
 

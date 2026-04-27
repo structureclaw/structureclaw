@@ -2,6 +2,7 @@ import { ChatOpenAI } from '@langchain/openai';
 import { config } from '../config/index.js';
 import { getEffectiveLlmSettings } from '../config/llm-runtime.js';
 import { llmCallLogger } from './llm-logger.js';
+import { logger, logLlmCall } from './agent-logger.js';
 
 type ChatModelConfigLike = Pick<
   typeof config,
@@ -57,23 +58,27 @@ function wrapWithLlmLogging(model: ChatOpenAI): ChatOpenAI {
       const content = typeof result.content === 'string'
         ? result.content
         : JSON.stringify(result.content);
+      const durationMs = Date.now() - start;
       llmCallLogger.log({
         model: loggedModel,
         prompt: promptStr,
         response: content,
-        durationMs: Date.now() - start,
+        durationMs,
         success: true,
       });
+      logLlmCall(logger, { model: loggedModel, durationMs, level: 'info' });
       return result;
     } catch (error) {
+      const durationMs = Date.now() - start;
       llmCallLogger.log({
         model: loggedModel,
         prompt: promptStr,
         response: null,
-        durationMs: Date.now() - start,
+        durationMs,
         success: false,
         error: String(error),
       });
+      logLlmCall(logger, { model: loggedModel, durationMs, success: false });
       throw error;
     }
   };

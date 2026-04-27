@@ -82,6 +82,8 @@ type SettingsResponse = {
   logging: {
     level: { value: string; source: ValueSource };
     llmLogEnabled: { value: boolean; source: ValueSource };
+    logMaxAgeDays: { value: number; source: ValueSource };
+    logMaxSize: { value: number; source: ValueSource };
   };
   analysis: {
     pythonBin: { value: string; source: ValueSource };
@@ -101,6 +103,8 @@ function buildSettingsResponse(): SettingsResponse {
     databaseUrl: config.databaseUrl,
     logLevel: 'info',
     llmLogEnabled: false,
+    logMaxAgeDays: 7,
+    logMaxSize: 104857600,
     pythonBin: '',
     pythonTimeoutMs: 600000,
   };
@@ -135,6 +139,8 @@ function buildSettingsResponse(): SettingsResponse {
     logging: {
       level: stringSource(file?.logging?.level, process.env.LOG_LEVEL, defaults.logLevel),
       llmLogEnabled: booleanSource(file?.logging?.llmLogEnabled, process.env.LLM_LOG_ENABLED === 'true' ? true : undefined, defaults.llmLogEnabled),
+      logMaxAgeDays: numberSource(file?.logging?.logMaxAgeDays, parseInt(process.env.LOG_MAX_AGE_DAYS || '', 10) || undefined, defaults.logMaxAgeDays),
+      logMaxSize: numberSource(file?.logging?.logMaxSize, parseInt(process.env.LOG_MAX_SIZE || '', 10) || undefined, defaults.logMaxSize),
     },
     analysis: {
       pythonBin: stringSource(file?.analysis?.pythonBin, process.env.ANALYSIS_PYTHON_BIN, defaults.pythonBin),
@@ -163,6 +169,8 @@ const updateSettingsSchema = z.object({
   logging: z.object({
     level: z.enum(['trace', 'debug', 'info', 'warn', 'error', 'fatal']).optional(),
     llmLogEnabled: z.boolean().optional(),
+    logMaxAgeDays: z.number().int().min(1).optional(),
+    logMaxSize: z.number().int().min(1).optional(),
   }).optional(),
   analysis: z.object({
     pythonBin: z.string().trim().optional(),
@@ -202,6 +210,8 @@ function applyUpdate(current: SettingsFile, input: UpdateSettingsInput): Setting
     const logging: SettingsFileLogging = { ...(current.logging ?? {}) };
     if (input.logging.level !== undefined) logging.level = input.logging.level;
     if (input.logging.llmLogEnabled !== undefined) logging.llmLogEnabled = input.logging.llmLogEnabled;
+    if (input.logging.logMaxAgeDays !== undefined) logging.logMaxAgeDays = input.logging.logMaxAgeDays;
+    if (input.logging.logMaxSize !== undefined) logging.logMaxSize = input.logging.logMaxSize;
     next.logging = logging;
   }
 
