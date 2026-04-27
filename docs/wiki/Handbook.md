@@ -5,19 +5,9 @@
 
 ## Quick Start
 
-### Node.js setup (optional)
+### Node.js setup
 
-If Node.js is not installed yet, use the helper installer script first:
-
-```bash
-bash ./scripts/install-node-linux.sh
-```
-
-Windows PowerShell (run as Administrator for first-time package install):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
-```
+Node.js 18+ is required. Install it via your preferred method (nvm, system package manager, or nodejs.org).
 
 ### Recommended path
 

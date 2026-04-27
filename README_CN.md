@@ -32,18 +32,6 @@ frontend (Next.js)
 
 ## 快速启动
 
-如果你还没有安装 Node.js，可以先运行自动安装脚本：
-
-```bash
-bash ./scripts/install-node-linux.sh
-```
-
-Windows PowerShell（首次安装建议使用管理员权限）：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
-```
-
 推荐本地流程：
 
 ```bash

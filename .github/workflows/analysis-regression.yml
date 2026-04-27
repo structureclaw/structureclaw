@@ -41,6 +41,12 @@ jobs:
         with:
           node-version: 24
 
+      - name: Install backend dependencies
+        run: npm install --prefix backend
+
+      - name: Build backend
+        run: npm run build --prefix backend
+
       - name: Setup analysis Python
         run: node ./sclaw setup-analysis-python
 

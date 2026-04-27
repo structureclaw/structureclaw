@@ -32,18 +32,6 @@ Main directories:
 
 ## Quick Start
 
-If Node.js is not installed yet, use the helper installer script first:
-
-```bash
-bash ./scripts/install-node-linux.sh
-```
-
-Windows PowerShell (run as Administrator for first-time package install):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
-```
-
 Recommended local flow:
 
 ```bash

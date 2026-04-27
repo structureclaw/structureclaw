@@ -22,7 +22,7 @@ This wiki mirrors the current repository documentation and gives a stable landin
 - Windows users can use `node .\sclaw doctor`, `node .\sclaw start`, etc.
 - Docker workflow: `./sclaw docker-install`, `./sclaw docker-start`, `./sclaw docker-stop`
 - SkillHub CLI: `./sclaw skill search/install/enable/disable/uninstall/list`
-- Node.js auto-install helpers: `scripts/install-node-linux.sh`, `scripts/install-node-windows.ps1`
+- Node.js 18+ required (install via nvm, system package manager, or nodejs.org)
 
 ## Wiki Pages
 
