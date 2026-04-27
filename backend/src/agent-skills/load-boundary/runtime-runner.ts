@@ -54,6 +54,7 @@ except Exception as e:
       const pythonProcess = spawn(this.pythonPath, ['-c', script], {
         cwd: this.skillBasePath,
         timeout: 30000,
+        windowsHide: true,
       });
 
       let stdout = '';

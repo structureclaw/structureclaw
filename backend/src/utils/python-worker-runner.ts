@@ -117,6 +117,7 @@ export class PythonWorkerRunner<TInput extends object> {
         cwd: process.cwd(),
         stdio: ['pipe', 'pipe', 'pipe'],
         env: childEnv,
+        windowsHide: true,
       });
 
       let stdout = '';
