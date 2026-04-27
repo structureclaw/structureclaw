@@ -36,10 +36,14 @@ function hasSkillManifestInDescendants(rootDir: string): boolean {
 
 export function resolveBuiltinSkillManifestRoot(): string {
   const candidates = [
+    // Installed-package layout: compiled handlers under dist/backend/agent-skills/
+    path.resolve(process.cwd(), 'dist/backend/agent-skills'),
     path.resolve(process.cwd(), 'backend/dist/agent-skills'),
     path.resolve(process.cwd(), 'dist/agent-skills'),
+    // Source layouts: skill.yaml lives in backend/src/agent-skills
     path.resolve(process.cwd(), 'backend/src/agent-skills'),
     path.resolve(process.cwd(), 'src/agent-skills'),
+    // MODULE_DIR-relative
     path.resolve(MODULE_DIR, '../../agent-skills'),
     path.resolve(MODULE_DIR, '../../src/agent-skills'),
   ];

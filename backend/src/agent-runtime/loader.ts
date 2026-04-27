@@ -47,17 +47,22 @@ function resolveSkillRoot(candidates: string[], requiredExtensions?: string[]): 
 }
 
 const MODULE_SKILL_ROOT = resolveSkillRoot([
+  // Installed-package layout: dist/backend/ holds compiled JS next to dist/frontend/
+  path.resolve(process.cwd(), 'dist/backend/agent-skills'),
   path.resolve(process.cwd(), 'backend/dist/agent-skills'),
   path.resolve(process.cwd(), 'dist/agent-skills'),
-  path.resolve(process.cwd(), 'backend/src/agent-skills'),
+  // Source layouts (dev mode)
   path.resolve(process.cwd(), 'src/agent-skills'),
+  // MODULE_DIR-relative: works regardless of cwd
   path.resolve(MODULE_DIR, '../../agent-skills'),
   path.resolve(MODULE_DIR, '../../src/agent-skills'),
 ], ['handler.js', 'handler.ts']);
 
 const MARKDOWN_SKILL_ROOT = resolveSkillRoot([
+  // Source layouts: skill.yaml + stage .md live in src/ (not compiled)
   path.resolve(process.cwd(), 'backend/src/agent-skills'),
   path.resolve(process.cwd(), 'src/agent-skills'),
+  // MODULE_DIR-relative
   path.resolve(MODULE_DIR, '../../src/agent-skills'),
   path.resolve(MODULE_DIR, '../../agent-skills'),
 ], ['skill.yaml']);
