@@ -51,6 +51,23 @@ if (logFilePath) {
   });
 }
 
+/**
+ * Logger config for Fastify 5.
+ * Fastify 5 only accepts a config object (not a Pino instance) as its `logger` option.
+ * Passing { level, stream } lets Fastify create its own Pino instance that writes to
+ * the same multi-stream destinations used by the standalone `logger` below.
+ */
+export function getFastifyLoggerConfig(): Record<string, unknown> {
+  if (streams.length > 1) {
+    return { level: config.logLevel, stream: pino.multistream(streams) };
+  }
+  if (streams.length === 1) {
+    return { level: config.logLevel, stream: streams[0].stream };
+  }
+  return { level: config.logLevel };
+}
+
+/** Standalone Pino logger for use outside Fastify (services, utilities, agent runtime). */
 export const logger: Logger = streams.length > 1
   ? pino({ level: config.logLevel }, pino.multistream(streams))
   : streams.length === 1

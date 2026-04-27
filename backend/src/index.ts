@@ -9,7 +9,7 @@ import { existsSync } from 'fs';
 import { config } from './config/index.js';
 import { registerRoutes } from './api/routes.js';
 import { prisma } from './utils/database.js';
-import { logger } from './utils/logger.js';
+import { logger, getFastifyLoggerConfig } from './utils/logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,7 +34,7 @@ function resolveFrontendStaticDir(): string | null {
 }
 
 const fastify = Fastify({
-  logger: logger as any,
+  logger: getFastifyLoggerConfig(),
   bodyLimit: Math.max(1, config.bodyLimitMb) * 1024 * 1024,
 });
 
@@ -76,7 +76,7 @@ async function start() {
     await registerPlugins();
 
     // 注册路由
-    await registerRoutes(fastify as any);
+    await registerRoutes(fastify);
 
     // Serve static frontend (installed-package mode only)
     const frontendDir = resolveFrontendStaticDir();
