@@ -216,7 +216,7 @@ export class AgentMemoryService {
       orderBy: { updatedAt: 'desc' },
       take: 50,
     });
-    return entries.map((entry) => ({
+    return entries.map((entry: any) => ({
       scopeType: entry.scopeType as AgentMemoryScopeType,
       scopeId: entry.scopeId,
       key: entry.key,
