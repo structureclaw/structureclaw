@@ -36,7 +36,9 @@ if (!existsSync(backendDist)) {
 // Step 2: Build frontend if needed
 const frontendOut = path.join(rootDir, "frontend", "out", "index.html");
 if (!existsSync(frontendOut)) {
-  run("cd frontend && npm run build", "Building frontend");
+  // Ensure NEXT_PUBLIC_API_URL is empty so api-base.ts uses same-origin ('') in production
+  delete process.env.NEXT_PUBLIC_API_URL;
+  run("npm run build --prefix frontend", "Building frontend");
 }
 if (!existsSync(frontendOut)) {
   console.error("[sclaw] frontend/out/index.html not found after build.");
