@@ -748,9 +748,23 @@ async function invokeInstalledDbInit(rootDir, env, paths) {
     log("Skipping database init — Prisma schema not found.");
     return;
   }
+
+  // Step 1: Ensure Prisma client is generated
+  log("Generating Prisma client...");
+  try {
+    const shellOpt = process.platform === "win32" ? true : undefined;
+    await runtime.runCommand("npx", [
+      "prisma", "generate",
+      `--schema=${prismaSchema}`,
+    ], { env, shell: shellOpt });
+    log("[ok] Prisma client generated.");
+  } catch (err) {
+    log(`[warn] Prisma generate failed: ${err.message}`);
+  }
+
+  // Step 2: Push schema to SQLite
   log("Initializing database (installed mode)...");
   try {
-    // Use shell on Windows so npx.cmd / npx is resolved correctly
     const shellOpt = process.platform === "win32" ? true : undefined;
     await runtime.runCommand("npx", [
       "prisma", "db", "push",
@@ -1132,9 +1146,29 @@ async function invokeLocalUp(rootDir, env, options = {}) {
   } else {
     log("");
     log("StructureClaw started.");
-    const url = `http://localhost:${env.PORT || runtime.DEFAULT_BACKEND_PORT}`;
+    const backendPort = env.PORT || runtime.DEFAULT_BACKEND_PORT;
+    const url = `http://localhost:${backendPort}`;
     log(`UI + API: ${url}`);
     log(`Data: ${paths.dataDir}`);
+    log(`Logs: ${paths.logDir}`);
+
+    // Wait briefly and check if backend is actually listening
+    await runtime.sleep(2000);
+    const backendLog = runtime.logFilePath(paths, "backend");
+    const lastLines = runtime.tailLines(backendLog, 5);
+    const hasStartupError = lastLines.some((line) =>
+      /error|Error|ERR|crashed|ENOENT|Cannot find/i.test(line)
+    );
+    if (hasStartupError) {
+      log("");
+      log("Backend failed to start. Recent log:");
+      for (const line of lastLines) {
+        log(`  ${line}`);
+      }
+      log(`Check full log: ${backendLog}`);
+      return;
+    }
+
     // Auto-open browser in installed mode
     setTimeout(() => openBrowser(url), 1500);
   }

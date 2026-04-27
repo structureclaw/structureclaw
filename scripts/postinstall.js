@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 /**
  * StructureClaw postinstall script.
- * Runs `prisma generate` for the bundled schema — non-fatal on failure.
- * Inspired by OpenClaw's postinstall pattern.
+ * Generates Prisma client for the bundled schema.
+ * Non-fatal on failure — user can run `sclaw doctor` to complete setup.
+ *
+ * Key: npm runs postinstall with cwd = the installing project root
+ * (e.g., G:\test-publish\), NOT the package dir.  @prisma/client lives
+ * in that project's node_modules, so running `prisma generate` from there
+ * writes the generated client into the right node_modules/.prisma/client.
  */
 "use strict";
 
@@ -10,7 +15,9 @@ const { execFileSync } = require("node:child_process");
 const { existsSync } = require("node:fs");
 const path = require("node:path");
 
-async function main() {
+const isWindows = process.platform === "win32";
+
+function main() {
   const rootDir = path.resolve(__dirname, "..");
   const prismaSchema = path.join(rootDir, "backend", "prisma", "schema.prisma");
 
@@ -20,13 +27,19 @@ async function main() {
   }
 
   try {
-    // Use shell on Windows so npx.cmd is resolved correctly
-    const useShell = process.platform === "win32";
-    execFileSync("npx", ["prisma", "generate", `--schema=${prismaSchema}`], {
+    // npm runs postinstall scripts from the installing project root,
+    // which is where node_modules/@prisma/client lives.
+    // init.cwd is set by npm to the project root during install.
+    const projectRoot = process.env.INIT_CWD || process.cwd();
+
+    execFileSync("npx", [
+      "prisma", "generate",
+      `--schema=${prismaSchema}`,
+    ], {
       stdio: "pipe",
-      cwd: rootDir,
-      timeout: 60000,
-      shell: useShell,
+      cwd: projectRoot,
+      timeout: 120000,
+      shell: isWindows,
     });
     console.log("[sclaw] Prisma client generated.");
   } catch (err) {
