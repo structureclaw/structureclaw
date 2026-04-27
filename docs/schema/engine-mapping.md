@@ -6,37 +6,38 @@ This document defines how `StructureModelV2` fields map to engine-specific input
 
 ## Mapping Overview
 
-| V2 Schema Field | OpenSeesPy | PKPM API (`APIPyInterface`) |
-|---|---|---|
-| `project.code_standard` | N/A | `ProjectPara.GetPara_String(...)` |
-| `project.importance_class` | N/A | `ProjectPara.GetPara_Int(...)` (requires string→int conversion mapping: 甲=1, 乙=2, 丙=3, 丁=4) |
-| `structure_system.type` | Model topology | `SysInfoDetail` 参数 |
-| `structure_system.seismic_grade` | N/A | `Beam.GetSeisGrade()` / `Column.GetSeisGrade()` / `Wall.GetSeisGrade()` (构件级) |
-| `site_seismic.intensity` | N/A | `ProjectPara.GetPara_Int(...)` |
-| `site_seismic.design_group` | N/A | `ProjectPara.GetPara_Int(...)` |
-| `site_seismic.site_category` | N/A | `ProjectPara.GetPara_Int(...)` |
-| `site_seismic.characteristic_period` | N/A | `ProjectPara.GetPara_Double(...)` |
-| `site_seismic.max_influence_coefficient` | N/A | `ProjectPara.GetPara_Double(...)` |
-| `site_seismic.damping_ratio` | `ops.rayleigh(...)` | `SysInfoDetail.GetDamp_whole()` |
-| `wind.basic_pressure` | N/A | `ProjectPara.GetPara_Double(...)` |
-| `wind.terrain_roughness` | N/A | `ProjectPara.GetPara_Int(...)` |
-| `stories[].height` | Node coordinates Δz | `RealFloor.GetFloorHeight()` |
-| `stories[].elevation` | N/A | `RealFloor.GetBottomElevation()` |
-| `stories[].rigid_diaphragm` | `ops.rigidDiaphragm(...)` | `SysInfoDetail` 参数 |
-| `stories[].floor_loads` | N/A | `StandFloor.GetDeadLive()` |
-| `nodes` | `ops.node(id, x, y, z)` | `StandFloor.GetNodes()` → `Node.Get()` (x, y) |
-| `elements` (beam) | `ops.element('elasticBeamColumn', ...)` | `StandFloor.GetBeams()` → `Beam` |
-| `elements` (column) | `ops.element('elasticBeamColumn', ...)` | `StandFloor.GetColumns()` → `Column` |
-| `elements` (wall) | `ops.element('ShellMITC4', ...)` | `StandFloor.GetWalls()` → `Wall` |
-| `materials[].E` | `ops.uniaxialMaterial('Elastic', ...)` | `MaterialData.getEc()` |
-| `materials[].grade` | N/A | `ConcreteGrade` / `ReinforcingbarGrade` / `SteelGrade` 枚举 |
-| `sections` | `ops.section('Elastic', ...)` / `Fiber` | `BeamSection` / `ColumnSection` / `WallSection` + `SectionKind` + `SectionShape` |
-| `load_cases` | `ops.pattern('Plain', ...)` / `UniformExcitation` | `Model.GetUserLoadCase()` → `LoadCaseData` |
-| `load_combinations` | Manual post-process | `Model.GetAllDesignPara()` / `SysInfoDetail` |
-| `analysis_control.p_delta` | `ops.geomTransf('PDelta', ...)` | `SysInfoDetail` 参数 |
-| `analysis_control.period_reduction_factor` | N/A | `SysInfoDetail` 参数 |
-| `analysis_control.modal_count` | `ops.eigen(n)` | `SysInfoDetail` 参数 |
-| `extensions.pkpm` | N/A | `SysInfoDetail` / `ProjectPara` 专有参数 |
+| V2 Schema Field | OpenSeesPy | PKPM API (`APIPyInterface`) | YJK API / YDB |
+|---|---|---|---|
+| `project.code_standard` | N/A | `ProjectPara.GetPara_String(...)` | Project/control defaults; currently mostly informational |
+| `project.importance_class` | N/A | `ProjectPara.GetPara_Int(...)` (requires string→int conversion mapping: 甲=1, 乙=2, 丙=3, 丁=4) | Project/control defaults; currently mostly informational |
+| `structure_system.type` | Model topology | `SysInfoDetail` 参数 | Geometry/model family routing; YDB model topology |
+| `structure_system.seismic_grade` | N/A | `Beam.GetSeisGrade()` / `Column.GetSeisGrade()` / `Wall.GetSeisGrade()` (构件级) | Reserved for YJK member/control parameters |
+| `site_seismic.intensity` | N/A | `ProjectPara.GetPara_Int(...)` | Reserved for YJK calculation-control parameters |
+| `site_seismic.design_group` | N/A | `ProjectPara.GetPara_Int(...)` | Reserved for YJK calculation-control parameters |
+| `site_seismic.site_category` | N/A | `ProjectPara.GetPara_Int(...)` | Reserved for YJK calculation-control parameters |
+| `site_seismic.characteristic_period` | N/A | `ProjectPara.GetPara_Double(...)` | Reserved for YJK calculation-control parameters |
+| `site_seismic.max_influence_coefficient` | N/A | `ProjectPara.GetPara_Double(...)` | Reserved for YJK calculation-control parameters |
+| `site_seismic.damping_ratio` | `ops.rayleigh(...)` | `SysInfoDetail.GetDamp_whole()` | Reserved for YJK calculation-control parameters |
+| `wind.basic_pressure` | N/A | `ProjectPara.GetPara_Double(...)` | Reserved for YJK wind/control parameters |
+| `wind.terrain_roughness` | N/A | `ProjectPara.GetPara_Int(...)` | Reserved for YJK wind/control parameters |
+| `stories[].height` | Node coordinates Δz | `RealFloor.GetFloorHeight()` | `Floors_Assemb(..., floor_height_mm)` after m→mm conversion |
+| `stories[].elevation` | N/A | `RealFloor.GetBottomElevation()` | Floor inference and mapping metadata |
+| `stories[].rigid_diaphragm` | `ops.rigidDiaphragm(...)` | `SysInfoDetail` 参数 | Slab/diaphragm preparation through YJK preprocessing commands |
+| `stories[].floor_loads` | N/A | `StandFloor.GetDeadLive()` | `StdFlr_Generate` dead/live floor loads (kN/m²) |
+| `nodes` | `ops.node(id, x, y, z)` | `StandFloor.GetNodes()` → `Node.Get()` (x, y) | Standard-floor 2D nodes plus floor/elevation mapping; coordinates converted m→mm |
+| `elements` (beam) | `ops.element('elasticBeamColumn', ...)` | `StandFloor.GetBeams()` → `Beam` | YJK beam objects in generated YDB; mapped back through `mapping.json` |
+| `elements` (column) | `ops.element('elasticBeamColumn', ...)` | `StandFloor.GetColumns()` → `Column` | YJK column objects in generated YDB; mapped back through `mapping.json` |
+| `elements` (wall) | `ops.element('ShellMITC4', ...)` | `StandFloor.GetWalls()` → `Wall` | Not a primary 1.0 YJK extraction focus; reserved/partial |
+| `materials[].E` | `ops.uniaxialMaterial('Elastic', ...)` | `MaterialData.getEc()` | Material role/grade mapped to YJK material values when available |
+| `materials[].grade` | N/A | `ConcreteGrade` / `ReinforcingbarGrade` / `SteelGrade` 枚举 | YJK material/section definitions for generated members |
+| `sections` | `ops.section('Elastic', ...)` / `Fiber` | `BeamSection` / `ColumnSection` / `WallSection` + `SectionKind` + `SectionShape` | YJK beam/column section definitions, including rectangular and steel-shape encodings |
+| `load_cases` | `ops.pattern('Plain', ...)` / `UniformExcitation` | `Model.GetUserLoadCase()` → `LoadCaseData` | YJK design load cases extracted after calculation via `YJKSDsnDataPy` |
+| `load_combinations` | Manual post-process | `Model.GetAllDesignPara()` / `SysInfoDetail` | Extracted case metadata and envelopes; explicit V2 combinations are not yet fully mapped |
+| `analysis_control.p_delta` | `ops.geomTransf('PDelta', ...)` | `SysInfoDetail` 参数 | Reserved for YJK calculation-control parameters |
+| `analysis_control.period_reduction_factor` | N/A | `SysInfoDetail` 参数 | Reserved for YJK calculation-control parameters |
+| `analysis_control.modal_count` | `ops.eigen(n)` | `SysInfoDetail` 参数 | Reserved for YJK modal/control parameters |
+| `extensions.pkpm` | N/A | `SysInfoDetail` / `ProjectPara` 专有参数 | N/A |
+| `extensions.yjk` | N/A | N/A | Reserved for YJK-specific model/control parameters |
 
 ---
 
@@ -129,6 +130,62 @@ PKPM 通过 `APIPyInterface` 模块提供 Python API，数据模型基于**标�
 > PKPM 的 `ProjectPara` 和 `SysInfoDetail` 使用**基于索引的参数存取** (`GetPara_Int(index)`, `GetPara_Double(index)`)。
 > 具体索引号含义请参阅 PKPM API 说明文档中的《PKPM结构数据SQLite化数据表及字段说明.pdf》。
 > 这些参数在 V2 Schema 中通过 `extensions.pkpm` 字典传递，后续由 PKPM 适配器负责映射到具体索引。
+
+---
+
+## YJK Mapping Details
+
+YJK support in StructureClaw 1.0 is implemented as the `yjk-static` analysis skill. It is a Windows/local-software path that uses the YJK 8.0 installation, the bundled YJK Python 3.10 runtime, and the YJK SDK remote-control APIs.
+
+### Execution Pipeline
+
+The runtime does not import YJK APIs from the backend Python environment. Instead:
+
+1. `runtime.py` normalizes the incoming model, writes `model.json`, and creates a per-run work directory.
+2. YJK's bundled Python runs `yjk_driver.py`.
+3. `yjk_converter.py` converts the V2/compatible model into YDB files and writes `mapping.json`.
+4. `yjk_driver.py` starts or attaches to YJK, imports the YDB model, runs repair/preprocessing/calculation commands, and loads `extract_results.py` inside the YJK process.
+5. `extract_results.py` writes `results.json` in the current work directory.
+6. `yjk_driver.py` normalizes raw YJK ids back to StructureClaw ids and returns the final JSON result.
+
+Default run artifacts are written under `.runtime/yjk_work_dir/sc_<traceId>` in source mode unless `YJK_WORK_DIR` or `settings.json` overrides the location. Installed package mode should prefer the runtime data directory.
+
+### Model Mapping
+
+| V2 concept | YJK path | Notes |
+|---|---|---|
+| Coordinate system | global z-up to YJK floor/plan coordinates | V1-compatible frame models are migrated from y-vertical to z-up before conversion |
+| Story heights | YJK floor assembly height in mm | V2 stores meters; converter multiplies by 1000 |
+| Floor loads | standard-floor dead/live loads | kN/m² passes through |
+| Nodes | standard-floor plan nodes plus story metadata | `mapping.json` records V2 id, YJK node id, coordinates, floor, and fallback matching data |
+| Beams/columns/braces | generated YJK members | Member metadata includes YJK ids, floor, endpoints, original floor/no, and sequence fallback |
+| Sections | YJK section definitions | Beam/column sections are mapped by role and shape data |
+| Materials | YJK material values where available | Grade/category mapping is handled by the converter where supported |
+
+### Result Mapping
+
+The extracted and normalized result contract includes:
+
+| Output field | Content |
+|---|---|
+| `displacements` | controlling per-node displacement map, keyed by StructureClaw node id where mapping succeeds |
+| `reactions` | controlling per-node reaction map |
+| `forces` | controlling per-element force map |
+| `caseResults` | per-load-case displacements, reactions, forces, and case metadata |
+| `envelope` | global maxima such as max displacement, axial force, shear force, moment, and reaction |
+| `envelopeTables.nodeDisplacement` | per-node displacement envelopes with controlling cases |
+| `envelopeTables.elementForce` | per-element force envelopes with controlling cases |
+| `envelopeTables.nodeReaction` | per-node reaction envelopes with controlling cases |
+| `yjk_detailed.floor_stats` | floor-level stiffness and shear-capacity statistics when YJK APIs return them |
+| `warnings` | result-mapping and extraction caveats, including raw-id fallbacks or empty result blocks |
+
+### Current 1.0 Limits
+
+- Primary analysis type: `static`.
+- Primary model families: `frame` and `generic`.
+- Commercial engine availability depends on local YJK installation, bundled Python, authorization state, and Windows desktop/runtime behavior.
+- Result richness depends on YJK API availability in the installed version. The extractor records API failures in `extraction-debug.json` and returns warnings when key blocks are empty.
+- Explicit V2 load-combination mapping and full wall/shear-wall result extraction are not yet the primary 1.0 path.
 
 ---
 

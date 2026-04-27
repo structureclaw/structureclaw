@@ -5,8 +5,8 @@ name:
   zh: YJK 静力分析
   en: YJK Static Analysis
 description:
-  zh: 使用 YJK (盈建科) 引擎自动建模并执行静力分析，返回节点位移、构件内力、包络和楼层统计等结构化结果（需安装 YJK 8.0 并配置 YJKS_ROOT 或 YJK_PATH）。
-  en: Automated modeling and static analysis using the YJK engine. Returns structured node displacements, member forces, envelopes, and floor statistics (requires YJK 8.0 and YJKS_ROOT or YJK_PATH).
+  zh: 调用本机 YJK 8.0 自动建模、计算并抽取静力分析结果，返回位移、反力、构件内力、工况、包络和楼层统计。
+  en: Runs local YJK 8.0 modeling, calculation, and static-result extraction, returning displacements, reactions, member forces, load cases, envelopes, and floor statistics.
 triggers:
   - YJK 静力分析
   - YJK 计算

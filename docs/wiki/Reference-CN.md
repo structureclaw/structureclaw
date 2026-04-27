@@ -24,8 +24,20 @@
 - `POST /analyze`
 - `POST /code-check`
 - `GET /schema/converters`
+- `GET /engines`
+- `GET /engines/:engineId`
+- `POST /engines/:engineId/check`
 
-### SkillHub
+内置 engine id：`builtin-opensees`、`builtin-pkpm`、`builtin-yjk`。
+
+### 运行时 Settings
+
+- `GET /api/v1/admin/settings`
+- `PUT /api/v1/admin/settings`
+
+StructureClaw 1.0 按 `settings.json`、`.env` / shell 环境变量、内置默认值的顺序解析配置。
+
+### SkillHub 与用户扩展
 
 - `GET /api/v1/agent/skillhub/search`
 - `GET /api/v1/agent/skillhub/installed`
@@ -33,13 +45,11 @@
 - `POST /api/v1/agent/skillhub/enable`
 - `POST /api/v1/agent/skillhub/disable`
 - `POST /api/v1/agent/skillhub/uninstall`
+- `GET /api/v1/admin/skills`
+- `POST /api/v1/admin/skills/reload`
+- `GET /api/v1/admin/skills/:id`
 
-### 当前阶段能力边界（2026-04）
-
-- 当前 skill：全部按内置 skill 运行。
-- 外接 skill：指 SkillHub 技能包；该通道为预留能力，尚未投入生产执行链。
-- 当前 tool：统一按外接 tool 治理。
-- 内置 tool：指平台基础能力（如 read/write）；该通道当前为预留能力。
+用户扩展资产位于运行数据目录下的 `skills/` 与 `tools/`。
 
 优先级规则：
 

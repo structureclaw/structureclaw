@@ -5,7 +5,7 @@ StructureClaw 是一个面向 AEC 工作流的 AI 协同结构工程工作台。
 ## 架构
 
 - `frontend/`：Next.js 14 前端应用，含 Three.js 3D 可视化
-- `backend/`：Fastify API、Agent 编排、LLM 集成、Prisma ORM，以及托管式分析运行时
+- `backend/`：Fastify API、安装版静态前端托管、Agent 编排、LLM 集成、Prisma ORM，以及托管式分析运行时
 - `scripts/`：`sclaw` CLI 入口与命令实现
 - `docs/`：使用手册、协议参考文档与 Wiki 源文件
 
@@ -22,7 +22,7 @@ StructureClaw 是一个面向 AEC 工作流的 AI 协同结构工程工作台。
 | 领域 | 说明 |
 |---|---|
 | `structure-type` | 结构类型识别（梁、框架、桁架、门式刚架，以及通用兜底路径） |
-| `analysis` | OpenSees 与 Simplified 分析执行 |
+| `analysis` | OpenSees、PKPM 与 YJK 分析执行 |
 | `code-check` | 设计规范校核 |
 | `data-input` | 结构化数据输入解析 |
 | `design` | 结构设计辅助 |
@@ -68,6 +68,7 @@ API 接口：
 
 ## 推荐启动方式
 
+- npm 安装版：`npm install -g structureclaw`、`sclaw doctor`、`sclaw start`
 - 本地源码流程：`./sclaw doctor`、`./sclaw start`、`./sclaw status`
 - Windows PowerShell：`node .\sclaw doctor`、`node .\sclaw start`、`node .\sclaw status`
 - Docker 流程：`./sclaw docker-install` 然后 `./sclaw docker-start`

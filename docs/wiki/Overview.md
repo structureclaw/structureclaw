@@ -5,7 +5,7 @@ StructureClaw is an AI-assisted structural engineering workspace for AEC workflo
 ## Architecture
 
 - `frontend/`: Next.js 14 application with 3D visualization (Three.js)
-- `backend/`: Fastify API, agent orchestration, LLM integration, Prisma ORM, and hosted analysis runtime
+- `backend/`: Fastify API, static frontend serving in installed mode, agent orchestration, LLM integration, Prisma ORM, and hosted analysis runtime
 - `scripts/`: `sclaw` CLI entrypoint and command implementations
 - `docs/`: handbook, protocol reference, and wiki source pages
 
@@ -22,7 +22,7 @@ Built-in skill domains:
 | Domain | Description |
 |---|---|
 | `structure-type` | Structural type recognition (beam, frame, truss, portal-frame, and generic fallback paths) |
-| `analysis` | OpenSees and Simplified analysis execution |
+| `analysis` | OpenSees, PKPM, and YJK analysis execution |
 | `code-check` | Design code compliance checking |
 | `data-input` | Structured data input parsing |
 | `design` | Structural design assistance |
@@ -68,6 +68,7 @@ API endpoints:
 
 ## Recommended Startup
 
+- Installed package flow: `npm install -g structureclaw`, `sclaw doctor`, `sclaw start`
 - Local source flow: `./sclaw doctor`, `./sclaw start`, `./sclaw status`
 - Windows PowerShell: `node .\sclaw doctor`, `node .\sclaw start`, `node .\sclaw status`
 - Docker flow: `./sclaw docker-install` then `./sclaw docker-start`

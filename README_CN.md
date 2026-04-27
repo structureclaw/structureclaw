@@ -10,16 +10,21 @@ https://github.com/user-attachments/assets/031fe757-551d-4775-ab3f-0411037ad5ae
 
 - 从自然语言需求到分析工件的结构工程闭环
 - 统一编排链路：建模草案 -> 校验 -> 分析 -> 校核 -> 报告
-- 单仓能力栈：Web 前端、后端编排 API、后端托管的 Python 分析运行时
+- 可安装 CLI 与 Web 工作台：`npm install -g structureclaw && sclaw start`
+- 安装版单进程运行：后端直接托管导出的前端静态资源
+- 单平台能力栈：Web 前端、后端编排 API、Agent runtime、后端托管的 Python 分析运行时
+- 内置 OpenSees、PKPM SATWE、YJK 静力分析路径
 - 具备回归脚本与契约校验脚本，支持可重复验证
 
 ## 架构概览
 
 ```text
-frontend (Next.js)
-	-> backend (Fastify + Prisma + Agent 编排 + 分析运行时宿主)
-	-> backend/src/agent-skills/analysis-execution/python
-	-> 报告/指标/工件输出
+浏览器 UI
+  -> Fastify 后端（API + 安装版静态前端托管）
+  -> LangGraph Agent runtime
+  -> skill/tool 能力层
+  -> Python 分析运行时（OpenSees / PKPM / YJK 适配器）
+  -> 报告 / 指标 / 工件输出
 ```
 
 主要目录：
@@ -31,6 +36,30 @@ frontend (Next.js)
 - `docs/`：手册与协议参考文档
 
 ## 快速启动
+
+### npm 安装版
+
+普通用户推荐全局安装 CLI，并让 `sclaw doctor` 创建运行工作区：
+
+```bash
+npm install -g structureclaw
+sclaw doctor
+sclaw start
+```
+
+安装版会把用户数据放在 Unix-like 系统的 `~/.structureclaw/` 或 Windows 的应用数据目录中。数据库、日志、报告、分析生成文件、`settings.json`、用户技能和用户工具都不会写入只读的 npm 包目录。
+
+### 源码开发版
+
+仓库开发时，在源码目录使用本地 CLI：
+
+```bash
+./sclaw doctor
+./sclaw start
+./sclaw status
+```
+
+源码模式把运行数据放在 `.runtime/`，并以开发进程启动 backend/frontend。
 
 如果你还没有安装 Node.js，可以先运行自动安装脚本：
 
@@ -44,14 +73,6 @@ Windows PowerShell（首次安装建议使用管理员权限）：
 powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
 ```
 
-推荐本地流程：
-
-```bash
-./sclaw doctor
-./sclaw start
-./sclaw status
-```
-
 国内镜像流程（子命令与 `sclaw` 一致，但默认启用国内镜像）：
 
 ```bash
@@ -62,10 +83,10 @@ powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
 
 补充说明：
 
-- 本地默认数据库现在是 SQLite。`./sclaw start` 默认使用 `.runtime/data/structureclaw.start.db`，`./sclaw doctor` 默认使用 `.runtime/data/structureclaw.doctor.db`，这样预检不会碰当前实际运行库。
-- `./sclaw doctor` 不再要求你预先安装系统级 Python 3.12。缺失时会先确保 `uv` 可用，并自动准备带 Python 3.12 的 `backend/.venv`；在 Windows 上，如果系统未安装 `winget`，则会提示你手动安装 `uv`。
-- 如果你原来的本地 `.env` 还把 `DATABASE_URL` 指向本地 PostgreSQL，`./sclaw doctor` 和 `./sclaw start` 会先自动迁移到 SQLite，再把 `.env` 改写成 SQLite 默认配置，同时把原 PostgreSQL 地址保留到 `POSTGRES_SOURCE_DATABASE_URL`。
-- 第一次自动迁移时，还会生成一个类似 `.env.pre-sqlite-migration.<timestamp>.bak` 的本地备份文件。
+- SQLite 是默认本地数据库。安装版解析到用户运行数据目录，源码模式解析到 `.runtime/data/`。
+- `sclaw doctor` 会自动准备 Python 分析环境。安装版的虚拟环境位于用户运行数据目录，而不是 `node_modules`。
+- 旧的源码目录 `.runtime/` 数据可以迁移到安装版运行目录。
+- 旧 `.env` 中的配置会尽量迁移到 `settings.json`；`.env` 仍作为高级用法和 CI 的 fallback。
 - `sclaw_cn` 在未显式配置时会自动使用国内镜像默认值：`PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`、`NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`，以及通过 `DOCKER_REGISTRY_MIRROR` 指定的 Docker 镜像前缀。
 - 你可以在 `.env` 或 shell 环境中覆盖镜像变量：`PIP_INDEX_URL`、`NPM_CONFIG_REGISTRY`、`DOCKER_REGISTRY_MIRROR`、`APT_MIRROR`。
 
@@ -133,16 +154,28 @@ node .\sclaw docker-stop
 docker compose down
 ```
 
-## 环境变量
+## 配置
 
-请基于 `.env.example` 配置本地环境。
+StructureClaw 1.0 以 `settings.json` 作为主要用户配置文件。前端 General Settings 面板会通过后端 admin API 写入同一份配置，并显示每个字段来自 runtime settings、`.env` 还是内置默认值。
 
-关键变量包括：
+配置优先级：
 
-- `PORT`、`FRONTEND_PORT`
-- `DATABASE_URL`、`POSTGRES_SOURCE_DATABASE_URL`
-- `LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`（OpenAI-compatible 接口）
-- `ANALYSIS_PYTHON_BIN`、`ANALYSIS_PYTHON_TIMEOUT_MS`、`ANALYSIS_ENGINE_MANIFEST_PATH`
+1. 运行时 `settings.json`
+2. `.env` / shell 环境变量
+3. 内置默认值
+
+重要 `settings.json` section：
+
+- `server`：端口、host、请求体大小
+- `llm`：OpenAI-compatible base URL、模型、API key、超时、重试
+- `logging`：应用日志级别、LLM 日志、日志轮转
+- `analysis`：Python 运行时路径、超时、引擎 manifest 路径
+- `storage`：报告目录与上传大小
+- `agent`：workspace root、checkpoint、shell tool 策略
+- `pkpm`：SATWE/JWSCYCLE 路径与工作目录
+- `yjk`：安装根目录、可执行文件、内置 Python、工作目录、版本、超时、无界面模式
+
+`.env.example` 仍保留为自动化和源码开发的环境变量参考。
 
 ## 主要 API 入口
 

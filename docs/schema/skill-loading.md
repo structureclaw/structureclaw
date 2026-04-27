@@ -94,7 +94,7 @@ The current `/api/v1/agent/capability-matrix` also exposes `runtimeStatus` for e
 
 `engineId` declared inside a skill is a static routing hint, not a guarantee that the engine is usable at runtime.
 
-- A skill may declare which analysis engine family it targets, for example OpenSees today, or future integrations such as YJK / PKPM.
+- A skill may declare which analysis engine family it targets. Current built-in engine families include OpenSees, PKPM, and YJK.
 - The actual runtime engine set comes from the engine catalog and current runtime health state.
 - Before an analysis skill can participate in execution, the runtime must verify that the candidate engine is:
   - enabled

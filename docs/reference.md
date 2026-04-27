@@ -76,6 +76,17 @@ Main endpoints:
 - `POST /analyze`
 - `POST /code-check`
 - `GET /schema/converters`
+- `GET /engines`
+- `GET /engines/:engineId`
+- `POST /engines/:engineId/check`
+
+Built-in engine ids:
+
+| Engine id | Adapter | Notes |
+|---|---|---|
+| `builtin-opensees` | `builtin-opensees` | OpenSeesPy-backed analysis skills |
+| `builtin-pkpm` | `builtin-pkpm` | Requires local PKPM/SATWE runtime and `JWSCYCLE.exe` |
+| `builtin-yjk` | `builtin-yjk` | Requires local YJK 8.0 runtime and valid authorization |
 
 ## 5. StructureModel v1 Baseline
 
@@ -100,7 +111,35 @@ Practical rules:
 - Keep element references aligned with node/material/section IDs.
 - Prefer `validate_model` before `run_analysis` when possible.
 
-## 6. SkillHub Contract
+## 6. Runtime Settings Contract
+
+StructureClaw 1.0 uses runtime `settings.json` as the primary user-facing configuration file. Values are resolved in this order:
+
+1. `settings.json`
+2. `.env` / shell environment
+3. Built-in defaults
+
+Admin settings endpoints:
+
+- `GET /api/v1/admin/settings`
+- `PUT /api/v1/admin/settings`
+
+Settings sections:
+
+- `server`
+- `llm`
+- `database`
+- `logging`
+- `analysis`
+- `storage`
+- `cors`
+- `agent`
+- `pkpm`
+- `yjk`
+
+Each returned field includes a value and source label so the UI can explain whether the effective value came from runtime settings, environment, or defaults.
+
+## 7. SkillHub and User Extension Contract
 
 - `GET /api/v1/agent/skillhub/search`
 - `GET /api/v1/agent/skillhub/installed`
@@ -108,13 +147,19 @@ Practical rules:
 - `POST /api/v1/agent/skillhub/enable`
 - `POST /api/v1/agent/skillhub/disable`
 - `POST /api/v1/agent/skillhub/uninstall`
+- `GET /api/v1/admin/skills`
+- `POST /api/v1/admin/skills/reload`
+- `GET /api/v1/admin/skills/:id`
 
-## 6.1 Current-Phase Capability Boundary (2026-04)
+User extension directories under the runtime data directory:
 
-- Current skills: all shipped skills run as built-in skills.
-- External skills: SkillHub packages; this channel is reserved and not yet active in production execution chains.
-- Current tools: managed uniformly as external tools.
-- Built-in tools: platform foundation capabilities (for example, read/write); this channel is currently reserved.
+- `skills/<name>/skill.yaml`
+- `skills/<name>/intent.md`, `draft.md`, `analysis.md`, `design.md` as needed
+- `skills/<name>/handler.js` for executable handlers
+- `tools/<name>/tool.yaml`
+- `tools/<name>/tool.js`
+
+Built-in skills take priority on id collisions. User tools are appended to the registered tool set at graph build time.
 
 Priority rule:
 
@@ -122,7 +167,7 @@ Priority rule:
 - Manual toggles override automatic activation, default sets, and policy suggestions.
 - Any skill or tool manually disabled by the user must become immediately unavailable to the orchestrator.
 
-## 7. Contract Validation Commands
+## 8. Contract Validation Commands
 
 Contract checks and grouped regressions run via `node tests/runner.mjs ...` (not `sclaw`). List validation names with `node tests/runner.mjs validate --list`.
 
@@ -179,7 +224,7 @@ Regression entrypoints:
 - `node tests/runner.mjs backend-regression`
 - `node tests/runner.mjs analysis-regression`
 
-## 8. Related Docs
+## 9. Related Docs
 
 - Operational guide: `docs/handbook.md`
 - Agent architecture: `docs/agent-architecture.md`

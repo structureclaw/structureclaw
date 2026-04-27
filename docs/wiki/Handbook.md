@@ -5,7 +5,32 @@
 
 ## Quick Start
 
-### Node.js setup (optional)
+### Installed package path
+
+```bash
+npm install -g structureclaw
+sclaw doctor
+sclaw start
+sclaw status
+sclaw logs
+sclaw stop
+```
+
+Installed mode runs as a single process and stores runtime data under the user data directory, such as `~/.structureclaw/`.
+
+### Source checkout path
+
+```bash
+./sclaw doctor
+./sclaw start
+./sclaw status
+./sclaw logs
+./sclaw stop
+```
+
+Source mode keeps runtime data under `.runtime/`.
+
+### Node.js setup helper
 
 If Node.js is not installed yet, use the helper installer script first:
 
@@ -17,16 +42,6 @@ Windows PowerShell (run as Administrator for first-time package install):
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
-```
-
-### Recommended path
-
-```bash
-./sclaw doctor   # pre-check (Node, Python, SQLite, deps)
-./sclaw start    # start full local service stack
-./sclaw status   # check service health
-./sclaw logs     # view logs
-./sclaw stop     # stop all services
 ```
 
 Windows PowerShell:

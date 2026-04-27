@@ -99,7 +99,7 @@ tool 不存在 YAML 发现路径。新增 tool 必须修改代码注册表，在
 
 skill 内声明的 `engineId` 只是静态路由提示，并不等于该 engine 在运行时一定可用。
 
-- skill 可以声明自己面向的分析引擎族，例如当前的 OpenSees，或未来可能接入的 YJK / PKPM。
+- skill 可以声明自己面向的分析引擎族。当前内置 engine family 包括 OpenSees、PKPM 和 YJK。
 - 真正的运行时 engine 集合来自 engine catalog 以及当前运行健康状态。
 - analysis skill 在进入执行前，runtime 必须校验候选 engine 是否：
   - 已启用

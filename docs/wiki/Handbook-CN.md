@@ -5,7 +5,32 @@
 
 ## 快速开始
 
-### Node.js 安装（可选）
+### npm 安装版
+
+```bash
+npm install -g structureclaw
+sclaw doctor
+sclaw start
+sclaw status
+sclaw logs
+sclaw stop
+```
+
+安装版以单进程运行，并把运行数据放在用户数据目录，例如 `~/.structureclaw/`。
+
+### 源码开发版
+
+```bash
+./sclaw doctor
+./sclaw start
+./sclaw status
+./sclaw logs
+./sclaw stop
+```
+
+源码模式把运行数据放在 `.runtime/`。
+
+### Node.js 安装辅助
 
 如果你还没有安装 Node.js，可以先运行自动安装脚本：
 
@@ -17,16 +42,6 @@ Windows PowerShell（首次安装建议使用管理员权限）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
-```
-
-### 推荐路径
-
-```bash
-./sclaw doctor   # 预检（Node、Python、SQLite、依赖）
-./sclaw start    # 启动完整本地服务栈
-./sclaw status   # 检查服务健康状态
-./sclaw logs     # 查看日志
-./sclaw stop     # 停止所有服务
 ```
 
 Windows PowerShell:

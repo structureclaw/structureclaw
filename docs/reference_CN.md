@@ -76,6 +76,17 @@
 - `POST /analyze`
 - `POST /code-check`
 - `GET /schema/converters`
+- `GET /engines`
+- `GET /engines/:engineId`
+- `POST /engines/:engineId/check`
+
+内置 engine id：
+
+| Engine id | Adapter | 说明 |
+|---|---|---|
+| `builtin-opensees` | `builtin-opensees` | OpenSeesPy 支持的分析技能 |
+| `builtin-pkpm` | `builtin-pkpm` | 需要本机 PKPM/SATWE 运行环境与 `JWSCYCLE.exe` |
+| `builtin-yjk` | `builtin-yjk` | 需要本机 YJK 8.0 运行环境与有效授权 |
 
 ## 5. StructureModel v1 基线
 
@@ -100,7 +111,35 @@
 - 单元引用必须与节点/材料/截面 ID 对齐。
 - 建议优先执行 `validate_model` 再执行 `run_analysis`。
 
-## 6. SkillHub 契约
+## 6. 运行时 Settings 契约
+
+StructureClaw 1.0 使用运行时 `settings.json` 作为主要用户配置文件。配置按以下优先级解析：
+
+1. `settings.json`
+2. `.env` / shell 环境变量
+3. 内置默认值
+
+Admin settings 接口：
+
+- `GET /api/v1/admin/settings`
+- `PUT /api/v1/admin/settings`
+
+Settings section：
+
+- `server`
+- `llm`
+- `database`
+- `logging`
+- `analysis`
+- `storage`
+- `cors`
+- `agent`
+- `pkpm`
+- `yjk`
+
+返回字段会同时带上 value 和 source，便于 UI 展示当前有效值来自 runtime settings、环境变量还是默认值。
+
+## 7. SkillHub 与用户扩展契约
 
 - `GET /api/v1/agent/skillhub/search`
 - `GET /api/v1/agent/skillhub/installed`
@@ -108,13 +147,19 @@
 - `POST /api/v1/agent/skillhub/enable`
 - `POST /api/v1/agent/skillhub/disable`
 - `POST /api/v1/agent/skillhub/uninstall`
+- `GET /api/v1/admin/skills`
+- `POST /api/v1/admin/skills/reload`
+- `GET /api/v1/admin/skills/:id`
 
-## 6.1 当前阶段能力边界（2026-04）
+用户运行目录下的扩展目录：
 
-- 当前 skill：全部按内置 skill 运行。
-- 外接 skill：指 SkillHub 技能包；该通道为预留能力，尚未投入生产执行链。
-- 当前 tool：统一按外接 tool 治理。
-- 内置 tool：指平台基础能力（如 read/write）；该通道当前为预留能力。
+- `skills/<name>/skill.yaml`
+- `skills/<name>/intent.md`、`draft.md`、`analysis.md`、`design.md` 等阶段文件
+- `skills/<name>/handler.js`，用于可执行 handler
+- `tools/<name>/tool.yaml`
+- `tools/<name>/tool.js`
+
+当 id 冲突时，内置 skill 优先。用户 tool 会在图构建时追加到已注册工具集合。
 
 优先级规则：
 
@@ -122,7 +167,7 @@
 - 手动开关覆盖自动激活、默认集合与策略建议。
 - 用户手动关闭的 skill 或 tool 必须立即失效，不允许被编排器调用。
 
-## 7. 契约与回归命令
+## 8. 契约与回归命令
 
 契约与分组回归通过 `node tests/runner.mjs ...` 执行（不再挂在 `sclaw` 上）。列出全部校验名：`node tests/runner.mjs validate --list`。
 
@@ -179,7 +224,7 @@ Chat 与消息：
 - `node tests/runner.mjs backend-regression`
 - `node tests/runner.mjs analysis-regression`
 
-## 8. 相关文档
+## 9. 相关文档
 
 - 操作手册：`docs/handbook_CN.md`
 - Agent 架构：`docs/agent-architecture_CN.md`

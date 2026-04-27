@@ -24,8 +24,20 @@ Stream events: `start` → `interaction_update` (optional) → `result` → `don
 - `POST /analyze`
 - `POST /code-check`
 - `GET /schema/converters`
+- `GET /engines`
+- `GET /engines/:engineId`
+- `POST /engines/:engineId/check`
 
-### SkillHub
+Built-in engine ids: `builtin-opensees`, `builtin-pkpm`, `builtin-yjk`.
+
+### Runtime Settings
+
+- `GET /api/v1/admin/settings`
+- `PUT /api/v1/admin/settings`
+
+StructureClaw 1.0 resolves configuration from `settings.json`, then `.env` / shell environment, then built-in defaults.
+
+### SkillHub and User Extensions
 
 - `GET /api/v1/agent/skillhub/search`
 - `GET /api/v1/agent/skillhub/installed`
@@ -33,13 +45,11 @@ Stream events: `start` → `interaction_update` (optional) → `result` → `don
 - `POST /api/v1/agent/skillhub/enable`
 - `POST /api/v1/agent/skillhub/disable`
 - `POST /api/v1/agent/skillhub/uninstall`
+- `GET /api/v1/admin/skills`
+- `POST /api/v1/admin/skills/reload`
+- `GET /api/v1/admin/skills/:id`
 
-### Current-Phase Capability Boundary (2026-04)
-
-- Current skills: all shipped skills run as built-in skills.
-- External skills: SkillHub packages; this channel is reserved and not yet active in production execution chains.
-- Current tools: managed uniformly as external tools.
-- Built-in tools: platform foundation capabilities (for example, read/write); this channel is currently reserved.
+User extension assets live under the runtime data directory in `skills/` and `tools/`.
 
 Priority rule:
 

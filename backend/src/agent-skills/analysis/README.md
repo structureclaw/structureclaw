@@ -8,7 +8,17 @@ Purpose:
 
 Layout:
 - `opensees-static`, `opensees-dynamic`, `opensees-seismic`, `opensees-nonlinear`
+- `pkpm-static`
+- `yjk-static`
 - `runtime/` contains Python worker, API, and runtime registry only
+
+Built-in engine matrix:
+
+| Engine | Skill ids | Runtime dependency | Current output focus |
+|---|---|---|---|
+| `builtin-opensees` | `opensees-*` | OpenSeesPy in the backend Python environment | FEM analysis results for static, dynamic, seismic, and nonlinear workflows |
+| `builtin-pkpm` | `pkpm-static` | Local PKPM/SATWE installation with `JWSCYCLE.exe` and `APIPyInterface` | SATWE static analysis results and project artifacts |
+| `builtin-yjk` | `yjk-static` | Local YJK 8.0 installation with `yjks.exe` and bundled Python 3.10 | Static-analysis displacements, reactions, member forces, envelopes, load cases, and floor statistics |
 
 Rules:
 - Do not put user-selectable analysis semantics or solver code directly under `runtime/`

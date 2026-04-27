@@ -21,9 +21,14 @@ StructureClaw 是一个 AI 协同结构工程平台，采用单仓多服务架�
 
 ## 3. 环境要求
 
-推荐的本地环境：
+推荐安装版环境：
 
-- Node.js 18+
+- Node.js 20+
+- npm
+
+推荐源码开发环境：
+
+- Node.js 20+
 - Python 3.12
 
 可选：
@@ -38,12 +43,37 @@ frontend/   Next.js 前端应用
 backend/    Fastify API、agent skills、托管分析运行时、Prisma 模型、后端测试
 scripts/    启动脚本与契约/回归校验脚本
 docs/       手册与协议参考文档
-.runtime/   本地运行数据、日志与报告工件输出目录
+.runtime/   源码模式运行数据、日志与报告工件输出目录
 ```
 
 ## 5. 快速上手
 
-### 5.0 Node.js 安装（可选）
+### 5.0 npm 安装版
+
+普通使用推荐全局安装：
+
+```bash
+npm install -g structureclaw
+sclaw doctor
+sclaw start
+sclaw status
+```
+
+安装版以单进程运行：backend 托管导出的 frontend，并从安装包启动托管运行时服务。运行数据写入用户数据目录，例如 `~/.structureclaw/`，不会写入 npm 包目录。
+
+### 5.1 源码开发版
+
+仓库开发时使用源码目录 CLI：
+
+```bash
+./sclaw doctor
+./sclaw start
+./sclaw status
+```
+
+源码模式把运行数据放在 `.runtime/`，并以开发进程启动 backend/frontend。
+
+### 5.2 Node.js 安装辅助
 
 如果你还没有安装 Node.js，可以先运行自动安装脚本：
 
@@ -57,25 +87,15 @@ Windows PowerShell（首次安装建议使用管理员权限）：
 powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
 ```
 
-### 5.1 推荐路径
+### 5.3 常用生命周期命令
 
 ```bash
-./sclaw doctor
-./sclaw start
-./sclaw status
+sclaw logs
+sclaw stop
+sclaw restart
 ```
 
-`./sclaw start` 是 SQLite 本地优先的启动路径，会直接从源码启动 frontend 和 backend，不会调用 Docker。
-
-### 5.2 常用生命周期命令
-
-```bash
-./sclaw logs
-./sclaw stop
-./sclaw restart
-```
-
-### 5.3 CLI 方式
+### 5.4 CLI 方式
 
 ```bash
 ./sclaw doctor
@@ -85,7 +105,7 @@ powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
 ./sclaw stop
 ```
 
-### 5.4 Windows PowerShell
+### 5.5 Windows PowerShell
 
 ```powershell
 node .\sclaw doctor
@@ -97,7 +117,16 @@ node .\sclaw stop
 
 如果要走 Docker 方式的 Windows 新手路径，直接使用 `node .\sclaw docker-install`、`node .\sclaw docker-start` 和 `node .\sclaw docker-stop`。
 
-### 5.5 SkillHub CLI
+### 5.6 用户技能与工具
+
+StructureClaw 1.0 支持在用户运行目录下放置 workspace-local 扩展资产：
+
+- `skills/<name>/skill.yaml`，加阶段 Markdown 文件和可选 `handler.js`
+- `tools/<name>/tool.yaml`，加 `tool.js`
+
+当 id 冲突时，内置 skill 优先。`sclaw doctor` 或 `sclaw start` 会自动创建这些运行目录。
+
+### 5.7 SkillHub CLI
 
 通过命令行管理可安装技能：
 
@@ -110,7 +139,7 @@ node .\sclaw stop
 ./sclaw skill uninstall <skill-id>          # 卸载技能
 ```
 
-### 5.6 国内镜像 CLI 入口
+### 5.8 国内镜像 CLI 入口
 
 `sclaw_cn` 与 `sclaw` 使用同一套子命令，并在未显式配置时自动使用国内镜像默认值。
 
@@ -128,22 +157,39 @@ node .\sclaw stop
 
 以上变量都可在 `.env` 或 shell 环境变量中覆盖。
 
-## 6. 环境变量与配置
+## 6. 环境与配置
 
-请基于 `.env.example` 配置。
+StructureClaw 1.0 按以下优先级解析配置：
 
-关键变量：
+1. 运行数据目录中的 `settings.json`
+2. `.env` / shell 环境变量
+3. 内置默认值
 
-- 运行时：`NODE_ENV`、`PORT`、`FRONTEND_PORT`
-- 数据层：`DATABASE_URL`
-- LLM：`LLM_API_KEY`、`LLM_MODEL`、`LLM_BASE_URL`（OpenAI-compatible 接口）
-- 集成：`ANALYSIS_PYTHON_BIN`、`ANALYSIS_ENGINE_MANIFEST_PATH`、`CORS_ORIGINS`
+前端 General Settings 面板通过 backend admin API 写入 `settings.json`，并标注每个值来自 `runtime`、`env` 还是 `default`。`.env.example` 继续作为自动化、CI 和源码开发的环境变量参考。
+
+运行数据位置：
+
+- 安装版：用户数据目录，例如 `~/.structureclaw/`
+- 源码模式：`.runtime/`
+
+重要 settings section：
+
+- `server`：host、后端端口、前端端口、请求体大小
+- `llm`：OpenAI-compatible endpoint、模型、API key、超时、重试
+- `database`：SQLite URL
+- `logging`：应用日志级别、LLM 日志、轮转限制
+- `analysis`：Python 解释器、超时、engine manifest 路径
+- `storage`：报告目录和最大上传大小
+- `cors`：允许来源
+- `agent`：workspace root、checkpoint、shell tool 策略
+- `pkpm`：`JWSCYCLE.exe` 路径和 PKPM 工作目录
+- `yjk`：YJK 安装根目录、`yjks.exe`、内置 Python、工作目录、版本、超时、无界面模式
 
 说明：
 
-- `./sclaw start` 和 `./sclaw restart` 默认使用 `.runtime/data/structureclaw.start.db`；`./sclaw doctor` 使用 `.runtime/data/structureclaw.doctor.db`，确保启动预检与实际运行库隔离。
-- 后端的 agent 会话与模型缓存使用当前进程内存存储。
-- `ANALYSIS_PYTHON_BIN` 默认指向 `backend/.venv/bin/python`。
+- `sclaw doctor` 会准备 Python 分析环境。安装版 venv 位于用户运行目录。
+- 旧 `.env` 值会尽量迁移到 `settings.json`。
+- 商业分析引擎仍需要本机软件安装和有效授权。
 
 ## 7. 核心工作流
 
@@ -175,6 +221,14 @@ node .\sclaw stop
 - `POST /code-check`
 - `GET /engines`
 
+内置分析引擎：
+
+| Engine id | 软件 | 当前角色 |
+|---|---|---|
+| `builtin-opensees` | OpenSeesPy | 默认开源分析引擎，支持静力、动力、地震和非线性工作流 |
+| `builtin-pkpm` | PKPM SATWE | 商业静力分析路径，与 SATWE 项目/结果集成 |
+| `builtin-yjk` | YJK 8.0 | 商业静力分析路径，支持 YDB 转换、YJK 计算与结构化结果抽取 |
+
 ## 8. StructureModel 治理
 
 - 必须使用 `schema_version: "1.0.0"`
@@ -194,7 +248,7 @@ node .\sclaw stop
 | 领域 | 说明 |
 |---|---|
 | `structure-type` | 结构类型识别（梁、框架、桁架、门式刚架等） |
-| `analysis` | OpenSees 与 Simplified 分析执行 |
+| `analysis` | OpenSees、PKPM 与 YJK 分析执行 |
 | `code-check` | 设计规范校核 |
 | `data-input` | 结构化数据输入解析 |
 | `design` | 结构设计辅助 |

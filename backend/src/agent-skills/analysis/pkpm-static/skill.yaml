@@ -5,8 +5,8 @@ name:
   zh: PKPM 静力分析
   en: PKPM Static Analysis
 description:
-  zh: 使用 PKPM SATWE 引擎执行静力分析的 skill（需安装 PKPM 及 JWSCYCLE.exe）。
-  en: Skill for static analysis using the PKPM SATWE engine (requires PKPM installation and JWSCYCLE.exe).
+  zh: 调用本机 PKPM SATWE 执行静力分析，适合商业引擎复核、设计验算和结果对比（需安装 PKPM 并配置 JWSCYCLE.exe）。
+  en: Runs local PKPM SATWE static analysis for commercial-engine verification, design checks, and result comparison (requires PKPM and JWSCYCLE.exe).
 triggers:
   - PKPM 静力分析
   - PKPM 计算

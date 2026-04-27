@@ -10,16 +10,21 @@ https://github.com/user-attachments/assets/031fe757-551d-4775-ab3f-0411037ad5ae
 
 - Conversational engineering workflow from natural language to analysis artifacts
 - Unified orchestration loop: draft -> validate -> analyze -> code-check -> report
-- Web UI, API backend, and backend-hosted Python analysis runtime in one monorepo
+- Installable CLI and web workspace: `npm install -g structureclaw && sclaw start`
+- Single-process installed mode where the backend serves the exported frontend
+- Web UI, API backend, agent runtime, and backend-hosted Python analysis runtime in one platform
+- Built-in analysis paths for OpenSees, PKPM SATWE, and YJK static workflows
 - Regression and contract scripts for repeatable engineering validation
 
 ## Architecture
 
 ```text
-frontend (Next.js)
-	-> backend (Fastify + Prisma + Agent orchestration + analysis runtime host)
-	-> backend/src/agent-skills/analysis-execution/python
-	-> reports / metrics / artifacts
+browser UI
+  -> Fastify backend (API + static frontend in installed mode)
+  -> LangGraph agent runtime
+  -> skill/tool layers
+  -> Python analysis runtime (OpenSees / PKPM / YJK adapters)
+  -> reports / metrics / artifacts
 ```
 
 Main directories:
@@ -31,6 +36,30 @@ Main directories:
 - `docs/`: user handbook and protocol references
 
 ## Quick Start
+
+### Install from npm
+
+For normal use, install the CLI globally and let `sclaw doctor` create the runtime workspace:
+
+```bash
+npm install -g structureclaw
+sclaw doctor
+sclaw start
+```
+
+Installed mode stores user data under `~/.structureclaw/` on Unix-like systems and the platform application-data directory on Windows. This keeps databases, logs, reports, generated analysis files, `settings.json`, user skills, and user tools out of the read-only package directory.
+
+### Run from source
+
+For repository development, clone the repo and use the source checkout CLI:
+
+```bash
+./sclaw doctor
+./sclaw start
+./sclaw status
+```
+
+Source mode keeps runtime data under `.runtime/` and runs backend/frontend as development processes.
 
 If Node.js is not installed yet, use the helper installer script first:
 
@@ -44,14 +73,6 @@ Windows PowerShell (run as Administrator for first-time package install):
 powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
 ```
 
-Recommended local flow:
-
-```bash
-./sclaw doctor
-./sclaw start
-./sclaw status
-```
-
 China mirror flow (same subcommands, mirror defaults enabled):
 
 ```bash
@@ -62,10 +83,10 @@ China mirror flow (same subcommands, mirror defaults enabled):
 
 Notes:
 
-- SQLite is now the default local database. `./sclaw start` uses `.runtime/data/structureclaw.start.db`, and `./sclaw doctor` uses `.runtime/data/structureclaw.doctor.db` so preflight checks do not touch the active local runtime database.
-- `./sclaw doctor` no longer requires a preinstalled system Python 3.12. It will ensure `uv` and prepare `backend/.venv` with Python 3.12 automatically when needed. On Windows, this automatic setup currently requires `winget`; if `winget` is unavailable, install `uv` manually before running `./sclaw doctor`.
-- If your old local `.env` still points `DATABASE_URL` at a local PostgreSQL instance, `./sclaw doctor` and `./sclaw start` will auto-migrate that data into SQLite, rewrite `.env` to the SQLite default, and keep the original PostgreSQL URL in `POSTGRES_SOURCE_DATABASE_URL`.
-- That first auto-migration also creates a local backup file like `.env.pre-sqlite-migration.<timestamp>.bak`.
+- SQLite is the default local database. Installed mode resolves it under the user runtime data directory; source mode resolves it under `.runtime/data/`.
+- `sclaw doctor` prepares the Python analysis environment automatically. In installed mode the virtual environment is created under the user runtime data directory instead of `node_modules`.
+- Existing source-checkout `.runtime/` data can be migrated into the installed-mode runtime directory.
+- Legacy `.env` values are migrated into `settings.json` when possible. `.env` remains a fallback for advanced and CI usage.
 - `sclaw_cn` defaults to China mirror settings when unset: `PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`, `NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`, and Docker mirror prefix via `DOCKER_REGISTRY_MIRROR`.
 - You can override mirror values in `.env` or shell environment (`PIP_INDEX_URL`, `NPM_CONFIG_REGISTRY`, `DOCKER_REGISTRY_MIRROR`, `APT_MIRROR`).
 
@@ -133,16 +154,28 @@ Or:
 docker compose down
 ```
 
-## Environment
+## Configuration
 
-Copy and adjust environment variables from `.env.example`.
+StructureClaw 1.0 uses `settings.json` as the primary user-facing configuration file. The General Settings panel writes the same settings through the backend admin API and shows whether each value comes from runtime settings, `.env`, or built-in defaults.
 
-Key variables include:
+Configuration precedence:
 
-- `PORT`, `FRONTEND_PORT`
-- `DATABASE_URL`, `POSTGRES_SOURCE_DATABASE_URL`
-- `LLM_API_KEY`, `LLM_MODEL`, `LLM_BASE_URL` (OpenAI-compatible)
-- `ANALYSIS_PYTHON_BIN`, `ANALYSIS_PYTHON_TIMEOUT_MS`, `ANALYSIS_ENGINE_MANIFEST_PATH`
+1. Runtime `settings.json`
+2. `.env` / shell environment
+3. Built-in defaults
+
+Important `settings.json` sections:
+
+- `server`: ports, host, request body limit
+- `llm`: OpenAI-compatible base URL, model, API key, timeout, retries
+- `logging`: application log level, LLM logging, log rotation
+- `analysis`: Python runtime path, timeout, engine manifest path
+- `storage`: reports directory and upload size
+- `agent`: workspace root, checkpoints, shell-tool policy
+- `pkpm`: SATWE/JWSCYCLE path and work directory
+- `yjk`: install root, executable, bundled Python, work directory, version, timeout, headless mode
+
+`.env.example` remains the environment-variable reference for automation and source-checkout development.
 
 ## API Entrypoints
 
