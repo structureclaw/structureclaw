@@ -12,6 +12,9 @@ fastapi==0.110.1
 uvicorn==0.29.0
 pydantic==2.6.4
 
+# PKPM API (Windows only)
+pkpm-api; sys_platform == "win32"
+
 # Utilities
 httpx==0.27.0
 PyYAML==6.0.3
