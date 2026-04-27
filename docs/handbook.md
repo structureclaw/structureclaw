@@ -176,10 +176,9 @@ You can override any of them in `.env` or shell environment variables.
 StructureClaw 1.0 resolves configuration in this order:
 
 1. `settings.json` in the runtime data directory
-2. `.env` / shell environment variables
-3. Built-in defaults
+2. Built-in defaults
 
-The frontend General Settings panel writes `settings.json` through the backend admin API and labels each value by source (`runtime`, `env`, or `default`). `.env.example` remains the environment-variable reference for automation, CI, and source-checkout development.
+The frontend General Settings panel writes `settings.json` through the backend admin API and labels each value by source (`runtime` or `default`).
 
 Runtime data locations:
 
@@ -191,7 +190,6 @@ Configuration resolution:
 ```mermaid
 flowchart TD
   Settings[Runtime settings.json] --> Effective[Effective backend config]
-  Env[.env / shell environment] --> Effective
   Defaults[Built-in defaults] --> Effective
   UI[General Settings panel] --> Settings
   Doctor[sclaw doctor] --> Settings
@@ -213,7 +211,7 @@ Important settings sections:
 Notes:
 
 - `sclaw doctor` prepares the Python analysis environment. In installed mode the venv lives under the user runtime directory.
-- Legacy `.env` values are migrated into `settings.json` when possible.
+- Legacy `.env` values are migrated into `settings.json` when possible. `.env` remains a compatibility detail for older source checkouts and Docker onboarding.
 - Commercial analysis engines still require local software installation and valid licensing.
 
 ## 7. Primary Workflows

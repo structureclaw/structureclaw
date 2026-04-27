@@ -116,7 +116,7 @@ Main directories:
 
 | Mode | Command | Data directory | Process model |
 |---|---|---|---|
-| npm install | `sclaw start` | user runtime directory such as `~/.structureclaw/` | backend serves the exported frontend in one process |
+| npm install | `sclaw start` | user runtime directory, defaulting to `~/.structureclaw/` | backend serves the exported frontend in one process |
 | source checkout | `./sclaw start` | `.runtime/` | backend and frontend run as development processes |
 | Docker | `./sclaw docker-install` then `./sclaw docker-start` | Docker volumes / compose state | containerized stack |
 
@@ -134,10 +134,10 @@ powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
 
 Notes:
 
-- SQLite is the default local database. Installed mode resolves it under the user runtime data directory; source mode resolves it under `.runtime/data/`.
+- SQLite is the default local database. Installed mode and source mode both use the resolved runtime data directory; by default that is `~/.structureclaw/` for installed packages and `.runtime/` for source checkouts.
 - `sclaw doctor` prepares the Python analysis environment automatically. In installed mode the virtual environment is created under the user runtime data directory instead of `node_modules`.
 - Existing source-checkout `.runtime/` data can be migrated into the installed-mode runtime directory.
-- Legacy `.env` values are migrated into `settings.json` when possible. `.env` remains a fallback for advanced and CI usage.
+- Legacy `.env` values are migrated into `settings.json` when possible. `.env` remains a compatibility detail for older source checkouts and Docker onboarding, not the primary app configuration path.
 - `sclaw_cn` defaults to China mirror settings when unset: `PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`, `NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`, and Docker mirror prefix via `DOCKER_REGISTRY_MIRROR`.
 - You can override mirror values in `.env` or shell environment (`PIP_INDEX_URL`, `NPM_CONFIG_REGISTRY`, `DOCKER_REGISTRY_MIRROR`, `APT_MIRROR`).
 
@@ -207,13 +207,12 @@ docker compose down
 
 ## Configuration
 
-StructureClaw 1.0 uses `settings.json` as the primary user-facing configuration file. The General Settings panel writes the same settings through the backend admin API and shows whether each value comes from runtime settings, `.env`, or built-in defaults.
+StructureClaw 1.0 uses `settings.json` as the user-facing configuration file. The General Settings panel writes the same settings through the backend admin API and shows whether each value comes from runtime settings or built-in defaults.
 
 Configuration precedence:
 
 1. Runtime `settings.json`
-2. `.env` / shell environment
-3. Built-in defaults
+2. Built-in defaults
 
 Important `settings.json` sections:
 
@@ -226,7 +225,7 @@ Important `settings.json` sections:
 - `pkpm`: SATWE/JWSCYCLE path and work directory
 - `yjk`: install root, executable, bundled Python, work directory, version, timeout, headless mode
 
-`.env.example` remains the environment-variable reference for automation and source-checkout development.
+For installed packages, `settings.json` lives in the runtime data directory. For source checkouts, it lives under `.runtime/`. The `SCLAW_DATA_DIR` environment variable can override that runtime directory for tests or controlled deployments.
 
 ## API Entrypoints
 

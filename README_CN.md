@@ -116,7 +116,7 @@ flowchart LR
 
 | 模式 | 命令 | 数据目录 | 进程模型 |
 |---|---|---|---|
-| npm 安装版 | `sclaw start` | 用户运行目录，例如 `~/.structureclaw/` | 后端单进程托管导出的前端 |
+| npm 安装版 | `sclaw start` | 用户运行目录，默认 `~/.structureclaw/` | 后端单进程托管导出的前端 |
 | 源码开发版 | `./sclaw start` | `.runtime/` | backend/frontend 以开发进程运行 |
 | Docker | `./sclaw docker-install` 后 `./sclaw docker-start` | Docker volumes / compose 状态 | 容器化服务栈 |
 
@@ -134,10 +134,10 @@ powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
 
 补充说明：
 
-- SQLite 是默认本地数据库。安装版解析到用户运行数据目录，源码模式解析到 `.runtime/data/`。
+- SQLite 是默认本地数据库。安装版和源码模式都会使用解析后的运行数据目录；默认情况下安装版是 `~/.structureclaw/`，源码模式是 `.runtime/`。
 - `sclaw doctor` 会自动准备 Python 分析环境。安装版的虚拟环境位于用户运行数据目录，而不是 `node_modules`。
 - 旧的源码目录 `.runtime/` 数据可以迁移到安装版运行目录。
-- 旧 `.env` 中的配置会尽量迁移到 `settings.json`；`.env` 仍作为高级用法和 CI 的 fallback。
+- 旧 `.env` 中的配置会尽量迁移到 `settings.json`；`.env` 仍用于旧源码目录和 Docker onboarding 兼容，不再是主要应用配置路径。
 - `sclaw_cn` 在未显式配置时会自动使用国内镜像默认值：`PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`、`NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`，以及通过 `DOCKER_REGISTRY_MIRROR` 指定的 Docker 镜像前缀。
 - 你可以在 `.env` 或 shell 环境中覆盖镜像变量：`PIP_INDEX_URL`、`NPM_CONFIG_REGISTRY`、`DOCKER_REGISTRY_MIRROR`、`APT_MIRROR`。
 
@@ -207,13 +207,12 @@ docker compose down
 
 ## 配置
 
-StructureClaw 1.0 以 `settings.json` 作为主要用户配置文件。前端 General Settings 面板会通过后端 admin API 写入同一份配置，并显示每个字段来自 runtime settings、`.env` 还是内置默认值。
+StructureClaw 1.0 以 `settings.json` 作为用户配置文件。前端 General Settings 面板会通过后端 admin API 写入同一份配置，并显示每个字段来自 runtime settings 还是内置默认值。
 
 配置优先级：
 
 1. 运行时 `settings.json`
-2. `.env` / shell 环境变量
-3. 内置默认值
+2. 内置默认值
 
 重要 `settings.json` section：
 
@@ -226,7 +225,7 @@ StructureClaw 1.0 以 `settings.json` 作为主要用户配置文件。前端 Ge
 - `pkpm`：SATWE/JWSCYCLE 路径与工作目录
 - `yjk`：安装根目录、可执行文件、内置 Python、工作目录、版本、超时、无界面模式
 
-`.env.example` 仍保留为自动化和源码开发的环境变量参考。
+安装版的 `settings.json` 位于运行数据目录；源码模式位于 `.runtime/`。测试或受控部署可通过 `SCLAW_DATA_DIR` 覆盖运行目录。
 
 ## 主要 API 入口
 

@@ -148,7 +148,7 @@ The runtime does not import YJK APIs from the backend Python environment. Instea
 5. `extract_results.py` writes `results.json` in the current work directory.
 6. `yjk_driver.py` normalizes raw YJK ids back to StructureClaw ids and returns the final JSON result.
 
-Default run artifacts are written under `.runtime/yjk_work_dir/sc_<traceId>` in source mode unless `YJK_WORK_DIR` or `settings.json` overrides the location. Installed package mode should prefer the runtime data directory.
+Default run artifacts are written under the configured YJK work directory. In StructureClaw 1.0 that comes from `settings.json` (`yjk.workDir`) or the runtime default `<runtimeBaseDir>/analysis/yjk`; lower-level `YJK_WORK_DIR` remains an adapter override for direct runtime/debug usage.
 
 ### Model Mapping
 

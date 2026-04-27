@@ -113,11 +113,10 @@
 
 ## 6. 运行时 Settings 契约
 
-StructureClaw 1.0 使用运行时 `settings.json` 作为主要用户配置文件。配置按以下优先级解析：
+StructureClaw 1.0 使用运行时 `settings.json` 作为用户配置文件。配置按以下优先级解析：
 
 1. `settings.json`
-2. `.env` / shell 环境变量
-3. 内置默认值
+2. 内置默认值
 
 Admin settings 接口：
 
@@ -137,7 +136,7 @@ Settings section：
 - `pkpm`
 - `yjk`
 
-返回字段会同时带上 value 和 source，便于 UI 展示当前有效值来自 runtime settings、环境变量还是默认值。
+返回字段会同时带上 value 和 source，便于 UI 展示当前有效值来自 runtime settings 还是默认值。
 
 ## 7. SkillHub 与用户扩展契约
 

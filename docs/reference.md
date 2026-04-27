@@ -113,11 +113,10 @@ Practical rules:
 
 ## 6. Runtime Settings Contract
 
-StructureClaw 1.0 uses runtime `settings.json` as the primary user-facing configuration file. Values are resolved in this order:
+StructureClaw 1.0 uses runtime `settings.json` as the user-facing configuration file. Values are resolved in this order:
 
 1. `settings.json`
-2. `.env` / shell environment
-3. Built-in defaults
+2. Built-in defaults
 
 Admin settings endpoints:
 
@@ -137,7 +136,7 @@ Settings sections:
 - `pkpm`
 - `yjk`
 
-Each returned field includes a value and source label so the UI can explain whether the effective value came from runtime settings, environment, or defaults.
+Each returned field includes a value and source label so the UI can explain whether the effective value came from runtime settings or defaults.
 
 ## 7. SkillHub and User Extension Contract
 

@@ -176,10 +176,9 @@ StructureClaw 1.0 支持在用户运行目录下放置 workspace-local 扩展资
 StructureClaw 1.0 按以下优先级解析配置：
 
 1. 运行数据目录中的 `settings.json`
-2. `.env` / shell 环境变量
-3. 内置默认值
+2. 内置默认值
 
-前端 General Settings 面板通过 backend admin API 写入 `settings.json`，并标注每个值来自 `runtime`、`env` 还是 `default`。`.env.example` 继续作为自动化、CI 和源码开发的环境变量参考。
+前端 General Settings 面板通过 backend admin API 写入 `settings.json`，并标注每个值来自 `runtime` 还是 `default`。
 
 运行数据位置：
 
@@ -191,7 +190,6 @@ StructureClaw 1.0 按以下优先级解析配置：
 ```mermaid
 flowchart TD
   Settings[运行时 settings.json] --> Effective[后端有效配置]
-  Env[.env / shell 环境变量] --> Effective
   Defaults[内置默认值] --> Effective
   UI[General Settings 面板] --> Settings
   Doctor[sclaw doctor] --> Settings
@@ -213,7 +211,7 @@ flowchart TD
 说明：
 
 - `sclaw doctor` 会准备 Python 分析环境。安装版 venv 位于用户运行目录。
-- 旧 `.env` 值会尽量迁移到 `settings.json`。
+- 旧 `.env` 值会尽量迁移到 `settings.json`。`.env` 仍用于旧源码目录和 Docker onboarding 兼容。
 - 商业分析引擎仍需要本机软件安装和有效授权。
 
 ## 7. 核心工作流
