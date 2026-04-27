@@ -131,7 +131,7 @@ def _emit_json(payload: dict) -> None:
     already written, then write our JSON on its own line.
     """
     sys.stderr.flush()
-    sys.stdout.write(json.dumps(payload, ensure_ascii=True) + "\n")
+    sys.stdout.write(json.dumps(payload, ensure_ascii=False) + "\n")
     sys.stdout.flush()
 
 

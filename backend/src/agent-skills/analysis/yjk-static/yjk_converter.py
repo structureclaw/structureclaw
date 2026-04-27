@@ -735,6 +735,9 @@ def _build_mapping(
     beam_x_ids, beam_x_id_source = _map_ids_to_x_segments(beam_x_result, x_axis_mm, y_axis_mm)
     beam_y_ids, beam_y_id_source = _map_ids_to_y_segments(beam_y_result, x_axis_mm, y_axis_mm)
 
+    x_axis_index = {coord_mm: index for index, coord_mm in enumerate(x_axis_mm)}
+    y_axis_index = {coord_mm: index for index, coord_mm in enumerate(y_axis_mm)}
+
     node_mappings: dict[str, dict[str, Any]] = {}
     for node in nodes:
         node_id = str(node.get("id"))
@@ -753,8 +756,8 @@ def _build_mapping(
             "z_mm": z_mm,
             "plan_key": plan_key,
             "grid_index": {
-                "x": x_axis_mm.index(x_mm) if x_mm in x_axis_mm else None,
-                "y": y_axis_mm.index(y_mm) if y_mm in y_axis_mm else None,
+                "x": x_axis_index.get(x_mm),
+                "y": y_axis_index.get(y_mm),
             },
             "floor": floor_info["floor"],
             "floor_index": floor_info["floor_index"],
