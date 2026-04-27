@@ -40,10 +40,17 @@ function ensureFileFromExample(targetPath, examplePath, logger = () => {}) {
 }
 
 function hasCommand(commandName) {
+  // If we're already running inside Node, `node` is guaranteed available
+  if (commandName === "node") {
+    return true;
+  }
+
   const lookup = isWindows() ? "where" : "which";
   const result = spawnSync(lookup, [commandName], {
     stdio: "ignore",
-    shell: false,
+    // Use shell on Windows so `where.exe` inherits the full user PATH,
+    // including paths added by nvm, fnm, or interactive shell profiles.
+    shell: isWindows(),
   });
   return result.status === 0;
 }
