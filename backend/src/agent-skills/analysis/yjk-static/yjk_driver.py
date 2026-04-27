@@ -143,6 +143,22 @@ def _env_flag(name: str) -> bool:
     return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, "").strip() or default)
+    except ValueError:
+        return default
+
+
+def _launcher_prewarm_mode() -> str:
+    value = os.environ.get("YJK_LAUNCHER_PREWARM", "auto").strip().lower()
+    if value in {"0", "false", "no", "off", "never", "disabled"}:
+        return "off"
+    if value in {"1", "true", "yes", "on", "always", "force"}:
+        return "always"
+    return "auto"
+
+
 def _find_yjk_launcher(root: str) -> str | None:
     explicit = os.environ.get("YJK_LAUNCHER_EXE", "").strip().strip('"')
     if explicit and os.path.isfile(explicit):
@@ -168,16 +184,29 @@ def _direct_launch_cwd(yjks_root: str) -> str:
     return yjks_root
 
 
-def _get_yjks_processes() -> list[dict]:
+def _powershell_exe() -> str:
+    system_root = os.environ.get("SystemRoot", r"C:\Windows")
+    candidate = os.path.join(
+        system_root,
+        "System32",
+        "WindowsPowerShell",
+        "v1.0",
+        "powershell.exe",
+    )
+    return candidate if os.path.isfile(candidate) else "powershell"
+
+
+def _get_processes_by_name(process_name: str) -> list[dict]:
     import subprocess
 
+    escaped = process_name.replace("'", "''")
     command = (
-        "Get-Process | Where-Object { $_.ProcessName -ieq 'yjks' } | "
+        f"Get-Process | Where-Object {{ $_.ProcessName -ieq '{escaped}' }} | "
         "Select-Object Id,Path,MainWindowTitle | ConvertTo-Json -Compress"
     )
     try:
         proc = subprocess.run(
-            ["powershell", "-NoProfile", "-Command", command],
+            [_powershell_exe(), "-NoProfile", "-Command", command],
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -198,6 +227,199 @@ def _get_yjks_processes() -> list[dict]:
     if not isinstance(payload, list):
         return []
     return [item for item in payload if isinstance(item, dict)]
+
+
+def _get_yjks_processes() -> list[dict]:
+    return _get_processes_by_name("yjks")
+
+
+def _get_launcher_processes() -> list[dict]:
+    return _get_processes_by_name("YjkLauncher")
+
+
+def _process_id(proc: dict | None) -> int:
+    return int(_safe_float((proc or {}).get("Id"), 0.0))
+
+
+def _is_auth_failure_title(title: object) -> bool:
+    text = str(title or "").strip().lower()
+    return bool(text) and (
+        "授权检测失败" in text
+        or "authorization verification failed" in text
+        or "license verification failed" in text
+    )
+
+
+def _wait_for_direct_launch_state(before_pids: set[int], timeout_s: float) -> dict:
+    """Watch a freshly launched yjks.exe for the local auth failure dialog.
+
+    A valid direct launch may keep the title blank for a while, especially when
+    YJK is invisible.  We only use this watch to confidently detect the official
+    "authorization check failed" window; otherwise the caller proceeds normally.
+    """
+    deadline = time.monotonic() + timeout_s
+    last_seen: dict | None = None
+    while time.monotonic() < deadline:
+        for proc in _get_yjks_processes():
+            pid = _process_id(proc)
+            if pid <= 0:
+                continue
+            if before_pids and pid in before_pids:
+                continue
+            last_seen = proc
+            title = str(proc.get("MainWindowTitle") or "")
+            if _is_auth_failure_title(title):
+                return {"state": "auth_failed", "pid": pid, "title": title}
+            if title.strip():
+                return {"state": "ready", "pid": pid, "title": title}
+        time.sleep(1.0)
+    if last_seen:
+        return {
+            "state": "unknown",
+            "pid": _process_id(last_seen),
+            "title": str(last_seen.get("MainWindowTitle") or ""),
+        }
+    return {"state": "not_found", "pid": None, "title": None}
+
+
+def _stop_process(pid: int) -> bool:
+    if pid <= 0:
+        return False
+    import subprocess
+
+    try:
+        proc = subprocess.run(
+            [
+                _powershell_exe(),
+                "-NoProfile",
+                "-Command",
+                f"Stop-Process -Id {pid} -Force -ErrorAction Stop",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        return proc.returncode == 0
+    except Exception:
+        return False
+
+
+def _prewarm_yjk_launcher(yjks_root: str, steps: list[dict]) -> bool:
+    import subprocess
+
+    launcher = _find_yjk_launcher(yjks_root)
+    if not launcher:
+        _record_step(
+            steps,
+            phase="launch",
+            name="Prewarm YJK launcher authorization",
+            command="YjkLauncher.exe",
+            status="error",
+            message=f"YjkLauncher.exe not found under {yjks_root}",
+        )
+        return False
+
+    existing = _get_launcher_processes()
+    existing_pid = _process_id(existing[0]) if existing else 0
+    started_at = time.monotonic()
+    cwd = os.environ.get("YJK_LAUNCHER_CWD", "").strip().strip('"') or yjks_root
+    try:
+        if existing_pid <= 0:
+            proc = subprocess.Popen([launcher], cwd=cwd)
+            pid = proc.pid
+            message = "Started official YJK launcher and kept it alive for authorization."
+        else:
+            pid = existing_pid
+            message = "Reused existing official YJK launcher for authorization."
+    except Exception as exc:
+        _record_step(
+            steps,
+            phase="launch",
+            name="Prewarm YJK launcher authorization",
+            command=launcher,
+            status="error",
+            message=str(exc),
+            started_at=started_at,
+        )
+        return False
+
+    wait_s = _env_float("YJK_LAUNCHER_PREWARM_S", 18.0)
+    if wait_s > 0:
+        time.sleep(wait_s)
+    _record_step(
+        steps,
+        phase="launch",
+        name="Prewarm YJK launcher authorization",
+        command=launcher,
+        status="success",
+        message=message,
+        started_at=started_at,
+        pid=pid,
+        wait_s=wait_s,
+        cwd=cwd,
+    )
+    return True
+
+
+def _run_yjk_direct(
+    *,
+    yjks_root: str,
+    yjks_exe: str,
+    yjks_control: object,
+    steps: list[dict],
+    attempt: str,
+) -> tuple[str | None, dict]:
+    print(
+        f"[yjk_driver] Phase 2: RunYJK({yjks_exe}) [{attempt}]",
+        file=sys.stderr,
+        flush=True,
+    )
+    before_pids = {
+        _process_id(proc)
+        for proc in _get_yjks_processes()
+        if _process_id(proc) > 0
+    }
+    started_at = time.monotonic()
+    launch_cwd = _direct_launch_cwd(yjks_root)
+    previous_cwd = os.getcwd()
+    try:
+        os.chdir(launch_cwd)
+        msg = yjks_control.RunYJK(yjks_exe)
+    except Exception as exc:
+        _record_step(
+            steps,
+            phase="launch",
+            name=f"RunYJK ({attempt})",
+            command="RunYJK",
+            status="error",
+            message=str(exc),
+            started_at=started_at,
+        )
+        return None, {"state": "exception", "error": str(exc), "pid": None, "title": None}
+    finally:
+        try:
+            os.chdir(previous_cwd)
+        except OSError:
+            pass
+
+    state = _wait_for_direct_launch_state(
+        before_pids,
+        _env_float("YJK_DIRECT_READY_TIMEOUT_S", 12.0),
+    )
+    _record_step(
+        steps,
+        phase="launch",
+        name=f"RunYJK ({attempt})",
+        command="RunYJK",
+        status="success" if state.get("state") != "auth_failed" else "warning",
+        message=str(msg),
+        started_at=started_at,
+        cwd=launch_cwd,
+        pid=state.get("pid"),
+        window_title=state.get("title"),
+        launch_state=state.get("state"),
+    )
+    return str(msg), state
 
 
 def _wait_for_new_yjks_process(before_pids: set[int], timeout_s: float) -> dict | None:
@@ -1011,6 +1233,7 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
     version = os.environ.get("YJK_VERSION", "8.0.0").strip()
     attach_existing = _env_flag("YJK_ATTACH_EXISTING")
     use_launcher = (not attach_existing) and _should_launch_with_launcher(yjks_root)
+    prewarm_mode = _launcher_prewarm_mode()
 
     # Default: show the YJK GUI so the user can observe the full workflow.
     # Set YJK_INVISIBLE=1 in .env to run fully headless (CI / unattended).
@@ -1073,25 +1296,28 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
             )
             return 1
     else:
-        print(f"[yjk_driver] Phase 2: RunYJK({yjks_exe})", file=sys.stderr, flush=True)
-        started_at = time.monotonic()
-        launch_cwd = _direct_launch_cwd(yjks_root)
-        previous_cwd = os.getcwd()
-        try:
-            os.chdir(launch_cwd)
-            msg = YJKSControl.RunYJK(yjks_exe)
-        except Exception as exc:
-            _record_step(
-                steps,
-                phase="launch",
-                name="RunYJK",
-                command="RunYJK",
-                status="error",
-                message=str(exc),
-                started_at=started_at,
-            )
+        if prewarm_mode == "always":
+            if not _prewarm_yjk_launcher(yjks_root, steps):
+                _error(
+                    "YJK launcher authorization prewarm failed",
+                    phase="launch",
+                    command="YjkLauncher.exe",
+                    steps=steps,
+                    summary={"work_dir": work_dir},
+                )
+                return 1
+
+        msg, launch_state = _run_yjk_direct(
+            yjks_root=yjks_root,
+            yjks_exe=yjks_exe,
+            yjks_control=YJKSControl,
+            steps=steps,
+            attempt="direct",
+        )
+
+        if msg is None:
             _error(
-                f"YJK failed to launch: {exc}",
+                f"YJK failed to launch: {launch_state.get('error')}",
                 phase="launch",
                 command="RunYJK",
                 steps=steps,
@@ -1099,27 +1325,79 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
                 detailed={
                     "hint": (
                         "RunYJK accepts only the yjks.exe file path. If this install "
-                        "requires online/BIT launcher authorization, use "
-                        "YJK_ATTACH_EXISTING=1 after starting YJK from the official launcher."
+                        "requires online/BIT launcher authorization, set "
+                        "YJK_LAUNCHER_PREWARM=1 to let the official launcher initialize "
+                        "authorization before direct RunYJK."
                     )
                 },
             )
             return 1
-        finally:
-            try:
-                os.chdir(previous_cwd)
-            except OSError:
-                pass
-        _record_step(
-            steps,
-            phase="launch",
-            name="RunYJK",
-            command="RunYJK",
-            status="success",
-            message=str(msg),
-            started_at=started_at,
-            cwd=launch_cwd,
-        )
+
+        if launch_state.get("state") in {"auth_failed", "not_found"}:
+            pid = int(_safe_float(launch_state.get("pid"), 0.0))
+            if prewarm_mode == "off":
+                _error(
+                    "YJK direct launch did not produce an authorized YJK session",
+                    phase="launch",
+                    command="RunYJK",
+                    steps=steps,
+                    summary={"work_dir": work_dir},
+                    detailed={
+                        "windowTitle": launch_state.get("title"),
+                        "hint": "Set YJK_LAUNCHER_PREWARM=auto or 1 for official launcher authorization prewarm.",
+                    },
+                )
+                return 1
+
+            if pid > 0:
+                stopped = _stop_process(pid)
+                _record_step(
+                    steps,
+                    phase="launch",
+                    name="Close failed direct YJK session",
+                    command="Stop-Process yjks",
+                    status="success" if stopped else "warning",
+                    message=(
+                        "Closed the failed direct session before retry."
+                        if stopped
+                        else "Could not close the failed direct process before retry."
+                    ),
+                    pid=pid,
+                )
+            if not _prewarm_yjk_launcher(yjks_root, steps):
+                _error(
+                    "YJK direct launch authorization failed and launcher prewarm failed",
+                    phase="launch",
+                    command="YjkLauncher.exe",
+                    steps=steps,
+                    summary={"work_dir": work_dir},
+                    detailed={"windowTitle": launch_state.get("title")},
+                )
+                return 1
+
+            msg, retry_state = _run_yjk_direct(
+                yjks_root=yjks_root,
+                yjks_exe=yjks_exe,
+                yjks_control=YJKSControl,
+                steps=steps,
+                attempt="after-launcher-prewarm",
+            )
+            if msg is None or retry_state.get("state") == "auth_failed":
+                _error(
+                    "YJK direct launch still failed authorization after official launcher prewarm",
+                    phase="launch",
+                    command="RunYJK",
+                    steps=steps,
+                    summary={"work_dir": work_dir},
+                    detailed={
+                        "windowTitle": retry_state.get("title"),
+                        "hint": (
+                            "The official launcher was started, but this machine still did not "
+                            "expose a reusable authorization session to yjks.exe."
+                        ),
+                    },
+                )
+                return 1
     print(f"[yjk_driver] YJK launch/attach result: {msg}", file=sys.stderr, flush=True)
 
     # -- Phase 3: Open/create project + import ydb ----------------------

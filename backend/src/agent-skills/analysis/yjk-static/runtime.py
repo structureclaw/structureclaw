@@ -44,6 +44,13 @@ YJK_USE_LAUNCHER : str, optional
     SDK ``RunYJK(yjks.exe)`` direct launch path.
 YJK_LAUNCHER_EXE : str, optional
     Direct path to ``YjkLauncher.exe``. Defaults to ``<install_root>/YjkLauncher.exe``.
+YJK_LAUNCHER_PREWARM : str, optional
+    ``auto`` (default) retries direct ``RunYJK(yjks.exe)`` after starting the
+    official launcher if YJK shows an authorization failure dialog. ``1`` starts
+    the launcher before the first direct run; ``0`` disables this fallback.
+YJK_DIRECT_READY_TIMEOUT_S / YJK_LAUNCHER_PREWARM_S : str, optional
+    Timeouts for detecting direct-launch authorization failure and waiting for
+    the official launcher to initialize authorization.
 YJK_LAUNCHER_WAIT_S / YJK_AUTO_IPC_DELAY_S : str, optional
     Timeouts for waiting for launcher startup and sending ``yjksipccontrol``.
 YJK_EXTRACT_TIMEOUT_S : str, optional
@@ -407,6 +414,9 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         "YJK_USE_LAUNCHER",
         "YJK_LAUNCHER_EXE",
         "YJK_LAUNCHER_CWD",
+        "YJK_LAUNCHER_PREWARM",
+        "YJK_LAUNCHER_PREWARM_S",
+        "YJK_DIRECT_READY_TIMEOUT_S",
         "YJK_LAUNCHER_WAIT_S",
         "YJK_AUTO_IPC_DELAY_S",
         "YJK_AUTO_IPC_FOCUS_DELAY_S",
