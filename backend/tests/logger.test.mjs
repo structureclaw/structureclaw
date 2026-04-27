@@ -43,10 +43,10 @@ describe('logger configuration', () => {
 
       const { logger } = await import('../dist/utils/logger.js');
 
-      // Verify pino was called with the correct log level (may include a stream arg)
+      // Verify pino was called with the correct log level
+      // When logFile is empty, there is no file stream — pino receives only config
       expect(mockPino).toHaveBeenCalledWith(
         expect.objectContaining({ level: 'debug' }),
-        expect.anything(),
       );
 
       // Verify the exported logger is the mock instance

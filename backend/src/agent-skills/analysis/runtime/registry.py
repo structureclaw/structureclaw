@@ -1066,7 +1066,7 @@ except Exception as exc:
         value = os.getenv(ENGINE_MANIFEST_ENV, "").strip()
         if value:
             return Path(value)
-        return Path(__file__).resolve().parents[6] / ".runtime" / "analysis-engines.json"
+        return Path.home() / ".structureclaw" / "analysis-engines.json"
 
 
 def _load_runtime_module(skill_id: str, runtime_path: Path):

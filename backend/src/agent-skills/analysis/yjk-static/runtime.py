@@ -17,7 +17,7 @@ YJK_PYTHON_BIN : str, optional
     Defaults to ``<install_root>/Python310/python.exe``.
 YJK_WORK_DIR : str, optional
     Base directory for YJK project files.
-    Defaults to repository ``.runtime/yjk_work_dir``.
+    Defaults to ``~/.structureclaw/analysis/yjk``.
 YJK_CWD : str, optional
     Working directory used while calling SDK ``RunYJK(yjks.exe)``.
     Defaults to the YJK install root.
@@ -177,7 +177,7 @@ def _resolve_work_dir(parameters: Dict[str, Any]) -> Path:
 
     YJK_WORK_DIR can be set by the user so that generated project files,
     .OUT results, and logs land in a known, reviewable location. When unset,
-    files are written under the repository .runtime/yjk_work_dir directory.
+    files are written under ``~/.structureclaw/analysis/yjk``.
     """
     base = _env_text("YJK_WORK_DIR")
     if not base:

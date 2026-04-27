@@ -38,7 +38,7 @@ frontend/   Next.js application
 backend/    Fastify API, agent skills, hosted analysis runtime, Prisma schema, tests
 scripts/    startup scripts and contract/regression validators
 docs/       handbook and protocol reference
-.runtime/   local runtime data, logs, and generated report artifacts
+~/.structureclaw/   runtime data, logs, and generated report artifacts
 ```
 
 ## 5. Getting Started
@@ -141,9 +141,9 @@ Key settings:
 
 Notes:
 
-- `./sclaw start` and `./sclaw restart` default to `.runtime/data/structureclaw.start.db`; `./sclaw doctor` uses `.runtime/data/structureclaw.doctor.db` so startup checks stay isolated from the active local runtime database.
+- `./sclaw start` and `./sclaw restart` default to `~/.structureclaw/data/structureclaw.start.db`; `./sclaw doctor` uses `~/.structureclaw/data/structureclaw.doctor.db` so startup checks stay isolated from the active local runtime database.
 - Backend agent sessions and model cache use an in-memory store in the current process.
-- `analysis.pythonBin` defaults to `backend/.venv/bin/python`.
+- `analysis.pythonBin` defaults to `~/.structureclaw/.venv/bin/python`.
 
 ## 7. Primary Workflows
 

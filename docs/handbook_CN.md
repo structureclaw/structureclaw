@@ -38,7 +38,7 @@ frontend/   Next.js 前端应用
 backend/    Fastify API、agent skills、托管分析运行时、Prisma 模型、后端测试
 scripts/    启动脚本与契约/回归校验脚本
 docs/       手册与协议参考文档
-.runtime/   本地运行数据、日志与报告工件输出目录
+~/.structureclaw/   运行数据、日志与报告工件输出目录
 ```
 
 ## 5. 快速上手
@@ -141,9 +141,9 @@ node .\sclaw stop
 
 说明：
 
-- `./sclaw start` 和 `./sclaw restart` 默认使用 `.runtime/data/structureclaw.start.db`；`./sclaw doctor` 使用 `.runtime/data/structureclaw.doctor.db`，确保启动预检与实际运行库隔离。
+- `./sclaw start` 和 `./sclaw restart` 默认使用 `~/.structureclaw/data/structureclaw.start.db`；`./sclaw doctor` 使用 `~/.structureclaw/data/structureclaw.doctor.db`，确保启动预检与实际运行库隔离。
 - 后端的 agent 会话与模型缓存使用当前进程内存存储。
-- `analysis.pythonBin` 默认指向 `backend/.venv/bin/python`。
+- `analysis.pythonBin` 默认指向 `~/.structureclaw/.venv/bin/python`。
 
 ## 7. 核心工作流
 

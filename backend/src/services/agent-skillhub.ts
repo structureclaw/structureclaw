@@ -302,7 +302,7 @@ export class AgentSkillHubService {
   constructor(stateFilePath = path.join(
     path.resolve(config.reportsDir, '..'), 'skillhub', 'installed.json')) {
     this.stateFilePath = stateFilePath;
-    this.cacheFilePath = path.resolve(process.cwd(), '.runtime/skillhub/cache.json');
+    this.cacheFilePath = path.join(path.dirname(stateFilePath), 'cache.json');
   }
 
   async search(options?: { keyword?: string; domain?: SkillDomain }) {

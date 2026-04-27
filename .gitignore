@@ -36,7 +36,6 @@ frontend/coverage/
 *tsconfig.tsbuildinfo
 
 # Runtime directories and generated artifacts
-.runtime/
 uploads/*
 !uploads/.gitkeep
 backend/uploads/*

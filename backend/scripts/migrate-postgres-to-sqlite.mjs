@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -57,7 +58,7 @@ function parseArgs(argv) {
   }
 
   if (!args.targetUrl) {
-    args.targetUrl = `file:${path.join(repoRoot, '.runtime', 'data', 'structureclaw.db')}`;
+    args.targetUrl = `file:${path.join(os.homedir(), '.structureclaw', 'data', 'structureclaw.db')}`;
   }
 
   return args;

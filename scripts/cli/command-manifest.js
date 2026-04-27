@@ -194,7 +194,7 @@ const COMMANDS = [
   {
     name: "logs",
     usage: "sclaw logs [frontend|backend|all] [--follow]",
-    description: "Show runtime logs from .runtime/logs",
+    description: "Show runtime logs from ~/.structureclaw/logs",
     group: "lifecycle",
   },
   {
