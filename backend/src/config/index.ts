@@ -13,9 +13,6 @@ const __dirname = path.dirname(__filename);
 const isInstalledPackage = existsSync(path.resolve(__dirname, '../../frontend'));
 
 function getUserDataDir(): string {
-  if (process.platform === 'win32') {
-    return path.join(process.env.APPDATA || path.join(os.homedir(), 'AppData', 'Roaming'), 'structureclaw');
-  }
   return path.join(os.homedir(), '.structureclaw');
 }
 

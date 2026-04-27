@@ -179,9 +179,6 @@ function resolveRuntimeDataDir(rootDir) {
     return process.env.SCLAW_DATA_DIR;
   }
   if (isInstalledPackageLayout(rootDir)) {
-    if (isWindows()) {
-      return path.join(process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "structureclaw");
-    }
     return path.join(os.homedir(), ".structureclaw");
   }
   return path.join(rootDir, ".runtime");
