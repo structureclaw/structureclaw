@@ -2,7 +2,7 @@
 """YJK result extraction -- runs INSIDE the YJK process via yjks_pyload.
 
 Invocation (from remote-control driver):
-    YJKSControl.RunCmd("yjks_pyload", script_path)
+    YJKSControl.RunCmd("yjks_pyload", script_path, "pyyjks")
 
 The script writes ``results.json`` to ``SC_YJK_RESULTS_PATH`` when set,
 otherwise to ``SC_YJK_WORK_DIR/results.json`` or next to itself.  The driver
@@ -34,6 +34,7 @@ import os
 import traceback
 
 LOAD_CASES = [1, 2, 3, 4]
+_HAS_RUN = False
 
 
 def _results_path():
@@ -234,10 +235,19 @@ def _write_error(exc):
 
 
 def _autorun():
+    global _HAS_RUN
+    if _HAS_RUN:
+        return _results_path()
+    _HAS_RUN = True
     try:
         return extract()
     except Exception as exc:
         return _write_error(exc)
+
+
+def pyyjks():
+    """YJK ``yjks_pyload`` default callback name."""
+    return _autorun()
 
 
 def _should_autorun():

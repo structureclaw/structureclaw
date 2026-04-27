@@ -644,6 +644,7 @@ def _launch_yjk_with_launcher_and_attach(
 def _run_cmd(
     cmd: str,
     arg: str = "",
+    callback: str | None = None,
     *,
     phase: str,
     steps: list[dict],
@@ -653,10 +654,18 @@ def _run_cmd(
     Returns True if the command succeeded, False if YJK is no longer running.
     """
     from YJKAPI import YJKSControl
-    print(f"[yjk_driver] RunCmd({cmd!r}, {arg!r})", file=sys.stderr, flush=True)
+    display_command = cmd if callback is None else f"{cmd}:{callback}"
+    print(
+        f"[yjk_driver] RunCmd({cmd!r}, {arg!r}, {callback!r})",
+        file=sys.stderr,
+        flush=True,
+    )
     started_at = time.monotonic()
     try:
-        YJKSControl.RunCmd(cmd, arg)
+        if callback is None:
+            YJKSControl.RunCmd(cmd, arg)
+        else:
+            YJKSControl.RunCmd(cmd, arg, callback)
         # Check if YJK is still running after the command
         if not _is_yjk_running():
             message = f"YJK process terminated after {cmd}"
@@ -665,7 +674,7 @@ def _run_cmd(
                 steps,
                 phase=phase,
                 name=cmd,
-                command=cmd,
+                command=display_command,
                 status="error",
                 message=message,
                 started_at=started_at,
@@ -675,7 +684,7 @@ def _run_cmd(
             steps,
             phase=phase,
             name=cmd,
-            command=cmd,
+            command=display_command,
             status="success",
             started_at=started_at,
         )
@@ -686,7 +695,7 @@ def _run_cmd(
             steps,
             phase=phase,
             name=cmd,
-            command=cmd,
+            command=display_command,
             status="error",
             message=str(exc),
             started_at=started_at,
@@ -1631,7 +1640,7 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
         script=extract_script,
     )
 
-    if not _run_cmd("yjks_pyload", extract_script, phase="result_extraction", steps=steps):
+    if not _run_cmd("yjks_pyload", extract_script, "pyyjks", phase="result_extraction", steps=steps):
         _error(
             "YJK crashed or failed while running extract_results.py",
             phase="result_extraction",
