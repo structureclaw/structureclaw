@@ -7,8 +7,8 @@ const path = require("node:path");
 const { spawn, spawnSync } = require("node:child_process");
 
 const DEFAULT_ANALYSIS_PYTHON_VERSION = "3.12";
-const DEFAULT_FRONTEND_PORT = "30000";
-const DEFAULT_BACKEND_PORT = "8000";
+const DEFAULT_FRONTEND_PORT = "31416";
+const DEFAULT_BACKEND_PORT = "31415";
 const CN_DEFAULT_PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple";
 const CN_DEFAULT_NPM_REGISTRY = "https://registry.npmmirror.com";
 const CN_DEFAULT_DOCKER_REGISTRY_MIRROR = "docker.m.daocloud.io/";

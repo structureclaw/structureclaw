@@ -1198,8 +1198,7 @@ async function promptForFirstRunConfig(envFile, existingEnv) {
     const settingsDir = path.dirname(envFile);
     const settingsPath = path.join(settingsDir, "settings.json");
     const settings = {
-      server: { port: 8000, host: "0.0.0.0" },
-      llm: { baseUrl, model, ...(apiKey ? { apiKey } : {}) },
+      server: { port: 31415, host: "0.0.0.0" },      llm: { baseUrl, model, ...(apiKey ? { apiKey } : {}) },
       logging: { level: "info", llmLogEnabled: false },
       updatedAt: new Date().toISOString(),
     };
@@ -1399,8 +1398,7 @@ async function invokeDoctor(rootDir, env) {
         const settingsDir = path.dirname(paths.envFile);
         const settingsPath = path.join(settingsDir, "settings.json");
         const settings = {
-          server: { port: 8000, host: "0.0.0.0" },
-          logging: { level: "info", llmLogEnabled: false },
+          server: { port: 31415, host: "0.0.0.0" },          logging: { level: "info", llmLogEnabled: false },
           updatedAt: new Date().toISOString(),
         };
         runtime.ensureDirectory(settingsDir);

@@ -120,10 +120,10 @@ type SettingsResponse = {
 function buildSettingsResponse(): SettingsResponse {
   const file = readSettingsFile();
   const defaults = {
-    port: 8000,
+    port: 31415,
     host: '0.0.0.0',
     bodyLimitMb: 20,
-    frontendPort: 30000,
+    frontendPort: 31416,
     llmBaseUrl: 'https://api.openai.com/v1',
     llmModel: 'gpt-4-turbo-preview',
     llmTimeoutMs: 180000,

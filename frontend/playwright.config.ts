@@ -9,7 +9,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['html', { open: 'never' }]],
   use: {
-    baseURL: 'http://localhost:30000',
+    baseURL: 'http://localhost:31416',
     locale: 'en',
     timezoneId: 'UTC',
     trace: 'on-first-retry',
@@ -37,8 +37,8 @@ export default defineConfig({
       },
     },
     {
-      command: 'npx next dev -p 30000',
-      port: 30000,
+      command: 'npx next dev -p 31416',
+      port: 31416,
       reuseExistingServer: true,
       timeout: 60_000,
       env: {

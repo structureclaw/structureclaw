@@ -45,8 +45,8 @@ function resolveReportsDir(rawValue: string | undefined): string {
 const llmApiKey = fileSettings?.llm?.apiKey ?? '';
 const llmModel = fileSettings?.llm?.model ?? 'gpt-4-turbo-preview';
 const llmBaseUrl = fileSettings?.llm?.baseUrl ?? 'https://api.openai.com/v1';
-const frontendPort = fileSettings?.server?.frontendPort?.toString() ?? '30000';
-const backendPort = fileSettings?.server?.port ?? 8000;
+const frontendPort = fileSettings?.server?.frontendPort?.toString() ?? '31416';
+const backendPort = fileSettings?.server?.port ?? 31415;
 const analysisEngineManifestPath = fileSettings?.analysis?.engineManifestPath
   ?? path.join(runtimeBaseDir, 'analysis-engines.json');
 const defaultAnalysisPythonBin = isInstalledPackage

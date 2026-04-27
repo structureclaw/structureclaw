@@ -4,10 +4,10 @@
  * In installed-package mode the frontend is served by the backend on the
  * same origin, so we use a relative path ('') — no CORS needed.
  *
- * In dev mode the frontend runs on a different port (30000) from the
- * backend (8000), so we use NEXT_PUBLIC_API_URL or fall back to
- * http://localhost:8000.  The normalizeBrowserApiBase helper ensures
- * localhost → 127.0.0.1 for consistent CORS matching.
+ * In dev mode the frontend runs on a different port from the backend,
+ * so we use NEXT_PUBLIC_API_URL or fall back to http://localhost:31415.
+ * The normalizeBrowserApiBase helper ensures localhost → 127.0.0.1
+ * for consistent CORS matching.
  */
 const ENV_API_URL = process.env.NEXT_PUBLIC_API_URL || ''
 
@@ -34,7 +34,7 @@ function resolveBrowserApiBase(): string {
 
   if (typeof window === 'undefined') {
     // SSR — fall back to localhost default
-    return 'http://localhost:8000'
+    return 'http://localhost:31415'
   }
 
   // No explicit URL + browser → assume same-origin (installed-package mode)
