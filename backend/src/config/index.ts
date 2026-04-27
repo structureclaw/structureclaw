@@ -68,9 +68,13 @@ const backendPort = fileSettings?.server?.port
   ?? parseInt(process.env.PORT || '8000', 10);
 const analysisEngineManifestPath = fileSettings?.analysis?.engineManifestPath
   ?? (process.env.ANALYSIS_ENGINE_MANIFEST_PATH || path.join(runtimeBaseDir, 'analysis-engines.json'));
-const defaultAnalysisPythonBin = process.platform === 'win32'
-  ? path.resolve(__dirname, '../../.venv/Scripts/python.exe')
-  : path.resolve(__dirname, '../../.venv/bin/python');
+const defaultAnalysisPythonBin = isInstalledPackage
+  ? (process.platform === 'win32'
+    ? path.join(runtimeBaseDir, '.venv', 'Scripts', 'python.exe')
+    : path.join(runtimeBaseDir, '.venv', 'bin', 'python'))
+  : (process.platform === 'win32'
+    ? path.resolve(__dirname, '../../.venv/Scripts/python.exe')
+    : path.resolve(__dirname, '../../.venv/bin/python'));
 
 const defaultCorsOrigins = [
   `http://localhost:${frontendPort}`,

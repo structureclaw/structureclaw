@@ -842,6 +842,18 @@ function resolveAnalysisPython(rootDir, env) {
   if (env.ANALYSIS_PYTHON_BIN && pathExists(env.ANALYSIS_PYTHON_BIN)) {
     return env.ANALYSIS_PYTHON_BIN;
   }
+
+  // Installed-package mode: venv lives in the user's runtime data dir
+  if (isInstalledPackageLayout(rootDir)) {
+    const dataDir = resolveRuntimeDataDir(rootDir);
+    const winVenv = path.join(dataDir, ".venv", "Scripts", "python.exe");
+    if (pathExists(winVenv)) return winVenv;
+    const unixVenv = path.join(dataDir, ".venv", "bin", "python");
+    if (pathExists(unixVenv)) return unixVenv;
+    return null;
+  }
+
+  // Source checkout: venv lives at backend/.venv
   const windowsVenv = path.join(rootDir, "backend", ".venv", "Scripts", "python.exe");
   if (pathExists(windowsVenv)) {
     return windowsVenv;

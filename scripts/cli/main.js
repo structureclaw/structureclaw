@@ -529,6 +529,12 @@ async function ensureAnalysisPython(rootDir, env) {
     env.PATH = process.env.PATH;
   }
 
+  // Resolve venv location: installed packages use the runtime data dir,
+  // source checkouts use backend/.venv (writable checkout directory).
+  const venvDir = paths.installedMode
+    ? path.join(paths.runtimeDir, ".venv")
+    : path.join(rootDir, "backend", ".venv");
+
   let resolvedPython = currentPython;
   if (!resolvedPython) {
     const pythonVersion =
@@ -538,13 +544,13 @@ async function ensureAnalysisPython(rootDir, env) {
       "venv",
       "--python",
       pythonVersion,
-      path.join(rootDir, "backend", ".venv"),
+      venvDir,
     ]);
 
     resolvedPython = runtime.resolveAnalysisPython(rootDir, env);
   }
   if (!resolvedPython) {
-    throw new Error("Failed to locate backend/.venv python after uv venv.");
+    throw new Error(`Failed to locate Python after creating venv at ${venvDir}.`);
   }
 
   await runtime.runCommand("uv", [
@@ -566,7 +572,7 @@ async function ensureAnalysisPython(rootDir, env) {
     .filter(([, present]) => !present)
     .map(([moduleName]) => moduleName);
   if (missingModules.length > 0) {
-    throw new Error(`backend/.venv is present but missing required analysis modules: ${missingModules.join(", ")}.`);
+    throw new Error(`Python venv is present but missing required analysis modules: ${missingModules.join(", ")}.`);
   }
 
   return resolvedPython;
@@ -1418,15 +1424,11 @@ async function invokeDoctor(rootDir, env) {
     await ensureNpmDependencies(paths.frontendDir, "frontend", ["next"]);
   }
 
-  if (!isInstalled) {
-    await ensureAnalysisPython(rootDir, env);
-    try {
-      await ensureOpenSeesRuntime(rootDir, env);
-    } catch {
-      log("Warning: OpenSees runtime probe failed — analysis features may be limited in this environment.");
-    }
-  } else {
-    log("Skipping analysis runtime setup in installed mode.");
+  await ensureAnalysisPython(rootDir, env);
+  try {
+    await ensureOpenSeesRuntime(rootDir, env);
+  } catch {
+    log("Warning: OpenSees runtime probe failed — analysis features may be limited in this environment.");
   }
 
   if (isInstalled) {
