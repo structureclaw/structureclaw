@@ -265,6 +265,15 @@ function resolvePaths(rootDir) {
     dataInputSkillRoot: path.join(rootDir, "backend", "src", "agent-skills", "data-input"),
     codeCheckSkillRoot: path.join(rootDir, "backend", "src", "agent-skills", "code-check"),
     materialSkillRoot: path.join(rootDir, "backend", "src", "agent-skills", "material"),
+    reportExportCalcbookRoot: path.join(
+      rootDir,
+      "backend",
+      "src",
+      "agent-skills",
+      "report-export",
+      "calculation-book",
+      "pkpm-calcbook",
+    ),
   };
 }
 
@@ -813,6 +822,7 @@ function buildAnalysisPaths(rootDir) {
     paths.dataInputSkillRoot,
     paths.codeCheckSkillRoot,
     paths.materialSkillRoot,
+    paths.reportExportCalcbookRoot,
     // After code-check so `from runtime import …` resolves to code-check/runtime.py,
     // not opensees-static/runtime.py; `opensees_runtime` still imports from this dir.
     paths.analysisOpenseesStaticRoot,
