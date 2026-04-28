@@ -235,6 +235,7 @@ PR 的质量比 PR 的体积更重要，但强烈建议保持小而可评审。
 - 配置通过 `settings.json` 管理（使用 `sclaw doctor` 或前端设置界面）。
 - 生产环境凭据必须保存在仓库外。
 - 如果你的改动依赖新的配置默认值，请在 PR 中说明。
+- 敏感安全问题请按 [SECURITY_CN.md](SECURITY_CN.md) 中的私下流程报告，不要公开发 issue。
 
 ## 沟通建议
 
@@ -245,3 +246,5 @@ PR 的质量比 PR 的体积更重要，但强烈建议保持小而可评审。
 ## 对应语言版本
 
 英文版：[CONTRIBUTING.md](CONTRIBUTING.md)
+
+请同时遵守 [CODE_OF_CONDUCT_CN.md](CODE_OF_CONDUCT_CN.md)。

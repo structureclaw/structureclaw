@@ -67,13 +67,13 @@ docs/       手册与协议参考文档
 普通使用推荐全局安装：
 
 ```bash
-npm install -g @structureclaw/structureclaw
+npm install -g @structureclaw/structureclaw@alpha
 sclaw doctor
 sclaw start
 sclaw status
 ```
 
-安装版以单进程运行：backend 托管导出的 frontend，并从安装包启动托管运行时服务。运行数据写入用户数据目录，例如 `~/.structureclaw/`，不会写入 npm 包目录。
+安装版以单进程运行：backend 托管导出的 frontend，并从安装包启动托管运行时服务。当前 `alpha` tag 指向 1.0 预览线；1.0 stable 发布后可省略该 tag。运行数据写入用户数据目录，例如 `~/.structureclaw/`，不会写入 npm 包目录。
 
 ### 5.1 源码开发版
 

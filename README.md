@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@structureclaw/structureclaw"><img alt="npm" src="https://img.shields.io/npm/v/@structureclaw/structureclaw?color=2563eb"></a>
+  <a href="https://www.npmjs.com/package/@structureclaw/structureclaw"><img alt="npm alpha" src="https://img.shields.io/npm/v/@structureclaw/structureclaw/alpha?label=npm%20alpha&color=2563eb"></a>
   <a href="https://github.com/structureclaw/structureclaw/actions/workflows/backend-regression.yml"><img alt="backend regression" src="https://github.com/structureclaw/structureclaw/actions/workflows/backend-regression.yml/badge.svg"></a>
   <a href="https://github.com/structureclaw/structureclaw/actions/workflows/analysis-regression.yml"><img alt="analysis regression" src="https://github.com/structureclaw/structureclaw/actions/workflows/analysis-regression.yml/badge.svg"></a>
   <img alt="Node.js 20+" src="https://img.shields.io/badge/node-%3E%3D20-339933">
@@ -14,6 +14,7 @@
 
 <p align="center">
   <a href="#quick-start">Quick Start</a>
+  · <a href="#try-it-in-60-seconds">Try It</a>
   · <a href="#why-structureclaw">Why</a>
   · <a href="#engine-support">Engines</a>
   · <a href="#architecture">Architecture</a>
@@ -30,12 +31,12 @@ https://github.com/user-attachments/assets/031fe757-551d-4775-ab3f-0411037ad5ae
 ### Install from npm
 
 ```bash
-npm install -g @structureclaw/structureclaw
+npm install -g @structureclaw/structureclaw@alpha
 sclaw doctor
 sclaw start
 ```
 
-Open the local workspace printed by `sclaw start`. `sclaw doctor` creates the runtime workspace, checks LLM settings, prepares SQLite, and installs the Python analysis environment when needed.
+Open the local workspace printed by `sclaw start`. The `alpha` tag currently points to the 1.0 preview line; after the 1.0 stable release, the same command can omit `@alpha`. `sclaw doctor` creates the runtime workspace, checks LLM settings, prepares SQLite, and installs the Python analysis environment when needed.
 
 ### Run from source
 
@@ -61,6 +62,22 @@ China mirror entrypoint:
 sclaw_cn doctor
 sclaw_cn start
 ```
+
+## Try It In 60 Seconds
+
+After the workspace opens, try:
+
+```text
+Model a two-story steel frame, 6 m by 4 m bay, 3.6 m story height, Q355 steel columns and beams, dead load 5 kN/m2 and live load 2 kN/m2. Build the model, run static analysis, check GB50017, and generate a short report.
+```
+
+Expected flow:
+
+```text
+draft model -> validate -> run analysis -> code-check -> report
+```
+
+Use OpenSees for a fully open local run. Select PKPM or YJK only when the corresponding commercial software and authorization are available on the machine.
 
 ## Why StructureClaw
 
@@ -260,14 +277,17 @@ Backend-hosted analysis:
 
 - English handbook: [docs/handbook.md](./docs/handbook.md)
 - Chinese handbook: [docs/handbook_CN.md](./docs/handbook_CN.md)
+- Documentation hub: [docs/README.md](./docs/README.md)
 - English reference: [docs/reference.md](./docs/reference.md)
 - Chinese reference: [docs/reference_CN.md](./docs/reference_CN.md)
 - Chinese overview: [README_CN.md](./README_CN.md)
 - Contribution guide: [CONTRIBUTING.md](./CONTRIBUTING.md)
+- Roadmap: [ROADMAP.md](./ROADMAP.md)
+- Security policy: [SECURITY.md](./SECURITY.md)
 
 ## Contributing
 
-Please read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a PR.
+Please read [CONTRIBUTING.md](./CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) before opening a PR.
 
 ## License
 

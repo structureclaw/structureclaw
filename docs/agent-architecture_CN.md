@@ -141,7 +141,7 @@ Skill 是平台的工程能力单位。
 
 Skill 的职责是理解、补参、建议和解释，而不是直接执行动作。
 
-[backend/src/agent-runtime/types.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/agent-runtime/types.ts) 中的 `SkillManifest` 与 `SkillHandler` 已经体现了这套设计。
+[backend/src/agent-runtime/types.ts](../backend/src/agent-runtime/types.ts) 中的 `SkillManifest` 与 `SkillHandler` 已经体现了这套设计。
 
 ## 5. `structure-type` 作为入口技能域
 
@@ -550,49 +550,49 @@ Agent 编排层已拆分为以下模块。
 
 ### 10.1 对外接口
 
-- [backend/src/api/chat.ts](backend/src/api/chat.ts)
+- [backend/src/api/chat.ts](../backend/src/api/chat.ts)
   对外统一 HTTP 聊天入口，接收用户消息并委托 agent 服务处理。
-- [backend/src/services/agent.ts](backend/src/services/agent.ts)
+- [backend/src/services/agent.ts](../backend/src/services/agent.ts)
   `AgentService` 类：对外 API（`run`、`runStream`）、持久化、执行管线与编排壳。路由、规划、结果构建、会话管理与校验均委托至下列模块。
 
 ### 10.2 Agent 编排模块
 
-- [backend/src/services/agent-context.ts](backend/src/services/agent-context.ts)
+- [backend/src/services/agent-context.ts](../backend/src/services/agent-context.ts)
   定义 `TurnContext`（每轮统一参数对象）、`HandlerDeps`（handler 依赖注入接口）、`RouteDecision`，以及 `buildTurnContext()` 工厂函数。
-- [backend/src/services/agent-router.ts](backend/src/services/agent-router.ts)
+- [backend/src/services/agent-router.ts](../backend/src/services/agent-router.ts)
   从 `AgentService` 中提取的规划与路由逻辑：`planNextStep`、`planNextStepWithLlm`、`buildPlannerContextSnapshot`、`parsePlannerResponse`、`repairPlannerResponse`、`resolveInteractivePlanKind`、`extractJsonObject`。
-- [backend/src/services/agent-result.ts](backend/src/services/agent-result.ts)
+- [backend/src/services/agent-result.ts](../backend/src/services/agent-result.ts)
   从 `AgentService` 中提取的结果构建与渲染函数：`buildMetrics`、`buildInteractionQuestion`、`buildToolInteraction`、`buildRecommendedNextStep`、`buildGenericModelingIntro`、`buildChatModeResponse`、`renderSummary`。
-- [backend/src/services/agent-session.ts](backend/src/services/agent-session.ts)
+- [backend/src/services/agent-session.ts](../backend/src/services/agent-session.ts)
   会话状态机与进程内缓存持久化：`SessionState` 类型、`transitionSession`（强制合法转换）、`getSessionState`、`buildInteractionSessionKey`、`getInteractionSession`、`setInteractionSession`、`clearInteractionSession`。
-- [backend/src/services/agent-validation.ts](backend/src/services/agent-validation.ts)
+- [backend/src/services/agent-validation.ts](../backend/src/services/agent-validation.ts)
   带 LLM 自动修复的模型校验：`validateWithRetry`（包装 `executeValidateModelStep`，最多尝试 2 次修复）与 `tryRepairModel`（将模型 JSON 及校验错误发送给 LLM 进行 JSON 级别修复）。
 
 ### 10.3 路由 Handler
 
 每个 handler 对应由 router 分发的一条独立会话路径。
 
-- [backend/src/services/agent-handlers/chat.ts](backend/src/services/agent-handlers/chat.ts)
+- [backend/src/services/agent-handlers/chat.ts](../backend/src/services/agent-handlers/chat.ts)
   `handleChat` —— 纯对话回复路径，不触发 skill 提取或建模。
-- [backend/src/services/agent-handlers/collect.ts](backend/src/services/agent-handlers/collect.ts)
+- [backend/src/services/agent-handlers/collect.ts](../backend/src/services/agent-handlers/collect.ts)
   `handleCollect` —— 轻量参数提取路径，对应 planner 的"追问"决策。仅调用 `extractDraftParameters`，显式跳过耗时的 `tryBuildGenericModelWithLlm` 模型生成。
-- [backend/src/services/agent-handlers/draft.ts](backend/src/services/agent-handlers/draft.ts)
+- [backend/src/services/agent-handlers/draft.ts](../backend/src/services/agent-handlers/draft.ts)
   `handleDraft` —— 完整建模路径。当参数充足时，调用完整的 `textToModelDraft` 管线（含模型构建）。
-- [backend/src/services/agent-handlers/execute.ts](backend/src/services/agent-handlers/execute.ts)
+- [backend/src/services/agent-handlers/execute.ts](../backend/src/services/agent-handlers/execute.ts)
   `handleExecute` —— 占位桩。执行管线（模型准备、分析、规范校核、报告生成）仍在 `AgentService` 中，将在后续阶段提取。
-- [backend/src/services/agent-handlers/index.ts](backend/src/services/agent-handlers/index.ts)
+- [backend/src/services/agent-handlers/index.ts](../backend/src/services/agent-handlers/index.ts)
   所有 handler 的统一导出桶文件。
 
 ### 10.4 Skill Runtime
 
-- [backend/src/agent-runtime/types.ts](backend/src/agent-runtime/types.ts)
+- [backend/src/agent-runtime/types.ts](../backend/src/agent-runtime/types.ts)
   skill 域、manifest、handler、draft state、runtime 类型，以及 `DraftParameterExtractionResult`。
-- [backend/src/agent-runtime/index.ts](backend/src/agent-runtime/index.ts)
+- [backend/src/agent-runtime/index.ts](../backend/src/agent-runtime/index.ts)
   `AgentSkillRuntime` 类：skill 发现、structure-type 检测与 draft 处理。对外暴露 `extractDraftParameters`（仅参数提取，不构建模型）、`buildModelFromDraft`（从提取结果构建模型）、`textToModelDraft`（组合管线，向后兼容）。
 
 ### 10.5 会话持久化
 
-- [backend/src/services/conversation.ts](backend/src/services/conversation.ts)
+- [backend/src/services/conversation.ts](../backend/src/services/conversation.ts)
   会话 CRUD 与 snapshot 持久化。
 
 ## 10A. 多轮对话架构

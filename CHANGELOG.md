@@ -6,7 +6,7 @@ All notable changes to StructureClaw are documented in this file.
 
 ### Added — npm Packaging & Distribution
 
-- npm package publication: `npm install -g structureclaw` for instant setup
+- npm package publication: `npm install -g @structureclaw/structureclaw@alpha` for the 1.0 preview line
 - Single-process architecture: backend serves frontend static assets via `@fastify/static`
 - Frontend static export (`output: 'export'`) for zero-dependency frontend deployment
 - Runtime data directory: user data stored in `~/.structureclaw/` (not in package dir)

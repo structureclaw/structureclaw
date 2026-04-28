@@ -8,7 +8,7 @@
 ### Installed package path
 
 ```bash
-npm install -g @structureclaw/structureclaw
+npm install -g @structureclaw/structureclaw@alpha
 sclaw doctor
 sclaw start
 sclaw status
@@ -16,7 +16,7 @@ sclaw logs
 sclaw stop
 ```
 
-Installed mode runs as a single process and stores runtime data under the user data directory, such as `~/.structureclaw/`.
+Installed mode runs as a single process and stores runtime data under the user data directory, such as `~/.structureclaw/`. The `alpha` tag currently points to the 1.0 preview line.
 
 ### Source checkout path
 

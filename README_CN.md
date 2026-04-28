@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@structureclaw/structureclaw"><img alt="npm" src="https://img.shields.io/npm/v/@structureclaw/structureclaw?color=2563eb"></a>
+  <a href="https://www.npmjs.com/package/@structureclaw/structureclaw"><img alt="npm alpha" src="https://img.shields.io/npm/v/@structureclaw/structureclaw/alpha?label=npm%20alpha&color=2563eb"></a>
   <a href="https://github.com/structureclaw/structureclaw/actions/workflows/backend-regression.yml"><img alt="backend regression" src="https://github.com/structureclaw/structureclaw/actions/workflows/backend-regression.yml/badge.svg"></a>
   <a href="https://github.com/structureclaw/structureclaw/actions/workflows/analysis-regression.yml"><img alt="analysis regression" src="https://github.com/structureclaw/structureclaw/actions/workflows/analysis-regression.yml/badge.svg"></a>
   <img alt="Node.js 20+" src="https://img.shields.io/badge/node-%3E%3D20-339933">
@@ -14,6 +14,7 @@
 
 <p align="center">
   <a href="#快速启动">快速启动</a>
+  · <a href="#60-秒试跑">试跑</a>
   · <a href="#为什么选择-structureclaw">为什么</a>
   · <a href="#引擎支持">引擎</a>
   · <a href="#架构概览">架构</a>
@@ -30,12 +31,12 @@ https://github.com/user-attachments/assets/031fe757-551d-4775-ab3f-0411037ad5ae
 ### npm 安装版
 
 ```bash
-npm install -g @structureclaw/structureclaw
+npm install -g @structureclaw/structureclaw@alpha
 sclaw doctor
 sclaw start
 ```
 
-打开 `sclaw start` 打印出的本地工作台地址。`sclaw doctor` 会创建运行工作区、检查 LLM 配置、准备 SQLite，并在需要时安装 Python 分析环境。
+打开 `sclaw start` 打印出的本地工作台地址。当前 `alpha` tag 指向 1.0 预览线；1.0 stable 发布后，同一命令可省略 `@alpha`。`sclaw doctor` 会创建运行工作区、检查 LLM 配置、准备 SQLite，并在需要时安装 Python 分析环境。
 
 ### 源码开发版
 
@@ -61,6 +62,22 @@ node .\sclaw status
 sclaw_cn doctor
 sclaw_cn start
 ```
+
+## 60 秒试跑
+
+打开工作台后，可以输入：
+
+```text
+建立一个两层钢框架，平面 6 m x 4 m，层高 3.6 m，柱梁均为 Q355 钢，恒载 5 kN/m2，活载 2 kN/m2。请生成模型，运行静力分析，按 GB50017 校核，并生成简短报告。
+```
+
+预期链路：
+
+```text
+模型草案 -> 校验 -> 计算分析 -> 规范校核 -> 报告
+```
+
+如果希望完全开源本地运行，请使用 OpenSees。只有在本机已安装并授权 PKPM 或 YJK 时，再选择对应商业引擎。
 
 ## 为什么选择 StructureClaw
 
@@ -260,14 +277,17 @@ StructureClaw 1.0 以 `settings.json` 作为用户配置文件。`sclaw doctor` 
 
 - 中文手册：[docs/handbook_CN.md](./docs/handbook_CN.md)
 - 英文手册：[docs/handbook.md](./docs/handbook.md)
+- 文档入口：[docs/README_CN.md](./docs/README_CN.md)
 - 中文参考：[docs/reference_CN.md](./docs/reference_CN.md)
 - 英文参考：[docs/reference.md](./docs/reference.md)
 - 英文总览：[README.md](./README.md)
 - 中文贡献指南：[CONTRIBUTING_CN.md](./CONTRIBUTING_CN.md)
+- 路线图：[ROADMAP_CN.md](./ROADMAP_CN.md)
+- 安全策略：[SECURITY_CN.md](./SECURITY_CN.md)
 
 ## 参与贡献
 
-提交 PR 前请先阅读 [CONTRIBUTING_CN.md](./CONTRIBUTING_CN.md)。
+提交 PR 前请先阅读 [CONTRIBUTING_CN.md](./CONTRIBUTING_CN.md) 和 [CODE_OF_CONDUCT_CN.md](./CODE_OF_CONDUCT_CN.md)。
 
 ## 许可证
 

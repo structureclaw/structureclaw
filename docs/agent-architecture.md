@@ -141,7 +141,7 @@ In StructureClaw, a skill can be:
 
 Skills are responsible for understanding and guidance, not raw execution.
 
-The current runtime interfaces in [backend/src/agent-runtime/types.ts](/data1/openclaw/workspace/projects/10structureclaw/dev/structureclaw/backend/src/agent-runtime/types.ts) already reflect this design through `SkillManifest` and `SkillHandler`.
+The current runtime interfaces in [backend/src/agent-runtime/types.ts](../backend/src/agent-runtime/types.ts) already reflect this design through `SkillManifest` and `SkillHandler`.
 
 ## 5. `structure-type` as the Entry Skill Domain
 
@@ -547,49 +547,49 @@ The agent orchestration layer is decomposed into the following modules.
 
 ### 10.1 Public Surface
 
-- [backend/src/api/chat.ts](backend/src/api/chat.ts)
+- [backend/src/api/chat.ts](../backend/src/api/chat.ts)
   Public HTTP endpoints for chat. Accepts user messages and delegates to the agent service.
-- [backend/src/services/agent.ts](backend/src/services/agent.ts)
+- [backend/src/services/agent.ts](../backend/src/services/agent.ts)
   `AgentService` class: public API (`run`, `runStream`), persistence helpers, execution pipeline, and orchestration shell. Delegates routing, planning, result building, session management, and validation to the modules below.
 
 ### 10.2 Agent Orchestration Modules
 
-- [backend/src/services/agent-context.ts](backend/src/services/agent-context.ts)
+- [backend/src/services/agent-context.ts](../backend/src/services/agent-context.ts)
   Defines `TurnContext` (unified per-turn parameter object), `HandlerDeps` (dependency-injection interface for handlers), `RouteDecision`, and the `buildTurnContext()` factory.
-- [backend/src/services/agent-router.ts](backend/src/services/agent-router.ts)
+- [backend/src/services/agent-router.ts](../backend/src/services/agent-router.ts)
   Planner and routing logic extracted from `AgentService`: `planNextStep`, `planNextStepWithLlm`, `buildPlannerContextSnapshot`, `parsePlannerResponse`, `repairPlannerResponse`, `resolveInteractivePlanKind`, `extractJsonObject`.
-- [backend/src/services/agent-result.ts](backend/src/services/agent-result.ts)
+- [backend/src/services/agent-result.ts](../backend/src/services/agent-result.ts)
   Result builders and renderers extracted from `AgentService`: `buildMetrics`, `buildInteractionQuestion`, `buildToolInteraction`, `buildRecommendedNextStep`, `buildGenericModelingIntro`, `buildChatModeResponse`, `renderSummary`.
-- [backend/src/services/agent-session.ts](backend/src/services/agent-session.ts)
+- [backend/src/services/agent-session.ts](../backend/src/services/agent-session.ts)
   Session state machine and in-process cache persistence: `SessionState` type, `transitionSession` (enforces allowed transitions), `getSessionState`, `buildInteractionSessionKey`, `getInteractionSession`, `setInteractionSession`, `clearInteractionSession`.
-- [backend/src/services/agent-validation.ts](backend/src/services/agent-validation.ts)
+- [backend/src/services/agent-validation.ts](../backend/src/services/agent-validation.ts)
   Model validation with LLM auto-repair: `validateWithRetry` (wraps `executeValidateModelStep` with up to 2 repair attempts) and `tryRepairModel` (sends model + validation error to LLM for JSON-level repair).
 
 ### 10.3 Route Handlers
 
 Each handler corresponds to a distinct conversation path dispatched by the router.
 
-- [backend/src/services/agent-handlers/chat.ts](backend/src/services/agent-handlers/chat.ts)
+- [backend/src/services/agent-handlers/chat.ts](../backend/src/services/agent-handlers/chat.ts)
   `handleChat` -- plain conversational reply path. No skill extraction or model building.
-- [backend/src/services/agent-handlers/collect.ts](backend/src/services/agent-handlers/collect.ts)
+- [backend/src/services/agent-handlers/collect.ts](../backend/src/services/agent-handlers/collect.ts)
   `handleCollect` -- lightweight parameter extraction path for the "ask" decision. Calls `extractDraftParameters` only; explicitly skips the expensive `tryBuildGenericModelWithLlm` model generation.
-- [backend/src/services/agent-handlers/draft.ts](backend/src/services/agent-handlers/draft.ts)
+- [backend/src/services/agent-handlers/draft.ts](../backend/src/services/agent-handlers/draft.ts)
   `handleDraft` -- full model drafting path. Calls the complete `textToModelDraft` pipeline including model building when sufficient parameters are available.
-- [backend/src/services/agent-handlers/execute.ts](backend/src/services/agent-handlers/execute.ts)
+- [backend/src/services/agent-handlers/execute.ts](../backend/src/services/agent-handlers/execute.ts)
   `handleExecute` -- stub. The execution pipeline (model preparation, analysis, code check, report generation) remains in `AgentService` and will be extracted in a future pass.
-- [backend/src/services/agent-handlers/index.ts](backend/src/services/agent-handlers/index.ts)
+- [backend/src/services/agent-handlers/index.ts](../backend/src/services/agent-handlers/index.ts)
   Barrel re-export for all handlers.
 
 ### 10.4 Skill Runtime
 
-- [backend/src/agent-runtime/types.ts](backend/src/agent-runtime/types.ts)
+- [backend/src/agent-runtime/types.ts](../backend/src/agent-runtime/types.ts)
   Skill domains, manifests, handlers, draft state, runtime types, and `DraftParameterExtractionResult`.
-- [backend/src/agent-runtime/index.ts](backend/src/agent-runtime/index.ts)
+- [backend/src/agent-runtime/index.ts](../backend/src/agent-runtime/index.ts)
   `AgentSkillRuntime` class: skill discovery, structure-type detection, and draft handling. Exposes `extractDraftParameters` (parameter extraction without model building), `buildModelFromDraft` (model construction from extracted parameters), and `textToModelDraft` (composed pipeline for backward compatibility).
 
 ### 10.5 Conversation Persistence
 
-- [backend/src/services/conversation.ts](backend/src/services/conversation.ts)
+- [backend/src/services/conversation.ts](../backend/src/services/conversation.ts)
   Conversation CRUD and snapshot persistence.
 
 ## 10A. Multi-Round Conversation Architecture
