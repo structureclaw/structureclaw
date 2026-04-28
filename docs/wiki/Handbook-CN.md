@@ -8,7 +8,7 @@
 ### npm 安装版
 
 ```bash
-npm install -g @structureclaw/structureclaw@alpha
+npm install -g @structureclaw/structureclaw
 sclaw doctor
 sclaw start
 sclaw status
@@ -16,7 +16,7 @@ sclaw logs
 sclaw stop
 ```
 
-安装版以单进程运行，并把运行数据放在用户数据目录，例如 `~/.structureclaw/`。当前 `alpha` tag 指向 1.0 预览线。
+安装版以单进程运行，并把运行数据放在用户数据目录，例如 `~/.structureclaw/`。
 
 ### 源码开发版
 

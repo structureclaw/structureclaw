@@ -4,7 +4,7 @@ StructureClaw is an AI-assisted structural engineering workspace. Security repor
 
 ## Supported Versions
 
-Security fixes target the active 1.0 line. During the 1.0 alpha period, reports should reference the npm dist-tag or commit SHA being tested.
+Security fixes target the active 1.0 line. Reports should reference the released version or commit SHA being tested.
 
 ## Reporting A Vulnerability
 
@@ -12,7 +12,7 @@ Please do not open a public issue for sensitive reports. Send the maintainers a 
 
 Include:
 
-- affected version, commit SHA, or npm dist-tag
+- affected version or commit SHA
 - operating system and runtime mode (`npm`, source checkout, or Docker)
 - reproduction steps
 - impact assessment
@@ -39,4 +39,3 @@ Out of scope:
 - inaccurate engineering recommendations without a security boundary impact
 - missing support for a commercial engine version
 - local authorization failures in PKPM/YJK that require vendor licensing support
-

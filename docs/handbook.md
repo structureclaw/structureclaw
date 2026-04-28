@@ -67,13 +67,13 @@ docs/       handbook and protocol reference
 For normal usage:
 
 ```bash
-npm install -g @structureclaw/structureclaw@alpha
+npm install -g @structureclaw/structureclaw
 sclaw doctor
 sclaw start
 sclaw status
 ```
 
-Installed mode runs as a single process: the backend serves the exported frontend and starts the hosted runtime services from the installed package. The `alpha` tag currently points to the 1.0 preview line; stable 1.0 can omit the tag after release. Runtime data is stored in the user data directory, such as `~/.structureclaw/`, not in the npm package directory.
+Installed mode runs as a single process: the backend serves the exported frontend and starts the hosted runtime services from the installed package. Runtime data is stored in the user data directory, such as `~/.structureclaw/`, not in the npm package directory.
 
 ### 5.1 Source checkout path
 
