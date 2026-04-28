@@ -5,6 +5,10 @@ MIN_NODE_MAJOR="${SCLAW_MIN_NODE_MAJOR:-20}"
 BOOTSTRAP_NODE_MAJOR=24
 NODE_DIST_BASE="${SCLAW_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v24.x}"
 NODE_INSTALL_PARENT="${SCLAW_NODE_INSTALL_PARENT:-${XDG_DATA_HOME:-$HOME/.local/share}/nodejs}"
+NODE_DIST_BASE_EXPLICIT=0
+if [ -n "${SCLAW_NODE_DIST_BASE:-}" ]; then
+  NODE_DIST_BASE_EXPLICIT=1
+fi
 DEFAULT_STRUCTURECLAW_HOME="$HOME/.structureclaw"
 STRUCTURECLAW_HOME="${SCLAW_DATA_DIR:-$DEFAULT_STRUCTURECLAW_HOME}"
 PACKAGE_NAME="${SCLAW_PACKAGE_NAME:-@structureclaw/structureclaw}"
@@ -73,7 +77,9 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --cn)
       export NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}"
-      NODE_DIST_BASE="${SCLAW_NODE_DIST_BASE:-https://npmmirror.com/mirrors/node/latest-v24.x}"
+      if [ "$NODE_DIST_BASE_EXPLICIT" -eq 0 ]; then
+        NODE_DIST_BASE="https://npmmirror.com/mirrors/node/latest-v24.x"
+      fi
       shift
       ;;
     --registry)
@@ -84,6 +90,7 @@ while [ "$#" -gt 0 ]; do
     --node-dist-base)
       [ "$#" -ge 2 ] || die "--node-dist-base requires a value"
       NODE_DIST_BASE="$2"
+      NODE_DIST_BASE_EXPLICIT=1
       shift 2
       ;;
     --node-install-parent)
@@ -268,6 +275,11 @@ ensure_node() {
     return 0
   fi
 
+  if [ "$DRY_RUN" -eq 1 ]; then
+    log "Would install bootstrap Node.js $BOOTSTRAP_NODE_MAJOR under $NODE_INSTALL_PARENT"
+    return 0
+  fi
+
   local os_name
   os_name="$(uname -s)"
   if [ "$os_name" != "Linux" ] && [ "$os_name" != "Darwin" ]; then
@@ -291,7 +303,7 @@ ensure_node() {
   sums="$temp_dir/SHASUMS256.txt"
   log "Resolving latest Node.js 24 for linux-$arch..."
   download "$NODE_DIST_BASE/SHASUMS256.txt" "$sums"
-  version="$(sed -n "s/.*  node-\(v[0-9][^ ]*\)-linux-$arch.tar.xz$/\1/p" "$sums" | head -n 1)"
+  version="$(sed -n 's/.*  node-\(v[0-9][^ ]*\)-linux-'"$arch"'.tar.xz$/\1/p' "$sums" | head -n 1)"
   [ -n "$version" ] || die "Could not resolve Node.js version from $NODE_DIST_BASE"
 
   archive="node-$version-linux-$arch.tar.xz"
@@ -305,6 +317,7 @@ ensure_node() {
     verify_sha256 "$sums" "$archive" "$temp_dir/$archive"
     run mkdir -p "$NODE_INSTALL_PARENT"
     run tar -xJf "$temp_dir/$archive" -C "$NODE_INSTALL_PARENT"
+    run rm -rf "$install_root"
     run mv "$NODE_INSTALL_PARENT/node-$version-linux-$arch" "$install_root"
   fi
 
@@ -324,7 +337,13 @@ ensure_path_hint() {
 
   case "${SHELL:-}" in
     */zsh) rc_file="$HOME/.zshrc" ;;
-    */bash) rc_file="$HOME/.bashrc" ;;
+    */bash)
+      if [ "$(uname -s)" = "Darwin" ]; then
+        rc_file="$HOME/.bash_profile"
+      else
+        rc_file="$HOME/.bashrc"
+      fi
+      ;;
   esac
 
   if [ "$DRY_RUN" -eq 1 ]; then
@@ -351,7 +370,13 @@ ensure_env_hint() {
 
   case "${SHELL:-}" in
     */zsh) rc_file="$HOME/.zshrc" ;;
-    */bash) rc_file="$HOME/.bashrc" ;;
+    */bash)
+      if [ "$(uname -s)" = "Darwin" ]; then
+        rc_file="$HOME/.bash_profile"
+      else
+        rc_file="$HOME/.bashrc"
+      fi
+      ;;
   esac
 
   if [ "$DRY_RUN" -eq 1 ]; then

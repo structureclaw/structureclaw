@@ -19,6 +19,7 @@ $MinNodeMajor = 20
 $BootstrapNodeMajor = 24
 $DefaultStructureClawHome = Join-Path $HOME ".structureclaw"
 $PrefixExplicit = [bool]$env:SCLAW_NPM_PREFIX -or $PSBoundParameters.ContainsKey("Prefix")
+$NodeDistBaseExplicit = [bool]$env:SCLAW_NODE_DIST_BASE -or $PSBoundParameters.ContainsKey("NodeDistBase")
 
 function Write-InstallLog {
   param([string]$Message)
@@ -76,7 +77,7 @@ if ($Cn) {
   if (-not $Registry) {
     $Registry = "https://registry.npmmirror.com"
   }
-  if (-not $env:SCLAW_NODE_DIST_BASE) {
+  if (-not $NodeDistBaseExplicit) {
     $NodeDistBase = "https://npmmirror.com/mirrors/node/latest-v24.x"
   }
 }
@@ -267,6 +268,11 @@ function Ensure-Node {
   }
 
   $arch = Get-NodeWindowsArch
+  if ($DryRun) {
+    Write-InstallLog "Would install bootstrap Node.js $BootstrapNodeMajor under $NodeInstallParent"
+    return
+  }
+
   $tempDir = Join-Path ([IO.Path]::GetTempPath()) ("sclaw-node-" + [Guid]::NewGuid().ToString("N"))
   New-Item -ItemType Directory -Force -Path $tempDir | Out-Null
 
