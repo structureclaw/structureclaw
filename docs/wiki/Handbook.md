@@ -8,7 +8,7 @@
 ### Installed package path
 
 ```bash
-npm install -g structureclaw
+npm install -g @structureclaw/structureclaw
 sclaw doctor
 sclaw start
 sclaw status

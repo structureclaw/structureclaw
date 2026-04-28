@@ -8,7 +8,7 @@
 ### npm 安装版
 
 ```bash
-npm install -g structureclaw
+npm install -g @structureclaw/structureclaw
 sclaw doctor
 sclaw start
 sclaw status

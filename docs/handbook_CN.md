@@ -67,7 +67,7 @@ docs/       手册与协议参考文档
 普通使用推荐全局安装：
 
 ```bash
-npm install -g structureclaw
+npm install -g @structureclaw/structureclaw
 sclaw doctor
 sclaw start
 sclaw status

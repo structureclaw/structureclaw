@@ -67,7 +67,7 @@ docs/       handbook and protocol reference
 For normal usage:
 
 ```bash
-npm install -g structureclaw
+npm install -g @structureclaw/structureclaw
 sclaw doctor
 sclaw start
 sclaw status
