@@ -7,7 +7,7 @@
 
 ### Bootstrap installer
 
-If Node.js 24+ and npm are not installed yet:
+If Node.js 20+ and npm are not installed yet:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.sh | bash
@@ -48,7 +48,7 @@ Source mode starts backend/frontend as development processes and uses the user r
 
 ### Node.js setup
 
-Node.js 24+ is required for source development and direct npm installs. Install it via your preferred method (nvm, system package manager, or nodejs.org), or use the bootstrap installer for an application install that prepares Node automatically.
+Node.js 20+ is required for source development and direct npm installs. Install it via your preferred method (nvm, system package manager, or nodejs.org), or use the bootstrap installer for an application install that prepares Node automatically.
 
 Windows PowerShell:
 

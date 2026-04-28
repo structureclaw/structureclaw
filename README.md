@@ -8,7 +8,7 @@
   <a href="https://www.npmjs.com/package/@structureclaw/structureclaw"><img alt="npm" src="https://img.shields.io/npm/v/@structureclaw/structureclaw?color=2563eb"></a>
   <a href="https://github.com/structureclaw/structureclaw/actions/workflows/backend-regression.yml"><img alt="backend regression" src="https://github.com/structureclaw/structureclaw/actions/workflows/backend-regression.yml/badge.svg"></a>
   <a href="https://github.com/structureclaw/structureclaw/actions/workflows/analysis-regression.yml"><img alt="analysis regression" src="https://github.com/structureclaw/structureclaw/actions/workflows/analysis-regression.yml/badge.svg"></a>
-  <img alt="Node.js 24+" src="https://img.shields.io/badge/node-%3E%3D24-339933">
+  <img alt="Node.js 20+" src="https://img.shields.io/badge/node-%3E%3D20-339933">
   <a href="./LICENSE"><img alt="license MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
 
@@ -30,7 +30,7 @@ https://github.com/user-attachments/assets/031fe757-551d-4775-ab3f-0411037ad5ae
 
 ### No Node.js Yet
 
-Use the bootstrap installer when the machine does not already have Node.js 24+ and npm:
+Use the bootstrap installer when the machine does not already have Node.js 20+ and npm:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.sh | bash
@@ -42,11 +42,11 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
 ```
 
-The installer prints an install plan before it changes anything. It prepares a user-local Node.js 24 runtime when needed, installs `@structureclaw/structureclaw@latest`, adds the user-local npm bin directory to PATH, and runs `sclaw doctor`. On Windows, the bootstrap Node runtime is installed under `%LOCALAPPDATA%\Programs\nodejs`; on Linux, it is installed under `${XDG_DATA_HOME:-~/.local/share}/nodejs`. StructureClaw Home defaults to `~/.structureclaw`; use `--home` / `-Home` to choose another workspace/runtime directory.
+The installer prints an install plan before it changes anything. It reuses existing Node.js 20+ installations and prepares a user-local Node.js 24 runtime when needed, installs `@structureclaw/structureclaw@latest`, adds the user-local npm bin directory to PATH, and runs `sclaw doctor`. On Windows, the bootstrap Node runtime is installed under `%LOCALAPPDATA%\Programs\nodejs`; on Linux, it is installed under `${XDG_DATA_HOME:-~/.local/share}/nodejs`. StructureClaw Home defaults to `~/.structureclaw`; use `--home` / `-Home` to choose another workspace/runtime directory.
 
 ### Install from npm
 
-If Node.js 24+ and npm are already installed:
+If Node.js 20+ and npm are already installed:
 
 ```bash
 npm install -g @structureclaw/structureclaw
@@ -183,7 +183,7 @@ curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/
 
 Notes:
 
-- `scripts/install.sh` and `scripts/install.ps1` are intended for first-time users. They install Node.js 24 into a generic user-level Node.js directory if `node` / `npm` are missing or too old, then run `npm install -g @structureclaw/structureclaw@latest`.
+- `scripts/install.sh` and `scripts/install.ps1` are intended for first-time users. They reuse existing Node.js 20+ installations and install Node.js 24 into a generic user-level Node.js directory if `node` / `npm` are missing or too old, then run `npm install -g @structureclaw/structureclaw@latest`.
 - The bootstrap installers use a user-local npm prefix by default (`~/.structureclaw/npm-global`), avoiding root/admin global npm writes.
 - SQLite is now the default local database. `./sclaw start` uses `~/.structureclaw/data/structureclaw.start.db`, and `./sclaw doctor` uses `~/.structureclaw/data/structureclaw.doctor.db` so preflight checks do not touch the active local runtime database.
 - `./sclaw doctor` no longer requires a preinstalled system Python 3.12. It will ensure `uv` and prepare a virtual environment with Python 3.12 automatically when needed. On Windows, this automatic setup currently requires `winget`; if `winget` is unavailable, install `uv` manually before running `./sclaw doctor`.

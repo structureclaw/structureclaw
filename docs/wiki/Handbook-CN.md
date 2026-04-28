@@ -7,7 +7,7 @@
 
 ### bootstrap 安装器
 
-如果还没有安装 Node.js 24+ 和 npm：
+如果还没有安装 Node.js 20+ 和 npm：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.sh | bash
@@ -48,7 +48,7 @@ sclaw stop
 
 ### Node.js 安装
 
-源码开发和直接 npm 安装需要 Node.js 24+。可通过任意方式安装（nvm、系统包管理器或 nodejs.org），如果只是应用安装，也可以使用 bootstrap 安装器自动准备 Node。
+源码开发和直接 npm 安装需要 Node.js 20+。可通过任意方式安装（nvm、系统包管理器或 nodejs.org），如果只是应用安装，也可以使用 bootstrap 安装器自动准备 Node。
 
 Windows PowerShell:
 

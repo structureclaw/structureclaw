@@ -15,7 +15,8 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$MinNodeMajor = 24
+$MinNodeMajor = 20
+$BootstrapNodeMajor = 24
 $DefaultStructureClawHome = Join-Path $HOME ".structureclaw"
 
 function Write-InstallLog {
@@ -95,9 +96,9 @@ function Get-NodeStatus {
     if ((Get-NodeMajor) -ge $MinNodeMajor) {
       return "found $version, will reuse existing Node.js"
     }
-    return "found $version, will install Node.js $MinNodeMajor+"
+    return "found $version, will install bootstrap Node.js $BootstrapNodeMajor"
   }
-  return "missing, will install Node.js $MinNodeMajor+"
+  return "missing, will install bootstrap Node.js $BootstrapNodeMajor"
 }
 
 function Show-InstallPlan {

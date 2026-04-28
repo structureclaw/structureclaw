@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MIN_NODE_MAJOR="${SCLAW_MIN_NODE_MAJOR:-24}"
+MIN_NODE_MAJOR="${SCLAW_MIN_NODE_MAJOR:-20}"
+BOOTSTRAP_NODE_MAJOR=24
 NODE_DIST_BASE="${SCLAW_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v24.x}"
 NODE_INSTALL_PARENT="${SCLAW_NODE_INSTALL_PARENT:-${XDG_DATA_HOME:-$HOME/.local/share}/nodejs}"
 DEFAULT_STRUCTURECLAW_HOME="$HOME/.structureclaw"
@@ -146,10 +147,10 @@ node_status() {
       printf 'found %s, will reuse existing Node.js' "$version"
       return 0
     fi
-    printf 'found %s, will install Node.js %s+' "$version" "$MIN_NODE_MAJOR"
+    printf 'found %s, will install bootstrap Node.js %s' "$version" "$BOOTSTRAP_NODE_MAJOR"
     return 0
   fi
-  printf 'missing, will install Node.js %s+' "$MIN_NODE_MAJOR"
+  printf 'missing, will install bootstrap Node.js %s' "$BOOTSTRAP_NODE_MAJOR"
 }
 
 print_plan() {

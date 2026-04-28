@@ -8,7 +8,7 @@
   <a href="https://www.npmjs.com/package/@structureclaw/structureclaw"><img alt="npm" src="https://img.shields.io/npm/v/@structureclaw/structureclaw?color=2563eb"></a>
   <a href="https://github.com/structureclaw/structureclaw/actions/workflows/backend-regression.yml"><img alt="backend regression" src="https://github.com/structureclaw/structureclaw/actions/workflows/backend-regression.yml/badge.svg"></a>
   <a href="https://github.com/structureclaw/structureclaw/actions/workflows/analysis-regression.yml"><img alt="analysis regression" src="https://github.com/structureclaw/structureclaw/actions/workflows/analysis-regression.yml/badge.svg"></a>
-  <img alt="Node.js 24+" src="https://img.shields.io/badge/node-%3E%3D24-339933">
+  <img alt="Node.js 20+" src="https://img.shields.io/badge/node-%3E%3D20-339933">
   <a href="./LICENSE"><img alt="license MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
 
@@ -30,7 +30,7 @@ https://github.com/user-attachments/assets/031fe757-551d-4775-ab3f-0411037ad5ae
 
 ### 还没有 Node.js
 
-如果机器上还没有 Node.js 24+ 和 npm，先用 bootstrap 安装脚本：
+如果机器上还没有 Node.js 20+ 和 npm，先用 bootstrap 安装脚本：
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.sh | bash
@@ -42,11 +42,11 @@ Windows PowerShell：
 irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
 ```
 
-安装脚本会先打印安装计划，再开始修改系统。它会在需要时准备用户级 Node.js 24、安装 `@structureclaw/structureclaw@latest`、把用户级 npm bin 目录加入 PATH，并运行 `sclaw doctor`。Windows 下 bootstrap Node 会安装到 `%LOCALAPPDATA%\Programs\nodejs`，Linux 下会安装到 `${XDG_DATA_HOME:-~/.local/share}/nodejs`。StructureClaw Home 默认是 `~/.structureclaw`；可使用 `--home` / `-Home` 指定其他 workspace/runtime 目录。
+安装脚本会先打印安装计划，再开始修改系统。它会复用已有 Node.js 20+，并在需要时准备用户级 Node.js 24、安装 `@structureclaw/structureclaw@latest`、把用户级 npm bin 目录加入 PATH，并运行 `sclaw doctor`。Windows 下 bootstrap Node 会安装到 `%LOCALAPPDATA%\Programs\nodejs`，Linux 下会安装到 `${XDG_DATA_HOME:-~/.local/share}/nodejs`。StructureClaw Home 默认是 `~/.structureclaw`；可使用 `--home` / `-Home` 指定其他 workspace/runtime 目录。
 
 ### npm 安装版
 
-如果已经安装 Node.js 24+ 和 npm：
+如果已经安装 Node.js 20+ 和 npm：
 
 ```bash
 npm install -g @structureclaw/structureclaw
@@ -183,7 +183,7 @@ curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/
 
 补充说明：
 
-- `scripts/install.sh` 和 `scripts/install.ps1` 面向首次安装用户。缺少 `node` / `npm` 或版本太旧时，会先把 Node.js 24 安装到通用的用户级 Node.js 目录，再执行 `npm install -g @structureclaw/structureclaw@latest`。
+- `scripts/install.sh` 和 `scripts/install.ps1` 面向首次安装用户。已有 Node.js 20+ 时会直接复用；缺少 `node` / `npm` 或版本太旧时，会先把 Node.js 24 安装到通用的用户级 Node.js 目录，再执行 `npm install -g @structureclaw/structureclaw@latest`。
 - bootstrap 安装器默认使用用户级 npm prefix（`~/.structureclaw/npm-global`），避免全局 npm 写入需要 root/admin 权限。
 - 本地默认数据库现在是 SQLite。`./sclaw start` 默认使用 `~/.structureclaw/data/structureclaw.start.db`，`./sclaw doctor` 默认使用 `~/.structureclaw/data/structureclaw.doctor.db`，这样预检不会碰当前实际运行库。
 - `./sclaw doctor` 不再要求你预先安装系统级 Python 3.12。缺失时会先确保 `uv` 可用，并自动准备带 Python 3.12 的虚拟环境；在 Windows 上，如果系统未安装 `winget`，则会提示你手动安装 `uv`。
