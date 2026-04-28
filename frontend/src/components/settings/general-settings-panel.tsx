@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { DefaultValueHint } from '@/components/settings/default-value-hint'
 import { API_BASE } from '@/lib/api-base'
 import { useI18n, type MessageKey } from '@/lib/i18n'
 
@@ -14,10 +15,10 @@ import { useI18n, type MessageKey } from '@/lib/i18n'
 // ---------------------------------------------------------------------------
 
 type ValueSource = 'runtime' | 'default'
-type Field<T> = { value: T; source: ValueSource }
+type Field<T> = { value: T; source: ValueSource; defaultValue: T }
 
 type SettingsResponse = {
-  server: { port: Field<number>; host: Field<string>; bodyLimitMb: Field<number>; frontendPort: Field<number> }
+  server: { port: Field<number>; host: Field<string>; bodyLimitMb: Field<number> }
   llm: { baseUrl: Field<string>; model: Field<string>; hasApiKey: boolean; apiKeySource: ValueSource | 'unset'; timeoutMs: Field<number>; maxRetries: Field<number> }
   database: { url: Field<string> }
   logging: { level: Field<string>; llmLogEnabled: Field<boolean>; logMaxAgeDays: Field<number>; logMaxSize: Field<number>; llmLogDir: Field<string> }
@@ -67,7 +68,6 @@ const FIELDS: FieldDef[] = [
   { key: 'server.port', labelKey: 'generalSettingsPortLabel', kind: 'number', sectionKey: 'server', stateKey: 'port', props: { min: 1, max: 65535 } },
   { key: 'server.host', labelKey: 'generalSettingsHostLabel', kind: 'text', sectionKey: 'server', stateKey: 'host' },
   { key: 'server.bodyLimitMb', labelKey: 'generalSettingsBodyLimitLabel', kind: 'number', sectionKey: 'server', stateKey: 'bodyLimitMb', props: { min: 1 } },
-  { key: 'server.frontendPort', labelKey: 'generalSettingsFrontendPortLabel', kind: 'number', sectionKey: 'server', stateKey: 'frontendPort', props: { min: 1, max: 65535 } },
   // Logging
   { key: 'logging.level', labelKey: 'generalSettingsLogLevelLabel', kind: 'select', sectionKey: 'logging', stateKey: 'level', options: ['trace', 'debug', 'info', 'warn', 'error', 'fatal'] },
   { key: 'logging.llmLogEnabled', labelKey: 'generalSettingsLlmLogLabel', kind: 'checkbox', sectionKey: 'logging', stateKey: 'llmLogEnabled' },
@@ -105,7 +105,7 @@ const FIELDS: FieldDef[] = [
 
 // Default values for each field (used before API responds)
 const DEFAULTS: Record<string, string | number | boolean> = {
-  port: 8000, host: '0.0.0.0', bodyLimitMb: 20, frontendPort: 30000,
+  port: 31415, host: '0.0.0.0', bodyLimitMb: 20,
   level: 'info', llmLogEnabled: false, logMaxAgeDays: 7, logMaxSize: 104857600, llmLogDir: '',
   pythonBin: '', pythonTimeoutMs: 600000, engineManifestPath: '',
   reportsDir: '', maxFileSize: 104857600,
@@ -123,12 +123,20 @@ const STATE_TO_API_KEY: Record<string, string> = {
 }
 
 // Map stateKey → response path for extraction
-function extractFieldValue(data: SettingsResponse, sectionKey: string, stateKey: string): { value: string | number | boolean; source: ValueSource } {
+function extractFieldValue(data: SettingsResponse, sectionKey: string, stateKey: string): { value: string | number | boolean; source: ValueSource; defaultValue: string | number | boolean } {
   const apiKey = STATE_TO_API_KEY[stateKey] ?? stateKey
-  const section = (data as unknown as Record<string, Record<string, { value: unknown; source: ValueSource }>>)[sectionKey]
+  const section = (data as unknown as Record<string, Record<string, { value: unknown; source: ValueSource; defaultValue?: unknown }>>)[sectionKey]
   const field = section?.[apiKey]
-  if (!field) return { value: DEFAULTS[stateKey] ?? '', source: 'default' }
-  return { value: field.value as string | number | boolean, source: field.source }
+  if (!field) {
+    const defaultValue = DEFAULTS[stateKey] ?? ''
+    return { value: defaultValue, source: 'default', defaultValue }
+  }
+  const fallbackDefault = DEFAULTS[stateKey] ?? ''
+  return {
+    value: field.value as string | number | boolean,
+    source: field.source,
+    defaultValue: (field.defaultValue ?? fallbackDefault) as string | number | boolean,
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +173,7 @@ export function GeneralSettingsPanel() {
   // Flat state: values + sources + originals
   const [values, setValues] = useState<Record<string, string | number | boolean>>({ ...DEFAULTS })
   const [sources, setSources] = useState<Record<string, ValueSource>>({})
+  const [defaultValues, setDefaultValues] = useState<Record<string, string | number | boolean>>({ ...DEFAULTS })
   const [originals, setOriginals] = useState<Record<string, string | number | boolean>>({ ...DEFAULTS })
 
   const [isSaving, setIsSaving] = useState(false)
@@ -176,13 +185,16 @@ export function GeneralSettingsPanel() {
   function applyPayload(data: SettingsResponse) {
     const newValues: Record<string, string | number | boolean> = {}
     const newSources: Record<string, ValueSource> = {}
+    const newDefaultValues: Record<string, string | number | boolean> = {}
     for (const field of FIELDS) {
-      const { value, source } = extractFieldValue(data, field.sectionKey, field.stateKey)
+      const { value, source, defaultValue } = extractFieldValue(data, field.sectionKey, field.stateKey)
       newValues[field.stateKey] = value
       newSources[field.stateKey] = source
+      newDefaultValues[field.stateKey] = defaultValue
     }
     setValues(newValues)
     setSources(newSources)
+    setDefaultValues(newDefaultValues)
     setOriginals({ ...newValues })
     setShowRestartBanner(false)
   }
@@ -289,21 +301,25 @@ export function GeneralSettingsPanel() {
   function renderField(field: FieldDef) {
     const val = values[field.stateKey]
     const src = sources[field.stateKey] ?? 'default'
+    const defaultValue = defaultValues[field.stateKey] ?? DEFAULTS[field.stateKey] ?? ''
 
     if (field.kind === 'checkbox') {
       return (
-        <div key={field.key} className="flex items-center gap-3 pt-1">
-          <input
-            id={`general-${field.key}`}
-            type="checkbox"
-            checked={!!val}
-            onChange={(e) => setValue(field.stateKey, e.target.checked)}
-            className="h-4 w-4 rounded border-border accent-cyan-500"
-          />
-          <label htmlFor={`general-${field.key}`} className="text-sm text-foreground">
-            {t(field.labelKey)}
-          </label>
-          <SourceBadge source={src} t={t} />
+        <div key={field.key} className="pt-1">
+          <div className="flex items-center gap-3">
+            <input
+              id={`general-${field.key}`}
+              type="checkbox"
+              checked={!!val}
+              onChange={(e) => setValue(field.stateKey, e.target.checked)}
+              className="h-4 w-4 rounded border-border accent-cyan-500"
+            />
+            <label htmlFor={`general-${field.key}`} className="text-sm text-foreground">
+              {t(field.labelKey)}
+            </label>
+            <SourceBadge source={src} t={t} />
+          </div>
+          <DefaultValueHint value={defaultValue} />
         </div>
       )
     }
@@ -344,6 +360,7 @@ export function GeneralSettingsPanel() {
             onChange={(e) => setValue(field.stateKey, e.target.value)}
           />
         )}
+        <DefaultValueHint value={defaultValue} />
       </div>
     )
   }
