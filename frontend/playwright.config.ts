@@ -9,7 +9,7 @@ export default defineConfig({
   workers: 1,
   reporter: [['html', { open: 'never' }]],
   use: {
-    baseURL: 'http://localhost:31416',
+    baseURL: 'http://localhost:31415',
     locale: 'en',
     timezoneId: 'UTC',
     trace: 'on-first-retry',
@@ -22,28 +22,15 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: [
-    {
-      command: 'cd ../backend && npm run db:deploy && npm run build && node dist/index.js',
-      port: 30010,
-      reuseExistingServer: true,
-      timeout: 60_000,
-      env: {
-        PORT: '30010',
-        DATABASE_URL: 'file:../../.structureclaw/data/test-e2e.db',
-        LLM_API_KEY: process.env.LLM_API_KEY || '',
-        LLM_MODEL: process.env.LLM_MODEL || 'gpt-4o-mini',
-        ...(process.env.LLM_BASE_URL ? { LLM_BASE_URL: process.env.LLM_BASE_URL } : {}),
-      },
+  webServer: {
+    command: 'npm run build && cd ../backend && npm run db:deploy && npm run build && node dist/index.js',
+    port: 31415,
+    reuseExistingServer: true,
+    timeout: 120_000,
+    env: {
+      DATABASE_URL: 'file:../../.structureclaw/data/test-e2e.db',
+      SCLAW_FRONTEND_DIR: '../frontend/out',
+      NEXT_PUBLIC_API_URL: '',
     },
-    {
-      command: 'npx next dev -p 31416',
-      port: 31416,
-      reuseExistingServer: true,
-      timeout: 60_000,
-      env: {
-        NEXT_PUBLIC_API_URL: 'http://localhost:30010',
-      },
-    },
-  ],
+  },
 });

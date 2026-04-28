@@ -114,31 +114,32 @@ jobs:
 
       - name: Setup backend database
         run: |
-          mkdir -p .structureclaw/data
+          mkdir -p $HOME/.structureclaw/data
           npm run db:deploy --prefix backend
         env:
-          DATABASE_URL: file:../../.structureclaw/data/test-e2e.db
+          DATABASE_URL: file:$HOME/.structureclaw/data/test-e2e.db
 
       - name: Install Playwright browsers
         run: npx --prefix frontend playwright install chromium --with-deps
 
+      - name: Write test config to settings.json
+        run: |
+          SETTINGS_PATH="$HOME/.structureclaw/settings.json"
+          TMP=$(mktemp)
+          jq --arg key "${{ secrets.LLM_API_KEY }}" \
+             --arg model "${{ vars.LLM_MODEL }}" \
+             --arg baseUrl "${{ vars.LLM_BASE_URL }}" \
+             --arg dbUrl "file:$HOME/.structureclaw/data/test-e2e.db" \
+             '.llm = (.llm // {}) | .llm.apiKey = $key | .llm.model = $model | .llm.baseUrl = $baseUrl | .database = (.database // {}) | .database.url = $dbUrl' \
+             "$SETTINGS_PATH" > "$TMP" && mv "$TMP" "$SETTINGS_PATH"
+
       - name: Start backend
         run: node backend/dist/index.js &
         env:
-          PORT: 30010
-          DATABASE_URL: file:../../.structureclaw/data/test-e2e.db
-          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          LLM_MODEL: ${{ vars.LLM_MODEL }}
+          SCLAW_FRONTEND_DIR: ${{ github.workspace }}/frontend/out
 
-      - name: Start frontend
-        run: cd frontend && npx next dev -p 30000 &
-        env:
-          NEXT_PUBLIC_API_URL: http://localhost:30010
-
-      - name: Wait for services
-        run: |
-          npx wait-on http://localhost:30010/api/v1 --timeout 30000
-          npx wait-on http://localhost:30000 --timeout 60000
+      - name: Wait for backend
+        run: npx wait-on http://localhost:31415/api/v1 --timeout 30000
 
       - name: Run E2E tests
         id: run-tests
