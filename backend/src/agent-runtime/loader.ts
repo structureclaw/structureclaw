@@ -4,7 +4,7 @@ import path from 'path';
 import { parse as parseYaml } from 'yaml';
 import { formatManifestIssues, skillManifestFileSchema } from './manifest-schema.js';
 import { loadSkillManifestsFromDirectorySync, toRuntimeSkillManifest } from './skill-manifest-loader.js';
-import type { AgentSkillBundle, AgentSkillFile, AgentSkillMetadata, AgentSkillPlugin, SkillDomain, SkillStage } from './types.js';
+import type { AgentSkillBundle, AgentSkillFile, AgentSkillMetadata, AgentSkillPlugin, SkillDomain, SkillManifest, SkillStage } from './types.js';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
@@ -312,7 +312,7 @@ export class AgentSkillLoader {
           const handler = (handlerModule?.handler ?? handlerModule?.default) as AgentSkillPlugin['handler'] | undefined;
           if (!handler) continue;
 
-          const runtimeManifest: import('./types.js').SkillManifest = {
+          const runtimeManifest: SkillManifest = {
             id: manifest.id,
             structureType: manifest.structureType,
             name: manifest.name,

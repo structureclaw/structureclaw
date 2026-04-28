@@ -1,4 +1,4 @@
-import { ChatOpenAI } from '@langchain/openai';
+import type { ChatOpenAI } from '@langchain/openai';
 import { skillExecutionSchema, type SkillExecutionPayload } from './schema.js';
 import type { AgentSkillExecutorInput } from './types.js';
 

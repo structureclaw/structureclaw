@@ -23,7 +23,7 @@ import { AIMessage, HumanMessage, SystemMessage, ToolMessage, type BaseMessage }
 import type { BaseCheckpointSaver } from '@langchain/langgraph';
 import { createChatModel } from '../utils/llm.js';
 import { AgentStateAnnotation, type AgentState } from './state.js';
-import { createRegisteredTools, type AgentToolFactoryDeps } from './tool-registry.js';
+import { createRegisteredTools, type AgentToolFactoryDeps, type AgentToolDefinition } from './tool-registry.js';
 import { loadUserTools } from './user-tool-loader.js';
 import { getWorkspaceToolRoot } from './config.js';
 import { buildSystemMessages } from './system-prompt.js';
@@ -249,7 +249,7 @@ export async function buildAgentGraph(deps: GraphDeps) {
   const { skillManifests, checkpointer } = deps;
 
   // Load user-defined tools from workspace
-  let userToolDefinitions: import('./tool-registry.js').AgentToolDefinition[] = [];
+  let userToolDefinitions: AgentToolDefinition[] = [];
   try {
     const workspaceToolRoot = getWorkspaceToolRoot();
     const result = await loadUserTools(workspaceToolRoot);

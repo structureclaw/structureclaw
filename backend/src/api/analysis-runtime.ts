@@ -1,4 +1,4 @@
-import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { AnalysisExecutionService } from '../services/analysis-execution.js';
 import { CodeCheckExecutionService } from '../services/code-check-execution.js';

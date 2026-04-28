@@ -2,7 +2,7 @@
  * Admin skill management routes — list, inspect, and reload skills
  * (both builtin and user-defined workspace skills).
  */
-import { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { getAgentService } from '../agent-langgraph/agent-service.js';
 
 export async function adminSkillsRoutes(fastify: FastifyInstance) {

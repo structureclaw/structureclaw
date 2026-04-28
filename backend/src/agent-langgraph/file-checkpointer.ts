@@ -11,7 +11,7 @@
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
-import { RunnableConfig } from '@langchain/core/runnables';
+import type { RunnableConfig } from '@langchain/core/runnables';
 import {
   BaseCheckpointSaver,
   type Checkpoint,

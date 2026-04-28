@@ -1,5 +1,5 @@
 import { ChatOpenAI } from '@langchain/openai';
-import { config } from '../config/index.js';
+import type { config } from '../config/index.js';
 import { getEffectiveLlmSettings } from '../config/llm-runtime.js';
 import { llmCallLogger } from './llm-logger.js';
 import { logger, logLlmCall } from './agent-logger.js';

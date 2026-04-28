@@ -1,4 +1,4 @@
-import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
 import { getAgentService, LangGraphAgentService } from '../agent-langgraph/index.js';
 import { AgentCapabilityService } from '../services/agent-capability.js';

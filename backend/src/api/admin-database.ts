@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { config } from '../config/index.js';
 
 const __filename = fileURLToPath(import.meta.url);

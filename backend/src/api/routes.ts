@@ -1,4 +1,4 @@
-import { FastifyInstance } from 'fastify';
+import type { FastifyInstance } from 'fastify';
 import { chatRoutes } from './chat.js';
 import { analysisRoutes } from './analysis.js';
 import { agentRoutes } from './agent.js';
