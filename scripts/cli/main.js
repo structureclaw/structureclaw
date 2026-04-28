@@ -152,52 +152,6 @@ function replaceEnvValue(rawText, key, value) {
   return `${rawText}${suffix}${nextLine}${os.EOL}`;
 }
 
-function normalizeChatCompletionsUrl(baseUrl) {
-  const trimmed = String(baseUrl || "").trim().replace(/\/+$/u, "");
-  if (!trimmed) {
-    return "";
-  }
-  if (trimmed.endsWith("/chat/completions")) {
-    return trimmed;
-  }
-  return `${trimmed}/chat/completions`;
-}
-
-async function testApiConnection(config) {
-  const targetUrl = normalizeChatCompletionsUrl(config.baseUrl);
-  if (!targetUrl) {
-    return { ok: false, message: "Missing LLM base URL." };
-  }
-
-  try {
-    const response = await fetch(targetUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: config.model,
-        messages: [{ role: "user", content: "Hi" }],
-        max_tokens: 5,
-      }),
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      return {
-        ok: false,
-        message: `${response.status} ${response.statusText}${text ? `: ${text}` : ""}`,
-      };
-    }
-    return { ok: true, message: "API connection successful / API 连接成功" };
-  } catch (error) {
-    return {
-      ok: false,
-      message: error instanceof Error ? error.message : String(error),
-    };
-  }
-}
-
 async function installUvFromOfficialScript() {
   const installDir = process.env.UV_INSTALL_DIR || path.join(os.homedir(), ".local", "bin");
   const response = await fetch("https://astral.sh/uv/install.sh");
