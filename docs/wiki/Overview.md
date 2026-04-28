@@ -71,7 +71,6 @@ API endpoints:
 - Installed package flow: `npm install -g @structureclaw/structureclaw`, `sclaw doctor`, `sclaw start`
 - Local source flow: `./sclaw doctor`, `./sclaw start`, `./sclaw status`
 - Windows PowerShell: `node .\sclaw doctor`, `node .\sclaw start`, `node .\sclaw status`
-- Docker flow: `./sclaw docker-install` then `./sclaw docker-start`
 
 ## Reference Sources
 

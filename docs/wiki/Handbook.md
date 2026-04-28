@@ -44,21 +44,11 @@ node .\sclaw logs
 node .\sclaw stop
 ```
 
-Docker:
-
-```bash
-./sclaw docker-install   # interactive Docker install
-./sclaw docker-start     # start Docker Compose stack
-./sclaw docker-stop      # stop Docker Compose stack
-./sclaw docker-status    # check Docker service health
-```
-
 China mirror entrypoint (same subcommands):
 
 ```bash
 ./sclaw_cn doctor
 ./sclaw_cn setup-analysis-python
-./sclaw_cn docker-start
 ```
 
 ### SkillHub CLI

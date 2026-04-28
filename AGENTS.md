@@ -30,7 +30,7 @@ frontend (Next.js 14)  →  backend (Fastify + Prisma)  →  analysis engine (e.
 ./sclaw stop            # graceful shutdown
 ```
 
-**China mirror variant:** Replace `./sclaw` with `./sclaw_cn` for mirror defaults (npmmirror, tsinghua PyPI, Docker mirror).
+**China mirror variant:** Replace `./sclaw` with `./sclaw_cn` for mirror defaults (npmmirror, tsinghua PyPI).
 
 **Backend only:**
 ```bash
@@ -67,7 +67,6 @@ node tests/runner.mjs validate validate-agent-orchestration  # Agent orchestrati
 node tests/runner.mjs validate validate-chat-stream-contract # Chat stream contract
 node tests/runner.mjs validate validate-analyze-contract     # Analyze endpoint contract
 node tests/runner.mjs smoke-native                           # Full native install smoke (mirrors CI)
-node tests/runner.mjs smoke-docker                           # Docker smoke (needs Docker)
 node tests/runner.mjs llm-integration                        # LLM integration tests (needs LLM_API_KEY)
 ```
 

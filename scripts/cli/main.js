@@ -6,7 +6,6 @@ const readline = require("node:readline/promises");
 
 const { ALIAS_TO_COMMAND, COMMANDS, COMMAND_NAMES } = require("./command-manifest");
 const convertBatch = require("./convert-batch");
-const { createDockerComposeRunner } = require("./docker-compose-runner");
 const { runFrontendBuild } = require("./frontend-build");
 const runtime = require("./runtime");
 
@@ -74,8 +73,6 @@ function formatHelp(rootDir, programName = "sclaw") {
 function log(message = "") {
   process.stdout.write(`${message}${os.EOL}`);
 }
-
-const docker = createDockerComposeRunner(log);
 
 function getCliEntryPath(rootDir, programName = "sclaw") {
   const preferred = path.join(rootDir, programName);
@@ -199,211 +196,6 @@ async function testApiConnection(config) {
       message: error instanceof Error ? error.message : String(error),
     };
   }
-}
-
-async function promptForDockerInstallConfig(defaults) {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  try {
-    const baseUrlInput = await rl.question(
-      `LLM base URL / 接口地址${defaults.baseUrl ? ` [${defaults.baseUrl}]` : ""}: `,
-    );
-    const modelInput = await rl.question(
-      `LLM model / 模型名称${defaults.model ? ` [${defaults.model}]` : ""}: `,
-    );
-    const apiKeyPrompt = defaults.apiKey
-      ? `LLM API key / 密钥 [press Enter to keep ${maskSecret(defaults.apiKey)}]: `
-      : "LLM API key / 密钥: ";
-    const apiKeyInput = await rl.question(apiKeyPrompt);
-
-    return {
-      baseUrl: baseUrlInput.trim() || defaults.baseUrl,
-      model: modelInput.trim() || defaults.model,
-      apiKey: apiKeyInput.trim() || defaults.apiKey,
-    };
-  } finally {
-    rl.close();
-  }
-}
-
-async function collectDockerInstallConfig(rawArgs, env) {
-  const { flags } = parseCliOptions(rawArgs);
-  const defaults = {
-    baseUrl: String(flags.get("llm-base-url") || env.LLM_BASE_URL || ""),
-    apiKey: String(flags.get("llm-api-key") || env.LLM_API_KEY || ""),
-    model: String(flags.get("llm-model") || env.LLM_MODEL || ""),
-  };
-  const nonInteractive =
-    flags.has("non-interactive") || !process.stdin.isTTY || !process.stdout.isTTY;
-  const skipApiTest = flags.has("skip-api-test");
-
-  const config = nonInteractive
-    ? defaults
-    : await promptForDockerInstallConfig(defaults);
-
-  const missing = [
-    ["--llm-base-url", config.baseUrl],
-    ["--llm-api-key", config.apiKey],
-    ["--llm-model", config.model],
-  ].filter(([, value]) => !String(value || "").trim());
-
-  if (missing.length > 0) {
-    throw new Error(
-      `docker-install requires ${missing.map(([name]) => name).join(", ")}. Add the flags or run interactively.`,
-    );
-  }
-
-  return {
-    baseUrl: config.baseUrl.trim(),
-    apiKey: config.apiKey.trim(),
-    model: config.model.trim(),
-    skipApiTest,
-  };
-}
-
-function persistDockerEnv(paths, config) {
-  const settingsPath = path.join(path.dirname(paths.envFile), "settings.json");
-  let settings = {};
-  try {
-    if (runtime.pathExists(settingsPath)) {
-      settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
-    }
-  } catch { /* start fresh */ }
-  settings.llm = {
-    ...(settings.llm || {}),
-    baseUrl: config.baseUrl,
-    apiKey: config.apiKey,
-    model: config.model,
-  };
-  settings.updatedAt = new Date().toISOString();
-  runtime.ensureDirectory(path.dirname(settingsPath));
-  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
-}
-
-async function showDockerHealth(env) {
-  const { frontendPort, backendPort } = docker.getDockerPorts(env);
-  log("Docker service health:");
-  log(
-    (await runtime.requestUrl(`http://localhost:${frontendPort}`, "HEAD"))
-      ? `frontend: healthy / 健康 http://localhost:${frontendPort}`
-      : "frontend: unavailable / 不可用",
-  );
-  log(
-    (await runtime.requestUrl(`http://localhost:${backendPort}/health`))
-      ? `backend: healthy / 健康 http://localhost:${backendPort}/health`
-      : "backend: unavailable / 不可用",
-  );
-}
-
-async function showDockerStatus(paths, env) {
-  await docker.ensureDockerReady();
-  const result = docker.readDockerCompose(paths, ["ps"], { env });
-  if (result.stdout.trim()) {
-    process.stdout.write(`${result.stdout.trim()}${os.EOL}`);
-  } else {
-    log("No docker compose services found.");
-  }
-  if (result.status !== 0 && result.stderr.trim()) {
-    process.stderr.write(`${result.stderr.trim()}${os.EOL}`);
-  }
-  log("");
-  await showDockerHealth(env);
-}
-
-async function showDockerLogs(paths, args, env) {
-  const { flags, positionals } = parseCliOptions(args);
-  const target = positionals[0] || "all";
-  const follow = flags.has("follow");
-  const composeArgs = ["logs", "--tail", "80"];
-
-  if (follow) {
-    composeArgs.push("-f");
-  }
-  if (target !== "all") {
-    composeArgs.push(target);
-  }
-
-  await docker.runDockerCompose(paths, composeArgs, { env });
-}
-
-async function invokeDockerStart(rootDir, env, options = {}) {
-  const { paths } = runtime.loadProjectEnvironment(rootDir, log, {
-    profile: env.SCLAW_PROFILE,
-    programName: env.SCLAW_PROGRAM_NAME,
-  });
-
-  if (!options.skipEnvCheck && !runtime.pathExists(paths.envFile)) {
-    const programName = env.SCLAW_PROGRAM_NAME || "sclaw";
-    throw new Error(
-      `Missing ${paths.envFile}. Run \`${programName} docker-install\` first to configure the docker stack.`,
-    );
-  }
-
-  const psResult = docker.readDockerCompose(paths, ["ps", "-q"], { env });
-  const hasExistingContainers = psResult.status === 0 && Boolean(psResult.stdout.trim());
-  const composeArgs = options.build
-    ? ["up", "--build", "-d"]
-    : hasExistingContainers
-      ? ["start"]
-      : ["up", "-d"];
-
-  await docker.runDockerCompose(paths, composeArgs, { env });
-
-  const refreshed = runtime.loadProjectEnvironment(rootDir, log, {
-    profile: env.SCLAW_PROFILE,
-    programName: env.SCLAW_PROGRAM_NAME,
-  }).env;
-  if (options.waitForServices !== false) {
-    log("Waiting for docker services... / 等待 Docker 服务启动...");
-    const ready = await docker.waitForDockerServices(refreshed, options.timeoutMs || 180000);
-    if (!ready) {
-      log("Some docker services are not ready yet / 部分 Docker 服务尚未完全就绪");
-    }
-  }
-
-  log("");
-  await showDockerStatus(paths, refreshed);
-}
-
-async function invokeDockerStop(rootDir) {
-  const context = runtime.loadProjectEnvironment(rootDir, log);
-  const { paths, env } = context;
-  await docker.runDockerCompose(paths, ["stop"], { env });
-  log("Docker services stopped / Docker 服务已停止");
-}
-
-async function invokeDockerInstall(rootDir, env, rawArgs) {
-  const { paths } = runtime.loadProjectEnvironment(rootDir, log, {
-    profile: env.SCLAW_PROFILE,
-    programName: env.SCLAW_PROGRAM_NAME,
-  });
-  const config = await collectDockerInstallConfig(rawArgs, env);
-
-  log("Saving docker configuration... / 正在写入 Docker 配置...");
-  persistDockerEnv(paths, config);
-  log(`LLM base URL: ${config.baseUrl}`);
-  log(`LLM API key: ${maskSecret(config.apiKey)}`);
-  log(`LLM model: ${config.model}`);
-
-  if (!config.skipApiTest) {
-    log("Testing API connection... / 正在测试 API 连接...");
-    const testResult = await testApiConnection(config);
-    if (testResult.ok) {
-      log(testResult.message);
-    } else {
-      log(`API test failed, continuing anyway / API 测试失败，继续执行: ${testResult.message}`);
-    }
-  }
-
-  await invokeDockerStart(rootDir, runtime.loadProjectEnvironment(rootDir, log).env, {
-    build: true,
-    skipEnvCheck: true,
-    waitForServices: true,
-    timeoutMs: 180000,
-  });
 }
 
 async function installUvFromOfficialScript() {
@@ -991,12 +783,6 @@ function resolveMirrorValueSource(key, env, dotEnv, paths) {
     if (key === "NPM_CONFIG_REGISTRY" && env[key] === runtime.CN_DEFAULT_NPM_REGISTRY) {
       return "sclaw_cn default";
     }
-    if (
-      key === "DOCKER_REGISTRY_MIRROR" &&
-      env[key] === runtime.CN_DEFAULT_DOCKER_REGISTRY_MIRROR
-    ) {
-      return "sclaw_cn default";
-    }
     if (key === "APT_MIRROR" && env[key] === runtime.CN_DEFAULT_APT_MIRROR) {
       return "sclaw_cn default";
     }
@@ -1012,11 +798,6 @@ function showMirrorStatus(env, dotEnv, paths) {
       "NPM_CONFIG_REGISTRY",
       env.NPM_CONFIG_REGISTRY || "",
       resolveMirrorValueSource("NPM_CONFIG_REGISTRY", env, dotEnv, paths),
-    ],
-    [
-      "DOCKER_REGISTRY_MIRROR",
-      env.DOCKER_REGISTRY_MIRROR || "",
-      resolveMirrorValueSource("DOCKER_REGISTRY_MIRROR", env, dotEnv, paths),
     ],
     ["APT_MIRROR", env.APT_MIRROR || "", resolveMirrorValueSource("APT_MIRROR", env, dotEnv, paths)],
   ];
@@ -1486,27 +1267,6 @@ async function dispatch(commandName, rawArgs, rootDir) {
       return;
     case "db-auto-migrate-legacy-postgres":
       await invokeAutoMigrateLegacyPostgres(rootDir, env);
-      return;
-    case "docker-up":
-      await docker.runDockerCompose(paths, ["up", "--build", "-d"], { env });
-      return;
-    case "docker-down":
-      await docker.runDockerCompose(paths, ["down"], { env });
-      return;
-    case "docker-install":
-      await invokeDockerInstall(rootDir, env, rawArgs);
-      return;
-    case "docker-start":
-      await invokeDockerStart(rootDir, env, { waitForServices: true });
-      return;
-    case "docker-stop":
-      await invokeDockerStop(rootDir);
-      return;
-    case "docker-status":
-      await showDockerStatus(paths, env);
-      return;
-    case "docker-logs":
-      await showDockerLogs(paths, rawArgs, env);
       return;
     case "local-up":
       await invokeLocalUp(rootDir, env, { skipInfra: false });

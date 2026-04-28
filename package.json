@@ -52,8 +52,7 @@
     "test:llm:portal-frame": "node tests/runner.mjs llm-integration --skill portal-frame",
     "regression:backend": "node tests/runner.mjs backend-regression",
     "regression:analysis": "node tests/runner.mjs analysis-regression",
-    "smoke:native": "node tests/runner.mjs smoke-native",
-    "smoke:docker": "node tests/runner.mjs smoke-docker"
+    "smoke:native": "node tests/runner.mjs smoke-native"
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",

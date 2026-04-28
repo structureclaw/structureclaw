@@ -38,12 +38,7 @@ describe('sclaw runtime analysis python paths', () => {
     expect(paths.materialSkillRoot).toContain(path.join('backend', 'src', 'agent-skills', 'material'));
   });
 
-  test('should expose docker lifecycle commands through sclaw (smoke moved to tests/runner.mjs)', () => {
-    expect(COMMAND_NAMES.has('docker-install')).toBe(true);
-    expect(COMMAND_NAMES.has('docker-start')).toBe(true);
-    expect(COMMAND_NAMES.has('docker-stop')).toBe(true);
-    expect(COMMAND_NAMES.has('docker-status')).toBe(true);
-    expect(COMMAND_NAMES.has('docker-logs')).toBe(true);
+  test('should expose lifecycle commands and aliases', () => {
     expect(COMMAND_NAMES.has('test-smoke-native')).toBe(false);
     expect(COMMAND_NAMES.has('test-smoke-docker')).toBe(false);
     expect(COMMAND_NAMES.has('local-up-noinfra')).toBe(false);

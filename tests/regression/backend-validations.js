@@ -1322,14 +1322,9 @@ async function validateDevStartupGuards(context) {
   const cliRuntimeContent = await fsp.readFile(cliRuntimePath, "utf8");
   const runtimePaths = runtime.resolvePaths(context.rootDir);
 
-  console.log("Validating unified startup and docker command guards...");
+  console.log("Validating unified startup command guards...");
   assert(COMMAND_NAMES.has("doctor"), "missing doctor command");
   assert(COMMAND_NAMES.has("start"), "missing start command");
-  assert(COMMAND_NAMES.has("docker-install"), "missing docker-install command");
-  assert(COMMAND_NAMES.has("docker-start"), "missing docker-start command");
-  assert(COMMAND_NAMES.has("docker-stop"), "missing docker-stop command");
-  assert(COMMAND_NAMES.has("docker-status"), "missing docker-status command");
-  assert(COMMAND_NAMES.has("docker-logs"), "missing docker-logs command");
   assert(
     cliMainContent.includes("installedPackagesMatchLock"),
     "missing npm dependency drift detection in unified CLI",
@@ -1363,36 +1358,12 @@ async function validateDevStartupGuards(context) {
     "missing project ownership guard in CLI runtime cleanup",
   );
   assert(
-    cliMainContent.includes("persistDockerEnv"),
-    "missing docker env persistence in unified CLI",
-  );
-  assert(
-    cliMainContent.includes("waitForDockerServices"),
-    "missing docker readiness check in unified CLI",
-  );
-  assert(
     runtimePaths.analysisRequirementsFile.endsWith(
       path.join("backend", "src", "agent-skills", "analysis", "runtime", "requirements.txt"),
     ),
     "analysis requirements path is not aligned with the current runtime layout",
   );
-  console.log("[ok] unified startup and docker command guards are present");
-}
-
-async function validateDockerBackendRuntimeAssets(context) {
-  const dockerfilePath = path.join(context.rootDir, "backend", "Dockerfile");
-  const dockerfileContent = await fsp.readFile(dockerfilePath, "utf8");
-
-  assert(
-    dockerfileContent.includes("COPY --from=builder /app/src/agent-skills ./src/agent-skills"),
-    "backend Dockerfile should copy src/agent-skills into the runner image",
-  );
-  assert(
-    !dockerfileContent.includes("COPY --from=builder /app/src/" + "agent-tools ./src/" + "agent-tools"),
-    "backend Dockerfile should not copy the removed legacy tool asset directory",
-  );
-
-  console.log("[ok] docker backend runtime assets are present");
+  console.log("[ok] unified startup command guards are present");
 }
 
 async function validateStructureJsonSkill(context) {
@@ -1608,7 +1579,6 @@ const BACKEND_VALIDATIONS = {
   "validate-chat-message-routing": validateChatMessageRouting,
   "validate-report-narrative-contract": validateReportNarrativeContract,
   "validate-dev-startup-guards": validateDevStartupGuards,
-  "validate-docker-backend-runtime-assets": validateDockerBackendRuntimeAssets,
   "validate-structure-json-skill": validateStructureJsonSkill,
 };
 

@@ -4,9 +4,6 @@ on:
   workflow_dispatch:
   pull_request:
     paths:
-      - 'docker-compose.yml'
-      - 'docker-compose.cn.yml'
-      - 'docker/**'
       - 'backend/**'
       - 'frontend/**'
       - 'scripts/**'
@@ -19,9 +16,6 @@ on:
     branches:
       - master
     paths:
-      - 'docker-compose.yml'
-      - 'docker-compose.cn.yml'
-      - 'docker/**'
       - 'backend/**'
       - 'frontend/**'
       - 'scripts/**'
@@ -68,44 +62,3 @@ jobs:
 
       - name: Backend lint
         run: npm run lint --prefix backend
-
-  docker-compose-smoke:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Docker compose smoke
-        shell: bash
-        run: node tests/runner.mjs smoke-docker
-
-  docker-compose-smoke-windows:
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
-    runs-on: [self-hosted, Windows, X64]
-    timeout-minutes: 45
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Verify Docker is ready
-        shell: powershell
-        run: |
-          $maxAttempts = 30
-          $attempt = 0
-          Write-Host 'Waiting for Docker...'
-          while ($attempt -lt $maxAttempts) {
-            try {
-              $result = docker version --format '{{.Server.Os}}/{{.Server.Arch}} {{.Server.Version}}' 2>$null
-              if ($LASTEXITCODE -eq 0 -and $result) {
-                Write-Host "Docker is ready: $result"
-                break
-              }
-            } catch {}
-            $attempt++
-            Start-Sleep -Seconds 5
-          }
-          if ($attempt -eq $maxAttempts) {
-            throw 'Docker failed to start'
-          }
-      - name: Docker compose smoke
-        shell: powershell
-        run: node tests/runner.mjs smoke-docker

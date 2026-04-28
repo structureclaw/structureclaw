@@ -22,7 +22,6 @@ This wiki mirrors the current repository documentation and gives a stable landin
 - Primary local workflow: `./sclaw doctor`, `./sclaw start`, `./sclaw status`
 - Runtime data lives in the user data directory such as `~/.structureclaw/`
 - Windows users can use `node .\sclaw doctor`, `node .\sclaw start`, etc.
-- Docker workflow: `./sclaw docker-install`, `./sclaw docker-start`, `./sclaw docker-stop`
 - SkillHub CLI: `./sclaw skill search/install/enable/disable/uninstall/list`
 - Node.js 20+ required (install via nvm, system package manager, or nodejs.org)
 

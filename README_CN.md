@@ -135,7 +135,6 @@ flowchart LR
 |---|---|---|---|
 | npm 安装版 | `sclaw start` | 用户运行目录，默认 `~/.structureclaw/` | 后端单进程托管导出的前端 |
 | 源码开发版 | `./sclaw start` | 用户运行目录，默认 `~/.structureclaw/` | backend/frontend 以开发进程运行 |
-| Docker | `./sclaw docker-install` 后 `./sclaw docker-start` | Docker volumes / compose 状态 | 容器化服务栈 |
 
 推荐本地流程：
 
@@ -159,8 +158,8 @@ flowchart LR
 - `./sclaw doctor` 不再要求你预先安装系统级 Python 3.12。缺失时会先确保 `uv` 可用，并自动准备带 Python 3.12 的虚拟环境；在 Windows 上，如果系统未安装 `winget`，则会提示你手动安装 `uv`。
 - 如果你原来的本地 `.env` 还把 `DATABASE_URL` 指向本地 PostgreSQL，`./sclaw doctor` 和 `./sclaw start` 会先自动迁移到 SQLite，再把 `.env` 改写成 SQLite 默认配置，同时把原 PostgreSQL 地址保留到 `POSTGRES_SOURCE_DATABASE_URL`。
 - 第一次自动迁移时，还会生成一个类似 `.env.pre-sqlite-migration.<timestamp>.bak` 的本地备份文件。
-- `sclaw_cn` 在未显式配置时会自动使用国内镜像默认值：`PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`、`NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`，以及通过 `DOCKER_REGISTRY_MIRROR` 指定的 Docker 镜像前缀。
-- 你可以在 `.env` 或 shell 环境中覆盖镜像变量：`PIP_INDEX_URL`、`NPM_CONFIG_REGISTRY`、`DOCKER_REGISTRY_MIRROR`、`APT_MIRROR`。
+- `sclaw_cn` 在未显式配置时会自动使用国内镜像默认值：`PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`、`NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`。
+- 你可以在 `.env` 或 shell 环境中覆盖镜像变量：`PIP_INDEX_URL`、`NPM_CONFIG_REGISTRY`、`APT_MIRROR`。
 
 源码开发版常用后续命令：
 
@@ -186,45 +185,6 @@ node .\sclaw start
 node .\sclaw status
 node .\sclaw logs all --follow
 node .\sclaw stop
-```
-
-### Windows / Docker 新手说明
-
-Windows 现在可以直接使用 Docker 启动完整栈，适合不想先手动安装本地 Node.js 和 Python 的新手。
-
-推荐步骤：
-
-1. 安装并启动 Docker Desktop。
-2. 首次启动如果提示启用 WSL 2 或容器功能，按向导完成后重启 Docker Desktop。
-3. 在项目根目录运行交互式 Docker 引导命令：
-
-```powershell
-node .\sclaw docker-install
-```
-
-如果是 CI 或脚本化环境，使用非交互方式：
-
-```powershell
-node .\sclaw docker-install --non-interactive --llm-base-url https://api.openai.com/v1 --llm-api-key <your-key> --llm-model gpt-4.1
-```
-
-启动完成后，常用入口如下：
-
-- 前端：`http://localhost:31416`
-- 后端健康检查：`http://localhost:31415/health`
-- 分析接口：`http://localhost:31415/analyze`
-- 数据库状态页：`http://localhost:31416/console/database`
-
-停止容器：
-
-```powershell
-node .\sclaw docker-stop
-```
-
-或：
-
-```bash
-docker compose down
 ```
 
 ## 配置

@@ -13,7 +13,7 @@ Please do not open a public issue for sensitive reports. Send the maintainers a 
 Include:
 
 - affected version or commit SHA
-- operating system and runtime mode (`npm`, source checkout, or Docker)
+- operating system and runtime mode (`npm` or source checkout)
 - reproduction steps
 - impact assessment
 - any relevant logs with secrets removed

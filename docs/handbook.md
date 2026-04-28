@@ -45,11 +45,6 @@ Recommended source-development setup:
 - Node.js 20+
 - Python 3.12
 
-Optional:
-
-- Docker Engine / Docker Desktop
-- Docker Compose v2
-
 ## 4. Repository Structure
 
 ```text
@@ -119,7 +114,6 @@ node .\sclaw logs all --follow
 node .\sclaw stop
 ```
 
-For Docker-based Windows onboarding, use `node .\sclaw docker-install`, `node .\sclaw docker-start`, and `node .\sclaw docker-stop`.
 
 ### 5.6 User skills and tools
 
@@ -150,14 +144,12 @@ Manage installable skills from the command line:
 ```bash
 ./sclaw_cn doctor
 ./sclaw_cn setup-analysis-python
-./sclaw_cn docker-start
 ```
 
 Default mirror values in `sclaw_cn`:
 
 - `PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`
 - `NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`
-- `DOCKER_REGISTRY_MIRROR=docker.m.daocloud.io/`
 
 You can override any of them in `.env` or shell environment variables.
 

@@ -45,11 +45,6 @@ flowchart LR
 - Node.js 20+
 - Python 3.12
 
-可选：
-
-- Docker Engine / Docker Desktop
-- Docker Compose v2
-
 ## 4. 仓库结构
 
 ```text
@@ -119,7 +114,6 @@ node .\sclaw logs all --follow
 node .\sclaw stop
 ```
 
-如果要走 Docker 方式的 Windows 新手路径，直接使用 `node .\sclaw docker-install`、`node .\sclaw docker-start` 和 `node .\sclaw docker-stop`。
 
 ### 5.6 用户技能与工具
 
@@ -150,14 +144,12 @@ StructureClaw 1.0 支持在用户运行目录下放置 workspace-local 扩展资
 ```bash
 ./sclaw_cn doctor
 ./sclaw_cn setup-analysis-python
-./sclaw_cn docker-start
 ```
 
 `sclaw_cn` 默认镜像配置：
 
 - `PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`
 - `NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`
-- `DOCKER_REGISTRY_MIRROR=docker.m.daocloud.io/`
 
 以上变量都可在 `.env` 或 shell 环境变量中覆盖。
 

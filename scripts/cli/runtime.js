@@ -11,7 +11,6 @@ const DEFAULT_FRONTEND_PORT = "31416";
 const DEFAULT_BACKEND_PORT = "31415";
 const CN_DEFAULT_PIP_INDEX_URL = "https://pypi.tuna.tsinghua.edu.cn/simple";
 const CN_DEFAULT_NPM_REGISTRY = "https://registry.npmmirror.com";
-const CN_DEFAULT_DOCKER_REGISTRY_MIRROR = "docker.m.daocloud.io/";
 const CN_DEFAULT_APT_MIRROR = "mirrors.tuna.tsinghua.edu.cn";
 
 function isWindows() {
@@ -237,8 +236,6 @@ function resolvePaths(rootDir) {
     frontendDir: installedMode
       ? path.join(rootDir, "dist", "frontend")
       : path.join(rootDir, "frontend"),
-    dockerComposeFile: path.join(rootDir, "docker-compose.yml"),
-    dockerComposeCnFile: path.join(rootDir, "docker-compose.cn.yml"),
     analysisRequirementsFile: path.join(
       rootDir,
       "backend",
@@ -271,27 +268,6 @@ function resolvePaths(rootDir) {
   };
 }
 
-function normalizeDockerRegistryMirror(rawValue) {
-  const trimmed = String(rawValue || "").trim();
-  if (!trimmed) {
-    return "";
-  }
-
-  let normalized = trimmed
-    .replace(/^https?:\/\//iu, "")
-    .replace(/^\/+/u, "")
-    .replace(/\s+/gu, "");
-
-  if (!normalized) {
-    throw new Error("DOCKER_REGISTRY_MIRROR is invalid after normalization.");
-  }
-
-  if (!normalized.endsWith("/")) {
-    normalized = `${normalized}/`;
-  }
-
-  return normalized;
-}
 
 function normalizeAptMirror(rawValue) {
   const trimmed = String(rawValue || "").trim();
@@ -328,9 +304,6 @@ function applyCnProfileDefaults(env) {
   if (!String(process.env.NPM_CONFIG_REGISTRY || "").trim()) {
     env.NPM_CONFIG_REGISTRY = CN_DEFAULT_NPM_REGISTRY;
   }
-  if (!String(process.env.DOCKER_REGISTRY_MIRROR || "").trim()) {
-    env.DOCKER_REGISTRY_MIRROR = CN_DEFAULT_DOCKER_REGISTRY_MIRROR;
-  }
   if (!String(process.env.APT_MIRROR || "").trim()) {
     env.APT_MIRROR = CN_DEFAULT_APT_MIRROR;
   }
@@ -366,7 +339,6 @@ function loadProjectEnvironment(rootDir, logger = () => {}, options = {}) {
   if (settings.server?.host) env.HOST = settings.server.host;
   if (settings.database?.url) env.DATABASE_URL = settings.database.url;
   applyCnProfileDefaults(env);
-  env.DOCKER_REGISTRY_MIRROR = normalizeDockerRegistryMirror(env.DOCKER_REGISTRY_MIRROR);
   env.APT_MIRROR = normalizeAptMirror(env.APT_MIRROR);
   env.FRONTEND_PORT = env.FRONTEND_PORT || DEFAULT_FRONTEND_PORT;
   env.PORT = env.PORT || DEFAULT_BACKEND_PORT;
@@ -891,7 +863,6 @@ function quoteShellArgument(rawValue) {
 
 module.exports = {
   CN_DEFAULT_APT_MIRROR,
-  CN_DEFAULT_DOCKER_REGISTRY_MIRROR,
   CN_DEFAULT_NPM_REGISTRY,
   CN_DEFAULT_PIP_INDEX_URL,
   DEFAULT_ANALYSIS_PYTHON_VERSION,
@@ -920,7 +891,6 @@ module.exports = {
   normalizePortNumber,
   normalizeSqliteFileUrl,
   normalizeAptMirror,
-  normalizeDockerRegistryMirror,
   parseDotEnv,
   pathExists,
   pidFilePath,

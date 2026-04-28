@@ -100,51 +100,6 @@ const COMMANDS = [
     group: "infra",
   },
   {
-    name: "docker-up",
-    usage: "sclaw docker-up",
-    description: "Start the full docker compose stack",
-    aliases: ["up"],
-    group: "infra",
-  },
-  {
-    name: "docker-down",
-    usage: "sclaw docker-down",
-    description: "Stop the full docker compose stack",
-    group: "infra",
-  },
-  {
-    name: "docker-install",
-    usage:
-      "sclaw docker-install [--non-interactive --llm-base-url <url> --llm-api-key <key> --llm-model <name> --skip-api-test]",
-    description: "Configure .env and bootstrap the Docker onboarding stack",
-    aliases: ["install-docker"],
-    group: "infra",
-  },
-  {
-    name: "docker-start",
-    usage: "sclaw docker-start",
-    description: "Start or resume the docker stack in detached mode",
-    group: "infra",
-  },
-  {
-    name: "docker-stop",
-    usage: "sclaw docker-stop",
-    description: "Stop the docker stack without removing containers",
-    group: "infra",
-  },
-  {
-    name: "docker-status",
-    usage: "sclaw docker-status",
-    description: "Show docker compose status and health checks",
-    group: "infra",
-  },
-  {
-    name: "docker-logs",
-    usage: "sclaw docker-logs [backend|frontend|all] [--follow]",
-    description: "Show docker compose logs",
-    group: "infra",
-  },
-  {
     name: "local-up",
     usage: "sclaw local-up",
     description: "Start the local stack from source (alias: local-up-uv)",
@@ -167,7 +122,7 @@ const COMMANDS = [
   {
     name: "start",
     usage: "sclaw start",
-    description: "Recommended local startup without docker-managed infra (alias: local-up-noinfra)",
+    description: "Recommended local startup (alias: local-up-noinfra)",
     aliases: ["local-up-noinfra"],
     group: "lifecycle",
   },

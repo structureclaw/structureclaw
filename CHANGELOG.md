@@ -79,7 +79,7 @@ All notable changes to StructureClaw are documented in this file.
 - Backend regression workflow (build + lint + Jest + validations)
 - Analysis regression with deterministic OpenSees fixtures
 - Agent orchestration, chat stream, and analyze endpoint contract validations
-- CLI smoke tests (native and Docker)
+- CLI smoke tests (native)
 - Comment-triggered `/test-llm` and `/test-e2e` CI workflows
 
 ### Changed

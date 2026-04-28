@@ -44,21 +44,11 @@ node .\sclaw logs
 node .\sclaw stop
 ```
 
-Docker:
-
-```bash
-./sclaw docker-install   # 交互式 Docker 安装
-./sclaw docker-start     # 启动 Docker Compose 服务栈
-./sclaw docker-stop      # 停止 Docker Compose 服务栈
-./sclaw docker-status    # 检查 Docker 服务健康状态
-```
-
 国内镜像入口（子命令相同）：
 
 ```bash
 ./sclaw_cn doctor
 ./sclaw_cn setup-analysis-python
-./sclaw_cn docker-start
 ```
 
 ### SkillHub CLI

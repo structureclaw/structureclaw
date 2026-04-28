@@ -135,7 +135,6 @@ Main directories:
 |---|---|---|---|
 | npm install | `sclaw start` | user runtime directory, defaulting to `~/.structureclaw/` | backend serves the exported frontend in one process |
 | source checkout | `./sclaw start` | user runtime directory, defaulting to `~/.structureclaw/` | backend and frontend run as development processes |
-| Docker | `./sclaw docker-install` then `./sclaw docker-start` | Docker volumes / compose state | containerized stack |
 
 Recommended local flow:
 
@@ -159,8 +158,8 @@ Notes:
 - `./sclaw doctor` no longer requires a preinstalled system Python 3.12. It will ensure `uv` and prepare a virtual environment with Python 3.12 automatically when needed. On Windows, this automatic setup currently requires `winget`; if `winget` is unavailable, install `uv` manually before running `./sclaw doctor`.
 - If your old local `.env` still points `DATABASE_URL` at a local PostgreSQL instance, `./sclaw doctor` and `./sclaw start` will auto-migrate that data into SQLite, rewrite `.env` to the SQLite default, and keep the original PostgreSQL URL in `POSTGRES_SOURCE_DATABASE_URL`.
 - That first auto-migration also creates a local backup file like `.env.pre-sqlite-migration.<timestamp>.bak`.
-- `sclaw_cn` defaults to China mirror settings when unset: `PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`, `NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`, and Docker mirror prefix via `DOCKER_REGISTRY_MIRROR`.
-- You can override mirror values in `.env` or shell environment (`PIP_INDEX_URL`, `NPM_CONFIG_REGISTRY`, `DOCKER_REGISTRY_MIRROR`, `APT_MIRROR`).
+- `sclaw_cn` defaults to China mirror settings when unset: `PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`, `NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`.
+- You can override mirror values in `.env` or shell environment (`PIP_INDEX_URL`, `NPM_CONFIG_REGISTRY`, `APT_MIRROR`).
 
 Useful follow-up commands for source checkouts:
 
@@ -186,45 +185,6 @@ node .\sclaw start
 node .\sclaw status
 node .\sclaw logs all --follow
 node .\sclaw stop
-```
-
-### Windows / Docker Quick Start
-
-Windows users can now start the full stack directly with Docker, which is the easiest path for beginners who do not want to install local Node.js and Python first.
-
-Recommended steps:
-
-1. Install and start Docker Desktop.
-2. If Docker Desktop asks you to enable WSL 2 or required container features on first launch, follow the setup wizard and restart Docker Desktop.
-3. Run the interactive Docker bootstrap command from the project root:
-
-```powershell
-node .\sclaw docker-install
-```
-
-For CI or scripted setup, use the non-interactive variant:
-
-```powershell
-node .\sclaw docker-install --non-interactive --llm-base-url https://api.openai.com/v1 --llm-api-key <your-key> --llm-model gpt-4.1
-```
-
-Once the stack is ready, the main entrypoints are:
-
-- Frontend: `http://localhost:31416`
-- Backend health check: `http://localhost:31415/health`
-- Analysis routes: `http://localhost:31415/analyze`
-- Database status page: `http://localhost:31416/console/database`
-
-To stop the containers:
-
-```bash
-node .\sclaw docker-stop
-```
-
-Or:
-
-```bash
-docker compose down
 ```
 
 ## Configuration

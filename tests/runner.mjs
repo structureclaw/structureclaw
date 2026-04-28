@@ -9,7 +9,8 @@ const rootDir = path.resolve(__dirname, "..");
 const validationRunner = require("./regression/run-validation.js");
 const { runBackendRegression } = require("./regression/backend-regression.js");
 const { runAnalysisRegression } = require("./regression/analysis-regression.js");
-const { runDockerComposeSmoke, runNativeInstallSmoke } = require("./smoke/install-smoke.cjs");
+const { runNativeInstallSmoke } = require("./smoke/install-smoke.cjs");
+
 const { runLlmIntegrationTests } = require("./llm-integration/runner.cjs");
 const { summarizeArtifacts, printSummary } = require("./llm-integration/summarize.cjs");
 const { runBenchmark } = require("./llm-benchmark/runner.cjs");
@@ -88,7 +89,6 @@ Commands:
                           [--output <results.json>]
   llm-summary <path>   Summarize LLM test artifacts by family/variant
   smoke-native          CI-style native install smoke (npm ci + build)
-  smoke-docker          Docker compose smoke test
 
 Replaces former sclaw commands:
   sclaw validate ...    -> node tests/runner.mjs validate ...
@@ -146,9 +146,6 @@ async function main() {
       return;
     case "smoke-native":
       await runNativeInstallSmoke(rootDir);
-      return;
-    case "smoke-docker":
-      await runDockerComposeSmoke(rootDir);
       return;
     case "llm-integration":
       await runLlmIntegrationTests(rootDir, rawArgs);

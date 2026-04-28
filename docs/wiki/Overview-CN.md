@@ -71,7 +71,6 @@ API 接口：
 - npm 安装版：`npm install -g @structureclaw/structureclaw`、`sclaw doctor`、`sclaw start`
 - 本地源码流程：`./sclaw doctor`、`./sclaw start`、`./sclaw status`
 - Windows PowerShell：`node .\sclaw doctor`、`node .\sclaw start`、`node .\sclaw status`
-- Docker 流程：`./sclaw docker-install` 然后 `./sclaw docker-start`
 
 ## 规范来源
 

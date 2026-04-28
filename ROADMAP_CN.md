@@ -25,7 +25,7 @@ Project 主题与代表 issue：
 
 重点：在稳定 npm 发布版之后，保持 1.0 发布线可靠。
 
-- 修复 `smoke-native`、`smoke-docker`、backend build/lint/Jest、frontend type-check/build、agent contract validation 暴露的回归。
+- 修复 `smoke-native`、backend build/lint/Jest、frontend type-check/build、agent contract validation 暴露的回归。
 - 保持 npm package metadata、CLI 行为和 `sclaw doctor` 诊断与真实 1.0 安装体验一致。
 - 随着商业引擎边界情况暴露，持续维护 OpenSees、PKPM、YJK 的安装与排障说明。
 - 当 API routes、skill metadata 或 engine 行为变化时，同步维护 docs 与 wiki。

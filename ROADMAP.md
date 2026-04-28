@@ -25,7 +25,7 @@ Project themes and representative issues:
 
 Focus: keep the 1.0 line reliable after the stable npm release.
 
-- Patch regressions found by `smoke-native`, `smoke-docker`, backend build/lint/Jest, frontend type-check/build, and agent contract validation.
+- Patch regressions found by `smoke-native`, backend build/lint/Jest, frontend type-check/build, and agent contract validation.
 - Keep npm package metadata, CLI behavior, and `sclaw doctor` diagnostics aligned with the actual 1.0 install experience.
 - Maintain engine-specific setup notes for OpenSees, PKPM, and YJK as commercial-engine edge cases are found.
 - Keep docs and wiki synchronized when API routes, skill metadata, or engine behavior changes.
