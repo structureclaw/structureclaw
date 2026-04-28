@@ -12,6 +12,14 @@
     "sclaw": "./bin/sclaw.js",
     "sclaw_cn": "./bin/sclaw_cn.js"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/structureclaw/structureclaw.git"
+  },
+  "homepage": "https://github.com/structureclaw/structureclaw",
+  "bugs": {
+    "url": "https://github.com/structureclaw/structureclaw/issues"
+  },
   "files": [
     "bin/",
     "dist/backend/",
