@@ -68,6 +68,7 @@ API endpoints:
 
 ## Recommended Startup
 
+- Bootstrap installer without Node.js: `scripts/install.sh` or `scripts/install.ps1`
 - Installed package flow: `npm install -g @structureclaw/structureclaw`, `sclaw doctor`, `sclaw start`
 - Local source flow: `./sclaw doctor`, `./sclaw start`, `./sclaw status`
 - Windows PowerShell: `node .\sclaw doctor`, `node .\sclaw start`, `node .\sclaw status`

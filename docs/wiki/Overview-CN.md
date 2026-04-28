@@ -68,6 +68,7 @@ API 接口：
 
 ## 推荐启动方式
 
+- 无 Node.js 的 bootstrap 安装器：`scripts/install.sh` 或 `scripts/install.ps1`
 - npm 安装版：`npm install -g @structureclaw/structureclaw`、`sclaw doctor`、`sclaw start`
 - 本地源码流程：`./sclaw doctor`、`./sclaw start`、`./sclaw status`
 - Windows PowerShell：`node .\sclaw doctor`、`node .\sclaw start`、`node .\sclaw status`

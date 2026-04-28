@@ -37,8 +37,7 @@ flowchart LR
 
 Recommended installed setup:
 
-- Node.js 20+
-- npm
+- Node.js 20+ and npm, or the bootstrap installer in `scripts/install.sh` / `scripts/install.ps1`
 
 Recommended source-development setup:
 
@@ -59,7 +58,7 @@ docs/       handbook and protocol reference
 
 ### 5.0 Installed package path
 
-For normal usage:
+For normal usage when Node.js 20+ and npm are already installed:
 
 ```bash
 npm install -g @structureclaw/structureclaw
@@ -70,7 +69,37 @@ sclaw status
 
 Installed mode runs as a single process: the backend serves the exported frontend and starts the hosted runtime services from the installed package. Runtime data is stored in the user data directory, such as `~/.structureclaw/`, not in the npm package directory.
 
-### 5.1 Source checkout path
+### 5.1 Bootstrap installer path
+
+For first-time users without Node.js, use the bootstrap installers:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
+```
+
+The installers check for Node.js 20+ and npm. If missing or too old, they install Node.js under the user profile, configure a user-local npm prefix, install `@structureclaw/structureclaw@latest`, then run `sclaw doctor`.
+
+Useful installer options:
+
+```bash
+scripts/install.sh --skip-doctor
+scripts/install.sh --cn
+scripts/install.sh --registry https://registry.npmmirror.com
+```
+
+```powershell
+.\scripts\install.ps1 -SkipDoctor
+.\scripts\install.ps1 -Cn
+.\scripts\install.ps1 -Registry https://registry.npmmirror.com
+```
+
+### 5.2 Source checkout path
 
 For repository development:
 
@@ -82,11 +111,11 @@ For repository development:
 
 Source mode also uses the user runtime directory by default, such as `~/.structureclaw/`, and starts backend/frontend as development processes.
 
-### 5.2 Node.js setup
+### 5.3 Node.js setup
 
-Node.js 20+ is required. Install it via your preferred method (nvm, system package manager, or nodejs.org).
+Node.js 20+ is required for source development and direct npm installs. Install it via your preferred method (nvm, system package manager, or nodejs.org), or use the bootstrap installers above for an application install that prepares Node automatically.
 
-### 5.3 Installed CLI lifecycle commands
+### 5.4 Installed CLI lifecycle commands
 
 ```bash
 sclaw logs
@@ -94,7 +123,7 @@ sclaw stop
 sclaw restart
 ```
 
-### 5.4 CLI alternative
+### 5.5 CLI alternative
 
 ```bash
 ./sclaw doctor
@@ -104,7 +133,7 @@ sclaw restart
 ./sclaw stop
 ```
 
-### 5.5 Windows PowerShell
+### 5.6 Windows PowerShell
 
 ```powershell
 node .\sclaw doctor
@@ -115,7 +144,7 @@ node .\sclaw stop
 ```
 
 
-### 5.6 User skills and tools
+### 5.7 User skills and tools
 
 StructureClaw 1.0 supports workspace-local extension assets in the user runtime directory:
 

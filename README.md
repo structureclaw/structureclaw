@@ -28,7 +28,25 @@ https://github.com/user-attachments/assets/031fe757-551d-4775-ab3f-0411037ad5ae
 
 ## Quick Start
 
+### No Node.js Yet
+
+Use the bootstrap installer when the machine does not already have Node.js 20+ and npm:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
+```
+
+The installer prepares a user-local Node.js 20 runtime when needed, installs `@structureclaw/structureclaw@latest`, adds the user-local npm bin directory to PATH, and runs `sclaw doctor`. Use `--skip-doctor` / `-SkipDoctor` when scripting the install.
+
 ### Install from npm
+
+If Node.js 20+ and npm are already installed:
 
 ```bash
 npm install -g @structureclaw/structureclaw
@@ -133,6 +151,7 @@ Main directories:
 
 | Mode | Command | Data directory | Process model |
 |---|---|---|---|
+| bootstrap installer | `scripts/install.sh` / `scripts/install.ps1` | user runtime directory plus user-local Node/npm prefix | installs Node if missing, then installs the npm package |
 | npm install | `sclaw start` | user runtime directory, defaulting to `~/.structureclaw/` | backend serves the exported frontend in one process |
 | source checkout | `./sclaw start` | user runtime directory, defaulting to `~/.structureclaw/` | backend and frontend run as development processes |
 
@@ -152,8 +171,20 @@ China mirror flow (same subcommands, mirror defaults enabled):
 ./sclaw_cn status
 ```
 
+Bootstrap installer mirror flow:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.sh | bash -s -- --cn
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1))) -Cn
+```
+
 Notes:
 
+- `scripts/install.sh` and `scripts/install.ps1` are intended for first-time users. They install Node.js 20 into the user profile if `node` / `npm` are missing or too old, then run `npm install -g @structureclaw/structureclaw@latest`.
+- The bootstrap installers use a user-local npm prefix by default (`~/.structureclaw/npm-global`), avoiding root/admin global npm writes.
 - SQLite is now the default local database. `./sclaw start` uses `~/.structureclaw/data/structureclaw.start.db`, and `./sclaw doctor` uses `~/.structureclaw/data/structureclaw.doctor.db` so preflight checks do not touch the active local runtime database.
 - `./sclaw doctor` no longer requires a preinstalled system Python 3.12. It will ensure `uv` and prepare a virtual environment with Python 3.12 automatically when needed. On Windows, this automatic setup currently requires `winget`; if `winget` is unavailable, install `uv` manually before running `./sclaw doctor`.
 - If your old local `.env` still points `DATABASE_URL` at a local PostgreSQL instance, `./sclaw doctor` and `./sclaw start` will auto-migrate that data into SQLite, rewrite `.env` to the SQLite default, and keep the original PostgreSQL URL in `POSTGRES_SOURCE_DATABASE_URL`.

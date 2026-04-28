@@ -37,8 +37,7 @@ flowchart LR
 
 推荐安装版环境：
 
-- Node.js 20+
-- npm
+- Node.js 20+ 和 npm，或使用 `scripts/install.sh` / `scripts/install.ps1` bootstrap 安装器
 
 推荐源码开发环境：
 
@@ -59,7 +58,7 @@ docs/       手册与协议参考文档
 
 ### 5.0 npm 安装版
 
-普通使用推荐全局安装：
+如果已经安装 Node.js 20+ 和 npm，普通使用推荐全局安装：
 
 ```bash
 npm install -g @structureclaw/structureclaw
@@ -70,7 +69,37 @@ sclaw status
 
 安装版以单进程运行：backend 托管导出的 frontend，并从安装包启动托管运行时服务。运行数据写入用户数据目录，例如 `~/.structureclaw/`，不会写入 npm 包目录。
 
-### 5.1 源码开发版
+### 5.1 bootstrap 安装器
+
+如果是没有 Node.js 的首次安装用户，使用 bootstrap 安装器：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.sh | bash
+```
+
+Windows PowerShell：
+
+```powershell
+irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
+```
+
+安装器会检查 Node.js 20+ 和 npm；缺失或版本太旧时，会把 Node.js 安装到用户目录，配置用户级 npm prefix，安装 `@structureclaw/structureclaw@latest`，然后运行 `sclaw doctor`。
+
+常用参数：
+
+```bash
+scripts/install.sh --skip-doctor
+scripts/install.sh --cn
+scripts/install.sh --registry https://registry.npmmirror.com
+```
+
+```powershell
+.\scripts\install.ps1 -SkipDoctor
+.\scripts\install.ps1 -Cn
+.\scripts\install.ps1 -Registry https://registry.npmmirror.com
+```
+
+### 5.2 源码开发版
 
 仓库开发时使用源码目录 CLI：
 
@@ -82,11 +111,11 @@ sclaw status
 
 源码模式默认也使用用户运行目录，例如 `~/.structureclaw/`，并以开发进程启动 backend/frontend。
 
-### 5.2 Node.js 安装
+### 5.3 Node.js 安装
 
-需要 Node.js 20+。可通过任意方式安装（nvm、系统包管理器或 nodejs.org）。
+源码开发和直接 npm 安装需要 Node.js 20+。可通过任意方式安装（nvm、系统包管理器或 nodejs.org），如果只是应用安装，也可以使用上面的 bootstrap 安装器自动准备 Node。
 
-### 5.3 安装版 CLI 生命周期命令
+### 5.4 安装版 CLI 生命周期命令
 
 ```bash
 sclaw logs
@@ -94,7 +123,7 @@ sclaw stop
 sclaw restart
 ```
 
-### 5.4 CLI 方式
+### 5.5 CLI 方式
 
 ```bash
 ./sclaw doctor
@@ -104,7 +133,7 @@ sclaw restart
 ./sclaw stop
 ```
 
-### 5.5 Windows PowerShell
+### 5.6 Windows PowerShell
 
 ```powershell
 node .\sclaw doctor
@@ -115,7 +144,7 @@ node .\sclaw stop
 ```
 
 
-### 5.6 用户技能与工具
+### 5.7 用户技能与工具
 
 StructureClaw 1.0 支持在用户运行目录下放置 workspace-local 扩展资产：
 

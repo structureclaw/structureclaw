@@ -28,7 +28,25 @@ https://github.com/user-attachments/assets/031fe757-551d-4775-ab3f-0411037ad5ae
 
 ## 快速启动
 
+### 还没有 Node.js
+
+如果机器上还没有 Node.js 20+ 和 npm，先用 bootstrap 安装脚本：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.sh | bash
+```
+
+Windows PowerShell：
+
+```powershell
+irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
+```
+
+安装脚本会在需要时准备用户级 Node.js 20、安装 `@structureclaw/structureclaw@latest`、把用户级 npm bin 目录加入 PATH，并运行 `sclaw doctor`。脚本化安装时可使用 `--skip-doctor` / `-SkipDoctor` 跳过预检。
+
 ### npm 安装版
+
+如果已经安装 Node.js 20+ 和 npm：
 
 ```bash
 npm install -g @structureclaw/structureclaw
@@ -133,6 +151,7 @@ flowchart LR
 
 | 模式 | 命令 | 数据目录 | 进程模型 |
 |---|---|---|---|
+| bootstrap 安装器 | `scripts/install.sh` / `scripts/install.ps1` | 用户运行目录 + 用户级 Node/npm prefix | 缺 Node 时先安装 Node，再安装 npm 包 |
 | npm 安装版 | `sclaw start` | 用户运行目录，默认 `~/.structureclaw/` | 后端单进程托管导出的前端 |
 | 源码开发版 | `./sclaw start` | 用户运行目录，默认 `~/.structureclaw/` | backend/frontend 以开发进程运行 |
 
@@ -152,8 +171,20 @@ flowchart LR
 ./sclaw_cn status
 ```
 
+bootstrap 安装器国内镜像流程：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.sh | bash -s -- --cn
+```
+
+```powershell
+& ([scriptblock]::Create((irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1))) -Cn
+```
+
 补充说明：
 
+- `scripts/install.sh` 和 `scripts/install.ps1` 面向首次安装用户。缺少 `node` / `npm` 或版本太旧时，会先把 Node.js 20 安装到用户目录，再执行 `npm install -g @structureclaw/structureclaw@latest`。
+- bootstrap 安装器默认使用用户级 npm prefix（`~/.structureclaw/npm-global`），避免全局 npm 写入需要 root/admin 权限。
 - 本地默认数据库现在是 SQLite。`./sclaw start` 默认使用 `~/.structureclaw/data/structureclaw.start.db`，`./sclaw doctor` 默认使用 `~/.structureclaw/data/structureclaw.doctor.db`，这样预检不会碰当前实际运行库。
 - `./sclaw doctor` 不再要求你预先安装系统级 Python 3.12。缺失时会先确保 `uv` 可用，并自动准备带 Python 3.12 的虚拟环境；在 Windows 上，如果系统未安装 `winget`，则会提示你手动安装 `uv`。
 - 如果你原来的本地 `.env` 还把 `DATABASE_URL` 指向本地 PostgreSQL，`./sclaw doctor` 和 `./sclaw start` 会先自动迁移到 SQLite，再把 `.env` 改写成 SQLite 默认配置，同时把原 PostgreSQL 地址保留到 `POSTGRES_SOURCE_DATABASE_URL`。

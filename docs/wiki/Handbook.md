@@ -5,6 +5,22 @@
 
 ## Quick Start
 
+### Bootstrap installer
+
+If Node.js 20+ and npm are not installed yet:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.sh | bash
+```
+
+Windows PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
+```
+
+The bootstrap installer prepares Node.js when needed, installs `@structureclaw/structureclaw@latest`, and runs `sclaw doctor`. Use `--skip-doctor` / `-SkipDoctor` for scripted installs.
+
 ### Installed package path
 
 ```bash
@@ -32,7 +48,7 @@ Source mode starts backend/frontend as development processes and uses the user r
 
 ### Node.js setup
 
-Node.js 20+ is required. Install it via your preferred method (nvm, system package manager, or nodejs.org).
+Node.js 20+ is required for source development and direct npm installs. Install it via your preferred method (nvm, system package manager, or nodejs.org), or use the bootstrap installer for an application install that prepares Node automatically.
 
 Windows PowerShell:
 

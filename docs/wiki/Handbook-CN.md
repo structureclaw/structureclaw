@@ -5,6 +5,22 @@
 
 ## 快速开始
 
+### bootstrap 安装器
+
+如果还没有安装 Node.js 20+ 和 npm：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.sh | bash
+```
+
+Windows PowerShell：
+
+```powershell
+irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
+```
+
+bootstrap 安装器会在需要时准备 Node.js、安装 `@structureclaw/structureclaw@latest`，并运行 `sclaw doctor`。脚本化安装可使用 `--skip-doctor` / `-SkipDoctor`。
+
 ### npm 安装版
 
 ```bash
@@ -32,7 +48,7 @@ sclaw stop
 
 ### Node.js 安装
 
-需要 Node.js 20+。可通过任意方式安装（nvm、系统包管理器或 nodejs.org）。
+源码开发和直接 npm 安装需要 Node.js 20+。可通过任意方式安装（nvm、系统包管理器或 nodejs.org），如果只是应用安装，也可以使用 bootstrap 安装器自动准备 Node。
 
 Windows PowerShell:
 
