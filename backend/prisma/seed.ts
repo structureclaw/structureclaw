@@ -8,6 +8,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Resolve database URL from settings.json, falling back to default SQLite path
+// Canonical data dir resolution: SCLAW_DATA_DIR || ~/.structureclaw (see backend/src/config/index.ts)
 function resolveDatabaseUrl(): string {
   const userDataDir = process.env.SCLAW_DATA_DIR || path.join(os.homedir(), '.structureclaw');
   const settingsPath = path.join(userDataDir, 'settings.json');

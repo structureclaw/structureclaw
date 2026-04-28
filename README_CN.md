@@ -117,27 +117,31 @@ flowchart LR
 | 模式 | 命令 | 数据目录 | 进程模型 |
 |---|---|---|---|
 | npm 安装版 | `sclaw start` | 用户运行目录，默认 `~/.structureclaw/` | 后端单进程托管导出的前端 |
-| 源码开发版 | `./sclaw start` | `.runtime/` | backend/frontend 以开发进程运行 |
+| 源码开发版 | `./sclaw start` | 用户运行目录，默认 `~/.structureclaw/` | backend/frontend 以开发进程运行 |
 | Docker | `./sclaw docker-install` 后 `./sclaw docker-start` | Docker volumes / compose 状态 | 容器化服务栈 |
 
-如果你还没有安装 Node.js，可以先运行自动安装脚本：
+推荐本地流程：
 
 ```bash
-bash ./scripts/install-node-linux.sh
+./sclaw doctor
+./sclaw start
+./sclaw status
 ```
 
-Windows PowerShell（首次安装建议使用管理员权限）：
+国内镜像流程（子命令与 `sclaw` 一致，但默认启用国内镜像）：
 
-```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
+```bash
+./sclaw_cn doctor
+./sclaw_cn start
+./sclaw_cn status
 ```
 
 补充说明：
 
-- SQLite 是默认本地数据库。安装版和源码模式都会使用解析后的运行数据目录；默认情况下安装版是 `~/.structureclaw/`，源码模式是 `.runtime/`。
-- `sclaw doctor` 会自动准备 Python 分析环境。安装版的虚拟环境位于用户运行数据目录，而不是 `node_modules`。
-- 旧的源码目录 `.runtime/` 数据可以迁移到安装版运行目录。
-- 旧 `.env` 中的配置会尽量迁移到 `settings.json`；`.env` 仍用于旧源码目录和 Docker onboarding 兼容，不再是主要应用配置路径。
+- 本地默认数据库现在是 SQLite。`./sclaw start` 默认使用 `~/.structureclaw/data/structureclaw.start.db`，`./sclaw doctor` 默认使用 `~/.structureclaw/data/structureclaw.doctor.db`，这样预检不会碰当前实际运行库。
+- `./sclaw doctor` 不再要求你预先安装系统级 Python 3.12。缺失时会先确保 `uv` 可用，并自动准备带 Python 3.12 的虚拟环境；在 Windows 上，如果系统未安装 `winget`，则会提示你手动安装 `uv`。
+- 如果你原来的本地 `.env` 还把 `DATABASE_URL` 指向本地 PostgreSQL，`./sclaw doctor` 和 `./sclaw start` 会先自动迁移到 SQLite，再把 `.env` 改写成 SQLite 默认配置，同时把原 PostgreSQL 地址保留到 `POSTGRES_SOURCE_DATABASE_URL`。
+- 第一次自动迁移时，还会生成一个类似 `.env.pre-sqlite-migration.<timestamp>.bak` 的本地备份文件。
 - `sclaw_cn` 在未显式配置时会自动使用国内镜像默认值：`PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`、`NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`，以及通过 `DOCKER_REGISTRY_MIRROR` 指定的 Docker 镜像前缀。
 - 你可以在 `.env` 或 shell 环境中覆盖镜像变量：`PIP_INDEX_URL`、`NPM_CONFIG_REGISTRY`、`DOCKER_REGISTRY_MIRROR`、`APT_MIRROR`。
 
@@ -207,17 +211,18 @@ docker compose down
 
 ## 配置
 
-StructureClaw 1.0 以 `settings.json` 作为用户配置文件。前端 General Settings 面板会通过后端 admin API 写入同一份配置，并显示每个字段来自 runtime settings 还是内置默认值。
+StructureClaw 1.0 以 `settings.json` 作为用户配置文件。`sclaw doctor` 会创建该文件，前端 General Settings 面板也会通过后端 admin API 写入同一份配置。
 
 配置优先级：
 
 1. 运行时 `settings.json`
 2. 内置默认值
 
-重要 `settings.json` section：
+重要 `settings.json` 字段和 section：
 
 - `server`：端口、host、请求体大小
 - `llm`：OpenAI-compatible base URL、模型、API key、超时、重试
+- `database.url`：SQLite 连接地址
 - `logging`：应用日志级别、LLM 日志、日志轮转
 - `analysis`：Python 运行时路径、超时、引擎 manifest 路径
 - `storage`：报告目录与上传大小
@@ -225,7 +230,7 @@ StructureClaw 1.0 以 `settings.json` 作为用户配置文件。前端 General 
 - `pkpm`：SATWE/JWSCYCLE 路径与工作目录
 - `yjk`：安装根目录、可执行文件、内置 Python、工作目录、版本、超时、无界面模式
 
-安装版的 `settings.json` 位于运行数据目录；源码模式位于 `.runtime/`。测试或受控部署可通过 `SCLAW_DATA_DIR` 覆盖运行目录。
+默认情况下，`settings.json` 位于 `~/.structureclaw/`。测试或受控部署可通过 `SCLAW_DATA_DIR` 覆盖运行目录。
 
 ## 主要 API 入口
 

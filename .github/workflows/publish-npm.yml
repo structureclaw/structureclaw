@@ -1,20 +1,39 @@
 name: Publish to npm
 
 on:
-  release:
-    types: [published]
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment:
+      name: production
+
     permissions:
       contents: read
+      id-token: write
+
     steps:
       - uses: actions/checkout@v4
 
+      - name: Ensure tag is from master branch
+        run: |
+          git fetch origin master
+          if git merge-base --is-ancestor $GITHUB_SHA origin/master; then
+            echo "✅ Tag is on master branch"
+          else
+            echo "❌ Tag is NOT on master branch"
+            exit 1
+          fi
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
           registry-url: https://registry.npmjs.org
 
       - name: Install root dependencies
@@ -41,6 +60,27 @@ jobs:
       - name: Build frontend
         run: npm run build --prefix frontend
 
+      - name: Parse version & dist-tag
+        id: meta
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          VERSION=${TAG#v}
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          if [[ $VERSION == *"-alpha."* ]]; then
+            echo "dist_tag=alpha" >> $GITHUB_OUTPUT
+          elif [[ $VERSION == *"-beta."* ]]; then
+            echo "dist_tag=beta" >> $GITHUB_OUTPUT
+          elif [[ $VERSION == *"-rc."* ]]; then
+            echo "dist_tag=rc" >> $GITHUB_OUTPUT
+          else
+            echo "dist_tag=latest" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Set version
+        run: npm version ${{ steps.meta.outputs.version }} --no-git-tag-version
+
       - name: Assemble package
         run: node scripts/prepare-package.js
 
@@ -52,6 +92,4 @@ jobs:
           npm pack --dry-run 2>&1 | tail -1
 
       - name: Publish
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public --tag ${{ steps.meta.outputs.dist_tag }} --provenance

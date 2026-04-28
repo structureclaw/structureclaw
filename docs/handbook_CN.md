@@ -57,7 +57,7 @@ frontend/   Next.js 前端应用
 backend/    Fastify API、agent skills、托管分析运行时、Prisma 模型、后端测试
 scripts/    启动脚本与契约/回归校验脚本
 docs/       手册与协议参考文档
-.runtime/   源码模式运行数据、日志与报告工件输出目录
+~/.structureclaw/   运行数据、日志与报告工件输出目录
 ```
 
 ## 5. 快速上手
@@ -85,21 +85,11 @@ sclaw status
 ./sclaw status
 ```
 
-源码模式把运行数据放在 `.runtime/`，并以开发进程启动 backend/frontend。
+源码模式默认也使用用户运行目录，例如 `~/.structureclaw/`，并以开发进程启动 backend/frontend。
 
-### 5.2 Node.js 安装辅助
+### 5.2 Node.js 安装
 
-如果你还没有安装 Node.js，可以先运行自动安装脚本：
-
-```bash
-bash ./scripts/install-node-linux.sh
-```
-
-Windows PowerShell（首次安装建议使用管理员权限）：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
-```
+需要 Node.js 20+。可通过任意方式安装（nvm、系统包管理器或 nodejs.org）。
 
 ### 5.3 常用生命周期命令
 
@@ -182,8 +172,8 @@ StructureClaw 1.0 按以下优先级解析配置：
 
 运行数据位置：
 
-- 安装版：用户数据目录，例如 `~/.structureclaw/`
-- 源码模式：`.runtime/`
+- 默认：用户数据目录，例如 `~/.structureclaw/`
+- 覆盖：`SCLAW_DATA_DIR`
 
 配置解析流程：
 
@@ -210,8 +200,10 @@ flowchart TD
 
 说明：
 
-- `sclaw doctor` 会准备 Python 分析环境。安装版 venv 位于用户运行目录。
-- 旧 `.env` 值会尽量迁移到 `settings.json`。`.env` 仍用于旧源码目录和 Docker onboarding 兼容。
+- `sclaw doctor` 会准备 Python 分析环境。如果缺少系统 Python 3.12，会先确保 `uv` 可用，并在用户运行目录下准备 Python 3.12 虚拟环境。
+- `./sclaw start` 和 `./sclaw restart` 默认使用 `~/.structureclaw/data/structureclaw.start.db`；`./sclaw doctor` 使用 `~/.structureclaw/data/structureclaw.doctor.db`，确保启动预检与实际运行库隔离。
+- 如果旧本地 `.env` 把 `DATABASE_URL` 指向本地 PostgreSQL，`./sclaw doctor` 和 `./sclaw start` 会自动迁移到 SQLite，改写 `.env` 为 SQLite 默认配置，并把原 PostgreSQL 地址保留到 `POSTGRES_SOURCE_DATABASE_URL`。
+- 后端 agent 会话与模型缓存使用当前进程内存存储。
 - 商业分析引擎仍需要本机软件安装和有效授权。
 
 ## 7. 核心工作流

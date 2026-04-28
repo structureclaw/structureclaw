@@ -16,13 +16,7 @@ services:
       - NODE_ENV=production
       - PORT=${PORT:-31415}
       - BACKEND_BODY_LIMIT_MB=${BACKEND_BODY_LIMIT_MB:-20}
-      - DATABASE_URL=${DATABASE_URL:-file:/.runtime/data/structureclaw.db}
-      - JWT_SECRET=${JWT_SECRET:-your-jwt-secret-change-in-production}
-      - LLM_API_KEY=${LLM_API_KEY}
-      - LLM_MODEL=${LLM_MODEL}
-      - LLM_BASE_URL=${LLM_BASE_URL}
-      - LLM_TIMEOUT_MS=${LLM_TIMEOUT_MS:-180000}
-      - LLM_MAX_RETRIES=${LLM_MAX_RETRIES:-0}
+      - DATABASE_URL=${DATABASE_URL:-file:/.structureclaw/data/structureclaw.db}
       - ANALYSIS_PYTHON_BIN=${ANALYSIS_PYTHON_BIN:-/usr/bin/python3}
       - ANALYSIS_PYTHON_TIMEOUT_MS=${ANALYSIS_PYTHON_TIMEOUT_MS:-300000}
     command:
@@ -31,7 +25,7 @@ services:
       - |
         if [ -n "$${DATABASE_URL:-}" ] && [ "$${DATABASE_URL#file:}" = "$${DATABASE_URL}" ]; then
           echo "Invalid DATABASE_URL for Docker SQLite mode: $${DATABASE_URL}"
-          echo "Expected a file: URL, for example file:/.runtime/data/structureclaw.db"
+          echo "Expected a file: URL, for example file:/.structureclaw/data/structureclaw.db"
           exit 1
         fi
         retries=0
@@ -49,8 +43,8 @@ services:
     ports:
       - "${PORT:-31415}:${PORT:-31415}"
     volumes:
-      - ./.runtime:/app/.runtime
-      - ./.runtime/data:/.runtime/data
+      - ./.structureclaw:/app/.structureclaw
+      - ./.structureclaw/data:/.structureclaw/data
     restart: unless-stopped
 
   # 前端服务

@@ -7,7 +7,6 @@ on:
       - 'docker-compose.yml'
       - 'docker-compose.cn.yml'
       - 'docker/**'
-      - '.env.example'
       - 'backend/**'
       - 'frontend/**'
       - 'scripts/**'
@@ -15,7 +14,6 @@ on:
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
-      - '.github/actions/setup-env/**'
       - '.github/workflows/install-smoke.yml'
   push:
     branches:
@@ -24,7 +22,6 @@ on:
       - 'docker-compose.yml'
       - 'docker-compose.cn.yml'
       - 'docker/**'
-      - '.env.example'
       - 'backend/**'
       - 'frontend/**'
       - 'scripts/**'
@@ -32,7 +29,6 @@ on:
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
-      - '.github/actions/setup-env/**'
       - '.github/workflows/install-smoke.yml'
 
 jobs:
@@ -48,8 +44,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup environment
-        uses: ./.github/actions/setup-env
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: Setup via sclaw
+        run: node ./sclaw doctor
+
+      - name: Build via sclaw
+        run: node ./sclaw build
 
       - name: Frontend type-check
         run: npm run type-check --prefix frontend
@@ -59,9 +65,6 @@ jobs:
 
       - name: Frontend lint
         run: npm run lint --prefix frontend
-
-      - name: Backend type-check
-        run: npm run build --prefix backend
 
       - name: Backend lint
         run: npm run lint --prefix backend

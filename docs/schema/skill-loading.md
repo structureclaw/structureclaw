@@ -270,7 +270,7 @@ search → install → enable ↔ disable → uninstall
 - **Enable/Disable**: Toggles the `enabled` flag in the installed state.
 - **Uninstall**: Removes the skill record from the installed state.
 
-Installed state is persisted at `.runtime/skillhub/installed.json`.
+Installed state is persisted at `~/.structureclaw/skillhub/installed.json`.
 
 ## 4. Metadata, Versioning, Dependency, and Compatibility
 

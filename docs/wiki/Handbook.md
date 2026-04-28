@@ -28,21 +28,11 @@ Installed mode runs as a single process and stores runtime data under the user d
 ./sclaw stop
 ```
 
-Source mode keeps runtime data under `.runtime/`.
+Source mode starts backend/frontend as development processes and uses the user runtime directory by default, such as `~/.structureclaw/`.
 
-### Node.js setup helper
+### Node.js setup
 
-If Node.js is not installed yet, use the helper installer script first:
-
-```bash
-bash ./scripts/install-node-linux.sh
-```
-
-Windows PowerShell (run as Administrator for first-time package install):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
-```
+Node.js 20+ is required. Install it via your preferred method (nvm, system package manager, or nodejs.org).
 
 Windows PowerShell:
 

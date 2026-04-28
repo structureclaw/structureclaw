@@ -27,7 +27,7 @@ function resolvePython() {
       encoding: 'utf8',
       windowsHide: process.platform === 'win32',
     });
-    const executable = result.stdout.trim();
+    const executable = (result.stdout || '').trim();
     if (result.status === 0 && executable && fs.existsSync(executable)) {
       return candidate === 'py' ? { executable: candidate, args: ['-3'] } : { executable: candidate, args: [] };
     }

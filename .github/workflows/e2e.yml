@@ -14,7 +14,6 @@ on:
       - 'backend/src/index.ts'
       - 'backend/package.json'
       - 'backend/package-lock.json'
-      - '.github/actions/setup-env/**'
       - '.github/workflows/e2e.yml'
 
 permissions:
@@ -100,16 +99,25 @@ jobs:
         with:
           ref: ${{ needs.check-permission.outputs.pr_sha }}
 
-      - name: Setup environment
-        uses: ./.github/actions/setup-env
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
 
-      - name: Setup backend database and build
+      - name: Setup via sclaw
+        run: node ./sclaw doctor
+
+      - name: Build via sclaw
+        run: node ./sclaw build
+
+      - name: Setup backend database
         run: |
-          mkdir -p .runtime/data
+          mkdir -p .structureclaw/data
           npm run db:deploy --prefix backend
-          npm run build --prefix backend
         env:
-          DATABASE_URL: file:../../.runtime/data/test-e2e.db
+          DATABASE_URL: file:../../.structureclaw/data/test-e2e.db
 
       - name: Install Playwright browsers
         run: npx --prefix frontend playwright install chromium --with-deps
@@ -118,7 +126,7 @@ jobs:
         run: node backend/dist/index.js &
         env:
           PORT: 30010
-          DATABASE_URL: file:../../.runtime/data/test-e2e.db
+          DATABASE_URL: file:../../.structureclaw/data/test-e2e.db
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
 

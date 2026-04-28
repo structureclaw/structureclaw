@@ -23,7 +23,6 @@ on:
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
-      - '.github/actions/setup-env/**'
       - '.github/workflows/llm-integration.yml'
 
 permissions:
@@ -114,8 +113,18 @@ jobs:
         with:
           ref: ${{ needs.check-permission.outputs.pr_sha }}
 
-      - name: Setup environment
-        uses: ./.github/actions/setup-env
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: '**/package-lock.json'
+
+      - name: Setup via sclaw
+        run: node ./sclaw doctor
+
+      - name: Build via sclaw
+        run: node ./sclaw build
 
       - name: Run LLM integration tests
         id: run-tests
@@ -124,8 +133,8 @@ jobs:
           LLM_MODEL: ${{ github.event.inputs.llm_model || vars.LLM_MODEL }}
           LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
           LLM_LOG_ENABLED: "true"
-          LLM_LOG_DIR: ${{ github.workspace }}/.runtime/logs
-          DATABASE_URL: "file:.runtime/data/structureclaw-llm-ci.db"
+          LLM_LOG_DIR: ${{ github.workspace }}/.structureclaw/logs
+          DATABASE_URL: "file:.structureclaw/data/structureclaw-llm-ci.db"
         run: |
           set -o pipefail
           FILTER_ARG="${{ needs.check-permission.outputs.filter_arg }}"
@@ -187,6 +196,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: llm-logs-ubuntu
-          path: .runtime/logs/*.jsonl
+          path: .structureclaw/logs/*.jsonl
           retention-days: 7
           if-no-files-found: ignore

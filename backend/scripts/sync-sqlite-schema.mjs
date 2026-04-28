@@ -12,7 +12,8 @@ const backendDir = path.resolve(__dirname, '..');
 const repoRoot = path.resolve(backendDir, '..');
 const prismaDir = path.join(backendDir, 'prisma');
 const schemaPath = path.join(prismaDir, 'schema.prisma');
-const defaultDatabasePath = path.join(repoRoot, '.runtime', 'data', 'structureclaw.db');
+// Canonical data dir: SCLAW_DATA_DIR || ~/.structureclaw (see backend/src/config/index.ts)
+const defaultDatabasePath = path.join(os.homedir(), '.structureclaw', 'data', 'structureclaw.db');
 const prismaCliPath = path.join(backendDir, 'node_modules', 'prisma', 'build', 'index.js');
 
 function normalizeDatabaseUrl(databaseUrl) {

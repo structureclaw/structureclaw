@@ -20,7 +20,7 @@ export interface AgentMemoryEntryView {
 }
 
 // ---------------------------------------------------------------------------
-// Workspace file-backed store (.runtime/workspace-memory.json)
+// Workspace file-backed store (.agent-workspace/workspace-memory.json)
 // ---------------------------------------------------------------------------
 
 interface FileStoreEntry {
@@ -35,7 +35,7 @@ export class AgentMemoryFileStore {
   private lastUpdatedAtMs = 0;
 
   constructor(workspaceRoot: string) {
-    const dir = path.join(workspaceRoot, '.runtime');
+    const dir = path.join(workspaceRoot, '.agent-workspace');
     this.filePath = path.join(dir, 'workspace-memory.json');
   }
 
@@ -216,7 +216,7 @@ export class AgentMemoryService {
       orderBy: { updatedAt: 'desc' },
       take: 50,
     });
-    return entries.map((entry) => ({
+    return entries.map((entry: any) => ({
       scopeType: entry.scopeType as AgentMemoryScopeType,
       scopeId: entry.scopeId,
       key: entry.key,

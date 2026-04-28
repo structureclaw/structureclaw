@@ -265,12 +265,22 @@ async function collectDockerInstallConfig(rawArgs, env) {
 }
 
 function persistDockerEnv(paths, config) {
-  const templatePath = runtime.pathExists(paths.envFile) ? paths.envFile : paths.envExampleFile;
-  let content = fs.readFileSync(templatePath, "utf8");
-  content = replaceEnvValue(content, "LLM_BASE_URL", config.baseUrl);
-  content = replaceEnvValue(content, "LLM_API_KEY", config.apiKey);
-  content = replaceEnvValue(content, "LLM_MODEL", config.model);
-  fs.writeFileSync(paths.envFile, content);
+  const settingsPath = path.join(path.dirname(paths.envFile), "settings.json");
+  let settings = {};
+  try {
+    if (runtime.pathExists(settingsPath)) {
+      settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    }
+  } catch { /* start fresh */ }
+  settings.llm = {
+    ...(settings.llm || {}),
+    baseUrl: config.baseUrl,
+    apiKey: config.apiKey,
+    model: config.model,
+  };
+  settings.updatedAt = new Date().toISOString();
+  runtime.ensureDirectory(path.dirname(settingsPath));
+  fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
 }
 
 async function showDockerHealth(env) {
@@ -529,11 +539,8 @@ async function ensureAnalysisPython(rootDir, env) {
     env.PATH = process.env.PATH;
   }
 
-  // Resolve venv location: installed packages use the runtime data dir,
-  // source checkouts use backend/.venv (writable checkout directory).
-  const venvDir = paths.installedMode
-    ? path.join(paths.runtimeDir, ".venv")
-    : path.join(rootDir, "backend", ".venv");
+  // Resolve venv location: always in the user data directory
+  const venvDir = path.join(paths.runtimeDir, ".venv");
 
   let resolvedPython = currentPython;
   if (!resolvedPython) {
@@ -691,7 +698,7 @@ async function invokeAutoMigrateLegacyPostgres(rootDir, env) {
   let updatedEnvText = replaceEnvValue(
     envText,
     "DATABASE_URL",
-    "file:../../.runtime/data/structureclaw.db",
+    `file:${path.join(paths.dataDir, "structureclaw.db").replace(/\\/gu, "/")}`,
   );
   updatedEnvText = replaceEnvValue(
     updatedEnvText,
@@ -797,23 +804,14 @@ function getServiceCommand(name, frontendPort, paths) {
     return {
       command: runtime.getNpmCommand(),
       args: ["run", "dev", "--prefix", "backend"],
-      envPatch: {},
+      envPatch: {
+        SCLAW_FRONTEND_DIR: path.join(paths.rootDir, "frontend", "out"),
+      },
     };
   }
 
-  // Frontend not needed in installed mode (backend serves static files)
-  if (paths.installedMode) {
-    return { command: process.execPath, args: ["-e", "process.exit(0)"], envPatch: {} };
-  }
-
-  return {
-    command: runtime.getNpmCommand(),
-    args: ["run", "dev", "--prefix", "frontend", "--", "--port", frontendPort],
-    envPatch: {
-      FRONTEND_PORT: frontendPort,
-      PORT: frontendPort,
-    },
-  };
+  // Frontend is served statically by the backend; no separate process needed
+  return { command: process.execPath, args: ["-e", "process.exit(0)"], envPatch: {} };
 }
 
 function parseBooleanEnvFlag(rawValue) {
@@ -982,8 +980,8 @@ function resolveMirrorValueSource(key, env, dotEnv, paths) {
   if (String(process.env[key] || "").trim()) {
     return "process.env";
   }
-  if (String(dotEnv[key] || "").trim()) {
-    return ".env";
+  if (dotEnv && String(dotEnv[key] || "").trim()) {
+    return "settings.json";
   }
 
   if (String(env.SCLAW_PROFILE || "").toLowerCase() === "cn") {
@@ -1117,6 +1115,15 @@ async function invokeLocalUp(rootDir, env, options = {}) {
   await ensureAnalysisPython(rootDir, env);
   await ensureOpenSeesRuntime(rootDir, env);
 
+  // In dev mode, ensure frontend is built for static serving
+  if (!isInstalled) {
+    const frontendOutIndex = path.join(paths.frontendDir, "out", "index.html");
+    if (!runtime.pathExists(frontendOutIndex)) {
+      log("Building frontend for static serving...");
+      await runFrontendBuild(paths, env);
+    }
+  }
+
   if (options.skipInfra) {
     log("Skipping optional infra startup.");
   }
@@ -1130,49 +1137,42 @@ async function invokeLocalUp(rootDir, env, options = {}) {
   }
 
   // Kill stale processes
-  const ports = isInstalled
-    ? [env.PORT || runtime.DEFAULT_BACKEND_PORT]
-    : [env.PORT || runtime.DEFAULT_BACKEND_PORT, env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT];
+  const ports = [env.PORT || runtime.DEFAULT_BACKEND_PORT];
   runtime.killPortPids(ports, log, getPortCleanupOptions(paths, env));
 
   startTrackedService(paths, env, "backend", env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT);
 
-  if (!isInstalled) {
-    startTrackedService(paths, env, "frontend", env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT);
-    log("");
-    log("Local stack started.");
-    log(`Logs: ${paths.logDir}`);
-    log(`Frontend: http://localhost:${env.FRONTEND_PORT || runtime.DEFAULT_FRONTEND_PORT}`);
-    log(`Backend:  http://localhost:${env.PORT || runtime.DEFAULT_BACKEND_PORT}`);
-  } else {
-    log("");
+  log("");
+  if (isInstalled) {
     log("StructureClaw started.");
-    const backendPort = env.PORT || runtime.DEFAULT_BACKEND_PORT;
-    const url = `http://localhost:${backendPort}`;
-    log(`UI + API: ${url}`);
-    log(`Data: ${paths.dataDir}`);
-    log(`Logs: ${paths.logDir}`);
-
-    // Wait briefly and check if backend is actually listening
-    await runtime.sleep(2000);
-    const backendLog = runtime.logFilePath(paths, "backend");
-    const lastLines = runtime.tailLines(backendLog, 5);
-    const hasStartupError = lastLines.some((line) =>
-      /error|Error|ERR|crashed|ENOENT|Cannot find/i.test(line)
-    );
-    if (hasStartupError) {
-      log("");
-      log("Backend failed to start. Recent log:");
-      for (const line of lastLines) {
-        log(`  ${line}`);
-      }
-      log(`Check full log: ${backendLog}`);
-      return;
-    }
-
-    // Auto-open browser in installed mode
-    setTimeout(() => openBrowser(url), 1500);
+  } else {
+    log("Local stack started.");
   }
+  const backendPort = env.PORT || runtime.DEFAULT_BACKEND_PORT;
+  const url = `http://localhost:${backendPort}`;
+  log(`UI + API: ${url}`);
+  log(`Data: ${paths.dataDir}`);
+  log(`Logs: ${paths.logDir}`);
+
+  // Wait briefly and check if backend is actually listening
+  await runtime.sleep(2000);
+  const backendLog = runtime.logFilePath(paths, "backend");
+  const lastLines = runtime.tailLines(backendLog, 5);
+  const hasStartupError = lastLines.some((line) =>
+    /error|Error|ERR|crashed|ENOENT|Cannot find/i.test(line)
+  );
+  if (hasStartupError) {
+    log("");
+    log("Backend failed to start. Recent log:");
+    for (const line of lastLines) {
+      log(`  ${line}`);
+    }
+    log(`Check full log: ${backendLog}`);
+    return;
+  }
+
+  // Auto-open browser
+  setTimeout(() => openBrowser(url), 1500);
 }
 
 async function promptForFirstRunConfig(envFile, existingEnv) {
@@ -1257,45 +1257,11 @@ async function testLlmConnectivity(baseUrl, apiKey) {
 }
 
 /**
- * Migrate data from old .runtime/ layout to the new ~/.structureclaw/ directory.
- * Only runs in installed-package mode when no ~/.structureclaw/ data exists yet.
- */
-function migrateFromRuntimeDir(paths, rootDir) {
-  const oldRuntimeDir = path.join(rootDir, ".runtime");
-  if (!runtime.pathExists(oldRuntimeDir)) {
-    return;
-  }
-  // Only migrate if the target data dir is empty
-  if (runtime.pathExists(path.join(paths.dataDir, "structureclaw.db"))) {
-    return;
-  }
-
-  log(`Detected legacy .runtime/ directory. Migrating to ${paths.runtimeDir}...`);
-
-  // Migrate .env
-  const oldEnv = path.join(rootDir, ".env");
-  if (runtime.pathExists(oldEnv) && !runtime.pathExists(paths.envFile)) {
-    fs.copyFileSync(oldEnv, paths.envFile);
-    log("  Migrated .env");
-  }
-
-  // Migrate database
-  const oldDb = path.join(oldRuntimeDir, "data", "structureclaw.db");
-  if (runtime.pathExists(oldDb)) {
-    runtime.ensureDirectory(paths.dataDir);
-    fs.copyFileSync(oldDb, path.join(paths.dataDir, "structureclaw.db"));
-    log("  Migrated database");
-  }
-
-  log("  Migration complete.");
-}
-
-/**
  * Migrate .env values into settings.json if settings.json doesn't exist yet.
  * This handles the upgrade path from the old .env-only config to JSON config.
  */
 function migrateEnvToSettingsJson(paths, envFile) {
-  const settingsPath = path.join(path.dirname(paths.envFile), "settings.json");
+  const settingsPath = path.join(paths.runtimeDir, "settings.json");
   if (runtime.pathExists(settingsPath)) {
     return; // Already have JSON config
   }
@@ -1373,38 +1339,32 @@ async function invokeDoctor(rootDir, env) {
   });
   const isInstalled = paths.installedMode;
 
-  // Ensure runtime data directory for installed packages
-  if (isInstalled) {
-    runtime.ensureDirectory(paths.dataDir);
-    runtime.ensureDirectory(paths.logDir);
-    runtime.ensureDirectory(paths.pidDir);
-    runtime.ensureDirectory(path.join(paths.runtimeDir, "workspace"));
-    runtime.ensureDirectory(path.join(paths.runtimeDir, "checkpoints"));
-    runtime.ensureDirectory(path.join(paths.dataDir, "skills"));
-    runtime.ensureDirectory(path.join(paths.dataDir, "tools"));
+  // Ensure runtime data directory
+  runtime.ensureDirectory(paths.dataDir);
+  runtime.ensureDirectory(paths.logDir);
+  runtime.ensureDirectory(paths.pidDir);
+  runtime.ensureDirectory(path.join(paths.runtimeDir, "workspace"));
+  runtime.ensureDirectory(path.join(paths.runtimeDir, "agent-checkpoints"));
+  runtime.ensureDirectory(path.join(paths.dataDir, "skills"));
+  runtime.ensureDirectory(path.join(paths.dataDir, "tools"));
 
-    // Migrate from old .runtime/ layout if present
-    migrateFromRuntimeDir(paths, rootDir);
+  // Migrate .env → settings.json if needed
+  migrateEnvToSettingsJson(paths, paths.envFile);
 
-    // Migrate .env → settings.json if needed
-    migrateEnvToSettingsJson(paths, paths.envFile);
-
-    // Interactive first-run wizard if no settings.json exists
-    if (!runtime.pathExists(path.join(path.dirname(paths.envFile), "settings.json"))) {
-      if (process.stdin.isTTY && process.stdout.isTTY) {
-        await promptForFirstRunConfig(paths.envFile, {});
-      } else {
-        // Non-interactive: create minimal settings.json with defaults
-        const settingsDir = path.dirname(paths.envFile);
-        const settingsPath = path.join(settingsDir, "settings.json");
-        const settings = {
-          server: { port: 31415, host: "0.0.0.0" },          logging: { level: "info", llmLogEnabled: false },
-          updatedAt: new Date().toISOString(),
-        };
-        runtime.ensureDirectory(settingsDir);
-        fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
-        log(`Created default configuration at ${settingsPath}`);
-      }
+  // Interactive first-run wizard if no settings.json exists
+  if (!runtime.pathExists(path.join(paths.runtimeDir, "settings.json"))) {
+    if (process.stdin.isTTY && process.stdout.isTTY) {
+      await promptForFirstRunConfig(paths.envFile, {});
+    } else {
+      // Non-interactive: create minimal settings.json with defaults
+      const settingsPath = path.join(paths.runtimeDir, "settings.json");
+      const settings = {
+        server: { port: 31415, host: "0.0.0.0" },          logging: { level: "info", llmLogEnabled: false },
+        updatedAt: new Date().toISOString(),
+      };
+      runtime.ensureDirectory(paths.runtimeDir);
+      fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
+      log(`Created default configuration at ${settingsPath}`);
     }
   }
 
@@ -1460,7 +1420,7 @@ async function invokeDoctor(rootDir, env) {
 
 async function dispatch(commandName, rawArgs, rootDir) {
   const context = runtime.loadProjectEnvironment(rootDir, log);
-  const { paths, env, dotEnv } = context;
+  const { paths, env } = context;
   const programName = env.SCLAW_PROGRAM_NAME || "sclaw";
 
   switch (commandName) {
@@ -1484,7 +1444,7 @@ async function dispatch(commandName, rawArgs, rootDir) {
       await ensureAnalysisPython(rootDir, env);
       return;
     case "mirror-status":
-      showMirrorStatus(env, dotEnv, paths);
+      showMirrorStatus(env, {}, paths);
       return;
     case "dev-backend":
       await runtime.runCommand(runtime.getNpmCommand(), ["run", "dev", "--prefix", paths.backendDir], {

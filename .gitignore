@@ -13,7 +13,6 @@ Thumbs.db
 .env.pre-sqlite-migration.*.bak
 backend/.env
 frontend/.env.local
-!.env.example
 
 # Python cache and virtual environments
 __pycache__/
@@ -37,7 +36,6 @@ frontend/coverage/
 *tsconfig.tsbuildinfo
 
 # Runtime directories and generated artifacts
-.runtime/
 uploads/*
 !uploads/.gitkeep
 backend/uploads/*

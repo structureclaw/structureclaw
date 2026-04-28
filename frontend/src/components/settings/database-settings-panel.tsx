@@ -27,9 +27,9 @@ const FALLBACK_STATUS: DatabaseAdminStatus = {
   mode: 'local-file',
   database: {
     provider: 'sqlite',
-    databaseUrl: 'file:.runtime/data/structureclaw.db',
-    databasePath: '.runtime/data/structureclaw.db',
-    directoryPath: '.runtime/data',
+    databaseUrl: 'file:.structureclaw/data/structureclaw.db',
+    databasePath: '.structureclaw/data/structureclaw.db',
+    directoryPath: '.structureclaw/data',
     exists: false,
     writable: false,
     sizeBytes: 0,

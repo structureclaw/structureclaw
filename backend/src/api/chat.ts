@@ -283,7 +283,7 @@ async function persistConversationMessages(params: {
         take: 6,
         select: { metadata: true },
       });
-      if (recentMessages.some((message) => getPersistedMessageTraceId(message.metadata) === params.traceId)) {
+      if (recentMessages.some((msg: { metadata: unknown }) => getPersistedMessageTraceId(msg.metadata) === params.traceId)) {
         return;
       }
     }

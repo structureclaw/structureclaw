@@ -10,7 +10,6 @@ on:
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
-      - '.github/actions/setup-env/**'
       - '.github/workflows/analysis-regression.yml'
   push:
     branches:
@@ -22,7 +21,6 @@ on:
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
-      - '.github/actions/setup-env/**'
       - '.github/workflows/analysis-regression.yml'
 
 jobs:
@@ -38,8 +36,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup environment
-        uses: ./.github/actions/setup-env
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install backend dependencies
+        run: npm install --prefix backend
+
+      - name: Build backend
+        run: npm run build --prefix backend
+
+      - name: Setup analysis Python
+        run: node ./sclaw setup-analysis-python
 
       - name: Run Analysis Regression
         run: node tests/runner.mjs analysis-regression

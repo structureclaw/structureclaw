@@ -342,16 +342,12 @@ describe('AgentSkillHubService.install()', () => {
 
   test('should also write cache state to disk', async () => {
     await service.install(STEEL_CONNECTION_ID);
-    // The constructor derives cacheFilePath from process.cwd(), not from stateFilePath.
-    // The cache file lands at cwd/.runtime/skillhub/cache.json. Verify it exists and
-    // contains the expected entry. Clean up afterward.
-    const actualCachePath = path.resolve(process.cwd(), '.runtime/skillhub/cache.json');
+    // cacheFilePath is derived from stateFilePath directory
+    const actualCachePath = path.join(path.dirname(stateFilePath), 'cache.json');
     const cache = readJsonSync(actualCachePath);
     expect(cache.skills[STEEL_CONNECTION_ID]).toBeDefined();
     expect(cache.skills[STEEL_CONNECTION_ID].id).toBe(STEEL_CONNECTION_ID);
     expect(cache.skills[STEEL_CONNECTION_ID].domain).toBe('code-check');
-    // Cleanup the cwd-derived cache directory created by this test
-    fs.rmSync(path.resolve(process.cwd(), '.runtime/skillhub'), { recursive: true, force: true });
   });
 
   test('should return alreadyInstalled=true on second install', async () => {
@@ -413,9 +409,8 @@ describe('AgentSkillHubService.install()', () => {
   });
 
   test('should fall back to cache in offline mode when skill not in catalog', async () => {
-    // The cache file path is derived from process.cwd(), not from stateFilePath.
-    const actualCacheDir = path.resolve(process.cwd(), '.runtime/skillhub');
-    const actualCachePath = path.join(actualCacheDir, 'cache.json');
+    // cacheFilePath is derived from stateFilePath directory
+    const actualCachePath = path.join(path.dirname(stateFilePath), 'cache.json');
 
     // Write a cache-only entry that is NOT in the DEFAULT_CATALOG
     const cachedSkill = {
@@ -439,14 +434,12 @@ describe('AgentSkillHubService.install()', () => {
       expect(result.installed).toBe(false);
     } finally {
       delete process.env.SCLAW_SKILLHUB_OFFLINE;
-      fs.rmSync(actualCacheDir, { recursive: true, force: true });
     }
   });
 
   test('should not fall back to cache when offline mode is disabled', async () => {
-    // The cache file path is derived from process.cwd()
-    const actualCacheDir = path.resolve(process.cwd(), '.runtime/skillhub');
-    const actualCachePath = path.join(actualCacheDir, 'cache.json');
+    // cacheFilePath is derived from stateFilePath directory
+    const actualCachePath = path.join(path.dirname(stateFilePath), 'cache.json');
 
     writeJsonSync(actualCachePath, {
       skills: {
@@ -466,7 +459,7 @@ describe('AgentSkillHubService.install()', () => {
         'Skill not found in SkillHub catalog/cache: skillhub.cached-only-test',
       );
     } finally {
-      fs.rmSync(actualCacheDir, { recursive: true, force: true });
+      // Cache file is in the same temp dir as state, cleaned up by afterEach
     }
   });
 });
@@ -733,27 +726,25 @@ describe('AgentSkillHubService file I/O edge cases', () => {
 
 // ---------------------------------------------------------------------------
 // Cache file I/O edge cases: readCacheState error paths
-// The cache file is always at cwd/.runtime/skillhub/cache.json, independent of
-// the stateFilePath constructor argument. These tests write directly to that path.
+// The cache file path is derived from stateFilePath directory.
 // ---------------------------------------------------------------------------
 
 describe('AgentSkillHubService readCacheState edge cases', () => {
   let dir;
   let stateFilePath;
   let service;
-  const actualCacheDir = path.resolve(process.cwd(), '.runtime/skillhub');
-  const actualCachePath = path.join(actualCacheDir, 'cache.json');
+  let actualCachePath;
 
   beforeEach(() => {
     ({ dir, stateFilePath } = createTempDir());
     service = buildService(stateFilePath);
+    actualCachePath = path.join(path.dirname(stateFilePath), 'cache.json');
     delete process.env.SCLAW_SKILLHUB_FORCE_DOWN;
     delete process.env.SCLAW_SKILLHUB_OFFLINE;
   });
 
   afterEach(() => {
     cleanupTempDir(dir);
-    fs.rmSync(actualCacheDir, { recursive: true, force: true });
   });
 
   test('should handle missing cache file gracefully in offline mode', async () => {
@@ -766,7 +757,7 @@ describe('AgentSkillHubService readCacheState edge cases', () => {
   });
 
   test('should handle invalid JSON cache file in offline mode', async () => {
-    fs.mkdirSync(actualCacheDir, { recursive: true });
+    fs.mkdirSync(path.dirname(actualCachePath), { recursive: true });
     fs.writeFileSync(actualCachePath, '{invalid json', 'utf-8');
 
     process.env.SCLAW_SKILLHUB_OFFLINE = '1';

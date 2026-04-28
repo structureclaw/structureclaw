@@ -1,22 +1,16 @@
 import os from 'os';
 import path from 'path';
 import process from 'process';
-import { existsSync } from 'fs';
 import { fileURLToPath } from 'url';
 import { readSettingsFile, migrateLegacyLlmSettings } from './settings-file.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Detect installed-package mode: dist/backend/config/index.js -> dist/frontend exists
-const isInstalledPackage = existsSync(path.resolve(__dirname, '../../frontend'));
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function getUserDataDir(): string {
   return path.join(os.homedir(), '.structureclaw');
 }
 
-const runtimeBaseDir = process.env.SCLAW_DATA_DIR
-  || (isInstalledPackage ? getUserDataDir() : path.resolve(__dirname, '../../../.runtime'));
+const runtimeBaseDir = process.env.SCLAW_DATA_DIR || getUserDataDir();
 
 // Migrate legacy llm-settings.json → settings.json if needed
 migrateLegacyLlmSettings();
@@ -27,7 +21,6 @@ const fileSettings = readSettingsFile();
 const defaultSqliteDatabasePath = path.join(runtimeBaseDir, 'data', 'structureclaw.db');
 const defaultSqliteDatabaseUrl = `file:${defaultSqliteDatabasePath}`;
 const defaultUploadDir = runtimeBaseDir;
-const defaultLlmSettingsPath = path.join(runtimeBaseDir, 'llm-settings.json');
 
 function resolveReportsDir(rawValue: string | undefined): string {
   const trimmed = rawValue?.trim();
@@ -49,13 +42,9 @@ const frontendPort = fileSettings?.server?.frontendPort?.toString() ?? (process.
 const backendPort = fileSettings?.server?.port ?? (parseInt(process.env.PORT || '', 10) || 31415);
 const analysisEngineManifestPath = fileSettings?.analysis?.engineManifestPath
   ?? path.join(runtimeBaseDir, 'analysis-engines.json');
-const defaultAnalysisPythonBin = isInstalledPackage
-  ? (process.platform === 'win32'
-    ? path.join(runtimeBaseDir, '.venv', 'Scripts', 'python.exe')
-    : path.join(runtimeBaseDir, '.venv', 'bin', 'python'))
-  : (process.platform === 'win32'
-    ? path.resolve(__dirname, '../../.venv/Scripts/python.exe')
-    : path.resolve(__dirname, '../../.venv/bin/python'));
+const defaultAnalysisPythonBin = process.platform === 'win32'
+  ? path.join(runtimeBaseDir, '.venv', 'Scripts', 'python.exe')
+  : path.join(runtimeBaseDir, '.venv', 'bin', 'python');
 
 const defaultCorsOrigins = [
   `http://localhost:${frontendPort}`,
@@ -113,7 +102,6 @@ export const config = {
   // LLM 调用日志（默认关闭，设置 llmLogEnabled: true 开启）
   llmLogEnabled: fileSettings?.logging?.llmLogEnabled ?? false,
   llmLogDir: fileSettings?.logging?.llmLogDir ?? path.join(runtimeBaseDir, 'logs'),
-  llmSettingsPath: defaultLlmSettingsPath,
 
   // Agent 配置
   agentWorkspaceRoot: fileSettings?.agent?.workspaceRoot ?? '',

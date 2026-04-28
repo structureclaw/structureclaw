@@ -1,23 +1,11 @@
 import type { Logger } from 'pino';
-import fs from 'fs';
-import path from 'path';
 import pino from 'pino';
-import { fileURLToPath } from 'url';
 import { config } from '../config/index.js';
 import { createRotatingFileStream } from './log-rotation.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
 function resolveLogFilePath(): string | null {
   if (config.logFile) return config.logFile;
-  // __dirname = backend/dist/utils/ → repo-root/.runtime/logs/app.log
-  const defaultPath = path.resolve(__dirname, '../../../.runtime/logs/app.log');
-  try {
-    fs.mkdirSync(path.dirname(defaultPath), { recursive: true });
-    return defaultPath;
-  } catch {
-    return null;
-  }
+  return null;
 }
 
 const logFilePath = resolveLogFilePath();

@@ -15,7 +15,7 @@ frontend (Next.js 14)  →  backend (Fastify + Prisma)  →  analysis engine (e.
 - **Backend** (`backend/`): Fastify API with Prisma ORM (SQLite default). Route handlers in `src/api`, orchestration/domain logic in `src/services`, shared helpers in `src/utils`.
 - **Frontend** (`frontend/`): Next.js 14 app-router. Routes in `src/app`, reusable UI in `src/components`, client state (Zustand) and i18n in `src/lib`.
 - **Agent runtime** (`backend/src/agent-runtime/`): Capability-driven orchestration — base model (chat) → skill layer (engineering advisor) → tool layer (executable agent). 14 skill domains live under `backend/src/agent-skills/` (structure-type, analysis, code-check, data-input, design, drawing, general, load-boundary, material, report-export, result-postprocess, section, validation, visualization).
-- **Analysis execution** (`backend/src/agent-skills/analysis/`): Spawns a Python subprocess using OpenSees for structural analysis. Python runtime lives in `backend/.venv/`.
+- **Analysis execution** (`backend/src/agent-skills/analysis/`): Spawns a Python subprocess using OpenSees for structural analysis. Python runtime lives in `~/.structureclaw/.venv/`.
 - **CLI** (`scripts/cli/`): The `./sclaw` and `./sclaw_cn` commands wrap all startup, health-check, and lifecycle operations. Always prefer `./sclaw ...` over calling script paths directly.
 - **Tests** (`tests/`): Regression and contract validation via `node tests/runner.mjs`.
 
@@ -23,7 +23,7 @@ frontend (Next.js 14)  →  backend (Fastify + Prisma)  →  analysis engine (e.
 
 **Environment setup (first time):**
 ```bash
-./sclaw doctor          # checks deps, installs missing, sets up backend/.venv
+./sclaw doctor          # checks deps, installs missing, sets up ~/.structureclaw/.venv
 ./sclaw start           # starts backend + frontend
 ./sclaw status          # verify both services running
 ./sclaw logs            # tail logs
@@ -102,7 +102,7 @@ All user-facing settings are stored in `settings.json` (managed via the frontend
 
 - `llm.apiKey`, `llm.model`, `llm.baseUrl`
 - `database.url` — SQLite by default (`file:~/.structureclaw/data/structureclaw.db`)
-- `analysis.pythonBin` — leave blank for auto-detected `backend/.venv` Python
+- `analysis.pythonBin` — leave blank for auto-detected `~/.structureclaw/.venv` Python
 
 Infrastructure-only env vars: `SCLAW_DATA_DIR`, `NODE_ENV`.
 

@@ -179,16 +179,13 @@ function isInstalledPackageLayout(resolvedRoot) {
 
 /**
  * Return the user-facing runtime data directory.
- * Installed packages use ~/.structureclaw/; source checkouts use .runtime/.
+ * Always ~/.structureclaw/ unless overridden by SCLAW_DATA_DIR.
  */
 function resolveRuntimeDataDir(rootDir) {
   if (process.env.SCLAW_DATA_DIR) {
     return process.env.SCLAW_DATA_DIR;
   }
-  if (isInstalledPackageLayout(rootDir)) {
-    return path.join(os.homedir(), ".structureclaw");
-  }
-  return path.join(rootDir, ".runtime");
+  return path.join(os.homedir(), ".structureclaw");
 }
 
 function resolveProjectRoot(explicitRoot) {
@@ -224,18 +221,16 @@ function resolveProjectRoot(explicitRoot) {
 
 function resolvePaths(rootDir) {
   const installedMode = isInstalledPackageLayout(rootDir);
-  const runtimeDir = installedMode ? resolveRuntimeDataDir(rootDir) : path.join(rootDir, ".runtime");
+  const runtimeDir = resolveRuntimeDataDir(rootDir);
 
   return {
     rootDir,
+    installedMode,
     runtimeDir,
     logDir: path.join(runtimeDir, "logs"),
     pidDir: path.join(runtimeDir, "pids"),
     dataDir: path.join(runtimeDir, "data"),
-    envFile: installedMode
-      ? path.join(runtimeDir, ".env")
-      : path.join(rootDir, ".env"),
-    envExampleFile: path.join(rootDir, ".env.example"),
+    envFile: path.join(runtimeDir, ".env"),
     backendDir: installedMode
       ? path.join(rootDir, "dist", "backend")
       : path.join(rootDir, "backend"),
@@ -273,7 +268,6 @@ function resolvePaths(rootDir) {
     dataInputSkillRoot: path.join(rootDir, "backend", "src", "agent-skills", "data-input"),
     codeCheckSkillRoot: path.join(rootDir, "backend", "src", "agent-skills", "code-check"),
     materialSkillRoot: path.join(rootDir, "backend", "src", "agent-skills", "material"),
-    installedMode,
   };
 }
 
@@ -323,30 +317,27 @@ function normalizeAptMirror(rawValue) {
   return normalized;
 }
 
-function applyCnProfileDefaults(env, dotEnv) {
+function applyCnProfileDefaults(env) {
   if (String(env.SCLAW_PROFILE || "").toLowerCase() !== "cn") {
     return;
   }
 
-  if (!String(dotEnv.PIP_INDEX_URL || "").trim() && !String(process.env.PIP_INDEX_URL || "").trim()) {
+  if (!String(process.env.PIP_INDEX_URL || "").trim()) {
     env.PIP_INDEX_URL = CN_DEFAULT_PIP_INDEX_URL;
   }
-  if (!String(dotEnv.NPM_CONFIG_REGISTRY || "").trim() && !String(process.env.NPM_CONFIG_REGISTRY || "").trim()) {
+  if (!String(process.env.NPM_CONFIG_REGISTRY || "").trim()) {
     env.NPM_CONFIG_REGISTRY = CN_DEFAULT_NPM_REGISTRY;
   }
-  if (
-    !String(dotEnv.DOCKER_REGISTRY_MIRROR || "").trim() &&
-    !String(process.env.DOCKER_REGISTRY_MIRROR || "").trim()
-  ) {
+  if (!String(process.env.DOCKER_REGISTRY_MIRROR || "").trim()) {
     env.DOCKER_REGISTRY_MIRROR = CN_DEFAULT_DOCKER_REGISTRY_MIRROR;
   }
-  if (!String(dotEnv.APT_MIRROR || "").trim() && !String(process.env.APT_MIRROR || "").trim()) {
+  if (!String(process.env.APT_MIRROR || "").trim()) {
     env.APT_MIRROR = CN_DEFAULT_APT_MIRROR;
   }
 }
 
 function readSettingsJson(paths) {
-  const settingsPath = path.join(path.dirname(paths.envFile), "settings.json");
+  const settingsPath = path.join(paths.runtimeDir, "settings.json");
   try {
     if (pathExists(settingsPath)) {
       return JSON.parse(fs.readFileSync(settingsPath, "utf8"));
@@ -360,28 +351,26 @@ function loadProjectEnvironment(rootDir, logger = () => {}, options = {}) {
   ensureDirectory(paths.runtimeDir);
   ensureDirectory(paths.logDir);
   ensureDirectory(paths.pidDir);
-  const dotEnv = readDotEnv(paths.envFile);
   const settings = readSettingsJson(paths);
   const profile =
-    String(options.profile || process.env.SCLAW_PROFILE || dotEnv.SCLAW_PROFILE || "default").toLowerCase();
+    String(options.profile || process.env.SCLAW_PROFILE || "default").toLowerCase();
   const programName = String(options.programName || process.env.SCLAW_PROGRAM_NAME || "sclaw");
   const env = {
     ...process.env,
-    ...dotEnv,
     SCLAW_PROFILE: profile,
     SCLAW_PROGRAM_NAME: programName,
   };
-  // Apply settings.json values (take priority over .env for core settings)
+  // Apply settings.json values
   if (settings.server?.port) env.PORT = String(settings.server.port);
   if (settings.server?.frontendPort) env.FRONTEND_PORT = String(settings.server.frontendPort);
   if (settings.server?.host) env.HOST = settings.server.host;
   if (settings.database?.url) env.DATABASE_URL = settings.database.url;
-  applyCnProfileDefaults(env, dotEnv);
+  applyCnProfileDefaults(env);
   env.DOCKER_REGISTRY_MIRROR = normalizeDockerRegistryMirror(env.DOCKER_REGISTRY_MIRROR);
   env.APT_MIRROR = normalizeAptMirror(env.APT_MIRROR);
   env.FRONTEND_PORT = env.FRONTEND_PORT || DEFAULT_FRONTEND_PORT;
   env.PORT = env.PORT || DEFAULT_BACKEND_PORT;
-  return { paths, dotEnv, env };
+  return { paths, env };
 }
 
 function normalizeSqliteFileUrl(rootDir, databaseUrl) {
@@ -408,7 +397,8 @@ function buildScopedSqliteDatabaseUrl(rootDir, profileName = "start") {
     .replace(/[^a-z0-9_-]/gu, "-")
     .replace(/-+/gu, "-")
     .replace(/^-|-$/gu, "") || "start";
-  const sqlitePath = path.join(rootDir, ".runtime", "data", `structureclaw.${safeProfile}.db`);
+  const runtimeDir = resolveRuntimeDataDir(rootDir);
+  const sqlitePath = path.join(runtimeDir, "data", `structureclaw.${safeProfile}.db`);
   return `file:${sqlitePath.replace(/\\/gu, "/")}`;
 }
 
@@ -416,7 +406,7 @@ function ensureLocalSqliteConfig(rootDir, env, logger = () => {}, options = {}) 
   const profileName = options.profileName || "start";
   const targetDatabaseUrl = buildScopedSqliteDatabaseUrl(rootDir, profileName);
   const currentDatabaseUrl =
-    env.DATABASE_URL || "file:../../.runtime/data/structureclaw.db";
+    env.DATABASE_URL || buildScopedSqliteDatabaseUrl(rootDir, "start");
 
   if (currentDatabaseUrl.startsWith("file:")) {
     const normalizedCurrent = normalizeSqliteFileUrl(rootDir, currentDatabaseUrl);
@@ -862,25 +852,12 @@ function resolveAnalysisPython(rootDir, env) {
     return env.ANALYSIS_PYTHON_BIN;
   }
 
-  // Installed-package mode: venv lives in the user's runtime data dir
-  if (isInstalledPackageLayout(rootDir)) {
-    const dataDir = resolveRuntimeDataDir(rootDir);
-    const winVenv = path.join(dataDir, ".venv", "Scripts", "python.exe");
-    if (pathExists(winVenv)) return winVenv;
-    const unixVenv = path.join(dataDir, ".venv", "bin", "python");
-    if (pathExists(unixVenv)) return unixVenv;
-    return null;
-  }
-
-  // Source checkout: venv lives at backend/.venv
-  const windowsVenv = path.join(rootDir, "backend", ".venv", "Scripts", "python.exe");
-  if (pathExists(windowsVenv)) {
-    return windowsVenv;
-  }
-  const unixVenv = path.join(rootDir, "backend", ".venv", "bin", "python");
-  if (pathExists(unixVenv)) {
-    return unixVenv;
-  }
+  // Unified: venv lives in the user data directory
+  const dataDir = resolveRuntimeDataDir(rootDir);
+  const winVenv = path.join(dataDir, ".venv", "Scripts", "python.exe");
+  if (pathExists(winVenv)) return winVenv;
+  const unixVenv = path.join(dataDir, ".venv", "bin", "python");
+  if (pathExists(unixVenv)) return unixVenv;
   return null;
 }
 

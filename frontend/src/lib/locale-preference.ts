@@ -11,10 +11,6 @@ export function normalizeLocale(value: unknown): AppLocale | null {
   return null
 }
 
-export function parseLocaleCookieValue(raw: string | undefined | null): AppLocale {
-  return normalizeLocale(raw) ?? 'en'
-}
-
 /** Client: persist locale for the next full page request (SSR reads this cookie). */
 export function writeLocaleCookie(locale: AppLocale): void {
   if (typeof document === 'undefined') {

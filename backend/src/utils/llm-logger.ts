@@ -1,14 +1,11 @@
 /**
- * LLM call logger — writes JSONL entries to .runtime/logs/llm-calls.jsonl when
+ * LLM call logger — writes JSONL entries to logs/llm-calls.jsonl when
  * LLM_LOG_ENABLED=true.  Consumed by llm.ts (callLlm wrapper).
  */
 import fs from 'fs';
 import path from 'path';
-import { fileURLToPath } from 'url';
 import { config } from '../config/index.js';
 import { logger } from './logger.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface LlmLogEntry {
   timestamp: string;
@@ -41,9 +38,7 @@ class LlmCallLogger {
     }
 
     try {
-      // __dirname = backend/dist/utils/ (compiled) → resolve to repo-root/.runtime/logs
-      const dir = config.llmLogDir
-        || path.resolve(__dirname, '../../../.runtime/logs');
+      const dir = config.llmLogDir;
       fs.mkdirSync(dir, { recursive: true });
       const filePath = path.join(dir, 'llm-calls.jsonl');
       this.stream = fs.createWriteStream(filePath, { flags: 'a' });

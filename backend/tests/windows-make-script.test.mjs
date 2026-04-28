@@ -54,19 +54,19 @@ describe('sclaw runtime analysis python paths', () => {
     const doctorUrl = runtime.buildScopedSqliteDatabaseUrl(repoRoot, 'doctor');
     const startUrl = runtime.buildScopedSqliteDatabaseUrl(repoRoot, 'start');
 
-    expect(doctorUrl).toContain(path.join('.runtime', 'data', 'structureclaw.doctor.db').replace(/\\/gu, '/'));
-    expect(startUrl).toContain(path.join('.runtime', 'data', 'structureclaw.start.db').replace(/\\/gu, '/'));
+    expect(doctorUrl).toContain('structureclaw.doctor.db');
+    expect(startUrl).toContain('structureclaw.start.db');
     expect(doctorUrl).not.toBe(startUrl);
   });
 
   test('should override configured sqlite database with the scoped startup database', () => {
     const env = {
-      DATABASE_URL: 'file:../../.runtime/data/structureclaw.db',
+      DATABASE_URL: 'file:../../.structureclaw/data/structureclaw.db',
     };
 
     const resolved = runtime.ensureLocalSqliteConfig(repoRoot, env, () => {}, { profileName: 'doctor' });
 
-    expect(resolved).toContain(path.join('.runtime', 'data', 'structureclaw.doctor.db').replace(/\\/gu, '/'));
+    expect(resolved).toContain('structureclaw.doctor.db');
     expect(env.DATABASE_URL).toBe(resolved);
   });
 });

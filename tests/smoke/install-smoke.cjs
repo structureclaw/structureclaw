@@ -18,7 +18,7 @@ function writeDockerSmokeEnv(paths) {
   // Generate the Docker env file directly — no longer depends on .env.example
   const lines = [
     "# Auto-generated for CI Docker smoke test",
-    `DATABASE_URL=file:/.runtime/data/structureclaw.db`,
+    `DATABASE_URL=file:/.structureclaw/data/structureclaw.db`,
     `LLM_API_KEY=ci-dummy-key`,
     `LLM_MODEL=gpt-4.1`,
     `LLM_BASE_URL=https://api.openai.com/v1`,

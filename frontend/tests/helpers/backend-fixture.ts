@@ -25,7 +25,7 @@ export async function startTestBackend(rootDir: string): Promise<string> {
     env: {
       ...process.env,
       PORT: String(TEST_BACKEND_PORT),
-      DATABASE_URL: 'file:../../.runtime/data/test-vitest-integration.db',
+      DATABASE_URL: 'file:../../.structureclaw/data/test-vitest-integration.db',
       LLM_API_KEY: process.env.LLM_API_KEY || '',
       LLM_MODEL: process.env.LLM_MODEL || 'gpt-4o-mini',
       ...(process.env.LLM_BASE_URL ? { LLM_BASE_URL: process.env.LLM_BASE_URL } : {}),

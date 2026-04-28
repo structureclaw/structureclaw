@@ -10,8 +10,6 @@ on:
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
-      - '.env.example'
-      - '.github/actions/setup-env/**'
       - '.github/workflows/backend-regression.yml'
   push:
     branches:
@@ -23,8 +21,6 @@ on:
       - 'sclaw'
       - 'sclaw_cn'
       - 'package.json'
-      - '.env.example'
-      - '.github/actions/setup-env/**'
       - '.github/workflows/backend-regression.yml'
 
 jobs:
@@ -40,8 +36,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup environment
-        uses: ./.github/actions/setup-env
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install backend dependencies
+        run: npm ci --prefix backend
 
       - name: Run Backend Regression
         run: node tests/runner.mjs backend-regression

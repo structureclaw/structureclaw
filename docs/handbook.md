@@ -57,7 +57,7 @@ frontend/   Next.js application
 backend/    Fastify API, agent skills, hosted analysis runtime, Prisma schema, tests
 scripts/    startup scripts and contract/regression validators
 docs/       handbook and protocol reference
-.runtime/   source-checkout runtime data, logs, and generated report artifacts
+~/.structureclaw/   runtime data, logs, and generated report artifacts
 ```
 
 ## 5. Getting Started
@@ -85,21 +85,11 @@ For repository development:
 ./sclaw status
 ```
 
-Source mode keeps runtime data under `.runtime/` and starts backend/frontend as development processes.
+Source mode also uses the user runtime directory by default, such as `~/.structureclaw/`, and starts backend/frontend as development processes.
 
-### 5.2 Node.js setup helper
+### 5.2 Node.js setup
 
-If Node.js is not installed yet, use the helper installer scripts:
-
-```bash
-bash ./scripts/install-node-linux.sh
-```
-
-Windows PowerShell (run as Administrator for first-time package install):
-
-```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
-```
+Node.js 20+ is required. Install it via your preferred method (nvm, system package manager, or nodejs.org).
 
 ### 5.3 Common lifecycle commands
 
@@ -182,8 +172,8 @@ The frontend General Settings panel writes `settings.json` through the backend a
 
 Runtime data locations:
 
-- Installed package: user data directory such as `~/.structureclaw/`
-- Source checkout: `.runtime/`
+- Default: user data directory such as `~/.structureclaw/`
+- Override: `SCLAW_DATA_DIR`
 
 Configuration resolution:
 
@@ -210,8 +200,10 @@ Important settings sections:
 
 Notes:
 
-- `sclaw doctor` prepares the Python analysis environment. In installed mode the venv lives under the user runtime directory.
-- Legacy `.env` values are migrated into `settings.json` when possible. `.env` remains a compatibility detail for older source checkouts and Docker onboarding.
+- `sclaw doctor` prepares the Python analysis environment. If a system Python 3.12 is missing, it ensures `uv` is available and prepares a Python 3.12 virtual environment under the user runtime directory.
+- `./sclaw start` and `./sclaw restart` default to `~/.structureclaw/data/structureclaw.start.db`; `./sclaw doctor` uses `~/.structureclaw/data/structureclaw.doctor.db` so startup checks stay isolated from the active local runtime database.
+- If an old local `.env` points `DATABASE_URL` at local PostgreSQL, `./sclaw doctor` and `./sclaw start` auto-migrate that data into SQLite, rewrite `.env` to the SQLite default, and keep the original PostgreSQL URL in `POSTGRES_SOURCE_DATABASE_URL`.
+- Backend agent sessions and model cache use an in-memory store in the current process.
 - Commercial analysis engines still require local software installation and valid licensing.
 
 ## 7. Primary Workflows

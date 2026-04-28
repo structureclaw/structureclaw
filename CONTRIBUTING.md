@@ -231,7 +231,7 @@ Convert the PR to ready-for-review only after the validation checklist is meanin
 ## Security and Secrets
 
 - Never commit live secrets, tokens, or private keys.
-- Use `.env.example` as the template.
+- Use `settings.json` (via `sclaw doctor` or frontend Settings UI) for configuration.
 - Keep production credentials outside the repository.
 - Document new configuration defaults when your change depends on them.
 

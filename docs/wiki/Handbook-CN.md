@@ -28,21 +28,11 @@ sclaw stop
 ./sclaw stop
 ```
 
-源码模式把运行数据放在 `.runtime/`。
+源码模式以开发进程启动 backend/frontend，并默认使用用户运行目录，例如 `~/.structureclaw/`。
 
-### Node.js 安装辅助
+### Node.js 安装
 
-如果你还没有安装 Node.js，可以先运行自动安装脚本：
-
-```bash
-bash ./scripts/install-node-linux.sh
-```
-
-Windows PowerShell（首次安装建议使用管理员权限）：
-
-```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
-```
+需要 Node.js 20+。可通过任意方式安装（nvm、系统包管理器或 nodejs.org）。
 
 Windows PowerShell:
 
@@ -61,6 +51,14 @@ Docker:
 ./sclaw docker-start     # 启动 Docker Compose 服务栈
 ./sclaw docker-stop      # 停止 Docker Compose 服务栈
 ./sclaw docker-status    # 检查 Docker 服务健康状态
+```
+
+国内镜像入口（子命令相同）：
+
+```bash
+./sclaw_cn doctor
+./sclaw_cn setup-analysis-python
+./sclaw_cn docker-start
 ```
 
 ### SkillHub CLI

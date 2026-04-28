@@ -8,6 +8,7 @@
  */
 import { config } from './index.js';
 import {
+  normalizeOptionalString,
   readSettingsFile,
   writeSettingsFile,
   type SettingsFileLlm,
@@ -63,12 +64,6 @@ const LLM_DEFAULTS = {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-function normalizeOptionalString(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
 
 function maskApiKey(apiKey: string | undefined): string {
   return apiKey ? '********' : '';

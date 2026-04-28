@@ -18,26 +18,14 @@ const ENV_API_URL = process.env.NEXT_PUBLIC_API_URL || ''
  *
  * The empty-string return in installed-package mode is intentional: browser
  * fetch('') resolves to the current origin, so no CORS is needed.
- * Tests that stub ENV_API_URL to '' in a jsdom window should NOT expect a
- * URL fallback — the module intentionally returns '' for same-origin mode.
  */
 function resolveBrowserApiBase(): string {
   // If an explicit API URL was set at build time, use it
   if (ENV_API_URL) {
-    if (typeof window === 'undefined') {
-      // SSR — return as-is (no CORS concern server-side)
-      return ENV_API_URL.replace(/\/$/, '')
-    }
-    // Browser — normalize localhost → 127.0.0.1 for CORS matching
     return normalizeHostname(ENV_API_URL)
   }
 
-  if (typeof window === 'undefined') {
-    // SSR — fall back to localhost default
-    return 'http://localhost:31415'
-  }
-
-  // No explicit URL + browser → assume same-origin (installed-package mode)
+  // No explicit URL → assume same-origin (installed-package mode)
   return ''
 }
 

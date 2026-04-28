@@ -117,27 +117,31 @@ Main directories:
 | Mode | Command | Data directory | Process model |
 |---|---|---|---|
 | npm install | `sclaw start` | user runtime directory, defaulting to `~/.structureclaw/` | backend serves the exported frontend in one process |
-| source checkout | `./sclaw start` | `.runtime/` | backend and frontend run as development processes |
+| source checkout | `./sclaw start` | user runtime directory, defaulting to `~/.structureclaw/` | backend and frontend run as development processes |
 | Docker | `./sclaw docker-install` then `./sclaw docker-start` | Docker volumes / compose state | containerized stack |
 
-If Node.js is not installed yet, use the helper installer script first:
+Recommended local flow:
 
 ```bash
-bash ./scripts/install-node-linux.sh
+./sclaw doctor
+./sclaw start
+./sclaw status
 ```
 
-Windows PowerShell (run as Administrator for first-time package install):
+China mirror flow (same subcommands, mirror defaults enabled):
 
-```powershell
-powershell -ExecutionPolicy Bypass -File ./scripts/install-node-windows.ps1
+```bash
+./sclaw_cn doctor
+./sclaw_cn start
+./sclaw_cn status
 ```
 
 Notes:
 
-- SQLite is the default local database. Installed mode and source mode both use the resolved runtime data directory; by default that is `~/.structureclaw/` for installed packages and `.runtime/` for source checkouts.
-- `sclaw doctor` prepares the Python analysis environment automatically. In installed mode the virtual environment is created under the user runtime data directory instead of `node_modules`.
-- Existing source-checkout `.runtime/` data can be migrated into the installed-mode runtime directory.
-- Legacy `.env` values are migrated into `settings.json` when possible. `.env` remains a compatibility detail for older source checkouts and Docker onboarding, not the primary app configuration path.
+- SQLite is now the default local database. `./sclaw start` uses `~/.structureclaw/data/structureclaw.start.db`, and `./sclaw doctor` uses `~/.structureclaw/data/structureclaw.doctor.db` so preflight checks do not touch the active local runtime database.
+- `./sclaw doctor` no longer requires a preinstalled system Python 3.12. It will ensure `uv` and prepare a virtual environment with Python 3.12 automatically when needed. On Windows, this automatic setup currently requires `winget`; if `winget` is unavailable, install `uv` manually before running `./sclaw doctor`.
+- If your old local `.env` still points `DATABASE_URL` at a local PostgreSQL instance, `./sclaw doctor` and `./sclaw start` will auto-migrate that data into SQLite, rewrite `.env` to the SQLite default, and keep the original PostgreSQL URL in `POSTGRES_SOURCE_DATABASE_URL`.
+- That first auto-migration also creates a local backup file like `.env.pre-sqlite-migration.<timestamp>.bak`.
 - `sclaw_cn` defaults to China mirror settings when unset: `PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`, `NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`, and Docker mirror prefix via `DOCKER_REGISTRY_MIRROR`.
 - You can override mirror values in `.env` or shell environment (`PIP_INDEX_URL`, `NPM_CONFIG_REGISTRY`, `DOCKER_REGISTRY_MIRROR`, `APT_MIRROR`).
 
@@ -207,17 +211,18 @@ docker compose down
 
 ## Configuration
 
-StructureClaw 1.0 uses `settings.json` as the user-facing configuration file. The General Settings panel writes the same settings through the backend admin API and shows whether each value comes from runtime settings or built-in defaults.
+StructureClaw 1.0 uses `settings.json` as the user-facing configuration file. `sclaw doctor` creates it, and the General Settings panel writes the same settings through the backend admin API.
 
 Configuration precedence:
 
 1. Runtime `settings.json`
 2. Built-in defaults
 
-Important `settings.json` sections:
+Important `settings.json` fields and sections:
 
 - `server`: ports, host, request body limit
 - `llm`: OpenAI-compatible base URL, model, API key, timeout, retries
+- `database.url`: SQLite connection URL
 - `logging`: application log level, LLM logging, log rotation
 - `analysis`: Python runtime path, timeout, engine manifest path
 - `storage`: reports directory and upload size
@@ -225,7 +230,7 @@ Important `settings.json` sections:
 - `pkpm`: SATWE/JWSCYCLE path and work directory
 - `yjk`: install root, executable, bundled Python, work directory, version, timeout, headless mode
 
-For installed packages, `settings.json` lives in the runtime data directory. For source checkouts, it lives under `.runtime/`. The `SCLAW_DATA_DIR` environment variable can override that runtime directory for tests or controlled deployments.
+By default, `settings.json` lives in `~/.structureclaw/`. The `SCLAW_DATA_DIR` environment variable can override that runtime directory for tests or controlled deployments.
 
 ## API Entrypoints
 
