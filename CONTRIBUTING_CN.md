@@ -247,4 +247,4 @@ PR 的质量比 PR 的体积更重要，但强烈建议保持小而可评审。
 
 英文版：[CONTRIBUTING.md](CONTRIBUTING.md)
 
-请同时遵守 [CODE_OF_CONDUCT_CN.md](CODE_OF_CONDUCT_CN.md)。
+请同时遵守组织级 [Code of Conduct](https://github.com/structureclaw/.github/blob/main/CODE_OF_CONDUCT.md)。

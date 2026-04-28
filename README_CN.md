@@ -289,7 +289,7 @@ StructureClaw 1.0 以 `settings.json` 作为用户配置文件。`sclaw doctor` 
 
 ## 参与贡献
 
-提交 PR 前请先阅读 [CONTRIBUTING_CN.md](./CONTRIBUTING_CN.md) 和 [CODE_OF_CONDUCT_CN.md](./CODE_OF_CONDUCT_CN.md)。
+提交 PR 前请先阅读 [CONTRIBUTING_CN.md](./CONTRIBUTING_CN.md) 和组织级 [Code of Conduct](https://github.com/structureclaw/.github/blob/main/CODE_OF_CONDUCT.md)。
 
 ## 许可证
 

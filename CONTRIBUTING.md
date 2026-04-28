@@ -246,4 +246,4 @@ Convert the PR to ready-for-review only after the validation checklist is meanin
 
 Chinese version: [CONTRIBUTING_CN.md](CONTRIBUTING_CN.md)
 
-Please also follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md).
+Please also follow the organization-level [Code of Conduct](https://github.com/structureclaw/.github/blob/main/CODE_OF_CONDUCT.md).

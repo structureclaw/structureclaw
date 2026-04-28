@@ -289,7 +289,7 @@ Backend-hosted analysis:
 
 ## Contributing
 
-Please read [CONTRIBUTING.md](./CONTRIBUTING.md) and [CODE_OF_CONDUCT.md](./CODE_OF_CONDUCT.md) before opening a PR.
+Please read [CONTRIBUTING.md](./CONTRIBUTING.md) and the organization-level [Code of Conduct](https://github.com/structureclaw/.github/blob/main/CODE_OF_CONDUCT.md) before opening a PR.
 
 ## License
 
