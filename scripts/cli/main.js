@@ -929,6 +929,7 @@ async function promptForFirstRunConfig(envFile, existingEnv) {
 
   try {
     console.log("\n=== StructureClaw First-Run Setup ===\n");
+    await rl.question("请-------输入任意键继续-------\n");
 
     const defaultBaseUrl = existingEnv.LLM_BASE_URL || "https://api.openai.com/v1";
     const defaultModel = existingEnv.LLM_MODEL || "gpt-4-turbo-preview";
