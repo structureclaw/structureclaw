@@ -37,11 +37,11 @@ flowchart LR
 
 推荐安装版环境：
 
-- Node.js 20+ 和 npm，或使用 `scripts/install.sh` / `scripts/install.ps1` bootstrap 安装器
+- Node.js 24+ 和 npm，或使用 `scripts/install.sh` / `scripts/install.ps1` bootstrap 安装器
 
 推荐源码开发环境：
 
-- Node.js 20+
+- Node.js 24+
 - Python 3.12
 
 ## 4. 仓库结构
@@ -58,7 +58,7 @@ docs/       手册与协议参考文档
 
 ### 5.0 npm 安装版
 
-如果已经安装 Node.js 20+ 和 npm，普通使用推荐全局安装：
+如果已经安装 Node.js 24+ 和 npm，普通使用推荐全局安装：
 
 ```bash
 npm install -g @structureclaw/structureclaw
@@ -83,7 +83,7 @@ Windows PowerShell：
 irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
 ```
 
-安装器会检查 Node.js 20+ 和 npm；缺失或版本太旧时，会把 Node.js 安装到用户目录，配置用户级 npm prefix，安装 `@structureclaw/structureclaw@latest`，然后运行 `sclaw doctor`。
+安装器会检查 Node.js 24+ 和 npm；缺失或版本太旧时，会把 Node.js 安装到用户目录，配置用户级 npm prefix，安装 `@structureclaw/structureclaw@latest`，然后运行 `sclaw doctor`。
 
 常用参数：
 
@@ -113,7 +113,7 @@ scripts/install.sh --registry https://registry.npmmirror.com
 
 ### 5.3 Node.js 安装
 
-源码开发和直接 npm 安装需要 Node.js 20+。可通过任意方式安装（nvm、系统包管理器或 nodejs.org），如果只是应用安装，也可以使用上面的 bootstrap 安装器自动准备 Node。
+源码开发和直接 npm 安装需要 Node.js 24+。可通过任意方式安装（nvm、系统包管理器或 nodejs.org），如果只是应用安装，也可以使用上面的 bootstrap 安装器自动准备 Node。
 
 ### 5.4 安装版 CLI 生命周期命令
 

@@ -9,7 +9,7 @@ const convertBatch = require("./convert-batch");
 const { runFrontendBuild } = require("./frontend-build");
 const runtime = require("./runtime");
 
-const MIN_NODE_MAJOR = 20;
+const MIN_NODE_MAJOR = 24;
 const ANALYSIS_REQUIRED_PYTHON_MODULES = ["uvicorn", "yaml"];
 
 function getPackageMetadata(rootDir) {
@@ -1065,7 +1065,7 @@ function openBrowser(url) {
 }
 
 async function invokeDoctor(rootDir, env) {
-  runtime.requireCommand("node", "Install Node.js 20+ and retry.");
+  runtime.requireCommand("node", "Install Node.js 24+ and retry.");
   runtime.requireCommand("npm", "Install npm and retry.");
 
   const { paths } = runtime.loadProjectEnvironment(rootDir, () => {}, {

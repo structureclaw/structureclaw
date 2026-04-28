@@ -5,7 +5,7 @@
   "license": "MIT",
   "type": "commonjs",
   "engines": {
-    "node": ">=20"
+    "node": ">=24"
   },
   "os": ["win32", "darwin", "linux"],
   "bin": {

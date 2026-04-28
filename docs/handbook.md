@@ -37,11 +37,11 @@ flowchart LR
 
 Recommended installed setup:
 
-- Node.js 20+ and npm, or the bootstrap installer in `scripts/install.sh` / `scripts/install.ps1`
+- Node.js 24+ and npm, or the bootstrap installer in `scripts/install.sh` / `scripts/install.ps1`
 
 Recommended source-development setup:
 
-- Node.js 20+
+- Node.js 24+
 - Python 3.12
 
 ## 4. Repository Structure
@@ -58,7 +58,7 @@ docs/       handbook and protocol reference
 
 ### 5.0 Installed package path
 
-For normal usage when Node.js 20+ and npm are already installed:
+For normal usage when Node.js 24+ and npm are already installed:
 
 ```bash
 npm install -g @structureclaw/structureclaw
@@ -83,7 +83,7 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
 ```
 
-The installers check for Node.js 20+ and npm. If missing or too old, they install Node.js under the user profile, configure a user-local npm prefix, install `@structureclaw/structureclaw@latest`, then run `sclaw doctor`.
+The installers check for Node.js 24+ and npm. If missing or too old, they install Node.js under the user profile, configure a user-local npm prefix, install `@structureclaw/structureclaw@latest`, then run `sclaw doctor`.
 
 Useful installer options:
 
@@ -113,7 +113,7 @@ Source mode also uses the user runtime directory by default, such as `~/.structu
 
 ### 5.3 Node.js setup
 
-Node.js 20+ is required for source development and direct npm installs. Install it via your preferred method (nvm, system package manager, or nodejs.org), or use the bootstrap installers above for an application install that prepares Node automatically.
+Node.js 24+ is required for source development and direct npm installs. Install it via your preferred method (nvm, system package manager, or nodejs.org), or use the bootstrap installers above for an application install that prepares Node automatically.
 
 ### 5.4 Installed CLI lifecycle commands
 

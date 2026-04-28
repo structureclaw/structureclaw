@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-MIN_NODE_MAJOR="${SCLAW_MIN_NODE_MAJOR:-20}"
-NODE_DIST_BASE="${SCLAW_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v20.x}"
+MIN_NODE_MAJOR="${SCLAW_MIN_NODE_MAJOR:-24}"
+NODE_DIST_BASE="${SCLAW_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v24.x}"
 PACKAGE_NAME="${SCLAW_PACKAGE_NAME:-@structureclaw/structureclaw}"
 PACKAGE_TAG="${SCLAW_PACKAGE_TAG:-latest}"
 NPM_PREFIX="${SCLAW_NPM_PREFIX:-$HOME/.structureclaw/npm-global}"
@@ -27,7 +27,7 @@ Install StructureClaw for Linux/macOS users who may not have Node.js yet.
 Options:
   --cn                    Use China-friendly npm and Node mirrors.
   --registry <url>        npm registry to use for the package install.
-  --node-dist-base <url>  Node.js dist base, default latest-v20.x.
+  --node-dist-base <url>  Node.js dist base, default latest-v24.x.
   --package <name>        npm package name, default @structureclaw/structureclaw.
   --tag <tag>             npm dist-tag/version, default latest.
   --prefix <dir>          npm global prefix, default ~/.structureclaw/npm-global.
@@ -59,7 +59,7 @@ while [ "$#" -gt 0 ]; do
   case "$1" in
     --cn)
       export NPM_CONFIG_REGISTRY="${NPM_CONFIG_REGISTRY:-https://registry.npmmirror.com}"
-      NODE_DIST_BASE="${SCLAW_NODE_DIST_BASE:-https://npmmirror.com/mirrors/node/latest-v20.x}"
+      NODE_DIST_BASE="${SCLAW_NODE_DIST_BASE:-https://npmmirror.com/mirrors/node/latest-v24.x}"
       shift
       ;;
     --registry)
@@ -178,7 +178,7 @@ ensure_node() {
   trap 'rm -rf "$temp_dir"' EXIT
 
   sums="$temp_dir/SHASUMS256.txt"
-  log "Resolving latest Node.js 20 for linux-$arch..."
+  log "Resolving latest Node.js 24 for linux-$arch..."
   download "$NODE_DIST_BASE/SHASUMS256.txt" "$sums"
   version="$(sed -n "s/.*  node-\(v[0-9][^ ]*\)-linux-$arch.tar.xz$/\1/p" "$sums" | head -n 1)"
   [ -n "$version" ] || die "Could not resolve Node.js version from $NODE_DIST_BASE"

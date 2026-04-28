@@ -11,7 +11,7 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$MinNodeMajor = 20
+$MinNodeMajor = 24
 
 function Write-InstallLog {
   param([string]$Message)
@@ -33,7 +33,7 @@ Install StructureClaw for Windows users who may not have Node.js yet.
 Options:
   -Cn                    Use China-friendly npm and Node mirrors.
   -Registry <url>        npm registry to use for the package install.
-  -NodeDistBase <url>    Node.js dist base, default latest-v20.x.
+  -NodeDistBase <url>    Node.js dist base, default latest-v24.x.
   -Package <name>        npm package name, default @structureclaw/structureclaw.
   -Tag <tag>             npm dist-tag/version, default latest.
   -Prefix <dir>          npm global prefix, default ~/.structureclaw/npm-global.
@@ -53,7 +53,7 @@ if ($Help) {
 }
 
 if (-not $NodeDistBase) {
-  $NodeDistBase = "https://nodejs.org/dist/latest-v20.x"
+  $NodeDistBase = "https://nodejs.org/dist/latest-v24.x"
 }
 
 if ($Cn) {
@@ -61,7 +61,7 @@ if ($Cn) {
     $Registry = "https://registry.npmmirror.com"
   }
   if (-not $env:SCLAW_NODE_DIST_BASE) {
-    $NodeDistBase = "https://npmmirror.com/mirrors/node/latest-v20.x"
+    $NodeDistBase = "https://npmmirror.com/mirrors/node/latest-v24.x"
   }
 }
 
@@ -165,7 +165,7 @@ function Ensure-Node {
 
   try {
     $sumsPath = Join-Path $tempDir "SHASUMS256.txt"
-    Write-InstallLog "Resolving latest Node.js 20 for win-$arch..."
+    Write-InstallLog "Resolving latest Node.js 24 for win-$arch..."
     Invoke-Download "$NodeDistBase/SHASUMS256.txt" $sumsPath
 
     $pattern = "node-(v[0-9][^\s]*)-win-$arch\.zip"

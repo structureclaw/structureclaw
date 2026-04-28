@@ -23,7 +23,7 @@ This wiki mirrors the current repository documentation and gives a stable landin
 - Runtime data lives in the user data directory such as `~/.structureclaw/`
 - Windows users can use `node .\sclaw doctor`, `node .\sclaw start`, etc.
 - SkillHub CLI: `./sclaw skill search/install/enable/disable/uninstall/list`
-- Node.js 20+ required (install via nvm, system package manager, or nodejs.org)
+- Node.js 24+ required (install via nvm, system package manager, or nodejs.org)
 
 ## Wiki Pages
 
