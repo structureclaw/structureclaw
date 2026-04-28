@@ -2,6 +2,10 @@ import js from "@eslint/js";
 import tseslint from "typescript-eslint";
 
 export default [
+  {
+    ignores: ["dist/", "node_modules/"],
+  },
+
   // 1️⃣ 基础 JS 推荐规则
   js.configs.recommended,
 
@@ -20,9 +24,8 @@ export default [
     },
 
     rules: {
-      // 常见自定义
       "no-unused-vars": "off",
-      "@typescript-eslint/no-unused-vars": ["warn"],
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
 
       "@typescript-eslint/consistent-type-imports": "warn",
       "@typescript-eslint/no-explicit-any": "off",

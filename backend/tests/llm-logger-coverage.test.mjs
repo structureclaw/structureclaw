@@ -27,14 +27,21 @@ function readJsonlLines(filePath) {
   return content.split('\n').filter(Boolean).map((line) => JSON.parse(line));
 }
 
-function waitForFile(filePath, { timeoutMs = 3000, intervalMs = 50 } = {}) {
+function waitForFile(filePath, { timeoutMs = 3000, intervalMs = 50, expectedLines } = {}) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const check = () => {
       try {
         if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {
-          resolve();
-          return;
+          if (expectedLines == null) {
+            resolve();
+            return;
+          }
+          const lines = fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
+          if (lines.length >= expectedLines) {
+            resolve();
+            return;
+          }
         }
       } catch { /* ignore */ }
       if (Date.now() - start >= timeoutMs) {
@@ -292,7 +299,7 @@ describe('llmCallLogger.log when logging is enabled', () => {
         error: 'rate limited',
       });
 
-      await waitForFile(path.join(tmpDir, 'llm-calls.jsonl'));
+      await waitForFile(path.join(tmpDir, 'llm-calls.jsonl'), { expectedLines: 3 });
 
       const lines = readJsonlLines(path.join(tmpDir, 'llm-calls.jsonl'));
       expect(lines).toHaveLength(3);
@@ -559,7 +566,7 @@ describe('llmCallLogger.log edge cases', () => {
 
       // Wait for WriteStream to flush
       const jsonlPath = path.join(tmpDir, 'llm-calls.jsonl');
-      await waitForFile(jsonlPath);
+      await waitForFile(jsonlPath, { expectedLines: 50 });
       const lines = readJsonlLines(jsonlPath);
       expect(lines).toHaveLength(50);
       expect(lines[0].model).toBe('model-0');

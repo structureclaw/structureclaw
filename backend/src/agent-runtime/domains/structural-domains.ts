@@ -1,5 +1,6 @@
 import type { DraftExtraction } from '../types.js';
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used via typeof for type inference
 const GEOMETRY_DOMAIN_KEYS = [
   'lengthM',
   'spanLengthM',
@@ -15,6 +16,7 @@ const GEOMETRY_DOMAIN_KEYS = [
   'bayWidthsYM',
 ] as const;
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used via typeof for type inference
 const LOAD_BOUNDARY_DOMAIN_KEYS = [
   'supportType',
   'frameBaseSupportType',
