@@ -496,6 +496,19 @@ function remapInstalledSqliteDatabaseUrl(env, paths) {
   env.DATABASE_URL = `file:${path.join(paths.dataDir, "structureclaw.db").replace(/\\/gu, "/")}`;
 }
 
+function resolveBundledPrismaEntry(rootDir) {
+  return require.resolve("prisma/build/index.js", {
+    paths: [rootDir, path.join(rootDir, "backend")],
+  });
+}
+
+async function runBundledPrisma(rootDir, args, env) {
+  const prismaEntry = resolveBundledPrismaEntry(rootDir);
+  await runtime.runCommand(process.execPath, [prismaEntry, ...args], {
+    env,
+  });
+}
+
 /**
  * In installed mode, run prisma db push + seed directly since there is no
  * backend package.json with npm scripts.
@@ -511,11 +524,10 @@ async function invokeInstalledDbInit(rootDir, env, paths) {
   // Step 1: Ensure Prisma client is generated
   log("Generating Prisma client...");
   try {
-    const shellOpt = process.platform === "win32" ? true : undefined;
-    await runtime.runCommand("npx", [
-      "prisma", "generate",
+    await runBundledPrisma(rootDir, [
+      "generate",
       `--schema=${prismaSchema}`,
-    ], { env, shell: shellOpt });
+    ], env);
     log("[ok] Prisma client generated.");
   } catch (err) {
     log(`[warn] Prisma generate failed: ${err.message}`);
@@ -524,12 +536,11 @@ async function invokeInstalledDbInit(rootDir, env, paths) {
   // Step 2: Push schema to SQLite
   log("Initializing database (installed mode)...");
   try {
-    const shellOpt = process.platform === "win32" ? true : undefined;
-    await runtime.runCommand("npx", [
-      "prisma", "db", "push",
+    await runBundledPrisma(rootDir, [
+      "db", "push",
       `--schema=${prismaSchema}`,
       "--accept-data-loss",
-    ], { env, shell: shellOpt });
+    ], env);
     log("[ok] Database schema synced.");
   } catch (err) {
     log(`[warn] Database init failed: ${err.message}`);
