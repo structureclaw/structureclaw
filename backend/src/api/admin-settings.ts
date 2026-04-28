@@ -1,6 +1,9 @@
-import { FastifyInstance, FastifyRequest } from 'fastify';
+import fs from 'node:fs';
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { z } from 'zod';
-import { config } from '../config/index.js';
+import { config, runtimeBaseDir } from '../config/index.js';
 import {
   readSettingsFile,
   writeSettingsFile,
@@ -110,6 +113,7 @@ type SettingsResponse = {
     installRoot: ValueField<string>;
     exePath: ValueField<string>;
     pythonBin: ValueField<string>;
+    sdkArchivePath: ValueField<string>;
     workDir: ValueField<string>;
     version: ValueField<string>;
     timeoutS: ValueField<number>;
@@ -150,6 +154,7 @@ function buildSettingsResponse(): SettingsResponse {
     yjkInstallRoot: '',
     yjkExePath: '',
     yjkPythonBin: '',
+    yjkSdkArchivePath: '',
     yjkWorkDir: '',
     yjkVersion: '8.0.0',
     yjkTimeoutS: 600,
@@ -211,6 +216,7 @@ function buildSettingsResponse(): SettingsResponse {
       installRoot: stringSource(file?.yjk?.installRoot, defaults.yjkInstallRoot),
       exePath: stringSource(file?.yjk?.exePath, defaults.yjkExePath),
       pythonBin: stringSource(file?.yjk?.pythonBin, defaults.yjkPythonBin),
+      sdkArchivePath: stringSource(file?.yjk?.sdkArchivePath, defaults.yjkSdkArchivePath),
       workDir: stringSource(file?.yjk?.workDir, defaults.yjkWorkDir),
       version: stringSource(file?.yjk?.version, defaults.yjkVersion),
       timeoutS: numberSource(file?.yjk?.timeoutS, defaults.yjkTimeoutS),
@@ -272,6 +278,7 @@ const updateSettingsSchema = z.object({
     installRoot: z.string().trim().optional(),
     exePath: z.string().trim().optional(),
     pythonBin: z.string().trim().optional(),
+    sdkArchivePath: z.string().trim().optional(),
     workDir: z.string().trim().optional(),
     version: z.string().trim().optional(),
     timeoutS: z.number().int().min(1).optional(),
@@ -280,6 +287,21 @@ const updateSettingsSchema = z.object({
 });
 
 type UpdateSettingsInput = z.infer<typeof updateSettingsSchema>;
+
+const yjkAutoConfigureSchema = z.object({
+  yjk: updateSettingsSchema.shape.yjk.optional(),
+});
+
+type YjkAutoConfigureInput = z.infer<typeof yjkAutoConfigureSchema>;
+type YjkAutoConfigureStep = {
+  name: string;
+  status: 'applied' | 'skipped';
+  details?: string;
+};
+
+const YJK_API_REPO_URL = 'https://gitee.com/yjk-opensource/yjkapi_-python.git';
+const YJK_API_BRANCH = '8.0';
+const DEFAULT_YJK_COMMAND_TIMEOUT_MS = 300000;
 
 function applyUpdate(current: SettingsFile, input: UpdateSettingsInput): SettingsFile {
   const next: SettingsFile = { ...current };
@@ -362,6 +384,7 @@ function applyUpdate(current: SettingsFile, input: UpdateSettingsInput): Setting
     if (input.yjk.installRoot !== undefined) yjk.installRoot = input.yjk.installRoot;
     if (input.yjk.exePath !== undefined) yjk.exePath = input.yjk.exePath;
     if (input.yjk.pythonBin !== undefined) yjk.pythonBin = input.yjk.pythonBin;
+    if (input.yjk.sdkArchivePath !== undefined) yjk.sdkArchivePath = input.yjk.sdkArchivePath;
     if (input.yjk.workDir !== undefined) yjk.workDir = input.yjk.workDir;
     if (input.yjk.version !== undefined) yjk.version = input.yjk.version;
     if (input.yjk.timeoutS !== undefined) yjk.timeoutS = input.yjk.timeoutS;
@@ -370,6 +393,440 @@ function applyUpdate(current: SettingsFile, input: UpdateSettingsInput): Setting
   }
 
   return next;
+}
+
+function findYjkExe(installRoot: string): string | undefined {
+  for (const name of ['yjks.exe', 'YJKS.exe']) {
+    const candidate = path.join(installRoot, name);
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+  }
+  return undefined;
+}
+
+function findYjkPython(installRoot: string): string | undefined {
+  for (const relative of [
+    path.join('Python310', 'python.exe'),
+    path.join('python310', 'python.exe'),
+  ]) {
+    const candidate = path.join(installRoot, relative);
+    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
+  }
+  return undefined;
+}
+
+function copyYjkSdkIntoInstallRoot(sdkSource: string, installRoot: string): number {
+  const entries = fs.readdirSync(sdkSource, { withFileTypes: true });
+  for (const entry of entries) {
+    const source = path.join(sdkSource, entry.name);
+    const target = path.join(installRoot, entry.name);
+    try {
+      fs.cpSync(source, target, { recursive: true, force: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Failed to copy YJKAPI SDK file "${entry.name}" into ${installRoot}: ${message}. `
+        + 'Close YJK and any YJK bundled Python processes, then try again.',
+      );
+    }
+  }
+  return entries.length;
+}
+
+function yjkCommandTimeoutMs(): number {
+  const parsed = Number(process.env.YJK_AUTO_CONFIG_COMMAND_TIMEOUT_MS);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_YJK_COMMAND_TIMEOUT_MS;
+}
+
+function assertYjkInstallNotRunning(installRoot: string): void {
+  if (process.platform !== 'win32') return;
+
+  const script = [
+    "$names = @('yjks.exe','python.exe','pythonw.exe')",
+    "$root = [System.IO.Path]::GetFullPath($env:YJK_AUTO_CONFIG_INSTALL_ROOT).TrimEnd('\\')",
+    "$items = Get-CimInstance Win32_Process | Where-Object { $names -contains $_.Name -and $_.ExecutablePath } | ForEach-Object {",
+    "  $exe = [System.IO.Path]::GetFullPath($_.ExecutablePath)",
+    "  if ($exe.StartsWith($root, [System.StringComparison]::OrdinalIgnoreCase)) {",
+    "    [PSCustomObject]@{ Name = $_.Name; ProcessId = $_.ProcessId; ExecutablePath = $exe }",
+    "  }",
+    "}",
+    "$items | ConvertTo-Json -Compress",
+  ].join('; ');
+  const result = spawnSync('powershell.exe', ['-NoProfile', '-Command', script], {
+    encoding: 'utf8',
+    env: { ...process.env, YJK_AUTO_CONFIG_INSTALL_ROOT: installRoot },
+    timeout: 10000,
+    windowsHide: true,
+  });
+  if (result.error || result.status !== 0) return;
+
+  const output = result.stdout.trim();
+  if (!output) return;
+
+  let processes: Array<{ Name?: string; ProcessId?: number; ExecutablePath?: string }>;
+  try {
+    const parsed = JSON.parse(output) as unknown;
+    processes = Array.isArray(parsed) ? parsed : [parsed as { Name?: string; ProcessId?: number; ExecutablePath?: string }];
+  } catch {
+    return;
+  }
+  const activeProcesses = processes
+    .filter((item) => typeof item.Name === 'string' && typeof item.ExecutablePath === 'string');
+  if (activeProcesses.length === 0) return;
+
+  const pythonDir = path.join(installRoot, 'python310');
+  const pythonDirAlt = path.join(installRoot, 'Python310');
+  const activeNames = activeProcesses
+    .map((item) => `${item.Name}${item.ProcessId ? `:${item.ProcessId}` : ''}`)
+    .join(', ');
+  const message = [
+    `YJK appears to be running (${activeNames}).`,
+    `The SDK copy step needs exclusive access to ${pythonDir} / ${pythonDirAlt}.`,
+    'Close YJK and stop YJK bundled Python processes before running Auto Configure again.',
+  ].join(' ');
+  throw new Error(message);
+}
+
+function runRequiredCommand(command: string, args: string[], cwd?: string, timeoutMs = yjkCommandTimeoutMs()): string {
+  const result = spawnSync(command, args, {
+    cwd,
+    encoding: 'utf8',
+    timeout: timeoutMs,
+    windowsHide: true,
+  });
+  if (result.error) {
+    if ((result.error as NodeJS.ErrnoException).code === 'ETIMEDOUT') {
+      throw new Error(`${command} ${args.join(' ')} timed out after ${timeoutMs}ms`);
+    }
+    throw new Error(`${command} failed: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    const output = [result.stderr, result.stdout].filter(Boolean).join('\n').trim();
+    throw new Error(`${command} ${args.join(' ')} failed${output ? `: ${output}` : ''}`);
+  }
+  return [result.stdout, result.stderr].filter(Boolean).join('\n').trim();
+}
+
+function runOptionalCommand(command: string, args: string[], cwd?: string, timeoutMs = 10000): string | undefined {
+  const result = spawnSync(command, args, {
+    cwd,
+    encoding: 'utf8',
+    timeout: timeoutMs,
+    windowsHide: true,
+  });
+  if (result.error || result.status !== 0) return undefined;
+  return result.stdout.trim();
+}
+
+function existingExecutable(candidates: string[]): string | undefined {
+  return candidates.find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile());
+}
+
+function resolveGitCommand(): string | undefined {
+  const configured = process.env.GIT_BIN?.trim();
+  if (configured) {
+    if (!fs.existsSync(configured) || !fs.statSync(configured).isFile()) {
+      throw new Error(`GIT_BIN points to a missing git executable: ${configured}`);
+    }
+    return configured;
+  }
+
+  const commonWindowsGit = process.platform === 'win32'
+    ? existingExecutable([
+      'C:\\Program Files\\Git\\cmd\\git.exe',
+      'C:\\Program Files\\Git\\bin\\git.exe',
+      'C:\\Program Files (x86)\\Git\\cmd\\git.exe',
+      'C:\\Program Files (x86)\\Git\\bin\\git.exe',
+    ])
+    : undefined;
+  if (commonWindowsGit) return commonWindowsGit;
+
+  const probe = spawnSync('git', ['--version'], { encoding: 'utf8', timeout: 10000, windowsHide: true });
+  return probe.error ? undefined : 'git';
+}
+
+function findRarExtractor(): { command: string; args: (archive: string, outputDir: string) => string[] } {
+  const configured = process.env.YJK_7Z_BIN?.trim() || process.env.YJK_RAR_EXTRACTOR?.trim();
+  if (configured) {
+    // Environment override intentionally uses 7-Zip-compatible CLI arguments:
+    // `x -y -o<outputDir> <archive>`.
+    return { command: configured, args: (archive, outputDir) => ['x', '-y', `-o${outputDir}`, archive] };
+  }
+
+  const candidates = [
+    {
+      command: '7z',
+      args: (archive: string, outputDir: string) => ['x', '-y', `-o${outputDir}`, archive],
+    },
+    {
+      command: '7za',
+      args: (archive: string, outputDir: string) => ['x', '-y', `-o${outputDir}`, archive],
+    },
+    {
+      command: 'UnRAR',
+      args: (archive: string, outputDir: string) => ['x', '-y', archive, `${outputDir}${path.sep}`],
+    },
+    {
+      command: 'WinRAR',
+      args: (archive: string, outputDir: string) => ['x', '-y', archive, `${outputDir}${path.sep}`],
+    },
+  ];
+
+  for (const candidate of candidates) {
+    const probe = spawnSync(candidate.command, [], { encoding: 'utf8', timeout: 10000, windowsHide: true });
+    if (!probe.error) return candidate;
+  }
+
+  throw new Error('A RAR extractor was not found. Install 7-Zip/WinRAR or set YJK_7Z_BIN to a 7-Zip-compatible extractor.');
+}
+
+function yjkApiBranch(): string {
+  return process.env.YJK_API_REPO_BRANCH?.trim() || YJK_API_BRANCH;
+}
+
+function safeCacheSegment(value: string): string {
+  return value.replace(/[^a-zA-Z0-9._-]/g, '_');
+}
+
+function resolveYjkApiCacheDir(branch: string): string {
+  return path.join(runtimeBaseDir, 'cache', 'yjkapi', safeCacheSegment(branch));
+}
+
+function syncYjkApiPublicRepo(steps: YjkAutoConfigureStep[]): string | undefined {
+  const repoUrl = process.env.YJK_API_REPO_URL?.trim() || YJK_API_REPO_URL;
+  const branch = yjkApiBranch();
+  const gitCommand = resolveGitCommand();
+  if (!gitCommand) {
+    steps.push({
+      name: 'Clone YJKAPI public repository',
+      status: 'skipped',
+      details: 'Git was not found. Use a local official SDK archive path for no-Git setup.',
+    });
+    return undefined;
+  }
+
+  const cacheDir = resolveYjkApiCacheDir(branch);
+  const repoDir = path.join(cacheDir, 'repo');
+  fs.mkdirSync(cacheDir, { recursive: true, mode: 0o700 });
+
+  if (fs.existsSync(path.join(repoDir, '.git'))) {
+    const originUrl = runOptionalCommand(gitCommand, ['remote', 'get-url', 'origin'], repoDir, 10000);
+    if (originUrl !== repoUrl) {
+      fs.rmSync(repoDir, { recursive: true, force: true });
+    } else {
+      runRequiredCommand(gitCommand, ['fetch', '--depth', '1', 'origin', branch], repoDir);
+      runRequiredCommand(gitCommand, ['checkout', branch], repoDir);
+      runRequiredCommand(gitCommand, ['reset', '--hard', `origin/${branch}`], repoDir);
+      steps.push({
+        name: 'Update YJKAPI public repository cache',
+        status: 'applied',
+        details: `${repoUrl}#${branch}`,
+      });
+      return repoDir;
+    }
+  }
+
+  if (fs.existsSync(repoDir)) {
+    fs.rmSync(repoDir, { recursive: true, force: true });
+  }
+
+  runRequiredCommand(gitCommand, ['clone', '--depth', '1', '--branch', branch, repoUrl, repoDir]);
+  steps.push({
+    name: 'Clone YJKAPI public repository',
+    status: 'applied',
+    details: `${repoUrl}#${branch}`,
+  });
+  return repoDir;
+}
+
+function resolveYjkSdkSourceFromPublicRepo(steps: YjkAutoConfigureStep[]): string | undefined {
+  const branch = yjkApiBranch();
+  const repoDir = syncYjkApiPublicRepo(steps);
+  if (!repoDir) return undefined;
+
+  const archivePath = path.join(repoDir, 'SDK', `${branch}.rar`);
+  if (!fs.existsSync(archivePath) || !fs.statSync(archivePath).isFile()) {
+    throw new Error(`YJKAPI SDK archive was not found in public repository cache: ${archivePath}`);
+  }
+
+  const extractedDir = path.join(resolveYjkApiCacheDir(branch), `sdk-${safeCacheSegment(branch)}`);
+  fs.rmSync(extractedDir, { recursive: true, force: true });
+  fs.mkdirSync(extractedDir, { recursive: true, mode: 0o700 });
+
+  const extractor = findRarExtractor();
+  runRequiredCommand(extractor.command, extractor.args(archivePath, extractedDir));
+
+  const entries = fs.readdirSync(extractedDir);
+  if (entries.length === 0) {
+    throw new Error(`YJKAPI SDK archive extracted no files: ${archivePath}`);
+  }
+
+  const sdkRoot = entries.length === 1 && entries[0] === branch
+    && fs.statSync(path.join(extractedDir, branch)).isDirectory()
+    ? path.join(extractedDir, branch)
+    : extractedDir;
+
+  steps.push({
+    name: 'Extract YJKAPI SDK archive',
+    status: 'applied',
+    details: `${archivePath} -> ${sdkRoot}`,
+  });
+
+  return sdkRoot;
+}
+
+function extractYjkSdkArchive(archivePath: string, branch: string, steps: YjkAutoConfigureStep[]): string {
+  const resolvedArchive = path.resolve(archivePath);
+  if (!fs.existsSync(resolvedArchive) || !fs.statSync(resolvedArchive).isFile()) {
+    throw new Error(`YJKAPI SDK archive does not exist: ${resolvedArchive}`);
+  }
+
+  const extractedDir = path.join(resolveYjkApiCacheDir(branch), `sdk-${safeCacheSegment(branch)}-local`);
+  fs.rmSync(extractedDir, { recursive: true, force: true });
+  fs.mkdirSync(extractedDir, { recursive: true, mode: 0o700 });
+
+  const extractor = findRarExtractor();
+  runRequiredCommand(extractor.command, extractor.args(resolvedArchive, extractedDir));
+
+  const entries = fs.readdirSync(extractedDir);
+  if (entries.length === 0) {
+    throw new Error(`YJKAPI SDK archive extracted no files: ${resolvedArchive}`);
+  }
+
+  const sdkRoot = entries.length === 1 && entries[0] === branch
+    && fs.statSync(path.join(extractedDir, branch)).isDirectory()
+    ? path.join(extractedDir, branch)
+    : extractedDir;
+
+  steps.push({
+    name: 'Extract local YJKAPI SDK archive',
+    status: 'applied',
+    details: `${resolvedArchive} -> ${sdkRoot}`,
+  });
+
+  return sdkRoot;
+}
+
+function uniqueStrings(values: Array<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const value of values) {
+    const trimmed = value?.trim();
+    if (!trimmed) continue;
+    const normalized = path.resolve(trimmed);
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(normalized);
+  }
+  return result;
+}
+
+function resolveYjkInstallRoot(input: SettingsFileYjk | undefined, current: SettingsFile): string {
+  const explicitRoot = input?.installRoot?.trim() || current.yjk?.installRoot?.trim();
+  if (explicitRoot) {
+    const resolved = path.resolve(explicitRoot);
+    if (!fs.existsSync(resolved) || !fs.statSync(resolved).isDirectory()) {
+      throw new Error(`YJK install root does not exist: ${resolved}`);
+    }
+    return resolved;
+  }
+
+  const explicitExe = input?.exePath?.trim() || current.yjk?.exePath?.trim();
+  if (explicitExe) {
+    const resolvedExe = path.resolve(explicitExe);
+    if (!fs.existsSync(resolvedExe) || !fs.statSync(resolvedExe).isFile()) {
+      throw new Error(`yjks.exe path does not exist: ${resolvedExe}`);
+    }
+    return path.dirname(resolvedExe);
+  }
+
+  const candidates = uniqueStrings([
+    process.env.YJK_PATH,
+    process.env.YJKS_ROOT,
+    'C:\\YJKS\\YJKS_8_0_0',
+    'D:\\YJKS\\YJKS_8_0_0',
+  ]);
+  const detected = candidates.find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isDirectory());
+  if (!detected) {
+    throw new Error('YJK install root was not provided and no default YJK 8.0 directory was found.');
+  }
+  return detected;
+}
+
+function applyYjkRuntimeConfig(yjk: SettingsFileYjk): void {
+  config.yjkInstallRoot = yjk.installRoot ?? '';
+  config.yjkExePath = yjk.exePath ?? '';
+  config.yjkPythonBin = yjk.pythonBin ?? '';
+  config.yjkWorkDir = yjk.workDir ?? config.yjkWorkDir;
+  config.yjkVersion = yjk.version ?? '8.0.0';
+  config.yjkTimeoutS = yjk.timeoutS ?? 600;
+  config.yjkInvisible = yjk.invisible ?? false;
+}
+
+function autoConfigureYjk(input: YjkAutoConfigureInput): { settings: SettingsResponse; steps: YjkAutoConfigureStep[] } {
+  const current = readSettingsFile() ?? {};
+  const requestedYjk = input.yjk;
+  const steps: YjkAutoConfigureStep[] = [];
+
+  const installRoot = resolveYjkInstallRoot(requestedYjk, current);
+  steps.push({ name: 'Resolve YJK install root', status: 'applied', details: installRoot });
+  assertYjkInstallNotRunning(installRoot);
+
+  const requestedExe = requestedYjk?.exePath?.trim();
+  const currentExe = current.yjk?.exePath?.trim();
+  const exePath = requestedExe
+    || (currentExe && fs.existsSync(currentExe) && fs.statSync(currentExe).isFile() ? currentExe : undefined)
+    || findYjkExe(installRoot);
+  if (!exePath || !fs.existsSync(exePath) || !fs.statSync(exePath).isFile()) {
+    throw new Error(`yjks.exe was not found under YJK install root: ${installRoot}`);
+  }
+  steps.push({ name: 'Resolve yjks.exe', status: 'applied', details: exePath });
+
+  const requestedPython = requestedYjk?.pythonBin?.trim();
+  const currentPython = current.yjk?.pythonBin?.trim();
+  const pythonBin = requestedPython
+    || (currentPython && fs.existsSync(currentPython) && fs.statSync(currentPython).isFile() ? currentPython : undefined)
+    || findYjkPython(installRoot);
+  if (!pythonBin || !fs.existsSync(pythonBin) || !fs.statSync(pythonBin).isFile()) {
+    throw new Error(`YJK Python 3.10 was not found under YJK install root: ${installRoot}`);
+  }
+  steps.push({ name: 'Resolve YJK Python', status: 'applied', details: pythonBin });
+
+  const yjk: SettingsFileYjk = {
+    ...(current.yjk ?? {}),
+    ...(requestedYjk ?? {}),
+    installRoot,
+    exePath,
+    pythonBin,
+    sdkArchivePath: requestedYjk?.sdkArchivePath?.trim() || current.yjk?.sdkArchivePath?.trim(),
+    workDir: requestedYjk?.workDir?.trim() || current.yjk?.workDir?.trim() || config.yjkWorkDir,
+    version: requestedYjk?.version?.trim() || current.yjk?.version?.trim() || '8.0.0',
+    timeoutS: requestedYjk?.timeoutS ?? current.yjk?.timeoutS ?? 600,
+    invisible: requestedYjk?.invisible ?? current.yjk?.invisible ?? false,
+  };
+
+  const sdkSource = resolveYjkSdkSourceFromPublicRepo(steps);
+  const fallbackArchive = yjk.sdkArchivePath;
+  const resolvedSdkSource = sdkSource
+    ?? (fallbackArchive ? extractYjkSdkArchive(fallbackArchive, yjkApiBranch(), steps) : undefined);
+  if (!resolvedSdkSource) {
+    throw new Error(
+      'YJKAPI SDK could not be prepared. Install Git for automatic Gitee setup, '
+      + 'or download SDK/8.0.rar from the official Gitee repository and set YJK SDK Archive Path.',
+    );
+  }
+
+  const copiedEntries = copyYjkSdkIntoInstallRoot(resolvedSdkSource, installRoot);
+  steps.push({
+    name: 'Copy YJKAPI SDK files',
+    status: 'applied',
+    details: `${copiedEntries} top-level entries copied from ${resolvedSdkSource}`,
+  });
+
+  writeSettingsFile({ ...current, yjk });
+  applyYjkRuntimeConfig(yjk);
+  steps.push({ name: 'Save StructureClaw YJK settings', status: 'applied' });
+
+  return { settings: buildSettingsResponse(), steps };
 }
 
 // ---------------------------------------------------------------------------
@@ -395,5 +852,30 @@ export async function adminSettingsRoutes(fastify: FastifyInstance) {
     const updated = applyUpdate(current, parsed);
     writeSettingsFile(updated);
     return buildSettingsResponse();
+  });
+
+  fastify.post('/yjk/auto-configure', {
+    schema: {
+      tags: ['Admin'],
+      summary: 'Auto-configure local YJK runtime settings',
+    },
+  }, async (
+    request: FastifyRequest<{ Body: YjkAutoConfigureInput }>,
+    reply: FastifyReply,
+  ) => {
+    try {
+      const parsed = yjkAutoConfigureSchema.parse(request.body ?? {});
+      const result = autoConfigureYjk(parsed);
+      return {
+        success: true,
+        steps: result.steps,
+        settings: result.settings,
+      };
+    } catch (error) {
+      return reply.code(400).send({
+        success: false,
+        message: error instanceof Error ? error.message : 'YJK auto configuration failed.',
+      });
+    }
   });
 }

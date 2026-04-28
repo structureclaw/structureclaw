@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import {
-  Server, FileText, FlaskConical, Folder, Globe, Bot, Cpu, Cog,
+  Server, FileText, FlaskConical, Folder, Globe, Bot, Cpu, Cog, Wand2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -26,7 +26,13 @@ type SettingsResponse = {
   cors: { origins: Field<string> }
   agent: { workspaceRoot: Field<string>; checkpointDir: Field<string>; allowShell: Field<boolean>; allowedShellCommands: Field<string>; shellTimeoutMs: Field<number> }
   pkpm: { cyclePath: Field<string>; workDir: Field<string> }
-  yjk: { installRoot: Field<string>; exePath: Field<string>; pythonBin: Field<string>; workDir: Field<string>; version: Field<string>; timeoutS: Field<number>; invisible: Field<boolean> }
+  yjk: { installRoot: Field<string>; exePath: Field<string>; pythonBin: Field<string>; sdkArchivePath: Field<string>; workDir: Field<string>; version: Field<string>; timeoutS: Field<number>; invisible: Field<boolean> }
+}
+
+type YjkAutoConfigureResponse = {
+  success: boolean
+  settings: SettingsResponse
+  steps: Array<{ name: string; status: 'applied' | 'skipped'; details?: string }>
 }
 
 type FieldKind = 'text' | 'number' | 'select' | 'checkbox'
@@ -90,6 +96,7 @@ const FIELDS: FieldDef[] = [
   { key: 'yjk.installRoot', labelKey: 'generalSettingsYjkInstallRootLabel', kind: 'text', sectionKey: 'yjk', stateKey: 'yjkInstallRoot' },
   { key: 'yjk.exePath', labelKey: 'generalSettingsYjkExePathLabel', kind: 'text', sectionKey: 'yjk', stateKey: 'yjkExePath' },
   { key: 'yjk.pythonBin', labelKey: 'generalSettingsYjkPythonBinLabel', kind: 'text', sectionKey: 'yjk', stateKey: 'yjkPythonBin' },
+  { key: 'yjk.sdkArchivePath', labelKey: 'generalSettingsYjkSdkArchivePathLabel', kind: 'text', sectionKey: 'yjk', stateKey: 'yjkSdkArchivePath' },
   { key: 'yjk.workDir', labelKey: 'generalSettingsYjkWorkDirLabel', kind: 'text', sectionKey: 'yjk', stateKey: 'yjkWorkDir' },
   { key: 'yjk.version', labelKey: 'generalSettingsYjkVersionLabel', kind: 'text', sectionKey: 'yjk', stateKey: 'yjkVersion' },
   { key: 'yjk.timeoutS', labelKey: 'generalSettingsYjkTimeoutLabel', kind: 'number', sectionKey: 'yjk', stateKey: 'yjkTimeoutS', props: { min: 1 } },
@@ -105,13 +112,13 @@ const DEFAULTS: Record<string, string | number | boolean> = {
   origins: '',
   workspaceRoot: '', checkpointDir: '', allowShell: false, allowedShellCommands: 'node,npm,python,python3,./sclaw,./sclaw_cn', shellTimeoutMs: 300000,
   pkpmCyclePath: '', pkpmWorkDir: '',
-  yjkInstallRoot: '', yjkExePath: '', yjkPythonBin: '', yjkWorkDir: '', yjkVersion: '8.0.0', yjkTimeoutS: 600, yjkInvisible: false,
+  yjkInstallRoot: '', yjkExePath: '', yjkPythonBin: '', yjkSdkArchivePath: '', yjkWorkDir: '', yjkVersion: '8.0.0', yjkTimeoutS: 600, yjkInvisible: false,
 }
 
 // Map stateKey → API field name for sections that use different naming
 const STATE_TO_API_KEY: Record<string, string> = {
   pkpmCyclePath: 'cyclePath', pkpmWorkDir: 'workDir',
-  yjkInstallRoot: 'installRoot', yjkExePath: 'exePath', yjkPythonBin: 'pythonBin', yjkWorkDir: 'workDir',
+  yjkInstallRoot: 'installRoot', yjkExePath: 'exePath', yjkPythonBin: 'pythonBin', yjkSdkArchivePath: 'sdkArchivePath', yjkWorkDir: 'workDir',
   yjkVersion: 'version', yjkTimeoutS: 'timeoutS', yjkInvisible: 'invisible',
 }
 
@@ -161,6 +168,7 @@ export function GeneralSettingsPanel() {
   const [originals, setOriginals] = useState<Record<string, string | number | boolean>>({ ...DEFAULTS })
 
   const [isSaving, setIsSaving] = useState(false)
+  const [isYjkAutoConfiguring, setIsYjkAutoConfiguring] = useState(false)
   const [error, setError] = useState('')
   const [status, setStatus] = useState('')
   const [showRestartBanner, setShowRestartBanner] = useState(false)
@@ -236,6 +244,44 @@ export function GeneralSettingsPanel() {
       setError(err instanceof Error ? err.message : 'Save failed')
     } finally {
       setIsSaving(false)
+    }
+  }
+
+  async function handleYjkAutoConfigure() {
+    setIsYjkAutoConfiguring(true)
+    setError('')
+    setStatus('')
+
+    try {
+      const res = await fetch(`${API_BASE}/api/v1/admin/settings/yjk/auto-configure`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          yjk: {
+            installRoot: String(values.yjkInstallRoot || ''),
+            exePath: String(values.yjkExePath || ''),
+            pythonBin: String(values.yjkPythonBin || ''),
+            sdkArchivePath: String(values.yjkSdkArchivePath || ''),
+            workDir: String(values.yjkWorkDir || ''),
+            version: String(values.yjkVersion || ''),
+            timeoutS: Number(values.yjkTimeoutS) || 600,
+            invisible: Boolean(values.yjkInvisible),
+          },
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { message?: string; error?: string } | null
+        throw new Error(body?.message || body?.error || `${t('requestFailedHttp')} ${res.status}`)
+      }
+      const data = await res.json() as YjkAutoConfigureResponse
+      applyPayload(data.settings)
+      const skipped = data.steps.filter((step) => step.status === 'skipped').length
+      setStatus(skipped > 0 ? t('generalSettingsYjkAutoConfigurePartial') : t('generalSettingsYjkAutoConfigureDone'))
+      setShowRestartBanner(true)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : t('generalSettingsYjkAutoConfigureFailed'))
+    } finally {
+      setIsYjkAutoConfiguring(false)
     }
   }
 
@@ -336,6 +382,19 @@ export function GeneralSettingsPanel() {
                   <div className="mb-3 flex items-center gap-2">
                     <Icon className="h-4 w-4 text-cyan-600 dark:text-cyan-300" />
                     <span className="text-sm font-semibold text-foreground">{t(section.labelKey)}</span>
+                    {section.key === 'yjk' && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="ml-auto rounded-full"
+                        onClick={handleYjkAutoConfigure}
+                        disabled={isYjkAutoConfiguring}
+                      >
+                        <Wand2 className="mr-2 h-3.5 w-3.5" />
+                        {isYjkAutoConfiguring ? '...' : t('generalSettingsYjkAutoConfigureButton')}
+                      </Button>
+                    )}
                   </div>
                   <div className={`grid gap-4 ${sectionFields.length > 1 ? 'sm:grid-cols-2' : ''}`}>
                     {sectionFields.map(renderField)}

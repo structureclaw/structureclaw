@@ -71,6 +71,7 @@ export type SettingsFileYjk = {
   installRoot?: string;
   exePath?: string;
   pythonBin?: string;
+  sdkArchivePath?: string;
   workDir?: string;
   version?: string;
   timeoutS?: number;
@@ -260,15 +261,26 @@ function normalizeYjkSection(raw: unknown): SettingsFileYjk | undefined {
   const installRoot = normalizeOptionalString(record.installRoot);
   const exePath = normalizeOptionalString(record.exePath);
   const pythonBin = normalizeOptionalString(record.pythonBin);
+  const sdkArchivePath = normalizeOptionalString(record.sdkArchivePath);
   const workDir = normalizeOptionalString(record.workDir);
   const version = normalizeOptionalString(record.version);
   const timeoutS = normalizeOptionalNumber(record.timeoutS);
   const invisible = normalizeOptionalBoolean(record.invisible);
-  if (installRoot === undefined && exePath === undefined && pythonBin === undefined && workDir === undefined && version === undefined && timeoutS === undefined && invisible === undefined) return undefined;
+  if (
+    installRoot === undefined
+    && exePath === undefined
+    && pythonBin === undefined
+    && sdkArchivePath === undefined
+    && workDir === undefined
+    && version === undefined
+    && timeoutS === undefined
+    && invisible === undefined
+  ) return undefined;
   const result: SettingsFileYjk = {};
   if (installRoot !== undefined) result.installRoot = installRoot;
   if (exePath !== undefined) result.exePath = exePath;
   if (pythonBin !== undefined) result.pythonBin = pythonBin;
+  if (sdkArchivePath !== undefined) result.sdkArchivePath = sdkArchivePath;
   if (workDir !== undefined) result.workDir = workDir;
   if (version !== undefined) result.version = version;
   if (timeoutS !== undefined) result.timeoutS = timeoutS;
