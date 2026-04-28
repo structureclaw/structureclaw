@@ -9,36 +9,32 @@ The sections below explain the intent of each release line. They are not release
 
 ## 1.0.0 Release
 
-Focus: an installable local engineering workspace with a complete chat-to-artifact loop.
+Project focus: first stable npm release with a complete local chat-to-artifact workflow.
 
-- npm installation through `@structureclaw/structureclaw`
-- `sclaw doctor` first-run setup
-- SQLite local runtime and settings management
-- `~/.structureclaw/` runtime data directory
-- OpenSees static/dynamic/seismic/nonlinear analysis paths
-- PKPM and YJK commercial-engine adapters behind explicit selection
-- SkillHub discovery and manual enable/disable flow
-- regression, smoke, and LLM integration test entrypoints
-- bilingual README, handbook, reference, contribution, security, and roadmap docs
+Project themes and representative issues:
+
+- Skill architecture and runtime backbone: builtin skill taxonomy, SkillHub boundary, manifest-first loading, and code-owned tool registry tracked through [#38](https://github.com/structureclaw/structureclaw/issues/38), [#57](https://github.com/structureclaw/structureclaw/issues/57), and [#162](https://github.com/structureclaw/structureclaw/issues/162).
+- Agent execution model: replace the deterministic planner pipeline with the LangGraph ReAct runtime tracked through [#154](https://github.com/structureclaw/structureclaw/issues/154).
+- Analysis engines and schema: migrate OpenSees execution into backend skills, define StructureModel V2, and stabilize OpenSees / PKPM / YJK paths tracked through [#37](https://github.com/structureclaw/structureclaw/issues/37), [#39](https://github.com/structureclaw/structureclaw/issues/39), [#50](https://github.com/structureclaw/structureclaw/issues/50), and related engine PRs.
+- CLI, packaging, and runtime setup: unify `sclaw` / `sclaw_cn`, support first-run setup, and package the stable npm release through [#40](https://github.com/structureclaw/structureclaw/issues/40) and [#165](https://github.com/structureclaw/structureclaw/issues/165).
+- Test and release confidence: expand regression, smoke, LLM, and multi-environment install validation through [#42](https://github.com/structureclaw/structureclaw/issues/42) and [#118](https://github.com/structureclaw/structureclaw/issues/118).
+- Product polish and observability: console UX, frontend accessibility, structured logging, memory, and conversation-scoped runtime cleanup through [#148](https://github.com/structureclaw/structureclaw/issues/148), [#163](https://github.com/structureclaw/structureclaw/issues/163), and [#164](https://github.com/structureclaw/structureclaw/issues/164).
+- Documentation closure: refresh bilingual repository docs and wiki content through [#43](https://github.com/structureclaw/structureclaw/issues/43) and the active documentation refresh PR on the v1.0.0 board.
 
 ## 1.0.x Stabilization
 
-Focus: keep the 1.0 line reliable while the project board tracks concrete fixes and polish work.
+Focus: keep the 1.0 line reliable after the stable npm release.
 
-- richer copy-paste demo prompts in README and handbook
-- more example request/response payloads for chat, analysis, and settings APIs
-- engine-specific setup guides for OpenSees, PKPM, and YJK
-- clearer report export artifacts and examples
-- stronger diagnostics for missing Python, uv, commercial engine paths, and authorization
-- improved docs/wiki synchronization process
-- compatibility notes for Node.js, Python, Windows, Docker, PKPM, and YJK
+- Patch regressions found by `smoke-native`, `smoke-docker`, backend build/lint/Jest, frontend type-check/build, and agent contract validation.
+- Keep npm package metadata, CLI behavior, and `sclaw doctor` diagnostics aligned with the actual 1.0 install experience.
+- Maintain engine-specific setup notes for OpenSees, PKPM, and YJK as commercial-engine edge cases are found.
+- Keep docs and wiki synchronized when API routes, skill metadata, or engine behavior changes.
 
-## 1.1 And Later
+## 1.1.0 Release Line
 
-Focus: expand model coverage and plugin-style extensibility after the 1.0 release line is stable.
+Project focus: benchmark enrichment and multimodal file input.
 
-- broader StructureModel V2 coverage for walls, braces, load combinations, and engine-specific extensions
-- more first-class skill domains moving from `discoverable` to `active`
-- richer visualization and report post-processing
-- plugin-style user skills and tools with stronger packaging and validation
-- clearer API versioning and schema migration policy
+- LLM benchmark framework: replace component-style `llm-integration` checks with end-to-end `llm-benchmark`, LLM-as-Judge evaluation, natural-language assertions, skill hit tracking, and agent retry loops through [#170](https://github.com/structureclaw/structureclaw/issues/170) and [#185](https://github.com/structureclaw/structureclaw/issues/185).
+- File upload and data-input: add browser/workspace file upload, file-aware agent tools, and data-input skills for CSV/Excel, PDF, DXF, images, and later BIM-oriented sources through [#169](https://github.com/structureclaw/structureclaw/issues/169) and [#184](https://github.com/structureclaw/structureclaw/issues/184).
+- Visualization skills: continue the visualization skill skeleton and resolve the registry boundary with existing visualization extensions through the v1.1.0 visualization PR on the board.
+- Documentation parity: close remaining bilingual translation and wiki synchronization gaps through the v1.1.0 documentation PR.

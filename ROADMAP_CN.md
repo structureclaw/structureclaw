@@ -9,36 +9,32 @@
 
 ## 1.0.0 发布版
 
-重点：可安装的本地工程工作台，以及完整的 chat-to-artifact 闭环。
+Project 重点：首个稳定 npm 发布版，以及完整的本地 chat-to-artifact 工作流。
 
-- 通过 `@structureclaw/structureclaw` 进行 npm 安装
-- `sclaw doctor` 首次运行配置
-- SQLite 本地运行时与 settings 管理
-- `~/.structureclaw/` 运行数据目录
-- OpenSees 静力、动力、地震、非线性分析路径
-- PKPM 与 YJK 商业引擎适配，通过显式选择启用
-- SkillHub 搜索与手动启用/禁用流程
-- regression、smoke、LLM integration 测试入口
-- 中英文 README、手册、参考文档、贡献指南、安全策略和路线图
+Project 主题与代表 issue：
+
+- Skill 架构与运行时骨架：builtin skill taxonomy、SkillHub 边界、manifest-first loading、code-owned tool registry，对应 [#38](https://github.com/structureclaw/structureclaw/issues/38)、[#57](https://github.com/structureclaw/structureclaw/issues/57)、[#162](https://github.com/structureclaw/structureclaw/issues/162)。
+- Agent 执行模型：用 LangGraph ReAct runtime 替代确定性 planner pipeline，对应 [#154](https://github.com/structureclaw/structureclaw/issues/154)。
+- 分析引擎与 schema：将 OpenSees 执行迁入 backend skills，定义 StructureModel V2，并稳定 OpenSees / PKPM / YJK 路径，对应 [#37](https://github.com/structureclaw/structureclaw/issues/37)、[#39](https://github.com/structureclaw/structureclaw/issues/39)、[#50](https://github.com/structureclaw/structureclaw/issues/50) 以及相关 engine PR。
+- CLI、打包与运行时安装：统一 `sclaw` / `sclaw_cn`，支持首次运行配置，并完成稳定 npm 包发布，对应 [#40](https://github.com/structureclaw/structureclaw/issues/40)、[#165](https://github.com/structureclaw/structureclaw/issues/165)。
+- 测试与发布信心：扩展 regression、smoke、LLM 与多环境安装验证，对应 [#42](https://github.com/structureclaw/structureclaw/issues/42)、[#118](https://github.com/structureclaw/structureclaw/issues/118)。
+- 产品打磨与可观测性：console UX、前端可访问性、结构化日志、memory 与 conversation-scoped runtime 清理，对应 [#148](https://github.com/structureclaw/structureclaw/issues/148)、[#163](https://github.com/structureclaw/structureclaw/issues/163)、[#164](https://github.com/structureclaw/structureclaw/issues/164)。
+- 文档收口：刷新双语仓库文档与 wiki 内容，对应 [#43](https://github.com/structureclaw/structureclaw/issues/43) 以及 v1.0.0 Project 中正在推进的文档刷新 PR。
 
 ## 1.0.x 稳定化
 
-重点：保持 1.0 发布线可靠，具体修复和打磨项由 Project 看板跟踪。
+重点：在稳定 npm 发布版之后，保持 1.0 发布线可靠。
 
-- 在 README 与手册中补充更丰富的可复制 demo prompt
-- 为 chat、analysis、settings API 补充更多 request/response 示例
-- 拆出 OpenSees、PKPM、YJK 的引擎安装与排障指南
-- 更清晰的报告导出产物与示例
-- 强化 Python、uv、商业引擎路径、授权缺失时的诊断
-- 改进 docs/wiki 同步流程
-- 补充 Node.js、Python、Windows、Docker、PKPM、YJK 兼容说明
+- 修复 `smoke-native`、`smoke-docker`、backend build/lint/Jest、frontend type-check/build、agent contract validation 暴露的回归。
+- 保持 npm package metadata、CLI 行为和 `sclaw doctor` 诊断与真实 1.0 安装体验一致。
+- 随着商业引擎边界情况暴露，持续维护 OpenSees、PKPM、YJK 的安装与排障说明。
+- 当 API routes、skill metadata 或 engine 行为变化时，同步维护 docs 与 wiki。
 
-## 1.1 及之后
+## 1.1.0 发布线
 
-重点：在 1.0 发布线稳定之后，扩展模型覆盖面和插件式能力。
+Project 重点：基准测试丰富化与多模态文件输入。
 
-- 扩展 StructureModel V2 对墙、支撑、荷载组合和引擎专有扩展的覆盖
-- 更多 skill domain 从 `discoverable` 进入 `active`
-- 更丰富的可视化和报告后处理
-- 更强的用户自定义 skills/tools 打包与校验能力
-- 更清晰的 API versioning 与 schema migration 策略
+- LLM benchmark 框架：用端到端 `llm-benchmark` 替代组件式 `llm-integration`，加入 LLM-as-Judge、自然语言断言、skill 命中追踪和 agent retry loop，对应 [#170](https://github.com/structureclaw/structureclaw/issues/170)、[#185](https://github.com/structureclaw/structureclaw/issues/185)。
+- 文件上传与 data-input：增加浏览器 / workspace 文件上传、file-aware agent tools，以及面向 CSV/Excel、PDF、DXF、图片和后续 BIM 输入的数据读取技能，对应 [#169](https://github.com/structureclaw/structureclaw/issues/169)、[#184](https://github.com/structureclaw/structureclaw/issues/184)。
+- 可视化技能：继续推进 visualization skill skeleton，并和现有 visualization extensions 的 registry 边界对齐，对应 v1.1.0 Project 中的 visualization PR。
+- 文档一致性：通过 v1.1.0 Project 中的文档 PR 收口剩余双语翻译和 wiki 同步问题。
