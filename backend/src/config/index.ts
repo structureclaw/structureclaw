@@ -122,6 +122,9 @@ export const config = {
   yjkVersion: fileSettings?.yjk?.version ?? '8.0.0',
   yjkTimeoutS: fileSettings?.yjk?.timeoutS ?? 600,
   yjkInvisible: fileSettings?.yjk?.invisible ?? false,
+  yjkLauncherPrewarm: fileSettings?.yjk?.launcherPrewarm ?? 'auto',
+  yjkLauncherPrewarmS: fileSettings?.yjk?.launcherPrewarmS ?? 18,
+  yjkDirectReadyTimeoutS: fileSettings?.yjk?.directReadyTimeoutS ?? 12,
 };
 
 export type Config = typeof config;

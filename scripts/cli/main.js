@@ -830,6 +830,7 @@ async function runSkillCommand(env, args) {
 }
 
 async function invokeLocalUp(rootDir, env, options = {}) {
+  migrateLegacyEnvFiles(rootDir, runtime.resolvePaths(rootDir));
   const context = runtime.loadProjectEnvironment(rootDir, () => {}, {
     profile: env.SCLAW_PROFILE,
     programName: env.SCLAW_PROGRAM_NAME,
@@ -1009,47 +1010,101 @@ async function testLlmConnectivity(baseUrl, apiKey) {
  */
 function migrateEnvToSettingsJson(paths, envFile) {
   const settingsPath = path.join(paths.runtimeDir, "settings.json");
-  if (runtime.pathExists(settingsPath)) {
-    return; // Already have JSON config
-  }
-
   if (!runtime.pathExists(envFile)) {
     return; // No .env to migrate from
   }
 
   const env = runtime.readDotEnv(envFile);
   if (!env.LLM_BASE_URL && !env.LLM_MODEL && !env.LLM_API_KEY
-      && !env.PORT && !env.LOG_LEVEL && !env.HOST) {
+      && !env.PORT && !env.LOG_LEVEL && !env.HOST
+      && !env.YJK_PATH && !env.YJKS_ROOT && !env.YJKS_EXE && !env.YJK_PYTHON_BIN
+      && !env.YJK_WORK_DIR && !env.YJK_VERSION && !env.YJK_TIMEOUT_S && !env.YJK_INVISIBLE
+      && !env.YJK_LAUNCHER_PREWARM && !env.YJK_LAUNCHER_PREWARM_S && !env.YJK_DIRECT_READY_TIMEOUT_S) {
     return; // Nothing meaningful to migrate
   }
 
-  const settings = { updatedAt: new Date().toISOString() };
+  let settings = {};
+  if (runtime.pathExists(settingsPath)) {
+    try {
+      settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+    } catch {
+      settings = {};
+    }
+  }
+
+  let changed = false;
+  const setMissing = (sectionName, key, value) => {
+    if (value === undefined || value === null || String(value).trim() === "") return;
+    settings[sectionName] = settings[sectionName] || {};
+    if (settings[sectionName][key] !== undefined) return;
+    settings[sectionName][key] = value;
+    changed = true;
+  };
+  const setMissingNumber = (sectionName, key, value) => {
+    if (value === undefined || value === null || String(value).trim() === "") return;
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    setMissing(sectionName, key, parsed);
+  };
+  const normalizeYjkLauncherPrewarm = (value) => {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (!normalized) return "";
+    if (["0", "false", "no", "off", "never", "disabled"].includes(normalized)) return "off";
+    if (["1", "true", "yes", "on", "always", "force"].includes(normalized)) return "always";
+    return "auto";
+  };
 
   // Server section
   if (env.PORT || env.HOST) {
-    settings.server = {};
-    if (env.PORT) settings.server.port = parseInt(env.PORT, 10);
-    if (env.HOST) settings.server.host = env.HOST;
+    setMissingNumber("server", "port", env.PORT);
+    setMissing("server", "host", env.HOST);
   }
 
   // LLM section
   if (env.LLM_BASE_URL || env.LLM_MODEL || env.LLM_API_KEY) {
-    settings.llm = {};
-    if (env.LLM_BASE_URL) settings.llm.baseUrl = env.LLM_BASE_URL;
-    if (env.LLM_MODEL) settings.llm.model = env.LLM_MODEL;
-    if (env.LLM_API_KEY) settings.llm.apiKey = env.LLM_API_KEY;
+    setMissing("llm", "baseUrl", env.LLM_BASE_URL);
+    setMissing("llm", "model", env.LLM_MODEL);
+    setMissing("llm", "apiKey", env.LLM_API_KEY);
   }
 
   // Logging section
   if (env.LOG_LEVEL || env.LLM_LOG_ENABLED) {
-    settings.logging = {};
-    if (env.LOG_LEVEL) settings.logging.level = env.LOG_LEVEL;
-    if (env.LLM_LOG_ENABLED === "true") settings.logging.llmLogEnabled = true;
+    setMissing("logging", "level", env.LOG_LEVEL);
+    if (env.LLM_LOG_ENABLED === "true") setMissing("logging", "llmLogEnabled", true);
   }
 
+  // YJK section
+  if (env.YJK_PATH || env.YJKS_ROOT || env.YJKS_EXE || env.YJK_PYTHON_BIN || env.YJK_WORK_DIR
+      || env.YJK_VERSION || env.YJK_TIMEOUT_S || env.YJK_INVISIBLE
+      || env.YJK_LAUNCHER_PREWARM || env.YJK_LAUNCHER_PREWARM_S || env.YJK_DIRECT_READY_TIMEOUT_S) {
+    setMissing("yjk", "installRoot", env.YJK_PATH || env.YJKS_ROOT);
+    setMissing("yjk", "exePath", env.YJKS_EXE);
+    setMissing("yjk", "pythonBin", env.YJK_PYTHON_BIN);
+    setMissing("yjk", "workDir", env.YJK_WORK_DIR);
+    setMissing("yjk", "version", env.YJK_VERSION);
+    setMissingNumber("yjk", "timeoutS", env.YJK_TIMEOUT_S);
+    if (env.YJK_INVISIBLE === "1" || env.YJK_INVISIBLE === "true") setMissing("yjk", "invisible", true);
+    setMissing("yjk", "launcherPrewarm", normalizeYjkLauncherPrewarm(env.YJK_LAUNCHER_PREWARM));
+    setMissingNumber("yjk", "launcherPrewarmS", env.YJK_LAUNCHER_PREWARM_S);
+    setMissingNumber("yjk", "directReadyTimeoutS", env.YJK_DIRECT_READY_TIMEOUT_S);
+  }
+
+  if (!changed) {
+    return;
+  }
+
+  settings.updatedAt = new Date().toISOString();
   runtime.ensureDirectory(path.dirname(settingsPath));
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2) + "\n", "utf8");
   log(`Migrated .env settings to ${settingsPath}`);
+}
+
+function migrateLegacyEnvFiles(rootDir, paths) {
+  migrateEnvToSettingsJson(paths, paths.envFile);
+  const projectEnvFile = path.join(rootDir, ".env");
+  if (path.resolve(projectEnvFile) !== path.resolve(paths.envFile)) {
+    migrateEnvToSettingsJson(paths, projectEnvFile);
+  }
 }
 
 /**
@@ -1095,8 +1150,9 @@ async function invokeDoctor(rootDir, env) {
   runtime.ensureDirectory(path.join(paths.dataDir, "skills"));
   runtime.ensureDirectory(path.join(paths.dataDir, "tools"));
 
-  // Migrate .env → settings.json if needed
-  migrateEnvToSettingsJson(paths, paths.envFile);
+  // Migrate legacy .env files → settings.json if needed. Source checkouts used
+  // to keep .env in the repo root; installed/runtime setups use runtimeDir/.env.
+  migrateLegacyEnvFiles(rootDir, paths);
 
   // Interactive first-run wizard if no settings.json exists
   if (!runtime.pathExists(path.join(paths.runtimeDir, "settings.json"))) {
