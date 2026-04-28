@@ -19,6 +19,7 @@ import {
 } from './skill-manifest-loader.js';
 import type {
   AgentSkillBundle,
+  AgentSkillPlugin,
   DraftParameterExtractionResult,
   DraftState,
   StructuralTypeMatch,
