@@ -27,6 +27,33 @@ function readJsonlLines(filePath) {
   return content.split('\n').filter(Boolean).map((line) => JSON.parse(line));
 }
 
+function waitForFile(filePath, { timeoutMs = 3000, intervalMs = 50, expectedLines } = {}) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const check = () => {
+      try {
+        if (fs.existsSync(filePath) && fs.statSync(filePath).size > 0) {
+          if (expectedLines == null) {
+            resolve();
+            return;
+          }
+          const lines = fs.readFileSync(filePath, 'utf-8').split('\n').filter(Boolean);
+          if (lines.length >= expectedLines) {
+            resolve();
+            return;
+          }
+        }
+      } catch { /* ignore */ }
+      if (Date.now() - start >= timeoutMs) {
+        reject(new Error(`Timed out waiting for ${filePath}`));
+        return;
+      }
+      setTimeout(check, intervalMs);
+    };
+    check();
+  });
+}
+
 /**
  * Safely remove a temp directory. On Windows, WriteStream handles may still
  * be open after isolateModulesAsync completes, causing ENOTEMPTY / EPERM.
@@ -186,10 +213,8 @@ describe('llmCallLogger.log when logging is enabled', () => {
         success: true,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
-
       const filePath = path.join(tmpDir, 'llm-calls.jsonl');
-      expect(fs.existsSync(filePath)).toBe(true);
+      await waitForFile(filePath);
 
       const lines = readJsonlLines(filePath);
       expect(lines).toHaveLength(1);
@@ -228,7 +253,7 @@ describe('llmCallLogger.log when logging is enabled', () => {
         error: 'API timeout',
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForFile(path.join(tmpDir, 'llm-calls.jsonl'));
 
       const lines = readJsonlLines(path.join(tmpDir, 'llm-calls.jsonl'));
       expect(lines).toHaveLength(1);
@@ -274,7 +299,7 @@ describe('llmCallLogger.log when logging is enabled', () => {
         error: 'rate limited',
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForFile(path.join(tmpDir, 'llm-calls.jsonl'), { expectedLines: 3 });
 
       const lines = readJsonlLines(path.join(tmpDir, 'llm-calls.jsonl'));
       expect(lines).toHaveLength(3);
@@ -304,7 +329,7 @@ describe('llmCallLogger.log when logging is enabled', () => {
         success: true,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForFile(path.join(tmpDir, 'llm-calls.jsonl'));
 
       const lines = readJsonlLines(path.join(tmpDir, 'llm-calls.jsonl'));
       expect(lines).toHaveLength(1);
@@ -336,7 +361,7 @@ describe('llmCallLogger.log when logging is enabled', () => {
         success: true,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForFile(path.join(tmpDir, 'llm-calls.jsonl'));
 
       const lines = readJsonlLines(path.join(tmpDir, 'llm-calls.jsonl'));
       expect(lines).toHaveLength(1);
@@ -368,7 +393,7 @@ describe('llmCallLogger.log when logging is enabled', () => {
         success: true,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForFile(path.join(tmpDir, 'llm-calls.jsonl'));
 
       const lines = readJsonlLines(path.join(tmpDir, 'llm-calls.jsonl'));
       expect(lines).toHaveLength(1);
@@ -480,7 +505,7 @@ describe('llmCallLogger.log edge cases', () => {
         error: 'Connection refused: ECONNREFUSED',
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForFile(path.join(tmpDir, 'llm-calls.jsonl'));
 
       const lines = readJsonlLines(path.join(tmpDir, 'llm-calls.jsonl'));
       expect(lines[0].error).toBe('Connection refused: ECONNREFUSED');
@@ -508,7 +533,7 @@ describe('llmCallLogger.log edge cases', () => {
         success: true,
       });
 
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      await waitForFile(path.join(tmpDir, 'llm-calls.jsonl'));
 
       const lines = readJsonlLines(path.join(tmpDir, 'llm-calls.jsonl'));
       expect(lines[0].error).toBeUndefined();
@@ -539,18 +564,10 @@ describe('llmCallLogger.log edge cases', () => {
         });
       }
 
-      // Wait for WriteStream to flush; retry on slow CI (especially Windows).
+      // Wait for WriteStream to flush
       const jsonlPath = path.join(tmpDir, 'llm-calls.jsonl');
-      let lines = [];
-      for (let attempt = 0; attempt < 10; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, 100));
-        try {
-          lines = readJsonlLines(jsonlPath);
-        } catch {
-          lines = [];
-        }
-        if (lines.length >= 50) break;
-      }
+      await waitForFile(jsonlPath, { expectedLines: 50 });
+      const lines = readJsonlLines(jsonlPath);
       expect(lines).toHaveLength(50);
       expect(lines[0].model).toBe('model-0');
       expect(lines[49].model).toBe('model-49');

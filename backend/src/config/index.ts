@@ -104,7 +104,7 @@ export const config = {
   llmLogDir: fileSettings?.logging?.llmLogDir ?? path.join(runtimeBaseDir, 'logs'),
 
   // Agent 配置
-  agentWorkspaceRoot: fileSettings?.agent?.workspaceRoot ?? '',
+  agentWorkspaceRoot: fileSettings?.agent?.workspaceRoot ?? runtimeBaseDir,
   agentCheckpointDir: fileSettings?.agent?.checkpointDir ?? path.join(runtimeBaseDir, 'agent-checkpoints'),
   agentAllowShell: fileSettings?.agent?.allowShell ?? false,
   agentAllowedShells: fileSettings?.agent?.allowedShellCommands ?? 'node,npm,python,python3,./sclaw,./sclaw_cn',

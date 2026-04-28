@@ -91,7 +91,7 @@ except Exception as e:
                 data: output.data,
               });
             }
-          } catch (parseError) {
+          } catch {
             reject(new Error(`Failed to parse output: ${stdout.trim()}`));
           }
         });

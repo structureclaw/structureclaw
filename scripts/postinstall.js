@@ -15,8 +15,6 @@ const { execFileSync } = require("node:child_process");
 const { existsSync } = require("node:fs");
 const path = require("node:path");
 
-const isWindows = process.platform === "win32";
-
 function main() {
   const rootDir = path.resolve(__dirname, "..");
   const prismaSchema = path.join(rootDir, "backend", "prisma", "schema.prisma");
@@ -32,14 +30,17 @@ function main() {
     // init.cwd is set by npm to the project root during install.
     const projectRoot = process.env.INIT_CWD || process.cwd();
 
-    execFileSync("npx", [
-      "prisma", "generate",
+    // Resolve prisma CLI entry point to avoid shell:true (DEP0190 on Node 24).
+    // prisma is a dependency of this package, so its JS entry is always available.
+    const prismaEntry = require.resolve("prisma/build/index.js", { paths: [projectRoot] });
+
+    execFileSync(process.execPath, [
+      prismaEntry, "generate",
       `--schema=${prismaSchema}`,
     ], {
       stdio: "pipe",
       cwd: projectRoot,
       timeout: 120000,
-      shell: isWindows,
     });
     console.log("[sclaw] Prisma client generated.");
   } catch (err) {

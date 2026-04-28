@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Bot, KeyRound, Link2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { DefaultValueHint } from '@/components/settings/default-value-hint'
 import { API_BASE } from '@/lib/api-base'
 import { useI18n } from '@/lib/i18n'
 
@@ -14,6 +15,8 @@ type TokenMode = 'keep' | 'replace' | 'inherit'
 type LlmSettingsResponse = {
   baseUrl: string
   model: string
+  defaultBaseUrl: string
+  defaultModel: string
   hasApiKey: boolean
   apiKeyMasked: string
   hasOverrides: boolean
@@ -23,6 +26,8 @@ type LlmSettingsResponse = {
 }
 
 const MASKED_TOKEN = '********'
+const DEFAULT_BASE_URL = 'https://api.openai.com/v1'
+const DEFAULT_MODEL = 'gpt-4-turbo-preview'
 
 function inputClassName() {
   return 'mt-2 w-full rounded-2xl border border-border/70 bg-background/80 px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 dark:border-white/10 dark:bg-white/5'
@@ -34,6 +39,8 @@ export function LlmSettingsPanel() {
   tRef.current = t
   const [baseUrl, setBaseUrl] = useState('')
   const [model, setModel] = useState('')
+  const [defaultBaseUrl, setDefaultBaseUrl] = useState(DEFAULT_BASE_URL)
+  const [defaultModel, setDefaultModel] = useState(DEFAULT_MODEL)
   const [token, setToken] = useState('')
   const [hasApiKey, setHasApiKey] = useState(false)
   const [hasOverrides, setHasOverrides] = useState(false)
@@ -49,6 +56,8 @@ export function LlmSettingsPanel() {
   function applyPayload(payload: LlmSettingsResponse) {
     setBaseUrl(payload.baseUrl)
     setModel(payload.model)
+    setDefaultBaseUrl(payload.defaultBaseUrl || DEFAULT_BASE_URL)
+    setDefaultModel(payload.defaultModel || DEFAULT_MODEL)
     setHasApiKey(payload.hasApiKey)
     setHasOverrides(payload.hasOverrides)
     setBaseUrlSource(payload.baseUrlSource)
@@ -242,6 +251,7 @@ export function LlmSettingsPanel() {
                   required
                 />
               </div>
+              <DefaultValueHint value={defaultBaseUrl} />
             </div>
 
             <div className="rounded-[24px] border border-border/70 bg-background/75 p-4 dark:border-white/10 dark:bg-white/5">
@@ -264,6 +274,7 @@ export function LlmSettingsPanel() {
                   required
                 />
               </div>
+              <DefaultValueHint value={defaultModel} />
             </div>
 
             <div className="rounded-[24px] border border-border/70 bg-background/75 p-4 dark:border-white/10 dark:bg-white/5">
@@ -294,6 +305,7 @@ export function LlmSettingsPanel() {
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
                 {tokenHelp}
               </p>
+              <DefaultValueHint value={t('llmSettingsSourceUnset')} />
               {(hasApiKey || apiKeySource === 'runtime') && (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {hasApiKey && tokenMode !== 'keep' && (

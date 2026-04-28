@@ -37,6 +37,8 @@ export type ApiKeySource = 'runtime' | 'unset';
 export type PublicLlmSettings = {
   baseUrl: string;
   model: string;
+  defaultBaseUrl: string;
+  defaultModel: string;
   hasApiKey: boolean;
   apiKeyMasked: string;
   hasOverrides: boolean;
@@ -100,6 +102,8 @@ export function getPublicLlmSettings(): PublicLlmSettings {
   return {
     baseUrl: effective.llmBaseUrl,
     model: effective.llmModel,
+    defaultBaseUrl: LLM_DEFAULTS.baseUrl,
+    defaultModel: LLM_DEFAULTS.model,
     hasApiKey,
     apiKeyMasked: maskApiKey(hasApiKey ? effective.llmApiKey : undefined),
     hasOverrides: hasBaseUrlOverride || hasModelOverride || hasApiKeyOverride,

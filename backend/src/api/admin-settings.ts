@@ -28,38 +28,38 @@ type ValueSource = 'runtime' | 'default';
 function stringSource(
   runtimeValue: string | undefined,
   defaultValue: string,
-): { value: string; source: ValueSource } {
+): { value: string; source: ValueSource; defaultValue: string } {
   if (runtimeValue !== undefined && runtimeValue !== '') {
-    return { value: runtimeValue, source: 'runtime' };
+    return { value: runtimeValue, source: 'runtime', defaultValue };
   }
-  return { value: defaultValue, source: 'default' };
+  return { value: defaultValue, source: 'default', defaultValue };
 }
 
 function numberSource(
   runtimeValue: number | undefined,
   defaultValue: number,
-): { value: number; source: ValueSource } {
+): { value: number; source: ValueSource; defaultValue: number } {
   if (runtimeValue !== undefined) {
-    return { value: runtimeValue, source: 'runtime' };
+    return { value: runtimeValue, source: 'runtime', defaultValue };
   }
-  return { value: defaultValue, source: 'default' };
+  return { value: defaultValue, source: 'default', defaultValue };
 }
 
 function booleanSource(
   runtimeValue: boolean | undefined,
   defaultValue: boolean,
-): { value: boolean; source: ValueSource } {
+): { value: boolean; source: ValueSource; defaultValue: boolean } {
   if (runtimeValue !== undefined) {
-    return { value: runtimeValue, source: 'runtime' };
+    return { value: runtimeValue, source: 'runtime', defaultValue };
   }
-  return { value: defaultValue, source: 'default' };
+  return { value: defaultValue, source: 'default', defaultValue };
 }
 
 // ---------------------------------------------------------------------------
 // GET response builder
 // ---------------------------------------------------------------------------
 
-type ValueField<T> = { value: T; source: ValueSource };
+type ValueField<T> = { value: T; source: ValueSource; defaultValue: T };
 
 type SettingsResponse = {
   server: {
@@ -123,39 +123,51 @@ type SettingsResponse = {
 
 function buildSettingsResponse(): SettingsResponse {
   const file = readSettingsFile();
+  const parsedFrontendPort = parseInt(process.env.FRONTEND_PORT || '', 10);
+  const defaultFrontendPort = Number.isFinite(parsedFrontendPort) ? parsedFrontendPort : 31416;
+  const defaultBackendPort = parseInt(process.env.PORT || '', 10) || 31415;
+  const effectiveFrontendPort = file?.server?.frontendPort ?? defaultFrontendPort;
+  const effectiveBackendPort = file?.server?.port ?? defaultBackendPort;
   const defaults = {
-    port: 31415,
+    port: defaultBackendPort,
     host: '0.0.0.0',
     bodyLimitMb: 20,
-    frontendPort: 31416,
+    frontendPort: defaultFrontendPort,
     llmBaseUrl: 'https://api.openai.com/v1',
     llmModel: 'gpt-4-turbo-preview',
     llmTimeoutMs: 180000,
     llmMaxRetries: 0,
-    databaseUrl: config.databaseUrl,
+    databaseUrl: `file:${path.join(runtimeBaseDir, 'data', 'structureclaw.db')}`,
     logLevel: 'info',
     llmLogEnabled: false,
     logMaxAgeDays: 7,
     logMaxSize: 104857600,
-    llmLogDir: '',
-    pythonBin: '',
+    llmLogDir: path.join(runtimeBaseDir, 'logs'),
+    pythonBin: process.platform === 'win32'
+      ? path.join(runtimeBaseDir, '.venv', 'Scripts', 'python.exe')
+      : path.join(runtimeBaseDir, '.venv', 'bin', 'python'),
     pythonTimeoutMs: 600000,
-    engineManifestPath: '',
-    reportsDir: '',
+    engineManifestPath: path.join(runtimeBaseDir, 'analysis-engines.json'),
+    reportsDir: path.join(runtimeBaseDir, 'reports'),
     maxFileSize: 104857600,
-    corsOrigins: '',
-    workspaceRoot: '',
-    checkpointDir: '',
+    corsOrigins: [
+      `http://localhost:${effectiveFrontendPort}`,
+      `http://127.0.0.1:${effectiveFrontendPort}`,
+      `http://localhost:${effectiveBackendPort}`,
+      `http://127.0.0.1:${effectiveBackendPort}`,
+    ].join(','),
+    workspaceRoot: runtimeBaseDir,
+    checkpointDir: path.join(runtimeBaseDir, 'agent-checkpoints'),
     allowShell: false,
     allowedShellCommands: 'node,npm,python,python3,./sclaw,./sclaw_cn',
     shellTimeoutMs: 300000,
     pkpmCyclePath: '',
-    pkpmWorkDir: '',
+    pkpmWorkDir: path.join(runtimeBaseDir, 'analysis', 'pkpm'),
     yjkInstallRoot: '',
     yjkExePath: '',
     yjkPythonBin: '',
     yjkSdkArchivePath: '',
-    yjkWorkDir: '',
+    yjkWorkDir: path.join(runtimeBaseDir, 'analysis', 'yjk'),
     yjkVersion: '8.0.0',
     yjkTimeoutS: 600,
     yjkInvisible: false,

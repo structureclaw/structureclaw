@@ -47,7 +47,7 @@ const initialCapabilities = hydrateCapabilityPreferences()
 export const initialPreferencesState: PreferencesState = {
   locale: 'en',
   workspaceSettingsOpen: false,
-  workspaceSettingsTab: 'capabilities',
+  workspaceSettingsTab: 'general',
   capabilitySkillIds: initialCapabilities.skillIds,
   capabilityToolIds: initialCapabilities.toolIds,
   capabilityExplicit: initialCapabilities.skillIds.length > 0 || initialCapabilities.toolIds.length > 0,

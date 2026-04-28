@@ -2140,8 +2140,6 @@ export function AIConsole() {
   const [probePopupOpen, setProbePopupOpen] = useState(false)
   const [probeAllRunning, setProbeAllRunning] = useState(false)
   const probeButtonRef = useRef<HTMLButtonElement>(null)
-  const [gearMenuOpen, setGearMenuOpen] = useState(false)
-  const gearButtonRef = useRef<HTMLButtonElement>(null)
   const composerTextareaRef = useRef<HTMLTextAreaElement>(null)
 
   async function probeAllEngines() {
@@ -3687,13 +3685,10 @@ export function AIConsole() {
                 {loadedModules.length} · {loadedTools.length}
               </span>
               <button
-                ref={gearButtonRef}
                 type="button"
                 className="h-9 w-9 rounded-full text-muted-foreground hover:bg-cyan-300/10 hover:text-foreground"
                 aria-label={t('sidebarGearAriaLabel')}
-                aria-haspopup="menu"
-                aria-expanded={gearMenuOpen}
-                onClick={() => setGearMenuOpen((v) => !v)}
+                onClick={() => openWorkspaceSettings('general')}
               >
                 <Settings className="h-4 w-4" />
               </button>
@@ -3857,13 +3852,10 @@ export function AIConsole() {
               </button>
               <div className="mt-3">
                 <button
-                  ref={gearButtonRef}
                   type="button"
                   className="h-9 w-9 rounded-full text-muted-foreground hover:bg-cyan-300/10 hover:text-foreground"
                   aria-label={t('sidebarGearAriaLabel')}
-                  aria-haspopup="menu"
-                  aria-expanded={gearMenuOpen}
-                  onClick={() => setGearMenuOpen((v) => !v)}
+                  onClick={() => openWorkspaceSettings('general')}
                 >
                   <Settings className="h-4 w-4" />
                 </button>
@@ -4429,45 +4421,6 @@ export function AIConsole() {
                 )
               })}
             </div>
-          </div>
-        </>,
-        document.body,
-      )}
-      {gearMenuOpen && gearButtonRef.current && typeof window !== 'undefined' && createPortal(
-        <>
-          <div
-            className="fixed inset-0 z-[70]"
-            onClick={() => setGearMenuOpen(false)}
-          />
-          <div
-            role="menu"
-            aria-label={t('sidebarGearAriaLabel')}
-            tabIndex={-1}
-            autoFocus
-            onMouseDown={(e) => e.stopPropagation()}
-            onKeyDown={(e) => { if (e.key === 'Escape') setGearMenuOpen(false) }}
-            className="fixed z-[71] w-48 rounded-xl border border-border/70 bg-card p-2 shadow-xl dark:border-white/10 dark:bg-slate-950"
-            style={{
-              bottom: window.innerHeight - gearButtonRef.current.getBoundingClientRect().top + 8,
-              left: Math.max(0, gearButtonRef.current.getBoundingClientRect().left),
-            }}
-          >
-            {(['capabilities', 'llm', 'database'] as const).map((tab) => (
-              <button
-                key={tab}
-                type="button"
-                role="menuitem"
-                className="w-full rounded-lg px-3 py-2 text-left text-sm text-foreground hover:bg-cyan-300/10 transition"
-                onClick={() => {
-                  openWorkspaceSettings(tab)
-                  setGearMenuOpen(false)
-                }}
-              >
-                {tab === 'capabilities' && t('sidebarGearMenuCapabilities')}
-                {tab === 'llm' && t('sidebarGearMenuLlm')}
-                {tab === 'database' && t('sidebarGearMenuDatabase')}
-              </button>
-            ))}
           </div>
         </>,
         document.body,
