@@ -83,12 +83,18 @@ Windows PowerShell：
 irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
 ```
 
-安装器会检查 Node.js 24+ 和 npm；缺失或版本太旧时，会把 Node.js 安装到通用的用户级 Node.js 目录，配置用户级 npm prefix，安装 `@structureclaw/structureclaw@latest`，然后运行 `sclaw doctor`。
+安装器会先打印安装计划，再开始修改系统。它会检查 Node.js 24+ 和 npm；缺失或版本太旧时，会把 Node.js 安装到通用的用户级 Node.js 目录，在 StructureClaw Home 下配置用户级 npm prefix，安装 `@structureclaw/structureclaw@latest`，然后运行 `sclaw doctor`。
 
 默认 bootstrap Node.js 位置：
 
 - Windows：`%LOCALAPPDATA%\Programs\nodejs\<version>`
 - Linux：`${XDG_DATA_HOME:-~/.local/share}/nodejs/<version>`
+
+默认 StructureClaw Home：
+
+- `~/.structureclaw`
+- 可通过 `--home <dir>` / `-Home <dir>` 或 `SCLAW_DATA_DIR` 覆盖
+- 选择非默认 Home 时，安装器会持久化 `SCLAW_DATA_DIR`，方便后续新终端继续使用同一目录。
 
 常用参数：
 
@@ -97,6 +103,8 @@ scripts/install.sh --skip-doctor
 scripts/install.sh --cn
 scripts/install.sh --registry https://registry.npmmirror.com
 scripts/install.sh --node-install-parent ~/.local/share/nodejs
+scripts/install.sh --home ~/.structureclaw
+scripts/install.sh --yes
 ```
 
 ```powershell
@@ -104,6 +112,8 @@ scripts/install.sh --node-install-parent ~/.local/share/nodejs
 .\scripts\install.ps1 -Cn
 .\scripts\install.ps1 -Registry https://registry.npmmirror.com
 .\scripts\install.ps1 -NodeInstallParent "$env:LOCALAPPDATA\Programs\nodejs"
+.\scripts\install.ps1 -Home "$HOME\.structureclaw"
+.\scripts\install.ps1 -Yes
 ```
 
 ### 5.2 源码开发版

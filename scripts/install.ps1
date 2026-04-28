@@ -2,17 +2,21 @@ param(
   [string]$Registry = "",
   [string]$NodeDistBase = $env:SCLAW_NODE_DIST_BASE,
   [string]$NodeInstallParent = $(if ($env:SCLAW_NODE_INSTALL_PARENT) { $env:SCLAW_NODE_INSTALL_PARENT } else { Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "Programs\nodejs" }),
+  [Alias("Home")]
+  [string]$StructureClawHome = $(if ($env:SCLAW_DATA_DIR) { $env:SCLAW_DATA_DIR } else { Join-Path $HOME ".structureclaw" }),
   [string]$Package = $(if ($env:SCLAW_PACKAGE_NAME) { $env:SCLAW_PACKAGE_NAME } else { "@structureclaw/structureclaw" }),
   [string]$Tag = $(if ($env:SCLAW_PACKAGE_TAG) { $env:SCLAW_PACKAGE_TAG } else { "latest" }),
-  [string]$Prefix = $(if ($env:SCLAW_NPM_PREFIX) { $env:SCLAW_NPM_PREFIX } else { Join-Path $HOME ".structureclaw\npm-global" }),
+  [string]$Prefix = $(if ($env:SCLAW_NPM_PREFIX) { $env:SCLAW_NPM_PREFIX } else { "" }),
   [switch]$Cn,
   [switch]$SkipDoctor,
   [switch]$DryRun,
+  [switch]$Yes,
   [switch]$Help
 )
 
 $ErrorActionPreference = "Stop"
 $MinNodeMajor = 24
+$DefaultStructureClawHome = Join-Path $HOME ".structureclaw"
 
 function Write-InstallLog {
   param([string]$Message)
@@ -37,16 +41,19 @@ Options:
   -NodeDistBase <url>    Node.js dist base, default latest-v24.x.
   -NodeInstallParent <dir>
                         Node.js install parent, default %LOCALAPPDATA%\Programs\nodejs.
+  -Home <dir>            StructureClaw home, default ~/.structureclaw.
   -Package <name>        npm package name, default @structureclaw/structureclaw.
   -Tag <tag>             npm dist-tag/version, default latest.
   -Prefix <dir>          npm global prefix, default ~/.structureclaw/npm-global.
   -SkipDoctor            Do not run sclaw doctor after installing.
   -DryRun                Print commands without changing the system.
+  -Yes                   Accept the displayed plan without prompting.
   -Help                  Show this help.
 
 Environment overrides:
-  SCLAW_NODE_DIST_BASE, SCLAW_NODE_INSTALL_PARENT, SCLAW_PACKAGE_NAME,
-  SCLAW_PACKAGE_TAG, SCLAW_NPM_PREFIX, NPM_CONFIG_REGISTRY
+  SCLAW_DATA_DIR, SCLAW_NODE_DIST_BASE, SCLAW_NODE_INSTALL_PARENT,
+  SCLAW_PACKAGE_NAME, SCLAW_PACKAGE_TAG, SCLAW_NPM_PREFIX,
+  NPM_CONFIG_REGISTRY
 "@
 }
 
@@ -57,6 +64,10 @@ if ($Help) {
 
 if (-not $NodeDistBase) {
   $NodeDistBase = "https://nodejs.org/dist/latest-v24.x"
+}
+
+if (-not $Prefix) {
+  $Prefix = Join-Path $StructureClawHome "npm-global"
 }
 
 if ($Cn) {
@@ -72,6 +83,65 @@ if ($Registry) {
   $env:NPM_CONFIG_REGISTRY = $Registry
 } elseif ($env:NPM_CONFIG_REGISTRY) {
   $Registry = $env:NPM_CONFIG_REGISTRY
+}
+
+$env:SCLAW_DATA_DIR = $StructureClawHome
+
+function Get-NodeStatus {
+  $node = Get-CommandPath "node"
+  $npm = Get-CommandPath "npm"
+  if ($node -and $npm) {
+    $version = (& $node -v 2>$null)
+    if ((Get-NodeMajor) -ge $MinNodeMajor) {
+      return "found $version, will reuse existing Node.js"
+    }
+    return "found $version, will install Node.js $MinNodeMajor+"
+  }
+  return "missing, will install Node.js $MinNodeMajor+"
+}
+
+function Show-InstallPlan {
+  $registryText = if ($Registry) { $Registry } elseif ($env:NPM_CONFIG_REGISTRY) { $env:NPM_CONFIG_REGISTRY } else { "npm default" }
+  $doctorText = if ($SkipDoctor) { "no" } else { "yes" }
+  @"
+
+StructureClaw installer
+======================
+
+Node.js
+  Status:       $(Get-NodeStatus)
+  Install dir:  $NodeInstallParent
+  Source:       $NodeDistBase
+
+StructureClaw
+  Home:         $StructureClawHome
+  npm prefix:   $Prefix
+  Package:      $Package@$Tag
+  Registry:     $registryText
+
+Post-install
+  Update PATH:  yes
+  Persist home: $(if ($StructureClawHome -ne $DefaultStructureClawHome) { "yes" } else { "no" })
+  Run doctor:   $doctorText
+
+"@ | Write-Host
+}
+
+function Confirm-InstallPlan {
+  Show-InstallPlan
+
+  if ($DryRun -or $Yes) {
+    return
+  }
+  if (-not [Environment]::UserInteractive) {
+    Write-InstallLog "No interactive terminal detected; continuing with the displayed defaults. Use -DryRun to preview only."
+    return
+  }
+
+  $reply = Read-Host "Continue? [Y/n]"
+  if ($reply -and $reply -notmatch "^(y|yes)$") {
+    Stop-Install "Installation cancelled."
+  }
 }
 
 function Invoke-InstallCommand {
@@ -155,6 +225,25 @@ function Add-UserPath {
   }
 }
 
+function Set-UserEnvironmentVariable {
+  param(
+    [Parameter(Mandatory = $true)][string]$Name,
+    [Parameter(Mandatory = $true)][string]$Value
+  )
+
+  Set-Item -Path "Env:$Name" -Value $Value
+  if ($DryRun) {
+    Write-InstallLog "DRY RUN: set user environment $Name=$Value"
+    return
+  }
+
+  $current = [Environment]::GetEnvironmentVariable($Name, "User")
+  if ($current -ne $Value) {
+    [Environment]::SetEnvironmentVariable($Name, $Value, "User")
+    Write-InstallLog "Set user environment $Name=$Value. Open a new terminal to pick it up."
+  }
+}
+
 function Ensure-Node {
   $npm = Get-CommandPath "npm"
   if ($npm -and (Get-NodeMajor) -ge $MinNodeMajor) {
@@ -221,6 +310,7 @@ function Ensure-Node {
   }
 }
 
+Confirm-InstallPlan
 Ensure-Node
 
 if (-not (Test-Path $Prefix) -and -not $DryRun) {
@@ -229,6 +319,9 @@ if (-not (Test-Path $Prefix) -and -not $DryRun) {
 
 $env:NPM_CONFIG_PREFIX = $Prefix
 Add-UserPath $Prefix
+if ($StructureClawHome -ne $DefaultStructureClawHome) {
+  Set-UserEnvironmentVariable "SCLAW_DATA_DIR" $StructureClawHome
+}
 
 if ($Registry) {
   Write-InstallLog "Using npm registry: $Registry"

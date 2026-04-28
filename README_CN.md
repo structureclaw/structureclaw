@@ -42,7 +42,7 @@ Windows PowerShell：
 irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
 ```
 
-安装脚本会在需要时准备用户级 Node.js 24、安装 `@structureclaw/structureclaw@latest`、把用户级 npm bin 目录加入 PATH，并运行 `sclaw doctor`。Windows 下 bootstrap Node 会安装到 `%LOCALAPPDATA%\Programs\nodejs`，Linux 下会安装到 `${XDG_DATA_HOME:-~/.local/share}/nodejs`。脚本化安装时可使用 `--skip-doctor` / `-SkipDoctor` 跳过预检。
+安装脚本会先打印安装计划，再开始修改系统。它会在需要时准备用户级 Node.js 24、安装 `@structureclaw/structureclaw@latest`、把用户级 npm bin 目录加入 PATH，并运行 `sclaw doctor`。Windows 下 bootstrap Node 会安装到 `%LOCALAPPDATA%\Programs\nodejs`，Linux 下会安装到 `${XDG_DATA_HOME:-~/.local/share}/nodejs`。StructureClaw Home 默认是 `~/.structureclaw`；可使用 `--home` / `-Home` 指定其他 workspace/runtime 目录。
 
 ### npm 安装版
 
