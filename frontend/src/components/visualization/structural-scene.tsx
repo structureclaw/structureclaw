@@ -581,7 +581,7 @@ function SceneContent({
                     key={`${element.id}-distributed-${vectorIndex}`}
                     start={currentStart}
                     end={currentEnd}
-                    vector={projectPosition(vector, plane, snapshot.dimension)}
+                    vector={vector}
                   />
                 ))}
               </group>
@@ -685,7 +685,7 @@ function SceneContent({
                     key={`${entry.id}-load-${index}`}
                     origin={finalPosition}
                     selected={typeof selectedLoadIndex === 'number' && snapshot.loads[selectedLoadIndex]?.nodeId === entry.id}
-                    vector={projectPosition(vector, plane, snapshot.dimension)}
+                    vector={vector}
                   />
                 ))}
               </group>
