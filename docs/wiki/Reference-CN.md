@@ -25,8 +25,8 @@
 - `POST /code-check`
 - `GET /schema/converters`
 - `GET /engines`
-- `GET /engines/:engineId`
-- `POST /engines/:engineId/check`
+- `GET /engines/:id`
+- `POST /engines/:id/check`
 
 内置 engine id：`builtin-opensees`、`builtin-pkpm`、`builtin-yjk`。
 

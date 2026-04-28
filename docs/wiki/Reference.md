@@ -25,8 +25,8 @@ Stream events: `start` → `interaction_update` (optional) → `result` → `don
 - `POST /code-check`
 - `GET /schema/converters`
 - `GET /engines`
-- `GET /engines/:engineId`
-- `POST /engines/:engineId/check`
+- `GET /engines/:id`
+- `POST /engines/:id/check`
 
 Built-in engine ids: `builtin-opensees`, `builtin-pkpm`, `builtin-yjk`.
 

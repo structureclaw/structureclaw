@@ -77,8 +77,8 @@
 - `POST /code-check`
 - `GET /schema/converters`
 - `GET /engines`
-- `GET /engines/:engineId`
-- `POST /engines/:engineId/check`
+- `GET /engines/:id`
+- `POST /engines/:id/check`
 
 内置 engine id：
 
@@ -113,12 +113,13 @@
 
 ## 6. 运行时 Settings 契约
 
-StructureClaw 1.0 使用运行时 `settings.json` 作为用户配置文件。配置按以下优先级解析：
+StructureClaw 1.0 使用运行时 `settings.json` 作为用户配置文件。配置解析可概括为以下顺序：
 
 1. `settings.json`
-2. 内置默认值
+2. 部分环境变量兜底
+3. 内置默认值
 
-部分环境变量仍会作为兜底或运行目录控制参与解析。对应配置缺失时，后端会读取 `PORT`、`FRONTEND_PORT`、`NODE_ENV`；`SCLAW_DATA_DIR` 会改变用于查找 `settings.json` 和数据文件的运行基础目录。
+当对应配置缺失时，后端会读取 `PORT`、`FRONTEND_PORT`、`NODE_ENV` 作为兜底；`SCLAW_DATA_DIR` 会改变用于查找 `settings.json` 和数据文件的运行基础目录。
 
 Admin settings 接口：
 

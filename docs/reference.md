@@ -77,8 +77,8 @@ Main endpoints:
 - `POST /code-check`
 - `GET /schema/converters`
 - `GET /engines`
-- `GET /engines/:engineId`
-- `POST /engines/:engineId/check`
+- `GET /engines/:id`
+- `POST /engines/:id/check`
 
 Built-in engine ids:
 
@@ -113,12 +113,13 @@ Practical rules:
 
 ## 6. Runtime Settings Contract
 
-StructureClaw 1.0 uses runtime `settings.json` as the user-facing configuration file. Values are resolved in this order:
+StructureClaw 1.0 uses runtime `settings.json` as the user-facing configuration file. Configuration resolution can be summarized as:
 
 1. `settings.json`
-2. Built-in defaults
+2. Selected environment-variable fallbacks
+3. Built-in defaults
 
-Selected environment variables still act as fallbacks or runtime directory controls. `PORT`, `FRONTEND_PORT`, and `NODE_ENV` are read when the corresponding setting is absent, and `SCLAW_DATA_DIR` changes the runtime base directory used to locate `settings.json` and data files.
+When the corresponding setting is absent, the backend reads `PORT`, `FRONTEND_PORT`, and `NODE_ENV` as fallbacks. `SCLAW_DATA_DIR` changes the runtime base directory used to locate `settings.json` and data files.
 
 Admin settings endpoints:
 
