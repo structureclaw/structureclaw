@@ -85,6 +85,8 @@ irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts
 
 安装器会先打印安装计划，再开始修改系统。它会检查 Node.js 20+ 和 npm；缺失或版本太旧时，会把 Node.js 24 安装到通用的用户级 Node.js 目录，在 StructureClaw Home 下配置用户级 npm prefix，安装 `@structureclaw/structureclaw@latest`，然后运行 `sclaw doctor`。
 
+在交互式终端中，安装器会先询问 StructureClaw Home。直接回车保留默认值；输入路径则先修改 Home，再显示最终安装计划。
+
 默认 bootstrap Node.js 位置：
 
 - Windows：`%LOCALAPPDATA%\Programs\nodejs\<version>`

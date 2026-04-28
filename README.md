@@ -42,7 +42,7 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
 ```
 
-The installer prints an install plan before it changes anything. It reuses existing Node.js 20+ installations and prepares a user-local Node.js 24 runtime when needed, installs `@structureclaw/structureclaw@latest`, adds the user-local npm bin directory to PATH, and runs `sclaw doctor`. On Windows, the bootstrap Node runtime is installed under `%LOCALAPPDATA%\Programs\nodejs`; on Linux, it is installed under `${XDG_DATA_HOME:-~/.local/share}/nodejs`. StructureClaw Home defaults to `~/.structureclaw`; use `--home` / `-Home` to choose another workspace/runtime directory.
+The installer lets interactive users confirm or edit StructureClaw Home before it prints the final install plan. Press Enter to keep `~/.structureclaw`, or type another path to change the workspace/runtime directory. It reuses existing Node.js 20+ installations and prepares a user-local Node.js 24 runtime when needed, installs `@structureclaw/structureclaw@latest`, adds the user-local npm bin directory to PATH, and runs `sclaw doctor`. On Windows, the bootstrap Node runtime is installed under `%LOCALAPPDATA%\Programs\nodejs`; on Linux, it is installed under `${XDG_DATA_HOME:-~/.local/share}/nodejs`.
 
 ### Install from npm
 

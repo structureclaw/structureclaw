@@ -85,6 +85,8 @@ irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts
 
 The installers print a plan before making changes. They check for Node.js 20+ and npm. If missing or too old, they install Node.js 24 under a generic user-level Node.js directory, configure a user-local npm prefix under StructureClaw Home, install `@structureclaw/structureclaw@latest`, then run `sclaw doctor`.
 
+In an interactive terminal, the installer first prompts for StructureClaw Home. Press Enter to keep the default, or type a path to change it before the final install plan is shown.
+
 Default bootstrap Node.js locations:
 
 - Windows: `%LOCALAPPDATA%\Programs\nodejs\<version>`

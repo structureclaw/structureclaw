@@ -45,7 +45,7 @@ Options:
   --prefix <dir>          npm global prefix, default ~/.structureclaw/npm-global.
   --skip-doctor           Do not run sclaw doctor after installing.
   --dry-run               Print commands without changing the system.
-  -y, --yes               Accept the displayed plan without prompting.
+  -y, --yes               Use provided/default paths and skip interactive prompts.
   -h, --help              Show this help.
 
 Environment overrides:
@@ -139,6 +139,14 @@ done
 
 export SCLAW_DATA_DIR="$STRUCTURECLAW_HOME"
 
+refresh_structureclaw_home() {
+  STRUCTURECLAW_HOME="$1"
+  export SCLAW_DATA_DIR="$STRUCTURECLAW_HOME"
+  if [ "$NPM_PREFIX_EXPLICIT" -eq 0 ]; then
+    NPM_PREFIX="$STRUCTURECLAW_HOME/npm-global"
+  fi
+}
+
 node_status() {
   if need_cmd node && need_cmd npm; then
     local version
@@ -179,19 +187,27 @@ EOF
 }
 
 confirm_install_plan() {
-  print_plan
-
   if [ "$DRY_RUN" -eq 1 ]; then
+    print_plan
     return 0
   fi
   if [ "$ASSUME_YES" -eq 1 ]; then
+    print_plan
     return 0
   fi
   if [ ! -t 0 ]; then
+    print_plan
     log "No interactive terminal detected; continuing with the displayed defaults. Use --dry-run to preview only."
     return 0
   fi
 
+  printf 'StructureClaw Home [%s]: ' "$STRUCTURECLAW_HOME"
+  read -r home_reply
+  if [ -n "$home_reply" ]; then
+    refresh_structureclaw_home "$home_reply"
+  fi
+
+  print_plan
   printf 'Continue? [Y/n] '
   read -r reply
   case "$reply" in

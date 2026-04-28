@@ -18,6 +18,7 @@ $ErrorActionPreference = "Stop"
 $MinNodeMajor = 20
 $BootstrapNodeMajor = 24
 $DefaultStructureClawHome = Join-Path $HOME ".structureclaw"
+$PrefixExplicit = [bool]$env:SCLAW_NPM_PREFIX -or $PSBoundParameters.ContainsKey("Prefix")
 
 function Write-InstallLog {
   param([string]$Message)
@@ -48,7 +49,7 @@ Options:
   -Prefix <dir>          npm global prefix, default ~/.structureclaw/npm-global.
   -SkipDoctor            Do not run sclaw doctor after installing.
   -DryRun                Print commands without changing the system.
-  -Yes                   Accept the displayed plan without prompting.
+  -Yes                   Use provided/default paths and skip interactive prompts.
   -Help                  Show this help.
 
 Environment overrides:
@@ -86,7 +87,14 @@ if ($Registry) {
   $Registry = $env:NPM_CONFIG_REGISTRY
 }
 
-$env:SCLAW_DATA_DIR = $StructureClawHome
+function Set-StructureClawHome {
+  param([Parameter(Mandatory = $true)][string]$Path)
+
+  $script:StructureClawHome = $Path
+  if (-not $script:PrefixExplicit) {
+    $script:Prefix = Join-Path $script:StructureClawHome "npm-global"
+  }
+}
 
 function Get-NodeStatus {
   $node = Get-CommandPath "node"
@@ -129,16 +137,22 @@ Post-install
 }
 
 function Confirm-InstallPlan {
-  Show-InstallPlan
-
   if ($DryRun -or $Yes) {
+    Show-InstallPlan
     return
   }
   if (-not [Environment]::UserInteractive) {
+    Show-InstallPlan
     Write-InstallLog "No interactive terminal detected; continuing with the displayed defaults. Use -DryRun to preview only."
     return
   }
 
+  $homeReply = Read-Host "StructureClaw Home [$StructureClawHome]"
+  if ($homeReply) {
+    Set-StructureClawHome $homeReply
+  }
+
+  Show-InstallPlan
   $reply = Read-Host "Continue? [Y/n]"
   if ($reply -and $reply -notmatch "^(y|yes)$") {
     Stop-Install "Installation cancelled."
@@ -232,12 +246,12 @@ function Set-UserEnvironmentVariable {
     [Parameter(Mandatory = $true)][string]$Value
   )
 
-  Set-Item -Path "Env:$Name" -Value $Value
   if ($DryRun) {
     Write-InstallLog "DRY RUN: set user environment $Name=$Value"
     return
   }
 
+  Set-Item -Path "Env:$Name" -Value $Value
   $current = [Environment]::GetEnvironmentVariable($Name, "User")
   if ($current -ne $Value) {
     [Environment]::SetEnvironmentVariable($Name, $Value, "User")
