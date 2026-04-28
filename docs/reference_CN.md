@@ -7,14 +7,14 @@
 ## 2. Agent 执行契约
 
 - 入口：`POST /api/v1/agent/run`
-- 当前内部编排已切换为能力驱动，planner 结果收敛为 `reply`、`ask` 和 `tool_call`
+- 当前内部编排为能力驱动，并通过 LangGraph ReAct agent 执行。
 - 执行链路：`detect_structure_type -> extract_draft_params -> build_model -> validate_model -> run_analysis -> run_code_check -> generate_report`
 
-架构方向：
+当前架构说明：
 
-- 对外产品交互应收口为单一 chat-first 请求形态
+- 对外产品交互使用 chat-first 请求形态
 - skill 与 tool 都是可选能力层
-- 目标能力驱动设计见 `docs/agent-architecture_CN.md`
+- 当前 LangGraph agent 设计见 `docs/agent-architecture_CN.md`
 
 结果侧关键可观测字段：
 

@@ -222,9 +222,9 @@ Current execution chain:
 
 Architecture note:
 
-- Public product interaction should converge on a single chat-first entry.
+- Public product interaction uses the chat-first entry points.
 - Skills and tools are optional capability layers.
-- See `docs/agent-architecture.md` for the target capability-driven design.
+- See `docs/agent-architecture.md` for the current LangGraph agent design.
 
 ### 7.2 Backend-hosted analysis runtime
 
@@ -272,7 +272,7 @@ flowchart TD
 - Skills and tools are optional capability layers, not a hard dependency for base chat.
 - If no engineering skills are enabled, StructureClaw should stay on the base chat path.
 - `structure-type` is the engineering entry skill domain.
-- The target architecture includes a built-in `structure-type/generic` fallback skill inside that domain.
+- The current built-in `structure-type/generic` skill provides the generic fallback path for engineering drafts.
 - New user-visible copy must be provided in both English and Chinese.
 
 Built-in skill domains under `backend/src/agent-skills/`:

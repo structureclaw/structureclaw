@@ -7,14 +7,14 @@ Protocol and contract quick reference for API integration, troubleshooting, and 
 ## 2. Agent Run Contract
 
 - Endpoint: `POST /api/v1/agent/run`
-- Current orchestration is capability-driven; planner outcomes converge on `reply`, `ask`, and `tool_call`
+- Current orchestration is capability-driven and runs through the LangGraph ReAct agent.
 - Execution chain: `detect_structure_type -> extract_draft_params -> build_model -> validate_model -> run_analysis -> run_code_check -> generate_report`
 
-Architecture direction:
+Current architecture notes:
 
-- public product interaction should converge on a single chat-first request shape
+- public product interaction uses the chat-first request shape
 - skills and tools are optional capability layers
-- see `docs/agent-architecture.md` for the target capability-driven design
+- see `docs/agent-architecture.md` for the current LangGraph agent design
 
 Key result observability fields:
 

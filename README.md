@@ -256,7 +256,6 @@ Backend:
 - `POST /api/v1/agent/run`
 - `POST /api/v1/chat/message`
 - `POST /api/v1/chat/stream`
-- `POST /api/v1/chat/execute`
 
 Backend-hosted analysis:
 

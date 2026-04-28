@@ -92,7 +92,7 @@ tool 不存在 YAML 发现路径。新增 tool 必须修改代码注册表，在
 
 - `active`：已进入主编排，参与激活、授权、执行与 trace。
 - `partial`：已接入 runtime，但仍属于平台托管或非完整一等 skill 包。
-- `discoverable`：已纳入 taxonomy，但当前尚未进入主编排。
+- `discoverable`：已纳入 taxonomy 与 catalog，但不会自动参与主编排。
 - `reserved`：仅保留架构位点，当前未提供实际运行时能力。
 
 ### 2.6 分析引擎可用性与 Skill 影响

@@ -256,7 +256,6 @@ StructureClaw 1.0 以 `settings.json` 作为用户配置文件。`sclaw doctor` 
 - `POST /api/v1/agent/run`
 - `POST /api/v1/chat/message`
 - `POST /api/v1/chat/stream`
-- `POST /api/v1/chat/execute`
 
 后端托管分析：
 

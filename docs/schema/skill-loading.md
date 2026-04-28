@@ -86,8 +86,8 @@ There is no YAML discovery path for tools. Adding a tool requires editing the co
 The current `/api/v1/agent/capability-matrix` also exposes `runtimeStatus` for each skill and each domain summary so the stable taxonomy can be distinguished from actual runtime wiring:
 
 - `active`: participates in main orchestration, activation, authorization, execution, and trace.
-- `partial`: connected to runtime, but still platform-managed or not yet packaged as a full first-class skill.
-- `discoverable`: present in the taxonomy, but not yet part of the main orchestration flow.
+- `partial`: connected to runtime, but still platform-managed or incomplete as a first-class skill package.
+- `discoverable`: present in the taxonomy and catalog, without automatic participation in the main orchestration flow.
 - `reserved`: kept as an architectural slot without current runtime capability.
 
 ### 2.6 Analysis Engine Availability and Skill Impact

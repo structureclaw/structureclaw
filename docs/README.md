@@ -6,7 +6,7 @@ This directory is the documentation hub for StructureClaw 1.0. Start with the ha
 
 - [Handbook](./handbook.md): setup, runtime modes, configuration, workflows, testing, and troubleshooting
 - [Reference](./reference.md): API contracts, analysis endpoints, settings contract, SkillHub contract, and validation commands
-- [Agent architecture](./agent-architecture.md): target architecture for base model, skills, tools, and orchestration
+- [Agent architecture](./agent-architecture.md): current 1.0.0 architecture for the LangGraph agent, skills, tools, and orchestration
 - [Skill runtime status](./skill-runtime-status.md): current implementation maturity for each skill domain
 
 ## Engine And Schema Docs
@@ -29,4 +29,3 @@ This directory is the documentation hub for StructureClaw 1.0. Start with the ha
 - [中文参考文档](./reference_CN.md)
 - [中文 Agent 架构](./agent-architecture_CN.md)
 - [中文路线图](../ROADMAP_CN.md)
-

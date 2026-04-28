@@ -32,7 +32,7 @@ This document defines how `StructureModelV2` fields map to engine-specific input
 | `materials[].grade` | N/A | `ConcreteGrade` / `ReinforcingbarGrade` / `SteelGrade` 枚举 | YJK material/section definitions for generated members |
 | `sections` | `ops.section('Elastic', ...)` / `Fiber` | `BeamSection` / `ColumnSection` / `WallSection` + `SectionKind` + `SectionShape` | YJK beam/column section definitions, including rectangular and steel-shape encodings |
 | `load_cases` | `ops.pattern('Plain', ...)` / `UniformExcitation` | `Model.GetUserLoadCase()` → `LoadCaseData` | YJK design load cases extracted after calculation via `YJKSDsnDataPy` |
-| `load_combinations` | Manual post-process | `Model.GetAllDesignPara()` / `SysInfoDetail` | Extracted case metadata and envelopes; explicit V2 combinations are not yet fully mapped |
+| `load_combinations` | Manual post-process | `Model.GetAllDesignPara()` / `SysInfoDetail` | Extracted case metadata and envelopes; explicit V2 combinations have partial coverage |
 | `analysis_control.p_delta` | `ops.geomTransf('PDelta', ...)` | `SysInfoDetail` 参数 | Reserved for YJK calculation-control parameters |
 | `analysis_control.period_reduction_factor` | N/A | `SysInfoDetail` 参数 | Reserved for YJK calculation-control parameters |
 | `analysis_control.modal_count` | `ops.eigen(n)` | `SysInfoDetail` 参数 | Reserved for YJK modal/control parameters |
@@ -185,7 +185,7 @@ The extracted and normalized result contract includes:
 - Primary model families: `frame` and `generic`.
 - Commercial engine availability depends on local YJK installation, bundled Python, authorization state, and Windows desktop/runtime behavior.
 - Result richness depends on YJK API availability in the installed version. The extractor records API failures in `extraction-debug.json` and returns warnings when key blocks are empty.
-- Explicit V2 load-combination mapping and full wall/shear-wall result extraction are not yet the primary 1.0 path.
+- Explicit V2 load-combination mapping and full wall/shear-wall result extraction are outside the primary 1.0 path.
 
 ---
 

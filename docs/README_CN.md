@@ -6,7 +6,7 @@
 
 - [使用手册](./handbook_CN.md)：安装、运行模式、配置、工作流、测试与排障
 - [参考文档](./reference_CN.md)：API 契约、分析接口、配置契约、SkillHub 契约与验证命令
-- [Agent 架构](./agent-architecture_CN.md)：base model、skill、tool 与编排层的目标架构
+- [Agent 架构](./agent-architecture_CN.md)：LangGraph agent、skill、tool 与编排层的 1.0.0 当前架构
 - [Skill 运行时状态](./skill-runtime-status_CN.md)：各 skill domain 当前实现成熟度
 
 ## 引擎与 Schema 文档
@@ -29,4 +29,3 @@
 - [Reference](./reference.md)
 - [Agent architecture](./agent-architecture.md)
 - [Roadmap](../ROADMAP.md)
-

@@ -222,9 +222,9 @@ flowchart TD
 
 架构说明：
 
-- 对外产品交互应继续收口到单一 chat-first 入口。
+- 对外产品交互使用 chat-first 入口。
 - Skill 与 Tool 都属于可选能力层。
-- 目标能力驱动架构见 `docs/agent-architecture_CN.md`。
+- 当前 LangGraph agent 设计见 `docs/agent-architecture_CN.md`。
 
 ### 7.2 Backend 托管分析运行时
 
@@ -272,7 +272,7 @@ flowchart TD
 - Skill 与 Tool 都是可选能力层，不是基础聊天的硬依赖。
 - 当没有启用任何工程 skill 时，StructureClaw 应停留在 base chat 路径。
 - `structure-type` 是工程入口技能域。
-- 目标架构中会在该域内内置 `structure-type/generic` 兜底 skill。
+- 当前内置 `structure-type/generic` skill 为工程草稿提供通用兜底路径。
 - 所有新增用户可见文案必须同时支持中文和英文。
 
 内置技能域（位于 `backend/src/agent-skills/`）：

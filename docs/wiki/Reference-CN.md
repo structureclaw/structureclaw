@@ -8,7 +8,7 @@
 ### Agent 执行
 
 - `POST /api/v1/agent/run` — chat-first 编排入口
-- 链路：`text-to-model-draft -> convert -> validate -> analyze -> code-check -> report`
+- 链路：`识别结构类型 -> 提取草稿参数 -> 构建模型 -> 校验 -> 分析 -> 规范校核 -> 报告`
 
 ### Chat 与流式
 
