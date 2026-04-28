@@ -42,7 +42,7 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
 ```
 
-The installer prepares a user-local Node.js 24 runtime when needed, installs `@structureclaw/structureclaw@latest`, adds the user-local npm bin directory to PATH, and runs `sclaw doctor`. Use `--skip-doctor` / `-SkipDoctor` when scripting the install.
+The installer prepares a user-local Node.js 24 runtime when needed, installs `@structureclaw/structureclaw@latest`, adds the user-local npm bin directory to PATH, and runs `sclaw doctor`. On Windows, the bootstrap Node runtime is installed under `%LOCALAPPDATA%\Programs\nodejs`; on Linux, it is installed under `${XDG_DATA_HOME:-~/.local/share}/nodejs`. Use `--skip-doctor` / `-SkipDoctor` when scripting the install.
 
 ### Install from npm
 
@@ -183,7 +183,7 @@ curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/
 
 Notes:
 
-- `scripts/install.sh` and `scripts/install.ps1` are intended for first-time users. They install Node.js 24 into the user profile if `node` / `npm` are missing or too old, then run `npm install -g @structureclaw/structureclaw@latest`.
+- `scripts/install.sh` and `scripts/install.ps1` are intended for first-time users. They install Node.js 24 into a generic user-level Node.js directory if `node` / `npm` are missing or too old, then run `npm install -g @structureclaw/structureclaw@latest`.
 - The bootstrap installers use a user-local npm prefix by default (`~/.structureclaw/npm-global`), avoiding root/admin global npm writes.
 - SQLite is now the default local database. `./sclaw start` uses `~/.structureclaw/data/structureclaw.start.db`, and `./sclaw doctor` uses `~/.structureclaw/data/structureclaw.doctor.db` so preflight checks do not touch the active local runtime database.
 - `./sclaw doctor` no longer requires a preinstalled system Python 3.12. It will ensure `uv` and prepare a virtual environment with Python 3.12 automatically when needed. On Windows, this automatic setup currently requires `winget`; if `winget` is unavailable, install `uv` manually before running `./sclaw doctor`.

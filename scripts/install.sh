@@ -3,6 +3,7 @@ set -euo pipefail
 
 MIN_NODE_MAJOR="${SCLAW_MIN_NODE_MAJOR:-24}"
 NODE_DIST_BASE="${SCLAW_NODE_DIST_BASE:-https://nodejs.org/dist/latest-v24.x}"
+NODE_INSTALL_PARENT="${SCLAW_NODE_INSTALL_PARENT:-${XDG_DATA_HOME:-$HOME/.local/share}/nodejs}"
 PACKAGE_NAME="${SCLAW_PACKAGE_NAME:-@structureclaw/structureclaw}"
 PACKAGE_TAG="${SCLAW_PACKAGE_TAG:-latest}"
 NPM_PREFIX="${SCLAW_NPM_PREFIX:-$HOME/.structureclaw/npm-global}"
@@ -28,6 +29,8 @@ Options:
   --cn                    Use China-friendly npm and Node mirrors.
   --registry <url>        npm registry to use for the package install.
   --node-dist-base <url>  Node.js dist base, default latest-v24.x.
+  --node-install-parent <dir>
+                          Node.js install parent, default ~/.local/share/nodejs.
   --package <name>        npm package name, default @structureclaw/structureclaw.
   --tag <tag>             npm dist-tag/version, default latest.
   --prefix <dir>          npm global prefix, default ~/.structureclaw/npm-global.
@@ -36,8 +39,8 @@ Options:
   -h, --help              Show this help.
 
 Environment overrides:
-  SCLAW_NODE_DIST_BASE, SCLAW_PACKAGE_NAME, SCLAW_PACKAGE_TAG,
-  SCLAW_NPM_PREFIX, NPM_CONFIG_REGISTRY
+  SCLAW_NODE_DIST_BASE, SCLAW_NODE_INSTALL_PARENT, SCLAW_PACKAGE_NAME,
+  SCLAW_PACKAGE_TAG, SCLAW_NPM_PREFIX, NPM_CONFIG_REGISTRY
 EOF
 }
 
@@ -70,6 +73,11 @@ while [ "$#" -gt 0 ]; do
     --node-dist-base)
       [ "$#" -ge 2 ] || die "--node-dist-base requires a value"
       NODE_DIST_BASE="$2"
+      shift 2
+      ;;
+    --node-install-parent)
+      [ "$#" -ge 2 ] || die "--node-install-parent requires a value"
+      NODE_INSTALL_PARENT="$2"
       shift 2
       ;;
     --package)
@@ -166,7 +174,7 @@ ensure_node() {
   if [ "$os_name" = "Darwin" ]; then
     if need_cmd brew; then
       log "Installing Node.js with Homebrew..."
-      run brew install node@20 || run brew install node
+      run brew install node@24 || run brew install node
       return 0
     fi
     die "Node.js $MIN_NODE_MAJOR+ is required on macOS. Install Homebrew or Node.js, then rerun."
@@ -185,16 +193,16 @@ ensure_node() {
 
   archive="node-$version-linux-$arch.tar.xz"
   archive_url="$NODE_DIST_BASE/$archive"
-  install_root="$HOME/.structureclaw/node/$version"
-  current_link="$HOME/.structureclaw/node/current"
+  install_root="$NODE_INSTALL_PARENT/$version"
+  current_link="$NODE_INSTALL_PARENT/current"
 
   if [ ! -x "$install_root/bin/node" ]; then
     log "Installing Node.js $version to $install_root..."
     download "$archive_url" "$temp_dir/$archive"
     verify_sha256 "$sums" "$archive" "$temp_dir/$archive"
-    run mkdir -p "$HOME/.structureclaw/node"
-    run tar -xJf "$temp_dir/$archive" -C "$HOME/.structureclaw/node"
-    run mv "$HOME/.structureclaw/node/node-$version-linux-$arch" "$install_root"
+    run mkdir -p "$NODE_INSTALL_PARENT"
+    run tar -xJf "$temp_dir/$archive" -C "$NODE_INSTALL_PARENT"
+    run mv "$NODE_INSTALL_PARENT/node-$version-linux-$arch" "$install_root"
   fi
 
   run ln -sfn "$install_root" "$current_link"

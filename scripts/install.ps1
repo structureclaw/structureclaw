@@ -1,6 +1,7 @@
 param(
   [string]$Registry = "",
   [string]$NodeDistBase = $env:SCLAW_NODE_DIST_BASE,
+  [string]$NodeInstallParent = $(if ($env:SCLAW_NODE_INSTALL_PARENT) { $env:SCLAW_NODE_INSTALL_PARENT } else { Join-Path ([Environment]::GetFolderPath("LocalApplicationData")) "Programs\nodejs" }),
   [string]$Package = $(if ($env:SCLAW_PACKAGE_NAME) { $env:SCLAW_PACKAGE_NAME } else { "@structureclaw/structureclaw" }),
   [string]$Tag = $(if ($env:SCLAW_PACKAGE_TAG) { $env:SCLAW_PACKAGE_TAG } else { "latest" }),
   [string]$Prefix = $(if ($env:SCLAW_NPM_PREFIX) { $env:SCLAW_NPM_PREFIX } else { Join-Path $HOME ".structureclaw\npm-global" }),
@@ -34,6 +35,8 @@ Options:
   -Cn                    Use China-friendly npm and Node mirrors.
   -Registry <url>        npm registry to use for the package install.
   -NodeDistBase <url>    Node.js dist base, default latest-v24.x.
+  -NodeInstallParent <dir>
+                        Node.js install parent, default %LOCALAPPDATA%\Programs\nodejs.
   -Package <name>        npm package name, default @structureclaw/structureclaw.
   -Tag <tag>             npm dist-tag/version, default latest.
   -Prefix <dir>          npm global prefix, default ~/.structureclaw/npm-global.
@@ -42,8 +45,8 @@ Options:
   -Help                  Show this help.
 
 Environment overrides:
-  SCLAW_NODE_DIST_BASE, SCLAW_PACKAGE_NAME, SCLAW_PACKAGE_TAG,
-  SCLAW_NPM_PREFIX, NPM_CONFIG_REGISTRY
+  SCLAW_NODE_DIST_BASE, SCLAW_NODE_INSTALL_PARENT, SCLAW_PACKAGE_NAME,
+  SCLAW_PACKAGE_TAG, SCLAW_NPM_PREFIX, NPM_CONFIG_REGISTRY
 "@
 }
 
@@ -183,8 +186,7 @@ function Ensure-Node {
     }
 
     $archive = "node-$version-win-$arch.zip"
-    $installParent = Join-Path $HOME ".structureclaw\node"
-    $installRoot = Join-Path $installParent $version
+    $installRoot = Join-Path $NodeInstallParent $version
     $nodeExe = Join-Path $installRoot "node.exe"
 
     if (-not (Test-Path $nodeExe)) {
@@ -197,7 +199,7 @@ function Ensure-Node {
         if ($actualHash -ne $expectedHash) {
           Stop-Install "Checksum mismatch for $archive"
         }
-        New-Item -ItemType Directory -Force -Path $installParent | Out-Null
+        New-Item -ItemType Directory -Force -Path $NodeInstallParent | Out-Null
         Expand-Archive -LiteralPath $archivePath -DestinationPath $tempDir -Force
         $expanded = Join-Path $tempDir "node-$version-win-$arch"
         if (Test-Path $installRoot) {

@@ -42,7 +42,7 @@ Windows PowerShell：
 irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
 ```
 
-安装脚本会在需要时准备用户级 Node.js 24、安装 `@structureclaw/structureclaw@latest`、把用户级 npm bin 目录加入 PATH，并运行 `sclaw doctor`。脚本化安装时可使用 `--skip-doctor` / `-SkipDoctor` 跳过预检。
+安装脚本会在需要时准备用户级 Node.js 24、安装 `@structureclaw/structureclaw@latest`、把用户级 npm bin 目录加入 PATH，并运行 `sclaw doctor`。Windows 下 bootstrap Node 会安装到 `%LOCALAPPDATA%\Programs\nodejs`，Linux 下会安装到 `${XDG_DATA_HOME:-~/.local/share}/nodejs`。脚本化安装时可使用 `--skip-doctor` / `-SkipDoctor` 跳过预检。
 
 ### npm 安装版
 
@@ -183,7 +183,7 @@ curl -fsSL https://raw.githubusercontent.com/structureclaw/structureclaw/master/
 
 补充说明：
 
-- `scripts/install.sh` 和 `scripts/install.ps1` 面向首次安装用户。缺少 `node` / `npm` 或版本太旧时，会先把 Node.js 24 安装到用户目录，再执行 `npm install -g @structureclaw/structureclaw@latest`。
+- `scripts/install.sh` 和 `scripts/install.ps1` 面向首次安装用户。缺少 `node` / `npm` 或版本太旧时，会先把 Node.js 24 安装到通用的用户级 Node.js 目录，再执行 `npm install -g @structureclaw/structureclaw@latest`。
 - bootstrap 安装器默认使用用户级 npm prefix（`~/.structureclaw/npm-global`），避免全局 npm 写入需要 root/admin 权限。
 - 本地默认数据库现在是 SQLite。`./sclaw start` 默认使用 `~/.structureclaw/data/structureclaw.start.db`，`./sclaw doctor` 默认使用 `~/.structureclaw/data/structureclaw.doctor.db`，这样预检不会碰当前实际运行库。
 - `./sclaw doctor` 不再要求你预先安装系统级 Python 3.12。缺失时会先确保 `uv` 可用，并自动准备带 Python 3.12 的虚拟环境；在 Windows 上，如果系统未安装 `winget`，则会提示你手动安装 `uv`。

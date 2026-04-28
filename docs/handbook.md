@@ -83,7 +83,12 @@ Windows PowerShell:
 irm https://raw.githubusercontent.com/structureclaw/structureclaw/master/scripts/install.ps1 | iex
 ```
 
-The installers check for Node.js 24+ and npm. If missing or too old, they install Node.js under the user profile, configure a user-local npm prefix, install `@structureclaw/structureclaw@latest`, then run `sclaw doctor`.
+The installers check for Node.js 24+ and npm. If missing or too old, they install Node.js under a generic user-level Node.js directory, configure a user-local npm prefix, install `@structureclaw/structureclaw@latest`, then run `sclaw doctor`.
+
+Default bootstrap Node.js locations:
+
+- Windows: `%LOCALAPPDATA%\Programs\nodejs\<version>`
+- Linux: `${XDG_DATA_HOME:-~/.local/share}/nodejs/<version>`
 
 Useful installer options:
 
@@ -91,12 +96,14 @@ Useful installer options:
 scripts/install.sh --skip-doctor
 scripts/install.sh --cn
 scripts/install.sh --registry https://registry.npmmirror.com
+scripts/install.sh --node-install-parent ~/.local/share/nodejs
 ```
 
 ```powershell
 .\scripts\install.ps1 -SkipDoctor
 .\scripts\install.ps1 -Cn
 .\scripts\install.ps1 -Registry https://registry.npmmirror.com
+.\scripts\install.ps1 -NodeInstallParent "$env:LOCALAPPDATA\Programs\nodejs"
 ```
 
 ### 5.2 Source checkout path
