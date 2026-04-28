@@ -1344,7 +1344,7 @@ async function invokeDoctor(rootDir, env) {
   runtime.ensureDirectory(paths.logDir);
   runtime.ensureDirectory(paths.pidDir);
   runtime.ensureDirectory(path.join(paths.runtimeDir, "workspace"));
-  runtime.ensureDirectory(path.join(paths.runtimeDir, "checkpoints"));
+  runtime.ensureDirectory(path.join(paths.runtimeDir, "agent-checkpoints"));
   runtime.ensureDirectory(path.join(paths.dataDir, "skills"));
   runtime.ensureDirectory(path.join(paths.dataDir, "tools"));
 

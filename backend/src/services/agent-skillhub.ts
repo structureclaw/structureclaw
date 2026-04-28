@@ -2,7 +2,7 @@ import { existsSync } from 'fs';
 import { mkdir, readFile, writeFile } from 'fs/promises';
 import { createHash } from 'crypto';
 import path from 'path';
-import { config } from '../config/index.js';
+import { config, runtimeBaseDir } from '../config/index.js';
 import { evaluateSkillCompatibility } from '../skill-shared/loader.js';
 import type { SkillCompatibilityReasonCode } from '../skill-shared/loader.js';
 import type { SkillDomain } from '../agent-runtime/types.js';
@@ -300,7 +300,7 @@ export class AgentSkillHubService {
   private readonly cacheFilePath: string;
 
   constructor(stateFilePath = path.join(
-    path.resolve(config.reportsDir, '..'), 'skillhub', 'installed.json')) {
+    runtimeBaseDir, 'skillhub', 'installed.json')) {
     this.stateFilePath = stateFilePath;
     this.cacheFilePath = path.join(path.dirname(stateFilePath), 'cache.json');
   }

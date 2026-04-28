@@ -58,6 +58,7 @@ function parseArgs(argv) {
   }
 
   if (!args.targetUrl) {
+    // Canonical data dir: SCLAW_DATA_DIR || ~/.structureclaw (see backend/src/config/index.ts)
     args.targetUrl = `file:${path.join(os.homedir(), '.structureclaw', 'data', 'structureclaw.db')}`;
   }
 

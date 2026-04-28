@@ -60,10 +60,6 @@ export class PythonWorkerRunner<TInput extends object> {
     }
 
     const candidates: Array<{ executable: string; args: string[] }> = [
-      { executable: path.resolve(process.cwd(), 'backend/.venv/Scripts/python.exe'), args: [] },
-      { executable: path.resolve(process.cwd(), '.venv/Scripts/python.exe'), args: [] },
-      { executable: path.resolve(process.cwd(), 'backend/.venv/bin/python'), args: [] },
-      { executable: path.resolve(process.cwd(), '.venv/bin/python'), args: [] },
       ...(process.platform === 'win32'
         ? [
             { executable: 'py', args: ['-3'] },
