@@ -253,17 +253,17 @@ StructureClaw 1.0 以 `settings.json` 作为用户配置文件。前端 General 
 
 ## 文档入口
 
-- 中文手册：`docs/handbook_CN.md`
-- 英文手册：`docs/handbook.md`
-- 中文参考：`docs/reference_CN.md`
-- 英文参考：`docs/reference.md`
-- 英文总览：`README.md`
-- 中文贡献指南：`CONTRIBUTING_CN.md`
+- 中文手册：[docs/handbook_CN.md](./docs/handbook_CN.md)
+- 英文手册：[docs/handbook.md](./docs/handbook.md)
+- 中文参考：[docs/reference_CN.md](./docs/reference_CN.md)
+- 英文参考：[docs/reference.md](./docs/reference.md)
+- 英文总览：[README.md](./README.md)
+- 中文贡献指南：[CONTRIBUTING_CN.md](./CONTRIBUTING_CN.md)
 
 ## 参与贡献
 
-提交 PR 前请先阅读 `CONTRIBUTING_CN.md`。
+提交 PR 前请先阅读 [CONTRIBUTING_CN.md](./CONTRIBUTING_CN.md)。
 
 ## 许可证
 
-MIT，详见 `LICENSE`。
+MIT，详见 [LICENSE](./LICENSE)。

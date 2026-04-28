@@ -253,17 +253,17 @@ Backend-hosted analysis:
 
 ## Documentation
 
-- English handbook: `docs/handbook.md`
-- Chinese handbook: `docs/handbook_CN.md`
-- English reference: `docs/reference.md`
-- Chinese reference: `docs/reference_CN.md`
-- Chinese overview: `README_CN.md`
-- Contribution guide: `CONTRIBUTING.md`
+- English handbook: [docs/handbook.md](./docs/handbook.md)
+- Chinese handbook: [docs/handbook_CN.md](./docs/handbook_CN.md)
+- English reference: [docs/reference.md](./docs/reference.md)
+- Chinese reference: [docs/reference_CN.md](./docs/reference_CN.md)
+- Chinese overview: [README_CN.md](./README_CN.md)
+- Contribution guide: [CONTRIBUTING.md](./CONTRIBUTING.md)
 
 ## Contributing
 
-Please read `CONTRIBUTING.md` before opening a PR.
+Please read [CONTRIBUTING.md](./CONTRIBUTING.md) before opening a PR.
 
 ## License
 
-MIT. See `LICENSE`.
+MIT. See [LICENSE](./LICENSE).
