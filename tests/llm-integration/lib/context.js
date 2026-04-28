@@ -29,7 +29,7 @@ function resolveIntegrationContext(rootDir) {
       LLM_MODEL: llmModel,
       LLM_BASE_URL: llmBaseUrl,
       DATABASE_URL: `file:${path
-        .join(projectRoot, ".runtime", "data", "structureclaw-llm-test.db")
+        .join(projectRoot, ".structureclaw", "data", "structureclaw-llm-test.db")
         .replace(/\\/gu, "/")}`,
     },
   };

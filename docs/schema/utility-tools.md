@@ -30,7 +30,7 @@ code-owned registry and runtime policy.
 
 ### File Sandbox
 
-- Root directory: `.runtime/workspace`
+- Root directory: `~/.structureclaw/workspace`
 - Max file size: 10 MB
 - Allowed extensions: `.txt`, `.json`, `.csv`, `.md`, `.py`, `.tcl`, `.log`,
   `.yaml`, `.yml`

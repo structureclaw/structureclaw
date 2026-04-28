@@ -5,7 +5,7 @@ import path from 'path';
 import type { LangGraphRunnableConfig } from '@langchain/langgraph';
 import type { AgentConfigurable } from './configurable.js';
 
-const SKIP_DIRS = new Set(['.git', 'node_modules', '.venv', '__pycache__', '.runtime']);
+const SKIP_DIRS = new Set(['.git', 'node_modules', '.venv', '__pycache__', '.agent-workspace']);
 const MAX_READ_BYTES = 2 * 1024 * 1024;
 const MAX_WRITE_BYTES = 2 * 1024 * 1024;
 const MAX_SEARCH_BYTES = 512 * 1024;
@@ -92,7 +92,7 @@ export function createGlobFilesTool() {
     },
     {
       name: 'glob_files',
-      description: 'List workspace files matching a glob pattern with pagination. Skips .git, node_modules, .venv, __pycache__, and .runtime.',
+      description: 'List workspace files matching a glob pattern with pagination. Skips .git, node_modules, .venv, __pycache__, and .agent-workspace.',
       schema: z.object({
         pattern: z.string().optional(),
         maxResults: z.number().optional(),

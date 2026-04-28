@@ -25,7 +25,7 @@ function resolveRegressionContext(rootDir) {
 
 function ensureRegressionSqliteDatabaseUrl(context) {
   const fallbackDatabaseUrl = `file:${path
-    .join(context.rootDir, ".runtime", "data", "structureclaw-regression.db")
+    .join(context.rootDir, ".structureclaw", "data", "structureclaw-regression.db")
     .replace(/\\/gu, "/")}`;
   runtime.ensureDirectory(context.paths.dataDir);
 

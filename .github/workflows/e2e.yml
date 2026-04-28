@@ -114,10 +114,10 @@ jobs:
 
       - name: Setup backend database
         run: |
-          mkdir -p .runtime/data
+          mkdir -p .structureclaw/data
           npm run db:deploy --prefix backend
         env:
-          DATABASE_URL: file:../../.runtime/data/test-e2e.db
+          DATABASE_URL: file:../../.structureclaw/data/test-e2e.db
 
       - name: Install Playwright browsers
         run: npx --prefix frontend playwright install chromium --with-deps
@@ -126,7 +126,7 @@ jobs:
         run: node backend/dist/index.js &
         env:
           PORT: 30010
-          DATABASE_URL: file:../../.runtime/data/test-e2e.db
+          DATABASE_URL: file:../../.structureclaw/data/test-e2e.db
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
 

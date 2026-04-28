@@ -30,7 +30,7 @@ export default defineConfig({
       timeout: 60_000,
       env: {
         PORT: '30010',
-        DATABASE_URL: 'file:../../.runtime/data/test-e2e.db',
+        DATABASE_URL: 'file:../../.structureclaw/data/test-e2e.db',
         LLM_API_KEY: process.env.LLM_API_KEY || '',
         LLM_MODEL: process.env.LLM_MODEL || 'gpt-4o-mini',
         ...(process.env.LLM_BASE_URL ? { LLM_BASE_URL: process.env.LLM_BASE_URL } : {}),

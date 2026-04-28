@@ -275,7 +275,7 @@ interface SkillPackageMetadata {
 - **启用/禁用**：切换已安装状态中的 `enabled` 标志。
 - **卸载**：从已安装状态中移除技能记录。
 
-已安装状态持久化于 `.runtime/skillhub/installed.json`。
+已安装状态持久化于 `~/.structureclaw/skillhub/installed.json`。
 
 ## 4. 元数据、版本、依赖与兼容性
 
