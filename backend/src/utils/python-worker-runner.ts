@@ -108,6 +108,9 @@ export class PythonWorkerRunner<TInput extends object> {
       if (config.yjkVersion) childEnv.YJK_VERSION = config.yjkVersion;
       childEnv.YJK_TIMEOUT_S = String(config.yjkTimeoutS);
       childEnv.YJK_INVISIBLE = config.yjkInvisible ? '1' : '0';
+      childEnv.YJK_LAUNCHER_PREWARM = config.yjkLauncherPrewarm;
+      childEnv.YJK_LAUNCHER_PREWARM_S = String(config.yjkLauncherPrewarmS);
+      childEnv.YJK_DIRECT_READY_TIMEOUT_S = String(config.yjkDirectReadyTimeoutS);
 
       const child = spawn(pythonCommand.executable, [...pythonCommand.args, this.workerPath], {
         cwd: process.cwd(),

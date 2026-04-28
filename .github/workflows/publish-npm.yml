@@ -79,7 +79,7 @@ jobs:
           fi
 
       - name: Set version
-        run: npm version ${{ steps.meta.outputs.version }} --no-git-tag-version
+        run: npm version --allow-same-version ${{ steps.meta.outputs.version }} --no-git-tag-version
 
       - name: Assemble package
         run: node scripts/prepare-package.js

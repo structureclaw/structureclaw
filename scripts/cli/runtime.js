@@ -221,6 +221,7 @@ function resolveProjectRoot(explicitRoot) {
 function resolvePaths(rootDir) {
   const installedMode = isInstalledPackageLayout(rootDir);
   const runtimeDir = resolveRuntimeDataDir(rootDir);
+  const agentSkillsRoot = path.join(rootDir, "backend", "src", "agent-skills");
 
   return {
     rootDir,
@@ -237,34 +238,23 @@ function resolvePaths(rootDir) {
       ? path.join(rootDir, "dist", "frontend")
       : path.join(rootDir, "frontend"),
     analysisRequirementsFile: path.join(
-      rootDir,
-      "backend",
-      "src",
-      "agent-skills",
+      agentSkillsRoot,
       "analysis",
       "runtime",
       "requirements.txt",
     ),
-    analysisPythonRoot: path.join(
-      rootDir,
-      "backend",
-      "src",
-      "agent-skills",
-      "analysis",
-      "runtime",
-    ),
-    analysisOpenseesStaticRoot: path.join(
-      rootDir,
-      "backend",
-      "src",
-      "agent-skills",
-      "analysis",
-      "opensees-static",
-    ),
+    analysisPythonRoot: path.join(agentSkillsRoot, "analysis", "runtime"),
+    analysisOpenseesStaticRoot: path.join(agentSkillsRoot, "analysis", "opensees-static"),
     skillSharedPythonRoot: path.join(rootDir, "backend", "src", "skill-shared", "python"),
-    dataInputSkillRoot: path.join(rootDir, "backend", "src", "agent-skills", "data-input"),
-    codeCheckSkillRoot: path.join(rootDir, "backend", "src", "agent-skills", "code-check"),
-    materialSkillRoot: path.join(rootDir, "backend", "src", "agent-skills", "material"),
+    dataInputSkillRoot: path.join(agentSkillsRoot, "data-input"),
+    codeCheckSkillRoot: path.join(agentSkillsRoot, "code-check"),
+    materialSkillRoot: path.join(agentSkillsRoot, "material"),
+    reportExportCalcbookRoot: path.join(
+      agentSkillsRoot,
+      "report-export",
+      "calculation-book",
+      "pkpm-calcbook",
+    ),
   };
 }
 
@@ -813,6 +803,7 @@ function buildAnalysisPaths(rootDir) {
     paths.dataInputSkillRoot,
     paths.codeCheckSkillRoot,
     paths.materialSkillRoot,
+    paths.reportExportCalcbookRoot,
     // After code-check so `from runtime import …` resolves to code-check/runtime.py,
     // not opensees-static/runtime.py; `opensees_runtime` still imports from this dir.
     paths.analysisOpenseesStaticRoot,

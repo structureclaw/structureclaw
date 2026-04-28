@@ -76,6 +76,9 @@ export type SettingsFileYjk = {
   version?: string;
   timeoutS?: number;
   invisible?: boolean;
+  launcherPrewarm?: string;
+  launcherPrewarmS?: number;
+  directReadyTimeoutS?: number;
 };
 
 export type SettingsFile = {
@@ -126,6 +129,14 @@ function normalizeOptionalBoolean(value: unknown): boolean | undefined {
   if (typeof value === 'boolean') return value;
   if (typeof value === 'string') return value === 'true';
   return undefined;
+}
+
+function normalizeYjkLauncherPrewarm(value: unknown): string | undefined {
+  const normalized = normalizeOptionalString(value)?.toLowerCase();
+  if (!normalized) return undefined;
+  if (['0', 'false', 'no', 'off', 'never', 'disabled'].includes(normalized)) return 'off';
+  if (['1', 'true', 'yes', 'on', 'always', 'force'].includes(normalized)) return 'always';
+  return 'auto';
 }
 
 function normalizeServerSection(raw: unknown): SettingsFileServer | undefined {
@@ -266,6 +277,9 @@ function normalizeYjkSection(raw: unknown): SettingsFileYjk | undefined {
   const version = normalizeOptionalString(record.version);
   const timeoutS = normalizeOptionalNumber(record.timeoutS);
   const invisible = normalizeOptionalBoolean(record.invisible);
+  const launcherPrewarm = normalizeYjkLauncherPrewarm(record.launcherPrewarm);
+  const launcherPrewarmS = normalizeOptionalNumber(record.launcherPrewarmS);
+  const directReadyTimeoutS = normalizeOptionalNumber(record.directReadyTimeoutS);
   if (
     installRoot === undefined
     && exePath === undefined
@@ -275,6 +289,9 @@ function normalizeYjkSection(raw: unknown): SettingsFileYjk | undefined {
     && version === undefined
     && timeoutS === undefined
     && invisible === undefined
+    && launcherPrewarm === undefined
+    && launcherPrewarmS === undefined
+    && directReadyTimeoutS === undefined
   ) return undefined;
   const result: SettingsFileYjk = {};
   if (installRoot !== undefined) result.installRoot = installRoot;
@@ -285,6 +302,9 @@ function normalizeYjkSection(raw: unknown): SettingsFileYjk | undefined {
   if (version !== undefined) result.version = version;
   if (timeoutS !== undefined) result.timeoutS = timeoutS;
   if (invisible !== undefined) result.invisible = invisible;
+  if (launcherPrewarm !== undefined) result.launcherPrewarm = launcherPrewarm;
+  if (launcherPrewarmS !== undefined) result.launcherPrewarmS = launcherPrewarmS;
+  if (directReadyTimeoutS !== undefined) result.directReadyTimeoutS = directReadyTimeoutS;
   return result;
 }
 

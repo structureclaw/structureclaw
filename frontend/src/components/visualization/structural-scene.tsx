@@ -581,7 +581,7 @@ function SceneContent({
                     key={`${element.id}-distributed-${vectorIndex}`}
                     start={currentStart}
                     end={currentEnd}
-                    vector={projectPosition(vector, plane, snapshot.dimension)}
+                    vector={vector}
                   />
                 ))}
               </group>
@@ -683,9 +683,9 @@ function SceneContent({
                   <VectorArrow
                     color={typeof selectedLoadIndex === 'number' && snapshot.loads[selectedLoadIndex]?.nodeId === entry.id ? '#f59e0b' : '#22c55e'}
                     key={`${entry.id}-load-${index}`}
-                    origin={finalPosition.clone().sub(vector.clone().multiplyScalar(0.22))}
+                    origin={finalPosition}
                     selected={typeof selectedLoadIndex === 'number' && snapshot.loads[selectedLoadIndex]?.nodeId === entry.id}
-                    vector={projectPosition(vector, plane, snapshot.dimension)}
+                    vector={vector}
                   />
                 ))}
               </group>

@@ -27,7 +27,10 @@ type SettingsResponse = {
   cors: { origins: Field<string> }
   agent: { workspaceRoot: Field<string>; checkpointDir: Field<string>; allowShell: Field<boolean>; allowedShellCommands: Field<string>; shellTimeoutMs: Field<number> }
   pkpm: { cyclePath: Field<string>; workDir: Field<string> }
-  yjk: { installRoot: Field<string>; exePath: Field<string>; pythonBin: Field<string>; sdkArchivePath: Field<string>; workDir: Field<string>; version: Field<string>; timeoutS: Field<number>; invisible: Field<boolean> }
+  yjk: {
+    installRoot: Field<string>; exePath: Field<string>; pythonBin: Field<string>; sdkArchivePath: Field<string>; workDir: Field<string>; version: Field<string>;
+    timeoutS: Field<number>; invisible: Field<boolean>; launcherPrewarm: Field<string>; launcherPrewarmS: Field<number>; directReadyTimeoutS: Field<number>
+  }
 }
 
 type YjkAutoConfigureResponse = {
@@ -101,6 +104,9 @@ const FIELDS: FieldDef[] = [
   { key: 'yjk.version', labelKey: 'generalSettingsYjkVersionLabel', kind: 'text', sectionKey: 'yjk', stateKey: 'yjkVersion' },
   { key: 'yjk.timeoutS', labelKey: 'generalSettingsYjkTimeoutLabel', kind: 'number', sectionKey: 'yjk', stateKey: 'yjkTimeoutS', props: { min: 1 } },
   { key: 'yjk.invisible', labelKey: 'generalSettingsYjkInvisibleLabel', kind: 'checkbox', sectionKey: 'yjk', stateKey: 'yjkInvisible' },
+  { key: 'yjk.launcherPrewarm', labelKey: 'generalSettingsYjkLauncherPrewarmLabel', kind: 'select', sectionKey: 'yjk', stateKey: 'yjkLauncherPrewarm', options: ['auto', 'always', 'off'] },
+  { key: 'yjk.launcherPrewarmS', labelKey: 'generalSettingsYjkLauncherPrewarmSecondsLabel', kind: 'number', sectionKey: 'yjk', stateKey: 'yjkLauncherPrewarmS', props: { min: 0, step: 1 } },
+  { key: 'yjk.directReadyTimeoutS', labelKey: 'generalSettingsYjkDirectReadyTimeoutLabel', kind: 'number', sectionKey: 'yjk', stateKey: 'yjkDirectReadyTimeoutS', props: { min: 0, step: 1 } },
 ]
 
 // Default values for each field (used before API responds)
@@ -113,6 +119,7 @@ const DEFAULTS: Record<string, string | number | boolean> = {
   workspaceRoot: '', checkpointDir: '', allowShell: false, allowedShellCommands: 'node,npm,python,python3,./sclaw,./sclaw_cn', shellTimeoutMs: 300000,
   pkpmCyclePath: '', pkpmWorkDir: '',
   yjkInstallRoot: '', yjkExePath: '', yjkPythonBin: '', yjkSdkArchivePath: '', yjkWorkDir: '', yjkVersion: '8.0.0', yjkTimeoutS: 600, yjkInvisible: false,
+  yjkLauncherPrewarm: 'auto', yjkLauncherPrewarmS: 18, yjkDirectReadyTimeoutS: 12,
 }
 
 // Map stateKey → API field name for sections that use different naming
@@ -120,6 +127,7 @@ const STATE_TO_API_KEY: Record<string, string> = {
   pkpmCyclePath: 'cyclePath', pkpmWorkDir: 'workDir',
   yjkInstallRoot: 'installRoot', yjkExePath: 'exePath', yjkPythonBin: 'pythonBin', yjkSdkArchivePath: 'sdkArchivePath', yjkWorkDir: 'workDir',
   yjkVersion: 'version', yjkTimeoutS: 'timeoutS', yjkInvisible: 'invisible',
+  yjkLauncherPrewarm: 'launcherPrewarm', yjkLauncherPrewarmS: 'launcherPrewarmS', yjkDirectReadyTimeoutS: 'directReadyTimeoutS',
 }
 
 // Map stateKey → response path for extraction
@@ -265,6 +273,8 @@ export function GeneralSettingsPanel() {
     setStatus('')
 
     try {
+      const yjkPrewarmS = Number(values.yjkLauncherPrewarmS)
+      const yjkDirectReadyTimeoutS = Number(values.yjkDirectReadyTimeoutS)
       const res = await fetch(`${API_BASE}/api/v1/admin/settings/yjk/auto-configure`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -278,6 +288,9 @@ export function GeneralSettingsPanel() {
             version: String(values.yjkVersion || ''),
             timeoutS: Number(values.yjkTimeoutS) || 600,
             invisible: Boolean(values.yjkInvisible),
+            launcherPrewarm: String(values.yjkLauncherPrewarm || 'auto'),
+            launcherPrewarmS: Number.isFinite(yjkPrewarmS) ? yjkPrewarmS : 18,
+            directReadyTimeoutS: Number.isFinite(yjkDirectReadyTimeoutS) ? yjkDirectReadyTimeoutS : 12,
           },
         }),
       })

@@ -118,6 +118,9 @@ type SettingsResponse = {
     version: ValueField<string>;
     timeoutS: ValueField<number>;
     invisible: ValueField<boolean>;
+    launcherPrewarm: ValueField<string>;
+    launcherPrewarmS: ValueField<number>;
+    directReadyTimeoutS: ValueField<number>;
   };
 };
 
@@ -171,6 +174,9 @@ function buildSettingsResponse(): SettingsResponse {
     yjkVersion: '8.0.0',
     yjkTimeoutS: 600,
     yjkInvisible: false,
+    yjkLauncherPrewarm: 'auto',
+    yjkLauncherPrewarmS: 18,
+    yjkDirectReadyTimeoutS: 12,
   };
 
   const hasApiKey = config.llmApiKey.trim().length > 0;
@@ -233,6 +239,9 @@ function buildSettingsResponse(): SettingsResponse {
       version: stringSource(file?.yjk?.version, defaults.yjkVersion),
       timeoutS: numberSource(file?.yjk?.timeoutS, defaults.yjkTimeoutS),
       invisible: booleanSource(file?.yjk?.invisible, defaults.yjkInvisible),
+      launcherPrewarm: stringSource(file?.yjk?.launcherPrewarm, defaults.yjkLauncherPrewarm),
+      launcherPrewarmS: numberSource(file?.yjk?.launcherPrewarmS, defaults.yjkLauncherPrewarmS),
+      directReadyTimeoutS: numberSource(file?.yjk?.directReadyTimeoutS, defaults.yjkDirectReadyTimeoutS),
     },
   };
 }
@@ -295,6 +304,9 @@ const updateSettingsSchema = z.object({
     version: z.string().trim().optional(),
     timeoutS: z.number().int().min(1).optional(),
     invisible: z.boolean().optional(),
+    launcherPrewarm: z.enum(['auto', 'always', 'off']).optional(),
+    launcherPrewarmS: z.number().int().min(0).optional(),
+    directReadyTimeoutS: z.number().int().min(0).optional(),
   }).optional(),
 });
 
@@ -401,6 +413,9 @@ function applyUpdate(current: SettingsFile, input: UpdateSettingsInput): Setting
     if (input.yjk.version !== undefined) yjk.version = input.yjk.version;
     if (input.yjk.timeoutS !== undefined) yjk.timeoutS = input.yjk.timeoutS;
     if (input.yjk.invisible !== undefined) yjk.invisible = input.yjk.invisible;
+    if (input.yjk.launcherPrewarm !== undefined) yjk.launcherPrewarm = input.yjk.launcherPrewarm;
+    if (input.yjk.launcherPrewarmS !== undefined) yjk.launcherPrewarmS = input.yjk.launcherPrewarmS;
+    if (input.yjk.directReadyTimeoutS !== undefined) yjk.directReadyTimeoutS = input.yjk.directReadyTimeoutS;
     next.yjk = yjk;
   }
 
@@ -772,6 +787,9 @@ function applyYjkRuntimeConfig(yjk: SettingsFileYjk): void {
   config.yjkVersion = yjk.version ?? '8.0.0';
   config.yjkTimeoutS = yjk.timeoutS ?? 600;
   config.yjkInvisible = yjk.invisible ?? false;
+  config.yjkLauncherPrewarm = yjk.launcherPrewarm ?? 'auto';
+  config.yjkLauncherPrewarmS = yjk.launcherPrewarmS ?? 18;
+  config.yjkDirectReadyTimeoutS = yjk.directReadyTimeoutS ?? 12;
 }
 
 function autoConfigureYjk(input: YjkAutoConfigureInput): { settings: SettingsResponse; steps: YjkAutoConfigureStep[] } {
@@ -814,6 +832,9 @@ function autoConfigureYjk(input: YjkAutoConfigureInput): { settings: SettingsRes
     version: requestedYjk?.version?.trim() || current.yjk?.version?.trim() || '8.0.0',
     timeoutS: requestedYjk?.timeoutS ?? current.yjk?.timeoutS ?? 600,
     invisible: requestedYjk?.invisible ?? current.yjk?.invisible ?? false,
+    launcherPrewarm: requestedYjk?.launcherPrewarm ?? current.yjk?.launcherPrewarm ?? 'auto',
+    launcherPrewarmS: requestedYjk?.launcherPrewarmS ?? current.yjk?.launcherPrewarmS ?? 18,
+    directReadyTimeoutS: requestedYjk?.directReadyTimeoutS ?? current.yjk?.directReadyTimeoutS ?? 12,
   };
 
   const sdkSource = resolveYjkSdkSourceFromPublicRepo(steps);
