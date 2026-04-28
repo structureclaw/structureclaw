@@ -122,7 +122,7 @@ const COMMANDS = [
   {
     name: "start",
     usage: "sclaw start",
-    description: "Recommended local startup (alias: local-up-noinfra)",
+    description: "Recommended local startup",
     aliases: ["local-up-noinfra"],
     group: "lifecycle",
   },

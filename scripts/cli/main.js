@@ -65,7 +65,7 @@ function formatHelp(rootDir, programName = "sclaw") {
   lines.push("");
   lines.push("Notes:");
   lines.push("  - `doctor` is the cross-platform local preflight check.");
-  lines.push("  - `start` maps to the recommended no-infra local profile (same as `local-up-noinfra`).");
+  lines.push("  - `start` is the recommended way to launch the local stack.");
   lines.push("  - Regressions and contract checks: `node tests/runner.mjs ...`.");
   return lines.join(os.EOL);
 }
