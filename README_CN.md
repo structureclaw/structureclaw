@@ -162,11 +162,12 @@ flowchart LR
 - `sclaw_cn` 在未显式配置时会自动使用国内镜像默认值：`PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`、`NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`，以及通过 `DOCKER_REGISTRY_MIRROR` 指定的 Docker 镜像前缀。
 - 你可以在 `.env` 或 shell 环境中覆盖镜像变量：`PIP_INDEX_URL`、`NPM_CONFIG_REGISTRY`、`DOCKER_REGISTRY_MIRROR`、`APT_MIRROR`。
 
-常用后续命令：
+源码开发版常用后续命令：
 
 ```bash
-sclaw logs
-sclaw stop
+./sclaw logs
+./sclaw stop
+# 需要源码开发版：
 node tests/runner.mjs backend-regression
 node tests/runner.mjs analysis-regression
 ```
@@ -174,7 +175,7 @@ node tests/runner.mjs analysis-regression
 使用 CLI 内建批量转换命令处理结构模型 JSON，并输出汇总报告：
 
 ```bash
-sclaw convert-batch --input-dir tmp/input --output-dir tmp/output --report tmp/report.json --target-format compact-1
+./sclaw convert-batch --input-dir tmp/input --output-dir tmp/output --report tmp/report.json --target-format compact-1
 ```
 
 Windows PowerShell：
@@ -230,10 +231,12 @@ docker compose down
 
 StructureClaw 1.0 以 `settings.json` 作为用户配置文件。`sclaw doctor` 会创建该文件，前端 General Settings 面板也会通过后端 admin API 写入同一份配置。
 
-配置优先级：
+配置解析：
 
 1. 运行时 `settings.json`
 2. 内置默认值
+
+部分环境变量仍会作为运行时兜底或目录控制参与解析。对应配置缺失时，后端会读取 `PORT`、`FRONTEND_PORT`、`NODE_ENV`；`SCLAW_DATA_DIR` 会改变用于查找 `settings.json` 和数据文件的运行目录。
 
 重要 `settings.json` 字段和 section：
 
@@ -245,7 +248,7 @@ StructureClaw 1.0 以 `settings.json` 作为用户配置文件。`sclaw doctor` 
 - `storage`：报告目录与上传大小
 - `agent`：workspace root、checkpoint、shell tool 策略
 - `pkpm`：SATWE/JWSCYCLE 路径与工作目录
-- `yjk`：安装根目录、可执行文件、内置 Python、工作目录、版本、超时、无界面模式
+- `yjk`：安装根目录、可执行文件、内置 Python、工作目录、版本、超时、headless mode
 
 默认情况下，`settings.json` 位于 `~/.structureclaw/`。测试或受控部署可通过 `SCLAW_DATA_DIR` 覆盖运行目录。
 

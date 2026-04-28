@@ -35,7 +35,7 @@
 - `GET /api/v1/admin/settings`
 - `PUT /api/v1/admin/settings`
 
-StructureClaw 1.0 按运行时 `settings.json`、内置默认值的顺序解析应用配置。
+StructureClaw 1.0 会结合运行时 `settings.json`、部分环境变量兜底（`PORT`、`FRONTEND_PORT`、`NODE_ENV`）和运行目录覆盖（`SCLAW_DATA_DIR`）解析应用配置，然后回退到内置默认值。
 
 ### SkillHub 与用户扩展
 

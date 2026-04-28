@@ -35,7 +35,7 @@ Built-in engine ids: `builtin-opensees`, `builtin-pkpm`, `builtin-yjk`.
 - `GET /api/v1/admin/settings`
 - `PUT /api/v1/admin/settings`
 
-StructureClaw 1.0 resolves application configuration from runtime `settings.json`, then built-in defaults.
+StructureClaw 1.0 resolves application configuration from runtime `settings.json`, selected environment-variable fallbacks (`PORT`, `FRONTEND_PORT`, `NODE_ENV`) and the runtime directory override (`SCLAW_DATA_DIR`), then built-in defaults.
 
 ### SkillHub and User Extensions
 

@@ -118,6 +118,8 @@ StructureClaw 1.0 uses runtime `settings.json` as the user-facing configuration 
 1. `settings.json`
 2. Built-in defaults
 
+Selected environment variables still act as fallbacks or runtime directory controls. `PORT`, `FRONTEND_PORT`, and `NODE_ENV` are read when the corresponding setting is absent, and `SCLAW_DATA_DIR` changes the runtime base directory used to locate `settings.json` and data files.
+
 Admin settings endpoints:
 
 - `GET /api/v1/admin/settings`

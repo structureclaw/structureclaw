@@ -118,6 +118,8 @@ StructureClaw 1.0 使用运行时 `settings.json` 作为用户配置文件。配
 1. `settings.json`
 2. 内置默认值
 
+部分环境变量仍会作为兜底或运行目录控制参与解析。对应配置缺失时，后端会读取 `PORT`、`FRONTEND_PORT`、`NODE_ENV`；`SCLAW_DATA_DIR` 会改变用于查找 `settings.json` 和数据文件的运行基础目录。
+
 Admin settings 接口：
 
 - `GET /api/v1/admin/settings`

@@ -91,7 +91,7 @@ Source mode also uses the user runtime directory by default, such as `~/.structu
 
 Node.js 20+ is required. Install it via your preferred method (nvm, system package manager, or nodejs.org).
 
-### 5.3 Common lifecycle commands
+### 5.3 Installed CLI lifecycle commands
 
 ```bash
 sclaw logs
@@ -168,6 +168,8 @@ StructureClaw 1.0 resolves configuration in this order:
 1. `settings.json` in the runtime data directory
 2. Built-in defaults
 
+Selected environment variables still act as runtime fallbacks or directory controls. `PORT`, `FRONTEND_PORT`, and `NODE_ENV` are read when the matching setting is absent, while `SCLAW_DATA_DIR` changes the runtime directory used to locate `settings.json` and data files.
+
 The frontend General Settings panel writes `settings.json` through the backend admin API and labels each value by source (`runtime` or `default`).
 
 Runtime data locations:
@@ -181,6 +183,7 @@ Configuration resolution:
 flowchart TD
   Settings[Runtime settings.json] --> Effective[Effective backend config]
   Defaults[Built-in defaults] --> Effective
+  Env[Selected environment variables] --> Effective
   UI[General Settings panel] --> Settings
   Doctor[sclaw doctor] --> Settings
 ```
@@ -196,7 +199,7 @@ Important settings sections:
 - `cors`: allowed origins
 - `agent`: workspace root, checkpoints, shell-tool policy
 - `pkpm`: `JWSCYCLE.exe` path and PKPM work directory
-- `yjk`: YJK install root, `yjks.exe`, bundled Python, work directory, version, timeout, invisible mode
+- `yjk`: YJK install root, `yjks.exe`, bundled Python, work directory, version, timeout, headless mode
 
 Notes:
 

@@ -91,7 +91,7 @@ sclaw status
 
 需要 Node.js 20+。可通过任意方式安装（nvm、系统包管理器或 nodejs.org）。
 
-### 5.3 常用生命周期命令
+### 5.3 安装版 CLI 生命周期命令
 
 ```bash
 sclaw logs
@@ -168,6 +168,8 @@ StructureClaw 1.0 按以下优先级解析配置：
 1. 运行数据目录中的 `settings.json`
 2. 内置默认值
 
+部分环境变量仍会作为运行时兜底或目录控制参与解析。对应配置缺失时，后端会读取 `PORT`、`FRONTEND_PORT`、`NODE_ENV`；`SCLAW_DATA_DIR` 会改变用于查找 `settings.json` 和数据文件的运行目录。
+
 前端 General Settings 面板通过 backend admin API 写入 `settings.json`，并标注每个值来自 `runtime` 还是 `default`。
 
 运行数据位置：
@@ -181,6 +183,7 @@ StructureClaw 1.0 按以下优先级解析配置：
 flowchart TD
   Settings[运行时 settings.json] --> Effective[后端有效配置]
   Defaults[内置默认值] --> Effective
+  Env[部分环境变量] --> Effective
   UI[General Settings 面板] --> Settings
   Doctor[sclaw doctor] --> Settings
 ```
@@ -196,7 +199,7 @@ flowchart TD
 - `cors`：允许来源
 - `agent`：workspace root、checkpoint、shell tool 策略
 - `pkpm`：`JWSCYCLE.exe` 路径和 PKPM 工作目录
-- `yjk`：YJK 安装根目录、`yjks.exe`、内置 Python、工作目录、版本、超时、无界面模式
+- `yjk`：YJK 安装根目录、`yjks.exe`、内置 Python、工作目录、版本、超时、headless mode
 
 说明：
 

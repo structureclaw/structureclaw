@@ -162,11 +162,12 @@ Notes:
 - `sclaw_cn` defaults to China mirror settings when unset: `PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple`, `NPM_CONFIG_REGISTRY=https://registry.npmmirror.com`, and Docker mirror prefix via `DOCKER_REGISTRY_MIRROR`.
 - You can override mirror values in `.env` or shell environment (`PIP_INDEX_URL`, `NPM_CONFIG_REGISTRY`, `DOCKER_REGISTRY_MIRROR`, `APT_MIRROR`).
 
-Useful follow-up commands:
+Useful follow-up commands for source checkouts:
 
 ```bash
-sclaw logs
-sclaw stop
+./sclaw logs
+./sclaw stop
+# Requires a source checkout:
 node tests/runner.mjs backend-regression
 node tests/runner.mjs analysis-regression
 ```
@@ -174,7 +175,7 @@ node tests/runner.mjs analysis-regression
 Use the built-in CLI batch convert command to transform structure model JSON files and write a summary report:
 
 ```bash
-sclaw convert-batch --input-dir tmp/input --output-dir tmp/output --report tmp/report.json --target-format compact-1
+./sclaw convert-batch --input-dir tmp/input --output-dir tmp/output --report tmp/report.json --target-format compact-1
 ```
 
 Windows PowerShell:
@@ -230,10 +231,12 @@ docker compose down
 
 StructureClaw 1.0 uses `settings.json` as the user-facing configuration file. `sclaw doctor` creates it, and the General Settings panel writes the same settings through the backend admin API.
 
-Configuration precedence:
+Configuration resolution:
 
 1. Runtime `settings.json`
 2. Built-in defaults
+
+Selected environment variables still participate as runtime fallbacks or directory controls. `PORT`, `FRONTEND_PORT`, and `NODE_ENV` are read when the corresponding setting is absent, and `SCLAW_DATA_DIR` changes the runtime directory used to locate `settings.json` and data files.
 
 Important `settings.json` fields and sections:
 
