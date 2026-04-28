@@ -1,6 +1,11 @@
 # StructureClaw Roadmap
 
-This roadmap describes the 1.0.0 release line and the work planned after the first stable npm release. It is not a release promise; priorities can change as the runtime, engine integrations, and user feedback evolve.
+This roadmap is the narrative summary for StructureClaw's release direction. Live planning status is tracked in GitHub Projects, which should be treated as the source of truth for item-level priority, ownership, and progress.
+
+- [v1.0.0 GitHub Project](https://github.com/orgs/structureclaw/projects/1): first stable npm release
+- [v1.1.0 GitHub Project](https://github.com/orgs/structureclaw/projects/3): next release line after 1.0 stabilization
+
+The sections below explain the intent of each release line. They are not release promises; priorities can change as the runtime, engine integrations, and user feedback evolve.
 
 ## 1.0.0 Release
 
@@ -18,7 +23,7 @@ Focus: an installable local engineering workspace with a complete chat-to-artifa
 
 ## 1.0.x Stabilization
 
-Focus: make daily use more predictable without changing the core architecture.
+Focus: keep the 1.0 line reliable while the project board tracks concrete fixes and polish work.
 
 - richer copy-paste demo prompts in README and handbook
 - more example request/response payloads for chat, analysis, and settings APIs
@@ -30,11 +35,10 @@ Focus: make daily use more predictable without changing the core architecture.
 
 ## 1.1 And Later
 
-Focus: expand model coverage and plugin-style extensibility.
+Focus: expand model coverage and plugin-style extensibility after the 1.0 release line is stable.
 
 - broader StructureModel V2 coverage for walls, braces, load combinations, and engine-specific extensions
 - more first-class skill domains moving from `discoverable` to `active`
 - richer visualization and report post-processing
 - plugin-style user skills and tools with stronger packaging and validation
 - clearer API versioning and schema migration policy
-
