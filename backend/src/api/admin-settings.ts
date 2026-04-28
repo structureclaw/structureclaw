@@ -305,8 +305,8 @@ const updateSettingsSchema = z.object({
     timeoutS: z.number().int().min(1).optional(),
     invisible: z.boolean().optional(),
     launcherPrewarm: z.enum(['auto', 'always', 'off']).optional(),
-    launcherPrewarmS: z.number().min(0).optional(),
-    directReadyTimeoutS: z.number().min(0).optional(),
+    launcherPrewarmS: z.number().int().min(0).optional(),
+    directReadyTimeoutS: z.number().int().min(0).optional(),
   }).optional(),
 });
 

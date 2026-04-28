@@ -105,8 +105,8 @@ const FIELDS: FieldDef[] = [
   { key: 'yjk.timeoutS', labelKey: 'generalSettingsYjkTimeoutLabel', kind: 'number', sectionKey: 'yjk', stateKey: 'yjkTimeoutS', props: { min: 1 } },
   { key: 'yjk.invisible', labelKey: 'generalSettingsYjkInvisibleLabel', kind: 'checkbox', sectionKey: 'yjk', stateKey: 'yjkInvisible' },
   { key: 'yjk.launcherPrewarm', labelKey: 'generalSettingsYjkLauncherPrewarmLabel', kind: 'select', sectionKey: 'yjk', stateKey: 'yjkLauncherPrewarm', options: ['auto', 'always', 'off'] },
-  { key: 'yjk.launcherPrewarmS', labelKey: 'generalSettingsYjkLauncherPrewarmSecondsLabel', kind: 'number', sectionKey: 'yjk', stateKey: 'yjkLauncherPrewarmS', props: { min: 0 } },
-  { key: 'yjk.directReadyTimeoutS', labelKey: 'generalSettingsYjkDirectReadyTimeoutLabel', kind: 'number', sectionKey: 'yjk', stateKey: 'yjkDirectReadyTimeoutS', props: { min: 0 } },
+  { key: 'yjk.launcherPrewarmS', labelKey: 'generalSettingsYjkLauncherPrewarmSecondsLabel', kind: 'number', sectionKey: 'yjk', stateKey: 'yjkLauncherPrewarmS', props: { min: 0, step: 1 } },
+  { key: 'yjk.directReadyTimeoutS', labelKey: 'generalSettingsYjkDirectReadyTimeoutLabel', kind: 'number', sectionKey: 'yjk', stateKey: 'yjkDirectReadyTimeoutS', props: { min: 0, step: 1 } },
 ]
 
 // Default values for each field (used before API responds)
