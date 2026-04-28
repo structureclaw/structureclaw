@@ -88,10 +88,16 @@ async function start() {
         wildcard: false,
       });
 
-      // SPA fallback: serve index.html for non-API, non-static routes
+      // SPA fallback: try {path}.html first (Next.js static export), then index.html
       fastify.setNotFoundHandler((request, reply) => {
         if (!request.url.startsWith('/api/') && !request.url.startsWith('/docs')) {
-          reply.sendFile('index.html');
+          const routePath = request.url.split('?')[0].replace(/^\//, '');
+          const htmlFile = `${routePath}.html`;
+          if (routePath && existsSync(path.join(frontendDir, htmlFile))) {
+            reply.sendFile(htmlFile);
+          } else {
+            reply.sendFile('index.html');
+          }
         } else {
           reply.code(404).send({ error: 'Not found' });
         }

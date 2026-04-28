@@ -36,8 +36,8 @@ function resolveReportsDir(rawValue: string | undefined): string {
 }
 
 const llmApiKey = fileSettings?.llm?.apiKey ?? '';
-const llmModel = fileSettings?.llm?.model ?? 'gpt-4-turbo-preview';
-const llmBaseUrl = fileSettings?.llm?.baseUrl ?? 'https://api.openai.com/v1';
+const llmModel = fileSettings?.llm?.model || process.env.LLM_MODEL || 'gpt-4-turbo-preview';
+const llmBaseUrl = fileSettings?.llm?.baseUrl || process.env.LLM_BASE_URL || 'https://api.openai.com/v1';
 const frontendPort = fileSettings?.server?.frontendPort?.toString() ?? (process.env.FRONTEND_PORT || '31416');
 const backendPort = fileSettings?.server?.port ?? (parseInt(process.env.PORT || '', 10) || 31415);
 const analysisEngineManifestPath = fileSettings?.analysis?.engineManifestPath

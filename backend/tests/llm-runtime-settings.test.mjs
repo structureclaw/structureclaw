@@ -125,8 +125,13 @@ describe('backend runtime llm settings', () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'structureclaw-llm-settings-'));
     const previous = {
       SCLAW_DATA_DIR: process.env.SCLAW_DATA_DIR,
+      LLM_MODEL: process.env.LLM_MODEL,
+      LLM_BASE_URL: process.env.LLM_BASE_URL,
     };
 
+    // Ensure env vars are cleared so defaults apply
+    delete process.env.LLM_MODEL;
+    delete process.env.LLM_BASE_URL;
     process.env.SCLAW_DATA_DIR = tempDir;
 
     const settingsPath = path.join(tempDir, 'settings.json');
@@ -149,7 +154,7 @@ describe('backend runtime llm settings', () => {
     }
   });
 
-  test('env vars do NOT affect config — settings.json is the only source', async () => {
+  test('env vars are used as fallback when no settings.json overrides', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'structureclaw-llm-settings-'));
     const previous = {
       LLM_API_KEY: process.env.LLM_API_KEY,
@@ -158,23 +163,23 @@ describe('backend runtime llm settings', () => {
       SCLAW_DATA_DIR: process.env.SCLAW_DATA_DIR,
     };
 
-    // Set env vars that should be IGNORED
-    process.env.LLM_API_KEY = 'env-secret-ignored';
-    process.env.LLM_MODEL = 'env-model-ignored';
-    process.env.LLM_BASE_URL = 'https://env-ignored.example.com/v1';
+    // Set env vars that should be used as fallback
+    process.env.LLM_API_KEY = 'env-secret';
+    process.env.LLM_MODEL = 'env-model';
+    process.env.LLM_BASE_URL = 'https://env-fallback.example.com/v1';
     process.env.SCLAW_DATA_DIR = tempDir;
 
-    // No settings.json — should use hardcoded defaults, NOT env vars
+    // No settings.json — env vars provide fallback
     try {
       const { llmRuntime } = await getModules();
       expect(llmRuntime.getEffectiveLlmSettings()).toMatchObject({
         llmApiKey: '',
-        llmModel: 'gpt-4-turbo-preview',
-        llmBaseUrl: 'https://api.openai.com/v1',
+        llmModel: 'env-model',
+        llmBaseUrl: 'https://env-fallback.example.com/v1',
       });
       expect(llmRuntime.getPublicLlmSettings()).toMatchObject({
-        baseUrl: 'https://api.openai.com/v1',
-        model: 'gpt-4-turbo-preview',
+        baseUrl: 'https://env-fallback.example.com/v1',
+        model: 'env-model',
         hasApiKey: false,
         apiKeySource: 'unset',
         hasOverrides: false,

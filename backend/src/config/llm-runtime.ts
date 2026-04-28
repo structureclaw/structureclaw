@@ -1,7 +1,7 @@
 /**
  * LLM runtime settings — reads/writes LLM overrides from the unified
- * settings.json file.  No env fallback; all config goes through settings.json
- * or hardcoded defaults.
+ * settings.json file.  Falls back to LLM_MODEL / LLM_BASE_URL env vars,
+ * then to hardcoded defaults.
  *
  * Public API unchanged: getEffectiveLlmSettings / getPublicLlmSettings /
  * updateRuntimeLlmSettings / clearRuntimeLlmSettings.
@@ -84,8 +84,8 @@ export function getEffectiveLlmSettings(): EffectiveLlmSettings {
   const runtimeSettings = getRuntimeLlmSettings();
   return {
     llmApiKey: runtimeSettings?.apiKey ?? '',
-    llmModel: runtimeSettings?.model ?? LLM_DEFAULTS.model,
-    llmBaseUrl: runtimeSettings?.baseUrl ?? LLM_DEFAULTS.baseUrl,
+    llmModel: runtimeSettings?.model || process.env.LLM_MODEL || LLM_DEFAULTS.model,
+    llmBaseUrl: runtimeSettings?.baseUrl || process.env.LLM_BASE_URL || LLM_DEFAULTS.baseUrl,
     llmTimeoutMs: runtimeSettings?.timeoutMs ?? config.llmTimeoutMs,
     llmMaxRetries: runtimeSettings?.maxRetries ?? config.llmMaxRetries,
   };

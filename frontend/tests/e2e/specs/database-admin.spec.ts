@@ -15,14 +15,14 @@ test.describe('Database admin page', () => {
 
   test('shows SQLite as provider', async ({ page }) => {
     await dbPage.goto();
-    // Real backend returns sqlite provider from the test-e2e.db DATABASE_URL
-    await expect(page.getByText('sqlite', { exact: true })).toBeVisible();
+    // Component renders provider with CSS `uppercase`, so visible text is "SQLITE"
+    await expect(page.getByText(/sqlite/i)).toBeVisible({ timeout: 15_000 });
   });
 
   test('shows file path from real backend', async ({ page }) => {
     await dbPage.goto();
     // Real backend returns the configured DATABASE_URL path (contains test-e2e.db)
-    // Backend may render both the file: URL and plain path, so use .first()
+    // Wait for async data to load before asserting
     await expect(page.getByText(/test-e2e.*\.db/).first()).toBeVisible({ timeout: 15_000 });
   });
 

@@ -137,6 +137,8 @@ jobs:
         run: node backend/dist/index.js &
         env:
           SCLAW_FRONTEND_DIR: ${{ github.workspace }}/frontend/out
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
+          LLM_MODEL: ${{ vars.LLM_MODEL }}
 
       - name: Wait for backend
         run: npx wait-on http://localhost:31415/api/v1 --timeout 30000
@@ -150,6 +152,7 @@ jobs:
           CI: true
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
 
       - name: Extract test summary
         if: always()
