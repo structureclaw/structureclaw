@@ -193,6 +193,7 @@ describe('frame canonicalize core contract', () => {
       E: 30000,
       nu: 0.2,
       rho: 2500,
+      fc: 14.3,
     });
     expect(model.materials[0].fy).toBeUndefined();
     expect(model.sections[0]).toMatchObject({

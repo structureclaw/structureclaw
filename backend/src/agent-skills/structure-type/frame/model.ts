@@ -202,7 +202,7 @@ function buildMaterialRecord(matProps: ResolvedFrameMaterialProps): Record<strin
     nu: matProps.nu,
     rho: matProps.rho,
     ...(matProps.fy !== undefined ? { fy: matProps.fy } : {}),
-    ...(matProps.fc !== undefined ? { extra: { fc: matProps.fc } } : {}),
+    ...(matProps.fc !== undefined ? { fc: matProps.fc } : {}),
   };
 }
 
