@@ -99,6 +99,10 @@ jobs:
         with:
           ref: ${{ needs.check-permission.outputs.pr_sha }}
 
+      - name: Install Linux system dependencies for OpenSeesPy
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends gfortran libopenblas-dev
+
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
