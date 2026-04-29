@@ -49,7 +49,7 @@ function readDatabaseTarget() {
   const exists = fs.existsSync(databasePath);
   const sizeBytes = exists ? fs.statSync(databasePath).size : 0;
 
-  let writable = false;
+  let writable;
   try {
     fs.mkdirSync(directoryPath, { recursive: true });
     fs.accessSync(directoryPath, fs.constants.W_OK);

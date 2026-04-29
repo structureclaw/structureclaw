@@ -41,9 +41,10 @@
     "zod": "^4.3.6"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^25.6.0",
     "@types/pg": "^8.11.0",
-    "cross-env": "^7.0.3",
+    "cross-env": "^10.1.0",
     "eslint": "^10.2.1",
     "jest": "^30.3.0",
     "pg": "^8.20.0",

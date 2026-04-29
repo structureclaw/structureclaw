@@ -90,7 +90,7 @@ export function DatabaseSettingsPanel() {
     return () => {
       cancelled = true
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [])
 
   const effectiveStatus = status ?? FALLBACK_STATUS

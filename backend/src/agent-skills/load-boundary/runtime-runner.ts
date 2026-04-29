@@ -104,7 +104,7 @@ except Exception as e:
       return result;
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      throw new Error(`LoadBoundary runtime execution failed: ${errorMessage}`);
+      throw new Error(`LoadBoundary runtime execution failed: ${errorMessage}`, { cause: error });
     }
   }
 }

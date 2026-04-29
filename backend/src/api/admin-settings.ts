@@ -453,6 +453,7 @@ function copyYjkSdkIntoInstallRoot(sdkSource: string, installRoot: string): numb
       throw new Error(
         `Failed to copy YJKAPI SDK file "${entry.name}" into ${installRoot}: ${message}. `
         + 'Close YJK and any YJK bundled Python processes, then try again.',
+        { cause: error },
       );
     }
   }

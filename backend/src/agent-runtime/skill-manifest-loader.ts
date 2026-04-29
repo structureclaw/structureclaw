@@ -59,7 +59,7 @@ function readManifest(manifestPath: string): unknown {
     return parseYaml(readFileSync(manifestPath, 'utf8'));
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`Invalid skill manifest at ${manifestPath}: ${message}`);
+    throw new Error(`Invalid skill manifest at ${manifestPath}: ${message}`, { cause: error });
   }
 }
 

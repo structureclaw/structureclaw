@@ -221,7 +221,7 @@ export function GeneralSettingsPanel() {
     }
     void load()
     return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [])
 
   function setValue(key: string, val: string | number | boolean) {

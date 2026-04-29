@@ -112,6 +112,7 @@ export class AgentMemoryFileStore {
     } catch (err) {
       throw new Error(
         `Corrupt workspace memory file (${this.filePath}): ${err instanceof Error ? err.message : String(err)}`,
+        { cause: err },
       );
     }
   }

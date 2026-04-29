@@ -380,7 +380,7 @@ export class AgentCapabilityService {
       return acc;
     }, {});
 
-    let rawEngines: Record<string, unknown>[] = [];
+    let rawEngines: Record<string, unknown>[];
     try {
       const enginePayload = await this.engineCatalog.listEngines();
       rawEngines = Array.isArray(enginePayload?.engines)
