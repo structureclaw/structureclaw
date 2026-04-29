@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "node --require ./scripts/fs-rename-fallback.cjs ./node_modules/next/dist/bin/next build",
     "start": "next start",
-    "lint": "next lint",
+    "lint": "eslint src/",
     "type-check": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
