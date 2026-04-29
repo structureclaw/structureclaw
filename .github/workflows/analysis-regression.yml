@@ -44,6 +44,9 @@ jobs:
       - name: Install backend dependencies
         run: npm install --prefix backend
 
+      - name: Generate Prisma client
+        run: npm run db:generate --prefix backend
+
       - name: Build backend
         run: npm run build --prefix backend
 

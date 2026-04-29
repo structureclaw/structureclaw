@@ -48,6 +48,9 @@ jobs:
       - name: Setup via sclaw
         run: node ./sclaw doctor
 
+      - name: Generate Prisma client
+        run: npm run db:generate --prefix backend
+
       - name: Build via sclaw
         run: node ./sclaw build
 

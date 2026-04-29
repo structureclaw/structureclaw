@@ -1267,6 +1267,9 @@ async function dispatch(commandName, rawArgs, rootDir) {
       );
       return;
     case "build":
+      await runtime.runCommand(runtime.getNpmCommand(), ["run", "db:generate", "--prefix", paths.backendDir], {
+        env,
+      });
       await runtime.runCommand(runtime.getNpmCommand(), ["run", "build", "--prefix", paths.backendDir], {
         env,
       });
