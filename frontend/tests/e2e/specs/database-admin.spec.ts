@@ -16,7 +16,7 @@ test.describe('Database admin page', () => {
   test('shows SQLite as provider', async ({ page }) => {
     await dbPage.goto();
     // Component renders provider with CSS `uppercase`, so visible text is "SQLITE"
-    await expect(page.getByText(/sqlite/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('sqlite', { exact: true })).toBeVisible({ timeout: 15_000 });
   });
 
   test('shows file path from real backend', async ({ page }) => {
