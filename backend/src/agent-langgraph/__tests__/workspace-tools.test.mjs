@@ -47,6 +47,24 @@ describe("workspace tools", () => {
     expect(result.matches[0].path).toBe("src/agent.ts");
   });
 
+  test("grep_files stops scanning files after the match cap is reached", async () => {
+    await fs.writeFile(
+      path.join(root, "src", "000-cap.ts"),
+      `${Array.from({ length: 1000 }, () => "needle").join("\n")}\n`,
+      "utf8",
+    );
+    await fs.writeFile(path.join(root, "src", "zzz-unsupported.bin"), "needle\n", "utf8");
+    const { createGrepFilesTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    const tool = createGrepFilesTool();
+    const raw = await tool.invoke(
+      { query: "needle" },
+      { configurable: { workspaceRoot: root } },
+    );
+    const result = JSON.parse(raw);
+    expect(result.totalMatches).toBe(1000);
+    expect(result.skippedFiles).toBe(0);
+  });
+
   test("replace_in_file requires exact text", async () => {
     const { createReplaceInFileTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
     const tool = createReplaceInFileTool();

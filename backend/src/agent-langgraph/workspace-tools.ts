@@ -10,6 +10,7 @@ const SKIP_DIRS = new Set(['.git', 'node_modules', '.venv', '__pycache__', '.age
 const MAX_READ_BYTES = 2 * 1024 * 1024;
 const MAX_WRITE_BYTES = 2 * 1024 * 1024;
 const MAX_SEARCH_BYTES = 512 * 1024;
+const MAX_GREP_MATCHES = 1000;
 const ALLOWED_EXTENSIONS = new Set(['.txt', '.json', '.csv', '.md', '.py', '.tcl', '.log', '.yaml', '.yml', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.prisma']);
 
 function getWorkspaceRoot(config: LangGraphRunnableConfig): string {
@@ -178,6 +179,7 @@ export function createGrepFilesTool() {
       const needle = input.query.toLowerCase();
       let skippedFiles = 0;
       for (const rel of files.sort()) {
+        if (matches.length >= MAX_GREP_MATCHES) break;
         const full = safeResolve(root, rel);
         if (!isAllowedFile(full)) {
           skippedFiles += 1;
@@ -203,7 +205,7 @@ export function createGrepFilesTool() {
         }
         const lines = content.split(/\r?\n/);
         for (let index = 0; index < lines.length; index += 1) {
-          if (matches.length >= 1000) break;
+          if (matches.length >= MAX_GREP_MATCHES) break;
           if (lines[index].toLowerCase().includes(needle)) {
             matches.push({ path: rel, line: index + 1, preview: lines[index].slice(0, 240) });
           }
