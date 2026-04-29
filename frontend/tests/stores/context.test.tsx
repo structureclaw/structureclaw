@@ -74,10 +74,9 @@ describe('Store Context (STAT-01)', () => {
 
   it('Store state updates propagate to all consumers', async () => {
     function SetterComponent() {
-      const { locale, setLocale } = useStore((state) => ({
-        locale: state.locale,
-        setLocale: state.setLocale,
-      }))
+      // Use separate selectors to avoid object reference instability with React 19
+      const locale = useStore((state) => state.locale)
+      const setLocale = useStore((state) => state.setLocale)
       return (
         <button onClick={() => setLocale('zh')} data-testid="setter">
           Set Locale: {locale}

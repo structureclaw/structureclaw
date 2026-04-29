@@ -23,13 +23,13 @@ describe('Card Component (COMP-02)', () => {
       expect(card).toHaveTextContent('Child content')
     })
 
-    it('Card has rounded-lg border bg-card shadow-sm classes', () => {
+    it('Card has rounded-lg border bg-card shadow-xs classes', () => {
       render(<Card data-testid="card">Content</Card>)
       const card = screen.getByTestId('card')
       expect(card).toHaveClass('rounded-lg')
       expect(card).toHaveClass('border')
       expect(card).toHaveClass('bg-card')
-      expect(card).toHaveClass('shadow-sm')
+      expect(card).toHaveClass('shadow-xs')
     })
 
     it('Card forwards ref correctly', () => {

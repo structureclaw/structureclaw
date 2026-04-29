@@ -1,40 +1,47 @@
-import { describe, it, expect } from 'vitest'
-
-const tailwindConfig = require('../tailwind.config.js')
+import { describe, it, expect, beforeAll } from 'vitest'
+import fs from 'fs'
+import path from 'path'
 
 describe('Tailwind Configuration (DSGN-03)', () => {
-  it('config should have darkMode: "class"', () => {
-    expect(tailwindConfig.darkMode).toBe('class')
+  const globalsPath = path.resolve(__dirname, '../src/app/globals.css')
+  let cssContent: string
+
+  beforeAll(() => {
+    cssContent = fs.readFileSync(globalsPath, 'utf-8')
   })
 
-  it('config.theme.extend.colors should reference all CSS variables via hsl(var(--name))', () => {
-    const colors = tailwindConfig.theme?.extend?.colors
-
-    expect(colors?.background).toBe('hsl(var(--background))')
-    expect(colors?.foreground).toBe('hsl(var(--foreground))')
-    expect(colors?.primary?.DEFAULT).toBe('hsl(var(--primary))')
-    expect(colors?.primary?.foreground).toBe('hsl(var(--primary-foreground))')
-    expect(colors?.secondary?.DEFAULT).toBe('hsl(var(--secondary))')
-    expect(colors?.secondary?.foreground).toBe('hsl(var(--secondary-foreground))')
-    expect(colors?.muted?.DEFAULT).toBe('hsl(var(--muted))')
-    expect(colors?.muted?.foreground).toBe('hsl(var(--muted-foreground))')
-    expect(colors?.accent?.DEFAULT).toBe('hsl(var(--accent))')
-    expect(colors?.accent?.foreground).toBe('hsl(var(--accent-foreground))')
-    expect(colors?.destructive?.DEFAULT).toBe('hsl(var(--destructive))')
-    expect(colors?.destructive?.foreground).toBe('hsl(var(--destructive-foreground))')
-    expect(colors?.border).toBe('hsl(var(--border))')
-    expect(colors?.input).toBe('hsl(var(--input))')
-    expect(colors?.ring).toBe('hsl(var(--ring))')
-    expect(colors?.popover?.DEFAULT).toBe('hsl(var(--popover))')
-    expect(colors?.popover?.foreground).toBe('hsl(var(--popover-foreground))')
-    expect(colors?.card?.DEFAULT).toBe('hsl(var(--card))')
-    expect(colors?.card?.foreground).toBe('hsl(var(--card-foreground))')
+  it('should use Tailwind CSS v4 @import syntax', () => {
+    expect(cssContent).toContain("@import 'tailwindcss';")
   })
 
-  it('config.theme.extend.fontFamily should reference --font-sans and --font-mono', () => {
-    const fontFamily = tailwindConfig.theme?.extend?.fontFamily
+  it('should define custom dark mode variant', () => {
+    expect(cssContent).toMatch(/@custom-variant\s+dark/)
+  })
 
-    expect(fontFamily?.sans).toContain('var(--font-sans)')
-    expect(fontFamily?.mono).toContain('var(--font-mono)')
+  it('should define color tokens in @theme block referencing CSS variables', () => {
+    expect(cssContent).toMatch(/--color-background:\s*hsl\(var\(--background\)\)/)
+    expect(cssContent).toMatch(/--color-foreground:\s*hsl\(var\(--foreground\)\)/)
+    expect(cssContent).toMatch(/--color-primary:\s*hsl\(var\(--primary\)\)/)
+    expect(cssContent).toMatch(/--color-primary-foreground:\s*hsl\(var\(--primary-foreground\)\)/)
+    expect(cssContent).toMatch(/--color-secondary:\s*hsl\(var\(--secondary\)\)/)
+    expect(cssContent).toMatch(/--color-secondary-foreground:\s*hsl\(var\(--secondary-foreground\)\)/)
+    expect(cssContent).toMatch(/--color-muted:\s*hsl\(var\(--muted\)\)/)
+    expect(cssContent).toMatch(/--color-muted-foreground:\s*hsl\(var\(--muted-foreground\)\)/)
+    expect(cssContent).toMatch(/--color-accent:\s*hsl\(var\(--accent\)\)/)
+    expect(cssContent).toMatch(/--color-accent-foreground:\s*hsl\(var\(--accent-foreground\)\)/)
+    expect(cssContent).toMatch(/--color-destructive:\s*hsl\(var\(--destructive\)\)/)
+    expect(cssContent).toMatch(/--color-destructive-foreground:\s*hsl\(var\(--destructive-foreground\)\)/)
+    expect(cssContent).toMatch(/--color-border:\s*hsl\(var\(--border\)\)/)
+    expect(cssContent).toMatch(/--color-input:\s*hsl\(var\(--input\)\)/)
+    expect(cssContent).toMatch(/--color-ring:\s*hsl\(var\(--ring\)\)/)
+    expect(cssContent).toMatch(/--color-popover:\s*hsl\(var\(--popover\)\)/)
+    expect(cssContent).toMatch(/--color-popover-foreground:\s*hsl\(var\(--popover-foreground\)\)/)
+    expect(cssContent).toMatch(/--color-card:\s*hsl\(var\(--card\)\)/)
+    expect(cssContent).toMatch(/--color-card-foreground:\s*hsl\(var\(--card-foreground\)\)/)
+  })
+
+  it('should define font family tokens in @theme block', () => {
+    expect(cssContent).toMatch(/--font-sans:\s*var\(--font-sans\)/)
+    expect(cssContent).toMatch(/--font-mono:\s*var\(--font-mono\)/)
   })
 })

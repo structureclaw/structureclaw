@@ -25,9 +25,8 @@ describe('Custom Accent Color (DSGN-06)', () => {
     expect(darkMatch![1]).toMatch(/--accent:/)
   })
 
-  it('should have accent color configured in Tailwind config', () => {
-    const tailwindPath = path.resolve(__dirname, '../tailwind.config.js')
-    const tailwindContent = fs.readFileSync(tailwindPath, 'utf-8')
-    expect(tailwindContent).toMatch(/accent:\s*\{/)
+  it('should have accent color defined in @theme block', () => {
+    expect(cssContent).toMatch(/--color-accent:\s*hsl\(var\(--accent\)\)/)
+    expect(cssContent).toMatch(/--color-accent-foreground:\s*hsl\(var\(--accent-foreground\)\)/)
   })
 })

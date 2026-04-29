@@ -955,7 +955,6 @@ async function validateAgentSkillhubRepositoryDown(context) {
 
 async function validateChatStreamContract(context) {
   await runBackendBuildOnce(context);
-  console.log(`[debug] chat-stream validation process.env.DATABASE_URL = ${process.env.DATABASE_URL}`);
   const Fastify = backendRequire(context.rootDir)("fastify");
   const LangGraphAgentService = await importBackendAgentService(context.rootDir);
   const { prisma } = await import(pathToFileURL(path.join(context.rootDir, "backend", "dist", "utils", "database.js")).href);

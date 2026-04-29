@@ -52,10 +52,10 @@ async function runBackendRegression(rootDir) {
 
   console.log("Backend regression checks");
 
-  console.log(`[debug] DATABASE_URL = ${context.env.DATABASE_URL}`);
-
   await runLoggedStep("Backend regression database sync", async () => {
-    await runBackendCommand(context, ["run", "db:deploy", "--prefix", context.paths.backendDir]);
+    await runBackendCommand(context, ["run", "db:deploy", "--prefix", context.paths.backendDir], {
+      stdio: "ignore",
+    });
     console.log("[ok] Backend regression database sync");
   });
 
