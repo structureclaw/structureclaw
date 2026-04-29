@@ -34,6 +34,7 @@ dist/
 backend/coverage/
 frontend/coverage/
 *tsconfig.tsbuildinfo
+backend/src/generated/
 
 # Runtime directories and generated artifacts
 uploads/*
