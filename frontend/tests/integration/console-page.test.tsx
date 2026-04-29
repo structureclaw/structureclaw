@@ -398,6 +398,68 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getByRole('button', { name: 'Expand History' })).toBeInTheDocument()
   })
 
+  it('compacts conversation archive saves when localStorage quota is exceeded', async () => {
+    const longText = 'x'.repeat(60000)
+    window.localStorage.setItem('structureclaw.console.conversations', JSON.stringify({
+      'conv-large': {
+        id: 'conv-large',
+        title: 'Large local archive',
+        type: 'analysis',
+        createdAt: '2026-03-12T08:00:00.000Z',
+        updatedAt: '2026-03-12T09:00:00.000Z',
+        messages: [
+          {
+            id: 'm-large',
+            role: 'tool',
+            content: longText,
+            status: 'done',
+            timestamp: '2026-03-12T09:00:00.000Z',
+            debugDetails: { promptSnapshot: longText, skillIds: [], responseSummary: longText, plan: [], toolCalls: [] },
+            toolStep: {
+              id: 'step-large',
+              phase: 'understanding',
+              status: 'done',
+              tool: 'grep_files',
+              title: 'grep_files',
+              output: longText,
+            },
+          },
+        ],
+        latestResult: {
+          response: longText,
+          success: true,
+          report: { summary: longText, markdown: longText, json: { raw: longText } },
+          analysis: { raw: longText },
+          model: { raw: longText },
+        },
+        modelText: longText,
+        modelVisualizationSnapshot: archivedVisualizationSnapshot,
+        resultVisualizationSnapshot: archivedVisualizationSnapshot,
+        visualizationSnapshot: archivedVisualizationSnapshot,
+      },
+    }))
+
+    const originalSetItem = Storage.prototype.setItem
+    let quotaTriggered = false
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function setItem(key: string, value: string) {
+      if (key === 'structureclaw.console.conversations' && value.length > 50000 && !quotaTriggered) {
+        quotaTriggered = true
+        throw new DOMException('Storage quota exceeded', 'QuotaExceededError')
+      }
+      return originalSetItem.call(this, key, value)
+    })
+
+    await renderConsolePage()
+
+    await waitFor(() => {
+      expect(quotaTriggered).toBe(true)
+      const stored = JSON.parse(window.localStorage.getItem('structureclaw.console.conversations') || '{}')
+      expect(stored['conv-large']?.modelVisualizationSnapshot).toBeNull()
+      expect(stored['conv-large']?.messages?.[0]?.debugDetails).toBeUndefined()
+      expect(stored['conv-large']?.messages?.[0]?.content.length).toBeLessThan(longText.length)
+    })
+  })
+
   it('shows the conversational composer controls', async () => {
     await renderConsolePage()
 
