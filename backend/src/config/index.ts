@@ -69,7 +69,7 @@ export const config = {
   frontendPort: parseInt(frontendPort, 10),
 
   // 数据库配置
-  databaseUrl: fileSettings?.database?.url ?? defaultSqliteDatabaseUrl,
+  databaseUrl: process.env.DATABASE_URL || fileSettings?.database?.url || defaultSqliteDatabaseUrl,
 
   // AI 配置
   llmApiKey,
