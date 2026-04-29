@@ -4,6 +4,9 @@ const path = require('path')
 const nextConfig = {
   reactStrictMode: true,
   output: 'export',
+  turbopack: {
+    root: __dirname,
+  },
 }
 
 // Only inject NEXT_PUBLIC_API_URL when explicitly set (dev mode).
