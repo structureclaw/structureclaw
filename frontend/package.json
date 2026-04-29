@@ -56,8 +56,11 @@
     "@next/eslint-plugin-next": "^16.2.4",
     "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^29.1.0",
-    "postcss": "^8.4.38",
+    "postcss": "^8.5.10",
     "typescript": "^6.0.3",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "postcss": "$postcss"
   }
 }
