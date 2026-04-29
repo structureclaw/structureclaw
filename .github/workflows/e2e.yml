@@ -139,6 +139,7 @@ jobs:
           SCLAW_FRONTEND_DIR: ${{ github.workspace }}/frontend/out
           LLM_BASE_URL: ${{ vars.LLM_BASE_URL }}
           LLM_MODEL: ${{ vars.LLM_MODEL }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
 
       - name: Wait for backend
         run: npx wait-on http://localhost:31415/api/v1 --timeout 30000
