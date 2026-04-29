@@ -179,6 +179,9 @@ describe('loadSkillProviders with dependency resolution', () => {
   });
 
   test('should reject providers with unmet requires when packages map is provided', () => {
+    const warnings = [];
+    const origWarn = console.warn;
+    console.warn = (...args) => warnings.push(args);
     const providers = loadSkillProviders({
       builtInProviders: [makeProvider('a', 90), makeProvider('b', 80)],
       packages: new Map([
@@ -188,9 +191,14 @@ describe('loadSkillProviders with dependency resolution', () => {
     });
 
     expect(providers.map((p) => p.id)).toEqual(['b']);
+    expect(warnings.length).toBeGreaterThan(0);
+    console.warn = origWarn;
   });
 
   test('should reject conflicting providers when packages map is provided', () => {
+    const warnings = [];
+    const origWarn = console.warn;
+    console.warn = (...args) => warnings.push(args);
     const providers = loadSkillProviders({
       builtInProviders: [makeProvider('x', 90), makeProvider('y', 80)],
       packages: new Map([
@@ -200,6 +208,8 @@ describe('loadSkillProviders with dependency resolution', () => {
     });
 
     expect(providers.map((p) => p.id)).toEqual(['y']);
+    expect(warnings.length).toBeGreaterThan(0);
+    console.warn = origWarn;
   });
 
   test('should apply finalize after dependency resolution', () => {
