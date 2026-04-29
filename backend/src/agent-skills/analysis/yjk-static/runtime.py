@@ -69,6 +69,9 @@ from typing import Any, Dict
 
 from contracts import EngineNotAvailableError
 
+YJK_LOG_SNIPPET_LIMIT = 2000
+YJK_STEP_LIMIT = 8
+
 
 def _env_text(key: str, default: str = "") -> str:
     """Read an environment variable as stripped text."""
@@ -122,6 +125,98 @@ def _read_json(path: Path) -> dict | None:
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return None
     return data if isinstance(data, dict) else None
+
+
+def _tail_text(text: str, limit: int = YJK_LOG_SNIPPET_LIMIT) -> str:
+    text = str(text or "").strip()
+    if not text:
+        return ""
+    if len(text) <= limit:
+        return text
+    omitted = len(text) - limit
+    return f"...[truncated {omitted} chars]\n{text[-limit:]}"
+
+
+def _summarize_steps(output: dict | None, limit: int = YJK_STEP_LIMIT) -> list[str]:
+    if not isinstance(output, dict):
+        return []
+    steps = output.get("steps")
+    if not isinstance(steps, list):
+        return []
+    lines: list[str] = []
+    for step in steps[-limit:]:
+        if not isinstance(step, dict):
+            continue
+        name = str(step.get("name") or "step")
+        parts = [name]
+        for key in ("phase", "status", "command", "message"):
+            value = step.get(key)
+            if value:
+                parts.append(f"{key}={value}")
+        lines.append("- " + "; ".join(parts))
+    return lines
+
+
+def _raise_yjk_runtime_error(
+    headline: str,
+    *,
+    work_dir: Path,
+    stdout_path: Path | None = None,
+    stderr_path: Path | None = None,
+    driver_output_path: Path | None = None,
+    stdout: str = "",
+    stderr: str = "",
+    output: dict | None = None,
+    detail: Dict[str, Any] | None = None,
+    extra_paths: Dict[str, Path] | None = None,
+) -> None:
+    stdout_tail = _tail_text(stdout)
+    stderr_tail = _tail_text(stderr)
+    steps_tail = _summarize_steps(output)
+    run_meta_path = work_dir / "run-meta.json"
+    driver_result_path = work_dir / "driver-result.json"
+
+    paths: Dict[str, Path] = {
+        "workDir": work_dir,
+        "runMetaPath": run_meta_path,
+        "driverResultPath": driver_result_path,
+    }
+    if driver_output_path is not None:
+        paths["driverOutputPath"] = driver_output_path
+    if stdout_path is not None:
+        paths["stdoutPath"] = stdout_path
+    if stderr_path is not None:
+        paths["stderrPath"] = stderr_path
+    if extra_paths:
+        paths.update(extra_paths)
+
+    lines = [headline, "", "Artifact feedback:"]
+    for label, path in paths.items():
+        lines.append(f"- {label}: {path}")
+    if detail:
+        lines.append(f"- detail: {json.dumps(detail, ensure_ascii=False)}")
+    if steps_tail:
+        lines.extend(["", "Recent driver steps:", *steps_tail])
+    if stderr_tail:
+        lines.extend(["", "driver stderr tail:", stderr_tail])
+    if stdout_tail:
+        lines.extend(["", "driver stdout tail:", stdout_tail])
+
+    meta: Dict[str, Any] = {label: str(path) for label, path in paths.items()}
+    if stdout_tail:
+        meta["stdoutTail"] = stdout_tail
+    if stderr_tail:
+        meta["stderrTail"] = stderr_tail
+    if steps_tail:
+        meta["stepsTail"] = steps_tail
+    if detail:
+        meta["yjkErrorDetail"] = detail
+
+    error = RuntimeError("\n".join(lines))
+    setattr(error, "meta", meta)
+    if detail:
+        setattr(error, "detail", detail)
+    raise error
 
 
 def _yjk_install_root() -> str:
@@ -498,6 +593,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     # even after yjk_driver.py has emitted the final JSON and exited.
     stdout_path = work_dir / "driver.stdout.txt"
     stderr_path = work_dir / "driver.stderr.txt"
+    driver_output_path = work_dir / "driver-output.json"
     try:
         with stdout_path.open("w", encoding="utf-8") as stdout_file, stderr_path.open(
             "w",
@@ -532,13 +628,27 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
                         "stderr": stderr,
                     },
                 )
-                raise RuntimeError(f"YJK analysis timed out after {timeout}s")
+                _raise_yjk_runtime_error(
+                    f"YJK analysis timed out after {timeout}s",
+                    work_dir=work_dir,
+                    stdout_path=stdout_path,
+                    stderr_path=stderr_path,
+                    driver_output_path=driver_output_path,
+                    stdout=stdout,
+                    stderr=stderr,
+                    detail={
+                        "timeoutSeconds": timeout,
+                        "returncode": proc.returncode,
+                    },
+                    extra_paths={
+                        "driverTimeoutPath": work_dir / "driver-timeout.json",
+                    },
+                )
     except FileNotFoundError as exc:
         raise RuntimeError(f"Cannot launch YJK Python: {exc}")
 
     stdout = _read_text(stdout_path)
     stderr = _read_text(stderr_path)
-    driver_output_path = work_dir / "driver-output.json"
     _write_json(
         work_dir / "driver-result.json",
         {
@@ -566,30 +676,46 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     output = _read_json(driver_output_path)
 
     if returncode != 0 and not stdout and output is None:
-        stderr_snippet = stderr[:800] if stderr else "(no stderr)"
-        raise RuntimeError(
-            f"YJK driver exited with code {returncode}.\n"
-            f"stderr: {stderr_snippet}"
+        _raise_yjk_runtime_error(
+            f"YJK driver exited with code {returncode}.",
+            work_dir=work_dir,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            driver_output_path=driver_output_path,
+            stdout=stdout,
+            stderr=stderr,
+            detail={"returncode": returncode},
         )
 
     if not stdout and output is None:
-        stderr_snippet = stderr[:800] if stderr else "(no stderr)"
-        raise RuntimeError(
-            f"YJK driver produced no stdout output.\n"
-            f"stderr: {stderr_snippet}"
+        _raise_yjk_runtime_error(
+            "YJK driver produced no stdout output.",
+            work_dir=work_dir,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            driver_output_path=driver_output_path,
+            stdout=stdout,
+            stderr=stderr,
+            detail={"returncode": returncode},
         )
 
     output = output or _extract_last_json(stdout)
     if output is None:
-        raise RuntimeError(
-            f"YJK driver output is not valid JSON.\n"
-            f"stdout (first 500 chars): {stdout[:500]}\n"
-            f"stderr (first 500 chars): {stderr[:500]}"
+        _raise_yjk_runtime_error(
+            "YJK driver output is not valid JSON.",
+            work_dir=work_dir,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            driver_output_path=driver_output_path,
+            stdout=stdout,
+            stderr=stderr,
+            detail={"returncode": returncode},
         )
 
     status = output.get("status", "error")
     if status == "error":
-        error_detail = output.get("detailed", {})
+        raw_error_detail = output.get("detailed", {})
+        error_detail = raw_error_detail if isinstance(raw_error_detail, dict) else {}
         error_msg = error_detail.get("error", "Unknown YJK error")
         phase = error_detail.get("phase")
         command = error_detail.get("command")
@@ -599,7 +725,22 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         if command:
             context.append(f"command={command}")
         context_text = f" ({', '.join(context)})" if context else ""
-        raise RuntimeError(f"YJK analysis failed{context_text}: {error_msg}")
+        detail = {
+            "returncode": returncode,
+            "error": error_msg,
+            **error_detail,
+        }
+        _raise_yjk_runtime_error(
+            f"YJK analysis failed{context_text}: {error_msg}",
+            work_dir=work_dir,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            driver_output_path=driver_output_path,
+            stdout=stdout,
+            stderr=stderr,
+            output=output,
+            detail=detail,
+        )
 
     if stderr:
         warnings.append(f"YJK stderr: {stderr[:300]}")

@@ -20,6 +20,12 @@ logger = logging.getLogger(__name__)
 def _include_error_traceback() -> bool:
     return os.getenv("ANALYSIS_INCLUDE_TRACEBACK", "").strip().lower() in {"1", "true", "yes", "on"}
 
+
+def _exception_dict_attr(exc: Exception, name: str) -> Dict[str, Any]:
+    value = getattr(exc, name, None)
+    return value if isinstance(value, dict) else {}
+
+
 app = FastAPI(
     title="StructureClaw Analysis Runtime",
     description="Backend-hosted structural analysis runtime",
@@ -152,6 +158,10 @@ async def analyze(request: AnalysisRequest) -> AnalysisResponse:
             "timestamp": now,
             "exceptionType": type(e).__name__,
         }
+        error_meta.update(_exception_dict_attr(e, "meta"))
+        error_detail = _exception_dict_attr(e, "detail")
+        if error_detail:
+            error_meta["detail"] = error_detail
         if _include_error_traceback():
             traceback_summary = "".join(
                 traceback.format_exception(type(e), e, e.__traceback__, limit=8)

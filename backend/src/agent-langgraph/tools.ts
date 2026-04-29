@@ -60,6 +60,78 @@ function toolResult(
   });
 }
 
+const ANALYSIS_MESSAGE_LIMIT = 6000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function compactText(value: unknown, limit = ANALYSIS_MESSAGE_LIMIT): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const text = value.trim();
+  if (!text) return undefined;
+  if (text.length <= limit) return text;
+  return `${text.slice(0, limit)}\n...[truncated ${text.length - limit} chars]`;
+}
+
+function pickAnalysisDiagnostics(
+  result: Record<string, unknown>,
+  meta: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const diagnostics: Record<string, unknown> = {};
+  const copy = (targetKey: string, value: unknown) => {
+    if (value === undefined || value === null || value === '') return;
+    diagnostics[targetKey] = typeof value === 'string' ? compactText(value, 2000) ?? value : value;
+  };
+
+  copy('engineId', meta.engineId);
+  copy('engineName', meta.engineName);
+  copy('exceptionType', meta.exceptionType);
+  copy('analysisSkillId', meta.analysisSkillId);
+  copy('analysisAdapterKey', meta.analysisAdapterKey);
+  copy('workDir', meta.workDir);
+  copy('runMetaPath', meta.runMetaPath);
+  copy('driverResultPath', meta.driverResultPath);
+  copy('driverOutputPath', meta.driverOutputPath);
+  copy('stdoutPath', meta.stdoutPath);
+  copy('stderrPath', meta.stderrPath);
+  copy('stdoutTail', meta.stdoutTail);
+  copy('stderrTail', meta.stderrTail);
+  copy('stepsTail', meta.stepsTail);
+  copy('message', result.message);
+
+  return Object.keys(diagnostics).length > 0 ? diagnostics : undefined;
+}
+
+export function buildAnalysisToolSummary(args: {
+  result: unknown;
+  skillId?: string;
+}): Record<string, unknown> {
+  const result = isRecord(args.result) ? args.result : {};
+  const meta = isRecord(result.meta) ? result.meta : {};
+  const data = isRecord(result.data) ? result.data : undefined;
+  const status = typeof result.status === 'string' ? result.status : undefined;
+  const success = result.success === false || status === 'error' ? false : true;
+
+  if (!success) {
+    const errorCode = result.error_code || result.errorCode || 'ANALYSIS_EXECUTION_FAILED';
+    const diagnostics = pickAnalysisDiagnostics(result, meta);
+    return {
+      success: false,
+      skillId: args.skillId,
+      errorCode,
+      message: compactText(result.message) || 'Analysis execution failed',
+      ...(diagnostics ? { diagnostics } : {}),
+    };
+  }
+
+  return {
+    success: true,
+    skillId: args.skillId,
+    analysisMode: data?.analysisMode,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Engineering tools (wrap AgentSkillRuntime)
 // ---------------------------------------------------------------------------
@@ -494,12 +566,17 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
       // Store analysis result in graph state via Command.
       // Keep ToolMessage content compact — the full data lives in graph state.
       // The streaming layer reads analysisResult from nodeState for artifact_payload_sync.
-      const analysisSummary = typeof result.result === 'object' && result.result !== null
-        ? { success: true, skillId: result.skillId, analysisMode: (result.result as Record<string, unknown>)?.data
-            ? ((result.result as Record<string, unknown>).data as Record<string, unknown>)?.analysisMode
-            : undefined }
-        : { success: true, skillId: result.skillId };
-      logToolCall(log, { tool: 'run_analysis', durationMs: Date.now() - start, extra: { analysisType, skillId: result.skillId, success: true } });
+      const analysisSummary = buildAnalysisToolSummary({
+        result: result.result,
+        skillId: result.skillId,
+      });
+      const analysisSucceeded = analysisSummary.success !== false;
+      logToolCall(log, {
+        tool: 'run_analysis',
+        durationMs: Date.now() - start,
+        success: analysisSucceeded,
+        extra: { analysisType, skillId: result.skillId, success: analysisSucceeded },
+      });
       return toolResult(
         toolCallId,
         'run_analysis',
