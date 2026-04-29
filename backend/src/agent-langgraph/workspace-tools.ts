@@ -29,10 +29,16 @@ export function safeResolve(workspaceRoot: string, requestedPath: string): strin
 }
 
 function assertAllowedFile(filePath: string): void {
-  const ext = path.extname(filePath).toLowerCase();
-  if (!ALLOWED_EXTENSIONS.has(ext)) {
-    throw new Error(`File extension denied: ${ext || '(none)'}`);
+  if (isAllowedFile(filePath)) {
+    return;
   }
+  const ext = path.extname(filePath).toLowerCase();
+  throw new Error(`File extension denied: ${ext || '(none)'}`);
+}
+
+function isAllowedFile(filePath: string): boolean {
+  const ext = path.extname(filePath).toLowerCase();
+  return ALLOWED_EXTENSIONS.has(ext);
 }
 
 function globToRegex(pattern: string): RegExp {
@@ -170,12 +176,32 @@ export function createGrepFilesTool() {
       const offset = Math.max(input.offset ?? 0, 0);
       const maxResults = Math.min(input.maxResults ?? 50, 100);
       const needle = input.query.toLowerCase();
+      let skippedFiles = 0;
       for (const rel of files.sort()) {
         const full = safeResolve(root, rel);
-        assertAllowedFile(full);
-        const stat = await fs.stat(full);
-        if (stat.size > MAX_SEARCH_BYTES) continue;
-        const lines = (await fs.readFile(full, 'utf-8')).split(/\r?\n/);
+        if (!isAllowedFile(full)) {
+          skippedFiles += 1;
+          continue;
+        }
+        let stat;
+        try {
+          stat = await fs.stat(full);
+        } catch {
+          skippedFiles += 1;
+          continue;
+        }
+        if (!stat.isFile() || stat.size > MAX_SEARCH_BYTES) {
+          skippedFiles += 1;
+          continue;
+        }
+        let content: string;
+        try {
+          content = await fs.readFile(full, 'utf-8');
+        } catch {
+          skippedFiles += 1;
+          continue;
+        }
+        const lines = content.split(/\r?\n/);
         for (let index = 0; index < lines.length; index += 1) {
           if (matches.length >= 1000) break;
           if (lines[index].toLowerCase().includes(needle)) {
@@ -189,6 +215,7 @@ export function createGrepFilesTool() {
         shownCount: sliced.length,
         offset,
         nextOffset: offset + maxResults < matches.length ? offset + maxResults : null,
+        skippedFiles,
         matches: sliced,
       });
     },

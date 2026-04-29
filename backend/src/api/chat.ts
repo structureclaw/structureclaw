@@ -315,13 +315,10 @@ async function persistConversationMessages(params: {
 }
 
 /**
- * Persist the full LangGraph message history (including tool calls) into the
- * DB. This is called after streaming completes so that conversation restore
- * includes all intermediate tool messages, not just the final user/assistant
- * pair written by persistConversationMessages.
- *
- * Strategy: incremental append — compare DB message count against graph state
- * message count and only insert the delta.
+ * Persist intermediate LangGraph tool messages into the DB. The user/final
+ * assistant pair is already written by persistConversationMessages with the
+ * presentation metadata the UI needs; appending final AI messages from the
+ * graph state would restore the same assistant turn twice.
  */
 async function persistFullConversationMessages(params: {
   conversationId: string;
@@ -331,15 +328,12 @@ async function persistFullConversationMessages(params: {
   if (!conversationId || !Array.isArray(state.messages)) return;
 
   try {
-    const existingCount = await prisma.message.count({
-      where: { conversationId },
+    const existingToolCount = await prisma.message.count({
+      where: { conversationId, role: 'tool' },
     });
 
     const allMessages: BaseMessage[] = state.messages;
-    if (allMessages.length <= existingCount) return;
-
-    const newMessages = allMessages.slice(existingCount);
-    const records = newMessages.map((msg): Record<string, unknown> | null => {
+    const toolRecords = allMessages.map((msg): Record<string, unknown> | null => {
       if (msg == null || typeof msg !== 'object') return null;
 
       const getType = typeof (msg as any)._getType === 'function' ? (msg as any)._getType() : null;
@@ -353,22 +347,6 @@ async function persistFullConversationMessages(params: {
               .join('')
           : JSON.stringify(msg.content);
 
-      if (getType === 'human') {
-        return {
-          conversationId,
-          role: 'user',
-          content: typeof content === 'string' ? content : JSON.stringify(content),
-        };
-      }
-      if (getType === 'ai') {
-        const toolCalls = (msg as any).tool_calls;
-        return {
-          conversationId,
-          role: 'assistant',
-          content: typeof content === 'string' ? content : JSON.stringify(content),
-          toolCalls: Array.isArray(toolCalls) && toolCalls.length > 0 ? toolCalls : undefined,
-        };
-      }
       if (getType === 'tool') {
         return {
           conversationId,
@@ -382,6 +360,7 @@ async function persistFullConversationMessages(params: {
       return null;
     }).filter((r): r is Record<string, unknown> => r !== null);
 
+    const records = toolRecords.slice(existingToolCount);
     if (records.length > 0) {
       await prisma.message.createMany({ data: records as any });
     }

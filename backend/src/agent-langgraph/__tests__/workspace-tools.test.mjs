@@ -33,6 +33,20 @@ describe("workspace tools", () => {
     expect(result.matches[0].path).toBe("src/agent.ts");
   });
 
+  test("grep_files skips unsupported files instead of failing the search", async () => {
+    await fs.writeFile(path.join(root, "LICENSE"), "needle in a no-extension file\n", "utf8");
+    const { createGrepFilesTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    const tool = createGrepFilesTool();
+    const raw = await tool.invoke(
+      { query: "needle" },
+      { configurable: { workspaceRoot: root } },
+    );
+    const result = JSON.parse(raw);
+    expect(result.totalMatches).toBe(1);
+    expect(result.skippedFiles).toBeGreaterThanOrEqual(1);
+    expect(result.matches[0].path).toBe("src/agent.ts");
+  });
+
   test("replace_in_file requires exact text", async () => {
     const { createReplaceInFileTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
     const tool = createReplaceInFileTool();

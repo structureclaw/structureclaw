@@ -25,6 +25,7 @@ describe('chat routes message persistence', () => {
       id: where.id,
       ...data,
     }));
+    prisma.message.count = jest.fn(async () => 0);
     prisma.message.findMany = jest.fn(async () => []);
     prisma.message.createMany = jest.fn(async ({ data }) => ({ count: data.length }));
 
@@ -73,6 +74,7 @@ describe('chat routes message persistence', () => {
     prisma.conversation.create.mockClear();
     prisma.conversation.findFirst.mockClear();
     prisma.conversation.update.mockClear();
+    prisma.message.count.mockClear();
     prisma.message.findMany.mockClear();
     prisma.message.createMany.mockClear();
     agentRunSpy.mockClear();
@@ -209,6 +211,57 @@ describe('chat routes message persistence', () => {
           role: 'assistant',
           content: 'stream assistant reply',
         }),
+      ],
+    });
+  });
+
+  test('persists only tool messages from graph snapshots after stream summary persistence', async () => {
+    getSnapshotSpy.mockResolvedValueOnce({
+      snapshot: {},
+      state: {
+        messages: [
+          { _getType: () => 'human', content: 'Search files' },
+          {
+            _getType: () => 'ai',
+            content: '',
+            tool_calls: [{ id: 'call-grep', name: 'grep_files', args: { query: 'needle' } }],
+          },
+          {
+            _getType: () => 'tool',
+            name: 'grep_files',
+            tool_call_id: 'call-grep',
+            content: '{"totalMatches":1}',
+          },
+          { _getType: () => 'ai', content: 'Found it.' },
+        ],
+      },
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/stream',
+      payload: {
+        message: 'Search files',
+        conversationId: 'conv-paused',
+        traceId: 'trace-tools',
+        context: { locale: 'en' },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(prisma.message.count).toHaveBeenCalledWith({
+      where: { conversationId: 'conv-paused', role: 'tool' },
+    });
+    expect(prisma.message.createMany).toHaveBeenCalledTimes(2);
+    expect(prisma.message.createMany.mock.calls[1][0]).toEqual({
+      data: [
+        {
+          conversationId: 'conv-paused',
+          role: 'tool',
+          content: '{"totalMatches":1}',
+          name: 'grep_files',
+          toolCallId: 'call-grep',
+        },
       ],
     });
   });
