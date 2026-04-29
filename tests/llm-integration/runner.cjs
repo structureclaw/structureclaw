@@ -57,7 +57,7 @@ async function runLlmIntegrationTests(rootDir, args) {
 
   // Ensure DB is ready
   const { execSync } = require("node:child_process");
-  execSync("npx prisma db push --skip-generate --accept-data-loss", {
+  execSync("npx prisma db push --accept-data-loss", {
     cwd: path.join(rootDir, "backend"),
     env: { ...process.env, ...context.env },
     stdio: "pipe",
