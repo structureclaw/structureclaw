@@ -9,8 +9,8 @@
   },
   "os": ["win32", "darwin", "linux"],
   "bin": {
-    "sclaw": "./bin/sclaw.js",
-    "sclaw_cn": "./bin/sclaw_cn.js"
+    "sclaw": "./sclaw",
+    "sclaw_cn": "./sclaw_cn"
   },
   "repository": {
     "type": "git",
@@ -21,7 +21,8 @@
     "url": "https://github.com/structureclaw/structureclaw/issues"
   },
   "files": [
-    "bin/",
+    "sclaw",
+    "sclaw_cn",
     "dist/backend/",
     "!dist/backend/**/*.map",
     "!dist/backend/**/*.d.ts",

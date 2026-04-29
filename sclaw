@@ -1,4 +1,14 @@
 #!/usr/bin/env node
+'use strict'
+
+var NODE_MAJOR = process.versions.node.split('.').map(Number)[0]
+if (NODE_MAJOR < 20) {
+  process.stderr.write(
+    'StructureClaw requires Node.js >= 20 (current: ' + process.version + ').\n' +
+    'Please upgrade: https://nodejs.org/\n'
+  )
+  process.exit(1)
+}
 
 require("./scripts/cli/main")
   .main(process.argv.slice(2), {

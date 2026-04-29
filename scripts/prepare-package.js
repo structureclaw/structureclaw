@@ -72,7 +72,8 @@ const checks = [
   path.join(distBackend, "index.js"),
   path.join(distFrontend, "index.html"),
   path.join(rootDir, "backend", "prisma", "schema.prisma"),
-  path.join(rootDir, "bin", "sclaw.js"),
+  path.join(rootDir, "sclaw"),
+  path.join(rootDir, "sclaw_cn"),
 ];
 
 let valid = true;
