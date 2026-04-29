@@ -471,15 +471,17 @@ function getBashCommand() {
 
 async function runCommand(command, args, options = {}) {
   return new Promise((resolve, reject) => {
-    const useShell =
-      options.shell !== undefined
-        ? options.shell
-        : isWindows() && /\.(cmd|bat)$/iu.test(command);
-    const child = spawn(command, args, {
+    // On Windows, .cmd/.bat files need cmd.exe to execute.
+    // Use `cmd.exe /c` instead of shell:true to avoid DEP0190.
+    const isCmdBat = isWindows() && /\.(cmd|bat)$/iu.test(command);
+    const spawnCmd = isCmdBat ? (process.env.comspec || "cmd.exe") : command;
+    const spawnArgs = isCmdBat ? ["/c", command, ...args] : args;
+
+    const child = spawn(spawnCmd, spawnArgs, {
       cwd: options.cwd,
       env: options.env,
       stdio: options.stdio || "inherit",
-      shell: useShell,
+      shell: options.shell || false,
       windowsHide: true,
     });
     child.on("error", reject);
