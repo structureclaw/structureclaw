@@ -3,12 +3,11 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PrismaClient } from '../src/generated/prisma/client.js';
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Resolve database URL from settings.json, falling back to default SQLite path
-// Canonical data dir resolution: SCLAW_DATA_DIR || ~/.structureclaw (see backend/src/config/index.ts)
 function resolveDatabaseUrl(): string {
   const userDataDir = process.env.SCLAW_DATA_DIR || path.join(os.homedir(), '.structureclaw');
   const settingsPath = path.join(userDataDir, 'settings.json');
@@ -28,9 +27,32 @@ function resolveDatabaseUrl(): string {
   return `file:${defaultSqliteDatabasePath}`;
 }
 
-process.env.DATABASE_URL = process.env.DATABASE_URL || resolveDatabaseUrl();
+const databaseUrl = process.env.DATABASE_URL || resolveDatabaseUrl();
 
-const prisma = new PrismaClient();
+function normalizeSqliteDatabaseUrl(url: string) {
+  if (!url.startsWith('file:')) return url;
+  const suffix = url.slice('file:'.length);
+  const queryIndex = suffix.indexOf('?');
+  const location = queryIndex >= 0 ? suffix.slice(0, queryIndex) : suffix;
+  if (!location) return url;
+  const normalizedPath = path.isAbsolute(location) ? location : path.resolve(__dirname, '..', location);
+  const query = queryIndex >= 0 ? suffix.slice(queryIndex) : '';
+  return `file:${normalizedPath}${query}`;
+}
+
+function ensureSqliteDatabaseDirectory(url: string) {
+  if (!url.startsWith('file:')) return;
+  const location = url.slice('file:'.length).split('?')[0];
+  if (!location) return;
+  const databasePath = path.isAbsolute(location) ? location : path.resolve(__dirname, '..', location);
+  fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+}
+
+const normalizedUrl = normalizeSqliteDatabaseUrl(databaseUrl);
+ensureSqliteDatabaseDirectory(normalizedUrl);
+
+const adapter = new PrismaBetterSqlite3({ url: normalizedUrl });
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   const demoConversation = await prisma.conversation.upsert({

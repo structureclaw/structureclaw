@@ -32,15 +32,16 @@ function ensureRegressionSqliteDatabaseUrl(context) {
   if (!context.env.DATABASE_URL) {
     context.env.DATABASE_URL = fallbackDatabaseUrl;
     process.stdout.write("[info] DATABASE_URL is not set; using SQLite regression fallback.\n");
-    return;
-  }
-
-  if (!String(context.env.DATABASE_URL).startsWith("file:")) {
+  } else if (!String(context.env.DATABASE_URL).startsWith("file:")) {
     process.stdout.write(
       `[info] DATABASE_URL='${context.env.DATABASE_URL}' is not a SQLite file URL; using SQLite regression fallback.\n`,
     );
     context.env.DATABASE_URL = fallbackDatabaseUrl;
   }
+
+  // Propagate to process.env so that compiled modules (e.g. database.ts) pick up
+  // the regression URL when imported at validation time.
+  process.env.DATABASE_URL = context.env.DATABASE_URL;
 }
 
 async function runBackendCommand(context, args, options = {}) {
