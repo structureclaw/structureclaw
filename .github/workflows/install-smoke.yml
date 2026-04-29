@@ -25,6 +25,9 @@ on:
       - 'package.json'
       - '.github/workflows/install-smoke.yml'
 
+permissions:
+  contents: read
+
 jobs:
   native-install-smoke:
     strategy:

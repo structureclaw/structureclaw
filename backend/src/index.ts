@@ -1,6 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import fastifyStatic from '@fastify/static';
+import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUI from '@fastify/swagger-ui';
 import path from 'path';
@@ -45,6 +46,12 @@ async function registerPlugins() {
     origin: config.corsOrigins,
     methods: ['GET', 'HEAD', 'PUT', 'POST', 'DELETE', 'PATCH'],
     credentials: true,
+  });
+
+  // Rate limiting
+  await fastify.register(rateLimit, {
+    max: 100,
+    timeWindow: '1 minute',
   });
 
   // Swagger 文档

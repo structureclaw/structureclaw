@@ -17,6 +17,17 @@ function isWindows() {
   return process.platform === "win32";
 }
 
+/** Resolve comspec safely: only allow cmd.exe paths to prevent injection. */
+function safeComspec() {
+  const raw = process.env.comspec || "cmd.exe";
+  const lower = raw.toLowerCase().replace(/\\/g, "/");
+  if (lower.endsWith("cmd.exe") || lower.endsWith("cmd")) {
+    return raw;
+  }
+  return "cmd.exe";
+}  return process.platform === "win32";
+}
+
 function pathExists(targetPath) {
   try {
     fs.accessSync(targetPath);
@@ -471,7 +482,7 @@ async function runCommand(command, args, options = {}) {
     // On Windows, .cmd/.bat files need cmd.exe to execute.
     // Use `cmd.exe /c` instead of shell:true to avoid DEP0190.
     const isCmdBat = isWindows() && /\.(cmd|bat)$/iu.test(command);
-    const spawnCmd = isCmdBat ? (process.env.comspec || "cmd.exe") : command;
+    const spawnCmd = isCmdBat ? safeComspec() : command;
     const spawnArgs = isCmdBat ? ["/c", command, ...args] : args;
 
     const child = spawn(spawnCmd, spawnArgs, {

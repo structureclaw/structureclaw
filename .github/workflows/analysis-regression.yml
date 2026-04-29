@@ -23,6 +23,9 @@ on:
       - 'package.json'
       - '.github/workflows/analysis-regression.yml'
 
+permissions:
+  contents: read
+
 jobs:
   analysis-regression:
     strategy:

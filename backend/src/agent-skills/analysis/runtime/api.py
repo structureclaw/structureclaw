@@ -114,7 +114,13 @@ async def check_analysis_engine(engine_id: str):
 @app.post("/engines/{engine_id}/probe")
 async def probe_analysis_engine(engine_id: str):
     """运行小型算例验证分析引擎能否正常工作"""
-    return engine_registry.probe_engine(engine_id)
+    try:
+        return engine_registry.probe_engine(engine_id)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Probe failed for engine %s", engine_id)
+        raise HTTPException(status_code=500, detail=f"Probe failed: {type(e).__name__}") from e
 
 
 @app.post("/analyze")

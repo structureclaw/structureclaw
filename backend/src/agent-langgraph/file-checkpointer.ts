@@ -26,6 +26,14 @@ import { logStateTransition } from '../utils/agent-logger.js';
 // Helpers
 // ---------------------------------------------------------------------------
 
+const SAFE_ID_RE = /^[a-zA-Z0-9._-]+$/;
+
+function validateId(id: string, label: string): void {
+  if (!id || !SAFE_ID_RE.test(id)) {
+    throw new Error(`Invalid ${label}: contains unsafe characters`);
+  }
+}
+
 function threadDir(dataDir: string, threadId: string): string {
   return path.join(dataDir, 'checkpoints', threadId);
 }
@@ -70,6 +78,7 @@ export class FileCheckpointer extends BaseCheckpointSaver {
   async getTuple(config: RunnableConfig): Promise<CheckpointTuple | undefined> {
     const threadId = config.configurable?.thread_id as string | undefined;
     if (!threadId) return undefined;
+    validateId(threadId, 'thread_id');
 
     const checkpointId = config.configurable?.checkpoint_id as string | undefined;
     const dir = threadDir(this.dataDir, threadId);
@@ -142,6 +151,7 @@ export class FileCheckpointer extends BaseCheckpointSaver {
   ): AsyncGenerator<CheckpointTuple> {
     const threadId = config.configurable?.thread_id as string | undefined;
     if (!threadId) return;
+    validateId(threadId, 'thread_id');
 
     const dir = threadDir(this.dataDir, threadId);
     let files: string[];
@@ -196,6 +206,8 @@ export class FileCheckpointer extends BaseCheckpointSaver {
   ): Promise<RunnableConfig> {
     const threadId = config.configurable?.thread_id as string;
     if (!threadId) throw new Error('thread_id is required for checkpoint storage');
+    validateId(threadId, 'thread_id');
+    validateId(checkpoint.id, 'checkpoint_id');
 
     const dir = threadDir(this.dataDir, threadId);
     await fs.mkdir(dir, { recursive: true });
@@ -243,6 +255,8 @@ export class FileCheckpointer extends BaseCheckpointSaver {
     const threadId = config.configurable?.thread_id as string;
     const checkpointId = config.configurable?.checkpoint_id as string;
     if (!threadId || !checkpointId) return;
+    validateId(threadId, 'thread_id');
+    validateId(checkpointId, 'checkpoint_id');
 
     const dir = writesDir(this.dataDir, threadId, checkpointId);
     await fs.mkdir(dir, { recursive: true });
@@ -266,6 +280,7 @@ export class FileCheckpointer extends BaseCheckpointSaver {
   // ----- deleteThread -----
 
   async deleteThread(threadId: string): Promise<void> {
+    validateId(threadId, 'thread_id');
     const cpDir = threadDir(this.dataDir, threadId);
     const wDir = path.join(this.dataDir, 'writes', threadId);
 
