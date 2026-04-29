@@ -42,10 +42,10 @@ const sendMessageSchema = z.object({
     enabledToolIds: z.array(z.string()).optional(),
     disabledToolIds: z.array(z.string()).optional(),
     engineId: z.string().optional(),
-    model: z.record(z.any()).optional(),
+    model: z.record(z.string(), z.any()).optional(),
     modelFormat: z.string().optional(),
     analysisType: z.enum(['static', 'dynamic', 'seismic', 'nonlinear']).optional(),
-    parameters: z.record(z.any()).optional(),
+    parameters: z.record(z.string(), z.any()).optional(),
     autoAnalyze: z.boolean().optional(),
     autoCodeCheck: z.boolean().optional(),
     designCode: z.string().optional(),
@@ -54,7 +54,7 @@ const sendMessageSchema = z.object({
     reportFormat: z.enum(['json', 'markdown', 'both']).optional(),
     reportOutput: z.enum(['inline', 'file']).optional(),
     userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
-    providedValues: z.record(z.any()).optional(),
+    providedValues: z.record(z.string(), z.any()).optional(),
     resumeFromMessage: z.string().max(10000).optional(),
   }).optional(),
 });
@@ -79,10 +79,10 @@ const streamMessageSchema = z.object({
     enabledToolIds: z.array(z.string()).optional(),
     disabledToolIds: z.array(z.string()).optional(),
     engineId: z.string().optional(),
-    model: z.record(z.any()).optional(),
+    model: z.record(z.string(), z.any()).optional(),
     modelFormat: z.string().optional(),
     analysisType: z.enum(['static', 'dynamic', 'seismic', 'nonlinear']).optional(),
-    parameters: z.record(z.any()).optional(),
+    parameters: z.record(z.string(), z.any()).optional(),
     autoAnalyze: z.boolean().optional(),
     autoCodeCheck: z.boolean().optional(),
     designCode: z.string().optional(),
@@ -91,7 +91,7 @@ const streamMessageSchema = z.object({
     reportFormat: z.enum(['json', 'markdown', 'both']).optional(),
     reportOutput: z.enum(['inline', 'file']).optional(),
     userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
-    providedValues: z.record(z.any()).optional(),
+    providedValues: z.record(z.string(), z.any()).optional(),
     resumeFromMessage: z.string().max(10000).optional(),
   }).optional(),
 });
@@ -106,7 +106,7 @@ const persistMessagesSchema = z.object({
   assistantContent: z.string().max(10000).default(''),
   assistantAborted: z.boolean().optional(),
   traceId: optionalIdSchema,
-  assistantPresentation: z.record(z.any()).optional(),
+  assistantPresentation: z.record(z.string(), z.any()).optional(),
 });
 
 function toMessageMetadata(value: Record<string, unknown> | undefined): InputJsonValue | undefined {
@@ -561,9 +561,9 @@ export async function chatRoutes(fastify: FastifyInstance) {
 
   // 保存会话快照
   const saveSnapshotSchema = z.object({
-    modelSnapshot: z.record(z.any()).nullable().optional(),
-    resultSnapshot: z.record(z.any()).nullable().optional(),
-    latestResult: z.record(z.any()).nullable().optional(),
+    modelSnapshot: z.record(z.string(), z.any()).nullable().optional(),
+    resultSnapshot: z.record(z.string(), z.any()).nullable().optional(),
+    latestResult: z.record(z.string(), z.any()).nullable().optional(),
   });
 
   fastify.post('/conversation/:id/snapshot', {

@@ -2,13 +2,13 @@
 // Learn more: https://pris.ly/d/prisma-schema
 
 generator client {
-  provider      = "prisma-client-js"
+  provider      = "prisma-client"
+  output        = "../src/generated/prisma"
   binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
   provider = "sqlite"
-  url      = env("DATABASE_URL")
 }
 
 // 结构模型

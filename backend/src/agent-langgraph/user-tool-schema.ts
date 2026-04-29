@@ -16,7 +16,7 @@ export const userToolYamlSchema = z.object({
   }),
   category: z.enum(['engineering', 'interaction', 'session', 'workspace', 'memory']),
   risk: z.enum(['low', 'workspace-read', 'workspace-write', 'destructive']),
-  parameters: z.record(z.unknown()),
+  parameters: z.record(z.string(), z.unknown()),
   defaultEnabled: z.boolean().optional().default(true),
 });
 

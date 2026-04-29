@@ -9,12 +9,12 @@ const structureProtocolService = new StructureProtocolExecutionService();
 const codeCheckService = new CodeCheckExecutionService();
 
 const validateSchema = z.object({
-  model: z.record(z.any()),
+  model: z.record(z.string(), z.any()),
   engineId: z.string().optional(),
 });
 
 const convertSchema = z.object({
-  model: z.record(z.any()),
+  model: z.record(z.string(), z.any()),
   target_schema_version: z.string().default('2.0.0'),
   source_format: z.string().default('structuremodel-v2'),
   target_format: z.string().default('structuremodel-v2'),
@@ -22,8 +22,8 @@ const convertSchema = z.object({
 
 const analyzeSchema = z.object({
   type: z.enum(['static', 'dynamic', 'seismic', 'nonlinear']),
-  model: z.record(z.any()),
-  parameters: z.record(z.any()).default({}),
+  model: z.record(z.string(), z.any()),
+  parameters: z.record(z.string(), z.any()).default({}),
   engineId: z.string().optional(),
 });
 
@@ -31,7 +31,7 @@ const codeCheckSchema = z.object({
   model_id: z.string(),
   code: z.string(),
   elements: z.array(z.string()),
-  context: z.record(z.any()).default({}),
+  context: z.record(z.string(), z.any()).default({}),
   engineId: z.string().optional(),
 });
 

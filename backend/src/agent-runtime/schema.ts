@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const skillExecutionSchema = z.object({
   inferredType: z.string().optional(),
-  draftPatch: z.record(z.unknown()).optional(),
+  draftPatch: z.record(z.string(), z.unknown()).optional(),
   missingCritical: z.array(z.string()).optional(),
   missingOptional: z.array(z.string()).optional(),
   questions: z.array(z.object({

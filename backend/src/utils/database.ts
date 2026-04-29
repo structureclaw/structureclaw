@@ -1,8 +1,9 @@
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { PrismaClient } from '@prisma/client';
-import { config } from '../config/index.js';
+import { PrismaClient } from '../generated/prisma/client.js';
+import { PrismaBetterSqlite3 } from '@prisma/adapter-better-sqlite3';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,11 +47,15 @@ function ensureSqliteDatabaseDirectory(databaseUrl: string) {
   fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 }
 
-const normalizedDatabaseUrl = normalizeSqliteDatabaseUrl(config.databaseUrl);
-process.env.DATABASE_URL = normalizedDatabaseUrl;
+const normalizedDatabaseUrl = normalizeSqliteDatabaseUrl(
+  process.env.DATABASE_URL || `file:${path.join(os.homedir(), '.structureclaw', 'data', 'structureclaw.db')}`,
+);
 ensureSqliteDatabaseDirectory(normalizedDatabaseUrl);
 
+const adapter = new PrismaBetterSqlite3({ url: normalizedDatabaseUrl });
+
 export const prisma = new PrismaClient({
+  adapter,
   log: process.env.NODE_ENV === 'development'
     ? ['query', 'error', 'warn']
     : ['error'],

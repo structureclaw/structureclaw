@@ -77,7 +77,7 @@ fs.mkdirSync(path.dirname(databasePath), { recursive: true });
 
 const useExistingDatabase = fs.existsSync(databasePath) && fs.statSync(databasePath).size > 0;
 const diffArgs = useExistingDatabase
-  ? ['prisma', 'migrate', 'diff', '--from-url', databaseUrl, '--to-schema-datamodel', schemaPath, '--script']
+  ? ['prisma', 'migrate', 'diff', '--from-config-datasource', '--to-schema-datamodel', schemaPath, '--script']
   : ['prisma', 'migrate', 'diff', '--from-empty', '--to-schema-datamodel', schemaPath, '--script'];
 
 const migrationSql = runPrisma(diffArgs, databaseUrl);

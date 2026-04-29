@@ -17,13 +17,13 @@ type UserToolModule = {
   execute: (params: Record<string, unknown>, context: { workspaceRoot: string }) => Promise<unknown>;
 };
 
-function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodTypeAny {
+function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodType {
   // Convert a JSON Schema object to a Zod object schema.
   // Supports: string, number, integer, boolean, array, object (recursive).
   const properties = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;
   const required = new Set((schema.required ?? []) as string[]);
 
-  function propToZod(prop: Record<string, unknown>): z.ZodTypeAny {
+  function propToZod(prop: Record<string, unknown>): z.ZodType {
     switch (prop.type) {
       case 'string':
         return z.string();
@@ -42,9 +42,9 @@ function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodTypeAny {
         const subProps = (prop.properties ?? {}) as Record<string, Record<string, unknown>>;
         const subRequired = new Set((prop.required ?? []) as string[]);
         if (Object.keys(subProps).length === 0) {
-          return z.record(z.unknown());
+          return z.record(z.string(), z.unknown());
         }
-        const shape: Record<string, z.ZodTypeAny> = {};
+        const shape: Record<string, z.ZodType> = {};
         for (const [key, subProp] of Object.entries(subProps)) {
           let field = propToZod(subProp);
           if (!subRequired.has(key)) {
@@ -59,7 +59,7 @@ function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodTypeAny {
     }
   }
 
-  const shape: Record<string, z.ZodTypeAny> = {};
+  const shape: Record<string, z.ZodType> = {};
   for (const [key, prop] of Object.entries(properties)) {
     let field = propToZod(prop);
     if (!required.has(key)) {

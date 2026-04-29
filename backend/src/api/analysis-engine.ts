@@ -19,7 +19,7 @@ const installManifestSchema = z.object({
   authTokenEnv: z.string().optional(),
   timeoutMs: z.number().int().positive().optional(),
   adapterKey: z.string().optional(),
-  constraints: z.record(z.any()).optional(),
+  constraints: z.record(z.string(), z.any()).optional(),
   installedSource: z.string().optional(),
   healthcheckPath: z.string().optional(),
   checkMode: z.enum(['ping', 'analyze', 'validate']).optional(),

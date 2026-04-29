@@ -35,7 +35,6 @@ export default defineConfig({
   migrations: {
     seed: 'tsx prisma/seed.ts',
   },
-  engine: 'classic',
   datasource: {
     url: databaseUrl,
   },
