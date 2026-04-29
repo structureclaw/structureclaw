@@ -47,7 +47,7 @@ export interface AppStoreProviderProps {
  * Each provider instance gets its own store - preventing SSR state leakage.
  */
 export const AppStoreProvider = ({ children, initialState }: AppStoreProviderProps) => {
-  const storeRef = useRef<StoreApi<StoreState>>()
+  const storeRef = useRef<StoreApi<StoreState> | null>(null)
   if (!storeRef.current) {
     storeRef.current = createAppStore(initialState)
   }
