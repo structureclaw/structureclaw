@@ -92,7 +92,7 @@ const tempSqlPath = path.join(os.tmpdir(), `structureclaw-sqlite-sync-${process.
 fs.writeFileSync(tempSqlPath, migrationSql, 'utf8');
 
 try {
-  runPrisma(['prisma', 'db', 'execute', '--schema', schemaPath, '--file', tempSqlPath], databaseUrl);
+  runPrisma(['prisma', 'db', 'execute', '--file', tempSqlPath], databaseUrl);
 } finally {
   fs.rmSync(tempSqlPath, { force: true });
 }
