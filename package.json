@@ -76,5 +76,9 @@
   },
   "optionalDependencies": {
     "pg": "^8.20.0"
+  },
+  "overrides": {
+    "@hono/node-server": "^1.19.13",
+    "uuid": "^14.0.0"
   }
 }

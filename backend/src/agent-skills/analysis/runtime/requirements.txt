@@ -18,7 +18,7 @@ pkpm-api; sys_platform == "win32"
 # Report Export (calculation book)
 python-docx==1.2.0
 reportlab==4.4.10
-Pillow==11.2.1
+Pillow==12.2.0
 
 # Utilities
 httpx==0.28.1
