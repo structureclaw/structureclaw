@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: production
+    env:
+      NEXT_TELEMETRY_DISABLED: 1
 
     permissions:
       contents: read
