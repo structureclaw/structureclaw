@@ -39,4 +39,28 @@ describe("analysis tool summary", () => {
       stderrTail: "YJK generated error log content",
     });
   });
+
+  test("keeps recent log tails when compacting large failed analysis messages", async () => {
+    const { buildAnalysisToolSummary } = await import("../../../dist/agent-langgraph/tools.js");
+    const tailMarker = "YJK_LATEST_STDERR_MARKER";
+    const longPrefix = Array.from({ length: 900 }, (_, index) => `older diagnostic ${index}`).join("\n");
+    const longTail = `${Array.from({ length: 250 }, () => "intermediate stderr").join("\n")}\n${tailMarker}`;
+
+    const summary = buildAnalysisToolSummary({
+      skillId: "yjk-static",
+      result: {
+        success: false,
+        error_code: { unexpected: "object" },
+        message: `${longPrefix}\n\ndriver stderr tail:\n${longTail}`,
+        meta: {
+          stderrTail: longTail,
+        },
+      },
+    });
+
+    expect(summary.errorCode).toBe("ANALYSIS_EXECUTION_FAILED");
+    expect(summary.message).toContain(tailMarker);
+    expect(summary.message).toContain("[truncated");
+    expect(summary.diagnostics.stderrTail).toContain(tailMarker);
+  });
 });

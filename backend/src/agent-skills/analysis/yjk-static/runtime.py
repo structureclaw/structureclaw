@@ -71,6 +71,18 @@ from contracts import EngineNotAvailableError
 
 YJK_LOG_SNIPPET_LIMIT = 2000
 YJK_STEP_LIMIT = 8
+YJK_DETAIL_STRING_LIMIT = 500
+YJK_DETAIL_COLLECTION_LIMIT = 12
+YJK_DETAIL_DEPTH_LIMIT = 3
+YJK_MESSAGE_DETAIL_KEYS = (
+    "returncode",
+    "timeoutSeconds",
+    "phase",
+    "command",
+    "error",
+    "results_path",
+    "windowTitle",
+)
 
 
 def _env_text(key: str, default: str = "") -> str:
@@ -137,6 +149,59 @@ def _tail_text(text: str, limit: int = YJK_LOG_SNIPPET_LIMIT) -> str:
     return f"...[truncated {omitted} chars]\n{text[-limit:]}"
 
 
+def _compact_detail_text(text: str, limit: int = YJK_DETAIL_STRING_LIMIT) -> str:
+    text = str(text or "").strip()
+    if len(text) <= limit:
+        return text
+    omitted = len(text) - limit
+    marker = f"\n...[truncated {omitted} chars]...\n"
+    body_limit = max(0, limit - len(marker))
+    head_limit = int(body_limit * 0.35)
+    tail_limit = body_limit - head_limit
+    return f"{text[:head_limit]}{marker}{text[-tail_limit:]}"
+
+
+def _sanitize_detail_value(value: Any, depth: int = 0) -> Any:
+    if depth >= YJK_DETAIL_DEPTH_LIMIT:
+        return "<truncated>"
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    if isinstance(value, str):
+        return _compact_detail_text(value)
+    if isinstance(value, (list, tuple)):
+        items = [
+            _sanitize_detail_value(item, depth + 1)
+            for item in value[:YJK_DETAIL_COLLECTION_LIMIT]
+        ]
+        omitted = len(value) - YJK_DETAIL_COLLECTION_LIMIT
+        if omitted > 0:
+            items.append(f"...[truncated {omitted} items]")
+        return items
+    if isinstance(value, dict):
+        items = list(value.items())
+        sanitized: Dict[str, Any] = {}
+        for key, item in items[:YJK_DETAIL_COLLECTION_LIMIT]:
+            sanitized[_compact_detail_text(str(key), 120)] = _sanitize_detail_value(
+                item,
+                depth + 1,
+            )
+        omitted = len(items) - YJK_DETAIL_COLLECTION_LIMIT
+        if omitted > 0:
+            sanitized["_truncated"] = f"{omitted} keys"
+        return sanitized
+    return _compact_detail_text(str(value))
+
+
+def _message_detail_summary(detail: Dict[str, Any] | None) -> Dict[str, Any]:
+    if not isinstance(detail, dict):
+        return {}
+    return {
+        key: _sanitize_detail_value(detail[key])
+        for key in YJK_MESSAGE_DETAIL_KEYS
+        if key in detail
+    }
+
+
 def _summarize_steps(output: dict | None, limit: int = YJK_STEP_LIMIT) -> list[str]:
     if not isinstance(output, dict):
         return []
@@ -173,6 +238,10 @@ def _raise_yjk_runtime_error(
     stdout_tail = _tail_text(stdout)
     stderr_tail = _tail_text(stderr)
     steps_tail = _summarize_steps(output)
+    safe_detail = _sanitize_detail_value(detail) if detail else None
+    message_detail = _message_detail_summary(
+        safe_detail if isinstance(safe_detail, dict) else None,
+    )
     run_meta_path = work_dir / "run-meta.json"
     driver_result_path = work_dir / "driver-result.json"
 
@@ -193,8 +262,8 @@ def _raise_yjk_runtime_error(
     lines = [headline, "", "Artifact feedback:"]
     for label, path in paths.items():
         lines.append(f"- {label}: {path}")
-    if detail:
-        lines.append(f"- detail: {json.dumps(detail, ensure_ascii=False)}")
+    if message_detail:
+        lines.append(f"- detail: {json.dumps(message_detail, ensure_ascii=False)}")
     if steps_tail:
         lines.extend(["", "Recent driver steps:", *steps_tail])
     if stderr_tail:
@@ -209,13 +278,13 @@ def _raise_yjk_runtime_error(
         meta["stderrTail"] = stderr_tail
     if steps_tail:
         meta["stepsTail"] = steps_tail
-    if detail:
-        meta["yjkErrorDetail"] = detail
+    if safe_detail:
+        meta["yjkErrorDetail"] = safe_detail
 
     error = RuntimeError("\n".join(lines))
     setattr(error, "meta", meta)
-    if detail:
-        setattr(error, "detail", detail)
+    if safe_detail:
+        setattr(error, "detail", safe_detail)
     raise error
 
 

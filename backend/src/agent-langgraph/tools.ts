@@ -61,17 +61,41 @@ function toolResult(
 }
 
 const ANALYSIS_MESSAGE_LIMIT = 6000;
+type TextCompaction = 'middle' | 'tail';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function compactText(value: unknown, limit = ANALYSIS_MESSAGE_LIMIT): string | undefined {
+function compactText(
+  value: unknown,
+  limit = ANALYSIS_MESSAGE_LIMIT,
+  mode: TextCompaction = 'middle',
+): string | undefined {
   if (typeof value !== 'string') return undefined;
   const text = value.trim();
   if (!text) return undefined;
   if (text.length <= limit) return text;
-  return `${text.slice(0, limit)}\n...[truncated ${text.length - limit} chars]`;
+  const omitted = text.length - limit;
+  if (mode === 'tail') {
+    const marker = `...[truncated ${omitted} chars]\n`;
+    const tailLength = Math.max(0, limit - marker.length);
+    return `${marker}${text.slice(-tailLength)}`;
+  }
+  const marker = `\n...[truncated ${omitted} chars]...\n`;
+  const bodyLength = Math.max(0, limit - marker.length);
+  const headLength = Math.ceil(bodyLength * 0.35);
+  const tailLength = bodyLength - headLength;
+  return `${text.slice(0, headLength)}${marker}${text.slice(-tailLength)}`;
+}
+
+function normalizeAnalysisErrorCode(...values: unknown[]): string {
+  for (const value of values) {
+    if (typeof value !== 'string') continue;
+    const trimmed = value.trim();
+    if (trimmed) return trimmed;
+  }
+  return 'ANALYSIS_EXECUTION_FAILED';
 }
 
 function pickAnalysisDiagnostics(
@@ -81,7 +105,10 @@ function pickAnalysisDiagnostics(
   const diagnostics: Record<string, unknown> = {};
   const copy = (targetKey: string, value: unknown) => {
     if (value === undefined || value === null || value === '') return;
-    diagnostics[targetKey] = typeof value === 'string' ? compactText(value, 2000) ?? value : value;
+    const isTail = targetKey.endsWith('Tail');
+    diagnostics[targetKey] = typeof value === 'string'
+      ? compactText(value, 2000, isTail ? 'tail' : 'middle') ?? value
+      : value;
   };
 
   copy('engineId', meta.engineId);
@@ -111,10 +138,10 @@ export function buildAnalysisToolSummary(args: {
   const meta = isRecord(result.meta) ? result.meta : {};
   const data = isRecord(result.data) ? result.data : undefined;
   const status = typeof result.status === 'string' ? result.status : undefined;
-  const success = result.success === false || status === 'error' ? false : true;
+  const success = result.success !== false && status !== 'error';
 
   if (!success) {
-    const errorCode = result.error_code || result.errorCode || 'ANALYSIS_EXECUTION_FAILED';
+    const errorCode = normalizeAnalysisErrorCode(result.error_code, result.errorCode);
     const diagnostics = pickAnalysisDiagnostics(result, meta);
     return {
       success: false,
