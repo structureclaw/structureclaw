@@ -44,12 +44,9 @@ function hasCommand(commandName) {
     return true;
   }
 
-  const lookup = isWindows() ? "where" : "which";
+  const lookup = isWindows() ? "where.exe" : "which";
   const result = spawnSync(lookup, [commandName], {
     stdio: "ignore",
-    // Use shell on Windows so `where.exe` inherits the full user PATH,
-    // including paths added by nvm, fnm, or interactive shell profiles.
-    shell: isWindows(),
   });
   return result.status === 0;
 }
@@ -554,19 +551,21 @@ function appendSessionHeader(logFile, name) {
 }
 
 function spawnDetached(command, args, options) {
-  const useShell =
-    options.shell !== undefined
-      ? options.shell
-      : isWindows() && /\.(cmd|bat)$/iu.test(command);
+  // On Windows, .cmd/.bat files need cmd.exe to execute.
+  // Use `cmd.exe /c` instead of shell:true to avoid DEP0190.
+  const isCmdBat = isWindows() && /\.(cmd|bat)$/iu.test(command);
+  const spawnCmd = isCmdBat ? (process.env.comspec || "cmd.exe") : command;
+  const spawnArgs = isCmdBat ? ["/c", command, ...args] : args;
+
   const stdoutFd = fs.openSync(options.logFile, "a");
   const stderrFd = fs.openSync(options.logFile, "a");
-  const child = spawn(command, args, {
+  const child = spawn(spawnCmd, spawnArgs, {
     cwd: options.cwd,
     env: options.env,
     detached: true,
     stdio: ["ignore", stdoutFd, stderrFd],
     windowsHide: true,
-    shell: useShell,
+    shell: false,
   });
   child.unref();
   fs.closeSync(stdoutFd);
