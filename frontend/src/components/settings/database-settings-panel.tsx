@@ -135,7 +135,7 @@ export function DatabaseSettingsPanel() {
             {error && (
               <div className="mt-2 text-sm leading-6 text-amber-700 dark:text-amber-200">
                 <p>{t('databaseAdminFetchFailed')}</p>
-                <pre className="mt-2 whitespace-pre-wrap break-words rounded-md bg-amber-50/80 p-3 text-xs leading-5 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+                <pre className="mt-2 whitespace-pre-wrap wrap-break-word rounded-md bg-amber-50/80 p-3 text-xs leading-5 text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
                   {error}
                 </pre>
               </div>

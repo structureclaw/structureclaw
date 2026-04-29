@@ -112,10 +112,10 @@ export function VisualizationModalShell({
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[80]">
+    <div className="fixed inset-0 z-80">
       <button
         aria-label={t('visualizationClose')}
-        className="absolute inset-0 bg-slate-950/72 backdrop-blur-sm"
+        className="absolute inset-0 bg-slate-950/72 backdrop-blur-xs"
         onClick={onClose}
         type="button"
       />

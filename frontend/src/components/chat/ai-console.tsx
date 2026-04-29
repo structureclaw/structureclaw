@@ -1368,7 +1368,7 @@ function AnalysisPanel({
               className={cn(
                 'rounded-xl px-4 py-2.5 text-sm font-medium transition',
                 activeTab === 'context'
-                  ? 'bg-foreground text-background shadow-sm'
+                  ? 'bg-foreground text-background shadow-xs'
                   : 'text-muted-foreground hover:text-foreground'
               )}
               onClick={() => onTabChange('context')}
@@ -1385,7 +1385,7 @@ function AnalysisPanel({
               className={cn(
                 'rounded-xl px-4 py-2.5 text-sm font-medium transition',
                 activeTab === 'analysis'
-                  ? 'bg-foreground text-background shadow-sm'
+                  ? 'bg-foreground text-background shadow-xs'
                   : 'text-muted-foreground hover:text-foreground'
               )}
               onClick={() => onTabChange('analysis')}
@@ -1402,7 +1402,7 @@ function AnalysisPanel({
               className={cn(
                 'rounded-xl px-4 py-2.5 text-sm font-medium transition',
                 activeTab === 'report'
-                  ? 'bg-foreground text-background shadow-sm'
+                  ? 'bg-foreground text-background shadow-xs'
                   : 'text-muted-foreground hover:text-foreground'
               )}
               onClick={() => onTabChange('report')}
@@ -4350,7 +4350,7 @@ export function AIConsole() {
       {probePopupOpen && Object.keys(probeResults).length > 0 && probeButtonRef.current && typeof window !== 'undefined' && createPortal(
         <>
           <div
-            className="fixed inset-0 z-[70]"
+            className="fixed inset-0 z-70"
             onClick={() => setProbePopupOpen(false)}
             onKeyDown={(e) => { if (e.key === 'Escape') setProbePopupOpen(false) }}
           />
@@ -4358,7 +4358,7 @@ export function AIConsole() {
             role="dialog"
             aria-modal="true"
             aria-label={t('probeResultsDialogTitle')}
-            className="fixed z-[71] w-80 rounded-xl border border-border/70 bg-card p-4 shadow-xl dark:border-white/10 dark:bg-slate-950"
+            className="fixed z-71 w-80 rounded-xl border border-border/70 bg-card p-4 shadow-xl dark:border-white/10 dark:bg-slate-950"
             style={{
               bottom: window.innerHeight - probeButtonRef.current.getBoundingClientRect().top + 8,
               left: Math.max(0, Math.min(probeButtonRef.current.getBoundingClientRect().left, window.innerWidth - 336)),

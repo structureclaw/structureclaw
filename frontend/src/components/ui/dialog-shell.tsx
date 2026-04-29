@@ -101,8 +101,8 @@ export function DialogShell({
   if (!open || typeof document === 'undefined') return null
 
   return createPortal(
-    <div className="fixed inset-0 z-[80]">
-      <div aria-hidden="true" className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" />
+    <div className="fixed inset-0 z-80">
+      <div aria-hidden="true" className="absolute inset-0 bg-slate-950/70 backdrop-blur-xs" />
       <div className="absolute inset-0 p-2 sm:p-4" onPointerDown={handleOverlayPointerDown} onPointerUp={handleOverlayPointerUp}>
         <div
           ref={containerRef}

@@ -15,7 +15,7 @@ export function DefaultValueHint({ value, className }: { value: DefaultValue; cl
   const { t } = useI18n()
 
   return (
-    <p className={cn('mt-1 min-w-0 break-words text-xs leading-5 text-muted-foreground', className)}>
+    <p className={cn('mt-1 min-w-0 wrap-break-word text-xs leading-5 text-muted-foreground', className)}>
       {t('generalSettingsDefaultValuePrefix')}: <span className="font-mono">{formatDefaultValue(value, t)}</span>
     </p>
   )

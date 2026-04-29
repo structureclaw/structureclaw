@@ -151,7 +151,7 @@ function extractFieldValue(data: SettingsResponse, sectionKey: string, stateKey:
 // Shared UI helpers
 // ---------------------------------------------------------------------------
 
-const INPUT_CLS = 'mt-2 w-full rounded-2xl border border-border/70 bg-background/80 px-4 py-3 text-sm text-foreground outline-none transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 dark:border-white/10 dark:bg-white/5'
+const INPUT_CLS = 'mt-2 w-full rounded-2xl border border-border/70 bg-background/80 px-4 py-3 text-sm text-foreground outline-hidden transition focus:border-cyan-400/60 focus:ring-2 focus:ring-cyan-400/20 dark:border-white/10 dark:bg-white/5'
 
 function SourceBadge({ source, t }: { source: ValueSource; t: (key: MessageKey) => string }) {
   const colors: Record<ValueSource, string> = {
