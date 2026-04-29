@@ -26,7 +26,7 @@ import { logStateTransition } from '../utils/agent-logger.js';
 // Helpers
 // ---------------------------------------------------------------------------
 
-const SAFE_ID_RE = /^[a-zA-Z0-9._-]+$/;
+const SAFE_ID_RE = /^(?!\.\.?$)[a-zA-Z0-9._-]+$/;
 
 function validateId(id: string, label: string): void {
   if (!id || !SAFE_ID_RE.test(id)) {
@@ -257,6 +257,7 @@ export class FileCheckpointer extends BaseCheckpointSaver {
     if (!threadId || !checkpointId) return;
     validateId(threadId, 'thread_id');
     validateId(checkpointId, 'checkpoint_id');
+    validateId(taskId, 'task_id');
 
     const dir = writesDir(this.dataDir, threadId, checkpointId);
     await fs.mkdir(dir, { recursive: true });
