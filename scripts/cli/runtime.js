@@ -25,7 +25,6 @@ function safeComspec() {
     return raw;
   }
   return "cmd.exe";
-}  return process.platform === "win32";
 }
 
 function pathExists(targetPath) {
