@@ -44,17 +44,17 @@ test.describe('Console chat flow', () => {
 
   test('sends a message and triggers stream request', async ({ page }) => {
     test.skip(!hasLlmKey, 'Requires LLM_API_KEY for real LLM streaming');
-    test.setTimeout(60_000);
 
     await consolePage.goto();
 
-    // Capture stream endpoint responses (any status) for diagnostics
+    // Wait for the real stream response from the backend
     const streamResponse = page.waitForResponse(
-      (resp) => resp.url().includes('/api/v1/chat/stream'),
+      (resp) => resp.url().includes('/api/v1/chat/stream') && resp.status() === 200,
     );
 
     await consolePage.sendMessage('Analyze a simply supported beam');
 
+    // Verify the stream endpoint was called and returned 200
     const response = await streamResponse;
     expect(response.status()).toBe(200);
   });

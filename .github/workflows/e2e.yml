@@ -114,10 +114,8 @@ jobs:
 
       - name: Setup backend database
         run: |
-          mkdir -p $HOME/.structureclaw/data
-          npm run db:deploy --prefix backend
-        env:
-          DATABASE_URL: file:$HOME/.structureclaw/data/test-e2e.db
+          mkdir -p "$HOME/.structureclaw/data"
+          DATABASE_URL="file:$HOME/.structureclaw/data/test-e2e.db" npm run db:deploy --prefix backend
 
       - name: Install Playwright browsers
         run: npx --prefix frontend playwright install chromium --with-deps
