@@ -151,6 +151,21 @@ describe('frame canonicalize core contract', () => {
     expect(patch.frameBeamSection).toBe('250X600');
   });
 
+  test('extracts only supported H-section formats', () => {
+    const supported = normalizeFrameNaturalPatch(
+      '两层框架，柱截面H400*200*10*16，梁截面HN400x200',
+      undefined,
+    );
+    const unsupported = normalizeFrameNaturalPatch(
+      '两层框架，柱截面H400x200',
+      undefined,
+    );
+
+    expect(supported.frameColumnSection).toBe('H400X200X10X16');
+    expect(supported.frameBeamSection).toBe('HN400X200');
+    expect(unsupported.frameColumnSection).toBeUndefined();
+  });
+
   test('builds rectangular concrete sections for YJK-compatible frame models', () => {
     const model = buildFrameModel({
       inferredType: 'frame',
@@ -188,6 +203,10 @@ describe('frame canonicalize core contract', () => {
       height: 400,
       shape: { kind: 'rectangular', B: 400, H: 400 },
     });
+    expect(model.sections[0].properties.J).toBeCloseTo(0.003605333333, 8);
+    expect(model.sections[0].properties.J).toBeLessThan(
+      model.sections[0].properties.Iy + model.sections[0].properties.Iz,
+    );
     expect(model.sections[0].standard_steel_name).toBeUndefined();
     expect(model.sections[1]).toMatchObject({
       name: '250X600',
@@ -196,6 +215,36 @@ describe('frame canonicalize core contract', () => {
       width: 250,
       height: 600,
       shape: { kind: 'rectangular', B: 250, H: 600 },
+    });
+  });
+
+  test('builds custom H sections with star separators', () => {
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      updatedAt: 0,
+      frameDimension: '2d',
+      storyCount: 1,
+      bayCount: 1,
+      storyHeightsM: [3],
+      bayWidthsM: [6],
+      floorLoads: [{ story: 1, verticalKN: 100 }],
+      frameMaterial: 'Q355',
+      frameColumnSection: 'H400*200*10*16',
+      frameBeamSection: 'H300*150*8*12',
+    });
+
+    expect(model).toBeDefined();
+    expect(model.sections[0]).toMatchObject({
+      name: 'H400X200X10X16',
+      type: 'H',
+      standard_steel_name: 'H400X200X10X16',
+      shape: { kind: 'H', H: 400, B: 200, tw: 10, tf: 16 },
+    });
+    expect(model.sections[1]).toMatchObject({
+      name: 'H300X150X8X12',
+      type: 'H',
+      standard_steel_name: 'H300X150X8X12',
+      shape: { kind: 'H', H: 300, B: 150, tw: 8, tf: 12 },
     });
   });
 

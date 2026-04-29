@@ -101,7 +101,7 @@ function resolveFrameMaterialProps(grade: string | undefined): ResolvedFrameMate
 }
 
 function parseCustomHSection(raw: string): { H: number; B: number; tw: number; tf: number } | null {
-  const normalized = raw.toUpperCase().replace(/[×X]/g, 'x').replace(/\s+/g, '');
+  const normalized = raw.toUpperCase().replace(/[×X*]/g, 'x').replace(/\s+/g, '');
   const match = normalized.match(/^H(\d+)x(\d+)x([\d.]+)x([\d.]+)$/);
   if (!match) return null;
   const H = parseFloat(match[1]!);
@@ -133,11 +133,18 @@ function parseRectangularSection(raw: string): { B: number; H: number } | null {
   return null;
 }
 
+function computeSolidRectangularTorsionConstant(B: number, H: number) {
+  const a = Math.max(B, H);
+  const b = Math.min(B, H);
+  const aspect = b / a;
+  return a * b ** 3 * ((1 / 3) - 0.21 * aspect * (1 - (b ** 4) / (12 * a ** 4)));
+}
+
 function computeRectangularSectionProps(B: number, H: number, G: number) {
   const A = B * H;
   const Iy = (B * H ** 3) / 12;
   const Iz = (H * B ** 3) / 12;
-  const J = Iy + Iz;
+  const J = computeSolidRectangularTorsionConstant(B, H);
   return { A: A / 1e6, Iy: Iy / 1e12, Iz: Iz / 1e12, J: J / 1e12, G };
 }
 

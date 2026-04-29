@@ -159,7 +159,9 @@ function extractSectionDesignation(text: string, role: 'column' | 'beam'): strin
   const roleZh = role === 'column' ? '柱' : '梁';
   const roleEn = role === 'column' ? 'column' : 'beam';
   const sectionNumber = '\\d+(?:\\.\\d+)?';
-  const hPattern = `[Hh](?:[WwNnMm])?${sectionNumber}(?:[xX×*]${sectionNumber}){1,3}`;
+  const prefixedHPattern = `[Hh][WwNn]${sectionNumber}[xX×*]${sectionNumber}`;
+  const customHPattern = `[Hh]${sectionNumber}(?:[xX×*]${sectionNumber}){3}`;
+  const hPattern = `(?:${prefixedHPattern}|${customHPattern})`;
   const rectangularPattern = `(?:[Rr](?:[Ee][Cc][Tt])?)?${sectionNumber}[xX×*]${sectionNumber}|[Bb]${sectionNumber}[Hh]${sectionNumber}`;
   const sectionPattern = `(?:${hPattern}|${rectangularPattern})`;
 
