@@ -6,19 +6,36 @@ import { buildElementReferenceVectors } from '../../../agent-runtime/reference-v
 import type { DraftState } from '../../../agent-runtime/types.js';
 import { REQUIRED_KEYS } from './constants.js';
 
-const STEEL_GRADE_PROPERTIES: Record<string, { E: number; G: number; nu: number; rho: number; fy: number }> = {
-  Q235: { E: 206000, G: 79000, nu: 0.3, rho: 7850, fy: 235 },
-  Q345: { E: 206000, G: 79000, nu: 0.3, rho: 7850, fy: 345 },
-  Q355: { E: 206000, G: 79000, nu: 0.3, rho: 7850, fy: 355 },
-  Q390: { E: 206000, G: 79000, nu: 0.3, rho: 7850, fy: 390 },
-  Q420: { E: 206000, G: 79000, nu: 0.3, rho: 7850, fy: 420 },
-  S235: { E: 210000, G: 81000, nu: 0.3, rho: 7850, fy: 235 },
-  S275: { E: 210000, G: 81000, nu: 0.3, rho: 7850, fy: 275 },
-  S355: { E: 210000, G: 81000, nu: 0.3, rho: 7850, fy: 355 },
-  A36: { E: 200000, G: 77000, nu: 0.3, rho: 7850, fy: 248 },
+type FrameMaterialCategory = 'steel' | 'concrete';
+type FrameMaterialProps = { E: number; G: number; nu: number; rho: number; category: FrameMaterialCategory; fy?: number; fc?: number };
+
+const STEEL_GRADE_PROPERTIES: Record<string, FrameMaterialProps & { category: 'steel'; fy: number }> = {
+  Q235: { E: 206000, G: 79000, nu: 0.3, rho: 7850, category: 'steel', fy: 235 },
+  Q345: { E: 206000, G: 79000, nu: 0.3, rho: 7850, category: 'steel', fy: 345 },
+  Q355: { E: 206000, G: 79000, nu: 0.3, rho: 7850, category: 'steel', fy: 355 },
+  Q390: { E: 206000, G: 79000, nu: 0.3, rho: 7850, category: 'steel', fy: 390 },
+  Q420: { E: 206000, G: 79000, nu: 0.3, rho: 7850, category: 'steel', fy: 420 },
+  S235: { E: 210000, G: 81000, nu: 0.3, rho: 7850, category: 'steel', fy: 235 },
+  S275: { E: 210000, G: 81000, nu: 0.3, rho: 7850, category: 'steel', fy: 275 },
+  S355: { E: 210000, G: 81000, nu: 0.3, rho: 7850, category: 'steel', fy: 355 },
+  A36: { E: 200000, G: 77000, nu: 0.3, rho: 7850, category: 'steel', fy: 248 },
 };
 
-type HSectionEntry = { A: number; Iy: number; Iz: number; J: number; shape: { kind: string; H: number; B: number; tw: number; tf: number }; standardSteelName: string };
+const CONCRETE_GRADE_PROPERTIES: Record<string, FrameMaterialProps & { category: 'concrete'; fc: number }> = {
+  C20: { E: 25500, G: 10625, nu: 0.2, rho: 2500, category: 'concrete', fc: 9.6 },
+  C25: { E: 28000, G: 11667, nu: 0.2, rho: 2500, category: 'concrete', fc: 11.9 },
+  C30: { E: 30000, G: 12500, nu: 0.2, rho: 2500, category: 'concrete', fc: 14.3 },
+  C35: { E: 31500, G: 13125, nu: 0.2, rho: 2500, category: 'concrete', fc: 16.7 },
+  C40: { E: 32500, G: 13542, nu: 0.2, rho: 2500, category: 'concrete', fc: 19.1 },
+  C45: { E: 33500, G: 13958, nu: 0.2, rho: 2500, category: 'concrete', fc: 21.1 },
+  C50: { E: 34500, G: 14375, nu: 0.2, rho: 2500, category: 'concrete', fc: 23.1 },
+  C55: { E: 35500, G: 14792, nu: 0.2, rho: 2500, category: 'concrete', fc: 25.3 },
+  C60: { E: 36000, G: 15000, nu: 0.2, rho: 2500, category: 'concrete', fc: 27.5 },
+};
+
+type HSectionShape = { kind: 'H'; H: number; B: number; tw: number; tf: number };
+type RectangularSectionShape = { kind: 'rectangular'; H: number; B: number };
+type HSectionEntry = { A: number; Iy: number; Iz: number; J: number; shape: HSectionShape; standardSteelName: string };
 
 const H_SECTION_PROPERTIES: Record<string, HSectionEntry> = {
   'HW200X200': { A: 0.00640, Iy: 4.72e-5, Iz: 1.60e-5, J: 1.70e-6, shape: { kind: 'H', H: 200, B: 200, tw: 8, tf: 12 }, standardSteelName: 'HW200x200' },
@@ -35,8 +52,21 @@ const H_SECTION_PROPERTIES: Record<string, HSectionEntry> = {
   'HN600X200': { A: 0.01341, Iy: 9.06e-4, Iz: 2.27e-5, J: 1.48e-6, shape: { kind: 'H', H: 600, B: 200, tw: 11, tf: 17 }, standardSteelName: 'HN600x200' },
 };
 
-type SteelGradeProps = { E: number; G: number; nu: number; rho: number; fy: number };
-type SectionProps = { name: string; A: number; Iy: number; Iz: number; J: number; G: number; shape: { kind: string; H: number; B: number; tw: number; tf: number }; standardSteelName: string; substituted?: string };
+type ResolvedFrameMaterialProps = FrameMaterialProps & { resolvedGrade: string };
+type SectionProps = {
+  name: string;
+  type: 'H' | 'rectangular';
+  A: number;
+  Iy: number;
+  Iz: number;
+  J: number;
+  G: number;
+  shape: HSectionShape | RectangularSectionShape;
+  standardSteelName?: string;
+  width?: number;
+  height?: number;
+  substituted?: string;
+};
 
 export function getDefaultColumnSection(storyCount: number): string {
   if (storyCount > 10) return 'HW400X400';
@@ -51,18 +81,23 @@ export function getDefaultBeamSection(storyCount: number): string {
 }
 
 export function normalizeSteelGrade(raw: string): string {
-  const upper = raw.toUpperCase();
-  return Object.keys(STEEL_GRADE_PROPERTIES).find((grade) => grade === upper) ?? upper;
+  const upper = raw.toUpperCase().replace(/\s+/g, '');
+  return Object.keys({ ...STEEL_GRADE_PROPERTIES, ...CONCRETE_GRADE_PROPERTIES }).find((grade) => grade === upper) ?? upper;
 }
 
 export function normalizeSectionName(raw: string): string {
-  return raw.toUpperCase().replace(/[×x]/gi, 'X');
+  return raw.trim().toUpperCase().replace(/\s+/g, '').replace(/[×x*]/gi, 'X');
 }
 
-function resolveSteelGradeProps(grade: string | undefined): SteelGradeProps & { resolvedGrade: string } {
+function resolveFrameMaterialProps(grade: string | undefined): ResolvedFrameMaterialProps {
   const normalized = normalizeSteelGrade(grade ?? 'Q355');
-  const resolved = STEEL_GRADE_PROPERTIES[normalized] ? normalized : 'Q355';
-  return { ...STEEL_GRADE_PROPERTIES[resolved]!, resolvedGrade: resolved };
+  if (STEEL_GRADE_PROPERTIES[normalized]) {
+    return { ...STEEL_GRADE_PROPERTIES[normalized]!, resolvedGrade: normalized };
+  }
+  if (CONCRETE_GRADE_PROPERTIES[normalized]) {
+    return { ...CONCRETE_GRADE_PROPERTIES[normalized]!, resolvedGrade: normalized };
+  }
+  return { ...STEEL_GRADE_PROPERTIES.Q355, resolvedGrade: 'Q355' };
 }
 
 function parseCustomHSection(raw: string): { H: number; B: number; tw: number; tf: number } | null {
@@ -86,6 +121,26 @@ function computeHSectionProps(H: number, B: number, tw: number, tf: number, G: n
   return { A: A / 1e6, Iy: Iy / 1e12, Iz: Iz / 1e12, J: J / 1e12, G };
 }
 
+function parseRectangularSection(raw: string): { B: number; H: number } | null {
+  const normalized = normalizeSectionName(raw);
+  const plain = normalized.match(/^(?:RECT|R)?(\d+(?:\.\d+)?)X(\d+(?:\.\d+)?)$/);
+  const bh = normalized.match(/^B(\d+(?:\.\d+)?)H(\d+(?:\.\d+)?)$/);
+  const match = plain ?? bh;
+  if (!match) return null;
+  const B = Number.parseFloat(match[1]!);
+  const H = Number.parseFloat(match[2]!);
+  if (B > 0 && H > 0) return { B, H };
+  return null;
+}
+
+function computeRectangularSectionProps(B: number, H: number, G: number) {
+  const A = B * H;
+  const Iy = (B * H ** 3) / 12;
+  const Iz = (H * B ** 3) / 12;
+  const J = Iy + Iz;
+  return { A: A / 1e6, Iy: Iy / 1e12, Iz: Iz / 1e12, J: J / 1e12, G };
+}
+
 function resolveSectionProps(
   section: string | undefined,
   role: 'column' | 'beam',
@@ -99,21 +154,63 @@ function resolveSectionProps(
   const found = Boolean(H_SECTION_PROPERTIES[normalized]);
   if (found) {
     const entry = H_SECTION_PROPERTIES[normalized]!;
-    return { name: normalized, A: entry.A, Iy: entry.Iy, Iz: entry.Iz, J: entry.J, G: matG, shape: entry.shape, standardSteelName: entry.standardSteelName };
+    return { name: normalized, type: 'H', A: entry.A, Iy: entry.Iy, Iz: entry.Iz, J: entry.J, G: matG, shape: entry.shape, standardSteelName: entry.standardSteelName };
   }
   const custom = section ? parseCustomHSection(section) : null;
   if (custom) {
     const props = computeHSectionProps(custom.H, custom.B, custom.tw, custom.tf, matG);
-    const name = `H${custom.H}x${custom.B}x${custom.tw}x${custom.tf}`;
+    const name = `H${custom.H}X${custom.B}X${custom.tw}X${custom.tf}`;
     return {
       name,
+      type: 'H',
       ...props,
       shape: { kind: 'H', H: custom.H, B: custom.B, tw: custom.tw, tf: custom.tf },
       standardSteelName: name,
     };
   }
+  const rectangular = section ? parseRectangularSection(section) : null;
+  if (rectangular) {
+    const props = computeRectangularSectionProps(rectangular.B, rectangular.H, matG);
+    const name = `${rectangular.B}X${rectangular.H}`;
+    return {
+      name,
+      type: 'rectangular',
+      ...props,
+      shape: { kind: 'rectangular', B: rectangular.B, H: rectangular.H },
+      width: rectangular.B,
+      height: rectangular.H,
+    };
+  }
   const entry = H_SECTION_PROPERTIES[defaultSection]!;
-  return { name: defaultSection, A: entry.A, Iy: entry.Iy, Iz: entry.Iz, J: entry.J, G: matG, shape: entry.shape, standardSteelName: entry.standardSteelName, substituted: `${normalized} not in builtin library and not parseable, substituted with ${defaultSection}` };
+  return { name: defaultSection, type: 'H', A: entry.A, Iy: entry.Iy, Iz: entry.Iz, J: entry.J, G: matG, shape: entry.shape, standardSteelName: entry.standardSteelName, substituted: `${normalized} not in builtin library and not parseable, substituted with ${defaultSection}` };
+}
+
+function buildMaterialRecord(matProps: ResolvedFrameMaterialProps): Record<string, unknown> {
+  return {
+    id: '1',
+    name: matProps.resolvedGrade,
+    grade: matProps.resolvedGrade,
+    category: matProps.category,
+    E: matProps.E,
+    nu: matProps.nu,
+    rho: matProps.rho,
+    ...(matProps.fy !== undefined ? { fy: matProps.fy } : {}),
+    ...(matProps.fc !== undefined ? { extra: { fc: matProps.fc } } : {}),
+  };
+}
+
+function buildSectionRecord(id: string, purpose: 'column' | 'beam', props: SectionProps): Record<string, unknown> {
+  return {
+    id,
+    name: props.name,
+    type: props.type,
+    purpose,
+    ...(props.standardSteelName !== undefined ? { standard_steel_name: props.standardSteelName } : {}),
+    shape: props.shape,
+    ...(props.width !== undefined ? { width: props.width } : {}),
+    ...(props.height !== undefined ? { height: props.height } : {}),
+    properties: { A: props.A, Iy: props.Iy, Iz: props.Iz, J: props.J, G: props.G },
+  };
 }
 
 function accumulateCoords(lengths: number[]): number[] {
@@ -140,7 +237,7 @@ function n3dId(storyIdx: number, xIdx: number, yIdx: number): string {
 
 function buildFrame2dLocalModel(
   state: DraftState,
-  matProps: SteelGradeProps & { resolvedGrade: string },
+  matProps: ResolvedFrameMaterialProps,
   colProps: SectionProps,
   beamProps: SectionProps,
   metadata: Record<string, unknown>,
@@ -197,10 +294,10 @@ function buildFrame2dLocalModel(
     unit_system: 'SI',
     nodes,
     elements,
-    materials: [{ id: '1', name: matProps.resolvedGrade, E: matProps.E, nu: matProps.nu, rho: matProps.rho, fy: matProps.fy }],
+    materials: [buildMaterialRecord(matProps)],
     sections: [
-      { id: '1', name: colProps.name, type: 'H', purpose: 'column', standard_steel_name: colProps.standardSteelName, shape: colProps.shape, properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
-      { id: '2', name: beamProps.name, type: 'H', purpose: 'beam', standard_steel_name: beamProps.standardSteelName, shape: beamProps.shape, properties: { A: beamProps.A, Iy: beamProps.Iy, Iz: beamProps.Iz, J: beamProps.J, G: beamProps.G } },
+      buildSectionRecord('1', 'column', colProps),
+      buildSectionRecord('2', 'beam', beamProps),
     ],
     stories: storyHeights.map((h, i) => {
       const storyIdx = i + 1;
@@ -238,7 +335,7 @@ function buildFrame2dLocalModel(
 
 function buildFrame3dLocalModel(
   state: DraftState,
-  matProps: SteelGradeProps & { resolvedGrade: string },
+  matProps: ResolvedFrameMaterialProps,
   colProps: SectionProps,
   beamProps: SectionProps,
   metadata: Record<string, unknown>,
@@ -318,10 +415,10 @@ function buildFrame3dLocalModel(
     unit_system: 'SI',
     nodes,
     elements,
-    materials: [{ id: '1', name: matProps.resolvedGrade, E: matProps.E, nu: matProps.nu, rho: matProps.rho, fy: matProps.fy }],
+    materials: [buildMaterialRecord(matProps)],
     sections: [
-      { id: '1', name: colProps.name, type: 'H', purpose: 'column', standard_steel_name: colProps.standardSteelName, shape: colProps.shape, properties: { A: colProps.A, Iy: colProps.Iy, Iz: colProps.Iz, J: colProps.J, G: colProps.G } },
-      { id: '2', name: beamProps.name, type: 'H', purpose: 'beam', standard_steel_name: beamProps.standardSteelName, shape: beamProps.shape, properties: { A: beamProps.A, Iy: beamProps.Iy, Iz: beamProps.Iz, J: beamProps.J, G: beamProps.G } },
+      buildSectionRecord('1', 'column', colProps),
+      buildSectionRecord('2', 'beam', beamProps),
     ],
     stories: storyHeights.map((h, i) => {
       const storyIdx = i + 1;
@@ -364,7 +461,7 @@ function buildFrameLocalModel(state: DraftState): Record<string, unknown> {
   const colSection = state.frameColumnSection as string | undefined;
   const beamSection = state.frameBeamSection as string | undefined;
   const storyCount = state.storyHeightsM?.length ?? (state.storyCount as number | undefined) ?? 0;
-  const matProps = resolveSteelGradeProps(matGrade);
+  const matProps = resolveFrameMaterialProps(matGrade);
   const colProps = resolveSectionProps(colSection, 'column', storyCount, matProps.G);
   const beamProps = resolveSectionProps(beamSection, 'beam', storyCount, matProps.G);
   const metadata: Record<string, unknown> = { source: 'markdown-skill-draft', inferredType: 'frame', frameDimension: state.frameDimension === '3d' ? '3d' : '2d' };

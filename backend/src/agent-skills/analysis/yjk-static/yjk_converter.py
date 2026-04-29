@@ -235,7 +235,12 @@ def _build_shape_val(sec: dict, kind: int) -> tuple[int, str, str]:
     # PKPM-style shape dict
     shape = props.get("shape") or sec.get("shape")
     if isinstance(shape, dict):
-        sk = shape.get("kind", "")
+        sk = str(shape.get("kind", ""))
+        sk_lower = sk.lower()
+        if sk_lower in ("rectangular", "rectangle", "rect") or kind == 1:
+            H = shape.get("H", shape.get("height", sec.get("height", 600)))
+            B = shape.get("B", shape.get("width", sec.get("width", 400)))
+            return 1, f"{int(B)},{int(H)}", sec.get("name", "")
         if sk in ("H", "I") or kind == 2:
             tw = shape.get("tw", 10)
             H = shape.get("H", sec.get("height", 400))

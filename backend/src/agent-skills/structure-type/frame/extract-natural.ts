@@ -137,15 +137,19 @@ function buildUniformFloorLoads(
 }
 
 function extractSteelGrade(text: string): string | undefined {
+  const materialPattern = '[Qq](?:235|345|355|390|420)|[Cc](?:20|25|30|35|40|45|50|55|60)|[Ss](?:235|275|355)|[Aa]36';
   const withKeyword = text.match(
-    /(?:材料|钢材|钢种|牌号|采用|选用)[\s:：]*([Qq][0-9]{3,4}|[Ss][0-9]{3}|[Aa]36)/i,
+    new RegExp(`(?:材料|混凝土|砼|钢材|钢种|牌号|采用|选用)[\\s:：]*(${materialPattern})`, 'i'),
   );
   if (withKeyword?.[1]) return normalizeSteelGrade(withKeyword[1]);
 
   const gradeMatch = text.match(/(?:^|[^a-zA-Z0-9])([Qq](?:235|345|355|390|420))(?![0-9])/);
   if (gradeMatch?.[1]) return normalizeSteelGrade(gradeMatch[1]);
 
-  const intlMatch = text.match(/(?:steel\s*grade|grade|material)\s*([Ss](?:235|275|355)|[Aa]36)\b/i);
+  const concreteMatch = text.match(/(?:^|[^a-zA-Z0-9])([Cc](?:20|25|30|35|40|45|50|55|60))(?![0-9])/);
+  if (concreteMatch?.[1]) return normalizeSteelGrade(concreteMatch[1]);
+
+  const intlMatch = text.match(new RegExp(`(?:(?:steel|concrete)\\s*grade|grade|material)\\s*(${materialPattern})\\b`, 'i'));
   if (intlMatch?.[1]) return normalizeSteelGrade(intlMatch[1]);
 
   return undefined;
@@ -154,9 +158,12 @@ function extractSteelGrade(text: string): string | undefined {
 function extractSectionDesignation(text: string, role: 'column' | 'beam'): string | undefined {
   const roleZh = role === 'column' ? '柱' : '梁';
   const roleEn = role === 'column' ? 'column' : 'beam';
-  const sectionPattern = '[Hh][WwNn][0-9]+(?:[xX×][0-9]+){1,3}';
+  const sectionNumber = '\\d+(?:\\.\\d+)?';
+  const hPattern = `[Hh](?:[WwNnMm])?${sectionNumber}(?:[xX×*]${sectionNumber}){1,3}`;
+  const rectangularPattern = `(?:[Rr](?:[Ee][Cc][Tt])?)?${sectionNumber}[xX×*]${sectionNumber}|[Bb]${sectionNumber}[Hh]${sectionNumber}`;
+  const sectionPattern = `(?:${hPattern}|${rectangularPattern})`;
 
-  const withRoleBefore = new RegExp(`${roleZh}(?:截面|断面|型号|规格)?[\\s:：]*(${sectionPattern})`, 'i');
+  const withRoleBefore = new RegExp(`${roleZh}(?:截面|断面|型号|规格)?(?:\\s*(?:为|是|采用|选用))?[\\s:：]*(${sectionPattern})`, 'i');
   const withRoleAfter = new RegExp(`(${sectionPattern})\\s*${roleZh}`, 'i');
   const withEnBefore = new RegExp(`${roleEn}\\s*section\\s*(${sectionPattern})`, 'i');
 

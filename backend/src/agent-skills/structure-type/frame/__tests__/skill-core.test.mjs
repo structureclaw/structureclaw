@@ -1,6 +1,7 @@
 import { describe, expect, test } from '@jest/globals';
 import { canonicalizeFramePatch } from '../../../../../dist/agent-skills/structure-type/frame/canonicalize.js';
 import { normalizeFrameNaturalPatch } from '../../../../../dist/agent-skills/structure-type/frame/extract-natural.js';
+import { buildFrameModel } from '../../../../../dist/agent-skills/structure-type/frame/model.js';
 import {
   buildFrameDraftPatch,
   buildFramePatchFromLlm,
@@ -137,6 +138,65 @@ describe('frame canonicalize core contract', () => {
     expect(patch.frameMaterial).toBe('Q345');
     expect(patch.frameColumnSection).toBe('HW350X350');
     expect(patch.frameBeamSection).toBe('HN400X200');
+  });
+
+  test('extracts concrete grade and rectangular sections from natural phrasing', () => {
+    const patch = normalizeFrameNaturalPatch(
+      '两层两跨框架，C30混凝土，柱截面400x400，梁截面250x600，每层3m，每跨6m，每层竖向荷载100kN',
+      undefined,
+    );
+
+    expect(patch.frameMaterial).toBe('C30');
+    expect(patch.frameColumnSection).toBe('400X400');
+    expect(patch.frameBeamSection).toBe('250X600');
+  });
+
+  test('builds rectangular concrete sections for YJK-compatible frame models', () => {
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      updatedAt: 0,
+      frameDimension: '2d',
+      storyCount: 2,
+      bayCount: 1,
+      storyHeightsM: [3, 3],
+      bayWidthsM: [6],
+      floorLoads: [
+        { story: 1, verticalKN: 100 },
+        { story: 2, verticalKN: 100 },
+      ],
+      frameBaseSupportType: 'fixed',
+      frameMaterial: 'C30',
+      frameColumnSection: '400X400',
+      frameBeamSection: '250X600',
+    });
+
+    expect(model).toBeDefined();
+    expect(model.materials[0]).toMatchObject({
+      name: 'C30',
+      grade: 'C30',
+      category: 'concrete',
+      E: 30000,
+      nu: 0.2,
+      rho: 2500,
+    });
+    expect(model.materials[0].fy).toBeUndefined();
+    expect(model.sections[0]).toMatchObject({
+      name: '400X400',
+      type: 'rectangular',
+      purpose: 'column',
+      width: 400,
+      height: 400,
+      shape: { kind: 'rectangular', B: 400, H: 400 },
+    });
+    expect(model.sections[0].standard_steel_name).toBeUndefined();
+    expect(model.sections[1]).toMatchObject({
+      name: '250X600',
+      type: 'rectangular',
+      purpose: 'beam',
+      width: 250,
+      height: 600,
+      shape: { kind: 'rectangular', B: 250, H: 600 },
+    });
   });
 
   test('derives 2d per-floor total loads from floor area intensity when single-bay geometry is explicit', () => {

@@ -45,8 +45,8 @@ function buildFrameDefaultReason(paramKey: string, locale: AppLocale, state: Dra
         : 'Default frame base support to fixed to obtain a stable initial stiffness assessment.';
     case 'frameMaterial':
       return locale === 'zh'
-        ? '钢框架默认采用 Q355 钢材，符合 GB 50017 常规设计要求。'
-        : 'Default steel grade Q355, compliant with GB 50017 standard design practice.';
+        ? '默认采用 Q355 钢材；若输入为混凝土矩形框架，也可使用 C30 等混凝土等级。'
+        : 'Default to Q355 steel; for concrete rectangular frames, grades such as C30 are also supported.';
     case 'frameColumnSection':
       return locale === 'zh'
         ? `根据 ${storyCount} 层框架规模，建议柱截面采用 ${getDefaultColumnSection(storyCount)}（GB/T 11263 热轧 H 型钢）。`
@@ -73,7 +73,7 @@ export function computeFrameMissing(state: DraftState, phase: 'interactive' | 'e
 export function mapFrameLabels(keys: string[], locale: AppLocale): string[] {
   return keys.map((key) => {
     switch (key) {
-      case 'frameMaterial': return locale === 'zh' ? '钢材牌号' : 'Steel grade';
+      case 'frameMaterial': return locale === 'zh' ? '材料牌号' : 'Material grade';
       case 'frameColumnSection': return locale === 'zh' ? '柱截面' : 'Column section';
       case 'frameBeamSection': return locale === 'zh' ? '梁截面' : 'Beam section';
       default: return buildLegacyLabels([key], locale)[0];
@@ -180,10 +180,10 @@ export function buildFrameQuestions(
     if (question.paramKey === 'frameMaterial') {
       return {
         paramKey: 'frameMaterial',
-        label: locale === 'zh' ? '钢材牌号' : 'Steel grade',
+        label: locale === 'zh' ? '材料牌号' : 'Material grade',
         question: locale === 'zh'
-          ? '请确认钢材牌号（如 Q355、Q345、Q235、S355）。钢框架通常采用 Q355。'
-          : 'Please confirm the steel grade (e.g. Q355, Q345, Q235, S355). Q355 is common for steel frames.',
+          ? '请确认材料牌号（如 Q355、Q345、Q235、S355，或混凝土 C30、C35）。钢框架通常采用 Q355。'
+          : 'Please confirm the material grade (e.g. Q355, Q345, Q235, S355, or concrete C30/C35). Q355 is common for steel frames.',
         required: true,
         critical: criticalMissing.includes('frameMaterial'),
         suggestedValue: 'Q355',
@@ -195,8 +195,8 @@ export function buildFrameQuestions(
         paramKey: 'frameColumnSection',
         label: locale === 'zh' ? '柱截面' : 'Column section',
         question: locale === 'zh'
-          ? `请确认柱截面规格（如 HW350X350）。${suggested ? `当前层数建议 ${suggested}。` : ''}`
-          : `Please confirm the column section designation (e.g. HW350X350).${suggested ? ` Suggested: ${suggested}.` : ''}`,
+          ? `请确认柱截面规格（如 HW350X350 或 400X400）。${suggested ? `当前层数建议 ${suggested}。` : ''}`
+          : `Please confirm the column section designation (e.g. HW350X350 or 400X400).${suggested ? ` Suggested: ${suggested}.` : ''}`,
         required: true,
         critical: criticalMissing.includes('frameColumnSection'),
         suggestedValue: suggested,
@@ -208,8 +208,8 @@ export function buildFrameQuestions(
         paramKey: 'frameBeamSection',
         label: locale === 'zh' ? '梁截面' : 'Beam section',
         question: locale === 'zh'
-          ? `请确认梁截面规格（如 HN400X200）。${suggested ? `当前层数建议 ${suggested}。` : ''}`
-          : `Please confirm the beam section designation (e.g. HN400X200).${suggested ? ` Suggested: ${suggested}.` : ''}`,
+          ? `请确认梁截面规格（如 HN400X200 或 250X600）。${suggested ? `当前层数建议 ${suggested}。` : ''}`
+          : `Please confirm the beam section designation (e.g. HN400X200 or 250X600).${suggested ? ` Suggested: ${suggested}.` : ''}`,
         required: true,
         critical: criticalMissing.includes('frameBeamSection'),
         suggestedValue: suggested,
