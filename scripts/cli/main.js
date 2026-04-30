@@ -505,6 +505,7 @@ function resolveBundledPrismaEntry(rootDir) {
 async function runBundledPrisma(rootDir, args, env) {
   const prismaEntry = resolveBundledPrismaEntry(rootDir);
   await runtime.runCommand(process.execPath, [prismaEntry, ...args], {
+    cwd: path.join(rootDir, "backend"),
     env,
   });
 }
