@@ -1,7 +1,6 @@
-import path from 'path'
-import { fileURLToPath } from 'url'
+import path from 'node:path'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const __dirname = import.meta.dirname
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {

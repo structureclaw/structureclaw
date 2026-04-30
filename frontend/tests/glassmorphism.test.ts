@@ -1,9 +1,8 @@
 import { describe, it, expect, beforeAll } from 'vitest'
-import fs from 'fs'
-import path from 'path'
-import { fileURLToPath } from 'url'
+import fs from 'node:fs'
+import path from 'node:path'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const __dirname = import.meta.dirname
 
 describe('Glassmorphism Effects (DSGN-07)', () => {
   const globalsPath = path.resolve(__dirname, '../src/app/globals.css')

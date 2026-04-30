@@ -1,9 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, it, expect } from 'vitest'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const __dirname = import.meta.dirname
 
 describe('PostCSS/Tailwind pipeline guard', () => {
   it('has postcss.config.js with @tailwindcss/postcss plugin', () => {
