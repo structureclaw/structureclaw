@@ -1,6 +1,9 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import fs from 'fs'
 import path from 'path'
+import { fileURLToPath } from 'url'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 describe('Tailwind Configuration (DSGN-03)', () => {
   const globalsPath = path.resolve(__dirname, '../src/app/globals.css')
