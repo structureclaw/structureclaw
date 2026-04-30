@@ -31,6 +31,7 @@
     "scripts/postinstall.js",
     "scripts/prepare-package.js",
     "backend/package.json",
+    "backend/prisma.config.ts",
     "backend/prisma/",
     "backend/scripts/",
     "backend/src/agent-skills/",
