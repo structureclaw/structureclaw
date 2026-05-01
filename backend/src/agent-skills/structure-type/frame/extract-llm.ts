@@ -67,30 +67,50 @@ function hasSingleBayHint(message: string): boolean {
   return /(?:single[-\s]?bay|单跨|一跨|1\s*跨)/i.test(message);
 }
 
-function extractAreaLoadIntensity(message: string): number | undefined {
-  return extractLlmScalar({
-    value: message,
-    direct: message.match(/([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)\s*\/\s*m(?:\^?2|2|²)/i)?.[1],
-  }, ['direct']);
-}
+const AREA_LOAD_UNIT_PATTERN = '(?:kn|千牛)\\s*\\/\\s*(?:m\\s*(?:\\^\\s*2|2|²)|㎡|平方米|平米)';
+const LINE_LOAD_UNIT_PATTERN = '(?:kn|千牛)\\s*\\/\\s*m(?!\\s*(?:\\^\\s*2|2|²))';
 
-function extractLiveLoadIntensity(message: string): number | undefined {
-  const livePatterns = [
-    /活载[荷]?\s*[：:]*\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)\s*\/\s*m(?:\^?2|2|²)/i,
-    /live\s*load\s*[：:]*\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)\s*\/\s*m(?:\^?2|2|²)/i,
-    /活荷载\s*[：:]*\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)\s*\/\s*m(?:\^?2|2|²)/i,
-  ];
-  for (const pattern of livePatterns) {
+function extractIntensityFromPatterns(message: string, patterns: RegExp[]): number | undefined {
+  for (const pattern of patterns) {
     const match = message.match(pattern);
     if (match?.[1]) return normalizeNumber(match[1]);
   }
   return undefined;
 }
 
+function hasLiveLoadContext(message: string, index: number): boolean {
+  const prefix = message.slice(Math.max(0, index - 20), index).toLowerCase();
+  return /(?:活载|活荷载|live\s*load|live-load)/i.test(prefix);
+}
+
+function extractDeadLoadIntensity(message: string): number | undefined {
+  return extractIntensityFromPatterns(message, [
+    new RegExp(`(?:恒载|恒荷载|永久荷载|dead\\s*load|dead-load)\\s*[：:=]*\\s*([0-9]+(?:\\.[0-9]+)?)\\s*${AREA_LOAD_UNIT_PATTERN}`, 'i'),
+  ]);
+}
+
+function extractAreaLoadIntensity(message: string): number | undefined {
+  const pattern = new RegExp(`([0-9]+(?:\\.[0-9]+)?)\\s*${AREA_LOAD_UNIT_PATTERN}`, 'ig');
+  for (const match of message.matchAll(pattern)) {
+    if (hasLiveLoadContext(message, match.index ?? 0)) continue;
+    const value = normalizeNumber(match[1]);
+    if (value !== undefined && value > 0) return value;
+  }
+  return undefined;
+}
+
+function extractLiveLoadIntensity(message: string): number | undefined {
+  return extractIntensityFromPatterns(message, [
+    new RegExp(`活载[荷]?\\s*[：:]*\\s*([0-9]+(?:\\.[0-9]+)?)\\s*${AREA_LOAD_UNIT_PATTERN}`, 'i'),
+    new RegExp(`live\\s*load\\s*[：:]*\\s*([0-9]+(?:\\.[0-9]+)?)\\s*${AREA_LOAD_UNIT_PATTERN}`, 'i'),
+    new RegExp(`活荷载\\s*[：:]*\\s*([0-9]+(?:\\.[0-9]+)?)\\s*${AREA_LOAD_UNIT_PATTERN}`, 'i'),
+  ]);
+}
+
 function extractLineLoadIntensity(message: string): number | undefined {
   return extractLlmScalar({
     value: message,
-    direct: message.match(/([0-9]+(?:\.[0-9]+)?)\s*(?:kn|千牛)\s*\/\s*m(?!\s*(?:\^?2|2|²))/i)?.[1],
+    direct: message.match(new RegExp(`([0-9]+(?:\\.[0-9]+)?)\\s*${LINE_LOAD_UNIT_PATTERN}`, 'i'))?.[1],
   }, ['direct']);
 }
 
@@ -103,7 +123,7 @@ function deriveFloorLoadsFromIntensity(
   const storyCount = patch.storyCount ?? patch.storyHeightsM?.length;
   if (!storyCount || storyCount <= 0) return patch;
 
-  const areaLoadKNm2 = extractAreaLoadIntensity(message);
+  const areaLoadKNm2 = extractDeadLoadIntensity(message) ?? extractAreaLoadIntensity(message);
   const lineLoadKNm = extractLineLoadIntensity(message);
   const liveLoadKNm2 = extractLiveLoadIntensity(message);
   if (areaLoadKNm2 === undefined && lineLoadKNm === undefined && liveLoadKNm2 === undefined) return patch;

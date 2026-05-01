@@ -269,6 +269,54 @@ describe('frame canonicalize core contract', () => {
     ]);
   });
 
+  test('repairs llm floor loads that omit story numbers', () => {
+    const patch = buildFrameDraftPatch(
+      '两层3D钢框架，X向2跨每跨6m，Y向1跨6m，层高3.6m，每层总竖向荷载432kN',
+      {
+        inferredType: 'frame',
+        frameDimension: '3d',
+        storyCount: 2,
+        bayCountX: 2,
+        bayCountY: 1,
+        storyHeightsM: [3.6, 3.6],
+        bayWidthsXM: [6, 6],
+        bayWidthsYM: [6],
+        floorLoads: [
+          { verticalKN: 432 },
+          { verticalKN: 432 },
+        ],
+      },
+      undefined,
+    );
+
+    expect(patch.floorLoads).toEqual([
+      { story: 1, verticalKN: 432 },
+      { story: 2, verticalKN: 432 },
+    ]);
+  });
+
+  test('derives 3d dead and live floor loads from chinese area-load units', () => {
+    const patch = buildFrameDraftPatch(
+      '两层3D钢框架，X向2跨每跨6m，Y向1跨6m，层高3.6m，恒载4kN/㎡，活载2kN/㎡',
+      {
+        inferredType: 'frame',
+        frameDimension: '3d',
+        storyCount: 2,
+        bayCountX: 2,
+        bayCountY: 1,
+        storyHeightsM: [3.6, 3.6],
+        bayWidthsXM: [6, 6],
+        bayWidthsYM: [6],
+      },
+      undefined,
+    );
+
+    expect(patch.floorLoads).toEqual([
+      { story: 1, verticalKN: 288, liveLoadKN: 144 },
+      { story: 2, verticalKN: 288, liveLoadKN: 144 },
+    ]);
+  });
+
   test('derives 2d per-floor total loads from line intensity and total span length', () => {
     const patch = buildFrameDraftPatch(
       '3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m',

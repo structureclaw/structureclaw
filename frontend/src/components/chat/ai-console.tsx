@@ -3412,6 +3412,27 @@ export function AIConsole() {
                   status: (payload.step!.status === 'error' ? 'error' : 'done') as Message['status'],
                   toolStep: { ...msg.toolStep!, ...payload.step },
                 }))
+              } else {
+                if (currentTextMessageId) {
+                  replaceMessageForConversation(activeConversationId, currentTextMessageId, (msg) => {
+                    if (msg.status !== 'streaming') return msg
+                    return { ...msg, status: 'done' as const }
+                  })
+                  currentTextMessageId = ''
+                  chatBuffer = ''
+                }
+
+                const completedToolMsgId = createId('tool')
+                toolMessageIds.set(payload.step.id, completedToolMsgId)
+                turnMessageIds.add(completedToolMsgId)
+                appendMessageForConversation(activeConversationId, {
+                  id: completedToolMsgId,
+                  role: 'tool',
+                  content: '',
+                  status: (payload.step.status === 'error' ? 'error' : 'done') as Message['status'],
+                  timestamp: new Date().toISOString(),
+                  toolStep: payload.step,
+                })
               }
               // On tool done, create a "thinking" text bubble so the user sees
               // the LLM is still running. The next token will replace this content.

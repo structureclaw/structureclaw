@@ -31,8 +31,12 @@ function summarizeDraft(state: AgentState): string {
   if (ds.lengthM != null) lines.push(`- length: ${ds.lengthM} m`);
   if (ds.spanLengthM != null) lines.push(`- span: ${ds.spanLengthM} m`);
   if (ds.heightM != null) lines.push(`- height: ${ds.heightM} m`);
+  if (ds.frameDimension) lines.push(`- frame dimension: ${ds.frameDimension}`);
   if (ds.storyCount != null) lines.push(`- stories: ${ds.storyCount}`);
   if (ds.bayCount != null) lines.push(`- bays: ${ds.bayCount}`);
+  if (ds.bayCountX != null) lines.push(`- bays X: ${ds.bayCountX}`);
+  if (ds.bayCountY != null) lines.push(`- bays Y: ${ds.bayCountY}`);
+  if (ds.floorLoads?.length) lines.push(`- floor loads: ${ds.floorLoads.length} story entries`);
   if (ds.loadKN != null) lines.push(`- load: ${ds.loadKN} kN`);
   if (ds.supportType) lines.push(`- support: ${ds.supportType}`);
   return lines.length > 0 ? lines.join('\n') : '(draft partially initialised)';
@@ -146,6 +150,7 @@ ${summarizeArtifacts(state)}
 - 使用 set_session_config 只会更新当前会话配置，不会创建持久记忆。
 - set_session_config 只影响当前会话的分析类型、设计规范和技能选择。
 - memory 支持 conversation 和 workspace 两种 scope。conversation scope（默认）存储当前会话的上下文；workspace scope 存储跨会话持久偏好（如默认设计规范、项目约束）。不要把临时草稿参数写入 memory。
+- 如果 extract_draft_params 返回 canProceed=false 或 criticalMissing 非空，必须继续调用 ask_user_clarification 或直接说明缺失项；不要调用 memory 来修补草稿参数，也不要静默结束。
 
 **重要**: 工具从会话状态中自动读取数据（模型、分析结果、草稿状态等）。不要将 modelJson、analysisJson、stateJson 等参数传递给工具。工具会自动使用上一步的结果。`;
 }
@@ -202,6 +207,7 @@ When the user makes a structural design or analysis request, follow this workflo
 - Use set_session_config only for current-session configuration; it does not create persistent memory.
 - set_session_config only affects the current session's analysis type, design code, and selected skills.
 - memory supports conversation and workspace scopes. conversation scope (default) stores current-session context; workspace scope stores cross-session persistent preferences (e.g. default design code, project constraints). Do not store temporary draft parameters in memory.
+- If extract_draft_params returns canProceed=false or non-empty criticalMissing, you must continue with ask_user_clarification or clearly explain the missing fields; do not use memory to patch draft parameters and do not silently stop.
 
 **IMPORTANT**: Tools read data (model, analysis results, draft state, etc.) from conversation state automatically. Do NOT pass modelJson, analysisJson, stateJson, or other JSON string parameters to tools. Tools automatically use results from previous steps.`;
 }

@@ -3,6 +3,55 @@ import { z } from 'zod';
 import type { LangGraphRunnableConfig } from '@langchain/langgraph';
 import { AgentMemoryService, type AgentMemoryScope, type AgentMemoryScopeType } from '../services/agent-memory.js';
 
+const DRAFT_MEMORY_KEY_PARTS = new Set([
+  'baycount',
+  'baycountx',
+  'baycounty',
+  'baywidthsm',
+  'baywidthsxm',
+  'baywidthsym',
+  'deadload',
+  'floorload',
+  'floorloads',
+  'framebasesupporttype',
+  'framebeamsection',
+  'framecolumnsection',
+  'framedimension',
+  'framematerial',
+  'heightm',
+  'inferredtype',
+  'liveload',
+  'loadkn',
+  'loadposition',
+  'loadpositionm',
+  'loadtype',
+  'spanlengthm',
+  'storycount',
+  'storyheightsm',
+  'supporttype',
+  'verticalkn',
+]);
+
+function normalizeDraftKeyPart(value: string): string {
+  return value.replace(/[^a-z0-9]/gi, '').toLowerCase();
+}
+
+function isDraftMemoryKey(key: string): boolean {
+  return key
+    .split(/[._:-]/)
+    .map(normalizeDraftKeyPart)
+    .some((part) => DRAFT_MEMORY_KEY_PARTS.has(part));
+}
+
+function containsDraftParameter(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.some((item) => containsDraftParameter(item));
+  return Object.entries(value as Record<string, unknown>).some(([key, nested]) => {
+    const normalizedKey = normalizeDraftKeyPart(key);
+    return DRAFT_MEMORY_KEY_PARTS.has(normalizedKey) || containsDraftParameter(nested);
+  });
+}
+
 function resolveScope(
   requestedScope: AgentMemoryScopeType,
   config: LangGraphRunnableConfig,
@@ -32,6 +81,14 @@ export function createMemoryTool(workspaceRoot?: string) {
       if (input.action === 'store') {
         if (!input.key) throw new Error('key is required for store');
         if (input.value === undefined) throw new Error('value is required for store');
+        if (isDraftMemoryKey(input.key) || containsDraftParameter(input.value)) {
+          return JSON.stringify({
+            success: false,
+            errorCode: 'DRAFT_PARAMETERS_BELONG_IN_SESSION_STATE',
+            message:
+              'Current draft parameters cannot be stored in memory. Run extract_draft_params again or ask the user for clarification so draftState is updated.',
+          });
+        }
         const entry = await memoryService.store(scope, input.key, input.value as never);
         return JSON.stringify({ success: true, entry });
       }
@@ -55,7 +112,7 @@ export function createMemoryTool(workspaceRoot?: string) {
         'Supports two scopes: "conversation" (default, current session only) and ' +
         '"workspace" (cross-session, persists across conversations). ' +
         'Use workspace scope for reusable preferences, durable constraints, and confirmed engineering decisions. ' +
-        'Do not use for current-turn draft parameters; those live in session state.',
+        'Do not use for current-turn draft parameters; those live in session state and must be updated via extract_draft_params.',
       schema: z.object({
         action: z.enum(['store', 'retrieve', 'list', 'delete']),
         key: z.string().optional(),

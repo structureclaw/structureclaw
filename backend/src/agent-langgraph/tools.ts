@@ -60,6 +60,23 @@ function toolResult(
   });
 }
 
+function buildDraftProgress(
+  locale: 'zh' | 'en',
+  criticalMissing: string[],
+): { canProceed: boolean; nextAction: 'ask_user_clarification' | 'build_model'; reason?: string } {
+  if (criticalMissing.length === 0) {
+    return { canProceed: true, nextAction: 'build_model' };
+  }
+  const missingText = criticalMissing.join(', ');
+  return {
+    canProceed: false,
+    nextAction: 'ask_user_clarification',
+    reason: locale === 'zh'
+      ? `草稿仍缺少关键参数：${missingText}。需要继续向用户澄清，不能直接构建模型或写入 memory。`
+      : `The draft is still missing critical parameters: ${missingText}. Continue by asking the user for clarification; do not build the model or store draft values in memory.`,
+  };
+}
+
 const ANALYSIS_MESSAGE_LIMIT = 6000;
 type TextCompaction = 'middle' | 'tail';
 
@@ -249,6 +266,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
             structuralTypeMatch: match,
             skillId: undefined,
             extractionMode: 'deterministic',
+            ...buildDraftProgress(locale, ['inferredType']),
           };
           const stateUpdate: Partial<AgentState> = { draftState: nextState };
           if (match.key) stateUpdate.structuralTypeKey = match.key;
@@ -267,6 +285,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
             structuralTypeMatch: match,
             skillId: undefined,
             extractionMode: 'deterministic',
+            ...buildDraftProgress(locale, ['inferredType']),
           };
           logToolCall(log, { tool: 'extract_draft_params', durationMs: Date.now() - start, extra: { skillId: match.skillId, pluginResolved: false } });
           return toolResult(toolCallId, 'extract_draft_params', JSON.stringify(responseJson), { draftState: nextState });
@@ -284,6 +303,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
             structuralTypeMatch: match,
             skillId: plugin.id,
             extractionMode: 'deterministic',
+            ...buildDraftProgress(locale, missing.critical),
           };
           const stateUpdate: Partial<AgentState> = { draftState: nextState, structuralTypeKey: match.key };
           logToolCall(log, { tool: 'extract_draft_params', durationMs: Date.now() - start, extra: { skillId: plugin.id, extractionMode: 'deterministic', criticalMissing: missing.critical.length } });
@@ -313,6 +333,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
           structuralTypeMatch: match,
           skillId: plugin.id,
           extractionMode: draftPatch ? 'llm' : 'deterministic',
+          ...buildDraftProgress(locale, missing.critical),
         };
 
         const stateUpdate: Partial<AgentState> = {};

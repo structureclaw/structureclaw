@@ -31,10 +31,11 @@
 
 ## 荷载提取
 - 对 `floorLoads`，优先把自然语言映射为统一的各层总荷载数组（单位 kN）：
-  - `每层节点荷载都是1000kN` → `floorLoads[].verticalKN = 1000`
-  - `每层竖向荷载1000kN` 或 `每层竖向1000kN` → `floorLoads[].verticalKN = 1000`
-  - `水平荷载500kN` → 2D 框架优先映射为 `floorLoads[].lateralXKN = 500`
-  - `x、y向水平荷载都是500kN` → `lateralXKN = 500` 且 `lateralYKN = 500`
+  - 每个 `floorLoads` 数组项必须包含 `story`，如 `{ "story": 1, "verticalKN": 1000 }`
+  - `每层节点荷载都是1000kN` → 每层输出 `{ "story": 层号, "verticalKN": 1000 }`
+  - `每层竖向荷载1000kN` 或 `每层竖向1000kN` → 每层输出 `{ "story": 层号, "verticalKN": 1000 }`
+  - `水平荷载500kN` → 2D 框架优先映射为 `{ "story": 层号, "lateralXKN": 500 }`
+  - `x、y向水平荷载都是500kN` → 每层输出 `lateralXKN = 500` 且 `lateralYKN = 500`
 - 若用户只给出面荷载/线荷载（如 `12kN/m²`、`8kN/m`）且没有足够换算信息，不要臆造 `floorLoads`；先保留几何与已识别语义，并继续追问各层总荷载（kN）。
 - 若消息中明确出现 `y向水平荷载`、`x、y向`、`x/y向` 等双向水平荷载语义，应优先输出 `frameDimension = "3d"`。
 - 若没有任何 Y 向证据，默认按 `2d` 收敛，而不是把 `frameDimension` 留空。

@@ -65,13 +65,14 @@ function mergeFloorLoads(
     merged.set(load.story, {
       story: load.story,
       verticalKN: load.verticalKN ?? current?.verticalKN,
+      liveLoadKN: load.liveLoadKN ?? current?.liveLoadKN,
       lateralXKN: load.lateralXKN ?? current?.lateralXKN,
       lateralYKN: load.lateralYKN ?? current?.lateralYKN,
     });
   }
 
   const normalized = Array.from(merged.values())
-    .filter((load) => load.verticalKN !== undefined || load.lateralXKN !== undefined || load.lateralYKN !== undefined)
+    .filter((load) => load.verticalKN !== undefined || load.liveLoadKN !== undefined || load.lateralXKN !== undefined || load.lateralYKN !== undefined)
     .sort((a, b) => a.story - b.story);
 
   return normalized.length > 0 ? normalized : undefined;
@@ -161,22 +162,24 @@ export function normalizeFloorLoads(value: unknown): DraftFloorLoad[] | undefine
     return undefined;
   }
   const normalized = value
-    .map((item) => {
+    .map((item, index) => {
       if (!item || typeof item !== 'object') {
         return null;
       }
       const row = item as Record<string, unknown>;
-      const story = normalizePositiveInteger(row.story);
+      const hasExplicitStory = row.story !== undefined && row.story !== null;
+      const story = hasExplicitStory ? normalizePositiveInteger(row.story) : index + 1;
       if (!story) {
         return null;
       }
       const verticalKN = normalizeNumber(row.verticalKN);
+      const liveLoadKN = normalizeNumber(row.liveLoadKN);
       const lateralXKN = normalizeNumber(row.lateralXKN);
       const lateralYKN = normalizeNumber(row.lateralYKN);
-      if (verticalKN === undefined && lateralXKN === undefined && lateralYKN === undefined) {
+      if (verticalKN === undefined && liveLoadKN === undefined && lateralXKN === undefined && lateralYKN === undefined) {
         return null;
       }
-      return { story, verticalKN, lateralXKN, lateralYKN };
+      return { story, verticalKN, liveLoadKN, lateralXKN, lateralYKN };
     });
   const filtered = normalized.filter((item) => item !== null) as DraftFloorLoad[];
   return filtered.length > 0 ? filtered : undefined;

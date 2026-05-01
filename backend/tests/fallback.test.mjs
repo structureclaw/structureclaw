@@ -278,15 +278,21 @@ describe('normalizeFloorLoads', () => {
     ];
     const result = normalizeFloorLoads(input);
     expect(result).toEqual([
-      { story: 1, verticalKN: 10, lateralXKN: undefined, lateralYKN: undefined },
-      { story: 2, verticalKN: undefined, lateralXKN: 5, lateralYKN: undefined },
+      { story: 1, verticalKN: 10, liveLoadKN: undefined, lateralXKN: undefined, lateralYKN: undefined },
+      { story: 2, verticalKN: undefined, liveLoadKN: undefined, lateralXKN: 5, lateralYKN: undefined },
     ]);
   });
 
   it('should accept string story numbers as positive integers', () => {
     const input = [{ story: '3', verticalKN: 20 }];
     const result = normalizeFloorLoads(input);
-    expect(result).toEqual([{ story: 3, verticalKN: 20, lateralXKN: undefined, lateralYKN: undefined }]);
+    expect(result).toEqual([{ story: 3, verticalKN: 20, liveLoadKN: undefined, lateralXKN: undefined, lateralYKN: undefined }]);
+  });
+
+  it('should preserve live load fields', () => {
+    const input = [{ story: 1, verticalKN: 288, liveLoadKN: 144 }];
+    const result = normalizeFloorLoads(input);
+    expect(result).toEqual([{ story: 1, verticalKN: 288, liveLoadKN: 144, lateralXKN: undefined, lateralYKN: undefined }]);
   });
 
   it('should reject items with no load fields', () => {
@@ -294,9 +300,12 @@ describe('normalizeFloorLoads', () => {
     expect(normalizeFloorLoads(input)).toBeUndefined();
   });
 
-  it('should reject items with missing story', () => {
-    const input = [{ verticalKN: 10 }];
-    expect(normalizeFloorLoads(input)).toBeUndefined();
+  it('should infer missing story from array order', () => {
+    const input = [{ verticalKN: 10 }, { verticalKN: 20 }];
+    expect(normalizeFloorLoads(input)).toEqual([
+      { story: 1, verticalKN: 10, liveLoadKN: undefined, lateralXKN: undefined, lateralYKN: undefined },
+      { story: 2, verticalKN: 20, liveLoadKN: undefined, lateralXKN: undefined, lateralYKN: undefined },
+    ]);
   });
 
   it('should reject non-object items', () => {
@@ -594,6 +603,23 @@ describe('mergeDraftState', () => {
     const story1 = result.floorLoads.find((l) => l.story === 1);
     expect(story1.verticalKN).toBe(10);
     expect(story1.lateralXKN).toBe(5);
+  });
+
+  it('should merge live floor loads from existing and patch', () => {
+    const existing = {
+      inferredType: 'frame',
+      frameDimension: '2d',
+      storyCount: 1,
+      floorLoads: [{ story: 1, verticalKN: 288 }],
+      updatedAt: Date.now(),
+    };
+    const patch = {
+      floorLoads: [{ story: 1, liveLoadKN: 144 }],
+    };
+    const result = mergeDraftState(existing, patch);
+    expect(result.floorLoads).toEqual([
+      { story: 1, verticalKN: 288, liveLoadKN: 144, lateralXKN: undefined, lateralYKN: undefined },
+    ]);
   });
 
   it('should carry forward frameBaseSupportType from existing state', () => {

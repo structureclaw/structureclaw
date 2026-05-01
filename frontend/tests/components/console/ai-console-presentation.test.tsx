@@ -151,6 +151,90 @@ describe('AIConsole presentation rendering', () => {
     })
   })
 
+  it('renders a tool card when only a completed step event is streamed', async () => {
+    const user = userEvent.setup()
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = typeof input === 'string' ? input : input instanceof Request ? input.url : String(input)
+
+      if (url.includes('/api/v1/chat/stream')) {
+        return createSseResponse([
+          {
+            type: 'presentation_init',
+            presentation: {
+              version: 3,
+              mode: 'execution',
+              status: 'streaming',
+              summaryText: '',
+              phases: [],
+              artifacts: [],
+            },
+          },
+          {
+            type: 'step_upsert',
+            phaseId: 'phase:understanding',
+            step: {
+              id: 'step:memory:2026-05-01T10:00:01.000Z',
+              phase: 'understanding',
+              tool: 'memory',
+              status: 'done',
+              title: 'Memory saved',
+              output: '{"success":true}',
+              startedAt: '2026-05-01T10:00:01.000Z',
+              completedAt: '2026-05-01T10:00:02.000Z',
+              durationMs: 1000,
+            },
+          },
+          {
+            type: 'done',
+          },
+        ])
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && !url.includes('/snapshot') && !url.includes('/messages')) {
+        return Response.json({
+          id: 'conv-completed-tool-step-test',
+          title: 'Remember project setting',
+          type: 'general',
+        })
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return Response.json([])
+      }
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return Response.json([])
+      }
+
+      if (url.includes('/api/v1/agent/capability-matrix')) {
+        return Response.json({})
+      }
+
+      if (url.includes('/snapshot')) {
+        return Response.json({ success: true })
+      }
+
+      if (url.includes('/messages')) {
+        return Response.json({ success: true })
+      }
+
+      return Response.json({})
+    })
+
+    render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
+
+    const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
+    await user.type(composer, 'Remember project setting')
+    await user.click(screen.getByRole('button', { name: /send/i }))
+
+    await waitFor(() => {
+      const chatPanel = screen.getByTestId('console-chat-scroll')
+      expect(within(chatPanel).getByText('memory')).toBeInTheDocument()
+      expect(within(chatPanel).getByText('{"success":true}')).toBeInTheDocument()
+    })
+  })
+
   it('prefers backend presentation when restoring a saved conversation', async () => {
     const user = userEvent.setup()
     window.localStorage.setItem('structureclaw.console.conversations', JSON.stringify({

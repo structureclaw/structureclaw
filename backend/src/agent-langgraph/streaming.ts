@@ -231,6 +231,11 @@ export function langGraphEventToChunks(
             },
           });
 
+          const toolBlockerReason = extractToolBlockerReason(toolName, content);
+          if (toolBlockerReason) {
+            chunks.push({ type: 'summary_replace', summaryText: toolBlockerReason });
+          }
+
           // Emit artifact_payload_sync for tool outputs containing model/analysis/report
           if (content) {
             chunks.push(...emitArtifactSync(content, nodeState));
@@ -376,6 +381,21 @@ function emitArtifactSync(toolOutput: string, nodeState?: any): AgentStreamChunk
     // Not JSON — skip artifact sync
   }
   return chunks;
+}
+
+function extractToolBlockerReason(toolName: string, toolOutput: string): string | undefined {
+  try {
+    const parsed = JSON.parse(toolOutput) as Record<string, unknown>;
+    if (toolName === 'extract_draft_params' && parsed.canProceed === false && typeof parsed.reason === 'string') {
+      return parsed.reason;
+    }
+    if (parsed.success === false && typeof parsed.message === 'string') {
+      return parsed.message;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------

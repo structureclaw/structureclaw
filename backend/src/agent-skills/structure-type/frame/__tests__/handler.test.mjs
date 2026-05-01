@@ -76,4 +76,40 @@ describe('frame handler composed modules', () => {
       { story: 2, verticalKN: 90, lateralXKN: 18, lateralYKN: 12 },
     ]);
   });
+
+  test('does not mark floorLoads missing when llm omits story numbers', () => {
+    const patch = handler.extractDraft({
+      message: '两层3D钢框架，X向2跨每跨6m，Y向1跨6m，层高3.6m，每层总竖向荷载432kN',
+      locale: 'zh',
+      currentState: undefined,
+      llmDraftPatch: {
+        inferredType: 'frame',
+        frameDimension: '3d',
+        storyCount: 2,
+        bayCountX: 2,
+        bayCountY: 1,
+        storyHeightsM: [3.6, 3.6],
+        bayWidthsXM: [6, 6],
+        bayWidthsYM: [6],
+        floorLoads: [
+          { verticalKN: 432 },
+          { verticalKN: 432 },
+        ],
+      },
+      structuralTypeMatch: {
+        key: 'frame',
+        mappedType: 'frame',
+        skillId: 'frame',
+        supportLevel: 'supported',
+      },
+    });
+    const state = handler.mergeState(undefined, patch);
+    const missing = handler.computeMissing(state, 'execution');
+
+    expect(state.floorLoads).toEqual([
+      { story: 1, verticalKN: 432 },
+      { story: 2, verticalKN: 432 },
+    ]);
+    expect(missing.critical).not.toContain('floorLoads');
+  });
 });

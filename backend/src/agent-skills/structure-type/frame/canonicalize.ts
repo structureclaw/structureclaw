@@ -19,6 +19,7 @@ export function mergeFloorLoadsByStory(
     merged.set(load.story, {
       story: load.story,
       verticalKN: load.verticalKN ?? current?.verticalKN,
+      liveLoadKN: load.liveLoadKN ?? current?.liveLoadKN,
       lateralXKN: load.lateralXKN ?? current?.lateralXKN,
       lateralYKN: load.lateralYKN ?? current?.lateralYKN,
     });
