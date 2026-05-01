@@ -38,7 +38,7 @@ function normalizeDraftKeyPart(value: string): string {
 
 function isDraftMemoryKey(key: string): boolean {
   return key
-    .split(/[._:-]/)
+    .split(/[.:]/)
     .map(normalizeDraftKeyPart)
     .some((part) => DRAFT_MEMORY_KEY_PARTS.has(part));
 }
@@ -47,8 +47,7 @@ function containsDraftParameter(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false;
   if (Array.isArray(value)) return value.some((item) => containsDraftParameter(item));
   return Object.entries(value as Record<string, unknown>).some(([key, nested]) => {
-    const normalizedKey = normalizeDraftKeyPart(key);
-    return DRAFT_MEMORY_KEY_PARTS.has(normalizedKey) || containsDraftParameter(nested);
+    return isDraftMemoryKey(key) || containsDraftParameter(nested);
   });
 }
 

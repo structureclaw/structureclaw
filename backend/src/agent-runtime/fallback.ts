@@ -161,6 +161,13 @@ export function normalizeFloorLoads(value: unknown): DraftFloorLoad[] | undefine
   if (!Array.isArray(value)) {
     return undefined;
   }
+  const shouldInferMissingStory = !value.some((item) => {
+    if (!item || typeof item !== 'object') {
+      return false;
+    }
+    const row = item as Record<string, unknown>;
+    return row.story !== undefined && row.story !== null;
+  });
   const normalized = value
     .map((item, index) => {
       if (!item || typeof item !== 'object') {
@@ -168,7 +175,9 @@ export function normalizeFloorLoads(value: unknown): DraftFloorLoad[] | undefine
       }
       const row = item as Record<string, unknown>;
       const hasExplicitStory = row.story !== undefined && row.story !== null;
-      const story = hasExplicitStory ? normalizePositiveInteger(row.story) : index + 1;
+      const story = hasExplicitStory
+        ? normalizePositiveInteger(row.story)
+        : shouldInferMissingStory ? index + 1 : undefined;
       if (!story) {
         return null;
       }

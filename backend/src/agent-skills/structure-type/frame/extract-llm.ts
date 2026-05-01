@@ -78,9 +78,9 @@ function extractIntensityFromPatterns(message: string, patterns: RegExp[]): numb
   return undefined;
 }
 
-function hasLiveLoadContext(message: string, index: number): boolean {
-  const prefix = message.slice(Math.max(0, index - 20), index).toLowerCase();
-  return /(?:活载|活荷载|live\s*load|live-load)/i.test(prefix);
+function hasAdjacentLiveLoadContext(message: string, index: number): boolean {
+  const prefix = message.slice(Math.max(0, index - 20), index);
+  return /(?:活载|活荷载|live\s*load|live-load)\s*(?:of\s*)?[：:=为是,，、;\s-]*$/i.test(prefix);
 }
 
 function extractDeadLoadIntensity(message: string): number | undefined {
@@ -92,7 +92,7 @@ function extractDeadLoadIntensity(message: string): number | undefined {
 function extractAreaLoadIntensity(message: string): number | undefined {
   const pattern = new RegExp(`([0-9]+(?:\\.[0-9]+)?)\\s*${AREA_LOAD_UNIT_PATTERN}`, 'ig');
   for (const match of message.matchAll(pattern)) {
-    if (hasLiveLoadContext(message, match.index ?? 0)) continue;
+    if (hasAdjacentLiveLoadContext(message, match.index ?? 0)) continue;
     const value = normalizeNumber(match[1]);
     if (value !== undefined && value > 0) return value;
   }

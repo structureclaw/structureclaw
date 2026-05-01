@@ -308,6 +308,13 @@ describe('normalizeFloorLoads', () => {
     ]);
   });
 
+  it('should not infer missing stories when explicit stories are mixed in', () => {
+    const input = [{ story: 2, verticalKN: 20 }, { verticalKN: 30 }];
+    expect(normalizeFloorLoads(input)).toEqual([
+      { story: 2, verticalKN: 20, liveLoadKN: undefined, lateralXKN: undefined, lateralYKN: undefined },
+    ]);
+  });
+
   it('should reject non-object items', () => {
     const input = [42, 'hello', null, true];
     expect(normalizeFloorLoads(input)).toBeUndefined();

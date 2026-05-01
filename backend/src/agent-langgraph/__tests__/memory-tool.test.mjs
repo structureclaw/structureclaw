@@ -68,12 +68,38 @@ describe("memory tool conversation scope", () => {
     expect(storeResult.errorCode).toBe("DRAFT_PARAMETERS_BELONG_IN_SESSION_STATE");
   });
 
+  test("rejects draft parameter keys with word separators", async () => {
+    const { createMemoryTool } = await import("../../../dist/agent-langgraph/memory-tool.js");
+    const tool = createMemoryTool();
+
+    const storeRaw = await tool.invoke(
+      { action: "store", key: "floor_loads", value: { dead: 4 } },
+      { configurable: { thread_id: "memory-tool-conv" } },
+    );
+    const storeResult = JSON.parse(storeRaw);
+    expect(storeResult.success).toBe(false);
+    expect(storeResult.errorCode).toBe("DRAFT_PARAMETERS_BELONG_IN_SESSION_STATE");
+  });
+
   test("rejects draft-shaped memory values even with a generic key", async () => {
     const { createMemoryTool } = await import("../../../dist/agent-langgraph/memory-tool.js");
     const tool = createMemoryTool();
 
     const storeRaw = await tool.invoke(
       { action: "store", key: "current.values", value: { storyCount: 2 } },
+      { configurable: { thread_id: "memory-tool-conv" } },
+    );
+    const storeResult = JSON.parse(storeRaw);
+    expect(storeResult.success).toBe(false);
+    expect(storeResult.errorCode).toBe("DRAFT_PARAMETERS_BELONG_IN_SESSION_STATE");
+  });
+
+  test("rejects namespaced draft keys inside memory values", async () => {
+    const { createMemoryTool } = await import("../../../dist/agent-langgraph/memory-tool.js");
+    const tool = createMemoryTool();
+
+    const storeRaw = await tool.invoke(
+      { action: "store", key: "current.values", value: { "settings.floor_loads": [{ verticalKN: 432 }] } },
       { configurable: { thread_id: "memory-tool-conv" } },
     );
     const storeResult = JSON.parse(storeRaw);

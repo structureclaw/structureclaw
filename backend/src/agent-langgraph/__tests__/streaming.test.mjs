@@ -51,4 +51,48 @@ describe('LangGraph streaming adapter', () => {
       }),
     ]));
   });
+
+  test('does not emit summaries for generic tool failure messages', async () => {
+    const { langGraphEventToChunks } = await import('../../../dist/agent-langgraph/streaming.js');
+    const chunks = langGraphEventToChunks({
+      tools: {
+        messages: [
+          new ToolMessage({
+            name: 'run_analysis',
+            tool_call_id: 'call-analysis',
+            content: JSON.stringify({
+              success: false,
+              message: 'OpenSees failed while reading C:\\\\tmp\\\\internal\\\\model.tcl',
+            }),
+          }),
+        ],
+      },
+    }, 'updates');
+
+    expect(chunks.some((chunk) => chunk.type === 'summary_replace')).toBe(false);
+  });
+
+  test('sanitizes and truncates user-actionable tool blocker summaries', async () => {
+    const { langGraphEventToChunks } = await import('../../../dist/agent-langgraph/streaming.js');
+    const chunks = langGraphEventToChunks({
+      tools: {
+        messages: [
+          new ToolMessage({
+            name: 'memory',
+            tool_call_id: 'call-memory',
+            content: JSON.stringify({
+              success: false,
+              message: `Draft params at C:\\\\tmp\\\\internal\\\\draft.json cannot be stored. ${'x'.repeat(300)}`,
+            }),
+          }),
+        ],
+      },
+    }, 'updates');
+
+    const summary = chunks.find((chunk) => chunk.type === 'summary_replace');
+    expect(summary).toBeDefined();
+    expect(summary.summaryText).toContain('[path]');
+    expect(summary.summaryText).not.toContain('C:\\\\tmp');
+    expect(summary.summaryText.length).toBeLessThanOrEqual(240);
+  });
 });
