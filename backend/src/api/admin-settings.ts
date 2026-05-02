@@ -780,19 +780,6 @@ function resolveYjkInstallRoot(input: SettingsFileYjk | undefined, current: Sett
   return detected;
 }
 
-function applyYjkRuntimeConfig(yjk: SettingsFileYjk): void {
-  config.yjkInstallRoot = yjk.installRoot ?? '';
-  config.yjkExePath = yjk.exePath ?? '';
-  config.yjkPythonBin = yjk.pythonBin ?? '';
-  config.yjkWorkDir = yjk.workDir ?? config.yjkWorkDir;
-  config.yjkVersion = yjk.version ?? '8.0.0';
-  config.yjkTimeoutS = yjk.timeoutS ?? 600;
-  config.yjkInvisible = yjk.invisible ?? false;
-  config.yjkLauncherPrewarm = yjk.launcherPrewarm ?? 'auto';
-  config.yjkLauncherPrewarmS = yjk.launcherPrewarmS ?? 18;
-  config.yjkDirectReadyTimeoutS = yjk.directReadyTimeoutS ?? 12;
-}
-
 function autoConfigureYjk(input: YjkAutoConfigureInput): { settings: SettingsResponse; steps: YjkAutoConfigureStep[] } {
   const current = readSettingsFile() ?? {};
   const requestedYjk = input.yjk;
@@ -857,7 +844,6 @@ function autoConfigureYjk(input: YjkAutoConfigureInput): { settings: SettingsRes
   });
 
   writeSettingsFile({ ...current, yjk });
-  applyYjkRuntimeConfig(yjk);
   steps.push({ name: 'Save StructureClaw YJK settings', status: 'applied' });
 
   return { settings: buildSettingsResponse(), steps };

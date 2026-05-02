@@ -106,6 +106,87 @@ describe('backend runtime llm settings', () => {
     }
   });
 
+  test('hot-reloads python worker execution settings without restart', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'structureclaw-runtime-settings-'));
+    const previous = {
+      SCLAW_DATA_DIR: process.env.SCLAW_DATA_DIR,
+    };
+
+    process.env.SCLAW_DATA_DIR = tempDir;
+
+    const settingsPath = path.join(tempDir, 'settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      analysis: {
+        pythonBin: 'python-before',
+        pythonTimeoutMs: 111,
+      },
+      agent: {
+        allowShell: true,
+        allowedShellCommands: 'node',
+      },
+      pkpm: {
+        cyclePath: 'C:/PKPM/JWSCYCLE.exe',
+        workDir: 'C:/structureclaw/pkpm-before',
+      },
+      yjk: {
+        installRoot: 'C:/YJKS/YJKS_8_0_0',
+        timeoutS: 11,
+        invisible: true,
+      },
+    }));
+
+    try {
+      const { settingsFile, config } = await getModules();
+      expect(config.config.analysisPythonBin).toBe('python-before');
+      expect(config.config.analysisPythonTimeoutMs).toBe(111);
+      expect(config.config.agentAllowShell).toBe(true);
+      expect(config.config.agentAllowedShells).toBe('node');
+      expect(config.config.pkpmCyclePath).toBe('C:/PKPM/JWSCYCLE.exe');
+      expect(config.config.pkpmWorkDir).toBe('C:/structureclaw/pkpm-before');
+      expect(config.config.yjkInstallRoot).toBe('C:/YJKS/YJKS_8_0_0');
+      expect(config.config.yjkTimeoutS).toBe(11);
+      expect(config.config.yjkInvisible).toBe(true);
+
+      settingsFile.writeSettingsFile({
+        analysis: {
+          pythonBin: 'python-after',
+          pythonTimeoutMs: 222,
+        },
+        agent: {
+          allowShell: false,
+          allowedShellCommands: 'npm',
+        },
+        pkpm: {
+          cyclePath: '',
+          workDir: 'C:/structureclaw/pkpm-after',
+        },
+        yjk: {
+          installRoot: '',
+          timeoutS: 22,
+          invisible: false,
+        },
+      });
+
+      expect(config.config.analysisPythonBin).toBe('python-after');
+      expect(config.config.analysisPythonTimeoutMs).toBe(222);
+      expect(config.config.agentAllowShell).toBe(false);
+      expect(config.config.agentAllowedShells).toBe('npm');
+      expect(config.config.pkpmCyclePath).toBe('');
+      expect(config.config.pkpmWorkDir).toBe('C:/structureclaw/pkpm-after');
+      expect(config.config.yjkInstallRoot).toBe('');
+      expect(config.config.yjkTimeoutS).toBe(22);
+      expect(config.config.yjkInvisible).toBe(false);
+
+      const stored = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
+      expect(stored.pkpm).not.toHaveProperty('cyclePath');
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   test('keeps the previous runtime api key when apiKeyMode is keep', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'structureclaw-llm-settings-'));
     const previous = {
