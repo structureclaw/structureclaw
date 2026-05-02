@@ -200,6 +200,7 @@ export function StructuralVisualizationModal({
               <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('visualizationUnits')}</div>
               <div className="mt-2 space-y-1.5 text-sm text-muted-foreground">
                 <div>{t('visualizationUnitSystem')}: {snapshot.unitSystem || 'SI'}</div>
+                <div>{t('visualizationLength')}: {snapshot.lengthUnit || snapshot.nodeLabelUnit || '-'}</div>
                 <div>{t('visualizationDisplacement')}: {snapshot.displacementUnit || '-'}</div>
                 <div>{t('visualizationReactions')}: {snapshot.resultUnit || '-'}</div>
                 <div>{t('visualizationForceMoment')}: {snapshot.momentUnit || '-'}</div>

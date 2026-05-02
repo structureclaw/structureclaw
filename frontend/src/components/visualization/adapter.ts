@@ -448,42 +448,29 @@ function deriveUnits(model: Record<string, unknown> | null, analysis: Record<str
     || asNonEmptyString(analysisMeta?.unit_system)
     || 'SI'
   const unitSystem = unitSystemRaw.toUpperCase()
+  const normalizedUnitSystem = unitSystem.replace(/[^A-Z0-9]/g, '')
+  const unitTokens = unitSystem.split(/[^A-Z0-9]+/).filter(Boolean)
+  const usesMillimeterLength = normalizedUnitSystem.includes('MM')
+  const usesKilonewton = normalizedUnitSystem.includes('KN')
+  const usesNewton = !usesKilonewton && (
+    unitTokens.includes('N')
+    || normalizedUnitSystem === 'N'
+    || normalizedUnitSystem.startsWith('NM')
+  )
+  const lengthUnit = usesMillimeterLength ? 'mm' : 'm'
+  const forceUnit = usesNewton ? 'N' : 'kN'
+  const displacementDisplayFactor = lengthUnit === 'm' ? 1000 : 1
 
-  if (unitSystem.includes('MM') || unitSystem.includes('NMM') || unitSystem.includes('MM-N')) {
-    return {
-      unitSystem,
-      lengthUnit: 'mm',
-      displacementUnit: 'mm',
-      displacementDisplayFactor: 1,
-      forceUnit: 'N',
-      momentUnit: 'N.mm',
-      nodalLoadUnit: 'N',
-      distributedLoadUnit: 'N/mm',
-    }
-  }
-
-  if (unitSystem.includes('KN') && unitSystem.includes('M')) {
-    return {
-      unitSystem,
-      lengthUnit: 'm',
-      displacementUnit: 'mm',
-      displacementDisplayFactor: 1000,
-      forceUnit: 'kN',
-      momentUnit: 'kN.m',
-      nodalLoadUnit: 'kN',
-      distributedLoadUnit: 'kN/m',
-    }
-  }
-
+  // StructureClaw's SI convention is coordinates in m and forces in kN.
   return {
     unitSystem,
-    lengthUnit: 'm',
+    lengthUnit,
     displacementUnit: 'mm',
-    displacementDisplayFactor: 1000,
-    forceUnit: 'N',
-    momentUnit: 'N.m',
-    nodalLoadUnit: 'N',
-    distributedLoadUnit: 'N/m',
+    displacementDisplayFactor,
+    forceUnit,
+    momentUnit: `${forceUnit}.${lengthUnit}`,
+    nodalLoadUnit: forceUnit,
+    distributedLoadUnit: `${forceUnit}/${lengthUnit}`,
   }
 }
 

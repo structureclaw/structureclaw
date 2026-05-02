@@ -2,6 +2,50 @@ import { describe, expect, it } from 'vitest'
 import { buildVisualizationSnapshot } from '@/components/visualization/adapter'
 
 describe('visualization-adapter', () => {
+  function buildUnitSnapshot(unitSystem?: string) {
+    return buildVisualizationSnapshot({
+      title: 'Unit Model',
+      mode: 'model-only',
+      model: {
+        schema_version: '1.0.0',
+        ...(unitSystem ? { unit_system: unitSystem } : {}),
+        nodes: [
+          { id: '1', x: 0, y: 0, z: 0 },
+          { id: '2', x: 6, y: 0, z: 0 },
+        ],
+        elements: [{ id: 'E1', type: 'beam', nodes: ['1', '2'], material: 'M1', section: 'S1' }],
+      },
+    })
+  }
+
+  it('uses StructureClaw SI units for visualization defaults', () => {
+    const snapshot = buildUnitSnapshot()
+
+    expect(snapshot).not.toBeNull()
+    expect(snapshot).toMatchObject({
+      unitSystem: 'SI',
+      lengthUnit: 'm',
+      nodeLabelUnit: 'm',
+      displacementUnit: 'mm',
+      displacementDisplayFactor: 1000,
+      resultUnit: 'kN',
+      momentUnit: 'kN.m',
+      nodalLoadUnit: 'kN',
+      distributedLoadUnit: 'kN/m',
+    })
+  })
+
+  it.each([
+    ['N-mm', { lengthUnit: 'mm', displacementDisplayFactor: 1, resultUnit: 'N', momentUnit: 'N.mm', distributedLoadUnit: 'N/mm' }],
+    ['kN-mm', { lengthUnit: 'mm', displacementDisplayFactor: 1, resultUnit: 'kN', momentUnit: 'kN.mm', distributedLoadUnit: 'kN/mm' }],
+    ['N-m', { lengthUnit: 'm', displacementDisplayFactor: 1000, resultUnit: 'N', momentUnit: 'N.m', distributedLoadUnit: 'N/m' }],
+  ])('honors explicit %s visualization unit systems', (unitSystem, expected) => {
+    const snapshot = buildUnitSnapshot(unitSystem)
+
+    expect(snapshot).not.toBeNull()
+    expect(snapshot).toMatchObject(expected)
+  })
+
   it('maps a canonical 2d frame payload into an xz snapshot without axis swapping', () => {
     const snapshot = buildVisualizationSnapshot({
       title: '2D Frame',
