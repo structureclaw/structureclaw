@@ -35,9 +35,6 @@ function resolveReportsDir(rawValue: string | undefined): string {
   return path.resolve(__dirname, '../../../', trimmed);
 }
 
-const llmApiKey = fileSettings?.llm?.apiKey ?? '';
-const llmModel = fileSettings?.llm?.model || process.env.LLM_MODEL || 'gpt-4-turbo-preview';
-const llmBaseUrl = fileSettings?.llm?.baseUrl || process.env.LLM_BASE_URL || 'https://api.openai.com/v1';
 const frontendPort = fileSettings?.server?.frontendPort?.toString() ?? (process.env.FRONTEND_PORT || '31416');
 const backendPort = fileSettings?.server?.port ?? (parseInt(process.env.PORT || '', 10) || 31415);
 const analysisEngineManifestPath = fileSettings?.analysis?.engineManifestPath
@@ -60,6 +57,17 @@ const corsOrigins = (fileSettings?.cors?.origins ?? defaultCorsOrigins.join(',')
 
 export { runtimeBaseDir };
 
+const LLM_DEFAULTS = {
+  baseUrl: 'https://api.openai.com/v1',
+  model: 'gpt-4-turbo-preview',
+  timeoutMs: 180000,
+  maxRetries: 0,
+} as const;
+
+function getCurrentLlmSettings() {
+  return readSettingsFile()?.llm;
+}
+
 export const config = {
   // 服务配置
   port: typeof backendPort === 'number' ? backendPort : parseInt(String(backendPort), 10),
@@ -72,11 +80,21 @@ export const config = {
   databaseUrl: process.env.DATABASE_URL || fileSettings?.database?.url || defaultSqliteDatabaseUrl,
 
   // AI 配置
-  llmApiKey,
-  llmModel,
-  llmBaseUrl,
-  llmTimeoutMs: fileSettings?.llm?.timeoutMs ?? 180000,
-  llmMaxRetries: fileSettings?.llm?.maxRetries ?? 0,
+  get llmApiKey() {
+    return getCurrentLlmSettings()?.apiKey ?? '';
+  },
+  get llmModel() {
+    return getCurrentLlmSettings()?.model || process.env.LLM_MODEL || LLM_DEFAULTS.model;
+  },
+  get llmBaseUrl() {
+    return getCurrentLlmSettings()?.baseUrl || process.env.LLM_BASE_URL || LLM_DEFAULTS.baseUrl;
+  },
+  get llmTimeoutMs() {
+    return getCurrentLlmSettings()?.timeoutMs ?? LLM_DEFAULTS.timeoutMs;
+  },
+  get llmMaxRetries() {
+    return getCurrentLlmSettings()?.maxRetries ?? LLM_DEFAULTS.maxRetries;
+  },
 
   // 分析执行配置
   analysisPythonBin: fileSettings?.analysis?.pythonBin ?? defaultAnalysisPythonBin,

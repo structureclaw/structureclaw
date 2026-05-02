@@ -17,24 +17,16 @@ function cleanupIsolatedDataDir(dir) {
 }
 
 async function importConfigFresh(dataDir) {
-  const prev = process.env.SCLAW_DATA_DIR;
   process.env.SCLAW_DATA_DIR = dataDir;
-  try {
-    // Bust the module cache with a unique query string
-    return await import(`${configModuleUrl}?ts=${Date.now()}-${Math.random()}`);
-  } finally {
-    if (prev === undefined) {
-      delete process.env.SCLAW_DATA_DIR;
-    } else {
-      process.env.SCLAW_DATA_DIR = prev;
-    }
-  }
+  // Bust the module cache with a unique query string
+  return import(`${configModuleUrl}?ts=${Date.now()}-${Math.random()}`);
 }
 
 describe('backend llm config', () => {
   test('uses settings.json overrides when present, env vars as fallback, hardcoded defaults last', async () => {
     const dataDir = createIsolatedDataDir();
     const previous = {
+      SCLAW_DATA_DIR: process.env.SCLAW_DATA_DIR,
       LLM_API_KEY: process.env.LLM_API_KEY,
       LLM_MODEL: process.env.LLM_MODEL,
       LLM_BASE_URL: process.env.LLM_BASE_URL,
@@ -72,6 +64,7 @@ describe('backend llm config', () => {
     // This test confirms the config module still exports the expected shape.
     const dataDir = createIsolatedDataDir();
     const previous = {
+      SCLAW_DATA_DIR: process.env.SCLAW_DATA_DIR,
       LLM_API_KEY: process.env.LLM_API_KEY,
       LLM_MODEL: process.env.LLM_MODEL,
       LLM_BASE_URL: process.env.LLM_BASE_URL,

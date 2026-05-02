@@ -53,6 +53,59 @@ describe('backend runtime llm settings', () => {
     }
   });
 
+  test('hot-reloads direct settings.json changes without module reload', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'structureclaw-llm-settings-'));
+    const previous = {
+      SCLAW_DATA_DIR: process.env.SCLAW_DATA_DIR,
+      LLM_MODEL: process.env.LLM_MODEL,
+      LLM_BASE_URL: process.env.LLM_BASE_URL,
+    };
+
+    delete process.env.LLM_MODEL;
+    delete process.env.LLM_BASE_URL;
+    process.env.SCLAW_DATA_DIR = tempDir;
+
+    const settingsPath = path.join(tempDir, 'settings.json');
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      llm: {
+        apiKey: 'runtime-secret-before',
+        model: 'runtime-model-before',
+        baseUrl: 'https://before.example.com/v1',
+      },
+    }));
+
+    try {
+      const { llmRuntime, config } = await getModules();
+      expect(llmRuntime.getEffectiveLlmSettings()).toMatchObject({
+        llmApiKey: 'runtime-secret-before',
+        llmModel: 'runtime-model-before',
+        llmBaseUrl: 'https://before.example.com/v1',
+      });
+      expect(config.config.llmModel).toBe('runtime-model-before');
+
+      fs.writeFileSync(settingsPath, JSON.stringify({
+        llm: {
+          apiKey: 'runtime-secret-after-hot-reload',
+          model: 'runtime-model-after-hot-reload',
+          baseUrl: 'https://after-hot-reload.example.com/v1',
+        },
+      }));
+
+      expect(llmRuntime.getEffectiveLlmSettings()).toMatchObject({
+        llmApiKey: 'runtime-secret-after-hot-reload',
+        llmModel: 'runtime-model-after-hot-reload',
+        llmBaseUrl: 'https://after-hot-reload.example.com/v1',
+      });
+      expect(config.config.llmModel).toBe('runtime-model-after-hot-reload');
+      expect(config.config.llmBaseUrl).toBe('https://after-hot-reload.example.com/v1');
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   test('keeps the previous runtime api key when apiKeyMode is keep', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'structureclaw-llm-settings-'));
     const previous = {

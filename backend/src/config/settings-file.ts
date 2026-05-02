@@ -344,10 +344,34 @@ function normalizeSettingsFile(raw: unknown): SettingsFile | null {
 
 let cachedSettings: SettingsFile | null | undefined;
 let cachedSettingsPath: string | undefined;
+let cachedSettingsFingerprint: { mtimeMs: number; size: number } | null | undefined;
 
-function setCache(filePath: string, settings: SettingsFile | null): void {
+function getSettingsFileFingerprint(filePath: string): { mtimeMs: number; size: number } | null {
+  try {
+    const stat = fs.statSync(filePath);
+    return { mtimeMs: stat.mtimeMs, size: stat.size };
+  } catch {
+    return null;
+  }
+}
+
+function isSameFingerprint(
+  left: { mtimeMs: number; size: number } | null | undefined,
+  right: { mtimeMs: number; size: number } | null,
+): boolean {
+  if (left === undefined) return false;
+  if (left === null || right === null) return left === right;
+  return left.mtimeMs === right.mtimeMs && left.size === right.size;
+}
+
+function setCache(
+  filePath: string,
+  settings: SettingsFile | null,
+  fingerprint: { mtimeMs: number; size: number } | null = getSettingsFileFingerprint(filePath),
+): void {
   cachedSettingsPath = filePath;
   cachedSettings = settings;
+  cachedSettingsFingerprint = fingerprint;
 }
 
 function readSettingsFromDisk(): SettingsFile | null {
@@ -363,11 +387,16 @@ function readSettingsFromDisk(): SettingsFile | null {
 
 export function readSettingsFile(): SettingsFile | null {
   const filePath = getSettingsFilePath();
-  if (cachedSettingsPath === filePath && cachedSettings !== undefined) {
+  const currentFingerprint = getSettingsFileFingerprint(filePath);
+  if (
+    cachedSettingsPath === filePath
+    && cachedSettings !== undefined
+    && isSameFingerprint(cachedSettingsFingerprint, currentFingerprint)
+  ) {
     return cachedSettings;
   }
   const settings = readSettingsFromDisk();
-  setCache(filePath, settings);
+  setCache(filePath, settings, currentFingerprint);
   return settings;
 }
 
