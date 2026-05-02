@@ -16,9 +16,10 @@ function cleanupIsolatedDataDir(dir) {
   fs.rmSync(dir, { recursive: true, force: true });
 }
 
-async function importConfigFresh(dataDir) {
+async function importConfigWithDataDirSet(dataDir) {
   process.env.SCLAW_DATA_DIR = dataDir;
   // Bust the module cache with a unique query string
+  // Keep SCLAW_DATA_DIR set while callers read dynamic config getters.
   return import(`${configModuleUrl}?ts=${Date.now()}-${Math.random()}`);
 }
 
@@ -38,7 +39,7 @@ describe('backend llm config', () => {
     process.env.LLM_BASE_URL = '';
 
     try {
-      const { config } = await importConfigFresh(dataDir);
+      const { config } = await importConfigWithDataDirSet(dataDir);
       // Without settings.json overrides, hardcoded defaults apply (empty env vars are falsy)
       expect(config.llmApiKey).toBe('');
       expect(config.llmModel).toBe('gpt-4-turbo-preview');
@@ -75,7 +76,7 @@ describe('backend llm config', () => {
     process.env.LLM_BASE_URL = '';
 
     try {
-      const { config } = await importConfigFresh(dataDir);
+      const { config } = await importConfigWithDataDirSet(dataDir);
       expect(config).toHaveProperty('llmApiKey');
       expect(config).toHaveProperty('llmModel');
       expect(config).toHaveProperty('llmBaseUrl');

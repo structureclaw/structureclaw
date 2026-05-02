@@ -106,6 +106,63 @@ describe('backend runtime llm settings', () => {
     }
   });
 
+  test('hot-reloads same-size settings.json rewrites with unchanged mtime', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'structureclaw-llm-settings-'));
+    const previous = {
+      SCLAW_DATA_DIR: process.env.SCLAW_DATA_DIR,
+      LLM_MODEL: process.env.LLM_MODEL,
+      LLM_BASE_URL: process.env.LLM_BASE_URL,
+    };
+
+    delete process.env.LLM_MODEL;
+    delete process.env.LLM_BASE_URL;
+    process.env.SCLAW_DATA_DIR = tempDir;
+
+    const settingsPath = path.join(tempDir, 'settings.json');
+    const fixedTime = new Date('2026-01-01T00:00:00.000Z');
+    const beforeRaw = JSON.stringify({
+      llm: {
+        apiKey: 'runtime-secret-aa',
+        model: 'same-size-model-a',
+        baseUrl: 'https://a.example.com/v1',
+      },
+    });
+    const afterRaw = JSON.stringify({
+      llm: {
+        apiKey: 'runtime-secret-bb',
+        model: 'same-size-model-b',
+        baseUrl: 'https://b.example.com/v1',
+      },
+    });
+    expect(Buffer.byteLength(afterRaw)).toBe(Buffer.byteLength(beforeRaw));
+
+    fs.writeFileSync(settingsPath, beforeRaw);
+    fs.utimesSync(settingsPath, fixedTime, fixedTime);
+
+    try {
+      const { llmRuntime } = await getModules();
+      expect(llmRuntime.getEffectiveLlmSettings()).toMatchObject({
+        llmApiKey: 'runtime-secret-aa',
+        llmModel: 'same-size-model-a',
+        llmBaseUrl: 'https://a.example.com/v1',
+      });
+
+      fs.writeFileSync(settingsPath, afterRaw);
+      fs.utimesSync(settingsPath, fixedTime, fixedTime);
+
+      expect(llmRuntime.getEffectiveLlmSettings()).toMatchObject({
+        llmApiKey: 'runtime-secret-bb',
+        llmModel: 'same-size-model-b',
+        llmBaseUrl: 'https://b.example.com/v1',
+      });
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
+
   test('hot-reloads python worker execution settings without restart', async () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'structureclaw-runtime-settings-'));
     const previous = {

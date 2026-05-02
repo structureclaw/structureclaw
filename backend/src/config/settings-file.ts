@@ -4,6 +4,7 @@
  * All fields are optional; missing values fall back to hardcoded defaults.
  * Extends the same cache/read/write pattern as llm-runtime.ts.
  */
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { runtimeBaseDir } from './index.js';
@@ -344,40 +345,58 @@ function normalizeSettingsFile(raw: unknown): SettingsFile | null {
 
 let cachedSettings: SettingsFile | null | undefined;
 let cachedSettingsPath: string | undefined;
-let cachedSettingsFingerprint: { mtimeMs: number; size: number } | null | undefined;
+type SettingsFileFingerprint = {
+  mtimeMs: number;
+  ctimeMs: number;
+  size: number;
+  sha256: string;
+};
 
-function getSettingsFileFingerprint(filePath: string): { mtimeMs: number; size: number } | null {
+let cachedSettingsFingerprint: SettingsFileFingerprint | null | undefined;
+
+function getSettingsFileFingerprint(filePath: string): SettingsFileFingerprint | null {
+  const stat = fs.statSync(filePath, { throwIfNoEntry: false });
+  if (!stat?.isFile()) {
+    return null;
+  }
+
   try {
-    const stat = fs.statSync(filePath);
-    return { mtimeMs: stat.mtimeMs, size: stat.size };
+    const content = fs.readFileSync(filePath);
+    return {
+      mtimeMs: stat.mtimeMs,
+      ctimeMs: stat.ctimeMs,
+      size: stat.size,
+      sha256: crypto.createHash('sha256').update(content).digest('hex'),
+    };
   } catch {
     return null;
   }
 }
 
 function isSameFingerprint(
-  left: { mtimeMs: number; size: number } | null | undefined,
-  right: { mtimeMs: number; size: number } | null,
+  left: SettingsFileFingerprint | null | undefined,
+  right: SettingsFileFingerprint | null,
 ): boolean {
   if (left === undefined) return false;
   if (left === null || right === null) return left === right;
-  return left.mtimeMs === right.mtimeMs && left.size === right.size;
+  return left.mtimeMs === right.mtimeMs
+    && left.ctimeMs === right.ctimeMs
+    && left.size === right.size
+    && left.sha256 === right.sha256;
 }
 
 function setCache(
   filePath: string,
   settings: SettingsFile | null,
-  fingerprint: { mtimeMs: number; size: number } | null = getSettingsFileFingerprint(filePath),
+  fingerprint: SettingsFileFingerprint | null = getSettingsFileFingerprint(filePath),
 ): void {
   cachedSettingsPath = filePath;
   cachedSettings = settings;
   cachedSettingsFingerprint = fingerprint;
 }
 
-function readSettingsFromDisk(): SettingsFile | null {
-  const filePath = getSettingsFilePath();
+function readSettingsFromDisk(filePath: string): SettingsFile | null {
   try {
-    if (!fs.existsSync(filePath)) return null;
     const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
     return normalizeSettingsFile(raw);
   } catch {
@@ -395,7 +414,7 @@ export function readSettingsFile(): SettingsFile | null {
   ) {
     return cachedSettings;
   }
-  const settings = readSettingsFromDisk();
+  const settings = readSettingsFromDisk(filePath);
   setCache(filePath, settings, currentFingerprint);
   return settings;
 }
