@@ -133,6 +133,54 @@ describe("analysis tool summary", () => {
     expect(JSON.stringify(summary)).not.toContain("displacements");
     expect(JSON.stringify(summary)).not.toContain("forces");
   });
+
+  test("summarizes successful analysis artifacts returned at the top level", async () => {
+    const { buildAnalysisToolSummary } = await import("../../../dist/agent-langgraph/tools.js");
+
+    const summary = buildAnalysisToolSummary({
+      skillId: "opensees-static",
+      result: {
+        success: true,
+        analysisMode: "opensees_2d_frame",
+        summary: {
+          nodeCount: 3,
+          elementCount: 2,
+          reactionNodeCount: 2,
+        },
+        envelope: {
+          maxAbsDisplacement: 0.01,
+          maxAbsMoment: 5,
+          controlNodeDisplacement: "N2",
+          controlElementMoment: "E1",
+        },
+        caseResults: {
+          LC1: {},
+        },
+        warnings: ["top-level warning"],
+      },
+    });
+
+    expect(summary).toMatchObject({
+      success: true,
+      skillId: "opensees-static",
+      analysisMode: "opensees_2d_frame",
+      counts: {
+        nodeCount: 3,
+        elementCount: 2,
+        reactionNodeCount: 2,
+        loadCaseCount: 1,
+      },
+      keyMetrics: {
+        maxAbsDisplacement: 0.01,
+        maxAbsMoment: 5,
+      },
+      controlling: {
+        controlNodeDisplacement: "N2",
+        controlElementMoment: "E1",
+      },
+      warnings: ["top-level warning"],
+    });
+  });
 });
 
 describe("build model tool summary", () => {
@@ -152,5 +200,21 @@ describe("build model tool summary", () => {
       elementCount: 0,
     }));
     expect(summary.message).toContain("模型构建结果为空");
+  });
+
+  test("clears stale model and downstream artifacts when a rebuild returns an empty model", async () => {
+    const { buildModelToolStateUpdate } = await import("../../../dist/agent-langgraph/tools.js");
+
+    const update = buildModelToolStateUpdate(
+      { schema_version: "1.0.0", nodes: [], elements: [] },
+      { success: false, errorCode: "EMPTY_MODEL" },
+    );
+
+    expect(update).toEqual({
+      model: null,
+      analysisResult: null,
+      codeCheckResult: null,
+      report: null,
+    });
   });
 });

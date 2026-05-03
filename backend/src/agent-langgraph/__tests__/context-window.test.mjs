@@ -37,8 +37,9 @@ describe("agent context window compaction", () => {
     expect(result.compacted).toBe(true);
     expect(result.compactedMessageCount).toBe(2);
     expect(result.messages).toHaveLength(2);
-    expect(result.messages[0]._getType()).toBe("system");
+    expect(result.messages[0]._getType()).toBe("ai");
     expect(String(result.messages[0].content)).toContain("automatically compacted");
+    expect(String(result.messages[0].content)).toContain("quoted historical data");
     expect(result.messages[1].content).toBe("current request");
   });
 
@@ -76,8 +77,9 @@ describe("agent context window compaction", () => {
     });
 
     expect(result.compacted).toBe(true);
-    expect(result.messages[0]._getType()).toBe("system");
+    expect(result.messages[0]._getType()).toBe("ai");
     expect(String(result.messages[0].content)).toContain("grep_files");
+    expect(String(result.messages[0].content)).toContain("quoted historical data");
     expect(result.messages.slice(1).map((message) => message._getType())).toEqual(["human", "ai", "tool"]);
     expect(result.messages[2].content).toBe("");
     expect(result.messages[3].content).toBe(JSON.stringify({ success: true }));

@@ -245,13 +245,17 @@ function buildSuccessfulAnalysisDetails(data: Record<string, unknown>, result: R
   });
 }
 
+function getAnalysisPayload(result: Record<string, unknown>): Record<string, unknown> {
+  return isRecord(result.data) ? result.data : result;
+}
+
 export function buildAnalysisToolSummary(args: {
   result: unknown;
   skillId?: string;
 }): Record<string, unknown> {
   const result = isRecord(args.result) ? args.result : {};
   const meta = isRecord(result.meta) ? result.meta : {};
-  const data = isRecord(result.data) ? result.data : undefined;
+  const data = getAnalysisPayload(result);
   const status = typeof result.status === 'string' ? result.status : undefined;
   const success = result.success !== false && status !== 'error';
 
@@ -271,7 +275,7 @@ export function buildAnalysisToolSummary(args: {
     success: true,
     skillId: args.skillId,
     analysisMode: data?.analysisMode,
-    ...(data ? (buildSuccessfulAnalysisDetails(data, result) ?? {}) : {}),
+    ...(buildSuccessfulAnalysisDetails(data, result) ?? {}),
   };
 }
 
@@ -302,6 +306,21 @@ export function buildModelToolSummary(
     elementCount,
     schemaVersion,
   };
+}
+
+export function buildModelToolStateUpdate(
+  model: Record<string, unknown>,
+  summary: Record<string, unknown>,
+): Partial<AgentState> {
+  if (summary.success === false) {
+    return {
+      model: null,
+      analysisResult: null,
+      codeCheckResult: null,
+      report: null,
+    };
+  }
+  return { model };
 }
 
 // ---------------------------------------------------------------------------
@@ -529,7 +548,7 @@ export function createBuildModelTool(skillRuntime: AgentSkillRuntime) {
         toolCallId,
         'build_model',
         JSON.stringify(summary),
-        success ? { model } : undefined,
+        buildModelToolStateUpdate(model, summary),
       );
     },
     {
