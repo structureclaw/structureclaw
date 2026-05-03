@@ -115,6 +115,39 @@ function normalizeAnalysisErrorCode(...values: unknown[]): string {
   return 'ANALYSIS_EXECUTION_FAILED';
 }
 
+function optionalRecord(value: unknown): Record<string, unknown> | undefined {
+  return isRecord(value) ? value : undefined;
+}
+
+function countRecordEntries(value: unknown): number | undefined {
+  return isRecord(value) ? Object.keys(value).length : undefined;
+}
+
+function firstDefined<T>(...values: Array<T | undefined>): T | undefined {
+  return values.find((value) => value !== undefined);
+}
+
+function pickNumberLike(record: Record<string, unknown>, key: string): number | string | null | undefined {
+  const value = record[key];
+  if (value === null) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+  return undefined;
+}
+
+function pickStringLike(record: Record<string, unknown>, key: string): string | null | undefined {
+  const value = record[key];
+  if (value === null) return null;
+  if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return undefined;
+}
+
+function omitEmptyRecord(record: Record<string, unknown>): Record<string, unknown> | undefined {
+  const entries = Object.entries(record).filter(([, value]) => value !== undefined);
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
 function pickAnalysisDiagnostics(
   result: Record<string, unknown>,
   meta: Record<string, unknown>,
@@ -147,6 +180,71 @@ function pickAnalysisDiagnostics(
   return Object.keys(diagnostics).length > 0 ? diagnostics : undefined;
 }
 
+function buildSuccessfulAnalysisDetails(data: Record<string, unknown>, result: Record<string, unknown>) {
+  const summary = optionalRecord(data.summary);
+  const envelope = optionalRecord(data.envelope);
+  const caseResults = optionalRecord(data.caseResults);
+  const loadCases = optionalRecord(data.loadCases);
+  const combinations = optionalRecord(data.combinations);
+
+  const counts = omitEmptyRecord({
+    nodeCount: firstDefined(
+      summary ? pickNumberLike(summary, 'nodeCount') : undefined,
+      countRecordEntries(data.displacements),
+    ),
+    elementCount: firstDefined(
+      summary ? pickNumberLike(summary, 'elementCount') : undefined,
+      countRecordEntries(data.forces),
+    ),
+    reactionNodeCount: firstDefined(
+      summary ? pickNumberLike(summary, 'reactionNodeCount') : undefined,
+      countRecordEntries(data.reactions),
+    ),
+    loadCaseCount: firstDefined(
+      summary ? pickNumberLike(summary, 'loadCaseCount') : undefined,
+      countRecordEntries(caseResults),
+      countRecordEntries(loadCases),
+    ),
+    combinationCount: firstDefined(
+      summary ? pickNumberLike(summary, 'combinationCount') : undefined,
+      countRecordEntries(combinations),
+    ),
+  });
+
+  const keyMetrics = envelope ? omitEmptyRecord({
+    maxAbsDisplacement: pickNumberLike(envelope, 'maxAbsDisplacement'),
+    maxAbsAxialForce: pickNumberLike(envelope, 'maxAbsAxialForce'),
+    maxAbsShearForce: pickNumberLike(envelope, 'maxAbsShearForce'),
+    maxAbsMoment: pickNumberLike(envelope, 'maxAbsMoment'),
+    maxAbsReaction: pickNumberLike(envelope, 'maxAbsReaction'),
+  }) : undefined;
+
+  const controlling = envelope ? omitEmptyRecord({
+    controlNodeDisplacement: pickStringLike(envelope, 'controlNodeDisplacement'),
+    controlElementAxialForce: pickStringLike(envelope, 'controlElementAxialForce'),
+    controlElementShearForce: pickStringLike(envelope, 'controlElementShearForce'),
+    controlElementMoment: pickStringLike(envelope, 'controlElementMoment'),
+    controlNodeReaction: pickStringLike(envelope, 'controlNodeReaction'),
+  }) : undefined;
+
+  const rawWarnings = Array.isArray(data.warnings)
+    ? data.warnings
+    : Array.isArray(result.warnings)
+      ? result.warnings
+      : [];
+  const warnings = rawWarnings
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .slice(0, 5)
+    .map((value) => compactText(value, 500) ?? value);
+
+  return omitEmptyRecord({
+    counts,
+    keyMetrics,
+    controlling,
+    warnings: warnings.length > 0 ? warnings : undefined,
+  });
+}
+
 export function buildAnalysisToolSummary(args: {
   result: unknown;
   skillId?: string;
@@ -173,6 +271,7 @@ export function buildAnalysisToolSummary(args: {
     success: true,
     skillId: args.skillId,
     analysisMode: data?.analysisMode,
+    ...(data ? (buildSuccessfulAnalysisDetails(data, result) ?? {}) : {}),
   };
 }
 

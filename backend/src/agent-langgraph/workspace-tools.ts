@@ -11,6 +11,9 @@ const MAX_READ_BYTES = 2 * 1024 * 1024;
 const MAX_WRITE_BYTES = 2 * 1024 * 1024;
 const MAX_SEARCH_BYTES = 512 * 1024;
 const MAX_GREP_MATCHES = 1000;
+const MAX_GLOB_MATCHES = 5000;
+const MAX_COLLECTED_FILES = 5000;
+const MAX_SCANNED_ENTRIES = 50000;
 const ALLOWED_EXTENSIONS = new Set(['.txt', '.json', '.csv', '.md', '.py', '.tcl', '.log', '.yaml', '.yml', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.prisma']);
 
 function getWorkspaceRoot(config: LangGraphRunnableConfig): string {
@@ -54,22 +57,76 @@ function globToRegex(pattern: string): RegExp {
   return new RegExp(`^${expanded}$`, 'i');
 }
 
-async function collectFiles(root: string, dir: string, depth: number, pattern: RegExp, result: string[]): Promise<void> {
-  if (depth > 10) return;
+interface CollectFilesStats {
+  skippedDirs: number;
+  skippedEntries: number;
+  scannedEntries: number;
+  truncated: boolean;
+}
+
+interface CollectFilesOptions {
+  maxMatches: number;
+  maxScannedEntries: number;
+}
+
+function createCollectFilesStats(): CollectFilesStats {
+  return {
+    skippedDirs: 0,
+    skippedEntries: 0,
+    scannedEntries: 0,
+    truncated: false,
+  };
+}
+
+function isProbablyBinary(buffer: Buffer): boolean {
+  return buffer.includes(0);
+}
+
+async function collectFiles(
+  root: string,
+  dir: string,
+  depth: number,
+  pattern: RegExp,
+  result: string[],
+  stats: CollectFilesStats,
+  options: CollectFilesOptions,
+): Promise<void> {
+  if (stats.truncated) return;
+  if (depth > 10) {
+    stats.skippedDirs += 1;
+    return;
+  }
   let entries: Dirent[];
   try {
     entries = await fs.readdir(dir, { withFileTypes: true });
   } catch {
+    stats.skippedDirs += 1;
     return;
   }
   for (const entry of entries) {
+    if (stats.truncated) break;
     if (entry.name.startsWith('.') || SKIP_DIRS.has(entry.name)) continue;
+    stats.scannedEntries += 1;
+    if (stats.scannedEntries > options.maxScannedEntries) {
+      stats.truncated = true;
+      break;
+    }
+    if (entry.isSymbolicLink()) {
+      stats.skippedEntries += 1;
+      continue;
+    }
     const full = path.join(dir, entry.name);
     const rel = path.relative(root, full).replace(/\\/g, '/');
     if (entry.isDirectory()) {
-      await collectFiles(root, full, depth + 1, pattern, result);
-    } else if (pattern.test(rel)) {
+      await collectFiles(root, full, depth + 1, pattern, result, stats, options);
+    } else if (entry.isFile() && pattern.test(rel)) {
       result.push(rel);
+      if (result.length >= options.maxMatches) {
+        stats.truncated = true;
+        break;
+      }
+    } else if (!entry.isFile()) {
+      stats.skippedEntries += 1;
     }
   }
 }
@@ -83,11 +140,15 @@ export function createGlobFilesTool() {
     async (input: { pattern?: string; maxResults?: number; offset?: number; dirPath?: string }, config: LangGraphRunnableConfig) => {
       const root = getWorkspaceRoot(config);
       const searchRoot = input.dirPath ? safeResolve(root, input.dirPath) : root;
-      const maxResults = Math.min(input.maxResults ?? 100, 200);
+      const maxResults = Math.max(1, Math.min(input.maxResults ?? 100, 200));
       const offset = Math.max(input.offset ?? 0, 0);
       const regex = globToRegex(input.pattern ?? '*');
       const files: string[] = [];
-      await collectFiles(root, searchRoot, 0, regex, files);
+      const stats = createCollectFilesStats();
+      await collectFiles(root, searchRoot, 0, regex, files, stats, {
+        maxMatches: MAX_GLOB_MATCHES,
+        maxScannedEntries: MAX_SCANNED_ENTRIES,
+      });
       files.sort();
       const sliced = files.slice(offset, offset + maxResults);
       return JSON.stringify({
@@ -95,6 +156,10 @@ export function createGlobFilesTool() {
         shownCount: sliced.length,
         offset,
         nextOffset: offset + maxResults < files.length ? offset + maxResults : null,
+        truncated: stats.truncated,
+        skippedDirs: stats.skippedDirs,
+        skippedEntries: stats.skippedEntries,
+        scannedEntries: stats.scannedEntries,
         files: sliced,
       });
     },
@@ -172,10 +237,14 @@ export function createGrepFilesTool() {
       const root = getWorkspaceRoot(config);
       const regex = globToRegex(input.pattern ?? '**/*');
       const files: string[] = [];
-      await collectFiles(root, root, 0, regex, files);
+      const collectStats = createCollectFilesStats();
+      await collectFiles(root, root, 0, regex, files, collectStats, {
+        maxMatches: MAX_COLLECTED_FILES,
+        maxScannedEntries: MAX_SCANNED_ENTRIES,
+      });
       const matches: Array<{ path: string; line: number; preview: string }> = [];
       const offset = Math.max(input.offset ?? 0, 0);
-      const maxResults = Math.min(input.maxResults ?? 50, 100);
+      const maxResults = Math.max(1, Math.min(input.maxResults ?? 50, 100));
       const needle = input.query.toLowerCase();
       let skippedFiles = 0;
       for (const rel of files.sort()) {
@@ -187,18 +256,23 @@ export function createGrepFilesTool() {
         }
         let stat;
         try {
-          stat = await fs.stat(full);
+          stat = await fs.lstat(full);
         } catch {
           skippedFiles += 1;
           continue;
         }
-        if (!stat.isFile() || stat.size > MAX_SEARCH_BYTES) {
+        if (stat.isSymbolicLink() || !stat.isFile() || stat.size > MAX_SEARCH_BYTES) {
           skippedFiles += 1;
           continue;
         }
         let content: string;
         try {
-          content = await fs.readFile(full, 'utf-8');
+          const buffer = await fs.readFile(full);
+          if (isProbablyBinary(buffer)) {
+            skippedFiles += 1;
+            continue;
+          }
+          content = buffer.toString('utf-8');
         } catch {
           skippedFiles += 1;
           continue;
@@ -218,6 +292,10 @@ export function createGrepFilesTool() {
         offset,
         nextOffset: offset + maxResults < matches.length ? offset + maxResults : null,
         skippedFiles,
+        truncated: collectStats.truncated || matches.length >= MAX_GREP_MATCHES,
+        scannedEntries: collectStats.scannedEntries,
+        skippedDirs: collectStats.skippedDirs,
+        skippedEntries: collectStats.skippedEntries,
         matches: sliced,
       });
     },

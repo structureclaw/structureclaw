@@ -32,6 +32,7 @@ import type { AgentConfigurable } from './configurable.js';
 import { resolveActiveToolIds } from './tool-policy.js';
 import type { StructuredToolInterface } from '@langchain/core/tools';
 import { getLogger } from '../utils/agent-logger.js';
+import { compactMessagesForContext, estimateMessagesCharLength } from './context-window.js';
 
 function getAgentLogger(config: LangGraphRunnableConfig) {
   return getLogger(config.configurable as Partial<AgentConfigurable> | undefined);
@@ -191,9 +192,23 @@ function createCallModelNode(
     const configurableAny = config.configurable as Record<string, unknown>;
     configurableAny.agentState = state;
 
-    const allMessages = [...systemMessages, ...msgs];
+    const compaction = compactMessagesForContext({
+      messages: msgs,
+      locale: state.locale,
+      baseCharCount: estimateMessagesCharLength(systemMessages),
+    });
+    if (compaction.compacted) {
+      log.warn({
+        node: 'agent',
+        originalCharCount: compaction.originalCharCount,
+        compactedCharCount: compaction.compactedCharCount,
+        compactedMessageCount: compaction.compactedMessageCount,
+      }, 'agent context compacted before LLM invocation');
+    }
 
-    log.info({ node: 'agent', messageCount: allMessages.length, activeToolCount: activeTools.length, toolCallCount }, 'agent node invoking LLM');
+    const allMessages = [...systemMessages, ...compaction.messages];
+
+    log.info({ node: 'agent', messageCount: allMessages.length, activeToolCount: activeTools.length, toolCallCount, compacted: compaction.compacted }, 'agent node invoking LLM');
     const llmStart = Date.now();
     const response = await modelWithTools.invoke(allMessages, config);
     const llmDuration = Date.now() - llmStart;

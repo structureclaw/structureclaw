@@ -63,4 +63,74 @@ describe("analysis tool summary", () => {
     expect(summary.message).toContain("[truncated");
     expect(summary.diagnostics.stderrTail).toContain(tailMarker);
   });
+
+  test("summarizes successful analysis artifacts for model follow-up reasoning", async () => {
+    const { buildAnalysisToolSummary } = await import("../../../dist/agent-langgraph/tools.js");
+
+    const summary = buildAnalysisToolSummary({
+      skillId: "opensees-static",
+      result: {
+        success: true,
+        data: {
+          analysisMode: "opensees_2d_frame",
+          displacements: {
+            "1": { ux: 0, uy: 0, uz: 0 },
+            "2": { ux: 0.001, uy: 0, uz: -0.02 },
+          },
+          forces: {
+            E1: { axial: 10, n1: { V: 4, M: 8 } },
+          },
+          reactions: {
+            "1": { fx: -3, fz: 10 },
+          },
+          caseResults: {
+            D: {},
+            L: {},
+          },
+          envelope: {
+            maxAbsDisplacement: 0.02,
+            maxAbsAxialForce: 10,
+            maxAbsShearForce: 4,
+            maxAbsMoment: 8,
+            maxAbsReaction: 10,
+            controlNodeDisplacement: "2",
+            controlElementAxialForce: "E1",
+            controlElementShearForce: "E1",
+            controlElementMoment: "E1",
+            controlNodeReaction: "1",
+          },
+          warnings: ["small warning"],
+        },
+      },
+    });
+
+    expect(summary).toMatchObject({
+      success: true,
+      skillId: "opensees-static",
+      analysisMode: "opensees_2d_frame",
+      counts: {
+        nodeCount: 2,
+        elementCount: 1,
+        reactionNodeCount: 1,
+        loadCaseCount: 2,
+      },
+      keyMetrics: {
+        maxAbsDisplacement: 0.02,
+        maxAbsAxialForce: 10,
+        maxAbsShearForce: 4,
+        maxAbsMoment: 8,
+        maxAbsReaction: 10,
+      },
+      controlling: {
+        controlNodeDisplacement: "2",
+        controlElementAxialForce: "E1",
+        controlElementShearForce: "E1",
+        controlElementMoment: "E1",
+        controlNodeReaction: "1",
+      },
+      warnings: ["small warning"],
+    });
+    expect(JSON.stringify(summary)).not.toContain("displacements");
+    expect(JSON.stringify(summary)).not.toContain("forces");
+  });
 });
