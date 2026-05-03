@@ -1,8 +1,18 @@
 import { mapMissingFieldLabels } from '../../../agent-runtime/draft-guidance.js';
+import {
+  mergeDraftState,
+  normalizeInferredType,
+  normalizeLoadPosition,
+  normalizeLoadPositionM,
+  normalizeLoadType,
+  normalizeNumber,
+  normalizeSupportType,
+} from '../../../agent-runtime/fallback.js';
 import { buildStructuralTypeMatch } from '../../../agent-runtime/plugin-helpers.js';
 import type {
   DraftExtraction,
   DraftState,
+  InferredModelType,
   SkillHandler,
   SkillReportNarrativeInput,
 } from '../../../agent-runtime/types.js';
@@ -15,6 +25,117 @@ function hasStructuralIntent(text: string): boolean {
     return true;
   }
   return /(\d+(?:\.\d+)?)\s*(m|米|kn|kN|千牛)/.test(text);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function firstRecord(value: unknown): Record<string, unknown> | undefined {
+  return Array.isArray(value) ? asRecord(value[0]) : asRecord(value);
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === 'string' ? value.trim() : undefined;
+}
+
+function inferTypeFromText(value: unknown): InferredModelType | undefined {
+  const text = stringValue(value)?.toLowerCase();
+  if (!text) return undefined;
+  if (text.includes('beam') || text.includes('梁')) return 'beam';
+  if (text.includes('truss') || text.includes('桁架')) return 'truss';
+  if (text.includes('portal') || text.includes('门式') || text.includes('刚架')) return 'portal-frame';
+  if (text.includes('frame') || text.includes('框架')) return 'frame';
+  return normalizeInferredType(text);
+}
+
+function inferSupportTypeFromText(value: unknown): DraftExtraction['supportType'] {
+  const normalized = normalizeSupportType(value);
+  if (normalized) return normalized;
+  const text = stringValue(value)?.toLowerCase();
+  if (!text) return undefined;
+  if (text.includes('simply') || text.includes('simple') || text.includes('简支')) return 'simply-supported';
+  if (text.includes('cantilever') || text.includes('悬臂')) return 'cantilever';
+  if (text.includes('fixed-fixed') || text.includes('两端固')) return 'fixed-fixed';
+  if (text.includes('fixed-pinned') || text.includes('固铰')) return 'fixed-pinned';
+  return undefined;
+}
+
+function inferLoadTypeFromPatch(patch: Record<string, unknown>): DraftExtraction['loadType'] {
+  const normalized = normalizeLoadType(patch.loadType ?? patch.load_type);
+  if (normalized) return normalized;
+  if (Array.isArray(patch.pointLoads) || Array.isArray(patch.point_loads)) return 'point';
+  if (Array.isArray(patch.distributedLoads) || Array.isArray(patch.distributed_loads)) return 'distributed';
+  return undefined;
+}
+
+function normalizeGenericDraftPatch(
+  message: string,
+  llmDraftPatch: Record<string, unknown> | null | undefined,
+): DraftExtraction {
+  const source = llmDraftPatch ?? {};
+  const pointLoad = firstRecord(source.pointLoads ?? source.point_loads);
+  const distributedLoad = firstRecord(source.distributedLoads ?? source.distributed_loads);
+  const span = normalizeNumber(source.lengthM ?? source.spanLengthM ?? source.span ?? source.length);
+  const loadValue = normalizeNumber(
+    source.loadKN
+    ?? source.load
+    ?? source.loadValue
+    ?? pointLoad?.force
+    ?? pointLoad?.value
+    ?? pointLoad?.magnitude
+    ?? distributedLoad?.force
+    ?? distributedLoad?.value,
+  );
+  const loadPositionM = normalizeLoadPositionM(
+    source.loadPositionM
+    ?? source.position
+    ?? pointLoad?.position
+    ?? pointLoad?.positionM,
+  );
+  const loadType = inferLoadTypeFromPatch(source);
+  const explicitType = normalizeInferredType(source.inferredType);
+  const inferredType =
+    (explicitType && explicitType !== 'unknown' ? explicitType : undefined)
+    ?? inferTypeFromText(source.componentType)
+    ?? inferTypeFromText(source.structureType)
+    ?? inferTypeFromText(source.structuralType)
+    ?? inferTypeFromText(source.type)
+    ?? inferTypeFromText(message);
+
+  const patch: DraftExtraction = {};
+  if (inferredType) patch.inferredType = inferredType;
+  if (span !== undefined) patch.lengthM = span;
+  if (loadValue !== undefined) patch.loadKN = loadValue;
+  if (loadType) patch.loadType = loadType;
+  const supportType = inferSupportTypeFromText(
+    source.supportType
+    ?? source.supportCondition
+    ?? source.support_condition
+    ?? source.boundaryCondition
+    ?? message,
+  );
+  if (supportType) patch.supportType = supportType;
+  const loadPosition = normalizeLoadPosition(source.loadPosition ?? source.load_position);
+  if (loadPosition) {
+    patch.loadPosition = loadPosition;
+  } else if (loadType === 'point' && span !== undefined && loadPositionM !== undefined && Math.abs(loadPositionM - span / 2) < 1e-6) {
+    patch.loadPosition = 'midspan';
+  } else if (loadType === 'point' && (message.includes('中间') || message.includes('跨中'))) {
+    patch.loadPosition = 'midspan';
+  } else if (loadType === 'distributed') {
+    patch.loadPosition = 'full-span';
+  }
+  if (loadPositionM !== undefined) patch.loadPositionM = loadPositionM;
+
+  if (Object.keys(source).length > 0) {
+    patch.skillState = {
+      genericDraft: source,
+    };
+  }
+  return patch;
 }
 
 function buildGenericReportNarrative(input: SkillReportNarrativeInput): string {
@@ -89,26 +210,24 @@ export const handler: SkillHandler = {
     return patch;
   },
 
-  extractDraft({ llmDraftPatch }) {
-    const patch: DraftExtraction = {};
-    if (llmDraftPatch && typeof llmDraftPatch === 'object') {
-      if (typeof llmDraftPatch.inferredType === 'string') {
-        patch.inferredType = llmDraftPatch.inferredType as DraftExtraction['inferredType'];
-      }
-    }
-    return patch;
+  extractDraft({ message, llmDraftPatch }) {
+    return normalizeGenericDraftPatch(message, llmDraftPatch);
   },
 
   mergeState(existing, patch) {
-    const inferredType = patch.inferredType && patch.inferredType !== 'unknown'
-      ? patch.inferredType
-      : (existing?.inferredType ?? 'unknown');
+    const merged = mergeDraftState(existing, patch);
+    const inferredType = merged.inferredType;
     return {
+      ...merged,
       inferredType,
       skillId: 'generic',
       structuralTypeKey: (inferredType === 'unknown' ? 'unknown' : inferredType) as DraftState['structuralTypeKey'],
       supportLevel: patch.supportLevel ?? existing?.supportLevel ?? 'fallback',
       supportNote: patch.supportNote ?? existing?.supportNote,
+      skillState: {
+        ...(existing?.skillState ?? {}),
+        ...(patch.skillState ?? {}),
+      },
       updatedAt: Date.now(),
     };
   },

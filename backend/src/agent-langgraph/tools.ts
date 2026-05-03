@@ -275,6 +275,35 @@ export function buildAnalysisToolSummary(args: {
   };
 }
 
+export function buildModelToolSummary(
+  model: Record<string, unknown>,
+  locale: 'zh' | 'en' = 'zh',
+): Record<string, unknown> {
+  const nodeCount = Array.isArray(model.nodes) ? model.nodes.length : 0;
+  const elementCount = Array.isArray(model.elements) ? model.elements.length : 0;
+  const schemaVersion = model.schema_version;
+
+  if (nodeCount === 0 || elementCount === 0) {
+    return {
+      success: false,
+      errorCode: 'EMPTY_MODEL',
+      message: locale === 'zh'
+        ? '模型构建结果为空，未生成可分析的节点或单元。请重新提取参数或补充结构连接信息。'
+        : 'Model build returned an empty model with no analyzable nodes or elements. Re-extract parameters or provide structural connectivity.',
+      nodeCount,
+      elementCount,
+      schemaVersion,
+    };
+  }
+
+  return {
+    success: true,
+    nodeCount,
+    elementCount,
+    schemaVersion,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Engineering tools (wrap AgentSkillRuntime)
 // ---------------------------------------------------------------------------
@@ -493,14 +522,14 @@ export function createBuildModelTool(skillRuntime: AgentSkillRuntime) {
       // Store model in graph state via Command.
       // Keep ToolMessage content compact — full model lives in graph state.
       // The streaming layer reads model from nodeState for artifact_payload_sync.
-      const nodeCount = Array.isArray(model.nodes) ? model.nodes.length : 0;
-      const elementCount = Array.isArray(model.elements) ? model.elements.length : 0;
-      logToolCall(log, { tool: 'build_model', durationMs: Date.now() - start, extra: { success: true, nodeCount, elementCount, schemaVersion: model.schema_version } });
+      const summary = buildModelToolSummary(model, state?.locale || 'zh');
+      const success = summary.success !== false;
+      logToolCall(log, { tool: 'build_model', durationMs: Date.now() - start, success, extra: summary });
       return toolResult(
         toolCallId,
         'build_model',
-        JSON.stringify({ success: true, nodeCount, elementCount, schemaVersion: model.schema_version }),
-        { model },
+        JSON.stringify(summary),
+        success ? { model } : undefined,
       );
     },
     {

@@ -22,8 +22,11 @@ function buildSkillInfo(plugin: AgentSkillPlugin): Record<string, unknown> {
     description: plugin.description,
     stages: plugin.stages,
     structureType: plugin.structureType,
+    guidanceByStage: plugin.markdownByStage,
     draftStageGuidance:
-      plugin.markdownByStage.draft || '(no draft-stage guidance)',
+      plugin.markdownByStage.draft
+      || plugin.markdownByStage.intent
+      || '(no draft-stage guidance)',
   };
 }
 

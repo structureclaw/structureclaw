@@ -134,3 +134,23 @@ describe("analysis tool summary", () => {
     expect(JSON.stringify(summary)).not.toContain("forces");
   });
 });
+
+describe("build model tool summary", () => {
+  test("rejects empty models instead of reporting success", async () => {
+    const { buildModelToolSummary } = await import("../../../dist/agent-langgraph/tools.js");
+
+    const summary = buildModelToolSummary({
+      schema_version: "1.0.0",
+      nodes: [],
+      elements: [],
+    }, "zh");
+
+    expect(summary).toEqual(expect.objectContaining({
+      success: false,
+      errorCode: "EMPTY_MODEL",
+      nodeCount: 0,
+      elementCount: 0,
+    }));
+    expect(summary.message).toContain("模型构建结果为空");
+  });
+});
