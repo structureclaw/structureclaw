@@ -86,6 +86,18 @@ function buildDraftProgress(
   };
 }
 
+function buildPluginUnavailableProgress(
+  locale: 'zh' | 'en',
+): { canProceed: false; nextAction: 'ask_user_clarification'; reason: string } {
+  return {
+    canProceed: false,
+    nextAction: 'ask_user_clarification',
+    reason: locale === 'zh'
+      ? '已保留上一版有效草稿，但无法解析对应结构类型插件，不能可靠计算缺失字段或继续建模。请先确认结构类型或恢复可用 skillScope。'
+      : 'The previous valid draft was preserved, but its structure-type plugin could not be resolved. Missing fields cannot be computed reliably, so ask the user to confirm the structural type or restore the available skill scope before building a model.',
+  };
+}
+
 function hasStableDraftType(state: DraftState | null | undefined): state is DraftState {
   return !!state?.inferredType && state.inferredType !== 'unknown';
 }
@@ -122,12 +134,16 @@ export function buildPreservedDraftExtractionResult(args: {
   stateUpdate: Partial<AgentState>;
 } {
   const plugin = args.plugin ?? null;
-  const nextState = plugin
+  const mergedState = plugin
     ? plugin.handler.mergeState(args.existingState, {})
-    : { ...args.existingState, updatedAt: Date.now() };
+    : args.existingState;
+  const nextState = { ...mergedState, updatedAt: Date.now() };
   const missing = plugin
     ? plugin.handler.computeMissing(nextState, 'execution')
-    : { critical: [], optional: [] };
+    : { critical: ['skillPlugin'], optional: [] };
+  const progress = plugin
+    ? buildDraftProgress(args.locale, missing.critical)
+    : buildPluginUnavailableProgress(args.locale);
   const preservedMatch = buildPreservedStructuralTypeMatch(nextState, plugin);
   const preservationWarning = args.locale === 'zh'
     ? '本轮描述未能稳定识别为新的结构类型，已保留上一版有效草稿，避免将状态覆盖为 unknown/generic。'
@@ -143,7 +159,7 @@ export function buildPreservedDraftExtractionResult(args: {
       skillId: preservedMatch.skillId,
       extractionMode: 'preserved',
       preservationWarning,
-      ...buildDraftProgress(args.locale, missing.critical),
+      ...progress,
     },
     stateUpdate: {
       draftState: nextState,

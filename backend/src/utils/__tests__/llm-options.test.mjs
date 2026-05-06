@@ -15,6 +15,7 @@ describe('LLM model options', () => {
     const options = buildChatModelOptions(baseConfig, 0.2);
 
     expect(options.disableStreaming).toBe(false);
+    expect(options.streaming).toBeUndefined();
   });
 
   test('can disable LangChain invoke streaming for graph-state correctness', async () => {
@@ -23,6 +24,7 @@ describe('LLM model options', () => {
     const options = buildChatModelOptions(baseConfig, 0, { disableStreaming: true });
 
     expect(options.disableStreaming).toBe(true);
+    expect(options.streaming).toBe(false);
     expect(options.modelName).toBe('glm-5-turbo');
     expect(options.configuration.baseURL).toBe('https://example.com/v1');
   });

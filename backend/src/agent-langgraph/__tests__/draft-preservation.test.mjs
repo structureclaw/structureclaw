@@ -49,8 +49,9 @@ describe("draft extraction preservation", () => {
     })).toBe(false);
   });
 
-  test("preserves the previous stable draft instead of reporting inferredType missing", async () => {
+  test("preserves the previous stable draft but stays conservative without a plugin", async () => {
     const { buildPreservedDraftExtractionResult } = await import("../../../dist/agent-langgraph/tools.js");
+    const before = Date.now();
     const existingState = {
       inferredType: "beam",
       skillId: "beam",
@@ -84,10 +85,12 @@ describe("draft extraction preservation", () => {
         skillId: "beam",
       }),
       rejectedStructuralTypeMatch: unknownFallbackMatch,
-      canProceed: true,
-      nextAction: "build_model",
+      criticalMissing: ["skillPlugin"],
+      canProceed: false,
+      nextAction: "ask_user_clarification",
     }));
     expect(result.responseJson.criticalMissing).not.toContain("inferredType");
+    expect(result.responseJson.nextState.updatedAt).toBeGreaterThanOrEqual(before);
     expect(result.stateUpdate).toEqual(expect.objectContaining({
       draftState: expect.objectContaining({ inferredType: "beam" }),
       structuralTypeKey: "beam",
@@ -96,6 +99,7 @@ describe("draft extraction preservation", () => {
 
   test("uses the existing draft plugin to keep real missing fields without downgrading inferredType", async () => {
     const { buildPreservedDraftExtractionResult } = await import("../../../dist/agent-langgraph/tools.js");
+    const before = Date.now();
     const existingState = {
       inferredType: "beam",
       skillId: "beam",
@@ -133,5 +137,6 @@ describe("draft extraction preservation", () => {
       }),
     }));
     expect(result.responseJson.criticalMissing).not.toContain("inferredType");
+    expect(result.responseJson.nextState.updatedAt).toBeGreaterThanOrEqual(before);
   });
 });

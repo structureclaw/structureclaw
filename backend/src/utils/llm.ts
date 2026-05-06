@@ -18,13 +18,15 @@ export function buildChatModelOptions(
   temperature: number,
   runtimeOptions: ChatModelRuntimeOptions = {},
 ) {
+  const disableStreaming = runtimeOptions.disableStreaming ?? false;
   return {
     modelName: modelConfig.llmModel,
     temperature,
     timeout: modelConfig.llmTimeoutMs,
     maxRetries: modelConfig.llmMaxRetries,
     apiKey: modelConfig.llmApiKey,
-    disableStreaming: runtimeOptions.disableStreaming ?? false,
+    disableStreaming,
+    ...(disableStreaming ? { streaming: false } : {}),
     configuration: {
       baseURL: modelConfig.llmBaseUrl,
     },
