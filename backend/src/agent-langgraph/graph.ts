@@ -44,6 +44,65 @@ function getAgentLogger(config: LangGraphRunnableConfig) {
 
 const MAX_TOOL_CALLS_PER_TURN = 15;
 
+function getMessageType(message: BaseMessage): string | null {
+  return typeof (message as any)._getType === 'function'
+    ? (message as any)._getType()
+    : null;
+}
+
+function extractMessageText(message: BaseMessage): string {
+  const content = message.content;
+  if (typeof content === 'string') {
+    return content;
+  }
+  if (Array.isArray(content)) {
+    return content
+      .map((block) => {
+        if (typeof block === 'string') return block;
+        if (block && typeof block === 'object' && 'text' in block) {
+          return String((block as { text?: unknown }).text ?? '');
+        }
+        return '';
+      })
+      .join('');
+  }
+  return content == null ? '' : JSON.stringify(content);
+}
+
+function getToolName(message: BaseMessage): string | undefined {
+  return typeof (message as any).name === 'string' && (message as any).name.trim().length > 0
+    ? (message as any).name
+    : undefined;
+}
+
+export function buildEmptyFinalResponseFallback(
+  locale: 'zh' | 'en',
+  toolNames: string[],
+): string {
+  const tools = [...new Set(toolNames)].filter(Boolean).join(', ');
+  if (locale === 'zh') {
+    return tools
+      ? `本轮工具已执行完成（${tools}），但模型没有生成最终说明。为避免会话静默结束，请基于这些工具结果继续检查当前模型、荷载或分析状态。`
+      : '模型没有生成有效回复。为避免会话静默结束，请继续说明你希望检查的结构、荷载或分析状态。';
+  }
+  return tools
+    ? `The tools for this turn completed (${tools}), but the model did not produce a final explanation. To avoid a silent stop, continue from these tool results and inspect the current model, loads, or analysis state.`
+    : 'The model did not produce a valid response. To avoid a silent stop, please continue with the structure, load, or analysis state you want to inspect.';
+}
+
+export function shouldReplaceEmptyFinalResponse(response: BaseMessage, currentTurnMessages: BaseMessage[]): boolean {
+  const hasToolCalls = 'tool_calls' in response
+    && Array.isArray((response as any).tool_calls)
+    && (response as any).tool_calls.length > 0;
+  if (hasToolCalls) {
+    return false;
+  }
+  if (extractMessageText(response).trim().length > 0) {
+    return false;
+  }
+  return currentTurnMessages.some((message) => getMessageType(message) === 'tool');
+}
+
 // ---------------------------------------------------------------------------
 // Node: agent (LLM reasoning)
 // ---------------------------------------------------------------------------
@@ -215,6 +274,15 @@ function createCallModelNode(
 
     const hasToolCalls = 'tool_calls' in response && Array.isArray((response as any).tool_calls) && (response as any).tool_calls.length > 0;
     log.info({ node: 'agent', durationMs: llmDuration, hasToolCalls }, 'agent node LLM response received');
+
+    if (shouldReplaceEmptyFinalResponse(response, currentTurnMessages)) {
+      const toolNames = currentTurnMessages
+        .filter((message) => getMessageType(message) === 'tool')
+        .map((message) => getToolName(message))
+        .filter((name): name is string => !!name);
+      log.warn({ node: 'agent', toolNames }, 'empty final LLM response after tool calls');
+      return { messages: [new AIMessage(buildEmptyFinalResponseFallback(state.locale, toolNames))] };
+    }
 
     return { messages: [response] };
   };

@@ -8,6 +8,16 @@ const unknownFallbackMatch = {
 };
 
 describe("draft extraction preservation", () => {
+  test("prefers explicit tool messages over the raw last user message", async () => {
+    const { resolveToolInputMessage } = await import("../../../dist/agent-langgraph/tools.js");
+
+    expect(resolveToolInputMessage(
+      "荷载信息：楼面恒载4.5kN/m²，楼面活载2.0kN/m²",
+      "你说？",
+    )).toBe("荷载信息：楼面恒载4.5kN/m²，楼面活载2.0kN/m²");
+    expect(resolveToolInputMessage("", "继续")).toBe("继续");
+  });
+
   test("detects when an unknown fallback should preserve an existing draft", async () => {
     const { shouldPreserveExistingDraftState } = await import("../../../dist/agent-langgraph/tools.js");
 

@@ -39,6 +39,14 @@ function getToolCallId(config: LangGraphRunnableConfig): string {
   return id;
 }
 
+export function resolveToolInputMessage(inputMessage: string | undefined, lastUserMessage: string | undefined): string {
+  const explicitMessage = inputMessage?.trim();
+  if (explicitMessage) {
+    return explicitMessage;
+  }
+  return lastUserMessage || '';
+}
+
 /**
  * Create a Command that updates graph state channels AND adds a ToolMessage.
  * This is the recommended LangGraph pattern for tools that produce artifacts.
@@ -425,7 +433,7 @@ export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
       const toolCallId = getToolCallId(config);
       const skillIds = configurable.skillScope;
       const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
-      const message = state?.lastUserMessage || input.message || '';
+      const message = resolveToolInputMessage(input.message, state?.lastUserMessage);
       try {
         const match = await skillRuntime.detectStructuralType(
           message,
@@ -477,7 +485,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
       const existingState = state?.draftState || undefined;
       const skillIds = configurable.skillScope;
       const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
-      const message = state?.lastUserMessage || input.message || '';
+      const message = resolveToolInputMessage(input.message, state?.lastUserMessage);
 
       try {
         // Step 1: Detect structural type
