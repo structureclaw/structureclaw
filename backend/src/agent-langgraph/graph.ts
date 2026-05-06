@@ -117,7 +117,11 @@ function createCallModelNode(
   ): Promise<Partial<AgentState>> {
     const log = getAgentLogger(config);
     const configurable = config.configurable as Partial<AgentConfigurable> | undefined;
-    const model = createChatModel(0);
+    // LangGraph's `messages` stream mode installs a callback handler that
+    // prefers streaming. LangChain may then make `invoke()` return message
+    // chunks; GLM-compatible streaming can yield empty/generic chunks after
+    // tool calls. Keep graph state on complete AIMessage instances.
+    const model = createChatModel(0, { disableStreaming: true });
     if (!model) {
       return {
         messages: [

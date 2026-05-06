@@ -9,26 +9,38 @@ type ChatModelConfigLike = Pick<
   'llmApiKey' | 'llmModel' | 'llmTimeoutMs' | 'llmMaxRetries' | 'llmBaseUrl'
 >;
 
-export function buildChatModelOptions(modelConfig: ChatModelConfigLike, temperature: number) {
+export interface ChatModelRuntimeOptions {
+  disableStreaming?: boolean;
+}
+
+export function buildChatModelOptions(
+  modelConfig: ChatModelConfigLike,
+  temperature: number,
+  runtimeOptions: ChatModelRuntimeOptions = {},
+) {
   return {
     modelName: modelConfig.llmModel,
     temperature,
     timeout: modelConfig.llmTimeoutMs,
     maxRetries: modelConfig.llmMaxRetries,
     apiKey: modelConfig.llmApiKey,
+    disableStreaming: runtimeOptions.disableStreaming ?? false,
     configuration: {
       baseURL: modelConfig.llmBaseUrl,
     },
   };
 }
 
-export function createChatModel(temperature: number): ChatOpenAI | null {
+export function createChatModel(
+  temperature: number,
+  runtimeOptions: ChatModelRuntimeOptions = {},
+): ChatOpenAI | null {
   const effectiveSettings = getEffectiveLlmSettings();
   if (!effectiveSettings.llmApiKey.trim()) {
     return null;
   }
 
-  const model = new ChatOpenAI(buildChatModelOptions(effectiveSettings, temperature));
+  const model = new ChatOpenAI(buildChatModelOptions(effectiveSettings, temperature, runtimeOptions));
 
   return wrapWithLlmLogging(model);
 }
