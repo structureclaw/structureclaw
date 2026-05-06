@@ -21,6 +21,7 @@ import { logger } from '../utils/logger.js';
 import { getLogger, logToolCall } from '../utils/agent-logger.js';
 import type { AgentState } from './state.js';
 import type { AgentConfigurable } from './configurable.js';
+import type { AgentSkillPlugin, DraftState, StructuralTypeMatch } from '../agent-runtime/types.js';
 import { runPkpmCalcbook } from '../agent-skills/report-export/calculation-book/pkpm-calcbook/runner.js';
 // ---------------------------------------------------------------------------
 // Helpers
@@ -74,6 +75,72 @@ function buildDraftProgress(
     reason: locale === 'zh'
       ? `草稿仍缺少关键参数：${missingText}。需要继续向用户澄清，不能直接构建模型或写入 memory。`
       : `The draft is still missing critical parameters: ${missingText}. Continue by asking the user for clarification; do not build the model or store draft values in memory.`,
+  };
+}
+
+function hasStableDraftType(state: DraftState | null | undefined): state is DraftState {
+  return !!state?.inferredType && state.inferredType !== 'unknown';
+}
+
+export function shouldPreserveExistingDraftState(
+  existingState: DraftState | null | undefined,
+  structuralTypeMatch: StructuralTypeMatch,
+): existingState is DraftState {
+  return hasStableDraftType(existingState)
+    && structuralTypeMatch.key === 'unknown'
+    && structuralTypeMatch.mappedType === 'unknown';
+}
+
+function buildPreservedStructuralTypeMatch(
+  state: DraftState,
+  plugin: AgentSkillPlugin | null | undefined,
+): StructuralTypeMatch {
+  return {
+    key: state.structuralTypeKey ?? state.inferredType,
+    mappedType: state.inferredType,
+    skillId: state.skillId ?? plugin?.id,
+    supportLevel: state.supportLevel ?? 'supported',
+    supportNote: state.supportNote,
+  };
+}
+
+export function buildPreservedDraftExtractionResult(args: {
+  existingState: DraftState;
+  structuralTypeMatch: StructuralTypeMatch;
+  plugin?: AgentSkillPlugin | null;
+  locale: 'zh' | 'en';
+}): {
+  responseJson: Record<string, unknown>;
+  stateUpdate: Partial<AgentState>;
+} {
+  const plugin = args.plugin ?? null;
+  const nextState = plugin
+    ? plugin.handler.mergeState(args.existingState, {})
+    : { ...args.existingState, updatedAt: Date.now() };
+  const missing = plugin
+    ? plugin.handler.computeMissing(nextState, 'execution')
+    : { critical: [], optional: [] };
+  const preservedMatch = buildPreservedStructuralTypeMatch(nextState, plugin);
+  const preservationWarning = args.locale === 'zh'
+    ? '本轮描述未能稳定识别为新的结构类型，已保留上一版有效草稿，避免将状态覆盖为 unknown/generic。'
+    : 'The current message was not recognized as a stable new structural type, so the previous valid draft was preserved instead of being overwritten as unknown/generic.';
+
+  return {
+    responseJson: {
+      nextState,
+      criticalMissing: missing.critical,
+      optionalMissing: missing.optional,
+      structuralTypeMatch: preservedMatch,
+      rejectedStructuralTypeMatch: args.structuralTypeMatch,
+      skillId: preservedMatch.skillId,
+      extractionMode: 'preserved',
+      preservationWarning,
+      ...buildDraftProgress(args.locale, missing.critical),
+    },
+    stateUpdate: {
+      draftState: nextState,
+      structuralTypeKey: preservedMatch.key,
+    },
   };
 }
 
@@ -323,6 +390,27 @@ export function buildModelToolStateUpdate(
   return { model };
 }
 
+async function resolveExistingDraftPlugin(
+  skillRuntime: AgentSkillRuntime,
+  existingState: DraftState,
+  skillIds: string[] | undefined,
+  fallbackPlugin: AgentSkillPlugin | null,
+): Promise<AgentSkillPlugin | null> {
+  const pluginBySkill = existingState.skillId
+    ? await skillRuntime.resolvePluginForType(existingState.skillId, skillIds)
+    : null;
+  if (pluginBySkill) {
+    return pluginBySkill;
+  }
+
+  const pluginByType = await skillRuntime.resolvePluginForType(existingState.inferredType, skillIds);
+  if (pluginByType) {
+    return pluginByType;
+  }
+
+  return fallbackPlugin?.id === 'generic' ? fallbackPlugin : null;
+}
+
 // ---------------------------------------------------------------------------
 // Engineering tools (wrap AgentSkillRuntime)
 // ---------------------------------------------------------------------------
@@ -396,6 +484,40 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
         const match = await skillRuntime.detectStructuralType(
           message, locale, existingState, skillIds,
         );
+        const matchedPlugin = match.skillId
+          ? await skillRuntime.resolvePluginForType(match.skillId, skillIds)
+          : null;
+
+        if (shouldPreserveExistingDraftState(existingState, match)) {
+          const preservationPlugin = await resolveExistingDraftPlugin(
+            skillRuntime,
+            existingState,
+            skillIds,
+            matchedPlugin,
+          );
+          const preserved = buildPreservedDraftExtractionResult({
+            existingState,
+            structuralTypeMatch: match,
+            plugin: preservationPlugin,
+            locale,
+          });
+          logToolCall(log, {
+            tool: 'extract_draft_params',
+            durationMs: Date.now() - start,
+            extra: {
+              preservedExistingDraft: true,
+              previousSkillId: existingState.skillId,
+              rejectedSkillId: match.skillId,
+              rejectedKey: match.key,
+            },
+          });
+          return toolResult(
+            toolCallId,
+            'extract_draft_params',
+            JSON.stringify(preserved.responseJson),
+            preserved.stateUpdate,
+          );
+        }
 
         // Early return when no skill matched
         if (!match.skillId) {
@@ -422,7 +544,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
         }
 
         // Step 2: Resolve plugin
-        const plugin = await skillRuntime.resolvePluginForType(match.skillId, skillIds);
+        const plugin = matchedPlugin;
         if (!plugin) {
           const nextState = existingState || { inferredType: 'unknown' as const, updatedAt: Date.now() };
           const responseJson = {
@@ -439,9 +561,10 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
         }
 
         // Generic skill: deterministic path (no LLM extraction needed)
-        if (plugin.id === 'generic' && existingState?.inferredType && existingState.inferredType !== 'unknown') {
+        const stableExistingState = hasStableDraftType(existingState) ? existingState : undefined;
+        if (plugin.id === 'generic' && stableExistingState) {
           const { withStructuralTypeState } = await import('../agent-runtime/plugin-helpers.js');
-          const nextState = withStructuralTypeState(plugin.handler.mergeState(existingState, {}), match);
+          const nextState = withStructuralTypeState(plugin.handler.mergeState(stableExistingState, {}), match);
           const missing = plugin.handler.computeMissing(nextState, 'execution');
           const responseJson = {
             nextState,
