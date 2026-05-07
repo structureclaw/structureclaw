@@ -468,6 +468,110 @@ function installedPackagesMatchLock(projectDir, packageNames) {
   });
 }
 
+function currentPythonSysPlatform() {
+  if (process.platform === "win32") {
+    return "win32";
+  }
+  if (process.platform === "darwin") {
+    return "darwin";
+  }
+  return "linux";
+}
+
+function pythonRequirementMarkerApplies(marker) {
+  const normalized = String(marker || "").trim();
+  if (!normalized) {
+    return true;
+  }
+
+  const sysPlatform = currentPythonSysPlatform();
+  const equalityMatch = normalized.match(/^sys_platform\s*==\s*["']([^"']+)["']$/u);
+  if (equalityMatch) {
+    return sysPlatform === equalityMatch[1];
+  }
+
+  const inequalityMatch = normalized.match(/^sys_platform\s*!=\s*["']([^"']+)["']$/u);
+  if (inequalityMatch) {
+    return sysPlatform !== inequalityMatch[1];
+  }
+
+  return true;
+}
+
+function parsePythonRequirements(requirementsFile) {
+  if (!pathExists(requirementsFile)) {
+    return [];
+  }
+
+  const requirements = [];
+  for (const rawLine of fs.readFileSync(requirementsFile, "utf8").split(/\r?\n/u)) {
+    const line = rawLine.trim().split("#")[0].trim();
+    if (!line || line.startsWith("-")) {
+      continue;
+    }
+
+    const [rawRequirement, rawMarker = ""] = line.split(";", 2);
+    if (!pythonRequirementMarkerApplies(rawMarker)) {
+      continue;
+    }
+
+    const requirement = rawRequirement.trim();
+    const pinnedMatch = requirement.match(/^([A-Za-z0-9_.-]+)\s*==\s*([^\s]+)$/u);
+    if (pinnedMatch) {
+      requirements.push({
+        name: pinnedMatch[1],
+        version: pinnedMatch[2],
+      });
+      continue;
+    }
+
+    const packageMatch = requirement.match(/^([A-Za-z0-9_.-]+)/u);
+    if (packageMatch) {
+      requirements.push({
+        name: packageMatch[1],
+        version: null,
+      });
+    }
+  }
+  return requirements;
+}
+
+function buildPythonRequirementsCheckScript(requirements) {
+  return [
+    "import importlib.metadata as metadata, json, sys",
+    `requirements = json.loads(${JSON.stringify(JSON.stringify(requirements))})`,
+    "for requirement in requirements:",
+    "    try:",
+    "        installed_version = metadata.version(requirement['name'])",
+    "    except metadata.PackageNotFoundError:",
+    "        sys.exit(1)",
+    "    expected_version = requirement.get('version')",
+    "    if expected_version is not None and installed_version != expected_version:",
+    "        sys.exit(1)",
+    "sys.exit(0)",
+  ].join("\n");
+}
+
+async function pythonRequirementsSatisfied(pythonPath, requirementsFile) {
+  if (!pythonPath || !pathExists(pythonPath)) {
+    return false;
+  }
+
+  const requirements = parsePythonRequirements(requirementsFile);
+  if (requirements.length === 0) {
+    return true;
+  }
+
+  try {
+    await runCommand(pythonPath, ["-c", buildPythonRequirementsCheckScript(requirements)], {
+      stdio: "ignore",
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function getNpmCommand() {
   return isWindows() ? "npm.cmd" : "npm";
 }
@@ -874,6 +978,7 @@ module.exports = {
   assertSqliteDatabaseUrl,
   buildScopedSqliteDatabaseUrl,
   buildAnalysisEnvironment,
+  buildPythonRequirementsCheckScript,
   ensureDirectory,
   ensureFileFromExample,
   ensureLocalSqliteConfig,
@@ -896,7 +1001,9 @@ module.exports = {
   parseDotEnv,
   pathExists,
   pidFilePath,
+  parsePythonRequirements,
   pythonModuleExists,
+  pythonRequirementsSatisfied,
   quoteShellArgument,
   readDotEnv,
   readTrackedPid,

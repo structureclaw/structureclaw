@@ -258,6 +258,26 @@ async function ensureNpmDependencies(projectDir, projectName, packageNames = [])
   }
 }
 
+async function getMissingAnalysisPythonModules(pythonPath) {
+  const moduleStates = await Promise.all(
+    ANALYSIS_REQUIRED_PYTHON_MODULES.map(async (moduleName) => [
+      moduleName,
+      await runtime.pythonModuleExists(pythonPath, moduleName),
+    ]),
+  );
+  return moduleStates
+    .filter(([, present]) => !present)
+    .map(([moduleName]) => moduleName);
+}
+
+async function analysisPythonEnvironmentReady(pythonPath, requirementsFile) {
+  const missingModules = await getMissingAnalysisPythonModules(pythonPath);
+  if (missingModules.length > 0) {
+    return false;
+  }
+  return runtime.pythonRequirementsSatisfied(pythonPath, requirementsFile);
+}
+
 async function ensureAnalysisPython(rootDir, env) {
   const { paths } = runtime.loadProjectEnvironment(rootDir, () => {}, {
     profile: env.SCLAW_PROFILE,
@@ -268,13 +288,11 @@ async function ensureAnalysisPython(rootDir, env) {
   }
 
   const currentPython = runtime.resolveAnalysisPython(rootDir, env);
-  if (currentPython) {
-    const currentModuleStates = await Promise.all(
-      ANALYSIS_REQUIRED_PYTHON_MODULES.map(async (moduleName) => [moduleName, await runtime.pythonModuleExists(currentPython, moduleName)]),
-    );
-    if (currentModuleStates.every(([, present]) => present)) {
-      return currentPython;
-    }
+  if (
+    currentPython &&
+    await analysisPythonEnvironmentReady(currentPython, paths.analysisRequirementsFile)
+  ) {
+    return currentPython;
   }
 
   await ensureUv(rootDir);
@@ -318,14 +336,12 @@ async function ensureAnalysisPython(rootDir, env) {
     env,
   });
 
-  const installedModuleStates = await Promise.all(
-    ANALYSIS_REQUIRED_PYTHON_MODULES.map(async (moduleName) => [moduleName, await runtime.pythonModuleExists(resolvedPython, moduleName)]),
-  );
-  const missingModules = installedModuleStates
-    .filter(([, present]) => !present)
-    .map(([moduleName]) => moduleName);
+  const missingModules = await getMissingAnalysisPythonModules(resolvedPython);
   if (missingModules.length > 0) {
     throw new Error(`Python venv is present but missing required analysis modules: ${missingModules.join(", ")}.`);
+  }
+  if (!await runtime.pythonRequirementsSatisfied(resolvedPython, paths.analysisRequirementsFile)) {
+    throw new Error("Python venv is present but analysis requirements are not synchronized.");
   }
 
   return resolvedPython;
