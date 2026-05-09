@@ -54,23 +54,5 @@ jobs:
           cache: npm
           cache-dependency-path: '**/package-lock.json'
 
-      - name: Setup via sclaw
-        run: node ./sclaw doctor
-
-      - name: Generate Prisma client
-        run: npm run db:generate --prefix backend
-
-      - name: Build via sclaw
-        run: node ./sclaw build
-
-      - name: Frontend type-check
-        run: npm run type-check --prefix frontend
-
-      - name: Frontend unit tests
-        run: npm run test:run --prefix frontend
-
-      - name: Frontend lint
-        run: npm run lint --prefix frontend
-
-      - name: Backend lint
-        run: npm run lint --prefix backend
+      - name: Run native install smoke
+        run: node tests/runner.mjs smoke-native

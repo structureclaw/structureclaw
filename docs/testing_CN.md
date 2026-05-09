@@ -2,7 +2,7 @@
 
 本文是 StructureClaw 的测试地图，定义每类测试负责什么、由哪个命令运行，以及 CI workflow 之间哪里允许有重叠。
 
-第一版只更新文档，不改变当前 workflow 行为。它用于先解决 issue #234 中“测试边界不清楚”的问题。
+本文用于明确 issue #234 中的测试边界；当 workflow 边界调整时也需要同步更新。
 
 ## 分类定义
 
@@ -40,9 +40,10 @@
 | Workflow | 用途 | 说明 |
 | --- | --- | --- |
 | `.github/workflows/backend-regression.yml` | Linux 和 Windows 上的 backend regression | 通过 `tests/runner.mjs` 运行 backend regression bundle。 |
+| `.github/workflows/frontend-regression.yml` | Linux 和 Windows 上的 frontend 静态与 unit regression | 运行 frontend type-check、lint 和 unit Vitest 覆盖。 |
 | `.github/workflows/analysis-regression.yml` | Linux 和 Windows 上的确定性 analysis regression | 构建 backend，准备 analysis Python，然后运行分析 fixture。 |
 | `.github/workflows/e2e.yml` | Playwright 浏览器流程 | 在 `master`、手动触发，或允许用户评论 `/test-e2e` 时运行。 |
-| `.github/workflows/install-smoke.yml` | Native install/build 兼容性 smoke | 当前也会运行 frontend type-check/tests/lint 和 backend lint。把这些视作兼容性 gate，而不是测试归属。 |
+| `.github/workflows/install-smoke.yml` | Native install/build 兼容性 smoke | 调用 `node tests/runner.mjs smoke-native`；frontend 和 backend 静态检查由各自 regression workflow 负责。 |
 | `.github/workflows/llm-integration.yml` | 真实 LLM integration 检查 | 在 `master`、手动触发，或允许用户评论 `/test-llm` 时运行。 |
 | `.github/workflows/publish-npm.yml` | 发布前 gate | 为保护发布重复运行部分检查。它不拥有新增测试覆盖。 |
 
@@ -69,6 +70,7 @@
 ## 当前明确出来的差距
 
 - E2E 目前覆盖浏览器层流程，例如导航、i18n/theme、capabilities、database admin 和 console chat smoke。它不是完整的 agent 质量套件。
-- `install-smoke.yml` 的目标是 install/build 兼容性，但当前会重复部分 frontend 和 backend 静态检查。
+- Frontend integration 测试已有本地命令，但 integration runner 稳定前暂不接入 CI。
+- `install-smoke.yml` 现在只负责 native install/build 兼容性。
 - `llm-integration` 和 `llm-benchmark` 现在都会触及真实 LLM 行为。新增 agent 质量场景应优先走 benchmark 路径。
 - Issue #234 应先确定边界和文档。缺失覆盖由单独的后续 issue 补测试。

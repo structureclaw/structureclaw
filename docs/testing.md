@@ -2,7 +2,7 @@
 
 This page is the canonical test map for StructureClaw. It defines what each test category owns, which command runs it, and where CI workflows are allowed to overlap.
 
-The first version is documentation-only. It clarifies the current test system for issue #234 and does not change workflow behavior.
+This document clarifies the current test system for issue #234 and is updated when workflow boundaries change.
 
 ## Category Definitions
 
@@ -40,9 +40,10 @@ The first version is documentation-only. It clarifies the current test system fo
 | Workflow | Purpose | Notes |
 | --- | --- | --- |
 | `.github/workflows/backend-regression.yml` | Backend regression on Linux and Windows | Runs the backend regression bundle through `tests/runner.mjs`. |
+| `.github/workflows/frontend-regression.yml` | Frontend static and unit regression on Linux and Windows | Runs frontend type-check, lint, and unit Vitest coverage. |
 | `.github/workflows/analysis-regression.yml` | Deterministic analysis regression on Linux and Windows | Builds the backend, sets up analysis Python, and runs analysis fixtures. |
 | `.github/workflows/e2e.yml` | Playwright browser workflows | Triggered on `master`, manually, or by `/test-e2e` comments from allowed users. |
-| `.github/workflows/install-smoke.yml` | Native install/build compatibility smoke | Also runs frontend type-check/tests/lint and backend lint today. Treat those as compatibility gates, not test ownership. |
+| `.github/workflows/install-smoke.yml` | Native install/build compatibility smoke | Calls `node tests/runner.mjs smoke-native`; frontend and backend static checks live in their own regression workflows. |
 | `.github/workflows/llm-integration.yml` | Real LLM integration checks | Triggered on `master`, manually, or by `/test-llm` comments from allowed users. |
 | `.github/workflows/publish-npm.yml` | Release gate before publishing | Repeats selected checks to protect releases. It does not own new coverage. |
 
@@ -69,6 +70,7 @@ Use the smallest category that proves the behavior:
 ## Current Gaps Made Explicit
 
 - E2E currently covers browser-level workflows such as navigation, i18n/theme, capabilities, database admin, and console chat smoke. It is not a full agent quality suite.
-- `install-smoke.yml` intentionally checks install/build compatibility but currently repeats some frontend and backend static checks.
+- Frontend integration tests have a dedicated local command, but are not wired into CI until the integration runner is stable.
+- `install-smoke.yml` now owns native install/build compatibility only.
 - `llm-integration` and `llm-benchmark` both touch real LLM behavior today. New agent-quality scenarios should prefer the benchmark path.
 - Issue #234 should settle boundaries and documentation first. Separate coverage-expansion issues should add the missing tests.

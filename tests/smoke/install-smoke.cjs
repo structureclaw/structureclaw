@@ -1,7 +1,6 @@
 const os = require("node:os");
 const path = require("node:path");
 
-const { runFrontendBuild } = require("../../scripts/cli/frontend-build");
 const runtime = require("../../scripts/cli/runtime");
 
 function log(message = "") {
@@ -9,19 +8,14 @@ function log(message = "") {
 }
 
 async function runNativeInstallSmoke(rootDir) {
-  const { paths, env } = runtime.loadProjectEnvironment(rootDir, log);
+  const { env } = runtime.loadProjectEnvironment(rootDir, log);
+  const cliPath = path.join(rootDir, "sclaw");
 
-  log("[ci-native-smoke] npm ci backend");
-  await runtime.runCommand(runtime.getNpmCommand(), ["ci", "--prefix", paths.backendDir], { env });
+  log("[ci-native-smoke] sclaw doctor");
+  await runtime.runCommand(process.execPath, [cliPath, "doctor"], { env });
 
-  log("[ci-native-smoke] npm ci frontend");
-  await runtime.runCommand(runtime.getNpmCommand(), ["ci", "--prefix", paths.frontendDir], { env });
-
-  log("[ci-native-smoke] backend build");
-  await runtime.runCommand(runtime.getNpmCommand(), ["run", "build", "--prefix", paths.backendDir], { env });
-
-  log("[ci-native-smoke] frontend build");
-  await runFrontendBuild(paths, env);
+  log("[ci-native-smoke] sclaw build");
+  await runtime.runCommand(process.execPath, [cliPath, "build"], { env });
 
   log("[ci-native-smoke] ok");
 }
