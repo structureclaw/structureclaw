@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import DatabaseAdminPage from '@/app/(console)/console/database/page'
+import DatabaseAdminPage from '@/app/database/page'
 
 describe('DatabaseAdminPage', () => {
   it('renders sqlite status details from real backend', async () => {

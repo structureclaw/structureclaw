@@ -1,4 +1,5 @@
 import { execSync, spawn } from 'node:child_process'
+import fs from 'node:fs'
 import path from 'node:path'
 
 const TEST_BACKEND_PORT = 30999
@@ -18,28 +19,47 @@ export async function startTestBackend(rootDir: string): Promise<string> {
 
   // Build backend first
   const backendDir = path.join(rootDir, 'backend')
-  execSync('npm run build', { cwd: backendDir, stdio: 'pipe' })
+  const testDataDir = path.join(rootDir, '.structureclaw', 'vitest-integration')
+  const testDatabasePath = path.join(testDataDir, 'data', 'test-vitest-integration.db')
+  const backendEnv = {
+    ...process.env,
+    PORT: String(TEST_BACKEND_PORT),
+    SCLAW_DATA_DIR: testDataDir,
+    DATABASE_URL: `file:${testDatabasePath.replace(/\\/g, '/')}`,
+    LLM_API_KEY: process.env.LLM_API_KEY || '',
+    LLM_MODEL: process.env.LLM_MODEL || 'gpt-4o-mini',
+    ...(process.env.LLM_BASE_URL ? { LLM_BASE_URL: process.env.LLM_BASE_URL } : {}),
+  }
+
+  fs.mkdirSync(path.dirname(testDatabasePath), { recursive: true })
+  execSync('npm run db:deploy', { cwd: backendDir, env: backendEnv, stdio: 'pipe' })
+  execSync('npm run build', { cwd: backendDir, env: backendEnv, stdio: 'pipe' })
 
   backendProcess = spawn('node', ['dist/index.js'], {
     cwd: backendDir,
-    env: {
-      ...process.env,
-      PORT: String(TEST_BACKEND_PORT),
-      DATABASE_URL: 'file:../../.structureclaw/data/test-vitest-integration.db',
-      LLM_API_KEY: process.env.LLM_API_KEY || '',
-      LLM_MODEL: process.env.LLM_MODEL || 'gpt-4o-mini',
-      ...(process.env.LLM_BASE_URL ? { LLM_BASE_URL: process.env.LLM_BASE_URL } : {}),
-    },
+    env: backendEnv,
     stdio: 'pipe',
   })
 
-  // Drain stdout/stderr to prevent pipe buffer from blocking the child process
-  backendProcess.stdout?.on('data', () => {})
-  backendProcess.stderr?.on('data', () => {})
+  const output: string[] = []
+  let exitMessage: string | null = null
+  const captureOutput = (data: Buffer) => {
+    output.push(data.toString())
+    if (output.length > 20) output.shift()
+  }
 
-  // Wait for health check (up to 30 seconds)
-  for (let i = 0; i < 30; i++) {
+  backendProcess.stdout?.on('data', captureOutput)
+  backendProcess.stderr?.on('data', captureOutput)
+  backendProcess.on('exit', (code, signal) => {
+    exitMessage = `Backend exited with code ${code ?? 'null'} and signal ${signal ?? 'null'}`
+  })
+
+  // Wait for health check (up to 60 seconds)
+  for (let i = 0; i < 60; i++) {
     await new Promise((r) => setTimeout(r, 1000))
+    if (exitMessage) {
+      throw new Error(`${exitMessage}\n${output.join('')}`)
+    }
     try {
       const resp = await fetch(HEALTH_URL)
       if (resp.ok) return TEST_BACKEND_URL
@@ -48,7 +68,7 @@ export async function startTestBackend(rootDir: string): Promise<string> {
     }
   }
 
-  throw new Error('Backend did not start within 30 seconds')
+  throw new Error(`Backend did not start within 60 seconds\n${output.join('')}`)
 }
 
 export async function stopTestBackend(): Promise<void> {

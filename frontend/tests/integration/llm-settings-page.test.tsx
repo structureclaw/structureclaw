@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
-import LlmSettingsPage from '@/app/(console)/console/llm/page'
+import LlmSettingsPage from '@/app/llm/page'
 
 function runtimePayload(overrides: Partial<Record<string, unknown>> = {}) {
   return {
@@ -74,7 +74,7 @@ describe('LlmSettingsPage', () => {
     })
   })
 
-  it('falls back to the .env token when the user explicitly chooses it', async () => {
+  it('clears the saved token when the user explicitly chooses it', async () => {
     const fetchMock = vi.mocked(globalThis.fetch)
 
     fetchMock
@@ -85,7 +85,9 @@ describe('LlmSettingsPage', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: vi.fn().mockResolvedValue(runtimePayload({
-          apiKeySource: 'env',
+          hasApiKey: false,
+          apiKeyMasked: '',
+          apiKeySource: 'unset',
         })),
       } as unknown as Response)
 
@@ -93,7 +95,7 @@ describe('LlmSettingsPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'LLM Settings' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use .env Token' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Clear Saved Token' }))
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
@@ -108,7 +110,7 @@ describe('LlmSettingsPage', () => {
     })
   })
 
-  it('deletes all runtime overrides when the user resets back to .env defaults', async () => {
+  it('deletes all runtime overrides when the user resets back to defaults', async () => {
     const fetchMock = vi.mocked(globalThis.fetch)
 
     fetchMock
@@ -122,14 +124,14 @@ describe('LlmSettingsPage', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: vi.fn().mockResolvedValue({
-          baseUrl: 'https://env.example.com/v1',
-          model: 'env-model',
-          hasApiKey: true,
-          apiKeyMasked: '********',
+          baseUrl: 'https://api.openai.com/v1',
+          model: 'gpt-4-turbo-preview',
+          hasApiKey: false,
+          apiKeyMasked: '',
           hasOverrides: false,
-          baseUrlSource: 'env',
-          modelSource: 'env',
-          apiKeySource: 'env',
+          baseUrlSource: 'default',
+          modelSource: 'default',
+          apiKeySource: 'unset',
         }),
       } as unknown as Response)
 
@@ -137,7 +139,7 @@ describe('LlmSettingsPage', () => {
 
     expect(await screen.findByRole('heading', { name: 'LLM Settings' })).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Use .env Defaults' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reset to Defaults' }))
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledTimes(2)

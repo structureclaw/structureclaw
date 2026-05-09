@@ -49,6 +49,7 @@ backend/uploads/*
 
 # Local test artifacts
 tests/.artifacts/
+.structureclaw/
 
 # Personal agent planning artifacts
 docs/superpowers/
