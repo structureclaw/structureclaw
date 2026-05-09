@@ -107,6 +107,7 @@ Infrastructure-only env vars: `SCLAW_DATA_DIR`, `NODE_ENV`.
 
 ## Testing Guidance
 
+- Canonical test taxonomy and workflow boundaries live in `docs/testing.md` and `docs/testing_CN.md`.
 - Backend: cover success, failure, and missing-input scenarios. Run `npm test --prefix backend -- --runInBand`.
 - Frontend: run targeted Vitest checks plus `type-check`. Run `build` when layout/routing changes.
 - Both `en` and `zh` paths must be verified for new user-visible frontend features.

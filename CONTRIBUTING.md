@@ -137,6 +137,8 @@ git push origin --delete my-feature
 
 Run the checks that match your change.
 
+For the full test taxonomy, runner ownership, and CI workflow boundaries, see [docs/testing.md](docs/testing.md).
+
 Backend-focused:
 
 ```bash

@@ -6,6 +6,7 @@ This directory is the documentation hub for StructureClaw 1.0. Start with the ha
 
 - [Handbook](./handbook.md): setup, runtime modes, configuration, workflows, testing, and troubleshooting
 - [Reference](./reference.md): API contracts, analysis endpoints, settings contract, SkillHub contract, and validation commands
+- [Testing taxonomy](./testing.md): test categories, runner ownership, CI workflow boundaries, and overlap rules
 - [Agent architecture](./agent-architecture.md): current 1.0.0 architecture for the LangGraph agent, skills, tools, and orchestration
 - [Skill runtime status](./skill-runtime-status.md): current implementation maturity for each skill domain
 

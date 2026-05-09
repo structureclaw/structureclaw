@@ -63,37 +63,40 @@ function formatCheckList() {
 }
 
 function printHelp() {
-  process.stdout.write(`StructureClaw regression and smoke runner
+  process.stdout.write(`StructureClaw test runner
 
 Usage:
   node tests/runner.mjs <command> [options]
 
 Commands:
-  validate <name>       Run a named validation
-  validate --list       List validation names
-  check <name>          Run a grouped check
-  check --list          List check names
-  backend-regression    Full backend regression suite
-  analysis-regression   Full analysis regression suite
-  llm-integration       LLM integration tests (requires LLM_API_KEY)
+  validate <name>       Run one named contract/schema validation
+  validate --list       List named validations
+  check <name>          Run a grouped validation alias
+  check --list          List grouped validation aliases
+  backend-regression    Backend regression bundle: build, lint, Jest, and validations
+  analysis-regression   Deterministic engineering analysis regression
+  llm-integration       Legacy LLM/routing integration tests (requires LLM_API_KEY)
                         supports: node tests/runner.mjs llm-integration [category]
-                        default: routing (only routing tests pass under LangGraph)
+                        default: routing
                         categories: routing | extraction | pipeline | clarification
                           [--family <family>]  (alias: --skill)
                           [--variant <specific|generic|auto>]
                           [--scenario <scenarioId>]
                           [--output <artifact.json>]
   llm-benchmark         LangGraph agent benchmark (requires LLM_API_KEY)
-                        runs full ReAct agent, evaluates end-to-end quality
+                        runs the full ReAct agent and evaluates scenario quality
                           [--scenario <scenarioId>]
                           [--output <results.json>]
   llm-summary <path>   Summarize LLM test artifacts by family/variant
-  smoke-native          CI-style native install smoke (npm ci + build)
+  smoke-native          Native install/build compatibility smoke
 
 Replaces former sclaw commands:
   sclaw validate ...    -> node tests/runner.mjs validate ...
   sclaw check ...       -> node tests/runner.mjs check ...
   sclaw backend-regression / analysis-regression / test-smoke-* -> see above
+
+Test taxonomy:
+  docs/testing.md defines category ownership and CI workflow boundaries.
 `);
 }
 

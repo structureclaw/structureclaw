@@ -138,6 +138,8 @@ git push origin --delete my-feature
 
 根据改动范围运行对应命令。
 
+完整测试分类、runner 归属和 CI workflow 边界见 [docs/testing_CN.md](docs/testing_CN.md)。
+
 后端相关：
 
 ```bash
