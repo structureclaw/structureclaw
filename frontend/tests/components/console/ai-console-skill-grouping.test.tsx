@@ -6,6 +6,7 @@ import { AppStoreProvider } from '@/lib/stores/context'
 import { CapabilitySettingsPanel } from '@/components/chat/capability-settings-panel'
 import { API_BASE } from '@/lib/api-base'
 import { CAPABILITY_PREFERENCE_STORAGE_KEY } from '@/lib/capability-preference'
+import { DEFAULT_CONSOLE_SKILL_IDS } from '@/lib/skill-normalization'
 
 function createSseResponse(events: unknown[]) {
   const encoder = new TextEncoder()
@@ -21,6 +22,14 @@ function createSseResponse(events: unknown[]) {
     ok: true,
     body: stream,
   } as unknown as Response
+}
+
+function renderCapabilitySettingsPanel() {
+  return render(
+    <AppStoreProvider>
+      <CapabilitySettingsPanel />
+    </AppStoreProvider>
+  )
 }
 
 describe('Capability settings and console integration', () => {
@@ -84,13 +93,13 @@ describe('Capability settings and console integration', () => {
       return { ok: true, json: async () => ({}) } as Response
     })
 
-    render(<CapabilitySettingsPanel />)
+    renderCapabilitySettingsPanel()
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
     }, { timeout: 15_000 })
 
-    expect(await screen.findByLabelText(/category view/i)).toBeInTheDocument()
+    expect(await screen.findByText(/category view/i)).toBeInTheDocument()
     expect(screen.getAllByText(/structure-type skills/i).length).toBeGreaterThan(0)
 
     await user.click(screen.getByRole('button', { name: 'Beam' }))
@@ -101,9 +110,7 @@ describe('Capability settings and console integration', () => {
     })
   })
 
-  it('allows switching among all fourteen domain groups', async () => {
-    const user = userEvent.setup()
-
+  it('renders installed domain groups without a stale category selector', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input)
 
@@ -144,44 +151,23 @@ describe('Capability settings and console integration', () => {
       return { ok: true, json: async () => ({}) } as Response
     })
 
-    render(<CapabilitySettingsPanel />)
+    renderCapabilitySettingsPanel()
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
     }, { timeout: 15_000 })
 
     await waitFor(() => {
-      const selector = screen.getByLabelText(/category view/i)
-      const options = selector.querySelectorAll('option')
-      expect(options.length).toBe(14)
-      expect(Array.from(options).map((option) => option.value)).toEqual([
-        'data-input',
-        'structure-type',
-        'material',
-        'section',
-        'load-boundary',
-        'analysis',
-        'result-postprocess',
-        'design',
-        'code-check',
-        'validation',
-        'report-export',
-        'drawing',
-        'visualization',
-        'general',
-      ])
+      expect(screen.getByText(/category view/i)).toBeInTheDocument()
+      expect(screen.getAllByText(/^structure-type skills$/i).length).toBeGreaterThan(0)
+      expect(screen.getByRole('button', { name: 'Beam' })).toBeInTheDocument()
     })
 
-    await user.selectOptions(screen.getByLabelText(/category view/i), 'material')
-
-    await waitFor(() => {
-      expect(screen.getAllByText(/^material skills$/i).length).toBeGreaterThan(0)
-      expect(screen.getByText(/no installed local skills in this category yet/i)).toBeInTheDocument()
-    })
+    expect(screen.queryByText(/^material skills$/i)).not.toBeInTheDocument()
+    expect(screen.queryByLabelText(/category view/i)).not.toBeInTheDocument()
   })
 
   it('falls back to the /agent/skills domain when capability-matrix omits the skill mapping', async () => {
-    const user = userEvent.setup()
     window.localStorage.clear()
     vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
       const url = String(input)
@@ -221,13 +207,11 @@ describe('Capability settings and console integration', () => {
       } as Response
     })
 
-    render(<CapabilitySettingsPanel />)
+    renderCapabilitySettingsPanel()
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
     })
-
-    await user.selectOptions(screen.getByLabelText(/category view/i), 'load-boundary')
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Dead Load' })).toBeInTheDocument()
@@ -235,7 +219,6 @@ describe('Capability settings and console integration', () => {
   })
 
   it('renders catalog-projected skills and tools without registry-only metadata', async () => {
-    const user = userEvent.setup()
     window.localStorage.clear()
     vi.spyOn(global, 'fetch').mockImplementation(async (input) => {
       const url = String(input)
@@ -304,7 +287,7 @@ describe('Capability settings and console integration', () => {
       } as Response
     })
 
-    render(<CapabilitySettingsPanel />)
+    renderCapabilitySettingsPanel()
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
@@ -312,8 +295,6 @@ describe('Capability settings and console integration', () => {
 
     expect(screen.getByRole('button', { name: 'Generic Structure Type' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Beam' })).toBeInTheDocument()
-
-    await user.selectOptions(screen.getByLabelText(/category view/i), 'analysis')
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'OpenSees Static Analysis' })).toBeInTheDocument()
@@ -394,7 +375,7 @@ describe('Capability settings and console integration', () => {
     render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: /manage capabilities/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /skills · .*tools/i })).toBeInTheDocument()
     })
 
     const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
@@ -514,7 +495,7 @@ describe('Capability settings and console integration', () => {
     render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
 
     await waitFor(() => {
-      expect(screen.getByRole('link', { name: /manage capabilities/i })).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: /skills · .*tools/i })).toBeInTheDocument()
     })
 
     const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
@@ -572,24 +553,28 @@ describe('Capability settings and console integration', () => {
               {
                 id: 'detect_structure_type',
                 category: 'modeling',
+                enabledByDefault: true,
                 displayName: { zh: '识别结构类型', en: 'Detect Structure Type' },
                 description: { zh: '识别结构类型', en: 'Detect structure types from user text' },
               },
               {
                 id: 'build_model',
                 category: 'modeling',
+                enabledByDefault: true,
                 displayName: { zh: '构建模型', en: 'Build Model' },
                 description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' },
               },
               {
                 id: 'extract_draft_params',
                 category: 'modeling',
+                enabledByDefault: true,
                 displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' },
                 description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' },
               },
               {
                 id: 'run_analysis',
                 category: 'analysis',
+                enabledByDefault: true,
                 displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' },
                 description: { zh: '执行分析求解', en: 'Execute analysis' },
               },
@@ -667,7 +652,7 @@ describe('Capability settings and console integration', () => {
     expect(streamCall).toBeTruthy()
     const requestInit = streamCall?.[1] as RequestInit | undefined
     const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { enabledToolIds?: string[] } }
-    expect([...(body.context?.enabledToolIds ?? [])].sort()).toEqual(['detect_structure_type', 'build_model', 'run_analysis', 'extract_draft_params'])
+    expect([...(body.context?.enabledToolIds ?? [])].sort()).toEqual(['build_model', 'detect_structure_type', 'extract_draft_params', 'run_analysis'])
   })
 
   it('falls back to default engineering skills when the console submits before capability hydration finishes', async () => {
@@ -739,7 +724,7 @@ describe('Capability settings and console integration', () => {
     expect(streamCall).toBeTruthy()
     const requestInit = streamCall?.[1] as RequestInit | undefined
     const body = JSON.parse(String(requestInit?.body || '{}')) as { context?: { skillIds?: string[]; enabledToolIds?: string[] } }
-    expect(body.context?.skillIds).toEqual(['opensees-static', 'generic'])
+    expect(body.context?.skillIds).toEqual([...DEFAULT_CONSOLE_SKILL_IDS])
     expect(body.context?.enabledToolIds).toBeUndefined()
 
     resolveSkills?.({
@@ -893,9 +878,9 @@ describe('Capability settings and console integration', () => {
               { id: 'opensees-static', domain: 'analysis' },
             ],
             tools: [
-              { id: 'build_model', category: 'modeling', displayName: { zh: '构建模型', en: 'Build Model' }, description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' } },
-              { id: 'extract_draft_params', category: 'modeling', displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' }, description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' } },
-              { id: 'run_analysis', category: 'analysis', displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' }, description: { zh: '执行分析求解', en: 'Execute analysis' } },
+              { id: 'build_model', category: 'modeling', enabledByDefault: true, displayName: { zh: '构建模型', en: 'Build Model' }, description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' } },
+              { id: 'extract_draft_params', category: 'modeling', enabledByDefault: true, displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' }, description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' } },
+              { id: 'run_analysis', category: 'analysis', enabledByDefault: true, displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' }, description: { zh: '执行分析求解', en: 'Execute analysis' } },
             ],
             enabledToolIdsBySkill: {
               generic: ['build_model', 'extract_draft_params'],
@@ -933,7 +918,7 @@ describe('Capability settings and console integration', () => {
       return { ok: true, json: async () => ({}) } as Response
     })
 
-    const view = render(<CapabilitySettingsPanel />)
+    const view = renderCapabilitySettingsPanel()
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
@@ -976,9 +961,9 @@ describe('Capability settings and console integration', () => {
               { id: 'opensees-static', domain: 'analysis' },
             ],
             tools: [
-              { id: 'build_model', category: 'modeling', displayName: { zh: '构建模型', en: 'Build Model' }, description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' } },
-              { id: 'extract_draft_params', category: 'modeling', displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' }, description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' } },
-              { id: 'run_analysis', category: 'analysis', displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' }, description: { zh: '执行分析求解', en: 'Execute analysis' } },
+              { id: 'build_model', category: 'modeling', enabledByDefault: true, displayName: { zh: '构建模型', en: 'Build Model' }, description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' } },
+              { id: 'extract_draft_params', category: 'modeling', enabledByDefault: true, displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' }, description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' } },
+              { id: 'run_analysis', category: 'analysis', enabledByDefault: true, displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' }, description: { zh: '执行分析求解', en: 'Execute analysis' } },
             ],
             enabledToolIdsBySkill: {
               generic: ['build_model', 'extract_draft_params'],
@@ -1075,7 +1060,7 @@ describe('Capability settings and console integration', () => {
       } as Response
     })
 
-    render(<CapabilitySettingsPanel />)
+    renderCapabilitySettingsPanel()
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
@@ -1095,18 +1080,21 @@ describe('Capability settings and console integration', () => {
             {
               id: 'build_model',
               category: 'modeling',
+              enabledByDefault: true,
               displayName: { zh: '构建模型', en: 'Build Model' },
               description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' },
             },
             {
               id: 'extract_draft_params',
               category: 'modeling',
+              enabledByDefault: true,
               displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' },
               description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' },
             },
             {
               id: 'run_analysis',
               category: 'analysis',
+              enabledByDefault: true,
               displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' },
               description: { zh: '执行分析求解', en: 'Execute analysis' },
             },
@@ -1125,7 +1113,7 @@ describe('Capability settings and console integration', () => {
 
     await waitFor(() => {
       const stored = JSON.parse(window.localStorage.getItem(CAPABILITY_PREFERENCE_STORAGE_KEY) || '{}') as { toolIds?: string[] }
-      expect([...(stored.toolIds ?? [])].sort()).toEqual(['build_model', 'run_analysis', 'extract_draft_params'])
+      expect([...(stored.toolIds ?? [])].sort()).toEqual(['build_model', 'extract_draft_params', 'run_analysis'])
     })
   })
 
@@ -1167,24 +1155,28 @@ describe('Capability settings and console integration', () => {
               {
                 id: 'detect_structure_type',
                 category: 'modeling',
+                enabledByDefault: true,
                 displayName: { zh: '识别结构类型', en: 'Detect Structure Type' },
                 description: { zh: '识别结构类型', en: 'Detect structure types from user text' },
               },
               {
                 id: 'build_model',
                 category: 'modeling',
+                enabledByDefault: true,
                 displayName: { zh: '构建模型', en: 'Build Model' },
                 description: { zh: '从草稿构建可计算模型', en: 'Build a computable model from draft' },
               },
               {
                 id: 'extract_draft_params',
                 category: 'modeling',
+                enabledByDefault: true,
                 displayName: { zh: '提取草稿参数', en: 'Extract Draft Params' },
                 description: { zh: '提取并合并结构草稿参数', en: 'Extract and merge draft params' },
               },
               {
                 id: 'run_analysis',
                 category: 'analysis',
+                enabledByDefault: true,
                 displayName: { zh: '执行结构分析', en: 'Run Structural Analysis' },
                 description: { zh: '执行分析求解', en: 'Execute analysis' },
               },
@@ -1211,7 +1203,7 @@ describe('Capability settings and console integration', () => {
       } as Response
     })
 
-    render(<CapabilitySettingsPanel />)
+    renderCapabilitySettingsPanel()
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()
@@ -1219,7 +1211,7 @@ describe('Capability settings and console integration', () => {
 
     await waitFor(() => {
       const stored = JSON.parse(window.localStorage.getItem(CAPABILITY_PREFERENCE_STORAGE_KEY) || '{}') as { toolIds?: string[] }
-      expect([...(stored.toolIds ?? [])].sort()).toEqual(['detect_structure_type', 'build_model', 'run_analysis', 'extract_draft_params'])
+      expect([...(stored.toolIds ?? [])].sort()).toEqual(['build_model', 'detect_structure_type', 'extract_draft_params', 'run_analysis'])
     })
   })
 
@@ -1306,7 +1298,7 @@ describe('Capability settings and console integration', () => {
       } as Response
     })
 
-    render(<CapabilitySettingsPanel />)
+    renderCapabilitySettingsPanel()
 
     await waitFor(() => {
       expect(screen.getByRole('heading', { name: /capability settings/i })).toBeInTheDocument()

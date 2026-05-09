@@ -220,7 +220,19 @@ export function CapabilitySettingsPanel() {
         .filter((skillId) => availableSkills.some((skill) => skill.id === skillId))
       const allToolIds = new Set(availableTools.map((tool) => tool.id))
       const validToolIds = storeToolIds.filter((toolId) => allToolIds.has(toolId))
-      setCapabilityPreferences(validSkillIds, validToolIds, storeExplicit)
+      const hasExactDefaultSkills =
+        storeSkillIds.length === defaultSelectedSkillIds.length
+        && validSkillIds.length === defaultSelectedSkillIds.length
+        && defaultSelectedSkillIds.every((skillId) => validSkillIds.includes(skillId))
+      const shouldRepairLegacyFoundationTools =
+        hasExactDefaultSkills
+        && validToolIds.length === 1
+        && validToolIds[0] === 'detect_structure_type'
+        && defaultSelectedToolIds.length > validToolIds.length
+      const nextToolIds = shouldRepairLegacyFoundationTools
+        ? Array.from(new Set([...validToolIds, ...defaultSelectedToolIds]))
+        : validToolIds
+      setCapabilityPreferences(validSkillIds, nextToolIds, storeExplicit)
     }
   }, [availableSkills, availableTools, capabilityMatrixLoaded, defaultSelectedSkillIds, defaultSelectedToolIds, setCapabilityPreferences, skillNormalization, skillsLoaded, storeExplicit, storeSkillIds, storeToolIds])
 

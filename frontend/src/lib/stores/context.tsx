@@ -4,9 +4,9 @@ import { createContext, useContext, useRef, type ReactNode } from 'react'
 import { type StoreApi, useStore as useZustandStore } from 'zustand'
 import { createStore } from 'zustand/vanilla'
 import {
+  createInitialPreferencesState,
   createPreferencesSlice,
   type PreferencesSlice,
-  initialPreferencesState,
 } from './slices/preferences'
 
 export type StoreState = PreferencesSlice
@@ -18,7 +18,7 @@ export type StoreState = PreferencesSlice
  */
 export const initStore = (): Partial<StoreState> => {
   return {
-    ...initialPreferencesState,
+    ...createInitialPreferencesState(),
   }
 }
 

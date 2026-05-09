@@ -42,16 +42,19 @@ function hydrateCapabilityPreferences(): { skillIds: string[]; toolIds: string[]
   return { skillIds: [], toolIds: [] }
 }
 
-const initialCapabilities = hydrateCapabilityPreferences()
-
-export const initialPreferencesState: PreferencesState = {
-  locale: 'en',
-  workspaceSettingsOpen: false,
-  workspaceSettingsTab: 'general',
-  capabilitySkillIds: initialCapabilities.skillIds,
-  capabilityToolIds: initialCapabilities.toolIds,
-  capabilityExplicit: initialCapabilities.skillIds.length > 0 || initialCapabilities.toolIds.length > 0,
+export function createInitialPreferencesState(): PreferencesState {
+  const initialCapabilities = hydrateCapabilityPreferences()
+  return {
+    locale: 'en',
+    workspaceSettingsOpen: false,
+    workspaceSettingsTab: 'general',
+    capabilitySkillIds: initialCapabilities.skillIds,
+    capabilityToolIds: initialCapabilities.toolIds,
+    capabilityExplicit: initialCapabilities.skillIds.length > 0 || initialCapabilities.toolIds.length > 0,
+  }
 }
+
+export const initialPreferencesState: PreferencesState = createInitialPreferencesState()
 
 export const createPreferencesSlice: StateCreator<
   PreferencesSlice,
@@ -59,7 +62,7 @@ export const createPreferencesSlice: StateCreator<
   [],
   PreferencesSlice
 > = (set) => ({
-  ...initialPreferencesState,
+  ...createInitialPreferencesState(),
   setLocale: (locale) => set({ locale }),
   openWorkspaceSettings: (tab = 'general') => set({
     workspaceSettingsOpen: true,
