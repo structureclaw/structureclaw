@@ -25,7 +25,7 @@ describe('AIConsole presentation rendering', () => {
     vi.restoreAllMocks()
   })
 
-  it('renders summary and grouped phases from v3 presentation events', async () => {
+  it('renders summary from v3 presentation events', async () => {
     const user = userEvent.setup()
 
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -145,8 +145,6 @@ describe('AIConsole presentation rendering', () => {
     await waitFor(() => {
       const chatPanel = screen.getByTestId('console-chat-scroll')
       expect(within(chatPanel).getAllByText('模型已生成，可继续分析。').length).toBeGreaterThan(0)
-      expect(within(chatPanel).getByText('建模')).toBeInTheDocument()
-      expect(within(chatPanel).getByText('结构模型已生成')).toBeInTheDocument()
       expect(within(chatPanel).queryByText(/show prompt & thinking/i)).not.toBeInTheDocument()
     })
   })
@@ -365,7 +363,6 @@ describe('AIConsole presentation rendering', () => {
       const chatPanel = screen.getByTestId('console-chat-scroll')
       expect(within(chatPanel).getByText('后端 presentation 摘要应该恢复出来')).toBeInTheDocument()
       expect(within(chatPanel).queryByText('本地缓存摘要不应成为主显示')).not.toBeInTheDocument()
-      expect(within(chatPanel).getByText('理解需求')).toBeInTheDocument()
     })
   })
 
@@ -459,10 +456,11 @@ describe('AIConsole presentation rendering', () => {
 
     render(<AppStoreProvider><AIConsole /></AppStoreProvider>)
 
-    await user.click(screen.getByRole('button', { name: /expand engineering context/i }))
     const composer = await screen.findByPlaceholderText(/describe your structural goal/i)
     await user.type(composer, 'Create a portal frame')
     await user.click(screen.getByRole('button', { name: /send/i }))
+    await user.click(await screen.findByRole('button', { name: /show results/i }))
+    await user.click(await screen.findByRole('tab', { name: /context/i }))
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /preview model/i })).toBeEnabled()

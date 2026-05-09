@@ -1,15 +1,15 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen, waitFor } from '@testing-library/react'
-import ConsolePage from '@/app/(console)/console/page'
+import ConsolePage from '@/app/page'
 import { AppStoreProvider } from '@/lib/stores/context'
 
 describe('Semantic HTML (ACCS-03)', () => {
   Element.prototype.scrollIntoView = vi.fn()
 
   async function renderConsolePage() {
-    render(<AppStoreProvider><ConsolePage /></AppStoreProvider>)
+    render(<main><AppStoreProvider><ConsolePage /></AppStoreProvider></main>)
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Structural Engineering|结构工程/ })).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/Describe your structural goal/)).toBeInTheDocument()
     }, { timeout: 15_000 })
   }
 
@@ -21,9 +21,9 @@ describe('Semantic HTML (ACCS-03)', () => {
 
     it('has conversation, composer, and output section headings', async () => {
       await renderConsolePage()
-      expect(await screen.findByRole('heading', { name: 'History' })).toBeInTheDocument()
-      expect(screen.getByRole('heading', { name: 'Structural Engineering Conversation Workspace' })).toBeInTheDocument()
-      expect(screen.getByRole('heading', { name: 'Analysis Results & Report' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: 'How can I help you today?' })).toBeInTheDocument()
+      expect(screen.getByTestId('console-layout-grid')).toBeInTheDocument()
+      expect(screen.getByTestId('console-history-panel')).toBeInTheDocument()
     })
 
     it('buttons use button element (not div with onClick)', async () => {
@@ -36,8 +36,8 @@ describe('Semantic HTML (ACCS-03)', () => {
     it('exposes form fields with visible labels or placeholders', async () => {
       await renderConsolePage()
       expect(screen.getByPlaceholderText(/Describe your structural goal/)).toBeInTheDocument()
-      expect(screen.getByRole('button', { name: 'Expand Engineering Context' })).toBeInTheDocument()
-      expect(screen.getByText('Analysis Results & Report')).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'New Conversation' })).toBeInTheDocument()
+      expect(screen.getByTestId('console-history-panel')).toBeInTheDocument()
     })
   })
 })

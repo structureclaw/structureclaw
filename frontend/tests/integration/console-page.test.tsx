@@ -1,7 +1,7 @@
 import '@testing-library/jest-dom/vitest'
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
-import ConsolePage from '../../src/app/(console)/console/page'
+import ConsolePage from '@/app/page'
 import type { VisualizationSnapshot } from '../../src/components/visualization'
 import { API_BASE } from '@/lib/api-base'
 import { CAPABILITY_PREFERENCE_STORAGE_KEY } from '@/lib/capability-preference'
@@ -263,7 +263,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     )
     // Wait for the real backend to respond to the conversations request
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: /Structural Engineering|结构工程/ })).toBeInTheDocument()
+      expect(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/)).toBeInTheDocument()
     }, { timeout: 15_000 })
     return view
   }
@@ -278,12 +278,21 @@ describe('ConsolePage Integration (CONS-13)', () => {
     )
   }
 
+  async function openResultsPanelTab(tabName: RegExp) {
+    fireEvent.click(await screen.findByRole('button', { name: /Show Results|显示结果/ }))
+    fireEvent.click(await screen.findByRole('tab', { name: tabName }))
+  }
+
+  async function openResultsContextPanel() {
+    await openResultsPanelTab(/Context|工程上下文/)
+  }
+
   it('renders the active AI console shell', async () => {
     await renderConsolePage()
 
-    expect(await screen.findByRole('heading', { name: 'Structural Engineering Conversation Workspace' })).toBeInTheDocument()
-    expect(screen.getByText('History')).toBeInTheDocument()
-    expect(screen.getByText('Analysis Results & Report')).toBeInTheDocument()
+    expect(await screen.findByRole('heading', { name: 'How can I help you today?' })).toBeInTheDocument()
+    expect(screen.getByTestId('console-history-panel')).toBeInTheDocument()
+    expect(screen.getByTestId('console-layout-grid')).toBeInTheDocument()
   })
 
   it('collapses and restores the conversation history panel', async () => {
@@ -293,41 +302,31 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Collapse History' }))
 
     expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-history-collapsed', 'true')
-    expect(screen.getByRole('button', { name: 'Expand History' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Expand History' }).length).toBeGreaterThan(0)
     expect(screen.queryByRole('heading', { name: /^History$|^历史$/ })).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Expand History' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Expand History' })[0])
 
     expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-history-collapsed', 'false')
-    expect(screen.getByRole('heading', { name: /^History$|^历史$/ })).toBeInTheDocument()
+    expect(screen.getByTestId('console-history-panel')).toBeInTheDocument()
   })
 
-  it('opens the analysis result panel in a dialog', async () => {
+  it('opens the analysis result panel in a dialog from an active conversation', async () => {
     await renderConsolePage()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open Results' }))
+    fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
+      target: { value: 'Open result panel smoke test' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Send|发送/ }))
 
-    const dialog = screen.getByRole('dialog', { name: 'Analysis Results & Report' })
+    fireEvent.click(await screen.findByRole('button', { name: /Show Results|显示结果/ }))
+
+    const dialog = screen.getByRole('dialog', { name: /Analysis Results & Report|分析结果与报告/ })
     expect(dialog).toBeInTheDocument()
     expect(within(dialog).getByTestId('console-output-panel')).toBeInTheDocument()
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Close Results' }))
-    expect(screen.queryByRole('dialog', { name: 'Analysis Results & Report' })).not.toBeInTheDocument()
-  })
-
-  it('switches between docked and popup result modes', async () => {
-    await renderConsolePage()
-
-    expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-output-mode', 'dock')
-    expect(screen.getByTestId('console-output-dock')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Use Popup Results' }))
-    expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-output-mode', 'modal')
-    expect(screen.queryByTestId('console-output-dock')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Dock Results' }))
-    expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-output-mode', 'dock')
-    expect(screen.getByTestId('console-output-dock')).toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: /Close Results|关闭结果/ }))
+    expect(screen.queryByRole('dialog', { name: /Analysis Results & Report|分析结果与报告/ })).not.toBeInTheDocument()
   })
 
   it('restores the collapsed history preference from localStorage', async () => {
@@ -340,7 +339,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-history-collapsed', 'true')
-    expect(screen.getByRole('button', { name: 'Expand History' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Expand History' }).length).toBeGreaterThan(0)
   })
 
   it('keeps history expanded below the sidebar breakpoint', async () => {
@@ -353,7 +352,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-history-collapsed', 'false')
-    expect(screen.getByRole('heading', { name: /^History$|^历史$/ })).toBeInTheDocument()
+    expect(screen.getByTestId('console-history-panel')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Expand History' })).not.toBeInTheDocument()
   })
 
@@ -366,16 +365,14 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await waitFor(() => {
       expect(JSON.parse(window.localStorage.getItem('structureclaw.console.ui-preferences') || '{}')).toMatchObject({
         historyCollapsed: true,
-        outputMode: 'dock',
       })
     })
 
-    fireEvent.click(screen.getByRole('button', { name: 'Expand History' }))
+    fireEvent.click(screen.getAllByRole('button', { name: 'Expand History' })[0])
 
     await waitFor(() => {
       expect(JSON.parse(window.localStorage.getItem('structureclaw.console.ui-preferences') || '{}')).toMatchObject({
         historyCollapsed: false,
-        outputMode: 'dock',
       })
     })
   })
@@ -395,7 +392,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Collapse History' }))
 
     expect(screen.getByTestId('console-layout-grid')).toHaveAttribute('data-history-collapsed', 'true')
-    expect(screen.getByRole('button', { name: 'Expand History' })).toBeInTheDocument()
+    expect(screen.getAllByRole('button', { name: 'Expand History' }).length).toBeGreaterThan(0)
   })
 
   it('compacts conversation archive saves when localStorage quota is exceeded', async () => {
@@ -464,18 +461,32 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     expect(screen.getByPlaceholderText(/Describe your structural goal/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Manage Capabilities' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Expand Engineering Context' })).toBeInTheDocument()
-    expect(screen.getByText('Database tools')).toBeInTheDocument()
-    expect(screen.getByText(/Review SQLite file health/i)).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /skills · .*tools/i })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument()
     expect(screen.queryByText('Analysis Engine Auto')).not.toBeInTheDocument()
   })
 
   it('keeps the last valid model preview available when model json becomes invalid', async () => {
+    window.localStorage.setItem('structureclaw.console.conversations', JSON.stringify({
+      'conv-preview-json': {
+        id: 'conv-preview-json',
+        title: 'Preview model context',
+        type: 'analysis',
+        createdAt: '2026-03-12T08:00:00.000Z',
+        updatedAt: '2026-03-12T09:00:00.000Z',
+        messages: [
+          { id: 'm1', role: 'user', content: 'Preview model context', status: 'done', timestamp: '2026-03-12T08:00:00.000Z' },
+          { id: 'm2', role: 'assistant', content: 'Ready for model preview.', status: 'done', timestamp: '2026-03-12T08:01:00.000Z' },
+        ],
+        activePanel: 'context',
+      },
+    }))
+
     await renderConsolePage()
 
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Preview model context/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Show Results|显示结果/ }))
+    fireEvent.click(await screen.findByRole('tab', { name: /Context|工程上下文/ }))
 
     const modelInput = screen.getByPlaceholderText(modelJsonPlaceholderPattern)
     fireEvent.change(modelInput, { target: { value: sampleModelJson } })
@@ -484,25 +495,28 @@ describe('ConsolePage Integration (CONS-13)', () => {
       expect(screen.getByRole('button', { name: /Preview Model|预览模型/ })).toBeEnabled()
     })
 
-    fireEvent.change(modelInput, { target: { value: '{"schema_version":' } })
+    fireEvent.click(screen.getByRole('tab', { name: /Context|工程上下文/ }))
+    const invalidModelInput = await screen.findByPlaceholderText(modelJsonPlaceholderPattern)
+    fireEvent.change(invalidModelInput, { target: { value: '{"schema_version":' } })
 
-    expect(screen.getByText(/Model JSON parse failed|模型 JSON 解析失败/)).toBeInTheDocument()
-    expect(screen.getByText(/Model JSON is invalid. The last valid preview is still available.|模型 JSON 无效，但仍可查看上一次有效预览。/)).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: /Preview Model|预览模型/ })).toBeEnabled()
+    await waitFor(() => {
+      expect(screen.getByText(/Model JSON parse failed|模型 JSON 解析失败/)).toBeInTheDocument()
+    })
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /Preview Model|预览模型/ })).toBeEnabled()
+    })
   })
 
-  it('keeps only one engineering context expand button on first load', async () => {
+  it('does not render the legacy engineering context expand button on first load', async () => {
     await renderConsolePage()
 
-    expect(screen.getAllByRole('button', { name: 'Expand Engineering Context' })).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: /Expand Engineering Context|展开工程上下文/ })).not.toBeInTheDocument()
   })
 
-  it('shows a compact capability summary and a link to the settings page', async () => {
+  it('shows a compact capability summary in the sidebar', async () => {
     await renderConsolePage()
 
-    expect(screen.getByText('Current capabilities')).toBeInTheDocument()
-    expect(screen.getByText('Capability selection moved into a dedicated settings page so the chat workspace stays focused on conversation and results.')).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Manage Capabilities' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /skills · .*tools/i })).toBeInTheDocument()
     expect(screen.queryByText('Beam Helper')).not.toBeInTheDocument()
     expect(screen.queryByText('Frame Checker')).not.toBeInTheDocument()
   })
@@ -517,7 +531,12 @@ describe('ConsolePage Integration (CONS-13)', () => {
   it('keeps only the model section inside the engineering context panel', async () => {
     await renderConsolePage()
 
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
+      target: { value: 'Open context panel' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Send|发送/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Show Results|显示结果/ }))
+    fireEvent.click(await screen.findByRole('tab', { name: /Context|工程上下文/ }))
 
     expect(screen.getAllByText(/^Model$|^模型$/).length).toBeGreaterThan(0)
     expect(screen.queryByText(/^Analysis Settings$|^分析设置$/)).not.toBeInTheDocument()
@@ -616,7 +635,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Paused conversation/ }))
 
     await waitFor(() => {
-      expect(screen.getByText('当前分析尚未完成')).toBeInTheDocument()
+      expect(screen.getAllByText('当前分析尚未完成').length).toBeGreaterThan(0)
     })
     expect(screen.getByText(/Stream stopped|已停止/)).toBeInTheDocument()
     expect(screen.queryByText(/当前分析尚未完成（已停止）/)).not.toBeInTheDocument()
@@ -966,15 +985,16 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Stored conversation/ }))
 
     await waitFor(() => {
-      expect(screen.getByText('backend assistant')).toBeInTheDocument()
+      expect(within(screen.getByTestId('console-chat-panel')).getByText('backend assistant')).toBeInTheDocument()
     })
     expect(within(screen.getByTestId('console-chat-panel')).queryByText('welcome')).not.toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    await openResultsContextPanel()
 
     const modelInput = screen.getByPlaceholderText(modelJsonPlaceholderPattern) as HTMLTextAreaElement
     expect(modelInput.value).toContain('"schema_version": "1.0.0"')
     expect(screen.queryByText(/^Design Code$|^设计规范$/)).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('tab', { name: /Report|报告/ }))
     expect(screen.getByText('Archived summary')).toBeInTheDocument()
   })
 
@@ -1051,10 +1071,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
 
     fireEvent.click(screen.getByRole('button', { name: /New Conversation|新建对话/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
 
-    const modelInput = screen.getByPlaceholderText(modelJsonPlaceholderPattern) as HTMLTextAreaElement
-    expect(modelInput.value).toBe('')
+    expect(screen.queryByRole('button', { name: /Show Results|显示结果/ })).not.toBeInTheDocument()
     expect(screen.queryByText('Archived summary')).not.toBeInTheDocument()
     expect(screen.queryByText(/Analysis Engine Auto|计算引擎 自动选择/)).not.toBeInTheDocument()
   })
@@ -1176,7 +1194,10 @@ describe('ConsolePage Integration (CONS-13)', () => {
           json: vi.fn().mockResolvedValue({
             id: 'conv-context',
             title: 'Context conversation',
-            messages: [{ id: 'srv-context', role: 'assistant', content: 'context backend', createdAt: '2026-03-12T09:00:00.000Z' }],
+            messages: [
+              { id: 'srv-context-user', role: 'user', content: 'context user', createdAt: '2026-03-12T08:59:00.000Z' },
+              { id: 'srv-context', role: 'assistant', content: 'context backend', createdAt: '2026-03-12T09:00:00.000Z' },
+            ],
             session: null,
           }),
         } as unknown as Response
@@ -1191,7 +1212,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
       expect(screen.getByText('context backend')).toBeInTheDocument()
     })
 
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
+    await openResultsContextPanel()
     const modelInput = screen.getByPlaceholderText(modelJsonPlaceholderPattern) as HTMLTextAreaElement
     fireEvent.change(modelInput, { target: { value: sampleModelJson } })
 
@@ -1354,9 +1375,11 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
     expect(screen.getByText('Keep me')).toBeInTheDocument()
 
-    const stored = JSON.parse(window.localStorage.getItem('structureclaw.console.conversations') || '{}')
-    expect(stored['conv-delete']).toBeUndefined()
-    expect(stored['conv-keep']).toBeDefined()
+    await waitFor(() => {
+      const stored = JSON.parse(window.localStorage.getItem('structureclaw.console.conversations') || '{}')
+      expect(stored['conv-delete']).toBeUndefined()
+      expect(stored['conv-keep']).toBeDefined()
+    })
   })
 
   it('deletes the active conversation and falls back to the newest remaining one', async () => {
@@ -1462,6 +1485,12 @@ describe('ConsolePage Integration (CONS-13)', () => {
   it('keeps separate scroll containers for history, chat, and output', async () => {
     const { container } = await renderConsolePage()
 
+    fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
+      target: { value: 'Open scroll containers' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Send|发送/ }))
+    fireEvent.click(await screen.findByRole('button', { name: /Show Results|显示结果/ }))
+
     expect(await screen.findByTestId('console-layout-grid')).toBeInTheDocument()
     expect(screen.getByTestId('console-history-scroll')).toBeInTheDocument()
     expect(screen.getByTestId('console-chat-scroll')).toBeInTheDocument()
@@ -1472,7 +1501,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(chatScroll).not.toContainElement(screen.getByTestId('console-composer'))
     expect(container.querySelector('[data-testid="console-history-scroll"].overflow-auto')).not.toBeNull()
     expect(container.querySelector('[data-testid="console-chat-scroll"].overflow-auto')).not.toBeNull()
-    expect(container.querySelector('[data-testid="console-output-scroll"].overflow-auto')).not.toBeNull()
+    expect(document.querySelector('[data-testid="console-output-scroll"].overflow-auto')).not.toBeNull()
   })
 
   it('renders Chinese console copy when locale is set to zh', async () => {
@@ -1481,13 +1510,13 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     await waitFor(() => {
-      expect(screen.getByRole('heading', { name: '结构工程对话工作台' })).toBeInTheDocument()
+      expect(screen.getByRole('heading', { name: '有什么可以帮你的？' })).toBeInTheDocument()
     })
 
-    expect(screen.getByText('历史会话')).toBeInTheDocument()
+    expect(screen.getByTestId('console-history-panel')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: '发送' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '管理能力' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: '展开工程上下文' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /技能 · .*工具/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '展开工程上下文' })).not.toBeInTheDocument()
     expect(screen.queryByText('计算引擎 自动选择')).not.toBeInTheDocument()
     expect(screen.queryByText('已选择技能')).not.toBeInTheDocument()
     expect(screen.queryByText('选择允许 agent 使用的本地 Markdown skills。不选择技能时，控制台会默认退回到直接和大模型对话。')).not.toBeInTheDocument()
@@ -1700,6 +1729,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: /Send|发送/ }))
 
+    await openResultsPanelTab(/Analysis|分析结果/)
+
     await waitFor(() => {
       expect(screen.getByText('OpenSees Builtin v3.7.0')).toBeInTheDocument()
     })
@@ -1778,6 +1809,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
       target: { value: 'Render markdown guidance' },
     })
     fireEvent.click(screen.getByRole('button', { name: /^Send$|^发送$/ }))
+
+    await openResultsPanelTab(/Analysis|分析结果/)
 
     await waitFor(() => {
       expect(screen.getByTestId('console-guidance-panel')).toBeInTheDocument()
@@ -1860,11 +1893,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: /^Send$|^发送$/ }))
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /^Report$|^报告$/ })).toBeInTheDocument()
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: /^Report$|^报告$/ }))
+    await openResultsPanelTab(/^Report$|^报告$/)
 
     await waitFor(() => {
       expect(screen.getByText('insight', { selector: 'strong' })).toBeInTheDocument()
@@ -1939,11 +1968,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: /^Send$|^发送$/ }))
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /^Report$|^报告$/ })).toBeInTheDocument()
-    })
-
-    fireEvent.click(screen.getByRole('button', { name: /^Report$|^报告$/ }))
+    await openResultsPanelTab(/^Report$|^报告$/)
 
     await waitFor(() => {
       expect(screen.getByRole('link', { name: 'Download artifact' })).toHaveAttribute('href', `${API_BASE}/api/v1/files/serve?path=report.md`)
@@ -2014,17 +2039,14 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: /^Send$|^发送$/ }))
 
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /^Analysis$|^分析结果$/ })).toBeInTheDocument()
-    })
-    fireEvent.click(screen.getByRole('button', { name: /^Analysis$|^分析结果$/ }))
+    await openResultsPanelTab(/^Analysis$|^分析结果$/)
 
-    const executionSummaryParagraph = screen.getByText('First paragraph.').closest('p')
+    const executionSummaryParagraph = screen.getAllByText('First paragraph.')[0].closest('p')
     expect(executionSummaryParagraph).not.toBeNull()
     const executionMarkdownContainer = executionSummaryParagraph?.parentElement
     expect(executionMarkdownContainer).toHaveClass('prose-p:my-0')
 
-    fireEvent.click(screen.getByRole('button', { name: /^Report$|^报告$/ }))
+    fireEvent.click(screen.getByRole('tab', { name: /^Report$|^报告$/ }))
 
     await waitFor(() => {
       expect(screen.getByText('Summary first paragraph.')).toBeInTheDocument()
@@ -2043,7 +2065,6 @@ describe('ConsolePage Integration (CONS-13)', () => {
     await renderConsolePage()
 
     expect(screen.queryByRole('button', { name: /Manage Engines|管理引擎/ })).not.toBeInTheDocument()
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
     expect(screen.queryByRole('button', { name: /Expand Engine Settings|展开引擎设置/ })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Change Engine|更换引擎/ })).not.toBeInTheDocument()
   })
@@ -2111,6 +2132,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
       target: { value: 'Help me size a steel frame' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
+
+    await openResultsPanelTab(/Analysis|分析结果/)
 
     await waitFor(() => {
       expect(screen.getByTestId('console-guidance-panel')).toBeInTheDocument()
@@ -2190,20 +2213,18 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     await renderConsolePage()
 
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
-    const modelInput = screen.getByPlaceholderText(modelJsonPlaceholderPattern)
-    fireEvent.change(modelInput, { target: { value: '{"schema_version":' } })
     fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
       target: { value: 'Please draft a beam model' },
     })
     fireEvent.click(screen.getByRole('button', { name: 'Send' }))
 
+    fireEvent.click(await screen.findByRole('tab', { name: /Context|工程上下文/ }))
+    const modelInput = await screen.findByPlaceholderText(modelJsonPlaceholderPattern)
     await waitFor(() => {
       expect((modelInput as HTMLTextAreaElement).value).toContain('"schema_version": "1.0.0"')
     })
 
     expect((modelInput as HTMLTextAreaElement).value).toContain('"nodes"')
-    expect(screen.queryByText(/Model JSON parse failed|模型 JSON 解析失败/)).not.toBeInTheDocument()
     // latestModelVisualizationSnapshot is derived in a useEffect after modelText updates; avoid racing the DOM on CI.
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Preview Model|预览模型/ })).toBeEnabled()
@@ -2273,6 +2294,8 @@ describe('ConsolePage Integration (CONS-13)', () => {
     })
     fireEvent.click(screen.getByRole('button', { name: '发送' }))
 
+    await openResultsPanelTab(/Analysis|分析结果/)
+
     await waitFor(() => {
       expect(screen.getByTestId('console-guidance-panel')).toBeInTheDocument()
     })
@@ -2334,14 +2357,11 @@ describe('ConsolePage Integration (CONS-13)', () => {
     setCapabilityPreferences(['generic', 'beam', 'opensees-static'])
     await renderConsolePage()
 
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
-    fireEvent.change(screen.getByPlaceholderText(modelJsonPlaceholderPattern), {
-      target: { value: sampleModelJson },
-    })
     fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
       target: { value: 'Analyze and visualize this beam' },
     })
     fireEvent.click(screen.getByRole('button', { name: /Send|发送/ }))
+    await openResultsPanelTab(/Analysis|分析结果/)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Open Visualization|打开可视化/ })).toBeEnabled()
@@ -2350,12 +2370,10 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Open Visualization|打开可视化/ }))
 
     await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(screen.getAllByText(/Structural Visualization|结构可视化/).length).toBeGreaterThan(0)
     })
-    const dialog = screen.getByRole('dialog')
-    expect(within(dialog).getAllByText(/Structural Visualization|结构可视化/).length).toBeGreaterThan(0)
     expect(
-      within(dialog).queryByTestId('visualization-modal-scene') || within(dialog).queryByTestId('visualization-scene-fallback')
+      screen.queryByTestId('visualization-modal-scene') || screen.queryByTestId('visualization-scene-fallback')
     ).toBeInTheDocument()
 
     fireEvent.keyDown(window, { key: 'Escape' })
@@ -2419,10 +2437,6 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     setCapabilityPreferences(['generic', 'opensees-static', 'code-check-gb50017'])
     await renderConsolePage()
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
-    fireEvent.change(screen.getByPlaceholderText(modelJsonPlaceholderPattern), {
-      target: { value: sampleModelJson },
-    })
     fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
       target: { value: 'Analyze this model with code checks' },
     })
@@ -2492,10 +2506,6 @@ describe('ConsolePage Integration (CONS-13)', () => {
     setCapabilityPreferences(['generic', 'beam', 'opensees-static'])
     await renderConsolePage()
 
-    fireEvent.click(screen.getByRole('button', { name: /Expand Engineering Context|展开工程上下文/ }))
-    fireEvent.change(screen.getByPlaceholderText(modelJsonPlaceholderPattern), {
-      target: { value: sampleModelJson },
-    })
     fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
       target: { value: 'Analyze this model only' },
     })
@@ -2554,7 +2564,12 @@ describe('ConsolePage Integration (CONS-13)', () => {
       if (url.includes('/api/v1/chat/conversation/conv-no-snapshot')) {
         return {
           ok: true,
-          json: vi.fn().mockResolvedValue({ messages: [] }),
+          json: vi.fn().mockResolvedValue({
+            messages: [
+              { id: 'user-no-snapshot', role: 'user', content: 'No snapshot request', createdAt: '2026-03-12T08:00:00.000Z' },
+              { id: 'assistant-no-snapshot', role: 'assistant', content: 'done', createdAt: '2026-03-12T08:00:01.000Z' },
+            ],
+          }),
         } as unknown as Response
       }
 
@@ -2563,6 +2578,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     await renderConsolePage()
     fireEvent.click(await screen.findByText('No Snapshot'))
+    await openResultsPanelTab(/Analysis|分析结果/)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Open Visualization|打开可视化/ })).toBeDisabled()
@@ -2614,7 +2630,12 @@ describe('ConsolePage Integration (CONS-13)', () => {
       if (url.includes('/api/v1/chat/conversation/conv-archived-visual')) {
         return {
           ok: true,
-          json: vi.fn().mockResolvedValue({ messages: [] }),
+          json: vi.fn().mockResolvedValue({
+            messages: [
+              { id: 'user-archived-visual', role: 'user', content: 'Archive visual request', createdAt: '2026-03-12T08:00:00.000Z' },
+              { id: 'assistant-archived-visual', role: 'assistant', content: 'done', createdAt: '2026-03-12T08:00:01.000Z' },
+            ],
+          }),
         } as unknown as Response
       }
 
@@ -2623,6 +2644,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     await renderConsolePage()
     fireEvent.click(await screen.findByText('Archived Visual'))
+    await openResultsPanelTab(/Analysis|分析结果/)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Open Visualization|打开可视化/ })).toBeEnabled()
@@ -2631,7 +2653,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Open Visualization|打开可视化/ }))
 
     await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(screen.getByText('Archived Beam')).toBeInTheDocument()
     })
     expect(screen.getByText('Archived Beam')).toBeInTheDocument()
   })
@@ -2684,7 +2706,12 @@ describe('ConsolePage Integration (CONS-13)', () => {
       if (url.includes('/api/v1/chat/conversation/conv-stale-visual')) {
         return {
           ok: true,
-          json: vi.fn().mockResolvedValue({ messages: [] }),
+          json: vi.fn().mockResolvedValue({
+            messages: [
+              { id: 'user-stale-visual', role: 'user', content: 'Stale visual request', createdAt: '2026-03-12T08:00:00.000Z' },
+              { id: 'assistant-stale-visual', role: 'assistant', content: 'done', createdAt: '2026-03-12T08:00:01.000Z' },
+            ],
+          }),
         } as unknown as Response
       }
 
@@ -2693,6 +2720,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     await renderConsolePage()
     fireEvent.click(await screen.findByText('Stale Visual'))
+    await openResultsPanelTab(/Analysis|分析结果/)
 
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: /Open Visualization|打开可视化/ })).toBeNull()
@@ -2730,7 +2758,10 @@ describe('ConsolePage Integration (CONS-13)', () => {
           json: vi.fn().mockResolvedValue({
             id: 'conv-backend-snapshot',
             title: 'Backend Snapshot',
-            messages: [],
+            messages: [
+              { id: 'user-backend-snapshot', role: 'user', content: 'Backend snapshot request', createdAt: '2026-03-12T08:00:00.000Z' },
+              { id: 'assistant-backend-snapshot', role: 'assistant', content: 'done', createdAt: '2026-03-12T08:00:01.000Z' },
+            ],
             snapshots: {
               resultSnapshot: archivedVisualizationSnapshot,
               latestResult: null,
@@ -2744,6 +2775,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     await renderConsolePage()
     fireEvent.click(await screen.findByText('Backend Snapshot'))
+    await openResultsPanelTab(/Analysis|分析结果/)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Open Visualization|打开可视化/ })).toBeEnabled()
@@ -2752,7 +2784,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Open Visualization|打开可视化/ }))
 
     await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(screen.getByText('Archived Beam')).toBeInTheDocument()
     })
     expect(screen.getByText('Archived Beam')).toBeInTheDocument()
   })
@@ -2811,7 +2843,10 @@ describe('ConsolePage Integration (CONS-13)', () => {
           json: vi.fn().mockResolvedValue({
             id: 'conv-refresh-visual',
             title: 'Refresh Visual',
-            messages: [],
+            messages: [
+              { id: 'user-refresh-visual', role: 'user', content: 'Refresh visual request', createdAt: '2026-03-12T08:00:00.000Z' },
+              { id: 'assistant-refresh-visual', role: 'assistant', content: 'done', createdAt: '2026-03-12T08:00:01.000Z' },
+            ],
             snapshots: {
               modelSnapshot: {
                 ...archivedVisualizationSnapshot,
@@ -2832,6 +2867,7 @@ describe('ConsolePage Integration (CONS-13)', () => {
 
     await renderConsolePage()
     fireEvent.click(await screen.findByText('Refresh Visual'))
+    await openResultsPanelTab(/Analysis|分析结果/)
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /Open Visualization|打开可视化/ })).toBeEnabled()
@@ -2840,12 +2876,10 @@ describe('ConsolePage Integration (CONS-13)', () => {
     fireEvent.click(screen.getByRole('button', { name: /Open Visualization|打开可视化/ }))
 
     await waitFor(() => {
-      expect(screen.getByRole('dialog')).toBeInTheDocument()
+      expect(screen.getByText('Archived Beam')).toBeInTheDocument()
     })
-    const dialog = screen.getByRole('dialog')
 
-    expect(within(dialog).getByText('Archived Beam')).toBeInTheDocument()
-    expect(within(dialog).getAllByRole('button', { name: /Forces|内力/ }).length).toBeGreaterThan(0)
-    expect(within(dialog).getAllByRole('button', { name: /Deformed|变形/ }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: /Forces|内力/ }).length).toBeGreaterThan(0)
+    expect(screen.getAllByRole('button', { name: /Deformed|变形/ }).length).toBeGreaterThan(0)
   })
 })
