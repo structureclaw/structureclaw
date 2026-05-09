@@ -154,6 +154,7 @@ npm test --prefix backend -- --runInBand
 npm run build --prefix frontend
 npm run type-check --prefix frontend
 npm run test:run --prefix frontend
+npm run test:run:integration --prefix frontend  # app route、provider、console shell、accessibility
 ```
 
 分析运行时与跨服务验证：
@@ -175,7 +176,7 @@ node tests/runner.mjs validate validate-converter-api-contract
 按改动类型的最低期望：
 
 - Backend / 契约改动：覆盖成功、失败、缺参三类场景。
-- Frontend 改动：至少运行定向测试和 `type-check`；涉及路由、布局、provider 时再跑 `build`。
+- Frontend 改动：至少运行定向测试和 `type-check`；涉及 app route、provider、console shell 或 accessibility 时运行 `test:run:integration`；涉及路由、布局、provider 时再跑 `build`。
 - 分析运行时改动：保持回归算例稳定，若需要更新预期输出，请在 PR 中明确说明原因。
 - 纯文档改动：不强制跑代码测试，但要确保命令、路径、接口名称准确。
 

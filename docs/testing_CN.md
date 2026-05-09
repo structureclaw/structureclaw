@@ -24,8 +24,9 @@
 | `backend/tests/*.test.mjs` | Backend unit 或 backend integration，取决于 fixture 范围 | `npm test --prefix backend -- --runInBand` |
 | `backend/src/**/__tests__/*.test.mjs` | Backend unit 或聚焦的子系统 integration | `npm test --prefix backend -- --runInBand` |
 | `backend/src/agent-skills/**/__tests__/*` | Skill unit、handler 或 skill integration 覆盖 | `npm test --prefix backend -- --runInBand` 或 skill 专用 npm script |
-| `frontend/tests/*.test.ts(x)` | Frontend unit 与配置覆盖 | `npm run test:run --prefix frontend` |
-| `frontend/tests/components/**` | 组件级 unit 和交互覆盖 | `npm run test:run --prefix frontend` |
+| `frontend/tests/*.test.ts(x)` 以及 `frontend/tests/lib/**`、`frontend/tests/stores/**`、非 console 的 `frontend/tests/components/**` | Frontend unit 与配置覆盖 | `npm run test:run --prefix frontend` |
+| `frontend/tests/components/console/**` | 组合后的 AI console、能力 hydration、流式响应和 provider 交互的 frontend integration 覆盖 | `npm run test:run:integration --prefix frontend` |
+| `frontend/tests/accessibility/semantic.test.tsx` | 组合后的 console 页面语义与可访问性 integration 冒烟 | `npm run test:run:integration --prefix frontend` |
 | `frontend/tests/integration/**` | 页面、provider、route group 的 frontend integration 覆盖 | `npm run test:run:integration --prefix frontend` |
 | `frontend/tests/e2e/**` | Playwright 浏览器 E2E 覆盖 | `npm run test:e2e --prefix frontend` |
 | `tests/regression/backend-validations.js` | 命名 validation contract | `node tests/runner.mjs validate <name>` |
@@ -47,12 +48,20 @@
 | `.github/workflows/llm-integration.yml` | 真实 LLM integration 检查 | 在 `master`、手动触发，或允许用户评论 `/test-llm` 时运行。 |
 | `.github/workflows/publish-npm.yml` | 发布前 gate | 为保护发布重复运行部分检查。它不拥有新增测试覆盖。 |
 
+## Frontend Vitest 拆分
+
+Frontend 现在有两个 Vitest 配置，归属互斥：
+
+- `frontend/vitest.config.ts` 负责快速 unit / 配置覆盖，并显式排除 `tests/integration/**`、`tests/components/console/**`、`tests/accessibility/**` 和 `tests/e2e/**`。
+- `frontend/vitest.integration.config.ts` 负责 app route、provider、console integration 覆盖，并包含 `tests/integration/**/*.test.tsx`、`tests/components/console/**/*.test.tsx` 和 `tests/accessibility/semantic.test.tsx`。
+- 新增 console shell 测试、依赖 provider 的页面测试、route 测试，或需要 integration backend fixture 的测试，即使渲染的是 React component，也应放入 integration runner。
+
 ## 如何选择测试
 
 使用能证明行为的最小分类：
 
 - Backend 逻辑或 route 行为：添加或运行定向 Jest；如果可能影响 contract，再运行 `node tests/runner.mjs backend-regression`。
-- Frontend 组件或状态行为：添加或运行 Vitest，并运行 `npm run type-check --prefix frontend`。
+- Frontend 组件或状态行为：添加或运行 Vitest，并运行 `npm run type-check --prefix frontend`。Console shell、依赖 provider 的页面、route 或 accessibility 覆盖应使用 integration Vitest runner。
 - 跨页面浏览器行为：使用 Playwright E2E。
 - 工程分析输出、converter 行为、schema contract 或 agent orchestration payload：使用命名 validation 或 analysis regression。
 - CLI setup、install、build 和平台兼容性：使用 smoke test。

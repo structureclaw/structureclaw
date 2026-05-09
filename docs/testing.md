@@ -24,8 +24,9 @@ This document clarifies the current test system for issue #234 and is updated wh
 | `backend/tests/*.test.mjs` | Backend unit or backend integration, depending on fixture scope | `npm test --prefix backend -- --runInBand` |
 | `backend/src/**/__tests__/*.test.mjs` | Backend unit or focused subsystem integration | `npm test --prefix backend -- --runInBand` |
 | `backend/src/agent-skills/**/__tests__/*` | Skill unit, handler, or skill integration coverage | `npm test --prefix backend -- --runInBand` or skill-specific npm scripts |
-| `frontend/tests/*.test.ts(x)` | Frontend unit and configuration coverage | `npm run test:run --prefix frontend` |
-| `frontend/tests/components/**` | Component-level unit and interaction coverage | `npm run test:run --prefix frontend` |
+| `frontend/tests/*.test.ts(x)` plus `frontend/tests/lib/**`, `frontend/tests/stores/**`, and non-console `frontend/tests/components/**` | Frontend unit and configuration coverage | `npm run test:run --prefix frontend` |
+| `frontend/tests/components/console/**` | Frontend integration coverage for the composed AI console, capability hydration, streamed responses, and provider-backed interactions | `npm run test:run:integration --prefix frontend` |
+| `frontend/tests/accessibility/semantic.test.tsx` | Semantic/accessibility integration smoke for the composed console page | `npm run test:run:integration --prefix frontend` |
 | `frontend/tests/integration/**` | Frontend integration coverage for pages, providers, and route groups | `npm run test:run:integration --prefix frontend` |
 | `frontend/tests/e2e/**` | Playwright browser E2E coverage | `npm run test:e2e --prefix frontend` |
 | `tests/regression/backend-validations.js` | Named validation contracts | `node tests/runner.mjs validate <name>` |
@@ -47,12 +48,20 @@ This document clarifies the current test system for issue #234 and is updated wh
 | `.github/workflows/llm-integration.yml` | Real LLM integration checks | Triggered on `master`, manually, or by `/test-llm` comments from allowed users. |
 | `.github/workflows/publish-npm.yml` | Release gate before publishing | Repeats selected checks to protect releases. It does not own new coverage. |
 
+## Frontend Vitest Split
+
+The frontend has two Vitest configs with mutually exclusive ownership:
+
+- `frontend/vitest.config.ts` owns fast unit/configuration coverage and explicitly excludes `tests/integration/**`, `tests/components/console/**`, `tests/accessibility/**`, and `tests/e2e/**`.
+- `frontend/vitest.integration.config.ts` owns app-route/provider/console integration coverage and includes `tests/integration/**/*.test.tsx`, `tests/components/console/**/*.test.tsx`, and `tests/accessibility/semantic.test.tsx`.
+- New console shell tests, provider-backed page tests, or tests that need the integration backend fixture should go into the integration runner even if they render React components.
+
 ## Choosing A Test
 
 Use the smallest category that proves the behavior:
 
 - Backend logic or route behavior: add or run targeted Jest tests, then run `node tests/runner.mjs backend-regression` if contracts can be affected.
-- Frontend component or state behavior: add or run Vitest tests, plus `npm run type-check --prefix frontend`.
+- Frontend component or state behavior: add or run Vitest tests, plus `npm run type-check --prefix frontend`. Use the integration Vitest runner for console shell, provider-backed page, route, or accessibility coverage.
 - Browser behavior across pages: use Playwright E2E.
 - Engineering analysis output, converter behavior, schema contracts, or agent orchestration payloads: use named validations or analysis regression.
 - CLI setup, install, build, and platform compatibility: use smoke tests.

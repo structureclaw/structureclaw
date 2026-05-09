@@ -110,6 +110,7 @@ Infrastructure-only env vars: `SCLAW_DATA_DIR`, `NODE_ENV`.
 - Canonical test taxonomy and workflow boundaries live in `docs/testing.md` and `docs/testing_CN.md`.
 - Backend: cover success, failure, and missing-input scenarios. Run `npm test --prefix backend -- --runInBand`.
 - Frontend: run targeted Vitest checks plus `type-check`. Run `build` when layout/routing changes.
+- Frontend Vitest split: `npm run test:run --prefix frontend` owns unit/configuration tests; `npm run test:run:integration --prefix frontend` owns app route, provider, console shell, and semantic accessibility coverage.
 - Both `en` and `zh` paths must be verified for new user-visible frontend features.
 - Analysis runtime: keep regression fixtures deterministic; don't casually change expected outputs.
 - If changes affect chat, agent orchestration, report output, converters, or schema — run `node tests/runner.mjs validate <name>`.
