@@ -32,7 +32,7 @@ export async function startTestBackend(rootDir: string): Promise<string> {
   }
 
   fs.mkdirSync(path.dirname(testDatabasePath), { recursive: true })
-  execSync('npm run db:deploy', { cwd: backendDir, env: backendEnv, stdio: 'pipe' })
+  execSync('npm run db:push', { cwd: backendDir, env: backendEnv, stdio: 'pipe' })
   execSync('npm run build', { cwd: backendDir, env: backendEnv, stdio: 'pipe' })
 
   backendProcess = spawn('node', ['dist/index.js'], {
