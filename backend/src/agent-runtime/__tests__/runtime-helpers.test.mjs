@@ -60,6 +60,33 @@ describe('agent runtime helper utilities', () => {
     expect(changed).not.toBe(first);
   });
 
+  test('draft state content hashes are stable for nested objects while tracking nested changes', () => {
+    const first = computeDraftStateContentHash({
+      nested: {
+        section: { heightM: 0.5, widthM: 0.25 },
+        loads: [{ id: 'L1', value: 20 }],
+      },
+      updatedAt: 100,
+    });
+    const reordered = computeDraftStateContentHash({
+      updatedAt: 200,
+      nested: {
+        loads: [{ value: 20, id: 'L1' }],
+        section: { widthM: 0.25, heightM: 0.5 },
+      },
+    });
+    const changed = computeDraftStateContentHash({
+      nested: {
+        section: { heightM: 0.5, widthM: 0.25 },
+        loads: [{ id: 'L1', value: 25 }],
+      },
+      updatedAt: 100,
+    });
+
+    expect(reordered).toBe(first);
+    expect(changed).not.toBe(first);
+  });
+
   test('stampDraftSemantics adds global coordinate semantics without mutating input', () => {
     const draft = { inferredType: 'frame', storyCount: 2 };
     const stamped = stampDraftSemantics(draft);

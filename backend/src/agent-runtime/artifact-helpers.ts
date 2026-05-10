@@ -1,5 +1,20 @@
 import crypto from 'node:crypto';
 
+function stableNormalize(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(stableNormalize);
+  }
+  if (value && typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(record)
+        .sort()
+        .map((key) => [key, stableNormalize(record[key])]),
+    );
+  }
+  return value;
+}
+
 export function computeDependencyFingerprint(
   refs: Record<string, { artifactId: string; revision: number }>,
   providerBindings?: { analysisProviderSkillId?: string; codeCheckProviderSkillId?: string },
@@ -28,6 +43,6 @@ export function computeDraftStateContentHash(draftState: Record<string, unknown>
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { updatedAt, ...rest } = draftState;
   return crypto.createHash('sha256')
-    .update(JSON.stringify(rest, Object.keys(rest).sort()))
+    .update(JSON.stringify(stableNormalize(rest)))
     .digest('hex').slice(0, 16);
 }
