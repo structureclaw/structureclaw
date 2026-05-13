@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
@@ -46,6 +47,14 @@ async function registerPlugins() {
     origin: config.corsOrigins,
     methods: ['GET', 'HEAD', 'PUT', 'POST', 'DELETE', 'PATCH'],
     credentials: true,
+  });
+
+  // Multipart (file uploads)
+  await fastify.register(multipart, {
+    limits: {
+      fileSize: 50 * 1024 * 1024, // 50 MB global limit
+      files: 10,
+    },
   });
 
   // Rate limiting

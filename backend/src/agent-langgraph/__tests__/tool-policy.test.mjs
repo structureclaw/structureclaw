@@ -25,6 +25,7 @@ describe("LangGraph tool policy", () => {
     });
 
     expect(result.activeToolIds).toEqual([
+      "analyze_file",
       "ask_user_clarification",
       "build_model",
       "delete_path",

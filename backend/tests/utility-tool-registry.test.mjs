@@ -5,6 +5,7 @@ import path from 'node:path';
 
 const REMAINING_GENERAL_SKILL_IDS = ['memory', 'shell'];
 const CURRENT_TOOL_IDS = [
+  'analyze_file',
   'ask_user_clarification',
   'build_model',
   'detect_structure_type',

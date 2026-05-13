@@ -329,5 +329,5 @@ describe('chat presentation reducer', () => {
       await prisma.conversation.deleteMany({ where: { id: conversationId } });
       await app.close();
     }
-  });
+  }, 30000);
 });

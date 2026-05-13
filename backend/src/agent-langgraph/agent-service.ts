@@ -32,6 +32,13 @@ import { listAgentToolDefinitions } from './tool-registry.js';
 // Types
 // ---------------------------------------------------------------------------
 
+export interface AttachmentInfo {
+  fileId: string;
+  originalName: string;
+  relPath: string;
+  mimeType?: string;
+}
+
 export interface LangGraphRunInput {
   message: string;
   conversationId?: string;
@@ -47,6 +54,7 @@ export interface LangGraphRunInput {
     engineId?: string;
     designCode?: string;
     includeReport?: boolean;
+    attachments?: AttachmentInfo[];
   };
 }
 
@@ -64,6 +72,17 @@ export interface LangGraphRunResult {
   report?: Record<string, unknown>;
   draftState?: Record<string, unknown>;
   presentation?: Record<string, unknown>;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function buildAttachmentBlock(attachments: AttachmentInfo[] | undefined, locale: AppLocale): string {
+  if (!attachments || attachments.length === 0) return '';
+  const header = locale === 'zh' ? '[已上传文件]' : '[Attached files]';
+  const lines = attachments.map(a => `- ${a.originalName} (${a.relPath})`);
+  return `\n\n${header}\n${lines.join('\n')}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -199,9 +218,10 @@ export class LangGraphAgentService {
     const reqLogger = createAgentLogger(traceId, conversationId);
     reqLogger.info({ message: input.message.slice(0, 100) }, 'LangGraph agent stream started');
 
+    const attachmentBlock = buildAttachmentBlock(input.context?.attachments, locale);
     const stream = await graph.stream(
       {
-        messages: [new HumanMessage(input.message)],
+        messages: [new HumanMessage(input.message + attachmentBlock)],
         locale,
         workspaceRoot: this.workspaceRoot,
         selectedSkillIds: skillIds,
@@ -285,9 +305,10 @@ export class LangGraphAgentService {
     const reqLogger = createAgentLogger(traceId, conversationId);
     reqLogger.info({ message: input.message.slice(0, 100) }, 'LangGraph agent run started');
 
+    const attachmentBlock = buildAttachmentBlock(input.context?.attachments, locale);
     const result = await graph.invoke(
       {
-        messages: [new HumanMessage(input.message)],
+        messages: [new HumanMessage(input.message + attachmentBlock)],
         locale,
         workspaceRoot: this.workspaceRoot,
         selectedSkillIds: skillIds,
@@ -325,9 +346,10 @@ export class LangGraphAgentService {
     const reqLogger = createAgentLogger(traceId, conversationId);
     reqLogger.info({ message: input.message.slice(0, 100) }, 'LangGraph agent runFull started');
 
+    const attachmentBlock = buildAttachmentBlock(input.context?.attachments, locale);
     const result = await graph.invoke(
       {
-        messages: [new HumanMessage(input.message)],
+        messages: [new HumanMessage(input.message + attachmentBlock)],
         locale,
         workspaceRoot: this.workspaceRoot,
         selectedSkillIds: input.context?.skillIds || [],

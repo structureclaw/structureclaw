@@ -5,10 +5,21 @@ import type { Dirent } from 'fs';
 import path from 'path';
 import type { LangGraphRunnableConfig } from '@langchain/langgraph';
 import type { AgentConfigurable } from './configurable.js';
+import { resolveUploadPath } from './file-tools.js';
 
 const SKIP_DIRS = new Set(['.git', 'node_modules', '.venv', '__pycache__', '.agent-workspace']);
 const MAX_READ_BYTES = 2 * 1024 * 1024;
 const MAX_WRITE_BYTES = 2 * 1024 * 1024;
+const IMAGE_MAX_READ_BYTES = 4 * 1024 * 1024;
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
+const IMAGE_MIME: Record<string, string> = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.bmp': 'image/bmp',
+};
 const MAX_SEARCH_BYTES = 512 * 1024;
 const MAX_GREP_MATCHES = 1000;
 const MAX_GLOB_MATCHES = 5000;
@@ -184,19 +195,92 @@ export function createReadFileTool() {
   return tool(
     async (input: { filePath: string }, config: LangGraphRunnableConfig) => {
       const root = getWorkspaceRoot(config);
-      const resolved = safeResolve(root, input.filePath);
-      assertAllowedFile(resolved);
-      const stat = await fs.stat(resolved);
+
+      // Resolve path: workspace first, fall back to UPLOAD_DIR for uploaded files
+      let resolved: string;
+      try {
+        const candidate = safeResolve(root, input.filePath);
+        await fs.stat(candidate);
+        resolved = candidate;
+      } catch {
+        try {
+          resolved = resolveUploadPath(input.filePath, root);
+        } catch (err) {
+          return JSON.stringify({ success: false, error: 'FILE_NOT_FOUND', message: String(err) });
+        }
+      }
+
+      let stat: Awaited<ReturnType<typeof fs.stat>>;
+      try {
+        stat = await fs.stat(resolved);
+      } catch {
+        return JSON.stringify({ success: false, error: 'FILE_NOT_FOUND', filePath: input.filePath });
+      }
+
+      const ext = path.extname(resolved).toLowerCase();
+
+      // Image: return base64 for multimodal LLM
+      if (IMAGE_EXTS.has(ext)) {
+        if (stat.size > IMAGE_MAX_READ_BYTES) {
+          return JSON.stringify({
+            success: true,
+            type: 'image',
+            ext,
+            size: stat.size,
+            note: 'Image exceeds 4 MB base64 limit. Consider resizing before analysis.',
+          });
+        }
+        const buf = await fs.readFile(resolved);
+        const mime = IMAGE_MIME[ext] ?? 'image/png';
+        return JSON.stringify({
+          success: true,
+          type: 'image',
+          ext,
+          size: stat.size,
+          mimeType: mime,
+          base64DataUri: `data:${mime};base64,${buf.toString('base64')}`,
+          note: 'Pass base64DataUri to a multimodal LLM vision call to extract structural information.',
+        });
+      }
+
       if (stat.size > MAX_READ_BYTES) {
         return JSON.stringify({ success: false, error: 'FILE_TOO_LARGE', size: stat.size });
       }
-      const content = await fs.readFile(resolved, 'utf-8');
-      return JSON.stringify({ success: true, path: input.filePath, content, size: stat.size });
+
+      const buf = await fs.readFile(resolved);
+
+      // Binary: return metadata without content
+      if (isProbablyBinary(buf)) {
+        return JSON.stringify({
+          success: true,
+          type: 'binary',
+          ext,
+          size: stat.size,
+          note: `Binary file of type ${ext}. Use analyze_file for structured extraction (PDF, Excel, etc.).`,
+        });
+      }
+
+      // Text: enforce extension allowlist to avoid leaking sensitive files
+      if (!isAllowedFile(resolved)) {
+        return JSON.stringify({
+          success: true,
+          type: 'text',
+          ext,
+          size: stat.size,
+          note: `Text file of type ${ext}. Content withheld (extension not in read allowlist). Use analyze_file if extraction is needed.`,
+        });
+      }
+
+      const content = buf.toString('utf-8');
+      return JSON.stringify({ success: true, type: 'text', ext, path: input.filePath, content, size: stat.size });
     },
     {
       name: 'read_file',
-      description: 'Read a text file from the workspace. Paths are relative to workspaceRoot.',
-      schema: z.object({ filePath: z.string() }),
+      description:
+        'Read a file from the workspace or uploaded file paths. Auto-detects file type: ' +
+        'text files (allowed extensions) return content; images return base64DataUri for multimodal LLM; ' +
+        'binary files return metadata. For structured CSV/Excel/PDF extraction, prefer analyze_file.',
+      schema: z.object({ filePath: z.string().describe('Relative workspace path or relPath from upload response') }),
     },
   );
 }

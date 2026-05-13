@@ -22,6 +22,7 @@ import {
   createReplaceInFileTool,
   createWriteFileTool,
 } from './workspace-tools.js';
+import { createAnalyzeFileTool } from './file-tools.js';
 import { createShellTool } from './shell-tool.js';
 
 export type AgentToolRisk = 'low' | 'workspace-read' | 'workspace-write' | 'destructive' | 'shell';
@@ -163,6 +164,18 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       en: 'Store and retrieve engineering memory. Supports conversation (current session) and workspace (cross-session persistent) scopes.',
     },
     create: () => createMemoryTool(getWorkspaceRoot()),
+  },
+  {
+    id: 'analyze_file',
+    category: 'workspace',
+    risk: 'workspace-read',
+    defaultEnabled: true,
+    displayName: { zh: '分析文件', en: 'Analyze File' },
+    description: {
+      zh: '分析上传的文件并提取内容（CSV/Excel/PDF/图片/DXF）。',
+      en: 'Analyze an uploaded file and extract its content (CSV/Excel/PDF/image/DXF).',
+    },
+    create: () => createAnalyzeFileTool(),
   },
   {
     id: 'glob_files',

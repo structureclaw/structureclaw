@@ -56,6 +56,13 @@ const sendMessageSchema = z.object({
     userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
     providedValues: z.record(z.string(), z.any()).optional(),
     resumeFromMessage: z.string().max(10000).optional(),
+    attachments: z.array(z.object({
+      fileId: z.string(),
+      originalName: z.string(),
+      relPath: z.string(),
+      mimeType: z.string().optional(),
+      size: z.number().optional(),
+    })).optional(),
   }).optional(),
 });
 
@@ -93,6 +100,13 @@ const streamMessageSchema = z.object({
     userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
     providedValues: z.record(z.string(), z.any()).optional(),
     resumeFromMessage: z.string().max(10000).optional(),
+    attachments: z.array(z.object({
+      fileId: z.string(),
+      originalName: z.string(),
+      relPath: z.string(),
+      mimeType: z.string().optional(),
+      size: z.number().optional(),
+    })).optional(),
   }).optional(),
 });
 
@@ -107,6 +121,13 @@ const persistMessagesSchema = z.object({
   assistantAborted: z.boolean().optional(),
   traceId: optionalIdSchema,
   assistantPresentation: z.record(z.string(), z.any()).optional(),
+  userMessageAttachments: z.array(z.object({
+    fileId: z.string(),
+    originalName: z.string(),
+    relPath: z.string(),
+    mimeType: z.string().optional(),
+    size: z.number().optional(),
+  })).optional(),
 });
 
 function toMessageMetadata(value: Record<string, unknown> | undefined): InputJsonValue | undefined {
@@ -251,6 +272,7 @@ async function persistConversationMessages(params: {
   traceId?: string;
   assistantMetadata?: Record<string, unknown>;
   assistantPresentation?: AssistantPresentation;
+  userMessageAttachments?: Array<Record<string, unknown>>;
 }): Promise<void> {
   const conversationId = params.conversationId?.trim();
   const userMessage = params.userMessage.trim();
@@ -294,7 +316,12 @@ async function persistConversationMessages(params: {
           conversationId,
           role: 'user',
           content: userMessage,
-          metadata: toMessageMetadata(params.traceId ? { traceId: params.traceId } : undefined),
+          metadata: toMessageMetadata({
+            ...(params.traceId ? { traceId: params.traceId } : {}),
+            ...(params.userMessageAttachments && params.userMessageAttachments.length > 0
+              ? { attachments: params.userMessageAttachments }
+              : {}),
+          }),
         },
         {
           conversationId,
@@ -430,6 +457,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         traceId: body.traceId,
         assistantMetadata: debugDetails ? { debugDetails } : undefined,
         assistantPresentation,
+        userMessageAttachments: body.context?.attachments,
       });
 
       // Persist full LangGraph message history for conversation restore
@@ -588,6 +616,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
       assistantAborted: body.assistantAborted,
       traceId: body.traceId,
       assistantPresentation: body.assistantPresentation as AssistantPresentation | undefined,
+      userMessageAttachments: body.userMessageAttachments,
     });
 
     return reply.send({ success: true });
@@ -653,6 +682,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         traceId: streamTraceId,
         assistantMetadata,
         assistantPresentation: persistedPresentation,
+        userMessageAttachments: body.context?.attachments,
       });
       messagesPersisted = true;
     };

@@ -25,7 +25,7 @@ export default [
 
     rules: {
       "no-unused-vars": "off",
-      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_" }],
+      "@typescript-eslint/no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
 
       "@typescript-eslint/consistent-type-imports": "warn",
       "@typescript-eslint/no-explicit-any": "off",

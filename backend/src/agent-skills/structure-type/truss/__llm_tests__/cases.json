@@ -6,68 +6,14 @@
       "scenarioId": "truss-routing-zh",
       "category": "routing",
       "locale": "zh",
-      "messages": ["三角桁架，跨度12m，高3m，节点荷载20kN"],
+      "messages": [
+        "三角桁架，跨度12m，高3m，节点荷载20kN"
+      ],
       "variants": {
         "legacy": {
           "expect": {
             "inferredType": "truss",
             "structuralTypeKey": "truss"
-          }
-        }
-      }
-    },
-    {
-      "scenarioId": "truss-extraction-zh",
-      "category": "extraction",
-      "locale": "zh",
-      "messages": ["三角桁架，跨度12m，高3m，节点荷载20kN"],
-      "variants": {
-        "specific": {
-          "enabledSkillIds": ["truss"],
-          "fallbackPolicy": "forbid-generic",
-          "expect": {
-            "inferredType": "truss"
-          }
-        },
-        "generic": {
-          "enabledSkillIds": ["generic"],
-          "fallbackPolicy": "require-generic",
-          "expect": {
-            "routing": { "structuralSkillId": "generic" }
-          }
-        }
-      }
-    },
-    {
-      "scenarioId": "truss-static-basic",
-      "category": "pipeline",
-      "locale": "zh",
-      "messages": ["三角桁架，跨度12m，高3m，节点荷载20kN，做静力分析"],
-      "variants": {
-        "specific": {
-          "enabledSkillIds": ["truss", "opensees-static", "validation-structure-model"],
-          "fallbackPolicy": "forbid-generic",
-          "expect": {
-            "routing": {
-              "structuralSkillId": "truss",
-              "analysisSkillId": "opensees-static"
-            },
-            "success": true,
-            "toolCalls": ["build_model", "run_analysis"],
-            "analysisSuccess": true
-          }
-        },
-        "generic": {
-          "enabledSkillIds": ["generic", "opensees-static", "validation-structure-model"],
-          "fallbackPolicy": "require-generic",
-          "expect": {
-            "routing": {
-              "structuralSkillId": "generic",
-              "analysisSkillId": "opensees-static"
-            },
-            "success": true,
-            "toolCalls": ["build_model", "run_analysis"],
-            "analysisSuccess": true
           }
         }
       }

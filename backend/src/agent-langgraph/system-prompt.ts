@@ -152,6 +152,13 @@ ${summarizeArtifacts(state)}
 - memory 支持 conversation 和 workspace 两种 scope。conversation scope（默认）存储当前会话的上下文；workspace scope 存储跨会话持久偏好（如默认设计规范、项目约束）。不要把临时草稿参数写入 memory。
 - 如果 extract_draft_params 返回 canProceed=false 或 criticalMissing 非空，必须继续调用 ask_user_clarification 或直接说明缺失项；不要调用 memory 来修补草稿参数，也不要静默结束。
 
+**文件处理规则（当用户上传文件时）**:
+- 用户上传文件后，其 relPath 会随对话上下文传入。当用户提到上传的文件时，首先调用 analyze_file 获取文件内容。
+- analyze_file 返回 CSV/Excel 的表格数据后，调用 extract_draft_params 将数据映射到结构参数。
+- analyze_file 返回图片的 base64DataUri 后，将其作为 image_url 传递给多模态 LLM 分析结构信息。
+- analyze_file 返回 DXF 数据后，根据线条实体推断结构构件（梁、柱等）并调用 extract_draft_params。
+- analyze_file 返回 PDF 文本后，用正则或直接让 LLM 提取尺寸、荷载、材料等参数，再调用 extract_draft_params。
+
 **重要**: 工具从会话状态中自动读取数据（模型、分析结果、草稿状态等）。不要将 modelJson、analysisJson、stateJson 等参数传递给工具。工具会自动使用上一步的结果。`;
 }
 
@@ -208,6 +215,13 @@ When the user makes a structural design or analysis request, follow this workflo
 - set_session_config only affects the current session's analysis type, design code, and selected skills.
 - memory supports conversation and workspace scopes. conversation scope (default) stores current-session context; workspace scope stores cross-session persistent preferences (e.g. default design code, project constraints). Do not store temporary draft parameters in memory.
 - If extract_draft_params returns canProceed=false or non-empty criticalMissing, you must continue with ask_user_clarification or clearly explain the missing fields; do not use memory to patch draft parameters and do not silently stop.
+
+**File handling rules (when the user uploads a file)**:
+- When a user uploads a file, its relPath is passed in the conversation context. Call analyze_file first to retrieve the file content.
+- After analyze_file returns CSV/Excel tabular data, call extract_draft_params to map the data to structural parameters.
+- After analyze_file returns an image base64DataUri, pass it as an image_url in a multimodal LLM call to extract structural information.
+- After analyze_file returns DXF data, infer structural members (beams, columns) from line entities and call extract_draft_params.
+- After analyze_file returns PDF text, extract dimensions, loads, and materials from the text, then call extract_draft_params.
 
 **IMPORTANT**: Tools read data (model, analysis results, draft state, etc.) from conversation state automatically. Do NOT pass modelJson, analysisJson, stateJson, or other JSON string parameters to tools. Tools automatically use results from previous steps.`;
 }

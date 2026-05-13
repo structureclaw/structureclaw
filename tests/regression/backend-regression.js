@@ -20,6 +20,7 @@ const BACKEND_STEPS = [
   ["Chat stream contract regression", "validate-chat-stream-contract"],
   ["Chat message routing contract", "validate-chat-message-routing"],
   ["Report narrative contract", "validate-report-narrative-contract"],
+  ["Skill routing regression", "validate-skill-routing"],
 ];
 
 const JEST_ENV_FORWARD_KEYS = [

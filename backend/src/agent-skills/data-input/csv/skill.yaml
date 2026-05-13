@@ -1,0 +1,45 @@
+id: csv-excel-input
+domain: data-input
+source: builtin
+name:
+  zh: CSV/Excel 结构参数读取
+  en: CSV/Excel Structural Parameter Input
+description:
+  zh: 从 CSV 或 Excel 文件中解析结构参数（楼层、截面、荷载），映射到 DraftState 字段供下游结构技能消费。
+  en: Parse structural parameters (stories, sections, loads) from CSV or Excel files and map them to DraftState fields for downstream structural skills.
+triggers:
+  - csv
+  - excel
+  - xlsx
+  - spreadsheet
+  - 表格
+  - 电子表格
+  - 结构参数表
+  - 荷载表
+stages:
+  - intent
+  - draft
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - file-parsing
+  - draft-extraction
+requires: []
+conflicts: []
+priority: 30
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+supportedAnalysisTypes: []
+supportedModelFamilies: []
+materialFamilies: []
+aliases:
+  - csv-input
+  - excel-input
+toolHints:
+  primary: analyze_file
+runtimeContract:
+  role: entry
+  consumes: []
+  provides:
+    - designBasis

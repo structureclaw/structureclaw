@@ -67,7 +67,8 @@ node tests/runner.mjs validate validate-agent-orchestration  # Agent orchestrati
 node tests/runner.mjs validate validate-chat-stream-contract # Chat stream contract
 node tests/runner.mjs validate validate-analyze-contract     # Analyze endpoint contract
 node tests/runner.mjs smoke-native                           # Full native install smoke (mirrors CI)
-node tests/runner.mjs llm-integration                        # LLM integration tests (needs LLM_API_KEY)
+node tests/runner.mjs llm-benchmark                          # LLM benchmark: v2 assertions, skill-trace, LLM-as-Judge (needs LLM_API_KEY)
+node tests/runner.mjs llm-benchmark --scenario <id>          # Run a single benchmark scenario
 ```
 
 ## Key Conventions

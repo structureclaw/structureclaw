@@ -1,0 +1,45 @@
+id: pdf-input
+domain: data-input
+source: builtin
+name:
+  zh: PDF 结构文档解析
+  en: PDF Structural Document Parsing
+description:
+  zh: 从 PDF 结构图纸或计算报告中提取文本内容，识别关键结构参数（尺寸、材料等级、荷载），映射到 DraftState。
+  en: Extract text from PDF structural drawings or calculation reports, identify key structural parameters (dimensions, material grades, loads), and map them to DraftState.
+triggers:
+  - pdf
+  - PDF
+  - 图纸
+  - 计算书
+  - structural drawing
+  - calculation report
+  - 结构图
+  - 施工图
+stages:
+  - intent
+  - draft
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - file-parsing
+  - draft-extraction
+requires: []
+conflicts: []
+priority: 25
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+supportedAnalysisTypes: []
+supportedModelFamilies: []
+materialFamilies: []
+aliases:
+  - pdf-parsing
+toolHints:
+  primary: analyze_file
+  future: multimodal_vision
+runtimeContract:
+  role: entry
+  consumes: []
+  provides:
+    - designBasis

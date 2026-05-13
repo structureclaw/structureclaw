@@ -1,0 +1,49 @@
+id: image-vision-input
+domain: data-input
+source: builtin
+name:
+  zh: 图片结构信息识别
+  en: Image Structural Information Recognition
+description:
+  zh: 使用多模态视觉能力，从照片、扫描图、截图等图像中识别结构构件、尺寸标注和材料信息，映射到 DraftState。
+  en: Use multimodal vision capabilities to recognize structural members, dimension annotations, and material information from photos, scanned drawings, and screenshots, mapping them to DraftState.
+triggers:
+  - image
+  - photo
+  - 图片
+  - 照片
+  - 截图
+  - 扫描图
+  - picture
+  - screenshot
+  - 草图
+  - sketch
+stages:
+  - intent
+  - draft
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - file-parsing
+  - multimodal-vision
+  - draft-extraction
+requires: []
+conflicts: []
+priority: 20
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+supportedAnalysisTypes: []
+supportedModelFamilies:
+  - multimodal
+materialFamilies: []
+aliases:
+  - image-input
+  - vision-input
+toolHints:
+  primary: analyze_file
+runtimeContract:
+  role: entry
+  consumes: []
+  provides:
+    - designBasis

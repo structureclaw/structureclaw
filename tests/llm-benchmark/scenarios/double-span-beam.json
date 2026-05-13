@@ -2,14 +2,19 @@
   {
     "id": "double-span-beam-static",
     "description": "双跨连续梁静力分析",
+    "category": "static-analysis",
+    "tags": ["beam", "continuous", "static", "zh"],
     "message": "两跨连续梁，跨度5m和6m，均布荷载12kN/m，做静力分析",
     "locale": "zh",
+    "maxRetries": 2,
     "expect": {
-      "structuralType": "double-span-beam",
-      "hasModel": true,
-      "hasAnalysis": true,
-      "minNodes": 3,
-      "minElements": 2
+      "skills": { "primary": "double-span-beam", "mayAlsoMatch": ["beam", "generic"] },
+      "assertions": [
+        { "type": "structural_type", "expected": "double-span-beam" },
+        { "type": "skill_match", "primary": "double-span-beam", "mayAlsoMatch": ["beam", "generic"] },
+        { "type": "has_model", "minNodes": 3, "minElements": 2 },
+        { "type": "has_analysis" }
+      ]
     }
   }
 ]

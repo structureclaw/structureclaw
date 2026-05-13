@@ -6,7 +6,9 @@
       "scenarioId": "portal-frame-routing-zh",
       "category": "routing",
       "locale": "zh",
-      "messages": ["门式刚架，跨度18m，高度6m"],
+      "messages": [
+        "门式刚架，跨度18m，高度6m"
+      ],
       "variants": {
         "legacy": {
           "expect": {
@@ -20,173 +22,15 @@
       "scenarioId": "portal-frame-routing-en",
       "category": "routing",
       "locale": "en",
-      "messages": ["portal frame, span 18m, height 6m"],
+      "messages": [
+        "portal frame, span 18m, height 6m"
+      ],
       "variants": {
         "legacy": {
           "expect": {
             "inferredType": "portal-frame",
             "structuralTypeKey": "portal-frame"
           }
-        }
-      }
-    },
-    {
-      "scenarioId": "portal-frame-params-zh",
-      "category": "extraction",
-      "locale": "zh",
-      "messages": ["门式刚架，跨度24m，高度8m，屋面荷载5kN/m"],
-      "variants": {
-        "specific": {
-          "enabledSkillIds": ["portal-frame"],
-          "fallbackPolicy": "forbid-generic",
-          "expect": {
-            "inferredType": "portal-frame",
-            "criticalMissing": [],
-            "draftPatch": {
-              "spanLengthM": {
-                "value": 24,
-                "tolerance": 0.05
-              },
-              "heightM": {
-                "value": 8,
-                "tolerance": 0.05
-              },
-              "loadKN": {
-                "value": 5,
-                "tolerance": 0.05
-              }
-            }
-          }
-        },
-        "generic": {
-          "enabledSkillIds": ["generic"],
-          "fallbackPolicy": "require-generic",
-          "expect": {
-            "routing": { "structuralSkillId": "generic" }
-          }
-        }
-      }
-    },
-    {
-      "scenarioId": "portal-frame-params-en",
-      "category": "extraction",
-      "locale": "en",
-      "messages": ["portal frame, span 21m, height 7.5m, roof load 8kN"],
-      "variants": {
-        "specific": {
-          "enabledSkillIds": ["portal-frame"],
-          "fallbackPolicy": "forbid-generic",
-          "expect": {
-            "inferredType": "portal-frame",
-            "criticalMissing": [],
-            "draftPatch": {
-              "spanLengthM": {
-                "value": 21,
-                "tolerance": 0.05
-              },
-              "heightM": {
-                "value": 7.5,
-                "tolerance": 0.05
-              },
-              "loadKN": {
-                "value": 8,
-                "tolerance": 0.05
-              }
-            }
-          }
-        },
-        "generic": {
-          "enabledSkillIds": ["generic"],
-          "fallbackPolicy": "require-generic",
-          "expect": {
-            "routing": { "structuralSkillId": "generic" }
-          }
-        }
-      }
-    },
-    {
-      "scenarioId": "portal-frame-pipeline-zh",
-      "category": "pipeline",
-      "locale": "zh",
-      "messages": ["门式刚架，跨度18m，高度7m，屋面荷载6kN/m，分析"],
-      "variants": {
-        "specific": {
-          "enabledSkillIds": ["portal-frame", "opensees-static", "validation-structure-model"],
-          "fallbackPolicy": "forbid-generic",
-          "expect": {
-            "routing": {
-              "structuralSkillId": "portal-frame",
-              "analysisSkillId": "opensees-static"
-            },
-            "success": true,
-            "toolCalls": [
-              "build_model",
-              "run_analysis"
-            ],
-            "modelBuilt": true,
-            "analysisSuccess": true
-          }
-        },
-        "generic": {
-          "enabledSkillIds": ["generic", "opensees-static"],
-          "fallbackPolicy": "require-generic",
-          "expect": {
-            "routing": {
-              "structuralSkillId": "generic",
-              "analysisSkillId": "opensees-static"
-            }
-          }
-        }
-      }
-    },
-    {
-      "scenarioId": "portal-frame-clarify-zh",
-      "category": "clarification",
-      "locale": "zh",
-      "turns": [
-        {
-          "message": "门式刚架",
-          "assertions": {
-            "criticalMissingIncludes": [
-              "spanLengthM"
-            ],
-            "modelBuilt": false
-          }
-        },
-        {
-          "message": "跨度24m，高8m",
-          "assertions": {
-            "criticalMissingIncludes": [
-              "loadKN"
-            ],
-            "modelBuilt": false
-          }
-        },
-        {
-          "message": "荷载10kN/m",
-          "assertions": {
-            "criticalMissing": [],
-            "modelBuilt": true,
-            "draftPatch": {
-              "spanLengthM": {
-                "value": 24,
-                "tolerance": 0.05
-              },
-              "heightM": {
-                "value": 8,
-                "tolerance": 0.05
-              },
-              "loadKN": {
-                "value": 10,
-                "tolerance": 0.05
-              }
-            }
-          }
-        }
-      ],
-      "variants": {
-        "legacy": {
-          "expect": {}
         }
       }
     }

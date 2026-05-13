@@ -3,6 +3,11 @@ function formatMetric(m) {
   return `  ${icon} ${m.metric.padEnd(16)} expected: ${m.expected.padEnd(30)} actual: ${m.actual}`;
 }
 
+function formatTurnMetric(m) {
+  const icon = m.pass ? "\u2713" : "\u2717";
+  return `    ${icon} ${m.metric.padEnd(14)} ${m.actual}`;
+}
+
 function printScenarioResult(scenario, evaluation) {
   const status = evaluation.allPassed ? "PASS" : "FAIL";
   process.stdout.write(`\n${"=".repeat(60)}\n`);
@@ -10,9 +15,30 @@ function printScenarioResult(scenario, evaluation) {
   if (scenario.description) {
     process.stdout.write(`     ${scenario.description}\n`);
   }
-  process.stdout.write(`\n`);
-  for (const m of evaluation.metrics) {
-    process.stdout.write(formatMetric(m) + "\n");
+
+  if (evaluation.turnResults && Array.isArray(evaluation.turnResults)) {
+    const turns = scenario.turns || [];
+    for (const { turnIndex, evaluation: turnEval } of evaluation.turnResults) {
+      const turnMsg = turns[turnIndex]?.message || "(turn)";
+      const preview = turnMsg.length > 40 ? turnMsg.slice(0, 40) + "..." : turnMsg;
+      process.stdout.write(`\n  Turn ${turnIndex + 1}: "${preview}"\n`);
+      for (const m of turnEval.metrics) {
+        if (m.metric === "duration") continue;
+        if (m.metric === "toolCalls" && m.pass) continue;
+        process.stdout.write(formatTurnMetric(m) + "\n");
+      }
+    }
+    process.stdout.write(`\n`);
+    for (const m of evaluation.metrics) {
+      if (m.metric === "duration") {
+        process.stdout.write(formatMetric(m) + "\n");
+      }
+    }
+  } else {
+    process.stdout.write(`\n`);
+    for (const m of evaluation.metrics) {
+      process.stdout.write(formatMetric(m) + "\n");
+    }
   }
   process.stdout.write(`${"=".repeat(60)}\n`);
 }

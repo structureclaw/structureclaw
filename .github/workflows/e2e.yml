@@ -39,23 +39,27 @@ jobs:
     steps:
       - name: Get PR Reference
         id: get-ref
-        run: |
-          set -euo pipefail
-          if [ "${{ github.event_name }}" == "issue_comment" ]; then
-            PR_URL="${{ github.event.issue.pull_request.url }}"
-            SHA=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" "$PR_URL" | jq -r .head.sha)
-            if [ -z "$SHA" ] || [ "$SHA" = "null" ]; then
-              echo "::error::Failed to resolve PR head SHA"
-              exit 1
-            fi
-            echo "sha=$SHA" >> "$GITHUB_OUTPUT"
-            echo "issue_number=${{ github.event.issue.number }}" >> "$GITHUB_OUTPUT"
-            echo "comment_user=${{ github.event.comment.user.login }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "sha=${{ github.sha }}" >> "$GITHUB_OUTPUT"
-            echo "issue_number=" >> "$GITHUB_OUTPUT"
-            echo "comment_user=" >> "$GITHUB_OUTPUT"
-          fi
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const eventName = context.eventName;
+            if (eventName === 'issue_comment') {
+              const [owner, repo] = context.payload.repository.full_name.split('/');
+              const prNumber = context.payload.issue.number;
+              const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: prNumber });
+              const sha = pr.head?.sha;
+              if (!sha) {
+                core.setFailed('Failed to resolve PR head SHA');
+                return;
+              }
+              core.setOutput('sha', sha);
+              core.setOutput('issue_number', String(context.issue.number));
+              core.setOutput('comment_user', context.payload.comment.user.login);
+            } else {
+              core.setOutput('sha', '${{ github.sha }}');
+              core.setOutput('issue_number', '');
+              core.setOutput('comment_user', '');
+            }
 
       - name: Reply with Action Link
         if: github.event_name == 'issue_comment'
@@ -176,15 +180,20 @@ jobs:
         if: always() && needs.check-permission.outputs.trigger_issue_number != ''
         continue-on-error: true
         uses: actions/github-script@v9
+        env:
+          ISSUE_NUMBER: ${{ needs.check-permission.outputs.trigger_issue_number }}
+          COMMENT_USER: ${{ needs.check-permission.outputs.trigger_comment_user }}
+          TEST_OUTCOME: ${{ steps.run-tests.outcome }}
+          SUMMARY_JSON: ${{ toJson(steps.summary.outputs.summary) }}
         with:
           github-token: ${{ secrets.COMMENT_TOKEN }}
           script: |
-            const issueNumber = Number('${{ needs.check-permission.outputs.trigger_issue_number }}');
-            const commentUser = '${{ needs.check-permission.outputs.trigger_comment_user }}';
-            const success = '${{ steps.run-tests.outcome }}' === 'success';
+            const issueNumber = Number(process.env.ISSUE_NUMBER);
+            const commentUser = process.env.COMMENT_USER;
+            const success = process.env.TEST_OUTCOME === 'success';
+            const summary = JSON.parse(process.env.SUMMARY_JSON || '""');
             const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
-            const summary = ${{ toJson(steps.summary.outputs.summary) }};
             const icon = success ? '✅' : '❌';
             const status = success ? 'PASSED' : 'FAILED';
             const body = [

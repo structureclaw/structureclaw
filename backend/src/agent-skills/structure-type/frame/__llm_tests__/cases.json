@@ -6,7 +6,9 @@
       "scenarioId": "frame-routing-zh",
       "category": "routing",
       "locale": "zh",
-      "messages": ["三层单跨钢框架，层高3.6m，跨度6m"],
+      "messages": [
+        "三层单跨钢框架，层高3.6m，跨度6m"
+      ],
       "variants": {
         "legacy": {
           "expect": {
@@ -20,186 +22,15 @@
       "scenarioId": "frame-routing-en",
       "category": "routing",
       "locale": "en",
-      "messages": ["3-story single-bay steel frame, story height 3.6m, bay width 6m"],
+      "messages": [
+        "3-story single-bay steel frame, story height 3.6m, bay width 6m"
+      ],
       "variants": {
         "legacy": {
           "expect": {
             "inferredType": "frame",
             "structuralTypeKey": "frame"
           }
-        }
-      }
-    },
-    {
-      "scenarioId": "frame-extraction-multi-story",
-      "category": "extraction",
-      "locale": "zh",
-      "messages": ["4层2跨钢框架，层高3.3m，跨度5.4m，楼面荷载12kN/m²"],
-      "variants": {
-        "specific": {
-          "enabledSkillIds": ["frame"],
-          "fallbackPolicy": "forbid-generic",
-          "expect": {
-            "inferredType": "frame",
-            "criticalMissingNotIncludes": ["frameDimension", "storyCount", "storyHeightsM", "bayCount", "bayWidthsM"],
-            "draftPatch": {
-              "storyCount": 4,
-              "bayCount": 2,
-              "storyHeightsM": { "value": [3.3, 3.3, 3.3, 3.3], "tolerance": 0.05 },
-              "bayWidthsM": { "value": [5.4, 5.4], "tolerance": 0.05 }
-            }
-          }
-        },
-        "generic": {
-          "enabledSkillIds": ["generic"],
-          "fallbackPolicy": "require-generic",
-          "expect": {
-            "routing": { "structuralSkillId": "generic" }
-          }
-        }
-      }
-    },
-    {
-      "scenarioId": "frame-params-en",
-      "category": "extraction",
-      "locale": "en",
-      "messages": ["2-story 3-bay frame, story height 3.6m, bay widths 6m, 7.5m, 6m"],
-      "variants": {
-        "legacy": {
-          "expect": {
-            "inferredType": "frame",
-            "criticalMissingNotIncludes": ["frameDimension", "storyCount", "storyHeightsM", "bayCount", "bayWidthsM"],
-            "draftPatch": {
-              "storyCount": 2,
-              "bayCount": 3,
-              "bayWidthsM": { "value": [6, 7.5, 6], "tolerance": 0.05 }
-            }
-          }
-        }
-      }
-    },
-    {
-      "scenarioId": "frame-steel-zh",
-      "category": "extraction",
-      "locale": "zh",
-      "messages": ["6层3跨钢框架Q345，层高3.6m，跨度7.2m"],
-      "variants": {
-        "legacy": {
-          "expect": {
-            "inferredType": "frame",
-            "criticalMissingNotIncludes": ["frameDimension", "storyCount", "storyHeightsM", "bayCount", "bayWidthsM"],
-            "draftPatch": {
-              "storyCount": 6,
-              "bayCount": 3,
-              "frameMaterial": "Q345"
-            }
-          }
-        }
-      }
-    },
-    {
-      "scenarioId": "frame-3d-zh",
-      "category": "extraction",
-      "locale": "zh",
-      "messages": ["3层2x3跨空间框架，层高4m，X向跨度6m，Y向跨度7.5m"],
-      "variants": {
-        "legacy": {
-          "expect": {
-            "inferredType": "frame",
-            "criticalMissingNotIncludes": ["frameDimension", "storyCount", "storyHeightsM", "bayCountX", "bayCountY", "bayWidthsXM", "bayWidthsYM"],
-            "draftPatch": {
-              "frameDimension": "3d",
-              "storyCount": 3,
-              "bayCountX": 2,
-              "bayCountY": 3
-            }
-          }
-        }
-      }
-    },
-    {
-      "scenarioId": "frame-static-basic",
-      "category": "pipeline",
-      "locale": "en",
-      "messages": ["2-story single-bay steel frame, story height 3.6m, bay 6m, floor load 10kN/m2, analyze and check against steel code"],
-      "variants": {
-        "specific": {
-          "enabledSkillIds": ["frame", "opensees-static", "code-check-gb50017", "validation-structure-model", "postprocess-builtin"],
-          "fallbackPolicy": "forbid-generic",
-          "expect": {
-            "routing": {
-              "selectedSkillIds": ["code-check-gb50017", "frame", "opensees-static", "validation-structure-model", "postprocess-builtin"],
-              "structuralSkillId": "frame",
-              "analysisSkillId": "opensees-static"
-            },
-            "toolCalls": ["build_model", "run_analysis", "run_code_check"],
-            "toolAuthorizers": {
-              "build_model": ["frame"],
-              "run_analysis": ["opensees-static"],
-              "run_code_check": ["code-check-gb50017"]
-            }
-          }
-        },
-        "generic": {
-          "enabledSkillIds": ["generic", "opensees-static", "code-check-gb50017", "validation-structure-model", "postprocess-builtin"],
-          "fallbackPolicy": "require-generic",
-          "expect": {
-            "routing": {
-              "selectedSkillIds": ["code-check-gb50017", "generic", "opensees-static", "validation-structure-model", "postprocess-builtin"],
-              "structuralSkillId": "generic",
-              "analysisSkillId": "opensees-static"
-            },
-            "toolCalls": ["build_model", "run_analysis", "run_code_check"],
-            "toolAuthorizers": {
-              "run_code_check": ["code-check-gb50017"]
-            }
-          }
-        }
-      }
-    },
-    {
-      "scenarioId": "frame-pipeline-multi-bay-zh",
-      "category": "pipeline",
-      "locale": "zh",
-      "messages": ["3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m，请进行静力分析并输出报告"],
-      "enabledSkillIds": ["frame", "opensees-static", "validation-structure-model"],
-      "variants": {
-        "legacy": {
-          "expect": {
-            "success": true,
-            "toolCalls": ["build_model", "run_analysis"],
-            "modelBuilt": true,
-            "analysisSuccess": true
-          }
-        }
-      }
-    },
-    {
-      "scenarioId": "frame-clarify-en",
-      "category": "clarification",
-      "locale": "en",
-      "turns": [
-        {
-          "message": "a steel frame",
-          "assertions": {
-            "criticalMissingIncludes": ["storyCount"],
-            "modelBuilt": false
-          }
-        },
-        {
-          "message": "3 stories, 4.2m each, single bay 8m, floor load 12kN/m2",
-          "assertions": {
-            "criticalMissingNotIncludes": ["frameDimension", "storyCount", "storyHeightsM", "bayCount", "bayWidthsM"],
-            "draftPatch": {
-              "storyCount": 3,
-              "bayCount": 1
-            }
-          }
-        }
-      ],
-      "variants": {
-        "legacy": {
-          "expect": {}
         }
       }
     }

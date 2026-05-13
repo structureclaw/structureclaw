@@ -2,40 +2,84 @@
   {
     "id": "beam-static-6m",
     "description": "简支梁6米均布荷载静力分析",
+    "category": "static-analysis",
+    "tags": ["beam", "static", "zh", "basic"],
     "message": "简支梁6米，均布荷载20kN/m，请进行静力分析",
     "locale": "zh",
+    "maxRetries": 2,
     "expect": {
-      "structuralType": "beam",
-      "hasModel": true,
-      "hasAnalysis": true,
-      "minNodes": 2,
-      "minElements": 1
+      "skills": { "primary": "beam", "mayAlsoMatch": ["generic"] },
+      "assertions": [
+        { "type": "structural_type", "expected": "beam" },
+        { "type": "skill_match", "primary": "beam", "mayAlsoMatch": ["generic"] },
+        { "type": "has_model", "minNodes": 2, "minElements": 1 },
+        { "type": "has_analysis" },
+        { "type": "natural_language", "description": "Analysis results should include displacement or deflection values" }
+      ]
     }
   },
   {
     "id": "beam-cantilever-point-load",
     "description": "悬臂梁端部集中力静力分析",
+    "category": "static-analysis",
+    "tags": ["beam", "static", "zh", "cantilever"],
     "message": "一根悬臂梁，长3米，端部集中力10kN，请进行静力分析",
     "locale": "zh",
+    "maxRetries": 2,
     "expect": {
-      "structuralType": "beam",
-      "hasModel": true,
-      "hasAnalysis": true,
-      "minNodes": 2,
-      "minElements": 1
+      "skills": { "primary": "beam", "mayAlsoMatch": ["generic"] },
+      "assertions": [
+        { "type": "structural_type", "expected": "beam" },
+        { "type": "skill_match", "primary": "beam", "mayAlsoMatch": ["generic"] },
+        { "type": "has_model", "minNodes": 2, "minElements": 1 },
+        { "type": "has_analysis" },
+        { "type": "natural_language", "description": "Analysis results should reflect a cantilever boundary condition (fixed at one end, free at the other)" }
+      ]
     }
   },
   {
     "id": "beam-simply-supported-en",
     "description": "Simply supported beam with UDL static analysis",
+    "category": "static-analysis",
+    "tags": ["beam", "static", "en", "basic"],
     "message": "A simply supported beam, span 8m, uniformly distributed load 15kN/m, please run a static analysis",
     "locale": "en",
+    "maxRetries": 2,
     "expect": {
-      "structuralType": "beam",
-      "hasModel": true,
-      "hasAnalysis": true,
-      "minNodes": 2,
-      "minElements": 1
+      "skills": { "primary": "beam", "mayAlsoMatch": ["generic"] },
+      "assertions": [
+        { "type": "structural_type", "expected": "beam" },
+        { "type": "skill_match", "primary": "beam", "mayAlsoMatch": ["generic"] },
+        { "type": "has_model", "minNodes": 2, "minElements": 1 },
+        { "type": "has_analysis" },
+        { "type": "natural_language", "description": "Analysis results should include mid-span deflection or maximum displacement" }
+      ]
     }
+  },
+  {
+    "id": "beam-multi-turn-incomplete",
+    "description": "简支梁参数不全→多轮补全→分析",
+    "category": "static-analysis",
+    "tags": ["beam", "static", "zh", "multi-turn"],
+    "locale": "zh",
+    "maxRetries": 1,
+    "turns": [
+      {
+        "message": "帮我分析一根简支梁",
+        "assertions": [
+          { "type": "structural_type", "expected": "beam" },
+          { "type": "skill_match", "primary": "beam", "mayAlsoMatch": ["generic"] },
+          { "type": "has_interaction_questions" }
+        ]
+      },
+      {
+        "message": "跨度6米，均布荷载20kN/m",
+        "assertions": [
+          { "type": "has_model", "minNodes": 2, "minElements": 1 },
+          { "type": "has_analysis" },
+          { "type": "natural_language", "description": "Analysis results should include displacement values for a 6m beam under 20kN/m UDL" }
+        ]
+      }
+    ]
   }
 ]

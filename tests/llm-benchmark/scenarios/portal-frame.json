@@ -2,27 +2,37 @@
   {
     "id": "portal-frame-static-18m",
     "description": "门式刚架18米跨度静力分析",
+    "category": "static-analysis",
+    "tags": ["portal-frame", "static", "zh"],
     "message": "门式刚架，跨度18m，高度7m，屋面荷载6kN/m，做静力分析",
     "locale": "zh",
+    "maxRetries": 2,
     "expect": {
-      "structuralType": "portal-frame",
-      "hasModel": true,
-      "hasAnalysis": true,
-      "minNodes": 3,
-      "minElements": 3
+      "skills": { "primary": "portal-frame", "mayAlsoMatch": ["generic"] },
+      "assertions": [
+        { "type": "structural_type", "expected": "portal-frame" },
+        { "type": "skill_match", "primary": "portal-frame", "mayAlsoMatch": ["generic"] },
+        { "type": "has_model", "minNodes": 3, "minElements": 3 },
+        { "type": "has_analysis" }
+      ]
     }
   },
   {
     "id": "portal-frame-static-en",
     "description": "Portal frame 21m span static analysis",
+    "category": "static-analysis",
+    "tags": ["portal-frame", "static", "en"],
     "message": "Portal frame, span 21m, height 7.5m, roof load 8kN/m, please run a static analysis",
     "locale": "en",
+    "maxRetries": 2,
     "expect": {
-      "structuralType": "portal-frame",
-      "hasModel": true,
-      "hasAnalysis": true,
-      "minNodes": 3,
-      "minElements": 3
+      "skills": { "primary": "portal-frame", "mayAlsoMatch": ["generic"] },
+      "assertions": [
+        { "type": "structural_type", "expected": "portal-frame" },
+        { "type": "skill_match", "primary": "portal-frame", "mayAlsoMatch": ["generic"] },
+        { "type": "has_model", "minNodes": 3, "minElements": 3 },
+        { "type": "has_analysis" }
+      ]
     }
   }
 ]

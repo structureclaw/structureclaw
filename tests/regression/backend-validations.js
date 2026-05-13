@@ -1559,6 +1559,42 @@ async function validateStructureJsonSkill(context) {
   console.log("[ok] validation module runtime exports");
 }
 
+async function validateSkillRouting(context) {
+  const { loadLlmFixtures } = require("../llm-integration/lib/discovery.cjs");
+  const AgentSkillRuntime = await importAgentSkillRuntime(context.rootDir);
+  const runtime = new AgentSkillRuntime();
+
+  const allCases = loadLlmFixtures(context.rootDir);
+  const routingCases = allCases.filter((c) => c.category === "routing");
+
+  assert(routingCases.length > 0, "should have at least one routing fixture case");
+
+  let passed = 0;
+  for (const testCase of routingCases) {
+    const locale = testCase.locale === "zh" ? "zh" : "en";
+    const message = testCase.messages[0];
+    const match = await runtime.detectStructuralType(message, locale, undefined, testCase.enabledSkillIds);
+    const expected = testCase.expect || {};
+
+    if (expected.inferredType) {
+      const actualKey = match.mappedType || match.key;
+      assert(
+        actualKey === expected.inferredType || match.skillId === expected.inferredType,
+        `[${testCase.id}] expected inferredType="${expected.inferredType}", got key="${match.key}" mappedType="${match.mappedType}" skillId="${match.skillId}"`
+      );
+    }
+    if (expected.structuralTypeKey) {
+      assert(
+        match.key === expected.structuralTypeKey || match.mappedType === expected.structuralTypeKey,
+        `[${testCase.id}] expected structuralTypeKey="${expected.structuralTypeKey}", got key="${match.key}" mappedType="${match.mappedType}"`
+      );
+    }
+    passed += 1;
+  }
+
+  console.log(`[ok] skill routing: ${passed}/${routingCases.length} cases passed`);
+}
+
 const BACKEND_VALIDATIONS = {
   "validate-agent-orchestration": validateAgentOrchestration,
   "validate-agent-base-chat-fallback": validateAgentBaseChatFallback,
@@ -1580,6 +1616,7 @@ const BACKEND_VALIDATIONS = {
   "validate-report-narrative-contract": validateReportNarrativeContract,
   "validate-dev-startup-guards": validateDevStartupGuards,
   "validate-structure-json-skill": validateStructureJsonSkill,
+  "validate-skill-routing": validateSkillRouting,
 };
 
 async function runBackendValidation(name, context) {

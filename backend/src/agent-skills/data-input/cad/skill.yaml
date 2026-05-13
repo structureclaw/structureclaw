@@ -1,0 +1,45 @@
+id: cad-dxf-input
+domain: data-input
+source: builtin
+name:
+  zh: DXF/CAD 结构图纸解析
+  en: DXF/CAD Structural Drawing Parsing
+description:
+  zh: 解析来自 CAD 软件的 DXF 文件，提取线条、标注、文字实体，将结构几何信息映射到 DraftState 字段。
+  en: Parse DXF files from CAD software, extract line, dimension, and text entities, and map structural geometry information to DraftState fields.
+triggers:
+  - dxf
+  - DXF
+  - CAD
+  - AutoCAD
+  - 结构平面图
+  - 平面布置图
+  - cad drawing
+  - structural plan
+stages:
+  - intent
+  - draft
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - file-parsing
+  - draft-extraction
+requires: []
+conflicts: []
+priority: 25
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+supportedAnalysisTypes: []
+supportedModelFamilies: []
+materialFamilies: []
+aliases:
+  - dxf-input
+  - cad-input
+toolHints:
+  primary: analyze_file
+runtimeContract:
+  role: entry
+  consumes: []
+  provides:
+    - designBasis
