@@ -26,6 +26,8 @@ export interface AgentConfigurable {
   disabledToolIds?: string[];
   /** Whether shell-risk tools may be activated for this run. */
   allowShell: boolean;
+  /** Maximum tool calls per conversation turn. */
+  maxToolCallsPerTurn: number;
   /**
    * Skill scope resolved from the user's selected skills.
    * Set once per tool-node invocation by the graph; all tools read this

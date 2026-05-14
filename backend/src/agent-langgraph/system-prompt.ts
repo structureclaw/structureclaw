@@ -61,6 +61,7 @@ function summarizeArtifacts(state: AgentState): string {
 export interface SystemPromptContext {
   state: AgentState;
   skillManifests: SkillManifest[];
+  maxToolCallsPerTurn?: number;
 }
 
 /**
@@ -71,7 +72,8 @@ export interface SystemPromptContext {
  * conversation before invoking the LLM.
  */
 export function buildSystemMessages(ctx: SystemPromptContext): BaseMessageLike[] {
-  const { state, skillManifests } = ctx;
+  const { state, skillManifests, maxToolCallsPerTurn } = ctx;
+  const toolCallLimit = maxToolCallsPerTurn ?? 15;
   const isZh = state.locale === 'zh';
 
   const selectedIds = new Set(state.selectedSkillIds);
@@ -88,8 +90,8 @@ export function buildSystemMessages(ctx: SystemPromptContext): BaseMessageLike[]
     .join('\n');
 
   const systemContent = isZh
-    ? buildZhPrompt(state, skillList)
-    : buildEnPrompt(state, skillList);
+    ? buildZhPrompt(state, skillList, toolCallLimit)
+    : buildEnPrompt(state, skillList, toolCallLimit);
 
   return [new SystemMessage(systemContent)];
 }
@@ -98,7 +100,7 @@ export function buildSystemMessages(ctx: SystemPromptContext): BaseMessageLike[]
 // Prompt builders (bilingual)
 // ---------------------------------------------------------------------------
 
-function buildZhPrompt(state: AgentState, skillList: string): string {
+function buildZhPrompt(state: AgentState, skillList: string, toolCallLimit: number): string {
   return `你是 StructureClaw 结构工程 AI 助手。你具备以下能力：
 1. 结构工程分析 — 识别结构类型、提取参数、构建模型、执行分析、规范校核、生成报告
 2. 会话配置 — 设置本轮会话的分析类型、设计规范和已选技能
@@ -128,7 +130,7 @@ ${summarizeArtifacts(state)}
 3. **安全边界**: 只能调用当前会话已启用的工具；不要声称可以访问未启用的持久记忆、工作区文件或 shell
 4. **双语支持**: 用 ${localeLabel(state.locale)} 与用户交流
 5. **主动提问**: 当关键参数缺失时，使用 ask_user_clarification 工具询问用户
-6. **工具调用限制**: 每轮对话最多调用 15 次工具，避免无限循环
+6. **工具调用限制**: 每轮对话最多调用 ${toolCallLimit} 次工具，避免无限循环
 7. **禁止空回复**: 每次响应必须包含有意义的文字内容
 
 ## 工具使用策略
@@ -162,7 +164,7 @@ ${summarizeArtifacts(state)}
 **重要**: 工具从会话状态中自动读取数据（模型、分析结果、草稿状态等）。不要将 modelJson、analysisJson、stateJson 等参数传递给工具。工具会自动使用上一步的结果。`;
 }
 
-function buildEnPrompt(state: AgentState, skillList: string): string {
+function buildEnPrompt(state: AgentState, skillList: string, toolCallLimit: number): string {
   return `You are the StructureClaw structural engineering AI assistant. Your capabilities:
 1. Structural analysis — identify type, extract parameters, build model, run analysis, code-check, generate report
 2. Session configuration — set the current session's analysis type, design code, and selected skills
@@ -192,7 +194,7 @@ ${summarizeArtifacts(state)}
 3. **Safety boundary**: Only call tools enabled for the current session; do not claim access to persistent memory, workspace files, or shell unless those tools are enabled
 4. **Bilingual**: Communicate in ${localeLabel(state.locale)}
 5. **Ask when unclear**: Use the ask_user_clarification tool when critical parameters are missing
-6. **Tool call limit**: At most 15 tool calls per conversation turn to avoid infinite loops
+6. **Tool call limit**: At most ${toolCallLimit} tool calls per conversation turn to avoid infinite loops
 7. **No empty responses**: Every response must contain meaningful text content
 
 ## Tool Usage Strategy

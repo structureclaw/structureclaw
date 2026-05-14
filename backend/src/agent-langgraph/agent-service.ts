@@ -16,6 +16,7 @@ import { FileCheckpointer } from './file-checkpointer.js';
 import { streamGraphToChunks, type StreamContext } from './streaming.js';
 import { type AgentState } from './state.js';
 import { getAllowShellTools, getCheckpointerDataDir, getWorkspaceRoot, getWorkspaceSkillRoot } from './config.js';
+import { config } from '../config/index.js';
 import type { AgentStreamChunk } from '../types/agent-stream.js';
 import type { AppLocale } from '../services/locale.js';
 import { createLocalAnalysisEngineClient } from '../services/analysis-execution.js';
@@ -145,6 +146,7 @@ export class LangGraphAgentService {
       enabledToolIds: input?.context?.enabledToolIds,
       disabledToolIds: input?.context?.disabledToolIds,
       allowShell: getAllowShellTools(),
+      maxToolCallsPerTurn: config.agentMaxToolCallsPerTurn,
       _logger: childLogger,
     };
   }

@@ -104,6 +104,7 @@ type SettingsResponse = {
     allowShell: ValueField<boolean>;
     allowedShellCommands: ValueField<string>;
     shellTimeoutMs: ValueField<number>;
+    maxToolCallsPerTurn: ValueField<number>;
   };
   pkpm: {
     cyclePath: ValueField<string>;
@@ -164,6 +165,7 @@ function buildSettingsResponse(): SettingsResponse {
     allowShell: false,
     allowedShellCommands: 'node,npm,python,python3,./sclaw,./sclaw_cn',
     shellTimeoutMs: 300000,
+    agentMaxToolCallsPerTurn: 15,
     pkpmCyclePath: '',
     pkpmWorkDir: path.join(runtimeBaseDir, 'analysis', 'pkpm'),
     yjkInstallRoot: '',
@@ -225,6 +227,7 @@ function buildSettingsResponse(): SettingsResponse {
       allowShell: booleanSource(file?.agent?.allowShell, defaults.allowShell),
       allowedShellCommands: stringSource(file?.agent?.allowedShellCommands, defaults.allowedShellCommands),
       shellTimeoutMs: numberSource(file?.agent?.shellTimeoutMs, defaults.shellTimeoutMs),
+      maxToolCallsPerTurn: numberSource(file?.agent?.maxToolCallsPerTurn, defaults.agentMaxToolCallsPerTurn),
     },
     pkpm: {
       cyclePath: stringSource(file?.pkpm?.cyclePath, defaults.pkpmCyclePath),
@@ -290,6 +293,7 @@ const updateSettingsSchema = z.object({
     allowShell: z.boolean().optional(),
     allowedShellCommands: z.string().trim().optional(),
     shellTimeoutMs: z.number().int().min(1000).optional(),
+    maxToolCallsPerTurn: z.number().int().min(1).max(200).optional(),
   }).optional(),
   pkpm: z.object({
     cyclePath: z.string().trim().optional(),
@@ -393,6 +397,7 @@ function applyUpdate(current: SettingsFile, input: UpdateSettingsInput): Setting
     if (input.agent.allowShell !== undefined) agent.allowShell = input.agent.allowShell;
     if (input.agent.allowedShellCommands !== undefined) agent.allowedShellCommands = input.agent.allowedShellCommands;
     if (input.agent.shellTimeoutMs !== undefined) agent.shellTimeoutMs = input.agent.shellTimeoutMs;
+    if (input.agent.maxToolCallsPerTurn !== undefined) agent.maxToolCallsPerTurn = input.agent.maxToolCallsPerTurn;
     next.agent = agent;
   }
 

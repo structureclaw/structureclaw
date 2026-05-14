@@ -61,6 +61,7 @@ export type SettingsFileAgent = {
   allowShell?: boolean;
   allowedShellCommands?: string;
   shellTimeoutMs?: number;
+  maxToolCallsPerTurn?: number;
 };
 
 export type SettingsFilePkpm = {
@@ -245,13 +246,15 @@ function normalizeAgentSection(raw: unknown): SettingsFileAgent | undefined {
   const allowShell = normalizeOptionalBoolean(record.allowShell);
   const allowedShellCommands = normalizeOptionalString(record.allowedShellCommands);
   const shellTimeoutMs = normalizeOptionalNumber(record.shellTimeoutMs);
-  if (workspaceRoot === undefined && checkpointDir === undefined && allowShell === undefined && allowedShellCommands === undefined && shellTimeoutMs === undefined) return undefined;
+  const maxToolCallsPerTurn = normalizeOptionalNumber(record.maxToolCallsPerTurn);
+  if (workspaceRoot === undefined && checkpointDir === undefined && allowShell === undefined && allowedShellCommands === undefined && shellTimeoutMs === undefined && maxToolCallsPerTurn === undefined) return undefined;
   const result: SettingsFileAgent = {};
   if (workspaceRoot !== undefined) result.workspaceRoot = workspaceRoot;
   if (checkpointDir !== undefined) result.checkpointDir = checkpointDir;
   if (allowShell !== undefined) result.allowShell = allowShell;
   if (allowedShellCommands !== undefined) result.allowedShellCommands = allowedShellCommands;
   if (shellTimeoutMs !== undefined) result.shellTimeoutMs = shellTimeoutMs;
+  if (maxToolCallsPerTurn !== undefined) result.maxToolCallsPerTurn = maxToolCallsPerTurn;
   return result;
 }
 

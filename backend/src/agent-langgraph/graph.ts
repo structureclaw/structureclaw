@@ -42,7 +42,7 @@ function getAgentLogger(config: LangGraphRunnableConfig) {
 // Max ReAct iterations guard
 // ---------------------------------------------------------------------------
 
-const MAX_TOOL_CALLS_PER_TURN = 15;
+const DEFAULT_MAX_TOOL_CALLS_PER_TURN = 15;
 
 function getMessageType(message: BaseMessage): string | null {
   return typeof (message as any)._getType === 'function'
@@ -151,7 +151,7 @@ function createCallModelNode(
     const modelWithTools = model.bindTools(activeTools);
 
     // Build system prompt
-    const systemMessages = buildSystemMessages({ state, skillManifests });
+    const systemMessages = buildSystemMessages({ state, skillManifests, maxToolCallsPerTurn: configurable.maxToolCallsPerTurn });
 
     // Validate and reconstruct messages — checkpoint deserialization may
     // strip class methods (_getType), leaving plain objects that the LLM API
@@ -240,8 +240,9 @@ function createCallModelNode(
       return count;
     }, 0);
 
-    if (toolCallCount >= MAX_TOOL_CALLS_PER_TURN) {
-      log.warn({ node: 'agent', toolCallCount, max: MAX_TOOL_CALLS_PER_TURN }, 'max tool call limit reached');
+    const maxToolCalls = (config.configurable as any)?.maxToolCallsPerTurn ?? DEFAULT_MAX_TOOL_CALLS_PER_TURN;
+    if (toolCallCount >= maxToolCalls) {
+      log.warn({ node: 'agent', toolCallCount, max: maxToolCalls }, 'max tool call limit reached');
       const warning = state.locale === 'zh'
         ? '已达到本轮最大工具调用次数限制。我将根据已有信息给出回复。'
         : 'Reached the maximum tool call limit for this turn. I will respond with the information gathered so far.';

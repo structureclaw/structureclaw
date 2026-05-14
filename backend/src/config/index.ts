@@ -73,6 +73,7 @@ const AGENT_DEFAULTS = {
   allowShell: false,
   allowedShellCommands: 'node,npm,python,python3,./sclaw,./sclaw_cn',
   shellTimeoutMs: 300000,
+  maxToolCallsPerTurn: 15,
 } as const;
 
 const PKPM_DEFAULTS = {
@@ -187,6 +188,9 @@ export const config = {
   },
   get agentShellTimeoutMs() {
     return getCurrentAgentSettings()?.shellTimeoutMs ?? AGENT_DEFAULTS.shellTimeoutMs;
+  },
+  get agentMaxToolCallsPerTurn() {
+    return getCurrentAgentSettings()?.maxToolCallsPerTurn ?? AGENT_DEFAULTS.maxToolCallsPerTurn;
   },
 
   // PKPM 引擎配置

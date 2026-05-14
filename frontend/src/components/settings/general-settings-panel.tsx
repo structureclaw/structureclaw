@@ -92,6 +92,7 @@ const FIELDS: FieldDef[] = [
   { key: 'agent.allowShell', labelKey: 'generalSettingsAllowShellLabel', kind: 'checkbox', sectionKey: 'agent', stateKey: 'allowShell' },
   { key: 'agent.allowedShellCommands', labelKey: 'generalSettingsAllowedShellLabel', kind: 'text', sectionKey: 'agent', stateKey: 'allowedShellCommands' },
   { key: 'agent.shellTimeoutMs', labelKey: 'generalSettingsShellTimeoutLabel', kind: 'number', sectionKey: 'agent', stateKey: 'shellTimeoutMs', props: { min: 1000 } },
+  { key: 'agent.maxToolCallsPerTurn', labelKey: 'generalSettingsMaxToolCallsPerTurnLabel', kind: 'number', sectionKey: 'agent', stateKey: 'maxToolCallsPerTurn', props: { min: 1, max: 200 } },
   // PKPM
   { key: 'pkpm.cyclePath', labelKey: 'generalSettingsPkpmCyclePathLabel', kind: 'text', sectionKey: 'pkpm', stateKey: 'pkpmCyclePath' },
   { key: 'pkpm.workDir', labelKey: 'generalSettingsPkpmWorkDirLabel', kind: 'text', sectionKey: 'pkpm', stateKey: 'pkpmWorkDir' },
@@ -116,7 +117,7 @@ const DEFAULTS: Record<string, string | number | boolean> = {
   pythonBin: '', pythonTimeoutMs: 600000, engineManifestPath: '',
   reportsDir: '', maxFileSize: 104857600,
   origins: '',
-  workspaceRoot: '', checkpointDir: '', allowShell: false, allowedShellCommands: 'node,npm,python,python3,./sclaw,./sclaw_cn', shellTimeoutMs: 300000,
+  workspaceRoot: '', checkpointDir: '', allowShell: false, allowedShellCommands: 'node,npm,python,python3,./sclaw,./sclaw_cn', shellTimeoutMs: 300000, maxToolCallsPerTurn: 15,
   pkpmCyclePath: '', pkpmWorkDir: '',
   yjkInstallRoot: '', yjkExePath: '', yjkPythonBin: '', yjkSdkArchivePath: '', yjkWorkDir: '', yjkVersion: '8.0.0', yjkTimeoutS: 600, yjkInvisible: false,
   yjkLauncherPrewarm: 'auto', yjkLauncherPrewarmS: 18, yjkDirectReadyTimeoutS: 12,
