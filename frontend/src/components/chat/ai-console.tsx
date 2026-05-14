@@ -3714,6 +3714,7 @@ export function AIConsole() {
   // ── Composer input (shared between idle and active layouts) ──
   async function handleFileSelect(files: FileList | null) {
     if (!files || files.length === 0) return
+    const fileArray = Array.from(files)
     let convId = conversationId
     if (!convId) {
       try {
@@ -3723,8 +3724,8 @@ export function AIConsole() {
         return
       }
     }
-    setUploadingCount((c) => c + files.length)
-    for (const file of Array.from(files)) {
+    setUploadingCount((c) => c + fileArray.length)
+    for (const file of fileArray) {
       try {
         const formData = new FormData()
         formData.append('file', file)
@@ -3740,7 +3741,7 @@ export function AIConsole() {
         setErrorMessage(t('fileUploadError'))
       }
     }
-    setUploadingCount((c) => c - files.length)
+    setUploadingCount((c) => c - fileArray.length)
   }
 
   const composerInput = (
