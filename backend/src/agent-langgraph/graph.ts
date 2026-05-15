@@ -42,7 +42,7 @@ function getAgentLogger(config: LangGraphRunnableConfig) {
 // Max ReAct iterations guard
 // ---------------------------------------------------------------------------
 
-const DEFAULT_MAX_TOOL_CALLS_PER_TURN = 15;
+export const DEFAULT_MAX_TOOL_CALLS_PER_TURN = 15;
 
 function getMessageType(message: BaseMessage): string | null {
   return typeof (message as any)._getType === 'function'
@@ -240,7 +240,7 @@ function createCallModelNode(
       return count;
     }, 0);
 
-    const maxToolCalls = (config.configurable as any)?.maxToolCallsPerTurn ?? DEFAULT_MAX_TOOL_CALLS_PER_TURN;
+    const maxToolCalls = configurable?.maxToolCallsPerTurn ?? DEFAULT_MAX_TOOL_CALLS_PER_TURN;
     if (toolCallCount >= maxToolCalls) {
       log.warn({ node: 'agent', toolCallCount, max: maxToolCalls }, 'max tool call limit reached');
       const warning = state.locale === 'zh'

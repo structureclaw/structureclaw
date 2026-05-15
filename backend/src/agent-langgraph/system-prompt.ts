@@ -12,6 +12,7 @@
 import { SystemMessage, type BaseMessageLike } from '@langchain/core/messages';
 import type { AgentState } from './state.js';
 import type { SkillManifest } from '../agent-runtime/types.js';
+import { DEFAULT_MAX_TOOL_CALLS_PER_TURN } from './graph.js';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -73,7 +74,7 @@ export interface SystemPromptContext {
  */
 export function buildSystemMessages(ctx: SystemPromptContext): BaseMessageLike[] {
   const { state, skillManifests, maxToolCallsPerTurn } = ctx;
-  const toolCallLimit = maxToolCallsPerTurn ?? 15;
+  const toolCallLimit = maxToolCallsPerTurn ?? DEFAULT_MAX_TOOL_CALLS_PER_TURN;
   const isZh = state.locale === 'zh';
 
   const selectedIds = new Set(state.selectedSkillIds);
