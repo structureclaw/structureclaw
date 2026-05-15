@@ -28,6 +28,7 @@ describe("LangGraph tool policy", () => {
       "analyze_file",
       "ask_user_clarification",
       "build_model",
+      "calculate",
       "delete_path",
       "detect_structure_type",
       "extract_draft_params",

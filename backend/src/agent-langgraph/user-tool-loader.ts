@@ -17,7 +17,7 @@ type UserToolModule = {
   execute: (params: Record<string, unknown>, context: { workspaceRoot: string }) => Promise<unknown>;
 };
 
-function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodType {
+export function jsonSchemaToZod(schema: Record<string, unknown>): z.ZodType {
   // Convert a JSON Schema object to a Zod object schema.
   // Supports: string, number, integer, boolean, array, object (recursive).
   const properties = (schema.properties ?? {}) as Record<string, Record<string, unknown>>;

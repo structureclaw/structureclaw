@@ -43,7 +43,7 @@ export function safeResolve(workspaceRoot: string, requestedPath: string): strin
   return resolved;
 }
 
-function assertAllowedFile(filePath: string): void {
+export function assertAllowedFile(filePath: string): void {
   if (isAllowedFile(filePath)) {
     return;
   }
@@ -51,7 +51,7 @@ function assertAllowedFile(filePath: string): void {
   throw new Error(`File extension denied: ${ext || '(none)'}`);
 }
 
-function isAllowedFile(filePath: string): boolean {
+export function isAllowedFile(filePath: string): boolean {
   const ext = path.extname(filePath).toLowerCase();
   return ALLOWED_EXTENSIONS.has(ext);
 }
@@ -89,7 +89,7 @@ function createCollectFilesStats(): CollectFilesStats {
   };
 }
 
-function isProbablyBinary(buffer: Buffer): boolean {
+export function isProbablyBinary(buffer: Buffer): boolean {
   return buffer.includes(0);
 }
 

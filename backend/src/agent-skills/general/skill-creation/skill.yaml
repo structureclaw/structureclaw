@@ -1,0 +1,41 @@
+id: skill-creation
+domain: general
+source: builtin
+name:
+  zh: 技能创建向导
+  en: Skill Creation Wizard
+description:
+  zh: 指导用户创建新的 StructureClaw 技能，包括 skill.yaml 清单、阶段 Markdown 文件和可选 handler.ts 模块。
+  en: Guide users through creating new StructureClaw skills, including skill.yaml manifest, stage markdown files, and optional handler.ts modules.
+triggers:
+  - create skill
+  - new skill
+  - custom skill
+  - 技能
+  - 创建技能
+  - 自定义技能
+  - skill.yaml
+stages:
+  - intent
+  - draft
+structureType: unknown
+structuralTypeKeys: []
+capabilities:
+  - skill-authoring
+  - manifest-validation
+requires: []
+conflicts: []
+priority: 10
+compatibility:
+  minRuntimeVersion: 0.1.0
+  skillApiVersion: v1
+supportedAnalysisTypes: []
+supportedModelFamilies: []
+materialFamilies: []
+aliases:
+  - skill-wizard
+  - skill-authoring
+toolHints:
+  primary: write_file
+runtimeContract:
+  role: assistant

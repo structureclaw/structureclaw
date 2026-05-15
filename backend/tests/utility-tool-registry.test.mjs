@@ -3,11 +3,12 @@ import { loadSkillManifestsFromDirectorySync, resolveBuiltinSkillManifestRoot } 
 import { listAgentToolDefinitions } from '../dist/agent-langgraph/tool-registry.js';
 import path from 'node:path';
 
-const REMAINING_GENERAL_SKILL_IDS = ['memory', 'shell'];
+const REMAINING_GENERAL_SKILL_IDS = ['memory', 'shell', 'skill-creation'];
 const CURRENT_TOOL_IDS = [
   'analyze_file',
   'ask_user_clarification',
   'build_model',
+  'calculate',
   'detect_structure_type',
   'extract_draft_params',
   'generate_report',

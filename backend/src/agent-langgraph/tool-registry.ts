@@ -24,6 +24,7 @@ import {
 } from './workspace-tools.js';
 import { createAnalyzeFileTool } from './file-tools.js';
 import { createShellTool } from './shell-tool.js';
+import { createCalculateTool } from './calc-tool.js';
 
 export type AgentToolRisk = 'low' | 'workspace-read' | 'workspace-write' | 'destructive' | 'shell';
 export type AgentToolCategory = 'engineering' | 'interaction' | 'session' | 'workspace' | 'memory' | 'shell';
@@ -128,6 +129,18 @@ export const AGENT_TOOL_DEFINITIONS: readonly AgentToolDefinition[] = [
       en: 'Generate structural analysis and code-check reports.',
     },
     create: ({ skillRuntime }) => createGenerateReportTool(skillRuntime),
+  },
+  {
+    id: 'calculate',
+    category: 'engineering',
+    risk: 'low',
+    defaultEnabled: true,
+    displayName: { zh: '工程计算', en: 'Engineering Calculator' },
+    description: {
+      zh: '执行工程数学计算（算术、三角函数、对数、幂运算）。不依赖 LLM，保证精确结果。',
+      en: 'Execute engineering math calculations (arithmetic, trigonometry, logarithms, power). Precise results without LLM.',
+    },
+    create: () => createCalculateTool(),
   },
   {
     id: 'ask_user_clarification',

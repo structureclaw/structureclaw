@@ -42,7 +42,7 @@ const IMAGE_MIME: Record<string, string> = {
 // ---------------------------------------------------------------------------
 
 /** Returns true only when candidatePath is exactly root or a strict descendant. */
-function isPathWithinRoot(candidatePath: string, root: string): boolean {
+export function isPathWithinRoot(candidatePath: string, root: string): boolean {
   const c = path.normalize(candidatePath);
   const r = path.normalize(root);
   return c === r || c.startsWith(r + path.sep);
@@ -82,7 +82,7 @@ export function resolveUploadPath(
 }
 
 /** Parse CSV text into rows (header + data). */
-function parseCsv(text: string, maxRows: number): { headers: string[]; rows: string[][] } {
+export function parseCsv(text: string, maxRows: number): { headers: string[]; rows: string[][] } {
   const lines = text
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -114,7 +114,7 @@ function parseCsv(text: string, maxRows: number): { headers: string[]; rows: str
 }
 
 /** Extract DXF entities as structural hints. */
-function parseDxf(text: string): {
+export function parseDxf(text: string): {
   lines: Array<{ x1: number; y1: number; x2: number; y2: number }>;
   texts: string[];
   entityCount: number;

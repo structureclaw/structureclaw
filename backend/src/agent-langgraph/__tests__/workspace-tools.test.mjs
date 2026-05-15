@@ -161,4 +161,176 @@ describe("workspace tools", () => {
     expect(result.success).toBe(true);
     expect(content).toContain("updated");
   });
+
+  // ── read_file ──────────────────────────────────────────────────────────────
+
+  test("read_file reads a text file", async () => {
+    const { createReadFileTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    const tool = createReadFileTool();
+    const raw = await tool.invoke(
+      { filePath: "src/agent.ts" },
+      { configurable: { workspaceRoot: root } },
+    );
+    const result = JSON.parse(raw);
+    expect(result.success).toBe(true);
+    expect(result.type).toBe("text");
+    expect(result.content).toContain("needle");
+  });
+
+  test("read_file detects binary content", async () => {
+    await fs.writeFile(path.join(root, "src", "data.bin"), Buffer.from([0, 1, 2, 3]));
+    const { createReadFileTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    const tool = createReadFileTool();
+    const raw = await tool.invoke(
+      { filePath: "src/data.bin" },
+      { configurable: { workspaceRoot: root } },
+    );
+    const result = JSON.parse(raw);
+    expect(result.success).toBe(true);
+    expect(result.type).toBe("binary");
+  });
+
+  test("read_file blocks traversal", async () => {
+    const { createReadFileTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    const tool = createReadFileTool();
+    const raw = await tool.invoke(
+      { filePath: "../outside.txt" },
+      { configurable: { workspaceRoot: root } },
+    );
+    const result = JSON.parse(raw);
+    expect(result.success).toBe(false);
+  });
+
+  test("read_file returns FILE_NOT_FOUND for missing file", async () => {
+    const { createReadFileTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    const tool = createReadFileTool();
+    const raw = await tool.invoke(
+      { filePath: "src/missing.ts" },
+      { configurable: { workspaceRoot: root } },
+    );
+    const result = JSON.parse(raw);
+    expect(result.success).toBe(false);
+    expect(result.error).toBe("FILE_NOT_FOUND");
+  });
+
+  // ── write_file ─────────────────────────────────────────────────────────────
+
+  test("write_file creates new file with parent dirs", async () => {
+    const { createWriteFileTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    const tool = createWriteFileTool();
+    const raw = await tool.invoke(
+      { filePath: "src/deep/new-file.ts", content: "export const x = 1;\n" },
+      { configurable: { workspaceRoot: root } },
+    );
+    const result = JSON.parse(raw);
+    expect(result.success).toBe(true);
+    const content = await fs.readFile(path.join(root, "src", "deep", "new-file.ts"), "utf8");
+    expect(content).toBe("export const x = 1;\n");
+  });
+
+  test("write_file blocks traversal", async () => {
+    const { createWriteFileTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    const tool = createWriteFileTool();
+    await expect(
+      tool.invoke(
+        { filePath: "../outside.ts", content: "evil" },
+        { configurable: { workspaceRoot: root } },
+      ),
+    ).rejects.toThrow(/Path traversal/);
+  });
+
+  test("write_file rejects disallowed extension", async () => {
+    const { createWriteFileTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    const tool = createWriteFileTool();
+    await expect(
+      tool.invoke(
+        { filePath: "evil.exe", content: "binary" },
+        { configurable: { workspaceRoot: root } },
+      ),
+    ).rejects.toThrow(/denied/);
+  });
+
+  // ── move_path ──────────────────────────────────────────────────────────────
+
+  test("move_path renames a file", async () => {
+    const { createMovePathTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    const tool = createMovePathTool();
+    const raw = await tool.invoke(
+      { fromPath: "src/agent.ts", toPath: "src/renamed.ts" },
+      { configurable: { workspaceRoot: root } },
+    );
+    const result = JSON.parse(raw);
+    expect(result.success).toBe(true);
+    const content = await fs.readFile(path.join(root, "src", "renamed.ts"), "utf8");
+    expect(content).toContain("needle");
+  });
+
+  test("move_path blocks traversal", async () => {
+    const { createMovePathTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    const tool = createMovePathTool();
+    await expect(
+      tool.invoke(
+        { fromPath: "src/agent.ts", toPath: "../outside.ts" },
+        { configurable: { workspaceRoot: root } },
+      ),
+    ).rejects.toThrow(/Path traversal/);
+  });
+
+  // ── delete_path ────────────────────────────────────────────────────────────
+
+  test("delete_path removes a file", async () => {
+    await fs.writeFile(path.join(root, "src", "to-delete.ts"), "temp", "utf8");
+    const { createDeletePathTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    const tool = createDeletePathTool();
+    const raw = await tool.invoke(
+      { filePath: "src/to-delete.ts" },
+      { configurable: { workspaceRoot: root } },
+    );
+    const result = JSON.parse(raw);
+    expect(result.success).toBe(true);
+    await expect(fs.stat(path.join(root, "src", "to-delete.ts"))).rejects.toThrow();
+  });
+
+  test("delete_path blocks traversal", async () => {
+    const { createDeletePathTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    const tool = createDeletePathTool();
+    await expect(
+      tool.invoke(
+        { filePath: "../outside.ts" },
+        { configurable: { workspaceRoot: root } },
+      ),
+    ).rejects.toThrow(/Path traversal/);
+  });
+
+  // ── helpers ────────────────────────────────────────────────────────────────
+
+  test("isProbablyBinary returns true for buffer with null byte", async () => {
+    const { isProbablyBinary } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    expect(isProbablyBinary(Buffer.from([0, 1, 2]))).toBe(true);
+  });
+
+  test("isProbablyBinary returns false for text buffer", async () => {
+    const { isProbablyBinary } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    expect(isProbablyBinary(Buffer.from("hello world"))).toBe(false);
+  });
+
+  test("isAllowedFile accepts .ts extension", async () => {
+    const { isAllowedFile } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    expect(isAllowedFile("test.ts")).toBe(true);
+  });
+
+  test("isAllowedFile rejects .exe extension", async () => {
+    const { isAllowedFile } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    expect(isAllowedFile("program.exe")).toBe(false);
+  });
+
+  test("isAllowedFile rejects no extension", async () => {
+    const { isAllowedFile } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    expect(isAllowedFile("Makefile")).toBe(false);
+  });
+
+  test("assertAllowedFile throws for denied extension", async () => {
+    const { assertAllowedFile } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    expect(() => assertAllowedFile("evil.exe")).toThrow(/denied/);
+  });
 });

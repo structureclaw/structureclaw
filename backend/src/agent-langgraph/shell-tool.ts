@@ -7,11 +7,11 @@ import { getAllowedShellCommands, getShellTimeoutMs } from './config.js';
 
 const MAX_OUTPUT_BYTES = 1024 * 1024;
 
-function isCommandAllowed(command: string): boolean {
+export function isCommandAllowed(command: string): boolean {
   return getAllowedShellCommands().includes(command);
 }
 
-function truncateByBytes(value: string, maxBytes: number): { output: string; truncated: boolean } {
+export function truncateByBytes(value: string, maxBytes: number): { output: string; truncated: boolean } {
   const buf = Buffer.from(value, 'utf-8');
   if (buf.length <= maxBytes) return { output: value, truncated: false };
   return { output: buf.subarray(0, maxBytes).toString('utf-8'), truncated: true };
