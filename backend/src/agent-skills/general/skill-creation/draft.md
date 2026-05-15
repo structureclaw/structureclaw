@@ -16,6 +16,9 @@ Create under `backend/src/agent-skills/<domain>/<skill-name>/`:
     └── handler.test.mjs
 ```
 
+Stage names must be one of: `intent`, `draft`, `analysis`, `design`
+(defined in `skillManifestFileSchema` in `backend/src/agent-runtime/manifest-schema.ts`).
+
 ## skill.yaml template
 
 ```yaml
@@ -40,7 +43,7 @@ capabilities:
   - <capability-name>
 requires: []
 conflicts: []
-priority: 50                    # 0-100, higher = preferred when multiple match
+priority: 50                    # 0-100, higher = preferred when multiple match; schema default is 0
 compatibility:
   minRuntimeVersion: 0.1.0
   skillApiVersion: v1
@@ -55,7 +58,8 @@ runtimeContract:
 
 ## handler.ts template (optional)
 
-For skills that need custom draft extraction, state merging, or model building:
+For skills that need custom draft extraction, state merging, or model building.
+The full `SkillHandler` interface is defined in `backend/src/agent-runtime/types.ts`.
 
 ```typescript
 import type { SkillHandler } from '../../agent-runtime/types';
@@ -64,6 +68,11 @@ export const handler: SkillHandler = {
   detectStructuralType(input) {
     // Return StructuralTypeMatch if user text matches this skill
     return null;
+  },
+
+  parseProvidedValues(values) {
+    // Normalize explicit user input into DraftExtraction
+    return { parameters: {}, confidence: 0 };
   },
 
   extractDraft(input) {
@@ -91,6 +100,11 @@ export const handler: SkillHandler = {
     return [];
   },
 
+  // Optional methods (omit if not needed):
+  // buildDefaultProposals?(keys, state, locale) → SkillDefaultProposal[]
+  // buildReportNarrative?(input) → string
+  // resolveStage?(missingKeys, state) → pipeline stage
+
   buildModel(state) {
     // Build the final computable model JSON
     return undefined;
@@ -100,12 +114,12 @@ export const handler: SkillHandler = {
 
 ## Validation rules
 
-1. `skill.yaml` is required and must pass `skillManifestFileSchema` (Zod validation)
+1. `skill.yaml` is required and must pass `skillManifestFileSchema` (Zod validation, see `backend/src/agent-runtime/manifest-schema.ts`)
 2. At least one stage `.md` file is required for auto-discovery
 3. Skill IDs must be unique across all domains
 4. `domain` must be one of the 14 recognized domains
 5. `structureType` must match a known type or be `unknown`
-6. Priority range: 0–100 (default 50)
+6. `priority` is an integer (schema default: 0; recommended user value: 50 for equal weighting)
 
 ## Best practices
 

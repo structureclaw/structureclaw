@@ -138,13 +138,13 @@ describe('createCalculateTool', () => {
     expect(result.error).toMatch(/Empty/);
   });
 
-  test('error on division by zero', async () => {
+  test('division by zero returns error (Infinity rejected)', async () => {
     const { createCalculateTool } = await import('../../../dist/agent-langgraph/calc-tool.js');
     const tool = createCalculateTool();
     const raw = await tool.invoke({ expression: '1 / 0' });
     const result = JSON.parse(raw);
-    // mathjs may return Infinity, null, or an error depending on config
-    expect(typeof result.success === 'boolean').toBe(true);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/not a finite number/);
   });
 
   test('error on unknown function', async () => {
@@ -179,12 +179,52 @@ describe('createCalculateTool', () => {
     const raw = await tool.invoke({ expression: 'import("fs")' });
     const result = JSON.parse(raw);
     expect(result.success).toBe(false);
+    expect(result.error).toMatch(/disabled/);
   });
 
   test('injection attempt: evaluate is disabled', async () => {
     const { createCalculateTool } = await import('../../../dist/agent-langgraph/calc-tool.js');
     const tool = createCalculateTool();
     const raw = await tool.invoke({ expression: 'evaluate("1+2")' });
+    const result = JSON.parse(raw);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/disabled/);
+  });
+
+  test('injection attempt: parse is disabled', async () => {
+    const { createCalculateTool } = await import('../../../dist/agent-langgraph/calc-tool.js');
+    const tool = createCalculateTool();
+    const raw = await tool.invoke({ expression: 'parse("1+2")' });
+    const result = JSON.parse(raw);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/disabled/);
+  });
+
+  test('injection attempt: config is disabled', async () => {
+    const { createCalculateTool } = await import('../../../dist/agent-langgraph/calc-tool.js');
+    const tool = createCalculateTool();
+    const raw = await tool.invoke({ expression: 'config({number: "BigNumber"})' });
+    const result = JSON.parse(raw);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/disabled/);
+  });
+
+  test('injection attempt: createUnit is disabled', async () => {
+    const { createCalculateTool } = await import('../../../dist/agent-langgraph/calc-tool.js');
+    const tool = createCalculateTool();
+    const raw = await tool.invoke({ expression: 'createUnit("fakeunit", "1 m")' });
+    const result = JSON.parse(raw);
+    expect(result.success).toBe(false);
+    expect(result.error).toMatch(/disabled/);
+  });
+
+  test('scope isolation: variable assignment does not leak', async () => {
+    const { createCalculateTool } = await import('../../../dist/agent-langgraph/calc-tool.js');
+    const tool = createCalculateTool();
+    // Assign a variable
+    await tool.invoke({ expression: 'a = 42' });
+    // Verify the variable does not persist
+    const raw = await tool.invoke({ expression: 'a' });
     const result = JSON.parse(raw);
     expect(result.success).toBe(false);
   });

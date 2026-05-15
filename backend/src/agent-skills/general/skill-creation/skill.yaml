@@ -11,9 +11,10 @@ triggers:
   - create skill
   - new skill
   - custom skill
-  - 技能
   - 创建技能
+  - 新建技能
   - 自定义技能
+  - 编写技能
   - skill.yaml
 stages:
   - intent
