@@ -75,6 +75,39 @@ function getToolName(message: BaseMessage): string | undefined {
     : undefined;
 }
 
+function asRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function buildAiMessageFields(content: unknown, name: unknown, source: Record<string, unknown>): Record<string, unknown> {
+  const fields: Record<string, unknown> = {
+    content: typeof content === 'string' ? content : content as any[],
+  };
+  if (typeof name === 'string' && name.trim().length > 0) fields.name = name;
+
+  const additionalKwargs = asRecord(source.additional_kwargs);
+  if (additionalKwargs) fields.additional_kwargs = additionalKwargs;
+
+  const responseMetadata = asRecord(source.response_metadata);
+  if (responseMetadata) fields.response_metadata = responseMetadata;
+
+  if (source.usage_metadata !== undefined) fields.usage_metadata = source.usage_metadata;
+  if (Array.isArray(source.tool_calls)) fields.tool_calls = source.tool_calls;
+  if (Array.isArray(source.invalid_tool_calls)) fields.invalid_tool_calls = source.invalid_tool_calls;
+
+  return fields;
+}
+
+function hasRestorableAiMetadata(source: Record<string, unknown>): boolean {
+  const additionalKwargs = asRecord(source.additional_kwargs);
+  return (
+    (Array.isArray(source.tool_calls) && source.tool_calls.length > 0)
+    || (additionalKwargs !== undefined && 'reasoning_content' in additionalKwargs)
+  );
+}
+
 export function buildEmptyFinalResponseFallback(
   locale: 'zh' | 'en',
   toolNames: string[],
@@ -169,8 +202,8 @@ function createCallModelNode(
           const role = (m as any).role;
           if (role === 'assistant' || !role) {
             const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
-            if (!content) return null;
-            return new AIMessage({ content });
+            if (!content && !hasRestorableAiMetadata(m as unknown as Record<string, unknown>)) return null;
+            return new AIMessage(buildAiMessageFields(content, (m as any).name, m as unknown as Record<string, unknown>) as any);
           }
         }
         // AIMessageChunk is not a proper AIMessage — convert it so the LLM
@@ -181,10 +214,8 @@ function createCallModelNode(
           const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
           // Skip empty AIMessageChunks — they are streaming artifacts
           // (e.g. the final empty chunk after tool calls) with no value.
-          if (!content) return null;
-          const aiMsg = new AIMessage({ content, name: (m as any).name || undefined });
-          if (Array.isArray((m as any).tool_calls)) (aiMsg as any).tool_calls = (m as any).tool_calls;
-          return aiMsg;
+          if (!content && !hasRestorableAiMetadata(m as unknown as Record<string, unknown>)) return null;
+          return new AIMessage(buildAiMessageFields(content, (m as any).name, m as unknown as Record<string, unknown>) as any);
         }
         return m;
       }
@@ -200,9 +231,7 @@ function createCallModelNode(
         return typeof content === 'string' ? new HumanMessage({ content, name }) : new HumanMessage({ content: content as any[], name });
       }
       if (id.includes('AIMessage') || plain.role === 'assistant' || plain.type === 'ai') {
-        const aiMsg = typeof content === 'string' ? new AIMessage({ content, name }) : new AIMessage({ content: content as any[], name });
-        if (Array.isArray(plain.tool_calls)) (aiMsg as any).tool_calls = plain.tool_calls;
-        return aiMsg;
+        return new AIMessage(buildAiMessageFields(content, name, plain) as any);
       }
       if (id.includes('SystemMessage') || plain.role === 'system' || plain.type === 'system') {
         return new SystemMessage(typeof content === 'string' ? content : JSON.stringify(content));
