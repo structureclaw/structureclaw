@@ -72,4 +72,33 @@ describe('LLM model options', () => {
     });
     expect(request.messages[1]).not.toHaveProperty('reasoning_content');
   });
+
+  test('does not attach DeepSeek reasoning content when assistant counts diverge', async () => {
+    const { attachDeepSeekReasoningContent } = await import('../../../dist/utils/llm.js');
+    const request = {
+      model: 'deepseek-v4-pro',
+      messages: [
+        { role: 'user', content: 'Need weather.' },
+        { role: 'assistant', content: 'Cloudy.' },
+      ],
+    };
+    const sourceMessages = [
+      new HumanMessage('Need weather.'),
+      new AIMessage({
+        content: '',
+        additional_kwargs: { reasoning_content: 'Need to call a weather tool.' },
+        tool_calls: [{ id: 'call-1', name: 'get_weather', args: {} }],
+      }),
+      new ToolMessage({ tool_call_id: 'call-1', content: 'Cloudy' }),
+      new AIMessage({
+        content: 'Cloudy.',
+        additional_kwargs: { reasoning_content: 'The tool returned a forecast.' },
+      }),
+    ];
+
+    const patched = attachDeepSeekReasoningContent(request, sourceMessages);
+
+    expect(patched).toBe(request);
+    expect(request.messages[1]).not.toHaveProperty('reasoning_content');
+  });
 });

@@ -40,6 +40,7 @@ type ChatCompletionRequestLike = {
 };
 
 type ReasoningValue = string | null;
+const SOURCE_MESSAGES_OPTION_KEY = '__structureClawSourceMessages';
 
 function hasOwn(record: Record<string, unknown>, key: string): boolean {
   return Object.prototype.hasOwnProperty.call(record, key);
@@ -79,6 +80,11 @@ export function attachDeepSeekReasoningContent(
   const reasoningByAssistant = sourceMessages
     .filter((message) => getMessageType(message) === 'ai')
     .map((message) => getReasoningContent(message));
+  const requestAssistantCount = request.messages
+    .filter((message) => message && typeof message === 'object' && (message as { role?: unknown }).role === 'assistant')
+    .length;
+
+  if (requestAssistantCount !== reasoningByAssistant.length) return request;
 
   if (!reasoningByAssistant.some((value) => value !== undefined)) return request;
 
@@ -103,32 +109,44 @@ export function attachDeepSeekReasoningContent(
   return changed ? { ...request, messages } : request;
 }
 
-class DeepSeekV4CompatibleChatOpenAICompletions extends ChatOpenAICompletions {
-  private activeSourceMessages: unknown[] | null = null;
+function withSourceMessages(options: any, sourceMessages: unknown[]) {
+  const requestOptions = options?.options && typeof options.options === 'object'
+    ? options.options
+    : {};
+  return {
+    ...(options ?? {}),
+    [SOURCE_MESSAGES_OPTION_KEY]: sourceMessages,
+    options: {
+      ...requestOptions,
+      [SOURCE_MESSAGES_OPTION_KEY]: sourceMessages,
+    },
+  };
+}
 
+function getSourceMessagesFromOptions(options: any): unknown[] | null {
+  const sourceMessages = options?.[SOURCE_MESSAGES_OPTION_KEY];
+  return Array.isArray(sourceMessages) ? sourceMessages : null;
+}
+
+function withoutSourceMessagesOption(options: any) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) return options;
+  const { [SOURCE_MESSAGES_OPTION_KEY]: _sourceMessages, ...rest } = options;
+  return rest;
+}
+
+class DeepSeekV4CompatibleChatOpenAICompletions extends ChatOpenAICompletions {
   async _generate(messages: any[], options: any, runManager?: any) {
-    const previous = this.activeSourceMessages;
-    this.activeSourceMessages = messages;
-    try {
-      return await super._generate(messages, options, runManager);
-    } finally {
-      this.activeSourceMessages = previous;
-    }
+    return await super._generate(messages, withSourceMessages(options, messages), runManager);
   }
 
   async *_streamResponseChunks(messages: any[], options: any, runManager?: any) {
-    const previous = this.activeSourceMessages;
-    this.activeSourceMessages = messages;
-    try {
-      yield* super._streamResponseChunks(messages, options, runManager);
-    } finally {
-      this.activeSourceMessages = previous;
-    }
+    yield* super._streamResponseChunks(messages, withSourceMessages(options, messages), runManager);
   }
 
   completionWithRetry(request: any, requestOptions?: any): Promise<any> {
-    const patchedRequest = attachDeepSeekReasoningContent(request, this.activeSourceMessages);
-    return super.completionWithRetry(patchedRequest as any, requestOptions);
+    const sourceMessages = getSourceMessagesFromOptions(requestOptions);
+    const patchedRequest = attachDeepSeekReasoningContent(request, sourceMessages);
+    return super.completionWithRetry(patchedRequest as any, withoutSourceMessagesOption(requestOptions));
   }
 }
 
