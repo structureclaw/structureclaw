@@ -518,7 +518,7 @@ function groupMessagesForRendering(messages: Message[]): MessageRenderGroup[] {
       return
     }
 
-    if (message.role === 'assistant' && message.presentation?.mode === 'execution') {
+    if (message.role === 'assistant' && (message.presentation?.mode === 'execution' || (Array.isArray(message.toolCalls) && message.toolCalls.length > 0))) {
       groups.push({ type: 'assistant-execution', assistant: message, tools: [] })
       return
     }

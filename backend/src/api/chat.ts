@@ -342,10 +342,18 @@ async function persistConversationMessages(params: {
 }
 
 /**
- * Persist intermediate LangGraph tool messages into the DB. The user/final
- * assistant pair is already written by persistConversationMessages with the
- * presentation metadata the UI needs; appending final AI messages from the
- * graph state would restore the same assistant turn twice.
+ * Persist intermediate LangGraph messages (tool outputs + AI tool_calls)
+ * into the DB for conversation restore.
+ *
+ * We store:
+ *  - `role: 'tool'` messages: tool outputs with name and tool_call_id
+ *  - `role: 'assistant'` messages that carry `tool_calls[]`: these record
+ *    the LLM's decision to invoke tools including the input args, which
+ *    the UI needs to render expandable tool-call cards on history restore.
+ *
+ * The final assistant summary is already written by
+ * `persistConversationMessages` with the presentation metadata — we skip
+ * AI messages that have no tool_calls to avoid duplicating that record.
  */
 async function persistFullConversationMessages(params: {
   conversationId: string;
@@ -355,13 +363,15 @@ async function persistFullConversationMessages(params: {
   if (!conversationId || !Array.isArray(state.messages)) return;
 
   try {
-    const existingToolCount = await prisma.message.count({
-      where: { conversationId, role: 'tool' },
+    const existingCount = await prisma.message.count({
+      where: { conversationId, role: { in: ['tool', 'assistant'] } },
     });
 
     const allMessages: BaseMessage[] = state.messages;
-    const toolRecords = allMessages.map((msg): Record<string, unknown> | null => {
-      if (msg == null || typeof msg !== 'object') return null;
+    const records: Record<string, unknown>[] = [];
+
+    for (const msg of allMessages) {
+      if (msg == null || typeof msg !== 'object') continue;
 
       const getType = typeof (msg as any)._getType === 'function' ? (msg as any)._getType() : null;
       const content = typeof msg.content === 'string'
@@ -375,21 +385,32 @@ async function persistFullConversationMessages(params: {
           : JSON.stringify(msg.content);
 
       if (getType === 'tool') {
-        return {
+        records.push({
           conversationId,
           role: 'tool',
           content: typeof content === 'string' ? content : JSON.stringify(content),
           name: (msg as any).name || undefined,
           toolCallId: (msg as any).tool_call_id || undefined,
-        };
+        });
+      } else if (getType === 'ai') {
+        const toolCalls = Array.isArray((msg as any).tool_calls) ? (msg as any).tool_calls : [];
+        if (toolCalls.length === 0) continue;
+        records.push({
+          conversationId,
+          role: 'assistant',
+          content: typeof content === 'string' ? content : JSON.stringify(content),
+          toolCalls: toolCalls.map((tc: any) => ({
+            id: tc.id ?? '',
+            name: tc.name ?? '',
+            args: tc.args ?? {},
+          })),
+        });
       }
-      // Skip system messages and unknown types
-      return null;
-    }).filter((r): r is Record<string, unknown> => r !== null);
+    }
 
-    const records = toolRecords.slice(existingToolCount);
-    if (records.length > 0) {
-      await prisma.message.createMany({ data: records as any });
+    const delta = records.slice(existingCount);
+    if (delta.length > 0) {
+      await prisma.message.createMany({ data: delta as any });
     }
   } catch (error) {
     console.warn('[chat] skip full message persistence:', error instanceof Error ? error.message : String(error));
@@ -870,8 +891,9 @@ export async function chatRoutes(fastify: FastifyInstance) {
       await persistStreamMessages(wasAborted);
 
       // Persist full LangGraph message history (including tool calls) for
-      // conversation restore. Best-effort — don't block the response.
-      if (!wasAborted && streamConversationId) {
+      // conversation restore. Must run even on abort — tool messages are
+      // critical for history reconstruction. Best-effort on snapshot retrieval.
+      if (streamConversationId) {
         try {
           const snapshot = await agentService.getConversationSessionSnapshot(
             streamConversationId,
