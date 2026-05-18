@@ -518,7 +518,7 @@ function groupMessagesForRendering(messages: Message[]): MessageRenderGroup[] {
       return
     }
 
-    if (message.role === 'assistant' && (message.presentation?.mode === 'execution' || (Array.isArray(message.toolCalls) && message.toolCalls.length > 0))) {
+    if (message.role === 'assistant' && (message.presentation?.mode === 'execution')) {
       groups.push({ type: 'assistant-execution', assistant: message, tools: [] })
       return
     }
@@ -2785,7 +2785,7 @@ export function AIConsole() {
               }
             }
 
-            return payload.messages.flatMap((message): Message[] => {
+            const mapped = payload.messages.flatMap((message): Message[] => {
             // Handle tool messages — these come from persistFullConversationMessages
             if (message.role === 'tool') {
               let restoredSkillId: string | undefined
@@ -2813,17 +2813,11 @@ export function AIConsole() {
                 },
               }]
             }
-            // Handle assistant messages with toolCalls metadata
+            // Handle assistant messages
             if (message.role === 'assistant') {
               const toolCalls = (message as any).toolCalls as Array<{ id?: string; name: string; args?: Record<string, unknown> }> | undefined
               const hasToolCalls = Array.isArray(toolCalls) && toolCalls.length > 0
               const presentation = parsePersistedPresentation(message.metadata)
-              // Intermediate AIMessages (tool_calls but no presentation) are
-              // persisted only to provide args for tool-role messages. They
-              // should not render as separate visible bubbles.
-              if (hasToolCalls && !presentation) {
-                return []
-              }
               const mapped: Message = {
                 id: message.id,
                 role: 'assistant' as const,
@@ -2832,9 +2826,7 @@ export function AIConsole() {
                 timestamp: message.createdAt,
                 debugDetails: parsePersistedDebugDetails(message.metadata),
                 presentation,
-              }
-              if (hasToolCalls) {
-                mapped.toolCalls = toolCalls
+                ...(hasToolCalls ? { toolCalls } : {}),
               }
               return [mapped]
             }
@@ -2850,6 +2842,38 @@ export function AIConsole() {
               attachments: parsePersistedAttachments(message.metadata),
             }]
           })
+
+            // Reorder: DB createdAt puts the final assistant (written first by
+            // persistConversationMessages) before intermediate messages (written
+            // later by persistFullConversationMessages). We restore semantic order:
+            //   user → intermediate AI reasoning + interleaved tool cards → final assistant
+            const users = mapped.filter(m => m.role === 'user')
+            const intermediates = mapped.filter(m =>
+              m.role === 'assistant' && Array.isArray(m.toolCalls) && m.toolCalls.length > 0 && !m.presentation,
+            )
+            const tools = mapped.filter(m => m.role === 'tool')
+            const finals = mapped.filter(m =>
+              m.role === 'assistant' && !(Array.isArray(m.toolCalls) && m.toolCalls.length > 0 && !m.presentation),
+            )
+
+            const ordered: Message[] = [...users]
+            const usedToolIds = new Set<string>()
+            for (const ai of intermediates) {
+              ordered.push(ai)
+              for (const tc of (ai.toolCalls || [])) {
+                if (!tc.id) continue
+                const match = tools.find(t => t.toolStep?.id === tc.id)
+                if (match && !usedToolIds.has(match.id)) {
+                  ordered.push(match)
+                  usedToolIds.add(match.id)
+                }
+              }
+            }
+            for (const tool of tools) {
+              if (!usedToolIds.has(tool.id)) ordered.push(tool)
+            }
+            ordered.push(...finals)
+            return ordered
           })()
         : []
       const archivedMessages = archived?.messages || []
