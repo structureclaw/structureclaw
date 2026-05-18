@@ -2,7 +2,7 @@
 
 This directory is the step-1 skeleton for moving visualization extensions toward a detachable skill architecture.
 
-The current PR intentionally keeps runtime behavior unchanged. Existing visualization logic still lives in the legacy extension registry, and `registry.ts` only re-exports that registry as a bridge for later steps.
+The current PR intentionally keeps runtime behavior unchanged. Existing visualization logic still lives in the legacy extension module, and `registry.ts` only re-exports the public lookup helpers (`getVisualizationExtensionByView`, `getVisualizationViewLabelKey`) so future skill consumers have a single import surface.
 
 ## Current Status
 
@@ -65,9 +65,9 @@ This keeps built-in visualization data and SkillHub-provided visualization data 
 
 ## Registry Bridge
 
-`registry.ts` currently re-exports the old `visualizationExtensionRegistry` as `legacyExtensionRegistry` on purpose.
+`registry.ts` currently re-exports only the public legacy lookup helpers (`getVisualizationExtensionByView`, `getVisualizationViewLabelKey`). The legacy `visualizationExtensionRegistry` array and `getAvailableVisualizationExtensions` filter remain module-private inside `extensions.tsx` on purpose.
 
-That bridge exists because step 1 only introduces contracts. It avoids changing runtime registration, toolbar rendering, aside rendering, scene rendering, or snapshot adaptation in the same PR.
+That narrow bridge exists because step 1 only introduces contracts. It avoids changing runtime registration, toolbar rendering, aside rendering, scene rendering, or snapshot adaptation in the same PR, while still giving step-2 callers a single import path.
 
 After step 2, `registry.ts` should become the canonical frontend visualization skill registry. At that point it can adapt or replace the old registry while keeping call sites stable.
 
