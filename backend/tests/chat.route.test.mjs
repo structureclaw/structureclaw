@@ -215,7 +215,7 @@ describe('chat routes message persistence', () => {
     });
   });
 
-  test('persists only tool messages from graph snapshots after stream summary persistence', async () => {
+  test('persists tool messages and intermediate AI tool_calls from graph snapshots after stream summary persistence', async () => {
     getSnapshotSpy.mockResolvedValueOnce({
       snapshot: {},
       state: {
@@ -249,12 +249,24 @@ describe('chat routes message persistence', () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(prisma.message.count).toHaveBeenCalledWith({
-      where: { conversationId: 'conv-paused', role: 'tool' },
+    // Dedup queries: find existing tool messages and assistant tool_calls
+    expect(prisma.message.findMany).toHaveBeenCalledWith({
+      where: { conversationId: 'conv-paused', role: 'tool', toolCallId: { not: null } },
+      select: { toolCallId: true },
+    });
+    expect(prisma.message.findMany).toHaveBeenCalledWith({
+      where: { conversationId: 'conv-paused', role: 'assistant' },
+      select: { toolCalls: true },
     });
     expect(prisma.message.createMany).toHaveBeenCalledTimes(2);
     expect(prisma.message.createMany.mock.calls[1][0]).toEqual({
       data: [
+        {
+          conversationId: 'conv-paused',
+          role: 'assistant',
+          content: '',
+          toolCalls: [{ id: 'call-grep', name: 'grep_files', args: { query: 'needle' } }],
+        },
         {
           conversationId: 'conv-paused',
           role: 'tool',

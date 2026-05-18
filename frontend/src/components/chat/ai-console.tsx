@@ -2816,6 +2816,14 @@ export function AIConsole() {
             // Handle assistant messages with toolCalls metadata
             if (message.role === 'assistant') {
               const toolCalls = (message as any).toolCalls as Array<{ id?: string; name: string; args?: Record<string, unknown> }> | undefined
+              const hasToolCalls = Array.isArray(toolCalls) && toolCalls.length > 0
+              const presentation = parsePersistedPresentation(message.metadata)
+              // Intermediate AIMessages (tool_calls but no presentation) are
+              // persisted only to provide args for tool-role messages. They
+              // should not render as separate visible bubbles.
+              if (hasToolCalls && !presentation) {
+                return []
+              }
               const mapped: Message = {
                 id: message.id,
                 role: 'assistant' as const,
@@ -2823,13 +2831,9 @@ export function AIConsole() {
                 status: parsePersistedMessageStatus(message.metadata, message.content),
                 timestamp: message.createdAt,
                 debugDetails: parsePersistedDebugDetails(message.metadata),
-                presentation: parsePersistedPresentation(message.metadata),
+                presentation,
               }
-              // Store toolCalls on the assistant message so ToolCallCard can
-              // render the expandable args section.  Do NOT emit separate
-              // "running" step messages — the DB already has tool-role
-              // messages that carry the completion status.
-              if (Array.isArray(toolCalls) && toolCalls.length > 0) {
+              if (hasToolCalls) {
                 mapped.toolCalls = toolCalls
               }
               return [mapped]

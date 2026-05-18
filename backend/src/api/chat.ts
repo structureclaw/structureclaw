@@ -363,9 +363,28 @@ async function persistFullConversationMessages(params: {
   if (!conversationId || !Array.isArray(state.messages)) return;
 
   try {
-    const existingCount = await prisma.message.count({
-      where: { conversationId, role: { in: ['tool', 'assistant'] } },
+    // Fetch existing tool_call_ids and assistant toolCalls to deduplicate
+    // against. This avoids relying on positional counts which break when
+    // persistConversationMessages has already written user/assistant rows.
+    const existingToolMessages = await prisma.message.findMany({
+      where: { conversationId, role: 'tool', toolCallId: { not: null } },
+      select: { toolCallId: true },
     });
+    const existingToolCallIds = new Set(
+      existingToolMessages.map((m: { toolCallId: string | null }) => m.toolCallId).filter(Boolean),
+    );
+    const existingAssistantWithToolCalls = await prisma.message.findMany({
+      where: { conversationId, role: 'assistant' },
+      select: { toolCalls: true },
+    });
+    const existingToolCallIdsOnAssistant = new Set<string>();
+    for (const row of existingAssistantWithToolCalls) {
+      const tcs = Array.isArray(row.toolCalls) ? row.toolCalls : [];
+      for (const tc of tcs) {
+        const tcRecord = tc as Record<string, unknown>;
+        if (typeof tcRecord.id === 'string') existingToolCallIdsOnAssistant.add(tcRecord.id);
+      }
+    }
 
     const allMessages: BaseMessage[] = state.messages;
     const records: Record<string, unknown>[] = [];
@@ -385,16 +404,22 @@ async function persistFullConversationMessages(params: {
           : JSON.stringify(msg.content);
 
       if (getType === 'tool') {
+        const toolCallId = (msg as any).tool_call_id || undefined;
+        // Skip if this tool output was already persisted
+        if (toolCallId && existingToolCallIds.has(toolCallId)) continue;
         records.push({
           conversationId,
           role: 'tool',
           content: typeof content === 'string' ? content : JSON.stringify(content),
           name: (msg as any).name || undefined,
-          toolCallId: (msg as any).tool_call_id || undefined,
+          toolCallId,
         });
       } else if (getType === 'ai') {
         const toolCalls = Array.isArray((msg as any).tool_calls) ? (msg as any).tool_calls : [];
         if (toolCalls.length === 0) continue;
+        // Skip if ALL tool_call ids from this AIMessage already exist in DB
+        const tcIds = toolCalls.map((tc: any) => tc.id ?? '');
+        if (tcIds.length > 0 && tcIds.every((id: string) => existingToolCallIdsOnAssistant.has(id))) continue;
         records.push({
           conversationId,
           role: 'assistant',
@@ -408,9 +433,8 @@ async function persistFullConversationMessages(params: {
       }
     }
 
-    const delta = records.slice(existingCount);
-    if (delta.length > 0) {
-      await prisma.message.createMany({ data: delta as any });
+    if (records.length > 0) {
+      await prisma.message.createMany({ data: records as any });
     }
   } catch (error) {
     console.warn('[chat] skip full message persistence:', error instanceof Error ? error.message : String(error));
