@@ -134,6 +134,71 @@ function storyHeightToMetres(parsed: ParsedCell): { metres: number; warning?: st
 }
 
 /**
+ * Convert a parsed length cell to metres based on its declared unit.
+ *
+ * Unlike `storyHeightToMetres` this helper does not second-guess bare
+ * numbers — span lengths and bay widths can legitimately span anywhere
+ * from 1m to 30m+, so a bare 5 means 5 metres, not 5 millimetres. Only
+ * an explicit `mm` / `cm` unit triggers conversion.
+ */
+function convertLengthCellToMetres(parsed: ParsedCell): { metres: number; warning?: string } {
+  const unit = parsed.unit;
+  if (unit === '' || unit === 'm' || unit === 'meter' || unit === 'metre') {
+    return { metres: parsed.value };
+  }
+  if (unit === 'mm' || unit === 'millimeter' || unit === 'millimetre') {
+    return { metres: parsed.value / 1000 };
+  }
+  if (unit === 'cm' || unit === 'centimeter' || unit === 'centimetre') {
+    return { metres: parsed.value / 100 };
+  }
+  if (unit === 'km' || unit === 'kilometer' || unit === 'kilometre') {
+    return { metres: parsed.value * 1000 };
+  }
+  return {
+    metres: parsed.value,
+    warning: `unrecognised length unit "${unit}"; assuming the value is already in metres`,
+  };
+}
+
+/**
+ * Convert a parsed force / line-load / area-load cell to kN.
+ *
+ * DraftFloorLoad fields are typed as kN (per story for vertical, per face
+ * for lateral). Spreadsheets sometimes carry plain N, kgf, tf or kPa; this
+ * helper normalises the common ones and warns on anything else so the
+ * caller can surface the assumption.
+ */
+function convertForceCellToKN(parsed: ParsedCell): { kN: number; warning?: string } {
+  const unit = parsed.unit;
+  if (unit === '' || unit === 'kn' || unit === 'kn/m' || unit === 'kn/m²' || unit === 'kn/m2') {
+    return { kN: parsed.value };
+  }
+  if (unit === 'n' || unit === 'n/m' || unit === 'n/m²' || unit === 'n/m2') {
+    return { kN: parsed.value / 1000 };
+  }
+  if (unit === 'kgf' || unit === 'kg' || unit === 'kgf/m' || unit === 'kgf/m²' || unit === 'kgf/m2') {
+    // 1 kgf ≈ 0.00981 kN; treat 1 kg ≈ 1 kgf for engineering spreadsheets
+    return { kN: parsed.value * 0.00981 };
+  }
+  if (unit === 'tf' || unit === 't' || unit === 'tf/m' || unit === 'tf/m²' || unit === 'tf/m2') {
+    return { kN: parsed.value * 9.81 };
+  }
+  if (unit === 'kpa') {
+    // 1 kPa = 1 kN/m² — line loads in kPa are a unit-system mistake but
+    // numerically equivalent for area loads, so pass through with a hint.
+    return {
+      kN: parsed.value,
+      warning: `interpreted kPa as kN/m²; verify the load is an area load rather than a line load`,
+    };
+  }
+  return {
+    kN: parsed.value,
+    warning: `unrecognised force unit "${unit}"; assuming the value is already in kN (or kN/m / kN/m²)`,
+  };
+}
+
+/**
  * Extract `storyHeightsM[]` from rows.
  *
  * If `storyHeader` is provided the rows are assumed to be one-per-story and
@@ -238,10 +303,26 @@ export function normalizeFloorLoads(
     }
 
     const entry: DraftFloorLoad = { story };
-    if (v) entry.verticalKN = v.value;
-    if (ll) entry.liveLoadKN = ll.value;
-    if (lx) entry.lateralXKN = lx.value;
-    if (ly) entry.lateralYKN = ly.value;
+    if (v) {
+      const { kN, warning } = convertForceCellToKN(v);
+      entry.verticalKN = kN;
+      if (warning) warnings.push(warning);
+    }
+    if (ll) {
+      const { kN, warning } = convertForceCellToKN(ll);
+      entry.liveLoadKN = kN;
+      if (warning) warnings.push(warning);
+    }
+    if (lx) {
+      const { kN, warning } = convertForceCellToKN(lx);
+      entry.lateralXKN = kN;
+      if (warning) warnings.push(warning);
+    }
+    if (ly) {
+      const { kN, warning } = convertForceCellToKN(ly);
+      entry.lateralYKN = kN;
+      if (warning) warnings.push(warning);
+    }
     values.push(entry);
   }
 
@@ -314,7 +395,9 @@ function mapSheet(
     for (const row of rows) {
       const parsed = parseNumericCell(row[idx]);
       if (parsed && parsed.value > 0) {
-        fields.heightM = parsed.value;
+        const { metres, warning } = convertLengthCellToMetres(parsed);
+        fields.heightM = metres;
+        if (warning) warnings.push(warning);
         break;
       }
     }
@@ -327,7 +410,9 @@ function mapSheet(
     for (const row of rows) {
       const parsed = parseNumericCell(row[idx]);
       if (parsed && parsed.value > 0) {
-        fields.spanLengthM = parsed.value;
+        const { metres, warning } = convertLengthCellToMetres(parsed);
+        fields.spanLengthM = metres;
+        if (warning) warnings.push(warning);
         break;
       }
     }
@@ -340,7 +425,11 @@ function mapSheet(
     const collected: number[] = [];
     for (const row of rows) {
       const parsed = parseNumericCell(row[idx]);
-      if (parsed && parsed.value > 0) collected.push(parsed.value);
+      if (parsed && parsed.value > 0) {
+        const { metres, warning } = convertLengthCellToMetres(parsed);
+        collected.push(metres);
+        if (warning) warnings.push(warning);
+      }
     }
     if (collected.length > 0) fields.bayWidthsM = collected;
   }

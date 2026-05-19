@@ -286,6 +286,47 @@ describe('mapCsvToDraftHints — CSV input', () => {
     expect(result.fields.storyCount).toBe(5);
     expect(result.fields.heightM).toBe(17.5);
   });
+
+  test('honours mm/cm/km units on length scalars', () => {
+    const mm = mapCsvToDraftHints({
+      type: 'csv',
+      headers: ['总高', '跨度'],
+      rows: [['17500mm', '6000 mm']],
+    });
+    expect(mm.fields.heightM).toBe(17.5);
+    expect(mm.fields.spanLengthM).toBe(6);
+
+    const cm = mapCsvToDraftHints({
+      type: 'csv',
+      headers: ['总高'],
+      rows: [['1750 cm']],
+    });
+    expect(cm.fields.heightM).toBe(17.5);
+  });
+
+  test('honours mm units inside bayWidthsM vector', () => {
+    const result = mapCsvToDraftHints({
+      type: 'csv',
+      headers: ['开间'],
+      rows: [['6000mm'], ['7500mm'], ['6000 mm']],
+    });
+    expect(result.fields.bayWidthsM).toEqual([6, 7.5, 6]);
+  });
+
+  test('converts force units to kN inside floorLoads', () => {
+    const result = mapCsvToDraftHints({
+      type: 'csv',
+      headers: ['楼层', '恒载', '活载'],
+      rows: [
+        ['1', '5000 N/m²', '2000N/m²'],
+        ['2', '0.5 tf/m²', '0.2 tf/m²'],
+      ],
+    });
+    expect(result.fields.floorLoads).toEqual([
+      { story: 1, verticalKN: 5, liveLoadKN: 2 },
+      { story: 2, verticalKN: 0.5 * 9.81, liveLoadKN: 0.2 * 9.81 },
+    ]);
+  });
 });
 
 describe('mapCsvToDraftHints — Excel multi-sheet', () => {
