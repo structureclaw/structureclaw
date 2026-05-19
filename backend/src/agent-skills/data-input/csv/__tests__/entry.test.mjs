@@ -74,6 +74,13 @@ describe('parseNumericCell', () => {
     expect(parseNumericCell('5 kN')).toEqual({ value: 5, unit: 'kn' });
   });
 
+  test('parses superscript and compound units common in structural engineering', () => {
+    expect(parseNumericCell('5 kN/m²')).toEqual({ value: 5, unit: 'kn/m²' });
+    expect(parseNumericCell('2.5kN/m³')).toEqual({ value: 2.5, unit: 'kn/m³' });
+    expect(parseNumericCell('120 kN.m')).toEqual({ value: 120, unit: 'kn.m' });
+    expect(parseNumericCell('1.5e3 mm')).toEqual({ value: 1500, unit: 'mm' });
+  });
+
   test('handles thousands separators', () => {
     expect(parseNumericCell('1,200')).toEqual({ value: 1200, unit: '' });
     expect(parseNumericCell('12,000mm')).toEqual({ value: 12000, unit: 'mm' });

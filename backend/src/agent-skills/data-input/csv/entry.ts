@@ -87,7 +87,9 @@ export function parseNumericCell(raw: unknown): ParsedCell | null {
   const lowered = text.toLowerCase();
   if (EMPTY_CELL_TOKENS.has(lowered)) return null;
 
-  const match = lowered.match(/^([+-]?[\d,]*\.?\d+)\s*([a-z²/μ]*)$/);
+  const match = lowered.match(
+    /^([+-]?(?:\d[\d,]*\.?\d*|\.\d+)(?:e[+-]?\d+)?)\s*([a-z0-9./²³μ-]*)$/,
+  );
   if (!match) return null;
 
   const numeric = Number(match[1].replace(/,/g, ''));
