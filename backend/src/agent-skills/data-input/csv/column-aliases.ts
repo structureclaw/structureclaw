@@ -92,7 +92,7 @@ export function normalizeHeader(raw: string): string {
   return raw
     .toLowerCase()
     .replace(/[(（][^)）]*[)）]/g, '')
-    .replace(/[\s　]+/g, '')
+    .replace(/[\s\u3000]+/g, '')
     .replace(/[，,。.;；:：]+$/g, '');
 }
 
