@@ -226,8 +226,11 @@ export function normalizeFloorLoads(
       if (parsedStory && Number.isInteger(parsedStory.value) && parsedStory.value >= 1) {
         story = parsedStory.value;
       } else {
-        story = synthStory;
-        synthStory += 1;
+        // Story column is explicitly mapped but this row's story cell is
+        // invalid (e.g. a "Total" / "Summary" / blank row). Skip rather
+        // than fall back to a synthetic counter, which would collide with
+        // a real story number further down.
+        continue;
       }
     } else {
       story = synthStory;

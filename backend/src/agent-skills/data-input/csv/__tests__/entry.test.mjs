@@ -205,6 +205,27 @@ describe('normalizeFloorLoads', () => {
     ]);
   });
 
+  test('skips rows with invalid story cells when storyHeader is mapped', () => {
+    // Spreadsheets often contain a "Total" or summary row whose story cell
+    // is non-numeric. With a synthetic fallback such a row would collide
+    // with a real story 1; skipping keeps the load list correctly indexed.
+    const result = normalizeFloorLoads(
+      ['楼层', '恒载', '活载'],
+      [
+        ['Total', '15', '6'],   // invalid story → skip entirely
+        ['1', '5', '2'],
+        ['2', '5', '2'],
+        ['3', '5', '2'],
+      ],
+      { storyHeader: '楼层', verticalHeader: '恒载', liveLoadHeader: '活载' },
+    );
+    expect(result.values).toEqual([
+      { story: 1, verticalKN: 5, liveLoadKN: 2 },
+      { story: 2, verticalKN: 5, liveLoadKN: 2 },
+      { story: 3, verticalKN: 5, liveLoadKN: 2 },
+    ]);
+  });
+
   test('returns empty when no load columns are mapped', () => {
     const result = normalizeFloorLoads(['楼层'], [['1']], { storyHeader: '楼层' });
     expect(result.values).toEqual([]);
