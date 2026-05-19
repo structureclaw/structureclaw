@@ -264,7 +264,14 @@ async function persistLatestConversationResult(params: {
   }
 }
 
-async function persistConversationMessages(params: {
+/**
+ * Unified persistence: writes user message, intermediate tool-call chain,
+ * and final assistant message in ONE createMany call so that `createdAt`
+ * timestamps naturally reflect conversational order.
+ *
+ * Order: user → [AI(tool_calls) → tool(output)]* → assistant(final)
+ */
+async function persistConversationWithState(params: {
   conversationId?: string;
   userMessage: string;
   assistantContent: string;
@@ -273,6 +280,7 @@ async function persistConversationMessages(params: {
   assistantMetadata?: Record<string, unknown>;
   assistantPresentation?: AssistantPresentation;
   userMessageAttachments?: Array<Record<string, unknown>>;
+  state?: AgentState;
 }): Promise<void> {
   const conversationId = params.conversationId?.trim();
   const userMessage = params.userMessage.trim();
@@ -281,23 +289,16 @@ async function persistConversationMessages(params: {
     : params.assistantContent;
   const shouldPersistAssistant = assistantContent.trim().length > 0 || Boolean(params.assistantAborted);
 
-  if (!conversationId) {
-    return;
-  }
-  if (!userMessage || !shouldPersistAssistant) {
-    return;
-  }
+  if (!conversationId || !userMessage || !shouldPersistAssistant) return;
 
   try {
     const conversation = await prisma.conversation.findFirst({
       where: { id: conversationId },
       select: { id: true },
     });
+    if (!conversation) return;
 
-    if (!conversation) {
-      return;
-    }
-
+    // Trace-based dedup: if we already persisted this trace, skip entirely.
     if (params.traceId) {
       const recentMessages = await prisma.message.findMany({
         where: { conversationId },
@@ -310,134 +311,118 @@ async function persistConversationMessages(params: {
       }
     }
 
-    await prisma.message.createMany({
-      data: [
-        {
-          conversationId,
-          role: 'user',
-          content: userMessage,
-          metadata: toMessageMetadata({
-            ...(params.traceId ? { traceId: params.traceId } : {}),
-            ...(params.userMessageAttachments && params.userMessageAttachments.length > 0
-              ? { attachments: params.userMessageAttachments }
-              : {}),
-          }),
-        },
-        {
-          conversationId,
-          role: 'assistant',
-          content: assistantContent,
-          metadata: toMessageMetadata({
-            ...(params.assistantMetadata ? params.assistantMetadata : {}),
-            ...(params.assistantPresentation ? { presentation: params.assistantPresentation } : {}),
-            ...(params.traceId ? { traceId: params.traceId } : {}),
-            ...(params.assistantAborted ? { status: 'aborted' } : {}),
-          }),
-        },
-      ],
+    const records: Record<string, unknown>[] = [];
+    // Use an explicit base timestamp with 1ms offsets per record so that
+    // createdAt reliably reflects conversational order.  SQLite's
+    // datetime('now') has only second precision — a single createMany would
+    // assign identical createdAt to every row, making order undefined.
+    const baseTime = Date.now();
+
+    // 1. User message (always first)
+    records.push({
+      conversationId,
+      role: 'user',
+      content: userMessage,
+      createdAt: new Date(baseTime),
+      metadata: toMessageMetadata({
+        ...(params.traceId ? { traceId: params.traceId } : {}),
+        ...(params.userMessageAttachments && params.userMessageAttachments.length > 0
+          ? { attachments: params.userMessageAttachments }
+          : {}),
+      }),
     });
+
+    // 2. Intermediate messages from LangGraph state (tool calls + outputs)
+    //    These sit BETWEEN user message and final assistant message.
+    if (params.state && Array.isArray(params.state.messages)) {
+      let seq = records.length; // continues after user message
+      const allMessages: BaseMessage[] = params.state.messages;
+
+      // Id-based dedup against existing DB records
+      const existingToolMessages = await prisma.message.findMany({
+        where: { conversationId, role: 'tool', toolCallId: { not: null } },
+        select: { toolCallId: true },
+      });
+      const existingToolCallIds = new Set(
+        existingToolMessages.map((m: { toolCallId: string | null }) => m.toolCallId).filter(Boolean),
+      );
+      const existingAssistantWithToolCalls = await prisma.message.findMany({
+        where: { conversationId, role: 'assistant' },
+        select: { toolCalls: true },
+      });
+      const existingToolCallIdsOnAssistant = new Set<string>();
+      for (const row of existingAssistantWithToolCalls) {
+        const tcs = Array.isArray(row.toolCalls) ? row.toolCalls : [];
+        for (const tc of tcs) {
+          const tcRecord = tc as Record<string, unknown>;
+          if (typeof tcRecord.id === 'string') existingToolCallIdsOnAssistant.add(tcRecord.id);
+        }
+      }
+
+      for (const msg of allMessages) {
+        if (msg == null || typeof msg !== 'object') continue;
+
+        const getType = typeof (msg as any)._getType === 'function' ? (msg as any)._getType() : null;
+        const content = typeof msg.content === 'string'
+          ? msg.content
+          : Array.isArray(msg.content)
+            ? msg.content
+                .filter((b: unknown): b is { type: string; text: string } =>
+                  typeof b === 'object' && b !== null && 'text' in b)
+                .map((b) => b.text)
+                .join('')
+            : JSON.stringify(msg.content);
+
+        if (getType === 'tool') {
+          const toolCallId = (msg as any).tool_call_id || undefined;
+          if (toolCallId && existingToolCallIds.has(toolCallId)) continue;
+          records.push({
+            conversationId,
+            role: 'tool',
+            content: typeof content === 'string' ? content : JSON.stringify(content),
+            name: (msg as any).name || undefined,
+            toolCallId,
+            createdAt: new Date(baseTime + seq),
+          });
+          seq += 1;
+        } else if (getType === 'ai') {
+          const toolCalls = Array.isArray((msg as any).tool_calls) ? (msg as any).tool_calls : [];
+          if (toolCalls.length === 0) continue; // final AI is handled separately below
+          const tcIds = toolCalls.map((tc: any) => tc.id ?? '');
+          if (tcIds.length > 0 && tcIds.every((id: string) => existingToolCallIdsOnAssistant.has(id))) continue;
+          records.push({
+            conversationId,
+            role: 'assistant',
+            content: typeof content === 'string' ? content : JSON.stringify(content),
+            toolCalls: toolCalls.map((tc: any) => ({
+              id: tc.id ?? '',
+              name: tc.name ?? '',
+              args: tc.args ?? {},
+            })),
+            createdAt: new Date(baseTime + seq),
+          });
+          seq += 1;
+        }
+      }
+    }
+
+    // 3. Final assistant message (always last)
+    records.push({
+      conversationId,
+      role: 'assistant',
+      content: assistantContent,
+      createdAt: new Date(baseTime + records.length),
+      metadata: toMessageMetadata({
+        ...(params.assistantMetadata ? params.assistantMetadata : {}),
+        ...(params.assistantPresentation ? { presentation: params.assistantPresentation } : {}),
+        ...(params.traceId ? { traceId: params.traceId } : {}),
+        ...(params.assistantAborted ? { status: 'aborted' } : {}),
+      }),
+    });
+
+    await prisma.message.createMany({ data: records as any });
   } catch (error) {
     console.warn('[chat] skip message persistence:', error instanceof Error ? error.message : String(error));
-  }
-}
-
-/**
- * Persist intermediate LangGraph messages (tool outputs + AI tool_calls)
- * into the DB for conversation restore.
- *
- * We store:
- *  - `role: 'tool'` messages: tool outputs with name and tool_call_id
- *  - `role: 'assistant'` messages that carry `tool_calls[]`: these record
- *    the LLM's decision to invoke tools including the input args, which
- *    the UI needs to render expandable tool-call cards on history restore.
- *
- * The final assistant summary is already written by
- * `persistConversationMessages` with the presentation metadata — we skip
- * AI messages that have no tool_calls to avoid duplicating that record.
- */
-async function persistFullConversationMessages(params: {
-  conversationId: string;
-  state: AgentState;
-}): Promise<void> {
-  const { conversationId, state } = params;
-  if (!conversationId || !Array.isArray(state.messages)) return;
-
-  try {
-    // Fetch existing tool_call_ids and assistant toolCalls to deduplicate
-    // against. This avoids relying on positional counts which break when
-    // persistConversationMessages has already written user/assistant rows.
-    const existingToolMessages = await prisma.message.findMany({
-      where: { conversationId, role: 'tool', toolCallId: { not: null } },
-      select: { toolCallId: true },
-    });
-    const existingToolCallIds = new Set(
-      existingToolMessages.map((m: { toolCallId: string | null }) => m.toolCallId).filter(Boolean),
-    );
-    const existingAssistantWithToolCalls = await prisma.message.findMany({
-      where: { conversationId, role: 'assistant' },
-      select: { toolCalls: true },
-    });
-    const existingToolCallIdsOnAssistant = new Set<string>();
-    for (const row of existingAssistantWithToolCalls) {
-      const tcs = Array.isArray(row.toolCalls) ? row.toolCalls : [];
-      for (const tc of tcs) {
-        const tcRecord = tc as Record<string, unknown>;
-        if (typeof tcRecord.id === 'string') existingToolCallIdsOnAssistant.add(tcRecord.id);
-      }
-    }
-
-    const allMessages: BaseMessage[] = state.messages;
-    const records: Record<string, unknown>[] = [];
-
-    for (const msg of allMessages) {
-      if (msg == null || typeof msg !== 'object') continue;
-
-      const getType = typeof (msg as any)._getType === 'function' ? (msg as any)._getType() : null;
-      const content = typeof msg.content === 'string'
-        ? msg.content
-        : Array.isArray(msg.content)
-          ? msg.content
-              .filter((b: unknown): b is { type: string; text: string } =>
-                typeof b === 'object' && b !== null && 'text' in b)
-              .map((b) => b.text)
-              .join('')
-          : JSON.stringify(msg.content);
-
-      if (getType === 'tool') {
-        const toolCallId = (msg as any).tool_call_id || undefined;
-        // Skip if this tool output was already persisted
-        if (toolCallId && existingToolCallIds.has(toolCallId)) continue;
-        records.push({
-          conversationId,
-          role: 'tool',
-          content: typeof content === 'string' ? content : JSON.stringify(content),
-          name: (msg as any).name || undefined,
-          toolCallId,
-        });
-      } else if (getType === 'ai') {
-        const toolCalls = Array.isArray((msg as any).tool_calls) ? (msg as any).tool_calls : [];
-        if (toolCalls.length === 0) continue;
-        // Skip if ALL tool_call ids from this AIMessage already exist in DB
-        const tcIds = toolCalls.map((tc: any) => tc.id ?? '');
-        if (tcIds.length > 0 && tcIds.every((id: string) => existingToolCallIdsOnAssistant.has(id))) continue;
-        records.push({
-          conversationId,
-          role: 'assistant',
-          content: typeof content === 'string' ? content : JSON.stringify(content),
-          toolCalls: toolCalls.map((tc: any) => ({
-            id: tc.id ?? '',
-            name: tc.name ?? '',
-            args: tc.args ?? {},
-          })),
-        });
-      }
-    }
-
-    if (records.length > 0) {
-      await prisma.message.createMany({ data: records as any });
-    }
-  } catch (error) {
-    console.warn('[chat] skip full message persistence:', error instanceof Error ? error.message : String(error));
   }
 }
 
@@ -495,7 +480,19 @@ export async function chatRoutes(fastify: FastifyInstance) {
         context: body.context,
         result,
       });
-      await persistConversationMessages({
+      // Fetch LangGraph snapshot for intermediate messages (tool calls/outputs).
+      // Both user+assistant and intermediate messages are persisted in a single
+      // write so that `createdAt` timestamps reflect correct conversational order.
+      let snapshotState: AgentState | undefined;
+      try {
+        const snapshot = await agentService.getConversationSessionSnapshot(
+          result.conversationId,
+          body.context?.locale ?? 'en',
+        );
+        snapshotState = snapshot?.state;
+      } catch { /* best-effort */ }
+
+      await persistConversationWithState({
         conversationId: result.conversationId,
         userMessage: body.message,
         assistantContent: assistantText,
@@ -503,21 +500,8 @@ export async function chatRoutes(fastify: FastifyInstance) {
         assistantMetadata: debugDetails ? { debugDetails } : undefined,
         assistantPresentation,
         userMessageAttachments: body.context?.attachments,
+        state: snapshotState,
       });
-
-      // Persist full LangGraph message history for conversation restore
-      try {
-        const snapshot = await agentService.getConversationSessionSnapshot(
-          result.conversationId,
-          body.context?.locale ?? 'en',
-        );
-        if (snapshot?.state) {
-          await persistFullConversationMessages({
-            conversationId: result.conversationId,
-            state: snapshot.state,
-          });
-        }
-      } catch { /* best-effort */ }
 
       return reply.send({ result });
     } catch (error) {
@@ -654,7 +638,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
     const { id } = request.params;
     const body = persistMessagesSchema.parse(request.body);
 
-    await persistConversationMessages({
+    await persistConversationWithState({
       conversationId: id,
       userMessage: body.userMessage,
       assistantContent: body.assistantContent,
@@ -719,7 +703,21 @@ export async function chatRoutes(fastify: FastifyInstance) {
             completedAt: assistantPresentation.completedAt ?? new Date().toISOString(),
           }
         : assistantPresentation;
-      await persistConversationMessages({
+
+      // Fetch LangGraph snapshot for intermediate tool-call messages so
+      // everything is written in a single createMany with correct ordering.
+      let snapshotState: AgentState | undefined;
+      if (streamConversationId) {
+        try {
+          const snapshot = await agentService.getConversationSessionSnapshot(
+            streamConversationId,
+            body.context?.locale ?? 'en',
+          );
+          snapshotState = snapshot?.state;
+        } catch { /* best-effort */ }
+      }
+
+      await persistConversationWithState({
         conversationId: streamConversationId,
         userMessage: body.message,
         assistantContent,
@@ -728,6 +726,7 @@ export async function chatRoutes(fastify: FastifyInstance) {
         assistantMetadata,
         assistantPresentation: persistedPresentation,
         userMessageAttachments: body.context?.attachments,
+        state: snapshotState,
       });
       messagesPersisted = true;
     };
@@ -914,24 +913,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
       const wasAborted = abortController.signal.aborted;
       await persistStreamMessages(wasAborted);
 
-      // Persist full LangGraph message history (including tool calls) for
-      // conversation restore. Must run even on abort — tool messages are
-      // critical for history reconstruction. Best-effort on snapshot retrieval.
-      if (streamConversationId) {
-        try {
-          const snapshot = await agentService.getConversationSessionSnapshot(
-            streamConversationId,
-            body.context?.locale ?? 'en',
-          );
-          if (snapshot?.state) {
-            await persistFullConversationMessages({
-              conversationId: streamConversationId,
-              state: snapshot.state,
-            });
-          }
-        } catch { /* best-effort */ }
-      }
-
       reply.raw.write('data: [DONE]\n\n');
       reply.raw.end();
     } catch (error) {
@@ -1001,13 +982,23 @@ export async function chatRoutes(fastify: FastifyInstance) {
         reply.raw.write(`data: ${JSON.stringify(normalizePublicStreamChunk(chunk))}\n\n`);
       }
 
-      // Persist resume messages to DB
-      await persistConversationMessages({
+      // Persist resume messages + intermediate tool-call chain in one write
+      let resumeSnapshotState: AgentState | undefined;
+      try {
+        const snapshot = await agentService.getConversationSessionSnapshot(
+          body.conversationId,
+          'en',
+        );
+        resumeSnapshotState = snapshot?.state;
+      } catch { /* best-effort */ }
+
+      await persistConversationWithState({
         conversationId: body.conversationId,
         userMessage: body.resumeValue,
         assistantContent: resumeAssistantContent,
         traceId: undefined,
         assistantPresentation: resumePresentation,
+        state: resumeSnapshotState,
       }).catch(() => {});
 
       if (resumeLatestResult) {
@@ -1016,20 +1007,6 @@ export async function chatRoutes(fastify: FastifyInstance) {
           latestResult: resumeLatestResult,
         }).catch(() => {});
       }
-
-      // Persist full LangGraph message history for conversation restore
-      try {
-        const snapshot = await agentService.getConversationSessionSnapshot(
-          body.conversationId,
-          'en',
-        );
-        if (snapshot?.state) {
-          await persistFullConversationMessages({
-            conversationId: body.conversationId,
-            state: snapshot.state,
-          });
-        }
-      } catch { /* best-effort */ }
 
       reply.raw.write('data: [DONE]\n\n');
       reply.raw.end();

@@ -100,23 +100,23 @@ describe('chat routes message persistence', () => {
 
     expect(response.statusCode).toBe(200);
     expect(prisma.message.createMany).toHaveBeenCalledTimes(1);
-    expect(prisma.message.createMany).toHaveBeenCalledWith({
-      data: [
-        {
-          conversationId: 'conv-paused',
-          role: 'user',
-          content: '继续这个对话',
-        },
-        {
-          conversationId: 'conv-paused',
-          role: 'assistant',
-          content: '当前分析尚未完成',
-          metadata: {
-            status: 'aborted',
-          },
-        },
-      ],
-    });
+    const callData = prisma.message.createMany.mock.calls[0][0];
+    expect(callData.data).toHaveLength(2);
+    expect(callData.data[0]).toEqual(expect.objectContaining({
+      conversationId: 'conv-paused',
+      role: 'user',
+      content: '继续这个对话',
+    }));
+    expect(callData.data[0].createdAt).toBeInstanceOf(Date);
+    expect(callData.data[1]).toEqual(expect.objectContaining({
+      conversationId: 'conv-paused',
+      role: 'assistant',
+      content: '当前分析尚未完成',
+      metadata: { status: 'aborted' },
+    }));
+    expect(callData.data[1].createdAt).toBeInstanceOf(Date);
+    // assistant createdAt must be strictly after user createdAt
+    expect(callData.data[1].createdAt.getTime()).toBeGreaterThan(callData.data[0].createdAt.getTime());
   });
 
   test('skips paused persistence when the same traceId has already been stored', async () => {
@@ -215,7 +215,7 @@ describe('chat routes message persistence', () => {
     });
   });
 
-  test('persists tool messages and intermediate AI tool_calls from graph snapshots after stream summary persistence', async () => {
+  test('persists user, intermediate tool_calls, tool outputs, and final assistant in a single write', async () => {
     getSnapshotSpy.mockResolvedValueOnce({
       snapshot: {},
       state: {
@@ -258,23 +258,45 @@ describe('chat routes message persistence', () => {
       where: { conversationId: 'conv-paused', role: 'assistant' },
       select: { toolCalls: true },
     });
-    expect(prisma.message.createMany).toHaveBeenCalledTimes(2);
-    expect(prisma.message.createMany.mock.calls[1][0]).toEqual({
-      data: [
-        {
-          conversationId: 'conv-paused',
-          role: 'assistant',
-          content: '',
-          toolCalls: [{ id: 'call-grep', name: 'grep_files', args: { query: 'needle' } }],
-        },
-        {
-          conversationId: 'conv-paused',
-          role: 'tool',
-          content: '{"totalMatches":1}',
-          name: 'grep_files',
-          toolCallId: 'call-grep',
-        },
-      ],
-    });
+    // Single createMany call with all messages in conversational order
+    expect(prisma.message.createMany).toHaveBeenCalledTimes(1);
+    const callData = prisma.message.createMany.mock.calls[0][0];
+    expect(callData.data).toHaveLength(4);
+    // 1. User message
+    expect(callData.data[0]).toEqual(expect.objectContaining({
+      conversationId: 'conv-paused',
+      role: 'user',
+      content: 'Search files',
+    }));
+    expect(callData.data[0].createdAt).toBeInstanceOf(Date);
+    // 2. Intermediate AI with tool_calls (input args)
+    expect(callData.data[1]).toEqual(expect.objectContaining({
+      conversationId: 'conv-paused',
+      role: 'assistant',
+      content: '',
+      toolCalls: [{ id: 'call-grep', name: 'grep_files', args: { query: 'needle' } }],
+    }));
+    expect(callData.data[1].createdAt).toBeInstanceOf(Date);
+    // 3. Tool output
+    expect(callData.data[2]).toEqual(expect.objectContaining({
+      conversationId: 'conv-paused',
+      role: 'tool',
+      content: '{"totalMatches":1}',
+      name: 'grep_files',
+      toolCallId: 'call-grep',
+    }));
+    expect(callData.data[2].createdAt).toBeInstanceOf(Date);
+    // 4. Final assistant message with presentation
+    expect(callData.data[3]).toEqual(expect.objectContaining({
+      conversationId: 'conv-paused',
+      role: 'assistant',
+      content: 'stream assistant reply',
+    }));
+    expect(callData.data[3].metadata).toHaveProperty('presentation');
+    // Verify strict chronological ordering via createdAt
+    const timestamps = callData.data.map((d) => d.createdAt.getTime());
+    for (let i = 1; i < timestamps.length; i += 1) {
+      expect(timestamps[i]).toBeGreaterThan(timestamps[i - 1]);
+    }
   });
 });

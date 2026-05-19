@@ -2786,7 +2786,7 @@ export function AIConsole() {
             }
 
             const mapped = payload.messages.flatMap((message): Message[] => {
-            // Handle tool messages — these come from persistFullConversationMessages
+            // Handle tool messages — these come from persistConversationWithState
             if (message.role === 'tool') {
               let restoredSkillId: string | undefined
               try {
@@ -2843,37 +2843,10 @@ export function AIConsole() {
             }]
           })
 
-            // Reorder: DB createdAt puts the final assistant (written first by
-            // persistConversationMessages) before intermediate messages (written
-            // later by persistFullConversationMessages). We restore semantic order:
-            //   user → intermediate AI reasoning + interleaved tool cards → final assistant
-            const users = mapped.filter(m => m.role === 'user')
-            const intermediates = mapped.filter(m =>
-              m.role === 'assistant' && Array.isArray(m.toolCalls) && m.toolCalls.length > 0 && !m.presentation,
-            )
-            const tools = mapped.filter(m => m.role === 'tool')
-            const finals = mapped.filter(m =>
-              m.role === 'assistant' && !(Array.isArray(m.toolCalls) && m.toolCalls.length > 0 && !m.presentation),
-            )
-
-            const ordered: Message[] = [...users]
-            const usedToolIds = new Set<string>()
-            for (const ai of intermediates) {
-              ordered.push(ai)
-              for (const tc of (ai.toolCalls || [])) {
-                if (!tc.id) continue
-                const match = tools.find(t => t.toolStep?.id === tc.id)
-                if (match && !usedToolIds.has(match.id)) {
-                  ordered.push(match)
-                  usedToolIds.add(match.id)
-                }
-              }
-            }
-            for (const tool of tools) {
-              if (!usedToolIds.has(tool.id)) ordered.push(tool)
-            }
-            ordered.push(...finals)
-            return ordered
+            // Backend persistConversationWithState writes all messages in a
+            // single createMany with explicit createdAt offsets, so the DB
+            // already returns them in correct conversational order.
+            return mapped
           })()
         : []
       const archivedMessages = archived?.messages || []
