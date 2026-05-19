@@ -11,11 +11,16 @@ triggers:
   - csv
   - excel
   - xlsx
+  - .csv
+  - .xlsx
+  - .xls
   - spreadsheet
   - 表格
   - 电子表格
   - 结构参数表
   - 荷载表
+  - 楼层表
+  - 参数表
 stages:
   - intent
   - draft
@@ -24,6 +29,7 @@ structuralTypeKeys: []
 capabilities:
   - file-parsing
   - draft-extraction
+  - column-mapping
 requires: []
 conflicts: []
 priority: 30
