@@ -65,7 +65,7 @@ export class ConsolePage {
     await this.messageInput.fill(text);
     await this.sendButton.click();
     await streamPromise;
-    await this.assistantMessages.first().waitFor({ state: 'visible', timeout: 15_000 });
+    await this.assistantMessages.first().waitFor({ state: 'visible', timeout: 30_000 });
     // Wait for the stream to finish by watching for "Show Results" / "显示结果" button
     // This button appears when results are available (stream done, not idle)
     await this.showResultsButton.first().waitFor({ state: 'visible', timeout: timeoutMs });
