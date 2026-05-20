@@ -100,10 +100,15 @@ test.describe('Structural analysis end-to-end', () => {
     await expect(consolePage.showResultsButton).toBeVisible({ timeout: 15_000 });
     await consolePage.openResultDialog();
 
+    // Verify the result dialog opened with analysis content
+    const dialog = page.locator('[role="dialog"]');
+    await expect(dialog).toBeVisible({ timeout: 10_000 });
+
+    // Try to open visualization if the button exists
     const visButton = page.locator(
       '[role="dialog"] button:has-text("Visualization"), [role="dialog"] button:has-text("可视化")',
     );
-    if (await visButton.first().isVisible()) {
+    if (await visButton.first().isVisible({ timeout: 5_000 }).catch(() => false)) {
       await visButton.first().click();
       const sceneOrPlaceholder = page.locator(
         '[data-testid="visualization-modal-scene"], [data-testid="visualization-modal-placeholder"]',
@@ -126,9 +131,9 @@ test.describe('Structural analysis end-to-end', () => {
     expect(countBefore).toBeGreaterThan(0);
 
     await page.reload();
-    await page.waitForLoadState('networkidle');
+    await consolePage.historyPanel.waitFor({ state: 'visible' });
 
     const countAfter = await consolePage.getConversationCount();
-    expect(countAfter).toBeGreaterThanOrEqual(countBefore);
+    expect(countAfter).toBe(countBefore);
   });
 });

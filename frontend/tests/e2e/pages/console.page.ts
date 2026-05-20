@@ -32,7 +32,7 @@ export class ConsolePage {
     this.expandHistoryButton = page.getByRole('button', { name: /Expand History|展开历史/ }).first();
     this.newConversationButton = page.locator('button:has-text("New"), button:has-text("新建")');
     this.messageInput = page.locator('[data-testid="console-composer"] textarea, textarea[placeholder]');
-    this.sendButton = page.getByRole('button', { name: 'Send' });
+    this.sendButton = page.getByRole('button', { name: /Send|发送/ });
     this.quickPrompts = page.locator('[data-testid="console-chat-panel"] button');
     this.conversationItems = page.locator('[data-testid="console-history-scroll"] > *');
     this.streamingIndicator = page.locator('.animate-pulse, [class*="streaming"]');
@@ -72,7 +72,7 @@ export class ConsolePage {
   }
 
   async openResultDialog(): Promise<void> {
-    await this.showResultsButton.first().click({ force: true });
+    await this.showResultsButton.first().click();
   }
 
   async openVisualization(): Promise<void> {

@@ -65,9 +65,6 @@ test.describe('Install verification', () => {
     const capPage = new CapabilitiesPage(page);
     await capPage.goto();
 
-    await expect(page.locator('body')).toBeVisible();
-    const bodyText = await page.locator('body').textContent();
-    const hasSkillContent = bodyText && bodyText.length > 100;
-    expect(hasSkillContent).toBe(true);
+    await expect(page.getByText(/beam|frame|truss/i).first()).toBeVisible({ timeout: 15_000 });
   });
 });

@@ -17,7 +17,7 @@ export class SettingsPage {
 
   async goto(): Promise<void> {
     await this.page.goto('/llm');
-    await this.page.waitForLoadState('networkidle');
+    await this.baseUrlInput.waitFor({ state: 'visible' });
   }
 
   async getBaseUrl(): Promise<string> {
@@ -32,6 +32,9 @@ export class SettingsPage {
     await this.baseUrlInput.fill(baseUrl);
     await this.modelInput.fill(model);
     await this.saveButton.click();
-    await this.page.waitForLoadState('networkidle');
+    await this.page.waitForResponse(
+      (resp) => resp.url().includes('/api/v1/admin/llm') && resp.request().method() === 'PUT',
+      { timeout: 10_000 },
+    );
   }
 }
