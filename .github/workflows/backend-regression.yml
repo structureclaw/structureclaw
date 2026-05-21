@@ -27,6 +27,37 @@ permissions:
   contents: read
 
 jobs:
+  python-unit-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r backend/src/agent-skills/analysis/runtime/requirements.txt
+          pip install pytest
+
+      - name: Run Python unit tests
+        run: |
+          pytest \
+            backend/src/agent-skills/material/__tests__/ \
+            backend/src/agent-skills/code-check/gb50009/__tests__/ \
+            backend/src/agent-skills/code-check/gb50010/__tests__/ \
+            backend/src/agent-skills/code-check/gb50011/__tests__/ \
+            backend/src/agent-skills/code-check/gb50017/__tests__/ \
+            backend/src/agent-skills/code-check/jgj3/__tests__/ \
+            backend/src/agent-skills/data-input/converters/__tests__/ \
+            backend/src/agent-skills/report-export/calculation-book/pkpm-calcbook/__tests__/ \
+            -v
+
   backend-regression:
     strategy:
       fail-fast: false
