@@ -45,15 +45,20 @@ function parseBenchmarkOptions(args) {
   return { scenarioId, outputPath };
 }
 
-function buildFeedbackFromEvaluation(evaluation) {
+function buildFeedbackFromEvaluation(evaluation, locale = "zh") {
+  const isEn = locale === "en";
   const failed = (evaluation.metrics || []).filter(
     (m) => !m.pass && m.metric !== "duration" && m.metric !== "toolCalls",
   );
   if (failed.length === 0) return "";
   const details = failed.map(
-    (m) => `${m.metric} 检查失败：期望 ${m.expected}，实际得到 ${m.actual}`,
-  ).join("；");
-  return `上次尝试失败：${details}。请修正以上问题。`;
+    (m) => isEn
+      ? `${m.metric} check failed: expected ${m.expected}, got ${m.actual}`
+      : `${m.metric} 检查失败：期望 ${m.expected}，实际得到 ${m.actual}`,
+  ).join(isEn ? "; " : "；");
+  return isEn
+    ? `Previous attempt failed: ${details}. Please fix these issues.`
+    : `上次尝试失败：${details}。请修正以上问题。`;
 }
 
 function normalizeScenario(scenario) {
@@ -164,7 +169,7 @@ async function runBenchmark(rootDir, args) {
       // Build feedback from previous evaluation for retry
       let feedbackPrefix = "";
       if (attempt > 0 && lastEvaluation) {
-        feedbackPrefix = buildFeedbackFromEvaluation(lastEvaluation);
+        feedbackPrefix = buildFeedbackFromEvaluation(lastEvaluation, scenario.locale || "zh");
         if (feedbackPrefix) {
           process.stdout.write(`  Feedback: ${feedbackPrefix.slice(0, 100)}...\n`);
         }
@@ -248,7 +253,7 @@ async function runBenchmark(rootDir, args) {
         retryRounds.push({
           attempt: attempt + 1,
           allPassed: lastEvaluation.allPassed,
-          metrics: lastEvaluation.metrics.map((m) => ({ metric: m.metric, pass: m.pass })),
+          metrics: (lastEvaluation.metrics || []).map((m) => ({ metric: m.metric, pass: m.pass })),
         });
       }
       attempt += 1;
@@ -256,7 +261,7 @@ async function runBenchmark(rootDir, args) {
 
     if (lastEvaluation) {
       lastEvaluation.retries = {
-        attempts: attempt + 1,
+        attempts: Math.min(attempt + 1, maxRetries + 1),
         maxRetries,
         rounds: retryRounds,
       };

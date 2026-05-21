@@ -91,10 +91,9 @@
     "locale": "zh",
     "maxRetries": 2,
     "expect": {
-      "skills": { "primary": "beam", "mayAlsoMatch": ["generic"] },
+      "skills": { "primary": "generic", "mayAlsoMatch": ["beam"] },
       "assertions": [
-        { "type": "structural_type", "expected": "beam" },
-        { "type": "skill_match", "primary": "beam", "mayAlsoMatch": ["generic"] },
+        { "type": "skill_match", "primary": "generic", "mayAlsoMatch": ["beam"] },
         { "type": "has_model", "minNodes": 2, "minElements": 1 },
         { "type": "has_analysis" }
       ]

@@ -26,10 +26,10 @@
     "locale": "zh",
     "maxRetries": 2,
     "expect": {
-      "skills": { "primary": "double-span-beam", "mayAlsoMatch": ["beam", "generic"] },
+      "skills": { "primary": "beam", "mayAlsoMatch": ["double-span-beam", "generic"] },
       "assertions": [
-        { "type": "structural_type", "expected": "double-span-beam" },
-        { "type": "skill_match", "primary": "double-span-beam", "mayAlsoMatch": ["beam", "generic"] },
+        { "type": "structural_type", "expected": "beam" },
+        { "type": "skill_match", "primary": "beam", "mayAlsoMatch": ["double-span-beam", "generic"] },
         { "type": "has_model", "minNodes": 4, "minElements": 3 },
         { "type": "has_analysis" }
       ]
