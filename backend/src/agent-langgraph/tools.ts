@@ -271,6 +271,61 @@ function pickAnalysisDiagnostics(
   return Object.keys(diagnostics).length > 0 ? diagnostics : undefined;
 }
 
+function compactFloorLoadTransferSummary(
+  data: Record<string, unknown>,
+  result: Record<string, unknown>,
+): Record<string, unknown> | undefined {
+  const source = optionalRecord(data.floorLoadTransfer) ?? optionalRecord(result.floorLoadTransfer);
+  if (!source) return undefined;
+
+  const rawWarnings = Array.isArray(source.warnings) ? source.warnings : [];
+  const warnings = rawWarnings
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .slice(0, 5)
+    .map((value) => compactText(value, 500) ?? value);
+
+  const rawItems = Array.isArray(source.items) ? source.items : [];
+  const items = rawItems
+    .filter(isRecord)
+    .slice(0, 8)
+    .map((item) => omitEmptyRecord({
+      story: pickStringLike(item, 'story'),
+      panelId: pickStringLike(item, 'panelId'),
+      requestedMode: pickStringLike(item, 'requestedMode'),
+      effectiveMode: pickStringLike(item, 'effectiveMode'),
+      method: pickStringLike(item, 'method'),
+      methodEn: pickStringLike(item, 'methodEn'),
+      methodZh: pickStringLike(item, 'methodZh'),
+      designCodeRule: pickStringLike(item, 'designCodeRule'),
+      designCodeRuleEn: pickStringLike(item, 'designCodeRuleEn'),
+      designCodeRuleZh: pickStringLike(item, 'designCodeRuleZh'),
+      generatedLoadType: pickStringLike(item, 'generatedLoadType'),
+      generatedLoadCount: pickNumberLike(item, 'generatedLoadCount'),
+      loadIntensityKNPerM2: pickNumberLike(item, 'loadIntensityKNPerM2'),
+      totalLoadKN: pickNumberLike(item, 'totalLoadKN'),
+      spanX: pickNumberLike(item, 'spanX'),
+      spanY: pickNumberLike(item, 'spanY'),
+      longShortRatio: pickNumberLike(item, 'longShortRatio'),
+      note: pickStringLike(item, 'note'),
+      noteEn: pickStringLike(item, 'noteEn'),
+      noteZh: pickStringLike(item, 'noteZh'),
+    }))
+    .filter((item): item is Record<string, unknown> => !!item);
+
+  return omitEmptyRecord({
+    requestedMode: pickStringLike(source, 'requestedMode'),
+    effectiveMode: pickStringLike(source, 'effectiveMode'),
+    method: pickStringLike(source, 'method'),
+    methodEn: pickStringLike(source, 'methodEn'),
+    methodZh: pickStringLike(source, 'methodZh'),
+    designCode: pickStringLike(source, 'designCode'),
+    loadSource: pickStringLike(source, 'loadSource'),
+    itemCount: rawItems.length > 0 ? rawItems.length : undefined,
+    items: items.length > 0 ? items : undefined,
+    warnings: warnings.length > 0 ? warnings : undefined,
+  });
+}
+
 function buildSuccessfulAnalysisDetails(data: Record<string, unknown>, result: Record<string, unknown>) {
   const summary = optionalRecord(data.summary);
   const envelope = optionalRecord(data.envelope);
@@ -332,6 +387,7 @@ function buildSuccessfulAnalysisDetails(data: Record<string, unknown>, result: R
     counts,
     keyMetrics,
     controlling,
+    floorLoadTransfer: compactFloorLoadTransferSummary(data, result),
     warnings: warnings.length > 0 ? warnings : undefined,
   });
 }
@@ -861,6 +917,7 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
   return tool(
     async (input: {
       analysisType: string;
+      floorLoadTransferMode?: 'auto_code_cn' | 'node_tributary' | 'one_way_slab' | 'two_way_slab';
     }, config: LangGraphRunnableConfig) => {
       const log = getLogger(config.configurable as Partial<AgentConfigurable> | undefined);
       const start = Date.now();
@@ -900,7 +957,10 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
         traceId,
         analysisType,
         model,
-        parameters: { traceId },
+        parameters: {
+          traceId,
+          ...(input.floorLoadTransferMode ? { floorLoadTransferMode: input.floorLoadTransferMode } : {}),
+        },
         skillIds,
         postToEngineWithRetry,
       });
@@ -937,6 +997,10 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
         analysisType: z
           .enum(['static', 'dynamic', 'seismic', 'nonlinear'])
           .describe('Type of analysis to perform'),
+        floorLoadTransferMode: z
+          .enum(['auto_code_cn', 'node_tributary', 'one_way_slab', 'two_way_slab'])
+          .optional()
+          .describe('Optional floor load transfer mode for OpenSees static analysis. Use auto_code_cn by default; set only when the user explicitly requests a method.'),
       }),
     },
   );

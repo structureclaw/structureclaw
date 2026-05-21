@@ -98,7 +98,7 @@ class OpenSeesStaticExecutor:
             }
 
         ops.wipe()
-        return {
+        return self.analyzer._attach_floor_load_transfer({
             'status': 'success',
             'analysisMode': 'opensees_2d_frame',
             'plane': plane,
@@ -107,7 +107,7 @@ class OpenSeesStaticExecutor:
             'reactions': reactions,
             'envelope': self.analyzer._build_envelope(displacements, forces, reactions),
             'summary': self.analyzer._generate_summary(displacements, forces),
-        }
+        })
 
     def _run_3d_frame(self, parameters: Dict[str, Any], ops) -> Dict[str, Any]:
         loads = self.analyzer._collect_nodal_loads(parameters)
@@ -121,7 +121,7 @@ class OpenSeesStaticExecutor:
                 ops.fix(node_tag, *[int(bool(value)) for value in node.restraints])
 
         for elem in self.analyzer.model.elements:
-            if elem.type == 'beam':
+            if elem.type in {'beam', 'column'}:
                 self._define_beam_element(elem, ops)
             elif elem.type == 'truss':
                 self._define_truss_element(elem, ops)
@@ -164,7 +164,7 @@ class OpenSeesStaticExecutor:
         for elem in self.analyzer.model.elements:
             try:
                 force = ops.eleForce(self.analyzer._ops_element_tag(elem.id))
-                if elem.type == 'beam':
+                if elem.type in {'beam', 'column'}:
                     area = float(self.analyzer.sections[elem.section].properties.get('A', 0.0))
                     forces[elem.id] = {
                         'n1': {
@@ -196,7 +196,7 @@ class OpenSeesStaticExecutor:
                 pass
 
         ops.wipe()
-        return {
+        return self.analyzer._attach_floor_load_transfer({
             'status': 'success',
             'analysisMode': 'opensees_3d_frame',
             'displacements': displacements,
@@ -204,7 +204,7 @@ class OpenSeesStaticExecutor:
             'reactions': reactions,
             'envelope': self.analyzer._build_envelope(displacements, forces, reactions),
             'summary': self.analyzer._generate_summary(displacements, forces),
-        }
+        })
 
     def _run_static_analysis(self, ops) -> int:
         ops.system('BandGeneral')

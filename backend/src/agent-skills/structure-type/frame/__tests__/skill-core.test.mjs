@@ -243,6 +243,8 @@ describe('frame canonicalize core contract', () => {
       { type: 'live', value: 2 },
     ]);
     expect(model.stories[0]).toMatchObject({ dead_load: 10, live_load: 2 });
+    expect(model.load_cases.map((loadCase) => loadCase.id)).toEqual(['D', 'L']);
+    expect(model.load_combinations[0]).toMatchObject({ id: 'ULS', factors: { D: 1, L: 1 } });
   });
 
   test('builds custom H sections with star separators', () => {

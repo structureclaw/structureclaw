@@ -36,6 +36,7 @@ class StaticAnalyzer:
 
         # Lazily cached coordinate semantics metadata.
         self._coordinate_metadata: Optional[Dict[str, Any]] = None
+        self._floor_load_transfer_trace: Dict[str, Any] = {}
 
     def _get_coordinate_metadata(self) -> Dict[str, Any]:
         """Return cached model metadata dict for coordinate semantics lookups."""
@@ -907,7 +908,7 @@ class StaticAnalyzer:
                         'my': float(R[i + 2]),
                     }
 
-        return {
+        return self._attach_floor_load_transfer({
             'status': 'success',
             'analysisMode': 'linear_2d_frame',
             'plane': plane,
@@ -916,12 +917,11 @@ class StaticAnalyzer:
             'reactions': reactions,
             'envelope': self._build_envelope(displacements, forces, reactions),
             'summary': self._generate_summary(displacements, forces),
-        }
+        })
 
     def _run_linear_3d_frame(self, parameters: Dict[str, Any]) -> Dict[str, Any]:
         """
         3D frame/beam 线弹性静力分析（DOF: ux, uy, uz, rx, ry, rz）。
-        说明：当前版本先支持节点荷载工况（不含 3D 分布荷载）。
         """
         node_order = sorted(self.model.nodes, key=lambda n: n.id)
         node_index = {node.id: idx for idx, node in enumerate(node_order)}
@@ -929,6 +929,18 @@ class StaticAnalyzer:
 
         K = np.zeros((dof_count, dof_count), dtype=float)
         F = np.zeros(dof_count, dtype=float)
+
+        load_list = self._collect_nodal_loads(parameters)
+        element_distributed_loads: Dict[str, List[Tuple[float, float]]] = {}
+        for load in load_list:
+            if str(load.get('type', '')) != 'distributed':
+                continue
+            elem_id = str(load.get('element', ''))
+            if not elem_id:
+                continue
+            wy = self._to_float(load.get('wy', 0.0), 0.0)
+            wz = self._to_float(load.get('wz', 0.0), 0.0)
+            element_distributed_loads.setdefault(elem_id, []).append((wy, wz))
 
         element_meta: Dict[str, Dict[str, Any]] = {}
         for elem in self.model.elements:
@@ -974,14 +986,21 @@ class StaticAnalyzer:
                 for c_idx in range(12):
                     K[dofs[r], dofs[c_idx]] += k_global[r, c_idx]
 
+            wy = sum(item[0] for item in element_distributed_loads.get(elem.id, []))
+            wz = sum(item[1] for item in element_distributed_loads.get(elem.id, []))
+            f_local_dist = self._build_3d_uniform_load_vector(wy, wz, L)
+            if np.any(np.abs(f_local_dist) > 0.0):
+                F[dofs] += T.T @ f_local_dist
+
             element_meta[elem.id] = {
                 'dofs': dofs,
                 'k_local': k_local,
                 'transform': T,
+                'f_local_dist': f_local_dist,
                 'A': A,
             }
 
-        for load in self._collect_nodal_loads(parameters):
+        for load in load_list:
             if str(load.get('type', '')) == 'distributed':
                 continue
             node_id = str(load.get('node', ''))
@@ -1039,7 +1058,7 @@ class StaticAnalyzer:
             dofs = meta['dofs']
             u_global = U[dofs]
             u_local = meta['transform'] @ u_global
-            f_local = meta['k_local'] @ u_local
+            f_local = meta['k_local'] @ u_local - meta['f_local_dist']
             A = float(meta['A'])
 
             v1 = float(np.sqrt(f_local[1] ** 2 + f_local[2] ** 2))
@@ -1085,7 +1104,7 @@ class StaticAnalyzer:
                     'mz': float(Rf[i + 5]),
                 }
 
-        return {
+        return self._attach_floor_load_transfer({
             'status': 'success',
             'analysisMode': 'linear_3d_frame',
             'displacements': displacements,
@@ -1093,7 +1112,7 @@ class StaticAnalyzer:
             'reactions': reactions,
             'envelope': self._build_envelope(displacements, forces, reactions),
             'summary': self._generate_summary(displacements, forces),
-        }
+        })
 
     def _build_3d_rotation_matrix(self, ex: np.ndarray, elem_id: str = None) -> np.ndarray:
         """构建 3D frame 局部坐标旋转矩阵（局部 x 沿杆轴）。"""
@@ -1200,6 +1219,21 @@ class StaticAnalyzer:
 
         return k
 
+    def _build_3d_uniform_load_vector(self, wy: float, wz: float, L: float) -> np.ndarray:
+        """Equivalent nodal load vector for local-y/local-z uniform beam loads."""
+        f = np.zeros(12, dtype=float)
+        if abs(wy) > 0.0:
+            f[1] += wy * L / 2.0
+            f[5] += wy * (L ** 2) / 12.0
+            f[7] += wy * L / 2.0
+            f[11] += -wy * (L ** 2) / 12.0
+        if abs(wz) > 0.0:
+            f[2] += wz * L / 2.0
+            f[4] += -wz * (L ** 2) / 12.0
+            f[8] += wz * L / 2.0
+            f[10] += wz * (L ** 2) / 12.0
+        return f
+
     def _collect_nodal_loads(self, parameters: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Collect standardized loads.
 
@@ -1208,6 +1242,7 @@ class StaticAnalyzer:
         equivalent gravity nodal loads so OpenSees can analyze V2 floor-load
         models without engine-specific preprocessing.
         """
+        self._floor_load_transfer_trace = {}
         explicit_loads: List[Dict[str, Any]] = []
 
         load_combination_id = (
@@ -1276,11 +1311,19 @@ class StaticAnalyzer:
                 return explicit_loads + self._expand_story_floor_loads(parameters, selected_floor_specs)
             return explicit_loads
 
+        default_floor_specs: List[Dict[str, Any]] = []
         for lc in self.model.load_cases:
+            case_load_count = 0
             for load in lc.loads:
                 normalized = self._normalize_load(load)
                 if normalized is not None:
                     explicit_loads.append(normalized)
+                    case_load_count += 1
+            if case_load_count == 0:
+                default_floor_specs.extend(self._floor_load_specs_for_case(lc, 1.0))
+
+        if default_floor_specs:
+            return explicit_loads + self._expand_story_floor_loads(parameters, default_floor_specs)
 
         if explicit_loads:
             return explicit_loads
@@ -1319,11 +1362,59 @@ class StaticAnalyzer:
         floor_specs: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, Any]]:
         if parameters.get('includeFloorLoads') is False or parameters.get('include_floor_loads') is False:
+            requested_mode = self._floor_load_transfer_mode(parameters)
+            warnings = self._floor_load_trace_warnings()
+            warnings.append('Story floor load transfer was disabled by analysis parameters.')
+            self._floor_load_transfer_trace = {
+                'requestedMode': requested_mode,
+                'effectiveMode': 'disabled',
+                'loadSource': 'story_floor_loads',
+                'method': self._floor_load_transfer_method_label('disabled'),
+                'methodEn': self._floor_load_transfer_method_label('disabled'),
+                'methodZh': self._floor_load_transfer_method_label_zh('disabled'),
+                'warnings': warnings,
+            }
             return []
         if not getattr(self.model, 'stories', None):
             return []
 
+        requested_mode = self._floor_load_transfer_mode(parameters)
+        mode_warnings = self._floor_load_trace_warnings()
         specs = floor_specs if floor_specs is not None else [{'types': None, 'factor': 1.0}]
+        self._floor_load_transfer_trace = {
+            'requestedMode': requested_mode,
+            'effectiveMode': requested_mode,
+            'loadSource': 'story_floor_loads',
+            'designCode': 'GB 50010-2010(2015) 9.1.1',
+            'method': self._floor_load_transfer_method_label(requested_mode),
+            'methodEn': self._floor_load_transfer_method_label(requested_mode),
+            'methodZh': self._floor_load_transfer_method_label_zh(requested_mode),
+            'items': [],
+            'warnings': mode_warnings,
+        }
+
+        if requested_mode == 'node_tributary':
+            return self._expand_story_floor_loads_to_nodes(parameters, specs, 'node_tributary')
+
+        slab_loads = self._expand_story_floor_loads_to_slab_beams(parameters, specs, requested_mode)
+        if slab_loads:
+            return slab_loads
+
+        warnings = self._floor_load_trace_warnings()
+        warnings.append('No complete supported slab panel was found; falling back to node tributary-area loads.')
+        self._floor_load_transfer_trace['warnings'] = warnings
+        self._floor_load_transfer_trace['effectiveMode'] = 'node_tributary'
+        self._floor_load_transfer_trace['method'] = self._floor_load_transfer_method_label('node_tributary')
+        self._floor_load_transfer_trace['methodEn'] = self._floor_load_transfer_method_label('node_tributary')
+        self._floor_load_transfer_trace['methodZh'] = self._floor_load_transfer_method_label_zh('node_tributary')
+        return self._expand_story_floor_loads_to_nodes(parameters, specs, 'node_tributary')
+
+    def _expand_story_floor_loads_to_nodes(
+        self,
+        parameters: Dict[str, Any],
+        specs: List[Dict[str, Any]],
+        effective_mode: str,
+    ) -> List[Dict[str, Any]]:
         expanded: List[Dict[str, Any]] = []
 
         for story in self.model.stories:
@@ -1359,7 +1450,375 @@ class StaticAnalyzer:
                     'source': 'storyFloorLoad',
                 })
 
+            if abs(intensity) > 1e-12:
+                self._append_floor_load_trace_item({
+                    'story': str(self._get_field(story, 'id', '')),
+                    'method': self._floor_load_transfer_method_label(effective_mode),
+                    'methodEn': self._floor_load_transfer_method_label(effective_mode),
+                    'methodZh': self._floor_load_transfer_method_label_zh(effective_mode),
+                    'effectiveMode': effective_mode,
+                    'loadIntensityKNPerM2': intensity,
+                    'generatedLoadType': 'nodal',
+                    'generatedLoadCount': len(self._story_floor_node_areas(story, parameters)),
+                    'totalLoadKN': intensity * sum(self._story_floor_node_areas(story, parameters).values()),
+                })
+
         return expanded
+
+    def _expand_story_floor_loads_to_slab_beams(
+        self,
+        parameters: Dict[str, Any],
+        specs: List[Dict[str, Any]],
+        requested_mode: str,
+    ) -> List[Dict[str, Any]]:
+        expanded: List[Dict[str, Any]] = []
+
+        for story in self.model.stories:
+            components = self._story_floor_load_components(story)
+            if not components:
+                continue
+
+            intensity = self._story_floor_load_intensity(components, specs)
+            if abs(intensity) <= 1e-12:
+                continue
+
+            panels = self._story_floor_panels(story)
+            if not panels:
+                self._append_floor_load_warning(f"Story {self._get_field(story, 'id', '')}: no complete rectangular floor panel found.")
+                continue
+
+            for panel in panels:
+                panel_loads = self._panel_floor_loads(panel, intensity, requested_mode)
+                if not panel_loads:
+                    continue
+                expanded.extend(panel_loads)
+
+        return expanded
+
+    def _story_floor_load_intensity(
+        self,
+        components: List[Tuple[str, float]],
+        specs: List[Dict[str, Any]],
+    ) -> float:
+        intensity = 0.0
+        for spec in specs:
+            requested_types = spec.get('types')
+            factor = self._to_float(spec.get('factor', 1.0), 1.0)
+            for component_type, component_value in components:
+                if requested_types is None or component_type in requested_types:
+                    intensity += component_value * factor
+        return intensity
+
+    def _floor_load_transfer_mode(self, parameters: Dict[str, Any]) -> str:
+        raw = (
+            parameters.get('floorLoadTransferMode')
+            or parameters.get('floor_load_transfer_mode')
+            or self._get_field(getattr(self.model, 'metadata', {}) or {}, 'floorLoadTransferMode', None)
+            or self._get_field(getattr(self.model, 'metadata', {}) or {}, 'floor_load_transfer_mode', None)
+            or 'auto_code_cn'
+        )
+        mode = str(raw).strip().lower()
+        aliases = {
+            'node': 'node_tributary',
+            'node_tributary_area': 'node_tributary',
+            'one_way': 'one_way_slab',
+            'one-way': 'one_way_slab',
+            'two_way': 'two_way_slab',
+            'two-way': 'two_way_slab',
+            'auto': 'auto_code_cn',
+            'cn': 'auto_code_cn',
+            'gb50010': 'auto_code_cn',
+        }
+        normalized = aliases.get(mode, mode)
+        if normalized not in {'node_tributary', 'one_way_slab', 'two_way_slab', 'auto_code_cn'}:
+            self._append_floor_load_warning(f"Unknown floor load transfer mode '{raw}', using auto_code_cn.")
+            return 'auto_code_cn'
+        return normalized
+
+    def _floor_load_transfer_method_label(self, mode: str) -> str:
+        labels = {
+            'node_tributary': 'Node tributary-area equivalent nodal load',
+            'one_way_slab': 'One-way slab load transfer to supporting beams',
+            'two_way_slab': 'Two-way slab load transfer with equivalent uniform beam loads',
+            'auto_code_cn': 'Automatic GB 50010 slab classification and beam load transfer',
+            'disabled': 'Floor load transfer disabled',
+        }
+        return labels.get(mode, mode)
+
+    def _floor_load_transfer_method_label_zh(self, mode: str) -> str:
+        labels = {
+            'node_tributary': '节点影响面积等效节点荷载',
+            'one_way_slab': '单向板传至支承梁',
+            'two_way_slab': '双向板传至支承梁并折算为等效均布梁荷载',
+            'auto_code_cn': '按 GB 50010 自动判别单向/双向板并传至梁',
+            'disabled': '楼面荷载传递已关闭',
+        }
+        return labels.get(mode, mode)
+
+    def _story_floor_panels(self, story: Any) -> List[Dict[str, Any]]:
+        target_nodes = self._target_floor_nodes(story)
+        if not target_nodes:
+            return []
+
+        z_values = sorted({float(node.z) for node in target_nodes})
+        if len(z_values) != 1:
+            return []
+        z = z_values[0]
+        x_values = sorted({float(node.x) for node in target_nodes})
+        y_values = sorted({float(node.y) for node in target_nodes})
+        if len(x_values) < 2 or len(y_values) < 2:
+            return []
+
+        story_id = str(self._get_field(story, 'id', ''))
+        panels: List[Dict[str, Any]] = []
+        for x_idx in range(len(x_values) - 1):
+            for y_idx in range(len(y_values) - 1):
+                x0 = x_values[x_idx]
+                x1 = x_values[x_idx + 1]
+                y0 = y_values[y_idx]
+                y1 = y_values[y_idx + 1]
+                edges = {
+                    'x_min': self._find_beam_between(z, x0, y0, x0, y1, story_id),
+                    'x_max': self._find_beam_between(z, x1, y0, x1, y1, story_id),
+                    'y_min': self._find_beam_between(z, x0, y0, x1, y0, story_id),
+                    'y_max': self._find_beam_between(z, x0, y1, x1, y1, story_id),
+                }
+                panels.append({
+                    'id': f"{story_id or 'story'}:{x_idx + 1}:{y_idx + 1}",
+                    'story': story_id,
+                    'z': z,
+                    'x0': x0,
+                    'x1': x1,
+                    'y0': y0,
+                    'y1': y1,
+                    'lx': x1 - x0,
+                    'ly': y1 - y0,
+                    'edges': edges,
+                })
+        return panels
+
+    def _find_beam_between(
+        self,
+        z: float,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        story_id: str,
+    ) -> Optional[str]:
+        for elem in self.model.elements:
+            if getattr(elem, 'type', '') != 'beam' or len(elem.nodes) < 2:
+                continue
+            if story_id and getattr(elem, 'story', None) not in {None, story_id}:
+                continue
+            start = self.nodes.get(elem.nodes[0])
+            end = self.nodes.get(elem.nodes[1])
+            if start is None or end is None:
+                continue
+            p_start = (float(start.x), float(start.y), float(start.z))
+            p_end = (float(end.x), float(end.y), float(end.z))
+            a = (x1, y1, z)
+            b = (x2, y2, z)
+            if self._points_match(p_start, a) and self._points_match(p_end, b):
+                return str(elem.id)
+            if self._points_match(p_start, b) and self._points_match(p_end, a):
+                return str(elem.id)
+        return None
+
+    def _points_match(self, first: Tuple[float, float, float], second: Tuple[float, float, float]) -> bool:
+        tolerance = 1e-6
+        return all(abs(first[idx] - second[idx]) <= tolerance for idx in range(3))
+
+    def _panel_floor_loads(
+        self,
+        panel: Dict[str, Any],
+        intensity: float,
+        requested_mode: str,
+    ) -> List[Dict[str, Any]]:
+        lx = self._to_float(panel.get('lx', 0.0), 0.0)
+        ly = self._to_float(panel.get('ly', 0.0), 0.0)
+        if lx <= 0.0 or ly <= 0.0:
+            return []
+
+        edges = panel.get('edges') if isinstance(panel.get('edges'), dict) else {}
+        edge_ids = {key: value for key, value in edges.items() if value}
+        ratio = max(lx, ly) / min(lx, ly)
+        mode = self._classify_panel_transfer_mode(requested_mode, lx, ly, edge_ids)
+        if mode is None:
+            self._append_floor_load_warning(f"Panel {panel.get('id')}: supporting beams are incomplete.")
+            return []
+
+        if mode == 'one_way_slab':
+            loads = self._one_way_panel_loads(panel, intensity)
+        else:
+            loads = self._two_way_panel_loads(panel, intensity)
+
+        total_load = intensity * lx * ly
+        trace_item = {
+            'story': panel.get('story'),
+            'panelId': panel.get('id'),
+            'requestedMode': requested_mode,
+            'effectiveMode': mode,
+            'method': self._floor_load_transfer_method_label(mode),
+            'methodEn': self._floor_load_transfer_method_label(mode),
+            'methodZh': self._floor_load_transfer_method_label_zh(mode),
+            'designCodeRule': self._panel_design_code_rule(mode, ratio, edge_ids),
+            'designCodeRuleEn': self._panel_design_code_rule(mode, ratio, edge_ids),
+            'designCodeRuleZh': self._panel_design_code_rule_zh(mode, ratio, edge_ids),
+            'spanX': lx,
+            'spanY': ly,
+            'longShortRatio': ratio,
+            'loadIntensityKNPerM2': intensity,
+            'generatedLoadType': 'distributed',
+            'generatedLoadCount': len(loads),
+            'totalLoadKN': total_load,
+        }
+        if mode == 'two_way_slab':
+            trace_item['note'] = (
+                'Two-way slab line loads are converted to equivalent uniform beam loads '
+                'for the OpenSees beamUniform load interface.'
+            )
+            trace_item['noteEn'] = trace_item['note']
+            trace_item['noteZh'] = '双向板分配到边梁的线荷载会折算为 OpenSees beamUniform 等效均布梁荷载。'
+        self._append_floor_load_trace_item(trace_item)
+        return loads
+
+    def _classify_panel_transfer_mode(
+        self,
+        requested_mode: str,
+        lx: float,
+        ly: float,
+        edge_ids: Dict[str, str],
+    ) -> Optional[str]:
+        has_x_pair = bool(edge_ids.get('x_min') and edge_ids.get('x_max'))
+        has_y_pair = bool(edge_ids.get('y_min') and edge_ids.get('y_max'))
+
+        if requested_mode == 'one_way_slab':
+            return 'one_way_slab' if (has_x_pair or has_y_pair) else None
+        if requested_mode == 'two_way_slab':
+            return 'two_way_slab' if (has_x_pair and has_y_pair) else None
+
+        if has_x_pair and has_y_pair:
+            ratio = max(lx, ly) / min(lx, ly)
+            return 'one_way_slab' if ratio >= 3.0 else 'two_way_slab'
+        if has_x_pair or has_y_pair:
+            return 'one_way_slab'
+        return None
+
+    def _panel_design_code_rule(self, mode: str, ratio: float, edge_ids: Dict[str, str]) -> str:
+        if not (edge_ids.get('x_min') and edge_ids.get('x_max') and edge_ids.get('y_min') and edge_ids.get('y_max')):
+            return 'GB 50010 9.1.1: slab supported on two opposite sides is calculated as one-way slab.'
+        if mode == 'one_way_slab':
+            return 'GB 50010 9.1.1: four-side supported slab with long/short span ratio >= 3.0 may be calculated as one-way slab along the short span.'
+        if ratio <= 2.0:
+            return 'GB 50010 9.1.1: four-side supported slab with long/short span ratio <= 2.0 is calculated as two-way slab.'
+        return 'GB 50010 9.1.1: four-side supported slab with long/short span ratio between 2.0 and 3.0 is preferably calculated as two-way slab.'
+
+    def _panel_design_code_rule_zh(self, mode: str, ratio: float, edge_ids: Dict[str, str]) -> str:
+        if not (edge_ids.get('x_min') and edge_ids.get('x_max') and edge_ids.get('y_min') and edge_ids.get('y_max')):
+            return 'GB 50010 9.1.1：两对边支承板按单向板计算。'
+        if mode == 'one_way_slab':
+            return 'GB 50010 9.1.1：四边支承板长短边比不小于 3.0 时，可按沿短边方向受力的单向板计算。'
+        if ratio <= 2.0:
+            return 'GB 50010 9.1.1：四边支承板长短边比不大于 2.0 时，按双向板计算。'
+        return 'GB 50010 9.1.1：四边支承板长短边比大于 2.0 且小于 3.0 时，宜按双向板计算。'
+
+    def _one_way_panel_loads(self, panel: Dict[str, Any], intensity: float) -> List[Dict[str, Any]]:
+        lx = self._to_float(panel.get('lx', 0.0), 0.0)
+        ly = self._to_float(panel.get('ly', 0.0), 0.0)
+        edges = panel.get('edges') if isinstance(panel.get('edges'), dict) else {}
+
+        if lx <= ly and edges.get('x_min') and edges.get('x_max'):
+            line_load = intensity * lx / 2.0
+            return [
+                self._distributed_gravity_load(str(edges['x_min']), line_load, panel),
+                self._distributed_gravity_load(str(edges['x_max']), line_load, panel),
+            ]
+        if edges.get('y_min') and edges.get('y_max'):
+            line_load = intensity * ly / 2.0
+            return [
+                self._distributed_gravity_load(str(edges['y_min']), line_load, panel),
+                self._distributed_gravity_load(str(edges['y_max']), line_load, panel),
+            ]
+        return []
+
+    def _two_way_panel_loads(self, panel: Dict[str, Any], intensity: float) -> List[Dict[str, Any]]:
+        lx = self._to_float(panel.get('lx', 0.0), 0.0)
+        ly = self._to_float(panel.get('ly', 0.0), 0.0)
+        edges = panel.get('edges') if isinstance(panel.get('edges'), dict) else {}
+        if not all(edges.get(key) for key in ('x_min', 'x_max', 'y_min', 'y_max')):
+            return []
+
+        a = min(lx, ly)
+        b = max(lx, ly)
+        long_edge_line_load = intensity * a * (0.5 - a / (4.0 * b))
+        short_edge_line_load = intensity * a / 4.0
+
+        if lx <= ly:
+            return [
+                self._distributed_gravity_load(str(edges['x_min']), long_edge_line_load, panel),
+                self._distributed_gravity_load(str(edges['x_max']), long_edge_line_load, panel),
+                self._distributed_gravity_load(str(edges['y_min']), short_edge_line_load, panel),
+                self._distributed_gravity_load(str(edges['y_max']), short_edge_line_load, panel),
+            ]
+        return [
+            self._distributed_gravity_load(str(edges['y_min']), long_edge_line_load, panel),
+            self._distributed_gravity_load(str(edges['y_max']), long_edge_line_load, panel),
+            self._distributed_gravity_load(str(edges['x_min']), short_edge_line_load, panel),
+            self._distributed_gravity_load(str(edges['x_max']), short_edge_line_load, panel),
+        ]
+
+    def _distributed_gravity_load(self, element_id: str, line_load: float, panel: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            'type': 'distributed',
+            'element': element_id,
+            'wy': 0.0,
+            'wz': -line_load,
+            'source': 'storyFloorLoad',
+            'panel': panel.get('id'),
+        }
+
+    def _append_floor_load_trace_item(self, item: Dict[str, Any]) -> None:
+        if not isinstance(self._floor_load_transfer_trace, dict):
+            self._floor_load_transfer_trace = {}
+        items = self._floor_load_transfer_trace.setdefault('items', [])
+        if isinstance(items, list):
+            items.append(item)
+
+    def _append_floor_load_warning(self, warning: str) -> None:
+        if not warning:
+            return
+        if not isinstance(self._floor_load_transfer_trace, dict):
+            self._floor_load_transfer_trace = {}
+        warnings = self._floor_load_transfer_trace.setdefault('warnings', [])
+        if isinstance(warnings, list) and warning not in warnings:
+            warnings.append(warning)
+
+    def _floor_load_trace_warnings(self) -> List[str]:
+        warnings = self._floor_load_transfer_trace.get('warnings', [])
+        if not isinstance(warnings, list):
+            return []
+        return [str(warning) for warning in warnings if str(warning)]
+
+    def _floor_load_transfer_summary(self) -> Optional[Dict[str, Any]]:
+        if not isinstance(self._floor_load_transfer_trace, dict) or not self._floor_load_transfer_trace:
+            return None
+        summary = dict(self._floor_load_transfer_trace)
+        items = summary.get('items')
+        warnings = summary.get('warnings')
+        if isinstance(items, list) and not items:
+            summary.pop('items', None)
+        if isinstance(warnings, list) and not warnings:
+            summary.pop('warnings', None)
+        if not summary.get('effectiveMode') and not summary.get('method'):
+            return None
+        return summary
+
+    def _attach_floor_load_transfer(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        summary = self._floor_load_transfer_summary()
+        if summary is None:
+            return result
+        return {**result, 'floorLoadTransfer': summary}
 
     def _story_floor_load_components(self, story: Any) -> List[Tuple[str, float]]:
         components: List[Tuple[str, float]] = []
