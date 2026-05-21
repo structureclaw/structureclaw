@@ -41,6 +41,11 @@ function printScenarioResult(scenario, evaluation) {
     }
   }
   process.stdout.write(`${"=".repeat(60)}\n`);
+  if (evaluation.retries && evaluation.retries.attempts > 1) {
+    const { attempts, maxRetries, rounds } = evaluation.retries;
+    const roundSummary = rounds.map((r) => `attempt ${r.attempt}: ${r.allPassed ? 'PASS' : 'FAIL'}`).join(', ');
+    process.stdout.write(`  Retries: ${attempts - 1}/${maxRetries} (${roundSummary})\n`);
+  }
 }
 
 function printSummary(results) {

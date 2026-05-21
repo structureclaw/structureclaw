@@ -45,6 +45,17 @@ function parseBenchmarkOptions(args) {
   return { scenarioId, outputPath };
 }
 
+function buildFeedbackFromEvaluation(evaluation) {
+  const failed = (evaluation.metrics || []).filter(
+    (m) => !m.pass && m.metric !== "duration" && m.metric !== "toolCalls",
+  );
+  if (failed.length === 0) return "";
+  const details = failed.map(
+    (m) => `${m.metric} 检查失败：期望 ${m.expected}，实际得到 ${m.actual}`,
+  ).join("；");
+  return `上次尝试失败：${details}。请修正以上问题。`;
+}
+
 function normalizeScenario(scenario) {
   if (scenario.turns) {
     return { ...scenario, _multiTurn: true };
@@ -147,8 +158,18 @@ async function runBenchmark(rootDir, args) {
     const maxRetries = Math.max(0, typeof scenario.maxRetries === "number" ? scenario.maxRetries : 0);
     let attempt = 0;
     let lastEvaluation = null;
+    const retryRounds = [];
 
     while (attempt <= maxRetries) {
+      // Build feedback from previous evaluation for retry
+      let feedbackPrefix = "";
+      if (attempt > 0 && lastEvaluation) {
+        feedbackPrefix = buildFeedbackFromEvaluation(lastEvaluation);
+        if (feedbackPrefix) {
+          process.stdout.write(`  Feedback: ${feedbackPrefix.slice(0, 100)}...\n`);
+        }
+      }
+
       if (attempt > 0) {
         process.stdout.write(`  Retrying (attempt ${attempt + 1}/${maxRetries + 1})...\n`);
       } else {
@@ -169,8 +190,12 @@ async function runBenchmark(rootDir, args) {
           const turn = scenario.turns[i];
           const turnStart = Date.now();
 
+          const messageWithFeedback = (i === 0 && feedbackPrefix)
+            ? feedbackPrefix + "\n\n" + turn.message
+            : turn.message;
+
           const state = await service.runFull({
-            message: turn.message,
+            message: messageWithFeedback,
             conversationId,
             context: { locale: scenario.locale || "zh" },
           });
@@ -219,7 +244,22 @@ async function runBenchmark(rootDir, args) {
 
       if (lastEvaluation && lastEvaluation.allPassed) break;
       if (executionError) break;
+      if (lastEvaluation) {
+        retryRounds.push({
+          attempt: attempt + 1,
+          allPassed: lastEvaluation.allPassed,
+          metrics: lastEvaluation.metrics.map((m) => ({ metric: m.metric, pass: m.pass })),
+        });
+      }
       attempt += 1;
+    }
+
+    if (lastEvaluation) {
+      lastEvaluation.retries = {
+        attempts: attempt + 1,
+        maxRetries,
+        rounds: retryRounds,
+      };
     }
 
     if (!lastEvaluation) {
