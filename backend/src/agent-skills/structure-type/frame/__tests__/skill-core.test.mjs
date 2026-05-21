@@ -219,6 +219,32 @@ describe('frame canonicalize core contract', () => {
     });
   });
 
+  test('emits story tags and V2 floor_loads for OpenSees floor load expansion', () => {
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      updatedAt: 0,
+      frameDimension: '3d',
+      storyCount: 1,
+      bayCountX: 1,
+      bayCountY: 1,
+      storyHeightsM: [3.6],
+      bayWidthsXM: [6],
+      bayWidthsYM: [6],
+      floorLoads: [{ story: 1, verticalKN: 360, liveLoadKN: 72 }],
+      frameBaseSupportType: 'fixed',
+    });
+
+    expect(model).toBeDefined();
+    expect(model.nodes.find((node) => node.id === 'N1_0_0')).toMatchObject({ story: 'F1' });
+    expect(model.nodes.find((node) => node.id === 'N0_0_0').story).toBeUndefined();
+    expect(model.elements.filter((element) => element.type === 'beam').every((element) => element.story === 'F1')).toBe(true);
+    expect(model.stories[0].floor_loads).toEqual([
+      { type: 'dead', value: 10 },
+      { type: 'live', value: 2 },
+    ]);
+    expect(model.stories[0]).toMatchObject({ dead_load: 10, live_load: 2 });
+  });
+
   test('builds custom H sections with star separators', () => {
     const model = buildFrameModel({
       inferredType: 'frame',

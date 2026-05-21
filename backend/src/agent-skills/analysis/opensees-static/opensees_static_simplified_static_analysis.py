@@ -4,8 +4,9 @@
 """
 
 import numpy as np
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Set, Tuple
 import logging
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -1200,8 +1201,14 @@ class StaticAnalyzer:
         return k
 
     def _collect_nodal_loads(self, parameters: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """收集并标准化荷载（优先 request.parameters，其次模型中的 load_cases）。"""
-        loads: List[Dict[str, Any]] = []
+        """Collect standardized loads.
+
+        Explicit nodal/distributed loads take precedence. When selected load
+        cases contain no explicit loads, story floor loads are expanded into
+        equivalent gravity nodal loads so OpenSees can analyze V2 floor-load
+        models without engine-specific preprocessing.
+        """
+        explicit_loads: List[Dict[str, Any]] = []
 
         load_combination_id = (
             parameters.get('loadCombinationId')
@@ -1209,46 +1216,282 @@ class StaticAnalyzer:
             or parameters.get('combinationId')
         )
         if load_combination_id:
+            floor_specs: List[Dict[str, Any]] = []
+            combo_found = False
             for combo in self.model.load_combinations:
                 if combo.id != str(load_combination_id):
                     continue
+                combo_found = True
                 case_map = {lc.id: lc for lc in self.model.load_cases}
                 for case_id, factor in combo.factors.items():
                     lc = case_map.get(case_id)
                     if not lc:
                         continue
+                    case_load_count = 0
                     for load in lc.loads:
                         normalized = self._normalize_load(load)
                         if normalized is not None:
-                            loads.append(self._scale_load(normalized, float(factor)))
-                return loads
+                            explicit_loads.append(self._scale_load(normalized, float(factor)))
+                            case_load_count += 1
+                    if case_load_count == 0:
+                        floor_specs.extend(self._floor_load_specs_for_case(lc, float(factor)))
+                if combo_found:
+                    expanded_floor_loads = self._expand_story_floor_loads(parameters, floor_specs)
+                    return explicit_loads + expanded_floor_loads
 
         parameter_load_cases = parameters.get('loadCases') or parameters.get('load_cases') or []
+        parameter_floor_specs: List[Dict[str, Any]] = []
         for lc in parameter_load_cases:
             if not isinstance(lc, dict):
                 continue
+            case_load_count = 0
             for load in lc.get('loads', []):
                 normalized = self._normalize_load(load)
                 if normalized is not None:
-                    loads.append(normalized)
+                    explicit_loads.append(normalized)
+                    case_load_count += 1
+            if case_load_count == 0:
+                parameter_floor_specs.extend(self._floor_load_specs_for_case(lc, 1.0))
+
+        if parameter_floor_specs:
+            return explicit_loads + self._expand_story_floor_loads(parameters, parameter_floor_specs)
+        if explicit_loads:
+            return explicit_loads
 
         load_case_ids = parameters.get('loadCaseIds') or parameters.get('load_case_ids')
         if load_case_ids:
             allowed = set(str(i) for i in load_case_ids)
+            selected_floor_specs: List[Dict[str, Any]] = []
             for lc in self.model.load_cases:
                 if lc.id in allowed:
+                    case_load_count = 0
                     for load in lc.loads:
                         normalized = self._normalize_load(load)
                         if normalized is not None:
-                            loads.append(normalized)
-        elif not loads:
-            for lc in self.model.load_cases:
-                for load in lc.loads:
-                    normalized = self._normalize_load(load)
-                    if normalized is not None:
-                        loads.append(normalized)
+                            explicit_loads.append(normalized)
+                            case_load_count += 1
+                    if case_load_count == 0:
+                        selected_floor_specs.extend(self._floor_load_specs_for_case(lc, 1.0))
+            if selected_floor_specs:
+                return explicit_loads + self._expand_story_floor_loads(parameters, selected_floor_specs)
+            return explicit_loads
 
-        return loads
+        for lc in self.model.load_cases:
+            for load in lc.loads:
+                normalized = self._normalize_load(load)
+                if normalized is not None:
+                    explicit_loads.append(normalized)
+
+        if explicit_loads:
+            return explicit_loads
+
+        return self._expand_story_floor_loads(parameters)
+
+    def _floor_load_specs_for_case(self, load_case: Any, factor: float) -> List[Dict[str, Any]]:
+        load_case_id = str(self._get_field(load_case, 'id', ''))
+        load_case_type = str(self._get_field(load_case, 'type', '')).lower()
+        return [{
+            'types': self._floor_load_types_for_case(load_case_id, load_case_type),
+            'factor': factor,
+        }]
+
+    def _floor_load_types_for_case(self, load_case_id: str, load_case_type: str) -> Optional[Set[str]]:
+        if load_case_type in {'dead', 'live'}:
+            return {load_case_type}
+        if load_case_type == 'other':
+            inferred = self._infer_floor_load_type_from_case_id(load_case_id)
+            return {inferred} if inferred else None
+
+        inferred = self._infer_floor_load_type_from_case_id(load_case_id)
+        return {inferred} if inferred else None
+
+    def _infer_floor_load_type_from_case_id(self, load_case_id: str) -> Optional[str]:
+        normalized = re.sub(r'[^a-z0-9]+', '', load_case_id.lower())
+        if normalized in {'d', 'dl', 'dead', 'deadload', 'lcde'} or normalized.startswith('dead'):
+            return 'dead'
+        if normalized in {'l', 'll', 'live', 'liveload', 'lcll'} or normalized.startswith('live'):
+            return 'live'
+        return None
+
+    def _expand_story_floor_loads(
+        self,
+        parameters: Dict[str, Any],
+        floor_specs: Optional[List[Dict[str, Any]]] = None,
+    ) -> List[Dict[str, Any]]:
+        if parameters.get('includeFloorLoads') is False or parameters.get('include_floor_loads') is False:
+            return []
+        if not getattr(self.model, 'stories', None):
+            return []
+
+        specs = floor_specs if floor_specs is not None else [{'types': None, 'factor': 1.0}]
+        expanded: List[Dict[str, Any]] = []
+
+        for story in self.model.stories:
+            components = self._story_floor_load_components(story)
+            if not components:
+                continue
+
+            intensity = 0.0
+            for spec in specs:
+                requested_types = spec.get('types')
+                factor = self._to_float(spec.get('factor', 1.0), 1.0)
+                for component_type, component_value in components:
+                    if requested_types is None or component_type in requested_types:
+                        intensity += component_value * factor
+
+            if abs(intensity) <= 1e-12:
+                continue
+
+            for node_id, area in self._story_floor_node_areas(story, parameters).items():
+                fz = -intensity * area
+                if abs(fz) <= 1e-12:
+                    continue
+                expanded.append({
+                    'type': 'nodal',
+                    'node': node_id,
+                    'fx': 0.0,
+                    'fy': 0.0,
+                    'fz': fz,
+                    'mx': 0.0,
+                    'my': 0.0,
+                    'mz': 0.0,
+                    'forces': [0.0, 0.0, fz, 0.0, 0.0, 0.0],
+                    'source': 'storyFloorLoad',
+                })
+
+        return expanded
+
+    def _story_floor_load_components(self, story: Any) -> List[Tuple[str, float]]:
+        components: List[Tuple[str, float]] = []
+        seen_types: Set[str] = set()
+
+        for floor_load in self._get_field(story, 'floor_loads', []) or []:
+            load_type = str(self._get_field(floor_load, 'type', 'other')).lower()
+            value = self._to_float(self._get_field(floor_load, 'value', 0.0), 0.0)
+            if abs(value) <= 1e-12:
+                continue
+            components.append((load_type, value))
+            seen_types.add(load_type)
+
+        for field_name, load_type in (('dead_load', 'dead'), ('live_load', 'live')):
+            if load_type in seen_types:
+                continue
+            value = self._to_float(self._get_field(story, field_name, 0.0), 0.0)
+            if abs(value) > 1e-12:
+                components.append((load_type, value))
+                seen_types.add(load_type)
+
+        return components
+
+    def _story_floor_node_areas(self, story: Any, parameters: Dict[str, Any]) -> Dict[str, float]:
+        target_nodes = self._target_floor_nodes(story)
+        if not target_nodes:
+            return {}
+
+        x_values = sorted({float(node.x) for node in target_nodes})
+        y_values = sorted({float(node.y) for node in target_nodes})
+        x_lengths = self._tributary_lengths(x_values)
+
+        if len(y_values) >= 2:
+            y_lengths = self._tributary_lengths(y_values)
+            return {
+                str(node.id): x_lengths.get(float(node.x), 0.0) * y_lengths.get(float(node.y), 0.0)
+                for node in target_nodes
+            }
+
+        tributary_width = self._floor_load_tributary_width(parameters)
+        if len(x_values) >= 2:
+            return {
+                str(node.id): x_lengths.get(float(node.x), 0.0) * tributary_width
+                for node in target_nodes
+            }
+
+        return {str(node.id): tributary_width for node in target_nodes}
+
+    def _target_floor_nodes(self, story: Any) -> List[Any]:
+        story_id = str(self._get_field(story, 'id', ''))
+        elevation = self._field_float(story, 'elevation')
+        height = self._field_float(story, 'height')
+
+        if elevation is not None and height is not None:
+            nodes = self._nodes_at_z(elevation + height)
+            if nodes:
+                return nodes
+
+        story_ordinal = self._story_ordinal(story_id)
+        if story_ordinal is not None:
+            levels = self._z_levels()
+            if story_ordinal < len(levels):
+                nodes = self._nodes_at_z(levels[story_ordinal])
+                if nodes:
+                    return nodes
+
+        if story_id:
+            nodes = [node for node in self.model.nodes if str(getattr(node, 'story', '')) == story_id]
+            if nodes:
+                return nodes
+
+        if elevation is not None:
+            return self._nodes_at_z(elevation)
+
+        return []
+
+    def _story_ordinal(self, story_id: str) -> Optional[int]:
+        match = re.search(r'(\d+)$', story_id)
+        if not match:
+            return None
+        value = int(match.group(1))
+        return value if value > 0 else None
+
+    def _z_levels(self) -> List[float]:
+        return sorted({float(node.z) for node in self.model.nodes})
+
+    def _nodes_at_z(self, z: float) -> List[Any]:
+        tolerance = 1e-6
+        return [node for node in self.model.nodes if abs(float(node.z) - z) <= tolerance]
+
+    def _tributary_lengths(self, values: List[float]) -> Dict[float, float]:
+        if not values:
+            return {}
+        if len(values) == 1:
+            return {values[0]: 1.0}
+
+        lengths: Dict[float, float] = {}
+        for idx, value in enumerate(values):
+            if idx == 0:
+                length = (values[1] - value) / 2.0
+            elif idx == len(values) - 1:
+                length = (value - values[idx - 1]) / 2.0
+            else:
+                length = (values[idx + 1] - values[idx - 1]) / 2.0
+            lengths[value] = max(float(length), 0.0)
+        return lengths
+
+    def _floor_load_tributary_width(self, parameters: Dict[str, Any]) -> float:
+        for key in ('floorLoadTributaryWidthM', 'floor_load_tributary_width_m', 'tributaryWidthM', 'tributary_width_m'):
+            value = self._to_float(parameters.get(key, 0.0), 0.0)
+            if value > 0.0:
+                return value
+
+        metadata = getattr(self.model, 'metadata', {}) or {}
+        if isinstance(metadata, dict):
+            for key in ('floorLoadTributaryWidthM', 'floor_load_tributary_width_m', 'tributaryWidthM', 'tributary_width_m'):
+                value = self._to_float(metadata.get(key, 0.0), 0.0)
+                if value > 0.0:
+                    return value
+
+        return 1.0
+
+    def _get_field(self, obj: Any, key: str, fallback: Any = None) -> Any:
+        if isinstance(obj, dict):
+            return obj.get(key, fallback)
+        return getattr(obj, key, fallback)
+
+    def _field_float(self, obj: Any, key: str) -> Optional[float]:
+        value = self._get_field(obj, key, None)
+        if value is None:
+            return None
+        return self._to_float(value, 0.0)
 
     def _scale_load(self, load: Dict[str, Any], factor: float) -> Dict[str, Any]:
         """按组合系数缩放荷载中的数值字段。"""

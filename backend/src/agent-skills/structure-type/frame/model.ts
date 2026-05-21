@@ -242,6 +242,21 @@ function n3dId(storyIdx: number, xIdx: number, yIdx: number): string {
   return `N${storyIdx}_${xIdx}_${yIdx}`;
 }
 
+function buildStoryFloorLoadFields(deadLoad: number | undefined, liveLoad: number | undefined): Record<string, unknown> {
+  const roundedDeadLoad = deadLoad ? Math.round(deadLoad * 100) / 100 : undefined;
+  const roundedLiveLoad = liveLoad ? Math.round(liveLoad * 100) / 100 : undefined;
+  const floorLoads = [
+    ...(roundedDeadLoad ? [{ type: 'dead', value: roundedDeadLoad }] : []),
+    ...(roundedLiveLoad ? [{ type: 'live', value: roundedLiveLoad }] : []),
+  ];
+
+  return {
+    ...(floorLoads.length ? { floor_loads: floorLoads } : {}),
+    ...(roundedDeadLoad ? { dead_load: roundedDeadLoad } : {}),
+    ...(roundedLiveLoad ? { live_load: roundedLiveLoad } : {}),
+  };
+}
+
 function buildFrame2dLocalModel(
   state: DraftState,
   matProps: ResolvedFrameMaterialProps,
@@ -262,7 +277,13 @@ function buildFrame2dLocalModel(
 
   for (let storyIdx = 0; storyIdx < zCoords.length; storyIdx++) {
     for (let bayIdx = 0; bayIdx < xCoords.length; bayIdx++) {
-      const node: Record<string, unknown> = { id: n2dId(storyIdx, bayIdx), x: xCoords[bayIdx], y: 0, z: zCoords[storyIdx] };
+      const node: Record<string, unknown> = {
+        id: n2dId(storyIdx, bayIdx),
+        x: xCoords[bayIdx],
+        y: 0,
+        z: zCoords[storyIdx],
+        ...(storyIdx > 0 ? { story: `F${storyIdx}` } : {}),
+      };
       if (storyIdx === 0) node.restraints = buildBaseRestraint(baseSupport);
       nodes.push(node);
     }
@@ -270,14 +291,14 @@ function buildFrame2dLocalModel(
 
   for (let storyIdx = 1; storyIdx < zCoords.length; storyIdx++) {
     for (let bayIdx = 0; bayIdx < xCoords.length; bayIdx++) {
-      elements.push({ id: `C${elementId}`, type: 'column', nodes: [n2dId(storyIdx - 1, bayIdx), n2dId(storyIdx, bayIdx)], material: '1', section: '1' });
+      elements.push({ id: `C${elementId}`, type: 'column', nodes: [n2dId(storyIdx - 1, bayIdx), n2dId(storyIdx, bayIdx)], material: '1', section: '1', story: `F${storyIdx}` });
       elementId += 1;
     }
   }
 
   for (let storyIdx = 1; storyIdx < zCoords.length; storyIdx++) {
     for (let bayIdx = 0; bayIdx < bayWidths.length; bayIdx++) {
-      elements.push({ id: `B${elementId}`, type: 'beam', nodes: [n2dId(storyIdx, bayIdx), n2dId(storyIdx, bayIdx + 1)], material: '1', section: '2' });
+      elements.push({ id: `B${elementId}`, type: 'beam', nodes: [n2dId(storyIdx, bayIdx), n2dId(storyIdx, bayIdx + 1)], material: '1', section: '2', story: `F${storyIdx}` });
       elementId += 1;
     }
   }
@@ -317,8 +338,7 @@ function buildFrame2dLocalModel(
         height: h,
         elevation: zCoords[i],
         standard_floor_group: 'SF1',
-        ...(deadLoad ? { dead_load: Math.round(deadLoad * 100) / 100 } : {}),
-        ...(liveLoad ? { live_load: Math.round(liveLoad * 100) / 100 } : {}),
+        ...buildStoryFloorLoadFields(deadLoad, liveLoad),
       };
     }),
     load_cases: [{ id: 'LC1', type: 'other', loads }],
@@ -363,7 +383,13 @@ function buildFrame3dLocalModel(
   for (let storyIdx = 0; storyIdx < zCoords.length; storyIdx++) {
     for (let xIdx = 0; xIdx < xCoords.length; xIdx++) {
       for (let yIdx = 0; yIdx < yCoords.length; yIdx++) {
-        const node: Record<string, unknown> = { id: n3dId(storyIdx, xIdx, yIdx), x: xCoords[xIdx], y: yCoords[yIdx], z: zCoords[storyIdx] };
+        const node: Record<string, unknown> = {
+          id: n3dId(storyIdx, xIdx, yIdx),
+          x: xCoords[xIdx],
+          y: yCoords[yIdx],
+          z: zCoords[storyIdx],
+          ...(storyIdx > 0 ? { story: `F${storyIdx}` } : {}),
+        };
         if (storyIdx === 0) node.restraints = buildBaseRestraint(baseSupport);
         nodes.push(node);
       }
@@ -373,7 +399,7 @@ function buildFrame3dLocalModel(
   for (let storyIdx = 1; storyIdx < zCoords.length; storyIdx++) {
     for (let xIdx = 0; xIdx < xCoords.length; xIdx++) {
       for (let yIdx = 0; yIdx < yCoords.length; yIdx++) {
-        elements.push({ id: `C${elementId}`, type: 'column', nodes: [n3dId(storyIdx - 1, xIdx, yIdx), n3dId(storyIdx, xIdx, yIdx)], material: '1', section: '1' });
+        elements.push({ id: `C${elementId}`, type: 'column', nodes: [n3dId(storyIdx - 1, xIdx, yIdx), n3dId(storyIdx, xIdx, yIdx)], material: '1', section: '1', story: `F${storyIdx}` });
         elementId += 1;
       }
     }
@@ -382,7 +408,7 @@ function buildFrame3dLocalModel(
   for (let storyIdx = 1; storyIdx < zCoords.length; storyIdx++) {
     for (let xIdx = 0; xIdx < bayWidthsX.length; xIdx++) {
       for (let yIdx = 0; yIdx < yCoords.length; yIdx++) {
-        elements.push({ id: `BX${elementId}`, type: 'beam', nodes: [n3dId(storyIdx, xIdx, yIdx), n3dId(storyIdx, xIdx + 1, yIdx)], material: '1', section: '2' });
+        elements.push({ id: `BX${elementId}`, type: 'beam', nodes: [n3dId(storyIdx, xIdx, yIdx), n3dId(storyIdx, xIdx + 1, yIdx)], material: '1', section: '2', story: `F${storyIdx}` });
         elementId += 1;
       }
     }
@@ -391,7 +417,7 @@ function buildFrame3dLocalModel(
   for (let storyIdx = 1; storyIdx < zCoords.length; storyIdx++) {
     for (let xIdx = 0; xIdx < xCoords.length; xIdx++) {
       for (let yIdx = 0; yIdx < bayWidthsY.length; yIdx++) {
-        elements.push({ id: `BY${elementId}`, type: 'beam', nodes: [n3dId(storyIdx, xIdx, yIdx), n3dId(storyIdx, xIdx, yIdx + 1)], material: '1', section: '2' });
+        elements.push({ id: `BY${elementId}`, type: 'beam', nodes: [n3dId(storyIdx, xIdx, yIdx), n3dId(storyIdx, xIdx, yIdx + 1)], material: '1', section: '2', story: `F${storyIdx}` });
         elementId += 1;
       }
     }
@@ -438,8 +464,7 @@ function buildFrame3dLocalModel(
         height: h,
         elevation: zCoords[i],
         standard_floor_group: 'SF1',
-        ...(deadLoad ? { dead_load: Math.round(deadLoad * 100) / 100 } : {}),
-        ...(liveLoad ? { live_load: Math.round(liveLoad * 100) / 100 } : {}),
+        ...buildStoryFloorLoadFields(deadLoad, liveLoad),
       };
     }),
     load_cases: [{ id: 'LC1', type: 'other', loads }],
