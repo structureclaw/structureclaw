@@ -8,6 +8,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 # Stub APIPyInterface before importing runtime
 _api = types.ModuleType("APIPyInterface")
 sys.modules.setdefault("APIPyInterface", _api)
