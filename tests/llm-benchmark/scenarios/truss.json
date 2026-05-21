@@ -16,5 +16,23 @@
         { "type": "has_analysis" }
       ]
     }
+  },
+  {
+    "id": "truss-trapezoidal-static",
+    "description": "梯形平行弦桁架静力分析",
+    "category": "static-analysis",
+    "tags": ["truss", "static", "zh", "trapezoidal"],
+    "message": "梯形平行弦桁架，跨度18m，高度2.5m，上弦坡度1/10，节点荷载15kN，做静力分析",
+    "locale": "zh",
+    "maxRetries": 2,
+    "expect": {
+      "skills": { "primary": "truss", "mayAlsoMatch": ["generic"] },
+      "assertions": [
+        { "type": "structural_type", "expected": "truss" },
+        { "type": "skill_match", "primary": "truss", "mayAlsoMatch": ["generic"] },
+        { "type": "has_model", "minNodes": 4, "minElements": 5 },
+        { "type": "has_analysis" }
+      ]
+    }
   }
 ]

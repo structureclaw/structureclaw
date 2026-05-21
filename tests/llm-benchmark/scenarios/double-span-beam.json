@@ -16,5 +16,23 @@
         { "type": "has_analysis" }
       ]
     }
+  },
+  {
+    "id": "three-span-continuous-beam-static",
+    "description": "三跨连续梁静力分析",
+    "category": "static-analysis",
+    "tags": ["beam", "continuous", "three-span", "static", "zh"],
+    "message": "三跨连续梁，跨度4m、5m、4m，均布荷载15kN/m，做静力分析",
+    "locale": "zh",
+    "maxRetries": 2,
+    "expect": {
+      "skills": { "primary": "double-span-beam", "mayAlsoMatch": ["beam", "generic"] },
+      "assertions": [
+        { "type": "structural_type", "expected": "double-span-beam" },
+        { "type": "skill_match", "primary": "double-span-beam", "mayAlsoMatch": ["beam", "generic"] },
+        { "type": "has_model", "minNodes": 4, "minElements": 3 },
+        { "type": "has_analysis" }
+      ]
+    }
   }
 ]

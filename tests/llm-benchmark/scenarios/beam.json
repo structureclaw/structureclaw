@@ -81,5 +81,55 @@
         ]
       }
     ]
+  },
+  {
+    "id": "independent-column-static",
+    "description": "独立混凝土柱静力分析",
+    "category": "static-analysis",
+    "tags": ["column", "static", "zh"],
+    "message": "独立混凝土柱，截面400x400mm，高度4.5m，柱顶轴向荷载500kN，做静力分析",
+    "locale": "zh",
+    "maxRetries": 2,
+    "expect": {
+      "skills": { "primary": "beam", "mayAlsoMatch": ["generic"] },
+      "assertions": [
+        { "type": "structural_type", "expected": "beam" },
+        { "type": "skill_match", "primary": "beam", "mayAlsoMatch": ["generic"] },
+        { "type": "has_model", "minNodes": 2, "minElements": 1 },
+        { "type": "has_analysis" }
+      ]
+    }
+  },
+  {
+    "id": "beam-error-contradictory-params",
+    "description": "矛盾参数错误恢复 — 负跨度和零宽度",
+    "category": "error-recovery",
+    "tags": ["beam", "error-recovery", "zh"],
+    "message": "简支梁跨度-5米（负数），截面宽度0mm，做静力分析",
+    "locale": "zh",
+    "maxRetries": 2,
+    "expect": {
+      "skills": { "primary": "beam", "mayAlsoMatch": ["generic"] },
+      "assertions": [
+        { "type": "has_interaction_questions" },
+        { "type": "natural_language", "description": "Agent should detect the negative span or zero width and ask the user for correction rather than silently accepting invalid parameters" }
+      ]
+    }
+  },
+  {
+    "id": "beam-error-impossible-values",
+    "description": "物理上不可能的值错误恢复 — 超大跨度超小截面",
+    "category": "error-recovery",
+    "tags": ["beam", "error-recovery", "zh"],
+    "message": "钢梁跨度100000米，截面高度1mm，荷载999999999kN/m，做静力分析",
+    "locale": "zh",
+    "maxRetries": 2,
+    "expect": {
+      "skills": { "primary": "beam", "mayAlsoMatch": ["generic"] },
+      "assertions": [
+        { "type": "has_interaction_questions" },
+        { "type": "natural_language", "description": "Agent should recognize the unrealistic dimensions and ask the user to confirm or correct the values" }
+      ]
+    }
   }
 ]

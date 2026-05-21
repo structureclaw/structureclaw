@@ -34,5 +34,23 @@
         { "type": "has_analysis" }
       ]
     }
+  },
+  {
+    "id": "portal-frame-double-span-crane-static",
+    "description": "双跨门式刚架带吊车静力分析",
+    "category": "static-analysis",
+    "tags": ["portal-frame", "double-span", "crane", "static", "zh"],
+    "message": "双跨门式刚架，跨度2x18m，高度9m，设5t吊车，屋面荷载6kN/m，做静力分析",
+    "locale": "zh",
+    "maxRetries": 2,
+    "expect": {
+      "skills": { "primary": "portal-frame", "mayAlsoMatch": ["generic"] },
+      "assertions": [
+        { "type": "structural_type", "expected": "portal-frame" },
+        { "type": "skill_match", "primary": "portal-frame", "mayAlsoMatch": ["generic"] },
+        { "type": "has_model", "minNodes": 5, "minElements": 5 },
+        { "type": "has_analysis" }
+      ]
+    }
   }
 ]

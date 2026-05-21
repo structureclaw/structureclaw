@@ -54,5 +54,23 @@
         { "type": "has_analysis" }
       ]
     }
+  },
+  {
+    "id": "frame-braced-1story-static",
+    "description": "单层中心支撑框架静力分析",
+    "category": "static-analysis",
+    "tags": ["frame", "braced", "static", "zh"],
+    "message": "单层中心支撑钢框架，跨度6m，高度4.5m，柱间设十字交叉支撑，屋面荷载8kN/m2，做静力分析",
+    "locale": "zh",
+    "maxRetries": 2,
+    "expect": {
+      "skills": { "primary": "frame", "mayAlsoMatch": ["generic"] },
+      "assertions": [
+        { "type": "structural_type", "expected": "frame" },
+        { "type": "skill_match", "primary": "frame", "mayAlsoMatch": ["generic"] },
+        { "type": "has_model", "minNodes": 4, "minElements": 5 },
+        { "type": "has_analysis" }
+      ]
+    }
   }
 ]
