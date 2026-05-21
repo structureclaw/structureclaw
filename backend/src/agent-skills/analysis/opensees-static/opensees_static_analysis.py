@@ -219,7 +219,7 @@ class OpenSeesStaticExecutor:
         section = self.analyzer.sections.get(elem.section)
         material = self.analyzer.materials.get(elem.material)
         if not section:
-            raise ValueError(f"Section '{elem.section}' was not found for beam element '{elem.id}'")
+            raise ValueError(f"Section '{elem.section}' was not found for frame element '{elem.id}'")
 
         transform_tag = self.analyzer._ops_element_tag(elem.id)
         reference_vector = self.analyzer._get_beam_reference_vector(elem)

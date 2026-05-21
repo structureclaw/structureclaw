@@ -1350,9 +1350,11 @@ class StaticAnalyzer:
 
     def _infer_floor_load_type_from_case_id(self, load_case_id: str) -> Optional[str]:
         normalized = re.sub(r'[^a-z0-9]+', '', load_case_id.lower())
-        if normalized in {'d', 'dl', 'dead', 'deadload', 'lcde'} or normalized.startswith('dead'):
+        dead_aliases = {'d', 'dl', 'dead', 'deadload', 'lcde', 'lcdl', 'lcdead'}
+        live_aliases = {'l', 'll', 'live', 'liveload', 'lcll', 'lclive'}
+        if normalized in dead_aliases or normalized.startswith(('dead', 'deadload', 'dl', 'lcdead', 'lcdl')):
             return 'dead'
-        if normalized in {'l', 'll', 'live', 'liveload', 'lcll'} or normalized.startswith('live'):
+        if normalized in live_aliases or normalized.startswith(('live', 'liveload', 'll', 'lclive', 'lcll')):
             return 'live'
         return None
 
@@ -1394,10 +1396,13 @@ class StaticAnalyzer:
         }
 
         if requested_mode == 'node_tributary':
-            return self._expand_story_floor_loads_to_nodes(parameters, specs, 'node_tributary')
+            loads = self._expand_story_floor_loads_to_nodes(parameters, specs, 'node_tributary')
+            self._refresh_floor_load_transfer_effective_mode()
+            return loads
 
         slab_loads = self._expand_story_floor_loads_to_slab_beams(parameters, specs, requested_mode)
         if slab_loads:
+            self._refresh_floor_load_transfer_effective_mode()
             return slab_loads
 
         warnings = self._floor_load_trace_warnings()
@@ -1407,7 +1412,9 @@ class StaticAnalyzer:
         self._floor_load_transfer_trace['method'] = self._floor_load_transfer_method_label('node_tributary')
         self._floor_load_transfer_trace['methodEn'] = self._floor_load_transfer_method_label('node_tributary')
         self._floor_load_transfer_trace['methodZh'] = self._floor_load_transfer_method_label_zh('node_tributary')
-        return self._expand_story_floor_loads_to_nodes(parameters, specs, 'node_tributary')
+        loads = self._expand_story_floor_loads_to_nodes(parameters, specs, 'node_tributary')
+        self._refresh_floor_load_transfer_effective_mode()
+        return loads
 
     def _expand_story_floor_loads_to_nodes(
         self,
@@ -1418,50 +1425,66 @@ class StaticAnalyzer:
         expanded: List[Dict[str, Any]] = []
 
         for story in self.model.stories:
-            components = self._story_floor_load_components(story)
-            if not components:
+            expanded.extend(self._expand_story_floor_load_to_nodes(story, parameters, specs, effective_mode))
+
+        return expanded
+
+    def _expand_story_floor_load_to_nodes(
+        self,
+        story: Any,
+        parameters: Dict[str, Any],
+        specs: List[Dict[str, Any]],
+        effective_mode: str,
+    ) -> List[Dict[str, Any]]:
+        components = self._story_floor_load_components(story)
+        if not components:
+            return []
+
+        intensity = self._story_floor_load_intensity(components, specs)
+        if abs(intensity) <= 1e-12:
+            return []
+
+        node_areas = self._story_floor_node_areas(story, parameters)
+        if not node_areas:
+            self._append_floor_load_warning(
+                f"Story {self._get_field(story, 'id', '')}: no floor nodes found for node tributary-area fallback."
+            )
+            return []
+
+        expanded: List[Dict[str, Any]] = []
+        generated_count = 0
+        total_load = 0.0
+        for node_id, area in node_areas.items():
+            fz = -intensity * area
+            if abs(fz) <= 1e-12:
                 continue
+            generated_count += 1
+            total_load += intensity * area
+            expanded.append({
+                'type': 'nodal',
+                'node': node_id,
+                'fx': 0.0,
+                'fy': 0.0,
+                'fz': fz,
+                'mx': 0.0,
+                'my': 0.0,
+                'mz': 0.0,
+                'forces': [0.0, 0.0, fz, 0.0, 0.0, 0.0],
+                'source': 'storyFloorLoad',
+            })
 
-            intensity = 0.0
-            for spec in specs:
-                requested_types = spec.get('types')
-                factor = self._to_float(spec.get('factor', 1.0), 1.0)
-                for component_type, component_value in components:
-                    if requested_types is None or component_type in requested_types:
-                        intensity += component_value * factor
-
-            if abs(intensity) <= 1e-12:
-                continue
-
-            for node_id, area in self._story_floor_node_areas(story, parameters).items():
-                fz = -intensity * area
-                if abs(fz) <= 1e-12:
-                    continue
-                expanded.append({
-                    'type': 'nodal',
-                    'node': node_id,
-                    'fx': 0.0,
-                    'fy': 0.0,
-                    'fz': fz,
-                    'mx': 0.0,
-                    'my': 0.0,
-                    'mz': 0.0,
-                    'forces': [0.0, 0.0, fz, 0.0, 0.0, 0.0],
-                    'source': 'storyFloorLoad',
-                })
-
-            if abs(intensity) > 1e-12:
-                self._append_floor_load_trace_item({
-                    'story': str(self._get_field(story, 'id', '')),
-                    'method': self._floor_load_transfer_method_label(effective_mode),
-                    'methodEn': self._floor_load_transfer_method_label(effective_mode),
-                    'methodZh': self._floor_load_transfer_method_label_zh(effective_mode),
-                    'effectiveMode': effective_mode,
-                    'loadIntensityKNPerM2': intensity,
-                    'generatedLoadType': 'nodal',
-                    'generatedLoadCount': len(self._story_floor_node_areas(story, parameters)),
-                    'totalLoadKN': intensity * sum(self._story_floor_node_areas(story, parameters).values()),
-                })
+        if generated_count > 0:
+            self._append_floor_load_trace_item({
+                'story': str(self._get_field(story, 'id', '')),
+                'method': self._floor_load_transfer_method_label(effective_mode),
+                'methodEn': self._floor_load_transfer_method_label(effective_mode),
+                'methodZh': self._floor_load_transfer_method_label_zh(effective_mode),
+                'effectiveMode': effective_mode,
+                'loadIntensityKNPerM2': intensity,
+                'generatedLoadType': 'nodal',
+                'generatedLoadCount': generated_count,
+                'totalLoadKN': total_load,
+            })
 
         return expanded
 
@@ -1474,6 +1497,7 @@ class StaticAnalyzer:
         expanded: List[Dict[str, Any]] = []
 
         for story in self.model.stories:
+            story_id = str(self._get_field(story, 'id', ''))
             components = self._story_floor_load_components(story)
             if not components:
                 continue
@@ -1484,14 +1508,28 @@ class StaticAnalyzer:
 
             panels = self._story_floor_panels(story)
             if not panels:
-                self._append_floor_load_warning(f"Story {self._get_field(story, 'id', '')}: no complete rectangular floor panel found.")
+                self._append_floor_load_warning(f"Story {story_id}: no complete rectangular floor panel found.")
+                expanded.extend(self._expand_story_floor_load_to_nodes(story, parameters, specs, 'node_tributary'))
                 continue
 
+            story_loads: List[Dict[str, Any]] = []
+            all_panels_supported = True
             for panel in panels:
                 panel_loads = self._panel_floor_loads(panel, intensity, requested_mode)
                 if not panel_loads:
+                    all_panels_supported = False
                     continue
-                expanded.extend(panel_loads)
+                story_loads.extend(panel_loads)
+
+            if story_loads and all_panels_supported:
+                expanded.extend(story_loads)
+                continue
+
+            self._remove_floor_load_trace_items_for_story(story_id)
+            self._append_floor_load_warning(
+                f"Story {story_id}: slab-beam transfer was incomplete; falling back to node tributary-area loads."
+            )
+            expanded.extend(self._expand_story_floor_load_to_nodes(story, parameters, specs, 'node_tributary'))
 
         return expanded
 
@@ -1541,6 +1579,7 @@ class StaticAnalyzer:
             'one_way_slab': 'One-way slab load transfer to supporting beams',
             'two_way_slab': 'Two-way slab load transfer with equivalent uniform beam loads',
             'auto_code_cn': 'Automatic GB 50010 slab classification and beam load transfer',
+            'mixed': 'Mixed floor load transfer methods',
             'disabled': 'Floor load transfer disabled',
         }
         return labels.get(mode, mode)
@@ -1551,6 +1590,7 @@ class StaticAnalyzer:
             'one_way_slab': '单向板传至支承梁',
             'two_way_slab': '双向板传至支承梁并折算为等效均布梁荷载',
             'auto_code_cn': '按 GB 50010 自动判别单向/双向板并传至梁',
+            'mixed': '混合楼面荷载传递方法',
             'disabled': '楼面荷载传递已关闭',
         }
         return labels.get(mode, mode)
@@ -1560,12 +1600,12 @@ class StaticAnalyzer:
         if not target_nodes:
             return []
 
-        z_values = sorted({float(node.z) for node in target_nodes})
+        z_values = self._unique_sorted_coordinates(float(node.z) for node in target_nodes)
         if len(z_values) != 1:
             return []
         z = z_values[0]
-        x_values = sorted({float(node.x) for node in target_nodes})
-        y_values = sorted({float(node.y) for node in target_nodes})
+        x_values = self._unique_sorted_coordinates(float(node.x) for node in target_nodes)
+        y_values = self._unique_sorted_coordinates(float(node.y) for node in target_nodes)
         if len(x_values) < 2 or len(y_values) < 2:
             return []
 
@@ -1605,7 +1645,7 @@ class StaticAnalyzer:
         x2: float,
         y2: float,
         story_id: str,
-    ) -> Optional[str]:
+    ) -> Optional[Dict[str, Any]]:
         for elem in self.model.elements:
             if getattr(elem, 'type', '') != 'beam' or len(elem.nodes) < 2:
                 continue
@@ -1619,15 +1659,52 @@ class StaticAnalyzer:
             p_end = (float(end.x), float(end.y), float(end.z))
             a = (x1, y1, z)
             b = (x2, y2, z)
-            if self._points_match(p_start, a) and self._points_match(p_end, b):
-                return str(elem.id)
-            if self._points_match(p_start, b) and self._points_match(p_end, a):
-                return str(elem.id)
+            if self._segment_contains_points(p_start, p_end, a, b):
+                return {
+                    'id': str(elem.id),
+                    'segmentLength': self._point_distance(a, b),
+                    'elementLength': self._point_distance(p_start, p_end),
+                }
         return None
 
     def _points_match(self, first: Tuple[float, float, float], second: Tuple[float, float, float]) -> bool:
         tolerance = 1e-6
         return all(abs(first[idx] - second[idx]) <= tolerance for idx in range(3))
+
+    def _segment_contains_points(
+        self,
+        start: Tuple[float, float, float],
+        end: Tuple[float, float, float],
+        first: Tuple[float, float, float],
+        second: Tuple[float, float, float],
+    ) -> bool:
+        return self._point_on_segment(first, start, end) and self._point_on_segment(second, start, end)
+
+    def _point_on_segment(
+        self,
+        point: Tuple[float, float, float],
+        start: Tuple[float, float, float],
+        end: Tuple[float, float, float],
+    ) -> bool:
+        tolerance = 1e-6
+        direction = tuple(end[idx] - start[idx] for idx in range(3))
+        relative = tuple(point[idx] - start[idx] for idx in range(3))
+        length_sq = sum(value * value for value in direction)
+        if length_sq <= tolerance ** 2:
+            return self._points_match(point, start)
+        cross = (
+            relative[1] * direction[2] - relative[2] * direction[1],
+            relative[2] * direction[0] - relative[0] * direction[2],
+            relative[0] * direction[1] - relative[1] * direction[0],
+        )
+        cross_norm_sq = sum(value * value for value in cross)
+        if cross_norm_sq > (tolerance ** 2) * length_sq:
+            return False
+        dot = sum(relative[idx] * direction[idx] for idx in range(3))
+        return -tolerance <= dot <= length_sq + tolerance
+
+    def _point_distance(self, first: Tuple[float, float, float], second: Tuple[float, float, float]) -> float:
+        return sum((first[idx] - second[idx]) ** 2 for idx in range(3)) ** 0.5
 
     def _panel_floor_loads(
         self,
@@ -1688,7 +1765,7 @@ class StaticAnalyzer:
         requested_mode: str,
         lx: float,
         ly: float,
-        edge_ids: Dict[str, str],
+        edge_ids: Dict[str, Any],
     ) -> Optional[str]:
         has_x_pair = bool(edge_ids.get('x_min') and edge_ids.get('x_max'))
         has_y_pair = bool(edge_ids.get('y_min') and edge_ids.get('y_max'))
@@ -1705,7 +1782,7 @@ class StaticAnalyzer:
             return 'one_way_slab'
         return None
 
-    def _panel_design_code_rule(self, mode: str, ratio: float, edge_ids: Dict[str, str]) -> str:
+    def _panel_design_code_rule(self, mode: str, ratio: float, edge_ids: Dict[str, Any]) -> str:
         if not (edge_ids.get('x_min') and edge_ids.get('x_max') and edge_ids.get('y_min') and edge_ids.get('y_max')):
             return 'GB 50010 9.1.1: slab supported on two opposite sides is calculated as one-way slab.'
         if mode == 'one_way_slab':
@@ -1714,7 +1791,7 @@ class StaticAnalyzer:
             return 'GB 50010 9.1.1: four-side supported slab with long/short span ratio <= 2.0 is calculated as two-way slab.'
         return 'GB 50010 9.1.1: four-side supported slab with long/short span ratio between 2.0 and 3.0 is preferably calculated as two-way slab.'
 
-    def _panel_design_code_rule_zh(self, mode: str, ratio: float, edge_ids: Dict[str, str]) -> str:
+    def _panel_design_code_rule_zh(self, mode: str, ratio: float, edge_ids: Dict[str, Any]) -> str:
         if not (edge_ids.get('x_min') and edge_ids.get('x_max') and edge_ids.get('y_min') and edge_ids.get('y_max')):
             return 'GB 50010 9.1.1：两对边支承板按单向板计算。'
         if mode == 'one_way_slab':
@@ -1731,14 +1808,14 @@ class StaticAnalyzer:
         if lx <= ly and edges.get('x_min') and edges.get('x_max'):
             line_load = intensity * lx / 2.0
             return [
-                self._distributed_gravity_load(str(edges['x_min']), line_load, panel),
-                self._distributed_gravity_load(str(edges['x_max']), line_load, panel),
+                self._distributed_gravity_load(edges['x_min'], line_load, panel),
+                self._distributed_gravity_load(edges['x_max'], line_load, panel),
             ]
         if edges.get('y_min') and edges.get('y_max'):
             line_load = intensity * ly / 2.0
             return [
-                self._distributed_gravity_load(str(edges['y_min']), line_load, panel),
-                self._distributed_gravity_load(str(edges['y_max']), line_load, panel),
+                self._distributed_gravity_load(edges['y_min'], line_load, panel),
+                self._distributed_gravity_load(edges['y_max'], line_load, panel),
             ]
         return []
 
@@ -1756,27 +1833,36 @@ class StaticAnalyzer:
 
         if lx <= ly:
             return [
-                self._distributed_gravity_load(str(edges['x_min']), long_edge_line_load, panel),
-                self._distributed_gravity_load(str(edges['x_max']), long_edge_line_load, panel),
-                self._distributed_gravity_load(str(edges['y_min']), short_edge_line_load, panel),
-                self._distributed_gravity_load(str(edges['y_max']), short_edge_line_load, panel),
+                self._distributed_gravity_load(edges['x_min'], long_edge_line_load, panel),
+                self._distributed_gravity_load(edges['x_max'], long_edge_line_load, panel),
+                self._distributed_gravity_load(edges['y_min'], short_edge_line_load, panel),
+                self._distributed_gravity_load(edges['y_max'], short_edge_line_load, panel),
             ]
         return [
-            self._distributed_gravity_load(str(edges['y_min']), long_edge_line_load, panel),
-            self._distributed_gravity_load(str(edges['y_max']), long_edge_line_load, panel),
-            self._distributed_gravity_load(str(edges['x_min']), short_edge_line_load, panel),
-            self._distributed_gravity_load(str(edges['x_max']), short_edge_line_load, panel),
+            self._distributed_gravity_load(edges['y_min'], long_edge_line_load, panel),
+            self._distributed_gravity_load(edges['y_max'], long_edge_line_load, panel),
+            self._distributed_gravity_load(edges['x_min'], short_edge_line_load, panel),
+            self._distributed_gravity_load(edges['x_max'], short_edge_line_load, panel),
         ]
 
-    def _distributed_gravity_load(self, element_id: str, line_load: float, panel: Dict[str, Any]) -> Dict[str, Any]:
-        return {
+    def _distributed_gravity_load(self, edge: Any, line_load: float, panel: Dict[str, Any]) -> Dict[str, Any]:
+        edge_data = edge if isinstance(edge, dict) else {'id': str(edge)}
+        element_id = str(edge_data.get('id', ''))
+        segment_length = self._to_float(edge_data.get('segmentLength', 0.0), 0.0)
+        element_length = self._to_float(edge_data.get('elementLength', 0.0), 0.0)
+        coverage_ratio = segment_length / element_length if segment_length > 0.0 and element_length > 0.0 else 1.0
+        load = {
             'type': 'distributed',
             'element': element_id,
             'wy': 0.0,
-            'wz': -line_load,
+            'wz': -line_load * coverage_ratio,
             'source': 'storyFloorLoad',
             'panel': panel.get('id'),
         }
+        if coverage_ratio < 1.0:
+            load['tributarySegmentLength'] = segment_length
+            load['elementLength'] = element_length
+        return load
 
     def _append_floor_load_trace_item(self, item: Dict[str, Any]) -> None:
         if not isinstance(self._floor_load_transfer_trace, dict):
@@ -1784,6 +1870,16 @@ class StaticAnalyzer:
         items = self._floor_load_transfer_trace.setdefault('items', [])
         if isinstance(items, list):
             items.append(item)
+
+    def _remove_floor_load_trace_items_for_story(self, story_id: str) -> None:
+        if not isinstance(self._floor_load_transfer_trace, dict):
+            return
+        items = self._floor_load_transfer_trace.get('items')
+        if not isinstance(items, list):
+            return
+        self._floor_load_transfer_trace['items'] = [
+            item for item in items if not isinstance(item, dict) or str(item.get('story', '')) != story_id
+        ]
 
     def _append_floor_load_warning(self, warning: str) -> None:
         if not warning:
@@ -1799,6 +1895,25 @@ class StaticAnalyzer:
         if not isinstance(warnings, list):
             return []
         return [str(warning) for warning in warnings if str(warning)]
+
+    def _refresh_floor_load_transfer_effective_mode(self) -> None:
+        if not isinstance(self._floor_load_transfer_trace, dict):
+            return
+        items = self._floor_load_transfer_trace.get('items')
+        if not isinstance(items, list) or not items:
+            return
+        modes = sorted({
+            str(item.get('effectiveMode'))
+            for item in items
+            if isinstance(item, dict) and item.get('effectiveMode')
+        })
+        if not modes:
+            return
+        effective_mode = modes[0] if len(modes) == 1 else 'mixed'
+        self._floor_load_transfer_trace['effectiveMode'] = effective_mode
+        self._floor_load_transfer_trace['method'] = self._floor_load_transfer_method_label(effective_mode)
+        self._floor_load_transfer_trace['methodEn'] = self._floor_load_transfer_method_label(effective_mode)
+        self._floor_load_transfer_trace['methodZh'] = self._floor_load_transfer_method_label_zh(effective_mode)
 
     def _floor_load_transfer_summary(self) -> Optional[Dict[str, Any]]:
         if not isinstance(self._floor_load_transfer_trace, dict) or not self._floor_load_transfer_trace:
@@ -1847,21 +1962,21 @@ class StaticAnalyzer:
         if not target_nodes:
             return {}
 
-        x_values = sorted({float(node.x) for node in target_nodes})
-        y_values = sorted({float(node.y) for node in target_nodes})
+        x_values = self._unique_sorted_coordinates(float(node.x) for node in target_nodes)
+        y_values = self._unique_sorted_coordinates(float(node.y) for node in target_nodes)
         x_lengths = self._tributary_lengths(x_values)
 
         if len(y_values) >= 2:
             y_lengths = self._tributary_lengths(y_values)
             return {
-                str(node.id): x_lengths.get(float(node.x), 0.0) * y_lengths.get(float(node.y), 0.0)
+                str(node.id): x_lengths.get(self._coord_key(float(node.x)), 0.0) * y_lengths.get(self._coord_key(float(node.y)), 0.0)
                 for node in target_nodes
             }
 
         tributary_width = self._floor_load_tributary_width(parameters)
         if len(x_values) >= 2:
             return {
-                str(node.id): x_lengths.get(float(node.x), 0.0) * tributary_width
+                str(node.id): x_lengths.get(self._coord_key(float(node.x)), 0.0) * tributary_width
                 for node in target_nodes
             }
 
@@ -1903,19 +2018,19 @@ class StaticAnalyzer:
         return value if value > 0 else None
 
     def _z_levels(self) -> List[float]:
-        return sorted({float(node.z) for node in self.model.nodes})
+        return self._unique_sorted_coordinates(float(node.z) for node in self.model.nodes)
 
     def _nodes_at_z(self, z: float) -> List[Any]:
         tolerance = 1e-6
         return [node for node in self.model.nodes if abs(float(node.z) - z) <= tolerance]
 
-    def _tributary_lengths(self, values: List[float]) -> Dict[float, float]:
+    def _tributary_lengths(self, values: List[float]) -> Dict[int, float]:
         if not values:
             return {}
         if len(values) == 1:
-            return {values[0]: 1.0}
+            return {self._coord_key(values[0]): 1.0}
 
-        lengths: Dict[float, float] = {}
+        lengths: Dict[int, float] = {}
         for idx, value in enumerate(values):
             if idx == 0:
                 length = (values[1] - value) / 2.0
@@ -1923,8 +2038,18 @@ class StaticAnalyzer:
                 length = (value - values[idx - 1]) / 2.0
             else:
                 length = (values[idx + 1] - values[idx - 1]) / 2.0
-            lengths[value] = max(float(length), 0.0)
+            lengths[self._coord_key(value)] = max(float(length), 0.0)
         return lengths
+
+    def _unique_sorted_coordinates(self, values: Any) -> List[float]:
+        by_key: Dict[int, float] = {}
+        for value in values:
+            key = self._coord_key(float(value))
+            by_key.setdefault(key, float(value))
+        return sorted(by_key.values())
+
+    def _coord_key(self, value: float) -> int:
+        return int(round(float(value) * 1_000_000))
 
     def _floor_load_tributary_width(self, parameters: Dict[str, Any]) -> float:
         for key in ('floorLoadTributaryWidthM', 'floor_load_tributary_width_m', 'tributaryWidthM', 'tributary_width_m'):

@@ -73,6 +73,90 @@ def build_model(
     return StructureModelV2.model_validate(payload)
 
 
+def build_two_story_mixed_support_model() -> StructureModelV2:
+    payload = {
+        "schema_version": "2.0.0",
+        "unit_system": "SI",
+        "stories": [
+            {
+                "id": "F1",
+                "height": 3.6,
+                "elevation": 0.0,
+                "floor_loads": [{"type": "dead", "value": 4.0}, {"type": "live", "value": 2.0}],
+            },
+            {
+                "id": "F2",
+                "height": 3.6,
+                "elevation": 3.6,
+                "floor_loads": [{"type": "dead", "value": 4.0}, {"type": "live", "value": 2.0}],
+            },
+        ],
+        "nodes": [
+            {"id": "T1", "x": 0.0, "y": 0.0, "z": 3.6, "story": "F1"},
+            {"id": "T2", "x": 6.0, "y": 0.0, "z": 3.6, "story": "F1"},
+            {"id": "T3", "x": 0.0, "y": 6.0, "z": 3.6, "story": "F1"},
+            {"id": "T4", "x": 6.0, "y": 6.0, "z": 3.6, "story": "F1"},
+            {"id": "U1", "x": 0.0, "y": 0.0, "z": 7.2, "story": "F2"},
+            {"id": "U2", "x": 6.0, "y": 0.0, "z": 7.2, "story": "F2"},
+            {"id": "U3", "x": 0.0, "y": 6.0, "z": 7.2, "story": "F2"},
+            {"id": "U4", "x": 6.0, "y": 6.0, "z": 7.2, "story": "F2"},
+        ],
+        "materials": [{"id": "1", "name": "Q355", "E": 206000.0, "nu": 0.3, "rho": 7850.0, "fy": 355.0}],
+        "sections": [
+            {
+                "id": "1",
+                "name": "beam",
+                "type": "rectangular",
+                "properties": {"A": 0.1, "Iy": 0.01, "Iz": 0.01, "J": 0.02, "G": 79000.0},
+            }
+        ],
+        "elements": [
+            {"id": "X0", "type": "beam", "nodes": ["T1", "T2"], "material": "1", "section": "1", "story": "F1"},
+            {"id": "X1", "type": "beam", "nodes": ["T3", "T4"], "material": "1", "section": "1", "story": "F1"},
+            {"id": "Y0", "type": "beam", "nodes": ["T1", "T3"], "material": "1", "section": "1", "story": "F1"},
+            {"id": "Y1", "type": "beam", "nodes": ["T2", "T4"], "material": "1", "section": "1", "story": "F1"},
+        ],
+    }
+    return StructureModelV2.model_validate(payload)
+
+
+def build_continuous_beam_floor_model() -> StructureModelV2:
+    payload = {
+        "schema_version": "2.0.0",
+        "unit_system": "SI",
+        "stories": [
+            {
+                "id": "F1",
+                "height": 3.6,
+                "elevation": 0.0,
+                "floor_loads": [{"type": "dead", "value": 4.0}, {"type": "live", "value": 2.0}],
+            }
+        ],
+        "nodes": [
+            {"id": "A0", "x": 0.0, "y": 0.0, "z": 3.6, "story": "F1"},
+            {"id": "A1", "x": 6.0, "y": 0.0, "z": 3.6, "story": "F1"},
+            {"id": "A2", "x": 12.0, "y": 0.0, "z": 3.6, "story": "F1"},
+            {"id": "B0", "x": 0.0, "y": 6.0, "z": 3.6, "story": "F1"},
+            {"id": "B1", "x": 6.0, "y": 6.0, "z": 3.6, "story": "F1"},
+            {"id": "B2", "x": 12.0, "y": 6.0, "z": 3.6, "story": "F1"},
+        ],
+        "materials": [{"id": "1", "name": "Q355", "E": 206000.0, "nu": 0.3, "rho": 7850.0, "fy": 355.0}],
+        "sections": [
+            {
+                "id": "1",
+                "name": "beam",
+                "type": "rectangular",
+                "properties": {"A": 0.1, "Iy": 0.01, "Iz": 0.01, "J": 0.02, "G": 79000.0},
+            }
+        ],
+        "elements": [
+            {"id": "X0", "type": "beam", "nodes": ["A0", "A2"], "material": "1", "section": "1", "story": "F1"},
+            {"id": "X1", "type": "beam", "nodes": ["B0", "B2"], "material": "1", "section": "1", "story": "F1"},
+        ],
+    }
+    return StructureModelV2.model_validate(payload)
+
+
 class FloorLoadExpansionTest(unittest.TestCase):
     def test_expands_story_floor_loads_to_gravity_nodal_loads(self) -> None:
         analyzer = StaticAnalyzer(build_model())
@@ -101,6 +185,8 @@ class FloorLoadExpansionTest(unittest.TestCase):
         transfer = analyzer._floor_load_transfer_summary()
         self.assertIsNotNone(transfer)
         self.assertEqual(transfer["requestedMode"], "auto_code_cn")
+        self.assertEqual(transfer["effectiveMode"], "two_way_slab")
+        self.assertEqual(transfer["methodZh"], "双向板传至支承梁并折算为等效均布梁荷载")
         self.assertEqual(transfer["items"][0]["effectiveMode"], "two_way_slab")
         self.assertIn("GB 50010", transfer["items"][0]["designCodeRule"])
         self.assertEqual(transfer["items"][0]["methodZh"], "双向板传至支承梁并折算为等效均布梁荷载")
@@ -116,9 +202,42 @@ class FloorLoadExpansionTest(unittest.TestCase):
         self.assertAlmostEqual(sum(-load["wz"] * 12.0 for load in loads), 216.0)
         transfer = analyzer._floor_load_transfer_summary()
         self.assertIsNotNone(transfer)
+        self.assertEqual(transfer["effectiveMode"], "one_way_slab")
+        self.assertEqual(transfer["methodZh"], "单向板传至支承梁")
         self.assertEqual(transfer["items"][0]["effectiveMode"], "one_way_slab")
         self.assertIn("long/short span ratio >= 3.0", transfer["items"][0]["designCodeRule"])
         self.assertEqual(transfer["items"][0]["methodZh"], "单向板传至支承梁")
+
+    def test_falls_back_to_node_tributary_per_story_when_slab_support_is_incomplete(self) -> None:
+        analyzer = StaticAnalyzer(build_two_story_mixed_support_model())
+
+        loads = analyzer._collect_nodal_loads({})
+
+        distributed_loads = [load for load in loads if load["type"] == "distributed"]
+        nodal_loads = [load for load in loads if load["type"] == "nodal"]
+        self.assertEqual(len(distributed_loads), 4)
+        self.assertEqual(len(nodal_loads), 4)
+        self.assertEqual({load["node"] for load in nodal_loads}, {"U1", "U2", "U3", "U4"})
+        self.assertAlmostEqual(sum(-load["wz"] * 6.0 for load in distributed_loads), 216.0)
+        self.assertAlmostEqual(sum(-load["fz"] for load in nodal_loads), 216.0)
+        transfer = analyzer._floor_load_transfer_summary()
+        self.assertIsNotNone(transfer)
+        self.assertEqual(transfer["effectiveMode"], "mixed")
+        self.assertEqual({item["effectiveMode"] for item in transfer["items"]}, {"two_way_slab", "node_tributary"})
+        self.assertTrue(any("falling back to node tributary-area" in warning for warning in transfer["warnings"]))
+
+    def test_continuous_floor_beams_can_support_panel_segments(self) -> None:
+        analyzer = StaticAnalyzer(build_continuous_beam_floor_model())
+
+        loads = analyzer._collect_nodal_loads({})
+
+        self.assertEqual(len(loads), 4)
+        self.assertEqual({load["element"] for load in loads}, {"X0", "X1"})
+        self.assertTrue(all(load.get("tributarySegmentLength") == 6.0 for load in loads))
+        self.assertAlmostEqual(sum(-load["wz"] * load["elementLength"] for load in loads), 432.0)
+        transfer = analyzer._floor_load_transfer_summary()
+        self.assertIsNotNone(transfer)
+        self.assertEqual(transfer["effectiveMode"], "one_way_slab")
 
     def test_can_force_node_tributary_method(self) -> None:
         analyzer = StaticAnalyzer(build_model(include_floor_beams=True))
@@ -142,6 +261,22 @@ class FloorLoadExpansionTest(unittest.TestCase):
             ],
             load_combinations=[
                 {"id": "ULS", "factors": {"D": 1.2, "L": 1.4}},
+            ],
+        ))
+
+        loads = analyzer._collect_nodal_loads({"loadCombinationId": "ULS"})
+
+        self.assertEqual(len(loads), 4)
+        self.assertAlmostEqual(sum(load["fz"] for load in loads), -273.6)
+
+    def test_infers_common_load_case_id_prefixes_for_floor_load_types(self) -> None:
+        analyzer = StaticAnalyzer(build_model(
+            load_cases=[
+                {"id": "LC-DEAD", "type": "other", "loads": []},
+                {"id": "LC-LIVE", "type": "other", "loads": []},
+            ],
+            load_combinations=[
+                {"id": "ULS", "factors": {"LC-DEAD": 1.2, "LC-LIVE": 1.4}},
             ],
         ))
 
