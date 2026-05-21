@@ -9,7 +9,7 @@ import { VisualizationModalShell } from './modal-shell'
 import { StructuralScene } from './structural-scene'
 import type { SceneExportHandle } from './structural-scene'
 import { VisualizationToolbar } from './toolbar'
-import type { VisualizationCase, VisualizationPlane, VisualizationSnapshot, VisualizationViewMode } from './types'
+import type { VisualizationCase, VisualizationLoad, VisualizationPlane, VisualizationSnapshot, VisualizationViewMode } from './types'
 
 function getCaseLabel(caseId: string, fallbackLabel: string, t: (key: MessageKey) => string) {
   if (caseId === 'model') return t('visualizationSourceModel')
@@ -20,6 +20,45 @@ function getCaseLabel(caseId: string, fallbackLabel: string, t: (key: MessageKey
 
 function withUnit(value: string, unit?: string) {
   return unit ? `${value} ${unit}` : value
+}
+
+function getLoadUnit(load: VisualizationLoad, snapshot: VisualizationSnapshot | null) {
+  if (load.kind === 'area') return snapshot?.floorLoadUnit
+  if (load.kind === 'distributed') return snapshot?.distributedLoadUnit
+  return snapshot?.nodalLoadUnit
+}
+
+function getLoadAreaUnit(snapshot: VisualizationSnapshot | null) {
+  const lengthUnit = snapshot?.lengthUnit || snapshot?.nodeLabelUnit
+  return lengthUnit ? `${lengthUnit}^2` : undefined
+}
+
+function getLoadTargetLabel(load: VisualizationLoad, t: (key: MessageKey) => string) {
+  if (load.kind === 'area') {
+    return `${load.label || load.storyId || '-'} · ${t('visualizationOriginalFloorAreaLoad')}`
+  }
+  if (load.kind === 'distributed') {
+    return `${load.elementId || '-'} · ${t('visualizationElementsList')}`
+  }
+  return `${load.nodeId || '-'} · ${t('visualizationNodesList')}`
+}
+
+function getLoadListLabel(load: VisualizationLoad) {
+  if (load.kind === 'area') {
+    return `${load.label || load.storyId || '-'} · A`
+  }
+  if (load.kind === 'distributed') {
+    return `${load.elementId || '-'} · q`
+  }
+  return `${load.nodeId || '-'} · P`
+}
+
+function getFloorLoadComponentLabel(type: string, t: (key: MessageKey) => string) {
+  const normalized = type.toLowerCase()
+  if (normalized === 'dead') return t('visualizationDeadLoad')
+  if (normalized === 'live') return t('visualizationLiveLoad')
+  if (normalized === 'other') return t('visualizationOtherLoad')
+  return type
 }
 
 function getCaseMaxDisplacementMagnitude(activeCase: VisualizationCase | null) {
@@ -206,6 +245,7 @@ export function StructuralVisualizationModal({
                 <div>{t('visualizationForceMoment')}: {snapshot.momentUnit || '-'}</div>
                 <div>{t('visualizationLoadsList')}: {snapshot.nodalLoadUnit || '-'}</div>
                 <div>q: {snapshot.distributedLoadUnit || '-'}</div>
+                <div>A: {snapshot.floorLoadUnit || '-'}</div>
               </div>
             </div>
           ) : null}
@@ -269,15 +309,29 @@ export function StructuralVisualizationModal({
           {selectedLoad ? (
             <div className="rounded-2xl border border-border/70 bg-card/80 p-4 dark:border-white/10 dark:bg-slate-950/40">
               <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{t('visualizationSelectedLoad')}</div>
-              <div className="mt-2 text-sm text-muted-foreground">
-                {selectedLoad.kind === 'distributed'
-                  ? `${selectedLoad.elementId || '-'} · ${t('visualizationElementsList')}`
-                  : `${selectedLoad.nodeId} · ${t('visualizationNodesList')}`}
-              </div>
+              <div className="mt-2 text-sm text-muted-foreground">{getLoadTargetLabel(selectedLoad, t)}</div>
               <div className="mt-3 space-y-2 text-sm text-muted-foreground">
-                <div>X: {withUnit(formatNumber(selectedLoad.vector.x, locale), selectedLoad.kind === 'distributed' ? snapshot?.distributedLoadUnit : snapshot?.nodalLoadUnit)}</div>
-                <div>Y: {withUnit(formatNumber(selectedLoad.vector.y, locale), selectedLoad.kind === 'distributed' ? snapshot?.distributedLoadUnit : snapshot?.nodalLoadUnit)}</div>
-                <div>Z: {withUnit(formatNumber(selectedLoad.vector.z, locale), selectedLoad.kind === 'distributed' ? snapshot?.distributedLoadUnit : snapshot?.nodalLoadUnit)}</div>
+                {selectedLoad.kind === 'area' ? (
+                  <>
+                    <div>{t('visualizationFloorLoadIntensity')}: {withUnit(formatNumber(selectedLoad.intensity ?? Math.abs(selectedLoad.vector.z), locale), snapshot?.floorLoadUnit)}</div>
+                    {typeof selectedLoad.area === 'number' ? (
+                      <div>{t('visualizationFloorLoadArea')}: {withUnit(formatNumber(selectedLoad.area, locale), getLoadAreaUnit(snapshot))}</div>
+                    ) : null}
+                    {selectedLoad.components?.length ? (
+                      <div>
+                        {t('visualizationFloorLoadComponents')}: {selectedLoad.components.map((component) =>
+                          `${getFloorLoadComponentLabel(component.type, t)} ${withUnit(formatNumber(component.value, locale), snapshot?.floorLoadUnit)}`
+                        ).join(', ')}
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <div>X: {withUnit(formatNumber(selectedLoad.vector.x, locale), getLoadUnit(selectedLoad, snapshot))}</div>
+                    <div>Y: {withUnit(formatNumber(selectedLoad.vector.y, locale), getLoadUnit(selectedLoad, snapshot))}</div>
+                    <div>Z: {withUnit(formatNumber(selectedLoad.vector.z, locale), getLoadUnit(selectedLoad, snapshot))}</div>
+                  </>
+                )}
               </div>
             </div>
           ) : null}
@@ -342,7 +396,7 @@ export function StructuralVisualizationModal({
                     <div className="flex max-h-28 flex-wrap gap-2 overflow-auto">
                       {snapshot.loads.map((load, index) => (
                         <button
-                          key={`${load.caseId || 'default'}-${load.nodeId || load.elementId || index}-${index}`}
+                          key={`${load.caseId || 'default'}-${load.nodeId || load.elementId || load.storyId || index}-${index}`}
                           className={`rounded-full border px-3 py-1.5 text-xs transition ${selectedLoadIndex === index ? 'border-cyan-300/50 bg-cyan-300/14 text-foreground' : 'border-border/70 bg-background/70 text-muted-foreground hover:text-foreground dark:border-white/10 dark:bg-white/5'}`}
                           onClick={() => {
                             setSelectedLoadIndex(index)
@@ -351,7 +405,7 @@ export function StructuralVisualizationModal({
                           }}
                           type="button"
                         >
-                          {load.kind === 'distributed' ? `${load.elementId || '-'} · q` : `${load.nodeId} · P`}
+                          {getLoadListLabel(load)}
                         </button>
                       ))}
                     </div>
@@ -423,6 +477,7 @@ export function StructuralVisualizationModal({
               exportRef={exportRef}
               forceMetric={forceMetric}
               onSelectElement={setSelectedElementId}
+              onSelectLoad={setSelectedLoadIndex}
               onSelectNode={setSelectedNodeId}
               onClearSelection={() => {
                 setSelectedElementId(null)

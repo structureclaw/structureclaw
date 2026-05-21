@@ -6,7 +6,7 @@ import { Bounds, Html, Line, OrbitControls, OrthographicCamera, PerspectiveCamer
 import * as THREE from 'three'
 import type { MessageKey } from '@/lib/i18n'
 import { getBucklingModes, getVisualizationExtensionByView } from './extensions'
-import type { BucklingMode, VisualizationCase, VisualizationPlane, VisualizationSnapshot, VisualizationViewMode } from './types'
+import type { BucklingMode, VisualizationCase, VisualizationLoad, VisualizationPlane, VisualizationSnapshot, VisualizationViewMode } from './types'
 import {
   type ForceMetric,
   getCaseNodeDisplacement,
@@ -45,6 +45,7 @@ type StructuralSceneProps = {
   showUndeformed: boolean
   view: VisualizationViewMode
   onSelectElement: (id: string | null) => void
+  onSelectLoad: (index: number | null) => void
   onSelectNode: (id: string | null) => void
   onClearSelection: () => void
   /** Optional ref to expose exportPng() to parent. */
@@ -245,6 +246,111 @@ function DistributedLoadMarker({
   )
 }
 
+function AreaLoadMarker({
+  arrowLength,
+  color,
+  load,
+  onClick,
+  plane,
+  dimension,
+  selected,
+}: {
+  arrowLength: number
+  color: string
+  load: VisualizationLoad
+  onClick: () => void
+  plane: VisualizationPlane
+  dimension: 2 | 3
+  selected: boolean
+}) {
+  const panelPoints = useMemo(() => {
+    return (load.polygon || []).map((point) =>
+      projectPosition(new THREE.Vector3(point.x, point.y, point.z), plane, dimension)
+    )
+  }, [dimension, load.polygon, plane])
+
+  const geometry = useMemo(() => {
+    if (panelPoints.length < 3) {
+      return null
+    }
+    const indices = panelPoints.length === 4 ? [0, 1, 2, 0, 2, 3] : [0, 1, 2]
+    const vertices = new Float32Array(indices.flatMap((index) => panelPoints[index].toArray()))
+    const next = new THREE.BufferGeometry()
+    next.setAttribute('position', new THREE.BufferAttribute(vertices, 3))
+    next.computeVertexNormals()
+    return next
+  }, [panelPoints])
+
+  useEffect(() => {
+    return () => {
+      geometry?.dispose()
+    }
+  }, [geometry])
+
+  const arrowData = useMemo(() => {
+    if (panelPoints.length < 3) {
+      return []
+    }
+    const raw = new THREE.Vector3(load.vector.x, load.vector.y, load.vector.z)
+    if (!isRenderableLoadVector(raw)) {
+      return []
+    }
+    const vector = projectPosition(raw.normalize().multiplyScalar(arrowLength), plane, dimension)
+    const direction = vector.clone().normalize()
+    const minX = Math.min(...panelPoints.map((point) => point.x))
+    const maxX = Math.max(...panelPoints.map((point) => point.x))
+    const minY = Math.min(...panelPoints.map((point) => point.y))
+    const maxY = Math.max(...panelPoints.map((point) => point.y))
+    const z = panelPoints.reduce((sum, point) => sum + point.z, 0) / panelPoints.length
+    const xValues = [0.25, 0.5, 0.75].map((ratio) => minX + (maxX - minX) * ratio)
+    const yValues = [0.25, 0.5, 0.75].map((ratio) => minY + (maxY - minY) * ratio)
+    return xValues.flatMap((x) =>
+      yValues.map((y) => ({
+        origin: new THREE.Vector3(x, y, z).sub(direction.clone().multiplyScalar(vector.length())),
+        vector,
+      }))
+    )
+  }, [arrowLength, dimension, load.vector.x, load.vector.y, load.vector.z, panelPoints, plane])
+
+  if (!geometry || panelPoints.length < 3) {
+    return null
+  }
+
+  const outline = [...panelPoints, panelPoints[0]].map((point) => point.toArray())
+
+  return (
+    <group>
+      <mesh
+        geometry={geometry}
+        onClick={(event) => {
+          event.stopPropagation()
+          onClick()
+        }}
+        renderOrder={selected ? 2 : 1}
+      >
+        <meshStandardMaterial
+          color={color}
+          depthWrite={false}
+          opacity={selected ? 0.42 : 0.26}
+          roughness={0.74}
+          side={THREE.DoubleSide}
+          transparent
+        />
+      </mesh>
+      <Line color={selected ? '#f59e0b' : color} lineWidth={selected ? 2.4 : 1.6} points={outline} />
+      {arrowData.map((entry, index) => (
+        <VectorArrow
+          color={selected ? '#f59e0b' : '#14b8a6'}
+          key={`area-load-arrow-${index}`}
+          origin={entry.origin}
+          selected={selected}
+          vector={entry.vector}
+        />
+      ))}
+    </group>
+  )
+}
+
 /** Animated tube for buckling view — updates position/orientation each frame from amplitudeRef. */
 function BucklingMember({
   baseStart,
@@ -331,6 +437,7 @@ function SceneContent({
   snapshot,
   view,
   onSelectElement,
+  onSelectLoad,
   onSelectNode,
   onClearSelection,
   maxElementMetric,
@@ -417,6 +524,10 @@ function SceneContent({
 
     if (selectedLoadIndex !== null && selectedLoadIndex !== undefined) {
       const selectedLoad = snapshot.loads[selectedLoadIndex]
+      if (selectedLoad?.kind === 'area' && selectedLoad.polygon?.length) {
+        const points = selectedLoad.polygon.map((point) => projectPosition(new THREE.Vector3(point.x, point.y, point.z), plane, snapshot.dimension))
+        return points.reduce((sum, point) => sum.add(point), new THREE.Vector3()).multiplyScalar(1 / points.length)
+      }
       if (selectedLoad?.elementId) {
         const element = snapshot.elements.find((entry) => entry.id === selectedLoad.elementId)
         if (element) {
@@ -472,6 +583,27 @@ function SceneContent({
         <group onDoubleClick={() => {
           onClearSelection()
         }}>
+          {showLoads && view === 'model' && snapshot.loads.map((load, index) => {
+            if (load.kind !== 'area' || !load.polygon?.length) {
+              return null
+            }
+            return (
+              <AreaLoadMarker
+                color={selectedLoadIndex === index ? '#f59e0b' : '#14b8a6'}
+                dimension={snapshot.dimension}
+                key={`area-load-${load.storyId || index}-${index}`}
+                arrowLength={loadArrowLength}
+                load={load}
+                onClick={() => {
+                  onSelectLoad(index)
+                  onSelectElement(null)
+                  onSelectNode(null)
+                }}
+                plane={plane}
+                selected={selectedLoadIndex === index}
+              />
+            )
+          })}
           {snapshot.elements.map((element) => {
             const startData = nodeMap.get(element.nodeIds[0])
             const endData = nodeMap.get(element.nodeIds[1])
@@ -551,6 +683,7 @@ function SceneContent({
                     onClick={() => {
                       onSelectElement(element.id)
                       onSelectNode(null)
+                      onSelectLoad(null)
                     }}
                     onHover={(hovered) => setHoveredElementId(hovered ? element.id : null)}
                   />
@@ -562,6 +695,7 @@ function SceneContent({
                     onClick={() => {
                       onSelectElement(element.id)
                       onSelectNode(null)
+                      onSelectLoad(null)
                     }}
                     onHover={(hovered) => setHoveredElementId(hovered ? element.id : null)}
                     selected={selectedElementId === element.id}
@@ -648,6 +782,7 @@ function SceneContent({
                   onClick={() => {
                     onSelectNode(entry.id)
                     onSelectElement(null)
+                    onSelectLoad(null)
                   }}
                   onPointerOut={() => setHoveredNodeId(null)}
                   onPointerOver={() => setHoveredNodeId(entry.id)}
@@ -660,6 +795,7 @@ function SceneContent({
                   onClick={() => {
                     onSelectNode(entry.id)
                     onSelectElement(null)
+                    onSelectLoad(null)
                   }}
                   onPointerOut={() => setHoveredNodeId(null)}
                   onPointerOver={() => setHoveredNodeId(entry.id)}

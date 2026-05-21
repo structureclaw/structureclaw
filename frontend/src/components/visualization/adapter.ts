@@ -324,9 +324,135 @@ function applyEnvelopeTables(target: VisualizationCase, envelopeTables: Record<s
   })
 }
 
-function getLoads(model: Record<string, unknown> | null): VisualizationLoad[] {
-  const loadCases = Array.isArray(model?.load_cases) ? model?.load_cases : []
+function nearlyEqual(left: number, right: number, tolerance = 1e-6) {
+  return Math.abs(left - right) <= tolerance
+}
+
+function getStoryFloorLoadComponents(story: Record<string, unknown>): Array<{ type: string; value: number }> {
+  const components: Array<{ type: string; value: number }> = []
+  const seenTypes = new Set<string>()
+  const floorLoads = Array.isArray(story.floor_loads) ? story.floor_loads : []
+
+  floorLoads.forEach((entry) => {
+    const record = asRecord(entry)
+    const value = pickNumber(record, ['value'])
+    if (!record || value === null || Math.abs(value) <= 1e-12) {
+      return
+    }
+    const type = asNonEmptyString(record.type)?.toLowerCase() || 'other'
+    components.push({ type, value })
+    seenTypes.add(type)
+  })
+
+  const fallbackFields: Array<[string, string]> = [
+    ['dead_load', 'dead'],
+    ['live_load', 'live'],
+  ]
+  fallbackFields.forEach(([field, type]) => {
+    if (seenTypes.has(type)) {
+      return
+    }
+    const value = pickNumber(story, [field])
+    if (value !== null && Math.abs(value) > 1e-12) {
+      components.push({ type, value })
+    }
+  })
+
+  return components
+}
+
+function getFloorAreaLoads(model: Record<string, unknown> | null, nodes: VisualizationNode[]): VisualizationLoad[] {
+  const stories = Array.isArray(model?.stories) ? model.stories : []
+  if (!stories.length || nodes.length < 4) {
+    return []
+  }
+
+  const rawNodes = Array.isArray(model?.nodes) ? model.nodes : []
+  const nodeById = new Map(nodes.map((node) => [node.id, node]))
+  const rawNodeById = new Map<string, Record<string, unknown>>()
+  rawNodes.forEach((entry) => {
+    const record = asRecord(entry)
+    const id = asStringId(record?.id)
+    if (record && id) {
+      rawNodeById.set(id, record)
+    }
+  })
+
   const loads: VisualizationLoad[] = []
+  let inferredBaseElevation = 0
+  stories.forEach((entry, storyIndex) => {
+    const story = asRecord(entry)
+    if (!story) {
+      return
+    }
+
+    const components = getStoryFloorLoadComponents(story)
+    const intensity = components.reduce((sum, component) => sum + component.value, 0)
+    if (Math.abs(intensity) <= 1e-12) {
+      return
+    }
+
+    const storyId = asStringId(story.id) || `F${storyIndex + 1}`
+    const height = pickNumber(story, ['height'])
+    const baseElevation = pickNumber(story, ['elevation']) ?? inferredBaseElevation
+    const floorElevation = height !== null ? baseElevation + height : null
+    if (height !== null) {
+      inferredBaseElevation = floorElevation ?? inferredBaseElevation
+    }
+
+    const storyNodeIds = new Set<string>()
+    rawNodeById.forEach((rawNode, nodeId) => {
+      const rawStoryId = asStringId(rawNode.story)
+      const z = pickNodeCoordinate(rawNode, 'z')
+      if (rawStoryId === storyId || (floorElevation !== null && z !== null && nearlyEqual(z, floorElevation))) {
+        storyNodeIds.add(nodeId)
+      }
+    })
+
+    const floorNodes = Array.from(storyNodeIds)
+      .map((nodeId) => nodeById.get(nodeId))
+      .filter((node): node is VisualizationNode => Boolean(node))
+    if (floorNodes.length < 4) {
+      return
+    }
+
+    const minX = Math.min(...floorNodes.map((node) => node.position.x))
+    const maxX = Math.max(...floorNodes.map((node) => node.position.x))
+    const minY = Math.min(...floorNodes.map((node) => node.position.y))
+    const maxY = Math.max(...floorNodes.map((node) => node.position.y))
+    if (maxX - minX <= 1e-6 || maxY - minY <= 1e-6) {
+      return
+    }
+
+    const z = floorElevation ?? floorNodes.reduce((sum, node) => sum + node.position.z, 0) / floorNodes.length
+    const area = (maxX - minX) * (maxY - minY)
+    loads.push({
+      kind: 'area',
+      storyId,
+      label: storyId,
+      intensity,
+      area,
+      components,
+      vector: {
+        x: 0,
+        y: 0,
+        z: -intensity,
+      },
+      polygon: [
+        { x: minX, y: minY, z },
+        { x: maxX, y: minY, z },
+        { x: maxX, y: maxY, z },
+        { x: minX, y: maxY, z },
+      ],
+    })
+  })
+
+  return loads
+}
+
+function getLoads(model: Record<string, unknown> | null, nodes: VisualizationNode[]): VisualizationLoad[] {
+  const loadCases = Array.isArray(model?.load_cases) ? model?.load_cases : []
+  const loads: VisualizationLoad[] = getFloorAreaLoads(model, nodes)
 
   loadCases.forEach((loadCase) => {
     const loadCaseRecord = asRecord(loadCase)
@@ -354,7 +480,6 @@ function getLoads(model: Record<string, unknown> | null): VisualizationLoad[] {
       const elementId = asStringId(load.element)
       if (elementId) {
         loads.push({
-          nodeId: '',
           elementId,
           caseId,
           kind: 'distributed',
@@ -600,7 +725,7 @@ export function buildVisualizationSnapshot(params: {
   }
 
   const baseDisplacements = asRecord(data?.displacements)
-  const loads = getLoads(model)
+  const loads = getLoads(model, nodes)
   const cases: VisualizationCase[] = source === 'result'
     ? (() => {
         const baseReactions = asRecord(data?.reactions)
@@ -711,6 +836,7 @@ export function buildVisualizationSnapshot(params: {
     momentUnit: units.momentUnit,
     nodalLoadUnit: units.nodalLoadUnit,
     distributedLoadUnit: units.distributedLoadUnit,
+    floorLoadUnit: `${units.forceUnit}/${units.lengthUnit}^2`,
     nodes,
     elements,
     loads,

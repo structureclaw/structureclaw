@@ -28,6 +28,11 @@ type VisualizationVector3 = {
   z: number
 }
 
+export type VisualizationFloorLoadComponent = {
+  type: string
+  value: number
+}
+
 export type VisualizationNodeResults = {
   displacement?: Partial<Record<'ux' | 'uy' | 'uz' | 'rx' | 'ry' | 'rz', number>>
   reaction?: Partial<Record<'fx' | 'fy' | 'fz' | 'mx' | 'my' | 'mz', number>>
@@ -61,11 +66,17 @@ export type VisualizationElement = {
 }
 
 export type VisualizationLoad = {
-  nodeId: string
+  nodeId?: string
   vector: VisualizationVector3
   caseId?: string
   elementId?: string
-  kind?: 'nodal' | 'distributed'
+  kind?: 'nodal' | 'distributed' | 'area'
+  storyId?: string
+  label?: string
+  intensity?: number
+  area?: number
+  polygon?: VisualizationVector3[]
+  components?: VisualizationFloorLoadComponent[]
 }
 
 export type VisualizationCase = {
@@ -95,6 +106,7 @@ export type VisualizationSnapshot = {
   momentUnit?: string
   nodalLoadUnit?: string
   distributedLoadUnit?: string
+  floorLoadUnit?: string
   nodes: VisualizationNode[]
   elements: VisualizationElement[]
   loads: VisualizationLoad[]

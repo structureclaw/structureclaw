@@ -46,6 +46,69 @@ describe('visualization-adapter', () => {
     expect(snapshot).toMatchObject(expected)
   })
 
+  it('exposes original story floor loads as area load markers', () => {
+    const snapshot = buildVisualizationSnapshot({
+      title: 'Floor Loads',
+      mode: 'model-only',
+      model: {
+        schema_version: '1.0.0',
+        metadata: {
+          coordinateSemantics: 'global-z-up',
+          frameDimension: '3d',
+        },
+        stories: [
+          {
+            id: 'F1',
+            height: 3,
+            floor_loads: [
+              { type: 'dead', value: 3.2 },
+              { type: 'live', value: 2 },
+            ],
+            dead_load: 1.1,
+          },
+        ],
+        nodes: [
+          { id: 'B1', x: 0, y: 0, z: 0 },
+          { id: 'B2', x: 6, y: 0, z: 0 },
+          { id: 'B3', x: 6, y: 4, z: 0 },
+          { id: 'B4', x: 0, y: 4, z: 0 },
+          { id: 'T1', x: 0, y: 0, z: 3, story: 'F1' },
+          { id: 'T2', x: 6, y: 0, z: 3, story: 'F1' },
+          { id: 'T3', x: 6, y: 4, z: 3, story: 'F1' },
+          { id: 'T4', x: 0, y: 4, z: 3, story: 'F1' },
+        ],
+        elements: [
+          { id: 'C1', type: 'column', nodes: ['B1', 'T1'], material: 'M1', section: 'S1' },
+          { id: 'C2', type: 'column', nodes: ['B2', 'T2'], material: 'M1', section: 'S1' },
+          { id: 'C3', type: 'column', nodes: ['B3', 'T3'], material: 'M1', section: 'S1' },
+          { id: 'C4', type: 'column', nodes: ['B4', 'T4'], material: 'M1', section: 'S1' },
+        ],
+      },
+    })
+
+    const floorLoad = snapshot?.loads.find((load) => load.kind === 'area')
+
+    expect(snapshot).not.toBeNull()
+    expect(snapshot?.floorLoadUnit).toBe('kN/m^2')
+    expect(floorLoad).toMatchObject({
+      kind: 'area',
+      storyId: 'F1',
+      intensity: 5.2,
+      area: 24,
+      vector: { x: 0, y: 0, z: -5.2 },
+      components: [
+        { type: 'dead', value: 3.2 },
+        { type: 'live', value: 2 },
+      ],
+    })
+    expect(floorLoad?.polygon).toEqual([
+      { x: 0, y: 0, z: 3 },
+      { x: 6, y: 0, z: 3 },
+      { x: 6, y: 4, z: 3 },
+      { x: 0, y: 4, z: 3 },
+    ])
+  })
+
   it('maps a canonical 2d frame payload into an xz snapshot without axis swapping', () => {
     const snapshot = buildVisualizationSnapshot({
       title: '2D Frame',
