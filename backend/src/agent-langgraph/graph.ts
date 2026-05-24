@@ -292,20 +292,19 @@ function createCallModelNode(
       return null;
     }).filter((m): m is BaseMessage => m !== null);
 
-    // Transform ToolMessages with base64 image data into proper multimodal
-    // content blocks (sanitized ToolMessage + synthetic HumanMessage).
-    const effectiveMsgs = transformImageToolMessages(msgs);
-
     // Count prior tool calls in this turn to enforce max iterations.
+    // Use the original (pre-transform) message array so synthetic
+    // HumanMessages injected by transformImageToolMessages don't
+    // shift the turn boundary or under-count tool calls.
     let lastHumanIndex = -1;
-    for (let i = effectiveMsgs.length - 1; i >= 0; i--) {
-      const m = effectiveMsgs[i];
+    for (let i = msgs.length - 1; i >= 0; i--) {
+      const m = msgs[i];
       if (typeof m === 'object' && m !== null && '_getType' in m && (m as any)._getType?.() === 'human') {
         lastHumanIndex = i;
         break;
       }
     }
-    const currentTurnMessages = lastHumanIndex === -1 ? effectiveMsgs : effectiveMsgs.slice(lastHumanIndex + 1);
+    const currentTurnMessages = lastHumanIndex === -1 ? msgs : msgs.slice(lastHumanIndex + 1);
     const toolCallCount = currentTurnMessages.reduce((count, m) => {
       if (
         m != null
@@ -333,6 +332,12 @@ function createCallModelNode(
     // receives the same config object) also sees agentState.
     const configurableAny = config.configurable as Record<string, unknown>;
     configurableAny.agentState = state;
+
+    // Transform ToolMessages with base64 image data into proper multimodal
+    // content blocks (sanitized ToolMessage + synthetic HumanMessage).
+    // Applied after turn-boundary computation so synthetic messages
+    // don't affect tool-call counting or compaction turn detection.
+    const effectiveMsgs = transformImageToolMessages(msgs);
 
     const compaction = compactMessagesForContext({
       messages: effectiveMsgs,

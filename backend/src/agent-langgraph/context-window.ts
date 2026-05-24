@@ -43,9 +43,9 @@ function extractTextContent(content: unknown): string {
           return String((block as { text?: unknown }).text ?? '');
         }
         if (block && typeof block === 'object' && 'type' in block) {
-          const typed = block as { type: string; url?: string; source_type?: string };
-          if (typed.type === 'image') {
-            const url = typed.url || '';
+          const typed = block as { type: string; url?: string; image_url?: { url: string } };
+          if (typed.type === 'image' || typed.type === 'image_url') {
+            const url = typed.url || typed.image_url?.url || '';
             if (url.startsWith('data:image/')) return estimateBase64ImageChars(url);
             return '[image ~4000 chars]';
           }
