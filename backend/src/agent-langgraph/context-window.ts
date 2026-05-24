@@ -30,18 +30,40 @@ function messageType(message: BaseMessage): string {
 }
 
 function extractTextContent(content: unknown): string {
-  if (typeof content === 'string') return content;
+  if (typeof content === 'string') {
+    if (content.includes('data:image/') && content.includes(';base64,')) {
+      return estimateBase64ImageChars(content);
+    }
+    return content;
+  }
   if (Array.isArray(content)) {
     return content
       .map((block) => {
         if (block && typeof block === 'object' && 'text' in block) {
           return String((block as { text?: unknown }).text ?? '');
         }
+        if (block && typeof block === 'object' && 'type' in block) {
+          const typed = block as { type: string; url?: string; source_type?: string };
+          if (typed.type === 'image') {
+            const url = typed.url || '';
+            if (url.startsWith('data:image/')) return estimateBase64ImageChars(url);
+            return '[image ~4000 chars]';
+          }
+        }
         return '';
       })
       .join('');
   }
   return content === undefined ? '' : JSON.stringify(content);
+}
+
+function estimateBase64ImageChars(dataUri: string): string {
+  const base64Start = dataUri.indexOf(';base64,');
+  if (base64Start === -1) return '[image ~4000 chars]';
+  const base64Length = dataUri.length - base64Start - 8;
+  const estimatedBytes = base64Length * 0.75;
+  const estimatedTokens = Math.max(85, Math.ceil(estimatedBytes / 750));
+  return `[image ~${estimatedTokens * 4} chars]`;
 }
 
 function truncateText(value: string, limit: number): string {

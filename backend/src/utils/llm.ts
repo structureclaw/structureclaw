@@ -176,18 +176,27 @@ export function createChatModel(
   return wrapWithLlmLogging(model);
 }
 
+function sanitizeBase64ForLogging(text: string): string {
+  return text.replace(
+    /data:image\/[a-zA-Z+]+;base64,[A-Za-z0-9+/=]+/g,
+    (match) => `[base64 image: ${Math.round(match.length / 1024)} KB]`,
+  );
+}
+
 function wrapWithLlmLogging(model: ChatOpenAI): ChatOpenAI {
   const originalInvoke = model.invoke.bind(model);
 
   (model as any).invoke = async function (input: any, options?: any) {
-    const promptStr = typeof input === 'string' ? input : JSON.stringify(input);
+    const promptStr = sanitizeBase64ForLogging(typeof input === 'string' ? input : JSON.stringify(input));
     const start = Date.now();
     const loggedModel = getEffectiveLlmSettings().llmModel;
     try {
       const result = await originalInvoke(input, options);
-      const content = typeof result.content === 'string'
-        ? result.content
-        : JSON.stringify(result.content);
+      const content = sanitizeBase64ForLogging(
+        typeof result.content === 'string'
+          ? result.content
+          : JSON.stringify(result.content),
+      );
       const durationMs = Date.now() - start;
       llmCallLogger.log({
         model: loggedModel,
@@ -206,7 +215,7 @@ function wrapWithLlmLogging(model: ChatOpenAI): ChatOpenAI {
         response: null,
         durationMs,
         success: false,
-        error: String(error),
+        error: sanitizeBase64ForLogging(String(error)),
       });
       logLlmCall(logger, { model: loggedModel, durationMs, success: false });
       throw error;

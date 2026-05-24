@@ -21,6 +21,8 @@ const CONTEXT_OVERFLOW_PATTERNS = [
   'token limit exceeded',
   'reduce the length',
   'exceeds the maximum',
+  'prompt exceeds max length',
+  'exceeds max token',
   '上下文',
   'token 数',
 ];
