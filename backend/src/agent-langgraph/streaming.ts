@@ -169,7 +169,8 @@ export function langGraphEventToChunks(
           if (isAI) {
             if (hasToolCalls(msg)) {
               for (const tc of (msg as any).tool_calls) {
-                const phase = mapToolToPhase(tc.name);
+                const toolName = typeof tc.name === 'string' ? tc.name : 'unknown';
+                const phase = mapToolToPhase(toolName);
                 chunks.push({
                   type: 'step_upsert',
                   phaseId: `phase-${phase}`,
@@ -177,8 +178,8 @@ export function langGraphEventToChunks(
                     id: `step-${tc.id || randomUUID()}`,
                     phase,
                     status: 'running',
-                    tool: tc.name,
-                    title: tc.name,
+                    tool: toolName,
+                    title: toolName,
                     args: tc.args ?? undefined,
                     startedAt: new Date().toISOString(),
                   },

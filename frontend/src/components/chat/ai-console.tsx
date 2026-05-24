@@ -758,12 +758,13 @@ function stripLegacyAbortedSuffix(content: string) {
   return LEGACY_ABORTED_SUFFIX_PATTERNS.reduce((current, pattern) => current.replace(pattern, ''), content)
 }
 
-function mapToolNameToPhase(toolName: string): 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report' {
-  if (toolName.includes('detect') || toolName.includes('extract') || toolName.includes('clarification')) return 'understanding'
-  if (toolName.includes('draft') || toolName.includes('build_model') || toolName.includes('model')) return 'modeling'
-  if (toolName.includes('validate')) return 'validation'
-  if (toolName.includes('analysis') || toolName.includes('code_check')) return 'analysis'
-  if (toolName.includes('report')) return 'report'
+function mapToolNameToPhase(toolName: string | undefined): 'understanding' | 'modeling' | 'validation' | 'analysis' | 'report' {
+  const name = toolName ?? 'unknown'
+  if (name.includes('detect') || name.includes('extract') || name.includes('clarification')) return 'understanding'
+  if (name.includes('draft') || name.includes('build_model') || name.includes('model')) return 'modeling'
+  if (name.includes('validate')) return 'validation'
+  if (name.includes('analysis') || name.includes('code_check')) return 'analysis'
+  if (name.includes('report')) return 'report'
   return 'understanding'
 }
 
