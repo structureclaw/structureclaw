@@ -36,7 +36,9 @@ supportedAnalysisTypes:
 supportedModelFamilies:
   - frame
   - generic
-materialFamilies: []
+materialFamilies:
+  - steel
+  - concrete
 aliases: []
 toolHints: {}
 runtimeContract:

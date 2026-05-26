@@ -36,8 +36,11 @@ compatibility:
   minRuntimeVersion: 0.1.0
   skillApiVersion: v1
 supportedAnalysisTypes: []
-supportedModelFamilies: []
-materialFamilies: []
+supportedModelFamilies:
+  - frame
+  - generic
+materialFamilies:
+  - steel
 aliases: []
 toolHints: {}
 runtimeContract:

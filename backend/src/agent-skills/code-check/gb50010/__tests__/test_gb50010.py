@@ -64,10 +64,13 @@ class TestGetRules:
         assert gb50010.get_rules()['code'] == 'GB50010'
 
     def test_version_field(self):
-        assert gb50010.get_rules()['version'] == 'v1-minimal'
+        assert gb50010.get_rules()['version'] == 'v2-rc-frame-member-checks'
 
-    def test_rules_empty(self):
-        assert gb50010.get_rules()['rules'] == []
+    def test_rules_cover_beams_and_columns(self):
+        rules = gb50010.get_rules()['rules']
+        assert len(rules) == 2
+        assert rules[0]['elementType'] == ['beam']
+        assert rules[1]['elementType'] == ['column']
 
 
 class TestCheckElementStructure:
@@ -130,6 +133,43 @@ class TestCheckElementResult:
         checker = MockCodeChecker()
         result = gb50010.check_element(checker, 'B1', {})
         assert result['elementType'] == 'beam'
+
+    def test_element_type_column_from_context(self):
+        checker = MockCodeChecker()
+        result = gb50010.check_element(checker, 'E1', {
+            'elementContextById': {
+                'E1': {
+                    'type': 'column',
+                    'section': {'id': '1', 'name': '400X400'},
+                    'material': {'id': '1', 'grade': 'C30', 'category': 'concrete'},
+                    'concreteGrade': 'C30',
+                    'rebarGrade': 'HRB400',
+                },
+            },
+        })
+        assert result['elementType'] == 'column'
+        assert result['checks'][0]['name'] == '柱承载力验算'
+        assert result['checks'][0]['items'][0]['item'] == '轴压比'
+        assert result['elementContext'] == {
+            'type': 'column',
+            'section': {'id': '1', 'name': '400X400'},
+            'material': {'id': '1', 'grade': 'C30', 'category': 'concrete'},
+            'concreteGrade': 'C30',
+            'rebarGrade': 'HRB400',
+        }
+
+    def test_element_type_column_from_id_prefix(self):
+        checker = MockCodeChecker()
+        result = gb50010.check_element(checker, 'C1', {})
+        assert result['elementType'] == 'column'
+
+    def test_chapter_summaries_capture_controlling_failure(self):
+        checker = MockCodeChecker(overrides={'C1': {'轴压比': 1.2}})
+        result = gb50010.check_element(checker, 'C1', {})
+        assert result['status'] == 'fail'
+        assert result['chapterCount'] == 2
+        assert result['chapters'][0]['status'] == 'fail'
+        assert result['chapters'][0]['controllingClause'] == 'GB50010-2010 6.2.15'
 
     def test_code_version(self):
         checker = MockCodeChecker()

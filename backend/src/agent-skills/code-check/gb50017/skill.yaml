@@ -29,8 +29,10 @@ compatibility:
 designCode: GB50017
 supportedAnalysisTypes: []
 supportedModelFamilies:
+  - frame
   - generic
-materialFamilies: []
+materialFamilies:
+  - steel
 aliases: []
 toolHints: {}
 runtimeContract:

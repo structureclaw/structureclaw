@@ -29,8 +29,10 @@ compatibility:
 designCode: GB50010
 supportedAnalysisTypes: []
 supportedModelFamilies:
+  - frame
   - generic
-materialFamilies: []
+materialFamilies:
+  - concrete
 aliases: []
 toolHints: {}
 runtimeContract:

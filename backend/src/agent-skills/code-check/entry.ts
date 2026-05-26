@@ -54,6 +54,22 @@ function extractElementContextById(model: Record<string, unknown> | undefined): 
   if (!Array.isArray(elements)) {
     return {};
   }
+  const materials = Array.isArray(model['materials']) ? model['materials'] : [];
+  const sections = Array.isArray(model['sections']) ? model['sections'] : [];
+  const materialById = materials.reduce<Map<string, Record<string, unknown>>>((acc, item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return acc;
+    const record = item as Record<string, unknown>;
+    const id = String(record['id'] ?? '');
+    if (id.length > 0) acc.set(id, record);
+    return acc;
+  }, new Map());
+  const sectionById = sections.reduce<Map<string, Record<string, unknown>>>((acc, item) => {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) return acc;
+    const record = item as Record<string, unknown>;
+    const id = String(record['id'] ?? '');
+    if (id.length > 0) acc.set(id, record);
+    return acc;
+  }, new Map());
 
   return elements.reduce<Record<string, unknown>>((acc, item) => {
     if (!item || typeof item !== 'object') {
@@ -64,14 +80,23 @@ function extractElementContextById(model: Record<string, unknown> | undefined): 
     if (!id) {
       return acc;
     }
+    const materialId = typeof element['material'] === 'string' ? element['material'] : undefined;
+    const sectionId = typeof element['section'] === 'string' ? element['section'] : undefined;
 
     acc[id] = {
       id,
       type: element['type'],
-      material: element['material'],
-      section: element['section'],
+      material: materialId ? (materialById.get(materialId) ?? materialId) : undefined,
+      section: sectionId ? (sectionById.get(sectionId) ?? sectionId) : undefined,
+      materialId,
+      sectionId,
       startNode: element['startNode'],
       endNode: element['endNode'],
+      nodes: element['nodes'],
+      story: element['story'],
+      concreteGrade: element['concrete_grade'],
+      steelGrade: element['steel_grade'],
+      rebarGrade: element['rebar_grade'],
       metadata: element['metadata'],
     };
     return acc;

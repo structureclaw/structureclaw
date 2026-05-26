@@ -174,7 +174,21 @@ describe('concrete-frame canonicalize core contract', () => {
     });
 
     expect(model).toBeDefined();
+    expect(model.schema_version).toBe('2.0.0');
+    expect(model.unit_system).toBe('SI');
+    expect(model.metadata).toMatchObject({
+      inferredType: 'frame',
+      structuralTypeKey: 'concrete-frame',
+      materialSystem: 'reinforced-concrete',
+      designCode: 'GB50010',
+    });
+    expect(model.project.extra.designCode).toBe('GB50010');
+    expect(model.extensions.yjk).toMatchObject({
+      materialSystem: 'reinforced-concrete',
+      designCode: 'GB50010',
+    });
     expect(model.materials[0]).toMatchObject({
+      id: '1',
       name: 'C30',
       grade: 'C30',
       category: 'concrete',
@@ -184,7 +198,15 @@ describe('concrete-frame canonicalize core contract', () => {
       fc: 14.3,
     });
     expect(model.materials[0].fy).toBeUndefined();
+    expect(model.materials[1]).toMatchObject({
+      id: '2',
+      name: 'HRB400',
+      grade: 'HRB400',
+      category: 'rebar',
+      fy: 360,
+    });
     expect(model.sections[0]).toMatchObject({
+      id: '1',
       name: '400X400',
       type: 'rectangular',
       purpose: 'column',
@@ -198,6 +220,7 @@ describe('concrete-frame canonicalize core contract', () => {
     );
     expect(model.sections[0].standard_steel_name).toBeUndefined();
     expect(model.sections[1]).toMatchObject({
+      id: '2',
       name: '250X600',
       type: 'rectangular',
       purpose: 'beam',
@@ -205,6 +228,77 @@ describe('concrete-frame canonicalize core contract', () => {
       height: 600,
       shape: { kind: 'rectangular', B: 250, H: 600 },
     });
+    expect(model.nodes).toHaveLength(6);
+    expect(model.elements).toHaveLength(6);
+    expect(model.elements.find((element) => element.id === 'C1')).toMatchObject({
+      type: 'column',
+      material: '1',
+      section: '1',
+      concrete_grade: 'C30',
+      rebar_grade: 'HRB400',
+    });
+    expect(model.elements.find((element) => element.type === 'beam')).toMatchObject({
+      material: '1',
+      section: '2',
+      concrete_grade: 'C30',
+      rebar_grade: 'HRB400',
+    });
+    expect(model.stories).toEqual([
+      expect.objectContaining({
+        id: 'F1',
+        floor_loads: [{ type: 'dead', value: 16.67 }],
+        dead_load: 16.67,
+      }),
+      expect.objectContaining({
+        id: 'F2',
+        floor_loads: [{ type: 'dead', value: 16.67 }],
+        dead_load: 16.67,
+      }),
+    ]);
+    expect(model.load_cases.map((loadCase) => loadCase.id)).toEqual(['D']);
+    expect(model.load_combinations[0]).toMatchObject({
+      id: 'ULS',
+      combination_type: 'uls',
+      code_reference: 'GB50010',
+      factors: { D: 1 },
+    });
+  });
+
+  test('builds a 3d concrete frame model with y-direction beams for YJK conversion', () => {
+    const model = buildConcreteFrameModel({
+      inferredType: 'concrete-frame',
+      updatedAt: 0,
+      frameDimension: '3d',
+      storyCount: 2,
+      bayCountX: 2,
+      bayCountY: 1,
+      storyHeightsM: [3.6, 3.6],
+      bayWidthsXM: [6, 6],
+      bayWidthsYM: [5],
+      floorLoads: [
+        { story: 1, verticalKN: 360, liveLoadKN: 120, lateralXKN: 30, lateralYKN: 12 },
+        { story: 2, verticalKN: 360, liveLoadKN: 120, lateralXKN: 30, lateralYKN: 12 },
+      ],
+      frameBaseSupportType: 'fixed',
+      frameConcreteGrade: 'C35',
+      frameRebarGrade: 'HRB400',
+      frameColumnSection: '500X500',
+      frameBeamSection: '300X600',
+    });
+
+    expect(model).toBeDefined();
+    expect(model.frameDimension).toBe('3d');
+    expect(model.nodes).toHaveLength(18);
+    expect(model.elements.filter((element) => element.type === 'column')).toHaveLength(12);
+    expect(model.elements.filter((element) => element.id.startsWith('BX'))).toHaveLength(8);
+    expect(model.elements.filter((element) => element.id.startsWith('BY'))).toHaveLength(6);
+    expect(model.metadata.elementReferenceVectors).toBeDefined();
+    expect(model.stories[0]).toMatchObject({
+      id: 'F1',
+      dead_load: 6,
+      live_load: 2,
+    });
+    expect(model.load_cases.map((loadCase) => loadCase.id)).toEqual(['D', 'L', 'LAT']);
   });
 
   test('returns undefined when critical geometry is missing (H2 fix)', () => {

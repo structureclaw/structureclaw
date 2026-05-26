@@ -1019,13 +1019,16 @@ export function createRunCodeCheckTool(skillRuntime: AgentSkillRuntime) {
       const toolCallId = getToolCallId(config);
       const skillIds = configurable.skillScope;
       const selectedDesignCode = skillRuntime.resolveCodeCheckDesignCodeFromSkillIds(skillIds);
-      const codeCheckSkillId = selectedDesignCode
-        ? skillRuntime.resolveCodeCheckSkillId(selectedDesignCode)
+      const requestedDesignCode = selectedDesignCode || state?.policy?.designCode || input.designCode;
+      const codeCheckSkillId = requestedDesignCode
+        ? skillRuntime.resolveCodeCheckSkillId(requestedDesignCode)
         : undefined;
-      if (!codeCheckSkillId) {
+      if (!requestedDesignCode || !codeCheckSkillId) {
         const skipped = {
           skipped: true,
-          reason: 'No code-check skill is selected in the current skill scope.',
+          reason: requestedDesignCode
+            ? `Unsupported code-check design code: ${requestedDesignCode}.`
+            : 'No code-check design code is selected or provided.',
         };
         logToolCall(log, { tool: 'run_code_check', durationMs: Date.now() - start, extra: { skipped: true, reason: skipped.reason } });
         return toolResult(toolCallId, 'run_code_check', JSON.stringify(skipped));
@@ -1045,7 +1048,7 @@ export function createRunCodeCheckTool(skillRuntime: AgentSkillRuntime) {
       const result = await skillRuntime.executeCodeCheckSkill({
         codeCheckClient: configurable.codeCheckClient,
         traceId,
-        designCode: selectedDesignCode || input.designCode || 'GB50017',
+        designCode: requestedDesignCode,
         model,
         analysis,
         analysisParameters: {},
@@ -1054,7 +1057,7 @@ export function createRunCodeCheckTool(skillRuntime: AgentSkillRuntime) {
       });
 
       // Store code check result in graph state via Command
-      logToolCall(log, { tool: 'run_code_check', durationMs: Date.now() - start, extra: { designCode: input.designCode, skillId: result.skillId, success: true } });
+      logToolCall(log, { tool: 'run_code_check', durationMs: Date.now() - start, extra: { designCode: requestedDesignCode, skillId: result.skillId, success: true } });
       return toolResult(
         toolCallId,
         'run_code_check',
