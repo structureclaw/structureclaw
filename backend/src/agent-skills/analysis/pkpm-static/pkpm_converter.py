@@ -61,7 +61,6 @@ def _resolve_concrete_grade(grade_str: str) -> Any:
 
 
 _STEEL_GRADE_RE = re.compile(r"^[SQ]\d{3}", re.IGNORECASE)
-_CONCRETE_GRADE_RE = re.compile(r"^[C]\d{1,2}$", re.IGNORECASE)
 _CONCRETE_GRADE_TOKEN_RE = re.compile(r"\bC\d{1,2}\b", re.IGNORECASE)
 
 
@@ -82,7 +81,13 @@ def _detect_material_family(data: dict) -> str:
     if "steel" in structure_material:
         return "steel"
 
-    for mat in data.get("materials", []):
+    materials = data.get("materials")
+    if not isinstance(materials, list):
+        return "steel"
+
+    for mat in materials:
+        if not isinstance(mat, dict):
+            continue
         family = str(mat.get("family", "")).lower()
         if family in ("steel", "concrete"):
             return family

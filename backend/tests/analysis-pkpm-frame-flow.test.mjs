@@ -50,6 +50,17 @@ function writeFile(filePath, content) {
 
 function writePkpmApiStub(stubsDir) {
   writeFile(
+    path.join(stubsDir, 'contracts.py'),
+    [
+      'class EngineNotAvailableError(RuntimeError):',
+      '    def __init__(self, engine, reason):',
+      '        self.engine = engine',
+      '        self.reason = reason',
+      '        super().__init__(f"Engine {engine!r} unavailable: {reason}")',
+    ].join('\n'),
+  );
+
+  writeFile(
     path.join(stubsDir, 'APIPyInterface.py'),
     [
       'calls = []',

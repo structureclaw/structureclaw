@@ -497,14 +497,18 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     elem_map_raw: Dict[str, Any] = converter_mappings.get("elem_map", {})
 
     # Build story top elevations for floor mapping
+    stories_source = converter_mappings.get("stories") or model_dict.get("stories")
+    story_items = stories_source if isinstance(stories_source, list) else []
     sorted_stories = sorted(
-        converter_mappings.get("stories") or model_dict.get("stories", []),
-        key=lambda s: float(s.get("elevation", 0)),
+        story_items,
+        key=lambda s: _safe_float(s.get("elevation", 0)) if isinstance(s, dict) else 0.0,
     )
     story_tops: list[float] = []
     for st in sorted_stories:
-        elev = float(st.get("elevation", 0))
-        h = float(st.get("height", 0))
+        if not isinstance(st, dict):
+            continue
+        elev = _safe_float(st.get("elevation", 0))
+        h = _safe_float(st.get("height", 0))
         story_tops.append(elev + h)
 
     # Map each V2 node to a PKPM floor number (1-indexed)
