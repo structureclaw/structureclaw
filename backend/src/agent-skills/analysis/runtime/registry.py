@@ -52,6 +52,52 @@ def _create_code_checker(code: str):
     return cls(code)
 
 
+def _resolve_pkpm_cycle_path() -> Optional[Path]:
+    """Resolve JWSCYCLE.exe from env first, then common local PKPM installs."""
+    configured = os.getenv("PKPM_CYCLE_PATH", "").strip().strip('"').strip("'")
+    if configured:
+        path = Path(configured)
+        if path.is_file():
+            return path
+
+    candidates: list[Path] = []
+    if os.name == "nt":
+        import string
+
+        for drive in string.ascii_uppercase:
+            root = Path(f"{drive}:\\")
+            try:
+                if not root.exists():
+                    continue
+            except OSError:
+                continue
+            try:
+                top_dirs = [
+                    item for item in root.iterdir()
+                    if item.is_dir() and "pkpm" in item.name.lower()
+                ]
+            except OSError:
+                continue
+            for top_dir in top_dirs:
+                candidates.extend([
+                    top_dir / "PkpmCycle" / "JWSCYCLE.exe",
+                    top_dir / "Release" / "PkpmCycle" / "JWSCYCLE.exe",
+                ])
+                try:
+                    for child in top_dir.iterdir():
+                        if child.is_dir() and child.name.lower() == "pkpmcycle":
+                            candidates.append(child / "JWSCYCLE.exe")
+                except OSError:
+                    continue
+    else:
+        candidates.extend([
+            Path("/opt/pkpm/PkpmCycle/JWSCYCLE.exe"),
+            Path("/usr/local/pkpm/PkpmCycle/JWSCYCLE.exe"),
+        ])
+
+    return next((candidate for candidate in candidates if candidate.is_file()), None)
+
+
 @dataclass
 class EngineSelection:
     engine: Dict[str, Any]
@@ -151,12 +197,15 @@ class AnalysisEngineRegistry:
         steps: list[Dict[str, Any]] = []
 
         # Step 1: check env + file
-        cycle_path = os.getenv("PKPM_CYCLE_PATH", "").strip()
-        if not cycle_path:
-            return {"passed": False, "error": "PKPM_CYCLE_PATH environment variable is not set", "steps": steps}
-        p = Path(cycle_path)
-        if not p.is_file():
-            return {"passed": False, "error": f"JWSCYCLE.exe not found at: {cycle_path}", "steps": steps}
+        p = _resolve_pkpm_cycle_path()
+        if p is None:
+            cycle_path = os.getenv("PKPM_CYCLE_PATH", "").strip()
+            error = (
+                f"JWSCYCLE.exe not found at: {cycle_path}"
+                if cycle_path
+                else "PKPM_CYCLE_PATH environment variable is not set, and JWSCYCLE.exe was not found in common PKPM install directories"
+            )
+            return {"passed": False, "error": error, "steps": steps}
         steps.append({"name": "JWSCYCLE.exe path", "passed": True})
 
         # Step 2: import APIPyInterface
@@ -703,11 +752,12 @@ class AnalysisEngineRegistry:
         return self._opensees_runtime_reason
 
     def _pkpm_unavailable_reason(self) -> Optional[str]:
-        cycle_path = os.getenv("PKPM_CYCLE_PATH", "").strip()
-        if not cycle_path:
-            return "PKPM_CYCLE_PATH environment variable is not set"
-        if not Path(cycle_path).is_file():
-            return f"JWSCYCLE.exe not found at: {cycle_path}"
+        cycle_path = _resolve_pkpm_cycle_path()
+        if cycle_path is None:
+            configured = os.getenv("PKPM_CYCLE_PATH", "").strip()
+            if configured:
+                return f"JWSCYCLE.exe not found at: {configured}"
+            return "PKPM_CYCLE_PATH environment variable is not set, and JWSCYCLE.exe was not found in common PKPM install directories"
         try:
             import APIPyInterface  # noqa: F401
         except ImportError:

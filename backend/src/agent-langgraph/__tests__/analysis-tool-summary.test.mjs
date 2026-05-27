@@ -1,6 +1,27 @@
 import { describe, expect, test } from "@jest/globals";
 
 describe("analysis tool summary", () => {
+  test("routes explicit commercial-engine wording to the requested analysis skill", async () => {
+    const {
+      resolveRequestedAnalysisEngineId,
+      resolveRequestedAnalysisSkillId,
+    } = await import("../../../dist/agent-langgraph/tools.js");
+
+    expect(resolveRequestedAnalysisSkillId("两层钢筋混凝土框架，用 PKPM 计算", ["concrete-frame"]))
+      .toBe("pkpm-static");
+    expect(resolveRequestedAnalysisEngineId("两层钢筋混凝土框架，用 SATWE 计算", ["concrete-frame"]))
+      .toBe("builtin-pkpm");
+    expect(resolveRequestedAnalysisSkillId("三层框架，用盈建科复核", ["concrete-frame"]))
+      .toBe("yjk-static");
+  });
+
+  test("lets current explicit engine wording override stale selected analysis skill", async () => {
+    const { resolveRequestedAnalysisSkillId } = await import("../../../dist/agent-langgraph/tools.js");
+
+    expect(resolveRequestedAnalysisSkillId("这次试一下 PKPM", ["concrete-frame", "yjk-static"]))
+      .toBe("pkpm-static");
+  });
+
   test("surfaces failed analysis artifact feedback to the model", async () => {
     const { buildAnalysisToolSummary } = await import("../../../dist/agent-langgraph/tools.js");
 

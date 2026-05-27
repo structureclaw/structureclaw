@@ -32,15 +32,65 @@ logger = logging.getLogger(__name__)
 _jws_cycle_lock = Lock()
 
 
+def _resolve_pkpm_cycle_path() -> Path | None:
+    """Resolve JWSCYCLE.exe from env first, then common local PKPM installs."""
+    configured = os.getenv("PKPM_CYCLE_PATH", "").strip().strip('"').strip("'")
+    if configured:
+        path = Path(configured)
+        if path.is_file():
+            return path
+
+    candidates: list[Path] = []
+    if os.name == "nt":
+        import string
+
+        for drive in string.ascii_uppercase:
+            root = Path(f"{drive}:\\")
+            try:
+                if not root.exists():
+                    continue
+            except OSError:
+                continue
+            try:
+                top_dirs = [
+                    item for item in root.iterdir()
+                    if item.is_dir() and "pkpm" in item.name.lower()
+                ]
+            except OSError:
+                continue
+            for top_dir in top_dirs:
+                candidates.extend([
+                    top_dir / "PkpmCycle" / "JWSCYCLE.exe",
+                    top_dir / "Release" / "PkpmCycle" / "JWSCYCLE.exe",
+                ])
+                try:
+                    for child in top_dir.iterdir():
+                        if child.is_dir() and child.name.lower() == "pkpmcycle":
+                            candidates.append(child / "JWSCYCLE.exe")
+                except OSError:
+                    continue
+    else:
+        candidates.extend([
+            Path("/opt/pkpm/PkpmCycle/JWSCYCLE.exe"),
+            Path("/usr/local/pkpm/PkpmCycle/JWSCYCLE.exe"),
+        ])
+
+    return next((candidate for candidate in candidates if candidate.is_file()), None)
+
+
 def _check_pkpm_available() -> Path:
     """Return Path to JWSCYCLE.exe or raise EngineNotAvailableError."""
+    resolved = _resolve_pkpm_cycle_path()
+    if resolved is not None:
+        return resolved
+
     cycle_path = os.getenv("PKPM_CYCLE_PATH", "").strip()
     if not cycle_path:
         raise EngineNotAvailableError(
             engine="pkpm",
             reason=(
-                "PKPM_CYCLE_PATH environment variable is not set. "
-                "Set it to the full path of JWSCYCLE.exe."
+                "PKPM_CYCLE_PATH environment variable is not set, and "
+                "JWSCYCLE.exe was not found in common PKPM install directories."
             ),
         )
     p = Path(cycle_path)
