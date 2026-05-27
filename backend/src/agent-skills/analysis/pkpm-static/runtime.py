@@ -498,7 +498,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
 
     # Build story top elevations for floor mapping
     sorted_stories = sorted(
-        model_dict.get("stories", []),
+        converter_mappings.get("stories") or model_dict.get("stories", []),
         key=lambda s: float(s.get("elevation", 0)),
     )
     story_tops: list[float] = []

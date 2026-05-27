@@ -303,6 +303,113 @@ function buildRcUserScenarioModel() {
   });
 }
 
+function buildGenericRcFrameModelWithLegacyRectSections() {
+  return {
+    schema_version: '1.0.0',
+    unit_system: 'SI',
+    nodes: [
+      { id: 'N1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
+      { id: 'N2', x: 6, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
+      { id: 'N3', x: 0, y: 0, z: 3.6 },
+      { id: 'N4', x: 6, y: 0, z: 3.6 },
+    ],
+    elements: [
+      { id: 'C1', type: 'column', nodes: ['N1', 'N3'], material: 'MAT1', section: 'SEC1' },
+      { id: 'C2', type: 'column', nodes: ['N2', 'N4'], material: 'MAT1', section: 'SEC1' },
+      { id: 'B1', type: 'beam', nodes: ['N3', 'N4'], material: 'MAT1', section: 'SEC2' },
+    ],
+    materials: [
+      { id: 'MAT1', name: 'Concrete_C30', E: 30000, nu: 0.2, rho: 2500 },
+    ],
+    sections: [
+      { id: 'SEC1', name: 'Col_600x600', type: 'rectangular', properties: { width: 0.6, height: 0.6, A: 0.36 } },
+      { id: 'SEC2', name: 'Beam_500x250', type: 'rectangular', properties: { width: 0.5, height: 0.25, A: 0.125 } },
+    ],
+    stories: [
+      { id: 'S1', level: 1, elevation: 0, height: 3.6 },
+    ],
+    load_cases: [],
+    load_combinations: [],
+    metadata: { source: 'generic-llm-draft' },
+  };
+}
+
+function buildGenericYUpRcFrameModel() {
+  const planPoints = [
+    [0, 0], [6, 0], [12, 0],
+    [0, 6], [6, 6], [12, 6],
+  ];
+  const levels = [0, 3.6, 7.2];
+  const nodes = [];
+  for (const [levelIndex, y] of levels.entries()) {
+    for (const [pointIndex, [x, z]] of planPoints.entries()) {
+      nodes.push({
+        id: `N${levelIndex * planPoints.length + pointIndex + 1}`,
+        x,
+        y,
+        z,
+        ...(levelIndex === 0 ? { restraints: [true, true, true, true, true, true] } : {}),
+      });
+    }
+  }
+
+  const elements = [];
+  for (let story = 0; story < 2; story += 1) {
+    for (let point = 0; point < planPoints.length; point += 1) {
+      elements.push({
+        id: `C${story + 1}-${point + 1}`,
+        type: 'beam',
+        nodes: [
+          `N${story * planPoints.length + point + 1}`,
+          `N${(story + 1) * planPoints.length + point + 1}`,
+        ],
+        material: 'MAT1',
+        section: 'SEC1',
+      });
+    }
+  }
+  for (let level = 1; level <= 2; level += 1) {
+    const offset = level * planPoints.length;
+    for (const rowOffset of [0, 3]) {
+      elements.push(
+        { id: `BX${level}-${rowOffset + 1}`, type: 'beam', nodes: [`N${offset + rowOffset + 1}`, `N${offset + rowOffset + 2}`], material: 'MAT1', section: 'SEC2' },
+        { id: `BX${level}-${rowOffset + 2}`, type: 'beam', nodes: [`N${offset + rowOffset + 2}`, `N${offset + rowOffset + 3}`], material: 'MAT1', section: 'SEC2' },
+      );
+    }
+    for (let col = 0; col < 3; col += 1) {
+      elements.push({
+        id: `BZ${level}-${col + 1}`,
+        type: 'beam',
+        nodes: [`N${offset + col + 1}`, `N${offset + col + 4}`],
+        material: 'MAT1',
+        section: 'SEC2',
+      });
+    }
+  }
+
+  return {
+    schema_version: '1.0.0',
+    unit_system: 'SI',
+    nodes,
+    elements,
+    materials: [
+      { id: 'MAT1', name: 'Concrete_C30', E: 30000, nu: 0.2, rho: 2500 },
+    ],
+    sections: [
+      { id: 'SEC1', name: 'Col_600x600', type: 'rectangular', properties: { width: 0.6, height: 0.6 } },
+      { id: 'SEC2', name: 'Beam_500x250', type: 'rectangular', properties: { width: 0.5, height: 0.25 } },
+    ],
+    load_cases: [],
+    load_combinations: [],
+    metadata: {
+      coordinateSemantics: 'global-z-up',
+      frameDimension: '3d',
+      inferredType: 'frame',
+      source: 'generic-llm-draft',
+    },
+  };
+}
+
 describe('PKPM frame analysis flow', () => {
   if (!pythonCommand) {
     test.skip('runs PKPM frame flow with stubbed APIPyInterface (no Python on PATH)', () => {});
@@ -385,6 +492,62 @@ describe('PKPM frame analysis flow', () => {
     expect(findCalls(payload, 'Column.SetConcreteGrade').map((call) => call.grade)).toEqual(expect.arrayContaining(['C35']));
     expect(findCalls(payload, 'Beam.SetConcreteGrade').map((call) => call.grade)).toEqual(expect.arrayContaining(['C35']));
     expect(findCalls(payload, 'Beam.SetSteelGrade')).toHaveLength(0);
+  });
+
+  test('accepts generic rectangular section properties for PKPM concrete sections', () => {
+    const payload = runPkpmRuntime(buildGenericRcFrameModelWithLegacyRectSections());
+
+    expect(payload.result.status).toBe('success');
+    expect(payload.result.summary.materialFamily).toBe('concrete');
+    expect(findCalls(payload, 'ColumnSection.SetUserSect')).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'IDSec_Rectangle',
+        shape: expect.objectContaining({ B: 600, H: 600, M: 6 }),
+      }),
+    ]));
+    expect(findCalls(payload, 'BeamSection.SetUserSect')).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'IDSec_Rectangle',
+        shape: expect.objectContaining({ B: 500, H: 250, M: 6 }),
+      }),
+    ]));
+    expect(findCalls(payload, 'Column.SetConcreteGrade').map((call) => call.grade)).toEqual(expect.arrayContaining(['C30']));
+    expect(findCalls(payload, 'Beam.SetConcreteGrade').map((call) => call.grade)).toEqual(expect.arrayContaining(['C30']));
+    expect(findCalls(payload, 'Column.SetSteelGrade')).toHaveLength(0);
+    expect(findCalls(payload, 'Beam.SetSteelGrade')).toHaveLength(0);
+  });
+
+  test('normalizes generic y-up RC frame drafts before PKPM conversion', () => {
+    const payload = runPkpmRuntime(buildGenericYUpRcFrameModel());
+    const nodeCoords = findCalls(payload, 'StandFloor.AddNode').map((call) => ({ x: call.x, y: call.y }));
+
+    expect(payload.result.status).toBe('success');
+    expect(payload.result.summary.materialFamily).toBe('concrete');
+    expect(findCalls(payload, 'RealFloor.SetFloorHeight').map((call) => call.height)).toEqual([3600, 3600]);
+    expect(findCalls(payload, 'StandFloor.AddColumn')).toHaveLength(6);
+    expect(findCalls(payload, 'StandFloor.AddBeamEx')).toHaveLength(14);
+    expect(findCalls(payload, 'ColumnSection.SetUserSect')).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'IDSec_Rectangle',
+        shape: expect.objectContaining({ B: 600, H: 600, M: 6 }),
+      }),
+    ]));
+    expect(findCalls(payload, 'BeamSection.SetUserSect')).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'IDSec_Rectangle',
+        shape: expect.objectContaining({ B: 500, H: 250, M: 6 }),
+      }),
+    ]));
+    expect(findCalls(payload, 'Column.SetConcreteGrade').map((call) => call.grade)).toEqual(expect.arrayContaining(['C30']));
+    expect(findCalls(payload, 'Beam.SetConcreteGrade').map((call) => call.grade)).toEqual(expect.arrayContaining(['C30']));
+    expect(nodeCoords).toEqual(expect.arrayContaining([
+      { x: 0, y: 0 },
+      { x: 6000, y: 0 },
+      { x: 12000, y: 0 },
+      { x: 0, y: 6000 },
+      { x: 6000, y: 6000 },
+      { x: 12000, y: 6000 },
+    ]));
   });
 
   test('keeps steel-frame PKPM flow on steel sections and steel SATWE material', () => {

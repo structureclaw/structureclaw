@@ -62,6 +62,7 @@ def _resolve_concrete_grade(grade_str: str) -> Any:
 
 _STEEL_GRADE_RE = re.compile(r"^[SQ]\d{3}", re.IGNORECASE)
 _CONCRETE_GRADE_RE = re.compile(r"^[C]\d{1,2}$", re.IGNORECASE)
+_CONCRETE_GRADE_TOKEN_RE = re.compile(r"\bC\d{1,2}\b", re.IGNORECASE)
 
 
 def _detect_material_family(data: dict) -> str:
@@ -89,7 +90,7 @@ def _detect_material_family(data: dict) -> str:
         if category in ("steel", "concrete"):
             return category
         name = str(mat.get("name", ""))
-        if _CONCRETE_GRADE_RE.match(name):
+        if "concrete" in name.lower() or _CONCRETE_GRADE_TOKEN_RE.search(name):
             return "concrete"
         if _STEEL_GRADE_RE.match(name):
             return "steel"
@@ -178,6 +179,56 @@ def _make_section_shape(
     return sec_kind, sh
 
 
+def _dimension_to_mm(value: Any) -> float | None:
+    """Normalize section dimensions from metres or millimetres to millimetres."""
+    if value is None:
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if numeric <= 0:
+        return None
+    return numeric * 1000.0 if numeric <= 20.0 else numeric
+
+
+def _shape_from_legacy_properties(sec: dict) -> dict | None:
+    """Infer PKPM shape from generic StructureModel sections.
+
+    The generic model builder emits rectangular sections as:
+      { type: "rectangular", properties: { width: 0.6, height: 0.6 } }
+    while the PKPM converter expects an explicit `shape` object with
+    millimetre dimensions.  Keep this conversion local to PKPM so generic
+    models remain schema-compatible with other engines.
+    """
+    raw_type = str(sec.get("type") or sec.get("kind") or "").strip().lower()
+    if raw_type not in {"rectangular", "rectangle", "rect"}:
+        return None
+
+    props = sec.get("properties") if isinstance(sec.get("properties"), dict) else {}
+    width = (
+        props.get("width")
+        or props.get("b")
+        or props.get("B")
+        or sec.get("width")
+        or sec.get("b")
+        or sec.get("B")
+    )
+    height = (
+        props.get("height")
+        or props.get("h")
+        or props.get("H")
+        or sec.get("height")
+        or sec.get("h")
+        or sec.get("H")
+    )
+    b_mm = _dimension_to_mm(width)
+    h_mm = _dimension_to_mm(height)
+    if b_mm is None or h_mm is None:
+        return None
+    return {"kind": "Rectangle", "B": b_mm, "H": h_mm}
+
+
 def _infer_section_roles(data: dict) -> dict[str, str]:
     """Build {section_id: "col"|"beam"} by scanning element types.
 
@@ -198,6 +249,159 @@ def _infer_section_roles(data: dict) -> dict[str, str]:
     return roles
 
 
+def _safe_coord(node: dict, axis: str) -> float:
+    try:
+        return float(node.get(axis, 0.0))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _section_hint_map(data: dict) -> dict[str, str]:
+    hints: dict[str, str] = {}
+    for sec in data.get("sections", []):
+        sec_id = str(sec.get("id", ""))
+        if not sec_id:
+            continue
+        hints[sec_id] = " ".join([
+            str(sec.get("id", "")),
+            str(sec.get("name", "")),
+            str(sec.get("purpose", "")),
+            str(sec.get("type", "")),
+        ]).lower()
+    return hints
+
+
+def _vertical_axis_score(data: dict, axis: str) -> float:
+    """Score how likely an axis is the vertical axis.
+
+    Generic LLM drafts sometimes use x/z as plan axes and y as height while
+    still tagging metadata as global-z-up.  We detect this from element
+    geometry instead of trusting metadata.
+    """
+    nodes_by_id = {str(n.get("id")): n for n in data.get("nodes", [])}
+    other_axes = [candidate for candidate in ("x", "y", "z") if candidate != axis]
+    section_hints = _section_hint_map(data)
+    score = 0.0
+    tol = 1e-6
+
+    for elem in data.get("elements", []):
+        node_ids = elem.get("nodes", [])
+        if len(node_ids) < 2:
+            continue
+        n1 = nodes_by_id.get(str(node_ids[0]))
+        n2 = nodes_by_id.get(str(node_ids[1]))
+        if n1 is None or n2 is None:
+            continue
+        if abs(_safe_coord(n1, axis) - _safe_coord(n2, axis)) <= tol:
+            continue
+        if any(abs(_safe_coord(n1, other) - _safe_coord(n2, other)) > tol for other in other_axes):
+            continue
+
+        score += 1.0
+        hint = section_hints.get(str(elem.get("section", "")), "")
+        if any(token in hint for token in ("col", "column", "柱")):
+            score += 2.0
+        if any(token in hint for token in ("beam", "梁")):
+            score -= 0.5
+
+    return score
+
+
+def _infer_vertical_axis(data: dict) -> str:
+    stories = data.get("stories")
+    typed_columns = sum(1 for elem in data.get("elements", []) if elem.get("type") == "column")
+    z_score = _vertical_axis_score(data, "z")
+    y_score = _vertical_axis_score(data, "y")
+
+    if y_score > z_score and (not stories or typed_columns == 0):
+        return "y"
+    return "z"
+
+
+def _dedupe_sorted_levels(values: list[float]) -> list[float]:
+    levels: list[float] = []
+    for value in sorted(values):
+        if not levels or abs(value - levels[-1]) > 1e-6:
+            levels.append(value)
+    return levels
+
+
+def _infer_stories_from_nodes(nodes: list[dict]) -> list[dict]:
+    levels = _dedupe_sorted_levels([_safe_coord(node, "z") for node in nodes])
+    if len(levels) < 2:
+        return []
+
+    stories: list[dict] = []
+    for index, (lower, upper) in enumerate(zip(levels, levels[1:]), start=1):
+        height = upper - lower
+        if height <= 1e-6:
+            continue
+        stories.append({
+            "id": f"S{index}",
+            "level": index,
+            "elevation": lower,
+            "height": height,
+        })
+    return stories
+
+
+def _normalize_generic_frame_for_pkpm(data: dict) -> tuple[dict, dict[str, Any]]:
+    """Normalize generic frame drafts to PKPM's x/y-plan + z-height convention."""
+    vertical_axis = _infer_vertical_axis(data)
+    transform_y_up = vertical_axis == "y"
+
+    nodes: list[dict] = []
+    for node in data.get("nodes", []):
+        normalized = dict(node)
+        if transform_y_up:
+            normalized["x"] = _safe_coord(node, "x")
+            normalized["y"] = _safe_coord(node, "z")
+            normalized["z"] = _safe_coord(node, "y")
+        nodes.append(normalized)
+
+    node_by_id = {str(node.get("id")): node for node in nodes}
+    elements: list[dict] = []
+    tol = 1e-6
+    inferred_columns = 0
+    for elem in data.get("elements", []):
+        normalized = dict(elem)
+        node_ids = list(normalized.get("nodes", []))
+        if len(node_ids) >= 2:
+            n1 = node_by_id.get(str(node_ids[0]))
+            n2 = node_by_id.get(str(node_ids[1]))
+            if n1 is not None and n2 is not None:
+                same_plan = (
+                    abs(_safe_coord(n1, "x") - _safe_coord(n2, "x")) <= tol
+                    and abs(_safe_coord(n1, "y") - _safe_coord(n2, "y")) <= tol
+                )
+                vertical_delta = abs(_safe_coord(n1, "z") - _safe_coord(n2, "z"))
+                if same_plan and vertical_delta > tol:
+                    if normalized.get("type") != "column":
+                        inferred_columns += 1
+                    normalized["type"] = "column"
+                    if _safe_coord(n1, "z") > _safe_coord(n2, "z"):
+                        normalized["nodes"] = [node_ids[1], node_ids[0], *node_ids[2:]]
+        elements.append(normalized)
+
+    raw_stories = data.get("stories", [])
+    stories = [dict(story) for story in raw_stories] if raw_stories else _infer_stories_from_nodes(nodes)
+
+    normalized_data = dict(data)
+    normalized_data["nodes"] = nodes
+    normalized_data["elements"] = elements
+    normalized_data["stories"] = stories
+    if transform_y_up or inferred_columns or (not raw_stories and stories):
+        metadata = dict(normalized_data.get("metadata") or {})
+        metadata["pkpmCoordinateVerticalAxis"] = vertical_axis
+        normalized_data["metadata"] = metadata
+
+    return normalized_data, {
+        "vertical_axis": vertical_axis,
+        "inferred_columns": inferred_columns,
+        "inferred_stories": len(stories) if not raw_stories else 0,
+    }
+
+
 def _register_section(
     model: APIPyInterface.Model,
     sec: dict,
@@ -212,7 +416,7 @@ def _register_section(
     The element material grade is set separately via SetSteelGrade() or SetConcreteGrade().
     """
     std_name: str | None = sec.get("standard_steel_name")
-    shape_dict: dict | None = sec.get("shape")
+    shape_dict: dict | None = sec.get("shape") or _shape_from_legacy_properties(sec)
     use_standard_steel = bool(std_name) and material_family == "steel" and not shape_dict
 
     if inferred_role == "col":
@@ -392,6 +596,7 @@ def convert_v2_to_jws(
     work_dir = work_dir.resolve()
     work_dir.mkdir(parents=True, exist_ok=True)
     jws_path = work_dir / f"{project_name}.JWS"
+    data, normalization = _normalize_generic_frame_for_pkpm(data)
 
     # ---- Setup ----
     model = APIPyInterface.Model()
@@ -561,5 +766,7 @@ def convert_v2_to_jws(
         "v2_to_pm": v2_to_pm,
         "v2_node_z": {n["id"]: float(n.get("z", 0)) for n in nodes},
         "elem_map": elem_map,
+        "stories": stories,
+        "normalization": normalization,
         "material_family": material_family,
     }
