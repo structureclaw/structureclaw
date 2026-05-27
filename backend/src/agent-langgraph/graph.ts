@@ -42,7 +42,7 @@ function getAgentLogger(config: LangGraphRunnableConfig) {
 // Max ReAct iterations guard
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_MAX_TOOL_CALLS_PER_TURN = 15;
+export const DEFAULT_MAX_TOOL_CALLS_PER_TURN = 200;
 
 function getMessageType(message: BaseMessage): string | null {
   return typeof (message as any)._getType === 'function'

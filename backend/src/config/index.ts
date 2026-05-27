@@ -73,7 +73,7 @@ const AGENT_DEFAULTS = {
   allowShell: false,
   allowedShellCommands: 'node,npm,python,python3,./sclaw,./sclaw_cn',
   shellTimeoutMs: 300000,
-  maxToolCallsPerTurn: 15,
+  maxToolCallsPerTurn: 200,
 } as const;
 
 const PKPM_DEFAULTS = {

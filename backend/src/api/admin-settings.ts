@@ -165,7 +165,7 @@ function buildSettingsResponse(): SettingsResponse {
     allowShell: false,
     allowedShellCommands: 'node,npm,python,python3,./sclaw,./sclaw_cn',
     shellTimeoutMs: 300000,
-    agentMaxToolCallsPerTurn: 15,
+    agentMaxToolCallsPerTurn: 200,
     pkpmCyclePath: '',
     pkpmWorkDir: path.join(runtimeBaseDir, 'analysis', 'pkpm'),
     yjkInstallRoot: '',
