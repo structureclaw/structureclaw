@@ -1,8 +1,10 @@
 import { describe, expect, test } from '@jest/globals';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = process.cwd();
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = path.resolve(__dirname, '..');
 
 describe('agent tool call limit defaults', () => {
   test('defaults maxToolCallsPerTurn to 200 across backend and frontend settings', () => {
