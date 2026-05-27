@@ -1,25 +1,32 @@
 import { describe, expect, test } from "@jest/globals";
 
 describe("analysis tool summary", () => {
-  test("routes explicit commercial-engine wording to the requested analysis skill", async () => {
+  test("routes explicit commercial-engine wording within the selected skill scope", async () => {
     const {
       resolveRequestedAnalysisEngineId,
       resolveRequestedAnalysisSkillId,
     } = await import("../../../dist/agent-langgraph/tools.js");
 
-    expect(resolveRequestedAnalysisSkillId("两层钢筋混凝土框架，用 PKPM 计算", ["concrete-frame"]))
+    expect(resolveRequestedAnalysisSkillId("两层钢筋混凝土框架，用 PKPM 计算", ["concrete-frame", "pkpm-static"]))
       .toBe("pkpm-static");
-    expect(resolveRequestedAnalysisEngineId("两层钢筋混凝土框架，用 SATWE 计算", ["concrete-frame"]))
+    expect(resolveRequestedAnalysisEngineId("两层钢筋混凝土框架，用 SATWE 计算", ["concrete-frame", "pkpm-static"]))
       .toBe("builtin-pkpm");
-    expect(resolveRequestedAnalysisSkillId("三层框架，用盈建科复核", ["concrete-frame"]))
+    expect(resolveRequestedAnalysisSkillId("三层框架，用盈建科复核", ["concrete-frame", "yjk-static"]))
       .toBe("yjk-static");
   });
 
-  test("lets current explicit engine wording override stale selected analysis skill", async () => {
-    const { resolveRequestedAnalysisSkillId } = await import("../../../dist/agent-langgraph/tools.js");
+  test("does not resolve explicit providers outside the selected skill scope", async () => {
+    const {
+      resolveRequestedAnalysisEngineId,
+      resolveRequestedAnalysisSkillId,
+    } = await import("../../../dist/agent-langgraph/tools.js");
 
     expect(resolveRequestedAnalysisSkillId("这次试一下 PKPM", ["concrete-frame", "yjk-static"]))
-      .toBe("pkpm-static");
+      .toBeUndefined();
+    expect(resolveRequestedAnalysisEngineId("用 SATWE 复核", ["concrete-frame"]))
+      .toBeUndefined();
+    expect(resolveRequestedAnalysisSkillId("做一次静力分析", ["concrete-frame", "opensees-static"]))
+      .toBe("opensees-static");
   });
 
   test("surfaces failed analysis artifact feedback to the model", async () => {

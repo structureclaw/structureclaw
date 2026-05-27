@@ -63,17 +63,21 @@ export function resolveRequestedAnalysisSkillId(
   message: string | undefined,
   selectedSkillIds?: string[],
 ): string | undefined {
+  const selectedAnalysisSkillIds = Array.isArray(selectedSkillIds)
+    ? selectedSkillIds.filter((skillId) => ANALYSIS_SKILL_ENGINE_IDS[skillId])
+    : [];
   const normalizedMessage = message?.trim();
   if (normalizedMessage) {
     const requestedSkillId = ANALYSIS_SKILL_REQUEST_PATTERNS.find(({ patterns }) =>
       patterns.some((pattern) => pattern.test(normalizedMessage)),
     )?.skillId;
-    if (requestedSkillId) {
+    if (requestedSkillId && selectedAnalysisSkillIds.includes(requestedSkillId)) {
       return requestedSkillId;
     }
+    if (requestedSkillId) return undefined;
   }
 
-  return selectedSkillIds?.find((skillId) => ANALYSIS_SKILL_ENGINE_IDS[skillId]);
+  return selectedAnalysisSkillIds[0];
 }
 
 export function resolveRequestedAnalysisEngineId(
@@ -921,7 +925,8 @@ export function createValidateModelTool(skillRuntime: AgentSkillRuntime) {
       if (!model) {
         return JSON.stringify({ error: 'No model available. Run build_model first.' });
       }
-      const requestedEngineId = resolveRequestedAnalysisEngineId(state?.lastUserMessage);
+      const skillIds = configurable.skillScope;
+      const requestedEngineId = resolveRequestedAnalysisEngineId(state?.lastUserMessage, skillIds);
       const result = await skillRuntime.executeValidationSkill({
         model,
         engineId: input.engineId || requestedEngineId,
@@ -969,7 +974,7 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
         return toolResult(toolCallId, 'run_analysis', JSON.stringify({ error: 'No model available. Run build_model first.' }));
       }
       const skillIds = configurable.skillScope;
-      const requestedAnalysisSkillId = resolveRequestedAnalysisSkillId(state?.lastUserMessage);
+      const requestedAnalysisSkillId = resolveRequestedAnalysisSkillId(state?.lastUserMessage, skillIds);
       const analysisType = (input.analysisType || 'static') as 'static' | 'dynamic' | 'seismic' | 'nonlinear';
       const traceId = `lg-${Date.now()}`;
 
