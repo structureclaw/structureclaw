@@ -10,9 +10,12 @@ description:
 triggers:
   - PKPM 静力分析
   - PKPM 计算
+  - PKPM 混凝土框架
+  - PKPM 钢筋混凝土框架
   - SATWE
   - pkpm static
   - pkpm analysis
+  - pkpm reinforced concrete frame
 stages:
   - intent
   - analysis
@@ -37,7 +40,9 @@ supportedAnalysisTypes:
 supportedModelFamilies:
   - frame
   - generic
-materialFamilies: []
+materialFamilies:
+  - steel
+  - concrete
 aliases: []
 toolHints: {}
 runtimeContract:

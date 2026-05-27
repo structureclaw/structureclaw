@@ -1,14 +1,15 @@
 """
 V2 StructureModelV2 JSON → PKPM JWS (via APIPyInterface)
 
-支持的结构类型: frame, braced-frame
+支持的结构类型: frame, braced-frame, reinforced-concrete frame
 支持的截面:
   - H/I 型: kind="H" → IDSec_I  (PKPM字段: B=tw, H, U=bf, T=tf, D=bf, F=tf)
   - 箱型:   kind="Box"  → IDSec_Box
   - 管型:   kind="Tube" → IDSec_Tube
-  - 矩形:   kind="Rectangle" → IDSec_Rectangle
+  - 矩形:   kind="Rectangle" / "rectangular" → IDSec_Rectangle
   标准型钢名称(standard_steel_name)优先于参数化 shape。
 支持的钢材牌号: Q235, Q345, Q355, Q390, Q420, Q460 及 GJ 系列
+支持的混凝土等级: C15, C20, C25, C30, C35, C40...
 多层处理: 单标准层模板 + N 个自然层（楼层截面相同时适用）
 
 单位约定:
@@ -65,10 +66,28 @@ _CONCRETE_GRADE_RE = re.compile(r"^[C]\d{1,2}$", re.IGNORECASE)
 
 def _detect_material_family(data: dict) -> str:
     """Detect dominant material from model: 'steel' or 'concrete'."""
+    metadata = data.get("metadata") if isinstance(data.get("metadata"), dict) else {}
+    material_system = str(metadata.get("materialSystem", "")).lower()
+    if "concrete" in material_system:
+        return "concrete"
+    if "steel" in material_system:
+        return "steel"
+
+    structure_system = data.get("structure_system") if isinstance(data.get("structure_system"), dict) else {}
+    structure_extra = structure_system.get("extra") if isinstance(structure_system.get("extra"), dict) else {}
+    structure_material = str(structure_extra.get("materialSystem", "")).lower()
+    if "concrete" in structure_material:
+        return "concrete"
+    if "steel" in structure_material:
+        return "steel"
+
     for mat in data.get("materials", []):
         family = str(mat.get("family", "")).lower()
         if family in ("steel", "concrete"):
             return family
+        category = str(mat.get("category", "")).lower()
+        if category in ("steel", "concrete"):
+            return category
         name = str(mat.get("name", ""))
         if _CONCRETE_GRADE_RE.match(name):
             return "concrete"
@@ -189,31 +208,32 @@ def _register_section(
     Register one V2 section entry.
     Returns (role, pm_section_idx) where role is "col" or "beam".
 
-    Uses SetUserSect with shape.Set_M(5) for steel material indication.
-    Steel material is also indicated via SetSteelGrade() on each element.
+    Uses SetUserSect with shape.Set_M(5/6) for steel/concrete material indication.
+    The element material grade is set separately via SetSteelGrade() or SetConcreteGrade().
     """
     std_name: str | None = sec.get("standard_steel_name")
     shape_dict: dict | None = sec.get("shape")
+    use_standard_steel = bool(std_name) and material_family == "steel" and not shape_dict
 
     if inferred_role == "col":
         csec = APIPyInterface.ColumnSection()
         if shape_dict:
             _sec_kind, sh = _make_section_shape(shape_dict, material_family)
             csec.SetUserSect(_sec_kind, sh)
-        elif std_name:
+        elif use_standard_steel:
             csec.SetStandSteelSect(std_name)
         else:
-            raise ValueError(f"Section '{sec['id']}' has no standard_steel_name or shape.")
+            raise ValueError(f"Section '{sec['id']}' has no usable PKPM section shape.")
         pm_idx = model.AddColumnSection(csec)
     else:
         bsec = APIPyInterface.BeamSection()
         if shape_dict:
             _sec_kind, sh = _make_section_shape(shape_dict, material_family)
             bsec.SetUserSect(_sec_kind, sh)
-        elif std_name:
+        elif use_standard_steel:
             bsec.SetStandSteelSect(std_name)
         else:
-            raise ValueError(f"Section '{sec['id']}' has no standard_steel_name or shape.")
+            raise ValueError(f"Section '{sec['id']}' has no usable PKPM section shape.")
         pm_idx = model.AddBeamSection(bsec)
 
     return inferred_role, pm_idx
@@ -331,6 +351,15 @@ def _elem_grade(elem: dict, mat_id_to_grade: dict[str, str]) -> Any:
     return _resolve_steel_grade(grade)
 
 
+def _elem_concrete_grade(elem: dict, mat_id_to_grade: dict[str, str]) -> Any:
+    """Resolve concrete grade for one element."""
+    grade = (
+        elem.get("concrete_grade")
+        or mat_id_to_grade.get(elem.get("material", ""), "C30")
+    )
+    return _resolve_concrete_grade(grade)
+
+
 # ---------------------------------------------------------------------------
 # Main converter
 # ---------------------------------------------------------------------------
@@ -443,7 +472,8 @@ def convert_v2_to_jws(
         sec_id = elem.get("section", "")
         role, pm_sec_idx = sec_registry.get(sec_id, ("beam", -1))
         node_ids = elem.get("nodes", [])
-        grade = _elem_grade(elem, mat_id_to_grade)
+        steel_grade = _elem_grade(elem, mat_id_to_grade) if material_family == "steel" else None
+        concrete_grade = _elem_concrete_grade(elem, mat_id_to_grade) if material_family != "steel" else None
 
         if etype == "column":
             if pm_sec_idx < 0:
@@ -455,10 +485,9 @@ def convert_v2_to_jws(
             if pm_node_id not in plan_nodes_with_col:
                 col_obj = floor.AddColumn(pm_sec_idx, pm_node_id)
                 if material_family == "steel":
-                    col_obj.SetSteelGrade(grade)
+                    col_obj.SetSteelGrade(steel_grade)
                 else:
-                    cg_name = mat_id_to_grade.get(elem.get("material", ""), "C30")
-                    col_obj.SetConcreteGrade(_resolve_concrete_grade(cg_name))
+                    col_obj.SetConcreteGrade(concrete_grade)
                 # Apply base restraint if the base node has non-fixed restraints
                 if pm_node_id in base_restraint:
                     try:
@@ -495,10 +524,9 @@ def convert_v2_to_jws(
             net_id = added_nets[net_key]
             beam_obj = floor.AddBeamEx(pm_sec_idx, net_id, 0, 0, 0, 0.0)
             if material_family == "steel":
-                beam_obj.SetSteelGrade(grade)
+                beam_obj.SetSteelGrade(steel_grade)
             else:
-                cg_name = mat_id_to_grade.get(elem.get("material", ""), "C30")
-                beam_obj.SetConcreteGrade(_resolve_concrete_grade(cg_name))
+                beam_obj.SetConcreteGrade(concrete_grade)
             elem_map[elem.get("id", "")] = {
                 "pmid": getattr(beam_obj, 'GetPmid', lambda: net_id)(),
                 "type": "beam",
@@ -533,4 +561,5 @@ def convert_v2_to_jws(
         "v2_to_pm": v2_to_pm,
         "v2_node_z": {n["id"]: float(n.get("z", 0)) for n in nodes},
         "elem_map": elem_map,
+        "material_family": material_family,
     }

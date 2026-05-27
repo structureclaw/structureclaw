@@ -35,6 +35,9 @@ describe('analysis skill registry', () => {
       expect(skill.stages).toContain('analysis');
       expect(skill.capabilities.length).toBeGreaterThan(0);
     }
+
+    expect(analysisSkills.find((skill) => skill.canonicalId === 'pkpm-static').materialFamilies)
+      .toEqual(expect.arrayContaining(['steel', 'concrete']));
   });
 
   test('should derive runtime adapter keys from builtin analysis engines', () => {
