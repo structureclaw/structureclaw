@@ -171,6 +171,20 @@ class TestCheckElementResult:
         assert result['chapters'][0]['status'] == 'fail'
         assert result['chapters'][0]['controllingClause'] == 'GB50010-2010 6.2.15'
 
+    def test_chapter_summaries_treat_none_utilization_as_zero(self):
+        summaries = gb50010._build_chapter_summaries([
+            {
+                'chapter': 'test',
+                'items': [
+                    {'status': 'pass', 'utilization': None, 'clause': 'ignored'},
+                    {'status': 'pass', 'utilization': 0.6, 'clause': 'controls'},
+                ],
+            },
+        ])
+
+        assert summaries[0]['maxUtilization'] == 0.6
+        assert summaries[0]['controllingClause'] == 'controls'
+
     def test_code_version(self):
         checker = MockCodeChecker()
         result = gb50010.check_element(checker, 'B1', {})

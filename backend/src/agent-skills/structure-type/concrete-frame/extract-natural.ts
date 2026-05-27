@@ -362,7 +362,7 @@ function extractFrameDimension(message: string): '2d' | '3d' | undefined {
   if (/(?:^|[^a-zA-Z\u4e00-\u9fa5])y向(?:[^x方向]|$)|(?:^|[^a-zA-Z\u4e00-\u9fa5])y方向(?:[^:：]|$)/i.test(message)) {
     return '3d';
   }
-  if (/(?:^|[^a-zA-Z\u4e00-\u9fa5])z向\s*\d*\s*跨|(?:^|[^a-zA-Z\u4e00-\u9fa5])z方向\s*\d*\s*跨/i.test(message)) {
+  if (/(?:^|[^a-zA-Z\u4e00-\u9fa5])z向\s*[\d一二两三四五六七八九十百千万廿]*\s*跨|(?:^|[^a-zA-Z\u4e00-\u9fa5])z方向\s*[\d一二两三四五六七八九十百千万廿]*\s*跨/i.test(message)) {
     return '3d';
   }
   

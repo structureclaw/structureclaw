@@ -153,6 +153,17 @@ describe('concrete-frame canonicalize core contract', () => {
     });
   });
 
+  test('infers 3d concrete frame when z-direction bay count uses chinese numerals', () => {
+    const patch = normalizeConcreteFrameNaturalPatch(
+      '两层混凝土框架，X向2跨每跨6m，Z向一跨每跨5m，层高3m',
+      undefined,
+    );
+
+    expect(patch.frameDimension).toBe('3d');
+    expect(patch.bayCountY).toBe(1);
+    expect(patch.bayWidthsYM).toEqual([5]);
+  });
+
   test('extracts repeated english story heights from "4.2m each" phrasing', () => {
     const patch = buildConcreteFrameDraftPatch(
       '3 stories, 4.2m each, single bay 8m, floor load 12kN/m2',

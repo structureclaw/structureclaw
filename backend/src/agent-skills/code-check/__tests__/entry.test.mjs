@@ -61,4 +61,30 @@ describe('buildCodeCheckInput', () => {
       story: 'F1',
     });
   });
+
+  test('preserves pre-resolved material and section objects', () => {
+    const material = { id: 'm1', grade: 'C30', category: 'concrete' };
+    const section = { id: 's1', name: '500X250', type: 'rectangular' };
+    const input = buildCodeCheckInput({
+      traceId: 'trace-3',
+      designCode: 'GB50010',
+      model: {
+        elements: [
+          {
+            id: 'B1',
+            type: 'beam',
+            material,
+            section,
+          },
+        ],
+      },
+      analysis: { success: true },
+      analysisParameters: {},
+    });
+
+    expect(input.context.elementContextById.B1).toMatchObject({
+      material,
+      section,
+    });
+  });
 });

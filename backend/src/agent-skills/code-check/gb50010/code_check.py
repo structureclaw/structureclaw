@@ -58,7 +58,8 @@ def _build_chapter_summaries(checks: List[Dict[str, Any]]) -> List[Dict[str, Any
         status = 'pass'
         controlling_clause = None
         for item in items:
-            utilization = float(item.get('utilization', 0.0))
+            util_val = item.get('utilization')
+            utilization = float(util_val) if util_val is not None else 0.0
             if utilization >= max_utilization:
                 max_utilization = utilization
                 controlling_clause = item.get('clause')

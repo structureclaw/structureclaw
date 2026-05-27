@@ -86,8 +86,8 @@ function extractElementContextById(model: Record<string, unknown> | undefined): 
     acc[id] = {
       id,
       type: element['type'],
-      material: materialId ? (materialById.get(materialId) ?? materialId) : undefined,
-      section: sectionId ? (sectionById.get(sectionId) ?? sectionId) : undefined,
+      material: materialId ? (materialById.get(materialId) ?? materialId) : element['material'],
+      section: sectionId ? (sectionById.get(sectionId) ?? sectionId) : element['section'],
       materialId,
       sectionId,
       startNode: element['startNode'],
