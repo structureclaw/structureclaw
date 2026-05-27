@@ -95,10 +95,8 @@ function repeatScalar(count: number | undefined, value: number | undefined): num
   return Array.from({ length: count }, () => value);
 }
 
-function extractDirectionalSegment(text: string, axis: 'x' | 'y'): string {
-  const pattern = axis === 'x'
-    ? /x(?:方向|向)([\s\S]*?)(?=y(?:方向|向)|$)/i
-    : /y(?:方向|向)([\s\S]*?)$/i;
+function extractDirectionalSegment(text: string, axis: 'x' | 'y' | 'z'): string {
+  const pattern = new RegExp(`${axis}(?:方向|向)([\\s\\S]*?)(?=[xyz](?:方向|向)|$)`, 'i');
   return text.match(pattern)?.[1] || '';
 }
 
@@ -191,7 +189,10 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
   ]);
 
   const xSegment = extractDirectionalSegment(text, 'x');
-  const ySegment = extractDirectionalSegment(text, 'y');
+  const rawYSegment = extractDirectionalSegment(text, 'y');
+  const rawZSegment = extractDirectionalSegment(text, 'z');
+  const zSegmentLooksLikePlanAxis = /(?:[0-9]+|[一二两三四五六七八九十]+)\s*跨|跨度|每跨|bay/i.test(rawZSegment);
+  const ySegment = rawYSegment || (zSegmentLooksLikePlanAxis ? rawZSegment : '');
 
   const bayCountX = extractPositiveInt(xSegment, [
     /([0-9]+|[一二两三四五六七八九十]+)\s*跨/i,
@@ -214,11 +215,13 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
   const xBayScalar = xSpanArray
     ? undefined
     : extractScalar(xSegment, [
+      /(?:[0-9]+|[一二两三四五六七八九十]+)\s*跨\s*(?:每跨)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
       /(?:间隔|跨度|每跨)(?:也?是|都?是|为)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
     ]);
   const yBayScalar = ySpanArray
     ? undefined
     : extractScalar(ySegment, [
+      /(?:[0-9]+|[一二两三四五六七八九十]+)\s*跨\s*(?:每跨)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
       /(?:间隔|跨度|每跨)(?:也?是|都?是|为)?\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/i,
     ]);
   const genericBayScalar = extractScalar(text, [
@@ -262,6 +265,7 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
       : undefined;
   const inferred3d = text.includes('y方向')
     || text.includes('y向')
+    || (zSegmentLooksLikePlanAxis && (text.includes('z方向') || text.includes('z向')))
     || bayCountY !== undefined
     || yBayScalar !== undefined
     || ySpanArray !== undefined

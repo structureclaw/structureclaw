@@ -43,7 +43,7 @@ function hasConcreteFrameYEvidence(
     patch.bayCountY !== undefined
     || (patch.bayWidthsYM?.length ?? 0) > 0
     || hasLateralYFloorLoad(floorLoads)
-    || /(?:3d|三维|y向|y方向|x、y向|x\/y向)/i.test(message),
+    || /(?:3d|三维|[yz]向|[yz]方向|x、[yz]向|x\/[yz]向)/i.test(message),
   );
 }
 

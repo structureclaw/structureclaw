@@ -18,7 +18,7 @@ const STRUCTURAL_LEADING_PATTERN = '(?:^|[，。；！？、\\s]|共|包含|总�
  */
 function parseChineseNumber(text: string): number | undefined {
   const chineseDigits: Record<string, number> = {
-    '零': 0, '〇': 0, '一': 1, '二': 2, '三': 3, '四': 4, '五': 5,
+    '零': 0, '〇': 0, '一': 1, '二': 2, '两': 2, '三': 3, '四': 4, '五': 5,
     '六': 6, '七': 7, '八': 8, '九': 9, '十': 10,
   };
 
@@ -154,6 +154,27 @@ function _extractNaturalArray(message: string, patterns: RegExp[]): number[] | u
   return undefined;
 }
 
+function extractDirectionalSegment(message: string, axis: 'x' | 'y' | 'z'): string {
+  const axisClass = axis === 'x' ? '[xX]' : axis === 'y' ? '[yY]' : '[zZ]';
+  const nextAxis = '[xXyYzZ](?:方向|向)';
+  const match = message.match(new RegExp(`${axisClass}(?:方向|向)([\\s\\S]*?)(?=${nextAxis}|$)`, 'i'));
+  return match?.[1] || '';
+}
+
+function extractBayCountFromDirectionalSegment(segment: string): number | undefined {
+  return extractStructuredCount(segment, [
+    new RegExp(`(${DIGIT_PATTERN})\\s*跨`, 'i'),
+    new RegExp(`(${DIGIT_PATTERN})\\s*bays?`, 'i'),
+  ]);
+}
+
+function extractBayWidthFromDirectionalSegment(segment: string): number[] | undefined {
+  return _extractNaturalArray(segment, [
+    new RegExp(`(?:每跨|跨度|间隔)(?:都?是|也?是|为|是)?\\s*(${DIGIT_PATTERN}(?:\\.${DIGIT_PATTERN})?)\\s*(?:m|米)`, 'gi'),
+    new RegExp(`${DIGIT_PATTERN}\\s*跨\\s*(?:每跨)?\\s*(${DIGIT_PATTERN}(?:\\.${DIGIT_PATTERN})?)\\s*(?:m|米)`, 'gi'),
+  ]);
+}
+
 /**
  * Extract story count with strict structural context.
  * Avoids false matches like "其中一层需要加固".
@@ -241,11 +262,14 @@ function extractBayCount(message: string): number | undefined {
  * Extract direction-specific bay count for X direction.
  */
 function extractBayCountX(message: string): number | undefined {
+  const segmentCount = extractBayCountFromDirectionalSegment(extractDirectionalSegment(message, 'x'));
+  if (segmentCount !== undefined) return segmentCount;
+
   // Pattern 1: "x方向4跨"
   const pattern1 = new RegExp(`x方向\\s*(${DIGIT_PATTERN})\\s*跨`, 'i');
   
   // Pattern 2: "x向4跨" or "向x 4跨"
-  const pattern2 = new RegExp(`x?向\\s*${DIGIT_PATTERN}\\s*跨`, 'i');
+  const pattern2 = new RegExp(`x向\\s*(${DIGIT_PATTERN})\\s*跨`, 'i');
   
   return extractStructuredCount(message, [pattern1, pattern2]);
 }
@@ -254,6 +278,11 @@ function extractBayCountX(message: string): number | undefined {
  * Extract direction-specific bay count for Y direction.
  */
 function extractBayCountY(message: string): number | undefined {
+  const ySegmentCount = extractBayCountFromDirectionalSegment(extractDirectionalSegment(message, 'y'));
+  if (ySegmentCount !== undefined) return ySegmentCount;
+  const zSegmentCount = extractBayCountFromDirectionalSegment(extractDirectionalSegment(message, 'z'));
+  if (zSegmentCount !== undefined) return zSegmentCount;
+
   // Pattern 1: "y方向3跨"
   const pattern1 = new RegExp(`y方向\\s*(${DIGIT_PATTERN})\\s*跨`, 'i');
   
@@ -279,6 +308,9 @@ function extractBayWidthsX(message: string): number[] | undefined {
   if (!/x方向|x向/i.test(message)) {
     return undefined;
   }
+  const segmentWidths = extractBayWidthFromDirectionalSegment(extractDirectionalSegment(message, 'x'));
+  if (segmentWidths?.length) return segmentWidths;
+
   return _extractNaturalArray(message, [
     // "间隔3m" after x方向 context
     new RegExp(`x方向[^y]*?间隔\\s*(${DIGIT_PATTERN}(?:\\.${DIGIT_PATTERN})?)\\s*m`, 'gi'),
@@ -290,9 +322,14 @@ function extractBayWidthsX(message: string): number[] | undefined {
 // Extract bay widths for y-direction (in context of y方向)
 function extractBayWidthsY(message: string): number[] | undefined {
   // Check if message has y-direction context
-  if (!/y方向|y向/i.test(message)) {
+  if (!/y方向|y向|z方向|z向/i.test(message)) {
     return undefined;
   }
+  const ySegmentWidths = extractBayWidthFromDirectionalSegment(extractDirectionalSegment(message, 'y'));
+  if (ySegmentWidths?.length) return ySegmentWidths;
+  const zSegmentWidths = extractBayWidthFromDirectionalSegment(extractDirectionalSegment(message, 'z'));
+  if (zSegmentWidths?.length) return zSegmentWidths;
+
   return _extractNaturalArray(message, [
     // "间隔3m" after y方向 context
     new RegExp(`y方向[^x]*?间隔\\s*(${DIGIT_PATTERN}(?:\\.${DIGIT_PATTERN})?)\\s*m`, 'gi'),
@@ -304,6 +341,7 @@ function extractBayWidthsY(message: string): number[] | undefined {
 function extractBayWidths(message: string): number[] | undefined {
   return _extractNaturalArray(message, [
     new RegExp(`(?:跨度|bay\\s*width|span\\s*width)\\s*[：:]*\\s*(${DIGIT_PATTERN}(?:\\.${DIGIT_PATTERN})?)`, 'gi'),
+    new RegExp(`每跨(?:都?是|为)?\\s*(${DIGIT_PATTERN}(?:\\.${DIGIT_PATTERN})?)\\s*(?:m|米)`, 'gi'),
     // English: "single bay 8m" - "bay" followed by number and unit
     new RegExp(`bay\\s*(${DIGIT_PATTERN}(?:\\.${DIGIT_PATTERN})?)\\s*m`, 'gi'),
   ]);
@@ -316,12 +354,15 @@ function extractFrameDimension(message: string): '2d' | '3d' | undefined {
   }
   
   // Check for explicit 3D indicators
-  if (/(?:^|[^a-zA-Z])3d|^三维|^双方向|^双向框架|x、y向|^x\/y向/i.test(message)) {
+  if (/(?:^|[^a-zA-Z])3d|^三维|^双方向|^双向框架|x、[yz]向|^x\/[yz]向/i.test(message)) {
     return '3d';
   }
   
   // Check for y-direction indicators (standalone, not part of "x方向")
   if (/(?:^|[^a-zA-Z\u4e00-\u9fa5])y向(?:[^x方向]|$)|(?:^|[^a-zA-Z\u4e00-\u9fa5])y方向(?:[^:：]|$)/i.test(message)) {
+    return '3d';
+  }
+  if (/(?:^|[^a-zA-Z\u4e00-\u9fa5])z向\s*\d*\s*跨|(?:^|[^a-zA-Z\u4e00-\u9fa5])z方向\s*\d*\s*跨/i.test(message)) {
     return '3d';
   }
   

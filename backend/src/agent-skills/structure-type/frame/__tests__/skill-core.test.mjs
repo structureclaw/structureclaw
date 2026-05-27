@@ -7,6 +7,7 @@ import {
   buildFramePatchFromLlm,
   coerceFrameDimension,
 } from '../../../../../dist/agent-skills/structure-type/frame/extract-llm.js';
+import { detectFrameStructuralType } from '../../../../../dist/agent-skills/structure-type/frame/detect.js';
 
 describe('frame canonicalize core contract', () => {
   test('promotes to 3d when y-direction evidence conflicts with llm 2d output', () => {
@@ -85,6 +86,28 @@ describe('frame canonicalize core contract', () => {
     expect(patch.bayCountY).toBe(3);
     expect(patch.bayWidthsXM).toEqual([3, 3, 3, 3]);
     expect(patch.bayWidthsYM).toEqual([3, 3, 3]);
+  });
+
+  test('treats z-direction spans as the second plan direction when span context is explicit', () => {
+    const patch = normalizeFrameNaturalPatch(
+      '三层钢框架，X向2跨每跨6m，Z向1跨6m，层高3.6m',
+      undefined,
+    );
+
+    expect(patch.frameDimension).toBe('3d');
+    expect(patch.bayCountX).toBe(2);
+    expect(patch.bayCountY).toBe(1);
+    expect(patch.bayWidthsXM).toEqual([6, 6]);
+    expect(patch.bayWidthsYM).toEqual([6]);
+  });
+
+  test('does not claim explicit reinforced-concrete frame prompts', () => {
+    const result = detectFrameStructuralType({
+      message: '两层钢筋混凝土框架，X向2跨，Z向1跨',
+      locale: 'zh',
+    });
+
+    expect(result).toBeNull();
   });
 
   test('extracts repeated english story heights from "4.2m each" phrasing', () => {

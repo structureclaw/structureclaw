@@ -330,8 +330,8 @@ def _wait_for_direct_launch_state(before_pids: set[int], timeout_s: float) -> di
     """Watch a freshly launched yjks.exe for the local auth failure dialog.
 
     A valid direct launch may keep the title blank for a while, especially when
-    YJK is invisible.  We only use this watch to confidently detect the official
-    "authorization check failed" window; otherwise the caller proceeds normally.
+    YJK is invisible.  Authorization failure windows can also come from a
+    previous/reused YJK process, so detect them before filtering old PIDs.
     """
     deadline = time.monotonic() + timeout_s
     last_seen: dict | None = None
@@ -340,12 +340,12 @@ def _wait_for_direct_launch_state(before_pids: set[int], timeout_s: float) -> di
             pid = _process_id(proc)
             if pid <= 0:
                 continue
-            if before_pids and pid in before_pids:
-                continue
-            last_seen = proc
             title = str(proc.get("MainWindowTitle") or "")
             if _is_auth_failure_title(title):
                 return {"state": "auth_failed", "pid": pid, "title": title}
+            if before_pids and pid in before_pids:
+                continue
+            last_seen = proc
             if title.strip():
                 return {"state": "ready", "pid": pid, "title": title}
         time.sleep(1.0)

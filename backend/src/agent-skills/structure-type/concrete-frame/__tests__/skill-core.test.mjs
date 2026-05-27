@@ -89,6 +89,70 @@ describe('concrete-frame canonicalize core contract', () => {
     expect(patch.bayWidthsYM).toEqual([3, 3, 3]);
   });
 
+  test('extracts rc frame geometry when the second plan direction is written as z-direction', () => {
+    const message = '我想设计一个两层钢筋混凝土框架，用YJK计算，X向2跨每跨6.0m，Z向1跨6.0m，层高3.6m×2层。柱截面600x600，梁截面500x250，柱脚刚接，梁柱刚接。具体配筋你来设计';
+    const patch = buildConcreteFrameDraftPatch(message, null, undefined);
+
+    expect(patch).toMatchObject({
+      inferredType: 'frame',
+      frameDimension: '3d',
+      storyCount: 2,
+      bayCountX: 2,
+      bayCountY: 1,
+      storyHeightsM: [3.6, 3.6],
+      bayWidthsXM: [6, 6],
+      bayWidthsYM: [6],
+      frameColumnSection: '600X600',
+      frameBeamSection: '500X250',
+    });
+
+    const model = buildConcreteFrameModel({
+      inferredType: 'frame',
+      structuralTypeKey: 'concrete-frame',
+      skillId: 'concrete-frame',
+      updatedAt: 0,
+      ...patch,
+      frameConcreteGrade: 'C30',
+      frameRebarGrade: 'HRB400',
+      floorLoads: [
+        { story: 1, verticalKN: 300 },
+        { story: 2, verticalKN: 300 },
+      ],
+    });
+
+    expect(model).toBeDefined();
+    expect(model.frameDimension).toBe('3d');
+    expect(model.nodes).toHaveLength(18);
+    expect(model.elements).toHaveLength(26);
+    expect(model.sections[0]).toMatchObject({
+      id: '1',
+      type: 'rectangular',
+      purpose: 'column',
+      width: 600,
+      height: 600,
+      shape: { kind: 'rectangular', B: 600, H: 600 },
+    });
+    expect(model.sections[1]).toMatchObject({
+      id: '2',
+      type: 'rectangular',
+      purpose: 'beam',
+      width: 500,
+      height: 250,
+      shape: { kind: 'rectangular', B: 500, H: 250 },
+    });
+    expect(model.materials[0]).toMatchObject({
+      id: '1',
+      category: 'concrete',
+      grade: 'C30',
+    });
+    expect(model.elements.find((element) => element.type === 'beam')).toMatchObject({
+      material: '1',
+      section: '2',
+      concrete_grade: 'C30',
+      rebar_grade: 'HRB400',
+    });
+  });
+
   test('extracts repeated english story heights from "4.2m each" phrasing', () => {
     const patch = buildConcreteFrameDraftPatch(
       '3 stories, 4.2m each, single bay 8m, floor load 12kN/m2',

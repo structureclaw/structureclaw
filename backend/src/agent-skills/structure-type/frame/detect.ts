@@ -12,6 +12,9 @@ export function detectFrameStructuralType({ message, locale, currentState }: Ski
       en: 'The current frame skill only supports regular stories and regular grids. If the structure has setbacks, missing bays, or strong irregularities, please provide JSON or a more explicit node/member description.',
     });
   }
+  if (text.includes('concrete frame') || text.includes('混凝土框架') || text.includes('钢筋混凝土框架') || text.includes('rc frame')) {
+    return null;
+  }
   if (text.includes('steel frame') || text.includes('钢框架')) {
     return buildStructuralTypeMatch('steel-frame', 'frame', 'frame', 'supported', locale);
   }
