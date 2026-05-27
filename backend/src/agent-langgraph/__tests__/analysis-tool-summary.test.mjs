@@ -19,14 +19,62 @@ describe("analysis tool summary", () => {
     const {
       resolveRequestedAnalysisEngineId,
       resolveRequestedAnalysisSkillId,
+      resolveUnselectedRequestedAnalysisSkillId,
     } = await import("../../../dist/agent-langgraph/tools.js");
 
     expect(resolveRequestedAnalysisSkillId("这次试一下 PKPM", ["concrete-frame", "yjk-static"]))
       .toBeUndefined();
+    expect(resolveUnselectedRequestedAnalysisSkillId("这次试一下 PKPM", ["concrete-frame", "yjk-static"]))
+      .toBe("pkpm-static");
     expect(resolveRequestedAnalysisEngineId("用 SATWE 复核", ["concrete-frame"]))
       .toBeUndefined();
+    expect(resolveUnselectedRequestedAnalysisSkillId("用 SATWE 复核", ["concrete-frame"]))
+      .toBe("pkpm-static");
     expect(resolveRequestedAnalysisSkillId("做一次静力分析", ["concrete-frame", "opensees-static"]))
       .toBe("opensees-static");
+    expect(resolveUnselectedRequestedAnalysisSkillId("做一次静力分析", ["concrete-frame", "opensees-static"]))
+      .toBeUndefined();
+  });
+
+  test("blocks run_analysis from substituting another engine for an unselected explicit provider", async () => {
+    const { createRunAnalysisTool } = await import("../../../dist/agent-langgraph/tools.js");
+    const runAnalysis = createRunAnalysisTool({
+      executeAnalysisSkill() {
+        throw new Error("executeAnalysisSkill should not be called");
+      },
+    });
+
+    const command = await runAnalysis.invoke({ analysisType: "static" }, {
+      toolCall: { id: "call-test" },
+      configurable: {
+        skillScope: ["concrete-frame", "opensees-static"],
+        agentState: {
+          lastUserMessage: "请用 PKPM 计算这个框架",
+          model: {
+            schemaVersion: "2.0.0",
+            nodes: [],
+            elements: [],
+            materials: [],
+            sections: [],
+            loadCases: [],
+            loadCombinations: [],
+          },
+        },
+        engineClient: {
+          post() {
+            throw new Error("engine should not be called");
+          },
+        },
+      },
+    });
+    const message = command.update.messages[0];
+    const payload = JSON.parse(message.content);
+
+    expect(payload).toMatchObject({
+      success: false,
+      error_code: "ANALYSIS_PROVIDER_NOT_SELECTED",
+      requestedAnalysisSkillId: "pkpm-static",
+    });
   });
 
   test("surfaces failed analysis artifact feedback to the model", async () => {

@@ -53,31 +53,43 @@ const ANALYSIS_SKILL_ENGINE_IDS: Record<string, string> = {
   'yjk-static': 'builtin-yjk',
 };
 
+const ANALYSIS_SKILL_LABELS: Record<string, string> = {
+  'opensees-static': 'OpenSees static analysis',
+  'pkpm-static': 'PKPM/SATWE static analysis',
+  'yjk-static': 'YJK static analysis',
+};
+
 const ANALYSIS_SKILL_REQUEST_PATTERNS: Array<{ skillId: string; patterns: RegExp[] }> = [
   { skillId: 'pkpm-static', patterns: [/\bpkpm\b/i, /\bsatwe\b/i] },
   { skillId: 'yjk-static', patterns: [/\byjk\b/i, /盈建科/i] },
   { skillId: 'opensees-static', patterns: [/\bopensees\b/i] },
 ];
 
+export function detectRequestedAnalysisSkillId(message: string | undefined): string | undefined {
+  const normalizedMessage = message?.trim();
+  if (!normalizedMessage) return undefined;
+  return ANALYSIS_SKILL_REQUEST_PATTERNS.find(({ patterns }) =>
+    patterns.some((pattern) => pattern.test(normalizedMessage)),
+  )?.skillId;
+}
+
+function selectedAnalysisSkillIds(selectedSkillIds?: string[]): string[] {
+  return Array.isArray(selectedSkillIds)
+    ? selectedSkillIds.filter((skillId) => ANALYSIS_SKILL_ENGINE_IDS[skillId])
+    : [];
+}
+
 export function resolveRequestedAnalysisSkillId(
   message: string | undefined,
   selectedSkillIds?: string[],
 ): string | undefined {
-  const selectedAnalysisSkillIds = Array.isArray(selectedSkillIds)
-    ? selectedSkillIds.filter((skillId) => ANALYSIS_SKILL_ENGINE_IDS[skillId])
-    : [];
-  const normalizedMessage = message?.trim();
-  if (normalizedMessage) {
-    const requestedSkillId = ANALYSIS_SKILL_REQUEST_PATTERNS.find(({ patterns }) =>
-      patterns.some((pattern) => pattern.test(normalizedMessage)),
-    )?.skillId;
-    if (requestedSkillId && selectedAnalysisSkillIds.includes(requestedSkillId)) {
-      return requestedSkillId;
-    }
-    if (requestedSkillId) return undefined;
+  const analysisSkillIds = selectedAnalysisSkillIds(selectedSkillIds);
+  const requestedSkillId = detectRequestedAnalysisSkillId(message);
+  if (requestedSkillId) {
+    return analysisSkillIds.includes(requestedSkillId) ? requestedSkillId : undefined;
   }
 
-  return selectedAnalysisSkillIds[0];
+  return analysisSkillIds[0];
 }
 
 export function resolveRequestedAnalysisEngineId(
@@ -86,6 +98,28 @@ export function resolveRequestedAnalysisEngineId(
 ): string | undefined {
   const skillId = resolveRequestedAnalysisSkillId(message, selectedSkillIds);
   return skillId ? ANALYSIS_SKILL_ENGINE_IDS[skillId] : undefined;
+}
+
+export function resolveUnselectedRequestedAnalysisSkillId(
+  message: string | undefined,
+  selectedSkillIds?: string[],
+): string | undefined {
+  const requestedSkillId = detectRequestedAnalysisSkillId(message);
+  if (!requestedSkillId) return undefined;
+  return selectedAnalysisSkillIds(selectedSkillIds).includes(requestedSkillId)
+    ? undefined
+    : requestedSkillId;
+}
+
+function buildAnalysisProviderNotSelectedPayload(skillId: string) {
+  const label = ANALYSIS_SKILL_LABELS[skillId] ?? skillId;
+  return {
+    success: false,
+    error_code: 'ANALYSIS_PROVIDER_NOT_SELECTED',
+    requestedAnalysisSkillId: skillId,
+    message: `The requested analysis provider (${label}) is not enabled in the current skill selection.`,
+    messageZh: `当前会话未勾选请求的分析技能（${label}），不会改用其他分析引擎代跑。`,
+  };
 }
 
 /**
@@ -926,6 +960,10 @@ export function createValidateModelTool(skillRuntime: AgentSkillRuntime) {
         return JSON.stringify({ error: 'No model available. Run build_model first.' });
       }
       const skillIds = configurable.skillScope;
+      const unselectedRequestedSkillId = resolveUnselectedRequestedAnalysisSkillId(state?.lastUserMessage, skillIds);
+      if (unselectedRequestedSkillId) {
+        return JSON.stringify(buildAnalysisProviderNotSelectedPayload(unselectedRequestedSkillId));
+      }
       const requestedEngineId = resolveRequestedAnalysisEngineId(state?.lastUserMessage, skillIds);
       const result = await skillRuntime.executeValidationSkill({
         model,
@@ -974,6 +1012,14 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
         return toolResult(toolCallId, 'run_analysis', JSON.stringify({ error: 'No model available. Run build_model first.' }));
       }
       const skillIds = configurable.skillScope;
+      const unselectedRequestedSkillId = resolveUnselectedRequestedAnalysisSkillId(state?.lastUserMessage, skillIds);
+      if (unselectedRequestedSkillId) {
+        return toolResult(
+          toolCallId,
+          'run_analysis',
+          JSON.stringify(buildAnalysisProviderNotSelectedPayload(unselectedRequestedSkillId)),
+        );
+      }
       const requestedAnalysisSkillId = resolveRequestedAnalysisSkillId(state?.lastUserMessage, skillIds);
       const analysisType = (input.analysisType || 'static') as 'static' | 'dynamic' | 'seismic' | 'nonlinear';
       const traceId = `lg-${Date.now()}`;
