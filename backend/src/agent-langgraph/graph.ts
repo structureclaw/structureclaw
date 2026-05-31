@@ -94,11 +94,14 @@ function buildAiMessageFields(content: unknown, name: unknown, source: Record<st
   const responseMetadata = asRecord(source.response_metadata);
   if (responseMetadata) fields.response_metadata = responseMetadata;
 
+  if (typeof source.id === 'string' && source.id.trim().length > 0) fields.id = source.id;
   if (source.usage_metadata !== undefined) fields.usage_metadata = source.usage_metadata;
   const additionalToolCalls = Array.isArray(additionalKwargs?.tool_calls)
     ? additionalKwargs.tool_calls
     : undefined;
-  if (Array.isArray(source.tool_calls)) fields.tool_calls = source.tool_calls;
+  if (Array.isArray(source.tool_calls) && source.tool_calls.length > 0) fields.tool_calls = source.tool_calls;
+  else if (additionalToolCalls && additionalToolCalls.length > 0) fields.tool_calls = additionalToolCalls;
+  else if (Array.isArray(source.tool_calls)) fields.tool_calls = source.tool_calls;
   else if (additionalToolCalls) fields.tool_calls = additionalToolCalls;
   if (Array.isArray(source.invalid_tool_calls)) fields.invalid_tool_calls = source.invalid_tool_calls;
 
@@ -109,6 +112,7 @@ function hasRestorableAiMetadata(source: Record<string, unknown>): boolean {
   const additionalKwargs = asRecord(source.additional_kwargs);
   return (
     (Array.isArray(source.tool_calls) && source.tool_calls.length > 0)
+    || (Array.isArray(additionalKwargs?.tool_calls) && additionalKwargs.tool_calls.length > 0)
     || (additionalKwargs !== undefined && 'reasoning_content' in additionalKwargs)
   );
 }

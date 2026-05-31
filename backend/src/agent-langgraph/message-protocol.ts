@@ -37,7 +37,11 @@ function contentAsString(content: unknown): string {
       })
       .join('');
   }
-  return content === undefined ? '' : JSON.stringify(content);
+  try {
+    return JSON.stringify(content ?? null) ?? String(content);
+  } catch {
+    return String(content);
+  }
 }
 
 function parseToolArgs(value: unknown): Record<string, unknown> {
@@ -82,7 +86,9 @@ function extractToolCalls(message: BaseMessage): NormalizedToolCall[] {
   const fromKwargs = Array.isArray(additionalKwargs?.tool_calls)
     ? additionalKwargs.tool_calls
     : undefined;
-  const rawToolCalls: unknown[] = topLevel ?? fromKwargs ?? [];
+  const rawToolCalls: unknown[] = topLevel && topLevel.length > 0
+    ? topLevel
+    : fromKwargs ?? topLevel ?? [];
   return rawToolCalls
     .map((toolCall: unknown) => normalizeToolCall(toolCall))
     .filter((toolCall: NormalizedToolCall | undefined): toolCall is NormalizedToolCall => toolCall !== undefined);
@@ -125,11 +131,14 @@ function ensureTopLevelToolCalls(message: BaseMessage, toolCalls: NormalizedTool
     additional_kwargs: asRecord((message as any).additional_kwargs),
     response_metadata: asRecord((message as any).response_metadata),
     tool_calls: toolCalls,
+    id: message.id,
+    usage_metadata: (message as any).usage_metadata,
+    invalid_tool_calls: (message as any).invalid_tool_calls,
   } as any);
 }
 
 function stripToolCalls(message: BaseMessage, toolCalls: NormalizedToolCall[]): BaseMessage {
-  const text = contentAsString(message.content).trim();
+  const text = message.content == null ? '' : contentAsString(message.content).trim();
   const names = toolCalls
     .map((toolCall) => toolCall.name || toolCall.id)
     .filter(Boolean)
@@ -141,14 +150,19 @@ function stripToolCalls(message: BaseMessage, toolCalls: NormalizedToolCall[]): 
     name: typeof (message as any).name === 'string' ? (message as any).name : undefined,
     additional_kwargs: additionalKwargs,
     response_metadata: asRecord((message as any).response_metadata),
-  });
+    id: message.id,
+    usage_metadata: (message as any).usage_metadata,
+  } as any);
 }
 
 function toolResultAsAssistantMessage(message: BaseMessage): BaseMessage {
   const toolName = getToolName(message);
   const toolCallId = getToolCallId(message);
   const idSuffix = toolCallId ? ` id=${toolCallId}` : '';
-  return new AIMessage(`Previous ${toolName} tool result${idSuffix}: ${contentAsString(message.content)}`);
+  return new AIMessage({
+    content: `Previous ${toolName} tool result${idSuffix}: ${contentAsString(message.content)}`,
+    id: message.id,
+  } as any);
 }
 
 function hasExactToolResponses(toolCalls: NormalizedToolCall[], toolMessages: BaseMessage[]): boolean {
