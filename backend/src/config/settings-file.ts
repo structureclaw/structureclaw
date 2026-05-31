@@ -6,8 +6,8 @@
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { runtimeBaseDir } from './index.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -103,9 +103,11 @@ export type SettingsFile = {
 
 function getSettingsFilePath(): string {
   // Allow runtime override for testing
-  const overrideDir = process.env.SCLAW_DATA_DIR;
-  const baseDir = overrideDir || runtimeBaseDir;
-  return path.join(baseDir, 'settings.json');
+  return path.join(getRuntimeBaseDir(), 'settings.json');
+}
+
+function getRuntimeBaseDir(): string {
+  return process.env.SCLAW_DATA_DIR || path.join(os.homedir(), '.structureclaw');
 }
 
 // ---------------------------------------------------------------------------
@@ -400,11 +402,78 @@ function setCache(
 
 function readSettingsFromDisk(filePath: string): SettingsFile | null {
   try {
-    const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+    const raw = JSON.parse(stripJsonComments(fs.readFileSync(filePath, 'utf8')));
     return normalizeSettingsFile(raw);
   } catch {
     return null;
   }
+}
+
+function stripJsonComments(source: string): string {
+  let output = '';
+  let inString = false;
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    const next = source[i + 1];
+
+    if (inLineComment) {
+      if (char === '\n' || char === '\r') {
+        inLineComment = false;
+        output += char;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        inBlockComment = false;
+        i += 1;
+        continue;
+      }
+      if (char === '\n' || char === '\r') {
+        output += char;
+      }
+      continue;
+    }
+
+    if (inString) {
+      output += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      output += char;
+      continue;
+    }
+
+    if (char === '/' && next === '/') {
+      inLineComment = true;
+      i += 1;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      inBlockComment = true;
+      i += 1;
+      continue;
+    }
+
+    output += char;
+  }
+
+  return output;
 }
 
 export function readSettingsFile(): SettingsFile | null {
@@ -451,7 +520,7 @@ export function writeSettingsFile(settings: SettingsFile): void {
 
 export function migrateLegacyLlmSettings(): void {
   const settingsPath = getSettingsFilePath();
-  const legacyPath = path.join(runtimeBaseDir, 'llm-settings.json');
+  const legacyPath = path.join(getRuntimeBaseDir(), 'llm-settings.json');
 
   // Skip if settings.json already exists or legacy file is missing
   if (fs.existsSync(settingsPath) || !fs.existsSync(legacyPath)) return;
