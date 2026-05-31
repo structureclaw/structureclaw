@@ -33,6 +33,7 @@ import { resolveActiveToolIds } from './tool-policy.js';
 import type { StructuredToolInterface } from '@langchain/core/tools';
 import { getLogger } from '../utils/agent-logger.js';
 import { compactMessagesForContext, estimateMessagesCharLength } from './context-window.js';
+import { repairToolMessageProtocol } from './message-protocol.js';
 
 function getAgentLogger(config: LangGraphRunnableConfig) {
   return getLogger(config.configurable as Partial<AgentConfigurable> | undefined);
@@ -94,7 +95,11 @@ function buildAiMessageFields(content: unknown, name: unknown, source: Record<st
   if (responseMetadata) fields.response_metadata = responseMetadata;
 
   if (source.usage_metadata !== undefined) fields.usage_metadata = source.usage_metadata;
+  const additionalToolCalls = Array.isArray(additionalKwargs?.tool_calls)
+    ? additionalKwargs.tool_calls
+    : undefined;
   if (Array.isArray(source.tool_calls)) fields.tool_calls = source.tool_calls;
+  else if (additionalToolCalls) fields.tool_calls = additionalToolCalls;
   if (Array.isArray(source.invalid_tool_calls)) fields.invalid_tool_calls = source.invalid_tool_calls;
 
   return fields;
@@ -353,7 +358,14 @@ function createCallModelNode(
       }, 'agent context compacted before LLM invocation');
     }
 
-    const allMessages = [...systemMessages, ...compaction.messages];
+    const protocol = repairToolMessageProtocol(compaction.messages);
+    if (protocol.repairedCount > 0) {
+      log.warn({
+        node: 'agent',
+        repairedMessageCount: protocol.repairedCount,
+      }, 'agent repaired tool-message protocol before LLM invocation');
+    }
+    const allMessages = [...systemMessages, ...protocol.messages];
 
     log.info({ node: 'agent', messageCount: allMessages.length, activeToolCount: activeTools.length, toolCallCount, compacted: compaction.compacted }, 'agent node invoking LLM');
     const llmStart = Date.now();
