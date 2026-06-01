@@ -507,7 +507,7 @@ export function readSettingsFileForUpdate(): SettingsFile {
     setCache(filePath, settings, getSettingsFileFingerprint(filePath));
     return settings;
   } catch {
-    throw new Error(`Unable to parse settings.json at ${filePath}; refusing to overwrite existing settings.`);
+    throw new Error('Unable to parse settings.json; refusing to overwrite existing settings.');
   }
 }
 

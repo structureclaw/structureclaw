@@ -10,7 +10,7 @@ function withTempSettingsDir(settingsText, callback) {
   fs.writeFileSync(path.join(tempDir, 'settings.json'), settingsText, 'utf8');
 
   return Promise.resolve()
-    .then(callback)
+    .then(() => callback(tempDir))
     .finally(() => {
       if (previousDataDir === undefined) {
         delete process.env.SCLAW_DATA_DIR;
@@ -66,11 +66,12 @@ describe('settings file', () => {
     await withTempSettingsDir(`{
       "server": { "port": 31415 },
       "llm":
-    }`, async () => {
+    }`, async (tempDir) => {
       const { readSettingsFile, readSettingsFileForUpdate } = await import('../../../dist/config/settings-file.js');
 
       expect(readSettingsFile()).toBeNull();
       expect(() => readSettingsFileForUpdate()).toThrow(/refusing to overwrite existing settings/);
+      expect(() => readSettingsFileForUpdate()).not.toThrow(tempDir);
     });
   });
 });

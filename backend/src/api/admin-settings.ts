@@ -182,7 +182,7 @@ function buildSettingsResponse(): SettingsResponse {
     yjkDirectReadyTimeoutS: 12,
   };
 
-  const hasSettingsApiKey = file?.llm?.apiKey !== undefined && file.llm.apiKey.trim().length > 0;
+  const hasSettingsApiKey = !!file?.llm?.apiKey?.trim();
   const hasEnvApiKey = process.env.LLM_API_KEY !== undefined && process.env.LLM_API_KEY.trim().length > 0;
   const hasApiKey = hasSettingsApiKey || hasEnvApiKey;
   const apiKeySource: 'runtime' | 'env' | 'unset' = hasSettingsApiKey ? 'runtime' : hasEnvApiKey ? 'env' : 'unset';

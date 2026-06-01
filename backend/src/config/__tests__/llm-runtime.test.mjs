@@ -51,7 +51,7 @@ describe('LLM runtime settings', () => {
     });
   });
 
-  test('replace token writes apiKey while preserving other commented settings sections', async () => {
+  test('replace token writes apiKey while preserving other settings sections', async () => {
     await withTempRuntime(`{
       "server": { "port": 31415 },
       // old provider note
