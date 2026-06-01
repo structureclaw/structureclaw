@@ -70,8 +70,15 @@ describe('settings file', () => {
       const { readSettingsFile, readSettingsFileForUpdate } = await import('../../../dist/config/settings-file.js');
 
       expect(readSettingsFile()).toBeNull();
-      expect(() => readSettingsFileForUpdate()).toThrow(/refusing to overwrite existing settings/);
-      expect(() => readSettingsFileForUpdate()).not.toThrow(tempDir);
+      let updateError;
+      try {
+        readSettingsFileForUpdate();
+      } catch (error) {
+        updateError = error;
+      }
+      expect(updateError).toBeInstanceOf(Error);
+      expect(updateError.message).toMatch(/refusing to overwrite existing settings/);
+      expect(updateError.message).not.toContain(tempDir);
     });
   });
 });
