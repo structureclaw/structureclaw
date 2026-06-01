@@ -1043,9 +1043,10 @@ function migrateEnvToSettingsJson(paths, envFile) {
   let settings = {};
   if (runtime.pathExists(settingsPath)) {
     try {
-      settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+      settings = runtime.parseJsonWithComments(fs.readFileSync(settingsPath, "utf8"));
     } catch {
-      settings = {};
+      log(`Warning: Could not parse existing settings.json at ${settingsPath}; skipping .env migration to avoid overwriting it.`);
+      return;
     }
   }
 
@@ -1218,7 +1219,7 @@ async function invokeDoctor(rootDir, env) {
   let llmApiKey = "";
   try {
     if (runtime.pathExists(settingsPath)) {
-      const settingsJson = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+      const settingsJson = runtime.parseJsonWithComments(fs.readFileSync(settingsPath, "utf8"));
       llmBaseUrl = settingsJson?.llm?.baseUrl || llmBaseUrl;
       llmApiKey = settingsJson?.llm?.apiKey || "";
     }

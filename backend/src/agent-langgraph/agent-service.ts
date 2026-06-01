@@ -79,6 +79,13 @@ export interface LangGraphRunResult {
 // Helpers
 // ---------------------------------------------------------------------------
 
+export function getLangGraphRecursionLimit(maxToolCallsPerTurn: number | undefined): number {
+  const toolLimit = typeof maxToolCallsPerTurn === 'number' && Number.isFinite(maxToolCallsPerTurn) && maxToolCallsPerTurn > 0
+    ? maxToolCallsPerTurn
+    : 200;
+  return Math.max(50, toolLimit * 2 + 10);
+}
+
 function buildAttachmentBlock(attachments: AttachmentInfo[] | undefined, locale: AppLocale): string {
   if (!attachments || attachments.length === 0) return '';
   const header = locale === 'zh' ? '[已上传文件]' : '[Attached files]';
@@ -151,6 +158,16 @@ export class LangGraphAgentService {
     };
   }
 
+  private buildGraphRuntimeConfig(input?: LangGraphRunInput, traceId?: string, conversationId?: string) {
+    return {
+      recursionLimit: getLangGraphRecursionLimit(config.agentMaxToolCallsPerTurn),
+      configurable: {
+        thread_id: conversationId,
+        ...this.buildConfigurable(input, traceId, conversationId),
+      },
+    };
+  }
+
   // ---------------------------------------------------------------------------
   // Conversation auto-creation
   // ---------------------------------------------------------------------------
@@ -210,12 +227,7 @@ export class LangGraphAgentService {
 
     const graph = await this.getGraph();
 
-    const config = {
-      configurable: {
-        thread_id: conversationId,
-        ...this.buildConfigurable(input, traceId, conversationId),
-      },
-    };
+    const config = this.buildGraphRuntimeConfig(input, traceId, conversationId);
 
     const reqLogger = createAgentLogger(traceId, conversationId);
     reqLogger.info({ message: input.message.slice(0, 100) }, 'LangGraph agent stream started');
@@ -258,12 +270,7 @@ export class LangGraphAgentService {
 
     const graph = await this.getGraph();
 
-    const config = {
-      configurable: {
-        thread_id: conversationId,
-        ...this.buildConfigurable(undefined, traceId, conversationId),
-      },
-    };
+    const config = this.buildGraphRuntimeConfig(undefined, traceId, conversationId);
 
     const reqLogger = createAgentLogger(traceId, conversationId);
     reqLogger.info('LangGraph agent resume started');
@@ -297,12 +304,7 @@ export class LangGraphAgentService {
 
     const graph = await this.getGraph();
 
-    const config = {
-      configurable: {
-        thread_id: conversationId,
-        ...this.buildConfigurable(input, traceId, conversationId),
-      },
-    };
+    const config = this.buildGraphRuntimeConfig(input, traceId, conversationId);
 
     const reqLogger = createAgentLogger(traceId, conversationId);
     reqLogger.info({ message: input.message.slice(0, 100) }, 'LangGraph agent run started');
@@ -338,12 +340,7 @@ export class LangGraphAgentService {
     const traceId = input.traceId || randomUUID();
     const reqStart = Date.now();
     const graph = await this.getGraph();
-    const config = {
-      configurable: {
-        thread_id: conversationId,
-        ...this.buildConfigurable(input, traceId, conversationId),
-      },
-    };
+    const config = this.buildGraphRuntimeConfig(input, traceId, conversationId);
 
     const reqLogger = createAgentLogger(traceId, conversationId);
     reqLogger.info({ message: input.message.slice(0, 100) }, 'LangGraph agent runFull started');

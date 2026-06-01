@@ -649,7 +649,7 @@ async function validateAgentCapabilityMatrix(context) {
 async function validateAgentSkillhubContract(context) {
   await runBackendBuildOnce(context);
   const Fastify = backendRequire(context.rootDir)("fastify");
-  const stateDir = path.join(os.homedir(), ".structureclaw", "skillhub");
+  const stateDir = path.join(context.paths.runtimeDir, "skillhub");
   const cacheFile = path.join(stateDir, "cache.json");
 
   await fsp.rm(stateDir, { recursive: true, force: true });
@@ -1356,6 +1356,10 @@ async function validateDevStartupGuards(context) {
   assert(
     cliRuntimeContent.includes("isProjectOwnedPortProcess"),
     "missing project ownership guard in CLI runtime cleanup",
+  );
+  assert(
+    runtime.parseJsonWithComments('{"server":{"port":31415},// note\n"llm":{"model":"test"}}').llm.model === "test",
+    "CLI runtime should parse commented settings.json without dropping settings",
   );
   assert(
     runtimePaths.analysisRequirementsFile.endsWith(

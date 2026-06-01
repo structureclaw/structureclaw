@@ -293,9 +293,6 @@ def _yjk_install_root() -> str:
     configured = _env_text("YJK_PATH") or _env_text("YJKS_ROOT")
     if configured:
         return configured
-    for candidate in (r"C:\YJKS\YJKS_8_0_0", r"D:\YJKS\YJKS_8_0_0"):
-        if Path(candidate).is_dir():
-            return candidate
     return ""
 
 

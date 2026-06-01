@@ -737,13 +737,6 @@ class AnalysisEngineRegistry:
         root_source = "YJK_PATH" if yjk_path else ("YJKS_ROOT" if yjks_root else None)
 
         if not root_value:
-            for candidate in (Path(r"C:\YJKS\YJKS_8_0_0"), Path(r"D:\YJKS\YJKS_8_0_0")):
-                if candidate.is_dir():
-                    root_value = str(candidate)
-                    root_source = "default install path"
-                    break
-
-        if not root_value:
             return {
                 "error": "YJK_PATH or YJKS_ROOT environment variable is not set",
                 "failedStep": "YJK install root",

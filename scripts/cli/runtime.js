@@ -306,11 +306,82 @@ function applyCnProfileDefaults(env) {
   }
 }
 
+function stripJsonComments(source) {
+  let output = "";
+  let inString = false;
+  let escaped = false;
+  let inLineComment = false;
+  let inBlockComment = false;
+
+  for (let i = 0; i < source.length; i += 1) {
+    const char = source[i];
+    const next = source[i + 1];
+
+    if (inLineComment) {
+      if (char === "\n" || char === "\r") {
+        inLineComment = false;
+        output += char;
+      }
+      continue;
+    }
+
+    if (inBlockComment) {
+      if (char === "*" && next === "/") {
+        inBlockComment = false;
+        i += 1;
+        continue;
+      }
+      if (char === "\n" || char === "\r") {
+        output += char;
+      }
+      continue;
+    }
+
+    if (inString) {
+      output += char;
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === "\"") {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === "\"") {
+      inString = true;
+      output += char;
+      continue;
+    }
+
+    if (char === "/" && next === "/") {
+      inLineComment = true;
+      i += 1;
+      continue;
+    }
+
+    if (char === "/" && next === "*") {
+      inBlockComment = true;
+      i += 1;
+      continue;
+    }
+
+    output += char;
+  }
+
+  return output;
+}
+
+function parseJsonWithComments(content) {
+  return JSON.parse(stripJsonComments(content));
+}
+
 function readSettingsJson(paths) {
   const settingsPath = path.join(paths.runtimeDir, "settings.json");
   try {
     if (pathExists(settingsPath)) {
-      return JSON.parse(fs.readFileSync(settingsPath, "utf8"));
+      return parseJsonWithComments(fs.readFileSync(settingsPath, "utf8"));
     }
   } catch { /* return empty */ }
   return {};
@@ -999,6 +1070,7 @@ module.exports = {
   normalizeSqliteFileUrl,
   normalizeAptMirror,
   parseDotEnv,
+  parseJsonWithComments,
   pathExists,
   pidFilePath,
   parsePythonRequirements,

@@ -98,6 +98,17 @@ export class PythonWorkerRunner<TInput extends object> {
       const childEnv: Record<string, string> = { ...process.env as Record<string, string>, PYTHONIOENCODING: 'utf-8' };
       if (config.pkpmCyclePath) childEnv.PKPM_CYCLE_PATH = config.pkpmCyclePath;
       if (config.pkpmWorkDir) childEnv.PKPM_WORK_DIR = config.pkpmWorkDir;
+      delete childEnv.YJK_PATH;
+      delete childEnv.YJKS_ROOT;
+      delete childEnv.YJKS_EXE;
+      delete childEnv.YJK_PYTHON_BIN;
+      delete childEnv.YJK_WORK_DIR;
+      delete childEnv.YJK_VERSION;
+      delete childEnv.YJK_TIMEOUT_S;
+      delete childEnv.YJK_INVISIBLE;
+      delete childEnv.YJK_LAUNCHER_PREWARM;
+      delete childEnv.YJK_LAUNCHER_PREWARM_S;
+      delete childEnv.YJK_DIRECT_READY_TIMEOUT_S;
       if (config.yjkInstallRoot) {
         childEnv.YJK_PATH = config.yjkInstallRoot;
         childEnv.YJKS_ROOT = config.yjkInstallRoot;

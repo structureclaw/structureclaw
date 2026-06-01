@@ -402,11 +402,15 @@ function setCache(
 
 function readSettingsFromDisk(filePath: string): SettingsFile | null {
   try {
-    const raw = JSON.parse(stripJsonComments(fs.readFileSync(filePath, 'utf8')));
-    return normalizeSettingsFile(raw);
+    return parseSettingsFileContent(fs.readFileSync(filePath, 'utf8'));
   } catch {
     return null;
   }
+}
+
+function parseSettingsFileContent(content: string): SettingsFile {
+  const raw = JSON.parse(stripJsonComments(content));
+  return normalizeSettingsFile(raw) ?? {};
 }
 
 function stripJsonComments(source: string): string {
@@ -489,6 +493,22 @@ export function readSettingsFile(): SettingsFile | null {
   const settings = readSettingsFromDisk(filePath);
   setCache(filePath, settings, currentFingerprint);
   return settings;
+}
+
+export function readSettingsFileForUpdate(): SettingsFile {
+  const filePath = getSettingsFilePath();
+  const stat = fs.statSync(filePath, { throwIfNoEntry: false });
+  if (!stat?.isFile()) {
+    return {};
+  }
+
+  try {
+    const settings = parseSettingsFileContent(fs.readFileSync(filePath, 'utf8'));
+    setCache(filePath, settings, getSettingsFileFingerprint(filePath));
+    return settings;
+  } catch {
+    throw new Error(`Unable to parse settings.json at ${filePath}; refusing to overwrite existing settings.`);
+  }
 }
 
 export function writeSettingsFile(settings: SettingsFile): void {

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { config, runtimeBaseDir } from '../config/index.js';
 import {
   readSettingsFile,
+  readSettingsFileForUpdate,
   writeSettingsFile,
   type SettingsFile,
   type SettingsFileServer,
@@ -72,7 +73,7 @@ type SettingsResponse = {
     baseUrl: ValueField<string>;
     model: ValueField<string>;
     hasApiKey: boolean;
-    apiKeySource: 'runtime' | 'unset';
+    apiKeySource: 'runtime' | 'env' | 'unset';
     timeoutMs: ValueField<number>;
     maxRetries: ValueField<number>;
   };
@@ -181,8 +182,10 @@ function buildSettingsResponse(): SettingsResponse {
     yjkDirectReadyTimeoutS: 12,
   };
 
-  const hasApiKey = config.llmApiKey.trim().length > 0;
-  const apiKeySource: 'runtime' | 'unset' = hasApiKey ? 'runtime' : 'unset';
+  const hasSettingsApiKey = file?.llm?.apiKey !== undefined && file.llm.apiKey.trim().length > 0;
+  const hasEnvApiKey = process.env.LLM_API_KEY !== undefined && process.env.LLM_API_KEY.trim().length > 0;
+  const hasApiKey = hasSettingsApiKey || hasEnvApiKey;
+  const apiKeySource: 'runtime' | 'env' | 'unset' = hasSettingsApiKey ? 'runtime' : hasEnvApiKey ? 'env' : 'unset';
 
   return {
     server: {
@@ -786,7 +789,7 @@ function resolveYjkInstallRoot(input: SettingsFileYjk | undefined, current: Sett
 }
 
 function autoConfigureYjk(input: YjkAutoConfigureInput): { settings: SettingsResponse; steps: YjkAutoConfigureStep[] } {
-  const current = readSettingsFile() ?? {};
+  const current = readSettingsFileForUpdate();
   const requestedYjk = input.yjk;
   const steps: YjkAutoConfigureStep[] = [];
 
@@ -873,7 +876,7 @@ export async function adminSettingsRoutes(fastify: FastifyInstance) {
     },
   }, async (request: FastifyRequest<{ Body: UpdateSettingsInput }>) => {
     const parsed = updateSettingsSchema.parse(request.body);
-    const current = readSettingsFile() ?? {};
+    const current = readSettingsFileForUpdate();
     const updated = applyUpdate(current, parsed);
     writeSettingsFile(updated);
     return buildSettingsResponse();

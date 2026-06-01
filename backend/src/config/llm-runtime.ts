@@ -10,6 +10,7 @@ import { config } from './index.js';
 import {
   normalizeOptionalString,
   readSettingsFile,
+  readSettingsFileForUpdate,
   writeSettingsFile,
   type SettingsFileLlm,
 } from './settings-file.js';
@@ -32,7 +33,7 @@ export type EffectiveLlmSettings = Pick<
 >;
 
 export type LlmValueSource = 'runtime' | 'default';
-export type ApiKeySource = 'runtime' | 'unset';
+export type ApiKeySource = 'runtime' | 'env' | 'unset';
 
 export type PublicLlmSettings = {
   baseUrl: string;
@@ -98,6 +99,8 @@ export function getPublicLlmSettings(): PublicLlmSettings {
   const hasBaseUrlOverride = runtimeSettings?.baseUrl !== undefined;
   const hasModelOverride = runtimeSettings?.model !== undefined;
   const hasApiKeyOverride = runtimeSettings?.apiKey !== undefined && runtimeSettings.apiKey.trim().length > 0;
+  const hasEnvApiKey = process.env.LLM_API_KEY !== undefined && process.env.LLM_API_KEY.trim().length > 0;
+  const apiKeySource: ApiKeySource = hasApiKeyOverride ? 'runtime' : hasEnvApiKey ? 'env' : 'unset';
 
   return {
     baseUrl: effective.llmBaseUrl,
@@ -109,12 +112,13 @@ export function getPublicLlmSettings(): PublicLlmSettings {
     hasOverrides: hasBaseUrlOverride || hasModelOverride || hasApiKeyOverride,
     baseUrlSource: hasBaseUrlOverride ? 'runtime' : 'default',
     modelSource: hasModelOverride ? 'runtime' : 'default',
-    apiKeySource: hasApiKey ? 'runtime' : 'unset',
+    apiKeySource,
   };
 }
 
 export function updateRuntimeLlmSettings(input: UpdateRuntimeLlmSettingsInput): PublicLlmSettings {
-  const existingSettings = getRuntimeLlmSettings();
+  const currentFull = readSettingsFileForUpdate();
+  const existingSettings = currentFull.llm ?? null;
   const nextBaseUrl = input.baseUrl.trim();
   const nextModel = input.model.trim();
 
@@ -133,15 +137,13 @@ export function updateRuntimeLlmSettings(input: UpdateRuntimeLlmSettingsInput): 
     apiKey: nextApiKey,
   };
 
-  // Read current full settings, update llm section only
-  const currentFull = readSettingsFile() ?? {};
   writeSettingsFile({ ...currentFull, llm });
 
   return getPublicLlmSettings();
 }
 
 export function clearRuntimeLlmSettings(): PublicLlmSettings {
-  const currentFull = readSettingsFile() ?? {};
+  const currentFull = readSettingsFileForUpdate();
   writeSettingsFile({ ...currentFull, llm: {} });
   return getPublicLlmSettings();
 }

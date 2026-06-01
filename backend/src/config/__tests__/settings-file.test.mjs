@@ -61,4 +61,16 @@ describe('settings file', () => {
       expect(config.llmModel).toBe('test-model');
     });
   });
+
+  test('throws before update when an existing settings file is malformed', async () => {
+    await withTempSettingsDir(`{
+      "server": { "port": 31415 },
+      "llm":
+    }`, async () => {
+      const { readSettingsFile, readSettingsFileForUpdate } = await import('../../../dist/config/settings-file.js');
+
+      expect(readSettingsFile()).toBeNull();
+      expect(() => readSettingsFileForUpdate()).toThrow(/refusing to overwrite existing settings/);
+    });
+  });
 });

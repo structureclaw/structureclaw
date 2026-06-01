@@ -19,7 +19,7 @@ type Field<T> = { value: T; source: ValueSource; defaultValue: T }
 
 type SettingsResponse = {
   server: { port: Field<number>; host: Field<string>; bodyLimitMb: Field<number> }
-  llm: { baseUrl: Field<string>; model: Field<string>; hasApiKey: boolean; apiKeySource: ValueSource | 'unset'; timeoutMs: Field<number>; maxRetries: Field<number> }
+  llm: { baseUrl: Field<string>; model: Field<string>; hasApiKey: boolean; apiKeySource: ValueSource | 'env' | 'unset'; timeoutMs: Field<number>; maxRetries: Field<number> }
   database: { url: Field<string> }
   logging: { level: Field<string>; llmLogEnabled: Field<boolean>; logMaxAgeDays: Field<number>; logMaxSize: Field<number>; llmLogDir: Field<string> }
   analysis: { pythonBin: Field<string>; pythonTimeoutMs: Field<number>; engineManifestPath: Field<string> }

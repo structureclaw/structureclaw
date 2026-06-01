@@ -280,8 +280,10 @@ describe('backend runtime llm settings', () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'structureclaw-llm-settings-'));
     const previous = {
       SCLAW_DATA_DIR: process.env.SCLAW_DATA_DIR,
+      LLM_API_KEY: process.env.LLM_API_KEY,
     };
 
+    delete process.env.LLM_API_KEY;
     process.env.SCLAW_DATA_DIR = tempDir;
 
     const settingsPath = path.join(tempDir, 'settings.json');
@@ -316,11 +318,13 @@ describe('backend runtime llm settings', () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'structureclaw-llm-settings-'));
     const previous = {
       SCLAW_DATA_DIR: process.env.SCLAW_DATA_DIR,
+      LLM_API_KEY: process.env.LLM_API_KEY,
       LLM_MODEL: process.env.LLM_MODEL,
       LLM_BASE_URL: process.env.LLM_BASE_URL,
     };
 
     // Ensure env vars are cleared so defaults apply
+    delete process.env.LLM_API_KEY;
     delete process.env.LLM_MODEL;
     delete process.env.LLM_BASE_URL;
     process.env.SCLAW_DATA_DIR = tempDir;
@@ -372,7 +376,7 @@ describe('backend runtime llm settings', () => {
         baseUrl: 'https://env-fallback.example.com/v1',
         model: 'env-model',
         hasApiKey: true,
-        apiKeySource: 'runtime',
+        apiKeySource: 'env',
         hasOverrides: false,
         baseUrlSource: 'default',
         modelSource: 'default',

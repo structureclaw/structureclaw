@@ -9,7 +9,7 @@ import { API_BASE } from '@/lib/api-base'
 import { useI18n } from '@/lib/i18n'
 
 type LlmValueSource = 'runtime' | 'default'
-type ApiKeySource = 'runtime' | 'unset'
+type ApiKeySource = 'runtime' | 'env' | 'unset'
 type TokenMode = 'keep' | 'replace' | 'inherit'
 
 type LlmSettingsResponse = {
@@ -105,6 +105,9 @@ export function LlmSettingsPanel() {
     }
     if (source === 'default') {
       return t('llmSettingsSourceDefault')
+    }
+    if (source === 'env') {
+      return t('llmSettingsSourceEnv')
     }
     return t('llmSettingsSourceUnset')
   }

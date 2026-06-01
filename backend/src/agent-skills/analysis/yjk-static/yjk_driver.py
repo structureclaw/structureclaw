@@ -181,12 +181,6 @@ def _setup_paths() -> str:
     Returns the resolved YJKS_ROOT directory.
     """
     yjks_root = _env_path("YJKS_ROOT") or _env_path("YJK_PATH")
-    if not yjks_root:
-        for candidate in (r"C:\YJKS\YJKS_8_0_0", r"D:\YJKS\YJKS_8_0_0"):
-            if os.path.isdir(candidate):
-                yjks_root = candidate
-                break
-
     yjks_exe_env = _env_path("YJKS_EXE")
     if yjks_exe_env and os.path.isfile(yjks_exe_env):
         root = os.path.dirname(os.path.abspath(yjks_exe_env))
