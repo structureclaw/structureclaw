@@ -25,6 +25,11 @@ from threading import Lock
 from typing import Any, Dict
 
 from contracts import EngineNotAvailableError
+from pkpm_diagnostics import (
+    find_pdb_version_mismatch,
+    format_pdb_version_mismatch_error,
+    format_pdb_version_mismatch_warning,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -148,6 +153,25 @@ def _safe_float(val: Any, default: float = 0.0) -> float:
 
 def _max_from_list(values: list[float]) -> float:
     return max(values) if values else 0.0
+
+
+def _has_core_pkpm_results(extracted: Dict[str, Any]) -> bool:
+    if not extracted:
+        return False
+    if extracted.get("mode_periods"):
+        return True
+    if extracted.get("beams") or extracted.get("columns"):
+        return True
+    if extracted.get("node_displacements"):
+        return True
+    if _safe_float(extracted.get("floors_analyzed", 0)) > 0:
+        return True
+    summary = extracted.get("summary") or {}
+    return any(_safe_float(summary.get(key, 0)) > 0 for key in (
+        "max_displacement_mm",
+        "max_shear_force_kn",
+        "max_bending_moment_kNm",
+    ))
 
 
 def _read_satwe_params(result: Any) -> Dict[str, Any]:
@@ -532,8 +556,19 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     try:
         extracted = _extract_results(jws_path, material_family=material_family)
     except Exception as exc:
+        pdb_mismatch = find_pdb_version_mismatch(work_dir)
+        if pdb_mismatch:
+            raise RuntimeError(
+                f"{format_pdb_version_mismatch_error(work_dir, cycle_path, pdb_mismatch)} "
+                f"Result extraction failed: {exc}"
+            ) from exc
         warnings.append(f"Result extraction failed: {exc}")
         extracted = {}
+    pdb_mismatch = find_pdb_version_mismatch(work_dir)
+    if pdb_mismatch:
+        if not _has_core_pkpm_results(extracted):
+            raise RuntimeError(format_pdb_version_mismatch_error(work_dir, cycle_path, pdb_mismatch))
+        warnings.append(format_pdb_version_mismatch_warning(work_dir, cycle_path, pdb_mismatch))
 
     # ---- Phase 4: Map to frontend-compatible analysis result format ----
     pkpm_summary = extracted.get("summary", {})

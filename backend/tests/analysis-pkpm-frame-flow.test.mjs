@@ -11,6 +11,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, '..', '..');
 const pkpmDir = path.join(repoRoot, 'backend', 'src', 'agent-skills', 'analysis', 'pkpm-static');
 const runtimeSupportDir = path.join(repoRoot, 'backend', 'src', 'agent-skills', 'analysis', 'runtime');
+const skillSharedPythonRoot = path.join(repoRoot, 'backend', 'src', 'skill-shared', 'python');
 
 function probePython(executable, args) {
   const result = spawnSync(executable, [...args, '-c', 'import sys; sys.exit(0)'], {
@@ -50,6 +51,47 @@ function writeFile(filePath, content) {
 
 function writePkpmApiStub(stubsDir) {
   writeFile(
+    path.join(stubsDir, 'httpx.py'),
+    [
+      'class Client:',
+      '    def __init__(self, *args, **kwargs): pass',
+      '    def __enter__(self): return self',
+      '    def __exit__(self, *args): return False',
+      '    def post(self, *args, **kwargs): raise RuntimeError("httpx stub is not available in this test")',
+    ].join('\n'),
+  );
+
+  writeFile(
+    path.join(stubsDir, 'yaml.py'),
+    'def safe_load(*args, **kwargs): return {}\n',
+  );
+
+  writeFile(
+    path.join(stubsDir, 'fastapi.py'),
+    [
+      'class HTTPException(Exception):',
+      '    def __init__(self, status_code=None, detail=None):',
+      '        self.status_code = status_code',
+      '        self.detail = detail',
+      '        super().__init__(detail)',
+    ].join('\n'),
+  );
+
+  writeFile(path.join(stubsDir, 'structure_protocol', '__init__.py'), '');
+  writeFile(
+    path.join(stubsDir, 'structure_protocol', 'migrations.py'),
+    'def migrate_v1_to_v2(model): return model\n',
+  );
+  writeFile(
+    path.join(stubsDir, 'structure_protocol', 'structure_model_v2.py'),
+    [
+      'class StructureModelV2:',
+      '    def __init__(self, **data): self.data = data',
+      '    def model_dump(self, **kwargs): return dict(self.data)',
+    ].join('\n'),
+  );
+
+  writeFile(
     path.join(stubsDir, 'contracts.py'),
     [
       'class EngineNotAvailableError(RuntimeError):',
@@ -57,6 +99,7 @@ function writePkpmApiStub(stubsDir) {
       '        self.engine = engine',
       '        self.reason = reason',
       '        super().__init__(f"Engine {engine!r} unavailable: {reason}")',
+      'AnalysisResult = dict',
     ].join('\n'),
   );
 
@@ -210,15 +253,23 @@ function writePkpmApiStub(stubsDir) {
       '        self.design_params = list(values)',
       '        calls.append({"method": "Model.SetAllDesignPara", "values": list(values)})',
       '    def SetOneDesignParaValue(self, index, value): calls.append({"method": "Model.SetOneDesignParaValue", "index": index, "value": value})',
+      '    def AddStandFloor(self): calls.append({"method": "Model.AddStandFloor"})',
       '    def SaveProjectPara(self): calls.append({"method": "Model.SaveProjectPara"})',
       '    def SavePMModel(self): calls.append({"method": "Model.SavePMModel"})',
+      '',
+      'class ResultData:',
+      '    def InitialResult(self, jws_path): calls.append({"method": "ResultData.InitialResult", "jws_path": jws_path}); return 1',
+      '    def ClearResult(self): calls.append({"method": "ResultData.ClearResult"})',
+      '    def GetModePeriods(self): return [object(), object(), object()]',
+      '    def GetDesignBeams(self, floor): return [object()] if floor == 1 else []',
+      '    def GetDesignColumns(self, floor): return [object(), object()] if floor == 1 else []',
     ].join('\n'),
   );
 }
 
 const pythonCommand = resolvePythonCommand();
 
-function runPkpmRuntime(model) {
+function runPkpmRuntime(model, options = {}) {
   if (!pythonCommand) {
     throw new Error('No Python command available');
   }
@@ -238,11 +289,28 @@ function runPkpmRuntime(model) {
       'import APIPyInterface',
       'patch_calls = []',
       'run_calls = []',
+      `pdb_mismatch_text = ${JSON.stringify([
+        ' *WRN* PDB VERSION INCONSISTENT !',
+        '         FILE PDB VERSION NO.=    20250310',
+        '      PROGRAM PDB VERSION NO.=    20251220',
+      ].join('\n'))}`,
+      'def write_pdb_mismatch(work_dir):',
+      '    Path(work_dir, "SATWE_stub_MODEL0_HOLO_ERR.TXT").write_text(pdb_mismatch_text, encoding="utf-8")',
       'runtime._check_pkpm_available = lambda: Path("JWSCYCLE.exe")',
       'runtime._import_apipyinterface = lambda: None',
       'runtime._patch_material_label = lambda work_dir: patch_calls.append(str(work_dir))',
       'runtime._run_jws_cycle = lambda cycle_path, work_dir, timeout=600: run_calls.append({"cycle_path": str(cycle_path), "work_dir": str(work_dir), "timeout": timeout})',
       'def fake_extract(jws_path, material_family="steel"):',
+      ...(
+        options.createPdbMismatchDuringExtract
+          ? ['    write_pdb_mismatch(jws_path.parent)']
+          : []
+      ),
+      ...(
+        options.failExtract
+          ? ['    raise RuntimeError("simulated extraction failure")']
+          : []
+      ),
       '    return {',
       '        "summary": {"max_displacement_mm": 1.25, "max_shear_force_kn": 22.5, "max_bending_moment_kNm": 48.0},',
       '        "floors_analyzed": len(model.get("stories", [])),',
@@ -256,8 +324,20 @@ function runPkpmRuntime(model) {
       '    }',
       'runtime._extract_results = fake_extract',
       'model = json.loads(sys.stdin.read())',
-      'result = runtime.run_analysis(model, {"timeout": 12})',
-      'print(json.dumps({"result": result, "calls": APIPyInterface.calls, "patchCalls": patch_calls, "runCalls": run_calls}, ensure_ascii=False))',
+      ...(
+        options.expectFailure
+          ? [
+            'try:',
+            '    result = runtime.run_analysis(model, {"timeout": 12})',
+            '    print(json.dumps({"result": result, "calls": APIPyInterface.calls, "patchCalls": patch_calls, "runCalls": run_calls}, ensure_ascii=False))',
+            'except Exception as exc:',
+            '    print(json.dumps({"error": str(exc), "errorType": type(exc).__name__, "calls": APIPyInterface.calls, "patchCalls": patch_calls, "runCalls": run_calls}, ensure_ascii=False))',
+          ]
+          : [
+            'result = runtime.run_analysis(model, {"timeout": 12})',
+            'print(json.dumps({"result": result, "calls": APIPyInterface.calls, "patchCalls": patch_calls, "runCalls": run_calls}, ensure_ascii=False))',
+          ]
+      ),
     ].join('\n');
 
     const result = spawnSync(
@@ -268,6 +348,7 @@ function runPkpmRuntime(model) {
         encoding: 'utf8',
         env: {
           ...process.env,
+          PYTHONIOENCODING: 'utf-8',
           PKPM_WORK_DIR: workDir,
           PYTHONPATH: [stubsDir, runtimeSupportDir, pkpmDir, process.env.PYTHONPATH]
             .filter(Boolean)
@@ -279,6 +360,85 @@ function runPkpmRuntime(model) {
 
     if (result.status !== 0) {
       throw new Error(`PKPM runtime flow failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
+    }
+
+    const payloadLine = result.stdout
+      .trim()
+      .split(/\r?\n/)
+      .reverse()
+      .find((line) => line.trim().startsWith('{'));
+    expect(payloadLine).toBeTruthy();
+    return JSON.parse(payloadLine);
+  } finally {
+    fs.rmSync(stubsDir, { recursive: true, force: true });
+    fs.rmSync(workDir, { recursive: true, force: true });
+  }
+}
+
+function runPkpmProbe(options = {}) {
+  if (!pythonCommand) {
+    throw new Error('No Python command available');
+  }
+
+  const stubsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sclaw-pkpm-api-'));
+  const workDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sclaw-pkpm-probe-'));
+  const fakeCyclePath = path.join(stubsDir, 'JWSCYCLE.exe');
+  writePkpmApiStub(stubsDir);
+  writeFile(fakeCyclePath, '');
+
+  try {
+    const script = [
+      'import json, os, sys',
+      'from pathlib import Path',
+      `sys.path.insert(0, ${JSON.stringify(stubsDir)})`,
+      `sys.path.insert(1, ${JSON.stringify(runtimeSupportDir)})`,
+      `sys.path.insert(2, ${JSON.stringify(skillSharedPythonRoot)})`,
+      'import registry',
+      'registry.AnalysisEngineRegistry._discover_builtin_skills = lambda self: [{',
+      '    "id": "pkpm-static",',
+      '    "engineId": "builtin-pkpm",',
+      '    "adapterKey": "builtin-pkpm",',
+      '    "analysisType": "static",',
+      '    "priority": 130,',
+      '    "supportedModelFamilies": ["frame", "generic"],',
+      '}]',
+      `pdb_mismatch_text = ${JSON.stringify([
+        ' *WRN* PDB VERSION INCONSISTENT !',
+        '         FILE PDB VERSION NO.=    20250310',
+        '      PROGRAM PDB VERSION NO.=    20251220',
+      ].join('\n'))}`,
+      'def fake_run(cycle_path, work_dir, timeout=120):',
+      ...(
+        options.createPdbMismatch
+          ? ['    Path(work_dir, "SATWE_probe_MODEL0_HOLO_ERR.TXT").write_text(pdb_mismatch_text, encoding="utf-8")']
+          : ['    return None']
+      ),
+      'registry.AnalysisEngineRegistry._run_jws_cycle_probe = staticmethod(fake_run)',
+      'service = registry.AnalysisEngineRegistry("StructureClaw Analysis Engine", "0.1.0")',
+      'result = service.probe_engine("builtin-pkpm")',
+      'print(json.dumps(result, ensure_ascii=False))',
+    ].join('\n');
+
+    const result = spawnSync(
+      pythonCommand.executable,
+      [...pythonCommand.args, '-c', script],
+      {
+        encoding: 'utf8',
+        env: {
+          ...process.env,
+          PYTHONIOENCODING: 'utf-8',
+          PKPM_CYCLE_PATH: fakeCyclePath,
+          PKPM_WORK_DIR: workDir,
+          PYTHONPATH: [stubsDir, runtimeSupportDir, skillSharedPythonRoot, process.env.PYTHONPATH]
+            .filter(Boolean)
+            .join(path.delimiter),
+        },
+        windowsHide: process.platform === 'win32',
+      },
+    );
+
+    if (result.status !== 0) {
+      throw new Error(`PKPM probe flow failed\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
     }
 
     const payloadLine = result.stdout
@@ -569,6 +729,50 @@ describe('PKPM frame analysis flow', () => {
     expect(payload.result.pkpm_detailed.input_design_conditions.wind).toMatchObject({
       basic_pressure: 0.4,
     });
+  });
+
+  test('keeps PKPM result when PDB version warning is present but core results are readable', () => {
+    const payload = runPkpmRuntime(buildRcUserScenarioModel(), {
+      createPdbMismatchDuringExtract: true,
+    });
+
+    expect(payload.result.status).toBe('success');
+    expect(payload.result.warnings.join('\n')).toContain('PDB version warning');
+    expect(payload.result.warnings.join('\n')).toContain('20250310');
+    expect(payload.result.warnings.join('\n')).toContain('20251220');
+    expect(payload.result.summary.floors_analyzed).toBe(2);
+  });
+
+  test('fails when PKPM result extraction fails with a PDB version mismatch', () => {
+    const payload = runPkpmRuntime(buildRcUserScenarioModel(), {
+      createPdbMismatchDuringExtract: true,
+      failExtract: true,
+      expectFailure: true,
+    });
+
+    expect(payload.result).toBeUndefined();
+    expect(payload.errorType).toBe('RuntimeError');
+    expect(payload.error).toContain('PDB version mismatch');
+    expect(payload.error).toContain('20250310');
+    expect(payload.error).toContain('20251220');
+    expect(payload.error).toContain('JWSCYCLE.exe');
+    expect(payload.error).toContain('APIPyInterface');
+  });
+
+  test('surfaces readable PKPM probe PDB warnings without deleted temp paths', () => {
+    const payload = runPkpmProbe({ createPdbMismatch: true });
+
+    expect(payload.passed).toBe(true);
+    expect(payload.warnings.join('\n')).toContain('PDB version warning');
+    expect(payload.warnings.join('\n')).toContain('20250310');
+    expect(payload.warnings.join('\n')).toContain('20251220');
+    expect(payload.warnings.join('\n')).not.toContain('workDir=');
+    expect(payload.warnings.join('\n')).not.toContain('errFile=');
+    expect(payload.steps).toContainEqual(expect.objectContaining({
+      name: 'Extract results',
+      passed: true,
+      details: 'modePeriods=3, beams=1, columns=2',
+    }));
   });
 
   test('parses WMASS damping as ratio and percent separately', () => {

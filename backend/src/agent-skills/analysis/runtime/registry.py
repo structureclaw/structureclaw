@@ -15,6 +15,12 @@ import yaml
 from fastapi import HTTPException
 
 from contracts import AnalysisResult, EngineNotAvailableError
+from pkpm_diagnostics import (
+    collect_apipyinterface_diagnostics,
+    find_pdb_version_mismatch,
+    format_pdb_version_mismatch_error,
+    format_pdb_version_mismatch_warning,
+)
 from skill_loader import SkillNotLoadedError, build_missing_skill_detail, load_skill_symbol
 from structure_protocol.migrations import migrate_v1_to_v2
 from structure_protocol.structure_model_v2 import StructureModelV2
@@ -120,7 +126,7 @@ class AnalysisEngineRegistry:
         else:
             result = {"passed": False, "error": f"Unknown engine '{engine_id}' for probe"}
         elapsed = round((perf_counter() - start) * 1000)
-        return {
+        response = {
             "engineId": engine_id,
             "engineName": manifest.get("name", engine_id),
             "passed": result["passed"],
@@ -130,6 +136,9 @@ class AnalysisEngineRegistry:
             "steps": result.get("steps"),
             "hint": result.get("hint"),
         }
+        if result.get("warnings"):
+            response["warnings"] = result["warnings"]
+        return response
 
     def _probe_opensees(self) -> Dict[str, Any]:
         try:
@@ -164,7 +173,19 @@ class AnalysisEngineRegistry:
             import APIPyInterface
         except ImportError as exc:
             return {"passed": False, "error": f"APIPyInterface import failed: {exc}", "steps": steps}
-        steps.append({"name": "APIPyInterface import", "passed": True})
+        api_info = collect_apipyinterface_diagnostics()
+        api_details = ", ".join(
+            item for item in [
+                f"{api_info.get('package_name')}={api_info.get('package_version')}"
+                if api_info.get("package_version") else "",
+                api_info.get("module_file", ""),
+            ] if item
+        )
+        steps.append({
+            "name": "APIPyInterface import",
+            "passed": True,
+            **({"details": api_details} if api_details else {}),
+        })
 
         # Step 3-5: create model, run SATWE, extract results — cleanup in finally
         import shutil
@@ -228,14 +249,48 @@ class AnalysisEngineRegistry:
             # Step 5: extract results
             result = APIPyInterface.ResultData()
             ret = result.InitialResult(str(jws_path))
+            core_counts: Dict[str, int] = {}
+            if ret != 0:
+                try:
+                    core_counts["modePeriods"] = len(result.GetModePeriods())
+                except Exception:
+                    core_counts["modePeriods"] = 0
+                try:
+                    core_counts["beams"] = len(result.GetDesignBeams(1))
+                except Exception:
+                    core_counts["beams"] = 0
+                try:
+                    core_counts["columns"] = len(result.GetDesignColumns(1))
+                except Exception:
+                    core_counts["columns"] = 0
             result.ClearResult()
+            mismatch = find_pdb_version_mismatch(work_dir)
+            has_core_results = ret != 0 and any(value > 0 for value in core_counts.values())
+            if mismatch and not has_core_results:
+                return {
+                    "passed": False,
+                    "error": format_pdb_version_mismatch_error(
+                        work_dir, p, mismatch, include_file_paths=False,
+                    ),
+                    "steps": steps,
+                    "hint": "Install a PKPM API package compatible with the configured JWSCYCLE.exe.",
+                }
             if ret == 0:
                 return {
                     "passed": False,
                     "error": "InitialResult returned FALSE — failed to read analysis results",
                     "steps": steps,
                 }
-            steps.append({"name": "Extract results", "passed": True})
+            steps.append({
+                "name": "Extract results",
+                "passed": True,
+                "details": ", ".join(f"{key}={value}" for key, value in core_counts.items()),
+            })
+            warnings: list[str] = []
+            if mismatch:
+                warnings.append(format_pdb_version_mismatch_warning(
+                    work_dir, p, mismatch, include_file_paths=False,
+                ))
 
         except Exception as exc:
             step_label = "Model creation" if len(steps) < 3 else ("SATWE analysis" if len(steps) < 4 else "Result extraction")
@@ -249,7 +304,13 @@ class AnalysisEngineRegistry:
         finally:
             shutil.rmtree(work_dir, ignore_errors=True)
 
-        return {"passed": True, "details": "PKPM probe completed: model created, SATWE ran, results extracted", "steps": steps}
+        details = "PKPM probe completed: model created, SATWE ran, results extracted"
+        return {
+            "passed": True,
+            "details": details,
+            "steps": steps,
+            **({"warnings": warnings} if warnings else {}),
+        }
 
     def _probe_yjk(self) -> Dict[str, Any]:
         steps: list[Dict[str, Any]] = []
