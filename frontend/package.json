@@ -42,7 +42,8 @@
     "zustand": "^5.0.12"
   },
   "devDependencies": {
-    "@playwright/test": "^1.59.1",
+    "@next/eslint-plugin-next": "^16.2.4",
+    "@playwright/test": "^1.60.0",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -54,7 +55,6 @@
     "@vitejs/plugin-react": "^6.0.1",
     "@vitest/coverage-v8": "^4.1.2",
     "eslint": "^10.2.1",
-    "@next/eslint-plugin-next": "^16.2.4",
     "eslint-plugin-react-hooks": "^7.1.1",
     "jsdom": "^29.1.0",
     "postcss": "^8.5.10",
