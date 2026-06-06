@@ -45,9 +45,10 @@ YJK_USE_LAUNCHER : str, optional
 YJK_LAUNCHER_EXE : str, optional
     Direct path to ``YjkLauncher.exe``. Defaults to ``<install_root>/YjkLauncher.exe``.
 YJK_LAUNCHER_PREWARM : str, optional
-    ``auto`` (default) retries direct ``RunYJK(yjks.exe)`` after starting the
-    official launcher if YJK shows an authorization failure dialog. ``1`` starts
-    the launcher before the first direct run; ``0`` disables this fallback.
+    ``1`` / ``always`` (default) starts the official YJK launcher/main panel
+    before direct ``RunYJK(yjks.exe)`` so local authorization is initialized.
+    ``auto`` retries with the launcher only after detecting an authorization
+    failure; ``0`` disables this fallback.
 YJK_DIRECT_READY_TIMEOUT_S / YJK_LAUNCHER_PREWARM_S : str, optional
     Timeouts for detecting direct-launch authorization failure and waiting for
     the official launcher to initialize authorization.
@@ -650,6 +651,24 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         val = _env_text(key)
         if val:
             env[key] = val
+
+    run_meta["yjkEnv"] = {
+        key: env.get(key, "")
+        for key in (
+            "YJKS_ROOT",
+            "YJK_PATH",
+            "YJKS_EXE",
+            "YJK_PYTHON_BIN",
+            "YJK_WORK_DIR",
+            "YJK_VERSION",
+            "YJK_TIMEOUT_S",
+            "YJK_INVISIBLE",
+            "YJK_LAUNCHER_PREWARM",
+            "YJK_LAUNCHER_PREWARM_S",
+            "YJK_DIRECT_READY_TIMEOUT_S",
+        )
+    }
+    _write_json(work_dir / "run-meta.json", run_meta)
 
     warnings: list[str] = []
 

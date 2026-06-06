@@ -828,7 +828,7 @@ function autoConfigureYjk(input: YjkAutoConfigureInput): { settings: SettingsRes
     version: requestedYjk?.version?.trim() || current.yjk?.version?.trim() || '8.0.0',
     timeoutS: requestedYjk?.timeoutS ?? current.yjk?.timeoutS ?? 600,
     invisible: requestedYjk?.invisible ?? current.yjk?.invisible ?? false,
-    launcherPrewarm: requestedYjk?.launcherPrewarm ?? current.yjk?.launcherPrewarm ?? 'auto',
+    launcherPrewarm: requestedYjk?.launcherPrewarm ?? current.yjk?.launcherPrewarm ?? 'always',
     launcherPrewarmS: requestedYjk?.launcherPrewarmS ?? current.yjk?.launcherPrewarmS ?? 18,
     directReadyTimeoutS: requestedYjk?.directReadyTimeoutS ?? current.yjk?.directReadyTimeoutS ?? 12,
   };

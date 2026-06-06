@@ -40,6 +40,37 @@ describe('YJK driver authorization detection', () => {
     return;
   }
 
+  test('defaults to launcher prewarm before direct launch', () => {
+    const script = String.raw`
+import importlib.util
+import os
+from pathlib import Path
+
+driver_path = Path(r"${repoRoot}") / "backend" / "src" / "agent-skills" / "analysis" / "yjk-static" / "yjk_driver.py"
+spec = importlib.util.spec_from_file_location("yjk_driver_under_test", driver_path)
+driver = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(driver)
+
+os.environ.pop("YJK_LAUNCHER_PREWARM", None)
+assert driver._launcher_prewarm_mode() == "always"
+
+os.environ["YJK_LAUNCHER_PREWARM"] = "auto"
+assert driver._launcher_prewarm_mode() == "auto"
+
+os.environ["YJK_LAUNCHER_PREWARM"] = "off"
+assert driver._launcher_prewarm_mode() == "off"
+print("ok")
+`;
+
+    const result = spawnSync(python.executable, [...python.args, '-c', script], {
+      encoding: 'utf8',
+      windowsHide: process.platform === 'win32',
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('ok');
+  });
+
   test('detects authorization failure windows from reused YJK processes', () => {
     const script = String.raw`
 import importlib.util

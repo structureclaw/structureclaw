@@ -18,6 +18,42 @@ describe('buildCodeCheckInput', () => {
     expect(input.context.utilizationByElement).toEqual({ E1: 0.92 });
   });
 
+  test('extracts utilization from analysis result data', () => {
+    const input = buildCodeCheckInput({
+      traceId: 'trace-analysis-util',
+      designCode: 'GB50010',
+      model: { elements: [{ id: 'C1' }] },
+      analysis: {
+        success: true,
+        data: {
+          utilizationByElement: { C1: { '轴压比': 0.88 } },
+        },
+      },
+      analysisParameters: {},
+    });
+
+    expect(input.context.utilizationByElement).toEqual({ C1: { '轴压比': 0.88 } });
+  });
+
+  test('lets explicit analysis parameters override analysis result utilization', () => {
+    const input = buildCodeCheckInput({
+      traceId: 'trace-parameter-util',
+      designCode: 'GB50010',
+      model: { elements: [{ id: 'C1' }] },
+      analysis: {
+        success: true,
+        data: {
+          utilizationByElement: { C1: { '轴压比': 0.88 } },
+        },
+      },
+      analysisParameters: {
+        utilizationByElement: { C1: { '轴压比': 0.76 } },
+      },
+    });
+
+    expect(input.context.utilizationByElement).toEqual({ C1: { '轴压比': 0.76 } });
+  });
+
   test('enriches element context with material and section records', () => {
     const input = buildCodeCheckInput({
       traceId: 'trace-2',

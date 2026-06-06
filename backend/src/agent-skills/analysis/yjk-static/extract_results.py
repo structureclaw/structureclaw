@@ -39,11 +39,19 @@ JSON schema:
       "beams":   { ... },
       "braces":  { ... }
   },
+  "member_design": {
+      "columns": [
+          {"id","tot_id","floor","raw","metrics"}
+      ],
+      "beams":   [ ... ],
+      "braces":  [ ... ]
+  },
   "floor_stats": [ {"floor","stiffness_x","stiffness_y","shear_cap_x","shear_cap_y"} ],
   "extraction_debug": { ... }
 }
 """
 import json
+import math
 import os
 import traceback
 
@@ -77,13 +85,16 @@ def _new_debug():
         "member_counts": {"columns": 0, "beams": 0, "braces": 0},
         "node_counts_by_case": {},
         "member_force_counts": {"columns": {}, "beams": {}, "braces": {}},
+        "member_design_counts": {"columns": 0, "beams": 0, "braces": 0},
         "errors": [],
     }
 
 
 def _json_safe(value):
-    if value is None or isinstance(value, (str, int, float, bool)):
+    if value is None or isinstance(value, (str, bool)):
         return value
+    if isinstance(value, (int, float)):
+        return value if math.isfinite(float(value)) else None
     if isinstance(value, (list, tuple, set)):
         return [_json_safe(item) for item in value]
     if isinstance(value, dict):
@@ -631,6 +642,91 @@ def _get_member_force(YJKSDsnDataPy, debug, category, config, floor, tot_id, cas
     }
 
 
+def _collect_numbers(value, depth=0):
+    if depth > 5:
+        return []
+    if value is None or isinstance(value, bool):
+        return []
+    if isinstance(value, (int, float)):
+        number = float(value)
+        return [number] if math.isfinite(number) else []
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        try:
+            number = float(text)
+            return [number] if math.isfinite(number) else []
+        except Exception:
+            return []
+    if isinstance(value, dict):
+        numbers = []
+        for item in value.values():
+            numbers.extend(_collect_numbers(item, depth + 1))
+        return numbers
+    if isinstance(value, (list, tuple, set)):
+        numbers = []
+        for item in value:
+            numbers.extend(_collect_numbers(item, depth + 1))
+        return numbers
+    try:
+        return _collect_numbers(list(value), depth + 1)
+    except Exception:
+        return []
+
+
+def _method_metric(raw):
+    numbers = [abs(item) for item in _collect_numbers(raw)]
+    if not numbers:
+        return None
+    return {
+        "max_abs_numeric": round(max(numbers), 6),
+        "numeric_count": len(numbers),
+    }
+
+
+def _call_design_method(YJKSDsnDataPy, debug, method_name, floor, tot_id, extra_args):
+    return _safe_method(
+        debug,
+        "YJKSDsnDataPy",
+        YJKSDsnDataPy,
+        method_name,
+        floor,
+        tot_id,
+        *extra_args,
+        default=None,
+    )
+
+
+def _get_member_design(YJKSDsnDataPy, debug, category, config, member):
+    floor = int(member.get("floor", 0))
+    tot_id = int(member.get("tot_id", member.get("id", 0)))
+    raw = {}
+    metrics = {}
+
+    for item in config.get("design_methods", []):
+        key = item["key"]
+        method_name = item["method"]
+        extra_args = item.get("args", [])
+        value = _call_design_method(YJKSDsnDataPy, debug, method_name, floor, tot_id, extra_args)
+        if value is None:
+            continue
+        raw[key] = _json_safe(value)
+        metric = _method_metric(value)
+        if metric is not None:
+            metrics[key] = metric
+
+    if not raw:
+        return None
+
+    debug["member_design_counts"][category] = debug["member_design_counts"].get(category, 0) + 1
+    return {
+        **member,
+        "raw": raw,
+        "metrics": metrics,
+    }
+
+
 def _write_debug(debug):
     out_path = _debug_path()
     os.makedirs(os.path.dirname(os.path.abspath(out_path)), exist_ok=True)
@@ -677,6 +773,24 @@ def extract():
             "force_method": "dsnGetColumnStdForce",
             "post_kind": post_column,
             "generic_kind": gj_column,
+            "design_methods": [
+                {"key": "kind", "method": "dsnGetColumnKind"},
+                {"key": "mat_kind", "method": "dsnGetColumnMatKind"},
+                {"key": "design_method", "method": "dsnGetColumnDesignMethod"},
+                {"key": "reinforcement", "method": "dsnGetColumnAs"},
+                {"key": "reinforcement_aqjd", "method": "dsnGetColumnAs_AQJD"},
+                {"key": "axial_compression_ratio", "method": "dsnGetColumnZYB"},
+                {"key": "combined_axial_compression_ratio", "method": "dsnGetColumnZYB_ZH"},
+                {"key": "shear_span_ratio", "method": "dsnGetColumnJKB"},
+                {"key": "shear_span_ratio_xy", "method": "dsnGetColumnJKBXY"},
+                {"key": "joint_reinforcement", "method": "dsnGetColumnJointAs"},
+                {"key": "shear_capacity", "method": "dsnGetColumnShearCapacity"},
+                {"key": "longitudinal_rebar_ratio", "method": "dsnGetColumnAsRatio", "args": [0]},
+                {"key": "stirrup_rebar_ratio", "method": "dsnGetColumnAsRatio", "args": [1]},
+                {"key": "section_longitudinal_rebar_ratio", "method": "dsnGetColumnSectAsRatio", "args": [0]},
+                {"key": "section_stirrup_rebar_ratio", "method": "dsnGetColumnSectAsRatio", "args": [1]},
+                {"key": "side_rebar_ratio", "method": "dsnGetColumnSideAsRatio"},
+            ],
         },
         "beams": {
             "flr_method": "FlrBeams",
@@ -688,6 +802,24 @@ def extract():
             "force_method": "dsnGetBeamStdForce",
             "post_kind": post_beam,
             "generic_kind": gj_beam,
+            "design_methods": [
+                {"key": "kind", "method": "dsnGetBeamKind"},
+                {"key": "mat_kind", "method": "dsnGetBeamMatKind"},
+                {"key": "support_kind", "method": "dsnGetBeamSupKind"},
+                {"key": "cantilever_kind", "method": "dsnGetBeamCanti"},
+                {"key": "reinforcement", "method": "dsnGetBeamAs"},
+                {"key": "reinforcement_with_calculation", "method": "dsnGetBeamAsWithCal"},
+                {"key": "reinforcement_with_calculation_aqjd", "method": "dsnGetBeamAsWithCal_AQJD"},
+                {"key": "design_ratio", "method": "dsnGetBeamPJRatio"},
+                {"key": "shear_reinforcement", "method": "dsnGetBeamAsVJM"},
+                {"key": "shear_reinforcement_with_calculation", "method": "dsnGetBeamAsCalVJM"},
+                {"key": "torsion_reinforcement", "method": "dsnGetBeamAsTL"},
+                {"key": "diagonal_reinforcement", "method": "dsnGetBeamAsXJ"},
+                {"key": "compression_zone_height", "method": "dsnGetBeamConPressHei"},
+                {"key": "longitudinal_rebar_ratio", "method": "dsnGetBeamAsRSRatio"},
+                {"key": "stirrup_rebar_ratio", "method": "dsnGetBeamAsVRSRatio"},
+                {"key": "span_height_ratio", "method": "dsnGetBeamSpanHRatio"},
+            ],
         },
         "braces": {
             "flr_method": "FlrBraces",
@@ -699,6 +831,18 @@ def extract():
             "force_method": "dsnGetBraceStdForce",
             "post_kind": post_brace,
             "generic_kind": gj_brace,
+            "design_methods": [
+                {"key": "kind", "method": "dsnGetBraceKind"},
+                {"key": "mat_kind", "method": "dsnGetBraceMatKind"},
+                {"key": "design_method", "method": "dsnGetBraceDesignMethod"},
+                {"key": "reinforcement", "method": "dsnGetBraceAs"},
+                {"key": "reinforcement_aqjd", "method": "dsnGetBraceAs_AQJD"},
+                {"key": "axial_compression_ratio", "method": "dsnGetBraceZYB"},
+                {"key": "combined_axial_compression_ratio", "method": "dsnGetBraceZYB_ZH"},
+                {"key": "shear_span_ratio", "method": "dsnGetBraceJKB"},
+                {"key": "longitudinal_rebar_ratio", "method": "dsnGetBraceAsRatio", "args": [0]},
+                {"key": "stirrup_rebar_ratio", "method": "dsnGetBraceAsRatio", "args": [1]},
+            ],
         },
     }
 
@@ -719,6 +863,7 @@ def extract():
         "node_reactions": {},
         "members": {"columns": [], "beams": [], "braces": []},
         "member_forces": {"columns": {}, "beams": {}, "braces": {}},
+        "member_design": {"columns": [], "beams": [], "braces": []},
         "floor_stats": [],
         "extraction_debug": debug,
     }
@@ -764,6 +909,9 @@ def extract():
                     seen_members[category].add(member_key)
                     members_by_category[category].append(entry)
                     result["members"][category].append(entry)
+                    design_entry = _get_member_design(YJKSDsnDataPy, debug, category, config, entry)
+                    if design_entry is not None:
+                        result["member_design"][category].append(design_entry)
 
                 for case in load_cases:
                     force_entry = _get_member_force(

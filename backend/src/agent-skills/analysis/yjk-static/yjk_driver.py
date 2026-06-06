@@ -221,7 +221,10 @@ def _env_float(name: str, default: float) -> float:
 
 
 def _launcher_prewarm_mode() -> str:
-    value = _env_text("YJK_LAUNCHER_PREWARM", "auto").lower()
+    # Local YJK authorization is initialized by the official launcher/main
+    # panel.  Treat the launcher prewarm as the normal path; keep "auto" as a
+    # retry-only compatibility mode for machines that do not need it.
+    value = _env_text("YJK_LAUNCHER_PREWARM", "always").lower()
     if value in {"0", "false", "no", "off", "never", "disabled"}:
         return "off"
     if value in {"1", "true", "yes", "on", "always", "force"}:
@@ -1008,8 +1011,11 @@ def _member_id_for(
     floor = int(round(_safe_float(raw_member.get("floor"), 0.0)))
     original_floor = int(round(_safe_float(raw_member.get("original_floor"), 0.0)))
     floors = [item for item in (floor, original_floor) if item > 0]
+    if category == "beams":
+        floors.extend(item + 1 for item in (floor, original_floor) if item > 0)
     if not floors:
         floors = [0]
+    floors = list(dict.fromkeys(floors))
 
     by_yjk_id = lookups.get("by_yjk_id", {})
     for candidate_field in ("tot_id", "id", "original_no"):
@@ -1304,6 +1310,148 @@ def _merge_member_definition(category_lookup: dict[tuple[int, str], dict], raw_f
     return raw_force
 
 
+def _metric_max(metrics: object, key: str) -> float | None:
+    if not isinstance(metrics, dict):
+        return None
+    item = metrics.get(key)
+    if not isinstance(item, dict):
+        return None
+    value = _safe_float(item.get("max_abs_numeric"), None)
+    return value if value is not None and value > 0 else None
+
+
+def _normalize_utilization(value: float | None, *, percent_encoded: bool = False) -> float | None:
+    try:
+        val_float = 0.0 if value is None else float(value)
+    except (TypeError, ValueError):
+        return None
+    if val_float <= 0:
+        return None
+    if percent_encoded:
+        if val_float > 1.0:
+            return round(val_float / 100.0, 4) if val_float <= 1000.0 else None
+        return round(val_float, 4)
+    # Some YJK APIs report ratios as percentages.  Values above 100 are
+    # usually reinforcement areas or capacities rather than utilization ratios.
+    if val_float > 10.0:
+        return round(val_float / 100.0, 4) if val_float <= 100.0 else None
+    return round(val_float, 4)
+
+
+def _design_usage_by_check(category: str, metrics: object) -> dict[str, float]:
+    usage: dict[str, float] = {}
+    if category in ("columns", "braces"):
+        axial = _normalize_utilization(_metric_max(metrics, "axial_compression_ratio"))
+        if axial is not None:
+            usage["轴压比"] = axial
+        combined_axial = _normalize_utilization(_metric_max(metrics, "combined_axial_compression_ratio"))
+        if combined_axial is not None:
+            usage["偏心受压"] = combined_axial
+    if category == "beams":
+        bending = _normalize_utilization(_metric_max(metrics, "design_ratio"), percent_encoded=True)
+        if bending is not None:
+            usage["正截面受弯"] = bending
+    return usage
+
+
+def _category_element_type(category: str) -> str:
+    if category == "columns":
+        return "column"
+    if category == "braces":
+        return "brace"
+    return "beam"
+
+
+def _build_yjk_design_results(
+    *,
+    extracted: dict,
+    member_definition_lookup: dict[str, dict[tuple[int, str], dict]],
+    element_lookups: dict[str, dict],
+    result_node_lookup: dict[str, str],
+    diagnostics: dict,
+) -> tuple[dict, dict[str, dict[str, float]]]:
+    raw_design = extracted.get("member_design", {})
+    if not isinstance(raw_design, dict):
+        raw_design = {}
+
+    elements: dict[str, dict] = {}
+    utilization_by_element: dict[str, dict[str, float]] = {}
+    max_utilization = 0.0
+    controlling_element = None
+    controlling_check = None
+    raw_count = 0
+    mapped_count = 0
+
+    for category in ("columns", "beams", "braces"):
+        raw_items = raw_design.get(category, [])
+        if not isinstance(raw_items, list):
+            continue
+        category_lookup = member_definition_lookup.get(category, {})
+        for sequence, raw_item in enumerate(raw_items, start=1):
+            if not isinstance(raw_item, dict):
+                continue
+            raw_count += 1
+            raw_member = _merge_member_definition(category_lookup, raw_item)
+            elem_id, match_method = _member_id_for(
+                category=category,
+                raw_member=raw_member,
+                sequence=sequence,
+                lookups=element_lookups,
+                result_node_lookup=result_node_lookup,
+                diagnostics=diagnostics,
+            )
+            if match_method != "raw":
+                mapped_count += 1
+
+            metrics = raw_item.get("metrics", {})
+            usage = _design_usage_by_check(category, metrics)
+            if usage:
+                utilization_by_element[elem_id] = usage
+                local_check, local_util = max(usage.items(), key=lambda item: item[1])
+            else:
+                local_check, local_util = None, None
+
+            if local_util is not None and local_util >= max_utilization:
+                max_utilization = local_util
+                controlling_element = elem_id
+                controlling_check = local_check
+
+            elements[elem_id] = {
+                "elementId": elem_id,
+                "elementType": _category_element_type(category),
+                "floor": raw_item.get("floor"),
+                "yjk": {
+                    "category": category,
+                    "id": raw_item.get("id"),
+                    "totId": raw_item.get("tot_id"),
+                    "originalNo": raw_item.get("original_no"),
+                    "originalFloor": raw_item.get("original_floor"),
+                    "matchMethod": match_method,
+                },
+                "metrics": metrics if isinstance(metrics, dict) else {},
+                "utilization": local_util,
+                "controllingCheck": local_check,
+                "raw": raw_item.get("raw", {}),
+            }
+
+    diagnostics["design_raw_members"] = raw_count
+    diagnostics["design_mapped_members"] = mapped_count
+    diagnostics["design_unmapped_members"] = max(raw_count - mapped_count, 0)
+
+    return {
+        "source": "YJKSDsnDataPy",
+        "summary": {
+            "elementCount": len(elements),
+            "rawMemberCount": raw_count,
+            "mappedMemberCount": mapped_count,
+            "maxUtilization": round(max_utilization, 4),
+            "controllingElement": controlling_element,
+            "controllingCheck": controlling_check,
+        },
+        "elements": elements,
+    }, utilization_by_element
+
+
 def _build_analysis_result(
     *,
     extracted: dict,
@@ -1320,6 +1468,13 @@ def _build_analysis_result(
     result_node_lookup = _build_result_node_lookup(extracted, mapping, diagnostics)
     element_lookups = _build_element_lookups(mapping)
     member_definition_lookup = _raw_member_definition_lookup(extracted)
+    design_results, utilization_by_element = _build_yjk_design_results(
+        extracted=extracted,
+        member_definition_lookup=member_definition_lookup,
+        element_lookups=element_lookups,
+        result_node_lookup=result_node_lookup,
+        diagnostics=diagnostics,
+    )
 
     displacements: dict[str, dict[str, float]] = {}
     forces: dict[str, dict[str, float]] = {}
@@ -1549,6 +1704,9 @@ def _build_analysis_result(
             "nodeCount": len(displacements),
             "elementCount": len(forces),
             "reactionNodeCount": len(reactions),
+            "designElementCount": design_results["summary"]["elementCount"],
+            "maxDesignUtilization": design_results["summary"]["maxUtilization"],
+            "controllingDesignElement": design_results["summary"]["controllingElement"],
             "maxDisplacement": round(max_disp, 4),
             "maxDisplacementNode": max_disp_node,
             "floors_analyzed": meta.get("n_floors"),
@@ -1570,8 +1728,11 @@ def _build_analysis_result(
             "mapping": mapping,
             "floor_stats": extracted.get("floor_stats", []),
             "members": extracted.get("members", {}),
+            "member_design": extracted.get("member_design", {}),
         },
         "caseResults": case_results,
+        "designResults": design_results,
+        "utilizationByElement": utilization_by_element,
         "envelopeTables": {
             "nodeDisplacement": node_displacement_envelope,
             "elementForce": element_force_envelope,
@@ -1719,6 +1880,11 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
     attach_existing = _env_flag("YJK_ATTACH_EXISTING")
     use_launcher = (not attach_existing) and _should_launch_with_launcher(yjks_root)
     prewarm_mode = _launcher_prewarm_mode()
+    print(
+        f"[yjk_driver] Launcher prewarm mode: {prewarm_mode}",
+        file=sys.stderr,
+        flush=True,
+    )
 
     # Default: show the YJK GUI so the user can observe the full workflow.
     # Set YJK_INVISIBLE=1 in .env to run fully headless (CI / unattended).

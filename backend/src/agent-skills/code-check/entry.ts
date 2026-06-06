@@ -24,25 +24,41 @@ function extractElementIds(model: Record<string, unknown> | undefined): string[]
     .filter((id): id is string => typeof id === 'string' && id.length > 0);
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function extractUtilizationByElement(source: unknown): Record<string, unknown> {
+  const sourceObject = asRecord(source);
+  const dataObject = asRecord(sourceObject['data']);
+  const envelopeObject = asRecord(sourceObject['envelope']);
+  const dataEnvelopeObject = asRecord(dataObject['envelope']);
+
+  const candidates = [
+    dataEnvelopeObject['elementUtilization'],
+    envelopeObject['elementUtilization'],
+    dataObject['utilizationByElement'],
+    sourceObject['utilizationByElement'],
+  ];
+
+  return candidates.reduce<Record<string, unknown>>((acc, raw) => {
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+      return { ...acc, ...(raw as Record<string, unknown>) };
+    }
+    return acc;
+  }, {});
+}
+
 function extractAnalysisSummary(analysis: unknown): Record<string, unknown> {
-  const data = analysis as Record<string, unknown> | undefined;
-  if (!data) {
-    return {};
-  }
+  const data = asRecord(analysis);
   return {
     analysisType: data['analysis_type'],
     success: data['success'],
     errorCode: data['error_code'],
     message: data['message'],
   };
-}
-
-function extractUtilizationByElement(parameters: Record<string, unknown>): Record<string, unknown> {
-  const raw = parameters['utilizationByElement'];
-  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-    return raw as Record<string, unknown>;
-  }
-  return {};
 }
 
 function extractElementContextById(model: Record<string, unknown> | undefined): Record<string, unknown> {
@@ -352,11 +368,12 @@ export function buildCodeCheckInput(options: {
   postprocessedResult?: Record<string, unknown>;
   codeCheckElements?: string[];
 }): CodeCheckDomainInput {
+  const analysisUtil = extractUtilizationByElement(options.analysis);
   const postprocessedUtil = options.postprocessedResult
     ? extractUtilizationByElement(options.postprocessedResult)
     : {};
   const parameterUtil = extractUtilizationByElement(options.analysisParameters);
-  const utilizationByElement = { ...postprocessedUtil, ...parameterUtil };
+  const utilizationByElement = { ...analysisUtil, ...postprocessedUtil, ...parameterUtil };
 
   // elementData: 合并 OpenSees 内力 + 模型截面/材料, 供 Python code-check 层真算
   const elementData = extractElementDataForCodeCheck(options.model, options.analysis);

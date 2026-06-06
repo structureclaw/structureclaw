@@ -120,7 +120,7 @@ const DEFAULTS: Record<string, string | number | boolean> = {
   workspaceRoot: '', checkpointDir: '', allowShell: false, allowedShellCommands: 'node,npm,python,python3,./sclaw,./sclaw_cn', shellTimeoutMs: 300000, maxToolCallsPerTurn: 200,
   pkpmCyclePath: '', pkpmWorkDir: '',
   yjkInstallRoot: '', yjkExePath: '', yjkPythonBin: '', yjkSdkArchivePath: '', yjkWorkDir: '', yjkVersion: '8.0.0', yjkTimeoutS: 600, yjkInvisible: false,
-  yjkLauncherPrewarm: 'auto', yjkLauncherPrewarmS: 18, yjkDirectReadyTimeoutS: 12,
+  yjkLauncherPrewarm: 'always', yjkLauncherPrewarmS: 18, yjkDirectReadyTimeoutS: 12,
 }
 
 // Map stateKey → API field name for sections that use different naming
@@ -289,7 +289,7 @@ export function GeneralSettingsPanel() {
             version: String(values.yjkVersion || ''),
             timeoutS: Number(values.yjkTimeoutS) || 600,
             invisible: Boolean(values.yjkInvisible),
-            launcherPrewarm: String(values.yjkLauncherPrewarm || 'auto'),
+            launcherPrewarm: String(values.yjkLauncherPrewarm || 'always'),
             launcherPrewarmS: Number.isFinite(yjkPrewarmS) ? yjkPrewarmS : 18,
             directReadyTimeoutS: Number.isFinite(yjkDirectReadyTimeoutS) ? yjkDirectReadyTimeoutS : 12,
           },

@@ -89,7 +89,7 @@ const YJK_DEFAULTS = {
   version: '8.0.0',
   timeoutS: 600,
   invisible: false,
-  launcherPrewarm: 'auto',
+  launcherPrewarm: 'always',
   launcherPrewarmS: 18,
   directReadyTimeoutS: 12,
 } as const;
