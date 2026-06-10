@@ -106,7 +106,10 @@ function writePkpmApiStub(stubsDir) {
   writeFile(
     path.join(stubsDir, 'APIPyInterface.py'),
     [
+      'import os',
+      '',
       'calls = []',
+      'project_params = {}',
       '',
       'class SteelGrade:',
       '    Q235 = "Q235"',
@@ -169,10 +172,16 @@ function writePkpmApiStub(stubsDir) {
       '        calls.append({"method": "BeamSection.SetStandSteelSect", "name": name})',
       '',
       'class ProjectPara:',
+      '    def __init__(self, values=None):',
+      '        self.values = dict(values or {})',
       '    def SetParaInt(self, key, value):',
+      '        self.values[int(key)] = int(value)',
       '        calls.append({"method": "ProjectPara.SetParaInt", "key": key, "value": value})',
       '    def SetParaDouble(self, key, value):',
       '        calls.append({"method": "ProjectPara.SetParaDouble", "key": key, "value": value})',
+      '    def GetPara_Int(self, key):',
+      '        calls.append({"method": "ProjectPara.GetPara_Int", "key": key})',
+      '        return self.values.get(int(key), 0)',
       '',
       'class Node:',
       '    def __init__(self, node_id): self.node_id = node_id',
@@ -196,12 +205,13 @@ function writePkpmApiStub(stubsDir) {
       '    def GetPmid(self): return self.pmid',
       '',
       'class StandFloor:',
-      '    def __init__(self):',
+      '    def __init__(self, floor_index=1):',
+      '        self.floor_index = floor_index',
       '        self.next_node = 1',
       '        self.next_net = 1',
       '        self.next_column = 1000',
       '        self.next_beam = 2000',
-      '    def SetDeadLive(self, dead, live): calls.append({"method": "StandFloor.SetDeadLive", "dead": dead, "live": live})',
+      '    def SetDeadLive(self, dead, live): calls.append({"method": "StandFloor.SetDeadLive", "floor": self.floor_index, "dead": dead, "live": live})',
       '    def AddNode(self, x, y):',
       '        node = Node(self.next_node)',
       '        self.next_node += 1',
@@ -229,9 +239,14 @@ function writePkpmApiStub(stubsDir) {
       '    def SetStandFloorIndex(self, index): calls.append({"method": "RealFloor.SetStandFloorIndex", "index": index})',
       '',
       'class Model:',
-      '    def __init__(self): self.floor = StandFloor(); self.next_col_sec = 1; self.next_beam_sec = 1; self.para = ProjectPara(); self.design_params = [0.0] * 128',
-      '    def CreatNewModel(self, work_dir, project_name): calls.append({"method": "Model.CreatNewModel", "work_dir": work_dir, "project_name": project_name})',
-      '    def OpenPMModel(self, jws_path): calls.append({"method": "Model.OpenPMModel", "jws_path": jws_path})',
+      '    def __init__(self): self.floors = {1: StandFloor(1)}; self.current_floor = 1; self.next_col_sec = 1; self.next_beam_sec = 1; self.para = ProjectPara(); self.design_params = [0.0] * 128; self.jws_path = None',
+      '    def CreatNewModel(self, work_dir, project_name):',
+      '        self.jws_path = os.path.join(work_dir, project_name + ".JWS")',
+      '        calls.append({"method": "Model.CreatNewModel", "work_dir": work_dir, "project_name": project_name})',
+      '    def OpenPMModel(self, jws_path):',
+      '        self.jws_path = jws_path',
+      '        self.para = ProjectPara(project_params.get(jws_path, {}))',
+      '        calls.append({"method": "Model.OpenPMModel", "jws_path": jws_path})',
       '    def AddColumnSection(self, section):',
       '        idx = self.next_col_sec',
       '        self.next_col_sec += 1',
@@ -242,8 +257,10 @@ function writePkpmApiStub(stubsDir) {
       '        self.next_beam_sec += 1',
       '        calls.append({"method": "Model.AddBeamSection", "idx": idx, "section": section.user or {"standard": section.standard}})',
       '        return idx',
-      '    def SetCurrentStandFloor(self, index): calls.append({"method": "Model.SetCurrentStandFloor", "index": index})',
-      '    def GetCurrentStandFloor(self): return self.floor',
+      '    def SetCurrentStandFloor(self, index):',
+      '        self.current_floor = index',
+      '        calls.append({"method": "Model.SetCurrentStandFloor", "index": index})',
+      '    def GetCurrentStandFloor(self): return self.floors[self.current_floor]',
       '    def AddNaturalFloor(self, floor): calls.append({"method": "Model.AddNaturalFloor"})',
       '    def GetProjectPara(self): return self.para',
       '    def GetAllDesignPara(self):',
@@ -253,9 +270,17 @@ function writePkpmApiStub(stubsDir) {
       '        self.design_params = list(values)',
       '        calls.append({"method": "Model.SetAllDesignPara", "values": list(values)})',
       '    def SetOneDesignParaValue(self, index, value): calls.append({"method": "Model.SetOneDesignParaValue", "index": index, "value": value})',
-      '    def AddStandFloor(self): calls.append({"method": "Model.AddStandFloor"})',
+      '    def AddStandFloor(self, source=None):',
+      '        new_index = max(self.floors.keys()) + 1',
+      '        self.floors[new_index] = StandFloor(new_index)',
+      '        calls.append({"method": "Model.AddStandFloor", "source": source, "index": new_index})',
+      '        return new_index',
+      '    def GetStandFloorCount(self): return len(self.floors)',
       '    def SaveProjectPara(self): calls.append({"method": "Model.SaveProjectPara"})',
-      '    def SavePMModel(self): calls.append({"method": "Model.SavePMModel"})',
+      '    def SavePMModel(self):',
+      '        if self.jws_path:',
+      '            project_params[self.jws_path] = dict(self.para.values)',
+      '        calls.append({"method": "Model.SavePMModel"})',
       '',
       'class ResultData:',
       '    def InitialResult(self, jws_path): calls.append({"method": "ResultData.InitialResult", "jws_path": jws_path}); return 1',
@@ -299,7 +324,13 @@ function runPkpmRuntime(model, options = {}) {
       'runtime._check_pkpm_available = lambda: Path("JWSCYCLE.exe")',
       'runtime._import_apipyinterface = lambda: None',
       'runtime._patch_material_label = lambda work_dir: patch_calls.append(str(work_dir))',
-      'runtime._run_jws_cycle = lambda cycle_path, work_dir, timeout=600: run_calls.append({"cycle_path": str(cycle_path), "work_dir": str(work_dir), "timeout": timeout})',
+      'def fake_jws_cycle(cycle_path, work_dir, timeout=600):',
+      '    run_calls.append({"cycle_path": str(cycle_path), "work_dir": str(work_dir), "timeout": timeout})',
+      '    for jws_path, params in APIPyInterface.project_params.items():',
+      '        if Path(jws_path).parent == Path(work_dir):',
+      '            params[101] = 0',
+      '            params[103] = 0',
+      'runtime._run_jws_cycle = fake_jws_cycle',
       'def fake_extract(jws_path, material_family="steel"):',
       ...(
         options.createPdbMismatchDuringExtract
@@ -731,6 +762,37 @@ describe('PKPM frame analysis flow', () => {
     });
   });
 
+  test('maps different story dead/live loads to separate PKPM standard floors', () => {
+    const model = buildRcUserScenarioModel();
+    model.stories[0] = {
+      ...model.stories[0],
+      dead_load: 10,
+      live_load: 2,
+      floor_loads: [{ type: 'dead', value: 10 }, { type: 'live', value: 2 }],
+    };
+    model.stories[1] = {
+      ...model.stories[1],
+      dead_load: 5,
+      live_load: 1,
+      floor_loads: [{ type: 'dead', value: 5 }, { type: 'live', value: 1 }],
+    };
+
+    const payload = runPkpmRuntime(model);
+
+    expect(findCalls(payload, 'StandFloor.SetDeadLive')).toEqual([
+      expect.objectContaining({ floor: 1, dead: 10, live: 2 }),
+      expect.objectContaining({ floor: 2, dead: 5, live: 1 }),
+    ]);
+    expect(findCalls(payload, 'Model.AddStandFloor')).toEqual([
+      expect.objectContaining({ source: 1, index: 2 }),
+    ]);
+    expect(findCalls(payload, 'RealFloor.SetStandFloorIndex').map((call) => call.index)).toEqual([1, 2]);
+    expect(payload.result.summary.floorLoadMapping).toEqual([
+      expect.objectContaining({ story: 'F1', stand_floor_index: 1, dead_load: 10, live_load: 2 }),
+      expect.objectContaining({ story: 'F2', stand_floor_index: 2, dead_load: 5, live_load: 1 }),
+    ]);
+  });
+
   test('keeps PKPM result when PDB version warning is present but core results are readable', () => {
     const payload = runPkpmRuntime(buildRcUserScenarioModel(), {
       createPdbMismatchDuringExtract: true,
@@ -924,6 +986,13 @@ describe('PKPM frame analysis flow', () => {
 
     expect(payload.result.summary.materialFamily).toBe('steel');
     expect(payload.patchCalls).toHaveLength(1);
+    expect(payload.result.summary.projectParameterReapply).toMatchObject({
+      material_family: 'steel',
+      target: { 101: 10101, 103: 10303 },
+      before: { 101: 0, 103: 0 },
+      after: { 101: 10101, 103: 10303 },
+      changed: true,
+    });
     expect(payload.calls).toContainEqual(expect.objectContaining({
       method: 'ProjectPara.SetParaInt',
       key: 103,

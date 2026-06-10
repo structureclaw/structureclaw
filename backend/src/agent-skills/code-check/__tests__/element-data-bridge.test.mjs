@@ -302,6 +302,101 @@ describe('elementData bridge', () => {
     expect(f['Mx']).toBe(3500000); // abs(n2) > abs(n1)
   });
 
+  test('converts PKPM force units before GB50017 elementData consumption', () => {
+    const model = {
+      elements: [
+        { id: 'B1', type: 'beam', nodes: ['N1', 'N2'], material: '1', section: '1' },
+      ],
+      sections: [
+        {
+          id: '1',
+          properties: {
+            A: 0.00487,
+            Iy: 0.0000721,
+            Wx: 0.00048,
+            S: 0.000286,
+            tw: 0.0065,
+            As: 0.001833,
+            G: 79000,
+          },
+        },
+      ],
+      materials: [{ id: '1', E: 206000, fy: 355 }],
+      nodes: [
+        { id: 'N1', x: 0, y: 0, z: 3.6 },
+        { id: 'N2', x: 6, y: 0, z: 3.6 },
+      ],
+    };
+
+    const input = buildCodeCheckInput({
+      traceId: 'test-trace',
+      designCode: 'GB50017',
+      model,
+      analysis: {
+        data: {
+          analysisMode: 'pkpm-satwe',
+          forces: {
+            B1: { N: 8, V: 36, M: 54 },
+          },
+        },
+      },
+      analysisParameters: {},
+    });
+
+    const forces = input.context['elementData']['B1']['forces'];
+    expect(forces['N']).toBe(8000);
+    expect(forces['V']).toBe(36000);
+    expect(forces['Mx']).toBe(54000000);
+  });
+
+  test('converts OpenSees force units before GB50017 elementData consumption', () => {
+    const model = {
+      elements: [
+        { id: 'B1', type: 'beam', nodes: ['N1', 'N2'], material: '1', section: '1' },
+      ],
+      sections: [
+        {
+          id: '1',
+          properties: {
+            A: 0.00487,
+            Iy: 0.0000721,
+            Wx: 0.00048,
+            S: 0.000286,
+            tw: 0.0065,
+            As: 0.001833,
+            G: 79000,
+          },
+        },
+      ],
+      materials: [{ id: '1', E: 206000, fy: 355 }],
+      nodes: [
+        { id: 'N1', x: 0, y: 0, z: 3.6 },
+        { id: 'N2', x: 6, y: 0, z: 3.6 },
+      ],
+    };
+
+    const input = buildCodeCheckInput({
+      traceId: 'test-trace',
+      designCode: 'GB50017',
+      model,
+      analysis: {
+        meta: { analysisAdapterKey: 'builtin-opensees' },
+        data: {
+          analysisMode: 'opensees_3d_frame',
+          forces: {
+            B1: { n1: { N: 8, V: 36, M: 54 } },
+          },
+        },
+      },
+      analysisParameters: {},
+    });
+
+    const forces = input.context['elementData']['B1']['forces'];
+    expect(forces['N']).toBe(8000);
+    expect(forces['V']).toBe(36000);
+    expect(forces['Mx']).toBe(54000000);
+  });
+
   test('derives Wnx/S/As/tw from H-section shape when props missing', () => {
     const input = buildCodeCheckInput({
       traceId: 'test-trace',
@@ -326,6 +421,33 @@ describe('elementData bridge', () => {
     expect(section['S']).toBeGreaterThan(0);     // derived from H/B/tw/tf
     expect(section['tw']).toBeCloseTo(6.5, 0);   // 0.0065m → 6.5mm
     expect(section['As']).toBeGreaterThan(0);    // tw × hw
+  });
+
+  test('derives Wnx/S/As/tw from H-section shape expressed in millimeters', () => {
+    const input = buildCodeCheckInput({
+      traceId: 'test-trace',
+      designCode: 'GB50017',
+      model: {
+        elements: [{ id: 'E1', type: 'beam', nodes: ['N1', 'N2'], material: '1', section: '1' }],
+        sections: [{
+          id: '1', name: 'HN300X150', type: 'H', purpose: 'beam',
+          shape: { kind: 'H', H: 300, B: 150, tw: 6.5, tf: 9 },
+          properties: { A: 0.00487, Iy: 0.0000721, Iz: 0.00000508, G: 79000 },
+        }],
+        materials: [{ id: '1', E: 206000, fy: 235 }],
+        nodes: [{ id: 'N1', x: 0, y: 0, z: 0 }, { id: 'N2', x: 0, y: 0, z: 3 }],
+      },
+      analysis: { data: { forces: {} } },
+      analysisParameters: {},
+    });
+
+    const ed = input.context['elementData'];
+    const section = ed['E1']['section'];
+    expect(section['Wx']).toBeCloseTo(480667, -2); // Iy/(H/2), with H already in mm
+    expect(section['S']).toBeGreaterThan(250000);
+    expect(section['S']).toBeLessThan(270000);
+    expect(section['tw']).toBeCloseTo(6.5, 0);
+    expect(section['As']).toBeCloseTo(1833, -1);
   });
 
   test('adds f and fv fallback when material has fy but no f/fv', () => {

@@ -147,13 +147,54 @@ function envelopeAbs(a: unknown, b: unknown): number | undefined {
   return va >= vb ? va : vb;
 }
 
+function isPkpmAnalysisResult(analysis: Record<string, unknown>, data: Record<string, unknown>): boolean {
+  const meta = asRecord(analysis['meta']);
+  return data['analysisMode'] === 'pkpm-satwe'
+    || meta['analysisAdapterKey'] === 'builtin-pkpm'
+    || meta['engineId'] === 'builtin-pkpm';
+}
+
+function usesKilonewtonAnalysisForceUnits(analysis: Record<string, unknown>, data: Record<string, unknown>): boolean {
+  const meta = asRecord(analysis['meta']);
+  return isPkpmAnalysisResult(analysis, data)
+    || meta['analysisAdapterKey'] === 'builtin-opensees'
+    || meta['engineId'] === 'builtin-opensees';
+}
+
+function scaleFiniteNumber(value: unknown, factor: number): unknown {
+  return typeof value === 'number' && Number.isFinite(value) ? value * factor : value;
+}
+
+function convertKilonewtonForcesToCodeCheckUnits(forceRecord: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...forceRecord };
+  for (const key of ['N', 'V', 'Vy', 'Vz']) {
+    if (key in next) next[key] = scaleFiniteNumber(next[key], 1000);
+  }
+  for (const key of ['M', 'Mx', 'My', 'Mz', 'T']) {
+    if (key in next) next[key] = scaleFiniteNumber(next[key], 1000000);
+  }
+  for (const key of ['n1', 'n2']) {
+    const nested = asRecord(next[key]);
+    if (Object.keys(nested).length > 0) {
+      next[key] = convertKilonewtonForcesToCodeCheckUnits(nested);
+    }
+  }
+  return next;
+}
+
+function sectionShapeDimensionToMm(value: unknown, sourceUnit: 'm' | 'mm'): number {
+  const numeric = Number(value ?? 0);
+  if (!Number.isFinite(numeric) || numeric <= 0) return 0;
+  return sourceUnit === 'mm' ? numeric : numeric * 1000;
+}
+
 /**
  * 从模型和分析结果中提取 elementData，供 Python code-check 层消费。
  *
  * 合并三项数据源:
  *   1. model.elements[] — 构件类型、截面/材料 ID、始末节点
  *   2. model.sections[] / model.materials[] — 截面/材料属性
- *   3. analysisResult.data.forces[] — OpenSees 计算的每构件内力
+ *   3. analysisResult.data.forces[] — 每构件内力；PKPM/OpenSees 的 kN/kN·m 会转为 N/N·mm
  *
  * 返回格式与 gb50017 `_compute_utilization_overrides()` 期望的 elementData 一致。
  */
@@ -168,15 +209,20 @@ function extractElementDataForCodeCheck(
   const materials = Array.isArray(model['materials']) ? model['materials'] as Record<string, unknown>[] : [];
   const nodes = Array.isArray(model['nodes']) ? model['nodes'] as Record<string, unknown>[] : [];
 
-  // unwrap OpenSees AnalysisResponse: { data: { forces: { ... } } }
-  const analysis = analysisResult as Record<string, unknown> | undefined;
-  const data = analysis?.['data'] as Record<string, unknown> | undefined;
+  // unwrap AnalysisResponse: { data: { forces: { ... } } }; direct result objects are also accepted.
+  const analysis = asRecord(analysisResult);
+  const dataObject = asRecord(analysis['data']);
+  const data = Object.keys(dataObject).length > 0 ? dataObject : analysis;
   const rawForces = data?.['forces'] as Record<string, unknown> | undefined;
+  const shouldConvertForceUnits = usesKilonewtonAnalysisForceUnits(analysis, data);
   const forces: Record<string, Record<string, unknown>> = {};
   if (rawForces) {
     for (const [elemId, value] of Object.entries(rawForces)) {
       if (value && typeof value === 'object') {
-        forces[elemId] = value as Record<string, unknown>;
+        const forceRecord = value as Record<string, unknown>;
+        forces[elemId] = shouldConvertForceUnits
+          ? convertKilonewtonForcesToCodeCheckUnits(forceRecord)
+          : forceRecord;
       }
     }
   }
@@ -268,13 +314,14 @@ function extractElementDataForCodeCheck(
     let derivedTw_mm = tw_mm;
     let derivedAs_mm2 = As_mm2;
     if (sectionShape && sectionShape['kind'] === 'H') {
-      const H = Number(sectionShape['H'] ?? 0);
-      const B = Number(sectionShape['B'] ?? 0);
-      const tw = Number(sectionShape['tw'] ?? 0);
-      const tf = Number(sectionShape['tf'] ?? 0);
-      if (H > 0 && B > 0 && tw > 0 && tf > 0) {
-        // convert m → mm
-        const Hmm = H * 1000, Bmm = B * 1000, twmm = tw * 1000, tfmm = tf * 1000;
+      const rawH = Number(sectionShape['H'] ?? 0);
+      const rawB = Number(sectionShape['B'] ?? 0);
+      const shapeUnit = rawH > 10 || rawB > 10 ? 'mm' : 'm';
+      const Hmm = sectionShapeDimensionToMm(sectionShape['H'], shapeUnit);
+      const Bmm = sectionShapeDimensionToMm(sectionShape['B'], shapeUnit);
+      const twmm = sectionShapeDimensionToMm(sectionShape['tw'], shapeUnit);
+      const tfmm = sectionShapeDimensionToMm(sectionShape['tf'], shapeUnit);
+      if (Hmm > 0 && Bmm > 0 && twmm > 0 && tfmm > 0) {
         const hw = Hmm - 2 * tfmm;
         if (derivedWnxMm3 <= 0) {
           // Iy = (tw*hw³)/12 + 2*B*tf*((hw+tf)/2)² — already have Iy_mm4 from props

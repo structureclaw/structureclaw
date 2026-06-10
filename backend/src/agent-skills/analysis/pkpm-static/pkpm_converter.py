@@ -421,12 +421,29 @@ def _register_section(
     Register one V2 section entry.
     Returns (role, pm_section_idx) where role is "col" or "beam".
 
-    Uses SetUserSect with shape.Set_M(5/6) for steel/concrete material indication.
-    The element material grade is set separately via SetSteelGrade() or SetConcreteGrade().
+    Parametric shapes are preferred when present because they carry explicit
+    H/B/tw/tf geometry into SATWE.  Standard steel names are used only when no
+    shape is available; some APIPyInterface builds accept the standard-name
+    call but leave SATWE section dimensions empty.
     """
     std_name: str | None = sec.get("standard_steel_name")
     shape_dict: dict | None = sec.get("shape") or _shape_from_legacy_properties(sec)
     use_standard_steel = bool(std_name) and material_family == "steel" and not shape_dict
+
+    def _set_standard_steel(api_section: Any) -> Exception | None:
+        if not std_name:
+            return ValueError("standard steel section name is empty")
+        try:
+            api_section.SetStandSteelSect(std_name, APIPyInterface.SectionShape())
+            return None
+        except TypeError:
+            try:
+                api_section.SetStandSteelSect(std_name)
+                return None
+            except Exception as exc:
+                return exc
+        except Exception as exc:
+            return exc
 
     if inferred_role == "col":
         csec = APIPyInterface.ColumnSection()
@@ -434,7 +451,9 @@ def _register_section(
             _sec_kind, sh = _make_section_shape(shape_dict, material_family)
             csec.SetUserSect(_sec_kind, sh)
         elif use_standard_steel:
-            csec.SetStandSteelSect(std_name)
+            standard_error = _set_standard_steel(csec)
+            if standard_error is not None:
+                raise ValueError(f"Section '{sec['id']}' standard steel section failed: {standard_error}")
         else:
             raise ValueError(f"Section '{sec['id']}' has no usable PKPM section shape.")
         pm_idx = model.AddColumnSection(csec)
@@ -444,7 +463,9 @@ def _register_section(
             _sec_kind, sh = _make_section_shape(shape_dict, material_family)
             bsec.SetUserSect(_sec_kind, sh)
         elif use_standard_steel:
-            bsec.SetStandSteelSect(std_name)
+            standard_error = _set_standard_steel(bsec)
+            if standard_error is not None:
+                raise ValueError(f"Section '{sec['id']}' standard steel section failed: {standard_error}")
         else:
             raise ValueError(f"Section '{sec['id']}' has no usable PKPM section shape.")
         pm_idx = model.AddBeamSection(bsec)
@@ -744,6 +765,78 @@ def _elem_concrete_grade(elem: dict, mat_id_to_grade: dict[str, str]) -> Any:
     return _resolve_concrete_grade(grade)
 
 
+def _nonnegative_float(value: Any) -> float:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return 0.0
+    return number if number > 0 else 0.0
+
+
+def _story_dead_live_pair(story: dict[str, Any]) -> tuple[float, float]:
+    return (
+        _nonnegative_float(story.get("dead_load")),
+        _nonnegative_float(story.get("live_load")),
+    )
+
+
+def _copy_standard_floor(model: APIPyInterface.Model, source_floor_index: int) -> int:
+    """Copy an existing standard floor and return the new standard floor index."""
+    try:
+        new_index = model.AddStandFloor(source_floor_index)
+    except TypeError:
+        new_index = model.AddStandFloor()
+
+    if isinstance(new_index, int) and new_index > 0:
+        return new_index
+
+    try:
+        fallback_index = model.GetStandFloorCount()
+    except Exception as exc:
+        raise RuntimeError("PKPM AddStandFloor did not return a valid floor index.") from exc
+    if isinstance(fallback_index, int) and fallback_index > 0:
+        return fallback_index
+    raise RuntimeError("PKPM AddStandFloor did not return a valid floor index.")
+
+
+def _configure_story_standard_floor_loads(
+    model: APIPyInterface.Model,
+    stories: list[dict],
+) -> tuple[list[int], list[dict[str, Any]]]:
+    """Assign floor dead/live loads through per-load standard-floor copies.
+
+    PKPM stores floor dead/live loads on StandFloor, while RealFloor only points
+    to a standard-floor index.  Distinct story load pairs therefore need
+    distinct standard-floor copies that share the same plan geometry.
+    """
+    story_floor_indices: list[int] = []
+    load_to_standard_floor: dict[tuple[float, float], int] = {}
+    load_mapping: list[dict[str, Any]] = []
+
+    for story in stories:
+        load_pair = _story_dead_live_pair(story)
+        standard_floor_index = load_to_standard_floor.get(load_pair)
+        if standard_floor_index is None:
+            standard_floor_index = 1 if not load_to_standard_floor else _copy_standard_floor(model, 1)
+            model.SetCurrentStandFloor(standard_floor_index)
+            standard_floor = model.GetCurrentStandFloor()
+            dead_load, live_load = load_pair
+            if dead_load > 0 or live_load > 0:
+                standard_floor.SetDeadLive(dead_load, live_load)
+            load_to_standard_floor[load_pair] = standard_floor_index
+
+        story_floor_indices.append(standard_floor_index)
+        load_mapping.append({
+            "story": story.get("id"),
+            "stand_floor_index": standard_floor_index,
+            "dead_load": load_pair[0],
+            "live_load": load_pair[1],
+        })
+
+    model.SetCurrentStandFloor(1)
+    return story_floor_indices, load_mapping
+
+
 # ---------------------------------------------------------------------------
 # Main converter
 # ---------------------------------------------------------------------------
@@ -811,24 +904,11 @@ def convert_v2_to_jws(
     )
 
     # ---- Standard floor 1 (plan template) ----
-    # Do NOT call AddStandFloor() — it causes SavePMModel crash with beams.
     # The model already has floor 1 available by default after CreatNewModel.
+    # Extra standard floors are copied from this fully populated template only
+    # when story dead/live loads differ.
     model.SetCurrentStandFloor(1)
     floor = model.GetCurrentStandFloor()
-
-    # ---- Floor dead/live loads from stories ----
-    stories_for_load = data.get("stories", [])
-    agg_dead = 0.0
-    agg_live = 0.0
-    for st in stories_for_load:
-        dl = st.get("dead_load")
-        ll = st.get("live_load")
-        if dl is not None:
-            agg_dead = max(agg_dead, float(dl))
-        if ll is not None:
-            agg_live = max(agg_live, float(ll))
-    if agg_dead > 0 or agg_live > 0:
-        floor.SetDeadLive(agg_dead, agg_live)
 
     nodes = data.get("nodes", [])
     v2_to_pm, v2_to_xy = _build_plan_nodes(floor, nodes)
@@ -932,12 +1012,13 @@ def convert_v2_to_jws(
         data.get("stories", []),
         key=lambda s: float(s.get("elevation", 0)),
     )
+    story_standard_floor_indices, floor_load_mapping = _configure_story_standard_floor_loads(model, stories)
     m_to_mm = 1000.0
-    for st in stories:
+    for story_index, st in enumerate(stories):
         rf = APIPyInterface.RealFloor()
         rf.SetFloorHeight(float(st["height"]) * m_to_mm)
         rf.SetBottomElevation(float(st.get("elevation", 0)))
-        rf.SetStandFloorIndex(1)
+        rf.SetStandFloorIndex(story_standard_floor_indices[story_index])
         model.AddNaturalFloor(rf)
 
     # ---- Configure SATWE design parameters ----
@@ -953,6 +1034,7 @@ def convert_v2_to_jws(
         "stories": stories,
         "normalization": normalization,
         "material_family": material_family,
+        "floor_load_mapping": floor_load_mapping,
         "design_conditions": {
             "site_seismic": site_seismic,
             "wind": wind,
