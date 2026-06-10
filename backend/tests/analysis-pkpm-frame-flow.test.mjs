@@ -326,11 +326,20 @@ function runPkpmRuntime(model, options = {}) {
       'runtime._patch_material_label = lambda work_dir: patch_calls.append(str(work_dir))',
       'def fake_jws_cycle(cycle_path, work_dir, timeout=600):',
       '    run_calls.append({"cycle_path": str(cycle_path), "work_dir": str(work_dir), "timeout": timeout})',
-      '    for jws_path, params in APIPyInterface.project_params.items():',
-      '        if Path(jws_path).parent == Path(work_dir):',
-      '            params[101] = 0',
-      '            params[103] = 0',
+      '    for params in APIPyInterface.project_params.values():',
+      '        params[101] = 0',
+      '        params[103] = 0',
       'runtime._run_jws_cycle = fake_jws_cycle',
+      ...(
+        options.failOpenPmModel
+          ? [
+            'def fail_open_pm_model(self, jws_path):',
+            '    APIPyInterface.calls.append({"method": "Model.OpenPMModel", "jws_path": jws_path, "forcedFailure": True})',
+            '    return 0',
+            'APIPyInterface.Model.OpenPMModel = fail_open_pm_model',
+          ]
+          : []
+      ),
       'def fake_extract(jws_path, material_family="steel"):',
       ...(
         options.createPdbMismatchDuringExtract
@@ -762,7 +771,7 @@ describe('PKPM frame analysis flow', () => {
     });
   });
 
-  test('maps different story dead/live loads to separate PKPM standard floors', () => {
+  test('maps distinct story dead/live loads to separate PKPM standard floors', () => {
     const model = buildRcUserScenarioModel();
     model.stories[0] = {
       ...model.stories[0],
@@ -772,16 +781,16 @@ describe('PKPM frame analysis flow', () => {
     };
     model.stories[1] = {
       ...model.stories[1],
-      dead_load: 5,
-      live_load: 1,
-      floor_loads: [{ type: 'dead', value: 5 }, { type: 'live', value: 1 }],
+      dead_load: 0,
+      live_load: 0,
+      floor_loads: [{ type: 'dead', value: 0 }, { type: 'live', value: 0 }],
     };
 
     const payload = runPkpmRuntime(model);
 
     expect(findCalls(payload, 'StandFloor.SetDeadLive')).toEqual([
       expect.objectContaining({ floor: 1, dead: 10, live: 2 }),
-      expect.objectContaining({ floor: 2, dead: 5, live: 1 }),
+      expect.objectContaining({ floor: 2, dead: 0, live: 0 }),
     ]);
     expect(findCalls(payload, 'Model.AddStandFloor')).toEqual([
       expect.objectContaining({ source: 1, index: 2 }),
@@ -789,8 +798,21 @@ describe('PKPM frame analysis flow', () => {
     expect(findCalls(payload, 'RealFloor.SetStandFloorIndex').map((call) => call.index)).toEqual([1, 2]);
     expect(payload.result.summary.floorLoadMapping).toEqual([
       expect.objectContaining({ story: 'F1', stand_floor_index: 1, dead_load: 10, live_load: 2 }),
-      expect.objectContaining({ story: 'F2', stand_floor_index: 2, dead_load: 5, live_load: 1 }),
+      expect.objectContaining({ story: 'F2', stand_floor_index: 2, dead_load: 0, live_load: 0 }),
     ]);
+  });
+
+  test('fails clearly when final PKPM model cannot be reopened for material parameter persistence', () => {
+    const payload = runPkpmRuntime(buildRcUserScenarioModel(), {
+      expectFailure: true,
+      failOpenPmModel: true,
+    });
+
+    expect(payload.errorType).toBe('RuntimeError');
+    expect(payload.error).toContain('Failed to open PKPM model');
+    expect(findCalls(payload, 'Model.OpenPMModel')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ forcedFailure: true }),
+    ]));
   });
 
   test('keeps PKPM result when PDB version warning is present but core results are readable', () => {

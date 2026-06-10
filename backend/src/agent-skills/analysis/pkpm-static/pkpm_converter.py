@@ -821,7 +821,7 @@ def _configure_story_standard_floor_loads(
             model.SetCurrentStandFloor(standard_floor_index)
             standard_floor = model.GetCurrentStandFloor()
             dead_load, live_load = load_pair
-            if dead_load > 0 or live_load > 0:
+            if standard_floor_index > 1 or dead_load > 0 or live_load > 0:
                 standard_floor.SetDeadLive(dead_load, live_load)
             load_to_standard_floor[load_pair] = standard_floor_index
 

@@ -99,6 +99,20 @@ def _read_project_para_int(para: Any, key: int) -> int | None:
         return None
 
 
+def _open_pm_model(model: Any, jws_path: Path) -> Any:
+    open_result = model.OpenPMModel(str(jws_path))
+    if open_result == 0 or open_result is False:
+        raise RuntimeError(f"Failed to open PKPM model: {jws_path}")
+    return open_result
+
+
+def _get_project_para(model: Any, jws_path: Path) -> Any:
+    para = model.GetProjectPara()
+    if para is None:
+        raise RuntimeError(f"Failed to read PKPM project parameters: {jws_path}")
+    return para
+
+
 def _reapply_project_material_params(jws_path: Path, material_family: str) -> dict[str, Any]:
     """Restore PKPM project parameters that JWSCYCLE clears after analysis."""
     import APIPyInterface
@@ -110,8 +124,8 @@ def _reapply_project_material_params(jws_path: Path, material_family: str) -> di
     }
 
     model = APIPyInterface.Model()
-    open_result = model.OpenPMModel(str(jws_path))
-    para = model.GetProjectPara()
+    open_result = _open_pm_model(model, jws_path)
+    para = _get_project_para(model, jws_path)
     before = {str(key): _read_project_para_int(para, key) for key in target_values}
 
     for key, value in target_values.items():
@@ -119,9 +133,12 @@ def _reapply_project_material_params(jws_path: Path, material_family: str) -> di
     model.SaveProjectPara()
     model.SavePMModel()
 
+    del para
+    del model
+
     verify_model = APIPyInterface.Model()
-    verify_model.OpenPMModel(str(jws_path))
-    verify_para = verify_model.GetProjectPara()
+    verify_open_result = _open_pm_model(verify_model, jws_path)
+    verify_para = _get_project_para(verify_model, jws_path)
     after = {str(key): _read_project_para_int(verify_para, key) for key in target_values}
 
     mismatches = {
@@ -135,6 +152,7 @@ def _reapply_project_material_params(jws_path: Path, material_family: str) -> di
     return {
         "material_family": material_family,
         "open_result": open_result,
+        "verify_open_result": verify_open_result,
         "target": {str(key): value for key, value in target_values.items()},
         "before": before,
         "after": after,
