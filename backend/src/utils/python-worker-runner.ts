@@ -51,6 +51,9 @@ export class PythonWorkerRunner<TInput extends object> {
     }
     const lookup = process.platform === 'win32' ? 'where.exe' : 'which';
     const result = spawnSync(lookup, [command], { stdio: 'ignore', windowsHide: true });
+    if (result.error) {
+      return true;
+    }
     return result.status === 0;
   }
 

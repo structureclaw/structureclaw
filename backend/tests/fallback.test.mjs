@@ -497,6 +497,24 @@ describe('mergeDraftState', () => {
     expect(result.inferredType).toBe('truss');
   });
 
+  it('should merge invalid draft fields from existing and patch skill state', () => {
+    const existing = {
+      inferredType: 'truss',
+      skillState: { invalidDraftFields: ['heightM'], trussTopology: 'pratt' },
+      updatedAt: Date.now(),
+    };
+    const patch = {
+      skillState: { invalidDraftFields: ['bayCount'], trussLoadChord: 'top' },
+    };
+    const result = mergeDraftState(existing, patch);
+
+    expect(result.skillState).toEqual({
+      invalidDraftFields: ['heightM', 'bayCount'],
+      trussTopology: 'pratt',
+      trussLoadChord: 'top',
+    });
+  });
+
   it('should treat "unknown" inferredType in patch as absent', () => {
     const existing = {
       inferredType: 'beam',

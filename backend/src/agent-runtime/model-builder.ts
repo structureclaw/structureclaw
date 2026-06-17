@@ -407,10 +407,13 @@ function buildTrussModel(state: DraftState, metadata: Record<string, unknown>): 
       section: '1',
     });
     if (i < panelCount) {
+      const diagonalNodes = i < panelCount / 2
+        ? [`B${i}`, `T${i + 1}`]
+        : [`B${i + 1}`, `T${i}`];
       elements.push({
         id: `WD${i}`,
         type: 'truss',
-        nodes: [`B${i + 1}`, `T${i}`],
+        nodes: diagonalNodes,
         material: '1',
         section: '1',
       });

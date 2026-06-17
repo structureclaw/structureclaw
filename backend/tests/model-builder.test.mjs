@@ -237,6 +237,10 @@ describe('buildModel - truss', () => {
     expect(model.elements[0]).toEqual({
       id: 'BC0', type: 'truss', nodes: ['B0', 'B1'], material: '1', section: '1',
     });
+    expect(model.elements.find((element) => element.id === 'WD0').nodes).toEqual(['B0', 'T1']);
+    expect(model.elements.find((element) => element.id === 'WD1').nodes).toEqual(['B1', 'T2']);
+    expect(model.elements.find((element) => element.id === 'WD2').nodes).toEqual(['B3', 'T2']);
+    expect(model.elements.find((element) => element.id === 'WD3').nodes).toEqual(['B4', 'T3']);
 
     expect(model.materials[0].name).toBe('steel');
     expect(model.sections[0].type).toBe('rod');
