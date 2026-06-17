@@ -115,6 +115,25 @@ describe('truss handler', () => {
     expect(handler.buildModel(state)).toBeUndefined();
   });
 
+  test('keeps rule-derived truss guardrails when llm returns an empty skill state', () => {
+    const patch = handler.extractDraft({
+      message: 'Please analyze a Pratt truss with no web members. It spans 15m, has 2.5m height, 5 panels, and 10kN nodal loads.',
+      llmDraftPatch: {
+        inferredType: 'truss',
+        skillState: {},
+      },
+    });
+    const state = handler.mergeState(undefined, patch);
+
+    expect(state.skillState).toEqual(expect.objectContaining({
+      trussTopology: 'pratt',
+      trussTopologyConflict: true,
+      invalidDraftFields: expect.arrayContaining(['trussTopology']),
+    }));
+    expect(handler.computeMissing(state, 'execution').critical).toContain('trussTopology');
+    expect(handler.buildModel(state)).toBeUndefined();
+  });
+
   test('treats ambiguous ton or kN load wording as a load clarification', () => {
     const patch = handler.extractDraft({
       message: 'This 15m truss has 5 panels and nodal loads of either 10 tons or 10kN; I am not sure.',

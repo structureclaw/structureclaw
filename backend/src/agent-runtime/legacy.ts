@@ -91,6 +91,30 @@ function mergeFloorLoadsLlmFirst(
   return Array.from(merged.values()).sort((left, right) => left.story - right.story);
 }
 
+function mergeSkillStateLlmFirst(
+  llmState: Record<string, unknown> | undefined,
+  ruleState: Record<string, unknown> | undefined,
+): Record<string, unknown> | undefined {
+  if (!llmState && !ruleState) {
+    return undefined;
+  }
+
+  const llmInvalid = llmState?.invalidDraftFields;
+  const ruleInvalid = ruleState?.invalidDraftFields;
+  const invalidDraftFields = Array.isArray(llmInvalid) || Array.isArray(ruleInvalid)
+    ? Array.from(new Set([
+      ...(Array.isArray(ruleInvalid) ? ruleInvalid : []),
+      ...(Array.isArray(llmInvalid) ? llmInvalid : []),
+    ].filter((field): field is string => typeof field === 'string')))
+    : undefined;
+
+  return {
+    ...(ruleState ?? {}),
+    ...(llmState ?? {}),
+    ...(invalidDraftFields ? { invalidDraftFields } : {}),
+  };
+}
+
 export function mergeLegacyDraftPatchLlmFirst(
   llmPatch: DraftExtraction,
   rulePatch: DraftExtraction,
@@ -104,6 +128,13 @@ export function mergeLegacyDraftPatchLlmFirst(
   for (const key of keys) {
     if (key === 'floorLoads') {
       nextPatch.floorLoads = mergeFloorLoadsLlmFirst(llmPatch.floorLoads, rulePatch.floorLoads);
+      continue;
+    }
+    if (key === 'skillState') {
+      const skillState = mergeSkillStateLlmFirst(llmPatch.skillState, rulePatch.skillState);
+      if (skillState !== undefined) {
+        nextPatch.skillState = skillState;
+      }
       continue;
     }
     const llmValue = llmPatch[key];
