@@ -208,11 +208,13 @@ describe('buildModel - beam', () => {
 // 2. Truss
 // ---------------------------------------------------------------------------
 describe('buildModel - truss', () => {
-  it('should build a two-node truss model with axial load', () => {
+  it('should build a panelized planar truss model with nodal vertical loads', () => {
     const state = makeState({
       inferredType: 'truss',
       lengthM: 12,
-      loadKN: 50,
+      heightM: 2,
+      bayCount: 4,
+      loadKN: 10,
     });
 
     const model = buildModel(state);
@@ -220,25 +222,30 @@ describe('buildModel - truss', () => {
     expect(model.schema_version).toBe('2.0.0');
     expect(model.metadata.inferredType).toBe('truss');
 
-    expect(model.nodes).toHaveLength(2);
+    expect(model.nodes).toHaveLength(10);
     expect(model.nodes[0]).toEqual({
-      id: '1', x: 0, y: 0, z: 0,
+      id: 'B0', x: 0, y: 0, z: 0,
       restraints: [true, true, true, true, true, true],
     });
-    expect(model.nodes[1]).toEqual({
-      id: '2', x: 12, y: 0, z: 0,
+    expect(model.nodes[4]).toEqual({
+      id: 'B4', x: 12, y: 0, z: 0,
       restraints: [false, true, true, true, true, true],
     });
+    expect(model.nodes[5]).toEqual({ id: 'T0', x: 0, y: 0, z: 2 });
 
-    expect(model.elements).toHaveLength(1);
+    expect(model.elements).toHaveLength(17);
     expect(model.elements[0]).toEqual({
-      id: '1', type: 'truss', nodes: ['1', '2'], material: '1', section: '1',
+      id: 'BC0', type: 'truss', nodes: ['B0', 'B1'], material: '1', section: '1',
     });
 
     expect(model.materials[0].name).toBe('steel');
     expect(model.sections[0].type).toBe('rod');
 
-    expect(model.load_cases[0].loads).toEqual([{ node: '2', fx: 50 }]);
+    expect(model.load_cases[0].loads).toEqual([
+      { node: 'T1', fz: -10 },
+      { node: 'T2', fz: -10 },
+      { node: 'T3', fz: -10 },
+    ]);
     expect(model.load_combinations).toEqual([{ id: 'ULS', factors: { LC1: 1.0 } }]);
   });
 });

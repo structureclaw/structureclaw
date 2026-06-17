@@ -321,6 +321,140 @@ function buildBeamLoads(
   return [{ node: targetNodeId, fz: -loadKN }];
 }
 
+function getTrussTopology(state: DraftState): string {
+  const topology = state.skillState?.trussTopology;
+  return typeof topology === 'string' ? topology : 'generic';
+}
+
+function getTrussLoadChord(state: DraftState): 'top' | 'bottom' {
+  return state.skillState?.trussLoadChord === 'bottom' ? 'bottom' : 'top';
+}
+
+function clampTrussPanelCount(value: number | undefined, span: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return Math.max(2, Math.min(30, Math.round(span / 3)));
+  }
+  return Math.max(2, Math.min(30, Math.round(value)));
+}
+
+function buildTrussTopElevation(topology: string, x: number, span: number, height: number): number {
+  if (topology === 'trapezoidal') {
+    return Math.max(height - Math.abs(x - span / 2) * 0.1, height * 0.4);
+  }
+  return height;
+}
+
+function buildTrussModel(state: DraftState, metadata: Record<string, unknown>): Record<string, unknown> {
+  const span = state.lengthM!;
+  const panelCount = clampTrussPanelCount(state.bayCount, span);
+  const height = state.heightM ?? span / 6;
+  const load = state.loadKN!;
+  const topology = getTrussTopology(state);
+  const panelLength = span / panelCount;
+  const fixed = [true, true, true, true, true, true];
+  const roller = [false, true, true, true, true, true];
+  const nodes: Array<Record<string, unknown>> = [];
+  const elements: Array<Record<string, unknown>> = [];
+
+  for (let i = 0; i <= panelCount; i += 1) {
+    const node: Record<string, unknown> = {
+      id: `B${i}`,
+      x: i * panelLength,
+      y: 0,
+      z: 0,
+    };
+    if (i === 0) {
+      node.restraints = fixed;
+    } else if (i === panelCount) {
+      node.restraints = roller;
+    }
+    nodes.push(node);
+  }
+
+  for (let i = 0; i <= panelCount; i += 1) {
+    const x = i * panelLength;
+    nodes.push({
+      id: `T${i}`,
+      x,
+      y: 0,
+      z: buildTrussTopElevation(topology, x, span, height),
+    });
+  }
+
+  for (let i = 0; i < panelCount; i += 1) {
+    elements.push({
+      id: `BC${i}`,
+      type: 'truss',
+      nodes: [`B${i}`, `B${i + 1}`],
+      material: '1',
+      section: '1',
+    });
+    elements.push({
+      id: `TC${i}`,
+      type: 'truss',
+      nodes: [`T${i}`, `T${i + 1}`],
+      material: '1',
+      section: '1',
+    });
+  }
+
+  for (let i = 0; i <= panelCount; i += 1) {
+    elements.push({
+      id: `WV${i}`,
+      type: 'truss',
+      nodes: [`B${i}`, `T${i}`],
+      material: '1',
+      section: '1',
+    });
+    if (i < panelCount) {
+      elements.push({
+        id: `WD${i}`,
+        type: 'truss',
+        nodes: [`B${i + 1}`, `T${i}`],
+        material: '1',
+        section: '1',
+      });
+    }
+  }
+
+  const loadChord = getTrussLoadChord(state);
+  const loadPrefix = loadChord === 'bottom' ? 'B' : 'T';
+  const loadNodeIndexes = state.loadPosition === 'middle-joint'
+    ? [Math.max(1, Math.min(panelCount - 1, Math.round(panelCount / 2)))]
+    : Array.from({ length: Math.max(0, panelCount - 1) }, (_, index) => index + 1);
+  const nodalLoads = loadNodeIndexes.map((index) => ({ node: `${loadPrefix}${index}`, fz: -load }));
+
+  return {
+    schema_version: '2.0.0',
+    unit_system: 'SI',
+    nodes,
+    elements,
+    materials: [
+      { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850, fy: 345 },
+    ],
+    sections: [
+      { id: '1', name: 'TRUSS_ROD', type: 'rod', properties: { A: 0.01 } },
+    ],
+    load_cases: [
+      { id: 'LC1', type: 'other', loads: nodalLoads },
+    ],
+    load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
+    metadata: {
+      ...metadata,
+      trussTopology: topology,
+      loadChord,
+      panelCount,
+      panelCountDefaulted: state.bayCount === undefined,
+      heightDefaulted: state.heightM === undefined,
+      geometry: {
+        spanM: span,
+        heightM: height,
+        panelLengthM: panelLength,
+      },
+    },
+  };
+}
+
 export function buildModel(state: DraftState): Record<string, unknown> {
   const metadata = {
     source: 'markdown-skill-draft',
@@ -334,30 +468,7 @@ export function buildModel(state: DraftState): Record<string, unknown> {
     return buildFrame2dModel(state, metadata);
   }
   if (state.inferredType === 'truss') {
-    const length = state.lengthM!;
-    const load = state.loadKN!;
-    return {
-      schema_version: '2.0.0',
-      unit_system: 'SI',
-      nodes: [
-        { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
-        { id: '2', x: length, y: 0, z: 0, restraints: [false, true, true, true, true, true] },
-      ],
-      elements: [
-        { id: '1', type: 'truss', nodes: ['1', '2'], material: '1', section: '1' },
-      ],
-      materials: [
-        { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
-      ],
-      sections: [
-        { id: '1', name: 'T1', type: 'rod', properties: { A: 0.01 } },
-      ],
-      load_cases: [
-        { id: 'LC1', type: 'other', loads: [{ node: '2', fx: load }] },
-      ],
-      load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
-      metadata,
-    };
+    return buildTrussModel(state, metadata);
   }
   if (state.inferredType === 'double-span-beam') {
     const span = state.spanLengthM!;

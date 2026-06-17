@@ -527,6 +527,10 @@ export function buildModelToolSummary(
     nodeCount,
     elementCount,
     schemaVersion,
+    nextAction: 'run_analysis',
+    message: locale === 'zh'
+      ? '模型已构建完成。下一步必须调用 run_analysis 执行结构分析。'
+      : 'Model build is complete. Next, call run_analysis to execute the structural analysis.',
   };
 }
 

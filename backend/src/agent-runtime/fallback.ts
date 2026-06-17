@@ -343,11 +343,18 @@ export function mergeDraftState(existing: DraftState | undefined, patch: DraftEx
   const bayWidthsXM = patch.bayWidthsXM ?? existing?.bayWidthsXM;
   const bayWidthsYM = patch.bayWidthsYM ?? existing?.bayWidthsYM;
   const floorLoads = mergeFloorLoads(existing?.floorLoads, patch.floorLoads);
+  const skillState = existing?.skillState || patch.skillState
+    ? {
+      ...(existing?.skillState ?? {}),
+      ...(patch.skillState ?? {}),
+    }
+    : undefined;
 
   return {
     inferredType: mergedType,
     lengthM: mergedLength,
     spanLengthM,
+    skillState,
     heightM: patch.heightM ?? existing?.heightM,
     supportType: patch.supportType ?? existing?.supportType,
     frameDimension,

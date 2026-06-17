@@ -2,6 +2,20 @@ import type { AppLocale } from '../services/locale.js';
 import type { DraftState } from './types.js';
 import { localize } from './plugin-helpers.js';
 
+function getInvalidDraftFields(state: DraftState): string[] {
+  const fields = state.skillState?.invalidDraftFields;
+  if (!Array.isArray(fields)) {
+    return [];
+  }
+  return fields.filter((field): field is string => typeof field === 'string');
+}
+
+function pushMissing(missing: string[], key: string): void {
+  if (!missing.includes(key)) {
+    missing.push(key);
+  }
+}
+
 export function computeMissingCriticalKeys(state: DraftState): string[] {
   const missing: string[] = [];
   if (state.inferredType === 'unknown') {
@@ -41,6 +55,23 @@ export function computeMissingCriticalKeys(state: DraftState): string[] {
     }
     if (!state.floorLoads?.length) {
       missing.push('floorLoads');
+    }
+    return missing;
+  }
+  if (state.inferredType === 'truss') {
+    if (state.lengthM === undefined) {
+      pushMissing(missing, 'lengthM');
+    }
+    if (state.bayCount === undefined) {
+      pushMissing(missing, 'bayCount');
+    }
+    if (state.loadKN === undefined) {
+      pushMissing(missing, 'loadKN');
+    }
+    for (const field of getInvalidDraftFields(state)) {
+      if (field === 'lengthM' || field === 'heightM' || field === 'bayCount' || field === 'loadKN' || field === 'trussTopology') {
+        pushMissing(missing, field);
+      }
     }
     return missing;
   }
@@ -104,7 +135,7 @@ export function mapMissingFieldLabels(missing: string[], locale: AppLocale): str
       case 'spanLengthM':
         return localize(locale, '门式刚架或双跨每跨跨度（m）', 'Span length per bay for the portal frame or double-span beam (m)');
       case 'heightM':
-        return localize(locale, '门式刚架柱高（m）', 'Portal-frame column height (m)');
+        return localize(locale, '高度（m）', 'Height (m)');
       case 'supportType':
         return localize(locale, '支座/边界条件（悬臂/简支/两端固结/固铰）', 'Support condition (cantilever / simply supported / fixed-fixed / fixed-pinned)');
       case 'frameDimension':
@@ -112,7 +143,9 @@ export function mapMissingFieldLabels(missing: string[], locale: AppLocale): str
       case 'storyCount':
         return localize(locale, '层数', 'Story count');
       case 'bayCount':
-        return localize(locale, '跨数', 'Bay count');
+        return localize(locale, '跨数/节间数', 'Bay / panel count');
+      case 'trussTopology':
+        return localize(locale, '桁架腹杆体系', 'Truss web system');
       case 'bayCountX':
         return localize(locale, 'X向跨数', 'Bay count in X');
       case 'bayCountY':

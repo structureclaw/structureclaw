@@ -2,9 +2,11 @@ import { EventEmitter } from 'node:events';
 import { describe, expect, jest, test } from '@jest/globals';
 
 let spawnMock = jest.fn();
+let spawnSyncMock = jest.fn(() => ({ status: 0 }));
 
 jest.unstable_mockModule('node:child_process', () => ({
   spawn: (...args) => spawnMock(...args),
+  spawnSync: (...args) => spawnSyncMock(...args),
 }));
 
 const { PythonWorkerRunner } = await import('../dist/utils/python-worker-runner.js');

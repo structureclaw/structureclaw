@@ -51,6 +51,19 @@ class OpenSeesStaticAnalyzer(StaticAnalyzer):
 
 def run_analysis(model: StructureModelV2, parameters: Dict[str, Any]) -> Dict[str, Any]:
     analyzer = OpenSeesStaticAnalyzer(model)
+    if analyzer._can_run_2d_truss_solver():
+        try:
+            batch_cases = parameters.get("batchCases", [])
+            if analyzer._requires_3d_truss_solver():
+                if batch_cases:
+                    return analyzer._run_batch_cases(parameters, analyzer._run_linear_3d_truss)
+                return analyzer._run_linear_3d_truss(parameters)
+            if batch_cases:
+                return analyzer._run_batch_cases(parameters, analyzer._run_linear_2d_truss)
+            return analyzer._run_linear_2d_truss(parameters)
+        except Exception as error:
+            raise RuntimeError(f"OpenSees static truss analysis failed: {error}") from error
+
     executor = OpenSeesStaticExecutor(analyzer)
     try:
         import openseespy.opensees as ops  # noqa: F401

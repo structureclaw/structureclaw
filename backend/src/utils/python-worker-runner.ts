@@ -1,10 +1,10 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { access } from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { config } from '../config/index.js';
+import { config, runtimeBaseDir } from '../config/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -45,21 +45,47 @@ export class PythonWorkerRunner<TInput extends object> {
     }
   }
 
+  private isCommandAvailable(command: string): boolean {
+    if (path.isAbsolute(command)) {
+      return existsSync(command);
+    }
+    const lookup = process.platform === 'win32' ? 'where.exe' : 'which';
+    const result = spawnSync(lookup, [command], { stdio: 'ignore', windowsHide: true });
+    return result.status === 0;
+  }
+
   private async resolvePythonCommand(): Promise<{ executable: string; args: string[] }> {
     const configured = config.analysisPythonBin?.trim();
     if (configured) {
       if (configured === 'python3' || configured === 'python') {
-        return { executable: configured, args: [] };
+        if (this.isCommandAvailable(configured)) {
+          return { executable: configured, args: [] };
+        }
       }
       if (configured === 'py' || configured === 'py.exe') {
-        return { executable: configured, args: ['-3'] };
+        if (this.isCommandAvailable(configured)) {
+          return { executable: configured, args: ['-3'] };
+        }
       }
       if (await this.isAccessibleExecutable(configured)) {
         return { executable: configured, args: [] };
       }
     }
 
+    const backendVenv = process.platform === 'win32'
+      ? path.resolve(__dirname, '../../.venv/Scripts/python.exe')
+      : path.resolve(__dirname, '../../.venv/bin/python');
+    const cwdBackendVenv = process.platform === 'win32'
+      ? path.resolve(process.cwd(), 'backend/.venv/Scripts/python.exe')
+      : path.resolve(process.cwd(), 'backend/.venv/bin/python');
+    const dataDirVenv = process.platform === 'win32'
+      ? path.join(runtimeBaseDir, '.venv', 'Scripts', 'python.exe')
+      : path.join(runtimeBaseDir, '.venv', 'bin', 'python');
+
     const candidates: Array<{ executable: string; args: string[] }> = [
+      { executable: backendVenv, args: [] },
+      { executable: cwdBackendVenv, args: [] },
+      { executable: dataDirVenv, args: [] },
       ...(process.platform === 'win32'
         ? [
             { executable: 'py', args: ['-3'] },
@@ -74,20 +100,14 @@ export class PythonWorkerRunner<TInput extends object> {
     ];
 
     for (const candidate of candidates) {
-      if (!path.isAbsolute(candidate.executable)) {
-        if (process.platform === 'win32' && candidate.executable === 'python') {
-          continue;
-        }
-        return candidate;
-      }
-      if (await this.isAccessibleExecutable(candidate.executable)) {
+      if (this.isCommandAvailable(candidate.executable)) {
         return candidate;
       }
     }
 
-    return process.platform === 'win32'
-      ? { executable: 'py', args: ['-3'] }
-      : { executable: 'python3', args: [] };
+    throw new Error(
+      'No Python executable found for StructureClaw analysis. Configure analysis.pythonBin or install the backend/.venv runtime.',
+    );
   }
 
   async invoke<T = unknown>(input: TInput, requestOptions?: { signal?: AbortSignal }): Promise<T> {

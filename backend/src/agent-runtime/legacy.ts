@@ -25,6 +25,13 @@ import {
 import type { AppLocale } from '../services/locale.js';
 import type { DraftExtraction, DraftFloorLoad, DraftState, InferredModelType } from './types.js';
 
+function normalizeSkillState(value: unknown): Record<string, unknown> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  return { ...(value as Record<string, unknown>) };
+}
+
 export function normalizeLegacyDraftPatch(patch: Record<string, unknown> | null | undefined): DraftExtraction {
   if (!patch) {
     return {};
@@ -32,6 +39,7 @@ export function normalizeLegacyDraftPatch(patch: Record<string, unknown> | null 
   return {
     inferredType: normalizeInferredType(patch.inferredType),
     skillId: typeof patch.skillId === 'string' ? patch.skillId : undefined,
+    skillState: normalizeSkillState(patch.skillState),
     lengthM: normalizeNumber(patch.lengthM),
     spanLengthM: normalizeNumber(patch.spanLengthM),
     heightM: normalizeNumber(patch.heightM),
