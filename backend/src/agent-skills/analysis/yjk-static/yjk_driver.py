@@ -377,9 +377,22 @@ def _stop_process(pid: int) -> bool:
         return False
 
 
-def _prewarm_yjk_launcher(yjks_root: str, steps: list[dict]) -> bool:
+def _popen_gui_detached(args: list[str], cwd: str):
     import subprocess
 
+    kwargs = {
+        "cwd": cwd,
+        "stdin": subprocess.DEVNULL,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "close_fds": True,
+    }
+    if os.name == "nt":
+        kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    return subprocess.Popen(args, **kwargs)
+
+
+def _prewarm_yjk_launcher(yjks_root: str, steps: list[dict]) -> bool:
     launcher = _find_yjk_launcher(yjks_root)
     if not launcher:
         _record_step(
@@ -398,7 +411,7 @@ def _prewarm_yjk_launcher(yjks_root: str, steps: list[dict]) -> bool:
     cwd = _env_path("YJK_LAUNCHER_CWD") or yjks_root
     try:
         if existing_pid <= 0:
-            proc = subprocess.Popen([launcher], cwd=cwd)
+            proc = _popen_gui_detached([launcher], cwd)
             pid = proc.pid
             message = "Started official YJK launcher and kept it alive for authorization."
         else:
@@ -613,8 +626,6 @@ def _launch_yjk_with_launcher_and_attach(
     yjks_control: object,
     steps: list[dict],
 ) -> str | None:
-    import subprocess
-
     launcher = _find_yjk_launcher(yjks_root)
     if not launcher:
         _record_step(
@@ -635,7 +646,7 @@ def _launch_yjk_with_launcher_and_attach(
     started_at = time.monotonic()
     cwd = _env_path("YJK_LAUNCHER_CWD") or yjks_root
     try:
-        subprocess.Popen([launcher], cwd=cwd)
+        _popen_gui_detached([launcher], cwd)
     except Exception as exc:
         _record_step(
             steps,
