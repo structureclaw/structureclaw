@@ -267,6 +267,10 @@ describe('frame canonicalize core contract', () => {
     ]);
     expect(model.stories[0]).toMatchObject({ dead_load: 10, live_load: 2 });
     expect(model.load_cases.map((loadCase) => loadCase.id)).toEqual(['D', 'L']);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'D').loads).toHaveLength(4);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'D').loads.reduce((sum, load) => sum + load.fz, 0)).toBeCloseTo(-360);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'L').loads).toHaveLength(4);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'L').loads.reduce((sum, load) => sum + load.fz, 0)).toBeCloseTo(-72);
     expect(model.load_combinations[0]).toMatchObject({ id: 'ULS', factors: { D: 1, L: 1 } });
   });
 

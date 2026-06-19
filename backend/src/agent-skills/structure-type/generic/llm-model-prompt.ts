@@ -23,7 +23,7 @@ export function buildGenericModelPrompt(
   conversationHistory?: string,
 ): string {
   const stateHint = buildCleanStateHint(state);
-  return composePromptByIntent('build-structure-model-v1', locale, stateHint, message, conversationHistory);
+  return composePromptByIntent('build-structure-model-v2', locale, stateHint, message, conversationHistory);
 }
 
 export function buildRetrySuffix(locale: AppLocale): string {

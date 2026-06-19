@@ -500,30 +500,39 @@ function buildStoryFloorLoadFields(deadLoad: number | undefined, liveLoad: numbe
   };
 }
 
-function storyHasFloorLoad(story: Record<string, unknown>, loadType: 'dead' | 'live'): boolean {
-  const field = loadType === 'dead' ? story.dead_load : story.live_load;
-  if (typeof field === 'number' && field > 0) return true;
-
-  const floorLoads = Array.isArray(story.floor_loads) ? story.floor_loads : [];
-  return floorLoads.some((entry) => {
-    if (!entry || typeof entry !== 'object') return false;
-    const record = entry as Record<string, unknown>;
-    return record.type === loadType && typeof record.value === 'number' && record.value > 0;
-  });
+function buildStoryGravityNodalLoads(
+  storyId: string,
+  nodeIds: string[],
+  totalLoadKN: number | undefined,
+  loadKind: 'dead' | 'live',
+): Array<Record<string, unknown>> {
+  if (typeof totalLoadKN !== 'number' || !Number.isFinite(totalLoadKN) || totalLoadKN <= 0 || nodeIds.length === 0) {
+    return [];
+  }
+  const fzPerNode = -Math.abs(totalLoadKN) / nodeIds.length;
+  return nodeIds.map((node) => ({
+    type: 'nodal',
+    node,
+    fz: fzPerNode,
+    story: storyId,
+    source: 'story_floor_loads',
+    load_kind: loadKind,
+  }));
 }
 
 function buildConcreteLoadCaseBundle(
-  stories: Array<Record<string, unknown>>,
+  deadLoads: Array<Record<string, unknown>>,
+  liveLoads: Array<Record<string, unknown>>,
   lateralLoads: Array<Record<string, unknown>>,
   options: { includeWind?: boolean; includeSeismic?: boolean; frameDimension?: '2d' | '3d' } = {},
 ): { load_cases: Array<Record<string, unknown>>; load_combinations: Array<Record<string, unknown>> } {
   const loadCases: Array<Record<string, unknown>> = [];
 
-  if (stories.some((story) => storyHasFloorLoad(story, 'dead'))) {
-    loadCases.push({ id: 'D', type: 'dead', loads: [], description: 'Dead floor loads from stories.floor_loads' });
+  if (deadLoads.length) {
+    loadCases.push({ id: 'D', type: 'dead', loads: deadLoads, description: 'Equivalent nodal dead loads from stories.floor_loads' });
   }
-  if (stories.some((story) => storyHasFloorLoad(story, 'live'))) {
-    loadCases.push({ id: 'L', type: 'live', loads: [], description: 'Live floor loads from stories.floor_loads' });
+  if (liveLoads.length) {
+    loadCases.push({ id: 'L', type: 'live', loads: liveLoads, description: 'Equivalent nodal live loads from stories.floor_loads' });
   }
   if (lateralLoads.length) {
     loadCases.push({ id: 'LAT', type: 'other', loads: lateralLoads, description: 'Lateral story loads' });
@@ -704,6 +713,8 @@ function buildConcreteFrame2dLocalModel(options: {
   const zCoords = accumulateCoords(options.storyHeightsM);
   const nodes: Array<Record<string, unknown>> = [];
   const elements: Array<Record<string, unknown>> = [];
+  const deadLoads: Array<Record<string, unknown>> = [];
+  const liveLoads: Array<Record<string, unknown>> = [];
   const lateralLoads: Array<Record<string, unknown>> = [];
   let elementId = 1;
 
@@ -757,11 +768,20 @@ function buildConcreteFrame2dLocalModel(options: {
   for (const load of options.floorLoads) {
     const storyIdx = load.story;
     if (storyIdx <= 0 || storyIdx >= zCoords.length) continue;
+    const storyId = `F${storyIdx}`;
+    const nodeIds = xCoords.map((_x, bayIdx) => n2dId(storyIdx, bayIdx));
+    deadLoads.push(...buildStoryGravityNodalLoads(storyId, nodeIds, load.verticalKN, 'dead'));
+    liveLoads.push(...buildStoryGravityNodalLoads(storyId, nodeIds, load.liveLoadKN, 'live'));
     const lPerNode = load.lateralXKN !== undefined ? load.lateralXKN / levelNodeCount : undefined;
     for (let bayIdx = 0; bayIdx < xCoords.length; bayIdx++) {
-      const nodeLoad: Record<string, unknown> = { node: n2dId(storyIdx, bayIdx) };
+      const nodeLoad: Record<string, unknown> = {
+        type: 'nodal',
+        node: n2dId(storyIdx, bayIdx),
+        story: storyId,
+        source: 'story_lateral_loads',
+      };
       if (lPerNode !== undefined) nodeLoad.fx = lPerNode;
-      if (Object.keys(nodeLoad).length > 1) lateralLoads.push(nodeLoad);
+      if (nodeLoad.fx !== undefined) lateralLoads.push(nodeLoad);
     }
   }
 
@@ -779,7 +799,7 @@ function buildConcreteFrame2dLocalModel(options: {
       ...buildStoryFloorLoadFields(deadLoad, liveLoad),
     };
   });
-  const loadCaseBundle = buildConcreteLoadCaseBundle(stories, lateralLoads, {
+  const loadCaseBundle = buildConcreteLoadCaseBundle(deadLoads, liveLoads, lateralLoads, {
     includeWind: options.wind !== undefined,
     includeSeismic: options.siteSeismic !== undefined,
     frameDimension: '2d',
@@ -843,6 +863,8 @@ function buildConcreteFrame3dLocalModel(options: {
   const zCoords = accumulateCoords(options.storyHeightsM);
   const nodes: Array<Record<string, unknown>> = [];
   const elements: Array<Record<string, unknown>> = [];
+  const deadLoads: Array<Record<string, unknown>> = [];
+  const liveLoads: Array<Record<string, unknown>> = [];
   const lateralLoads: Array<Record<string, unknown>> = [];
   let elementId = 1;
 
@@ -920,14 +942,23 @@ function buildConcreteFrame3dLocalModel(options: {
   for (const load of options.floorLoads) {
     const storyIdx = load.story;
     if (storyIdx <= 0 || storyIdx >= zCoords.length) continue;
+    const storyId = `F${storyIdx}`;
+    const nodeIds = xCoords.flatMap((_x, xIdx) => yCoords.map((_y, yIdx) => n3dId(storyIdx, xIdx, yIdx)));
+    deadLoads.push(...buildStoryGravityNodalLoads(storyId, nodeIds, load.verticalKN, 'dead'));
+    liveLoads.push(...buildStoryGravityNodalLoads(storyId, nodeIds, load.liveLoadKN, 'live'));
     const lxPerNode = load.lateralXKN !== undefined ? load.lateralXKN / levelNodeCount : undefined;
     const lyPerNode = load.lateralYKN !== undefined ? load.lateralYKN / levelNodeCount : undefined;
     for (let xIdx = 0; xIdx < xCoords.length; xIdx++) {
       for (let yIdx = 0; yIdx < yCoords.length; yIdx++) {
-        const nodeLoad: Record<string, unknown> = { node: n3dId(storyIdx, xIdx, yIdx) };
+        const nodeLoad: Record<string, unknown> = {
+          type: 'nodal',
+          node: n3dId(storyIdx, xIdx, yIdx),
+          story: storyId,
+          source: 'story_lateral_loads',
+        };
         if (lxPerNode !== undefined) nodeLoad.fx = lxPerNode;
         if (lyPerNode !== undefined) nodeLoad.fy = lyPerNode;
-        if (Object.keys(nodeLoad).length > 1) lateralLoads.push(nodeLoad);
+        if (nodeLoad.fx !== undefined || nodeLoad.fy !== undefined) lateralLoads.push(nodeLoad);
       }
     }
   }
@@ -947,7 +978,7 @@ function buildConcreteFrame3dLocalModel(options: {
       ...buildStoryFloorLoadFields(deadLoad, liveLoad),
     };
   });
-  const loadCaseBundle = buildConcreteLoadCaseBundle(stories, lateralLoads, {
+  const loadCaseBundle = buildConcreteLoadCaseBundle(deadLoads, liveLoads, lateralLoads, {
     includeWind: options.wind !== undefined,
     includeSeismic: options.siteSeismic !== undefined,
     frameDimension: '3d',

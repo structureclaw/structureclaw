@@ -49,6 +49,35 @@ describe("draft extraction preservation", () => {
     })).toBe(false);
   });
 
+  test("preserves a stable draft when benchmark retry feedback contains a conflicting frame type", async () => {
+    const { shouldPreserveExistingDraftState } = await import("../../../dist/agent-langgraph/tools.js");
+    const existingState = {
+      inferredType: "frame",
+      skillId: "frame",
+      structuralTypeKey: "frame",
+      storyCount: 2,
+      updatedAt: 0,
+    };
+    const conflictingMatch = {
+      key: "concrete-frame",
+      mappedType: "frame",
+      skillId: "concrete-frame",
+      supportLevel: "supported",
+    };
+
+    expect(shouldPreserveExistingDraftState(
+      existingState,
+      conflictingMatch,
+      "上次尝试失败：structural_type 检查失败：期望 frame，实际得到 steel-frame",
+    )).toBe(true);
+
+    expect(shouldPreserveExistingDraftState(
+      existingState,
+      conflictingMatch,
+      "请把这个结构改成混凝土框架",
+    )).toBe(false);
+  });
+
   test("preserves the previous stable draft but stays conservative without a plugin", async () => {
     const { buildPreservedDraftExtractionResult } = await import("../../../dist/agent-langgraph/tools.js");
     const before = Date.now();

@@ -331,6 +331,8 @@ describe('concrete-frame canonicalize core contract', () => {
       }),
     ]);
     expect(model.load_cases.map((loadCase) => loadCase.id)).toEqual(['D']);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'D').loads).toHaveLength(4);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'D').loads.reduce((sum, load) => sum + load.fz, 0)).toBeCloseTo(-200);
     expect(model.load_combinations[0]).toMatchObject({
       id: 'ULS',
       combination_type: 'uls',
@@ -374,6 +376,10 @@ describe('concrete-frame canonicalize core contract', () => {
       live_load: 2,
     });
     expect(model.load_cases.map((loadCase) => loadCase.id)).toEqual(['D', 'L', 'LAT']);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'D').loads).toHaveLength(12);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'D').loads.reduce((sum, load) => sum + load.fz, 0)).toBeCloseTo(-720);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'L').loads).toHaveLength(12);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'L').loads.reduce((sum, load) => sum + load.fz, 0)).toBeCloseTo(-240);
   });
 
   test('returns undefined when critical geometry is missing (H2 fix)', () => {

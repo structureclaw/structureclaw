@@ -180,10 +180,31 @@ function hasStableDraftType(state: DraftState | null | undefined): state is Draf
 export function shouldPreserveExistingDraftState(
   existingState: DraftState | null | undefined,
   structuralTypeMatch: StructuralTypeMatch,
+  message?: string,
 ): existingState is DraftState {
-  return hasStableDraftType(existingState)
-    && structuralTypeMatch.key === 'unknown'
-    && structuralTypeMatch.mappedType === 'unknown';
+  if (!hasStableDraftType(existingState)) {
+    return false;
+  }
+  if (structuralTypeMatch.key === 'unknown' && structuralTypeMatch.mappedType === 'unknown') {
+    return true;
+  }
+  return isRetryFeedbackMessage(message) && isConflictingStructuralType(existingState, structuralTypeMatch);
+}
+
+function isRetryFeedbackMessage(message: string | undefined): boolean {
+  const text = message?.trim();
+  if (!text) return false;
+  return /^上次尝试失败[:：]/.test(text) || /^Previous attempt failed[:：]/i.test(text);
+}
+
+function isConflictingStructuralType(
+  existingState: DraftState,
+  structuralTypeMatch: StructuralTypeMatch,
+): boolean {
+  const existingKey = existingState.structuralTypeKey ?? existingState.inferredType;
+  const nextKey = structuralTypeMatch.key;
+  if (!nextKey || nextKey === 'unknown') return false;
+  return nextKey !== existingKey;
 }
 
 function buildPreservedStructuralTypeMatch(
@@ -647,7 +668,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
           ? await skillRuntime.resolvePluginForType(match.skillId, skillIds)
           : null;
 
-        if (shouldPreserveExistingDraftState(existingState, match)) {
+        if (shouldPreserveExistingDraftState(existingState, match, message)) {
           const preservationPlugin = await resolveExistingDraftPlugin(
             skillRuntime,
             existingState,
