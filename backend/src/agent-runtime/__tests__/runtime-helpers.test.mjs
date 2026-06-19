@@ -11,6 +11,15 @@ import { buildElementReferenceVectors } from '../../../dist/agent-runtime/refere
 import { skillExecutionSchema } from '../../../dist/agent-runtime/schema.js';
 
 describe('agent runtime helper utilities', () => {
+  test('resolves structure type key aliases to the owning skill plugin', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+
+    expect((await runtime.resolvePluginForType('frame'))?.id).toBe('frame');
+    expect((await runtime.resolvePluginForType('steel-frame'))?.id).toBe('frame');
+    expect((await runtime.resolvePluginForType('concrete-frame'))?.id).toBe('concrete-frame');
+  });
+
   test('dependency fingerprints are stable regardless of reference insertion order', () => {
     const left = computeDependencyFingerprint({
       analysis: { artifactId: 'analysis-1', revision: 3 },

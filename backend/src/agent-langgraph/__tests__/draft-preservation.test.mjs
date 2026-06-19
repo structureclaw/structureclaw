@@ -8,14 +8,37 @@ const unknownFallbackMatch = {
 };
 
 describe("draft extraction preservation", () => {
-  test("prefers explicit tool messages over the raw last user message", async () => {
+  test("prefers the graph user message over generated tool arguments", async () => {
     const { resolveToolInputMessage } = await import("../../../dist/agent-langgraph/tools.js");
 
     expect(resolveToolInputMessage(
-      "荷载信息：楼面恒载4.5kN/m²，楼面活载2.0kN/m²",
-      "你说？",
-    )).toBe("荷载信息：楼面恒载4.5kN/m²，楼面活载2.0kN/m²");
-    expect(resolveToolInputMessage("", "继续")).toBe("继续");
+      "请分析这个混凝土框架",
+      "请分析这个钢框架",
+    )).toBe("请分析这个钢框架");
+    expect(resolveToolInputMessage(
+      "请分析这个混凝土框架",
+      "",
+      [{ role: "user", content: "请分析这个钢框架" }],
+    )).toBe("请分析这个钢框架");
+    expect(resolveToolInputMessage("直接工具调用消息", "")).toBe("直接工具调用消息");
+  });
+
+  test("strips benchmark retry feedback before structural extraction", async () => {
+    const { resolveRetryTaskMessage } = await import("../../../dist/agent-langgraph/tools.js");
+
+    expect(resolveRetryTaskMessage([
+      "上次尝试失败：structural_type 检查失败：期望 frame，实际得到 concrete-frame。",
+      "",
+      "2层单跨钢框架，层高3.6m，跨度6m，楼面荷载10kN/m，请进行静力分析。",
+    ].join("\n"))).toBe("2层单跨钢框架，层高3.6m，跨度6m，楼面荷载10kN/m，请进行静力分析。");
+
+    expect(resolveRetryTaskMessage([
+      "Previous attempt failed: structural_type check failed: expected frame, got concrete-frame.",
+      "",
+      "Analyze a two-story single-bay steel frame.",
+    ].join("\n"))).toBe("Analyze a two-story single-bay steel frame.");
+
+    expect(resolveRetryTaskMessage("请把这个结构改成混凝土框架")).toBe("请把这个结构改成混凝土框架");
   });
 
   test("detects when an unknown fallback should preserve an existing draft", async () => {

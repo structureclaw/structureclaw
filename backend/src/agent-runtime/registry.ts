@@ -53,7 +53,10 @@ export class AgentSkillRegistry {
       return null;
     }
     const skills = await this.resolveEnabledPlugins(skillIds);
-    return skills.find((skill) => skill.id === identifier || skill.structureType === identifier) || null;
+    return skills.find((skill) => skill.id === identifier)
+      || skills.find((skill) => skill.manifest.structuralTypeKeys.includes(identifier as StructuralTypeKey))
+      || skills.find((skill) => skill.structureType === identifier)
+      || null;
   }
 
   async detectStructuralType(
