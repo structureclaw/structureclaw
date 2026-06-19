@@ -739,10 +739,10 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
           resolvedMessagePreview: message.slice(0, 120),
           extractionMessagePreview: extractionMessage.slice(0, 120),
         }, 'extract_draft_params resolved message');
-        let match = await skillRuntime.detectStructuralType(
+        const match = await skillRuntime.detectStructuralType(
           extractionMessage, locale, existingState, skillIds,
         );
-        let matchedPlugin = match.skillId
+        const matchedPlugin = match.skillId
           ? await skillRuntime.resolvePluginForType(match.skillId, skillIds)
           : null;
         log.debug({
