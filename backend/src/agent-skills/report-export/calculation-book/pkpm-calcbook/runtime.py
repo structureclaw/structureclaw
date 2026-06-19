@@ -7,6 +7,8 @@ earthquake forces, displacements, member design, and code checks.
 """
 from __future__ import annotations
 
+import json
+import math
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -70,6 +72,20 @@ def _resolve_jws_path(model: Dict[str, Any], parameters: Dict[str, Any]) -> Path
     if not p.is_file():
         raise FileNotFoundError(f"JWS file not found: {jws}")
     return p
+
+
+def _json_safe(value: Any) -> Any:
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, dict):
+        return {key: _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    return value
+
+
+def _dump_worker_response(payload: Dict[str, Any]) -> str:
+    return json.dumps(_json_safe(payload), ensure_ascii=False, allow_nan=False)
 
 
 # ── Main entry point ────────────────────────────────────────────────────
@@ -247,7 +263,6 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
 
 
 if __name__ == "__main__":
-    import json
     import sys
 
     CURRENT_DIR = Path(__file__).resolve().parent
@@ -259,7 +274,7 @@ if __name__ == "__main__":
 
     raw = sys.stdin.read().strip()
     if not raw:
-        print(json.dumps({"ok": False, "errorCode": "EMPTY_REQUEST", "message": "No input"}, ensure_ascii=False))
+        print(_dump_worker_response({"ok": False, "errorCode": "EMPTY_REQUEST", "message": "No input"}))
         raise SystemExit(1)
 
     try:
@@ -267,12 +282,12 @@ if __name__ == "__main__":
         model = payload.get("model", {})
         parameters = payload.get("parameters", {})
         result = run_analysis(model, parameters)
-        print(json.dumps({"ok": True, "data": result}, ensure_ascii=False))
+        print(_dump_worker_response({"ok": True, "data": result}))
     except Exception as exc:
-        print(json.dumps({
+        print(_dump_worker_response({
             "ok": False,
             "errorCode": "CALCBOOK_FAILED",
             "message": str(exc),
             "detail": {"type": type(exc).__name__},
-        }, ensure_ascii=False))
+        }))
         raise SystemExit(1)

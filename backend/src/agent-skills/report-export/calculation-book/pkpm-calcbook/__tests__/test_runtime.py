@@ -1,6 +1,8 @@
 """Tests for pkpm-calcbook runtime."""
 from __future__ import annotations
 
+import json
+import math
 import sys
 import types
 import re
@@ -16,6 +18,7 @@ _api = types.ModuleType("APIPyInterface")
 sys.modules.setdefault("APIPyInterface", _api)
 
 from runtime import (
+    _dump_worker_response,
     _extract_base_shear,
     _extract_beam_design,
     _extract_column_design,
@@ -115,6 +118,31 @@ class TestResolveJwsPath:
     def test_file_not_found(self):
         with pytest.raises(FileNotFoundError):
             _resolve_jws_path({}, {"jws_path": "/nonexistent/test.JWS"})
+
+
+class TestWorkerJson:
+    def test_replaces_non_finite_numbers_with_null(self):
+        text = _dump_worker_response({
+            "ok": True,
+            "data": {
+                "positive": math.inf,
+                "negative": -math.inf,
+                "nan": float("nan"),
+                "nested": [1.0, math.inf],
+            },
+        })
+
+        assert "Infinity" not in text
+        assert "NaN" not in text
+        assert json.loads(text) == {
+            "ok": True,
+            "data": {
+                "positive": None,
+                "negative": None,
+                "nan": None,
+                "nested": [1.0, None],
+            },
+        }
 
 
 class TestExtractModal:
