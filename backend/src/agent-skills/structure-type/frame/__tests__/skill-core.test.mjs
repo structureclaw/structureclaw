@@ -274,6 +274,30 @@ describe('frame canonicalize core contract', () => {
     expect(model.load_combinations[0]).toMatchObject({ id: 'ULS', factors: { D: 1, L: 1 } });
   });
 
+  test('normalizes duplicate same-story floor loads without dropping signed gravity loads', () => {
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      updatedAt: 0,
+      frameDimension: '2d',
+      storyCount: 1,
+      bayCount: 1,
+      storyHeightsM: [3.6],
+      bayWidthsM: [6],
+      floorLoads: [
+        { story: 1, verticalKN: -120 },
+        { story: 1, verticalKN: -120, liveLoadKN: 30 },
+      ],
+      frameBaseSupportType: 'fixed',
+    });
+
+    expect(model).toBeDefined();
+    expect(model.stories[0]).toMatchObject({ dead_load: 20, live_load: 5 });
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'D').loads).toHaveLength(2);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'D').loads.reduce((sum, load) => sum + load.fz, 0)).toBeCloseTo(-120);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'L').loads).toHaveLength(2);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'L').loads.reduce((sum, load) => sum + load.fz, 0)).toBeCloseTo(-30);
+  });
+
   test('builds custom H sections with star separators', () => {
     const model = buildFrameModel({
       inferredType: 'frame',

@@ -3,7 +3,7 @@ import {
   STRUCTURAL_COORDINATE_SEMANTICS,
 } from '../../../agent-runtime/coordinate-semantics.js';
 import { buildElementReferenceVectors } from '../../../agent-runtime/reference-vectors.js';
-import type { DraftState } from '../../../agent-runtime/types.js';
+import type { DraftFloorLoad, DraftState } from '../../../agent-runtime/types.js';
 import { REQUIRED_KEYS } from './constants.js';
 
 type FrameMaterialCategory = 'steel' | 'concrete';
@@ -263,7 +263,7 @@ function buildStoryGravityNodalLoads(
   totalLoadKN: number | undefined,
   loadKind: 'dead' | 'live',
 ): Array<Record<string, unknown>> {
-  if (typeof totalLoadKN !== 'number' || !Number.isFinite(totalLoadKN) || totalLoadKN <= 0 || nodeIds.length === 0) {
+  if (typeof totalLoadKN !== 'number' || !Number.isFinite(totalLoadKN) || totalLoadKN === 0 || nodeIds.length === 0) {
     return [];
   }
   const fzPerNode = -Math.abs(totalLoadKN) / nodeIds.length;
@@ -275,6 +275,22 @@ function buildStoryGravityNodalLoads(
     source: 'story_floor_loads',
     load_kind: loadKind,
   }));
+}
+
+function normalizeFloorLoadsByStory(floorLoads: DraftFloorLoad[]): DraftFloorLoad[] {
+  const merged = new Map<number, DraftFloorLoad>();
+  for (const load of floorLoads) {
+    if (typeof load.story !== 'number' || !Number.isFinite(load.story)) continue;
+    const current = merged.get(load.story);
+    merged.set(load.story, {
+      story: load.story,
+      verticalKN: load.verticalKN ?? current?.verticalKN,
+      liveLoadKN: load.liveLoadKN ?? current?.liveLoadKN,
+      lateralXKN: load.lateralXKN ?? current?.lateralXKN,
+      lateralYKN: load.lateralYKN ?? current?.lateralYKN,
+    });
+  }
+  return Array.from(merged.values()).sort((left, right) => left.story - right.story);
 }
 
 function buildFrameLoadCaseBundle(
@@ -313,7 +329,7 @@ function buildFrame2dLocalModel(
 ): Record<string, unknown> {
   const bayWidths = state.bayWidthsM!;
   const storyHeights = state.storyHeightsM!;
-  const floorLoads = state.floorLoads!;
+  const floorLoads = normalizeFloorLoadsByStory(state.floorLoads!);
   const baseSupport = (state.frameBaseSupportType as string | undefined) ?? 'fixed';
   const xCoords = accumulateCoords(bayWidths);
   const zCoords = accumulateCoords(storyHeights);
@@ -428,7 +444,7 @@ function buildFrame3dLocalModel(
   const bayWidthsX = state.bayWidthsXM!;
   const bayWidthsY = state.bayWidthsYM!;
   const storyHeights = state.storyHeightsM!;
-  const floorLoads = state.floorLoads!;
+  const floorLoads = normalizeFloorLoadsByStory(state.floorLoads!);
   const baseSupport = (state.frameBaseSupportType as string | undefined) ?? 'fixed';
   const xCoords = accumulateCoords(bayWidthsX);
   const yCoords = accumulateCoords(bayWidthsY);

@@ -76,6 +76,23 @@ describe("draft extraction preservation", () => {
       conflictingMatch,
       "请把这个结构改成混凝土框架",
     )).toBe(false);
+
+    expect(shouldPreserveExistingDraftState(
+      {
+        inferredType: "beam",
+        skillId: "beam",
+        structuralTypeKey: "beam",
+        lengthM: 6,
+        updatedAt: 0,
+      },
+      {
+        key: "frame",
+        mappedType: "frame",
+        skillId: "frame",
+        supportLevel: "supported",
+      },
+      "上次尝试失败：模型类型应为 frame，请重新提取",
+    )).toBe(false);
   });
 
   test("preserves the previous stable draft but stays conservative without a plugin", async () => {

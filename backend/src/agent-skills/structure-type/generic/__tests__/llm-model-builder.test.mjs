@@ -33,7 +33,16 @@ describe('generic LLM model builder', () => {
               { id: 'E1', type: 'beam', nodes: ['N1', 'N2'], material: 'M1', section: 'S1' },
             ],
             load_cases: [
-              { id: 'LC1', type: 'other', loads: [{ type: 'nodal_force', node: 'N2', fz: -230000, unit: 'N' }] },
+              {
+                id: 'LC1',
+                type: 'other',
+                loads: [
+                  { type: 'nodal_force', node: 'N2', fz: -230000, unit: 'N' },
+                  { type: 'nodal_force', node: 'N2', fz: -230, unit: 'N' },
+                  { type: 'line_load', element: 'E1', wz: -20000, forceUnit: 'npermeter', units: 'N/m' },
+                  { type: 'nodal_force', node: 'N1', fz: '   ', unit: 'N' },
+                ],
+              },
             ],
           }),
         };
@@ -53,6 +62,26 @@ describe('generic LLM model builder', () => {
       type: 'nodal',
       node: 'N2',
       fz: -230,
+      unit: 'kN',
+    });
+    expect(model.load_cases[0].loads[1]).toMatchObject({
+      type: 'nodal',
+      node: 'N2',
+      fz: -230,
+      unit: 'kN',
+    });
+    expect(model.load_cases[0].loads[2]).toMatchObject({
+      type: 'distributed',
+      element: 'E1',
+      wz: -20,
+      unit: 'kN/m',
+    });
+    expect(model.load_cases[0].loads[2].forceUnit).toBeUndefined();
+    expect(model.load_cases[0].loads[2].units).toBeUndefined();
+    expect(model.load_cases[0].loads[3]).toMatchObject({
+      type: 'nodal',
+      node: 'N1',
+      fz: '   ',
       unit: 'kN',
     });
   });

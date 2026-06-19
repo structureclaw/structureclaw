@@ -4,6 +4,7 @@ import {
 import { buildElementReferenceVectors } from '../../../agent-runtime/reference-vectors.js';
 import type {
   DraftAnalysisControl,
+  DraftFloorLoad,
   DraftSiteSeismicParams,
   DraftState,
   DraftWindParams,
@@ -506,7 +507,7 @@ function buildStoryGravityNodalLoads(
   totalLoadKN: number | undefined,
   loadKind: 'dead' | 'live',
 ): Array<Record<string, unknown>> {
-  if (typeof totalLoadKN !== 'number' || !Number.isFinite(totalLoadKN) || totalLoadKN <= 0 || nodeIds.length === 0) {
+  if (typeof totalLoadKN !== 'number' || !Number.isFinite(totalLoadKN) || totalLoadKN === 0 || nodeIds.length === 0) {
     return [];
   }
   const fzPerNode = -Math.abs(totalLoadKN) / nodeIds.length;
@@ -518,6 +519,22 @@ function buildStoryGravityNodalLoads(
     source: 'story_floor_loads',
     load_kind: loadKind,
   }));
+}
+
+function normalizeFloorLoadsByStory(floorLoads: DraftFloorLoad[]): DraftFloorLoad[] {
+  const merged = new Map<number, DraftFloorLoad>();
+  for (const load of floorLoads) {
+    if (typeof load.story !== 'number' || !Number.isFinite(load.story)) continue;
+    const current = merged.get(load.story);
+    merged.set(load.story, {
+      story: load.story,
+      verticalKN: load.verticalKN ?? current?.verticalKN,
+      liveLoadKN: load.liveLoadKN ?? current?.liveLoadKN,
+      lateralXKN: load.lateralXKN ?? current?.lateralXKN,
+      lateralYKN: load.lateralYKN ?? current?.lateralYKN,
+    });
+  }
+  return Array.from(merged.values()).sort((left, right) => left.story - right.story);
 }
 
 function buildConcreteLoadCaseBundle(
@@ -711,6 +728,7 @@ function buildConcreteFrame2dLocalModel(options: {
 }): ConcreteFrameModel {
   const xCoords = accumulateCoords(options.bayWidthsM);
   const zCoords = accumulateCoords(options.storyHeightsM);
+  const floorLoads = normalizeFloorLoadsByStory(options.floorLoads);
   const nodes: Array<Record<string, unknown>> = [];
   const elements: Array<Record<string, unknown>> = [];
   const deadLoads: Array<Record<string, unknown>> = [];
@@ -765,7 +783,7 @@ function buildConcreteFrame2dLocalModel(options: {
   }
 
   const levelNodeCount = xCoords.length;
-  for (const load of options.floorLoads) {
+  for (const load of floorLoads) {
     const storyIdx = load.story;
     if (storyIdx <= 0 || storyIdx >= zCoords.length) continue;
     const storyId = `F${storyIdx}`;
@@ -787,7 +805,7 @@ function buildConcreteFrame2dLocalModel(options: {
 
   const stories = options.storyHeightsM.map((height, index) => {
     const storyIdx = index + 1;
-    const fl = options.floorLoads.find((load) => load.story === storyIdx);
+    const fl = floorLoads.find((load) => load.story === storyIdx);
     const floorAreaM2 = Math.max(xCoords[xCoords.length - 1], 1);
     const deadLoad = fl?.verticalKN ? Math.abs(fl.verticalKN) / floorAreaM2 : undefined;
     const liveLoad = fl?.liveLoadKN ? Math.abs(fl.liveLoadKN) / floorAreaM2 : undefined;
@@ -832,7 +850,7 @@ function buildConcreteFrame2dLocalModel(options: {
     rebarProps: options.rebarProps,
     columnProps: options.columnProps,
     beamProps: options.beamProps,
-    floorLoads: options.floorLoads,
+    floorLoads,
     frameBaseSupportType: options.frameBaseSupportType,
   };
 }
@@ -861,6 +879,7 @@ function buildConcreteFrame3dLocalModel(options: {
   const xCoords = accumulateCoords(options.bayWidthsXM);
   const yCoords = accumulateCoords(options.bayWidthsYM);
   const zCoords = accumulateCoords(options.storyHeightsM);
+  const floorLoads = normalizeFloorLoadsByStory(options.floorLoads);
   const nodes: Array<Record<string, unknown>> = [];
   const elements: Array<Record<string, unknown>> = [];
   const deadLoads: Array<Record<string, unknown>> = [];
@@ -939,7 +958,7 @@ function buildConcreteFrame3dLocalModel(options: {
   }
 
   const levelNodeCount = xCoords.length * yCoords.length;
-  for (const load of options.floorLoads) {
+  for (const load of floorLoads) {
     const storyIdx = load.story;
     if (storyIdx <= 0 || storyIdx >= zCoords.length) continue;
     const storyId = `F${storyIdx}`;
@@ -966,7 +985,7 @@ function buildConcreteFrame3dLocalModel(options: {
   const elementReferenceVectors = buildElementReferenceVectors(elements, nodes);
   const stories = options.storyHeightsM.map((height, index) => {
     const storyIdx = index + 1;
-    const fl = options.floorLoads.find((load) => load.story === storyIdx);
+    const fl = floorLoads.find((load) => load.story === storyIdx);
     const floorAreaM2 = Math.max(xCoords[xCoords.length - 1], 1) * Math.max(yCoords[yCoords.length - 1], 1);
     const deadLoad = fl?.verticalKN ? Math.abs(fl.verticalKN) / floorAreaM2 : undefined;
     const liveLoad = fl?.liveLoadKN ? Math.abs(fl.liveLoadKN) / floorAreaM2 : undefined;
@@ -1019,7 +1038,7 @@ function buildConcreteFrame3dLocalModel(options: {
     rebarProps: options.rebarProps,
     columnProps: options.columnProps,
     beamProps: options.beamProps,
-    floorLoads: options.floorLoads,
+    floorLoads,
     frameBaseSupportType: options.frameBaseSupportType,
   };
 }

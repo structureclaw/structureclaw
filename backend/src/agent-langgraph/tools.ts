@@ -201,6 +201,9 @@ function isConflictingStructuralType(
   existingState: DraftState,
   structuralTypeMatch: StructuralTypeMatch,
 ): boolean {
+  if (structuralTypeMatch.mappedType !== existingState.inferredType) {
+    return false;
+  }
   const existingKey = existingState.structuralTypeKey ?? existingState.inferredType;
   const nextKey = structuralTypeMatch.key;
   if (!nextKey || nextKey === 'unknown') return false;
