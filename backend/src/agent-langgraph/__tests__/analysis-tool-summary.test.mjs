@@ -77,6 +77,53 @@ describe("analysis tool summary", () => {
     });
   });
 
+  test("does not retry analysis engine requests after abort", async () => {
+    const { createRunAnalysisTool } = await import("../../../dist/agent-langgraph/tools.js");
+    const abortController = new AbortController();
+    const abortError = new Error("analysis aborted");
+    abortError.name = "AbortError";
+    let postCalls = 0;
+    const runAnalysis = createRunAnalysisTool({
+      async executeAnalysisSkill({ postToEngineWithRetry, signal }) {
+        return postToEngineWithRetry("/analyze", {}, {
+          retries: 2,
+          traceId: "test-trace",
+          tool: "run_analysis",
+          signal,
+        });
+      },
+    });
+
+    await expect(runAnalysis.invoke({ analysisType: "static" }, {
+      signal: abortController.signal,
+      toolCall: { id: "call-test" },
+      configurable: {
+        skillScope: ["opensees-static"],
+        agentState: {
+          lastUserMessage: "Run static analysis",
+          model: {
+            schemaVersion: "2.0.0",
+            nodes: [],
+            elements: [],
+            materials: [],
+            sections: [],
+            loadCases: [],
+            loadCombinations: [],
+          },
+        },
+        engineClient: {
+          post() {
+            postCalls += 1;
+            abortController.abort(abortError);
+            throw abortError;
+          },
+        },
+      },
+    })).rejects.toThrow("analysis aborted");
+
+    expect(postCalls).toBe(1);
+  });
+
   test("surfaces failed analysis artifact feedback to the model", async () => {
     const { buildAnalysisToolSummary } = await import("../../../dist/agent-langgraph/tools.js");
 

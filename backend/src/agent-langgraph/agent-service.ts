@@ -361,6 +361,7 @@ export class LangGraphAgentService {
   private buildGraphRuntimeConfig(input?: LangGraphRunInput, traceId?: string, conversationId?: string) {
     return {
       recursionLimit: getLangGraphRecursionLimit(config.agentMaxToolCallsPerTurn),
+      signal: input?.signal,
       configurable: {
         thread_id: conversationId,
         ...this.buildConfigurable(input, traceId, conversationId),

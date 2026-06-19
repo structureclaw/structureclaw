@@ -1297,11 +1297,14 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
       ) => {
         let lastError: unknown;
         for (let attempt = 0; attempt <= opts.retries; attempt++) {
+          if (opts.signal?.aborted) {
+            throw opts.signal.reason ?? new Error('Analysis request aborted');
+          }
           try {
             return await engineClient.post(p, payload, { signal: opts.signal });
           } catch (error) {
             lastError = error;
-            if (attempt === opts.retries) throw error;
+            if (opts.signal?.aborted || attempt === opts.retries) throw error;
           }
         }
         throw lastError;
@@ -1319,6 +1322,7 @@ export function createRunAnalysisTool(skillRuntime: AgentSkillRuntime) {
         analysisSkillId: requestedAnalysisSkillId,
         skillIds,
         postToEngineWithRetry,
+        signal: config.signal,
       });
 
       // Store analysis result in graph state via Command.
