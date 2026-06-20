@@ -30,6 +30,39 @@ function buildSkillInfo(plugin: AgentSkillPlugin): Record<string, unknown> {
   };
 }
 
+function engineeringDraftSchemaDescription(locale: 'zh' | 'en'): string {
+  if (locale === 'zh') {
+    return [
+      '优先输出 engineeringDraft，结构如下：',
+      '{',
+      '  "structureType": "beam|column|truss|portal-frame|steel-frame|concrete-frame",',
+      '  "geometry": { "lengthM": number, "heightM": number, "spanLengthsM": number[], "storyHeightsM": number[], "bayWidthsM": number[], "bayWidthsXM": number[], "bayWidthsYM": number[] },',
+      '  "material": { "family": "steel|concrete|composite|timber|masonry|generic", "grade": string, "rebarGrade": string },',
+      '  "sections": { "beam": string, "column": string, "member": string },',
+      '  "boundary": { "supportType": "cantilever|simply-supported|fixed-fixed|fixed-pinned", "frameBaseSupportType": "fixed|pinned" },',
+      '  "loads": [',
+      '    { "kind": "point|line|area|nodal|distributed", "magnitude": number, "unit": "kN|kN/m|kN/m2", "direction": "gravity|globalX|globalY|globalZ", "target": string, "location": { "xM": number, "spanIndex": number, "nodeRole": string } }',
+      '  ],',
+      '  "analysis": { "type": "static|dynamic|seismic|nonlinear", "engineTarget": "opensees|pkpm|yjk" }',
+      '}',
+    ].join('\n');
+  }
+  return [
+    'Prefer engineeringDraft with this shape:',
+    '{',
+    '  "structureType": "beam|column|truss|portal-frame|steel-frame|concrete-frame",',
+    '  "geometry": { "lengthM": number, "heightM": number, "spanLengthsM": number[], "storyHeightsM": number[], "bayWidthsM": number[], "bayWidthsXM": number[], "bayWidthsYM": number[] },',
+    '  "material": { "family": "steel|concrete|composite|timber|masonry|generic", "grade": string, "rebarGrade": string },',
+    '  "sections": { "beam": string, "column": string, "member": string },',
+    '  "boundary": { "supportType": "cantilever|simply-supported|fixed-fixed|fixed-pinned", "frameBaseSupportType": "fixed|pinned" },',
+    '  "loads": [',
+    '    { "kind": "point|line|area|nodal|distributed", "magnitude": number, "unit": "kN|kN/m|kN/m2", "direction": "gravity|globalX|globalY|globalZ", "target": string, "location": { "xM": number, "spanIndex": number, "nodeRole": string } }',
+    '  ],',
+    '  "analysis": { "type": "static|dynamic|seismic|nonlinear", "engineTarget": "opensees|pkpm|yjk" }',
+    '}',
+  ].join('\n');
+}
+
 // ---------------------------------------------------------------------------
 // Prompt
 // ---------------------------------------------------------------------------
@@ -51,15 +84,18 @@ export function buildParamExtractorPrompt(
       skillInfoJson,
       '',
       '根据上面的参数说明，从用户消息中提取工程参数，输出一个 JSON 对象。',
+      engineeringDraftSchemaDescription(locale),
       '',
       '规则：',
-      '- 参数字段名必须与当前结构技能参数说明一致',
+      '- 优先输出 engineeringDraft；为了兼容旧链路，也可以同时输出 draftPatch',
+      '- draftPatch 字段名必须与当前结构技能参数说明一致',
       '- 长度单位 m，力单位 kN，分布荷载 kN/m',
       '- 保留已有 draftState 中的所有参数值，补充新提取的值',
       '- 不确定时省略字段，不要猜测',
       '- 嵌套数组字段必须输出完整对象；例如 floorLoads 的每一项都必须包含 story',
       '- 不输出元数据字段（updatedAt, skillId, structuralTypeKey, supportLevel, coordinateSemantics, supportNote）',
-      '- 可以输出 draftPatch 对象，也可以直接输出参数对象；不要 markdown 包装或解释',
+      '- 不要为了补齐字段而猜测未明确给出的工程参数',
+      '- 不要 markdown 包装或解释',
       '',
       `已有 draftState:\n${stateJson}`,
       '',
@@ -74,15 +110,18 @@ export function buildParamExtractorPrompt(
     skillInfoJson,
     '',
     'Extract engineering parameters from the user message based on the guidance above, and output a JSON object.',
+    engineeringDraftSchemaDescription(locale),
     '',
     'Rules:',
-    '- Parameter field names MUST match the current structural skill parameter guidance',
+    '- Prefer engineeringDraft; you may also include draftPatch for legacy compatibility',
+    '- draftPatch field names MUST match the current structural skill parameter guidance',
     '- Length in meters, force in kN, distributed load in kN/m',
     '- Preserve ALL existing draftState parameter values, add newly extracted ones',
     '- Omit fields you are unsure about — do NOT guess',
     '- Nested array fields must contain complete objects; for example each floorLoads item must include story',
     '- Do NOT output metadata fields (updatedAt, skillId, structuralTypeKey, supportLevel, coordinateSemantics, supportNote)',
-    '- You may output a draftPatch object or the parameter object directly; no markdown fences, no explanations',
+    '- Do not guess engineering parameters that are not clear from the message',
+    '- No markdown fences, no explanations',
     '',
     `Existing draftState:\n${stateJson}`,
     '',
@@ -127,9 +166,15 @@ function tryParseJson(text: string): Record<string, unknown> | null {
 }
 
 function unwrapDraftPatch(parsed: Record<string, unknown>): Record<string, unknown> {
+  const engineeringDraft = parsed.engineeringDraft;
   const draftPatch = parsed.draftPatch;
   if (draftPatch && typeof draftPatch === 'object' && !Array.isArray(draftPatch)) {
-    return draftPatch as Record<string, unknown>;
+    return {
+      ...(draftPatch as Record<string, unknown>),
+      ...(engineeringDraft && typeof engineeringDraft === 'object' && !Array.isArray(engineeringDraft)
+        ? { engineeringDraft }
+        : {}),
+    };
   }
   return parsed;
 }

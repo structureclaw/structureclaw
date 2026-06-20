@@ -8,6 +8,67 @@ export type FrameBaseSupportType = 'fixed' | 'pinned';
 export type AgentAnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear';
 export type MaterialFamily = 'steel' | 'concrete' | 'composite' | 'timber' | 'masonry' | 'generic';
 
+export type EngineeringDraftLoadKind = 'point' | 'line' | 'area' | 'nodal' | 'distributed';
+export type EngineeringDraftLoadUnit = 'kN' | 'kN/m' | 'kN/m2';
+export type EngineeringDraftLoadDirection = 'gravity' | 'globalX' | 'globalY' | 'globalZ';
+
+export interface EngineeringDraftGeometry {
+  lengthM?: number;
+  heightM?: number;
+  spanLengthsM?: number[];
+  storyHeightsM?: number[];
+  bayWidthsM?: number[];
+  bayWidthsXM?: number[];
+  bayWidthsYM?: number[];
+}
+
+export interface EngineeringDraftMaterial {
+  family?: MaterialFamily;
+  grade?: string;
+  rebarGrade?: string;
+}
+
+export interface EngineeringDraftSections {
+  beam?: string;
+  column?: string;
+  member?: string;
+}
+
+export interface EngineeringDraftBoundary {
+  supportType?: DraftSupportType;
+  frameBaseSupportType?: FrameBaseSupportType;
+}
+
+export interface EngineeringDraftLoadLocation {
+  xM?: number;
+  spanIndex?: number;
+  nodeRole?: string;
+}
+
+export interface EngineeringDraftLoad {
+  kind: EngineeringDraftLoadKind;
+  magnitude: number;
+  unit: EngineeringDraftLoadUnit;
+  direction?: EngineeringDraftLoadDirection;
+  target?: string;
+  location?: EngineeringDraftLoadLocation;
+}
+
+export interface EngineeringDraftAnalysis {
+  type?: AgentAnalysisType;
+  engineTarget?: 'opensees' | 'pkpm' | 'yjk';
+}
+
+export interface EngineeringDraft {
+  structureType?: StructuralTypeKey;
+  geometry?: EngineeringDraftGeometry;
+  material?: EngineeringDraftMaterial;
+  sections?: EngineeringDraftSections;
+  boundary?: EngineeringDraftBoundary;
+  loads?: EngineeringDraftLoad[];
+  analysis?: EngineeringDraftAnalysis;
+}
+
 export interface DraftFloorLoad {
   story: number;
   verticalKN?: number;
@@ -84,6 +145,7 @@ export interface DraftState {
   supportLevel?: StructuralTypeSupportLevel;
   supportNote?: string;
   coordinateSemantics?: string;
+  engineeringDraft?: EngineeringDraft;
   skillState?: Record<string, unknown>;
   lengthM?: number;
   spanLengthM?: number;
@@ -122,6 +184,7 @@ export interface DraftExtraction {
   supportLevel?: StructuralTypeSupportLevel;
   supportNote?: string;
   coordinateSemantics?: string;
+  engineeringDraft?: EngineeringDraft;
   skillState?: Record<string, unknown>;
   lengthM?: number;
   spanLengthM?: number;

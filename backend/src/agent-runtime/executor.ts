@@ -32,11 +32,11 @@ export class AgentSkillExecutor {
         ? '不要输出 markdown，不要解释，只输出一个 JSON 对象。缺失字段可以省略。'
         : 'Do not return markdown or explanations. Return one JSON object only. Omit fields that are unavailable.',
       input.locale === 'zh'
-        ? 'JSON 字段允许：inferredType, draftPatch, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote。'
-        : 'Allowed JSON fields: inferredType, draftPatch, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote.',
+        ? 'JSON 字段允许：inferredType, engineeringDraft, draftPatch, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote。'
+        : 'Allowed JSON fields: inferredType, engineeringDraft, draftPatch, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote.',
       input.locale === 'zh'
-        ? 'draftPatch 允许字段：inferredType,lengthM,spanLengthM,heightM,supportType,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,frameBaseSupportType,loadKN,loadType,loadPosition,loadPositionM,frameMaterial,frameColumnSection,frameBeamSection。'
-        : 'draftPatch allowed fields: inferredType,lengthM,spanLengthM,heightM,supportType,frameDimension,storyCount,bayCount,bayCountX,bayCountY,storyHeightsM,bayWidthsM,bayWidthsXM,bayWidthsYM,floorLoads,frameBaseSupportType,loadKN,loadType,loadPosition,loadPositionM,frameMaterial,frameColumnSection,frameBeamSection.',
+        ? '优先输出 engineeringDraft：geometry 表达跨度/高度/多跨数组，loads 表达集中力、线荷载、面积荷载或节点荷载，analysis.engineTarget 表达 opensees/pkpm/yjk。必要时可同时输出旧 draftPatch。'
+        : 'Prefer engineeringDraft: use geometry for lengths/heights/span arrays, loads for point/line/area/nodal loads, and analysis.engineTarget for opensees/pkpm/yjk. You may also output legacy draftPatch when useful.',
       input.locale === 'zh'
         ? 'loadPositionM 表示距左端位置（m）；若用户明确“4m处”这类位置，优先输出数值。'
         : 'loadPositionM means offset from left end in meters; if user specifies locations like 4m, provide numeric value.',
@@ -69,9 +69,15 @@ export class AgentSkillExecutor {
         return { parsed: null, draftPatch: null };
       }
 
+      const rawEngineeringDraft = parsedJson.engineeringDraft && typeof parsedJson.engineeringDraft === 'object' && !Array.isArray(parsedJson.engineeringDraft)
+        ? { engineeringDraft: parsedJson.engineeringDraft }
+        : {};
       const rawDraftPatch = (parsedJson.draftPatch && typeof parsedJson.draftPatch === 'object' && !Array.isArray(parsedJson.draftPatch))
-        ? parsedJson.draftPatch as Record<string, unknown>
-        : null;
+        ? {
+          ...(parsedJson.draftPatch as Record<string, unknown>),
+          ...rawEngineeringDraft,
+        }
+        : (Object.keys(rawEngineeringDraft).length ? rawEngineeringDraft : null);
       const rawInferredType = typeof parsedJson.inferredType === 'string'
         ? parsedJson.inferredType
         : undefined;
@@ -80,7 +86,12 @@ export class AgentSkillExecutor {
         const parsed = skillExecutionSchema.parse(parsedJson);
         return {
           parsed,
-          draftPatch: parsed.draftPatch ?? rawDraftPatch,
+          draftPatch: parsed.draftPatch
+            ? {
+              ...parsed.draftPatch,
+              ...(parsed.engineeringDraft ? { engineeringDraft: parsed.engineeringDraft } : {}),
+            }
+            : rawDraftPatch,
         };
       } catch {
         return {

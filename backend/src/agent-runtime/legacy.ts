@@ -12,6 +12,7 @@ import {
   normalizePositiveInteger,
   normalizeSupportType,
 } from './fallback.js';
+import { normalizeEngineeringDraft as normalizeSemanticEngineeringDraft } from './engineering-draft.js';
 import { buildModel } from './model-builder.js';
 import {
   computeMissingCriticalKeys,
@@ -39,6 +40,7 @@ export function normalizeLegacyDraftPatch(patch: Record<string, unknown> | null 
   return {
     inferredType: normalizeInferredType(patch.inferredType),
     skillId: typeof patch.skillId === 'string' ? patch.skillId : undefined,
+    engineeringDraft: normalizeSemanticEngineeringDraft(patch.engineeringDraft),
     skillState: normalizeSkillState(patch.skillState),
     lengthM: normalizeNumber(patch.lengthM),
     spanLengthM: normalizeNumber(patch.spanLengthM),
@@ -164,10 +166,16 @@ export function restrictLegacyDraftPatch(
   allowedKeys: string[],
 ): DraftExtraction {
   const nextPatch: DraftExtraction = { inferredType };
+  if (patch.engineeringDraft !== undefined) {
+    nextPatch.engineeringDraft = patch.engineeringDraft;
+  }
   for (const key of allowedKeys) {
     if (patch[key] !== undefined) {
       nextPatch[key] = patch[key];
     }
+  }
+  if (patch.skillState !== undefined) {
+    nextPatch.skillState = patch.skillState;
   }
   return nextPatch;
 }

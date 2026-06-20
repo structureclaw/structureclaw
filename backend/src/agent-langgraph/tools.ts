@@ -872,6 +872,11 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
           structuralTypeMatch: match,
           skillId: plugin.id,
           extractionMode: draftPatch ? 'llm' : 'deterministic',
+          llmDraftPatch: draftPatch ?? null,
+          engineeringDraft: nextState.engineeringDraft ?? patch.engineeringDraft ?? null,
+          extractionSource: typeof nextState.skillState?.extractionSource === 'string'
+            ? nextState.skillState.extractionSource
+            : (draftPatch ? 'llm-draft-patch' : 'deterministic'),
           ...buildDraftProgress(locale, missing.critical),
         };
 

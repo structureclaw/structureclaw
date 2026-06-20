@@ -13,6 +13,7 @@ import type {
   StructuralTypeMatch,
   StructuralTypeKey,
 } from './types.js';
+import { mergeEngineeringDraft } from './engineering-draft.js';
 import { buildModel as buildDraftModel } from './model-builder.js';
 import { localize } from './plugin-helpers.js';
 
@@ -343,6 +344,7 @@ export function mergeDraftState(existing: DraftState | undefined, patch: DraftEx
   const bayWidthsXM = patch.bayWidthsXM ?? existing?.bayWidthsXM;
   const bayWidthsYM = patch.bayWidthsYM ?? existing?.bayWidthsYM;
   const floorLoads = mergeFloorLoads(existing?.floorLoads, patch.floorLoads);
+  const engineeringDraft = mergeEngineeringDraft(existing?.engineeringDraft, patch.engineeringDraft);
   const existingInvalidFields = existing?.skillState?.invalidDraftFields;
   const patchInvalidFields = patch.skillState?.invalidDraftFields;
   const invalidDraftFields = Array.isArray(existingInvalidFields) || Array.isArray(patchInvalidFields)
@@ -361,6 +363,7 @@ export function mergeDraftState(existing: DraftState | undefined, patch: DraftEx
 
   return {
     inferredType: mergedType,
+    engineeringDraft,
     lengthM: mergedLength,
     spanLengthM,
     skillState,
