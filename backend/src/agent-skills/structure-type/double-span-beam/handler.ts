@@ -1,9 +1,9 @@
 import {
-  buildLegacyDraftPatchLlmFirst,
   buildLegacyLabels,
   buildLegacyModel,
   computeLegacyMissing,
   mergeLegacyState,
+  normalizeLlmDraftPatch,
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
@@ -167,8 +167,8 @@ export const handler: SkillHandler = {
   parseProvidedValues(values) {
     return toDoubleSpanPatch(normalizeLegacyDraftPatch(values));
   },
-  extractDraft({ message, llmDraftPatch }) {
-    return toDoubleSpanPatch(buildLegacyDraftPatchLlmFirst(message, llmDraftPatch));
+  extractDraft({ llmDraftPatch }) {
+    return toDoubleSpanPatch(normalizeLlmDraftPatch(llmDraftPatch));
   },
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toDoubleSpanPatch(patch), 'double-span-beam', 'double-span-beam');

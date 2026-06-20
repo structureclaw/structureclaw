@@ -12,9 +12,8 @@ import { computeConcreteFrameMissing } from '../../../../../dist/agent-skills/st
 describe('concrete-frame canonicalize core contract', () => {
   test('promotes to 3d when y-direction evidence conflicts with llm 2d output', () => {
     const patch = canonicalizeConcreteFramePatch({
-      message: '3D混凝土框架，x向2跨每跨6m，y向1跨每跨5m，x向和y向都是20kN',
       existingState: { inferredType: 'concrete-frame', updatedAt: 0 },
-      naturalPatch: {
+      supplementalPatch: {
         inferredType: 'concrete-frame',
         bayCountX: 2,
         bayCountY: 1,
@@ -30,9 +29,8 @@ describe('concrete-frame canonicalize core contract', () => {
 
   test('derives story and bay counts from canonical arrays', () => {
     const patch = canonicalizeConcreteFramePatch({
-      message: '2层2跨混凝土框架，每层3m，每跨6m',
       existingState: { inferredType: 'concrete-frame', updatedAt: 0 },
-      naturalPatch: {
+      supplementalPatch: {
         inferredType: 'concrete-frame',
         storyHeightsM: [3, 3],
         bayWidthsM: [6, 6],
@@ -47,7 +45,6 @@ describe('concrete-frame canonicalize core contract', () => {
 
   test('merges floor loads by story without dropping earlier values', () => {
     const patch = canonicalizeConcreteFramePatch({
-      message: 'y向水平荷载12kN',
       existingState: {
         inferredType: 'concrete-frame',
         frameDimension: '3d',
@@ -57,7 +54,7 @@ describe('concrete-frame canonicalize core contract', () => {
         ],
         updatedAt: 0,
       },
-      naturalPatch: {
+      supplementalPatch: {
         inferredType: 'concrete-frame',
         floorLoads: [
           { story: 1, lateralYKN: 12 },
@@ -73,9 +70,8 @@ describe('concrete-frame canonicalize core contract', () => {
     ]);
   });
 
-  test('extracts rc frame geometry when the second plan direction is written as z-direction', () => {
-    const message = '我想设计一个两层钢筋混凝土框架，用YJK计算，X向2跨每跨6.0m，Z向1跨6.0m，层高3.6m×2层。柱截面600x600，梁截面500x250，柱脚刚接，梁柱刚接。具体配筋你来设计';
-    const patch = buildConcreteFrameDraftPatch(message, {
+  test('normalizes structured 3d concrete-frame geometry', () => {
+    const patch = buildConcreteFrameDraftPatch({
       inferredType: 'concrete-frame',
       frameDimension: '3d',
       storyCount: 2,
@@ -148,9 +144,8 @@ describe('concrete-frame canonicalize core contract', () => {
     });
   });
 
-  test('extracts repeated english story heights from "4.2m each" phrasing', () => {
+  test('normalizes repeated story and bay scalars into canonical arrays', () => {
     const patch = buildConcreteFrameDraftPatch(
-      '3 stories, 4.2m each, single bay 8m, floor load 12kN/m2',
       {
         inferredType: 'concrete-frame',
         storyCount: 3,
@@ -169,7 +164,6 @@ describe('concrete-frame canonicalize core contract', () => {
 
   test('keeps x-direction geometry without inventing a 3d frame from one direction', () => {
     const patch = buildConcreteFrameDraftPatch(
-      '三层混凝土框架，x方向4跨，间隔6m，每层3m，每层竖向荷载100kN',
       {
         inferredType: 'concrete-frame',
         storyCount: 3,
@@ -443,7 +437,6 @@ describe('concrete-frame canonicalize core contract', () => {
 
   test('derives 2d per-floor total loads from floor area intensity when single-bay geometry is explicit', () => {
     const patch = buildConcreteFrameDraftPatch(
-      '2-story single-bay concrete frame, story height 3.6m, bay 6m, floor load 10kN/m2',
       {
         engineeringDraft: {
           structureType: 'concrete-frame',
@@ -467,7 +460,6 @@ describe('concrete-frame canonicalize core contract', () => {
 
   test('repairs llm floor loads that omit story numbers', () => {
     const patch = buildConcreteFrameDraftPatch(
-      '两层3D混凝土框架，X向2跨每跨6m，Y向1跨6m，层高3.6m，每层总竖向荷载432kN',
       {
         inferredType: 'concrete-frame',
         frameDimension: '3d',
@@ -492,14 +484,7 @@ describe('concrete-frame canonicalize core contract', () => {
   });
 
   test('extracts PKPM-oriented RC frame design conditions from detailed chinese request', () => {
-    const message = [
-      '设计计算一个两层混凝土框架，首层4.5米，二层3.8米。',
-      '纵向开间尺寸8米，共5间，横向进深尺寸6米+3米+6米，',
-      '二层楼面恒载1.8kN/㎡，活载3.5kN/㎡，屋面恒载3.5kN/㎡，活载0.5kN/㎡。',
-      '7度0.1g抗震，第三组，场地类别3类，风荷载0.4kN/㎡，场地类别B类，',
-      '混凝土C30，钢筋HRB400。',
-    ].join('');
-    const patch = buildConcreteFrameDraftPatch(message, {
+    const patch = buildConcreteFrameDraftPatch({
       inferredType: 'concrete-frame',
       frameDimension: '3d',
       storyCount: 2,
@@ -607,7 +592,6 @@ describe('concrete-frame canonicalize core contract', () => {
 
   test('derives 2d per-floor total loads from line intensity and total span length', () => {
     const patch = buildConcreteFrameDraftPatch(
-      '3层2跨混凝土框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m',
       {
         engineeringDraft: {
           structureType: 'concrete-frame',
@@ -641,7 +625,7 @@ describe('concrete-frame canonicalize core contract', () => {
         { story: 1, verticalKN: 120, lateralXKN: 30 },
         { story: 2, verticalKN: 120, lateralXKN: 30 },
       ],
-    }, undefined, '两层两跨混凝土框架，每层3m');
+    }, undefined);
 
     expect(patch.frameDimension).toBeUndefined();
   });

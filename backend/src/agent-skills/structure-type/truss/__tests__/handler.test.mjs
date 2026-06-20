@@ -40,7 +40,7 @@ describe('truss handler', () => {
     expect(patch.loadKN).toBe(20);
   });
 
-  test('uses engineeringDraft without natural parser overrides', () => {
+  test('uses only structured engineeringDraft fields for extraction', () => {
     const patch = handler.extractDraft({
       message: 'A Pratt truss spans 15m, has 2.5m height and 5 panels, with 10kN loads at top chord nodes.',
       llmDraftPatch: {

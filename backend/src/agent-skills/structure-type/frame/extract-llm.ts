@@ -120,23 +120,20 @@ export function hasLateralYFloorLoad(floorLoads: DraftFloorLoad[] | undefined): 
 export function coerceFrameDimension(
   patch: DraftExtraction,
   existingState: DraftState | undefined,
-  message: string,
 ): DraftExtraction {
   const nextPatch: DraftExtraction = { ...patch };
-  nextPatch.frameDimension = resolveFrameDimension(nextPatch, existingState, message);
+  nextPatch.frameDimension = resolveFrameDimension(nextPatch, existingState);
   return fillFrameDimensionSpecificGeometry(nextPatch);
 }
 
 export function buildFrameDraftPatch(
-  message: string,
   llmDraftPatch: Record<string, unknown> | null | undefined,
   existingState: DraftState | undefined,
 ): DraftExtraction {
   const normalizedLlmPatch = buildFramePatchFromLlm(llmDraftPatch, existingState);
   const nextPatch = canonicalizeFramePatch({
-    message,
     existingState,
-    naturalPatch: {},
+    supplementalPatch: {},
     llmPatch: normalizedLlmPatch,
   });
 
@@ -153,6 +150,5 @@ export function buildFrameDraftPatch(
       ...(frameBeamSection !== undefined && { frameBeamSection }),
     },
     existingState,
-    message,
   );
 }

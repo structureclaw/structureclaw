@@ -64,19 +64,19 @@ export function normalizeLegacyDraftPatch(patch: Record<string, unknown> | null 
   };
 }
 
-function mergeFloorLoadsLlmFirst(
+function mergeFloorLoadsWithSupplemental(
   llmFloorLoads: DraftFloorLoad[] | undefined,
-  ruleFloorLoads: DraftFloorLoad[] | undefined,
+  supplementalFloorLoads: DraftFloorLoad[] | undefined,
 ): DraftFloorLoad[] | undefined {
   if (!llmFloorLoads?.length) {
-    return ruleFloorLoads?.length ? [...ruleFloorLoads].sort((left, right) => left.story - right.story) : undefined;
+    return supplementalFloorLoads?.length ? [...supplementalFloorLoads].sort((left, right) => left.story - right.story) : undefined;
   }
-  if (!ruleFloorLoads?.length) {
+  if (!supplementalFloorLoads?.length) {
     return [...llmFloorLoads].sort((left, right) => left.story - right.story);
   }
 
   const merged = new Map<number, DraftFloorLoad>();
-  for (const load of ruleFloorLoads) {
+  for (const load of supplementalFloorLoads) {
     merged.set(load.story, { ...load });
   }
   for (const load of llmFloorLoads) {
@@ -93,47 +93,47 @@ function mergeFloorLoadsLlmFirst(
   return Array.from(merged.values()).sort((left, right) => left.story - right.story);
 }
 
-function mergeSkillStateLlmFirst(
+function mergeSkillStateWithSupplemental(
   llmState: Record<string, unknown> | undefined,
-  ruleState: Record<string, unknown> | undefined,
+  supplementalState: Record<string, unknown> | undefined,
 ): Record<string, unknown> | undefined {
-  if (!llmState && !ruleState) {
+  if (!llmState && !supplementalState) {
     return undefined;
   }
 
   const llmInvalid = llmState?.invalidDraftFields;
-  const ruleInvalid = ruleState?.invalidDraftFields;
-  const invalidDraftFields = Array.isArray(llmInvalid) || Array.isArray(ruleInvalid)
+  const supplementalInvalid = supplementalState?.invalidDraftFields;
+  const invalidDraftFields = Array.isArray(llmInvalid) || Array.isArray(supplementalInvalid)
     ? Array.from(new Set([
-      ...(Array.isArray(ruleInvalid) ? ruleInvalid : []),
+      ...(Array.isArray(supplementalInvalid) ? supplementalInvalid : []),
       ...(Array.isArray(llmInvalid) ? llmInvalid : []),
     ].filter((field): field is string => typeof field === 'string')))
     : undefined;
 
   return {
-    ...(ruleState ?? {}),
+    ...(supplementalState ?? {}),
     ...(llmState ?? {}),
     ...(invalidDraftFields ? { invalidDraftFields } : {}),
   };
 }
 
-export function mergeLegacyDraftPatchLlmFirst(
+export function mergeDraftPatchWithSupplemental(
   llmPatch: DraftExtraction,
-  rulePatch: DraftExtraction,
+  supplementalPatch: DraftExtraction,
 ): DraftExtraction {
   const nextPatch: DraftExtraction = {};
   const keys = new Set<string>([
-    ...Object.keys(rulePatch),
+    ...Object.keys(supplementalPatch),
     ...Object.keys(llmPatch),
   ]);
 
   for (const key of keys) {
     if (key === 'floorLoads') {
-      nextPatch.floorLoads = mergeFloorLoadsLlmFirst(llmPatch.floorLoads, rulePatch.floorLoads);
+      nextPatch.floorLoads = mergeFloorLoadsWithSupplemental(llmPatch.floorLoads, supplementalPatch.floorLoads);
       continue;
     }
     if (key === 'skillState') {
-      const skillState = mergeSkillStateLlmFirst(llmPatch.skillState, rulePatch.skillState);
+      const skillState = mergeSkillStateWithSupplemental(llmPatch.skillState, supplementalPatch.skillState);
       if (skillState !== undefined) {
         nextPatch.skillState = skillState;
       }
@@ -144,17 +144,16 @@ export function mergeLegacyDraftPatchLlmFirst(
       nextPatch[key] = llmValue;
       continue;
     }
-    const ruleValue = rulePatch[key];
-    if (ruleValue !== undefined) {
-      nextPatch[key] = ruleValue;
+    const supplementalValue = supplementalPatch[key];
+    if (supplementalValue !== undefined) {
+      nextPatch[key] = supplementalValue;
     }
   }
 
   return nextPatch;
 }
 
-export function buildLegacyDraftPatchLlmFirst(
-  _message: string,
+export function normalizeLlmDraftPatch(
   llmDraftPatch: Record<string, unknown> | null | undefined,
 ): DraftExtraction {
   return normalizeLegacyDraftPatch(llmDraftPatch);

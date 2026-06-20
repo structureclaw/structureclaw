@@ -1,9 +1,9 @@
 import {
-  buildLegacyDraftPatchLlmFirst,
   buildLegacyLabels,
   buildLegacyModel,
   computeLegacyMissing,
   mergeLegacyState,
+  normalizeLlmDraftPatch,
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
@@ -163,8 +163,8 @@ export const handler: SkillHandler = {
   parseProvidedValues(values) {
     return toPortalFramePatch(normalizeLegacyDraftPatch(values));
   },
-  extractDraft({ message, llmDraftPatch }) {
-    return toPortalFramePatch(buildLegacyDraftPatchLlmFirst(message, llmDraftPatch));
+  extractDraft({ llmDraftPatch }) {
+    return toPortalFramePatch(normalizeLlmDraftPatch(llmDraftPatch));
   },
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toPortalFramePatch(patch), 'portal-frame', 'portal-frame');

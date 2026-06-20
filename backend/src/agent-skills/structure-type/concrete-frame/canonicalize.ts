@@ -1,4 +1,4 @@
-import { mergeLegacyDraftPatchLlmFirst } from '../../../agent-runtime/legacy.js';
+import { mergeDraftPatchWithSupplemental } from '../../../agent-runtime/legacy.js';
 import type { DraftExtraction, DraftFloorLoad } from '../../../agent-runtime/types.js';
 import type { ConcreteFramePatchSources } from './types.js';
 
@@ -37,26 +37,23 @@ export function hasLateralYFloorLoad(floorLoads: DraftFloorLoad[] | undefined): 
 function hasConcreteFrameYEvidence(
   patch: DraftExtraction,
   floorLoads: DraftFloorLoad[] | undefined,
-  message: string,
 ): boolean {
   return Boolean(
     patch.bayCountY !== undefined
     || (patch.bayWidthsYM?.length ?? 0) > 0
-    || hasLateralYFloorLoad(floorLoads)
-    || /(?:3d|三维|[yz]向|[yz]方向|x、[yz]向|x\/[yz]向)/i.test(message),
+    || hasLateralYFloorLoad(floorLoads),
   );
 }
 
 export function resolveConcreteFrameDimension(
   patch: DraftExtraction,
   existingState: ConcreteFramePatchSources['existingState'],
-  message: string,
   floorLoads: DraftFloorLoad[] | undefined = patch.floorLoads,
 ): '2d' | '3d' | undefined {
   if (patch.frameDimension === '3d') {
     return '3d';
   }
-  if (hasConcreteFrameYEvidence(patch, floorLoads, message)) {
+  if (hasConcreteFrameYEvidence(patch, floorLoads)) {
     return '3d';
   }
   if (patch.frameDimension === '2d') {
@@ -142,9 +139,9 @@ export function fillConcreteFrameDimensionSpecificGeometry(patch: DraftExtractio
 }
 
 export function canonicalizeConcreteFramePatch(input: ConcreteFramePatchSources): DraftExtraction {
-  const naturalPatch = input.naturalPatch ?? {};
+  const supplementalPatch = input.supplementalPatch ?? {};
   const llmPatch = input.llmPatch ?? {};
-  const mergedPatch = mergeLegacyDraftPatchLlmFirst(llmPatch, naturalPatch);
+  const mergedPatch = mergeDraftPatchWithSupplemental(llmPatch, supplementalPatch);
   const next: DraftExtraction = {
     ...mergedPatch,
     inferredType: 'frame',
@@ -158,6 +155,6 @@ export function canonicalizeConcreteFramePatch(input: ConcreteFramePatchSources)
     next.floorLoads = floorLoads;
   }
 
-  next.frameDimension = resolveConcreteFrameDimension(next, input.existingState, input.message, floorLoads);
+  next.frameDimension = resolveConcreteFrameDimension(next, input.existingState, floorLoads);
   return fillConcreteFrameDimensionSpecificGeometry(next);
 }

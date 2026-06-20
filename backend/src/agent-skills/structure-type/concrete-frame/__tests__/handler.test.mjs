@@ -39,7 +39,7 @@ describe('concrete-frame handler composed modules', () => {
     expect(missing.critical).toEqual([]);
   });
 
-  test('uses engineeringDraft without natural parser overrides', () => {
+  test('uses only structured engineeringDraft fields for extraction', () => {
     const patch = handler.extractDraft({
       message: '三层混凝土框架，x方向4跨，间隔6m，每层3m，每层竖向荷载100kN',
       locale: 'zh',

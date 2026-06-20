@@ -1,4 +1,4 @@
-import { mergeLegacyDraftPatchLlmFirst } from '../../../agent-runtime/legacy.js';
+import { mergeDraftPatchWithSupplemental } from '../../../agent-runtime/legacy.js';
 import type { DraftExtraction, DraftFloorLoad } from '../../../agent-runtime/types.js';
 import type { FramePatchSources } from './types.js';
 
@@ -35,26 +35,23 @@ export function hasLateralYFloorLoad(floorLoads: DraftFloorLoad[] | undefined): 
 function hasFrameYEvidence(
   patch: DraftExtraction,
   floorLoads: DraftFloorLoad[] | undefined,
-  message: string,
 ): boolean {
   return Boolean(
     patch.bayCountY !== undefined
     || (patch.bayWidthsYM?.length ?? 0) > 0
-    || hasLateralYFloorLoad(floorLoads)
-    || /(?:3d|三维|y向|y方向|x、y向|x\/y向)/i.test(message),
+    || hasLateralYFloorLoad(floorLoads),
   );
 }
 
 export function resolveFrameDimension(
   patch: DraftExtraction,
   existingState: FramePatchSources['existingState'],
-  message: string,
   floorLoads: DraftFloorLoad[] | undefined = patch.floorLoads,
 ): '2d' | '3d' | undefined {
   if (patch.frameDimension === '3d') {
     return '3d';
   }
-  if (hasFrameYEvidence(patch, floorLoads, message)) {
+  if (hasFrameYEvidence(patch, floorLoads)) {
     return '3d';
   }
   if (patch.frameDimension === '2d') {
@@ -95,9 +92,9 @@ export function fillFrameDimensionSpecificGeometry(patch: DraftExtraction): Draf
 }
 
 export function canonicalizeFramePatch(input: FramePatchSources): DraftExtraction {
-  const naturalPatch = input.naturalPatch ?? {};
+  const supplementalPatch = input.supplementalPatch ?? {};
   const llmPatch = input.llmPatch ?? {};
-  const mergedPatch = mergeLegacyDraftPatchLlmFirst(llmPatch, naturalPatch);
+  const mergedPatch = mergeDraftPatchWithSupplemental(llmPatch, supplementalPatch);
   const next: DraftExtraction = {
     ...mergedPatch,
     inferredType: 'frame',
@@ -111,6 +108,6 @@ export function canonicalizeFramePatch(input: FramePatchSources): DraftExtractio
     next.floorLoads = floorLoads;
   }
 
-  next.frameDimension = resolveFrameDimension(next, input.existingState, input.message, floorLoads);
+  next.frameDimension = resolveFrameDimension(next, input.existingState, floorLoads);
   return fillFrameDimensionSpecificGeometry(next);
 }

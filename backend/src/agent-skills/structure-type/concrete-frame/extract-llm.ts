@@ -148,23 +148,20 @@ export function hasLateralYFloorLoad(floorLoads: DraftFloorLoad[] | undefined): 
 export function coerceConcreteFrameDimension(
   patch: DraftExtraction,
   existingState: DraftState | undefined,
-  message: string,
 ): DraftExtraction {
   const nextPatch: DraftExtraction = { ...patch };
-  nextPatch.frameDimension = resolveConcreteFrameDimension(nextPatch, existingState, message);
+  nextPatch.frameDimension = resolveConcreteFrameDimension(nextPatch, existingState);
   return fillConcreteFrameDimensionSpecificGeometry(nextPatch);
 }
 
 export function buildConcreteFrameDraftPatch(
-  message: string,
   llmDraftPatch: Record<string, unknown> | null | undefined,
   existingState: DraftState | undefined,
 ): DraftExtraction {
   const normalizedLlmPatch = buildConcreteFramePatchFromLlm(llmDraftPatch, existingState);
   const nextPatch = canonicalizeConcreteFramePatch({
-    message,
     existingState,
-    naturalPatch: {},
+    supplementalPatch: {},
     llmPatch: normalizedLlmPatch,
   });
 
@@ -190,7 +187,6 @@ export function buildConcreteFrameDraftPatch(
       ...(analysisControl !== undefined && { analysisControl }),
     },
     existingState,
-    message,
   );
 }
 

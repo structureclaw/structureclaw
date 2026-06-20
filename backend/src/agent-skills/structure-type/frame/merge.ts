@@ -5,7 +5,7 @@ import { coerceFrameDimension, toFramePatch } from './extract-llm.js';
 export function mergeFrameState(existing: DraftState | undefined, patch: DraftExtraction): DraftState {
   const domainMerged = mergeLegacyState(
     existing,
-    coerceFrameDimension(toFramePatch(patch), existing, ''),
+    coerceFrameDimension(toFramePatch(patch), existing),
     'frame',
     'frame',
   );

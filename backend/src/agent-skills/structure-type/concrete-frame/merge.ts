@@ -5,7 +5,7 @@ import { coerceConcreteFrameDimension, toConcreteFramePatch } from './extract-ll
 export function mergeConcreteFrameState(existing: DraftState | undefined, patch: DraftExtraction): DraftState {
   const domainMerged = mergeLegacyState(
     existing,
-    coerceConcreteFrameDimension(toConcreteFramePatch(patch), existing, ''),
+    coerceConcreteFrameDimension(toConcreteFramePatch(patch), existing),
     'frame',
     'frame',
   );

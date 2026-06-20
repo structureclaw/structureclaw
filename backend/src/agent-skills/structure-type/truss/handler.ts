@@ -1,9 +1,9 @@
 import {
-  buildLegacyDraftPatchLlmFirst,
   buildLegacyLabels,
   buildLegacyModel,
   computeLegacyMissing,
   mergeLegacyState,
+  normalizeLlmDraftPatch,
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
@@ -274,8 +274,8 @@ export const handler: SkillHandler = {
   parseProvidedValues(values) {
     return toTrussPatch(normalizeLegacyDraftPatch(values));
   },
-  extractDraft({ message, llmDraftPatch }) {
-    return toTrussPatch(buildLegacyDraftPatchLlmFirst(message, llmDraftPatch));
+  extractDraft({ llmDraftPatch }) {
+    return toTrussPatch(normalizeLlmDraftPatch(llmDraftPatch));
   },
   mergeState(existing, patch) {
     const trussPatch = toTrussPatch(patch);

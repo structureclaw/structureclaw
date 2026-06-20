@@ -22,7 +22,6 @@ export const handler: SkillHandler = {
     const base = coerceFrameDimension(
       toFramePatch(normalizeLegacyDraftPatch(values)),
       undefined,
-      JSON.stringify(values),
     );
     return {
       ...base,
@@ -32,8 +31,8 @@ export const handler: SkillHandler = {
     };
   },
 
-  extractDraft({ message, llmDraftPatch, currentState }) {
-    return buildFrameDraftPatch(message, llmDraftPatch, currentState);
+  extractDraft({ llmDraftPatch, currentState }) {
+    return buildFrameDraftPatch(llmDraftPatch, currentState);
   },
 
   mergeState(existing, patch) {

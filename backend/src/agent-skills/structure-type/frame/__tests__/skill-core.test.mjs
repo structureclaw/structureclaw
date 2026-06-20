@@ -11,9 +11,8 @@ import { detectFrameStructuralType } from '../../../../../dist/agent-skills/stru
 describe('frame canonicalize core contract', () => {
   test('promotes to 3d when y-direction evidence conflicts with llm 2d output', () => {
     const patch = canonicalizeFramePatch({
-      message: '3D框架，x向2跨每跨6m，y向1跨每跨5m，x向和y向都是20kN',
       existingState: { inferredType: 'frame', updatedAt: 0 },
-      naturalPatch: {
+      supplementalPatch: {
         inferredType: 'frame',
         bayCountX: 2,
         bayCountY: 1,
@@ -29,9 +28,8 @@ describe('frame canonicalize core contract', () => {
 
   test('derives story and bay counts from canonical arrays', () => {
     const patch = canonicalizeFramePatch({
-      message: '2层2跨框架，每层3m，每跨6m',
       existingState: { inferredType: 'frame', updatedAt: 0 },
-      naturalPatch: {
+      supplementalPatch: {
         inferredType: 'frame',
         storyHeightsM: [3, 3],
         bayWidthsM: [6, 6],
@@ -46,7 +44,6 @@ describe('frame canonicalize core contract', () => {
 
   test('merges floor loads by story without dropping earlier values', () => {
     const patch = canonicalizeFramePatch({
-      message: 'y向水平荷载12kN',
       existingState: {
         inferredType: 'frame',
         frameDimension: '3d',
@@ -56,7 +53,7 @@ describe('frame canonicalize core contract', () => {
         ],
         updatedAt: 0,
       },
-      naturalPatch: {
+      supplementalPatch: {
         inferredType: 'frame',
         floorLoads: [
           { story: 1, lateralYKN: 12 },
@@ -81,9 +78,8 @@ describe('frame canonicalize core contract', () => {
     expect(result).toBeNull();
   });
 
-  test('extracts repeated english story heights from "4.2m each" phrasing', () => {
+  test('normalizes repeated story and bay scalars into canonical arrays', () => {
     const patch = buildFrameDraftPatch(
-      '3 stories, 4.2m each, single bay 8m, floor load 12kN/m2',
       {
         inferredType: 'frame',
         storyCount: 3,
@@ -102,7 +98,6 @@ describe('frame canonicalize core contract', () => {
 
   test('keeps x-direction geometry without inventing a 3d frame from one direction', () => {
     const patch = buildFrameDraftPatch(
-      '三层框架，x方向4跨，间隔6m，每层3m，每层竖向荷载100kN',
       {
         inferredType: 'frame',
         storyCount: 3,
@@ -119,9 +114,8 @@ describe('frame canonicalize core contract', () => {
     expect(patch.bayWidthsXM).toEqual([6, 6, 6, 6]);
   });
 
-  test('uses engineeringDraft without natural parser overrides', () => {
+  test('uses only structured engineeringDraft fields for extraction', () => {
     const patch = buildFrameDraftPatch(
-      '三层框架，x方向4跨，间隔6m，每层3m，每层竖向荷载100kN',
       {
         engineeringDraft: {
           structureType: 'steel-frame',
@@ -309,7 +303,6 @@ describe('frame canonicalize core contract', () => {
 
   test('derives 2d per-floor total loads from floor area intensity when single-bay geometry is explicit', () => {
     const patch = buildFrameDraftPatch(
-      '2-story single-bay steel frame, story height 3.6m, bay 6m, floor load 10kN/m2',
       {
         engineeringDraft: {
           structureType: 'steel-frame',
@@ -333,7 +326,6 @@ describe('frame canonicalize core contract', () => {
 
   test('repairs llm floor loads that omit story numbers', () => {
     const patch = buildFrameDraftPatch(
-      '两层3D钢框架，X向2跨每跨6m，Y向1跨6m，层高3.6m，每层总竖向荷载432kN',
       {
         inferredType: 'frame',
         frameDimension: '3d',
@@ -359,7 +351,6 @@ describe('frame canonicalize core contract', () => {
 
   test('derives 2d per-floor total loads from line intensity and total span length', () => {
     const patch = buildFrameDraftPatch(
-      '3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m',
       {
         engineeringDraft: {
           structureType: 'steel-frame',
@@ -393,7 +384,7 @@ describe('frame canonicalize core contract', () => {
         { story: 1, verticalKN: 120, lateralXKN: 30 },
         { story: 2, verticalKN: 120, lateralXKN: 30 },
       ],
-    }, undefined, '两层两跨框架，每层3m');
+    }, undefined);
 
     expect(patch.frameDimension).toBeUndefined();
   });
