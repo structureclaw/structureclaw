@@ -4,7 +4,7 @@ import { handler } from '../../../../../dist/agent-skills/structure-type/generic
 describe('generic structure-type handler', () => {
   test('normalizes generic beam aliases from LLM extraction output', () => {
     const patch = handler.extractDraft({
-      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      message: '这条用户消息不参与参数抽取',
       locale: 'zh',
       llmDraftPatch: {
         componentType: 'beam',
@@ -41,7 +41,7 @@ describe('generic structure-type handler', () => {
 
   test('merges normalized aliases into a generic draft without requiring clarification', () => {
     const patch = handler.extractDraft({
-      message: '设计一个简支梁，跨度10m，梁中间荷载1kN',
+      message: '这条用户消息不参与参数抽取',
       locale: 'zh',
       llmDraftPatch: {
         componentType: 'beam',
@@ -70,7 +70,7 @@ describe('generic structure-type handler', () => {
     expect(missing.critical).toEqual([]);
   });
 
-  test('does not let explicit unknown block inference from the message', () => {
+  test('does not infer draft parameters from the raw message', () => {
     const patch = handler.extractDraft({
       message: '简支梁，跨度10m，梁中间荷载1kN',
       locale: 'zh',
@@ -88,11 +88,11 @@ describe('generic structure-type handler', () => {
     });
 
     expect(patch).toEqual(expect.objectContaining({
-      inferredType: 'beam',
       lengthM: 10,
       loadKN: 1,
       loadType: 'point',
       loadPosition: 'midspan',
     }));
+    expect(patch.inferredType).toBeUndefined();
   });
 });
