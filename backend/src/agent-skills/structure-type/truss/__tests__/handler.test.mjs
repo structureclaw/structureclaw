@@ -1,6 +1,16 @@
 import { describe, expect, test } from '@jest/globals';
 import { handler } from '../../../../../dist/agent-skills/structure-type/truss/handler.js';
 
+const prattTrussPatch = {
+  inferredType: 'truss',
+  lengthM: 15,
+  heightM: 2.5,
+  bayCount: 5,
+  loadKN: 10,
+  loadType: 'point',
+  loadPosition: 'top-nodes',
+};
+
 describe('truss handler', () => {
   test('detects truss requests deterministically', () => {
     const match = handler.detectStructuralType({
@@ -12,11 +22,14 @@ describe('truss handler', () => {
     expect(match?.mappedType).toBe('truss');
   });
 
-  test('fills truss geometry from chinese span wording when llm omits it', () => {
+  test('normalizes truss geometry from an llm draft patch', () => {
     const patch = handler.extractDraft({
       message: '三角桁架，跨度12m，高3m，4个节间，节点荷载20kN，做静力分析',
       llmDraftPatch: {
         inferredType: 'truss',
+        lengthM: 12,
+        heightM: 3,
+        bayCount: 4,
         loadKN: 20,
       },
     });
@@ -25,24 +38,6 @@ describe('truss handler', () => {
     expect(patch.heightM).toBe(3);
     expect(patch.bayCount).toBe(4);
     expect(patch.loadKN).toBe(20);
-  });
-
-  test('extracts english truss height, panels, and top chord loading', () => {
-    const patch = handler.extractDraft({
-      message: 'A Pratt truss spans 15m, has 2.5m height and 5 panels, with 10kN loads at top chord nodes.',
-      llmDraftPatch: { inferredType: 'truss' },
-    });
-
-    expect(patch.lengthM).toBe(15);
-    expect(patch.heightM).toBe(2.5);
-    expect(patch.bayCount).toBe(5);
-    expect(patch.loadKN).toBe(10);
-    expect(patch.loadType).toBe('point');
-    expect(patch.loadPosition).toBe('top-nodes');
-    expect(patch.skillState).toEqual(expect.objectContaining({
-      trussTopology: 'pratt',
-      trussLoadChord: 'top',
-    }));
   });
 
   test('uses engineeringDraft without natural parser overrides', () => {
@@ -70,7 +65,7 @@ describe('truss handler', () => {
   test('builds a panelized planar truss model instead of a single bar', () => {
     const patch = handler.extractDraft({
       message: 'Pratt桁架，跨度15m，高2.5m，5个节间，每个上弦节点竖向荷载10kN，请分析',
-      llmDraftPatch: { inferredType: 'truss' },
+      llmDraftPatch: prattTrussPatch,
     });
     const state = handler.mergeState(undefined, patch);
     const model = handler.buildModel(state);
@@ -86,7 +81,12 @@ describe('truss handler', () => {
   test('defaults missing truss height from span while preserving model match scale', () => {
     const patch = handler.extractDraft({
       message: 'A triangular roof truss spans 15m with 5 panels and 10kN vertical nodal loads. Run static analysis.',
-      llmDraftPatch: { inferredType: 'truss' },
+      llmDraftPatch: {
+        inferredType: 'truss',
+        lengthM: 15,
+        bayCount: 5,
+        loadKN: 10,
+      },
     });
     const state = handler.mergeState(undefined, patch);
     const model = handler.buildModel(state);
@@ -100,7 +100,12 @@ describe('truss handler', () => {
   test('defaults missing truss panel count for executable standard workflows', () => {
     const patch = handler.extractDraft({
       message: '三角桁架，跨度12m，高3m，节点荷载20kN，做静力分析',
-      llmDraftPatch: { inferredType: 'truss' },
+      llmDraftPatch: {
+        inferredType: 'truss',
+        lengthM: 12,
+        heightM: 3,
+        loadKN: 20,
+      },
     });
     const state = handler.mergeState(undefined, patch);
     const missing = handler.computeMissing(state, 'execution');
@@ -117,7 +122,13 @@ describe('truss handler', () => {
   test('invalid truss height blocks model generation and asks for correction', () => {
     const patch = handler.extractDraft({
       message: '三角桁架跨度15m，高度0m，5个节间，节点荷载10kN，请分析',
-      llmDraftPatch: { inferredType: 'truss' },
+      llmDraftPatch: {
+        inferredType: 'truss',
+        lengthM: 15,
+        heightM: 0,
+        bayCount: 5,
+        loadKN: 10,
+      },
     });
     const state = handler.mergeState(undefined, patch);
     const missing = handler.computeMissing(state, 'execution');
@@ -129,7 +140,13 @@ describe('truss handler', () => {
   test('correcting an invalid truss height clears the previous blocking field', () => {
     const invalidPatch = handler.extractDraft({
       message: '三角桁架跨度15m，高度0m，5个节间，节点荷载10kN，请分析',
-      llmDraftPatch: { inferredType: 'truss' },
+      llmDraftPatch: {
+        inferredType: 'truss',
+        lengthM: 15,
+        heightM: 0,
+        bayCount: 5,
+        loadKN: 10,
+      },
     });
     const invalidState = handler.mergeState(undefined, invalidPatch);
     const correctedPatch = handler.extractDraft({
@@ -142,10 +159,17 @@ describe('truss handler', () => {
     expect(handler.buildModel(correctedState)?.metadata).toEqual(expect.objectContaining({ heightDefaulted: false }));
   });
 
-  test('asks for clarification when a truss topology conflicts with missing web members', () => {
+  test('asks for clarification when llm reports a truss topology conflict', () => {
     const patch = handler.extractDraft({
       message: 'Please analyze a Pratt truss with no web members. It spans 15m, has 2.5m height, 5 panels, and 10kN nodal loads.',
-      llmDraftPatch: { inferredType: 'truss' },
+      llmDraftPatch: {
+        ...prattTrussPatch,
+        skillState: {
+          trussTopology: 'pratt',
+          trussTopologyConflict: true,
+          invalidDraftFields: ['trussTopology'],
+        },
+      },
     });
     const state = handler.mergeState(undefined, patch);
     const missing = handler.computeMissing(state, 'execution');
@@ -154,12 +178,16 @@ describe('truss handler', () => {
     expect(handler.buildModel(state)).toBeUndefined();
   });
 
-  test('keeps rule-derived truss guardrails when llm returns an empty skill state', () => {
+  test('preserves llm-reported truss guardrails', () => {
     const patch = handler.extractDraft({
       message: 'Please analyze a Pratt truss with no web members. It spans 15m, has 2.5m height, 5 panels, and 10kN nodal loads.',
       llmDraftPatch: {
-        inferredType: 'truss',
-        skillState: {},
+        ...prattTrussPatch,
+        skillState: {
+          trussTopology: 'pratt',
+          trussTopologyConflict: true,
+          invalidDraftFields: ['trussTopology'],
+        },
       },
     });
     const state = handler.mergeState(undefined, patch);
@@ -173,10 +201,16 @@ describe('truss handler', () => {
     expect(handler.buildModel(state)).toBeUndefined();
   });
 
-  test('treats ambiguous ton or kN load wording as a load clarification', () => {
+  test('honors llm-reported ambiguous load clarification', () => {
     const patch = handler.extractDraft({
       message: 'This 15m truss has 5 panels and nodal loads of either 10 tons or 10kN; I am not sure.',
-      llmDraftPatch: { inferredType: 'truss' },
+      llmDraftPatch: {
+        inferredType: 'truss',
+        lengthM: 15,
+        heightM: 2.5,
+        bayCount: 5,
+        skillState: { invalidDraftFields: ['loadKN'] },
+      },
     });
     const state = handler.mergeState(undefined, patch);
     const missing = handler.computeMissing(state, 'execution');

@@ -1,6 +1,5 @@
 import { describe, expect, test } from '@jest/globals';
 import { canonicalizeConcreteFramePatch } from '../../../../../dist/agent-skills/structure-type/concrete-frame/canonicalize.js';
-import { normalizeConcreteFrameNaturalPatch, parseChineseNumber } from '../../../../../dist/agent-skills/structure-type/concrete-frame/extract-natural.js';
 import { buildConcreteFrameModel } from '../../../../../dist/agent-skills/structure-type/concrete-frame/model.js';
 import {
   buildConcreteFrameDraftPatch,
@@ -74,24 +73,20 @@ describe('concrete-frame canonicalize core contract', () => {
     ]);
   });
 
-  test('extracts regular 3d concrete frame geometry from natural chinese phrasing', () => {
-    const patch = normalizeConcreteFrameNaturalPatch(
-      '我想设计一个三层混凝土框架，x方向4跨，间隔3m，y方向3跨间隔也是3m，每层3m',
-      undefined,
-    );
-
-    expect(patch.frameDimension).toBe('3d');
-    expect(patch.storyCount).toBe(3);
-    expect(patch.storyHeightsM).toEqual([3, 3, 3]);
-    expect(patch.bayCountX).toBe(4);
-    expect(patch.bayCountY).toBe(3);
-    expect(patch.bayWidthsXM).toEqual([3, 3, 3, 3]);
-    expect(patch.bayWidthsYM).toEqual([3, 3, 3]);
-  });
-
   test('extracts rc frame geometry when the second plan direction is written as z-direction', () => {
     const message = '我想设计一个两层钢筋混凝土框架，用YJK计算，X向2跨每跨6.0m，Z向1跨6.0m，层高3.6m×2层。柱截面600x600，梁截面500x250，柱脚刚接，梁柱刚接。具体配筋你来设计';
-    const patch = buildConcreteFrameDraftPatch(message, null, undefined);
+    const patch = buildConcreteFrameDraftPatch(message, {
+      inferredType: 'concrete-frame',
+      frameDimension: '3d',
+      storyCount: 2,
+      storyHeightsM: [3.6, 3.6],
+      bayCountX: 2,
+      bayWidthsXM: [6, 6],
+      bayCountY: 1,
+      bayWidthsYM: [6],
+      frameColumnSection: '600x600',
+      frameBeamSection: '500x250',
+    }, undefined);
 
     expect(patch).toMatchObject({
       inferredType: 'frame',
@@ -153,21 +148,16 @@ describe('concrete-frame canonicalize core contract', () => {
     });
   });
 
-  test('infers 3d concrete frame when z-direction bay count uses chinese numerals', () => {
-    const patch = normalizeConcreteFrameNaturalPatch(
-      '两层混凝土框架，X向2跨每跨6m，Z向一跨每跨5m，层高3m',
-      undefined,
-    );
-
-    expect(patch.frameDimension).toBe('3d');
-    expect(patch.bayCountY).toBe(1);
-    expect(patch.bayWidthsYM).toEqual([5]);
-  });
-
   test('extracts repeated english story heights from "4.2m each" phrasing', () => {
     const patch = buildConcreteFrameDraftPatch(
       '3 stories, 4.2m each, single bay 8m, floor load 12kN/m2',
-      null,
+      {
+        inferredType: 'concrete-frame',
+        storyCount: 3,
+        storyHeightScalar: 4.2,
+        bayCount: 1,
+        bayWidthScalar: 8,
+      },
       undefined,
     );
 
@@ -177,23 +167,21 @@ describe('concrete-frame canonicalize core contract', () => {
     expect(patch.bayWidthsM).toEqual([8]);
   });
 
-  test('parses structured chinese numerals between 21 and 99', () => {
-    const patch = normalizeConcreteFrameNaturalPatch(
-      '二十二层混凝土框架，每层3m，2跨每跨6m',
-      undefined,
-    );
-
-    expect(patch.storyCount).toBe(22);
-  });
-
-  test('infers 3d when x-direction bay count is present without explicit y-direction', () => {
+  test('keeps x-direction geometry without inventing a 3d frame from one direction', () => {
     const patch = buildConcreteFrameDraftPatch(
       '三层混凝土框架，x方向4跨，间隔6m，每层3m，每层竖向荷载100kN',
-      null,
+      {
+        inferredType: 'concrete-frame',
+        storyCount: 3,
+        storyHeightScalar: 3,
+        bayCountX: 4,
+        bayWidthXScalar: 6,
+        verticalLoadKN: 100,
+      },
       undefined,
     );
 
-    expect(patch.frameDimension).toBe('3d');
+    expect(patch.frameDimension).toBeUndefined();
     expect(patch.bayCountX).toBe(4);
     expect(patch.bayWidthsXM).toEqual([6, 6, 6, 6]);
   });
@@ -215,17 +203,6 @@ describe('concrete-frame canonicalize core contract', () => {
     expect(patch.frameConcreteGrade).toBe('C30');
     expect(patch.frameColumnSection).toBe('500X500');
     expect(patch.frameBeamSection).toBe('300X600');
-  });
-
-  test('extracts concrete grade and rectangular sections from natural phrasing', () => {
-    const patch = normalizeConcreteFrameNaturalPatch(
-      '两层两跨混凝土框架，C30混凝土，柱截面400x400，梁截面250x600，每层3m，每跨6m，每层竖向荷载100kN',
-      undefined,
-    );
-
-    expect(patch.frameConcreteGrade).toBe('C30');
-    expect(patch.frameColumnSection).toBe('400X400');
-    expect(patch.frameBeamSection).toBe('250X600');
   });
 
   test('builds rectangular concrete sections for YJK-compatible frame models', () => {
@@ -468,12 +445,16 @@ describe('concrete-frame canonicalize core contract', () => {
     const patch = buildConcreteFrameDraftPatch(
       '2-story single-bay concrete frame, story height 3.6m, bay 6m, floor load 10kN/m2',
       {
-        inferredType: 'concrete-frame',
-        frameDimension: '2d',
-        storyCount: 2,
-        bayCount: 1,
-        storyHeightsM: [3.6, 3.6],
-        bayWidthsM: [6],
+        engineeringDraft: {
+          structureType: 'concrete-frame',
+          geometry: {
+            storyHeightsM: [3.6, 3.6],
+            bayWidthsM: [6],
+          },
+          loads: [
+            { kind: 'area', magnitude: 10, unit: 'kN/m2', direction: 'gravity' },
+          ],
+        },
       },
       undefined,
     );
@@ -510,51 +491,6 @@ describe('concrete-frame canonicalize core contract', () => {
     ]);
   });
 
-  test('derives 3d dead and live floor loads from chinese area-load units', () => {
-    const patch = buildConcreteFrameDraftPatch(
-      '两层3D混凝土框架，X向2跨每跨6m，Y向1跨6m，层高3.6m，恒载4kN/㎡，活载2kN/㎡',
-      {
-        inferredType: 'concrete-frame',
-        frameDimension: '3d',
-        storyCount: 2,
-        bayCountX: 2,
-        bayCountY: 1,
-        storyHeightsM: [3.6, 3.6],
-        bayWidthsXM: [6, 6],
-        bayWidthsYM: [6],
-      },
-      undefined,
-    );
-
-    expect(patch.floorLoads).toEqual([
-      { story: 1, verticalKN: 288, liveLoadKN: 144 },
-      { story: 2, verticalKN: 288, liveLoadKN: 144 },
-    ]);
-  });
-
-  test('maps targeted floor loads to structural stories when a separate roof load is present', () => {
-    const patch = buildConcreteFrameDraftPatch(
-      '三层3D混凝土框架，X向2跨每跨6m，Y向1跨6m，层高3.6m，二层楼面恒载1kN/㎡，活载2kN/㎡，三层楼面恒载3kN/㎡，活载4kN/㎡，屋面恒载5kN/㎡，活载6kN/㎡',
-      {
-        inferredType: 'concrete-frame',
-        frameDimension: '3d',
-        storyCount: 3,
-        bayCountX: 2,
-        bayCountY: 1,
-        storyHeightsM: [3.6, 3.6, 3.6],
-        bayWidthsXM: [6, 6],
-        bayWidthsYM: [6],
-      },
-      undefined,
-    );
-
-    expect(patch.floorLoads).toEqual([
-      { story: 1, verticalKN: 72, liveLoadKN: 144 },
-      { story: 2, verticalKN: 216, liveLoadKN: 288 },
-      { story: 3, verticalKN: 360, liveLoadKN: 432 },
-    ]);
-  });
-
   test('extracts PKPM-oriented RC frame design conditions from detailed chinese request', () => {
     const message = [
       '设计计算一个两层混凝土框架，首层4.5米，二层3.8米。',
@@ -563,7 +499,37 @@ describe('concrete-frame canonicalize core contract', () => {
       '7度0.1g抗震，第三组，场地类别3类，风荷载0.4kN/㎡，场地类别B类，',
       '混凝土C30，钢筋HRB400。',
     ].join('');
-    const patch = buildConcreteFrameDraftPatch(message, null, undefined);
+    const patch = buildConcreteFrameDraftPatch(message, {
+      inferredType: 'concrete-frame',
+      frameDimension: '3d',
+      storyCount: 2,
+      storyHeightsM: [4.5, 3.8],
+      bayCountX: 5,
+      bayWidthsXM: [8, 8, 8, 8, 8],
+      bayCountY: 3,
+      bayWidthsYM: [6, 3, 6],
+      frameConcreteGrade: 'C30',
+      frameRebarGrade: 'HRB400',
+      floorLoads: [
+        { story: 1, verticalKN: 1080, liveLoadKN: 2100 },
+        { story: 2, verticalKN: 2100, liveLoadKN: 300 },
+      ],
+      siteSeismic: {
+        intensity: 7,
+        accelerationG: 0.1,
+        designGroup: '第三组',
+        siteCategory: '3类',
+      },
+      wind: {
+        basicPressureKNM2: 0.4,
+        terrainRoughness: 'B类',
+      },
+      analysisControl: {
+        pDelta: false,
+        rigidFloor: true,
+        considerationTorsion: true,
+      },
+    }, undefined);
 
     expect(patch).toMatchObject({
       inferredType: 'frame',
@@ -639,38 +605,20 @@ describe('concrete-frame canonicalize core contract', () => {
     });
   });
 
-  test('derives dead load when live load appears before an unlabeled area intensity', () => {
-    const patch = buildConcreteFrameDraftPatch(
-      '两层3D混凝土框架，X向2跨每跨6m，Y向1跨6m，层高3.6m，活载2kN/㎡，4kN/㎡',
-      {
-        inferredType: 'concrete-frame',
-        frameDimension: '3d',
-        storyCount: 2,
-        bayCountX: 2,
-        bayCountY: 1,
-        storyHeightsM: [3.6, 3.6],
-        bayWidthsXM: [6, 6],
-        bayWidthsYM: [6],
-      },
-      undefined,
-    );
-
-    expect(patch.floorLoads).toEqual([
-      { story: 1, verticalKN: 288, liveLoadKN: 144 },
-      { story: 2, verticalKN: 288, liveLoadKN: 144 },
-    ]);
-  });
-
   test('derives 2d per-floor total loads from line intensity and total span length', () => {
     const patch = buildConcreteFrameDraftPatch(
       '3层2跨混凝土框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m',
       {
-        inferredType: 'concrete-frame',
-        frameDimension: '2d',
-        storyCount: 3,
-        bayCount: 2,
-        storyHeightsM: [3.3, 3.3, 3.3],
-        bayWidthsM: [5.4, 6],
+        engineeringDraft: {
+          structureType: 'concrete-frame',
+          geometry: {
+            storyHeightsM: [3.3, 3.3, 3.3],
+            bayWidthsM: [5.4, 6],
+          },
+          loads: [
+            { kind: 'line', magnitude: 15, unit: 'kN/m', direction: 'gravity' },
+          ],
+        },
       },
       undefined,
     );
@@ -696,51 +644,6 @@ describe('concrete-frame canonicalize core contract', () => {
     }, undefined, '两层两跨混凝土框架，每层3m');
 
     expect(patch.frameDimension).toBeUndefined();
-  });
-});
-
-// CRITICAL: parseChineseNumber unit tests (H1 fix verification)
-describe('parseChineseNumber edge cases', () => {
-  test('handles single digit characters', () => {
-    expect(parseChineseNumber('零')).toBe(0);
-    expect(parseChineseNumber('〇')).toBe(0);
-    expect(parseChineseNumber('一')).toBe(1);
-    expect(parseChineseNumber('二')).toBe(2);
-    expect(parseChineseNumber('三')).toBe(3);
-    expect(parseChineseNumber('四')).toBe(4);
-    expect(parseChineseNumber('五')).toBe(5);
-    expect(parseChineseNumber('六')).toBe(6);
-    expect(parseChineseNumber('七')).toBe(7);
-    expect(parseChineseNumber('八')).toBe(8);
-    expect(parseChineseNumber('九')).toBe(9);
-    expect(parseChineseNumber('十')).toBe(10);
-  });
-
-  test('handles compound numbers 11-99', () => {
-    expect(parseChineseNumber('十一')).toBe(11);
-    expect(parseChineseNumber('十九')).toBe(19);
-    expect(parseChineseNumber('二十')).toBe(20);
-    expect(parseChineseNumber('二十二')).toBe(22);
-    expect(parseChineseNumber('九十九')).toBe(99);
-    expect(parseChineseNumber('十')).toBe(10);
-  });
-
-  test('handles numbers with units (layer, floor)', () => {
-    expect(parseChineseNumber('三层')).toBe(3);
-    expect(parseChineseNumber('十层')).toBe(10);
-    expect(parseChineseNumber('二十二层')).toBe(22);
-  });
-
-  test('handles empty string', () => {
-    expect(parseChineseNumber('')).toBeUndefined();
-    expect(parseChineseNumber('   ')).toBeUndefined();
-  });
-
-  test('does not incorrectly parse mixed Chinese text', () => {
-    // H1 fix: "其中一层" should not return 1
-    expect(parseChineseNumber('其中一层')).toBeUndefined();
-    expect(parseChineseNumber('第一层')).toBeUndefined();
-    expect(parseChineseNumber('某一层')).toBeUndefined();
   });
 });
 
@@ -885,39 +788,6 @@ describe('buildConcreteFrameModel error paths', () => {
       frameBeamSection: undefined,
     });
     expect(model?.metadata.beamSection).toBe('300X600');
-  });
-});
-
-// IMPORTANT: extract-natural.ts adversarial input handling
-describe('normalizeConcreteFrameNaturalPatch adversarial inputs', () => {
-  test('handles empty message gracefully', () => {
-    const patch = normalizeConcreteFrameNaturalPatch('', undefined);
-    expect(patch.storyCount).toBeUndefined();
-    expect(patch.frameConcreteGrade).toBeUndefined();
-  });
-
-  test('handles gibberish input gracefully', () => {
-    const patch = normalizeConcreteFrameNaturalPatch('asdfghjkl qwerty', undefined);
-    expect(patch.storyCount).toBeUndefined();
-    expect(patch.frameDimension).toBeUndefined();
-  });
-
-  test('handles mixed Chinese/English with numbers', () => {
-    const patch = normalizeConcreteFrameNaturalPatch(
-      '3层混凝土框架，每层3m，concrete grade C30',
-      undefined,
-    );
-    expect(patch.storyCount).toBe(3);
-    expect(patch.frameConcreteGrade).toBe('C30');
-  });
-
-  test('extracts concrete grade when mixed with rebar grade', () => {
-    const patch = normalizeConcreteFrameNaturalPatch(
-      '混凝土框架，C30混凝土，HRB400钢筋',
-      undefined,
-    );
-    expect(patch.frameConcreteGrade).toBe('C30');
-    expect(patch.frameRebarGrade).toBe('HRB400');
   });
 });
 

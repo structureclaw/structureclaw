@@ -156,4 +156,77 @@ describe('agent runtime helper utilities', () => {
     expect(parsed.questions?.[0].critical).toBe(true);
     expect(() => skillExecutionSchema.parse({ stage: 'design' })).toThrow();
   });
+
+  test('projects frame area engineering loads into per-story floor loads', async () => {
+    const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
+
+    const patch = projectEngineeringDraftToLegacyPatch({
+      engineeringDraft: {
+        structureType: 'concrete-frame',
+        geometry: {
+          storyHeightsM: [3.6, 3.6],
+          bayWidthsM: [6],
+        },
+        loads: [
+          { kind: 'area', magnitude: 12, unit: 'kN/m2', direction: 'gravity', target: 'floor 1' },
+          { kind: 'area', magnitude: 12, unit: 'kN/m2', direction: 'gravity', target: 'floor 2' },
+        ],
+      },
+    }, 'frame');
+
+    expect(patch.floorLoads).toEqual([
+      { story: 1, verticalKN: 432 },
+      { story: 2, verticalKN: 432 },
+    ]);
+  });
+
+  test('projects frame line and lateral engineering loads into floor loads', async () => {
+    const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
+
+    const patch = projectEngineeringDraftToLegacyPatch({
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        geometry: {
+          storyHeightsM: [3.3, 3.3],
+          bayWidthsM: [5, 7],
+        },
+        loads: [
+          { kind: 'line', magnitude: 10, unit: 'kN/m', direction: 'gravity' },
+          { kind: 'point', magnitude: 20, unit: 'kN', direction: 'globalX', target: 'roof' },
+        ],
+      },
+    }, 'frame');
+
+    expect(patch.floorLoads).toEqual([
+      { story: 1, verticalKN: 120 },
+      { story: 2, verticalKN: 120, lateralXKN: 20 },
+    ]);
+  });
+
+  test('treats x-only engineering frame spans as 2d geometry', async () => {
+    const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
+
+    const patch = projectEngineeringDraftToLegacyPatch({
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        geometry: {
+          storyHeightsM: [4.5],
+          bayWidthsXM: [6],
+        },
+        loads: [
+          { kind: 'line', magnitude: 10, unit: 'kN/m', direction: 'gravity', target: 'beam' },
+        ],
+      },
+    }, 'frame');
+
+    expect(patch).toMatchObject({
+      frameDimension: '2d',
+      storyCount: 1,
+      bayCount: 1,
+      bayWidthsM: [6],
+      floorLoads: [{ story: 1, verticalKN: 60 }],
+    });
+    expect(patch.bayCountX).toBeUndefined();
+    expect(patch.bayWidthsXM).toBeUndefined();
+  });
 });

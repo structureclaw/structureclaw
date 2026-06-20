@@ -113,12 +113,24 @@ describe('frame handler composed modules', () => {
     expect(missing.critical).not.toContain('floorLoads');
   });
 
-  test('extracts uneven 2d bay widths from generic span wording', () => {
+  test('preserves uneven 2d bay widths from an llm draft patch', () => {
     const patch = handler.extractDraft({
       message: '3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m，请进行静力分析',
       locale: 'zh',
       currentState: undefined,
-      llmDraftPatch: { inferredType: 'frame' },
+      llmDraftPatch: {
+        inferredType: 'frame',
+        frameDimension: '2d',
+        storyCount: 3,
+        bayCount: 2,
+        storyHeightsM: [3.3, 3.3, 3.3],
+        bayWidthsM: [5.4, 6],
+        floorLoads: [
+          { story: 1, verticalKN: 171 },
+          { story: 2, verticalKN: 171 },
+          { story: 3, verticalKN: 171 },
+        ],
+      },
       structuralTypeMatch: {
         key: 'frame',
         mappedType: 'frame',

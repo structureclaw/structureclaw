@@ -1,5 +1,6 @@
 import type {
   DraftExtraction,
+  DraftFloorLoad,
   DraftLoadPosition,
   DraftLoadType,
   DraftSupportType,
@@ -274,6 +275,151 @@ function firstLoad(loads: EngineeringDraftLoad[] | undefined): EngineeringDraftL
   return loads?.find((load) => isLineLoad(load)) ?? loads?.find((load) => isPointLikeLoad(load));
 }
 
+function sumPositive(values: number[] | undefined): number | undefined {
+  if (!values?.length) return undefined;
+  const total = values.reduce((acc, value) => acc + value, 0);
+  return Number.isFinite(total) && total > 0 ? total : undefined;
+}
+
+function frameTotalSpanM(patch: DraftExtraction): number | undefined {
+  return sumPositive(patch.bayWidthsM) ?? sumPositive(patch.bayWidthsXM);
+}
+
+function framePlanAreaM2(patch: DraftExtraction): number | undefined {
+  const totalSpanX = sumPositive(patch.bayWidthsXM);
+  const totalSpanY = sumPositive(patch.bayWidthsYM);
+  if (totalSpanX !== undefined && totalSpanY !== undefined) {
+    return totalSpanX * totalSpanY;
+  }
+  const totalSpan2d = sumPositive(patch.bayWidthsM) ?? totalSpanX;
+  return totalSpan2d !== undefined ? totalSpan2d * totalSpan2d : undefined;
+}
+
+function frameLoadTotalKN(load: EngineeringDraftLoad, patch: DraftExtraction): number | undefined {
+  if (load.unit === 'kN') return load.magnitude;
+  if (load.unit === 'kN/m') {
+    const spanM = frameTotalSpanM(patch);
+    return spanM !== undefined ? load.magnitude * spanM : undefined;
+  }
+  if (load.unit === 'kN/m2') {
+    const areaM2 = framePlanAreaM2(patch);
+    return areaM2 !== undefined ? load.magnitude * areaM2 : undefined;
+  }
+  return undefined;
+}
+
+function parseStoryOrdinal(target: string | undefined, storyCount: number): number | undefined {
+  if (!target) return undefined;
+  const text = target.toLowerCase();
+  if (text.includes('roof') || target.includes('屋面')) return storyCount;
+  const numericMatch = text.match(/(?:floor|story|level)\s*([0-9]+)/i)
+    ?? target.match(/第?\s*([0-9]+)\s*层/u);
+  if (numericMatch?.[1]) {
+    const parsed = Number.parseInt(numericMatch[1], 10);
+    return parsed >= 1 && parsed <= storyCount ? parsed : undefined;
+  }
+  const chineseMatch = target.match(/第?\s*([一二两三四五六七八九十]+)\s*层/u);
+  const table: Record<string, number> = {
+    一: 1,
+    二: 2,
+    两: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+    十: 10,
+  };
+  const parsed = chineseMatch?.[1] ? table[chineseMatch[1]] : undefined;
+  return parsed !== undefined && parsed <= storyCount ? parsed : undefined;
+}
+
+function hasFloorLoadValues(floorLoads: DraftFloorLoad[] | undefined): boolean {
+  return Boolean(floorLoads?.some((load) => (
+    load.verticalKN !== undefined
+    || load.liveLoadKN !== undefined
+    || load.lateralXKN !== undefined
+    || load.lateralYKN !== undefined
+  )));
+}
+
+function assignFloorLoadValue(
+  floorLoadsByStory: Map<number, DraftFloorLoad>,
+  story: number,
+  field: 'verticalKN' | 'lateralXKN' | 'lateralYKN',
+  value: number,
+): void {
+  const current = floorLoadsByStory.get(story) ?? { story };
+  const previous = current[field] ?? 0;
+  floorLoadsByStory.set(story, {
+    ...current,
+    [field]: previous + value,
+  });
+}
+
+function frameFloorLoadField(load: EngineeringDraftLoad): 'verticalKN' | 'lateralXKN' | 'lateralYKN' {
+  if (load.direction === 'globalX') return 'lateralXKN';
+  if (load.direction === 'globalY') return 'lateralYKN';
+  return 'verticalKN';
+}
+
+type ConvertibleFrameLoad = {
+  load: EngineeringDraftLoad;
+  index: number;
+  totalKN: number;
+};
+
+function projectFrameFloorLoads(loads: EngineeringDraftLoad[], patch: DraftExtraction): DraftFloorLoad[] | undefined {
+  const storyCount = patch.storyCount ?? patch.storyHeightsM?.length;
+  if (!storyCount) return undefined;
+
+  const floorLoadsByStory = new Map<number, DraftFloorLoad>();
+  const convertibleLoads: ConvertibleFrameLoad[] = loads
+    .map((load, index) => ({ load, index, totalKN: frameLoadTotalKN(load, patch) }))
+    .filter((item): item is ConvertibleFrameLoad => (
+      item.totalKN !== undefined
+      && Number.isFinite(item.totalKN)
+      && item.totalKN > 0
+    ));
+
+  const comparableLoads: ConvertibleFrameLoad[] = convertibleLoads.filter((item) => (
+    item.load.direction === 'gravity'
+    || item.load.direction === 'globalZ'
+    || item.load.direction === 'globalX'
+    || item.load.direction === 'globalY'
+    || item.load.direction === undefined
+  ));
+
+  for (const { load, index, totalKN } of comparableLoads) {
+    const field = frameFloorLoadField(load);
+    let stories: number[];
+    const explicitStory = parseStoryOrdinal(load.target, storyCount);
+    if (explicitStory !== undefined) {
+      stories = [explicitStory];
+    } else {
+      const sameFieldUntargetedLoads: ConvertibleFrameLoad[] = comparableLoads.filter((item) => (
+        frameFloorLoadField(item.load) === field
+        && parseStoryOrdinal(item.load.target, storyCount) === undefined
+      ));
+      if (sameFieldUntargetedLoads.length === storyCount) {
+        stories = [sameFieldUntargetedLoads.findIndex((item) => item.index === index) + 1];
+      } else {
+        stories = Array.from({ length: storyCount }, (_, storyIndex) => storyIndex + 1);
+      }
+    }
+
+    for (const story of stories) {
+      assignFloorLoadValue(floorLoadsByStory, story, field, Number(totalKN.toFixed(6)));
+    }
+  }
+
+  return floorLoadsByStory.size
+    ? Array.from(floorLoadsByStory.values()).sort((left, right) => left.story - right.story)
+    : undefined;
+}
+
 function sectionDimensionsM(section: string | undefined): { sectionWidthM?: number; sectionDepthM?: number } {
   if (!section) return {};
   const match = section.match(/([0-9]+(?:\.[0-9]+)?)\s*[xX×*]\s*([0-9]+(?:\.[0-9]+)?)/u);
@@ -363,10 +509,14 @@ export function projectEngineeringDraftToLegacyPatch(
       next.bayCount = next.bayCount ?? geometry.bayWidthsM.length;
       next.frameDimension = next.frameDimension ?? '2d';
     }
-    if (geometry?.bayWidthsXM?.length) {
+    if (geometry?.bayWidthsXM?.length && geometry?.bayWidthsYM?.length) {
       next.bayWidthsXM = next.bayWidthsXM ?? geometry.bayWidthsXM;
       next.bayCountX = next.bayCountX ?? geometry.bayWidthsXM.length;
       next.frameDimension = next.frameDimension ?? '3d';
+    } else if (geometry?.bayWidthsXM?.length && !next.bayWidthsM?.length) {
+      next.bayWidthsM = geometry.bayWidthsXM;
+      next.bayCount = next.bayCount ?? geometry.bayWidthsXM.length;
+      next.frameDimension = next.frameDimension ?? '2d';
     }
     if (geometry?.bayWidthsYM?.length) {
       next.bayWidthsYM = next.bayWidthsYM ?? geometry.bayWidthsYM;
@@ -392,17 +542,9 @@ export function projectEngineeringDraftToLegacyPatch(
     if (engineeringDraft.sections?.beam) {
       next.frameBeamSection = engineeringDraft.sections.beam;
     }
-    const gravityStoryLoad = loads.find((load) => load.direction === 'gravity' || load.direction === 'globalZ' || load.direction === undefined);
-    const lateralXLoad = loads.find((load) => load.direction === 'globalX');
-    const lateralYLoad = loads.find((load) => load.direction === 'globalY');
-    const storyCount = next.storyCount ?? next.storyHeightsM?.length;
-    if (storyCount && (gravityStoryLoad || lateralXLoad || lateralYLoad)) {
-      next.floorLoads = next.floorLoads ?? Array.from({ length: storyCount }, (_, index) => ({
-        story: index + 1,
-        verticalKN: gravityStoryLoad?.unit === 'kN' ? gravityStoryLoad.magnitude : undefined,
-        lateralXKN: lateralXLoad?.unit === 'kN' ? lateralXLoad.magnitude : undefined,
-        lateralYKN: lateralYLoad?.unit === 'kN' ? lateralYLoad.magnitude : undefined,
-      }));
+    const projectedFloorLoads = projectFrameFloorLoads(loads, next);
+    if (projectedFloorLoads?.length && !hasFloorLoadValues(next.floorLoads)) {
+      next.floorLoads = projectedFloorLoads;
     }
   }
 
