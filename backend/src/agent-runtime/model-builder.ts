@@ -492,6 +492,27 @@ function readPositiveNumberArray(value: unknown): number[] | undefined {
   return values.length > 0 ? values : undefined;
 }
 
+function readNonNegativeNumberArray(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const values = value.filter((item): item is number => typeof item === 'number' && Number.isFinite(item) && item >= 0);
+  return values.length > 0 ? values : undefined;
+}
+
+function addCoordinate(coordinates: Set<number>, value: number | undefined, length: number): void {
+  if (value === undefined || value <= 0 || value >= length) {
+    return;
+  }
+  coordinates.add(Number(value.toFixed(9)));
+}
+
+function roundCoordinate(value: number): number {
+  return Number(value.toFixed(9));
+}
+
+function coordinateMatches(left: number, right: number): boolean {
+  return Math.abs(left - right) < 1e-9;
+}
+
 function readRecordArray(value: unknown): Array<Record<string, unknown>> | undefined {
   if (!Array.isArray(value)) return undefined;
   const records = value.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item));
@@ -511,6 +532,49 @@ function isSemanticPointLoad(load: Record<string, unknown>): boolean {
   return load.kind === 'point' || load.kind === 'nodal' || load.unit === 'kN';
 }
 
+function semanticPointLoadX(load: Record<string, unknown>, state: DraftState, length: number): number {
+  const location = load.location && typeof load.location === 'object' && !Array.isArray(load.location)
+    ? load.location as Record<string, unknown>
+    : undefined;
+  const explicitX = readPositiveNumber(load.xM) ?? readPositiveNumber(location?.xM);
+  if (explicitX !== undefined) return explicitX;
+  const target = typeof load.target === 'string' ? load.target.toLowerCase() : '';
+  if (target.includes('end') || target.includes('free') || target.includes('端')) return length;
+  return state.loadPositionM ?? length / 2;
+}
+
+function beamSupportCoordinates(state: DraftState, supportType: DraftSupportType, length: number): number[] {
+  const explicit = readNonNegativeNumberArray(state.engineeringDraft?.boundary?.supportPositionsM)
+    ?.map(roundCoordinate)
+    .filter((x) => x >= 0 && x <= length);
+
+  if (explicit?.length) {
+    return Array.from(new Set(explicit)).sort((left, right) => left - right);
+  }
+
+  if (supportType === 'cantilever') {
+    return [0];
+  }
+  return [0, length];
+}
+
+function beamSupportRestraint(supportType: DraftSupportType, supportIndex: number): boolean[] | undefined {
+  const fixed = [true, true, true, true, true, true];
+  const pinned = [true, true, true, true, true, false];
+  const roller = [false, true, true, true, true, false];
+
+  if (supportType === 'cantilever') {
+    return supportIndex === 0 ? fixed : undefined;
+  }
+  if (supportType === 'fixed-fixed') {
+    return fixed;
+  }
+  if (supportType === 'fixed-pinned') {
+    return supportIndex === 0 ? fixed : pinned;
+  }
+  return supportIndex === 0 ? pinned : roller;
+}
+
 function buildSemanticBeamModel(
   state: DraftState,
   metadata: Record<string, unknown>,
@@ -518,20 +582,44 @@ function buildSemanticBeamModel(
 ): Record<string, unknown> {
   const length = state.lengthM!;
   const supportType = state.supportType || 'cantilever';
+  const hasDistributedLoad = semanticLoads.some(isSemanticDistributedLoad);
+  const spanLengths = readPositiveNumberArray(state.engineeringDraft?.geometry?.spanLengthsM);
+  const spanBreaks: number[] = [];
+  let runningSpan = 0;
+  for (const spanLength of spanLengths ?? []) {
+    runningSpan += spanLength;
+    if (runningSpan > 0 && runningSpan < length) {
+      spanBreaks.push(roundCoordinate(runningSpan));
+    }
+  }
   const pointLoadXs = semanticLoads
     .filter(isSemanticPointLoad)
-    .map((load) => readPositiveNumber(load.xM) ?? state.loadPositionM ?? length / 2)
-    .filter((x): x is number => x !== undefined && x > 0 && x < length);
-  const coordinates = Array.from(new Set([0, ...pointLoadXs, length])).sort((left, right) => left - right);
-  const fixed = [true, true, true, true, true, true];
-  const pinned = [true, true, true, true, true, false];
-  const roller = [false, true, true, true, true, false];
+    .map((load) => semanticPointLoadX(load, state, length));
+  const coordinateSet = new Set<number>([0, length]);
+  const supportXs = beamSupportCoordinates(state, supportType, length);
+  if (hasDistributedLoad) {
+    addCoordinate(coordinateSet, length / 2, length);
+  }
+  for (const x of pointLoadXs) {
+    addCoordinate(coordinateSet, x, length);
+  }
+  for (const x of spanBreaks) {
+    addCoordinate(coordinateSet, x, length);
+  }
+  for (const x of supportXs) {
+    if (x === 0 || x === length) {
+      coordinateSet.add(x);
+    } else {
+      addCoordinate(coordinateSet, x, length);
+    }
+  }
+  const coordinates = Array.from(coordinateSet).sort((left, right) => left - right);
   const nodes = coordinates.map((x, index) => {
     const node: Record<string, unknown> = { id: `${index + 1}`, x, y: 0, z: 0 };
-    if (index === 0) {
-      node.restraints = supportType === 'cantilever' ? fixed : pinned;
-    } else if (index === coordinates.length - 1 && supportType !== 'cantilever') {
-      node.restraints = supportType === 'fixed-fixed' ? fixed : roller;
+    const supportIndex = supportXs.findIndex((supportX) => coordinateMatches(supportX, x));
+    const restraints = supportIndex >= 0 ? beamSupportRestraint(supportType, supportIndex) : undefined;
+    if (restraints) {
+      node.restraints = restraints;
     }
     return node;
   });
@@ -553,8 +641,8 @@ function buildSemanticBeamModel(
       continue;
     }
     if (isSemanticPointLoad(load)) {
-      const x = readPositiveNumber(load.xM) ?? state.loadPositionM ?? length / 2;
-      const nodeIndex = coordinates.findIndex((coordinate) => Math.abs(coordinate - x) < 1e-9);
+      const x = semanticPointLoadX(load, state, length);
+      const nodeIndex = coordinates.findIndex((coordinate) => coordinateMatches(coordinate, x));
       const targetNode = nodeIndex >= 0 ? `${nodeIndex + 1}` : `${Math.max(1, Math.round(coordinates.length / 2))}`;
       const direction = typeof load.direction === 'string' ? load.direction : undefined;
       if (direction === 'globalX') {

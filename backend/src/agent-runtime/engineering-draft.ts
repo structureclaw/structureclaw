@@ -50,6 +50,14 @@ function positiveNumberArray(value: unknown): number[] | undefined {
   return values.length ? values : undefined;
 }
 
+function nonNegativeNumberArray(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const values = value
+    .map((item) => finiteNumber(item))
+    .filter((item): item is number => item !== undefined && item >= 0);
+  return values.length ? values : undefined;
+}
+
 function normalizeString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value.trim() : undefined;
 }
@@ -193,6 +201,7 @@ export function normalizeEngineeringDraft(value: unknown): EngineeringDraft | un
   const boundary = rawBoundary ? {
     supportType: normalizeSupportType(rawBoundary.supportType),
     frameBaseSupportType: normalizeFrameBaseSupportType(rawBoundary.frameBaseSupportType),
+    supportPositionsM: nonNegativeNumberArray(rawBoundary.supportPositionsM),
   } : undefined;
 
   const loads = Array.isArray(raw.loads)

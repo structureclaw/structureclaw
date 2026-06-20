@@ -37,6 +37,7 @@ export interface EngineeringDraftSections {
 export interface EngineeringDraftBoundary {
   supportType?: DraftSupportType;
   frameBaseSupportType?: FrameBaseSupportType;
+  supportPositionsM?: number[];
 }
 
 export interface EngineeringDraftLoadLocation {
