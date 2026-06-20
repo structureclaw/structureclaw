@@ -1,26 +1,26 @@
-id: double-span-beam
+id: column
 domain: structure-type
 source: builtin
 name:
-  zh: 双跨梁
-  en: Double-Span Beam
+  zh: 柱
+  en: Column
 description:
-  zh: 双跨梁需求识别与补参 skill。
-  en: Skill for double-span beam intent detection and clarification.
+  zh: 独立柱或单根柱轴向受力分析的需求识别与补参 skill。
+  en: Skill for standalone column intent detection and axial-load analysis guidance.
 triggers:
-  - double-span
-  - 双跨梁
-  - 连续梁
-  - 不等跨连续梁
-  - continuous beam
+  - column
+  - 柱
+  - 独立柱
+  - steel column
+  - concrete column
 stages:
   - intent
   - draft
   - analysis
   - design
-structureType: double-span-beam
+structureType: column
 structuralTypeKeys:
-  - double-span-beam
+  - column
 capabilities:
   - intent-detection
   - draft-extraction
@@ -29,13 +29,15 @@ capabilities:
   - report-narrative
 requires: []
 conflicts: []
-priority: 90
+priority: 80
 compatibility:
   minRuntimeVersion: 0.1.0
   skillApiVersion: v1
 supportedAnalysisTypes: []
 supportedModelFamilies: []
-materialFamilies: []
+materialFamilies:
+  - steel
+  - concrete
 aliases: []
 toolHints: {}
 runtimeContract:

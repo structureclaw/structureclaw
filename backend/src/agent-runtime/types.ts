@@ -47,9 +47,10 @@ export interface DraftAnalysisControl {
   designParams?: Record<string, unknown>;
 }
 
-export type InferredModelType = 'beam' | 'truss' | 'portal-frame' | 'double-span-beam' | 'frame' | 'unknown';
+export type InferredModelType = 'beam' | 'column' | 'truss' | 'portal-frame' | 'double-span-beam' | 'frame' | 'unknown';
 export type StructuralTypeKey =
   | 'beam'
+  | 'column'
   | 'truss'
   | 'portal-frame'
   | 'double-span-beam'

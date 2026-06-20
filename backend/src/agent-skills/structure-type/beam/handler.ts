@@ -3,6 +3,7 @@ import {
   buildLegacyLabels,
   buildLegacyModel,
   computeLegacyMissing,
+  mergeLegacyDraftPatchLlmFirst,
   mergeLegacyState,
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
@@ -51,7 +52,51 @@ function toBeamPatch(patch: DraftExtraction, message = ''): DraftExtraction {
     geometryKeys: GEOMETRY_KEYS,
     loadBoundaryKeys: LOAD_BOUNDARY_KEYS,
   });
-  return restrictLegacyDraftPatch(applyBeamDefaults(message, domainPatch), 'beam', [...ALLOWED_KEYS]);
+  const nextPatch = restrictLegacyDraftPatch(applyBeamDefaults(message, domainPatch), 'beam', [...ALLOWED_KEYS]);
+  if (patch.skillState) {
+    nextPatch.skillState = patch.skillState;
+  }
+  return nextPatch;
+}
+
+function extractPositiveNumber(pattern: RegExp, message: string): number | undefined {
+  const match = pattern.exec(message);
+  if (!match?.[1]) return undefined;
+  const value = Number(match[1]);
+  return Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function buildNaturalBeamPatch(message: string): DraftExtraction {
+  const text = message.toLowerCase();
+  const patch: DraftExtraction = {};
+  const simpleSpan = extractPositiveNumber(/简支跨度\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/iu, message);
+  const overhang = extractPositiveNumber(/外伸\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/iu, message)
+    ?? extractPositiveNumber(/\boverhang(?:ing)?\s*(?:length\s*)?([0-9]+(?:\.[0-9]+)?)\s*m\b/iu, text);
+  if (simpleSpan !== undefined && overhang !== undefined) {
+    patch.lengthM = simpleSpan + overhang;
+    patch.supportType = 'simply-supported';
+    patch.skillState = {
+      ...(patch.skillState ?? {}),
+      simpleSpanM: simpleSpan,
+      overhangLengthM: overhang,
+    };
+  }
+
+  const length = extractPositiveNumber(/(?:跨度|长度)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/iu, message)
+    ?? extractPositiveNumber(/\b(?:span|length)\s*(?:of\s*)?([0-9]+(?:\.[0-9]+)?)\s*m\b/iu, text);
+  if (patch.lengthM === undefined && length !== undefined) {
+    patch.lengthM = length;
+  }
+
+  const distributed = extractPositiveNumber(/(?:均布荷载|线荷载|distributed\s+load)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kN\/m|kn\/m|千牛\/米)/iu, message)
+    ?? extractPositiveNumber(/([0-9]+(?:\.[0-9]+)?)\s*(?:kN\/m|kn\/m|千牛\/米)\s*(?:均布荷载|线荷载|distributed\s+load)?/iu, message);
+  if (distributed !== undefined) {
+    patch.loadKN = distributed;
+    patch.loadType = 'distributed';
+    patch.loadPosition = 'full-span';
+  }
+
+  return patch;
 }
 
 function buildBeamDefaultReason(paramKey: string, locale: AppLocale): string {
@@ -164,7 +209,16 @@ function buildBeamReportNarrative(input: SkillReportNarrativeInput): string {
 export const handler: SkillHandler = {
   detectStructuralType({ message, locale }) {
     const text = message.toLowerCase();
-    if (text.includes('portal frame') || text.includes('门式刚架') || text.includes('桁架') || text.includes('truss') || text.includes('双跨梁') || text.includes('double-span')) {
+    if (
+      text.includes('portal frame')
+      || text.includes('门式刚架')
+      || text.includes('桁架')
+      || text.includes('truss')
+      || text.includes('双跨梁')
+      || text.includes('连续梁')
+      || text.includes('double-span')
+      || text.includes('continuous beam')
+    ) {
       return null;
     }
     if (text.includes('girder') || text.includes('主梁') || text.includes('大梁')) {
@@ -183,7 +237,13 @@ export const handler: SkillHandler = {
     return toBeamPatch(patch);
   },
   extractDraft({ message, llmDraftPatch }) {
-    return toBeamPatch(buildLegacyDraftPatchLlmFirst(message, llmDraftPatch), message);
+    return toBeamPatch(
+      mergeLegacyDraftPatchLlmFirst(
+        buildLegacyDraftPatchLlmFirst(message, llmDraftPatch),
+        buildNaturalBeamPatch(message),
+      ),
+      message,
+    );
   },
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toBeamPatch(patch), 'beam', 'beam');

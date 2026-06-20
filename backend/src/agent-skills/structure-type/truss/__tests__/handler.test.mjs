@@ -75,6 +75,23 @@ describe('truss handler', () => {
     expect(model.metadata).toEqual(expect.objectContaining({ heightDefaulted: true }));
   });
 
+  test('defaults missing truss panel count for executable standard workflows', () => {
+    const patch = handler.extractDraft({
+      message: '三角桁架，跨度12m，高3m，节点荷载20kN，做静力分析',
+      llmDraftPatch: { inferredType: 'truss' },
+    });
+    const state = handler.mergeState(undefined, patch);
+    const missing = handler.computeMissing(state, 'execution');
+    const model = handler.buildModel(state);
+
+    expect(missing.critical).toEqual([]);
+    expect(state.bayCount).toBeUndefined();
+    expect(model.metadata).toEqual(expect.objectContaining({
+      panelCount: 4,
+      panelCountDefaulted: true,
+    }));
+  });
+
   test('invalid truss height blocks model generation and asks for correction', () => {
     const patch = handler.extractDraft({
       message: '三角桁架跨度15m，高度0m，5个节间，节点荷载10kN，请分析',

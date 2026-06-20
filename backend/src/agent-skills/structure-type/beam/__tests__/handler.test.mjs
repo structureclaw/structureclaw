@@ -12,6 +12,28 @@ describe('beam handler', () => {
     expect(match?.mappedType).toBe('beam');
   });
 
+  test('builds overhanging beam model from simple-span and overhang wording', () => {
+    const patch = handler.extractDraft({
+      message: '外伸梁，简支跨度5m，外伸1.5m，均布荷载15kN/m，请进行静力分析',
+      llmDraftPatch: { inferredType: 'beam' },
+    });
+    const state = handler.mergeState(undefined, patch);
+    const model = handler.buildModel(state);
+
+    expect(handler.computeMissing(state, 'execution').critical).toEqual([]);
+    expect(state.lengthM).toBe(6.5);
+    expect(state.skillState).toEqual(expect.objectContaining({
+      simpleSpanM: 5,
+      overhangLengthM: 1.5,
+    }));
+    expect(model.nodes.map((node) => node.x)).toEqual([0, 5, 6.5]);
+    expect(model.elements).toHaveLength(2);
+    expect(model.load_cases[0].loads).toEqual([
+      { type: 'distributed', element: '1', wz: -15, wy: 0 },
+      { type: 'distributed', element: '2', wz: -15, wy: 0 },
+    ]);
+  });
+
   test('keeps ordinary beam defaults deterministic', () => {
     const [question] = handler.buildQuestions(
       ['loadType'],

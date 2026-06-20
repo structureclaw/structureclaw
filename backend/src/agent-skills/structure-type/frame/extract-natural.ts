@@ -212,6 +212,7 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
 
   const xSpanArray = extractSpanArray(xSegment);
   const ySpanArray = extractSpanArray(ySegment);
+  const genericSpanArray = extractSpanArray(text);
   const xBayScalar = xSpanArray
     ? undefined
     : extractScalar(xSegment, [
@@ -274,11 +275,13 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
     ? '3d'
     : explicitDimension
       ?? existingState?.frameDimension
+      ?? (genericBayCount !== undefined || genericSpanArray !== undefined ? '2d' : undefined)
       ?? (bayCountX !== undefined ? '3d' : undefined);
   const resolved2dBayCount = genericBayCount ?? bayCountX ?? existingState?.bayCount;
   const resolved2dBayWidths = resolvedFrameDimension !== '3d'
     ? (
         xSpanArray
+        ?? genericSpanArray
         ?? repeatScalar(
           resolved2dBayCount,
           xBayScalar ?? genericBayScalar,

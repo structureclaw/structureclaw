@@ -44,6 +44,7 @@ function stringValue(value: unknown): string | undefined {
 function inferTypeFromText(value: unknown): InferredModelType | undefined {
   const text = stringValue(value)?.toLowerCase();
   if (!text) return undefined;
+  if (text.includes('column') || text.includes('柱')) return 'column';
   if (text.includes('beam') || text.includes('梁')) return 'beam';
   if (text.includes('truss') || text.includes('桁架')) return 'truss';
   if (text.includes('portal') || text.includes('门式') || text.includes('刚架')) return 'portal-frame';

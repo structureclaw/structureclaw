@@ -303,6 +303,26 @@ function buildBeamNodes(length: number, supportType: DraftSupportType, loadPosit
   };
 }
 
+function buildOverhangingBeamNodes(simpleSpan: number, overhangLength: number) {
+  const pinnedRestraint = [true, true, true, true, true, false] as const;
+  const rollerRestraint = [false, true, true, true, true, false] as const;
+  const totalLength = simpleSpan + overhangLength;
+
+  return {
+    nodes: [
+      { id: '1', x: 0, y: 0, z: 0, restraints: [...pinnedRestraint] },
+      { id: '2', x: simpleSpan, y: 0, z: 0, restraints: [...rollerRestraint] },
+      { id: '3', x: totalLength, y: 0, z: 0 },
+    ],
+    elements: [
+      { id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' },
+      { id: '2', type: 'beam', nodes: ['2', '3'], material: '1', section: '1' },
+    ],
+    pointNodeId: '2',
+    endNodeId: '3',
+  };
+}
+
 function buildBeamLoads(
   loadKN: number,
   loadType: DraftLoadType | undefined,
@@ -458,6 +478,243 @@ function buildTrussModel(state: DraftState, metadata: Record<string, unknown>): 
   };
 }
 
+function readPositiveNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
+}
+
+function readPositiveNumberArray(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const values = value.filter((item): item is number => typeof item === 'number' && Number.isFinite(item) && item > 0);
+  return values.length > 0 ? values : undefined;
+}
+
+function readPositiveInteger(value: unknown): number | undefined {
+  const parsed = readPositiveNumber(value);
+  return parsed === undefined ? undefined : Math.max(1, Math.round(parsed));
+}
+
+function buildColumnModel(state: DraftState, metadata: Record<string, unknown>): Record<string, unknown> {
+  const height = state.heightM ?? state.lengthM!;
+  const axialLoad = state.loadKN!;
+  const materialFamily = state.skillState?.materialFamily === 'concrete' ? 'concrete' : 'steel';
+  const sectionWidthM = readPositiveNumber(state.skillState?.sectionWidthM) ?? 0.4;
+  const sectionDepthM = readPositiveNumber(state.skillState?.sectionDepthM) ?? sectionWidthM;
+  const area = sectionWidthM * sectionDepthM;
+  const iy = (sectionWidthM * (sectionDepthM ** 3)) / 12;
+  const iz = (sectionDepthM * (sectionWidthM ** 3)) / 12;
+  const elasticModulus = materialFamily === 'concrete' ? 30000 : 205000;
+  const shearModulus = materialFamily === 'concrete' ? 12500 : 79000;
+
+  return {
+    schema_version: '2.0.0',
+    unit_system: 'SI',
+    nodes: [
+      { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
+      { id: '2', x: 0, y: 0, z: height },
+    ],
+    elements: [
+      { id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' },
+    ],
+    materials: [
+      { id: '1', name: materialFamily, E: elasticModulus, nu: 0.2, rho: materialFamily === 'concrete' ? 2500 : 7850 },
+    ],
+    sections: [
+      { id: '1', name: 'COLUMN', type: 'beam', properties: { A: area, Iy: iy, Iz: iz, J: Math.max(iy, iz), G: shearModulus } },
+    ],
+    load_cases: [
+      { id: 'LC1', type: 'other', loads: [{ node: '2', fz: -axialLoad }] },
+    ],
+    load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
+    metadata: {
+      ...metadata,
+      materialFamily,
+      geometry: {
+        heightM: height,
+        sectionWidthM,
+        sectionDepthM,
+      },
+    },
+  };
+}
+
+function getContinuousBeamSpanLengths(state: DraftState): number[] {
+  const explicit = readPositiveNumberArray(state.skillState?.spanLengthsM);
+  if (explicit?.length) {
+    return explicit;
+  }
+  const span = state.spanLengthM!;
+  const spanCount = Math.max(2, readPositiveInteger(state.skillState?.spanCount) ?? 2);
+  return Array.from({ length: spanCount }, () => span);
+}
+
+function buildContinuousBeamModel(state: DraftState, metadata: Record<string, unknown>): Record<string, unknown> {
+  const spans = getContinuousBeamSpanLengths(state);
+  const supportCoordinates = accumulateCoordinates(spans);
+  const pointLoad = readPositiveNumber(state.skillState?.pointLoadKN)
+    ?? (state.loadType === 'point' ? state.loadKN : undefined);
+  const pointSpanIndex = Math.min(
+    spans.length - 1,
+    Math.max(
+      0,
+      (readPositiveInteger(state.skillState?.pointLoadSpanIndex) ?? (spans.indexOf(Math.max(...spans)) + 1)) - 1,
+    ),
+  );
+  const pointLoadX = pointLoad !== undefined
+    ? supportCoordinates[pointSpanIndex] + spans[pointSpanIndex] / 2
+    : undefined;
+  const coordinates = Array.from(new Set([
+    ...supportCoordinates,
+    ...(pointLoadX !== undefined ? [pointLoadX] : []),
+  ])).sort((left, right) => left - right);
+  const pinned = [true, true, true, true, true, false];
+  const roller = [false, true, true, true, true, false];
+  const nodes = coordinates.map((x, index) => {
+    const supportIndex = supportCoordinates.findIndex((supportX) => Math.abs(supportX - x) < 1e-9);
+    const node: Record<string, unknown> = { id: `${index + 1}`, x, y: 0, z: 0 };
+    if (supportIndex >= 0) {
+      node.restraints = supportIndex === 0 ? pinned : roller;
+    }
+    return node;
+  });
+  const elements = coordinates.slice(0, -1).map((_x, index) => ({
+    id: `${index + 1}`,
+    type: 'beam',
+    nodes: [`${index + 1}`, `${index + 2}`],
+    material: '1',
+    section: '1',
+  }));
+  const distributedLoad = readPositiveNumber(state.skillState?.distributedLoadKNM)
+    ?? ((state.loadType === 'distributed' || state.loadPosition === 'full-span') ? state.loadKN : undefined);
+  const loads: Array<Record<string, unknown>> = [];
+  if (distributedLoad !== undefined) {
+    for (const element of elements) {
+      loads.push({ type: 'distributed', element: element.id, wz: -distributedLoad, wy: 0 });
+    }
+  }
+  if (pointLoad !== undefined && pointLoadX !== undefined) {
+    const nodeIndex = coordinates.findIndex((x) => Math.abs(x - pointLoadX) < 1e-9);
+    loads.push({ node: `${nodeIndex + 1}`, fz: -pointLoad });
+  }
+
+  return {
+    schema_version: '2.0.0',
+    unit_system: 'SI',
+    nodes,
+    elements,
+    materials: [
+      { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
+    ],
+    sections: [
+      { id: '1', name: 'CONTINUOUS_BEAM', type: 'beam', properties: { A: 0.01, Iy: 0.0001, Iz: 0.0001, J: 0.0001, G: 79000 } },
+    ],
+    load_cases: [
+      { id: 'LC1', type: 'other', loads },
+    ],
+    load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
+    metadata: {
+      ...metadata,
+      spanCount: spans.length,
+      geometry: {
+        spanLengthsM: spans,
+      },
+    },
+  };
+}
+
+function getPortalFrameSpanLengths(state: DraftState): number[] {
+  const explicit = readPositiveNumberArray(state.skillState?.portalBaySpansM);
+  if (explicit?.length) {
+    return explicit;
+  }
+  const span = state.spanLengthM!;
+  const bayCount = Math.max(1, readPositiveInteger(state.skillState?.portalBayCount) ?? 1);
+  return Array.from({ length: bayCount }, () => span);
+}
+
+function buildPortalFrameModel(state: DraftState, metadata: Record<string, unknown>): Record<string, unknown> {
+  const spans = getPortalFrameSpanLengths(state);
+  const xCoordinates = accumulateCoordinates(spans);
+  const height = state.heightM!;
+  const roofLoad = readPositiveNumber(state.skillState?.roofLoadKNM)
+    ?? ((state.loadType === 'distributed' || state.loadPosition === 'full-span') ? state.loadKN : undefined);
+  const nodalLoad = roofLoad === undefined ? state.loadKN! : undefined;
+  const craneLoad = readPositiveNumber(state.skillState?.craneLoadKN);
+  const mezzanineHeight = readPositiveNumber(state.skillState?.mezzanineHeightM);
+  const mezzanineLoad = readPositiveNumber(state.skillState?.mezzanineLoadKN);
+  const hasMezzanine = mezzanineHeight !== undefined && mezzanineHeight > 0 && mezzanineHeight < height && spans.length >= 1;
+  const nodes: Array<Record<string, unknown>> = [];
+  const elements: Array<Record<string, unknown>> = [];
+  const loads: Array<Record<string, unknown>> = [];
+
+  for (let i = 0; i < xCoordinates.length; i += 1) {
+    nodes.push({ id: `B${i}`, x: xCoordinates[i], y: 0, z: 0, restraints: [true, true, true, true, true, true] });
+    nodes.push({ id: `T${i}`, x: xCoordinates[i], y: 0, z: height });
+  }
+  if (hasMezzanine) {
+    nodes.push({ id: 'M0', x: 0, y: 0, z: mezzanineHeight });
+    nodes.push({ id: 'M1', x: Math.min(spans[0] / 3, spans[0]), y: 0, z: mezzanineHeight });
+  }
+
+  for (let i = 0; i < xCoordinates.length; i += 1) {
+    if (hasMezzanine && i === 0) {
+      elements.push({ id: `C${i}a`, type: 'beam', nodes: [`B${i}`, 'M0'], material: '1', section: '1' });
+      elements.push({ id: `C${i}b`, type: 'beam', nodes: ['M0', `T${i}`], material: '1', section: '1' });
+    } else {
+      elements.push({ id: `C${i}`, type: 'beam', nodes: [`B${i}`, `T${i}`], material: '1', section: '1' });
+    }
+  }
+  for (let i = 0; i < spans.length; i += 1) {
+    const element = { id: `R${i}`, type: 'beam', nodes: [`T${i}`, `T${i + 1}`], material: '1', section: '1' };
+    elements.push(element);
+    if (roofLoad !== undefined) {
+      loads.push({ type: 'distributed', element: element.id, wz: -roofLoad, wy: 0 });
+    }
+  }
+  if (hasMezzanine) {
+    elements.push({ id: 'MEZ1', type: 'beam', nodes: ['M0', 'M1'], material: '1', section: '1' });
+    if (mezzanineLoad !== undefined) {
+      loads.push({ node: 'M1', fz: -mezzanineLoad });
+    }
+  }
+  if (nodalLoad !== undefined) {
+    const perTopNode = -nodalLoad / xCoordinates.length;
+    for (let i = 0; i < xCoordinates.length; i += 1) {
+      loads.push({ type: 'nodal', node: `T${i}`, forces: [0, 0, perTopNode, 0, 0, 0] });
+    }
+  }
+  if (craneLoad !== undefined) {
+    const target = xCoordinates.length > 2 ? 'T1' : 'T0';
+    loads.push({ node: target, fz: -craneLoad });
+  }
+
+  return {
+    schema_version: '2.0.0',
+    unit_system: 'SI',
+    nodes,
+    elements,
+    materials: [
+      { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
+    ],
+    sections: [
+      { id: '1', name: 'PF1', type: 'beam', properties: { A: 0.02, Iy: 0.0002, Iz: 0.0002, J: 0.0002, G: 79000 } },
+    ],
+    load_cases: [
+      { id: 'LC1', type: 'other', loads },
+    ],
+    load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
+    metadata: {
+      ...metadata,
+      bayCount: spans.length,
+      hasMezzanine,
+      geometry: {
+        spanLengthsM: spans,
+        heightM: height,
+        mezzanineHeightM: hasMezzanine ? mezzanineHeight : undefined,
+      },
+    },
+  };
+}
+
 export function buildModel(state: DraftState): Record<string, unknown> {
   const metadata = {
     source: 'markdown-skill-draft',
@@ -473,72 +730,23 @@ export function buildModel(state: DraftState): Record<string, unknown> {
   if (state.inferredType === 'truss') {
     return buildTrussModel(state, metadata);
   }
+  if (state.inferredType === 'column') {
+    return buildColumnModel(state, metadata);
+  }
   if (state.inferredType === 'double-span-beam') {
-    const span = state.spanLengthM!;
-    const load = state.loadKN!;
-    return {
-      schema_version: '2.0.0',
-      unit_system: 'SI',
-      nodes: [
-        { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
-        { id: '2', x: span, y: 0, z: 0 },
-        { id: '3', x: span * 2, y: 0, z: 0, restraints: [false, true, true, true, true, true] },
-      ],
-      elements: [
-        { id: '1', type: 'beam', nodes: ['1', '2'], material: '1', section: '1' },
-        { id: '2', type: 'beam', nodes: ['2', '3'], material: '1', section: '1' },
-      ],
-      materials: [
-        { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
-      ],
-      sections: [
-        { id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001, Iz: 0.0001, J: 0.0001, G: 79000 } },
-      ],
-      load_cases: [
-        { id: 'LC1', type: 'other', loads: [{ node: '2', fz: -load }] },
-      ],
-      load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
-      metadata,
-    };
+    return buildContinuousBeamModel(state, metadata);
   }
   if (state.inferredType === 'portal-frame') {
-    const span = state.spanLengthM!;
-    const height = state.heightM!;
-    const load = state.loadKN!;
-    return {
-      schema_version: '2.0.0',
-      unit_system: 'SI',
-      nodes: [
-        { id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
-        { id: '2', x: span, y: 0, z: 0, restraints: [true, true, true, true, true, true] },
-        { id: '3', x: 0, y: 0, z: height },
-        { id: '4', x: span, y: 0, z: height },
-      ],
-      elements: [
-        { id: '1', type: 'beam', nodes: ['1', '3'], material: '1', section: '1' },
-        { id: '2', type: 'beam', nodes: ['3', '4'], material: '1', section: '1' },
-        { id: '3', type: 'beam', nodes: ['4', '2'], material: '1', section: '1' },
-      ],
-      materials: [
-        { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
-      ],
-      sections: [
-        { id: '1', name: 'PF1', type: 'beam', properties: { A: 0.02, Iy: 0.0002, Iz: 0.0002, J: 0.0002, G: 79000 } },
-      ],
-      load_cases: [
-        { id: 'LC1', type: 'other', loads: [
-          { type: 'nodal', node: '3', forces: [0, 0, -load / 2, 0, 0, 0] },
-          { type: 'nodal', node: '4', forces: [0, 0, -load / 2, 0, 0, 0] },
-        ] },
-      ],
-      load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
-      metadata,
-    };
+    return buildPortalFrameModel(state, metadata);
   }
   const length = state.lengthM!;
   const load = state.loadKN!;
   const supportType = state.supportType || 'cantilever';
-  const beamNodes = buildBeamNodes(length, supportType, state.loadPositionM);
+  const simpleSpan = readPositiveNumber(state.skillState?.simpleSpanM);
+  const overhangLength = readPositiveNumber(state.skillState?.overhangLengthM);
+  const beamNodes = supportType === 'simply-supported' && simpleSpan !== undefined && overhangLength !== undefined
+    ? buildOverhangingBeamNodes(simpleSpan, overhangLength)
+    : buildBeamNodes(length, supportType, state.loadPositionM);
   const beamLoads = buildBeamLoads(load, state.loadType, state.loadPosition, beamNodes.pointNodeId, beamNodes.endNodeId);
   return {
     schema_version: '2.0.0',
@@ -555,6 +763,6 @@ export function buildModel(state: DraftState): Record<string, unknown> {
       { id: 'LC1', type: 'other', loads: beamLoads },
     ],
     load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
-    metadata: { ...metadata, supportType, loadPositionM: state.loadPositionM },
+    metadata: { ...metadata, supportType, loadPositionM: state.loadPositionM, simpleSpanM: simpleSpan, overhangLengthM: overhangLength },
   };
 }

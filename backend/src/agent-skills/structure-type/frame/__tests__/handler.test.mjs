@@ -112,4 +112,23 @@ describe('frame handler composed modules', () => {
     ]);
     expect(missing.critical).not.toContain('floorLoads');
   });
+
+  test('extracts uneven 2d bay widths from generic span wording', () => {
+    const patch = handler.extractDraft({
+      message: '3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m，请进行静力分析',
+      locale: 'zh',
+      currentState: undefined,
+      llmDraftPatch: { inferredType: 'frame' },
+      structuralTypeMatch: {
+        key: 'frame',
+        mappedType: 'frame',
+        skillId: 'frame',
+        supportLevel: 'supported',
+      },
+    });
+    const state = handler.mergeState(undefined, patch);
+
+    expect(state.bayWidthsM).toEqual([5.4, 6]);
+    expect(state.bayCount).toBe(2);
+  });
 });

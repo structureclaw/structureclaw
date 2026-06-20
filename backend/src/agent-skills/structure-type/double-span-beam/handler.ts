@@ -3,6 +3,7 @@ import {
   buildLegacyLabels,
   buildLegacyModel,
   computeLegacyMissing,
+  mergeLegacyDraftPatchLlmFirst,
   mergeLegacyState,
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
@@ -32,7 +33,106 @@ function toDoubleSpanPatch(patch: DraftExtraction): DraftExtraction {
     loadBoundaryKeys: LOAD_BOUNDARY_KEYS,
     spanLengthAliasFromLength: true,
   });
-  return restrictLegacyDraftPatch(domainPatch, 'double-span-beam', [...ALLOWED_KEYS]);
+  const nextPatch = restrictLegacyDraftPatch(domainPatch, 'double-span-beam', [...ALLOWED_KEYS]);
+  if (patch.skillState) {
+    nextPatch.skillState = patch.skillState;
+  }
+  return nextPatch;
+}
+
+function extractPositiveNumbers(segment: string): number[] {
+  return [...segment.matchAll(/([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/gi)]
+    .map((match) => Number(match[1]))
+    .filter((value) => Number.isFinite(value) && value > 0);
+}
+
+function parseChineseSpanCount(message: string): number | undefined {
+  const match = message.match(/([两二三四五六七八九十\d]+)\s*跨/u);
+  if (!match?.[1]) return undefined;
+  const raw = match[1];
+  const map: Record<string, number> = {
+    两: 2, 二: 2, 三: 3, 四: 4, 五: 5, 六: 6, 七: 7, 八: 8, 九: 9, 十: 10,
+  };
+  if (/^\d+$/.test(raw)) return Number(raw);
+  return map[raw];
+}
+
+function extractContinuousBeamSpans(message: string): number[] | undefined {
+  const text = message.toLowerCase();
+  const explicitList = message.match(/跨度\s*((?:[0-9]+(?:\.[0-9]+)?\s*(?:m|米)\s*(?:和|、|,|，)?\s*){2,})/iu);
+  if (explicitList?.[1]) {
+    const values = extractPositiveNumbers(explicitList[1]);
+    if (values.length >= 2) return values;
+  }
+
+  const equalSpan = message.match(/(?:每跨|各跨|两跨各|双跨各)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/iu);
+  if (equalSpan?.[1]) {
+    const count = parseChineseSpanCount(message) ?? 2;
+    return Array.from({ length: count }, () => Number(equalSpan[1]));
+  }
+
+  const englishEqualSpan = text.match(/(?:two|three|four|five|2|3|4|5)[-\s]?span.*?(?:each|per\s*span)\s*([0-9]+(?:\.[0-9]+)?)\s*m/i);
+  if (englishEqualSpan?.[1]) {
+    const count = text.includes('three') || text.includes('3') ? 3 : text.includes('four') || text.includes('4') ? 4 : text.includes('five') || text.includes('5') ? 5 : 2;
+    return Array.from({ length: count }, () => Number(englishEqualSpan[1]));
+  }
+
+  const singleSpan = message.match(/跨度\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/iu);
+  if (singleSpan?.[1]) {
+    const count = parseChineseSpanCount(message);
+    if (count && count >= 2) return Array.from({ length: count }, () => Number(singleSpan[1]));
+  }
+  return undefined;
+}
+
+function buildNaturalDoubleSpanPatch(message: string): DraftExtraction {
+  const patch: DraftExtraction = {};
+  const spans = extractContinuousBeamSpans(message);
+  if (spans?.length) {
+    patch.spanLengthM = spans[0];
+    patch.skillState = {
+      ...(patch.skillState ?? {}),
+      spanLengthsM: spans,
+      spanCount: spans.length,
+    };
+  }
+
+  const distributed = message.match(/(?:均布荷载|线荷载|distributed\s+load)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kN\/m|kn\/m|千牛\/米)/iu)
+    ?? message.match(/([0-9]+(?:\.[0-9]+)?)\s*(?:kN\/m|kn\/m|千牛\/米)\s*(?:均布荷载|线荷载|distributed\s+load)?/iu);
+  if (distributed?.[1]) {
+    const value = Number(distributed[1]);
+    if (Number.isFinite(value) && value > 0) {
+      patch.loadKN = value;
+      patch.loadType = 'distributed';
+      patch.loadPosition = 'full-span';
+      patch.skillState = {
+        ...(patch.skillState ?? {}),
+        distributedLoadKNM: value,
+      };
+    }
+  }
+
+  const point = message.match(/(?:集中力|集中荷载|point\s+load)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kN|kn|千牛)/iu)
+    ?? message.match(/([0-9]+(?:\.[0-9]+)?)\s*(?:kN|kn|千牛)\s*(?:集中力|集中荷载|point\s+load)/iu);
+  if (point?.[1]) {
+    const value = Number(point[1]);
+    if (Number.isFinite(value) && value > 0) {
+      if (patch.loadKN === undefined) {
+        patch.loadKN = value;
+        patch.loadType = 'point';
+        patch.loadPosition = 'midspan';
+      }
+      patch.skillState = {
+        ...(patch.skillState ?? {}),
+        pointLoadKN: value,
+        pointLoadSpanIndex: message.includes('长跨') && spans?.length
+          ? spans.indexOf(Math.max(...spans)) + 1
+          : undefined,
+      };
+    }
+  }
+
+  return patch;
 }
 
 function buildDoubleSpanDefaultReason(paramKey: string, locale: AppLocale): string {
@@ -144,8 +244,12 @@ export const handler: SkillHandler = {
       text.includes('double-span')
       || text.includes('双跨梁')
       || text.includes('双跨连续梁')
+      || text.includes('连续梁')
+      || text.includes('不等跨连续梁')
       || /两跨.*连续梁/u.test(text)
+      || /[三四五六七八九十\d]\s*跨.*连续梁/u.test(text)
       || /(?:two|2)[-\s]?span.*continuous beam/i.test(text)
+      || /(?:multi|three|3)[-\s]?span.*continuous beam/i.test(text)
     ) {
       return buildStructuralTypeMatch('double-span-beam', 'double-span-beam', 'double-span-beam', 'supported', locale);
     }
@@ -155,7 +259,12 @@ export const handler: SkillHandler = {
     return toDoubleSpanPatch(normalizeLegacyDraftPatch(values));
   },
   extractDraft({ message, llmDraftPatch }) {
-    return toDoubleSpanPatch(buildLegacyDraftPatchLlmFirst(message, llmDraftPatch));
+    return toDoubleSpanPatch(
+      mergeLegacyDraftPatchLlmFirst(
+        buildLegacyDraftPatchLlmFirst(message, llmDraftPatch),
+        buildNaturalDoubleSpanPatch(message),
+      ),
+    );
   },
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toDoubleSpanPatch(patch), 'double-span-beam', 'double-span-beam');

@@ -111,7 +111,7 @@ export function normalizeLoadPositionM(value: unknown): number | undefined {
 }
 
 export function normalizeInferredType(value: unknown): InferredModelType | undefined {
-  if (value === 'beam' || value === 'truss' || value === 'portal-frame' || value === 'double-span-beam' || value === 'frame' || value === 'unknown') {
+  if (value === 'beam' || value === 'column' || value === 'truss' || value === 'portal-frame' || value === 'double-span-beam' || value === 'frame' || value === 'unknown') {
     return value;
   }
   return undefined;
@@ -405,6 +405,8 @@ function buildLoadTypeQuestion(type: InferredModelType, locale: AppLocale): stri
   switch (type) {
     case 'beam':
       return localize(locale, '请确认荷载形式（点荷载或均布荷载）。', 'Please confirm the load type (point or distributed).');
+    case 'column':
+      return localize(locale, '请确认柱荷载形式（通常为柱顶轴向点荷载）。', 'Please confirm the column load type (usually a top axial point load).');
     case 'portal-frame':
       return localize(locale, '请确认门式刚架荷载形式（柱顶节点点荷载或檐梁均布荷载）。', 'Please confirm the portal-frame load type (top-node point load or distributed load on the rafter).');
     case 'double-span-beam':
@@ -420,6 +422,8 @@ function buildLoadPositionQuestion(type: InferredModelType, locale: AppLocale): 
   switch (type) {
     case 'beam':
       return localize(locale, '请确认荷载位置（可说端部/跨中/全跨，也可直接给距左端 x m）。', 'Please confirm the load position (end / midspan / full span), or provide an offset x m from the left end.');
+    case 'column':
+      return localize(locale, '请确认柱荷载位置（通常为柱顶节点）。', 'Please confirm the column load position (usually the top joint).');
     case 'portal-frame':
       return localize(locale, '请确认荷载位置（柱顶节点/檐梁全跨）。', 'Please confirm the load position (top nodes / full rafter span).');
     case 'double-span-beam':
