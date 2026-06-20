@@ -144,6 +144,36 @@ describe('frame canonicalize core contract', () => {
     expect(patch.bayWidthsXM).toEqual([6, 6, 6, 6]);
   });
 
+  test('uses engineeringDraft without natural parser overrides', () => {
+    const patch = buildFrameDraftPatch(
+      '三层框架，x方向4跨，间隔6m，每层3m，每层竖向荷载100kN',
+      {
+        engineeringDraft: {
+          structureType: 'steel-frame',
+          geometry: {
+            storyHeightsM: [3.2, 3.2],
+            bayWidthsM: [7],
+          },
+          loads: [
+            { kind: 'nodal', magnitude: 80, unit: 'kN', direction: 'gravity', target: 'floor' },
+          ],
+        },
+      },
+      undefined,
+    );
+
+    expect(patch.engineeringDraft).toBeDefined();
+    expect(patch.frameDimension).toBe('2d');
+    expect(patch.storyCount).toBe(2);
+    expect(patch.bayCount).toBe(1);
+    expect(patch.storyHeightsM).toEqual([3.2, 3.2]);
+    expect(patch.bayWidthsM).toEqual([7]);
+    expect(patch.floorLoads).toEqual([
+      { story: 1, verticalKN: 80, lateralXKN: undefined, lateralYKN: undefined },
+      { story: 2, verticalKN: 80, lateralXKN: undefined, lateralYKN: undefined },
+    ]);
+  });
+
   test('normalizes llm scalar fields into canonical arrays', () => {
     const patch = buildFramePatchFromLlm({
       inferredType: 'frame',

@@ -3,6 +3,7 @@ import {
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
+import { projectEngineeringDraftToLegacyPatch } from '../../../agent-runtime/engineering-draft.js';
 import { composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
 import { normalizeNumber } from '../../../agent-runtime/fallback.js';
 import type {
@@ -29,16 +30,28 @@ import { normalizeConcreteFrameNaturalPatch } from './extract-natural.js';
 import { normalizeConcreteGrade, normalizeSectionName } from './model.js';
 
 export function toConcreteFramePatch(patch: DraftExtraction): DraftExtraction {
+  const semanticPatch = projectEngineeringDraftToLegacyPatch(patch, 'frame');
   const domainPatch = composeStructuralDomainPatch({
-    patch,
+    patch: semanticPatch,
     geometryKeys: GEOMETRY_KEYS,
     loadBoundaryKeys: LOAD_BOUNDARY_KEYS,
   });
   const next = restrictLegacyDraftPatch(domainPatch, 'frame', [...GEOMETRY_KEYS, ...LOAD_BOUNDARY_KEYS]);
   for (const key of DESIGN_CONDITION_KEYS) {
-    if (patch[key] !== undefined) {
-      next[key] = patch[key];
+    if (semanticPatch[key] !== undefined) {
+      (next as Record<string, unknown>)[key] = semanticPatch[key];
     }
+  }
+  for (const key of ['frameMaterial', 'frameConcreteGrade', 'frameRebarGrade', 'frameColumnSection', 'frameBeamSection'] as const) {
+    if (semanticPatch[key] !== undefined) {
+      (next as Record<string, unknown>)[key] = semanticPatch[key];
+    }
+  }
+  if (semanticPatch.engineeringDraft) {
+    next.engineeringDraft = semanticPatch.engineeringDraft;
+  }
+  if (semanticPatch.skillState) {
+    next.skillState = semanticPatch.skillState;
   }
   return next;
 }
@@ -385,9 +398,10 @@ export function buildConcreteFrameDraftPatch(
   existingState: DraftState | undefined,
 ): DraftExtraction {
   const normalizedLlmPatch = buildConcreteFramePatchFromLlm(llmDraftPatch, existingState);
-  const rawNaturalPatch = normalizeConcreteFrameNaturalPatch(message, existingState);
+  const hasEngineeringDraft = normalizedLlmPatch.engineeringDraft !== undefined;
+  const rawNaturalPatch: DraftExtraction = hasEngineeringDraft ? {} : normalizeConcreteFrameNaturalPatch(message, existingState);
   const normalizedNaturalPatch = toConcreteFramePatch(rawNaturalPatch);
-  const normalizedRulePatch = toConcreteFramePatch(buildLegacyDraftPatchLlmFirst(message, null));
+  const normalizedRulePatch = hasEngineeringDraft ? {} : toConcreteFramePatch(buildLegacyDraftPatchLlmFirst(message, null));
   const nextPatch = canonicalizeConcreteFramePatch({
     message,
     existingState,
@@ -397,7 +411,7 @@ export function buildConcreteFrameDraftPatch(
     },
     llmPatch: normalizedLlmPatch,
   });
-  const nextPatchWithDerivedLoads = deriveFloorLoadsFromIntensity(message, nextPatch);
+  const nextPatchWithDerivedLoads = hasEngineeringDraft ? nextPatch : deriveFloorLoadsFromIntensity(message, nextPatch);
 
   // M1: Separate concrete and rebar grade extraction
   const frameConcreteGrade = (normalizedLlmPatch.frameConcreteGrade as string | undefined)

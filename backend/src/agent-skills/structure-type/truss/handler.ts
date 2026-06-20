@@ -8,6 +8,7 @@ import {
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
+import { projectEngineeringDraftToLegacyPatch } from '../../../agent-runtime/engineering-draft.js';
 import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
 import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../../agent-runtime/fallback.js';
@@ -249,14 +250,18 @@ function buildNaturalTrussPatch(message: string): DraftExtraction {
 }
 
 function toTrussPatch(patch: DraftExtraction): DraftExtraction {
+  const semanticPatch = projectEngineeringDraftToLegacyPatch(patch, 'truss');
   const domainPatch = composeStructuralDomainPatch({
-    patch,
+    patch: semanticPatch,
     geometryKeys: GEOMETRY_KEYS,
     loadBoundaryKeys: LOAD_BOUNDARY_KEYS,
   });
   const nextPatch = restrictLegacyDraftPatch(domainPatch, 'truss', [...ALLOWED_KEYS]);
-  if (patch.skillState) {
-    nextPatch.skillState = patch.skillState;
+  if (semanticPatch.engineeringDraft) {
+    nextPatch.engineeringDraft = semanticPatch.engineeringDraft;
+  }
+  if (semanticPatch.skillState) {
+    nextPatch.skillState = semanticPatch.skillState;
   }
   return applyTrussSanity(nextPatch);
 }
@@ -394,10 +399,12 @@ export const handler: SkillHandler = {
     return toTrussPatch(normalizeLegacyDraftPatch(values));
   },
   extractDraft({ message, llmDraftPatch }) {
+    const llmPatch = buildLegacyDraftPatchLlmFirst(message, llmDraftPatch);
+    const rulePatch = llmPatch.engineeringDraft ? {} : buildNaturalTrussPatch(message);
     return toTrussPatch(
       mergeLegacyDraftPatchLlmFirst(
-        buildLegacyDraftPatchLlmFirst(message, llmDraftPatch),
-        buildNaturalTrussPatch(message),
+        llmPatch,
+        rulePatch,
       ),
     );
   },

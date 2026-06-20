@@ -39,6 +39,40 @@ describe('concrete-frame handler composed modules', () => {
     expect(missing.critical).toEqual([]);
   });
 
+  test('uses engineeringDraft without natural parser overrides', () => {
+    const patch = handler.extractDraft({
+      message: '三层混凝土框架，x方向4跨，间隔6m，每层3m，每层竖向荷载100kN',
+      locale: 'zh',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'concrete-frame',
+          geometry: {
+            storyHeightsM: [3.6, 3.6],
+            bayWidthsM: [6],
+          },
+          material: { family: 'concrete', grade: 'C35', rebarGrade: 'HRB400' },
+          sections: { column: '500x500', beam: '300x600' },
+          loads: [
+            { kind: 'nodal', magnitude: 120, unit: 'kN', direction: 'gravity', target: 'floor' },
+          ],
+        },
+      },
+    });
+
+    expect(patch.engineeringDraft).toBeDefined();
+    expect(patch.frameDimension).toBe('2d');
+    expect(patch.storyCount).toBe(2);
+    expect(patch.bayCount).toBe(1);
+    expect(patch.frameConcreteGrade).toBe('C35');
+    expect(patch.frameRebarGrade).toBe('HRB400');
+    expect(patch.frameColumnSection).toBe('500x500');
+    expect(patch.frameBeamSection).toBe('300x600');
+    expect(patch.floorLoads).toEqual([
+      { story: 1, verticalKN: 120, lateralXKN: undefined, lateralYKN: undefined },
+      { story: 2, verticalKN: 120, lateralXKN: undefined, lateralYKN: undefined },
+    ]);
+  });
+
   test('keeps total-load wording in interaction questions', () => {
     const [question] = buildConcreteFrameQuestions(
       ['floorLoads'],

@@ -340,6 +340,72 @@ export function projectEngineeringDraftToLegacyPatch(
     }));
   }
 
+  if (inferredType === 'truss') {
+    if (next.lengthM === undefined && spanLengths?.length) {
+      next.lengthM = spanLengths.reduce((total, span) => total + span, 0);
+    }
+    if (engineeringDraft.geometry?.heightM !== undefined) {
+      next.heightM = next.heightM ?? engineeringDraft.geometry.heightM;
+    }
+    if (next.bayCount === undefined && spanLengths?.length) {
+      next.bayCount = spanLengths.length;
+    }
+  }
+
+  if (inferredType === 'frame') {
+    const geometry = engineeringDraft.geometry;
+    if (geometry?.storyHeightsM?.length) {
+      next.storyHeightsM = next.storyHeightsM ?? geometry.storyHeightsM;
+      next.storyCount = next.storyCount ?? geometry.storyHeightsM.length;
+    }
+    if (geometry?.bayWidthsM?.length) {
+      next.bayWidthsM = next.bayWidthsM ?? geometry.bayWidthsM;
+      next.bayCount = next.bayCount ?? geometry.bayWidthsM.length;
+      next.frameDimension = next.frameDimension ?? '2d';
+    }
+    if (geometry?.bayWidthsXM?.length) {
+      next.bayWidthsXM = next.bayWidthsXM ?? geometry.bayWidthsXM;
+      next.bayCountX = next.bayCountX ?? geometry.bayWidthsXM.length;
+      next.frameDimension = next.frameDimension ?? '3d';
+    }
+    if (geometry?.bayWidthsYM?.length) {
+      next.bayWidthsYM = next.bayWidthsYM ?? geometry.bayWidthsYM;
+      next.bayCountY = next.bayCountY ?? geometry.bayWidthsYM.length;
+      next.frameDimension = next.frameDimension ?? '3d';
+    }
+    if (!next.bayWidthsM?.length && spanLengths?.length) {
+      next.bayWidthsM = spanLengths;
+      next.bayCount = spanLengths.length;
+      next.frameDimension = next.frameDimension ?? '2d';
+    }
+    if (engineeringDraft.material?.family === 'concrete' && engineeringDraft.material.grade) {
+      next.frameConcreteGrade = engineeringDraft.material.grade;
+    } else if (engineeringDraft.material?.grade) {
+      next.frameMaterial = engineeringDraft.material.grade;
+    }
+    if (engineeringDraft.material?.rebarGrade) {
+      next.frameRebarGrade = engineeringDraft.material.rebarGrade;
+    }
+    if (engineeringDraft.sections?.column) {
+      next.frameColumnSection = engineeringDraft.sections.column;
+    }
+    if (engineeringDraft.sections?.beam) {
+      next.frameBeamSection = engineeringDraft.sections.beam;
+    }
+    const gravityStoryLoad = loads.find((load) => load.direction === 'gravity' || load.direction === 'globalZ' || load.direction === undefined);
+    const lateralXLoad = loads.find((load) => load.direction === 'globalX');
+    const lateralYLoad = loads.find((load) => load.direction === 'globalY');
+    const storyCount = next.storyCount ?? next.storyHeightsM?.length;
+    if (storyCount && (gravityStoryLoad || lateralXLoad || lateralYLoad)) {
+      next.floorLoads = next.floorLoads ?? Array.from({ length: storyCount }, (_, index) => ({
+        story: index + 1,
+        verticalKN: gravityStoryLoad?.unit === 'kN' ? gravityStoryLoad.magnitude : undefined,
+        lateralXKN: lateralXLoad?.unit === 'kN' ? lateralXLoad.magnitude : undefined,
+        lateralYKN: lateralYLoad?.unit === 'kN' ? lateralYLoad.magnitude : undefined,
+      }));
+    }
+  }
+
   if (inferredType === 'column') {
     const section = engineeringDraft.sections?.column ?? engineeringDraft.sections?.member;
     Object.assign(skillState, sectionDimensionsM(section));

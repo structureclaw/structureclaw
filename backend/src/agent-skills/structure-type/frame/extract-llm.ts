@@ -3,6 +3,7 @@ import {
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
+import { projectEngineeringDraftToLegacyPatch } from '../../../agent-runtime/engineering-draft.js';
 import { composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
 import { normalizeNumber } from '../../../agent-runtime/fallback.js';
 import type { DraftExtraction, DraftFloorLoad, DraftState } from '../../../agent-runtime/types.js';
@@ -17,12 +18,25 @@ import { normalizeFrameNaturalPatch } from './extract-natural.js';
 import { normalizeSectionName, normalizeSteelGrade } from './model.js';
 
 export function toFramePatch(patch: DraftExtraction): DraftExtraction {
+  const semanticPatch = projectEngineeringDraftToLegacyPatch(patch, 'frame');
   const domainPatch = composeStructuralDomainPatch({
-    patch,
+    patch: semanticPatch,
     geometryKeys: GEOMETRY_KEYS,
     loadBoundaryKeys: LOAD_BOUNDARY_KEYS,
   });
-  return restrictLegacyDraftPatch(domainPatch, 'frame', [...GEOMETRY_KEYS, ...LOAD_BOUNDARY_KEYS]);
+  const next = restrictLegacyDraftPatch(domainPatch, 'frame', [...GEOMETRY_KEYS, ...LOAD_BOUNDARY_KEYS]);
+  if (semanticPatch.engineeringDraft) {
+    next.engineeringDraft = semanticPatch.engineeringDraft;
+  }
+  if (semanticPatch.skillState) {
+    next.skillState = semanticPatch.skillState;
+  }
+  for (const key of ['frameMaterial', 'frameColumnSection', 'frameBeamSection'] as const) {
+    if (semanticPatch[key] !== undefined) {
+      (next as Record<string, unknown>)[key] = semanticPatch[key];
+    }
+  }
+  return next;
 }
 
 function extractLlmScalar(raw: Record<string, unknown> | null | undefined, keys: string[]): number | undefined {
@@ -252,9 +266,10 @@ export function buildFrameDraftPatch(
   existingState: DraftState | undefined,
 ): DraftExtraction {
   const normalizedLlmPatch = buildFramePatchFromLlm(llmDraftPatch, existingState);
-  const rawNaturalPatch = normalizeFrameNaturalPatch(message, existingState);
+  const hasEngineeringDraft = normalizedLlmPatch.engineeringDraft !== undefined;
+  const rawNaturalPatch: DraftExtraction = hasEngineeringDraft ? {} : normalizeFrameNaturalPatch(message, existingState);
   const normalizedNaturalPatch = toFramePatch(rawNaturalPatch);
-  const normalizedRulePatch = toFramePatch(buildLegacyDraftPatchLlmFirst(message, null));
+  const normalizedRulePatch = hasEngineeringDraft ? {} : toFramePatch(buildLegacyDraftPatchLlmFirst(message, null));
   const nextPatch = canonicalizeFramePatch({
     message,
     existingState,
@@ -264,7 +279,7 @@ export function buildFrameDraftPatch(
     },
     llmPatch: normalizedLlmPatch,
   });
-  const nextPatchWithDerivedLoads = deriveFloorLoadsFromIntensity(message, nextPatch);
+  const nextPatchWithDerivedLoads = hasEngineeringDraft ? nextPatch : deriveFloorLoadsFromIntensity(message, nextPatch);
 
   const frameMaterial = (normalizedLlmPatch.frameMaterial as string | undefined)
     ?? (rawNaturalPatch.frameMaterial as string | undefined);

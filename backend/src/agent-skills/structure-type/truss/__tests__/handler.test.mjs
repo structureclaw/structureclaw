@@ -45,6 +45,28 @@ describe('truss handler', () => {
     }));
   });
 
+  test('uses engineeringDraft without natural parser overrides', () => {
+    const patch = handler.extractDraft({
+      message: 'A Pratt truss spans 15m, has 2.5m height and 5 panels, with 10kN loads at top chord nodes.',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'truss',
+          geometry: { lengthM: 12, heightM: 3, spanLengthsM: [3, 3, 3, 3] },
+          loads: [
+            { kind: 'point', magnitude: 20, unit: 'kN', direction: 'gravity', target: 'top-node' },
+          ],
+        },
+      },
+    });
+
+    expect(patch.engineeringDraft).toBeDefined();
+    expect(patch.lengthM).toBe(12);
+    expect(patch.heightM).toBe(3);
+    expect(patch.bayCount).toBe(4);
+    expect(patch.loadKN).toBe(20);
+    expect(patch.skillState).not.toEqual(expect.objectContaining({ trussTopology: 'pratt' }));
+  });
+
   test('builds a panelized planar truss model instead of a single bar', () => {
     const patch = handler.extractDraft({
       message: 'Pratt桁架，跨度15m，高2.5m，5个节间，每个上弦节点竖向荷载10kN，请分析',
