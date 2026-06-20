@@ -271,23 +271,23 @@ describe('buildModel - portal-frame', () => {
     expect(model.schema_version).toBe('2.0.0');
     expect(model.metadata.inferredType).toBe('portal-frame');
 
-    // 4 nodes: base-left, base-right, top-left, top-right
+    // 4 nodes: base-left, top-left, base-right, top-right
     expect(model.nodes).toHaveLength(4);
-    expect(model.nodes[0]).toEqual({ id: '1', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] });
-    expect(model.nodes[1]).toEqual({ id: '2', x: 8, y: 0, z: 0, restraints: [true, true, true, true, true, true] });
-    expect(model.nodes[2]).toEqual({ id: '3', x: 0, y: 0, z: 4 });
-    expect(model.nodes[3]).toEqual({ id: '4', x: 8, y: 0, z: 4 });
+    expect(model.nodes[0]).toEqual({ id: 'B0', x: 0, y: 0, z: 0, restraints: [true, true, true, true, true, true] });
+    expect(model.nodes[1]).toEqual({ id: 'T0', x: 0, y: 0, z: 4 });
+    expect(model.nodes[2]).toEqual({ id: 'B1', x: 8, y: 0, z: 0, restraints: [true, true, true, true, true, true] });
+    expect(model.nodes[3]).toEqual({ id: 'T1', x: 8, y: 0, z: 4 });
 
     // 3 elements: left column, beam, right column
     expect(model.elements).toHaveLength(3);
-    expect(model.elements[0]).toEqual({ id: '1', type: 'beam', nodes: ['1', '3'], material: '1', section: '1' });
-    expect(model.elements[1]).toEqual({ id: '2', type: 'beam', nodes: ['3', '4'], material: '1', section: '1' });
-    expect(model.elements[2]).toEqual({ id: '3', type: 'beam', nodes: ['4', '2'], material: '1', section: '1' });
+    expect(model.elements[0]).toEqual({ id: 'C0', type: 'beam', nodes: ['B0', 'T0'], material: '1', section: '1' });
+    expect(model.elements[1]).toEqual({ id: 'C1', type: 'beam', nodes: ['B1', 'T1'], material: '1', section: '1' });
+    expect(model.elements[2]).toEqual({ id: 'R0', type: 'beam', nodes: ['T0', 'T1'], material: '1', section: '1' });
 
     // Load split equally between top nodes
     expect(model.load_cases[0].loads).toEqual([
-      { type: 'nodal', node: '3', forces: [0, 0, -10, 0, 0, 0] },
-      { type: 'nodal', node: '4', forces: [0, 0, -10, 0, 0, 0] },
+      { type: 'nodal', node: 'T0', forces: [0, 0, -10, 0, 0, 0] },
+      { type: 'nodal', node: 'T1', forces: [0, 0, -10, 0, 0, 0] },
     ]);
 
     expect(model.sections[0].name).toBe('PF1');
@@ -313,12 +313,15 @@ describe('buildModel - double-span-beam', () => {
     expect(model.nodes).toHaveLength(3);
     expect(model.nodes[0]).toEqual({
       id: '1', x: 0, y: 0, z: 0,
-      restraints: [true, true, true, true, true, true],
+      restraints: [true, true, true, true, true, false],
     });
-    expect(model.nodes[1]).toEqual({ id: '2', x: 5, y: 0, z: 0 });
+    expect(model.nodes[1]).toEqual({
+      id: '2', x: 5, y: 0, z: 0,
+      restraints: [false, true, true, true, true, false],
+    });
     expect(model.nodes[2]).toEqual({
       id: '3', x: 10, y: 0, z: 0,
-      restraints: [false, true, true, true, true, true],
+      restraints: [false, true, true, true, true, false],
     });
 
     expect(model.elements).toHaveLength(2);
@@ -326,7 +329,7 @@ describe('buildModel - double-span-beam', () => {
     expect(model.elements[1]).toEqual({ id: '2', type: 'beam', nodes: ['2', '3'], material: '1', section: '1' });
 
     expect(model.load_cases[0].loads).toEqual([{ node: '2', fz: -30 }]);
-    expect(model.sections[0].name).toBe('B1');
+    expect(model.sections[0].name).toBe('CONTINUOUS_BEAM');
   });
 });
 

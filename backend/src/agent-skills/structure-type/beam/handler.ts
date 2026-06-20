@@ -3,11 +3,11 @@ import {
   buildLegacyLabels,
   buildLegacyModel,
   computeLegacyMissing,
-  mergeLegacyDraftPatchLlmFirst,
   mergeLegacyState,
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
+import { projectEngineeringDraftToLegacyPatch } from '../../../agent-runtime/engineering-draft.js';
 import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
 import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../../agent-runtime/fallback.js';
@@ -26,15 +26,8 @@ const GEOMETRY_KEYS = ['lengthM'] as const;
 const LOAD_BOUNDARY_KEYS = ['supportType', 'loadKN', 'loadType', 'loadPosition', 'loadPositionM'] as const;
 const ALLOWED_KEYS = combineDomainKeys(GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS);
 
-function applyBeamDefaults(message: string, patch: DraftExtraction): DraftExtraction {
-  const text = message.toLowerCase();
+function applyBeamDefaults(patch: DraftExtraction): DraftExtraction {
   const nextPatch: DraftExtraction = { ...patch };
-
-  if (nextPatch.supportType === undefined) {
-    if (text.includes('cantilever') || text.includes('悬臂')) {
-      nextPatch.supportType = 'cantilever';
-    }
-  }
 
   if (
     nextPatch.loadPosition === undefined
@@ -46,57 +39,21 @@ function applyBeamDefaults(message: string, patch: DraftExtraction): DraftExtrac
   return nextPatch;
 }
 
-function toBeamPatch(patch: DraftExtraction, message = ''): DraftExtraction {
+function toBeamPatch(patch: DraftExtraction): DraftExtraction {
+  const semanticPatch = projectEngineeringDraftToLegacyPatch(patch, 'beam');
   const domainPatch = composeStructuralDomainPatch({
-    patch,
+    patch: semanticPatch,
     geometryKeys: GEOMETRY_KEYS,
     loadBoundaryKeys: LOAD_BOUNDARY_KEYS,
   });
-  const nextPatch = restrictLegacyDraftPatch(applyBeamDefaults(message, domainPatch), 'beam', [...ALLOWED_KEYS]);
-  if (patch.skillState) {
-    nextPatch.skillState = patch.skillState;
+  const nextPatch = restrictLegacyDraftPatch(applyBeamDefaults(domainPatch), 'beam', [...ALLOWED_KEYS]);
+  if (semanticPatch.engineeringDraft) {
+    nextPatch.engineeringDraft = semanticPatch.engineeringDraft;
+  }
+  if (semanticPatch.skillState) {
+    nextPatch.skillState = semanticPatch.skillState;
   }
   return nextPatch;
-}
-
-function extractPositiveNumber(pattern: RegExp, message: string): number | undefined {
-  const match = pattern.exec(message);
-  if (!match?.[1]) return undefined;
-  const value = Number(match[1]);
-  return Number.isFinite(value) && value > 0 ? value : undefined;
-}
-
-function buildNaturalBeamPatch(message: string): DraftExtraction {
-  const text = message.toLowerCase();
-  const patch: DraftExtraction = {};
-  const simpleSpan = extractPositiveNumber(/简支跨度\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/iu, message);
-  const overhang = extractPositiveNumber(/外伸\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/iu, message)
-    ?? extractPositiveNumber(/\boverhang(?:ing)?\s*(?:length\s*)?([0-9]+(?:\.[0-9]+)?)\s*m\b/iu, text);
-  if (simpleSpan !== undefined && overhang !== undefined) {
-    patch.lengthM = simpleSpan + overhang;
-    patch.supportType = 'simply-supported';
-    patch.skillState = {
-      ...(patch.skillState ?? {}),
-      simpleSpanM: simpleSpan,
-      overhangLengthM: overhang,
-    };
-  }
-
-  const length = extractPositiveNumber(/(?:跨度|长度)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/iu, message)
-    ?? extractPositiveNumber(/\b(?:span|length)\s*(?:of\s*)?([0-9]+(?:\.[0-9]+)?)\s*m\b/iu, text);
-  if (patch.lengthM === undefined && length !== undefined) {
-    patch.lengthM = length;
-  }
-
-  const distributed = extractPositiveNumber(/(?:均布荷载|线荷载|distributed\s+load)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kN\/m|kn\/m|千牛\/米)/iu, message)
-    ?? extractPositiveNumber(/([0-9]+(?:\.[0-9]+)?)\s*(?:kN\/m|kn\/m|千牛\/米)\s*(?:均布荷载|线荷载|distributed\s+load)?/iu, message);
-  if (distributed !== undefined) {
-    patch.loadKN = distributed;
-    patch.loadType = 'distributed';
-    patch.loadPosition = 'full-span';
-  }
-
-  return patch;
 }
 
 function buildBeamDefaultReason(paramKey: string, locale: AppLocale): string {
@@ -237,13 +194,7 @@ export const handler: SkillHandler = {
     return toBeamPatch(patch);
   },
   extractDraft({ message, llmDraftPatch }) {
-    return toBeamPatch(
-      mergeLegacyDraftPatchLlmFirst(
-        buildLegacyDraftPatchLlmFirst(message, llmDraftPatch),
-        buildNaturalBeamPatch(message),
-      ),
-      message,
-    );
+    return toBeamPatch(buildLegacyDraftPatchLlmFirst(message, llmDraftPatch));
   },
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toBeamPatch(patch), 'beam', 'beam');

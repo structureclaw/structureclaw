@@ -15,6 +15,7 @@ describe('structure-type provider registry', () => {
     expect(ids).toEqual([
       'portal-frame',
       'double-span-beam',
+      'column',
       'truss',
       'concrete-frame',
       'frame',
@@ -78,6 +79,7 @@ describe('structure-type provider registry', () => {
       'portal-frame',
       'double-span-beam',
       'frame-ext',
+      'column',
       'truss',
       'concrete-frame',
       'frame',

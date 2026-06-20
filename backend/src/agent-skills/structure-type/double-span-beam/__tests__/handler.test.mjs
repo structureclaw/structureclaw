@@ -22,10 +22,19 @@ describe('double-span-beam handler', () => {
     expect(match?.mappedType).toBe('double-span-beam');
   });
 
-  test('builds unequal continuous beam spans with distributed and point loads', () => {
+  test('builds unequal continuous beam spans with structured distributed and point loads', () => {
     const patch = handler.extractDraft({
-      message: '不等跨连续梁，跨度4m和7m，均布荷载10kN/m，在长跨跨中作用集中力30kN，做静力分析',
-      llmDraftPatch: { inferredType: 'double-span-beam' },
+      message: '',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'double-span-beam',
+          geometry: { spanLengthsM: [4, 7] },
+          loads: [
+            { kind: 'line', magnitude: 10, unit: 'kN/m', direction: 'gravity', target: 'beam' },
+            { kind: 'point', magnitude: 30, unit: 'kN', direction: 'gravity', target: 'beam', location: { spanIndex: 2 } },
+          ],
+        },
+      },
     });
     const state = handler.mergeState(undefined, patch);
     const model = handler.buildModel(state);

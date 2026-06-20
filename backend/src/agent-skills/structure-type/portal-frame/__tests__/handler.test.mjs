@@ -24,10 +24,19 @@ describe('portal-frame handler', () => {
     expect(question.question).toContain('full-span');
   });
 
-  test('builds double-span portal frame geometry from 2x span wording', () => {
+  test('builds double-span portal frame geometry from engineeringDraft', () => {
     const patch = handler.extractDraft({
-      message: '双跨门式刚架，跨度2x18m，高度9m，设5t吊车，屋面荷载6kN/m，做静力分析',
-      llmDraftPatch: { inferredType: 'portal-frame' },
+      message: '',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'portal-frame',
+          geometry: { spanLengthsM: [18, 18], heightM: 9 },
+          loads: [
+            { kind: 'line', magnitude: 6, unit: 'kN/m', direction: 'gravity', target: 'roof' },
+            { kind: 'point', magnitude: 49.03325, unit: 'kN', direction: 'gravity', target: 'crane' },
+          ],
+        },
+      },
     });
     const state = handler.mergeState(undefined, patch);
     const model = handler.buildModel(state);
@@ -49,8 +58,20 @@ describe('portal-frame handler', () => {
 
   test('builds a simple mezzanine portal-frame idealization', () => {
     const patch = handler.extractDraft({
-      message: '门式刚架，跨度18m，檐口高度7m，一侧设3m高夹层，屋面荷载6kN/m，夹层荷载4kN/m2，做静力分析',
-      llmDraftPatch: { inferredType: 'portal-frame' },
+      message: '',
+      llmDraftPatch: {
+        inferredType: 'portal-frame',
+        spanLengthM: 18,
+        heightM: 7,
+        loadKN: 6,
+        loadType: 'distributed',
+        loadPosition: 'full-span',
+        skillState: {
+          roofLoadKNM: 6,
+          mezzanineHeightM: 3,
+          mezzanineLoadKN: 4,
+        },
+      },
     });
     const state = handler.mergeState(undefined, patch);
     const model = handler.buildModel(state);

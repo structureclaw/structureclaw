@@ -275,8 +275,8 @@ export function normalizeFrameNaturalPatch(message: string, existingState: Draft
     ? '3d'
     : explicitDimension
       ?? existingState?.frameDimension
-      ?? (genericBayCount !== undefined || genericSpanArray !== undefined ? '2d' : undefined)
-      ?? (bayCountX !== undefined ? '3d' : undefined);
+      ?? (bayCountX !== undefined ? '3d' : undefined)
+      ?? (genericBayCount !== undefined || genericSpanArray !== undefined ? '2d' : undefined);
   const resolved2dBayCount = genericBayCount ?? bayCountX ?? existingState?.bayCount;
   const resolved2dBayWidths = resolvedFrameDimension !== '3d'
     ? (

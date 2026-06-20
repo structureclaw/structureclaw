@@ -482,15 +482,108 @@ function readPositiveNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : undefined;
 }
 
+function readFiniteNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
 function readPositiveNumberArray(value: unknown): number[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const values = value.filter((item): item is number => typeof item === 'number' && Number.isFinite(item) && item > 0);
   return values.length > 0 ? values : undefined;
 }
 
+function readRecordArray(value: unknown): Array<Record<string, unknown>> | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const records = value.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item));
+  return records.length ? records : undefined;
+}
+
 function readPositiveInteger(value: unknown): number | undefined {
   const parsed = readPositiveNumber(value);
   return parsed === undefined ? undefined : Math.max(1, Math.round(parsed));
+}
+
+function isSemanticDistributedLoad(load: Record<string, unknown>): boolean {
+  return load.kind === 'distributed' || load.kind === 'line' || load.unit === 'kN/m';
+}
+
+function isSemanticPointLoad(load: Record<string, unknown>): boolean {
+  return load.kind === 'point' || load.kind === 'nodal' || load.unit === 'kN';
+}
+
+function buildSemanticBeamModel(
+  state: DraftState,
+  metadata: Record<string, unknown>,
+  semanticLoads: Array<Record<string, unknown>>,
+): Record<string, unknown> {
+  const length = state.lengthM!;
+  const supportType = state.supportType || 'cantilever';
+  const pointLoadXs = semanticLoads
+    .filter(isSemanticPointLoad)
+    .map((load) => readPositiveNumber(load.xM) ?? state.loadPositionM ?? length / 2)
+    .filter((x): x is number => x !== undefined && x > 0 && x < length);
+  const coordinates = Array.from(new Set([0, ...pointLoadXs, length])).sort((left, right) => left - right);
+  const fixed = [true, true, true, true, true, true];
+  const pinned = [true, true, true, true, true, false];
+  const roller = [false, true, true, true, true, false];
+  const nodes = coordinates.map((x, index) => {
+    const node: Record<string, unknown> = { id: `${index + 1}`, x, y: 0, z: 0 };
+    if (index === 0) {
+      node.restraints = supportType === 'cantilever' ? fixed : pinned;
+    } else if (index === coordinates.length - 1 && supportType !== 'cantilever') {
+      node.restraints = supportType === 'fixed-fixed' ? fixed : roller;
+    }
+    return node;
+  });
+  const elements = coordinates.slice(0, -1).map((_x, index) => ({
+    id: `${index + 1}`,
+    type: 'beam',
+    nodes: [`${index + 1}`, `${index + 2}`],
+    material: '1',
+    section: '1',
+  }));
+  const loads: Array<Record<string, unknown>> = [];
+  for (const load of semanticLoads) {
+    const magnitude = readPositiveNumber(load.magnitude);
+    if (magnitude === undefined) continue;
+    if (isSemanticDistributedLoad(load)) {
+      for (const element of elements) {
+        loads.push({ type: 'distributed', element: element.id, wz: -magnitude, wy: 0 });
+      }
+      continue;
+    }
+    if (isSemanticPointLoad(load)) {
+      const x = readPositiveNumber(load.xM) ?? state.loadPositionM ?? length / 2;
+      const nodeIndex = coordinates.findIndex((coordinate) => Math.abs(coordinate - x) < 1e-9);
+      const targetNode = nodeIndex >= 0 ? `${nodeIndex + 1}` : `${Math.max(1, Math.round(coordinates.length / 2))}`;
+      const direction = typeof load.direction === 'string' ? load.direction : undefined;
+      if (direction === 'globalX') {
+        loads.push({ node: targetNode, fx: magnitude });
+      } else if (direction === 'globalY') {
+        loads.push({ node: targetNode, fy: magnitude });
+      } else {
+        loads.push({ node: targetNode, fz: -magnitude });
+      }
+    }
+  }
+
+  return {
+    schema_version: '2.0.0',
+    unit_system: 'SI',
+    nodes,
+    elements,
+    materials: [
+      { id: '1', name: 'steel', E: 205000, nu: 0.3, rho: 7850 },
+    ],
+    sections: [
+      { id: '1', name: 'B1', type: 'beam', properties: { A: 0.01, Iy: 0.0001, Iz: 0.0001, J: 0.0001, G: 79000 } },
+    ],
+    load_cases: [
+      { id: 'LC1', type: 'other', loads },
+    ],
+    load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
+    metadata: { ...metadata, supportType, semanticLoadCount: semanticLoads.length },
+  };
 }
 
 function buildColumnModel(state: DraftState, metadata: Record<string, unknown>): Record<string, unknown> {
@@ -504,6 +597,19 @@ function buildColumnModel(state: DraftState, metadata: Record<string, unknown>):
   const iz = (sectionDepthM * (sectionWidthM ** 3)) / 12;
   const elasticModulus = materialFamily === 'concrete' ? 30000 : 205000;
   const shearModulus = materialFamily === 'concrete' ? 12500 : 79000;
+  const semanticColumnLoads = readRecordArray(state.skillState?.columnLoads);
+  const modelLoads = semanticColumnLoads?.map((load) => {
+    const fx = readFiniteNumber(load.fxKN);
+    const fy = readFiniteNumber(load.fyKN);
+    const fz = readFiniteNumber(load.fzKN);
+    return {
+      node: '2',
+      ...(fx !== undefined && { fx }),
+      ...(fy !== undefined && { fy }),
+      ...(fz !== undefined && { fz }),
+    };
+  }).filter((load) => Object.keys(load).length > 1);
+  const loads = modelLoads?.length ? modelLoads : [{ node: '2', fz: -axialLoad }];
 
   return {
     schema_version: '2.0.0',
@@ -522,7 +628,7 @@ function buildColumnModel(state: DraftState, metadata: Record<string, unknown>):
       { id: '1', name: 'COLUMN', type: 'beam', properties: { A: area, Iy: iy, Iz: iz, J: Math.max(iy, iz), G: shearModulus } },
     ],
     load_cases: [
-      { id: 'LC1', type: 'other', loads: [{ node: '2', fz: -axialLoad }] },
+      { id: 'LC1', type: 'other', loads },
     ],
     load_combinations: [{ id: 'ULS', factors: { LC1: 1.0 } }],
     metadata: {
@@ -550,8 +656,9 @@ function getContinuousBeamSpanLengths(state: DraftState): number[] {
 function buildContinuousBeamModel(state: DraftState, metadata: Record<string, unknown>): Record<string, unknown> {
   const spans = getContinuousBeamSpanLengths(state);
   const supportCoordinates = accumulateCoordinates(spans);
-  const pointLoad = readPositiveNumber(state.skillState?.pointLoadKN)
-    ?? (state.loadType === 'point' ? state.loadKN : undefined);
+  const explicitPointLoad = readPositiveNumber(state.skillState?.pointLoadKN);
+  const pointLoad = explicitPointLoad
+    ?? (state.loadType === 'point' || state.loadType === undefined ? state.loadKN : undefined);
   const pointSpanIndex = Math.min(
     spans.length - 1,
     Math.max(
@@ -559,8 +666,21 @@ function buildContinuousBeamModel(state: DraftState, metadata: Record<string, un
       (readPositiveInteger(state.skillState?.pointLoadSpanIndex) ?? (spans.indexOf(Math.max(...spans)) + 1)) - 1,
     ),
   );
+  const explicitPointLoadX = readPositiveNumber(state.skillState?.pointLoadXM);
+  const middleSupportX = supportCoordinates.length > 2
+    ? supportCoordinates[Math.floor((supportCoordinates.length - 1) / 2)]
+    : undefined;
   const pointLoadX = pointLoad !== undefined
-    ? supportCoordinates[pointSpanIndex] + spans[pointSpanIndex] / 2
+    ? (
+        explicitPointLoadX
+        ?? (
+          explicitPointLoad === undefined
+          && (state.loadPosition === undefined || state.loadPosition === 'middle-joint')
+          && middleSupportX !== undefined
+            ? middleSupportX
+            : supportCoordinates[pointSpanIndex] + spans[pointSpanIndex] / 2
+        )
+      )
     : undefined;
   const coordinates = Array.from(new Set([
     ...supportCoordinates,
@@ -742,6 +862,10 @@ export function buildModel(state: DraftState): Record<string, unknown> {
   const length = state.lengthM!;
   const load = state.loadKN!;
   const supportType = state.supportType || 'cantilever';
+  const semanticBeamLoads = readRecordArray(state.skillState?.beamLoads);
+  if (semanticBeamLoads?.length) {
+    return buildSemanticBeamModel(state, metadata, semanticBeamLoads);
+  }
   const simpleSpan = readPositiveNumber(state.skillState?.simpleSpanM);
   const overhangLength = readPositiveNumber(state.skillState?.overhangLengthM);
   const beamNodes = supportType === 'simply-supported' && simpleSpan !== undefined && overhangLength !== undefined

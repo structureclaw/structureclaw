@@ -12,26 +12,34 @@ describe('beam handler', () => {
     expect(match?.mappedType).toBe('beam');
   });
 
-  test('builds overhanging beam model from simple-span and overhang wording', () => {
+  test('builds combined beam loads from engineeringDraft', () => {
     const patch = handler.extractDraft({
-      message: '外伸梁，简支跨度5m，外伸1.5m，均布荷载15kN/m，请进行静力分析',
-      llmDraftPatch: { inferredType: 'beam' },
+      message: '',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'beam',
+          geometry: { lengthM: 12 },
+          boundary: { supportType: 'simply-supported' },
+          loads: [
+            { kind: 'line', magnitude: 15, unit: 'kN/m', direction: 'gravity', target: 'beam' },
+            { kind: 'point', magnitude: 50, unit: 'kN', direction: 'gravity', target: 'beam', location: { xM: 4 } },
+          ],
+        },
+      },
     });
     const state = handler.mergeState(undefined, patch);
     const model = handler.buildModel(state);
 
     expect(handler.computeMissing(state, 'execution').critical).toEqual([]);
-    expect(state.lengthM).toBe(6.5);
-    expect(state.skillState).toEqual(expect.objectContaining({
-      simpleSpanM: 5,
-      overhangLengthM: 1.5,
-    }));
-    expect(model.nodes.map((node) => node.x)).toEqual([0, 5, 6.5]);
+    expect(state.lengthM).toBe(12);
+    expect(state.skillState.extractionSource).toBe('engineering-draft');
+    expect(model.nodes.map((node) => node.x)).toEqual([0, 4, 12]);
     expect(model.elements).toHaveLength(2);
-    expect(model.load_cases[0].loads).toEqual([
+    expect(model.load_cases[0].loads).toEqual(expect.arrayContaining([
       { type: 'distributed', element: '1', wz: -15, wy: 0 },
       { type: 'distributed', element: '2', wz: -15, wy: 0 },
-    ]);
+      { node: '2', fz: -50 },
+    ]));
   });
 
   test('keeps ordinary beam defaults deterministic', () => {
@@ -61,14 +69,16 @@ describe('beam handler', () => {
     expect(patch.loadPosition).toBe('full-span');
   });
 
-  test('preserves cantilever support when the message explicitly says cantilever', () => {
+  test('preserves cantilever support from structured boundary data', () => {
     const patch = handler.extractDraft({
-      message: '悬臂梁，长4米，端部集中力10kN',
+      message: '',
       llmDraftPatch: {
-        inferredType: 'beam',
-        lengthM: 4,
-        loadKN: 10,
-        loadType: 'point',
+        engineeringDraft: {
+          structureType: 'beam',
+          geometry: { lengthM: 4 },
+          boundary: { supportType: 'cantilever' },
+          loads: [{ kind: 'point', magnitude: 10, unit: 'kN', direction: 'gravity', target: 'end' }],
+        },
       },
     });
 

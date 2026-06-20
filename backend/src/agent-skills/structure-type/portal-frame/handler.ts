@@ -3,11 +3,11 @@ import {
   buildLegacyLabels,
   buildLegacyModel,
   computeLegacyMissing,
-  mergeLegacyDraftPatchLlmFirst,
   mergeLegacyState,
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
+import { projectEngineeringDraftToLegacyPatch } from '../../../agent-runtime/engineering-draft.js';
 import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
 import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../../agent-runtime/fallback.js';
@@ -27,92 +27,21 @@ const LOAD_BOUNDARY_KEYS = ['loadKN', 'loadType', 'loadPosition'] as const;
 const ALLOWED_KEYS = combineDomainKeys(GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS);
 
 function toPortalFramePatch(patch: DraftExtraction): DraftExtraction {
+  const semanticPatch = projectEngineeringDraftToLegacyPatch(patch, 'portal-frame');
   const domainPatch = composeStructuralDomainPatch({
-    patch,
+    patch: semanticPatch,
     geometryKeys: GEOMETRY_KEYS,
     loadBoundaryKeys: LOAD_BOUNDARY_KEYS,
     spanLengthAliasFromLength: true,
   });
   const nextPatch = restrictLegacyDraftPatch(domainPatch, 'portal-frame', [...ALLOWED_KEYS]);
-  if (patch.skillState) {
-    nextPatch.skillState = patch.skillState;
+  if (semanticPatch.engineeringDraft) {
+    nextPatch.engineeringDraft = semanticPatch.engineeringDraft;
+  }
+  if (semanticPatch.skillState) {
+    nextPatch.skillState = semanticPatch.skillState;
   }
   return nextPatch;
-}
-
-function extractPositiveNumber(pattern: RegExp, message: string): number | undefined {
-  const match = pattern.exec(message);
-  if (!match?.[1]) return undefined;
-  const value = Number(match[1]);
-  return Number.isFinite(value) && value > 0 ? value : undefined;
-}
-
-function extractPortalSpans(message: string): number[] | undefined {
-  const repeated = message.match(/跨度\s*([0-9]+)\s*[x×*]\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/iu);
-  if (repeated?.[1] && repeated[2]) {
-    return Array.from({ length: Number(repeated[1]) }, () => Number(repeated[2]));
-  }
-  const list = message.match(/跨度\s*((?:[0-9]+(?:\.[0-9]+)?\s*(?:m|米)\s*(?:和|、|,|，)?\s*){2,})/iu);
-  if (list?.[1]) {
-    const values = [...list[1].matchAll(/([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/giu)]
-      .map((match) => Number(match[1]))
-      .filter((value) => Number.isFinite(value) && value > 0);
-    if (values.length) return values;
-  }
-  const single = extractPositiveNumber(/跨度\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/iu, message);
-  return single !== undefined ? [single] : undefined;
-}
-
-function buildNaturalPortalFramePatch(message: string): DraftExtraction {
-  const patch: DraftExtraction = {};
-  const spans = extractPortalSpans(message);
-  if (spans?.length) {
-    patch.spanLengthM = spans[0];
-    patch.skillState = {
-      ...(patch.skillState ?? {}),
-      portalBaySpansM: spans,
-      portalBayCount: spans.length,
-    };
-  }
-
-  const height = extractPositiveNumber(/(?:檐口高度|柱高|高度|高)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/iu, message);
-  if (height !== undefined) {
-    patch.heightM = height;
-  }
-
-  const roofLoad = extractPositiveNumber(/(?:屋面荷载|均布荷载|线荷载)\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kN\/m|kn\/m|千牛\/米)/iu, message)
-    ?? extractPositiveNumber(/([0-9]+(?:\.[0-9]+)?)\s*(?:kN\/m|kn\/m|千牛\/米)\s*(?:屋面荷载|均布荷载|线荷载)?/iu, message);
-  if (roofLoad !== undefined) {
-    patch.loadKN = roofLoad;
-    patch.loadType = 'distributed';
-    patch.loadPosition = 'full-span';
-    patch.skillState = {
-      ...(patch.skillState ?? {}),
-      roofLoadKNM: roofLoad,
-    };
-  }
-
-  const craneTon = extractPositiveNumber(/([0-9]+(?:\.[0-9]+)?)\s*t\s*吊车/iu, message)
-    ?? extractPositiveNumber(/([0-9]+(?:\.[0-9]+)?)\s*吨\s*吊车/iu, message);
-  if (craneTon !== undefined) {
-    patch.skillState = {
-      ...(patch.skillState ?? {}),
-      craneLoadKN: craneTon * 9.80665,
-    };
-  }
-
-  const mezzanineHeight = extractPositiveNumber(/([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)\s*高夹层/iu, message)
-    ?? extractPositiveNumber(/夹层[^，,。]*?高度\s*([0-9]+(?:\.[0-9]+)?)\s*(?:m|米)/iu, message);
-  const mezzanineLoad = extractPositiveNumber(/夹层荷载\s*([0-9]+(?:\.[0-9]+)?)\s*(?:kN\/m2|kn\/m2|kN\/㎡|千牛\/平方米)/iu, message);
-  if (mezzanineHeight !== undefined || mezzanineLoad !== undefined) {
-    patch.skillState = {
-      ...(patch.skillState ?? {}),
-      ...(mezzanineHeight !== undefined && { mezzanineHeightM: mezzanineHeight }),
-      ...(mezzanineLoad !== undefined && { mezzanineLoadKN: mezzanineLoad }),
-    };
-  }
-
-  return patch;
 }
 
 function buildPortalFrameDefaultReason(paramKey: string, locale: AppLocale): string {
@@ -235,12 +164,7 @@ export const handler: SkillHandler = {
     return toPortalFramePatch(normalizeLegacyDraftPatch(values));
   },
   extractDraft({ message, llmDraftPatch }) {
-    return toPortalFramePatch(
-      mergeLegacyDraftPatchLlmFirst(
-        buildLegacyDraftPatchLlmFirst(message, llmDraftPatch),
-        buildNaturalPortalFramePatch(message),
-      ),
-    );
+    return toPortalFramePatch(buildLegacyDraftPatchLlmFirst(message, llmDraftPatch));
   },
   mergeState(existing, patch) {
     return mergeLegacyState(existing, toPortalFramePatch(patch), 'portal-frame', 'portal-frame');
