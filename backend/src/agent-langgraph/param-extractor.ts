@@ -33,7 +33,8 @@ function buildSkillInfo(plugin: AgentSkillPlugin): Record<string, unknown> {
 function engineeringDraftSchemaDescription(locale: 'zh' | 'en'): string {
   if (locale === 'zh') {
     return [
-      '优先输出 engineeringDraft，结构如下：',
+      '优先输出名为 engineeringDraft 的字段，字段值结构如下：',
+      '{ "engineeringDraft":',
       '{',
       '  "structureType": "beam|column|truss|portal-frame|steel-frame|concrete-frame",',
       '  "geometry": { "lengthM": number, "heightM": number, "spanLengthsM": number[], "storyHeightsM": number[], "bayWidthsM": number[], "bayWidthsXM": number[], "bayWidthsYM": number[] },',
@@ -44,11 +45,12 @@ function engineeringDraftSchemaDescription(locale: 'zh' | 'en'): string {
       '    { "kind": "point|line|area|nodal|distributed", "magnitude": number, "unit": "kN|kN/m|kN/m2", "direction": "gravity|globalX|globalY|globalZ", "target": string, "location": { "xM": number, "spanIndex": number, "nodeRole": string } }',
       '  ],',
       '  "analysis": { "type": "static|dynamic|seismic|nonlinear", "engineTarget": "opensees|pkpm|yjk" }',
-      '}',
+      '} }',
     ].join('\n');
   }
   return [
-    'Prefer engineeringDraft with this shape:',
+    'Prefer a field named engineeringDraft whose value has this shape:',
+    '{ "engineeringDraft":',
     '{',
     '  "structureType": "beam|column|truss|portal-frame|steel-frame|concrete-frame",',
     '  "geometry": { "lengthM": number, "heightM": number, "spanLengthsM": number[], "storyHeightsM": number[], "bayWidthsM": number[], "bayWidthsXM": number[], "bayWidthsYM": number[] },',
@@ -59,7 +61,7 @@ function engineeringDraftSchemaDescription(locale: 'zh' | 'en'): string {
     '    { "kind": "point|line|area|nodal|distributed", "magnitude": number, "unit": "kN|kN/m|kN/m2", "direction": "gravity|globalX|globalY|globalZ", "target": string, "location": { "xM": number, "spanIndex": number, "nodeRole": string } }',
     '  ],',
     '  "analysis": { "type": "static|dynamic|seismic|nonlinear", "engineTarget": "opensees|pkpm|yjk" }',
-    '}',
+    '} }',
   ].join('\n');
 }
 
@@ -93,6 +95,7 @@ export function buildParamExtractorPrompt(
       '- 保留已有 draftState 中的所有参数值，补充新提取的值',
       '- 不确定时省略字段，不要猜测',
       '- 嵌套数组字段必须输出完整对象；例如 floorLoads 的每一项都必须包含 story',
+      '- 如果用户明确给出多个荷载，每个荷载都必须作为 engineeringDraft.loads 的独立条目输出，不要合并或丢弃集中力/节点力',
       '- 不输出元数据字段（updatedAt, skillId, structuralTypeKey, supportLevel, coordinateSemantics, supportNote）',
       '- 不要为了补齐字段而猜测未明确给出的工程参数',
       '- 不要 markdown 包装或解释',
@@ -119,6 +122,7 @@ export function buildParamExtractorPrompt(
     '- Preserve ALL existing draftState parameter values, add newly extracted ones',
     '- Omit fields you are unsure about — do NOT guess',
     '- Nested array fields must contain complete objects; for example each floorLoads item must include story',
+    '- If the user explicitly gives multiple loads, output each load as its own engineeringDraft.loads entry; do not merge or drop point/nodal loads',
     '- Do NOT output metadata fields (updatedAt, skillId, structuralTypeKey, supportLevel, coordinateSemantics, supportNote)',
     '- Do not guess engineering parameters that are not clear from the message',
     '- No markdown fences, no explanations',
@@ -165,6 +169,24 @@ function tryParseJson(text: string): Record<string, unknown> | null {
   }
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function looksLikeTopLevelEngineeringDraft(parsed: Record<string, unknown>): boolean {
+  if (isRecord(parsed.engineeringDraft) || isRecord(parsed.draftPatch)) {
+    return false;
+  }
+  return (
+    isRecord(parsed.geometry)
+    || isRecord(parsed.material)
+    || isRecord(parsed.sections)
+    || isRecord(parsed.boundary)
+    || Array.isArray(parsed.loads)
+    || isRecord(parsed.analysis)
+  );
+}
+
 function unwrapDraftPatch(parsed: Record<string, unknown>): Record<string, unknown> {
   const engineeringDraft = parsed.engineeringDraft;
   const draftPatch = parsed.draftPatch;
@@ -174,6 +196,12 @@ function unwrapDraftPatch(parsed: Record<string, unknown>): Record<string, unkno
       ...(engineeringDraft && typeof engineeringDraft === 'object' && !Array.isArray(engineeringDraft)
         ? { engineeringDraft }
         : {}),
+    };
+  }
+  if (looksLikeTopLevelEngineeringDraft(parsed)) {
+    return {
+      ...(typeof parsed.inferredType === 'string' ? { inferredType: parsed.inferredType } : {}),
+      engineeringDraft: parsed,
     };
   }
   return parsed;

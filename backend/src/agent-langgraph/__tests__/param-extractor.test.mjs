@@ -46,4 +46,26 @@ describe("param extractor", () => {
       loadKN: 10,
     });
   });
+
+  test("wraps top-level semantic engineering draft JSON", async () => {
+    const { parseDraftPatchFromContent } = await import("../../../dist/agent-langgraph/param-extractor.js");
+
+    const semanticJson = JSON.stringify({
+      structureType: "column",
+      geometry: { heightM: 4.2 },
+      loads: [
+        { kind: "nodal", magnitude: 600, unit: "kN", direction: "gravity" },
+      ],
+    });
+
+    expect(parseDraftPatchFromContent(semanticJson)).toEqual({
+      engineeringDraft: {
+        structureType: "column",
+        geometry: { heightM: 4.2 },
+        loads: [
+          { kind: "nodal", magnitude: 600, unit: "kN", direction: "gravity" },
+        ],
+      },
+    });
+  });
 });

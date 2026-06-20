@@ -36,7 +36,10 @@ export class AgentSkillExecutor {
         : 'Allowed JSON fields: inferredType, engineeringDraft, draftPatch, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote.',
       input.locale === 'zh'
         ? '优先输出 engineeringDraft：geometry 表达跨度/高度/多跨数组，loads 表达集中力、线荷载、面积荷载或节点荷载，analysis.engineTarget 表达 opensees/pkpm/yjk。必要时可同时输出旧 draftPatch。'
-        : 'Prefer engineeringDraft: use geometry for lengths/heights/span arrays, loads for point/line/area/nodal loads, and analysis.engineTarget for opensees/pkpm/yjk. You may also output legacy draftPatch when useful.',
+        : 'Prefer engineeringDraft as a top-level field: use geometry for lengths/heights/span arrays, loads for point/line/area/nodal loads, and analysis.engineTarget for opensees/pkpm/yjk. You may also output legacy draftPatch when useful.',
+      input.locale === 'zh'
+        ? '如果用户明确给出多个荷载，每个荷载都必须作为 engineeringDraft.loads 的独立条目输出，不要合并或丢弃集中力/节点力。'
+        : 'If the user explicitly gives multiple loads, output each load as its own engineeringDraft.loads entry; do not merge or drop point/nodal loads.',
       input.locale === 'zh'
         ? 'loadPositionM 表示距左端位置（m）；若用户明确“4m处”这类位置，优先输出数值。'
         : 'loadPositionM means offset from left end in meters; if user specifies locations like 4m, provide numeric value.',
@@ -71,6 +74,8 @@ export class AgentSkillExecutor {
 
       const rawEngineeringDraft = parsedJson.engineeringDraft && typeof parsedJson.engineeringDraft === 'object' && !Array.isArray(parsedJson.engineeringDraft)
         ? { engineeringDraft: parsedJson.engineeringDraft }
+        : this.looksLikeTopLevelEngineeringDraft(parsedJson)
+          ? { engineeringDraft: parsedJson }
         : {};
       const rawDraftPatch = (parsedJson.draftPatch && typeof parsedJson.draftPatch === 'object' && !Array.isArray(parsedJson.draftPatch))
         ? {
@@ -140,5 +145,22 @@ export class AgentSkillExecutor {
     } catch {
       return null;
     }
+  }
+
+  private looksLikeTopLevelEngineeringDraft(parsed: Record<string, unknown>): boolean {
+    if (
+      parsed.engineeringDraft && typeof parsed.engineeringDraft === 'object' && !Array.isArray(parsed.engineeringDraft)
+      || parsed.draftPatch && typeof parsed.draftPatch === 'object' && !Array.isArray(parsed.draftPatch)
+    ) {
+      return false;
+    }
+    return (
+      Boolean(parsed.geometry && typeof parsed.geometry === 'object' && !Array.isArray(parsed.geometry))
+      || Boolean(parsed.material && typeof parsed.material === 'object' && !Array.isArray(parsed.material))
+      || Boolean(parsed.sections && typeof parsed.sections === 'object' && !Array.isArray(parsed.sections))
+      || Boolean(parsed.boundary && typeof parsed.boundary === 'object' && !Array.isArray(parsed.boundary))
+      || Array.isArray(parsed.loads)
+      || Boolean(parsed.analysis && typeof parsed.analysis === 'object' && !Array.isArray(parsed.analysis))
+    );
   }
 }
