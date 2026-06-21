@@ -243,6 +243,23 @@ describe('agent runtime helper utilities', () => {
     expect(match.mappedType).toBe('frame');
   });
 
+  test('detectStructuralType handles explicit English switches with articles', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+
+    const match = await runtime.detectStructuralType('change to a beam', 'en', {
+      inferredType: 'frame',
+      skillId: 'frame',
+      structuralTypeKey: 'steel-frame',
+      storyCount: 2,
+      bayCount: 1,
+      updatedAt: 0,
+    });
+
+    expect(match.skillId).toBe('beam');
+    expect(match.mappedType).toBe('beam');
+  });
+
   test('valid engineering draft span arrays clear prior invalid span issues', async () => {
     const { mergeDraftState } = await import('../../../dist/agent-runtime/fallback.js');
 
@@ -263,6 +280,33 @@ describe('agent runtime helper utilities', () => {
 
     expect(state.skillState?.invalidDraftFields ?? []).not.toContain('spanLengthsM');
     expect(state.draftIssues ?? []).toEqual([]);
+  });
+
+  test('merges engineering draft loads without duplicating repeated load definitions', async () => {
+    const { mergeDraftState } = await import('../../../dist/agent-runtime/fallback.js');
+
+    const first = mergeDraftState(undefined, {
+      engineeringDraft: {
+        structureType: 'frame',
+        loads: [
+          { kind: 'line', magnitude: 10, unit: 'kN/m', direction: 'gravity', target: 'floor 1' },
+        ],
+      },
+    });
+    const second = mergeDraftState(first, {
+      engineeringDraft: {
+        structureType: 'frame',
+        loads: [
+          { kind: 'line', magnitude: 12, unit: 'kN/m', direction: 'gravity', target: 'floor 1' },
+          { kind: 'point', magnitude: 30, unit: 'kN', direction: 'globalX', target: 'roof' },
+        ],
+      },
+    });
+
+    expect(second.engineeringDraft?.loads).toEqual([
+      { kind: 'line', magnitude: 12, unit: 'kN/m', direction: 'gravity', target: 'floor 1' },
+      { kind: 'point', magnitude: 30, unit: 'kN', direction: 'globalX', target: 'roof' },
+    ]);
   });
 
   test('projects frame area engineering loads into per-story floor loads', async () => {
@@ -378,5 +422,50 @@ describe('agent runtime helper utilities', () => {
     }, 'frame');
 
     expect(patch.floorLoads).toEqual([{ story: 11, verticalKN: 10 }]);
+  });
+
+  test('does not duplicate excess untargeted frame loads onto every story', async () => {
+    const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
+
+    const patch = projectEngineeringDraftToLegacyPatch({
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        geometry: {
+          storyHeightsM: [3, 3],
+          bayWidthsM: [5],
+        },
+        loads: [
+          { kind: 'line', magnitude: 1, unit: 'kN/m', direction: 'gravity' },
+          { kind: 'line', magnitude: 2, unit: 'kN/m', direction: 'gravity' },
+          { kind: 'line', magnitude: 3, unit: 'kN/m', direction: 'gravity' },
+        ],
+      },
+    }, 'frame');
+
+    expect(patch.floorLoads).toEqual([
+      { story: 1, verticalKN: 5 },
+      { story: 2, verticalKN: 10 },
+    ]);
+  });
+
+  test('does not convert frame load intensity into fallback floor totals', async () => {
+    const { mergeDraftState } = await import('../../../dist/agent-runtime/fallback.js');
+    const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
+
+    const patch = projectEngineeringDraftToLegacyPatch({
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        geometry: {
+          storyHeightsM: [3, 3],
+        },
+        loads: [
+          { kind: 'line', magnitude: 10, unit: 'kN/m', direction: 'gravity' },
+        ],
+      },
+    }, 'frame');
+    const state = mergeDraftState(undefined, patch);
+
+    expect(patch.loadKN).toBeUndefined();
+    expect(state.floorLoads).toBeUndefined();
   });
 });

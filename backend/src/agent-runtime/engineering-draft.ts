@@ -265,16 +265,55 @@ export function mergeEngineeringDraft(
   const wind = existing.wind || patch.wind
     ? { ...(existing.wind ?? {}), ...(patch.wind ?? {}) }
     : undefined;
+  const loads = mergeEngineeringDraftLoads(existing.loads, patch.loads);
   return {
     structureType: patch.structureType ?? existing.structureType,
     geometry: { ...(existing.geometry ?? {}), ...(patch.geometry ?? {}) },
     material: { ...(existing.material ?? {}), ...(patch.material ?? {}) },
     sections: { ...(existing.sections ?? {}), ...(patch.sections ?? {}) },
     boundary: { ...(existing.boundary ?? {}), ...(patch.boundary ?? {}) },
-    loads: patch.loads?.length ? patch.loads : existing.loads,
+    loads,
     wind,
     analysis: { ...(existing.analysis ?? {}), ...(patch.analysis ?? {}) },
   };
+}
+
+function stableJson(value: unknown): string {
+  if (value === undefined) return '';
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return JSON.stringify(value);
+  }
+  const record = value as Record<string, unknown>;
+  return JSON.stringify(Object.keys(record).sort().reduce<Record<string, unknown>>((acc, key) => {
+    acc[key] = record[key];
+    return acc;
+  }, {}));
+}
+
+function engineeringLoadMergeKey(load: EngineeringDraftLoad): string {
+  return [
+    load.kind,
+    load.unit,
+    load.direction ?? '',
+    load.target ?? '',
+    stableJson(load.location),
+  ].join('|');
+}
+
+function mergeEngineeringDraftLoads(
+  existing: EngineeringDraftLoad[] | undefined,
+  patch: EngineeringDraftLoad[] | undefined,
+): EngineeringDraftLoad[] | undefined {
+  if (!existing?.length) return patch?.length ? patch : undefined;
+  if (!patch?.length) return existing;
+  const merged = new Map<string, EngineeringDraftLoad>();
+  for (const load of existing) {
+    merged.set(engineeringLoadMergeKey(load), load);
+  }
+  for (const load of patch) {
+    merged.set(engineeringLoadMergeKey(load), load);
+  }
+  return Array.from(merged.values());
 }
 
 function isLineLoad(load: EngineeringDraftLoad): boolean {
@@ -513,8 +552,8 @@ function projectFrameFloorLoads(loads: EngineeringDraftLoad[], patch: DraftExtra
         && parseStoryOrdinal(item.load.target, storyCount) === undefined
       ));
       const untargetedIndex = sameFieldUntargetedLoads.findIndex((item) => item.index === index);
-      if (sameFieldUntargetedLoads.length > 1 && sameFieldUntargetedLoads.length <= storyCount) {
-        stories = untargetedIndex >= 0 ? [untargetedIndex + 1] : [];
+      if (sameFieldUntargetedLoads.length > 1) {
+        stories = untargetedIndex >= 0 && untargetedIndex < storyCount ? [untargetedIndex + 1] : [];
       } else {
         stories = Array.from({ length: storyCount }, (_, storyIndex) => storyIndex + 1);
       }
@@ -572,7 +611,7 @@ export function projectEngineeringDraftToLegacyPatch(
   if (engineeringDraft.boundary?.frameBaseSupportType !== undefined) {
     next.frameBaseSupportType = next.frameBaseSupportType ?? engineeringDraft.boundary.frameBaseSupportType;
   }
-  if (primaryLoad) {
+  if (primaryLoad && inferredType !== 'frame') {
     next.loadKN = next.loadKN ?? primaryLoad.magnitude;
     next.loadType = next.loadType ?? legacyLoadType(primaryLoad);
     next.loadPosition = next.loadPosition ?? legacyLoadPosition(primaryLoad);

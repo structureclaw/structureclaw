@@ -43,6 +43,31 @@ describe('beam handler', () => {
     ]));
   });
 
+  test('preserves semantic draft issues for clarification', () => {
+    const patch = handler.extractDraft({
+      message: '',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'beam',
+          geometry: { lengthM: 6 },
+        },
+        draftIssues: [{
+          field: 'loadKN',
+          severity: 'ambiguous',
+          reason: 'Load unit is ambiguous.',
+        }],
+        skillState: { invalidDraftFields: ['loadKN'] },
+      },
+    });
+
+    expect(patch.draftIssues).toEqual([{
+      field: 'loadKN',
+      severity: 'ambiguous',
+      reason: 'Load unit is ambiguous.',
+    }]);
+    expect(patch.skillState?.invalidDraftFields).toContain('loadKN');
+  });
+
   test('adds a midspan result node for semantic distributed beam loads', () => {
     const patch = handler.extractDraft({
       message: '',

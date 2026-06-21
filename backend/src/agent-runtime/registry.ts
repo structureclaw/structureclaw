@@ -12,7 +12,7 @@ function hasStableCurrentState(state: DraftState | undefined): state is DraftSta
 function isExplicitStructuralSwitch(message: string): boolean {
   const text = message.toLowerCase();
   return /(?:改为|改成|切换为|换成|按|作为|用)\s*(?:梁|桁架|门式刚架|门架|钢框架|混凝土框架|框架|柱)/u.test(message)
-    || /(?:change|switch|convert)\s+(?:to|into|as)\s+(?:beam|truss|portal|frame|column)\b/i.test(text);
+    || /(?:change|switch|convert)\s+(?:to|into|as)\s+(?:(?:a|an|the)\s+)?(?:beam|truss|portal|frame|column)\b/i.test(text);
 }
 
 function looksLikeCurrentDraftUpdate(message: string): boolean {
@@ -101,11 +101,12 @@ export class AgentSkillRegistry {
 
     const plugins = await this.resolveEnabledPlugins(skillIds);
     const currentPlugin = await this.resolvePluginForState(currentState, skillIds);
+    const explicitStructuralSwitch = isExplicitStructuralSwitch(message);
     if (
       currentPlugin
       && hasStableCurrentState(currentState)
       && looksLikeCurrentDraftUpdate(message)
-      && !isExplicitStructuralSwitch(message)
+      && !explicitStructuralSwitch
     ) {
       return buildCurrentStateMatch(currentState, currentPlugin);
     }
@@ -117,7 +118,7 @@ export class AgentSkillRegistry {
       const matched = plugin.handler.detectStructuralType({
         message,
         locale,
-        currentState,
+        currentState: explicitStructuralSwitch ? undefined : currentState,
       });
       if (matched) {
         return { ...matched, skillId: matched.skillId ?? plugin.id };
