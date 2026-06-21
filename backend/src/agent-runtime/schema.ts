@@ -4,6 +4,14 @@ export const skillExecutionSchema = z.object({
   inferredType: z.string().optional(),
   engineeringDraft: z.record(z.string(), z.unknown()).optional(),
   draftPatch: z.record(z.string(), z.unknown()).optional(),
+  skillState: z.record(z.string(), z.unknown()).optional(),
+  draftIssues: z.array(z.object({
+    field: z.string().optional(),
+    value: z.unknown().optional(),
+    severity: z.enum(['invalid', 'ambiguous', 'unrealistic', 'conflict']),
+    reason: z.string(),
+    question: z.string().optional(),
+  })).optional(),
   missingCritical: z.array(z.string()).optional(),
   missingOptional: z.array(z.string()).optional(),
   questions: z.array(z.object({

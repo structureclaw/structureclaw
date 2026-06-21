@@ -2,10 +2,14 @@ import {
   normalizeLegacyDraftPatch,
   restrictLegacyDraftPatch,
 } from '../../../agent-runtime/legacy.js';
-import { projectEngineeringDraftToLegacyPatch } from '../../../agent-runtime/engineering-draft.js';
+import {
+  mergeFrameFloorLoadValues,
+  projectEngineeringDraftToLegacyPatch,
+  projectWindPressureToFloorLoads,
+} from '../../../agent-runtime/engineering-draft.js';
 import { composeStructuralDomainPatch } from '../../../agent-runtime/domains/structural-domains.js';
 import { normalizeNumber } from '../../../agent-runtime/fallback.js';
-import type { DraftExtraction, DraftFloorLoad, DraftState } from '../../../agent-runtime/types.js';
+import type { DraftExtraction, DraftFloorLoad, DraftState, DraftWindParams } from '../../../agent-runtime/types.js';
 import {
   canonicalizeFramePatch,
   fillFrameDimensionSpecificGeometry,
@@ -28,6 +32,9 @@ export function toFramePatch(patch: DraftExtraction): DraftExtraction {
   }
   if (semanticPatch.skillState) {
     next.skillState = semanticPatch.skillState;
+  }
+  if (semanticPatch.wind) {
+    next.wind = semanticPatch.wind;
   }
   for (const key of ['frameMaterial', 'frameColumnSection', 'frameBeamSection'] as const) {
     if (semanticPatch[key] !== undefined) {
@@ -69,6 +76,37 @@ function buildUniformFloorLoads(
   }));
 }
 
+function normalizePlainRecord(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : undefined;
+}
+
+function normalizeWindTerrainRoughness(value: unknown): DraftWindParams['terrainRoughness'] | undefined {
+  const raw = typeof value === 'string' ? value.trim().toUpperCase().replace(/类$/, '') : undefined;
+  return raw === 'A' || raw === 'B' || raw === 'C' || raw === 'D' ? raw : undefined;
+}
+
+function normalizeWindPatch(
+  rawPatch: Record<string, unknown> | null | undefined,
+  existingState: DraftState | undefined,
+): DraftWindParams | undefined {
+  const raw = normalizePlainRecord(rawPatch?.wind)
+    ?? normalizePlainRecord(rawPatch?.windParams);
+  const basicPressureKNM2 = extractLlmScalar(raw ?? rawPatch, ['basicPressureKNM2', 'basic_pressure', 'basicPressure', 'windPressure', 'frameWindBasicPressureKNM2']);
+  const shapeFactor = extractLlmScalar(raw ?? rawPatch, ['shapeFactor', 'shape_factor']);
+  const heightVariationFactor = extractLlmScalar(raw ?? rawPatch, ['heightVariationFactor', 'height_variation_factor']);
+  const terrainRoughness = normalizeWindTerrainRoughness(raw?.terrainRoughness ?? raw?.terrain_roughness ?? rawPatch?.frameWindTerrainRoughness);
+  const merged: DraftWindParams = {
+    ...(existingState?.wind ?? {}),
+    ...(basicPressureKNM2 !== undefined && { basicPressureKNM2 }),
+    ...(terrainRoughness !== undefined && { terrainRoughness }),
+    ...(shapeFactor !== undefined && { shapeFactor }),
+    ...(heightVariationFactor !== undefined && { heightVariationFactor }),
+  };
+  return Object.keys(merged).length ? merged : undefined;
+}
+
 export function buildFramePatchFromLlm(
   rawPatch: Record<string, unknown> | null | undefined,
   existingState: DraftState | undefined,
@@ -98,18 +136,34 @@ export function buildFramePatchFromLlm(
   const frameBeamSection = typeof rawPatch?.frameBeamSection === 'string'
     ? normalizeSectionName(rawPatch.frameBeamSection)
     : undefined;
-
-  return {
+  const wind = normalizeWindPatch(rawPatch, existingState) ?? normalized.wind;
+  const patchWithGeometry: DraftExtraction = {
     ...normalized,
-    frameDimension,
     storyHeightsM: normalized.storyHeightsM ?? repeatScalar(storyCount, storyHeightScalar),
     bayWidthsM: normalized.bayWidthsM ?? repeatScalar(bayCount, bayWidthScalar),
     bayWidthsXM: normalized.bayWidthsXM ?? repeatScalar(bayCountX, bayWidthXScalar ?? bayWidthScalar),
     bayWidthsYM: normalized.bayWidthsYM ?? repeatScalar(bayCountY, bayWidthYScalar ?? bayWidthScalar),
-    floorLoads: normalized.floorLoads ?? buildUniformFloorLoads(storyCount, verticalLoadKN, liveLoadKN, lateralXKN, frameDimension === '3d' ? lateralYKN : undefined),
+    ...(wind !== undefined && { wind }),
+  };
+  const directFloorLoads = normalized.floorLoads ?? buildUniformFloorLoads(storyCount, verticalLoadKN, liveLoadKN, lateralXKN, frameDimension === '3d' ? lateralYKN : undefined);
+  const windFloorLoads = projectWindPressureToFloorLoads(wind, {
+    ...patchWithGeometry,
+    storyCount: storyCount ?? patchWithGeometry.storyCount,
+    storyHeightsM: patchWithGeometry.storyHeightsM ?? existingState?.storyHeightsM,
+    bayWidthsM: patchWithGeometry.bayWidthsM ?? existingState?.bayWidthsM,
+    bayWidthsXM: patchWithGeometry.bayWidthsXM ?? existingState?.bayWidthsXM,
+    bayWidthsYM: patchWithGeometry.bayWidthsYM ?? existingState?.bayWidthsYM,
+  });
+  const floorLoads = mergeFrameFloorLoadValues(directFloorLoads, windFloorLoads);
+
+  return {
+    ...patchWithGeometry,
+    frameDimension,
+    floorLoads,
     ...(frameMaterial !== undefined && { frameMaterial }),
     ...(frameColumnSection !== undefined && { frameColumnSection }),
     ...(frameBeamSection !== undefined && { frameBeamSection }),
+    ...(wind !== undefined && { wind }),
   };
 }
 

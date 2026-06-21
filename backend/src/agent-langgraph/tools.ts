@@ -680,7 +680,7 @@ export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
         const match = await skillRuntime.detectStructuralType(
           detectionMessage,
           locale,
-          undefined,
+          state?.draftState || undefined,
           skillIds,
         );
         const result = {

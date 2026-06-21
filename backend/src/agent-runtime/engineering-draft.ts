@@ -4,6 +4,7 @@ import type {
   DraftLoadPosition,
   DraftLoadType,
   DraftSupportType,
+  DraftWindParams,
   AgentAnalysisType,
   EngineeringDraft,
   EngineeringDraftLoad,
@@ -99,6 +100,31 @@ function normalizeAnalysisType(value: unknown): AgentAnalysisType | undefined {
 function normalizeEngineTarget(value: unknown): 'opensees' | 'pkpm' | 'yjk' | undefined {
   const raw = normalizeString(value)?.toLowerCase();
   return raw === 'opensees' || raw === 'pkpm' || raw === 'yjk' ? raw : undefined;
+}
+
+function normalizeWindTerrainRoughness(value: unknown): DraftWindParams['terrainRoughness'] | undefined {
+  const raw = normalizeString(value)?.toUpperCase().replace(/类$/, '');
+  return raw === 'A' || raw === 'B' || raw === 'C' || raw === 'D' ? raw : undefined;
+}
+
+function normalizeWindParams(value: unknown): DraftWindParams | undefined {
+  const raw = asRecord(value);
+  if (!raw) return undefined;
+  const wind: DraftWindParams = {
+    ...(positiveNumber(raw.basicPressureKNM2 ?? raw.basic_pressure ?? raw.basicPressure ?? raw.windPressure) !== undefined && {
+      basicPressureKNM2: positiveNumber(raw.basicPressureKNM2 ?? raw.basic_pressure ?? raw.basicPressure ?? raw.windPressure),
+    }),
+    ...(normalizeWindTerrainRoughness(raw.terrainRoughness ?? raw.terrain_roughness) !== undefined && {
+      terrainRoughness: normalizeWindTerrainRoughness(raw.terrainRoughness ?? raw.terrain_roughness),
+    }),
+    ...(positiveNumber(raw.shapeFactor ?? raw.shape_factor) !== undefined && {
+      shapeFactor: positiveNumber(raw.shapeFactor ?? raw.shape_factor),
+    }),
+    ...(positiveNumber(raw.heightVariationFactor ?? raw.height_variation_factor) !== undefined && {
+      heightVariationFactor: positiveNumber(raw.heightVariationFactor ?? raw.height_variation_factor),
+    }),
+  };
+  return Object.keys(wind).length ? wind : undefined;
 }
 
 function normalizeLoadKind(value: unknown): EngineeringDraftLoadKind | undefined {
@@ -214,6 +240,8 @@ export function normalizeEngineeringDraft(value: unknown): EngineeringDraft | un
     engineTarget: normalizeEngineTarget(rawAnalysis.engineTarget),
   } : undefined;
 
+  const wind = normalizeWindParams(raw.wind ?? raw.windParams);
+
   const draft: EngineeringDraft = {
     structureType: normalizeString(raw.structureType) as EngineeringDraft['structureType'],
     geometry,
@@ -221,6 +249,7 @@ export function normalizeEngineeringDraft(value: unknown): EngineeringDraft | un
     sections,
     boundary,
     loads,
+    wind,
     analysis,
   };
 
@@ -233,6 +262,9 @@ export function mergeEngineeringDraft(
 ): EngineeringDraft | undefined {
   if (!existing) return patch;
   if (!patch) return existing;
+  const wind = existing.wind || patch.wind
+    ? { ...(existing.wind ?? {}), ...(patch.wind ?? {}) }
+    : undefined;
   return {
     structureType: patch.structureType ?? existing.structureType,
     geometry: { ...(existing.geometry ?? {}), ...(patch.geometry ?? {}) },
@@ -240,6 +272,7 @@ export function mergeEngineeringDraft(
     sections: { ...(existing.sections ?? {}), ...(patch.sections ?? {}) },
     boundary: { ...(existing.boundary ?? {}), ...(patch.boundary ?? {}) },
     loads: patch.loads?.length ? patch.loads : existing.loads,
+    wind,
     analysis: { ...(existing.analysis ?? {}), ...(patch.analysis ?? {}) },
   };
 }
@@ -352,6 +385,56 @@ function hasFloorLoadValues(floorLoads: DraftFloorLoad[] | undefined): boolean {
     || load.lateralXKN !== undefined
     || load.lateralYKN !== undefined
   )));
+}
+
+export function mergeFrameFloorLoadValues(
+  current: DraftFloorLoad[] | undefined,
+  incoming: DraftFloorLoad[] | undefined,
+): DraftFloorLoad[] | undefined {
+  if (!current?.length) return incoming;
+  if (!incoming?.length) return current;
+  const merged = new Map<number, DraftFloorLoad>();
+  for (const load of current) {
+    merged.set(load.story, { ...load });
+  }
+  for (const load of incoming) {
+    const existing = merged.get(load.story);
+    merged.set(load.story, {
+      story: load.story,
+      verticalKN: load.verticalKN ?? existing?.verticalKN,
+      liveLoadKN: load.liveLoadKN ?? existing?.liveLoadKN,
+      lateralXKN: load.lateralXKN ?? existing?.lateralXKN,
+      lateralYKN: load.lateralYKN ?? existing?.lateralYKN,
+    });
+  }
+  return Array.from(merged.values()).sort((left, right) => left.story - right.story);
+}
+
+function storyHeightsForWind(patch: DraftExtraction): number[] | undefined {
+  const explicit = patch.storyHeightsM?.filter((height) => Number.isFinite(height) && height > 0);
+  if (explicit?.length) return explicit;
+  const storyCount = patch.storyCount;
+  if (!storyCount || !patch.heightM || patch.heightM <= 0) return undefined;
+  return Array.from({ length: storyCount }, () => patch.heightM! / storyCount);
+}
+
+export function projectWindPressureToFloorLoads(
+  wind: DraftWindParams | undefined,
+  patch: DraftExtraction,
+): DraftFloorLoad[] | undefined {
+  const pressure = positiveNumber(wind?.basicPressureKNM2);
+  if (pressure === undefined) return undefined;
+  const storyHeights = storyHeightsForWind(patch);
+  if (!storyHeights?.length) return undefined;
+  const exposedWidthM = sumPositive(patch.bayWidthsYM)
+    ?? sumPositive(patch.bayWidthsM)
+    ?? sumPositive(patch.bayWidthsXM);
+  if (exposedWidthM === undefined) return undefined;
+  const factor = (wind?.shapeFactor ?? 1) * (wind?.heightVariationFactor ?? 1);
+  return storyHeights.map((height, index) => ({
+    story: index + 1,
+    lateralXKN: Number((pressure * factor * exposedWidthM * height).toFixed(6)),
+  }));
 }
 
 function assignFloorLoadValue(
@@ -551,9 +634,15 @@ export function projectEngineeringDraftToLegacyPatch(
     if (engineeringDraft.sections?.beam) {
       next.frameBeamSection = engineeringDraft.sections.beam;
     }
-    const projectedFloorLoads = projectFrameFloorLoads(loads, next);
-    if (projectedFloorLoads?.length && !hasFloorLoadValues(next.floorLoads)) {
-      next.floorLoads = projectedFloorLoads;
+    next.wind = next.wind ?? engineeringDraft.wind;
+    const projectedFloorLoads = mergeFrameFloorLoadValues(
+      projectFrameFloorLoads(loads, next),
+      projectWindPressureToFloorLoads(next.wind, next),
+    );
+    if (projectedFloorLoads?.length) {
+      next.floorLoads = hasFloorLoadValues(next.floorLoads)
+        ? mergeFrameFloorLoadValues(next.floorLoads, projectedFloorLoads)
+        : projectedFloorLoads;
     }
   }
 

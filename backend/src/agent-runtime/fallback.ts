@@ -2,6 +2,7 @@ import type { AppLocale } from '../services/locale.js';
 import type {
   DraftExtraction,
   DraftFloorLoad,
+  DraftIssue,
   DraftLoadPosition,
   DraftLoadType,
   DraftState,
@@ -77,6 +78,63 @@ function mergeFloorLoads(
     .sort((a, b) => a.story - b.story);
 
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function getInvalidDraftFields(state: DraftState | DraftExtraction | undefined): string[] {
+  const fields = state?.skillState?.invalidDraftFields;
+  if (!Array.isArray(fields)) {
+    return [];
+  }
+  return fields.filter((field): field is string => typeof field === 'string');
+}
+
+function collectValidPatchFields(patch: DraftExtraction): Set<string> {
+  const valid = new Set<string>();
+  for (const field of ['lengthM', 'spanLengthM', 'heightM', 'loadKN'] as const) {
+    const value = patch[field];
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      valid.add(field);
+    }
+  }
+  for (const field of ['storyCount', 'bayCount', 'bayCountX', 'bayCountY'] as const) {
+    const value = patch[field];
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      valid.add(field);
+    }
+  }
+  for (const field of ['storyHeightsM', 'bayWidthsM', 'bayWidthsXM', 'bayWidthsYM'] as const) {
+    const value = patch[field];
+    if (Array.isArray(value) && value.length > 0 && value.every((item) => typeof item === 'number' && Number.isFinite(item) && item > 0)) {
+      valid.add(field);
+    }
+  }
+  return valid;
+}
+
+function mergeInvalidDraftFields(existing: DraftState | undefined, patch: DraftExtraction): string[] | undefined {
+  const patchInvalidFields = getInvalidDraftFields(patch);
+  const patchInvalid = new Set(patchInvalidFields);
+  const clearedByPatch = collectValidPatchFields(patch);
+  const merged = [
+    ...getInvalidDraftFields(existing).filter((field) => !clearedByPatch.has(field) || patchInvalid.has(field)),
+    ...patchInvalidFields,
+  ];
+  const unique = Array.from(new Set(merged));
+  return unique.length ? unique : undefined;
+}
+
+function mergeDraftIssues(
+  existing: DraftState | undefined,
+  patch: DraftExtraction,
+  clearedFields: Set<string>,
+): DraftIssue[] | undefined {
+  const existingIssues = Array.isArray(existing?.draftIssues) ? existing.draftIssues : [];
+  const patchIssues = Array.isArray(patch.draftIssues) ? patch.draftIssues : [];
+  const next = [
+    ...existingIssues.filter((issue) => !issue.field || !clearedFields.has(issue.field)),
+    ...patchIssues,
+  ];
+  return next.length ? next : undefined;
 }
 
 export function normalizeLoadType(value: unknown): DraftLoadType | undefined {
@@ -345,18 +403,19 @@ export function mergeDraftState(existing: DraftState | undefined, patch: DraftEx
   const bayWidthsYM = patch.bayWidthsYM ?? existing?.bayWidthsYM;
   const floorLoads = mergeFloorLoads(existing?.floorLoads, patch.floorLoads);
   const engineeringDraft = mergeEngineeringDraft(existing?.engineeringDraft, patch.engineeringDraft);
-  const existingInvalidFields = existing?.skillState?.invalidDraftFields;
-  const patchInvalidFields = patch.skillState?.invalidDraftFields;
-  const invalidDraftFields = Array.isArray(existingInvalidFields) || Array.isArray(patchInvalidFields)
-    ? Array.from(new Set([
-      ...(Array.isArray(existingInvalidFields) ? existingInvalidFields : []),
-      ...(Array.isArray(patchInvalidFields) ? patchInvalidFields : []),
-    ].filter((field): field is string => typeof field === 'string')))
-    : undefined;
-  const skillState = existing?.skillState || patch.skillState
+  const clearedFields = collectValidPatchFields(patch);
+  const invalidDraftFields = mergeInvalidDraftFields(existing, patch);
+  const draftIssues = mergeDraftIssues(existing, patch, clearedFields);
+  const rawSkillState = existing?.skillState || patch.skillState
     ? {
       ...(existing?.skillState ?? {}),
       ...(patch.skillState ?? {}),
+    }
+    : undefined;
+  const { invalidDraftFields: _discardInvalidDraftFields, ...skillStateWithoutInvalid } = rawSkillState ?? {};
+  const skillState = rawSkillState || invalidDraftFields
+    ? {
+      ...skillStateWithoutInvalid,
       ...(invalidDraftFields ? { invalidDraftFields } : {}),
     }
     : undefined;
@@ -364,6 +423,7 @@ export function mergeDraftState(existing: DraftState | undefined, patch: DraftEx
   return {
     inferredType: mergedType,
     engineeringDraft,
+    draftIssues,
     lengthM: mergedLength,
     spanLengthM,
     skillState,

@@ -45,6 +45,23 @@ describe("param extractor", () => {
       lengthM: 20,
       loadKN: 10,
     });
+    expect(parseDraftPatchFromContent(JSON.stringify({
+      draftPatch: { lengthM: 20 },
+      skillState: { invalidDraftFields: ["loadKN"] },
+      draftIssues: [{
+        field: "loadKN",
+        severity: "ambiguous",
+        reason: "Negative load sign may represent uplift.",
+      }],
+    }))).toEqual({
+      lengthM: 20,
+      skillState: { invalidDraftFields: ["loadKN"] },
+      draftIssues: [{
+        field: "loadKN",
+        severity: "ambiguous",
+        reason: "Negative load sign may represent uplift.",
+      }],
+    });
   });
 
   test("wraps top-level semantic engineering draft JSON", async () => {

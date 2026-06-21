@@ -5,6 +5,35 @@ import { buildUnknownStructuralType, detectUnsupportedStructuralTypeByRules } fr
 import { localize } from './plugin-helpers.js';
 import type { AgentSkillBundle, AgentSkillPlugin, DraftState, InferredModelType, StructuralTypeMatch, StructuralTypeKey } from './types.js';
 
+function hasStableCurrentState(state: DraftState | undefined): state is DraftState {
+  return !!state?.inferredType && state.inferredType !== 'unknown';
+}
+
+function isExplicitStructuralSwitch(message: string): boolean {
+  const text = message.toLowerCase();
+  return /(?:改为|改成|切换为|换成|按|作为|用).*(?:梁|桁架|门式刚架|门架|钢框架|混凝土框架|框架|柱)/u.test(message)
+    || /(?:change|switch|convert|use|as).*(?:to|into|as).*(?:beam|truss|portal|frame|column)/i.test(text);
+}
+
+function looksLikeCurrentDraftUpdate(message: string): boolean {
+  const text = message.toLowerCase();
+  return /(?:刚才|当前|原来|继续|再|另外|同时|补充|考虑|增加|添加|调整|修改|改成|改为|改到|变成|换成|设为)/u.test(message)
+    || /\b(?:previous|current|same|continue|also|add|include|update|modify|change|adjust|set)\b/i.test(text);
+}
+
+function buildCurrentStateMatch(
+  state: DraftState,
+  plugin: AgentSkillPlugin,
+): StructuralTypeMatch {
+  return {
+    key: (state.structuralTypeKey ?? plugin.id) as StructuralTypeKey,
+    mappedType: state.inferredType,
+    skillId: plugin.id,
+    supportLevel: state.supportLevel ?? 'supported',
+    supportNote: state.supportNote,
+  };
+}
+
 export class AgentSkillRegistry {
   constructor(private readonly loader = new AgentSkillLoader()) {}
 
@@ -71,6 +100,16 @@ export class AgentSkillRegistry {
     }
 
     const plugins = await this.resolveEnabledPlugins(skillIds);
+    const currentPlugin = await this.resolvePluginForState(currentState, skillIds);
+    if (
+      currentPlugin
+      && hasStableCurrentState(currentState)
+      && looksLikeCurrentDraftUpdate(message)
+      && !isExplicitStructuralSwitch(message)
+    ) {
+      return buildCurrentStateMatch(currentState, currentPlugin);
+    }
+
     for (const plugin of plugins) {
       if (plugin.id === 'generic') {
         continue;
@@ -85,15 +124,8 @@ export class AgentSkillRegistry {
       }
     }
 
-    const currentPlugin = await this.resolvePluginForState(currentState, skillIds);
     if (currentPlugin && currentState?.inferredType && currentState.inferredType !== 'unknown') {
-      return {
-        key: (currentState.structuralTypeKey ?? currentPlugin.id) as StructuralTypeKey,
-        mappedType: currentState.inferredType,
-        skillId: currentPlugin.id,
-        supportLevel: currentState.supportLevel ?? 'supported',
-        supportNote: currentState.supportNote,
-      };
+      return buildCurrentStateMatch(currentState, currentPlugin);
     }
 
     const genericPlugin = plugins.find((plugin) => plugin.id === 'generic');

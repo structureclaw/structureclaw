@@ -324,6 +324,42 @@ describe('frame canonicalize core contract', () => {
     ]);
   });
 
+  test('projects basic wind pressure into lateral floor loads without dropping gravity loads', () => {
+    const existingState = {
+      inferredType: 'frame',
+      updatedAt: 0,
+      frameDimension: '2d',
+      storyCount: 2,
+      storyHeightsM: [3.6, 3.6],
+      bayCount: 1,
+      bayWidthsM: [6],
+      floorLoads: [
+        { story: 1, verticalKN: 120 },
+        { story: 2, verticalKN: 120 },
+      ],
+    };
+    const patch = buildFrameDraftPatch(
+      {
+        wind: { basicPressureKNM2: 0.5 },
+      },
+      existingState,
+    );
+
+    expect(patch.wind).toEqual({ basicPressureKNM2: 0.5 });
+    expect(patch.floorLoads).toEqual([
+      { story: 1, verticalKN: 120, lateralXKN: 10.8 },
+      { story: 2, verticalKN: 120, lateralXKN: 10.8 },
+    ]);
+
+    const model = buildFrameModel({
+      ...existingState,
+      ...patch,
+    });
+
+    expect(model.load_cases.map((loadCase) => loadCase.id)).toEqual(['D', 'LAT']);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'LAT').loads.reduce((sum, load) => sum + load.fx, 0)).toBeCloseTo(21.6);
+  });
+
   test('repairs llm floor loads that omit story numbers', () => {
     const patch = buildFrameDraftPatch(
       {

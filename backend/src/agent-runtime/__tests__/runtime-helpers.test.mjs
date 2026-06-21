@@ -157,6 +157,75 @@ describe('agent runtime helper utilities', () => {
     expect(() => skillExecutionSchema.parse({ stage: 'design' })).toThrow();
   });
 
+  test('legacy draft validation blocks non-positive model parameters until corrected', async () => {
+    const {
+      buildLegacyModel,
+      computeLegacyMissing,
+      mergeLegacyState,
+      normalizeLegacyDraftPatch,
+    } = await import('../../../dist/agent-runtime/legacy.js');
+
+    const invalidPatch = normalizeLegacyDraftPatch({
+      inferredType: 'beam',
+      lengthM: -5,
+      supportType: 'simply-supported',
+      loadKN: 20,
+    });
+    const invalidState = mergeLegacyState(undefined, invalidPatch, 'beam', 'beam');
+
+    expect(invalidState.skillState?.invalidDraftFields).toContain('lengthM');
+    expect(computeLegacyMissing(invalidState, 'execution', ['lengthM', 'supportType', 'loadKN']).critical).toContain('lengthM');
+    expect(buildLegacyModel(invalidState)).toBeUndefined();
+
+    const correctedPatch = normalizeLegacyDraftPatch({ lengthM: 5 });
+    const correctedState = mergeLegacyState(invalidState, correctedPatch, 'beam', 'beam');
+
+    expect(correctedState.skillState?.invalidDraftFields ?? []).not.toContain('lengthM');
+    expect(computeLegacyMissing(correctedState, 'execution', ['lengthM', 'supportType', 'loadKN']).critical).not.toContain('lengthM');
+  });
+
+  test('draft issues mark fields invalid even when invalidDraftFields is omitted', async () => {
+    const {
+      computeLegacyMissing,
+      mergeLegacyState,
+      normalizeLegacyDraftPatch,
+    } = await import('../../../dist/agent-runtime/legacy.js');
+
+    const patch = normalizeLegacyDraftPatch({
+      inferredType: 'portal-frame',
+      spanLengthM: 18,
+      heightM: 6,
+      draftIssues: [{
+        field: 'loadKN',
+        severity: 'ambiguous',
+        reason: 'Negative roof load may mean uplift rather than gravity magnitude.',
+      }],
+    });
+    const state = mergeLegacyState(undefined, patch, 'portal-frame', 'portal-frame');
+
+    expect(state.draftIssues?.[0].field).toBe('loadKN');
+    expect(state.skillState?.invalidDraftFields).toContain('loadKN');
+    expect(computeLegacyMissing(state, 'execution', ['spanLengthM', 'heightM', 'loadKN']).critical).toContain('loadKN');
+  });
+
+  test('detectStructuralType keeps current portal-frame context for parameter updates', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+
+    const match = await runtime.detectStructuralType('柱高改成9m', 'zh', {
+      inferredType: 'portal-frame',
+      skillId: 'portal-frame',
+      structuralTypeKey: 'portal-frame',
+      spanLengthM: 24,
+      heightM: 8,
+      loadKN: 10,
+      updatedAt: 0,
+    });
+
+    expect(match.skillId).toBe('portal-frame');
+    expect(match.mappedType).toBe('portal-frame');
+  });
+
   test('projects frame area engineering loads into per-story floor loads', async () => {
     const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
 

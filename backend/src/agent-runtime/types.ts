@@ -67,7 +67,18 @@ export interface EngineeringDraft {
   sections?: EngineeringDraftSections;
   boundary?: EngineeringDraftBoundary;
   loads?: EngineeringDraftLoad[];
+  wind?: DraftWindParams;
   analysis?: EngineeringDraftAnalysis;
+}
+
+export type DraftIssueSeverity = 'invalid' | 'ambiguous' | 'unrealistic' | 'conflict';
+
+export interface DraftIssue {
+  field?: string;
+  value?: unknown;
+  severity: DraftIssueSeverity;
+  reason: string;
+  question?: string;
 }
 
 export interface DraftFloorLoad {
@@ -147,6 +158,7 @@ export interface DraftState {
   supportNote?: string;
   coordinateSemantics?: string;
   engineeringDraft?: EngineeringDraft;
+  draftIssues?: DraftIssue[];
   skillState?: Record<string, unknown>;
   lengthM?: number;
   spanLengthM?: number;
@@ -186,6 +198,7 @@ export interface DraftExtraction {
   supportNote?: string;
   coordinateSemantics?: string;
   engineeringDraft?: EngineeringDraft;
+  draftIssues?: DraftIssue[];
   skillState?: Record<string, unknown>;
   lengthM?: number;
   spanLengthM?: number;

@@ -32,14 +32,17 @@ export class AgentSkillExecutor {
         ? '不要输出 markdown，不要解释，只输出一个 JSON 对象。缺失字段可以省略。'
         : 'Do not return markdown or explanations. Return one JSON object only. Omit fields that are unavailable.',
       input.locale === 'zh'
-        ? 'JSON 字段允许：inferredType, engineeringDraft, draftPatch, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote。'
-        : 'Allowed JSON fields: inferredType, engineeringDraft, draftPatch, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote.',
+        ? 'JSON 字段允许：inferredType, engineeringDraft, draftPatch, draftIssues, skillState, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote。'
+        : 'Allowed JSON fields: inferredType, engineeringDraft, draftPatch, draftIssues, skillState, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote.',
       input.locale === 'zh'
-        ? '优先输出 engineeringDraft：geometry 表达跨度/高度/多跨数组，loads 表达集中力、线荷载、面积荷载或节点荷载，analysis.engineTarget 表达 opensees/pkpm/yjk。必要时可同时输出旧 draftPatch。'
-        : 'Prefer engineeringDraft as a top-level field: use geometry for lengths/heights/span arrays, loads for point/line/area/nodal loads, and analysis.engineTarget for opensees/pkpm/yjk. You may also output legacy draftPatch when useful.',
+        ? '优先输出 engineeringDraft：geometry 表达跨度/高度/多跨数组，loads 表达集中力、线荷载、面积荷载或节点荷载，wind.basicPressureKNM2 表达基本风压，analysis.engineTarget 表达 opensees/pkpm/yjk。必要时可同时输出旧 draftPatch。'
+        : 'Prefer engineeringDraft as a top-level field: use geometry for lengths/heights/span arrays, loads for point/line/area/nodal loads, wind.basicPressureKNM2 for basic wind pressure, and analysis.engineTarget for opensees/pkpm/yjk. You may also output legacy draftPatch when useful.',
       input.locale === 'zh'
         ? '如果用户明确给出多个荷载，每个荷载都必须作为 engineeringDraft.loads 的独立条目输出，不要合并或丢弃集中力/节点力。'
         : 'If the user explicitly gives multiple loads, output each load as its own engineeringDraft.loads entry; do not merge or drop point/nodal loads.',
+      input.locale === 'zh'
+        ? '如果用户明确给出非正几何尺寸、非正荷载大小、语义矛盾或需要工程判断的异常值，不要把该值写入 engineeringDraft/draftPatch；输出 draftIssues，并把对应字段名写入 skillState.invalidDraftFields。'
+        : 'If the user gives non-positive geometry dimensions, non-positive load magnitudes, semantic conflicts, or values that need engineering judgment, do not write that value into engineeringDraft/draftPatch; output draftIssues and put the corresponding field name in skillState.invalidDraftFields.',
       input.locale === 'zh'
         ? 'loadPositionM 表示距左端位置（m）；若用户明确“4m处”这类位置，优先输出数值。'
         : 'loadPositionM means offset from left end in meters; if user specifies locations like 4m, provide numeric value.',
@@ -76,13 +79,20 @@ export class AgentSkillExecutor {
         ? { engineeringDraft: parsedJson.engineeringDraft }
         : this.looksLikeTopLevelEngineeringDraft(parsedJson)
           ? { engineeringDraft: parsedJson }
-        : {};
+          : {};
+      const rawIssuePatch = {
+        ...(Array.isArray(parsedJson.draftIssues) ? { draftIssues: parsedJson.draftIssues } : {}),
+        ...(parsedJson.skillState && typeof parsedJson.skillState === 'object' && !Array.isArray(parsedJson.skillState)
+          ? { skillState: parsedJson.skillState }
+          : {}),
+      };
       const rawDraftPatch = (parsedJson.draftPatch && typeof parsedJson.draftPatch === 'object' && !Array.isArray(parsedJson.draftPatch))
         ? {
           ...(parsedJson.draftPatch as Record<string, unknown>),
           ...rawEngineeringDraft,
+          ...rawIssuePatch,
         }
-        : (Object.keys(rawEngineeringDraft).length ? rawEngineeringDraft : null);
+        : (Object.keys({ ...rawEngineeringDraft, ...rawIssuePatch }).length ? { ...rawEngineeringDraft, ...rawIssuePatch } : null);
       const rawInferredType = typeof parsedJson.inferredType === 'string'
         ? parsedJson.inferredType
         : undefined;
@@ -95,6 +105,8 @@ export class AgentSkillExecutor {
             ? {
               ...parsed.draftPatch,
               ...(parsed.engineeringDraft ? { engineeringDraft: parsed.engineeringDraft } : {}),
+              ...(parsed.skillState ? { skillState: parsed.skillState } : {}),
+              ...(parsed.draftIssues ? { draftIssues: parsed.draftIssues } : {}),
             }
             : rawDraftPatch,
         };

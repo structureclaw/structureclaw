@@ -56,7 +56,7 @@ Concrete frame sections are described as rectangular cross‑sections:
 ## Extraction Rules
 1. **Story/bay numbers**: Look for patterns like "3‑story 2‑bay", "4层3跨".
 2. **Dimensions**: Extract numbers followed by "m", "米", "mm", "毫米". Convert mm to m for story heights and bay widths.
-3. **Loads**: "dead load 5 kN/m²", "恒载 5 kN/m²", "live load 3 kN/m²", "活载 3 kN/m²". Convert distributed loads to total floor loads using floor area.
+3. **Loads**: "dead load 5 kN/m²", "恒载 5 kN/m²", "live load 3 kN/m²", "活载 3 kN/m²". Prefer `engineeringDraft.loads` with `kind: "area"` and `unit: "kN/m2"` when floor geometry is available; the runtime can convert it to per-story total loads. Use legacy `floorLoads` only when the total kN per story is explicitly given or can be computed reliably.
 4. **Materials**: Look for concrete grades (C20–C80) and rebar grades (HPB300, HRB400, HRB500).
 5. **Seismic / wind design basis**: Extract phrases like "7度0.1g", "第三组", "场地类别3类", "基本风压0.4kN/m²", "地面粗糙度B类".
 6. **Boundary**: "fixed base", "pinned base", "固接", "铰接".

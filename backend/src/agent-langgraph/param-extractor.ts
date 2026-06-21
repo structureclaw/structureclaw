@@ -44,8 +44,13 @@ function engineeringDraftSchemaDescription(locale: 'zh' | 'en'): string {
       '  "loads": [',
       '    { "kind": "point|line|area|nodal|distributed", "magnitude": number, "unit": "kN|kN/m|kN/m2", "direction": "gravity|globalX|globalY|globalZ", "target": string, "location": { "xM": number, "spanIndex": number, "nodeRole": string } }',
       '  ],',
+      '  "wind": { "basicPressureKNM2": number, "terrainRoughness": "A|B|C|D", "shapeFactor": number, "heightVariationFactor": number },',
       '  "analysis": { "type": "static|dynamic|seismic|nonlinear", "engineTarget": "opensees|pkpm|yjk" }',
-      '} }',
+      '} },',
+      '"draftIssues": [',
+      '  { "field": string, "value": any, "severity": "invalid|ambiguous|unrealistic|conflict", "reason": string, "question": string }',
+      '],',
+      '"skillState": { "invalidDraftFields": string[] }',
     ].join('\n');
   }
   return [
@@ -57,11 +62,16 @@ function engineeringDraftSchemaDescription(locale: 'zh' | 'en'): string {
     '  "material": { "family": "steel|concrete|composite|timber|masonry|generic", "grade": string, "rebarGrade": string },',
     '  "sections": { "beam": string, "column": string, "member": string },',
     '  "boundary": { "supportType": "cantilever|simply-supported|fixed-fixed|fixed-pinned", "frameBaseSupportType": "fixed|pinned", "supportPositionsM": number[] },',
-    '  "loads": [',
-    '    { "kind": "point|line|area|nodal|distributed", "magnitude": number, "unit": "kN|kN/m|kN/m2", "direction": "gravity|globalX|globalY|globalZ", "target": string, "location": { "xM": number, "spanIndex": number, "nodeRole": string } }',
-    '  ],',
-    '  "analysis": { "type": "static|dynamic|seismic|nonlinear", "engineTarget": "opensees|pkpm|yjk" }',
-    '} }',
+      '  "loads": [',
+      '    { "kind": "point|line|area|nodal|distributed", "magnitude": number, "unit": "kN|kN/m|kN/m2", "direction": "gravity|globalX|globalY|globalZ", "target": string, "location": { "xM": number, "spanIndex": number, "nodeRole": string } }',
+      '  ],',
+      '  "wind": { "basicPressureKNM2": number, "terrainRoughness": "A|B|C|D", "shapeFactor": number, "heightVariationFactor": number },',
+      '  "analysis": { "type": "static|dynamic|seismic|nonlinear", "engineTarget": "opensees|pkpm|yjk" }',
+    '} },',
+    '"draftIssues": [',
+    '  { "field": string, "value": any, "severity": "invalid|ambiguous|unrealistic|conflict", "reason": string, "question": string }',
+    '],',
+    '"skillState": { "invalidDraftFields": string[] }',
   ].join('\n');
 }
 
@@ -91,9 +101,13 @@ export function buildParamExtractorPrompt(
       '规则：',
       '- 优先输出 engineeringDraft；为了兼容旧链路，也可以同时输出 draftPatch',
       '- draftPatch 字段名必须与当前结构技能参数说明一致',
-      '- 长度单位 m，力单位 kN，分布荷载 kN/m',
+      '- 长度单位 m，力单位 kN，线荷载 kN/m，面荷载 kN/m2',
       '- 保留已有 draftState 中的所有参数值，补充新提取的值',
       '- 不确定时省略字段，不要猜测',
+      '- 如果用户明确给出非正几何尺寸、非正荷载大小、语义矛盾或需要工程判断的异常值，不要把该值写入 engineeringDraft/draftPatch；输出 draftIssues，并把对应字段名写入 skillState.invalidDraftFields',
+      '- 负号可能表示方向或吸力时，必须用 draftIssues 标记为 ambiguous 并追问；只有方向明确且数值大小为正时，才写入荷载 magnitude',
+      '- 对框架楼面线荷载/面荷载（如 kN/m、kN/m2），如果已有层数和跨度信息，应输出 engineeringDraft.loads 中的 line/area 荷载；不要因为它不是总 kN 就追问',
+      '- 对“基本风压 / basic wind pressure”输出 engineeringDraft.wind.basicPressureKNM2；不要把风压当作竖向楼面荷载',
       '- 嵌套数组字段必须输出完整对象；例如 floorLoads 的每一项都必须包含 story',
       '- 如果用户明确给出多个荷载，每个荷载都必须作为 engineeringDraft.loads 的独立条目输出，不要合并或丢弃集中力/节点力',
       '- 不输出元数据字段（updatedAt, skillId, structuralTypeKey, supportLevel, coordinateSemantics, supportNote）',
@@ -118,9 +132,13 @@ export function buildParamExtractorPrompt(
     'Rules:',
     '- Prefer engineeringDraft; you may also include draftPatch for legacy compatibility',
     '- draftPatch field names MUST match the current structural skill parameter guidance',
-    '- Length in meters, force in kN, distributed load in kN/m',
+    '- Length in meters, force in kN, line load in kN/m, area load in kN/m2',
     '- Preserve ALL existing draftState parameter values, add newly extracted ones',
     '- Omit fields you are unsure about — do NOT guess',
+    '- If the user gives non-positive geometry dimensions, non-positive load magnitudes, semantic conflicts, or values that need engineering judgment, do NOT write that value into engineeringDraft/draftPatch; output draftIssues and put the corresponding field name in skillState.invalidDraftFields',
+    '- If a negative sign may mean direction or suction/uplift, mark it as an ambiguous draftIssue and ask for clarification; only write a load magnitude when the direction is clear and the magnitude is positive',
+    '- For frame floor line/area loads such as kN/m or kN/m2, output line/area entries in engineeringDraft.loads when story and span geometry are available; do not ask for total kN just because the user provided intensity units',
+    '- For basic wind pressure, output engineeringDraft.wind.basicPressureKNM2; do not treat wind pressure as a vertical floor load',
     '- Nested array fields must contain complete objects; for example each floorLoads item must include story',
     '- If the user explicitly gives multiple loads, output each load as its own engineeringDraft.loads entry; do not merge or drop point/nodal loads',
     '- Do NOT output metadata fields (updatedAt, skillId, structuralTypeKey, supportLevel, coordinateSemantics, supportNote)',
@@ -190,18 +208,26 @@ function looksLikeTopLevelEngineeringDraft(parsed: Record<string, unknown>): boo
 function unwrapDraftPatch(parsed: Record<string, unknown>): Record<string, unknown> {
   const engineeringDraft = parsed.engineeringDraft;
   const draftPatch = parsed.draftPatch;
+  const supplemental = {
+    ...(parsed.skillState && typeof parsed.skillState === 'object' && !Array.isArray(parsed.skillState)
+      ? { skillState: parsed.skillState }
+      : {}),
+    ...(Array.isArray(parsed.draftIssues) ? { draftIssues: parsed.draftIssues } : {}),
+  };
   if (draftPatch && typeof draftPatch === 'object' && !Array.isArray(draftPatch)) {
     return {
       ...(draftPatch as Record<string, unknown>),
       ...(engineeringDraft && typeof engineeringDraft === 'object' && !Array.isArray(engineeringDraft)
         ? { engineeringDraft }
         : {}),
+      ...supplemental,
     };
   }
   if (looksLikeTopLevelEngineeringDraft(parsed)) {
     return {
       ...(typeof parsed.inferredType === 'string' ? { inferredType: parsed.inferredType } : {}),
       engineeringDraft: parsed,
+      ...supplemental,
     };
   }
   return parsed;
