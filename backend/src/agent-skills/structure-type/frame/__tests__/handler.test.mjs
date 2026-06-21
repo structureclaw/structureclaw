@@ -77,6 +77,38 @@ describe('frame handler composed modules', () => {
     ]);
   });
 
+  test('preserves wind design parameters through frame state merge', () => {
+    const state = mergeFrameState(
+      {
+        inferredType: 'frame',
+        frameDimension: '2d',
+        storyCount: 2,
+        storyHeightsM: [3.6, 3.6],
+        bayCount: 1,
+        bayWidthsM: [6],
+        floorLoads: [
+          { story: 1, verticalKN: 120 },
+          { story: 2, verticalKN: 120 },
+        ],
+        updatedAt: 0,
+      },
+      {
+        inferredType: 'frame',
+        wind: { basicPressureKNM2: 0.5, terrainRoughness: 'B' },
+        floorLoads: [
+          { story: 1, lateralXKN: 10.8 },
+          { story: 2, lateralXKN: 10.8 },
+        ],
+      },
+    );
+
+    expect(state.wind).toEqual({ basicPressureKNM2: 0.5, terrainRoughness: 'B' });
+    expect(state.floorLoads).toEqual([
+      { story: 1, verticalKN: 120, lateralXKN: 10.8 },
+      { story: 2, verticalKN: 120, lateralXKN: 10.8 },
+    ]);
+  });
+
   test('does not mark floorLoads missing when llm omits story numbers', () => {
     const patch = handler.extractDraft({
       message: '两层3D钢框架，X向2跨每跨6m，Y向1跨6m，层高3.6m，每层总竖向荷载432kN',
