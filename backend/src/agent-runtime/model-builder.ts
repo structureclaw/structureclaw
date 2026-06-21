@@ -850,12 +850,13 @@ function buildPortalFrameModel(state: DraftState, metadata: Record<string, unkno
   const mezzanineHeight = readPositiveNumber(state.skillState?.mezzanineHeightM);
   const mezzanineLoad = readPositiveNumber(state.skillState?.mezzanineLoadKN);
   const hasMezzanine = mezzanineHeight !== undefined && mezzanineHeight > 0 && mezzanineHeight < height && spans.length >= 1;
+  const baseRestraint = buildFixedRestraint(state.frameBaseSupportType || 'fixed');
   const nodes: Array<Record<string, unknown>> = [];
   const elements: Array<Record<string, unknown>> = [];
   const loads: Array<Record<string, unknown>> = [];
 
   for (let i = 0; i < xCoordinates.length; i += 1) {
-    nodes.push({ id: `B${i}`, x: xCoordinates[i], y: 0, z: 0, restraints: [true, true, true, true, true, true] });
+    nodes.push({ id: `B${i}`, x: xCoordinates[i], y: 0, z: 0, restraints: [...baseRestraint] });
     nodes.push({ id: `T${i}`, x: xCoordinates[i], y: 0, z: height });
   }
   if (hasMezzanine) {

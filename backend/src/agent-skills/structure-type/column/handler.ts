@@ -25,6 +25,7 @@ function toColumnPatch(patch: DraftExtraction): DraftExtraction {
   const semanticPatch = projectEngineeringDraftToLegacyPatch(patch, 'column');
   const nextPatch: DraftExtraction = { inferredType: 'column' };
   nextPatch.engineeringDraft = semanticPatch.engineeringDraft;
+  nextPatch.draftIssues = semanticPatch.draftIssues;
   nextPatch.heightM = semanticPatch.heightM;
   nextPatch.lengthM = semanticPatch.lengthM;
   nextPatch.loadKN = semanticPatch.loadKN;
@@ -97,7 +98,7 @@ function buildColumnReportNarrative(input: SkillReportNarrativeInput): string {
 export const handler: SkillHandler = {
   detectStructuralType({ message, locale }) {
     const text = message.toLowerCase();
-    if (text.includes('frame') || message.includes('框架')) {
+    if (text.includes('frame') || text.includes('column grid') || message.includes('框架') || message.includes('柱网')) {
       return null;
     }
     if (text.includes('column') || message.includes('柱')) {

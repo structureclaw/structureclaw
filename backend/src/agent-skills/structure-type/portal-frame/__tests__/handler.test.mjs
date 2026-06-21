@@ -85,4 +85,27 @@ describe('portal-frame handler', () => {
       { node: 'M1', fz: -4 },
     ]));
   });
+
+  test('uses pinned restraints for pinned portal-frame bases', () => {
+    const patch = handler.extractDraft({
+      message: '',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'portal-frame',
+          geometry: { spanLengthsM: [18], heightM: 6 },
+          boundary: { frameBaseSupportType: 'pinned' },
+          loads: [
+            { kind: 'line', magnitude: 6, unit: 'kN/m', direction: 'gravity', target: 'roof' },
+          ],
+        },
+      },
+    });
+    const state = handler.mergeState(undefined, patch);
+    const model = handler.buildModel(state);
+
+    expect(model.nodes.filter((node) => String(node.id).startsWith('B')).map((node) => node.restraints)).toEqual([
+      [true, true, true, false, false, false],
+      [true, true, true, false, false, false],
+    ]);
+  });
 });

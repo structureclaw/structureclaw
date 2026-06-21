@@ -90,23 +90,34 @@ function getInvalidDraftFields(state: DraftState | DraftExtraction | undefined):
 
 function collectValidPatchFields(patch: DraftExtraction): Set<string> {
   const valid = new Set<string>();
-  for (const field of ['lengthM', 'spanLengthM', 'heightM', 'loadKN'] as const) {
-    const value = patch[field];
+  const checkPositive = (field: string, value: unknown) => {
     if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
       valid.add(field);
     }
-  }
-  for (const field of ['storyCount', 'bayCount', 'bayCountX', 'bayCountY'] as const) {
-    const value = patch[field];
-    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
-      valid.add(field);
-    }
-  }
-  for (const field of ['storyHeightsM', 'bayWidthsM', 'bayWidthsXM', 'bayWidthsYM'] as const) {
-    const value = patch[field];
+  };
+  const checkArray = (field: string, value: unknown) => {
     if (Array.isArray(value) && value.length > 0 && value.every((item) => typeof item === 'number' && Number.isFinite(item) && item > 0)) {
       valid.add(field);
     }
+  };
+  for (const field of ['lengthM', 'spanLengthM', 'heightM', 'loadKN'] as const) {
+    checkPositive(field, patch[field]);
+  }
+  for (const field of ['storyCount', 'bayCount', 'bayCountX', 'bayCountY'] as const) {
+    checkPositive(field, patch[field]);
+  }
+  for (const field of ['storyHeightsM', 'bayWidthsM', 'bayWidthsXM', 'bayWidthsYM'] as const) {
+    checkArray(field, patch[field]);
+  }
+  const geometry = patch.engineeringDraft?.geometry;
+  if (geometry) {
+    checkPositive('lengthM', geometry.lengthM);
+    checkPositive('heightM', geometry.heightM);
+    checkArray('spanLengthsM', geometry.spanLengthsM);
+    checkArray('storyHeightsM', geometry.storyHeightsM);
+    checkArray('bayWidthsM', geometry.bayWidthsM);
+    checkArray('bayWidthsXM', geometry.bayWidthsXM);
+    checkArray('bayWidthsYM', geometry.bayWidthsYM);
   }
   return valid;
 }

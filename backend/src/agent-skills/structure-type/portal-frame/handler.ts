@@ -23,7 +23,7 @@ import type {
 } from '../../../agent-runtime/types.js';
 
 const GEOMETRY_KEYS = ['spanLengthM', 'heightM'] as const;
-const LOAD_BOUNDARY_KEYS = ['loadKN', 'loadType', 'loadPosition'] as const;
+const LOAD_BOUNDARY_KEYS = ['loadKN', 'loadType', 'loadPosition', 'frameBaseSupportType'] as const;
 const ALLOWED_KEYS = combineDomainKeys(GEOMETRY_KEYS, LOAD_BOUNDARY_KEYS);
 
 function toPortalFramePatch(patch: DraftExtraction): DraftExtraction {

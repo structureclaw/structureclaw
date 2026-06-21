@@ -360,7 +360,8 @@ function parseStoryOrdinal(target: string | undefined, storyCount: number): numb
     const parsed = Number.parseInt(numericMatch[1], 10);
     return parsed >= 1 && parsed <= storyCount ? parsed : undefined;
   }
-  const chineseMatch = target.match(/第?\s*([一二两三四五六七八九十]+)\s*层/u);
+  const chineseMatch = target.match(/第?\s*([一二两三四五六七八九十廿]+)\s*层/u);
+  if (!chineseMatch?.[1]) return undefined;
   const table: Record<string, number> = {
     一: 1,
     二: 2,
@@ -373,9 +374,25 @@ function parseStoryOrdinal(target: string | undefined, storyCount: number): numb
     八: 8,
     九: 9,
     十: 10,
+    廿: 20,
   };
-  const parsed = chineseMatch?.[1] ? table[chineseMatch[1]] : undefined;
-  return parsed !== undefined && parsed <= storyCount ? parsed : undefined;
+  const raw = chineseMatch[1];
+  let parsed: number | undefined;
+  if (raw === '十' || raw === '廿') {
+    parsed = table[raw];
+  } else if (raw.startsWith('十')) {
+    parsed = 10 + (table[raw[1]] ?? 0);
+  } else if (raw.startsWith('廿')) {
+    parsed = 20 + (table[raw[1]] ?? 0);
+  } else if (raw.endsWith('十')) {
+    parsed = (table[raw[0]] ?? 1) * 10;
+  } else if (raw.includes('十')) {
+    const [tens, ones] = raw.split('十');
+    parsed = (table[tens] ?? 1) * 10 + (table[ones] ?? 0);
+  } else {
+    parsed = table[raw];
+  }
+  return parsed !== undefined && parsed >= 1 && parsed <= storyCount ? parsed : undefined;
 }
 
 function hasFloorLoadValues(floorLoads: DraftFloorLoad[] | undefined): boolean {
@@ -495,8 +512,9 @@ function projectFrameFloorLoads(loads: EngineeringDraftLoad[], patch: DraftExtra
         frameFloorLoadField(item.load) === field
         && parseStoryOrdinal(item.load.target, storyCount) === undefined
       ));
-      if (sameFieldUntargetedLoads.length === storyCount) {
-        stories = [sameFieldUntargetedLoads.findIndex((item) => item.index === index) + 1];
+      const untargetedIndex = sameFieldUntargetedLoads.findIndex((item) => item.index === index);
+      if (sameFieldUntargetedLoads.length > 1 && sameFieldUntargetedLoads.length <= storyCount) {
+        stories = untargetedIndex >= 0 ? [untargetedIndex + 1] : [];
       } else {
         stories = Array.from({ length: storyCount }, (_, storyIndex) => storyIndex + 1);
       }

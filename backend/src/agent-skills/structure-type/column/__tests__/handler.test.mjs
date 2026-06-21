@@ -12,6 +12,40 @@ describe('column handler', () => {
     expect(match?.mappedType).toBe('column');
   });
 
+  test('does not treat column-grid building descriptions as standalone columns', () => {
+    const match = handler.detectStructuralType({
+      message: '五层混凝土办公楼，柱网8m×8m，层高3.6m',
+      locale: 'zh',
+    });
+
+    expect(match).toBeNull();
+  });
+
+  test('preserves semantic draft issues for column clarification', () => {
+    const patch = handler.extractDraft({
+      message: '',
+      locale: 'en',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'column',
+        },
+        draftIssues: [{
+          field: 'heightM',
+          severity: 'invalid',
+          reason: 'Column height must be positive.',
+        }],
+        skillState: { invalidDraftFields: ['heightM'] },
+      },
+    });
+
+    expect(patch.draftIssues).toEqual([{
+      field: 'heightM',
+      severity: 'invalid',
+      reason: 'Column height must be positive.',
+    }]);
+    expect(patch.skillState?.invalidDraftFields).toContain('heightM');
+  });
+
   test('builds column model from engineeringDraft loads and section data', () => {
     const patch = handler.extractDraft({
       message: '',

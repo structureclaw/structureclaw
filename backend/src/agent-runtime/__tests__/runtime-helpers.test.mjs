@@ -226,6 +226,45 @@ describe('agent runtime helper utilities', () => {
     expect(match.mappedType).toBe('portal-frame');
   });
 
+  test('detectStructuralType does not treat member parameter edits as structural switches', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+
+    const match = await runtime.detectStructuralType('change height to 4m for the column', 'en', {
+      inferredType: 'frame',
+      skillId: 'frame',
+      structuralTypeKey: 'steel-frame',
+      storyCount: 2,
+      bayCount: 1,
+      updatedAt: 0,
+    });
+
+    expect(match.skillId).toBe('frame');
+    expect(match.mappedType).toBe('frame');
+  });
+
+  test('valid engineering draft span arrays clear prior invalid span issues', async () => {
+    const { mergeDraftState } = await import('../../../dist/agent-runtime/fallback.js');
+
+    const state = mergeDraftState({
+      inferredType: 'portal-frame',
+      skillState: { invalidDraftFields: ['spanLengthsM'] },
+      draftIssues: [{
+        field: 'spanLengthsM',
+        severity: 'invalid',
+        reason: 'Span lengths must be positive.',
+      }],
+      updatedAt: 0,
+    }, {
+      engineeringDraft: {
+        geometry: { spanLengthsM: [18, 18] },
+      },
+    });
+
+    expect(state.skillState?.invalidDraftFields ?? []).not.toContain('spanLengthsM');
+    expect(state.draftIssues ?? []).toEqual([]);
+  });
+
   test('projects frame area engineering loads into per-story floor loads', async () => {
     const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
 
@@ -297,5 +336,47 @@ describe('agent runtime helper utilities', () => {
     });
     expect(patch.bayCountX).toBeUndefined();
     expect(patch.bayWidthsXM).toBeUndefined();
+  });
+
+  test('maps partial untargeted frame loads by order instead of duplicating to every story', async () => {
+    const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
+
+    const patch = projectEngineeringDraftToLegacyPatch({
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        geometry: {
+          storyHeightsM: [3, 3, 3],
+          bayWidthsM: [6],
+        },
+        loads: [
+          { kind: 'line', magnitude: 10, unit: 'kN/m', direction: 'gravity' },
+          { kind: 'line', magnitude: 12, unit: 'kN/m', direction: 'gravity' },
+        ],
+      },
+    }, 'frame');
+
+    expect(patch.floorLoads).toEqual([
+      { story: 1, verticalKN: 60 },
+      { story: 2, verticalKN: 72 },
+    ]);
+  });
+
+  test('parses compound Chinese story ordinals for targeted frame loads', async () => {
+    const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
+
+    const patch = projectEngineeringDraftToLegacyPatch({
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        geometry: {
+          storyHeightsM: Array.from({ length: 12 }, () => 3),
+          bayWidthsM: [5],
+        },
+        loads: [
+          { kind: 'line', magnitude: 2, unit: 'kN/m', direction: 'gravity', target: '第十一层' },
+        ],
+      },
+    }, 'frame');
+
+    expect(patch.floorLoads).toEqual([{ story: 11, verticalKN: 10 }]);
   });
 });
