@@ -21,7 +21,7 @@ import { logger } from '../utils/logger.js';
 import { getLogger, logToolCall } from '../utils/agent-logger.js';
 import type { AgentState } from './state.js';
 import type { AgentConfigurable } from './configurable.js';
-import type { AgentSkillPlugin, DraftState, StructuralTypeMatch } from '../agent-runtime/types.js';
+import type { AgentSkillPlugin, DraftState, InteractionQuestion, StructuralTypeMatch } from '../agent-runtime/types.js';
 import { runPkpmCalcbook } from '../agent-skills/report-export/calculation-book/pkpm-calcbook/runner.js';
 // ---------------------------------------------------------------------------
 // Helpers
@@ -254,6 +254,16 @@ function buildPluginUnavailableProgress(
   };
 }
 
+function buildClarificationQuestions(
+  plugin: AgentSkillPlugin | null | undefined,
+  criticalMissing: string[],
+  state: DraftState,
+  locale: 'zh' | 'en',
+): InteractionQuestion[] {
+  if (criticalMissing.length === 0) return [];
+  return plugin?.handler.buildQuestions?.(criticalMissing, criticalMissing, state, locale) ?? [];
+}
+
 function hasStableDraftType(state: DraftState | null | undefined): state is DraftState {
   return !!state?.inferredType && state.inferredType !== 'unknown';
 }
@@ -337,6 +347,9 @@ export function buildPreservedDraftExtractionResult(args: {
   const progress = plugin
     ? buildDraftProgress(args.locale, missing.critical)
     : buildPluginUnavailableProgress(args.locale);
+  const clarificationQuestions = plugin
+    ? buildClarificationQuestions(plugin, missing.critical, nextState, args.locale)
+    : [];
   const preservedMatch = buildPreservedStructuralTypeMatch(nextState, plugin);
   const preservationWarning = args.locale === 'zh'
     ? '本轮描述未能稳定识别为新的结构类型，已保留上一版有效草稿，避免将状态覆盖为 unknown/generic。'
@@ -347,6 +360,7 @@ export function buildPreservedDraftExtractionResult(args: {
       nextState,
       criticalMissing: missing.critical,
       optionalMissing: missing.optional,
+      clarificationQuestions,
       structuralTypeMatch: preservedMatch,
       rejectedStructuralTypeMatch: args.structuralTypeMatch,
       skillId: preservedMatch.skillId,
@@ -827,6 +841,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
             nextState,
             criticalMissing: ['inferredType'],
             optionalMissing: [],
+            clarificationQuestions: [],
             structuralTypeMatch: match,
             skillId: undefined,
             extractionMode: 'deterministic',
@@ -846,6 +861,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
             nextState,
             criticalMissing: ['inferredType'],
             optionalMissing: [],
+            clarificationQuestions: [],
             structuralTypeMatch: match,
             skillId: undefined,
             extractionMode: 'deterministic',
@@ -865,6 +881,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
             nextState,
             criticalMissing: missing.critical,
             optionalMissing: missing.optional,
+            clarificationQuestions: buildClarificationQuestions(plugin, missing.critical, nextState, locale),
             structuralTypeMatch: match,
             skillId: plugin.id,
             extractionMode: 'deterministic',
@@ -931,6 +948,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
           nextState,
           criticalMissing: missing.critical,
           optionalMissing: missing.optional,
+          clarificationQuestions: buildClarificationQuestions(plugin, missing.critical, nextState, locale),
           structuralTypeMatch: match,
           skillId: plugin.id,
           extractionMode,

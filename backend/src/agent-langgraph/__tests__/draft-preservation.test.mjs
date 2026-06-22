@@ -209,6 +209,16 @@ describe("draft extraction preservation", () => {
         computeMissing() {
           return { critical: ["loadKN"], optional: [] };
         },
+        buildQuestions() {
+          return [{
+            paramKey: "loadKN",
+            label: "Load",
+            question: "What load should be applied?",
+            unit: "kN",
+            required: true,
+            critical: true,
+          }];
+        },
       },
     };
 
@@ -228,6 +238,10 @@ describe("draft extraction preservation", () => {
         mappedType: "beam",
         skillId: "beam",
       }),
+      clarificationQuestions: [expect.objectContaining({
+        paramKey: "loadKN",
+        question: "What load should be applied?",
+      })],
     }));
     expect(result.responseJson.criticalMissing).not.toContain("inferredType");
     expect(result.responseJson.nextState.updatedAt).toBeGreaterThanOrEqual(before);
