@@ -88,6 +88,10 @@ export function resolveToolInputMessage(
   lastUserMessage: string | undefined,
   messages?: unknown[],
 ): string {
+  const explicitMessage = inputMessage?.trim();
+  if (explicitMessage) {
+    return explicitMessage;
+  }
   const canonicalUserMessage = lastUserMessage?.trim();
   if (canonicalUserMessage) {
     return canonicalUserMessage;
@@ -96,8 +100,7 @@ export function resolveToolInputMessage(
   if (latestHumanMessage) {
     return latestHumanMessage;
   }
-  const explicitMessage = inputMessage?.trim();
-  return explicitMessage || '';
+  return '';
 }
 
 const ANALYSIS_SKILL_ENGINE_IDS: Record<string, string> = {
@@ -845,7 +848,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
 
         // Step 3: Sub-agent extracts parameters (skill manifest driven)
         const { invokeParamExtractor } = await import('./param-extractor.js');
-        const draftPatch = await invokeParamExtractor({
+        let draftPatch = await invokeParamExtractor({
           message: extractionMessage,
           existingState,
           locale,
@@ -854,7 +857,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
         });
 
         // Step 4: Handler pipeline (extractDraft → mergeState → computeMissing)
-        const patch = plugin.handler.extractDraft({
+        let patch = plugin.handler.extractDraft({
           message: extractionMessage,
           locale,
           currentState: existingState,
@@ -862,8 +865,38 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
           structuralTypeMatch: match,
         });
         const { withStructuralTypeState } = await import('../agent-runtime/plugin-helpers.js');
-        const nextState = withStructuralTypeState(plugin.handler.mergeState(existingState, patch), match);
-        const missing = plugin.handler.computeMissing(nextState, 'execution');
+        let nextState = withStructuralTypeState(plugin.handler.mergeState(existingState, patch), match);
+        let missing = plugin.handler.computeMissing(nextState, 'execution');
+        let extractionMode = draftPatch ? 'llm' : 'deterministic';
+
+        if (draftPatch && missing.critical.length > 0) {
+          const retryDraftPatch = await invokeParamExtractor({
+            message: extractionMessage,
+            existingState: nextState,
+            locale,
+            plugin,
+            focusFields: missing.critical,
+            traceLogger: log,
+          });
+          if (retryDraftPatch) {
+            const retryPatch = plugin.handler.extractDraft({
+              message: extractionMessage,
+              locale,
+              currentState: nextState,
+              llmDraftPatch: retryDraftPatch,
+              structuralTypeMatch: match,
+            });
+            const retryState = withStructuralTypeState(plugin.handler.mergeState(nextState, retryPatch), match);
+            const retryMissing = plugin.handler.computeMissing(retryState, 'execution');
+            if (retryMissing.critical.length < missing.critical.length) {
+              draftPatch = retryDraftPatch;
+              patch = retryPatch;
+              nextState = retryState;
+              missing = retryMissing;
+              extractionMode = 'llm-focused-retry';
+            }
+          }
+        }
 
         const responseJson = {
           nextState,
@@ -871,7 +904,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
           optionalMissing: missing.optional,
           structuralTypeMatch: match,
           skillId: plugin.id,
-          extractionMode: draftPatch ? 'llm' : 'deterministic',
+          extractionMode,
           llmDraftPatch: draftPatch ?? null,
           engineeringDraft: nextState.engineeringDraft ?? patch.engineeringDraft ?? null,
           extractionSource: typeof nextState.skillState?.extractionSource === 'string'
@@ -976,6 +1009,8 @@ export function createAskUserClarificationTool() {
         type: 'clarification_answered',
         question: input.question,
         answer: userResponse,
+        nextAction: 'extract_draft_params',
+        instruction: 'Clarification answers are not merged into draftState automatically. Call extract_draft_params with this exact answer before build_model.',
       });
     },
     {

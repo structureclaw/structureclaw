@@ -62,6 +62,110 @@ describe('truss handler', () => {
     expect(patch.skillState).not.toEqual(expect.objectContaining({ trussTopology: 'pratt' }));
   });
 
+  test('merges a follow-up top chord nodal load into an existing truss draft', () => {
+    const initialPatch = handler.extractDraft({
+      message: '我想设计一个跨度15m，高度3m的桁架，形式你推荐一下？',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'truss',
+          geometry: { lengthM: 15, heightM: 3 },
+        },
+      },
+    });
+    const initialState = handler.mergeState(undefined, initialPatch);
+
+    expect(handler.computeMissing(initialState, 'execution').critical).toEqual(['loadKN']);
+
+    const loadPatch = handler.extractDraft({
+      message: '每个上弦节点荷载 10 kN',
+      currentState: initialState,
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'truss',
+          loads: [
+            {
+              kind: 'nodal',
+              magnitude: 10,
+              unit: 'kN',
+              direction: 'gravity',
+              target: 'top chord nodes',
+              location: { nodeRole: 'top' },
+            },
+          ],
+        },
+      },
+    });
+    const state = handler.mergeState(initialState, loadPatch);
+    const model = handler.buildModel(state);
+
+    expect(state.lengthM).toBe(15);
+    expect(state.heightM).toBe(3);
+    expect(state.loadKN).toBe(10);
+    expect(state.loadType).toBe('point');
+    expect(state.loadPosition).toBe('top-nodes');
+    expect(handler.computeMissing(state, 'execution').critical).toEqual([]);
+    expect(model).toBeDefined();
+    expect(model.load_cases[0].loads.reduce((sum, load) => sum + Math.abs(load.fz), 0)).toBe(40);
+  });
+
+  test('does not infer truss topology when llm omits structured topology', () => {
+    const patch = handler.extractDraft({
+      message: 'Warren 桁架（首推，简洁经济）',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'truss',
+        },
+      },
+    });
+    const state = handler.mergeState(undefined, patch);
+
+    expect(state.skillState?.trussTopology).toBeUndefined();
+  });
+
+  test('clears previous invalid load field when llm supplies structured nodal load', () => {
+    const initialState = handler.mergeState(undefined, handler.extractDraft({
+      message: '跨度15m，高度3m的桁架',
+      llmDraftPatch: {
+        inferredType: 'truss',
+        lengthM: 15,
+        heightM: 3,
+        skillState: {
+          invalidDraftFields: ['loadKN'],
+        },
+      },
+    }));
+
+    expect(handler.computeMissing(initialState, 'execution').critical).toContain('loadKN');
+
+    const loadPatch = handler.extractDraft({
+      message: '每个上弦节点 10 kN（典型轻钢屋盖）',
+      currentState: initialState,
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'truss',
+          loads: [
+            {
+              kind: 'nodal',
+              magnitude: 10,
+              unit: 'kN',
+              direction: 'gravity',
+              target: 'top chord nodes',
+              location: { nodeRole: 'top' },
+            },
+          ],
+        },
+      },
+    });
+    const state = handler.mergeState(initialState, loadPatch);
+
+    expect(state.loadKN).toBe(10);
+    expect(state.loadType).toBe('point');
+    expect(state.loadPosition).toBe('top-nodes');
+    expect(state.skillState?.invalidDraftFields).not.toContain('loadKN');
+    expect(handler.computeMissing(state, 'execution').critical).toEqual([]);
+    expect(handler.buildModel(state)?.load_cases[0].loads).toHaveLength(4);
+  });
+
   test('builds a panelized planar truss model instead of a single bar', () => {
     const patch = handler.extractDraft({
       message: 'Pratt桁架，跨度15m，高2.5m，5个节间，每个上弦节点竖向荷载10kN，请分析',

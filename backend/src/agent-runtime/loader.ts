@@ -8,6 +8,11 @@ import type { AgentSkillBundle, AgentSkillFile, AgentSkillMetadata, AgentSkillPl
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
 
+function isTypeScriptRuntime(): boolean {
+  const args = [...process.execArgv, ...process.argv];
+  return args.some((arg) => /(?:^|[\\/])tsx(?:[\\/]|$)|ts-node/u.test(arg));
+}
+
 function collectDirectories(root: string): string[] {
   const result: string[] = [];
   const stack = [root];
@@ -46,16 +51,27 @@ function resolveSkillRoot(candidates: string[], requiredExtensions?: string[]): 
   return matched;
 }
 
-const MODULE_SKILL_ROOT = resolveSkillRoot([
+const COMPILED_MODULE_SKILL_ROOT_CANDIDATES = [
   // Installed-package layout: dist/backend/ holds compiled JS next to dist/frontend/
   path.resolve(process.cwd(), 'dist/backend/agent-skills'),
   path.resolve(process.cwd(), 'backend/dist/agent-skills'),
   path.resolve(process.cwd(), 'dist/agent-skills'),
-  // Source layouts (dev mode)
-  path.resolve(process.cwd(), 'src/agent-skills'),
   // MODULE_DIR-relative: works regardless of cwd
   path.resolve(MODULE_DIR, '../../agent-skills'),
   path.resolve(MODULE_DIR, '../../src/agent-skills'),
+] as const;
+
+const SOURCE_MODULE_SKILL_ROOT_CANDIDATES = [
+  // Source layouts (dev mode)
+  path.resolve(process.cwd(), 'backend/src/agent-skills'),
+  path.resolve(process.cwd(), 'src/agent-skills'),
+  // MODULE_DIR-relative: works regardless of cwd
+  path.resolve(MODULE_DIR, '../../src/agent-skills'),
+] as const;
+
+const MODULE_SKILL_ROOT = resolveSkillRoot([
+  ...(isTypeScriptRuntime() ? SOURCE_MODULE_SKILL_ROOT_CANDIDATES : COMPILED_MODULE_SKILL_ROOT_CANDIDATES),
+  ...(isTypeScriptRuntime() ? COMPILED_MODULE_SKILL_ROOT_CANDIDATES : SOURCE_MODULE_SKILL_ROOT_CANDIDATES),
 ], ['handler.js', 'handler.ts']);
 
 const MARKDOWN_SKILL_ROOT = resolveSkillRoot([
@@ -352,6 +368,8 @@ export class AgentSkillLoader {
     if (!matched) {
       return null;
     }
-    return import(pathToFileURL(matched).href) as Promise<Record<string, unknown>>;
+    const moduleUrl = pathToFileURL(matched);
+    moduleUrl.searchParams.set('mtime', String(statSync(matched).mtimeMs));
+    return import(moduleUrl.href) as Promise<Record<string, unknown>>;
   }
 }

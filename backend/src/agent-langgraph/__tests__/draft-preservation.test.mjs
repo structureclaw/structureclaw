@@ -8,15 +8,19 @@ const unknownFallbackMatch = {
 };
 
 describe("draft extraction preservation", () => {
-  test("prefers the graph user message over generated tool arguments", async () => {
+  test("prefers explicit tool messages and falls back to graph user messages", async () => {
     const { resolveToolInputMessage } = await import("../../../dist/agent-langgraph/tools.js");
 
     expect(resolveToolInputMessage(
       "请分析这个混凝土框架",
       "请分析这个钢框架",
+    )).toBe("请分析这个混凝土框架");
+    expect(resolveToolInputMessage(
+      "",
+      "请分析这个钢框架",
     )).toBe("请分析这个钢框架");
     expect(resolveToolInputMessage(
-      "请分析这个混凝土框架",
+      "",
       "",
       [{ role: "user", content: "请分析这个钢框架" }],
     )).toBe("请分析这个钢框架");

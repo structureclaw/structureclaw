@@ -156,6 +156,7 @@ ${summarizeArtifacts(state)}
 - set_session_config 只影响当前会话的分析类型、设计规范和技能选择。
 - memory 支持 conversation 和 workspace 两种 scope。conversation scope（默认）存储当前会话的上下文；workspace scope 存储跨会话持久偏好（如默认设计规范、项目约束）。不要把临时草稿参数写入 memory。
 - 如果 extract_draft_params 返回 canProceed=false 或 criticalMissing 非空，必须继续调用 ask_user_clarification 或直接说明缺失项；不要调用 memory 来修补草稿参数，也不要静默结束。
+- ask_user_clarification 返回的用户回答不会自动写入 draftState。收到 clarification_answered 后，必须先用回答原文调用 extract_draft_params，确认 criticalMissing 为空后，才能调用 build_model。
 
 **文件处理规则（当用户上传文件时）**:
 - 用户上传文件后，其 relPath 会随对话上下文传入。当用户提到上传的文件时，首先调用 analyze_file 获取文件内容。
@@ -222,6 +223,7 @@ When the user makes a structural design or analysis request, follow this workflo
 - set_session_config only affects the current session's analysis type, design code, and selected skills.
 - memory supports conversation and workspace scopes. conversation scope (default) stores current-session context; workspace scope stores cross-session persistent preferences (e.g. default design code, project constraints). Do not store temporary draft parameters in memory.
 - If extract_draft_params returns canProceed=false or non-empty criticalMissing, you must continue with ask_user_clarification or clearly explain the missing fields; do not use memory to patch draft parameters and do not silently stop.
+- User answers returned by ask_user_clarification are not automatically merged into draftState. After clarification_answered, call extract_draft_params with the exact answer text first, then call build_model only after criticalMissing is empty.
 
 **File handling rules (when the user uploads a file)**:
 - When a user uploads a file, its relPath is passed in the conversation context. Call analyze_file first to retrieve the file content.
