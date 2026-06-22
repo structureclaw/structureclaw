@@ -34,6 +34,14 @@ function buildCurrentStateMatch(
   };
 }
 
+function providerMatchesScope(provider: { id: string; plugin: AgentSkillPlugin }, requested: Set<string>): boolean {
+  const plugin = provider.plugin;
+  return requested.has(provider.id)
+    || requested.has(plugin.id)
+    || requested.has(plugin.structureType)
+    || plugin.manifest.structuralTypeKeys.some((key) => requested.has(key));
+}
+
 export class AgentSkillRegistry {
   constructor(private readonly loader = new AgentSkillLoader()) {}
 
@@ -62,7 +70,7 @@ export class AgentSkillRegistry {
     }
     const requested = new Set(skillIds);
     return providers
-      .filter((provider) => requested.has(provider.id))
+      .filter((provider) => providerMatchesScope(provider, requested))
       .map((provider) => provider.plugin);
   }
 

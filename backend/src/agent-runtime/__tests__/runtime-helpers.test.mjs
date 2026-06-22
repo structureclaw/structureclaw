@@ -20,6 +20,27 @@ describe('agent runtime helper utilities', () => {
     expect((await runtime.resolvePluginForType('concrete-frame'))?.id).toBe('concrete-frame');
   });
 
+  test('keeps owning plugin enabled when scope uses a structural type key', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+
+    expect((await runtime.resolvePluginForType('steel-frame', ['steel-frame']))?.id).toBe('frame');
+
+    const match = await runtime.detectStructuralType(
+      '2层单跨钢框架，层高3.6m，跨度6m，请建立模型并进行静力分析。',
+      'zh',
+      undefined,
+      ['steel-frame'],
+    );
+
+    expect(match).toMatchObject({
+      key: 'steel-frame',
+      mappedType: 'frame',
+      skillId: 'frame',
+      supportLevel: 'supported',
+    });
+  });
+
   test('dependency fingerprints are stable regardless of reference insertion order', () => {
     const left = computeDependencyFingerprint({
       analysis: { artifactId: 'analysis-1', revision: 3 },
