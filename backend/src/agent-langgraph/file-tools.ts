@@ -37,6 +37,8 @@ const IMAGE_MIME: Record<string, string> = {
   '.bmp': 'image/bmp',
 };
 
+type AnalyzeFileResult = Record<string, unknown>;
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -171,6 +173,191 @@ export function parseDxf(text: string): {
   return result;
 }
 
+export async function analyzeUploadedFile(
+  filePath: string,
+  workspaceRoot: string | undefined,
+  maxRows?: number,
+): Promise<AnalyzeFileResult> {
+  let resolvedPath: string;
+  try {
+    resolvedPath = resolveUploadPath(filePath, workspaceRoot);
+  } catch (err) {
+    return { success: false, error: String(err) };
+  }
+
+  let stat: Awaited<ReturnType<typeof fsp.stat>>;
+  try {
+    stat = await fsp.stat(resolvedPath);
+  } catch {
+    return { success: false, error: 'FILE_NOT_FOUND', filePath };
+  }
+
+  if (!stat.isFile()) {
+    return { success: false, error: 'NOT_A_FILE', filePath };
+  }
+
+  const ext = path.extname(resolvedPath).toLowerCase();
+  const size = stat.size;
+
+  // ── Image ────────────────────────────────────────────────────────────
+  if (IMAGE_EXTS.has(ext)) {
+    if (size > IMAGE_MAX_BYTES) {
+      return {
+        success: true,
+        type: 'image',
+        ext,
+        size,
+        note: 'Image too large for base64 encoding (> 4 MB). Consider resizing before analysis.',
+      };
+    }
+    const buf = await fsp.readFile(resolvedPath);
+    const mime = IMAGE_MIME[ext] ?? 'image/png';
+    const base64 = buf.toString('base64');
+    return {
+      success: true,
+      type: 'image',
+      ext,
+      size,
+      mimeType: mime,
+      base64DataUri: `data:${mime};base64,${base64}`,
+      note: 'Pass base64DataUri to a multimodal LLM vision call to extract structural information.',
+    };
+  }
+
+  if (size > MAX_READ_BYTES) {
+    return {
+      success: false,
+      error: 'FILE_TOO_LARGE',
+      size,
+      note: `File exceeds ${MAX_READ_BYTES / 1024 / 1024} MB analysis limit.`,
+    };
+  }
+
+  // ── PDF ──────────────────────────────────────────────────────────────
+  if (ext === '.pdf') {
+    try {
+      // Dynamic import so the server still starts if pdf-parse is not installed
+      // Handle both ES module default export and CommonJS module format
+      const mod = await import('pdf-parse');
+      const pdfParse = 'default' in mod ? mod.default : mod;
+      const buf = await fsp.readFile(resolvedPath);
+      const data = await (pdfParse as (buf: Buffer) => Promise<{ numpages: number; text: string }>)(buf);
+      return {
+        success: true,
+        type: 'pdf',
+        ext,
+        size,
+        pageCount: data.numpages,
+        text: data.text.slice(0, 8000),
+        truncated: data.text.length > 8000,
+      };
+    } catch (err) {
+      const msg = String(err);
+      if (msg.includes('Cannot find module')) {
+        return {
+          success: false,
+          type: 'pdf',
+          error: 'PDF_PARSE_NOT_INSTALLED',
+          note: 'Install pdf-parse: npm install pdf-parse',
+        };
+      }
+      return { success: false, type: 'pdf', error: msg };
+    }
+  }
+
+  // ── Excel ────────────────────────────────────────────────────────────
+  if (EXCEL_EXTS.has(ext)) {
+    try {
+      const XLSX = await import('xlsx').then((m) => m.default ?? m);
+      const buf = await fsp.readFile(resolvedPath);
+      const workbook = XLSX.read(buf, { type: 'buffer' });
+      const rowLimit = Math.min(maxRows ?? EXCEL_MAX_ROWS, 200);
+      const sheets: Record<string, { headers: string[]; rows: unknown[][] }> = {};
+      for (const sheetName of workbook.SheetNames) {
+        const ws = workbook.Sheets[sheetName];
+        const jsonData: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][];
+        const headers = (jsonData[0] as unknown[] ?? []).map(String);
+        const rows = jsonData.slice(1, rowLimit + 1).map((row) =>
+          (row as unknown[]).map((cell) => (cell === null || cell === undefined ? '' : cell)),
+        );
+        sheets[sheetName] = { headers, rows };
+      }
+      return { success: true, type: 'excel', ext, size, sheets };
+    } catch (err) {
+      const msg = String(err);
+      if (msg.includes('Cannot find module')) {
+        return {
+          success: false,
+          type: 'excel',
+          error: 'XLSX_NOT_INSTALLED',
+          note: 'Install xlsx: npm install xlsx',
+        };
+      }
+      return { success: false, type: 'excel', error: msg };
+    }
+  }
+
+  // ── CSV / TSV / plain text ────────────────────────────────────────────
+  if (ext === '.csv' || ext === '.tsv' || TEXT_EXTS.has(ext)) {
+    const buf = await fsp.readFile(resolvedPath);
+    const text = buf.toString('utf-8');
+
+    if (ext === '.csv' || ext === '.tsv') {
+      const rowLimit = Math.min(maxRows ?? CSV_MAX_ROWS, 500);
+      const allLines = text.split(/\r?\n/);
+      const parsed = parseCsv(text, rowLimit);
+      return {
+        success: true,
+        type: 'csv',
+        ext,
+        size,
+        totalLines: allLines.length,
+        headers: parsed.headers,
+        rows: parsed.rows,
+        truncated: allLines.length - 1 > rowLimit,
+      };
+    }
+
+    // Plain text
+    const preview = text.slice(0, 8000);
+    return {
+      success: true,
+      type: 'text',
+      ext,
+      size,
+      content: preview,
+      truncated: text.length > 8000,
+    };
+  }
+
+  // ── DXF ──────────────────────────────────────────────────────────────
+  if (ext === '.dxf') {
+    const buf = await fsp.readFile(resolvedPath);
+    const text = buf.toString('utf-8');
+    const dxfData = parseDxf(text);
+    return {
+      success: true,
+      type: 'dxf',
+      ext,
+      size,
+      entityCount: dxfData.entityCount,
+      lineCount: dxfData.lines.length,
+      lines: dxfData.lines.slice(0, 50),
+      texts: dxfData.texts.slice(0, 50),
+      note: 'Line entities represent structural members (beams, columns). TEXT/MTEXT contains dimensions and labels.',
+    };
+  }
+
+  // ── Unknown binary ───────────────────────────────────────────────────
+  return {
+    success: true,
+    type: 'binary',
+    ext,
+    size,
+    note: `Binary file of type ${ext}. No parser available. Check if the correct file was uploaded.`,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // analyze_file tool
 // ---------------------------------------------------------------------------
@@ -182,185 +369,7 @@ export function createAnalyzeFileTool() {
       config: LangGraphRunnableConfig,
     ) => {
       const workspaceRoot = (config.configurable as Partial<AgentConfigurable>)?.workspaceRoot;
-
-      let resolvedPath: string;
-      try {
-        resolvedPath = resolveUploadPath(input.filePath, workspaceRoot);
-      } catch (err) {
-        return JSON.stringify({ success: false, error: String(err) });
-      }
-
-      let stat: Awaited<ReturnType<typeof fsp.stat>>;
-      try {
-        stat = await fsp.stat(resolvedPath);
-      } catch {
-        return JSON.stringify({ success: false, error: 'FILE_NOT_FOUND', filePath: input.filePath });
-      }
-
-      if (!stat.isFile()) {
-        return JSON.stringify({ success: false, error: 'NOT_A_FILE', filePath: input.filePath });
-      }
-
-      const ext = path.extname(resolvedPath).toLowerCase();
-      const size = stat.size;
-
-      // ── Image ────────────────────────────────────────────────────────────
-      if (IMAGE_EXTS.has(ext)) {
-        if (size > IMAGE_MAX_BYTES) {
-          return JSON.stringify({
-            success: true,
-            type: 'image',
-            ext,
-            size,
-            note: 'Image too large for base64 encoding (> 4 MB). Consider resizing before analysis.',
-          });
-        }
-        const buf = await fsp.readFile(resolvedPath);
-        const mime = IMAGE_MIME[ext] ?? 'image/png';
-        const base64 = buf.toString('base64');
-        return JSON.stringify({
-          success: true,
-          type: 'image',
-          ext,
-          size,
-          mimeType: mime,
-          base64DataUri: `data:${mime};base64,${base64}`,
-          note: 'Pass base64DataUri to a multimodal LLM vision call to extract structural information.',
-        });
-      }
-
-      if (size > MAX_READ_BYTES) {
-        return JSON.stringify({
-          success: false,
-          error: 'FILE_TOO_LARGE',
-          size,
-          note: `File exceeds ${MAX_READ_BYTES / 1024 / 1024} MB analysis limit.`,
-        });
-      }
-
-      // ── PDF ──────────────────────────────────────────────────────────────
-      if (ext === '.pdf') {
-        try {
-          // Dynamic import so the server still starts if pdf-parse is not installed
-          // Handle both ES module default export and CommonJS module format
-          const mod = await import('pdf-parse');
-          const pdfParse = 'default' in mod ? mod.default : mod;
-          const buf = await fsp.readFile(resolvedPath);
-          const data = await (pdfParse as (buf: Buffer) => Promise<{ numpages: number; text: string }>)(buf);
-          return JSON.stringify({
-            success: true,
-            type: 'pdf',
-            ext,
-            size,
-            pageCount: data.numpages,
-            text: data.text.slice(0, 8000),
-            truncated: data.text.length > 8000,
-          });
-        } catch (err) {
-          const msg = String(err);
-          if (msg.includes('Cannot find module')) {
-            return JSON.stringify({
-              success: false,
-              type: 'pdf',
-              error: 'PDF_PARSE_NOT_INSTALLED',
-              note: 'Install pdf-parse: npm install pdf-parse',
-            });
-          }
-          return JSON.stringify({ success: false, type: 'pdf', error: msg });
-        }
-      }
-
-      // ── Excel ────────────────────────────────────────────────────────────
-      if (EXCEL_EXTS.has(ext)) {
-        try {
-          const XLSX = await import('xlsx').then((m) => m.default ?? m);
-          const buf = await fsp.readFile(resolvedPath);
-          const workbook = XLSX.read(buf, { type: 'buffer' });
-          const maxRows = Math.min(input.maxRows ?? EXCEL_MAX_ROWS, 200);
-          const sheets: Record<string, { headers: string[]; rows: unknown[][] }> = {};
-          for (const sheetName of workbook.SheetNames) {
-            const ws = workbook.Sheets[sheetName];
-            const jsonData: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][];
-            const headers = (jsonData[0] as unknown[] ?? []).map(String);
-            const rows = jsonData.slice(1, maxRows + 1).map((row) =>
-              (row as unknown[]).map((cell) => (cell === null || cell === undefined ? '' : cell)),
-            );
-            sheets[sheetName] = { headers, rows };
-          }
-          return JSON.stringify({ success: true, type: 'excel', ext, size, sheets });
-        } catch (err) {
-          const msg = String(err);
-          if (msg.includes('Cannot find module')) {
-            return JSON.stringify({
-              success: false,
-              type: 'excel',
-              error: 'XLSX_NOT_INSTALLED',
-              note: 'Install xlsx: npm install xlsx',
-            });
-          }
-          return JSON.stringify({ success: false, type: 'excel', error: msg });
-        }
-      }
-
-      // ── CSV / TSV / plain text ────────────────────────────────────────────
-      if (ext === '.csv' || ext === '.tsv' || TEXT_EXTS.has(ext)) {
-        const buf = await fsp.readFile(resolvedPath);
-        const text = buf.toString('utf-8');
-
-        if (ext === '.csv' || ext === '.tsv') {
-          const maxRows = Math.min(input.maxRows ?? CSV_MAX_ROWS, 500);
-          const allLines = text.split(/\r?\n/);
-          const parsed = parseCsv(text, maxRows);
-          return JSON.stringify({
-            success: true,
-            type: 'csv',
-            ext,
-            size,
-            totalLines: allLines.length,
-            headers: parsed.headers,
-            rows: parsed.rows,
-            truncated: allLines.length - 1 > maxRows,
-          });
-        }
-
-        // Plain text
-        const preview = text.slice(0, 8000);
-        return JSON.stringify({
-          success: true,
-          type: 'text',
-          ext,
-          size,
-          content: preview,
-          truncated: text.length > 8000,
-        });
-      }
-
-      // ── DXF ──────────────────────────────────────────────────────────────
-      if (ext === '.dxf') {
-        const buf = await fsp.readFile(resolvedPath);
-        const text = buf.toString('utf-8');
-        const dxfData = parseDxf(text);
-        return JSON.stringify({
-          success: true,
-          type: 'dxf',
-          ext,
-          size,
-          entityCount: dxfData.entityCount,
-          lineCount: dxfData.lines.length,
-          lines: dxfData.lines.slice(0, 50),
-          texts: dxfData.texts.slice(0, 50),
-          note: 'Line entities represent structural members (beams, columns). TEXT/MTEXT contains dimensions and labels.',
-        });
-      }
-
-      // ── Unknown binary ───────────────────────────────────────────────────
-      return JSON.stringify({
-        success: true,
-        type: 'binary',
-        ext,
-        size,
-        note: `Binary file of type ${ext}. No parser available. Check if the correct file was uploaded.`,
-      });
+      return JSON.stringify(await analyzeUploadedFile(input.filePath, workspaceRoot, input.maxRows));
     },
     {
       name: 'analyze_file',

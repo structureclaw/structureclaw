@@ -28,6 +28,8 @@ import { logger } from '../utils/logger.js';
 import { createAgentLogger } from '../utils/agent-logger.js';
 import type { AgentConfigurable } from './configurable.js';
 import { listAgentToolDefinitions } from './tool-registry.js';
+import { analyzeUploadedFile } from './file-tools.js';
+import { createChatModel } from '../utils/llm.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -75,6 +77,20 @@ export interface LangGraphRunResult {
   presentation?: Record<string, unknown>;
 }
 
+type HumanMessageContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } };
+
+interface InitialHumanMessagePayload {
+  content: string | HumanMessageContentBlock[];
+  canonicalMessage: string;
+}
+
+interface InitialHumanMessageOptions {
+  summarizeImages?: boolean;
+  signal?: AbortSignal;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -89,8 +105,175 @@ export function getLangGraphRecursionLimit(maxToolCallsPerTurn: number | undefin
 function buildAttachmentBlock(attachments: AttachmentInfo[] | undefined, locale: AppLocale): string {
   if (!attachments || attachments.length === 0) return '';
   const header = locale === 'zh' ? '[已上传文件]' : '[Attached files]';
+  const instruction = locale === 'zh'
+    ? '下面的附件内容已随本轮消息提供。若附件包含图片或图纸，请直接从附件内容识别结构类型、尺寸、荷载和边界条件；不要声称无法访问附件。'
+    : 'The attachment contents are provided with this turn. If an attachment contains an image or drawing, read it directly to identify structural type, dimensions, loads, and boundary conditions; do not say the attachment is inaccessible.';
   const lines = attachments.map(a => `- ${a.originalName} (${a.relPath})`);
-  return `\n\n${header}\n${lines.join('\n')}`;
+  return `\n\n${header}\n${instruction}\n${lines.join('\n')}`;
+}
+
+function compactAttachmentAnalysis(analysis: Record<string, unknown>): Record<string, unknown> {
+  const rest = { ...analysis };
+  delete rest.base64DataUri;
+  if (rest.type === 'image') {
+    rest.note = 'Image data is attached below as an image_url block.';
+  }
+  return rest;
+}
+
+function attachmentAnalysisText(
+  attachment: AttachmentInfo,
+  analysis: Record<string, unknown>,
+  locale: AppLocale,
+): string {
+  const header = locale === 'zh'
+    ? `[附件解析: ${attachment.originalName}]`
+    : `[Attachment analysis: ${attachment.originalName}]`;
+  return `${header}\n${JSON.stringify(compactAttachmentAnalysis(analysis), null, 2)}`;
+}
+
+function attachmentVisionSummaryText(
+  attachment: AttachmentInfo,
+  summary: string,
+  locale: AppLocale,
+): string {
+  const header = locale === 'zh'
+    ? `[附件视觉摘要: ${attachment.originalName}]`
+    : `[Attachment vision summary: ${attachment.originalName}]`;
+  return `${header}\n${summary}`;
+}
+
+function messageContentText(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map((item) => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'text' in item) {
+          return String((item as { text?: unknown }).text ?? '');
+        }
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+  return content == null ? '' : String(content);
+}
+
+async function summarizeImageAttachment(
+  attachment: AttachmentInfo,
+  dataUri: string,
+  userMessage: string,
+  locale: AppLocale,
+  signal?: AbortSignal,
+): Promise<string | null> {
+  const model = createChatModel(0, { disableStreaming: true });
+  if (!model) return null;
+
+  const prompt = locale === 'zh'
+    ? [
+      '你是结构工程图像理解助手。只根据图片中可见的文字、标注和几何关系提取信息，不要臆测不可见内容。',
+      '请用简洁中文输出：结构类型、可见几何尺寸、可见荷载、支座/边界、材料/截面文字、仍不确定的信息。',
+      `附件名：${attachment.originalName}`,
+      `用户任务：${userMessage}`,
+    ].join('\n')
+    : [
+      'You are a structural engineering image understanding assistant. Extract only information visible in the image text, labels, and geometry; do not invent hidden details.',
+      'Return a concise summary covering: structural type, visible dimensions, visible loads, supports/boundaries, material/section labels, and remaining uncertainties.',
+      `Attachment name: ${attachment.originalName}`,
+      `User task: ${userMessage}`,
+    ].join('\n');
+
+  try {
+    const result = await model.invoke([
+      new HumanMessage({
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: dataUri } },
+        ],
+      }),
+    ], signal ? { signal } : undefined);
+    const text = messageContentText(result.content).trim();
+    return text || null;
+  } catch (error) {
+    logger.warn({
+      attachment: attachment.originalName,
+      error: error instanceof Error ? error.message : String(error),
+    }, 'attachment vision summary failed');
+    return null;
+  }
+}
+
+function toInitialHumanMessage(content: string | HumanMessageContentBlock[]): HumanMessage {
+  return Array.isArray(content)
+    ? new HumanMessage({ content })
+    : new HumanMessage(content);
+}
+
+export async function buildInitialHumanMessagePayload(
+  message: string,
+  attachments: AttachmentInfo[] | undefined,
+  locale: AppLocale,
+  workspaceRoot: string,
+  options: InitialHumanMessageOptions = {},
+): Promise<InitialHumanMessagePayload> {
+  const attachmentBlock = buildAttachmentBlock(attachments, locale);
+  if (!attachments || attachments.length === 0) {
+    return { content: message, canonicalMessage: message };
+  }
+
+  const blocks: HumanMessageContentBlock[] = [
+    { type: 'text', text: message + attachmentBlock },
+  ];
+  const canonicalParts = [message + attachmentBlock];
+
+  for (const attachment of attachments) {
+    const analysis = await analyzeUploadedFile(attachment.relPath, workspaceRoot);
+    const analysisText = attachmentAnalysisText(attachment, analysis, locale);
+    canonicalParts.push(analysisText);
+    if (analysis.type === 'image' && typeof analysis.base64DataUri === 'string') {
+      blocks.push({
+        type: 'text',
+        text: analysisText,
+      });
+      blocks.push({
+        type: 'image_url',
+        image_url: { url: analysis.base64DataUri },
+      });
+      if (options.summarizeImages) {
+        const summary = await summarizeImageAttachment(
+          attachment,
+          analysis.base64DataUri,
+          message,
+          locale,
+          options.signal,
+        );
+        if (summary) {
+          const summaryText = attachmentVisionSummaryText(attachment, summary, locale);
+          canonicalParts.push(summaryText);
+        }
+      }
+      continue;
+    }
+    blocks.push({
+      type: 'text',
+      text: analysisText,
+    });
+  }
+
+  return {
+    content: blocks,
+    canonicalMessage: canonicalParts.join('\n\n'),
+  };
+}
+
+export async function buildInitialHumanMessageContent(
+  message: string,
+  attachments: AttachmentInfo[] | undefined,
+  locale: AppLocale,
+  workspaceRoot: string,
+): Promise<string | HumanMessageContentBlock[]> {
+  return (await buildInitialHumanMessagePayload(message, attachments, locale, workspaceRoot)).content;
 }
 
 // ---------------------------------------------------------------------------
@@ -232,14 +415,20 @@ export class LangGraphAgentService {
     const reqLogger = createAgentLogger(traceId, conversationId);
     reqLogger.info({ message: input.message.slice(0, 100) }, 'LangGraph agent stream started');
 
-    const attachmentBlock = buildAttachmentBlock(input.context?.attachments, locale);
+    const initialPayload = await buildInitialHumanMessagePayload(
+      input.message,
+      input.context?.attachments,
+      locale,
+      this.workspaceRoot,
+      { summarizeImages: true, signal: input.signal },
+    );
     const stream = await graph.stream(
       {
-        messages: [new HumanMessage(input.message + attachmentBlock)],
+        messages: [toInitialHumanMessage(initialPayload.content)],
         locale,
         workspaceRoot: this.workspaceRoot,
         selectedSkillIds: skillIds,
-        lastUserMessage: input.message,
+        lastUserMessage: initialPayload.canonicalMessage,
         policy: {
           analysisType: input.context?.analysisType,
           designCode: input.context?.designCode,
@@ -309,14 +498,20 @@ export class LangGraphAgentService {
     const reqLogger = createAgentLogger(traceId, conversationId);
     reqLogger.info({ message: input.message.slice(0, 100) }, 'LangGraph agent run started');
 
-    const attachmentBlock = buildAttachmentBlock(input.context?.attachments, locale);
+    const initialPayload = await buildInitialHumanMessagePayload(
+      input.message,
+      input.context?.attachments,
+      locale,
+      this.workspaceRoot,
+      { summarizeImages: true, signal: input.signal },
+    );
     const result = await graph.invoke(
       {
-        messages: [new HumanMessage(input.message + attachmentBlock)],
+        messages: [toInitialHumanMessage(initialPayload.content)],
         locale,
         workspaceRoot: this.workspaceRoot,
         selectedSkillIds: skillIds,
-        lastUserMessage: input.message,
+        lastUserMessage: initialPayload.canonicalMessage,
         policy: {
           analysisType: input.context?.analysisType,
           designCode: input.context?.designCode,
@@ -345,14 +540,20 @@ export class LangGraphAgentService {
     const reqLogger = createAgentLogger(traceId, conversationId);
     reqLogger.info({ message: input.message.slice(0, 100) }, 'LangGraph agent runFull started');
 
-    const attachmentBlock = buildAttachmentBlock(input.context?.attachments, locale);
+    const initialPayload = await buildInitialHumanMessagePayload(
+      input.message,
+      input.context?.attachments,
+      locale,
+      this.workspaceRoot,
+      { summarizeImages: true, signal: input.signal },
+    );
     const result = await graph.invoke(
       {
-        messages: [new HumanMessage(input.message + attachmentBlock)],
+        messages: [toInitialHumanMessage(initialPayload.content)],
         locale,
         workspaceRoot: this.workspaceRoot,
         selectedSkillIds: input.context?.skillIds || [],
-        lastUserMessage: input.message,
+        lastUserMessage: initialPayload.canonicalMessage,
         policy: {
           analysisType: input.context?.analysisType,
           designCode: input.context?.designCode,

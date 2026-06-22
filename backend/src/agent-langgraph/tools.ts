@@ -83,6 +83,22 @@ function latestHumanMessageText(messages: unknown[] | undefined): string {
   return '';
 }
 
+function hasAttachmentDetails(message: string | undefined): boolean {
+  const text = message || '';
+  return text.includes('[Attachment analysis:')
+    || text.includes('[附件解析:')
+    || text.includes('[Attachment vision summary:')
+    || text.includes('[附件视觉摘要:');
+}
+
+function withCanonicalAttachmentDetails(message: string, canonicalUserMessage: string | undefined): string {
+  const canonical = canonicalUserMessage?.trim();
+  if (!canonical || !hasAttachmentDetails(canonical) || hasAttachmentDetails(message)) {
+    return message;
+  }
+  return `${message}\n\n${canonical}`;
+}
+
 export function resolveToolInputMessage(
   inputMessage: string | undefined,
   lastUserMessage: string | undefined,
@@ -90,7 +106,7 @@ export function resolveToolInputMessage(
 ): string {
   const explicitMessage = inputMessage?.trim();
   if (explicitMessage) {
-    return explicitMessage;
+    return withCanonicalAttachmentDetails(explicitMessage, lastUserMessage);
   }
   const canonicalUserMessage = lastUserMessage?.trim();
   if (canonicalUserMessage) {
@@ -203,14 +219,23 @@ function toolResult(
 function buildDraftProgress(
   locale: 'zh' | 'en',
   criticalMissing: string[],
-): { canProceed: boolean; nextAction: 'ask_user_clarification' | 'build_model'; reason?: string } {
+): { canProceed: boolean; nextAction: 'ask_user_clarification' | 'build_model'; reason?: string; instruction: string } {
   if (criticalMissing.length === 0) {
-    return { canProceed: true, nextAction: 'build_model' };
+    return {
+      canProceed: true,
+      nextAction: 'build_model',
+      instruction: locale === 'zh'
+        ? 'criticalMissing 为空。下一步调用 build_model；不要因为可默认或非关键的 draftIssues 先追问。'
+        : 'criticalMissing is empty. Call build_model next; do not ask for clarification first just because defaultable or non-critical draftIssues are present.',
+    };
   }
   const missingText = criticalMissing.join(', ');
   return {
     canProceed: false,
     nextAction: 'ask_user_clarification',
+    instruction: locale === 'zh'
+      ? '存在关键缺失字段。下一步调用 ask_user_clarification；不要调用 build_model。'
+      : 'Critical fields are missing. Call ask_user_clarification next; do not call build_model.',
     reason: locale === 'zh'
       ? `草稿仍缺少关键参数：${missingText}。需要继续向用户澄清，不能直接构建模型或写入 memory。`
       : `The draft is still missing critical parameters: ${missingText}. Continue by asking the user for clarification; do not build the model or store draft values in memory.`,
