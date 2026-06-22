@@ -162,7 +162,7 @@ ${summarizeArtifacts(state)}
 - 用户上传文件后，其 relPath 会随对话上下文传入。当用户提到上传的文件时，首先调用 analyze_file 获取文件内容。
 - analyze_file 返回 CSV/Excel 的表格数据后，调用 extract_draft_params 将数据映射到结构参数。
 - analyze_file 返回图片的 base64DataUri 后，将其作为 image_url 传递给多模态 LLM 分析结构信息。
-- analyze_file 返回 DXF 数据后，根据线条实体推断结构构件（梁、柱等）并调用 extract_draft_params。
+- analyze_file 返回 DXF 数据后，根据线条几何、尺寸和图纸文字标注判断结构类型和构件，并调用 extract_draft_params。
 - analyze_file 返回 PDF 文本后，用正则或直接让 LLM 提取尺寸、荷载、材料等参数，再调用 extract_draft_params。
 
 **重要**: 工具从会话状态中自动读取数据（模型、分析结果、草稿状态等）。不要将 modelJson、analysisJson、stateJson 等参数传递给工具。工具会自动使用上一步的结果。`;
@@ -229,7 +229,7 @@ When the user makes a structural design or analysis request, follow this workflo
 - When a user uploads a file, its relPath is passed in the conversation context. Call analyze_file first to retrieve the file content.
 - After analyze_file returns CSV/Excel tabular data, call extract_draft_params to map the data to structural parameters.
 - After analyze_file returns an image base64DataUri, pass it as an image_url in a multimodal LLM call to extract structural information.
-- After analyze_file returns DXF data, infer structural members (beams, columns) from line entities and call extract_draft_params.
+- After analyze_file returns DXF data, infer the structure type and members from line geometry, dimensions, and drawing labels, then call extract_draft_params.
 - After analyze_file returns PDF text, extract dimensions, loads, and materials from the text, then call extract_draft_params.
 
 **IMPORTANT**: Tools read data (model, analysis results, draft state, etc.) from conversation state automatically. Do NOT pass modelJson, analysisJson, stateJson, or other JSON string parameters to tools. Tools automatically use results from previous steps.`;

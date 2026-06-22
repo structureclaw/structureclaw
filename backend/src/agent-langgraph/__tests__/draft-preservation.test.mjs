@@ -20,6 +20,10 @@ describe("draft extraction preservation", () => {
       "请分析这个钢框架",
     )).toBe("请分析这个钢框架");
     expect(resolveToolInputMessage(
+      undefined,
+      "请分析这个钢框架",
+    )).toBe("请分析这个钢框架");
+    expect(resolveToolInputMessage(
       "",
       "",
       [{ role: "user", content: "请分析这个钢框架" }],

@@ -344,7 +344,7 @@ export async function analyzeUploadedFile(
       lineCount: dxfData.lines.length,
       lines: dxfData.lines.slice(0, 50),
       texts: dxfData.texts.slice(0, 50),
-      note: 'Line entities represent structural members (beams, columns). TEXT/MTEXT contains dimensions and labels.',
+      note: 'LINE entities are CAD geometry hints. TEXT/MTEXT contains dimensions and labels; use the user request and drawing labels to decide the structural type.',
     };
   }
 

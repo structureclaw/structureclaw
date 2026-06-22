@@ -667,6 +667,22 @@ describe('detectConcreteFrameStructuralType branches', () => {
     expect(result?.supportLevel).toBe('supported');
   });
 
+  test('does not treat architectural arch text as rc concrete evidence', () => {
+    const result = detectConcreteFrameStructuralType({
+      message: 'Use this architectural DXF of a steel frame building from arch-frame-simple-1s1b.dxf.',
+      locale: 'en',
+    });
+    expect(result).toBeNull();
+  });
+
+  test('does not route explicit steel frame descriptions to concrete-frame', () => {
+    const result = detectConcreteFrameStructuralType({
+      message: '请根据建筑平面图DXF建立单层单跨钢框架结构计算模型并进行分析',
+      locale: 'zh',
+    });
+    expect(result).toBeNull();
+  });
+
   test('detects frame with building type context', () => {
     const result = detectConcreteFrameStructuralType({
       message: '办公楼，混凝土柱网，三层',

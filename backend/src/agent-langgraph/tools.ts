@@ -694,7 +694,7 @@ async function resolveExistingDraftPlugin(
 
 export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
   return tool(
-    async (input: { message: string; locale?: string }, config: LangGraphRunnableConfig) => {
+    async (input: { message?: string; locale?: string }, config: LangGraphRunnableConfig) => {
       const log = getLogger(config.configurable as Partial<AgentConfigurable> | undefined);
       const start = Date.now();
       const configurable = getConfigurable(config);
@@ -717,6 +717,10 @@ export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
           skillId: match.skillId,
           supportLevel: match.supportLevel,
           supportNote: match.supportNote,
+          nextAction: 'extract_draft_params',
+          instruction: locale === 'zh'
+            ? '结构类型已识别。若用户请求建模、分析或报告，下一步调用 extract_draft_params；不要只输出结构类型后停止。'
+            : 'Structural type detected. If the user requested modeling, analysis, or reporting, call extract_draft_params next; do not stop after reporting the type.',
         };
         const stateUpdate: Partial<AgentState> = {};
         if (match.key) stateUpdate.structuralTypeKey = match.key;
@@ -733,7 +737,7 @@ export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
         'Detect the structural type (beam, truss, frame, portal-frame, etc.) from a user description. ' +
         'Returns the matched type key, mapped model type, and the skill ID to use for further processing.',
       schema: z.object({
-        message: z.string().describe('The user message describing the structure'),
+        message: z.string().describe('The user message describing the structure').optional(),
         locale: z.enum(['zh', 'en']).optional().describe('User locale (defaults to session locale)'),
       }),
     },
@@ -743,7 +747,7 @@ export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
 export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
   return tool(
     async (input: {
-      message: string;
+      message?: string;
       locale?: string;
     }, config: LangGraphRunnableConfig) => {
       const log = getLogger(config.configurable as Partial<AgentConfigurable> | undefined);
@@ -961,7 +965,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
         'Reads existing draft state from conversation state automatically — do NOT pass it as a parameter. ' +
         'Returns updated draft state, missing fields, and the matched structural type.',
       schema: z.object({
-        message: z.string().describe('The user message to extract parameters from'),
+        message: z.string().describe('The user message to extract parameters from').optional(),
         locale: z.enum(['zh', 'en']).optional().describe('User locale'),
       }),
     },

@@ -152,6 +152,28 @@ describe('createAnalyzeFileTool', () => {
     expect(result.content).toContain('Hello structural engineering');
   });
 
+  test('keeps DXF analysis note neutral for structure routing', async () => {
+    const { createAnalyzeFileTool } = await import('../../../dist/agent-langgraph/file-tools.js');
+    const dxfPath = path.join(uploadsDir, 'drawing.dxf');
+    await fs.writeFile(dxfPath, [
+      '0', 'LINE',
+      '10', '0', '20', '0',
+      '11', '6', '21', '0',
+      '0', 'TEXT',
+      '1', 'Total: 6m',
+      '0', 'EOF',
+    ].join('\n'), 'utf8');
+    const tool = createAnalyzeFileTool();
+    const raw = await tool.invoke(
+      { filePath: dxfPath },
+      { configurable: { workspaceRoot: tmpDir } },
+    );
+    const result = JSON.parse(raw);
+    expect(result.success).toBe(true);
+    expect(result.type).toBe('dxf');
+    expect(result.note.toLowerCase()).not.toMatch(/\b(beams?|columns?)\b/);
+  });
+
   test('rejects path traversal', async () => {
     const { createAnalyzeFileTool } = await import('../../../dist/agent-langgraph/file-tools.js');
     const tool = createAnalyzeFileTool();
