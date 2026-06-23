@@ -108,6 +108,80 @@ describe('agent runtime helper utilities', () => {
     });
   });
 
+  test('uses LLM router decision instead of locking broad new requests to the current draft', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+    const fakeRouterLlm = {
+      invoke: async () => ({
+        content: JSON.stringify({
+          action: 'generic',
+          skillId: 'generic',
+          structuralTypeKey: 'unknown',
+          mappedType: 'unknown',
+          supportLevel: 'fallback',
+          confidence: 0.88,
+          reason: '新的办公楼柱网描述不应继续旧梁草稿',
+        }),
+      }),
+    };
+
+    const match = await runtime.detectStructuralTypeWithLlm(
+      fakeRouterLlm,
+      '办公楼，混凝土柱网，三层',
+      'zh',
+      {
+        inferredType: 'beam',
+        structuralTypeKey: 'beam',
+        skillId: 'beam',
+        supportLevel: 'supported',
+        lengthM: 6,
+        updatedAt: 0,
+      },
+    );
+
+    expect(match).toMatchObject({
+      key: 'unknown',
+      mappedType: 'unknown',
+      skillId: 'generic',
+      supportLevel: 'fallback',
+      routingSource: 'llm-suggested',
+    });
+  });
+
+  test('requires an LLM for LLM-first structural routing', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+
+    await expect(runtime.detectStructuralTypeWithLlm(
+      null,
+      '简支梁跨度6m',
+      'zh',
+    )).rejects.toThrow('LLM 未配置');
+  });
+
+  test('does not preserve old draft over an LLM-suggested generic route', async () => {
+    const { shouldPreserveExistingDraftState } = await import('../../../dist/agent-langgraph/tools.js');
+
+    expect(shouldPreserveExistingDraftState(
+      {
+        inferredType: 'beam',
+        structuralTypeKey: 'beam',
+        skillId: 'beam',
+        supportLevel: 'supported',
+        lengthM: 6,
+        updatedAt: 0,
+      },
+      {
+        key: 'unknown',
+        mappedType: 'unknown',
+        skillId: 'generic',
+        supportLevel: 'fallback',
+        routingSource: 'llm-suggested',
+      },
+      '办公楼，混凝土柱网，三层',
+    )).toBe(false);
+  });
+
   test('dependency fingerprints are stable regardless of reference insertion order', () => {
     const left = computeDependencyFingerprint({
       analysis: { artifactId: 'analysis-1', revision: 3 },

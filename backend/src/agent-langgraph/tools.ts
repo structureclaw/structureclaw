@@ -19,6 +19,7 @@ import { Command, interrupt } from '@langchain/langgraph';
 import { ToolMessage } from '@langchain/core/messages';
 import { logger } from '../utils/logger.js';
 import { getLogger, logToolCall } from '../utils/agent-logger.js';
+import { createChatModel } from '../utils/llm.js';
 import type { AgentState } from './state.js';
 import type { AgentConfigurable } from './configurable.js';
 import type { AgentSkillPlugin, DraftState, InteractionQuestion, StructuralTypeMatch } from '../agent-runtime/types.js';
@@ -295,6 +296,9 @@ export function shouldPreserveExistingDraftState(
   message?: string,
 ): existingState is DraftState {
   if (!hasStableDraftType(existingState)) {
+    return false;
+  }
+  if (structuralTypeMatch.routingSource === 'llm-suggested') {
     return false;
   }
   if (structuralTypeMatch.key === 'unknown' && structuralTypeMatch.mappedType === 'unknown') {
@@ -729,6 +733,25 @@ async function resolveExistingDraftPlugin(
 // Engineering tools (wrap AgentSkillRuntime)
 // ---------------------------------------------------------------------------
 
+function detectStructuralTypeWithConfiguredLlm(
+  skillRuntime: AgentSkillRuntime,
+  args: {
+    message: string;
+    locale: 'zh' | 'en';
+    currentState?: DraftState;
+    skillIds?: string[];
+  },
+): Promise<StructuralTypeMatch> {
+  const routerLlm = createChatModel(0, { disableStreaming: true });
+  return skillRuntime.detectStructuralTypeWithLlm(
+    routerLlm,
+    args.message,
+    args.locale,
+    args.currentState,
+    args.skillIds,
+  );
+}
+
 export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
   return tool(
     async (input: { message?: string; locale?: string }, config: LangGraphRunnableConfig) => {
@@ -742,12 +765,12 @@ export function createDetectStructureTypeTool(skillRuntime: AgentSkillRuntime) {
       const message = resolveToolInputMessage(input.message, state?.lastUserMessage, state?.messages);
       const detectionMessage = resolveRetryTaskMessage(message);
       try {
-        const match = await skillRuntime.detectStructuralType(
-          detectionMessage,
+        const match = await detectStructuralTypeWithConfiguredLlm(skillRuntime, {
+          message: detectionMessage,
           locale,
-          state?.draftState || undefined,
+          currentState: state?.draftState || undefined,
           skillIds,
-        );
+        });
         const result = {
           key: match.key,
           mappedType: match.mappedType,
@@ -809,9 +832,12 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
           resolvedMessagePreview: message.slice(0, 120),
           extractionMessagePreview: extractionMessage.slice(0, 120),
         }, 'extract_draft_params resolved message');
-        const match = await skillRuntime.detectStructuralType(
-          extractionMessage, locale, existingState, skillIds,
-        );
+        const match = await detectStructuralTypeWithConfiguredLlm(skillRuntime, {
+          message: extractionMessage,
+          locale,
+          currentState: existingState,
+          skillIds,
+        });
         const matchedPlugin = match.skillId
           ? await skillRuntime.resolvePluginForType(match.skillId, skillIds)
           : null;

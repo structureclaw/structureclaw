@@ -9,6 +9,7 @@ import type { CodeCheckClient } from '../agent-skills/code-check/rule.js';
 import { AgentSkillRegistry } from './registry.js';
 import { AgentSkillLoader } from './loader.js';
 import { AgentSkillExecutor } from './executor.js';
+import { invokeStructuralTypeRouter } from './llm-router.js';
 import { buildDefaultReportNarrative } from './report-template.js';
 import { withStructuralTypeState } from './plugin-helpers.js';
 import {
@@ -26,6 +27,15 @@ import type {
   SkillReportNarrativeInput,
   SkillManifest,
 } from './types.js';
+
+function requireStructuralRouterLlm(llm: ChatOpenAI | null, locale: AppLocale): ChatOpenAI {
+  if (llm) {
+    return llm;
+  }
+  throw new Error(locale === 'zh'
+    ? 'LLM 未配置，无法进行结构类型路由。请检查 LLM_API_KEY 设置。'
+    : 'LLM is not configured, so structural type routing cannot run. Please check LLM_API_KEY settings.');
+}
 
 export type {
   AgentSkillBundle,
@@ -430,7 +440,43 @@ export class AgentSkillRuntime {
     };
   }
 
+  /** Rule-only router used for guardrail hints and fallback; user-facing flows should prefer detectStructuralTypeWithLlm. */
   async detectStructuralType(message: string, locale: AppLocale, currentState?: DraftState, skillIds?: string[]): Promise<StructuralTypeMatch> {
+    return this.registry.detectStructuralType(message, locale, currentState, skillIds);
+  }
+
+  async detectStructuralTypeWithLlm(
+    llm: ChatOpenAI | null,
+    message: string,
+    locale: AppLocale,
+    currentState?: DraftState,
+    skillIds?: string[],
+    signal?: AbortSignal,
+  ): Promise<StructuralTypeMatch> {
+    const routerLlm = requireStructuralRouterLlm(llm, locale);
+
+    const ruleMatch = await this.registry.detectStructuralType(message, locale, undefined, skillIds);
+    if (ruleMatch.supportLevel === 'unsupported' && ruleMatch.key !== 'unknown') {
+      return ruleMatch;
+    }
+
+    const plugins = await this.registry.resolveEnabledPlugins(skillIds);
+    const currentPlugin = await this.registry.resolvePluginForState(currentState, skillIds);
+    const llmMatch = await invokeStructuralTypeRouter({
+      llm: routerLlm,
+      message,
+      locale,
+      currentState,
+      currentPlugin,
+      plugins,
+      ruleMatch,
+      signal,
+    });
+    if (llmMatch) {
+      return llmMatch;
+    }
+
+    // Fallback is allowed only after an available LLM failed to produce a usable routing decision.
     return this.registry.detectStructuralType(message, locale, currentState, skillIds);
   }
 
@@ -446,13 +492,14 @@ export class AgentSkillRuntime {
     skillIds?: string[],
     signal?: AbortSignal,
   ): Promise<DraftParameterExtractionResult> {
-    const structuralTypeMatch = await this.registry.detectStructuralType(message, locale, existingState, skillIds);
+    const structuralTypeMatch = await this.detectStructuralTypeWithLlm(llm, message, locale, existingState, skillIds, signal);
     if (!structuralTypeMatch.skillId) {
       const stateToPersist: DraftState = {
         ...(existingState || { inferredType: 'unknown' }),
         structuralTypeKey: structuralTypeMatch.key,
         supportLevel: structuralTypeMatch.supportLevel,
         supportNote: structuralTypeMatch.supportNote,
+        routingSource: structuralTypeMatch.routingSource,
         updatedAt: Date.now(),
       };
       return {
@@ -467,7 +514,9 @@ export class AgentSkillRuntime {
     const plugin = await this.registry.resolvePluginForIdentifier(structuralTypeMatch.skillId, skillIds);
     if (!plugin) {
       return {
-        nextState: existingState || { inferredType: 'unknown', updatedAt: Date.now() },
+        nextState: existingState
+          ? { ...existingState, routingSource: structuralTypeMatch.routingSource, updatedAt: Date.now() }
+          : { inferredType: 'unknown', routingSource: structuralTypeMatch.routingSource, updatedAt: Date.now() },
         missing: { critical: ['inferredType'], optional: [] },
         structuralTypeMatch,
         plugin: undefined,
