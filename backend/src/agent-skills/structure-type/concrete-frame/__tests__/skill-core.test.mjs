@@ -718,6 +718,16 @@ describe('detectConcreteFrameStructuralType branches', () => {
     expect(result?.supportLevel).toBe('supported');
   });
 
+  test('routes concrete grade with building and grid context to concrete-frame', () => {
+    const result = detectConcreteFrameStructuralType({
+      message: 'C30办公楼，柱网8m，三层',
+      locale: 'zh',
+    });
+    expect(result?.key).toBe('concrete-frame');
+    expect(result?.mappedType).toBe('frame');
+    expect(result?.supportLevel).toBe('supported');
+  });
+
   test('does not route building and column-grid context without concrete evidence', () => {
     const result = detectConcreteFrameStructuralType({
       message: '办公楼，柱网8m，三层',

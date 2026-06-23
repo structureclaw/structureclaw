@@ -11,7 +11,7 @@ import { AgentSkillLoader } from './loader.js';
 import { AgentSkillExecutor } from './executor.js';
 import { invokeStructuralTypeRouter } from './llm-router.js';
 import { buildDefaultReportNarrative } from './report-template.js';
-import { withStructuralTypeState } from './plugin-helpers.js';
+import { isFreshGenericStructuralRoute, withStructuralTypeState } from './plugin-helpers.js';
 import {
   loadSkillManifestsFromDirectorySync,
   resolveBuiltinSkillManifestRoot,
@@ -477,7 +477,7 @@ export class AgentSkillRuntime {
     }
 
     // Fallback is allowed only after an available LLM failed to produce a usable routing decision.
-    return this.registry.detectStructuralType(message, locale, currentState, skillIds);
+    return ruleMatch;
   }
 
   async resolvePluginForType(skillId: string, skillIds?: string[]): Promise<AgentSkillPlugin | null> {
@@ -525,8 +525,9 @@ export class AgentSkillRuntime {
     }
 
     if (plugin.id === 'generic' && existingState?.inferredType && existingState.inferredType !== 'unknown') {
+      const resetToGeneric = isFreshGenericStructuralRoute(structuralTypeMatch);
       const nextState = withStructuralTypeState(
-        plugin.handler.mergeState(existingState, {}),
+        plugin.handler.mergeState(resetToGeneric ? undefined : existingState, resetToGeneric ? { inferredType: 'unknown' } : {}),
         structuralTypeMatch,
       );
       const missing = plugin.handler.computeMissing(nextState, 'execution');

@@ -148,6 +148,91 @@ describe('agent runtime helper utilities', () => {
     });
   });
 
+  test('falls back to rule hints without re-locking the current draft when LLM routing is unusable', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+    const fakeRouterLlm = {
+      invoke: async () => ({
+        content: JSON.stringify({
+          action: 'continue_current',
+          confidence: 0.1,
+          reason: '低置信度，不能继续沿用旧梁',
+        }),
+      }),
+    };
+
+    const match = await runtime.detectStructuralTypeWithLlm(
+      fakeRouterLlm,
+      '五层混凝土办公楼，柱网8m×8m，层高3.6m',
+      'zh',
+      {
+        inferredType: 'beam',
+        structuralTypeKey: 'beam',
+        skillId: 'beam',
+        supportLevel: 'supported',
+        lengthM: 6,
+        updatedAt: 0,
+      },
+    );
+
+    expect(match).toMatchObject({
+      key: 'concrete-frame',
+      mappedType: 'frame',
+      skillId: 'concrete-frame',
+      supportLevel: 'supported',
+      routingSource: 'explicit-keyword',
+    });
+  });
+
+  test('resets stale draft state when the LLM routes a stable draft to generic', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+    const fakeRouterLlm = {
+      invoke: async () => ({
+        content: JSON.stringify({
+          action: 'generic',
+          skillId: 'generic',
+          structuralTypeKey: 'unknown',
+          mappedType: 'unknown',
+          supportLevel: 'fallback',
+          confidence: 0.9,
+          reason: '新输入需要重新澄清结构类型',
+        }),
+      }),
+    };
+
+    const result = await runtime.extractDraftParameters(
+      fakeRouterLlm,
+      '办公楼，三层',
+      {
+        inferredType: 'beam',
+        structuralTypeKey: 'beam',
+        skillId: 'beam',
+        supportLevel: 'supported',
+        lengthM: 6,
+        supportType: 'simply-supported',
+        loadKN: 20,
+        updatedAt: 0,
+      },
+      'zh',
+    );
+
+    expect(result.structuralTypeMatch).toMatchObject({
+      key: 'unknown',
+      mappedType: 'unknown',
+      skillId: 'generic',
+      routingSource: 'llm-suggested',
+    });
+    expect(result.nextState).toMatchObject({
+      inferredType: 'unknown',
+      structuralTypeKey: 'unknown',
+      skillId: 'generic',
+      routingSource: 'llm-suggested',
+    });
+    expect(result.missing.critical).toContain('inferredType');
+    expect(result.extractionMode).toBe('deterministic');
+  });
+
   test('requires an LLM for LLM-first structural routing', async () => {
     const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
     const runtime = new AgentSkillRuntime();

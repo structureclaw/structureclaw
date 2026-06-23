@@ -17,6 +17,7 @@ const TEXT_SEPARATORS = [
   '，', '。', '；', '：', '！', '？', '（', '）', '【', '】', '、',
 ];
 const TEXT_SEPARATOR_PATTERN = /[\r\n\t ,.;:!?()[\]{}/\\，。；：！？（）【】、]+/g;
+const CONCRETE_GRADE_PATTERN = /\bc(?:20|25|30|35|40|45|50|55|60|65|70|75|80)\b/i;
 
 function normalizeForWords(message: string): string {
   return ` ${message.toLowerCase().replace(TEXT_SEPARATOR_PATTERN, ' ').trim()} `;
@@ -89,6 +90,7 @@ function hasConcreteCue(rawText: string, normalizedText: string): boolean {
     || rawText.includes('混凝土')
     || rawText.includes('钢筋砼')
     || rawText.includes('砼')
+    || CONCRETE_GRADE_PATTERN.test(rawText)
     || hasWord(normalizedText, 'rc');
 }
 

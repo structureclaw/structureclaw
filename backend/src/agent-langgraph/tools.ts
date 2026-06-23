@@ -23,6 +23,7 @@ import { createChatModel } from '../utils/llm.js';
 import type { AgentState } from './state.js';
 import type { AgentConfigurable } from './configurable.js';
 import type { AgentSkillPlugin, DraftState, InteractionQuestion, StructuralTypeMatch } from '../agent-runtime/types.js';
+import { isFreshGenericStructuralRoute } from '../agent-runtime/plugin-helpers.js';
 import { runPkpmCalcbook } from '../agent-skills/report-export/calculation-book/pkpm-calcbook/runner.js';
 // ---------------------------------------------------------------------------
 // Helpers
@@ -932,7 +933,11 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
         const stableExistingState = hasStableDraftType(existingState) ? existingState : undefined;
         if (plugin.id === 'generic' && stableExistingState) {
           const { withStructuralTypeState } = await import('../agent-runtime/plugin-helpers.js');
-          const nextState = withStructuralTypeState(plugin.handler.mergeState(stableExistingState, {}), match);
+          const resetToGeneric = isFreshGenericStructuralRoute(match);
+          const nextState = withStructuralTypeState(
+            plugin.handler.mergeState(resetToGeneric ? undefined : stableExistingState, resetToGeneric ? { inferredType: 'unknown' } : {}),
+            match,
+          );
           const missing = plugin.handler.computeMissing(nextState, 'execution');
           const responseJson = {
             nextState,
