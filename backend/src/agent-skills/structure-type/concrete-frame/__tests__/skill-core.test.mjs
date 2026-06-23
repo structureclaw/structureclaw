@@ -708,9 +708,19 @@ describe('detectConcreteFrameStructuralType branches', () => {
     expect(result).toBeNull();
   });
 
-  test('does not route building and column-grid context without explicit frame keyword', () => {
+  test('routes concrete building and column-grid context to concrete-frame', () => {
     const result = detectConcreteFrameStructuralType({
       message: '办公楼，混凝土柱网，三层',
+      locale: 'zh',
+    });
+    expect(result?.key).toBe('concrete-frame');
+    expect(result?.mappedType).toBe('frame');
+    expect(result?.supportLevel).toBe('supported');
+  });
+
+  test('does not route building and column-grid context without concrete evidence', () => {
+    const result = detectConcreteFrameStructuralType({
+      message: '办公楼，柱网8m，三层',
       locale: 'zh',
     });
     expect(result).toBeNull();

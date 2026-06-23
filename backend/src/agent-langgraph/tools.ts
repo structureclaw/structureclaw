@@ -912,7 +912,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
         if (!plugin) {
           const nextState: DraftState = existingState == null
             ? { inferredType: 'unknown' as const, routingSource: match.routingSource, updatedAt: Date.now() }
-            : Object.assign({}, existingState, { routingSource: match.routingSource, updatedAt: Date.now() });
+            : { ...(existingState as DraftState), routingSource: match.routingSource, updatedAt: Date.now() };
           const responseJson = {
             nextState,
             criticalMissing: ['inferredType'],

@@ -16,16 +16,10 @@ const TEXT_SEPARATORS = [
   ' ', ',', '.', ';', ':', '!', '?', '(', ')', '[', ']', '{', '}', '/', '\\',
   '，', '。', '；', '：', '！', '？', '（', '）', '【', '】', '、',
 ];
+const TEXT_SEPARATOR_PATTERN = /[\r\n\t ,.;:!?()[\]{}/\\，。；：！？（）【】、]+/g;
 
 function normalizeForWords(message: string): string {
-  let text = message.toLowerCase();
-  for (const separator of TEXT_SEPARATORS) {
-    text = text.split(separator).join(' ');
-  }
-  while (text.includes('  ')) {
-    text = text.split('  ').join(' ');
-  }
-  return ` ${text.trim()} `;
+  return ` ${message.toLowerCase().replace(TEXT_SEPARATOR_PATTERN, ' ').trim()} `;
 }
 
 function hasWord(normalizedText: string, word: string): boolean {
@@ -90,6 +84,26 @@ function isColumnGridContext(rawText: string, normalizedText: string): boolean {
     || normalizedText.includes(' column grid ');
 }
 
+function hasConcreteCue(rawText: string, normalizedText: string): boolean {
+  return rawText.includes('concrete')
+    || rawText.includes('混凝土')
+    || rawText.includes('钢筋砼')
+    || rawText.includes('砼')
+    || hasWord(normalizedText, 'rc');
+}
+
+function hasConcreteFrameContext(rawText: string): boolean {
+  return rawText.includes('柱网')
+    || rawText.includes('办公楼')
+    || rawText.includes('住宅楼')
+    || rawText.includes('商住')
+    || rawText.includes('教学楼')
+    || rawText.includes('医院')
+    || /\d+层.*\d+跨/u.test(rawText)
+    || /\d+跨.*\d+层/u.test(rawText)
+    || (rawText.includes('层') && rawText.includes('跨'));
+}
+
 export function matchConservativeStructuralRoute(message: string): ConservativeStructuralRoute | null {
   const rawText = message.toLowerCase();
   const normalizedText = normalizeForWords(message);
@@ -98,6 +112,10 @@ export function matchConservativeStructuralRoute(message: string): ConservativeS
     hasEnglishPhrase(normalizedText, rawText, ['reinforced concrete frame', 'reinforced-concrete-frame', 'concrete frame', 'concrete-frame', 'rc frame', 'rc-frame'])
     || hasRawPhrase(rawText, ['钢筋混凝土框架', '钢筋砼框架', '混凝土框架', '砼框架', 'rc框架'])
   ) {
+    return route('concrete-frame', 'frame', 'concrete-frame');
+  }
+
+  if (hasConcreteCue(rawText, normalizedText) && hasConcreteFrameContext(rawText)) {
     return route('concrete-frame', 'frame', 'concrete-frame');
   }
 

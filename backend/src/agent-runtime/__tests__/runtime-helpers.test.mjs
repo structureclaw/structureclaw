@@ -42,12 +42,12 @@ describe('agent runtime helper utilities', () => {
     });
   });
 
-  test('routes broad building and column-grid descriptions to generic fallback', async () => {
+  test('routes broad building descriptions without material or system cues to generic fallback', async () => {
     const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
     const runtime = new AgentSkillRuntime();
 
     const match = await runtime.detectStructuralType(
-      '办公楼，混凝土柱网，三层',
+      '办公楼，三层',
       'zh',
     );
 
