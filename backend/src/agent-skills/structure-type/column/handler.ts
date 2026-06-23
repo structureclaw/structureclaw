@@ -9,6 +9,7 @@ import { projectEngineeringDraftToLegacyPatch } from '../../../agent-runtime/eng
 import { buildInteractionQuestions } from '../../../agent-runtime/fallback.js';
 import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import { buildDefaultReportNarrative } from '../../../agent-runtime/report-template.js';
+import { matchConservativeStructuralRoute } from '../../../agent-runtime/structural-routing.js';
 import type { AppLocale } from '../../../services/locale.js';
 import type {
   DraftExtraction,
@@ -97,12 +98,9 @@ function buildColumnReportNarrative(input: SkillReportNarrativeInput): string {
 
 export const handler: SkillHandler = {
   detectStructuralType({ message, locale }) {
-    const text = message.toLowerCase();
-    if (text.includes('frame') || text.includes('column grid') || message.includes('框架') || message.includes('柱网')) {
-      return null;
-    }
-    if (text.includes('column') || message.includes('柱')) {
-      return buildStructuralTypeMatch('column', 'column', 'column', 'supported', locale);
+    const route = matchConservativeStructuralRoute(message);
+    if (route?.skillId === 'column') {
+      return buildStructuralTypeMatch('column', 'column', 'column', route.supportLevel, locale, undefined, route.routingSource);
     }
     return null;
   },

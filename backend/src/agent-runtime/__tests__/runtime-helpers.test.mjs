@@ -38,6 +38,73 @@ describe('agent runtime helper utilities', () => {
       mappedType: 'frame',
       skillId: 'frame',
       supportLevel: 'supported',
+      routingSource: 'explicit-keyword',
+    });
+  });
+
+  test('routes broad building and column-grid descriptions to generic fallback', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+
+    const match = await runtime.detectStructuralType(
+      '办公楼，混凝土柱网，三层',
+      'zh',
+    );
+
+    expect(match).toMatchObject({
+      key: 'unknown',
+      mappedType: 'unknown',
+      skillId: 'generic',
+      supportLevel: 'fallback',
+      routingSource: 'generic-fallback',
+    });
+  });
+
+  test('keeps stable current draft when a follow-up does not explicitly switch type', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+
+    const match = await runtime.detectStructuralType(
+      '柱顶荷载增加20kN',
+      'zh',
+      {
+        inferredType: 'frame',
+        structuralTypeKey: 'concrete-frame',
+        skillId: 'concrete-frame',
+        supportLevel: 'supported',
+        updatedAt: 0,
+      },
+    );
+
+    expect(match).toMatchObject({
+      key: 'concrete-frame',
+      mappedType: 'frame',
+      skillId: 'concrete-frame',
+      routingSource: 'current-state',
+    });
+  });
+
+  test('allows explicit structure-type switches over current draft state', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+
+    const match = await runtime.detectStructuralType(
+      '改成简支梁跨度6m',
+      'zh',
+      {
+        inferredType: 'frame',
+        structuralTypeKey: 'concrete-frame',
+        skillId: 'concrete-frame',
+        supportLevel: 'supported',
+        updatedAt: 0,
+      },
+    );
+
+    expect(match).toMatchObject({
+      key: 'beam',
+      mappedType: 'beam',
+      skillId: 'beam',
+      routingSource: 'explicit-keyword',
     });
   });
 
@@ -170,10 +237,12 @@ describe('agent runtime helper utilities', () => {
       }],
       stage: 'model',
       supportLevel: 'supported',
+      routingSource: 'explicit-keyword',
       skillId: 'beam',
     });
 
     expect(parsed.stage).toBe('model');
+    expect(parsed.routingSource).toBe('explicit-keyword');
     expect(parsed.questions?.[0].critical).toBe(true);
     expect(() => skillExecutionSchema.parse({ stage: 'design' })).toThrow();
   });

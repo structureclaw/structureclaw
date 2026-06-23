@@ -30,6 +30,7 @@ export const skillExecutionSchema = z.object({
   stage: z.enum(['intent', 'model', 'loads', 'analysis', 'code_check', 'report']).optional(),
   supportLevel: z.enum(['supported', 'fallback', 'unsupported']).optional(),
   supportNote: z.string().optional(),
+  routingSource: z.enum(['explicit-keyword', 'current-state', 'llm-suggested', 'generic-fallback']).optional(),
   skillId: z.string().optional(),
 });
 

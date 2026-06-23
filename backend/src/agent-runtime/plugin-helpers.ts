@@ -1,5 +1,5 @@
 import type { AppLocale } from '../services/locale.js';
-import type { DraftState, StructuralTypeMatch, StructuralTypeSupportLevel } from './types.js';
+import type { DraftState, RoutingSource, StructuralTypeMatch, StructuralTypeSupportLevel } from './types.js';
 
 type StructuralStage = 'intent' | 'model' | 'loads' | 'analysis' | 'code_check' | 'report';
 
@@ -14,6 +14,7 @@ export function buildStructuralTypeMatch(
   supportLevel: StructuralTypeSupportLevel,
   locale: AppLocale,
   note?: { zh: string; en: string },
+  routingSource?: RoutingSource,
 ): StructuralTypeMatch {
   return {
     key,
@@ -21,6 +22,7 @@ export function buildStructuralTypeMatch(
     skillId,
     supportLevel,
     supportNote: note ? localize(locale, note.zh, note.en) : undefined,
+    routingSource,
   };
 }
 
@@ -37,6 +39,7 @@ export function withStructuralTypeState(state: DraftState, structuralTypeMatch: 
     structuralTypeKey,
     supportLevel: structuralTypeMatch.supportLevel,
     supportNote: structuralTypeMatch.supportNote,
+    routingSource: structuralTypeMatch.routingSource,
     updatedAt: Date.now(),
   };
 }

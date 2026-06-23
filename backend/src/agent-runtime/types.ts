@@ -140,6 +140,7 @@ export type StructuralTypeKey =
   | 'bridge'
   | 'unknown';
 export type StructuralTypeSupportLevel = 'supported' | 'fallback' | 'unsupported';
+export type RoutingSource = 'explicit-keyword' | 'current-state' | 'llm-suggested' | 'generic-fallback';
 export type SkillStage = 'intent' | 'draft' | 'analysis' | 'design';
 
 export interface StructuralTypeMatch {
@@ -148,6 +149,7 @@ export interface StructuralTypeMatch {
   skillId?: string;
   supportLevel: StructuralTypeSupportLevel;
   supportNote?: string;
+  routingSource?: RoutingSource;
 }
 
 export interface DraftState {
@@ -156,6 +158,7 @@ export interface DraftState {
   structuralTypeKey?: StructuralTypeKey;
   supportLevel?: StructuralTypeSupportLevel;
   supportNote?: string;
+  routingSource?: RoutingSource;
   coordinateSemantics?: string;
   engineeringDraft?: EngineeringDraft;
   draftIssues?: DraftIssue[];

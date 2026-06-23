@@ -12,6 +12,7 @@ import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-
 import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../../agent-runtime/fallback.js';
 import { buildDefaultReportNarrative } from '../../../agent-runtime/report-template.js';
+import { matchConservativeStructuralRoute } from '../../../agent-runtime/structural-routing.js';
 import type { AppLocale } from '../../../services/locale.js';
 import type {
   DraftExtraction,
@@ -148,19 +149,17 @@ function buildDoubleSpanReportNarrative(input: SkillReportNarrativeInput): strin
 
 export const handler: SkillHandler = {
   detectStructuralType({ message, locale }) {
-    const text = message.toLowerCase();
-    if (
-      text.includes('double-span')
-      || text.includes('双跨梁')
-      || text.includes('双跨连续梁')
-      || text.includes('连续梁')
-      || text.includes('不等跨连续梁')
-      || /两跨.*连续梁/u.test(text)
-      || /[三四五六七八九十\d]\s*跨.*连续梁/u.test(text)
-      || /(?:two|2)[-\s]?span.*continuous beam/i.test(text)
-      || /(?:multi|three|3)[-\s]?span.*continuous beam/i.test(text)
-    ) {
-      return buildStructuralTypeMatch('double-span-beam', 'double-span-beam', 'double-span-beam', 'supported', locale);
+    const route = matchConservativeStructuralRoute(message);
+    if (route?.skillId === 'double-span-beam') {
+      return buildStructuralTypeMatch(
+        'double-span-beam',
+        'double-span-beam',
+        'double-span-beam',
+        route.supportLevel,
+        locale,
+        undefined,
+        route.routingSource,
+      );
     }
     return null;
   },

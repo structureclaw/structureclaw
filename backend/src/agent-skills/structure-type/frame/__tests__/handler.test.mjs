@@ -5,7 +5,7 @@ import { mergeFrameState } from '../../../../../dist/agent-skills/structure-type
 import { buildFrameQuestions } from '../../../../../dist/agent-skills/structure-type/frame/interaction.js';
 
 describe('frame handler composed modules', () => {
-  test('keeps sticky frame detection for follow-up messages', () => {
+  test('leaves follow-up sticky routing to the runtime registry', () => {
     const match = detectFrameStructuralType({
       message: '层高3.6m',
       locale: 'zh',
@@ -17,8 +17,7 @@ describe('frame handler composed modules', () => {
       },
     });
 
-    expect(match?.skillId).toBe('frame');
-    expect(match?.mappedType).toBe('frame');
+    expect(match).toBeNull();
   });
 
   test('does not treat material and sections as critical blockers', () => {

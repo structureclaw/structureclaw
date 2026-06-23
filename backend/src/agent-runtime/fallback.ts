@@ -11,6 +11,7 @@ import type {
   FrameDimension,
   InferredModelType,
   InteractionQuestion,
+  RoutingSource,
   StructuralTypeMatch,
   StructuralTypeKey,
 } from './types.js';
@@ -335,12 +336,14 @@ function buildUnsupportedStructuralType(
   key: StructuralTypeKey,
   noteZh: string,
   noteEn: string,
+  routingSource: RoutingSource = 'explicit-keyword',
 ): StructuralTypeMatch {
   return {
     key,
     mappedType: 'unknown',
     supportLevel: 'unsupported',
     supportNote: localize(locale, noteZh, noteEn),
+    routingSource,
   };
 }
 
@@ -349,7 +352,8 @@ export function buildUnknownStructuralType(locale: AppLocale): StructuralTypeMat
     locale,
     'unknown',
     '我还没有从当前描述中稳定细化出可直接补参的结构草稿。请先说明你希望按梁、桁架、门式刚架还是规则框架这类结构继续处理。',
-    'I have not yet refined the current description into a stable structural draft for follow-up guidance. Please tell me whether you want to proceed as a beam, truss, portal frame, or regular frame.'
+    'I have not yet refined the current description into a stable structural draft for follow-up guidance. Please tell me whether you want to proceed as a beam, truss, portal frame, or regular frame.',
+    'generic-fallback',
   );
 }
 

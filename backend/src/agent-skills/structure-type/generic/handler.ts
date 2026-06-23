@@ -182,6 +182,7 @@ export const handler: SkillHandler = {
           zh: '继续使用通用结构类型 skill 处理当前对话。',
           en: 'Continue using the generic structure-type skill for the current conversation.',
         },
+        'current-state',
       );
     }
 
@@ -192,7 +193,7 @@ export const handler: SkillHandler = {
     return buildStructuralTypeMatch('unknown', 'unknown', 'generic', 'fallback', locale, {
       zh: '已切换到通用结构类型 skill，先接住当前问题并继续补参。',
       en: 'Switched to the generic structure-type skill to catch the request and continue clarification.',
-    });
+    }, 'generic-fallback');
   },
 
   parseProvidedValues(values) {

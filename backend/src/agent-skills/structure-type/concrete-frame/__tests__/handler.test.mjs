@@ -5,7 +5,7 @@ import { mergeConcreteFrameState } from '../../../../../dist/agent-skills/struct
 import { buildConcreteFrameQuestions } from '../../../../../dist/agent-skills/structure-type/concrete-frame/interaction.js';
 
 describe('concrete-frame handler composed modules', () => {
-  test('keeps sticky concrete-frame detection for follow-up messages', () => {
+  test('leaves follow-up sticky routing to the runtime registry', () => {
     const match = detectConcreteFrameStructuralType({
       message: '层高3.6m',
       locale: 'zh',
@@ -17,8 +17,7 @@ describe('concrete-frame handler composed modules', () => {
       },
     });
 
-    expect(match?.skillId).toBe('concrete-frame');
-    expect(match?.mappedType).toBe('frame');
+    expect(match).toBeNull();
   });
 
   test('does not treat material and sections as critical blockers', () => {

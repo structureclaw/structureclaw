@@ -708,12 +708,12 @@ describe('detectConcreteFrameStructuralType branches', () => {
     expect(result).toBeNull();
   });
 
-  test('detects frame with building type context', () => {
+  test('does not route building and column-grid context without explicit frame keyword', () => {
     const result = detectConcreteFrameStructuralType({
       message: '办公楼，混凝土柱网，三层',
       locale: 'zh',
     });
-    expect(result?.supportLevel).toBe('supported');
+    expect(result).toBeNull();
   });
 
   test('detects frame with concrete grade and context', () => {
@@ -724,13 +724,13 @@ describe('detectConcreteFrameStructuralType branches', () => {
     expect(result?.supportLevel).toBe('supported');
   });
 
-  test('detects from currentState when message does not match', () => {
+  test('does not apply current-state routing inside the skill handler', () => {
     const result = detectConcreteFrameStructuralType({
       message: '请分析这个结构',
       locale: 'zh',
       currentState: { structuralTypeKey: 'concrete-frame', supportLevel: 'supported' },
     });
-    expect(result?.supportLevel).toBe('supported');
+    expect(result).toBeNull();
   });
 
   test('returns null when no concrete frame evidence', () => {

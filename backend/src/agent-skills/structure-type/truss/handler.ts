@@ -12,6 +12,7 @@ import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-
 import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../../agent-runtime/fallback.js';
 import { buildDefaultReportNarrative } from '../../../agent-runtime/report-template.js';
+import { matchConservativeStructuralRoute } from '../../../agent-runtime/structural-routing.js';
 import type { AppLocale } from '../../../services/locale.js';
 import type {
   DraftExtraction,
@@ -265,9 +266,9 @@ function buildTrussReportNarrative(input: SkillReportNarrativeInput): string {
 
 export const handler: SkillHandler = {
   detectStructuralType({ message, locale }) {
-    const text = message.toLowerCase();
-    if (text.includes('truss') || text.includes('桁架') || text.includes('屋架')) {
-      return buildStructuralTypeMatch('truss', 'truss', 'truss', 'supported', locale);
+    const route = matchConservativeStructuralRoute(message);
+    if (route?.skillId === 'truss') {
+      return buildStructuralTypeMatch('truss', 'truss', 'truss', route.supportLevel, locale, undefined, route.routingSource);
     }
     return null;
   },

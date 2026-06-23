@@ -12,6 +12,7 @@ import { combineDomainKeys, composeStructuralDomainPatch } from '../../../agent-
 import { buildStructuralTypeMatch, resolveLegacyStructuralStage } from '../../../agent-runtime/plugin-helpers.js';
 import { buildInteractionQuestions } from '../../../agent-runtime/fallback.js';
 import { buildDefaultReportNarrative } from '../../../agent-runtime/report-template.js';
+import { matchConservativeStructuralRoute } from '../../../agent-runtime/structural-routing.js';
 import type { AppLocale } from '../../../services/locale.js';
 import type {
   DraftExtraction,
@@ -148,15 +149,18 @@ function buildPortalFrameReportNarrative(input: SkillReportNarrativeInput): stri
 
 export const handler: SkillHandler = {
   detectStructuralType({ message, locale }) {
-    const text = message.toLowerCase();
-    if (text.includes('portal frame') || text.includes('门式刚架')) {
-      return buildStructuralTypeMatch('portal-frame', 'portal-frame', 'portal-frame', 'supported', locale);
+    const route = matchConservativeStructuralRoute(message);
+    if (route?.skillId !== 'portal-frame') {
+      return null;
     }
-    if (text.includes('portal') || text.includes('门架') || text.includes('刚架')) {
+    if (route.key === 'portal-frame') {
+      return buildStructuralTypeMatch('portal-frame', 'portal-frame', 'portal-frame', route.supportLevel, locale, undefined, route.routingSource);
+    }
+    if (route.key === 'portal') {
       return buildStructuralTypeMatch('portal', 'portal-frame', 'portal-frame', 'fallback', locale, {
         zh: '已将“门架/刚架”先收敛到门式刚架模板继续补参。',
         en: '“Portal structure” has been narrowed to the portal-frame template for continued guidance.',
-      });
+      }, route.routingSource);
     }
     return null;
   },
