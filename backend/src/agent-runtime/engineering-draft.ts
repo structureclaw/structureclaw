@@ -362,10 +362,6 @@ function sumPositive(values: number[] | undefined): number | undefined {
   return Number.isFinite(total) && total > 0 ? total : undefined;
 }
 
-function frameTotalSpanM(patch: DraftExtraction): number | undefined {
-  return sumPositive(patch.bayWidthsM) ?? sumPositive(patch.bayWidthsXM);
-}
-
 function framePlanAreaM2(patch: DraftExtraction): number | undefined {
   const totalSpanX = sumPositive(patch.bayWidthsXM);
   const totalSpanY = sumPositive(patch.bayWidthsYM);
@@ -379,8 +375,7 @@ function framePlanAreaM2(patch: DraftExtraction): number | undefined {
 function frameLoadTotalKN(load: EngineeringDraftLoad, patch: DraftExtraction): number | undefined {
   if (load.unit === 'kN') return load.magnitude;
   if (load.unit === 'kN/m') {
-    const spanM = frameTotalSpanM(patch);
-    return spanM !== undefined ? load.magnitude * spanM : undefined;
+    return undefined;
   }
   if (load.unit === 'kN/m2') {
     const areaM2 = framePlanAreaM2(patch);

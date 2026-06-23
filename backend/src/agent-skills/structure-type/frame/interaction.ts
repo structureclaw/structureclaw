@@ -14,7 +14,7 @@ import type {
   SkillReportNarrativeInput,
 } from '../../../agent-runtime/types.js';
 import { FRAME_MATERIAL_KEYS, REQUIRED_KEYS } from './constants.js';
-import { getDefaultBeamSection, getDefaultColumnSection } from './model.js';
+import { getDefaultBeamSection, getDefaultColumnSection, hasFrameAnalysisLoadInput } from './model.js';
 import { hasLateralYFloorLoad } from './extract-llm.js';
 
 function inferFrameDimensionProposal(state: DraftState): '2d' | '3d' {
@@ -63,11 +63,16 @@ function buildFrameDefaultReason(paramKey: string, locale: AppLocale, state: Dra
 }
 
 export function computeFrameMissing(state: DraftState, phase: 'interactive' | 'execution'): SkillMissingResult {
-  return computeLegacyMissing(
+  const missing = computeLegacyMissing(
     { ...state, inferredType: 'frame' },
     phase,
     [...REQUIRED_KEYS],
   );
+  if (!hasFrameAnalysisLoadInput(state)) return missing;
+  return {
+    critical: missing.critical.filter((key) => key !== 'floorLoads'),
+    optional: missing.optional.filter((key) => key !== 'floorLoads'),
+  };
 }
 
 export function mapFrameLabels(keys: string[], locale: AppLocale): string[] {

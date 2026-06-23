@@ -240,10 +240,8 @@ describe('frame canonicalize core contract', () => {
     ]);
     expect(model.stories[0]).toMatchObject({ dead_load: 10, live_load: 2 });
     expect(model.load_cases.map((loadCase) => loadCase.id)).toEqual(['D', 'L']);
-    expect(model.load_cases.find((loadCase) => loadCase.id === 'D').loads).toHaveLength(4);
-    expect(model.load_cases.find((loadCase) => loadCase.id === 'D').loads.reduce((sum, load) => sum + load.fz, 0)).toBeCloseTo(-360);
-    expect(model.load_cases.find((loadCase) => loadCase.id === 'L').loads).toHaveLength(4);
-    expect(model.load_cases.find((loadCase) => loadCase.id === 'L').loads.reduce((sum, load) => sum + load.fz, 0)).toBeCloseTo(-72);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'D').loads).toEqual([]);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'L').loads).toEqual([]);
     expect(model.load_combinations[0]).toMatchObject({ id: 'ULS', factors: { D: 1, L: 1 } });
   });
 
@@ -265,10 +263,8 @@ describe('frame canonicalize core contract', () => {
 
     expect(model).toBeDefined();
     expect(model.stories[0]).toMatchObject({ dead_load: 20, live_load: 5 });
-    expect(model.load_cases.find((loadCase) => loadCase.id === 'D').loads).toHaveLength(2);
-    expect(model.load_cases.find((loadCase) => loadCase.id === 'D').loads.reduce((sum, load) => sum + load.fz, 0)).toBeCloseTo(-120);
-    expect(model.load_cases.find((loadCase) => loadCase.id === 'L').loads).toHaveLength(2);
-    expect(model.load_cases.find((loadCase) => loadCase.id === 'L').loads.reduce((sum, load) => sum + load.fz, 0)).toBeCloseTo(-30);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'D').loads).toEqual([]);
+    expect(model.load_cases.find((loadCase) => loadCase.id === 'L').loads).toEqual([]);
   });
 
   test('builds custom H sections with star separators', () => {
@@ -385,7 +381,7 @@ describe('frame canonicalize core contract', () => {
     ]);
   });
 
-  test('derives 2d per-floor total loads from line intensity and total span length', () => {
+  test('keeps 2d frame line intensity as beam distributed loads', () => {
     const patch = buildFrameDraftPatch(
       {
         engineeringDraft: {
@@ -402,11 +398,20 @@ describe('frame canonicalize core contract', () => {
       undefined,
     );
 
-    expect(patch.floorLoads).toEqual([
-      { story: 1, verticalKN: 171 },
-      { story: 2, verticalKN: 171 },
-      { story: 3, verticalKN: 171 },
-    ]);
+    expect(patch.floorLoads).toBeUndefined();
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      updatedAt: 0,
+      frameBaseSupportType: 'fixed',
+      ...patch,
+    });
+
+    const lineCase = model.load_cases.find((loadCase) => loadCase.id === 'LINE');
+    expect(lineCase).toBeDefined();
+    expect(lineCase.loads).toHaveLength(6);
+    expect(lineCase.loads.every((load) => load.type === 'distributed')).toBe(true);
+    expect(lineCase.loads.every((load) => load.wz === -15)).toBe(true);
+    expect(lineCase.loads.map((load) => load.element)).toEqual(['B10', 'B11', 'B12', 'B13', 'B14', 'B15']);
   });
 
   test('leaves frame dimension undefined when no directional evidence or existing state exists', () => {

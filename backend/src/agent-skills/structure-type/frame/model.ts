@@ -3,7 +3,7 @@ import {
   STRUCTURAL_COORDINATE_SEMANTICS,
 } from '../../../agent-runtime/coordinate-semantics.js';
 import { buildElementReferenceVectors } from '../../../agent-runtime/reference-vectors.js';
-import type { DraftFloorLoad, DraftState } from '../../../agent-runtime/types.js';
+import type { DraftFloorLoad, DraftState, EngineeringDraftLoad } from '../../../agent-runtime/types.js';
 import { REQUIRED_KEYS } from './constants.js';
 
 type FrameMaterialCategory = 'steel' | 'concrete';
@@ -257,24 +257,86 @@ function buildStoryFloorLoadFields(deadLoad: number | undefined, liveLoad: numbe
   };
 }
 
-function buildStoryGravityNodalLoads(
-  storyId: string,
-  nodeIds: string[],
-  totalLoadKN: number | undefined,
-  loadKind: 'dead' | 'live',
-): Array<Record<string, unknown>> {
-  if (typeof totalLoadKN !== 'number' || !Number.isFinite(totalLoadKN) || totalLoadKN === 0 || nodeIds.length === 0) {
-    return [];
-  }
-  const fzPerNode = -Math.abs(totalLoadKN) / nodeIds.length;
-  return nodeIds.map((node) => ({
-    type: 'nodal',
-    node,
-    fz: fzPerNode,
-    story: storyId,
-    source: 'story_floor_loads',
-    load_kind: loadKind,
+function hasFloorLoadValue(floorLoads: DraftFloorLoad[] | undefined, loadKey?: 'verticalKN' | 'liveLoadKN'): boolean {
+  return Boolean(floorLoads?.some((load) => {
+    if (loadKey) {
+      const value = load[loadKey];
+      return typeof value === 'number' && Number.isFinite(value) && value !== 0;
+    }
+    return (
+      (typeof load.verticalKN === 'number' && Number.isFinite(load.verticalKN) && load.verticalKN !== 0)
+      || (typeof load.liveLoadKN === 'number' && Number.isFinite(load.liveLoadKN) && load.liveLoadKN !== 0)
+      || (typeof load.lateralXKN === 'number' && Number.isFinite(load.lateralXKN) && load.lateralXKN !== 0)
+      || (typeof load.lateralYKN === 'number' && Number.isFinite(load.lateralYKN) && load.lateralYKN !== 0)
+    );
   }));
+}
+
+function isLineEngineeringLoad(load: EngineeringDraftLoad): boolean {
+  return load.kind === 'line' || load.kind === 'distributed' || load.unit === 'kN/m';
+}
+
+function isGravityLineLoad(load: EngineeringDraftLoad): boolean {
+  return isLineEngineeringLoad(load)
+    && load.magnitude > 0
+    && (load.direction === undefined || load.direction === 'gravity' || load.direction === 'globalZ');
+}
+
+export function hasFrameAnalysisLoadInput(state: Pick<DraftState, 'floorLoads' | 'engineeringDraft' | 'wind'>): boolean {
+  if (hasFloorLoadValue(state.floorLoads)) return true;
+  if (typeof state.wind?.basicPressureKNM2 === 'number' && Number.isFinite(state.wind.basicPressureKNM2) && state.wind.basicPressureKNM2 > 0) {
+    return true;
+  }
+  return Boolean(state.engineeringDraft?.loads?.some((load) => (
+    load.magnitude > 0
+    && Number.isFinite(load.magnitude)
+    && (isLineEngineeringLoad(load) || load.kind === 'area' || load.kind === 'point' || load.kind === 'nodal')
+  )));
+}
+
+function parseLineLoadStory(target: string | undefined, storyCount: number): number | undefined {
+  if (!target) return undefined;
+  const text = target.toLowerCase();
+  if (text.includes('roof') || target.includes('屋面')) return storyCount;
+  const numericMatch = text.match(/(?:floor|story|level)\s*([0-9]+)/i)
+    ?? target.match(/第?\s*([0-9]+)\s*层/u);
+  if (numericMatch?.[1]) {
+    const parsed = Number.parseInt(numericMatch[1], 10);
+    return parsed >= 1 && parsed <= storyCount ? parsed : undefined;
+  }
+  const chineseMatch = target.match(/第?\s*([一二两三四五六七八九十廿]+)\s*层/u);
+  if (!chineseMatch?.[1]) return undefined;
+  const table: Record<string, number> = {
+    一: 1,
+    二: 2,
+    两: 2,
+    三: 3,
+    四: 4,
+    五: 5,
+    六: 6,
+    七: 7,
+    八: 8,
+    九: 9,
+    十: 10,
+    廿: 20,
+  };
+  const raw = chineseMatch[1];
+  let parsed: number | undefined;
+  if (raw === '十' || raw === '廿') {
+    parsed = table[raw];
+  } else if (raw.startsWith('十')) {
+    parsed = 10 + (table[raw[1]] ?? 0);
+  } else if (raw.startsWith('廿')) {
+    parsed = 20 + (table[raw[1]] ?? 0);
+  } else if (raw.endsWith('十')) {
+    parsed = (table[raw[0]] ?? 1) * 10;
+  } else if (raw.includes('十')) {
+    const [tens, ones] = raw.split('十');
+    parsed = (table[tens] ?? 1) * 10 + (table[ones] ?? 0);
+  } else {
+    parsed = table[raw];
+  }
+  return parsed !== undefined && parsed >= 1 && parsed <= storyCount ? parsed : undefined;
 }
 
 function normalizeFloorLoadsByStory(floorLoads: DraftFloorLoad[]): DraftFloorLoad[] {
@@ -294,17 +356,21 @@ function normalizeFloorLoadsByStory(floorLoads: DraftFloorLoad[]): DraftFloorLoa
 }
 
 function buildFrameLoadCaseBundle(
-  deadLoads: Array<Record<string, unknown>>,
-  liveLoads: Array<Record<string, unknown>>,
+  hasDeadFloorLoads: boolean,
+  hasLiveFloorLoads: boolean,
+  lineLoads: Array<Record<string, unknown>>,
   lateralLoads: Array<Record<string, unknown>>,
 ): { load_cases: Array<Record<string, unknown>>; load_combinations: Array<Record<string, unknown>> } {
   const loadCases: Array<Record<string, unknown>> = [];
 
-  if (deadLoads.length) {
-    loadCases.push({ id: 'D', type: 'dead', loads: deadLoads, description: 'Equivalent nodal dead loads from stories.floor_loads' });
+  if (hasDeadFloorLoads) {
+    loadCases.push({ id: 'D', type: 'dead', loads: [], description: 'Dead floor loads from stories.floor_loads' });
   }
-  if (liveLoads.length) {
-    loadCases.push({ id: 'L', type: 'live', loads: liveLoads, description: 'Equivalent nodal live loads from stories.floor_loads' });
+  if (hasLiveFloorLoads) {
+    loadCases.push({ id: 'L', type: 'live', loads: [], description: 'Live floor loads from stories.floor_loads' });
+  }
+  if (lineLoads.length) {
+    loadCases.push({ id: 'LINE', type: 'other', loads: lineLoads, description: 'Frame beam line loads' });
   }
   if (lateralLoads.length) {
     loadCases.push({ id: 'LAT', type: 'other', loads: lateralLoads, description: 'Lateral story loads' });
@@ -320,6 +386,99 @@ function buildFrameLoadCaseBundle(
   };
 }
 
+type ResolvedFrameLineLoad = {
+  load: EngineeringDraftLoad;
+  story: number;
+};
+
+function resolveFrameLineLoadsByStory(state: DraftState, storyCount: number): ResolvedFrameLineLoad[] {
+  const lineLoads = state.engineeringDraft?.loads?.filter(isGravityLineLoad) ?? [];
+  if (!lineLoads.length || storyCount <= 0) return [];
+
+  const resolved: ResolvedFrameLineLoad[] = [];
+  const untargeted = lineLoads.filter((load) => parseLineLoadStory(load.target, storyCount) === undefined);
+  for (const load of lineLoads) {
+    const explicitStory = parseLineLoadStory(load.target, storyCount);
+    if (explicitStory !== undefined) {
+      resolved.push({ load, story: explicitStory });
+      continue;
+    }
+    if (untargeted.length > 1) {
+      const index = untargeted.indexOf(load);
+      if (index >= 0 && index < storyCount) {
+        resolved.push({ load, story: index + 1 });
+      }
+      continue;
+    }
+    for (let story = 1; story <= storyCount; story += 1) {
+      resolved.push({ load, story });
+    }
+  }
+  return resolved;
+}
+
+function build2dBeamLineLoads(
+  state: DraftState,
+  storyCount: number,
+  elements: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  const resolved = resolveFrameLineLoadsByStory(state, storyCount);
+  if (!resolved.length) return [];
+
+  const loads: Array<Record<string, unknown>> = [];
+  for (const item of resolved) {
+    const storyId = `F${item.story}`;
+    for (const element of elements) {
+      if (element.type !== 'beam' || element.story !== storyId) continue;
+      loads.push({
+        type: 'distributed',
+        element: element.id,
+        wz: -Math.abs(item.load.magnitude),
+        story: storyId,
+        source: 'engineering_draft_line_loads',
+      });
+    }
+  }
+  return loads;
+}
+
+function lineLoadTargetAxis(target: string | undefined): 'x' | 'y' | undefined {
+  if (!target) return undefined;
+  const text = target.toLowerCase();
+  if (/(?:x\s*(?:direction|axis)|x[-\s]?向|沿\s*x|x向)/iu.test(text)) return 'x';
+  if (/(?:y\s*(?:direction|axis)|y[-\s]?向|沿\s*y|y向)/iu.test(text)) return 'y';
+  return undefined;
+}
+
+function build3dBeamLineLoads(
+  state: DraftState,
+  storyCount: number,
+  elements: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  const resolved = resolveFrameLineLoadsByStory(state, storyCount);
+  if (!resolved.length) return [];
+
+  const loads: Array<Record<string, unknown>> = [];
+  for (const item of resolved) {
+    const storyId = `F${item.story}`;
+    const axis = lineLoadTargetAxis(item.load.target);
+    for (const element of elements) {
+      if (element.type !== 'beam' || element.story !== storyId) continue;
+      const id = String(element.id ?? '');
+      if (axis === 'x' && !id.startsWith('BX')) continue;
+      if (axis === 'y' && !id.startsWith('BY')) continue;
+      loads.push({
+        type: 'distributed',
+        element: element.id,
+        wz: -Math.abs(item.load.magnitude),
+        story: storyId,
+        source: 'engineering_draft_line_loads',
+      });
+    }
+  }
+  return loads;
+}
+
 function buildFrame2dLocalModel(
   state: DraftState,
   matProps: ResolvedFrameMaterialProps,
@@ -329,14 +488,12 @@ function buildFrame2dLocalModel(
 ): Record<string, unknown> {
   const bayWidths = state.bayWidthsM!;
   const storyHeights = state.storyHeightsM!;
-  const floorLoads = normalizeFloorLoadsByStory(state.floorLoads!);
+  const floorLoads = normalizeFloorLoadsByStory(state.floorLoads ?? []);
   const baseSupport = (state.frameBaseSupportType as string | undefined) ?? 'fixed';
   const xCoords = accumulateCoords(bayWidths);
   const zCoords = accumulateCoords(storyHeights);
   const nodes: Array<Record<string, unknown>> = [];
   const elements: Array<Record<string, unknown>> = [];
-  const deadLoads: Array<Record<string, unknown>> = [];
-  const liveLoads: Array<Record<string, unknown>> = [];
   const lateralLoads: Array<Record<string, unknown>> = [];
   let elementId = 1;
 
@@ -373,9 +530,6 @@ function buildFrame2dLocalModel(
     const storyIdx = load.story;
     if (storyIdx <= 0 || storyIdx >= zCoords.length) continue;
     const storyId = `F${storyIdx}`;
-    const nodeIds = xCoords.map((_x, bayIdx) => n2dId(storyIdx, bayIdx));
-    deadLoads.push(...buildStoryGravityNodalLoads(storyId, nodeIds, load.verticalKN, 'dead'));
-    liveLoads.push(...buildStoryGravityNodalLoads(storyId, nodeIds, load.liveLoadKN, 'live'));
     const lPerNode = load.lateralXKN !== undefined ? load.lateralXKN / levelNodeCount : undefined;
     for (let bayIdx = 0; bayIdx < xCoords.length; bayIdx++) {
       const nodeLoad: Record<string, unknown> = {
@@ -403,7 +557,13 @@ function buildFrame2dLocalModel(
       ...buildStoryFloorLoadFields(deadLoad, liveLoad),
     };
   });
-  const loadCaseBundle = buildFrameLoadCaseBundle(deadLoads, liveLoads, lateralLoads);
+  const lineLoads = build2dBeamLineLoads(state, storyHeights.length, elements);
+  const loadCaseBundle = buildFrameLoadCaseBundle(
+    hasFloorLoadValue(floorLoads, 'verticalKN'),
+    hasFloorLoadValue(floorLoads, 'liveLoadKN'),
+    lineLoads,
+    lateralLoads,
+  );
 
   return {
     schema_version: '2.0.0',
@@ -444,15 +604,13 @@ function buildFrame3dLocalModel(
   const bayWidthsX = state.bayWidthsXM!;
   const bayWidthsY = state.bayWidthsYM!;
   const storyHeights = state.storyHeightsM!;
-  const floorLoads = normalizeFloorLoadsByStory(state.floorLoads!);
+  const floorLoads = normalizeFloorLoadsByStory(state.floorLoads ?? []);
   const baseSupport = (state.frameBaseSupportType as string | undefined) ?? 'fixed';
   const xCoords = accumulateCoords(bayWidthsX);
   const yCoords = accumulateCoords(bayWidthsY);
   const zCoords = accumulateCoords(storyHeights);
   const nodes: Array<Record<string, unknown>> = [];
   const elements: Array<Record<string, unknown>> = [];
-  const deadLoads: Array<Record<string, unknown>> = [];
-  const liveLoads: Array<Record<string, unknown>> = [];
   const lateralLoads: Array<Record<string, unknown>> = [];
   let elementId = 1;
 
@@ -504,9 +662,6 @@ function buildFrame3dLocalModel(
     const storyIdx = load.story;
     if (storyIdx <= 0 || storyIdx >= zCoords.length) continue;
     const storyId = `F${storyIdx}`;
-    const nodeIds = xCoords.flatMap((_x, xIdx) => yCoords.map((_y, yIdx) => n3dId(storyIdx, xIdx, yIdx)));
-    deadLoads.push(...buildStoryGravityNodalLoads(storyId, nodeIds, load.verticalKN, 'dead'));
-    liveLoads.push(...buildStoryGravityNodalLoads(storyId, nodeIds, load.liveLoadKN, 'live'));
     const lxPerNode = load.lateralXKN !== undefined ? load.lateralXKN / levelNodeCount : undefined;
     const lyPerNode = load.lateralYKN !== undefined ? load.lateralYKN / levelNodeCount : undefined;
     for (let xIdx = 0; xIdx < xCoords.length; xIdx++) {
@@ -539,7 +694,13 @@ function buildFrame3dLocalModel(
       ...buildStoryFloorLoadFields(deadLoad, liveLoad),
     };
   });
-  const loadCaseBundle = buildFrameLoadCaseBundle(deadLoads, liveLoads, lateralLoads);
+  const lineLoads = build3dBeamLineLoads(state, storyHeights.length, elements);
+  const loadCaseBundle = buildFrameLoadCaseBundle(
+    hasFloorLoadValue(floorLoads, 'verticalKN'),
+    hasFloorLoadValue(floorLoads, 'liveLoadKN'),
+    lineLoads,
+    lateralLoads,
+  );
 
   return {
     schema_version: '2.0.0',
@@ -588,7 +749,10 @@ function buildFrameLocalModel(state: DraftState): Record<string, unknown> {
 }
 
 export function buildFrameModel(state: DraftState): Record<string, unknown> | undefined {
-  const critical = computeMissingCriticalKeys(state).filter((key) => (REQUIRED_KEYS as readonly string[]).includes(key));
+  const critical = computeMissingCriticalKeys(state).filter((key) => (
+    (REQUIRED_KEYS as readonly string[]).includes(key)
+    && !(key === 'floorLoads' && hasFrameAnalysisLoadInput(state))
+  ));
   if (critical.length > 0) return undefined;
   return buildFrameLocalModel(state);
 }

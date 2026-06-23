@@ -145,6 +145,37 @@ describe('frame handler composed modules', () => {
     expect(missing.critical).not.toContain('floorLoads');
   });
 
+  test('does not mark floorLoads missing when semantic line loads are present', () => {
+    const patch = handler.extractDraft({
+      message: '两层单跨钢框架，跨度6m，层高3.6m，梁上均布荷载60kN/m',
+      locale: 'zh',
+      currentState: undefined,
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'steel-frame',
+          geometry: {
+            storyHeightsM: [3.6, 3.6],
+            bayWidthsM: [6],
+          },
+          loads: [
+            { kind: 'line', magnitude: 60, unit: 'kN/m', direction: 'gravity' },
+          ],
+        },
+      },
+      structuralTypeMatch: {
+        key: 'frame',
+        mappedType: 'frame',
+        skillId: 'frame',
+        supportLevel: 'supported',
+      },
+    });
+    const state = handler.mergeState(undefined, patch);
+    const missing = handler.computeMissing(state, 'execution');
+
+    expect(state.floorLoads).toBeUndefined();
+    expect(missing.critical).not.toContain('floorLoads');
+  });
+
   test('preserves uneven 2d bay widths from an llm draft patch', () => {
     const patch = handler.extractDraft({
       message: '3层2跨框架，层高3.3m，跨度5.4m和6m，每层楼面荷载15kN/m，请进行静力分析',

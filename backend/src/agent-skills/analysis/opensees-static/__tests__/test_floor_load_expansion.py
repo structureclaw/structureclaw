@@ -120,6 +120,41 @@ def build_two_story_mixed_support_model() -> StructureModelV2:
     return StructureModelV2.model_validate(payload)
 
 
+def build_planar_column_beam_frame_model() -> StructureModelV2:
+    payload = {
+        "schema_version": "2.0.0",
+        "unit_system": "SI",
+        "nodes": [
+            {"id": "B1", "x": 0.0, "y": 0.0, "z": 0.0, "restraints": [True, True, True, True, True, True]},
+            {"id": "B2", "x": 6.0, "y": 0.0, "z": 0.0, "restraints": [True, True, True, True, True, True]},
+            {"id": "T1", "x": 0.0, "y": 0.0, "z": 3.6},
+            {"id": "T2", "x": 6.0, "y": 0.0, "z": 3.6},
+        ],
+        "elements": [
+            {"id": "C1", "type": "column", "nodes": ["B1", "T1"], "material": "1", "section": "1"},
+            {"id": "C2", "type": "column", "nodes": ["B2", "T2"], "material": "1", "section": "1"},
+            {"id": "B1", "type": "beam", "nodes": ["T1", "T2"], "material": "1", "section": "1"},
+        ],
+        "materials": [
+            {"id": "1", "name": "Q355", "E": 206000.0, "nu": 0.3, "rho": 7850.0, "fy": 355.0}
+        ],
+        "sections": [
+            {
+                "id": "1",
+                "name": "beam",
+                "type": "rectangular",
+                "properties": {"A": 0.1, "Iy": 0.01, "Iz": 0.01, "J": 0.02, "G": 79000.0},
+            }
+        ],
+        "load_cases": [
+            {"id": "LINE", "type": "other", "loads": [{"type": "distributed", "element": "B1", "wz": -60.0}]}
+        ],
+        "load_combinations": [{"id": "ULS", "factors": {"LINE": 1.0}}],
+        "metadata": {"frameDimension": "2d", "coordinateSemantics": "global-z-up"},
+    }
+    return StructureModelV2.model_validate(payload)
+
+
 def build_continuous_beam_floor_model() -> StructureModelV2:
     payload = {
         "schema_version": "2.0.0",
@@ -158,6 +193,12 @@ def build_continuous_beam_floor_model() -> StructureModelV2:
 
 
 class FloorLoadExpansionTest(unittest.TestCase):
+    def test_selects_planar_frame_for_column_and_beam_elements(self) -> None:
+        analyzer = StaticAnalyzer(build_planar_column_beam_frame_model())
+
+        self.assertTrue(analyzer._can_run_2d_frame_solver())
+        self.assertEqual(analyzer._select_planar_frame_mode({}), "xz")
+
     def test_expands_story_floor_loads_to_gravity_nodal_loads(self) -> None:
         analyzer = StaticAnalyzer(build_model())
 
