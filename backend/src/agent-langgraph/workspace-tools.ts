@@ -219,7 +219,7 @@ export function createReadFileTool() {
 
       const ext = path.extname(resolved).toLowerCase();
 
-      // Image: return base64 for multimodal LLM
+      // Image: return metadata/base64 for the configured vision parser.
       if (IMAGE_EXTS.has(ext)) {
         if (stat.size > IMAGE_MAX_READ_BYTES) {
           return JSON.stringify({
@@ -230,7 +230,6 @@ export function createReadFileTool() {
             note: 'Image exceeds 4 MB base64 limit. Consider resizing before analysis.',
           });
         }
-        const buf = await fs.readFile(resolved);
         const mime = IMAGE_MIME[ext] ?? 'image/png';
         return JSON.stringify({
           success: true,
@@ -238,8 +237,7 @@ export function createReadFileTool() {
           ext,
           size: stat.size,
           mimeType: mime,
-          base64DataUri: `data:${mime};base64,${buf.toString('base64')}`,
-          note: 'Pass base64DataUri to a multimodal LLM vision call to extract structural information.',
+          note: 'Image binary is available for the configured vision parser. The main agent should use the resulting text summary, not pass base64DataUri to the standard model.',
         });
       }
 
@@ -278,7 +276,7 @@ export function createReadFileTool() {
       name: 'read_file',
       description:
         'Read a file from the workspace or uploaded file paths. Auto-detects file type: ' +
-        'text files (allowed extensions) return content; images return base64DataUri for multimodal LLM; ' +
+        'text files (allowed extensions) return content; images return metadata/base64 for the configured vision parser; ' +
         'binary files return metadata. For structured CSV/Excel/PDF extraction, prefer analyze_file.',
       schema: z.object({ filePath: z.string().describe('Relative workspace path or relPath from upload response') }),
     },

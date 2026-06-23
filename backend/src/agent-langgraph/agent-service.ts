@@ -29,7 +29,7 @@ import { createAgentLogger } from '../utils/agent-logger.js';
 import type { AgentConfigurable } from './configurable.js';
 import { listAgentToolDefinitions } from './tool-registry.js';
 import { analyzeUploadedFile } from './file-tools.js';
-import { createChatModel } from '../utils/llm.js';
+import { createVisionChatModel } from '../utils/llm.js';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -78,8 +78,7 @@ export interface LangGraphRunResult {
 }
 
 type HumanMessageContentBlock =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string } };
+  | { type: 'text'; text: string };
 
 interface InitialHumanMessagePayload {
   content: string | HumanMessageContentBlock[];
@@ -106,8 +105,8 @@ function buildAttachmentBlock(attachments: AttachmentInfo[] | undefined, locale:
   if (!attachments || attachments.length === 0) return '';
   const header = locale === 'zh' ? '[已上传文件]' : '[Attached files]';
   const instruction = locale === 'zh'
-    ? '下面的附件内容已随本轮消息提供。若附件包含图片或图纸，请直接从附件内容识别结构类型、尺寸、荷载和边界条件；不要声称无法访问附件。'
-    : 'The attachment contents are provided with this turn. If an attachment contains an image or drawing, read it directly to identify structural type, dimensions, loads, and boundary conditions; do not say the attachment is inaccessible.';
+    ? '下面会提供附件的解析内容。请基于已解析文本、DXF 几何或视觉摘要识别结构类型、尺寸、荷载和边界条件；如果关键信息缺失，请追问。'
+    : 'Parsed attachment content follows. Use parsed text, DXF geometry, or vision summaries to identify structural type, dimensions, loads, and boundary conditions; ask for clarification when critical information is missing.';
   const lines = attachments.map(a => `- ${a.originalName} (${a.relPath})`);
   return `\n\n${header}\n${instruction}\n${lines.join('\n')}`;
 }
@@ -116,7 +115,7 @@ function compactAttachmentAnalysis(analysis: Record<string, unknown>): Record<st
   const rest = { ...analysis };
   delete rest.base64DataUri;
   if (rest.type === 'image') {
-    rest.note = 'Image data is attached below as an image_url block.';
+    rest.note = 'Image binary is parsed only by the configured vision model; the main agent receives text summaries only.';
   }
   return rest;
 }
@@ -143,6 +142,19 @@ function attachmentVisionSummaryText(
   return `${header}\n${summary}`;
 }
 
+function attachmentVisionUnavailableText(
+  attachment: AttachmentInfo,
+  locale: AppLocale,
+): string {
+  const header = locale === 'zh'
+    ? `[附件视觉摘要不可用: ${attachment.originalName}]`
+    : `[Attachment vision summary unavailable: ${attachment.originalName}]`;
+  const body = locale === 'zh'
+    ? '未配置独立 vision 模型或 vision 模型调用失败。不要假设图片中的尺寸、荷载或边界条件；如需继续分析，请向用户追问缺失信息。'
+    : 'No independent vision model is configured or the vision call failed. Do not assume dimensions, loads, or boundary conditions from this image; ask the user for missing information before analysis.';
+  return `${header}\n${body}`;
+}
+
 function messageContentText(content: unknown): string {
   if (typeof content === 'string') return content;
   if (Array.isArray(content)) {
@@ -167,7 +179,7 @@ async function summarizeImageAttachment(
   locale: AppLocale,
   signal?: AbortSignal,
 ): Promise<string | null> {
-  const model = createChatModel(0, { disableStreaming: true });
+  const model = createVisionChatModel(0, { disableStreaming: true });
   if (!model) return null;
 
   const prompt = locale === 'zh'
@@ -222,24 +234,20 @@ export async function buildInitialHumanMessagePayload(
     return { content: message, canonicalMessage: message };
   }
 
-  const blocks: HumanMessageContentBlock[] = [
-    { type: 'text', text: message + attachmentBlock },
-  ];
+  const contentParts = [message + attachmentBlock];
   const canonicalParts = [message + attachmentBlock];
 
   for (const attachment of attachments) {
-    const analysis = await analyzeUploadedFile(attachment.relPath, workspaceRoot);
+    const analysis = await analyzeUploadedFile(
+      attachment.relPath,
+      workspaceRoot,
+      undefined,
+      { includeImageData: true },
+    );
     const analysisText = attachmentAnalysisText(attachment, analysis, locale);
     canonicalParts.push(analysisText);
+    contentParts.push(analysisText);
     if (analysis.type === 'image' && typeof analysis.base64DataUri === 'string') {
-      blocks.push({
-        type: 'text',
-        text: analysisText,
-      });
-      blocks.push({
-        type: 'image_url',
-        image_url: { url: analysis.base64DataUri },
-      });
       if (options.summarizeImages) {
         const summary = await summarizeImageAttachment(
           attachment,
@@ -251,18 +259,19 @@ export async function buildInitialHumanMessagePayload(
         if (summary) {
           const summaryText = attachmentVisionSummaryText(attachment, summary, locale);
           canonicalParts.push(summaryText);
+          contentParts.push(summaryText);
+        } else {
+          const unavailableText = attachmentVisionUnavailableText(attachment, locale);
+          canonicalParts.push(unavailableText);
+          contentParts.push(unavailableText);
         }
       }
       continue;
     }
-    blocks.push({
-      type: 'text',
-      text: analysisText,
-    });
   }
 
   return {
-    content: blocks,
+    content: contentParts.join('\n\n'),
     canonicalMessage: canonicalParts.join('\n\n'),
   };
 }

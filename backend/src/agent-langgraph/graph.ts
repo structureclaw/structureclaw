@@ -146,12 +146,13 @@ export function shouldReplaceEmptyFinalResponse(response: BaseMessage, currentTu
 }
 
 // ---------------------------------------------------------------------------
-// Multimodal: transform image ToolMessages into proper content blocks
+// Multimodal: strip image binaries from ToolMessages before the main agent LLM.
+// Images are summarized by the independent vision model before reaching the main agent.
 // ---------------------------------------------------------------------------
 
 const IMAGE_JSON_REGEX = /"type"\s*:\s*"image"/;
 
-function transformImageToolMessages(messages: BaseMessage[]): BaseMessage[] {
+function sanitizeImageToolMessages(messages: BaseMessage[]): BaseMessage[] {
   const result: BaseMessage[] = [];
   for (const message of messages) {
     if (getMessageType(message) !== 'tool') {
@@ -170,21 +171,16 @@ function transformImageToolMessages(messages: BaseMessage[]): BaseMessage[] {
       continue;
     }
 
-    const { base64DataUri, ...rest } = parsed;
+    const rest = { ...parsed };
+    delete rest.base64DataUri;
     const sanitizedContent = JSON.stringify({
       ...rest,
-      note: 'Image data forwarded to multimodal context (see attached image block).',
+      note: 'Image binary omitted from main agent context. Use the existing attachment vision summary, or ask for missing details if no summary is available.',
     });
     result.push(new ToolMessage({
       content: sanitizedContent,
       tool_call_id: (message as any).tool_call_id || '',
       name: (message as any).name,
-    }));
-    result.push(new HumanMessage({
-      content: [
-        { type: 'text', text: `[Image from ${(message as any).name || 'tool'}: ${parsed.mimeType || 'image'}, ${typeof parsed.size === 'number' ? Math.round((parsed.size as number) / 1024) + ' KB' : 'unknown size'}]` },
-        { type: 'image_url', image_url: { url: base64DataUri as string } },
-      ],
     }));
   }
   return result;
@@ -302,8 +298,7 @@ function createCallModelNode(
     }).filter((m): m is BaseMessage => m !== null);
 
     // Count prior tool calls in this turn to enforce max iterations.
-    // Use the original (pre-transform) message array so synthetic
-    // HumanMessages injected by transformImageToolMessages don't
+    // Use the original message array so image-binary stripping does not
     // shift the turn boundary or under-count tool calls.
     let lastHumanIndex = -1;
     for (let i = msgs.length - 1; i >= 0; i--) {
@@ -342,11 +337,10 @@ function createCallModelNode(
     const configurableAny = config.configurable as Record<string, unknown>;
     configurableAny.agentState = state;
 
-    // Transform ToolMessages with base64 image data into proper multimodal
-    // content blocks (sanitized ToolMessage + synthetic HumanMessage).
-    // Applied after turn-boundary computation so synthetic messages
-    // don't affect tool-call counting or compaction turn detection.
-    const effectiveMsgs = transformImageToolMessages(msgs);
+    // Remove base64 image data from ToolMessages before the main agent LLM.
+    // Applied after turn-boundary computation so binary payload stripping
+    // does not affect tool-call counting or compaction turn detection.
+    const effectiveMsgs = sanitizeImageToolMessages(msgs);
 
     const compaction = compactMessagesForContext({
       messages: effectiveMsgs,

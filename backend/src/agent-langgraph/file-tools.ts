@@ -6,7 +6,7 @@
  *   - CSV / text: returns parsed rows / raw content
  *   - Excel (.xlsx/.xls): returns headers + first N rows per sheet
  *   - PDF: extracts text via pdf-parse (if installed)
- *   - Image (png/jpg/…): returns base64-encoded data URI for multimodal LLM
+ *   - Image (png/jpg/...): returns metadata/base64 for the configured vision parser
  *   - DXF: extracts LINE, TEXT, DIMENSION entities as structural hints
  *   - Other binary: returns metadata + extension hint
  */
@@ -38,6 +38,10 @@ const IMAGE_MIME: Record<string, string> = {
 };
 
 type AnalyzeFileResult = Record<string, unknown>;
+
+interface AnalyzeUploadedFileOptions {
+  includeImageData?: boolean;
+}
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -177,6 +181,7 @@ export async function analyzeUploadedFile(
   filePath: string,
   workspaceRoot: string | undefined,
   maxRows?: number,
+  options: AnalyzeUploadedFileOptions = {},
 ): Promise<AnalyzeFileResult> {
   let resolvedPath: string;
   try {
@@ -213,15 +218,18 @@ export async function analyzeUploadedFile(
     const buf = await fsp.readFile(resolvedPath);
     const mime = IMAGE_MIME[ext] ?? 'image/png';
     const base64 = buf.toString('base64');
-    return {
+    const imageResult: AnalyzeFileResult = {
       success: true,
       type: 'image',
       ext,
       size,
       mimeType: mime,
-      base64DataUri: `data:${mime};base64,${base64}`,
-      note: 'Pass base64DataUri to a multimodal LLM vision call to extract structural information.',
+      note: 'Image binary is available for the configured vision parser. The main agent should use the resulting text summary, not pass base64DataUri to the standard model.',
     };
+    if (options.includeImageData) {
+      imageResult.base64DataUri = `data:${mime};base64,${base64}`;
+    }
+    return imageResult;
   }
 
   if (size > MAX_READ_BYTES) {
@@ -376,7 +384,7 @@ export function createAnalyzeFileTool() {
       description:
         'Analyze an uploaded file and extract its content. ' +
         'Supports CSV/TSV (structured rows), Excel (.xlsx/.xls, multi-sheet), ' +
-        'PDF (text extraction), images (base64 for multimodal LLM), ' +
+        'PDF (text extraction), images (metadata/base64 for the configured vision parser), ' +
         'DXF/CAD (structural entity extraction), and plain text. ' +
         'filePath may be a relative path under .uploads/<conversationId>/ or an absolute path inside the upload directory.',
       schema: z.object({

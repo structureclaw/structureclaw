@@ -46,6 +46,32 @@ describe('settings file', () => {
     });
   });
 
+  test('reads independent vision model settings', async () => {
+    await withTempSettingsDir(`{
+      "llm": {
+        "baseUrl": "https://text.example.com/v1",
+        "model": "glm-5-turbo",
+        "apiKey": "text-key"
+      },
+      "vision": {
+        "baseUrl": "https://vision.example.com/v1",
+        "model": "glm-4.5v",
+        "apiKey": "vision-key"
+      }
+    }`, async () => {
+      const { readSettingsFile } = await import('../../../dist/config/settings-file.js');
+
+      const settings = readSettingsFile();
+
+      expect(settings?.llm?.model).toBe('glm-5-turbo');
+      expect(settings?.vision).toMatchObject({
+        baseUrl: 'https://vision.example.com/v1',
+        model: 'glm-4.5v',
+        apiKey: 'vision-key',
+      });
+    });
+  });
+
   test('settings-file can be imported before config without a circular init error', async () => {
     await withTempSettingsDir(`{
       "llm": {

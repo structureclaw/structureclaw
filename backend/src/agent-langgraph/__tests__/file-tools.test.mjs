@@ -152,6 +152,27 @@ describe('createAnalyzeFileTool', () => {
     expect(result.content).toContain('Hello structural engineering');
   });
 
+  test('omits image base64 from analyze_file tool output', async () => {
+    const { createAnalyzeFileTool, analyzeUploadedFile } = await import('../../../dist/agent-langgraph/file-tools.js');
+    const pngPath = path.join(uploadsDir, 'sketch.png');
+    await fs.writeFile(
+      pngPath,
+      Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lJ6pYQAAAABJRU5ErkJggg==', 'base64'),
+    );
+    const tool = createAnalyzeFileTool();
+    const raw = await tool.invoke(
+      { filePath: pngPath },
+      { configurable: { workspaceRoot: tmpDir } },
+    );
+    const result = JSON.parse(raw);
+    expect(result.success).toBe(true);
+    expect(result.type).toBe('image');
+    expect(result.base64DataUri).toBeUndefined();
+
+    const internal = await analyzeUploadedFile(pngPath, tmpDir, undefined, { includeImageData: true });
+    expect(internal.base64DataUri).toMatch(/^data:image\/png;base64,/);
+  });
+
   test('keeps DXF analysis note neutral for structure routing', async () => {
     const { createAnalyzeFileTool } = await import('../../../dist/agent-langgraph/file-tools.js');
     const dxfPath = path.join(uploadsDir, 'drawing.dxf');

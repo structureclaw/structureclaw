@@ -34,6 +34,7 @@ export type EffectiveLlmSettings = Pick<
 
 export type LlmValueSource = 'runtime' | 'default';
 export type ApiKeySource = 'runtime' | 'env' | 'unset';
+export type VisionValueSource = 'runtime' | 'env' | 'llm' | 'default' | 'unset';
 
 export type PublicLlmSettings = {
   baseUrl: string;
@@ -48,9 +49,29 @@ export type PublicLlmSettings = {
   apiKeySource: ApiKeySource;
 };
 
+export type PublicVisionLlmSettings = {
+  baseUrl: string;
+  model: string;
+  defaultBaseUrl: string;
+  defaultModel: string;
+  hasApiKey: boolean;
+  apiKeyMasked: string;
+  hasOverrides: boolean;
+  baseUrlSource: VisionValueSource;
+  modelSource: VisionValueSource;
+  apiKeySource: VisionValueSource;
+};
+
 export type UpdateRuntimeLlmSettingsInput = {
   baseUrl: string;
   model: string;
+  apiKey?: string;
+  apiKeyMode?: 'keep' | 'replace' | 'inherit';
+};
+
+export type UpdateRuntimeVisionLlmSettingsInput = {
+  baseUrl?: string;
+  model?: string;
   apiKey?: string;
   apiKeyMode?: 'keep' | 'replace' | 'inherit';
 };
@@ -77,6 +98,23 @@ function getRuntimeLlmSettings(): StoredLlmSettings | null {
   return file?.llm ?? null;
 }
 
+function getRuntimeVisionLlmSettings(): StoredLlmSettings | null {
+  const file = readSettingsFile();
+  return file?.vision ?? null;
+}
+
+function optionalEnvString(name: string): string | undefined {
+  const value = process.env[name]?.trim();
+  return value ? value : undefined;
+}
+
+function optionalEnvNumber(name: string): number | undefined {
+  const raw = process.env[name];
+  if (raw === undefined || raw.trim() === '') return undefined;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
@@ -89,6 +127,34 @@ export function getEffectiveLlmSettings(): EffectiveLlmSettings {
     llmBaseUrl: runtimeSettings?.baseUrl || process.env.LLM_BASE_URL || LLM_DEFAULTS.baseUrl,
     llmTimeoutMs: runtimeSettings?.timeoutMs ?? config.llmTimeoutMs,
     llmMaxRetries: runtimeSettings?.maxRetries ?? config.llmMaxRetries,
+  };
+}
+
+export function getEffectiveVisionLlmSettings(): EffectiveLlmSettings | null {
+  const visionSettings = getRuntimeVisionLlmSettings();
+  const llmSettings = getRuntimeLlmSettings();
+  const inheritedLlm = getEffectiveLlmSettings();
+  const visionModel = visionSettings?.model || optionalEnvString('LLM_VISION_MODEL');
+  if (!visionModel) return null;
+
+  return {
+    llmApiKey: visionSettings?.apiKey
+      || optionalEnvString('LLM_VISION_API_KEY')
+      || llmSettings?.apiKey
+      || process.env.LLM_API_KEY
+      || '',
+    llmModel: visionModel,
+    llmBaseUrl: visionSettings?.baseUrl
+      || optionalEnvString('LLM_VISION_BASE_URL')
+      || llmSettings?.baseUrl
+      || process.env.LLM_BASE_URL
+      || LLM_DEFAULTS.baseUrl,
+    llmTimeoutMs: visionSettings?.timeoutMs
+      ?? optionalEnvNumber('LLM_VISION_TIMEOUT_MS')
+      ?? inheritedLlm.llmTimeoutMs,
+    llmMaxRetries: visionSettings?.maxRetries
+      ?? optionalEnvNumber('LLM_VISION_MAX_RETRIES')
+      ?? inheritedLlm.llmMaxRetries,
   };
 }
 
@@ -112,6 +178,61 @@ export function getPublicLlmSettings(): PublicLlmSettings {
     hasOverrides: hasBaseUrlOverride || hasModelOverride || hasApiKeyOverride,
     baseUrlSource: hasBaseUrlOverride ? 'runtime' : 'default',
     modelSource: hasModelOverride ? 'runtime' : 'default',
+    apiKeySource,
+  };
+}
+
+export function getPublicVisionLlmSettings(): PublicVisionLlmSettings {
+  const visionSettings = getRuntimeVisionLlmSettings();
+  const llmSettings = getRuntimeLlmSettings();
+  const envVisionBaseUrl = optionalEnvString('LLM_VISION_BASE_URL');
+  const envVisionModel = optionalEnvString('LLM_VISION_MODEL');
+  const envVisionApiKey = optionalEnvString('LLM_VISION_API_KEY');
+  const inheritedApiKey = llmSettings?.apiKey || process.env.LLM_API_KEY || '';
+  const inheritedBaseUrl = llmSettings?.baseUrl || process.env.LLM_BASE_URL || LLM_DEFAULTS.baseUrl;
+  const effective = getEffectiveVisionLlmSettings();
+  const visibleApiKey = effective?.llmApiKey
+    || visionSettings?.apiKey
+    || envVisionApiKey
+    || inheritedApiKey;
+
+  const modelSource: VisionValueSource = visionSettings?.model
+    ? 'runtime'
+    : envVisionModel
+      ? 'env'
+      : 'unset';
+  const baseUrlSource: VisionValueSource = visionSettings?.baseUrl
+    ? 'runtime'
+    : envVisionBaseUrl
+      ? 'env'
+      : inheritedBaseUrl
+        ? (llmSettings?.baseUrl || process.env.LLM_BASE_URL ? 'llm' : 'default')
+        : 'unset';
+  const apiKeySource: VisionValueSource = visionSettings?.apiKey
+    ? 'runtime'
+    : envVisionApiKey
+      ? 'env'
+      : inheritedApiKey
+        ? 'llm'
+        : 'unset';
+  const hasOverrides = !!(
+    visionSettings?.baseUrl
+    || visionSettings?.model
+    || visionSettings?.apiKey
+    || visionSettings?.timeoutMs !== undefined
+    || visionSettings?.maxRetries !== undefined
+  );
+
+  return {
+    baseUrl: effective?.llmBaseUrl ?? inheritedBaseUrl,
+    model: effective?.llmModel ?? '',
+    defaultBaseUrl: inheritedBaseUrl,
+    defaultModel: '',
+    hasApiKey: !!visibleApiKey.trim(),
+    apiKeyMasked: maskApiKey(visibleApiKey.trim() ? visibleApiKey : undefined),
+    hasOverrides,
+    baseUrlSource,
+    modelSource,
     apiKeySource,
   };
 }
@@ -146,4 +267,40 @@ export function clearRuntimeLlmSettings(): PublicLlmSettings {
   const currentFull = readSettingsFileForUpdate();
   writeSettingsFile({ ...currentFull, llm: {} });
   return getPublicLlmSettings();
+}
+
+export function updateRuntimeVisionLlmSettings(input: UpdateRuntimeVisionLlmSettingsInput): PublicVisionLlmSettings {
+  const currentFull = readSettingsFileForUpdate();
+  const existingSettings = currentFull.vision ?? null;
+  const nextBaseUrl = input.baseUrl === undefined
+    ? existingSettings?.baseUrl
+    : input.baseUrl.trim();
+  const nextModel = input.model === undefined
+    ? existingSettings?.model
+    : input.model.trim();
+
+  let nextApiKey = existingSettings?.apiKey;
+  const apiKeyMode = input.apiKeyMode || 'keep';
+
+  if (apiKeyMode === 'inherit') {
+    nextApiKey = undefined;
+  } else if (apiKeyMode === 'replace') {
+    nextApiKey = normalizeOptionalString(input.apiKey);
+  }
+
+  const vision: SettingsFileLlm = {
+    baseUrl: nextBaseUrl || undefined,
+    model: nextModel || undefined,
+    apiKey: nextApiKey,
+  };
+
+  writeSettingsFile({ ...currentFull, vision });
+
+  return getPublicVisionLlmSettings();
+}
+
+export function clearRuntimeVisionLlmSettings(): PublicVisionLlmSettings {
+  const currentFull = readSettingsFileForUpdate();
+  writeSettingsFile({ ...currentFull, vision: {} });
+  return getPublicVisionLlmSettings();
 }

@@ -1,6 +1,6 @@
 import { ChatOpenAI, ChatOpenAICompletions } from '@langchain/openai';
 import type { config } from '../config/index.js';
-import { getEffectiveLlmSettings } from '../config/llm-runtime.js';
+import { getEffectiveLlmSettings, getEffectiveVisionLlmSettings } from '../config/llm-runtime.js';
 import { llmCallLogger } from './llm-logger.js';
 import { logger, logLlmCall } from './agent-logger.js';
 
@@ -173,7 +173,23 @@ export function createChatModel(
     buildChatModelOptions(effectiveSettings, temperature, runtimeOptions),
   ));
 
-  return wrapWithLlmLogging(model);
+  return wrapWithLlmLogging(model, () => getEffectiveLlmSettings().llmModel);
+}
+
+export function createVisionChatModel(
+  temperature: number,
+  runtimeOptions: ChatModelRuntimeOptions = {},
+): ChatOpenAI | null {
+  const effectiveSettings = getEffectiveVisionLlmSettings();
+  if (!effectiveSettings?.llmApiKey.trim()) {
+    return null;
+  }
+
+  const model = new ChatOpenAI(withProviderCompatibility(
+    buildChatModelOptions(effectiveSettings, temperature, runtimeOptions),
+  ));
+
+  return wrapWithLlmLogging(model, () => getEffectiveVisionLlmSettings()?.llmModel ?? effectiveSettings.llmModel);
 }
 
 function sanitizeBase64ForLogging(text: string): string {
@@ -183,13 +199,13 @@ function sanitizeBase64ForLogging(text: string): string {
   );
 }
 
-function wrapWithLlmLogging(model: ChatOpenAI): ChatOpenAI {
+function wrapWithLlmLogging(model: ChatOpenAI, modelName: () => string): ChatOpenAI {
   const originalInvoke = model.invoke.bind(model);
 
   (model as any).invoke = async function (input: any, options?: any) {
     const promptStr = sanitizeBase64ForLogging(typeof input === 'string' ? input : JSON.stringify(input));
     const start = Date.now();
-    const loggedModel = getEffectiveLlmSettings().llmModel;
+    const loggedModel = modelName();
     try {
       const result = await originalInvoke(input, options);
       const content = sanitizeBase64ForLogging(

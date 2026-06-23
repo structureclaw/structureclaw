@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState, type FormEvent } from 'react'
-import { Bot, KeyRound, Link2 } from 'lucide-react'
+import { Bot, Eye, KeyRound, Link2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { DefaultValueHint } from '@/components/settings/default-value-hint'
@@ -10,6 +10,7 @@ import { useI18n } from '@/lib/i18n'
 
 type LlmValueSource = 'runtime' | 'default'
 type ApiKeySource = 'runtime' | 'env' | 'unset'
+type VisionValueSource = 'runtime' | 'env' | 'llm' | 'default' | 'unset'
 type TokenMode = 'keep' | 'replace' | 'inherit'
 
 type LlmSettingsResponse = {
@@ -23,6 +24,19 @@ type LlmSettingsResponse = {
   baseUrlSource: LlmValueSource
   modelSource: LlmValueSource
   apiKeySource: ApiKeySource
+}
+
+type VisionSettingsResponse = {
+  baseUrl: string
+  model: string
+  defaultBaseUrl: string
+  defaultModel: string
+  hasApiKey: boolean
+  apiKeyMasked: string
+  hasOverrides: boolean
+  baseUrlSource: VisionValueSource
+  modelSource: VisionValueSource
+  apiKeySource: VisionValueSource
 }
 
 const MASKED_TOKEN = '********'
@@ -48,8 +62,20 @@ export function LlmSettingsPanel() {
   const [modelSource, setModelSource] = useState<LlmValueSource>('default')
   const [apiKeySource, setApiKeySource] = useState<ApiKeySource>('unset')
   const [tokenMode, setTokenMode] = useState<TokenMode>('replace')
+  const [visionBaseUrl, setVisionBaseUrl] = useState('')
+  const [visionModel, setVisionModel] = useState('')
+  const [visionDefaultBaseUrl, setVisionDefaultBaseUrl] = useState(DEFAULT_BASE_URL)
+  const [visionToken, setVisionToken] = useState('')
+  const [visionHasApiKey, setVisionHasApiKey] = useState(false)
+  const [visionHasOverrides, setVisionHasOverrides] = useState(false)
+  const [visionBaseUrlSource, setVisionBaseUrlSource] = useState<VisionValueSource>('unset')
+  const [visionModelSource, setVisionModelSource] = useState<VisionValueSource>('unset')
+  const [visionApiKeySource, setVisionApiKeySource] = useState<VisionValueSource>('unset')
+  const [visionTokenMode, setVisionTokenMode] = useState<TokenMode>('replace')
   const [isSaving, setIsSaving] = useState(false)
   const [isResetting, setIsResetting] = useState(false)
+  const [isVisionSaving, setIsVisionSaving] = useState(false)
+  const [isVisionResetting, setIsVisionResetting] = useState(false)
   const [error, setError] = useState('')
   const [status, setStatus] = useState('')
 
@@ -67,22 +93,41 @@ export function LlmSettingsPanel() {
     setTokenMode(payload.hasApiKey ? 'keep' : 'replace')
   }
 
+  function applyVisionPayload(payload: VisionSettingsResponse) {
+    const showsOwnBaseUrl = payload.baseUrlSource === 'runtime'
+    setVisionBaseUrl(showsOwnBaseUrl ? payload.baseUrl : '')
+    setVisionModel(payload.model)
+    setVisionDefaultBaseUrl(payload.baseUrl || payload.defaultBaseUrl || DEFAULT_BASE_URL)
+    setVisionHasApiKey(payload.hasApiKey)
+    setVisionHasOverrides(payload.hasOverrides)
+    setVisionBaseUrlSource(payload.baseUrlSource)
+    setVisionModelSource(payload.modelSource)
+    setVisionApiKeySource(payload.apiKeySource)
+    setVisionToken(payload.hasApiKey ? payload.apiKeyMasked : '')
+    setVisionTokenMode(payload.hasApiKey ? 'keep' : 'replace')
+  }
+
   useEffect(() => {
     let cancelled = false
 
     async function loadSettings() {
       try {
-        const response = await fetch(`${API_BASE}/api/v1/admin/llm`, { cache: 'no-store' })
-        if (!response.ok) {
-          throw new Error(`${tRef.current('requestFailedHttp')} ${response.status}`)
+        const [response, visionResponse] = await Promise.all([
+          fetch(`${API_BASE}/api/v1/admin/llm`, { cache: 'no-store' }),
+          fetch(`${API_BASE}/api/v1/admin/llm/vision`, { cache: 'no-store' }),
+        ])
+        if (!response.ok || !visionResponse.ok) {
+          throw new Error(`${tRef.current('requestFailedHttp')} ${!response.ok ? response.status : visionResponse.status}`)
         }
 
         const payload = await response.json() as LlmSettingsResponse
+        const visionPayload = await visionResponse.json() as VisionSettingsResponse
         if (cancelled) {
           return
         }
 
         applyPayload(payload)
+        applyVisionPayload(visionPayload)
         setError('')
       } catch (nextError) {
         if (!cancelled) {
@@ -99,9 +144,12 @@ export function LlmSettingsPanel() {
      
   }, [])
 
-  function sourceLabel(source: LlmValueSource | ApiKeySource) {
+  function sourceLabel(source: LlmValueSource | ApiKeySource | VisionValueSource) {
     if (source === 'runtime') {
       return t('llmSettingsSourceRuntime')
+    }
+    if (source === 'llm') {
+      return t('llmSettingsSourceLlm')
     }
     if (source === 'default') {
       return t('llmSettingsSourceDefault')
@@ -196,6 +244,90 @@ export function LlmSettingsPanel() {
     }
   }
 
+  async function handleVisionSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setIsVisionSaving(true)
+    setError('')
+    setStatus('')
+
+    const trimmedBaseUrl = visionBaseUrl.trim()
+    const trimmedModel = visionModel.trim()
+    const trimmedToken = visionToken.trim()
+
+    if (!trimmedModel) {
+      setError(t('llmSettingsVisionModelRequired'))
+      setIsVisionSaving(false)
+      return
+    }
+
+    if (visionTokenMode === 'replace' && visionHasApiKey && trimmedToken.length === 0) {
+      setError(t('llmSettingsTokenRequired'))
+      setIsVisionSaving(false)
+      return
+    }
+
+    const body: {
+      baseUrl?: string
+      model: string
+      apiKeyMode: TokenMode
+      apiKey?: string
+    } = {
+      model: trimmedModel,
+      apiKeyMode: visionTokenMode,
+    }
+
+    body.baseUrl = trimmedBaseUrl
+    if (visionTokenMode === 'replace' && trimmedToken.length > 0) {
+      body.apiKey = trimmedToken
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/admin/llm/vision`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      })
+
+      if (!response.ok) {
+        throw new Error(`${t('requestFailedHttp')} ${response.status}`)
+      }
+
+      const payload = await response.json() as VisionSettingsResponse
+      applyVisionPayload(payload)
+      setStatus(t('llmSettingsVisionSaved'))
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : t('llmSettingsSaveFailed'))
+    } finally {
+      setIsVisionSaving(false)
+    }
+  }
+
+  async function handleResetVisionSettings() {
+    setIsVisionResetting(true)
+    setError('')
+    setStatus('')
+
+    try {
+      const response = await fetch(`${API_BASE}/api/v1/admin/llm/vision`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error(`${t('requestFailedHttp')} ${response.status}`)
+      }
+
+      const payload = await response.json() as VisionSettingsResponse
+      applyVisionPayload(payload)
+      setStatus(t('llmSettingsVisionSaved'))
+    } catch (nextError) {
+      setError(nextError instanceof Error ? nextError.message : t('llmSettingsSaveFailed'))
+    } finally {
+      setIsVisionResetting(false)
+    }
+  }
+
   const tokenHelp = tokenMode === 'keep'
     ? t('llmSettingsTokenHelpKeep')
     : tokenMode === 'inherit'
@@ -203,6 +335,13 @@ export function LlmSettingsPanel() {
       : hasApiKey
         ? t('llmSettingsTokenHelpReplace')
         : t('llmSettingsTokenHelpEmpty')
+  const visionTokenHelp = visionTokenMode === 'keep'
+    ? t('llmSettingsVisionTokenHelpKeep')
+    : visionTokenMode === 'inherit'
+      ? t('llmSettingsVisionTokenHelpInherit')
+      : visionHasApiKey
+        ? t('llmSettingsTokenHelpReplace')
+        : t('llmSettingsVisionTokenHelpEmpty')
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_320px]">
@@ -368,6 +507,155 @@ export function LlmSettingsPanel() {
 
             <Button className="rounded-full px-6" type="submit" disabled={isSaving || isResetting}>
               {isSaving ? t('llmSettingsSaving') : t('llmSettingsSave')}
+            </Button>
+          </form>
+
+          <form className="mt-6 space-y-5 border-t border-border/70 pt-6 dark:border-white/10" onSubmit={handleVisionSubmit}>
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <div className="text-xs uppercase tracking-[0.28em] text-cyan-700/80 dark:text-cyan-200/70">{t('llmSettingsVisionNav')}</div>
+                <h3 className="mt-1 flex items-center gap-2 text-lg font-semibold text-foreground">
+                  <Eye className="h-5 w-5 text-cyan-600 dark:text-cyan-300" />
+                  {t('llmSettingsVisionTitle')}
+                </h3>
+                <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  {t('llmSettingsVisionIntro')}
+                </p>
+              </div>
+              {visionHasOverrides && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-full"
+                  onClick={() => void handleResetVisionSettings()}
+                  disabled={isVisionResetting || isVisionSaving}
+                >
+                  {t('llmSettingsVisionReset')}
+                </Button>
+              )}
+            </div>
+
+            <div className="rounded-[24px] border border-border/70 bg-background/75 p-4 dark:border-white/10 dark:bg-white/5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="block text-sm font-medium text-foreground" htmlFor="vision-base-url">
+                  {t('llmSettingsVisionBaseUrl')}
+                </label>
+                <span className="text-xs text-muted-foreground">
+                  {t('llmSettingsCurrentSource')}: {sourceLabel(visionBaseUrlSource)}
+                </span>
+              </div>
+              <div className="relative">
+                <Link2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  id="vision-base-url"
+                  className={`${inputClassName()} pl-11`}
+                  value={visionBaseUrl}
+                  onChange={(event) => setVisionBaseUrl(event.target.value)}
+                  placeholder={t('llmSettingsVisionBaseUrlPlaceholder')}
+                />
+              </div>
+              <DefaultValueHint value={visionDefaultBaseUrl || t('llmSettingsSourceUnset')} />
+            </div>
+
+            <div className="rounded-[24px] border border-border/70 bg-background/75 p-4 dark:border-white/10 dark:bg-white/5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="block text-sm font-medium text-foreground" htmlFor="vision-model">
+                  {t('llmSettingsVisionModel')}
+                </label>
+                <span className="text-xs text-muted-foreground">
+                  {t('llmSettingsCurrentSource')}: {sourceLabel(visionModelSource)}
+                </span>
+              </div>
+              <div className="relative">
+                <Eye className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  id="vision-model"
+                  className={`${inputClassName()} pl-11`}
+                  value={visionModel}
+                  onChange={(event) => setVisionModel(event.target.value)}
+                  placeholder={t('llmSettingsVisionModelPlaceholder')}
+                  required
+                />
+              </div>
+              <DefaultValueHint value={t('llmSettingsSourceUnset')} />
+            </div>
+
+            <div className="rounded-[24px] border border-border/70 bg-background/75 p-4 dark:border-white/10 dark:bg-white/5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="block text-sm font-medium text-foreground" htmlFor="vision-token">
+                  {t('llmSettingsVisionToken')}
+                </label>
+                <span className="text-xs text-muted-foreground">
+                  {t('llmSettingsCurrentSource')}: {sourceLabel(visionApiKeySource)}
+                </span>
+              </div>
+              <div className="relative">
+                <KeyRound className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  id="vision-token"
+                  type={visionTokenMode === 'replace' ? 'password' : 'text'}
+                  className={`${inputClassName()} pl-11`}
+                  value={visionToken}
+                  onChange={(event) => {
+                    setVisionTokenMode('replace')
+                    setVisionToken(event.target.value)
+                  }}
+                  placeholder={t('llmSettingsVisionTokenPlaceholder')}
+                  autoComplete="new-password"
+                  readOnly={visionTokenMode !== 'replace'}
+                />
+              </div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {visionTokenHelp}
+              </p>
+              <DefaultValueHint value={t('llmSettingsSourceLlm')} />
+              {(visionHasApiKey || visionApiKeySource === 'runtime') && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {visionHasApiKey && visionTokenMode !== 'keep' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={() => {
+                        setVisionTokenMode('keep')
+                        setVisionToken(MASKED_TOKEN)
+                      }}
+                    >
+                      {t('llmSettingsKeepCurrentToken')}
+                    </Button>
+                  )}
+                  {visionTokenMode !== 'replace' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={() => {
+                        setVisionTokenMode('replace')
+                        setVisionToken('')
+                      }}
+                    >
+                      {t('llmSettingsReplaceToken')}
+                    </Button>
+                  )}
+                  {visionApiKeySource === 'runtime' && visionTokenMode !== 'inherit' && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="rounded-full"
+                      onClick={() => {
+                        setVisionTokenMode('inherit')
+                        setVisionToken(MASKED_TOKEN)
+                      }}
+                    >
+                      {t('llmSettingsClearToken')}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            <Button className="rounded-full px-6" type="submit" disabled={isVisionSaving || isVisionResetting}>
+              {isVisionSaving ? t('llmSettingsSaving') : t('llmSettingsVisionSave')}
             </Button>
           </form>
         </CardContent>

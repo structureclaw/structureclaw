@@ -190,6 +190,24 @@ describe("workspace tools", () => {
     expect(result.type).toBe("binary");
   });
 
+  test("read_file omits image base64 from tool output", async () => {
+    await fs.writeFile(
+      path.join(root, "src", "sketch.png"),
+      Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lJ6pYQAAAABJRU5ErkJggg==", "base64"),
+    );
+    const { createReadFileTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
+    const tool = createReadFileTool();
+    const raw = await tool.invoke(
+      { filePath: "src/sketch.png" },
+      { configurable: { workspaceRoot: root } },
+    );
+    const result = JSON.parse(raw);
+    expect(result.success).toBe(true);
+    expect(result.type).toBe("image");
+    expect(result.mimeType).toBe("image/png");
+    expect(result.base64DataUri).toBeUndefined();
+  });
+
   test("read_file blocks traversal", async () => {
     const { createReadFileTool } = await import("../../../dist/agent-langgraph/workspace-tools.js");
     const tool = createReadFileTool();

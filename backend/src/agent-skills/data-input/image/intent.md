@@ -11,9 +11,9 @@ This skill activates when the user uploads or references an image file (photo, s
 
 ## Vision Workflow
 
-1. Call `analyze_file` with the image path — this returns a `base64DataUri`
-2. Pass the `base64DataUri` directly to the multimodal LLM context
-3. The LLM will analyze the image for:
+1. Use the attachment vision summary that is injected into the user message when a vision model is configured.
+2. If no vision summary is available, call `analyze_file` only to confirm image metadata and then ask the user for missing dimensions, loads, supports, or labels; do not pass `base64DataUri` to the standard text model.
+3. The vision summary should be checked for:
    - **Structural members**: columns, beams, slabs, walls, braces
    - **Dimension annotations**: span lengths (L=...), heights (H=...), widths
    - **Material labels**: C30, Q345, HRB400, steel grade markings
@@ -38,4 +38,4 @@ If the image shows:
 ## Output
 
 Identified structural parameters are passed to `extract_draft_params`.
-The base64 image URI remains available in the LLM context for follow-up questions about image contents.
+The main agent works from text summaries and parsed metadata only; image binaries are handled by the configured vision parser before the main reasoning loop.

@@ -86,6 +86,7 @@ export type SettingsFileYjk = {
 export type SettingsFile = {
   server?: SettingsFileServer;
   llm?: SettingsFileLlm;
+  vision?: SettingsFileLlm;
   database?: SettingsFileDatabase;
   logging?: SettingsFileLogging;
   analysis?: SettingsFileAnalysis;
@@ -319,6 +320,7 @@ function normalizeSettingsFile(raw: unknown): SettingsFile | null {
   const record = raw as Record<string, unknown>;
   const server = normalizeServerSection(record.server);
   const llm = normalizeLlmSection(record.llm);
+  const vision = normalizeLlmSection(record.vision);
   const database = normalizeDatabaseSection(record.database);
   const logging = normalizeLoggingSection(record.logging);
   const analysis = normalizeAnalysisSection(record.analysis);
@@ -328,10 +330,11 @@ function normalizeSettingsFile(raw: unknown): SettingsFile | null {
   const pkpm = normalizePkpmSection(record.pkpm);
   const yjk = normalizeYjkSection(record.yjk);
   const updatedAt = normalizeOptionalString(record.updatedAt);
-  if (!server && !llm && !database && !logging && !analysis && !storage && !cors && !agent && !pkpm && !yjk) return null;
+  if (!server && !llm && !vision && !database && !logging && !analysis && !storage && !cors && !agent && !pkpm && !yjk) return null;
   const result: SettingsFile = {};
   if (server) result.server = server;
   if (llm) result.llm = llm;
+  if (vision) result.vision = vision;
   if (database) result.database = database;
   if (logging) result.logging = logging;
   if (analysis) result.analysis = analysis;

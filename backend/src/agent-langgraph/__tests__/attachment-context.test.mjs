@@ -1,28 +1,51 @@
-import { afterEach, beforeEach, describe, expect, test } from '@jest/globals';
+import { afterEach, beforeEach, describe, expect, jest, test } from '@jest/globals';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 
+jest.setTimeout(20000);
+
 describe('attachment context', () => {
   let tmpDir;
+  let previousEnv;
 
   beforeEach(async () => {
     tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'sclaw-attachment-context-'));
+    previousEnv = {
+      SCLAW_DATA_DIR: process.env.SCLAW_DATA_DIR,
+      LLM_API_KEY: process.env.LLM_API_KEY,
+      LLM_MODEL: process.env.LLM_MODEL,
+      LLM_BASE_URL: process.env.LLM_BASE_URL,
+      LLM_VISION_API_KEY: process.env.LLM_VISION_API_KEY,
+      LLM_VISION_MODEL: process.env.LLM_VISION_MODEL,
+      LLM_VISION_BASE_URL: process.env.LLM_VISION_BASE_URL,
+    };
+    process.env.SCLAW_DATA_DIR = tmpDir;
+    delete process.env.LLM_API_KEY;
+    delete process.env.LLM_MODEL;
+    delete process.env.LLM_BASE_URL;
+    delete process.env.LLM_VISION_API_KEY;
+    delete process.env.LLM_VISION_MODEL;
+    delete process.env.LLM_VISION_BASE_URL;
   });
 
   afterEach(async () => {
+    for (const [key, value] of Object.entries(previousEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
     await fs.rm(tmpDir, { recursive: true, force: true });
   });
 
-  test('embeds uploaded images as multimodal image_url blocks', async () => {
-    const { buildInitialHumanMessageContent } = await import('../../../dist/agent-langgraph/agent-service.js');
+  test('keeps uploaded image binaries out of the main agent message', async () => {
+    const { buildInitialHumanMessagePayload } = await import('../../../dist/agent-langgraph/agent-service.js');
     const pngPath = path.join(tmpDir, 'beam-sketch.png');
     await fs.writeFile(
       pngPath,
       Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAFgwJ/lJ6pYQAAAABJRU5ErkJggg==', 'base64'),
     );
 
-    const content = await buildInitialHumanMessageContent(
+    const payload = await buildInitialHumanMessagePayload(
       'Analyze the attached beam sketch.',
       [{
         fileId: 'img-1',
@@ -32,13 +55,15 @@ describe('attachment context', () => {
       }],
       'en',
       tmpDir,
+      { summarizeImages: true },
     );
 
-    expect(Array.isArray(content)).toBe(true);
-    const blocks = content;
-    expect(blocks.some((block) => block.type === 'text' && block.text.includes('beam-sketch.png'))).toBe(true);
-    expect(blocks.some((block) => block.type === 'image_url' && block.image_url.url.startsWith('data:image/png;base64,'))).toBe(true);
-    expect(JSON.stringify(blocks)).not.toContain('base64DataUri');
+    expect(typeof payload.content).toBe('string');
+    expect(payload.content).toContain('beam-sketch.png');
+    expect(payload.content).toContain('vision summary unavailable');
+    expect(payload.content).not.toContain('image_url');
+    expect(payload.content).not.toContain('base64DataUri');
+    expect(payload.content).not.toContain('data:image/png;base64');
   });
 
   test('embeds DXF structural hints as text context', async () => {
@@ -66,8 +91,8 @@ describe('attachment context', () => {
       tmpDir,
     );
 
-    expect(Array.isArray(content)).toBe(true);
-    const text = content.filter((block) => block.type === 'text').map((block) => block.text).join('\n');
+    expect(typeof content).toBe('string');
+    const text = content;
     expect(text).toContain('"type": "dxf"');
     expect(text).toContain('"lineCount": 1');
     expect(text).toContain('SPAN 6m');

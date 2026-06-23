@@ -161,7 +161,7 @@ ${summarizeArtifacts(state)}
 **文件处理规则（当用户上传文件时）**:
 - 用户上传文件后，其 relPath 会随对话上下文传入。当用户提到上传的文件时，首先调用 analyze_file 获取文件内容。
 - analyze_file 返回 CSV/Excel 的表格数据后，调用 extract_draft_params 将数据映射到结构参数。
-- analyze_file 返回图片的 base64DataUri 后，将其作为 image_url 传递给多模态 LLM 分析结构信息。
+- 图片附件会在进入主 agent 前由独立 vision 模型解析为文本摘要；主 agent 只使用该摘要和解析文本。若 analyze_file 返回图片元数据或 base64DataUri，不要把它作为 image_url 传给普通模型；如果没有视觉摘要，请追问缺失信息。
 - analyze_file 返回 DXF 数据后，根据线条几何、尺寸和图纸文字标注判断结构类型和构件，并调用 extract_draft_params。
 - analyze_file 返回 PDF 文本后，用正则或直接让 LLM 提取尺寸、荷载、材料等参数，再调用 extract_draft_params。
 
@@ -228,7 +228,7 @@ When the user makes a structural design or analysis request, follow this workflo
 **File handling rules (when the user uploads a file)**:
 - When a user uploads a file, its relPath is passed in the conversation context. Call analyze_file first to retrieve the file content.
 - After analyze_file returns CSV/Excel tabular data, call extract_draft_params to map the data to structural parameters.
-- After analyze_file returns an image base64DataUri, pass it as an image_url in a multimodal LLM call to extract structural information.
+- Image attachments are parsed into text summaries by the independent vision model before reaching the main agent; the main agent uses only those summaries and parsed text. If analyze_file returns image metadata or base64DataUri, do not pass it as image_url to the standard model; ask for missing information when no vision summary is available.
 - After analyze_file returns DXF data, infer the structure type and members from line geometry, dimensions, and drawing labels, then call extract_draft_params.
 - After analyze_file returns PDF text, extract dimensions, loads, and materials from the text, then call extract_draft_params.
 
