@@ -66,6 +66,32 @@ describe('attachment context', () => {
     expect(payload.content).not.toContain('data:image/png;base64');
   });
 
+  test('preserves large image notes and asks for missing vision details', async () => {
+    const { buildInitialHumanMessagePayload } = await import('../../../dist/agent-langgraph/agent-service.js');
+    const pngPath = path.join(tmpDir, 'large-frame-sketch.png');
+    await fs.writeFile(pngPath, Buffer.alloc(4 * 1024 * 1024 + 1, 1));
+
+    const payload = await buildInitialHumanMessagePayload(
+      'Analyze the attached large frame sketch.',
+      [{
+        fileId: 'img-large',
+        originalName: 'large-frame-sketch.png',
+        relPath: pngPath,
+        mimeType: 'image/png',
+      }],
+      'en',
+      tmpDir,
+      { summarizeImages: true },
+    );
+
+    expect(typeof payload.content).toBe('string');
+    expect(payload.content).toContain('Image too large for base64 encoding');
+    expect(payload.content).toContain('vision summary unavailable');
+    expect(payload.content).not.toContain('Image binary is parsed only by the configured vision model');
+    expect(payload.content).not.toContain('base64DataUri');
+    expect(payload.content).not.toContain('data:image/png;base64');
+  });
+
   test('embeds DXF structural hints as text context', async () => {
     const { buildInitialHumanMessageContent } = await import('../../../dist/agent-langgraph/agent-service.js');
     const dxfPath = path.join(tmpDir, 'beam.dxf');

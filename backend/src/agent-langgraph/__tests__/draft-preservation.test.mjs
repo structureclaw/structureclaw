@@ -34,17 +34,25 @@ describe("draft extraction preservation", () => {
   test("adds canonical attachment details when tool input omits them", async () => {
     const { resolveToolInputMessage } = await import("../../../dist/agent-langgraph/tools.js");
 
+    const prompt = "请根据这张结构图识别类型并分析";
     const canonical = [
-      "请根据这张结构图识别类型并分析",
+      prompt,
+      "",
+      "[已上传文件]",
+      "下面会提供附件的解析内容。",
+      "- frame-sketch.png (uploads/frame-sketch.png)",
       "",
       "[附件视觉摘要: frame-sketch.png]",
       "结构类型：两层单跨钢框架；跨度 6m；层高 3.6m；楼面荷载 10 kN/m2。",
     ].join("\n");
 
-    const resolved = resolveToolInputMessage("请根据这张结构图识别类型并分析", canonical);
-    expect(resolved).toContain("请根据这张结构图识别类型并分析");
+    const resolved = resolveToolInputMessage(prompt, canonical);
+    expect(resolved).toContain(prompt);
+    expect(resolved.split(prompt)).toHaveLength(2);
     expect(resolved).toContain("[附件视觉摘要: frame-sketch.png]");
     expect(resolved).toContain("两层单跨钢框架");
+    expect(resolved).not.toContain("[已上传文件]");
+    expect(resolved).not.toContain("uploads/frame-sketch.png");
   });
 
   test("strips benchmark retry feedback before structural extraction", async () => {

@@ -111,11 +111,17 @@ function buildAttachmentBlock(attachments: AttachmentInfo[] | undefined, locale:
   return `\n\n${header}\n${instruction}\n${lines.join('\n')}`;
 }
 
+function sanitizeAttachmentNote(note: string): string {
+  return note.replace(/\bbase64DataUri\b/g, 'image binary data');
+}
+
 function compactAttachmentAnalysis(analysis: Record<string, unknown>): Record<string, unknown> {
   const rest = { ...analysis };
   delete rest.base64DataUri;
   if (rest.type === 'image') {
-    rest.note = 'Image binary is parsed only by the configured vision model; the main agent receives text summaries only.';
+    rest.note = typeof rest.note === 'string'
+      ? sanitizeAttachmentNote(rest.note)
+      : 'Image binary is parsed only by the configured vision model; the main agent receives text summaries only.';
   }
   return rest;
 }
@@ -247,15 +253,17 @@ export async function buildInitialHumanMessagePayload(
     const analysisText = attachmentAnalysisText(attachment, analysis, locale);
     canonicalParts.push(analysisText);
     contentParts.push(analysisText);
-    if (analysis.type === 'image' && typeof analysis.base64DataUri === 'string') {
+    if (analysis.type === 'image') {
       if (options.summarizeImages) {
-        const summary = await summarizeImageAttachment(
-          attachment,
-          analysis.base64DataUri,
-          message,
-          locale,
-          options.signal,
-        );
+        const summary = typeof analysis.base64DataUri === 'string'
+          ? await summarizeImageAttachment(
+            attachment,
+            analysis.base64DataUri,
+            message,
+            locale,
+            options.signal,
+          )
+          : null;
         if (summary) {
           const summaryText = attachmentVisionSummaryText(attachment, summary, locale);
           canonicalParts.push(summaryText);

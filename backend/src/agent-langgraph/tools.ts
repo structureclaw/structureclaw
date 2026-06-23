@@ -83,12 +83,31 @@ function latestHumanMessageText(messages: unknown[] | undefined): string {
   return '';
 }
 
+const ATTACHMENT_DETAIL_MARKERS = [
+  '[Attachment analysis:',
+  '[附件解析:',
+  '[Attachment vision summary:',
+  '[附件视觉摘要:',
+  '[Attachment vision summary unavailable:',
+  '[附件视觉摘要不可用:',
+];
+
+function findAttachmentDetailsStart(message: string): number {
+  return ATTACHMENT_DETAIL_MARKERS.reduce((best, marker) => {
+    const index = message.indexOf(marker);
+    if (index === -1) return best;
+    return best === -1 ? index : Math.min(best, index);
+  }, -1);
+}
+
 function hasAttachmentDetails(message: string | undefined): boolean {
   const text = message || '';
-  return text.includes('[Attachment analysis:')
-    || text.includes('[附件解析:')
-    || text.includes('[Attachment vision summary:')
-    || text.includes('[附件视觉摘要:');
+  return findAttachmentDetailsStart(text) !== -1;
+}
+
+function canonicalAttachmentDetailsOnly(message: string): string {
+  const start = findAttachmentDetailsStart(message);
+  return start === -1 ? '' : message.slice(start).trim();
 }
 
 function withCanonicalAttachmentDetails(message: string, canonicalUserMessage: string | undefined): string {
@@ -96,7 +115,8 @@ function withCanonicalAttachmentDetails(message: string, canonicalUserMessage: s
   if (!canonical || !hasAttachmentDetails(canonical) || hasAttachmentDetails(message)) {
     return message;
   }
-  return `${message}\n\n${canonical}`;
+  const attachmentDetails = canonicalAttachmentDetailsOnly(canonical);
+  return attachmentDetails ? `${message}\n\n${attachmentDetails}` : message;
 }
 
 export function resolveToolInputMessage(
