@@ -172,7 +172,7 @@ export function canonicalizeConcreteFramePatch(input: ConcreteFramePatchSources)
 
   const shouldStripGravityFloorLoads = hasSemanticGravityLineLoads(mergedPatch);
   const floorLoads = mergeFloorLoadsByStory(
-    shouldStripGravityFloorLoads ? stripDeadFloorLoadValues(input.existingState?.floorLoads) : input.existingState?.floorLoads,
+    input.existingState?.floorLoads,
     shouldStripGravityFloorLoads ? stripDeadFloorLoadValues(mergedPatch.floorLoads) : mergedPatch.floorLoads,
   );
   if (floorLoads) {

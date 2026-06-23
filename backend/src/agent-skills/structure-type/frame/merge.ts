@@ -1,6 +1,5 @@
 import { mergeLegacyState } from '../../../agent-runtime/legacy.js';
 import type { DraftExtraction, DraftState } from '../../../agent-runtime/types.js';
-import { hasSemanticGravityLineLoads, stripDeadFloorLoadValues } from './canonicalize.js';
 import { coerceFrameDimension, toFramePatch } from './extract-llm.js';
 
 export function mergeFrameState(existing: DraftState | undefined, patch: DraftExtraction): DraftState {
@@ -13,9 +12,6 @@ export function mergeFrameState(existing: DraftState | undefined, patch: DraftEx
 
   return {
     ...domainMerged,
-    floorLoads: hasSemanticGravityLineLoads(patch)
-      ? stripDeadFloorLoadValues(domainMerged.floorLoads)
-      : domainMerged.floorLoads,
     frameMaterial: (patch.frameMaterial as string | undefined) ?? (existing?.frameMaterial as string | undefined),
     frameColumnSection: (patch.frameColumnSection as string | undefined) ?? (existing?.frameColumnSection as string | undefined),
     frameBeamSection: (patch.frameBeamSection as string | undefined) ?? (existing?.frameBeamSection as string | undefined),

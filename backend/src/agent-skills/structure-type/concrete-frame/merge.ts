@@ -1,6 +1,5 @@
 import { mergeLegacyState } from '../../../agent-runtime/legacy.js';
 import type { DraftExtraction, DraftState } from '../../../agent-runtime/types.js';
-import { hasSemanticGravityLineLoads, stripDeadFloorLoadValues } from './canonicalize.js';
 import { coerceConcreteFrameDimension, toConcreteFramePatch } from './extract-llm.js';
 
 export function mergeConcreteFrameState(existing: DraftState | undefined, patch: DraftExtraction): DraftState {
@@ -13,9 +12,6 @@ export function mergeConcreteFrameState(existing: DraftState | undefined, patch:
 
   return {
     ...domainMerged,
-    floorLoads: hasSemanticGravityLineLoads(patch)
-      ? stripDeadFloorLoadValues(domainMerged.floorLoads)
-      : domainMerged.floorLoads,
     // M1: Separate concrete and rebar grade
     frameConcreteGrade: (patch.frameConcreteGrade as string | undefined) ?? (existing?.frameConcreteGrade as string | undefined),
     frameRebarGrade: (patch.frameRebarGrade as string | undefined) ?? (existing?.frameRebarGrade as string | undefined),

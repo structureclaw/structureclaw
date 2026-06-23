@@ -176,9 +176,9 @@ describe('frame handler composed modules', () => {
     expect(missing.critical).not.toContain('floorLoads');
   });
 
-  test('drops stale dead floor loads when semantic line loads replace them', () => {
+  test('preserves existing floor loads when semantic line loads are added', () => {
     const patch = handler.extractDraft({
-      message: '改成梁上均布荷载60kN/m',
+      message: '增加梁上均布荷载60kN/m',
       locale: 'zh',
       currentState: {
         inferredType: 'frame',
@@ -225,8 +225,46 @@ describe('frame handler composed modules', () => {
     }, patch);
 
     expect(state.floorLoads).toEqual([
+      { story: 1, verticalKN: 360, liveLoadKN: 72, lateralXKN: 20 },
+      { story: 2, verticalKN: 360, liveLoadKN: 72, lateralXKN: 20 },
+    ]);
+  });
+
+  test('drops same-patch stale dead floor loads when semantic line loads are present', () => {
+    const existingState = {
+      inferredType: 'frame',
+      structuralTypeKey: 'frame',
+      frameDimension: '2d',
+      storyCount: 1,
+      bayCount: 1,
+      storyHeightsM: [3.6],
+      bayWidthsM: [6],
+      updatedAt: 0,
+    };
+    const patch = handler.extractDraft({
+      message: '梁上均布荷载60kN/m，同时活荷载72kN',
+      locale: 'zh',
+      currentState: existingState,
+      llmDraftPatch: {
+        floorLoads: [{ story: 1, verticalKN: 360, liveLoadKN: 72, lateralXKN: 20 }],
+        engineeringDraft: {
+          structureType: 'steel-frame',
+          loads: [
+            { kind: 'line', magnitude: 60, unit: 'kN/m', direction: 'gravity' },
+          ],
+        },
+      },
+      structuralTypeMatch: {
+        key: 'frame',
+        mappedType: 'frame',
+        skillId: 'frame',
+        supportLevel: 'supported',
+      },
+    });
+    const state = handler.mergeState(existingState, patch);
+
+    expect(state.floorLoads).toEqual([
       { story: 1, liveLoadKN: 72, lateralXKN: 20 },
-      { story: 2, liveLoadKN: 72, lateralXKN: 20 },
     ]);
   });
 
