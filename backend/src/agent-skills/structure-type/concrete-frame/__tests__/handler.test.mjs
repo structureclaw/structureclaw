@@ -172,6 +172,79 @@ describe('concrete-frame handler composed modules', () => {
 
     expect(missing.critical).not.toContain('floorLoads');
   });
+
+  test('drops stale gravity floor loads when semantic line loads replace them', () => {
+    const existingState = {
+      inferredType: 'concrete-frame',
+      structuralTypeKey: 'concrete-frame',
+      frameDimension: '2d',
+      storyCount: 2,
+      bayCount: 1,
+      storyHeightsM: [3.6, 3.6],
+      bayWidthsM: [6],
+      floorLoads: [
+        { story: 1, verticalKN: 360, lateralXKN: 20 },
+        { story: 2, verticalKN: 360, lateralXKN: 20 },
+      ],
+      frameConcreteGrade: 'C30',
+      frameRebarGrade: 'HRB400',
+      frameColumnSection: '500X500',
+      frameBeamSection: '300X600',
+      frameBaseSupportType: 'fixed',
+      updatedAt: 0,
+    };
+    const patch = handler.extractDraft({
+      message: '改成梁上均布荷载20kN/m',
+      locale: 'zh',
+      currentState: existingState,
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'concrete-frame',
+          loads: [
+            { kind: 'line', magnitude: 20, unit: 'kN/m', direction: 'gravity' },
+          ],
+        },
+      },
+      structuralTypeMatch: {
+        key: 'concrete-frame',
+        mappedType: 'frame',
+        skillId: 'concrete-frame',
+        supportLevel: 'supported',
+      },
+    });
+    const state = handler.mergeState(existingState, patch);
+
+    expect(state.floorLoads).toEqual([
+      { story: 1, lateralXKN: 20 },
+      { story: 2, lateralXKN: 20 },
+    ]);
+  });
+
+  test('does not treat non-gravity line loads as executable gravity loads', () => {
+    const missing = handler.computeMissing({
+      inferredType: 'concrete-frame',
+      structuralTypeKey: 'concrete-frame',
+      frameDimension: '2d',
+      storyCount: 2,
+      bayCount: 1,
+      storyHeightsM: [3.6, 3.6],
+      bayWidthsM: [6],
+      engineeringDraft: {
+        structureType: 'concrete-frame',
+        loads: [
+          { kind: 'line', magnitude: 20, unit: 'kN/m', direction: 'globalX' },
+        ],
+      },
+      frameConcreteGrade: 'C30',
+      frameRebarGrade: 'HRB400',
+      frameColumnSection: '500X500',
+      frameBeamSection: '300X600',
+      frameBaseSupportType: 'fixed',
+      updatedAt: 0,
+    }, 'execution');
+
+    expect(missing.critical).toContain('floorLoads');
+  });
 });
 
 // ============================================================================

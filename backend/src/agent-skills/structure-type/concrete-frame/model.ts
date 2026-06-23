@@ -565,14 +565,22 @@ export function hasConcreteFrameAnalysisLoadInput(state: Pick<DraftState, 'floor
   return Boolean(state.engineeringDraft?.loads?.some((load) => (
     load.magnitude > 0
     && Number.isFinite(load.magnitude)
-    && (isLineEngineeringLoad(load) || load.kind === 'area' || load.kind === 'point' || load.kind === 'nodal')
+    && isGravityLineLoad(load)
   )));
+}
+
+function isTopStoryLineLoadTarget(target: string): boolean {
+  const trimmed = target.trim();
+  const text = trimmed.toLowerCase();
+  return text.includes('roof')
+    || /屋面|屋顶|楼顶|顶层|顶楼/u.test(trimmed)
+    || trimmed === '顶';
 }
 
 function parseLineLoadStory(target: string | undefined, storyCount: number): number | undefined {
   if (!target) return undefined;
   const text = target.toLowerCase();
-  if (text.includes('roof') || target.includes('屋面') || target.includes('顶')) return storyCount;
+  if (isTopStoryLineLoadTarget(target)) return storyCount;
   const numericMatch = text.match(/(?:floor|story|level)\s*([0-9]+)/i)
     ?? target.match(/第?\s*([0-9]+)\s*层/u);
   if (numericMatch?.[1]) {

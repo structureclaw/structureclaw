@@ -445,6 +445,42 @@ describe('agent runtime helper utilities', () => {
     expect(patch.floorLoads).toEqual([{ story: 11, verticalKN: 10 }]);
   });
 
+  test('parses Chinese top-story targets without treating member tops as roof stories', async () => {
+    const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
+
+    const topStoryPatch = projectEngineeringDraftToLegacyPatch({
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        geometry: {
+          storyHeightsM: [3, 3, 3],
+          bayWidthsM: [5],
+        },
+        loads: [
+          { kind: 'point', magnitude: 10, unit: 'kN', direction: 'gravity', target: '顶层' },
+        ],
+      },
+    }, 'frame');
+    const memberTopPatch = projectEngineeringDraftToLegacyPatch({
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        geometry: {
+          storyHeightsM: [3, 3, 3],
+          bayWidthsM: [5],
+        },
+        loads: [
+          { kind: 'point', magnitude: 5, unit: 'kN', direction: 'gravity', target: '柱顶' },
+        ],
+      },
+    }, 'frame');
+
+    expect(topStoryPatch.floorLoads).toEqual([{ story: 3, verticalKN: 10 }]);
+    expect(memberTopPatch.floorLoads).toEqual([
+      { story: 1, verticalKN: 5 },
+      { story: 2, verticalKN: 5 },
+      { story: 3, verticalKN: 5 },
+    ]);
+  });
+
   test('does not duplicate excess untargeted frame point loads onto every story', async () => {
     const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
 

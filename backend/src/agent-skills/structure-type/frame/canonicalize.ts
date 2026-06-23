@@ -1,8 +1,30 @@
 import { mergeDraftPatchWithSupplemental } from '../../../agent-runtime/legacy.js';
-import type { DraftExtraction, DraftFloorLoad } from '../../../agent-runtime/types.js';
+import type { DraftExtraction, DraftFloorLoad, EngineeringDraftLoad } from '../../../agent-runtime/types.js';
 import type { FramePatchSources } from './types.js';
 
-function mergeFloorLoadsByStory(
+function isSemanticGravityLineLoad(load: EngineeringDraftLoad): boolean {
+  return (load.kind === 'line' || load.kind === 'distributed' || load.unit === 'kN/m')
+    && load.magnitude > 0
+    && (load.direction === undefined || load.direction === 'gravity' || load.direction === 'globalZ');
+}
+
+export function hasSemanticGravityLineLoads(patch: Pick<DraftExtraction, 'engineeringDraft'>): boolean {
+  return Boolean(patch.engineeringDraft?.loads?.some(isSemanticGravityLineLoad));
+}
+
+export function stripGravityFloorLoadValues(floorLoads: DraftFloorLoad[] | undefined): DraftFloorLoad[] | undefined {
+  const lateralOnly: DraftFloorLoad[] = [];
+  for (const load of floorLoads ?? []) {
+    if (load.lateralXKN === undefined && load.lateralYKN === undefined) continue;
+    const next: DraftFloorLoad = { story: load.story };
+    if (load.lateralXKN !== undefined) next.lateralXKN = load.lateralXKN;
+    if (load.lateralYKN !== undefined) next.lateralYKN = load.lateralYKN;
+    lateralOnly.push(next);
+  }
+  return lateralOnly.length ? lateralOnly : undefined;
+}
+
+export function mergeFloorLoadsByStory(
   existing: DraftFloorLoad[] | undefined,
   incoming: DraftFloorLoad[] | undefined,
 ): DraftFloorLoad[] | undefined {
@@ -100,9 +122,10 @@ export function canonicalizeFramePatch(input: FramePatchSources): DraftExtractio
     inferredType: 'frame',
   };
 
+  const shouldStripGravityFloorLoads = hasSemanticGravityLineLoads(mergedPatch);
   const floorLoads = mergeFloorLoadsByStory(
-    input.existingState?.floorLoads,
-    mergedPatch.floorLoads,
+    shouldStripGravityFloorLoads ? stripGravityFloorLoadValues(input.existingState?.floorLoads) : input.existingState?.floorLoads,
+    shouldStripGravityFloorLoads ? stripGravityFloorLoadValues(mergedPatch.floorLoads) : mergedPatch.floorLoads,
   );
   if (floorLoads) {
     next.floorLoads = floorLoads;
