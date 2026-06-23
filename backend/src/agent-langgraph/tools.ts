@@ -257,11 +257,12 @@ function buildPluginUnavailableProgress(
 function buildClarificationQuestions(
   plugin: AgentSkillPlugin | null | undefined,
   criticalMissing: string[],
+  optionalMissing: string[],
   state: DraftState,
   locale: 'zh' | 'en',
 ): InteractionQuestion[] {
   if (criticalMissing.length === 0) return [];
-  return plugin?.handler.buildQuestions?.(criticalMissing, criticalMissing, state, locale) ?? [];
+  return plugin?.handler.buildQuestions?.(criticalMissing, optionalMissing, state, locale) ?? [];
 }
 
 function hasStableDraftType(state: DraftState | null | undefined): state is DraftState {
@@ -348,7 +349,7 @@ export function buildPreservedDraftExtractionResult(args: {
     ? buildDraftProgress(args.locale, missing.critical)
     : buildPluginUnavailableProgress(args.locale);
   const clarificationQuestions = plugin
-    ? buildClarificationQuestions(plugin, missing.critical, nextState, args.locale)
+    ? buildClarificationQuestions(plugin, missing.critical, missing.optional, nextState, args.locale)
     : [];
   const preservedMatch = buildPreservedStructuralTypeMatch(nextState, plugin);
   const preservationWarning = args.locale === 'zh'
@@ -881,7 +882,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
             nextState,
             criticalMissing: missing.critical,
             optionalMissing: missing.optional,
-            clarificationQuestions: buildClarificationQuestions(plugin, missing.critical, nextState, locale),
+            clarificationQuestions: buildClarificationQuestions(plugin, missing.critical, missing.optional, nextState, locale),
             structuralTypeMatch: match,
             skillId: plugin.id,
             extractionMode: 'deterministic',
@@ -948,7 +949,7 @@ export function createExtractDraftParamsTool(skillRuntime: AgentSkillRuntime) {
           nextState,
           criticalMissing: missing.critical,
           optionalMissing: missing.optional,
-          clarificationQuestions: buildClarificationQuestions(plugin, missing.critical, nextState, locale),
+          clarificationQuestions: buildClarificationQuestions(plugin, missing.critical, missing.optional, nextState, locale),
           structuralTypeMatch: match,
           skillId: plugin.id,
           extractionMode,

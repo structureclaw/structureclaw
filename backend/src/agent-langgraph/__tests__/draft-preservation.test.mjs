@@ -207,9 +207,11 @@ describe("draft extraction preservation", () => {
           return { ...existing, ...patch, updatedAt: 1 };
         },
         computeMissing() {
-          return { critical: ["loadKN"], optional: [] };
+          return { critical: ["loadKN"], optional: ["sectionSize"] };
         },
-        buildQuestions() {
+        buildQuestions(criticalMissing, optionalMissing) {
+          expect(criticalMissing).toEqual(["loadKN"]);
+          expect(optionalMissing).toEqual(["sectionSize"]);
           return [{
             paramKey: "loadKN",
             label: "Load",
