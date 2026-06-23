@@ -14,7 +14,7 @@ import type {
   SkillReportNarrativeInput,
 } from '../../../agent-runtime/types.js';
 import { REQUIRED_KEYS } from './constants.js';
-import { getDefaultBeamSection, getDefaultColumnSection } from './model.js';
+import { getDefaultBeamSection, getDefaultColumnSection, hasConcreteFrameAnalysisLoadInput } from './model.js';
 import { hasLateralYFloorLoad } from './extract-llm.js';
 
 function inferConcreteFrameDimensionProposal(state: DraftState): '2d' | '3d' {
@@ -95,7 +95,11 @@ export function computeConcreteFrameMissing(state: DraftState, phase: 'interacti
     }
   }
 
-  return baseMissing;
+  if (!hasConcreteFrameAnalysisLoadInput(state)) return baseMissing;
+  return {
+    critical: baseMissing.critical.filter((key) => key !== 'floorLoads'),
+    optional: baseMissing.optional.filter((key) => key !== 'floorLoads'),
+  };
 }
 
 export function mapConcreteFrameLabels(keys: string[], locale: AppLocale): string[] {

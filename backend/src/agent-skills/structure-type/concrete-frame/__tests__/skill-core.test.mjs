@@ -590,7 +590,7 @@ describe('concrete-frame canonicalize core contract', () => {
     });
   });
 
-  test('derives 2d per-floor total loads from line intensity and total span length', () => {
+  test('keeps 2d concrete frame line intensity as beam distributed loads', () => {
     const patch = buildConcreteFrameDraftPatch(
       {
         engineeringDraft: {
@@ -607,11 +607,36 @@ describe('concrete-frame canonicalize core contract', () => {
       undefined,
     );
 
-    expect(patch.floorLoads).toEqual([
-      { story: 1, verticalKN: 171 },
-      { story: 2, verticalKN: 171 },
-      { story: 3, verticalKN: 171 },
-    ]);
+    expect(patch.floorLoads).toBeUndefined();
+
+    const model = buildConcreteFrameModel({
+      inferredType: 'concrete-frame',
+      structuralTypeKey: 'concrete-frame',
+      frameDimension: '2d',
+      storyCount: 3,
+      bayCount: 2,
+      storyHeightsM: [3.3, 3.3, 3.3],
+      bayWidthsM: [5.4, 6],
+      engineeringDraft: {
+        structureType: 'concrete-frame',
+        loads: [
+          { kind: 'line', magnitude: 15, unit: 'kN/m', direction: 'gravity' },
+        ],
+      },
+      frameConcreteGrade: 'C30',
+      frameRebarGrade: 'HRB400',
+      frameColumnSection: '500X500',
+      frameBeamSection: '300X600',
+      frameBaseSupportType: 'fixed',
+      updatedAt: 0,
+    });
+
+    expect(model).toBeDefined();
+    const lineCase = model.load_cases.find((loadCase) => loadCase.id === 'LINE');
+    expect(lineCase).toBeDefined();
+    expect(lineCase.loads).toHaveLength(6);
+    expect(lineCase.loads.every((load) => load.type === 'distributed')).toBe(true);
+    expect(lineCase.loads.every((load) => load.wz === -15)).toBe(true);
   });
 
   test('leaves frame dimension undefined when no directional evidence or existing state exists', () => {

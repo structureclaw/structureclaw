@@ -146,6 +146,32 @@ describe('concrete-frame handler composed modules', () => {
     ]);
     expect(missing.critical).not.toContain('floorLoads');
   });
+
+  test('does not mark floorLoads missing when semantic line loads are present', () => {
+    const missing = handler.computeMissing({
+      inferredType: 'concrete-frame',
+      structuralTypeKey: 'concrete-frame',
+      frameDimension: '2d',
+      storyCount: 2,
+      bayCount: 1,
+      storyHeightsM: [3.6, 3.6],
+      bayWidthsM: [6],
+      engineeringDraft: {
+        structureType: 'concrete-frame',
+        loads: [
+          { kind: 'line', magnitude: 20, unit: 'kN/m', direction: 'gravity' },
+        ],
+      },
+      frameConcreteGrade: 'C30',
+      frameRebarGrade: 'HRB400',
+      frameColumnSection: '500X500',
+      frameBeamSection: '300X600',
+      frameBaseSupportType: 'fixed',
+      updatedAt: 0,
+    }, 'execution');
+
+    expect(missing.critical).not.toContain('floorLoads');
+  });
 });
 
 // ============================================================================
