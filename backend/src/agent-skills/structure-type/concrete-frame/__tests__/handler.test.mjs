@@ -173,7 +173,7 @@ describe('concrete-frame handler composed modules', () => {
     expect(missing.critical).not.toContain('floorLoads');
   });
 
-  test('drops stale gravity floor loads when semantic line loads replace them', () => {
+  test('drops stale dead floor loads when semantic line loads replace them', () => {
     const existingState = {
       inferredType: 'concrete-frame',
       structuralTypeKey: 'concrete-frame',
@@ -183,8 +183,8 @@ describe('concrete-frame handler composed modules', () => {
       storyHeightsM: [3.6, 3.6],
       bayWidthsM: [6],
       floorLoads: [
-        { story: 1, verticalKN: 360, lateralXKN: 20 },
-        { story: 2, verticalKN: 360, lateralXKN: 20 },
+        { story: 1, verticalKN: 360, liveLoadKN: 72, lateralXKN: 20 },
+        { story: 2, verticalKN: 360, liveLoadKN: 72, lateralXKN: 20 },
       ],
       frameConcreteGrade: 'C30',
       frameRebarGrade: 'HRB400',
@@ -215,8 +215,8 @@ describe('concrete-frame handler composed modules', () => {
     const state = handler.mergeState(existingState, patch);
 
     expect(state.floorLoads).toEqual([
-      { story: 1, lateralXKN: 20 },
-      { story: 2, lateralXKN: 20 },
+      { story: 1, liveLoadKN: 72, lateralXKN: 20 },
+      { story: 2, liveLoadKN: 72, lateralXKN: 20 },
     ]);
   });
 

@@ -12,16 +12,17 @@ export function hasSemanticGravityLineLoads(patch: Pick<DraftExtraction, 'engine
   return Boolean(patch.engineeringDraft?.loads?.some(isSemanticGravityLineLoad));
 }
 
-export function stripGravityFloorLoadValues(floorLoads: DraftFloorLoad[] | undefined): DraftFloorLoad[] | undefined {
-  const lateralOnly: DraftFloorLoad[] = [];
+export function stripDeadFloorLoadValues(floorLoads: DraftFloorLoad[] | undefined): DraftFloorLoad[] | undefined {
+  const preservedLoads: DraftFloorLoad[] = [];
   for (const load of floorLoads ?? []) {
-    if (load.lateralXKN === undefined && load.lateralYKN === undefined) continue;
+    if (load.liveLoadKN === undefined && load.lateralXKN === undefined && load.lateralYKN === undefined) continue;
     const next: DraftFloorLoad = { story: load.story };
+    if (load.liveLoadKN !== undefined) next.liveLoadKN = load.liveLoadKN;
     if (load.lateralXKN !== undefined) next.lateralXKN = load.lateralXKN;
     if (load.lateralYKN !== undefined) next.lateralYKN = load.lateralYKN;
-    lateralOnly.push(next);
+    preservedLoads.push(next);
   }
-  return lateralOnly.length ? lateralOnly : undefined;
+  return preservedLoads.length ? preservedLoads : undefined;
 }
 
 export function mergeFloorLoadsByStory(
@@ -124,8 +125,8 @@ export function canonicalizeFramePatch(input: FramePatchSources): DraftExtractio
 
   const shouldStripGravityFloorLoads = hasSemanticGravityLineLoads(mergedPatch);
   const floorLoads = mergeFloorLoadsByStory(
-    shouldStripGravityFloorLoads ? stripGravityFloorLoadValues(input.existingState?.floorLoads) : input.existingState?.floorLoads,
-    shouldStripGravityFloorLoads ? stripGravityFloorLoadValues(mergedPatch.floorLoads) : mergedPatch.floorLoads,
+    shouldStripGravityFloorLoads ? stripDeadFloorLoadValues(input.existingState?.floorLoads) : input.existingState?.floorLoads,
+    shouldStripGravityFloorLoads ? stripDeadFloorLoadValues(mergedPatch.floorLoads) : mergedPatch.floorLoads,
   );
   if (floorLoads) {
     next.floorLoads = floorLoads;

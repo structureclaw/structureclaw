@@ -176,7 +176,7 @@ describe('frame handler composed modules', () => {
     expect(missing.critical).not.toContain('floorLoads');
   });
 
-  test('drops stale gravity floor loads when semantic line loads replace them', () => {
+  test('drops stale dead floor loads when semantic line loads replace them', () => {
     const patch = handler.extractDraft({
       message: '改成梁上均布荷载60kN/m',
       locale: 'zh',
@@ -189,8 +189,8 @@ describe('frame handler composed modules', () => {
         storyHeightsM: [3.6, 3.6],
         bayWidthsM: [6],
         floorLoads: [
-          { story: 1, verticalKN: 360, lateralXKN: 20 },
-          { story: 2, verticalKN: 360, lateralXKN: 20 },
+          { story: 1, verticalKN: 360, liveLoadKN: 72, lateralXKN: 20 },
+          { story: 2, verticalKN: 360, liveLoadKN: 72, lateralXKN: 20 },
         ],
         updatedAt: 0,
       },
@@ -218,15 +218,15 @@ describe('frame handler composed modules', () => {
       storyHeightsM: [3.6, 3.6],
       bayWidthsM: [6],
       floorLoads: [
-        { story: 1, verticalKN: 360, lateralXKN: 20 },
-        { story: 2, verticalKN: 360, lateralXKN: 20 },
+        { story: 1, verticalKN: 360, liveLoadKN: 72, lateralXKN: 20 },
+        { story: 2, verticalKN: 360, liveLoadKN: 72, lateralXKN: 20 },
       ],
       updatedAt: 0,
     }, patch);
 
     expect(state.floorLoads).toEqual([
-      { story: 1, lateralXKN: 20 },
-      { story: 2, lateralXKN: 20 },
+      { story: 1, liveLoadKN: 72, lateralXKN: 20 },
+      { story: 2, liveLoadKN: 72, lateralXKN: 20 },
     ]);
   });
 
