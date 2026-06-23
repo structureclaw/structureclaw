@@ -387,7 +387,7 @@ function frameLoadTotalKN(load: EngineeringDraftLoad, patch: DraftExtraction): n
 function parseStoryOrdinal(target: string | undefined, storyCount: number): number | undefined {
   if (!target) return undefined;
   const text = target.toLowerCase();
-  if (text.includes('roof') || target.includes('屋面')) return storyCount;
+  if (text.includes('roof') || target.includes('屋面') || target.includes('顶')) return storyCount;
   const numericMatch = text.match(/(?:floor|story|level)\s*([0-9]+)/i)
     ?? target.match(/第?\s*([0-9]+)\s*层/u);
   if (numericMatch?.[1]) {

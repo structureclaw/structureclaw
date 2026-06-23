@@ -353,7 +353,7 @@ describe('agent runtime helper utilities', () => {
     ]);
   });
 
-  test('projects frame line and lateral engineering loads into floor loads', async () => {
+  test('does not project frame line loads into floor loads but keeps point lateral loads', async () => {
     const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
 
     const patch = projectEngineeringDraftToLegacyPatch({
@@ -370,9 +370,9 @@ describe('agent runtime helper utilities', () => {
       },
     }, 'frame');
 
+    expect(patch.engineeringDraft?.loads?.[0]).toMatchObject({ kind: 'line', magnitude: 10, unit: 'kN/m' });
     expect(patch.floorLoads).toEqual([
-      { story: 1, verticalKN: 120 },
-      { story: 2, verticalKN: 120, lateralXKN: 20 },
+      { story: 2, lateralXKN: 20 },
     ]);
   });
 
@@ -397,13 +397,13 @@ describe('agent runtime helper utilities', () => {
       storyCount: 1,
       bayCount: 1,
       bayWidthsM: [6],
-      floorLoads: [{ story: 1, verticalKN: 60 }],
     });
+    expect(patch.floorLoads).toBeUndefined();
     expect(patch.bayCountX).toBeUndefined();
     expect(patch.bayWidthsXM).toBeUndefined();
   });
 
-  test('maps partial untargeted frame loads by order instead of duplicating to every story', async () => {
+  test('maps partial untargeted frame point loads by order instead of duplicating to every story', async () => {
     const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
 
     const patch = projectEngineeringDraftToLegacyPatch({
@@ -414,8 +414,8 @@ describe('agent runtime helper utilities', () => {
           bayWidthsM: [6],
         },
         loads: [
-          { kind: 'line', magnitude: 10, unit: 'kN/m', direction: 'gravity' },
-          { kind: 'line', magnitude: 12, unit: 'kN/m', direction: 'gravity' },
+          { kind: 'point', magnitude: 60, unit: 'kN', direction: 'gravity' },
+          { kind: 'point', magnitude: 72, unit: 'kN', direction: 'gravity' },
         ],
       },
     }, 'frame');
@@ -426,7 +426,7 @@ describe('agent runtime helper utilities', () => {
     ]);
   });
 
-  test('parses compound Chinese story ordinals for targeted frame loads', async () => {
+  test('parses compound Chinese story ordinals for targeted frame point loads', async () => {
     const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
 
     const patch = projectEngineeringDraftToLegacyPatch({
@@ -437,7 +437,7 @@ describe('agent runtime helper utilities', () => {
           bayWidthsM: [5],
         },
         loads: [
-          { kind: 'line', magnitude: 2, unit: 'kN/m', direction: 'gravity', target: '第十一层' },
+          { kind: 'point', magnitude: 10, unit: 'kN', direction: 'gravity', target: '第十一层' },
         ],
       },
     }, 'frame');
@@ -445,7 +445,7 @@ describe('agent runtime helper utilities', () => {
     expect(patch.floorLoads).toEqual([{ story: 11, verticalKN: 10 }]);
   });
 
-  test('does not duplicate excess untargeted frame loads onto every story', async () => {
+  test('does not duplicate excess untargeted frame point loads onto every story', async () => {
     const { projectEngineeringDraftToLegacyPatch } = await import('../../../dist/agent-runtime/engineering-draft.js');
 
     const patch = projectEngineeringDraftToLegacyPatch({
@@ -456,9 +456,9 @@ describe('agent runtime helper utilities', () => {
           bayWidthsM: [5],
         },
         loads: [
-          { kind: 'line', magnitude: 1, unit: 'kN/m', direction: 'gravity' },
-          { kind: 'line', magnitude: 2, unit: 'kN/m', direction: 'gravity' },
-          { kind: 'line', magnitude: 3, unit: 'kN/m', direction: 'gravity' },
+          { kind: 'point', magnitude: 5, unit: 'kN', direction: 'gravity' },
+          { kind: 'point', magnitude: 10, unit: 'kN', direction: 'gravity' },
+          { kind: 'point', magnitude: 15, unit: 'kN', direction: 'gravity' },
         ],
       },
     }, 'frame');

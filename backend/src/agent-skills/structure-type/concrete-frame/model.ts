@@ -572,7 +572,7 @@ export function hasConcreteFrameAnalysisLoadInput(state: Pick<DraftState, 'floor
 function parseLineLoadStory(target: string | undefined, storyCount: number): number | undefined {
   if (!target) return undefined;
   const text = target.toLowerCase();
-  if (text.includes('roof') || target.includes('屋面')) return storyCount;
+  if (text.includes('roof') || target.includes('屋面') || target.includes('顶')) return storyCount;
   const numericMatch = text.match(/(?:floor|story|level)\s*([0-9]+)/i)
     ?? target.match(/第?\s*([0-9]+)\s*层/u);
   if (numericMatch?.[1]) {
@@ -676,8 +676,8 @@ function build2dConcreteBeamLineLoads(
 function lineLoadTargetAxis(target: string | undefined): 'x' | 'y' | undefined {
   if (!target) return undefined;
   const text = target.toLowerCase();
-  if (/(?:x\s*(?:direction|axis)|x[-\s]?向|沿\s*x|x向)/iu.test(text)) return 'x';
-  if (/(?:y\s*(?:direction|axis)|y[-\s]?向|沿\s*y|y向)/iu.test(text)) return 'y';
+  if (/(?:x\s*(?:direction|axis)|x[-\s]?[向轴]|沿\s*x)/iu.test(text)) return 'x';
+  if (/(?:y\s*(?:direction|axis)|y[-\s]?[向轴]|沿\s*y)/iu.test(text)) return 'y';
   return undefined;
 }
 

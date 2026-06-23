@@ -414,6 +414,59 @@ describe('frame canonicalize core contract', () => {
     expect(lineCase.loads.map((load) => load.element)).toEqual(['B10', 'B11', 'B12', 'B13', 'B14', 'B15']);
   });
 
+  test('targets Chinese top-story frame line loads to top story beams', () => {
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      structuralTypeKey: 'steel-frame',
+      frameDimension: '2d',
+      storyCount: 3,
+      bayCount: 2,
+      storyHeightsM: [3.3, 3.3, 3.3],
+      bayWidthsM: [5.4, 6],
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        loads: [
+          { kind: 'line', magnitude: 12, unit: 'kN/m', direction: 'gravity', target: '顶层梁' },
+        ],
+      },
+      frameBaseSupportType: 'fixed',
+      updatedAt: 0,
+    });
+
+    const lineCase = model.load_cases.find((loadCase) => loadCase.id === 'LINE');
+    expect(lineCase).toBeDefined();
+    expect(lineCase.loads).toHaveLength(2);
+    expect(lineCase.loads.map((load) => load.story)).toEqual(['F3', 'F3']);
+    expect(lineCase.loads.map((load) => load.element)).toEqual(['B14', 'B15']);
+  });
+
+  test('targets Chinese x-axis frame line loads to x-direction beams in 3d', () => {
+    const model = buildFrameModel({
+      inferredType: 'frame',
+      structuralTypeKey: 'steel-frame',
+      frameDimension: '3d',
+      storyCount: 2,
+      bayCountX: 1,
+      bayCountY: 1,
+      storyHeightsM: [3.3, 3.3],
+      bayWidthsXM: [6],
+      bayWidthsYM: [5],
+      engineeringDraft: {
+        structureType: 'steel-frame',
+        loads: [
+          { kind: 'line', magnitude: 8, unit: 'kN/m', direction: 'gravity', target: 'X轴梁' },
+        ],
+      },
+      frameBaseSupportType: 'fixed',
+      updatedAt: 0,
+    });
+
+    const lineCase = model.load_cases.find((loadCase) => loadCase.id === 'LINE');
+    expect(lineCase).toBeDefined();
+    expect(lineCase.loads).toHaveLength(4);
+    expect(lineCase.loads.map((load) => load.element)).toEqual(['BX9', 'BX10', 'BX11', 'BX12']);
+  });
+
   test('leaves frame dimension undefined when no directional evidence or existing state exists', () => {
     const patch = coerceFrameDimension({
       inferredType: 'frame',
