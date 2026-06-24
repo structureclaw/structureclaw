@@ -15,8 +15,33 @@ describe('LLM model options', () => {
 
     const options = buildChatModelOptions(baseConfig, 0.2);
 
+    expect(options.temperature).toBe(0.2);
     expect(options.disableStreaming).toBe(false);
     expect(options.streaming).toBeUndefined();
+  });
+
+  test('can omit temperature for configured OpenAI-compatible model aliases', async () => {
+    const previous = process.env.LLM_OMIT_TEMPERATURE_MODELS;
+    process.env.LLM_OMIT_TEMPERATURE_MODELS = 'claude-opus-4-8';
+    try {
+      const { buildChatModelOptions, shouldOmitTemperature } = await import('../../../dist/utils/llm.js');
+
+      const claudeOptions = buildChatModelOptions({
+        ...baseConfig,
+        llmModel: 'claude-opus-4-8',
+      }, 0);
+      const glmOptions = buildChatModelOptions(baseConfig, 0);
+
+      expect(shouldOmitTemperature('claude-opus-4-8')).toBe(true);
+      expect(claudeOptions).not.toHaveProperty('temperature');
+      expect(glmOptions.temperature).toBe(0);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.LLM_OMIT_TEMPERATURE_MODELS;
+      } else {
+        process.env.LLM_OMIT_TEMPERATURE_MODELS = previous;
+      }
+    }
   });
 
   test('can disable LangChain invoke streaming for graph-state correctness', async () => {
