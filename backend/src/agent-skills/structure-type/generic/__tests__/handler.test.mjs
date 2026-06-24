@@ -78,18 +78,18 @@ describe('generic structure-type handler', () => {
         engineeringDraft: {
           structureType: 'truss',
           geometry: {
-            lengthM: 18,
-            heightM: 3,
-            spanLengthsM: [3, 3, 3, 3, 3, 3],
+            lengthM: '18',
+            heightM: '3',
+            spanLengthsM: ['3', '3', '3', '3', '3', '3'],
           },
           loads: [
             {
               kind: 'nodal',
-              magnitude: 12,
+              magnitude: '12',
               unit: 'kN',
               direction: 'gravity',
               target: 'top-chord-node',
-              location: { xM: 3 },
+              location: { xM: '3' },
             },
           ],
           analysis: { type: 'static' },
@@ -167,6 +167,58 @@ describe('generic structure-type handler', () => {
     }));
     expect(state.engineeringDraft?.structureType).toBe('steel-frame');
     expect(handler.computeMissing(state, 'execution').critical).toEqual([]);
+  });
+
+  test('maps explicit generic engineeringDraft aliases without scanning user text', () => {
+    const portalPatch = handler.extractDraft({
+      message: 'unused',
+      locale: 'en',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'portal',
+          geometry: {
+            spanLengthsM: [18],
+            heightM: 6,
+          },
+          loads: [{ kind: 'line', magnitude: 8, unit: 'kN/m', direction: 'gravity' }],
+        },
+      },
+      structuralTypeMatch: {
+        key: 'unknown',
+        mappedType: 'unknown',
+        skillId: 'generic',
+        supportLevel: 'fallback',
+      },
+    });
+    const girderPatch = handler.extractDraft({
+      message: 'unused',
+      locale: 'en',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'girder',
+          geometry: { lengthM: 12 },
+          loads: [{ kind: 'line', magnitude: 5, unit: 'kN/m', direction: 'gravity' }],
+        },
+      },
+      structuralTypeMatch: {
+        key: 'unknown',
+        mappedType: 'unknown',
+        skillId: 'generic',
+        supportLevel: 'fallback',
+      },
+    });
+
+    expect(portalPatch).toEqual(expect.objectContaining({
+      inferredType: 'portal-frame',
+      spanLengthM: 18,
+      heightM: 6,
+      loadKN: 8,
+    }));
+    expect(girderPatch).toEqual(expect.objectContaining({
+      inferredType: 'beam',
+      lengthM: 12,
+      loadKN: 5,
+    }));
   });
 
   test('does not infer draft parameters from the raw message', () => {

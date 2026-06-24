@@ -8,12 +8,14 @@ import {
   normalizeNumber,
   normalizeSupportType,
 } from '../../../agent-runtime/fallback.js';
-import { projectEngineeringDraftToLegacyPatch } from '../../../agent-runtime/engineering-draft.js';
+import {
+  normalizeEngineeringDraft,
+  projectEngineeringDraftToLegacyPatch,
+} from '../../../agent-runtime/engineering-draft.js';
 import { buildStructuralTypeMatch } from '../../../agent-runtime/plugin-helpers.js';
 import type {
   DraftExtraction,
   DraftState,
-  EngineeringDraft,
   InferredModelType,
   SkillHandler,
   SkillReportNarrativeInput,
@@ -55,11 +57,9 @@ function normalizeLlmDeclaredType(value: unknown): InferredModelType | undefined
   ) {
     return 'frame';
   }
+  if (normalizedText === 'portal') return 'portal-frame';
+  if (normalizedText === 'girder') return 'beam';
   return undefined;
-}
-
-function asEngineeringDraft(value: unknown): EngineeringDraft | undefined {
-  return asRecord(value) as EngineeringDraft | undefined;
 }
 
 function draftIssuesFromSource(source: Record<string, unknown>): DraftExtraction['draftIssues'] {
@@ -104,7 +104,7 @@ function normalizeGenericDraftPatch(
   llmDraftPatch: Record<string, unknown> | null | undefined,
 ): DraftExtraction {
   const source = llmDraftPatch ?? {};
-  const engineeringDraft = asEngineeringDraft(source.engineeringDraft);
+  const engineeringDraft = normalizeEngineeringDraft(source.engineeringDraft);
   const pointLoad = firstRecord(source.pointLoads ?? source.point_loads);
   const distributedLoad = firstRecord(source.distributedLoads ?? source.distributed_loads);
   const span = normalizeNumber(source.lengthM ?? source.spanLengthM ?? source.span ?? source.length);
