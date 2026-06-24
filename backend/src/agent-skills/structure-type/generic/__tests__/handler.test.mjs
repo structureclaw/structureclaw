@@ -70,6 +70,105 @@ describe('generic structure-type handler', () => {
     expect(missing.critical).toEqual([]);
   });
 
+  test('uses LLM engineeringDraft structure type while staying on generic skill', () => {
+    const patch = handler.extractDraft({
+      message: '这条用户消息不参与参数抽取',
+      locale: 'en',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'truss',
+          geometry: {
+            lengthM: 18,
+            heightM: 3,
+            spanLengthsM: [3, 3, 3, 3, 3, 3],
+          },
+          loads: [
+            {
+              kind: 'nodal',
+              magnitude: 12,
+              unit: 'kN',
+              direction: 'gravity',
+              target: 'top-chord-node',
+              location: { xM: 3 },
+            },
+          ],
+          analysis: { type: 'static' },
+        },
+      },
+      structuralTypeMatch: {
+        key: 'unknown',
+        mappedType: 'unknown',
+        skillId: 'generic',
+        supportLevel: 'fallback',
+      },
+    });
+
+    const state = handler.mergeState(undefined, patch);
+    const missing = handler.computeMissing(state, 'execution');
+
+    expect(patch).toEqual(expect.objectContaining({
+      inferredType: 'truss',
+      lengthM: 18,
+      heightM: 3,
+      bayCount: 6,
+      loadKN: 12,
+    }));
+    expect(state).toEqual(expect.objectContaining({
+      inferredType: 'truss',
+      skillId: 'generic',
+      structuralTypeKey: 'truss',
+    }));
+    expect(state.engineeringDraft?.structureType).toBe('truss');
+    expect(state.skillState?.genericDraft).toEqual(expect.objectContaining({
+      engineeringDraft: expect.objectContaining({ structureType: 'truss' }),
+    }));
+    expect(missing.critical).toEqual([]);
+  });
+
+  test('maps LLM steel-frame engineeringDraft to generic frame family', () => {
+    const patch = handler.extractDraft({
+      message: '这条用户消息不参与参数抽取',
+      locale: 'zh',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'steel-frame',
+          geometry: {
+            storyHeightsM: [3.3, 3.3],
+            bayWidthsM: [6],
+          },
+          loads: [
+            {
+              kind: 'line',
+              magnitude: 15,
+              unit: 'kN/m',
+              direction: 'gravity',
+              target: 'floor',
+            },
+          ],
+        },
+      },
+      structuralTypeMatch: {
+        key: 'unknown',
+        mappedType: 'unknown',
+        skillId: 'generic',
+        supportLevel: 'fallback',
+      },
+    });
+
+    const state = handler.mergeState(undefined, patch);
+
+    expect(state).toEqual(expect.objectContaining({
+      inferredType: 'frame',
+      skillId: 'generic',
+      structuralTypeKey: 'frame',
+      frameDimension: '2d',
+      storyCount: 2,
+      bayCount: 1,
+    }));
+    expect(state.engineeringDraft?.structureType).toBe('steel-frame');
+    expect(handler.computeMissing(state, 'execution').critical).toEqual([]);
+  });
+
   test('does not infer draft parameters from the raw message', () => {
     const patch = handler.extractDraft({
       message: '简支梁，跨度10m，梁中间荷载1kN',

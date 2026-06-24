@@ -8,10 +8,12 @@ import {
   normalizeNumber,
   normalizeSupportType,
 } from '../../../agent-runtime/fallback.js';
+import { projectEngineeringDraftToLegacyPatch } from '../../../agent-runtime/engineering-draft.js';
 import { buildStructuralTypeMatch } from '../../../agent-runtime/plugin-helpers.js';
 import type {
   DraftExtraction,
   DraftState,
+  EngineeringDraft,
   InferredModelType,
   SkillHandler,
   SkillReportNarrativeInput,
@@ -41,15 +43,41 @@ function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' ? value.trim() : undefined;
 }
 
-function inferTypeFromText(value: unknown): InferredModelType | undefined {
-  const text = stringValue(value)?.toLowerCase();
-  if (!text) return undefined;
-  if (text.includes('column') || text.includes('柱')) return 'column';
-  if (text.includes('beam') || text.includes('梁')) return 'beam';
-  if (text.includes('truss') || text.includes('桁架')) return 'truss';
-  if (text.includes('portal') || text.includes('门式') || text.includes('刚架')) return 'portal-frame';
-  if (text.includes('frame') || text.includes('框架')) return 'frame';
-  return normalizeInferredType(text);
+function normalizeLlmDeclaredType(value: unknown): InferredModelType | undefined {
+  const normalizedText = stringValue(value)?.toLowerCase().trim();
+  if (!normalizedText) return undefined;
+  const normalized = normalizeInferredType(normalizedText);
+  if (normalized && normalized !== 'unknown') return normalized;
+  if (
+    normalizedText === 'steel-frame'
+    || normalizedText === 'concrete-frame'
+    || normalizedText === 'reinforced-concrete-frame'
+  ) {
+    return 'frame';
+  }
+  return undefined;
+}
+
+function asEngineeringDraft(value: unknown): EngineeringDraft | undefined {
+  return asRecord(value) as EngineeringDraft | undefined;
+}
+
+function draftIssuesFromSource(source: Record<string, unknown>): DraftExtraction['draftIssues'] {
+  const issues = source.draftIssues;
+  if (!Array.isArray(issues)) {
+    return undefined;
+  }
+  return issues.filter((issue): issue is NonNullable<DraftExtraction['draftIssues']>[number] => (
+    !!issue && typeof issue === 'object' && !Array.isArray(issue)
+  ));
+}
+
+function genericSkillStateFromSource(source: Record<string, unknown>): Record<string, unknown> {
+  const sourceSkillState = asRecord(source.skillState);
+  return {
+    ...(sourceSkillState ?? {}),
+    genericDraft: source,
+  };
 }
 
 function inferSupportTypeFromText(value: unknown): DraftExtraction['supportType'] {
@@ -76,6 +104,7 @@ function normalizeGenericDraftPatch(
   llmDraftPatch: Record<string, unknown> | null | undefined,
 ): DraftExtraction {
   const source = llmDraftPatch ?? {};
+  const engineeringDraft = asEngineeringDraft(source.engineeringDraft);
   const pointLoad = firstRecord(source.pointLoads ?? source.point_loads);
   const distributedLoad = firstRecord(source.distributedLoads ?? source.distributed_loads);
   const span = normalizeNumber(source.lengthM ?? source.spanLengthM ?? source.span ?? source.length);
@@ -99,13 +128,17 @@ function normalizeGenericDraftPatch(
   const explicitType = normalizeInferredType(source.inferredType);
   const inferredType =
     (explicitType && explicitType !== 'unknown' ? explicitType : undefined)
-    ?? inferTypeFromText(source.componentType)
-    ?? inferTypeFromText(source.structureType)
-    ?? inferTypeFromText(source.structuralType)
-    ?? inferTypeFromText(source.type);
+    ?? normalizeLlmDeclaredType(engineeringDraft?.structureType)
+    ?? normalizeLlmDeclaredType(source.componentType)
+    ?? normalizeLlmDeclaredType(source.structureType)
+    ?? normalizeLlmDeclaredType(source.structuralType)
+    ?? normalizeLlmDeclaredType(source.type);
 
   const patch: DraftExtraction = {};
   if (inferredType) patch.inferredType = inferredType;
+  if (engineeringDraft) patch.engineeringDraft = engineeringDraft;
+  const draftIssues = draftIssuesFromSource(source);
+  if (draftIssues?.length) patch.draftIssues = draftIssues;
   if (span !== undefined) patch.lengthM = span;
   if (loadValue !== undefined) patch.loadKN = loadValue;
   if (loadType) patch.loadType = loadType;
@@ -127,11 +160,9 @@ function normalizeGenericDraftPatch(
   if (loadPositionM !== undefined) patch.loadPositionM = loadPositionM;
 
   if (Object.keys(source).length > 0) {
-    patch.skillState = {
-      genericDraft: source,
-    };
+    patch.skillState = genericSkillStateFromSource(source);
   }
-  return patch;
+  return inferredType ? projectEngineeringDraftToLegacyPatch(patch, inferredType) : patch;
 }
 
 function buildGenericReportNarrative(input: SkillReportNarrativeInput): string {
