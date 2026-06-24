@@ -29,17 +29,23 @@ const STRUCTURE_MODEL_V2_TEMPLATE = JSON.stringify({
 
 const COMMON_CONSTRAINTS_EN = [
   'Output StructureModel V2 with schema_version exactly "2.0.0" and unit_system exactly "SI".',
+  'Use global-z-up coordinates: x is the main horizontal span, z is vertical height, and y is the out-of-plane direction. Put 2D structures in the x-z plane with y=0.',
   'All lengths are meters, point forces are kN, and distributed member loads are kN/m. Never output N or N/m values and never multiply kN values by 1000.',
   'Output only the fields shown in the template. load_case.type must be dead, live, wind, seismic, or other.',
   'Prohibited alternate field names: material_id->material, section_id->section, coordinates->x/y/z, boundary_conditions->restraints, elastic_modulus->E, poisson_ratio->nu, density->rho, yield_strength->fy.',
+  'Create explicit nodes at supports, concentrated loads, span boundaries, member intersections, and geometry break points so analysis result locations are computable.',
+  'Before output, check the total applied load against the user request. Do not apply the same physical load twice as both nodal and distributed loads.',
   'For partial-span distributed loads, split the member into separate elements. Only use nodal and distributed as load types; do not use nodal_force, line_load, element_uniform_load, or uniform_load.',
 ];
 
 const COMMON_CONSTRAINTS_ZH = [
   '输出 StructureModel V2，schema_version 必须是 "2.0.0"，unit_system 必须是 "SI"。',
+  '使用 global-z-up 坐标：x 为主要水平跨度，z 为竖向高度，y 为平面外方向。二维结构应位于 x-z 平面，y=0。',
   '所有长度使用 m，集中力使用 kN，构件均布荷载使用 kN/m。不要输出 N 或 N/m，也不要把 kN 数值乘以 1000。',
   '严格输出模板中的字段和层级。load_case.type 只能是 dead/live/wind/seismic/other。',
   '禁止替代字段名：material_id->material, section_id->section, coordinates->x/y/z, boundary_conditions->restraints, elastic_modulus->E, poisson_ratio->nu, density->rho, yield_strength->fy。',
+  '在支座、集中荷载、跨界、构件交点和几何转折处建立显式节点，保证分析结果位置可计算。',
+  '输出前核对总施加荷载与用户描述是否一致。不要把同一个物理荷载同时作为节点荷载和构件均布荷载重复施加。',
   '局部均布荷载不要在单元内设起止位置，应拆分单元后对目标单元施加 distributed 荷载。只使用 nodal 和 distributed，不要使用 nodal_force/line_load/element_uniform_load/uniform_load 等类型名。',
 ];
 

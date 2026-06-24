@@ -14,6 +14,9 @@ describe('generic LLM model builder', () => {
     expect(prompt).toContain('"schema_version":"2.0.0"');
     expect(prompt).toContain('point forces are kN');
     expect(prompt).toContain('distributed member loads are kN/m');
+    expect(prompt).toContain('global-z-up coordinates');
+    expect(prompt).toContain('Create explicit nodes at supports');
+    expect(prompt).toContain('check the total applied load');
     expect(prompt).not.toContain('StructureModel v1');
     expect(prompt).not.toContain('-10000');
   });
@@ -83,6 +86,63 @@ describe('generic LLM model builder', () => {
       node: 'N1',
       fz: '   ',
       unit: 'kN',
+    });
+  });
+
+  test('repairs likely 2D y-up coordinates without moving valid z loads', async () => {
+    const fakeLlm = {
+      async invoke() {
+        return {
+          content: JSON.stringify({
+            schema_version: '2.0.0',
+            unit_system: 'SI',
+            nodes: [
+              { id: 'N1', x: 0, y: 0, z: 0, restraints: [true, true, false, false, false, true] },
+              { id: 'N2', x: 6, y: 0, z: 0 },
+              { id: 'N3', x: 0, y: 4 },
+              { id: 'N4', x: 6, y: 4, z: 0 },
+            ],
+            elements: [
+              { id: 'E1', type: 'beam', nodes: ['N1', 'N3'], material: 'M1', section: 'S1' },
+              { id: 'E2', type: 'beam', nodes: ['N2', 'N4'], material: 'M1', section: 'S1' },
+              { id: 'E3', type: 'beam', nodes: ['N3', 'N4'], material: 'M1', section: 'S1' },
+            ],
+            load_cases: [
+              {
+                id: 'LC1',
+                type: 'other',
+                loads: [
+                  { type: 'nodal', node: 'N4', fx: 50, fy: 0, fz: 0 },
+                  { type: 'distributed', element: 'E3', wy: -8, wz: 0 },
+                  { type: 'nodal', node: 'N3', fy: 0, fz: -10 },
+                  { type: 'nodal', node: 'N4', mz: 5, my: 0 },
+                ],
+              },
+            ],
+          }),
+        };
+      },
+    };
+
+    const model = await tryBuildGenericModelWithLlm(
+      fakeLlm,
+      'Single-bay lateral frame, span 6m, height 4m, lateral 50kN.',
+      { inferredType: 'generic', updatedAt: 0 },
+      'en',
+    );
+
+    expect(model.nodes).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'N1', x: 0, y: 0, z: 0, restraints: [true, false, true, false, true, false] }),
+      expect.objectContaining({ id: 'N3', x: 0, y: 0, z: 4 }),
+      expect.objectContaining({ id: 'N4', x: 6, y: 0, z: 4 }),
+    ]));
+    expect(model.load_cases[0].loads[0]).toMatchObject({ fx: 50, fy: 0, fz: 0 });
+    expect(model.load_cases[0].loads[1]).toMatchObject({ wy: 0, wz: -8 });
+    expect(model.load_cases[0].loads[2]).toMatchObject({ fy: 0, fz: -10 });
+    expect(model.load_cases[0].loads[3]).toMatchObject({ mz: 0, my: 5 });
+    expect(model.metadata).toMatchObject({
+      coordinateSemantics: 'global-z-up',
+      coordinateRepair: 'swapped-y-z-for-2d-vertical-model',
     });
   });
 });

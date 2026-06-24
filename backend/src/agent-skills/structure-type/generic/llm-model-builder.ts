@@ -93,6 +93,7 @@ export async function tryBuildGenericModelWithLlm(
 function canonicalizeGenericModel(model: Record<string, unknown>): void {
   model.schema_version = '2.0.0';
   model.unit_system = 'SI';
+  normalizeLikely2DVerticalAxis(model);
   if (!Array.isArray(model.load_cases)) {
     return;
   }
@@ -108,6 +109,108 @@ function canonicalizeGenericModel(model: Record<string, unknown>): void {
         : [],
     };
   });
+}
+
+function normalizeLikely2DVerticalAxis(model: Record<string, unknown>): void {
+  if (!shouldSwapYzFor2DVerticalModel(model)) {
+    return;
+  }
+
+  const rawNodes = model.nodes;
+  if (!Array.isArray(rawNodes)) {
+    return;
+  }
+  rawNodes.forEach((node) => {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) {
+      return;
+    }
+    const record = node as Record<string, unknown>;
+    const y = coordinateValueOrZero(record.y);
+    const z = coordinateValueOrZero(record.z);
+    record.y = z;
+    record.z = y;
+    normalizeRestraintsVerticalAxis(record);
+  });
+
+  if (Array.isArray(model.load_cases)) {
+    model.load_cases.forEach((loadCase) => {
+      if (!loadCase || typeof loadCase !== 'object' || Array.isArray(loadCase)) {
+        return;
+      }
+      const loads = (loadCase as Record<string, unknown>).loads;
+      if (!Array.isArray(loads)) {
+        return;
+      }
+      loads.forEach(normalizeLoadVerticalAxis);
+    });
+  }
+
+  const metadata = (
+    model.metadata && typeof model.metadata === 'object' && !Array.isArray(model.metadata)
+      ? model.metadata as Record<string, unknown>
+      : {}
+  );
+  metadata.coordinateRepair = 'swapped-y-z-for-2d-vertical-model';
+  model.metadata = metadata;
+}
+
+function shouldSwapYzFor2DVerticalModel(model: Record<string, unknown>): boolean {
+  if (!Array.isArray(model.nodes)) {
+    return false;
+  }
+
+  const nodes = model.nodes.filter((node): node is Record<string, unknown> => (
+    !!node && typeof node === 'object' && !Array.isArray(node)
+  ));
+  if (nodes.length < 2) {
+    return false;
+  }
+
+  const yValues = nodes.map((node) => coordinateValueOrZero(node.y)).filter((value): value is number => value !== null);
+  const zValues = nodes.map((node) => coordinateValueOrZero(node.z)).filter((value): value is number => value !== null);
+  if (yValues.length !== nodes.length || zValues.length !== nodes.length) {
+    return false;
+  }
+
+  const ySpan = valueSpan(yValues);
+  const zSpan = valueSpan(zValues);
+  return ySpan > 0.1 && zSpan < 1e-6;
+}
+
+function normalizeLoadVerticalAxis(load: unknown): void {
+  if (!load || typeof load !== 'object' || Array.isArray(load)) {
+    return;
+  }
+  const record = load as Record<string, unknown>;
+  moveVerticalComponentIfNeeded(record, 'fy', 'fz');
+  moveVerticalComponentIfNeeded(record, 'wy', 'wz');
+  moveVerticalComponentIfNeeded(record, 'qy', 'qz');
+  moveVerticalComponentIfNeeded(record, 'py', 'pz');
+  moveVerticalComponentIfNeeded(record, 'mz', 'my');
+}
+
+function normalizeRestraintsVerticalAxis(record: Record<string, unknown>): void {
+  const restraints = record.restraints;
+  if (!Array.isArray(restraints) || restraints.length !== 6) {
+    return;
+  }
+  swapArrayItems(restraints, 1, 2);
+  swapArrayItems(restraints, 4, 5);
+}
+
+function swapArrayItems(values: unknown[], left: number, right: number): void {
+  const value = values[left];
+  values[left] = values[right];
+  values[right] = value;
+}
+
+function moveVerticalComponentIfNeeded(record: Record<string, unknown>, yKey: string, zKey: string): void {
+  const yValue = toFiniteNumber(record[yKey]);
+  const zValue = toFiniteNumber(record[zKey]);
+  if (yValue !== null && Math.abs(yValue) > 1e-9 && (zValue === null || Math.abs(zValue) <= 1e-9)) {
+    record[zKey] = record[yKey];
+    record[yKey] = typeof record[yKey] === 'string' ? '0' : 0;
+  }
 }
 
 function normalizeLoadRecord(load: unknown): unknown {
@@ -276,6 +379,14 @@ function inferFrameDimension(model: Record<string, unknown>): '2d' | '3d' {
   });
 
   return yValues.size > 1 && zValues.size > 1 ? '3d' : '2d';
+}
+
+function valueSpan(values: number[]): number {
+  return Math.max(...values) - Math.min(...values);
+}
+
+function coordinateValueOrZero(value: unknown): number | null {
+  return value === undefined || value === null ? 0 : toFiniteNumber(value);
 }
 
 function toFiniteNumber(value: unknown): number | null {
