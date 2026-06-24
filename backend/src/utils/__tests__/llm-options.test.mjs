@@ -44,6 +44,38 @@ describe('LLM model options', () => {
     }
   });
 
+  test('does not omit temperature for broad substring-only alias matches', async () => {
+    const previous = process.env.LLM_OMIT_TEMPERATURE_MODELS;
+    process.env.LLM_OMIT_TEMPERATURE_MODELS = 'claude,gpt,a';
+    try {
+      const { buildChatModelOptions, shouldOmitTemperature } = await import('../../../dist/utils/llm.js');
+
+      const claudeOptions = buildChatModelOptions({
+        ...baseConfig,
+        llmModel: 'claude-opus-4-8',
+      }, 0);
+      const wrappedClaudeOptions = buildChatModelOptions({
+        ...baseConfig,
+        llmModel: 'my-claude-wrapper',
+      }, 0);
+      const broadSubstringOptions = buildChatModelOptions({
+        ...baseConfig,
+        llmModel: 'paratera-model',
+      }, 0);
+
+      expect(shouldOmitTemperature('claude-opus-4-8')).toBe(true);
+      expect(claudeOptions).not.toHaveProperty('temperature');
+      expect(wrappedClaudeOptions.temperature).toBe(0);
+      expect(broadSubstringOptions.temperature).toBe(0);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.LLM_OMIT_TEMPERATURE_MODELS;
+      } else {
+        process.env.LLM_OMIT_TEMPERATURE_MODELS = previous;
+      }
+    }
+  });
+
   test('can disable LangChain invoke streaming for graph-state correctness', async () => {
     const { buildChatModelOptions } = await import('../../../dist/utils/llm.js');
 

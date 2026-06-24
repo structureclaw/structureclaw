@@ -16,16 +16,17 @@ export interface ChatModelRuntimeOptions {
 function envListMatchesModel(rawValue: string | undefined, modelName: string | undefined): boolean {
   const raw = rawValue?.trim().toLowerCase();
   if (!raw) return false;
-  if (['1', 'true', 'yes', 'on', '*', 'all'].includes(raw)) return true;
 
   const normalizedModel = modelName?.trim().toLowerCase() ?? '';
   if (!normalizedModel) return false;
+
+  if (['1', 'true', 'yes', 'on', '*', 'all'].includes(raw)) return true;
 
   return raw
     .split(',')
     .map((item) => item.trim())
     .filter(Boolean)
-    .some((item) => normalizedModel === item || normalizedModel.includes(item));
+    .some((item) => normalizedModel === item || normalizedModel.startsWith(`${item}-`));
 }
 
 export function shouldOmitTemperature(modelName: string | undefined): boolean {
