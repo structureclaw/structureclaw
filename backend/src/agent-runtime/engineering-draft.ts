@@ -38,6 +38,14 @@ function positiveNumber(value: unknown): number | undefined {
   return parsed !== undefined && parsed > 0 ? parsed : undefined;
 }
 
+function firstPositiveNumber(candidates: readonly unknown[]): number | undefined {
+  for (const candidate of candidates) {
+    const parsed = positiveNumber(candidate);
+    if (parsed !== undefined) return parsed;
+  }
+  return undefined;
+}
+
 function positiveInteger(value: unknown): number | undefined {
   const parsed = positiveNumber(value);
   return parsed === undefined ? undefined : Math.max(1, Math.round(parsed));
@@ -194,6 +202,33 @@ function normalizeEngineeringLoad(value: unknown): EngineeringDraftLoad | undefi
   };
 }
 
+function normalizeMezzanineHeight(rawGeometry: Record<string, unknown>): number | undefined {
+  const direct = firstPositiveNumber([
+    rawGeometry.mezzanineHeightM,
+    rawGeometry.mezzanineHeight,
+    rawGeometry.mezzanineLevelM,
+    rawGeometry.mezzanineElevationM,
+    rawGeometry.platformHeightM,
+    rawGeometry.intermediateFloorHeightM,
+  ]);
+  if (direct !== undefined) return direct;
+
+  const mezzanine = asRecord(rawGeometry.mezzanine);
+  const platform = asRecord(rawGeometry.platform);
+  const intermediateFloor = asRecord(rawGeometry.intermediateFloor);
+  return firstPositiveNumber([
+    mezzanine?.heightM,
+    mezzanine?.height,
+    mezzanine?.elevationM,
+    platform?.heightM,
+    platform?.height,
+    platform?.elevationM,
+    intermediateFloor?.heightM,
+    intermediateFloor?.height,
+    intermediateFloor?.elevationM,
+  ]);
+}
+
 export function normalizeEngineeringDraft(value: unknown): EngineeringDraft | undefined {
   const raw = asRecord(value);
   if (!raw) return undefined;
@@ -202,6 +237,7 @@ export function normalizeEngineeringDraft(value: unknown): EngineeringDraft | un
   const geometry = rawGeometry ? {
     lengthM: positiveNumber(rawGeometry.lengthM),
     heightM: positiveNumber(rawGeometry.heightM),
+    mezzanineHeightM: normalizeMezzanineHeight(rawGeometry),
     spanLengthsM: positiveNumberArray(rawGeometry.spanLengthsM),
     storyHeightsM: positiveNumberArray(rawGeometry.storyHeightsM),
     bayWidthsM: positiveNumberArray(rawGeometry.bayWidthsM),
@@ -337,8 +373,24 @@ function legacyLoadPosition(load: EngineeringDraftLoad): DraftLoadPosition {
 }
 
 function targetIncludes(load: EngineeringDraftLoad, text: string): boolean {
-  return (load.target ?? '').toLowerCase().includes(text);
+  const targetText = [load.target, load.location?.nodeRole]
+    .filter((item): item is string => typeof item === 'string' && item.length > 0)
+    .join(' ')
+    .toLowerCase();
+  return targetText.includes(text.toLowerCase());
 }
+
+function targetMatches(load: EngineeringDraftLoad, terms: readonly string[]): boolean {
+  return terms.some((term) => targetIncludes(load, term));
+}
+
+function isClearPortalTarget(load: EngineeringDraftLoad, includeTerms: readonly string[], excludeTerms: readonly string[]): boolean {
+  return targetMatches(load, includeTerms) && !targetMatches(load, excludeTerms);
+}
+
+const PORTAL_ROOF_TARGETS = ['roof', 'rafter', 'eave', '屋面', '屋顶', '檐梁'];
+const PORTAL_MEZZANINE_TARGETS = ['mezzanine', 'platform', 'intermediate floor', '夹层', '平台'];
+const PORTAL_CRANE_TARGETS = ['crane', '吊车'];
 
 function modelLoadDirection(load: EngineeringDraftLoad): 'fx' | 'fy' | 'fz' {
   if (load.direction === 'globalX') return 'fx';
@@ -614,7 +666,7 @@ export function projectEngineeringDraftToLegacyPatch(
   if (engineeringDraft.boundary?.frameBaseSupportType !== undefined) {
     next.frameBaseSupportType = next.frameBaseSupportType ?? engineeringDraft.boundary.frameBaseSupportType;
   }
-  if (primaryLoad && inferredType !== 'frame') {
+  if (primaryLoad && inferredType !== 'frame' && inferredType !== 'portal-frame') {
     next.loadKN = next.loadKN ?? primaryLoad.magnitude;
     next.loadType = next.loadType ?? legacyLoadType(primaryLoad);
     next.loadPosition = next.loadPosition ?? legacyLoadPosition(primaryLoad);
@@ -755,15 +807,42 @@ export function projectEngineeringDraftToLegacyPatch(
       skillState.portalBaySpansM = spanLengths;
       skillState.portalBayCount = spanLengths.length;
     }
-    const roofLoad = loads.find((load) => isLineLoad(load) && (targetIncludes(load, 'roof') || targetIncludes(load, 'rafter')))
-      ?? loads.find(isLineLoad);
+    if (engineeringDraft.geometry?.mezzanineHeightM !== undefined) {
+      skillState.mezzanineHeightM = engineeringDraft.geometry.mezzanineHeightM;
+    }
+    const mezzanineLoad = loads.find((load) => (
+      isLineLoad(load)
+      && isClearPortalTarget(load, PORTAL_MEZZANINE_TARGETS, PORTAL_ROOF_TARGETS)
+    ));
+    if (mezzanineLoad) {
+      skillState.mezzanineLoadKN = mezzanineLoad.magnitude;
+    }
+    const roofLoad = loads.find((load) => (
+      isLineLoad(load)
+      && isClearPortalTarget(load, PORTAL_ROOF_TARGETS, PORTAL_MEZZANINE_TARGETS)
+    ))
+      ?? loads.find((load) => (
+        isLineLoad(load)
+        && !targetMatches(load, PORTAL_MEZZANINE_TARGETS)
+        && !targetMatches(load, PORTAL_CRANE_TARGETS)
+      ));
     if (roofLoad) {
       skillState.roofLoadKNM = roofLoad.magnitude;
-      next.loadKN = next.loadKN ?? roofLoad.magnitude;
-      next.loadType = next.loadType ?? 'distributed';
-      next.loadPosition = next.loadPosition ?? 'full-span';
+      next.loadKN = roofLoad.magnitude;
+      next.loadType = 'distributed';
+      next.loadPosition = 'full-span';
+    } else {
+      const defaultPortalLoad = loads.find((load) => (
+        !targetMatches(load, PORTAL_MEZZANINE_TARGETS)
+        && !targetMatches(load, PORTAL_CRANE_TARGETS)
+      ));
+      if (defaultPortalLoad) {
+        next.loadKN = next.loadKN ?? defaultPortalLoad.magnitude;
+        next.loadType = next.loadType ?? legacyLoadType(defaultPortalLoad);
+        next.loadPosition = next.loadPosition ?? legacyLoadPosition(defaultPortalLoad);
+      }
     }
-    const craneLoad = loads.find((load) => targetIncludes(load, 'crane'));
+    const craneLoad = loads.find((load) => targetMatches(load, PORTAL_CRANE_TARGETS));
     if (craneLoad) {
       skillState.craneLoadKN = craneLoad.magnitude;
     }

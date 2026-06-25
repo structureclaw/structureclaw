@@ -23,6 +23,29 @@
 - "集中力" / "point load" / "点荷载" → `"loadType": "point"`
 - 门式刚架默认 `"loadType": "distributed"`
 
+## engineeringDraft（复杂门架优先使用）
+- 复杂几何和多个荷载优先输出顶层 `engineeringDraft`，旧字段可同时输出但不要丢失 `engineeringDraft`。
+- 跨度数组写入 `engineeringDraft.geometry.spanLengthsM`，檐口/柱高写入 `engineeringDraft.geometry.heightM`。
+- 若存在夹层、平台或 intermediate floor，高度写入 `engineeringDraft.geometry.mezzanineHeightM`。
+- 屋面/檩条/刚架梁线荷载作为独立 `engineeringDraft.loads` 条目，`kind: "line"`，`unit: "kN/m"`，`target: "roof"`。
+- 夹层梁/平台梁线荷载作为独立 `engineeringDraft.loads` 条目，`kind: "line"`，`unit: "kN/m"`，`target: "mezzanine"`。
+- 不要把屋面荷载和夹层荷载合并；每个用户明确给出的荷载都必须保留为独立条目。
+
+示例：
+```json
+{
+  "inferredType": "portal-frame",
+  "engineeringDraft": {
+    "structureType": "portal-frame",
+    "geometry": { "spanLengthsM": [18], "heightM": 7, "mezzanineHeightM": 3 },
+    "loads": [
+      { "kind": "line", "magnitude": 6, "unit": "kN/m", "direction": "gravity", "target": "roof" },
+      { "kind": "line", "magnitude": 4, "unit": "kN/m", "direction": "gravity", "target": "mezzanine" }
+    ]
+  }
+}
+```
+
 ## 荷载位置映射
 - 柱顶节点点荷载可映射为 `top-nodes`
 - 檐梁均布荷载可映射为 `full-span`

@@ -15,6 +15,7 @@ export type EngineeringDraftLoadDirection = 'gravity' | 'globalX' | 'globalY' | 
 export interface EngineeringDraftGeometry {
   lengthM?: number;
   heightM?: number;
+  mezzanineHeightM?: number;
   spanLengthsM?: number[];
   storyHeightsM?: number[];
   bayWidthsM?: number[];

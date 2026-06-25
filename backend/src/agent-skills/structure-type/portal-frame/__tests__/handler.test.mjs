@@ -82,7 +82,93 @@ describe('portal-frame handler', () => {
     expect(model.metadata).toEqual(expect.objectContaining({ hasMezzanine: true }));
     expect(model.load_cases[0].loads).toEqual(expect.arrayContaining([
       expect.objectContaining({ element: 'R0', wz: -6 }),
-      { node: 'M1', fz: -4 },
+      expect.objectContaining({ element: 'MEZ1', wz: -4 }),
+    ]));
+  });
+
+  test('maps mezzanine engineeringDraft fields into portal-frame state', () => {
+    const patch = handler.extractDraft({
+      message: '',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'portal-frame',
+          geometry: { spanLengthsM: [18], heightM: 7, mezzanineHeightM: '', platform: { heightM: 3 } },
+          loads: [
+            { kind: 'line', magnitude: 4, unit: 'kN/m', direction: 'gravity', target: '夹层梁' },
+            { kind: 'line', magnitude: 6, unit: 'kN/m', direction: 'gravity', target: '屋面' },
+          ],
+        },
+      },
+    });
+    const state = handler.mergeState(undefined, patch);
+    const model = handler.buildModel(state);
+
+    expect(handler.computeMissing(state, 'execution').critical).toEqual([]);
+    expect(state.loadKN).toBe(6);
+    expect(state.skillState).toEqual(expect.objectContaining({
+      portalBaySpansM: [18],
+      roofLoadKNM: 6,
+      mezzanineHeightM: 3,
+      mezzanineLoadKN: 4,
+    }));
+    expect(model.metadata).toEqual(expect.objectContaining({ hasMezzanine: true }));
+    expect(model.load_cases[0].loads).toEqual(expect.arrayContaining([
+      expect.objectContaining({ element: 'R0', wz: -6 }),
+      expect.objectContaining({ element: 'MEZ1', wz: -4 }),
+    ]));
+  });
+
+  test('does not treat mezzanine point loads as distributed beam loads', () => {
+    const patch = handler.extractDraft({
+      message: '',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'portal-frame',
+          geometry: { spanLengthsM: [18], heightM: 7, mezzanineHeightM: 3 },
+          loads: [
+            { kind: 'line', magnitude: 6, unit: 'kN/m', direction: 'gravity', target: 'roof' },
+            { kind: 'point', magnitude: 12, unit: 'kN', direction: 'gravity', target: 'mezzanine' },
+          ],
+        },
+      },
+    });
+    const state = handler.mergeState(undefined, patch);
+    const model = handler.buildModel(state);
+
+    expect(state.skillState?.mezzanineLoadKN).toBeUndefined();
+    expect(model.load_cases[0].loads).toEqual(expect.arrayContaining([
+      expect.objectContaining({ element: 'R0', wz: -6 }),
+    ]));
+    expect(model.load_cases[0].loads).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ element: 'MEZ1' }),
+    ]));
+  });
+
+  test('does not duplicate ambiguous roof mezzanine line loads', () => {
+    const patch = handler.extractDraft({
+      message: '',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'portal-frame',
+          geometry: { spanLengthsM: [18], heightM: 7, mezzanineHeightM: 3 },
+          loads: [
+            { kind: 'line', magnitude: 5, unit: 'kN/m', direction: 'gravity', target: '屋面夹层' },
+            { kind: 'line', magnitude: 6, unit: 'kN/m', direction: 'gravity', target: '屋面' },
+          ],
+        },
+      },
+    });
+    const state = handler.mergeState(undefined, patch);
+    const model = handler.buildModel(state);
+
+    expect(state.loadKN).toBe(6);
+    expect(state.skillState?.roofLoadKNM).toBe(6);
+    expect(state.skillState?.mezzanineLoadKN).toBeUndefined();
+    expect(model.load_cases[0].loads).toEqual(expect.arrayContaining([
+      expect.objectContaining({ element: 'R0', wz: -6 }),
+    ]));
+    expect(model.load_cases[0].loads).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ element: 'MEZ1' }),
     ]));
   });
 

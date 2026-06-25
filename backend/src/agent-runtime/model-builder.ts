@@ -880,9 +880,10 @@ function buildPortalFrameModel(state: DraftState, metadata: Record<string, unkno
     }
   }
   if (hasMezzanine) {
-    elements.push({ id: 'MEZ1', type: 'beam', nodes: ['M0', 'M1'], material: '1', section: '1' });
+    const mezzanineElement = { id: 'MEZ1', type: 'beam', nodes: ['M0', 'M1'], material: '1', section: '1' };
+    elements.push(mezzanineElement);
     if (mezzanineLoad !== undefined) {
-      loads.push({ node: 'M1', fz: -mezzanineLoad });
+      loads.push({ type: 'distributed', element: mezzanineElement.id, wz: -mezzanineLoad, wy: 0 });
     }
   }
   if (nodalLoad !== undefined) {
