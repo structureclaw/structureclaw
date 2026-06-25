@@ -30,7 +30,8 @@ YJK_INVISIBLE : str, optional
     Default ``"0"`` — YJK GUI is visible so the user can observe the run.
 YJK_CLOSE_AFTER_RUN : str, optional
     Set to ``"1"`` to close any YJK calculation process started by this run
-    after the synchronous driver completes. Default ``"0"`` keeps YJK open.
+    after the synchronous driver completes. Ignored when attaching to an
+    existing YJK session. Default ``"0"`` keeps YJK open.
 YJK_START_ONLY / YJK_ASYNC_CALC : str, optional
     Set either to ``"1"`` to start YJK calculation without waiting for
     completion or extracting results. Default is synchronous closed-loop run.
@@ -112,16 +113,20 @@ def _yjk_start_only_requested() -> bool:
     return any(_env_flag(key) for key in ("YJK_START_ONLY", "YJK_ASYNC_CALC", "YJK_ASYNC_START_ONLY"))
 
 
+def _yjk_attach_existing_requested() -> bool:
+    return _env_flag("YJK_ATTACH_EXISTING")
+
+
 def _powershell_exe() -> str:
     system_root = _env_text("SystemRoot", r"C:\Windows")
     candidate = Path(system_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
     return str(candidate) if candidate.is_file() else "powershell"
 
 
-def _process_ids_by_name(process_name: str) -> set[int]:
+def _process_ids_by_name(process_name: str) -> set[int] | None:
     escaped = process_name.replace("'", "''")
     command = (
-        f"Get-Process | Where-Object {{ $_.ProcessName -ieq '{escaped}' }} | "
+        f"Get-Process -Name '{escaped}' -ErrorAction SilentlyContinue | "
         "Select-Object Id | ConvertTo-Json -Compress"
     )
     try:
@@ -134,18 +139,22 @@ def _process_ids_by_name(process_name: str) -> set[int]:
             timeout=10,
         )
     except Exception:
-        return set()
+        return None
     text = (proc.stdout or "").strip()
-    if proc.returncode != 0 or not text:
+    if proc.returncode != 0:
+        return None
+    if not text:
         return set()
     try:
         payload = json.loads(text)
     except json.JSONDecodeError:
+        return None
+    if payload is None:
         return set()
     if isinstance(payload, dict):
         payload = [payload]
     if not isinstance(payload, list):
-        return set()
+        return None
     pids: set[int] = set()
     for item in payload:
         if not isinstance(item, dict):
@@ -159,8 +168,40 @@ def _process_ids_by_name(process_name: str) -> set[int]:
     return pids
 
 
-def _close_new_yjk_processes(before_pids: set[int], work_dir: Path) -> dict:
+def _write_yjk_cleanup(work_dir: Path, result: dict) -> dict:
+    try:
+        _write_json(work_dir / "yjk-cleanup.json", result)
+    except OSError:
+        pass
+    return result
+
+
+def _close_new_yjk_processes(before_pids: set[int] | None, work_dir: Path) -> dict:
+    if before_pids is None:
+        return _write_yjk_cleanup(
+            work_dir,
+            {
+                "beforePids": [],
+                "afterPids": [],
+                "targetPids": [],
+                "closedPids": [],
+                "failedPids": [],
+                "error": "Could not snapshot existing yjks.exe processes before launch; cleanup skipped.",
+            },
+        )
     after_pids = _process_ids_by_name("yjks")
+    if after_pids is None:
+        return _write_yjk_cleanup(
+            work_dir,
+            {
+                "beforePids": sorted(before_pids),
+                "afterPids": [],
+                "targetPids": [],
+                "closedPids": [],
+                "failedPids": [],
+                "error": "Could not inspect yjks.exe processes after run; cleanup skipped.",
+            },
+        )
     target_pids = sorted(pid for pid in after_pids - before_pids if pid > 0)
     result: dict[str, Any] = {
         "beforePids": sorted(before_pids),
@@ -176,7 +217,7 @@ def _close_new_yjk_processes(before_pids: set[int], work_dir: Path) -> dict:
                     _powershell_exe(),
                     "-NoProfile",
                     "-Command",
-                    f"Stop-Process -Id {pid} -Force -ErrorAction Stop",
+                    f"Stop-Process -Id {pid} -Force -ErrorAction SilentlyContinue",
                 ],
                 capture_output=True,
                 text=True,
@@ -191,19 +232,15 @@ def _close_new_yjk_processes(before_pids: set[int], work_dir: Path) -> dict:
             result["closedPids"].append(pid)
         else:
             result["failedPids"].append(pid)
-    try:
-        _write_json(work_dir / "yjk-cleanup.json", result)
-    except OSError:
-        pass
-    return result
+    return _write_yjk_cleanup(work_dir, result)
 
 
-def _safe_close_new_yjk_processes(before_pids: set[int], work_dir: Path) -> dict:
+def _safe_close_new_yjk_processes(before_pids: set[int] | None, work_dir: Path) -> dict:
     try:
         return _close_new_yjk_processes(before_pids, work_dir)
     except Exception as exc:
         return {
-            "beforePids": sorted(before_pids),
+            "beforePids": sorted(before_pids) if before_pids is not None else [],
             "afterPids": [],
             "targetPids": [],
             "closedPids": [],
@@ -792,7 +829,11 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     stdout_path = work_dir / "driver.stdout.txt"
     stderr_path = work_dir / "driver.stderr.txt"
     driver_output_path = work_dir / "driver-output.json"
-    close_after_run = _env_flag("YJK_CLOSE_AFTER_RUN") and not _yjk_start_only_requested()
+    close_after_run = (
+        _env_flag("YJK_CLOSE_AFTER_RUN")
+        and not _yjk_start_only_requested()
+        and not _yjk_attach_existing_requested()
+    )
     yjk_pids_before = _process_ids_by_name("yjks") if close_after_run else set()
     cleanup_result: dict | None = None
     try:

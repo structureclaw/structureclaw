@@ -214,7 +214,7 @@ def _env_flag(name: str) -> bool:
 
 
 def _close_after_run_enabled() -> bool:
-    return _env_flag("YJK_CLOSE_AFTER_RUN")
+    return _env_flag("YJK_CLOSE_AFTER_RUN") and not _env_flag("YJK_ATTACH_EXISTING")
 
 
 def _env_float(name: str, default: float) -> float:
@@ -2209,7 +2209,7 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
         return 1
 
     async_start_only = any(
-        _env_text(name) == "1"
+        _env_flag(name)
         for name in ("YJK_START_ONLY", "YJK_ASYNC_CALC", "YJK_ASYNC_START_ONLY")
     )
     if async_start_only:
