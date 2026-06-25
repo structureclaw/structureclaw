@@ -213,6 +213,10 @@ def _env_flag(name: str) -> bool:
     return _env_text(name).lower() in {"1", "true", "yes", "on"}
 
 
+def _close_after_run_enabled() -> bool:
+    return _env_flag("YJK_CLOSE_AFTER_RUN")
+
+
 def _env_float(name: str, default: float) -> float:
     try:
         return float(_env_text(name) or default)
@@ -793,6 +797,41 @@ def _is_yjk_running() -> bool:
         return bool(_get_yjks_processes())
     except Exception:
         return True  # Assume running if we can't check
+
+
+def _request_yjk_exit(steps: list[dict]) -> None:
+    if not _close_after_run_enabled():
+        return
+
+    started_at = time.monotonic()
+    try:
+        from YJKAPI import YJKSControl
+
+        YJKSControl.RunCmd("exit", "")
+    except Exception as exc:
+        _record_step(
+            steps,
+            phase="cleanup",
+            name="Request YJK exit",
+            command="exit",
+            status="warning",
+            message=str(exc),
+            started_at=started_at,
+        )
+        return
+    wait_s = _env_float("YJK_EXIT_WAIT_S", 3.0)
+    if wait_s > 0:
+        time.sleep(wait_s)
+    _record_step(
+        steps,
+        phase="cleanup",
+        name="Request YJK exit",
+        command="exit",
+        status="success",
+        message="Sent YJK exit command after synchronous result extraction.",
+        started_at=started_at,
+        wait_s=wait_s,
+    )
 
 
 def _collect_out_files(work_dir: str) -> str:
@@ -2367,6 +2406,7 @@ def _run(model_path: str, work_dir: str, yjks_root: str) -> int:
         started_at=started_at,
         path=results_path,
     )
+    _request_yjk_exit(steps)
 
     mapping = _load_json_file(os.path.join(work_dir, "mapping.json"))
     output = _build_analysis_result(

@@ -28,6 +28,9 @@ YJK_TIMEOUT_S : str, optional
 YJK_INVISIBLE : str, optional
     Set to ``"1"`` to launch YJK headlessly (no GUI window).
     Default ``"0"`` — YJK GUI is visible so the user can observe the run.
+YJK_CLOSE_AFTER_RUN : str, optional
+    Set to ``"1"`` to close any YJK calculation process started by this run
+    after the synchronous driver completes. Default ``"0"`` keeps YJK open.
 YJK_START_ONLY / YJK_ASYNC_CALC : str, optional
     Set either to ``"1"`` to start YJK calculation without waiting for
     completion or extracting results. Default is synchronous closed-loop run.
@@ -99,6 +102,114 @@ def _env_int(key: str, default: int) -> int:
         return int(_env_text(key, str(default)) or str(default))
     except ValueError:
         return default
+
+
+def _env_flag(key: str) -> bool:
+    return _env_text(key).lower() in {"1", "true", "yes", "on"}
+
+
+def _yjk_start_only_requested() -> bool:
+    return any(_env_flag(key) for key in ("YJK_START_ONLY", "YJK_ASYNC_CALC", "YJK_ASYNC_START_ONLY"))
+
+
+def _powershell_exe() -> str:
+    system_root = _env_text("SystemRoot", r"C:\Windows")
+    candidate = Path(system_root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    return str(candidate) if candidate.is_file() else "powershell"
+
+
+def _process_ids_by_name(process_name: str) -> set[int]:
+    escaped = process_name.replace("'", "''")
+    command = (
+        f"Get-Process | Where-Object {{ $_.ProcessName -ieq '{escaped}' }} | "
+        "Select-Object Id | ConvertTo-Json -Compress"
+    )
+    try:
+        proc = subprocess.run(
+            [_powershell_exe(), "-NoProfile", "-Command", command],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=10,
+        )
+    except Exception:
+        return set()
+    text = (proc.stdout or "").strip()
+    if proc.returncode != 0 or not text:
+        return set()
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return set()
+    if isinstance(payload, dict):
+        payload = [payload]
+    if not isinstance(payload, list):
+        return set()
+    pids: set[int] = set()
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        try:
+            pid = int(item.get("Id"))
+        except (TypeError, ValueError):
+            continue
+        if pid > 0:
+            pids.add(pid)
+    return pids
+
+
+def _close_new_yjk_processes(before_pids: set[int], work_dir: Path) -> dict:
+    after_pids = _process_ids_by_name("yjks")
+    target_pids = sorted(pid for pid in after_pids - before_pids if pid > 0)
+    result: dict[str, Any] = {
+        "beforePids": sorted(before_pids),
+        "afterPids": sorted(after_pids),
+        "targetPids": target_pids,
+        "closedPids": [],
+        "failedPids": [],
+    }
+    for pid in target_pids:
+        try:
+            proc = subprocess.run(
+                [
+                    _powershell_exe(),
+                    "-NoProfile",
+                    "-Command",
+                    f"Stop-Process -Id {pid} -Force -ErrorAction Stop",
+                ],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=10,
+            )
+        except Exception:
+            result["failedPids"].append(pid)
+            continue
+        if proc.returncode == 0:
+            result["closedPids"].append(pid)
+        else:
+            result["failedPids"].append(pid)
+    try:
+        _write_json(work_dir / "yjk-cleanup.json", result)
+    except OSError:
+        pass
+    return result
+
+
+def _safe_close_new_yjk_processes(before_pids: set[int], work_dir: Path) -> dict:
+    try:
+        return _close_new_yjk_processes(before_pids, work_dir)
+    except Exception as exc:
+        return {
+            "beforePids": sorted(before_pids),
+            "afterPids": [],
+            "targetPids": [],
+            "closedPids": [],
+            "failedPids": [],
+            "error": str(exc),
+        }
 
 
 def _repo_root() -> Path:
@@ -634,6 +745,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
         "YJK_VERSION",
         "YJK_PYTHON_BIN",
         "YJK_INVISIBLE",
+        "YJK_CLOSE_AFTER_RUN",
         "YJK_ATTACH_EXISTING",
         "YJK_ATTACH_PID",
         "YJK_CWD",
@@ -663,6 +775,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             "YJK_VERSION",
             "YJK_TIMEOUT_S",
             "YJK_INVISIBLE",
+            "YJK_CLOSE_AFTER_RUN",
             "YJK_LAUNCHER_PREWARM",
             "YJK_LAUNCHER_PREWARM_S",
             "YJK_DIRECT_READY_TIMEOUT_S",
@@ -679,6 +792,9 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     stdout_path = work_dir / "driver.stdout.txt"
     stderr_path = work_dir / "driver.stderr.txt"
     driver_output_path = work_dir / "driver-output.json"
+    close_after_run = _env_flag("YJK_CLOSE_AFTER_RUN") and not _yjk_start_only_requested()
+    yjk_pids_before = _process_ids_by_name("yjks") if close_after_run else set()
+    cleanup_result: dict | None = None
     try:
         with stdout_path.open("w", encoding="utf-8") as stdout_file, stderr_path.open(
             "w",
@@ -701,6 +817,8 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
                     proc.wait(timeout=10)
                 except subprocess.TimeoutExpired:
                     pass
+                if close_after_run:
+                    cleanup_result = _safe_close_new_yjk_processes(yjk_pids_before, work_dir)
                 stdout = _read_text(stdout_path)
                 stderr = _read_text(stderr_path)
                 _write_json(
@@ -711,6 +829,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
                         "returncode": proc.returncode,
                         "stdout": stdout,
                         "stderr": stderr,
+                        "yjkCleanup": cleanup_result,
                     },
                 )
                 _raise_yjk_runtime_error(
@@ -732,6 +851,9 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
     except FileNotFoundError as exc:
         raise RuntimeError(f"Cannot launch YJK Python: {exc}")
 
+    if close_after_run:
+        cleanup_result = _safe_close_new_yjk_processes(yjk_pids_before, work_dir)
+
     stdout = _read_text(stdout_path)
     stderr = _read_text(stderr_path)
     _write_json(
@@ -742,6 +864,7 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
             "stdout": stdout,
             "stderr": stderr,
             "driverOutputPath": str(driver_output_path),
+            "yjkCleanup": cleanup_result,
         },
     )
 
@@ -829,6 +952,16 @@ def run_analysis(model: Dict[str, Any], parameters: Dict[str, Any]) -> Dict[str,
 
     if stderr:
         warnings.append(f"YJK stderr: {stderr[:300]}")
+    if cleanup_result:
+        closed = cleanup_result.get("closedPids") or []
+        failed = cleanup_result.get("failedPids") or []
+        if closed:
+            warnings.append(f"YJK cleanup closed yjks.exe PID(s): {closed}")
+        if failed:
+            warnings.append(f"YJK cleanup failed for yjks.exe PID(s): {failed}")
+        error = cleanup_result.get("error")
+        if error:
+            warnings.append(f"YJK cleanup error: {error}")
 
     existing_warnings = output.get("warnings", [])
     if isinstance(existing_warnings, list):
