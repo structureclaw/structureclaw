@@ -47,14 +47,19 @@ function isDefaultOpenAIBaseUrl(baseUrl: string | undefined): boolean {
   return !normalized || withoutTrailingSlash(normalized).toLowerCase() === OPENAI_DEFAULT_BASE_URL;
 }
 
+function isAnthropicHostname(hostname: string): boolean {
+  const normalized = hostname.toLowerCase();
+  return normalized === 'anthropic.com' || normalized.endsWith('.anthropic.com');
+}
+
 function isAnthropicNativeBaseUrl(baseUrl: string | undefined): boolean {
   const normalized = baseUrl?.trim();
   if (!normalized || isDefaultOpenAIBaseUrl(normalized)) return false;
   try {
     const parsed = new URL(normalized);
-    return parsed.hostname.toLowerCase().endsWith('anthropic.com');
+    return isAnthropicHostname(parsed.hostname);
   } catch {
-    return normalized.toLowerCase().includes('anthropic');
+    return false;
   }
 }
 
@@ -288,7 +293,7 @@ export function createChatModel(
   runtimeOptions: ChatModelRuntimeOptions = {},
 ): StructureClawChatModel | null {
   const effectiveSettings = getEffectiveLlmSettings();
-  if (!effectiveSettings.llmApiKey.trim()) {
+  if (!effectiveSettings?.llmApiKey?.trim()) {
     return null;
   }
 
@@ -306,7 +311,7 @@ export function createVisionChatModel(
   runtimeOptions: ChatModelRuntimeOptions = {},
 ): StructureClawChatModel | null {
   const effectiveSettings = getEffectiveVisionLlmSettings();
-  if (!effectiveSettings?.llmApiKey.trim()) {
+  if (!effectiveSettings?.llmApiKey?.trim()) {
     return null;
   }
 

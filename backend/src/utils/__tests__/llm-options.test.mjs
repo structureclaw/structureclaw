@@ -108,6 +108,11 @@ describe('LLM model options', () => {
         llmModel: 'claude-opus-4-8',
         llmBaseUrl: 'https://api.anthropic.com/v1',
       })).toBe('anthropic');
+
+      expect(resolveLlmProvider({
+        ...baseConfig,
+        llmBaseUrl: 'https://notanthropic.com/v1',
+      })).toBe('openai-compatible');
     } finally {
       if (previous === undefined) {
         delete process.env.LLM_PROVIDER;
