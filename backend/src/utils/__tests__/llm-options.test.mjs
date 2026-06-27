@@ -117,7 +117,7 @@ describe('LLM model options', () => {
     }
   });
 
-  test('keeps custom Claude OpenAI-compatible wrappers unless provider is explicit', async () => {
+  test('routes Claude model names to Anthropic even with custom base URLs', async () => {
     const previous = process.env.LLM_PROVIDER;
     delete process.env.LLM_PROVIDER;
     try {
@@ -127,7 +127,7 @@ describe('LLM model options', () => {
         ...baseConfig,
         llmModel: 'claude-opus-4-8',
         llmBaseUrl: 'https://api.aicodemirror.com/api/claudecode/v1',
-      })).toBe('openai-compatible');
+      })).toBe('anthropic');
     } finally {
       if (previous === undefined) {
         delete process.env.LLM_PROVIDER;

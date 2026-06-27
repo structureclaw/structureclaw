@@ -82,11 +82,7 @@ export function resolveLlmProvider(
   const explicit = normalizeProviderName(providerOverride);
   if (explicit) return explicit;
 
-  if (isAnthropicNativeBaseUrl(modelConfig.llmBaseUrl)) {
-    return 'anthropic';
-  }
-
-  if (isClaudeModel(modelConfig.llmModel) && isDefaultOpenAIBaseUrl(modelConfig.llmBaseUrl)) {
+  if (isClaudeModel(modelConfig.llmModel) || isAnthropicNativeBaseUrl(modelConfig.llmBaseUrl)) {
     return 'anthropic';
   }
 
