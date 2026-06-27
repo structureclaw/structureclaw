@@ -1,5 +1,5 @@
-import type { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from '../services/locale.js';
+import type { StructureClawChatModel } from '../utils/llm.js';
 import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.js';
 import {
   buildCodeCheckInput,
@@ -28,7 +28,7 @@ import type {
   SkillManifest,
 } from './types.js';
 
-function requireStructuralRouterLlm(llm: ChatOpenAI | null, locale: AppLocale): ChatOpenAI {
+function requireStructuralRouterLlm(llm: StructureClawChatModel | null, locale: AppLocale): StructureClawChatModel {
   if (llm) {
     return llm;
   }
@@ -446,7 +446,7 @@ export class AgentSkillRuntime {
   }
 
   async detectStructuralTypeWithLlm(
-    llm: ChatOpenAI | null,
+    llm: StructureClawChatModel | null,
     message: string,
     locale: AppLocale,
     currentState?: DraftState,
@@ -485,7 +485,7 @@ export class AgentSkillRuntime {
   }
 
   async extractDraftParameters(
-    llm: ChatOpenAI | null,
+    llm: StructureClawChatModel | null,
     message: string,
     existingState: DraftState | undefined,
     locale: AppLocale,

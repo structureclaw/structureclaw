@@ -1,12 +1,12 @@
-import type { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from '../../../services/locale.js';
 import type { DraftState } from '../../../agent-runtime/types.js';
 import { STRUCTURAL_COORDINATE_SEMANTICS } from '../../../agent-runtime/coordinate-semantics.js';
 import { logger } from '../../../utils/logger.js';
+import type { StructureClawChatModel } from '../../../utils/llm.js';
 import { buildGenericModelPrompt, buildRetrySuffix } from './llm-model-prompt.js';
 
 export async function tryBuildGenericModelWithLlm(
-  llm: ChatOpenAI | null,
+  llm: StructureClawChatModel | null,
   message: string,
   state: DraftState,
   locale: AppLocale,

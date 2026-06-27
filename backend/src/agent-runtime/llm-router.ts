@@ -1,5 +1,5 @@
-import type { ChatOpenAI } from '@langchain/openai';
 import type { AppLocale } from '../services/locale.js';
+import type { StructureClawChatModel } from '../utils/llm.js';
 import { buildStructuralTypeMatch } from './plugin-helpers.js';
 import type {
   AgentSkillPlugin,
@@ -11,7 +11,7 @@ import type {
 } from './types.js';
 
 type StructuralRouterAction = 'continue_current' | 'switch_skill' | 'generic' | 'ask';
-type RouterLlm = Pick<ChatOpenAI, 'invoke'>;
+type RouterLlm = Pick<StructureClawChatModel, 'invoke'>;
 
 interface StructuralRouterDecision {
   action?: StructuralRouterAction;

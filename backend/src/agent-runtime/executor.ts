@@ -1,4 +1,4 @@
-import type { ChatOpenAI } from '@langchain/openai';
+import type { StructureClawChatModel } from '../utils/llm.js';
 import { skillExecutionSchema, type SkillExecutionPayload } from './schema.js';
 import type { AgentSkillExecutorInput } from './types.js';
 
@@ -17,7 +17,7 @@ function buildSkillPrompt(input: AgentSkillExecutorInput): string {
 }
 
 export class AgentSkillExecutor {
-  constructor(private readonly llm: ChatOpenAI | null) {}
+  constructor(private readonly llm: StructureClawChatModel | null) {}
 
   async execute(input: AgentSkillExecutorInput): Promise<{ parsed: SkillExecutionPayload | null; draftPatch: Record<string, unknown> | null }> {
     if (!this.llm) {

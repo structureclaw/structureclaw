@@ -87,6 +87,80 @@ describe('LLM model options', () => {
     expect(options.configuration.baseURL).toBe('https://example.com/v1');
   });
 
+  test('resolves Anthropic provider from explicit env or native base URL', async () => {
+    const previous = process.env.LLM_PROVIDER;
+    try {
+      const { resolveLlmProvider } = await import('../../../dist/utils/llm.js');
+
+      process.env.LLM_PROVIDER = 'anthropic';
+      expect(resolveLlmProvider(baseConfig)).toBe('anthropic');
+
+      process.env.LLM_PROVIDER = 'openai-compatible';
+      expect(resolveLlmProvider({
+        ...baseConfig,
+        llmModel: 'claude-opus-4-8',
+        llmBaseUrl: 'https://api.anthropic.com',
+      })).toBe('openai-compatible');
+
+      delete process.env.LLM_PROVIDER;
+      expect(resolveLlmProvider({
+        ...baseConfig,
+        llmModel: 'claude-opus-4-8',
+        llmBaseUrl: 'https://api.anthropic.com/v1',
+      })).toBe('anthropic');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.LLM_PROVIDER;
+      } else {
+        process.env.LLM_PROVIDER = previous;
+      }
+    }
+  });
+
+  test('keeps custom Claude OpenAI-compatible wrappers unless provider is explicit', async () => {
+    const previous = process.env.LLM_PROVIDER;
+    delete process.env.LLM_PROVIDER;
+    try {
+      const { resolveLlmProvider } = await import('../../../dist/utils/llm.js');
+
+      expect(resolveLlmProvider({
+        ...baseConfig,
+        llmModel: 'claude-opus-4-8',
+        llmBaseUrl: 'https://api.aicodemirror.com/api/claudecode/v1',
+      })).toBe('openai-compatible');
+    } finally {
+      if (previous === undefined) {
+        delete process.env.LLM_PROVIDER;
+      } else {
+        process.env.LLM_PROVIDER = previous;
+      }
+    }
+  });
+
+  test('builds Anthropic options and normalizes official v1 base URL', async () => {
+    const { buildAnthropicChatModelOptions, normalizeAnthropicBaseUrl } = await import('../../../dist/utils/llm.js');
+
+    const options = buildAnthropicChatModelOptions({
+      ...baseConfig,
+      llmModel: 'claude-opus-4-8',
+      llmBaseUrl: 'https://api.anthropic.com/v1',
+    }, 0, { disableStreaming: true });
+
+    expect(normalizeAnthropicBaseUrl('https://api.anthropic.com/v1')).toBe('https://api.anthropic.com');
+    expect(options).toMatchObject({
+      model: 'claude-opus-4-8',
+      apiKey: 'test-key',
+      maxRetries: 1,
+      disableStreaming: true,
+      streaming: false,
+      anthropicApiUrl: 'https://api.anthropic.com',
+      clientOptions: {
+        timeout: 30000,
+      },
+      temperature: 0,
+    });
+  });
+
   test('passes DeepSeek V4 reasoning content back on assistant messages', async () => {
     const { attachDeepSeekReasoningContent, isDeepSeekV4Model } = await import('../../../dist/utils/llm.js');
 
