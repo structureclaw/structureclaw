@@ -152,6 +152,8 @@ describe('LLM model options', () => {
     }, 0, { disableStreaming: true });
 
     expect(normalizeAnthropicBaseUrl('https://api.anthropic.com/v1')).toBe('https://api.anthropic.com');
+    expect(normalizeAnthropicBaseUrl('https://api.aicodemirror.com/api/claudecode/v1'))
+      .toBe('https://api.aicodemirror.com/api/claudecode');
     expect(options).toMatchObject({
       model: 'claude-opus-4-8',
       apiKey: 'test-key',

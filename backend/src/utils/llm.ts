@@ -68,11 +68,11 @@ export function normalizeAnthropicBaseUrl(baseUrl: string | undefined): string |
   if (!normalized || isDefaultOpenAIBaseUrl(normalized)) return undefined;
   try {
     const parsed = new URL(normalized);
-    if (
-      parsed.hostname.toLowerCase() === 'api.anthropic.com'
-      && withoutTrailingSlash(parsed.pathname) === '/v1'
-    ) {
+    const normalizedPath = withoutTrailingSlash(parsed.pathname);
+    if (normalizedPath === '/v1') {
       parsed.pathname = '';
+    } else if (normalizedPath.toLowerCase().endsWith('/v1')) {
+      parsed.pathname = normalizedPath.slice(0, -3) || '';
     }
     return withoutTrailingSlash(parsed.toString());
   } catch {
