@@ -9,6 +9,11 @@ All notable changes to StructureClaw are documented in this file.
 - Anthropic-compatible chat provider support for Claude model endpoints.
 - Concrete-frame skill core implementation, including staged extraction and model building.
 - YJK concrete design result extraction for benchmarked concrete workflows.
+- End-to-end China seismic workflow using structured `seismicWorkflow` input.
+- OpenSees seismic response-spectrum, time-history, Pushover, vertical seismic, and elastic-plastic boundary workflows.
+- GB50011/GB55002 seismic code checks with traceable design-basis, method-decision, ground-motion, and capability-boundary summaries.
+- Uploaded and local-catalog ground-motion support for CSV, AT2, and text records.
+- Seismic report and console summary sections for method selection, code-check tables, and engineering context.
 
 ### Changed
 
@@ -23,6 +28,7 @@ All notable changes to StructureClaw are documented in this file.
 - Vision attachments are parsed separately before agent execution.
 - YJK benchmark runs now detach launcher handling, close YJK after benchmark execution, and handle aborts more cleanly.
 - LLM temperature may be omitted for providers that do not accept explicit temperature settings.
+- Seismic capability-boundary checks now display non-governing `N/A` utilization instead of misleading sentinel values.
 
 ## [1.0.0] - 2026-04-27
 
