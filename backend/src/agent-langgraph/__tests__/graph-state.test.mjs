@@ -11,6 +11,7 @@ describe('AgentSessionState: emptySessionState', () => {
     expect(state.locale).toBe('zh');
     expect(state.workspaceRoot).toBe('');
     expect(state.policy).toEqual({});
+    expect(state.contextSeismicWorkflow).toBeNull();
     expect(state.bindings).toEqual({});
     expect(state.lastUserMessage).toBe('');
     expect(state.structuralTypeKey).toBeNull();
@@ -64,7 +65,7 @@ describe('AgentStateAnnotation: schema shape', () => {
 
     const expectedKeys = [
       'messages', 'draftState', 'artifacts', 'selectedSkillIds',
-      'locale', 'workspaceRoot', 'policy', 'bindings',
+      'locale', 'workspaceRoot', 'policy', 'contextSeismicWorkflow', 'bindings',
       'lastUserMessage', 'structuralTypeKey',
       'model', 'analysisResult', 'codeCheckResult', 'report',
     ];

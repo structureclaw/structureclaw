@@ -8,10 +8,11 @@ class OpenSeesSeismicExecutor:
         self.analyzer = analyzer
 
     def get_modes(self, ops) -> List[Dict[str, Any]]:
-        raise NotImplementedError(
-            "OpenSees modal extraction is not yet implemented; "
-            "use the simplified fallback via engine_mode='simplified'"
-        )
+        from design_basis import build_design_basis
+        from modal import run_modal_analysis
+
+        basis = build_design_basis(self.analyzer.model, {}, {})
+        return run_modal_analysis(self.analyzer.model, basis, modal_count=6).modes
 
     def pushover_analysis(self, target_disp: float, control_node: str | None, ops) -> Dict[str, Any]:
         ops.wipe()

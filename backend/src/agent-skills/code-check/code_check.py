@@ -11,8 +11,16 @@ from pathlib import Path
 from types import ModuleType
 from typing import Dict, Any, List, Optional
 import logging
+import math
+import sys
 
 logger = logging.getLogger(__name__)
+
+SHARED_PYTHON_DIR = Path(__file__).resolve().parents[2] / 'skill-shared' / 'python'
+if SHARED_PYTHON_DIR.exists():
+    shared_python_path = str(SHARED_PYTHON_DIR)
+    if shared_python_path not in sys.path:
+        sys.path.insert(0, shared_python_path)
 
 
 @lru_cache(maxsize=None)
@@ -104,10 +112,11 @@ class CodeChecker:
             'code': self.code,
             'status': 'success',
             'summary': {
-                'total': len(elements),
+                'total': 0,
                 'passed': 0,
                 'failed': 0,
                 'warnings': 0,
+                'notApplicable': 0,
                 'maxUtilization': 0.0,
                 'controllingElement': None,
                 'controllingCheck': None,
@@ -124,21 +133,79 @@ class CodeChecker:
             check_result = self._check_element(elem_id, context)
             results['details'].append(check_result)
 
-            if check_result['status'] == 'pass':
-                results['summary']['passed'] += 1
-            elif check_result['status'] == 'fail':
-                results['summary']['failed'] += 1
-            else:
-                results['summary']['warnings'] += 1
+            items = self._flatten_result_items(check_result)
+            results['summary']['total'] += len(items)
+            for item in items:
+                bucket = self._summary_bucket(item)
+                results['summary'][bucket] += 1
 
             controlling = check_result.get('controlling', {})
-            utilization = float(controlling.get('utilization', 0.0))
+            if not isinstance(controlling, dict):
+                controlling = {}
+            utilization = self._item_utilization(controlling)
             if utilization >= results['summary']['maxUtilization']:
                 results['summary']['maxUtilization'] = utilization
                 results['summary']['controllingElement'] = elem_id
                 results['summary']['controllingCheck'] = controlling.get('item')
 
         return results
+
+    @staticmethod
+    def _flatten_result_items(check_result: Dict[str, Any]) -> List[Dict[str, Any]]:
+        checks = check_result.get('checks')
+        if not isinstance(checks, list):
+            return [check_result]
+
+        items_for_summary: List[Dict[str, Any]] = []
+        for check in checks:
+            if not isinstance(check, dict):
+                continue
+            items = check.get('items')
+            if not isinstance(items, list):
+                continue
+            for item in items:
+                if not isinstance(item, dict):
+                    continue
+                items_for_summary.append(item)
+
+        return items_for_summary or [check_result]
+
+    @staticmethod
+    def _summary_bucket(item: Dict[str, Any]) -> str:
+        status = str(item.get('status', '')).strip().lower()
+        category = str(item.get('category', '')).strip().lower()
+        if status in {'pass', 'passed'}:
+            return 'passed'
+        if status in {'not_applicable', 'not-applicable', 'n/a'}:
+            return 'notApplicable'
+        if category in {'input_required', 'diagnostic', 'trace'}:
+            return 'notApplicable'
+        if status in {'fail', 'failed'}:
+            return 'failed'
+        return 'warnings'
+
+    @staticmethod
+    def _item_utilization(item: Dict[str, Any]) -> float:
+        try:
+            value = float(item.get('utilization', 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+        return value if math.isfinite(value) else 0.0
+
+    @staticmethod
+    def _is_governing_eligible(item: Dict[str, Any]) -> bool:
+        if item.get('governingEligible') is False:
+            return False
+        status = str(item.get('status', '')).strip().lower()
+        if status in {'not_applicable', 'not-applicable', 'n/a'}:
+            return False
+        category = str(item.get('category', '')).strip().lower()
+        return category not in {'input_required', 'diagnostic', 'trace'}
+
+    def _select_controlling_item(self, all_items: List[Dict[str, Any]]) -> Dict[str, Any]:
+        eligible = [item for item in all_items if self._is_governing_eligible(item)]
+        candidates = eligible if eligible else all_items
+        return max(candidates, key=self._item_utilization, default={})
 
     def _check_element(self, elem_id: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """校核单个构件"""
@@ -155,7 +222,7 @@ class CodeChecker:
     def _build_element_result(self, elem_id: str, element_type: str, checks: List[Dict[str, Any]], code_version: str) -> Dict[str, Any]:
         all_items = [item for check in checks for item in check.get('items', [])]
         all_passed = all(item.get('status') == 'pass' for item in all_items)
-        controlling = max(all_items, key=lambda item: float(item.get('utilization', 0.0)), default={})
+        controlling = self._select_controlling_item(all_items)
 
         return {
             'elementId': elem_id,

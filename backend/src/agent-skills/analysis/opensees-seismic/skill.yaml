@@ -5,8 +5,8 @@ name:
   zh: OpenSees 抗震分析
   en: OpenSees Seismic Analysis
 description:
-  zh: 使用 OpenSees 执行反应谱、Pushover 等抗震分析的 skill。
-  en: Skill for seismic response-spectrum and pushover analysis using OpenSees.
+  zh: 使用 OpenSees 执行中国抗震反应谱、弹性时程和 Pushover 等抗震分析的 skill。
+  en: Skill for China-code seismic response-spectrum, elastic time-history, and pushover analysis using OpenSees.
 triggers:
   - OpenSees 抗震分析
   - 反应谱分析

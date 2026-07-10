@@ -37,7 +37,7 @@ const UPLOAD_MIME_WHITELIST = new Set([
 
 /** Allowed file extensions for upload (whitelist). */
 const UPLOAD_EXT_WHITELIST = new Set([
-  '.pdf', '.csv', '.txt',
+  '.pdf', '.csv', '.txt', '.at2',
   '.xls', '.xlsx',
   '.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp',
   '.dxf',

@@ -177,6 +177,82 @@ describe('chat routes message persistence', () => {
     });
   });
 
+  test('passes structured seismic workflow context through /message', async () => {
+    const seismicWorkflow = {
+      methodPreference: 'elastic_plastic_time_history',
+      groundMotionSet: {
+        source: 'local_catalog',
+        requiredCount: 3,
+        catalogIds: ['GM-001', 'GM-002', 'GM-003'],
+      },
+    };
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/message',
+      payload: {
+        message: 'Run the selected Chinese seismic workflow',
+        conversationId: 'conv-paused',
+        traceId: 'trace-seismic-context',
+        context: {
+          locale: 'en',
+          analysisType: 'seismic',
+          designCode: 'GB/T 50011-2010-2024',
+          seismicWorkflow,
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(agentRunSpy).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'conv-paused',
+      message: 'Run the selected Chinese seismic workflow',
+      context: expect.objectContaining({
+        analysisType: 'seismic',
+        designCode: 'GB/T 50011-2010-2024',
+        seismicWorkflow,
+      }),
+    }));
+  });
+
+  test('passes structured seismic workflow context through /stream', async () => {
+    const seismicWorkflow = {
+      methodPreference: 'time_history',
+      groundMotionSet: {
+        source: 'builtin_artificial',
+        requiredCount: 3,
+        catalogIds: ['SCGM-A1', 'SCGM-A2', 'SCGM-A3'],
+      },
+    };
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/stream',
+      payload: {
+        message: 'Run selected ground motions with the China seismic workflow',
+        conversationId: 'conv-paused',
+        traceId: 'trace-seismic-stream-context',
+        context: {
+          locale: 'en',
+          analysisType: 'seismic',
+          designCode: 'GB/T 50011-2010-2024',
+          seismicWorkflow,
+        },
+      },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(agentRunStreamSpy).toHaveBeenCalledWith(expect.objectContaining({
+      conversationId: 'conv-paused',
+      message: 'Run selected ground motions with the China seismic workflow',
+      context: expect.objectContaining({
+        analysisType: 'seismic',
+        designCode: 'GB/T 50011-2010-2024',
+        seismicWorkflow,
+      }),
+    }));
+  });
+
   test('creates a conversation before invoking the agent when /stream omits conversationId', async () => {
     const response = await app.inject({
       method: 'POST',

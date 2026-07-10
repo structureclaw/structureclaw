@@ -373,6 +373,8 @@ export interface SkillReportNarrativeInput {
   clauseTraceability: Array<Record<string, unknown>>;
   controllingCases: Record<string, unknown>;
   visualizationHints: VisualizationHints;
+  analysis?: unknown;
+  codeCheck?: unknown;
   locale: AppLocale;
 }
 

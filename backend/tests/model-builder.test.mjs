@@ -955,6 +955,81 @@ describe('buildModel - edge cases', () => {
       .map((n) => n.x);
     expect(groundXCoords).toEqual([0, 3, 7, 9]);
   });
+
+  it('preserves structured seismic member evidence on matching generated elements', () => {
+    const model = buildModel(makeState({
+      inferredType: 'frame',
+      frameDimension: '2d',
+      bayWidthsM: [6],
+      storyHeightsM: [3],
+      floorLoads: [],
+      engineeringDraft: {
+        seismicMemberEvidence: {
+          byElementId: {
+            C1: {
+              seismicCapacity: { shearCapacityKN: 320, gammaRE: 0.85 },
+              strongShearWeakBending: { capacityDesignShearDemandKN: 260, shearCapacityKN: 320 },
+            },
+          },
+        },
+      },
+      skillState: {
+        seismicWorkflow: {
+          memberEvidence: {
+            elements: [
+              {
+                elementId: 'B3',
+                steelSeismicDetailing: {
+                  memberSlendernessRatio: 70,
+                  memberSlendernessLimit: 120,
+                },
+              },
+            ],
+          },
+        },
+      },
+    }));
+
+    expect(model.elements.find((element) => element.id === 'C1')).toMatchObject({
+      seismicCapacity: { shearCapacityKN: 320, gammaRE: 0.85 },
+      strongShearWeakBending: { capacityDesignShearDemandKN: 260, shearCapacityKN: 320 },
+    });
+    expect(model.elements.find((element) => element.id === 'B3')).toMatchObject({
+      steelSeismicDetailing: {
+        memberSlendernessRatio: 70,
+        memberSlendernessLimit: 120,
+      },
+    });
+    expect(model.metadata.seismicMemberEvidenceElementIds).toEqual(['C1', 'B3']);
+  });
+
+  it('keeps unmatched seismic member evidence in model metadata instead of guessing an element', () => {
+    const model = buildModel(makeState({
+      inferredType: 'frame',
+      frameDimension: '2d',
+      bayWidthsM: [6],
+      storyHeightsM: [3],
+      floorLoads: [],
+      skillState: {
+        seismicWorkflow: {
+          memberEvidence: {
+            byElementId: {
+              USER_WALL_1: {
+                wallData: { axialCompressionRatio: 0.45, axialCompressionRatioLimit: 0.4 },
+                boundaryElement: { required: true },
+              },
+            },
+          },
+        },
+      },
+    }));
+
+    expect(model.elements.some((element) => element.wallData || element.boundaryElement)).toBe(false);
+    expect(model.metadata.unmatchedSeismicMemberEvidence.byElementId.USER_WALL_1).toMatchObject({
+      wallData: { axialCompressionRatio: 0.45, axialCompressionRatioLimit: 0.4 },
+      boundaryElement: { required: true },
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------

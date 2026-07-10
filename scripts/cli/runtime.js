@@ -177,6 +177,7 @@ function getConfigValue(dotEnv, name, defaultValue) {
  */
 function isInstalledPackageLayout(resolvedRoot) {
   return (
+    !pathExists(path.join(resolvedRoot, "backend", "package.json")) &&
     pathExists(path.join(resolvedRoot, "dist", "backend", "index.js")) &&
     pathExists(path.join(resolvedRoot, "dist", "frontend")) &&
     pathExists(path.join(resolvedRoot, "backend", "prisma", "schema.prisma"))
@@ -205,17 +206,17 @@ function resolveProjectRoot(explicitRoot) {
   for (const candidate of candidates) {
     const resolved = path.resolve(candidate);
 
-    // Installed npm package layout: pre-built dist/ + prisma schema
-    if (isInstalledPackageLayout(resolved)) {
-      return resolved;
-    }
-
     // Dev monorepo layout (original): source checkout with backend/frontend dirs
     if (
       pathExists(path.join(resolved, "backend", "package.json")) &&
       pathExists(path.join(resolved, "frontend", "package.json")) &&
       pathExists(path.join(resolved, "scripts"))
     ) {
+      return resolved;
+    }
+
+    // Installed npm package layout: pre-built dist/ + prisma schema
+    if (isInstalledPackageLayout(resolved)) {
       return resolved;
     }
   }

@@ -44,6 +44,7 @@ A `DraftExtraction` JSON object with the following optional keys (see `constants
 | `siteSeismic` | `object` | `{ "intensity": 7, "accelerationG": 0.1, "designGroup": "第三组", "siteCategory": "III" }` | Use for PKPM/YJK-style seismic design parameters. Normalize "3类" to `"III"`. |
 | `wind` | `object` | `{ "basicPressureKNM2": 0.4, "terrainRoughness": "B" }` | Basic wind pressure in kN/m² and terrain roughness A/B/C/D. |
 | `analysisControl` | `object` | `{ "rigidFloor": true, "modalCount": 15 }` | Optional calculation-control values such as rigid diaphragm, modal count, P-Delta. |
+| `skillState.seismicWorkflow` | `object` | `{ "methodPreference": "auto", "designBasis": { "codes": ["GB 55002-2021", "GB/T 50011-2010-2024"], "siteSeismic": { "intensity": 8, "designGroup": "2", "siteCategory": "III" } }, "designRequirements": { "fortificationCategory": "standard", "seismicGrade": 2, "irregularity": "regular" } }` | Use for China-code seismic workflow intent. This must come from semantic understanding of the request, not keyword matching. |
 
 ## Section Parsing
 Concrete frame sections are described as rectangular cross‑sections:
@@ -58,7 +59,7 @@ Concrete frame sections are described as rectangular cross‑sections:
 2. **Dimensions**: Extract numbers followed by "m", "米", "mm", "毫米". Convert mm to m for story heights and bay widths.
 3. **Loads**: "dead load 5 kN/m²", "恒载 5 kN/m²", "live load 3 kN/m²", "活载 3 kN/m²". Prefer `engineeringDraft.loads` with `kind: "area"` and `unit: "kN/m2"` when floor geometry is available; the runtime can convert it to per-story total loads. Use legacy `floorLoads` only when the total kN per story is explicitly given or can be computed reliably.
 4. **Materials**: Look for concrete grades (C20–C80) and rebar grades (HPB300, HRB400, HRB500).
-5. **Seismic / wind design basis**: Extract phrases like "7度0.1g", "第三组", "场地类别3类", "基本风压0.4kN/m²", "地面粗糙度B类".
+5. **Seismic / wind design basis**: Semantically identify seismic fortification inputs such as intensity, design acceleration, design group, site category, fortification category, seismic grade, regularity, and explicit method requirements. Put scalar site parameters into `siteSeismic`; put China-code workflow intent into `skillState.seismicWorkflow`. Do not infer the analysis method through keyword/regex matching.
 6. **Boundary**: "fixed base", "pinned base", "固接", "铰接".
 
 ## Examples

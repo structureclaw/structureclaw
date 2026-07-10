@@ -3,7 +3,7 @@
  *
  * analyze_file inspects an uploaded file at a given path and extracts
  * meaningful content depending on the file type:
- *   - CSV / text: returns parsed rows / raw content
+ *   - CSV / text / AT2: returns parsed rows / raw content
  *   - Excel (.xlsx/.xls): returns headers + first N rows per sheet
  *   - PDF: extracts text via pdf-parse (if installed)
  *   - Image (png/jpg/...): returns metadata/base64 for the configured vision parser
@@ -24,7 +24,7 @@ const CSV_MAX_ROWS = 100;
 const EXCEL_MAX_ROWS = 50;
 const IMAGE_MAX_BYTES = 4 * 1024 * 1024; // 4 MB base64 cap
 
-const TEXT_EXTS = new Set(['.txt', '.md', '.log', '.tcl', '.py', '.json', '.yaml', '.yml', '.csv', '.tsv']);
+const TEXT_EXTS = new Set(['.txt', '.at2', '.md', '.log', '.tcl', '.py', '.json', '.yaml', '.yml', '.csv', '.tsv']);
 const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']);
 const EXCEL_EXTS = new Set(['.xlsx', '.xls']);
 
@@ -41,6 +41,7 @@ type AnalyzeFileResult = Record<string, unknown>;
 
 interface AnalyzeUploadedFileOptions {
   includeImageData?: boolean;
+  mode?: 'preview' | 'full';
 }
 
 // ---------------------------------------------------------------------------
@@ -279,11 +280,13 @@ export async function analyzeUploadedFile(
       const XLSX = await import('xlsx').then((m) => m.default ?? m);
       const buf = await fsp.readFile(resolvedPath);
       const workbook = XLSX.read(buf, { type: 'buffer' });
-      const rowLimit = Math.min(maxRows ?? EXCEL_MAX_ROWS, 200);
       const sheets: Record<string, { headers: string[]; rows: unknown[][] }> = {};
       for (const sheetName of workbook.SheetNames) {
         const ws = workbook.Sheets[sheetName];
         const jsonData: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' }) as unknown[][];
+        const rowLimit = options.mode === 'full'
+          ? Math.max(jsonData.length - 1, 0)
+          : Math.min(maxRows ?? EXCEL_MAX_ROWS, 200);
         const headers = (jsonData[0] as unknown[] ?? []).map(String);
         const rows = jsonData.slice(1, rowLimit + 1).map((row) =>
           (row as unknown[]).map((cell) => (cell === null || cell === undefined ? '' : cell)),
@@ -305,14 +308,16 @@ export async function analyzeUploadedFile(
     }
   }
 
-  // ── CSV / TSV / plain text ────────────────────────────────────────────
+  // ── CSV / TSV / AT2 / plain text ───────────────────────────────────────
   if (ext === '.csv' || ext === '.tsv' || TEXT_EXTS.has(ext)) {
     const buf = await fsp.readFile(resolvedPath);
     const text = buf.toString('utf-8');
 
     if (ext === '.csv' || ext === '.tsv') {
-      const rowLimit = Math.min(maxRows ?? CSV_MAX_ROWS, 500);
       const allLines = text.split(/\r?\n/);
+      const rowLimit = options.mode === 'full'
+        ? Math.max(allLines.filter((line) => line.trim()).length - 1, 0)
+        : Math.min(maxRows ?? CSV_MAX_ROWS, 500);
       const parsed = parseCsv(text, rowLimit);
       return {
         success: true,
@@ -327,14 +332,14 @@ export async function analyzeUploadedFile(
     }
 
     // Plain text
-    const preview = text.slice(0, 8000);
+    const content = options.mode === 'full' ? text : text.slice(0, 8000);
     return {
       success: true,
       type: 'text',
       ext,
       size,
-      content: preview,
-      truncated: text.length > 8000,
+      content,
+      truncated: options.mode === 'full' ? false : text.length > 8000,
     };
   }
 
@@ -383,7 +388,7 @@ export function createAnalyzeFileTool() {
       name: 'analyze_file',
       description:
         'Analyze an uploaded file and extract its content. ' +
-        'Supports CSV/TSV (structured rows), Excel (.xlsx/.xls, multi-sheet), ' +
+        'Supports CSV/TSV (structured rows), AT2/TXT ground-motion text, Excel (.xlsx/.xls, multi-sheet), ' +
         'PDF (text extraction), images (metadata/base64 for the configured vision parser), ' +
         'DXF/CAD (structural entity extraction), and plain text. ' +
         'filePath may be a relative path under .uploads/<conversationId>/ or an absolute path inside the upload directory.',

@@ -17,6 +17,20 @@ function runtimePayload(overrides: Partial<Record<string, unknown>> = {}) {
   }
 }
 
+function visionPayload(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    baseUrl: 'https://api.example.com/v1',
+    model: 'glm-4.5v',
+    hasApiKey: false,
+    apiKeyMasked: '',
+    hasOverrides: false,
+    baseUrlSource: 'llm',
+    modelSource: 'llm',
+    apiKeySource: 'unset',
+    ...overrides,
+  }
+}
+
 describe('LlmSettingsPage', () => {
   beforeEach(() => {
     vi.spyOn(globalThis, 'fetch')
@@ -27,16 +41,21 @@ describe('LlmSettingsPage', () => {
   })
 
   it('renders the saved global LLM settings with a masked token', async () => {
-    vi.mocked(globalThis.fetch).mockResolvedValue({
-      ok: true,
-      json: vi.fn().mockResolvedValue(runtimePayload()),
-    } as unknown as Response)
+    vi.mocked(globalThis.fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue(runtimePayload()),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue(visionPayload()),
+      } as unknown as Response)
 
     render(<LlmSettingsPage />)
 
     expect(await screen.findByRole('heading', { name: 'LLM Settings' })).toBeInTheDocument()
-    expect(screen.getByDisplayValue('https://api.example.com/v1')).toBeInTheDocument()
-    expect(screen.getByDisplayValue('gpt-4o-mini')).toBeInTheDocument()
+    expect(screen.getByLabelText('Base URL', { selector: 'input#llm-base-url' })).toHaveValue('https://api.example.com/v1')
+    expect(screen.getByLabelText('Model', { selector: 'input#llm-model' })).toHaveValue('gpt-4o-mini')
     expect(screen.getByDisplayValue('********')).toBeInTheDocument()
   })
 
@@ -47,6 +66,10 @@ describe('LlmSettingsPage', () => {
       .mockResolvedValueOnce({
         ok: true,
         json: vi.fn().mockResolvedValue(runtimePayload()),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue(visionPayload()),
       } as unknown as Response)
       .mockResolvedValueOnce({
         ok: true,
@@ -61,10 +84,10 @@ describe('LlmSettingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(fetchMock).toHaveBeenCalledTimes(3)
     })
 
-    const saveCall = fetchMock.mock.calls[1]
+    const saveCall = fetchMock.mock.calls[2]
     expect(String(saveCall?.[0])).toMatch(/\/api\/v1\/admin\/llm$/)
     expect(saveCall?.[1]).toMatchObject({ method: 'PUT' })
     expect(JSON.parse(String((saveCall?.[1] as RequestInit | undefined)?.body))).toEqual({
@@ -84,6 +107,10 @@ describe('LlmSettingsPage', () => {
       } as unknown as Response)
       .mockResolvedValueOnce({
         ok: true,
+        json: vi.fn().mockResolvedValue(visionPayload()),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
         json: vi.fn().mockResolvedValue(runtimePayload({
           hasApiKey: false,
           apiKeyMasked: '',
@@ -99,10 +126,10 @@ describe('LlmSettingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save' }))
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(fetchMock).toHaveBeenCalledTimes(3)
     })
 
-    const saveCall = fetchMock.mock.calls[1]
+    const saveCall = fetchMock.mock.calls[2]
     expect(JSON.parse(String((saveCall?.[1] as RequestInit | undefined)?.body))).toEqual({
       baseUrl: 'https://api.example.com/v1',
       model: 'gpt-4o-mini',
@@ -120,6 +147,10 @@ describe('LlmSettingsPage', () => {
           baseUrl: 'https://runtime.example.com/v1',
           model: 'gpt-4o-mini',
         })),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue(visionPayload()),
       } as unknown as Response)
       .mockResolvedValueOnce({
         ok: true,
@@ -142,10 +173,10 @@ describe('LlmSettingsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Reset to Defaults' }))
 
     await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledTimes(2)
+      expect(fetchMock).toHaveBeenCalledTimes(3)
     })
 
-    const resetCall = fetchMock.mock.calls[1]
+    const resetCall = fetchMock.mock.calls[2]
     expect(String(resetCall?.[0])).toMatch(/\/api\/v1\/admin\/llm$/)
     expect(resetCall?.[1]).toMatchObject({ method: 'DELETE' })
   })

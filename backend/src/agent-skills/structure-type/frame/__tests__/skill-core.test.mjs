@@ -6,6 +6,7 @@ import {
   buildFramePatchFromLlm,
   coerceFrameDimension,
 } from '../../../../../dist/agent-skills/structure-type/frame/extract-llm.js';
+import { mergeFrameState } from '../../../../../dist/agent-skills/structure-type/frame/merge.js';
 import { detectFrameStructuralType } from '../../../../../dist/agent-skills/structure-type/frame/detect.js';
 
 describe('frame canonicalize core contract', () => {
@@ -94,6 +95,37 @@ describe('frame canonicalize core contract', () => {
     expect(patch.storyHeightsM).toEqual([4.2, 4.2, 4.2]);
     expect(patch.bayCount).toBe(1);
     expect(patch.bayWidthsM).toEqual([8]);
+  });
+
+  test('preserves structured seismic workflow through draft patch and merge', () => {
+    const seismicWorkflow = {
+      methodPreference: 'response_spectrum',
+      designBasis: {
+        siteSeismic: { intensity: 7, designGroup: '1', siteCategory: 'II' },
+      },
+      responseSpectrum: { modalCombination: 'cqc' },
+      directions: ['x'],
+    };
+    const patch = buildFrameDraftPatch(
+      {
+        inferredType: 'frame',
+        storyCount: 2,
+        bayCount: 1,
+        skillState: { seismicWorkflow },
+      },
+      undefined,
+    );
+    const merged = mergeFrameState({
+      inferredType: 'frame',
+      updatedAt: 0,
+      skillState: { existingFlag: true },
+    }, patch);
+
+    expect(patch.skillState?.seismicWorkflow).toEqual(seismicWorkflow);
+    expect(merged.skillState).toMatchObject({
+      existingFlag: true,
+      seismicWorkflow,
+    });
   });
 
   test('keeps x-direction geometry without inventing a 3d frame from one direction', () => {

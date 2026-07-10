@@ -36,6 +36,7 @@ const COMMON_CONSTRAINTS_EN = [
   'Create explicit nodes at supports, concentrated loads, span boundaries, member intersections, and geometry break points so analysis result locations are computable.',
   'Before output, check the total applied load against the user request. Do not apply the same physical load twice as both nodal and distributed loads.',
   'For partial-span distributed loads, split the member into separate elements. Only use nodal and distributed as load types; do not use nodal_force, line_load, element_uniform_load, or uniform_load.',
+  'If confirmed parameters contain seismicMemberEvidence or seismicWorkflow.memberEvidence, attach the provided structured member evidence to the matching element as element fields, metadata, or extra using keys such as seismicCapacity, capacityDesign, strongShearWeakBending, shearCompression, jointCore, wallData, boundaryElement, or steelSeismicDetailing; do not summarize it as prose and do not decide code-check pass/fail.',
 ];
 
 const COMMON_CONSTRAINTS_ZH = [
@@ -47,6 +48,7 @@ const COMMON_CONSTRAINTS_ZH = [
   '在支座、集中荷载、跨界、构件交点和几何转折处建立显式节点，保证分析结果位置可计算。',
   '输出前核对总施加荷载与用户描述是否一致。不要把同一个物理荷载同时作为节点荷载和构件均布荷载重复施加。',
   '局部均布荷载不要在单元内设起止位置，应拆分单元后对目标单元施加 distributed 荷载。只使用 nodal 和 distributed，不要使用 nodal_force/line_load/element_uniform_load/uniform_load 等类型名。',
+  '如果已确认参数包含 seismicMemberEvidence 或 seismicWorkflow.memberEvidence，必须把已提供的构件抗震证据挂到匹配 element 的字段、metadata 或 extra 中，并保留 seismicCapacity、capacityDesign、strongShearWeakBending、shearCompression、jointCore、wallData、boundaryElement、steelSeismicDetailing 等结构化键；不要写成自然语言备注，也不要由 LLM 判断条文通过或失败。',
 ];
 
 export function getStructureModelTemplate(): string {

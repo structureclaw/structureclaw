@@ -30,6 +30,7 @@ const optionalIdSchema = z.preprocess((value) => {
 }, z.string().optional());
 
 const localeSchema = z.enum(['en', 'zh']).optional();
+const seismicWorkflowSchema = z.record(z.string(), z.any()).optional();
 
 // 请求验证
 const sendMessageSchema = z.object({
@@ -53,6 +54,7 @@ const sendMessageSchema = z.object({
     includeReport: z.boolean().optional(),
     reportFormat: z.enum(['json', 'markdown', 'both']).optional(),
     reportOutput: z.enum(['inline', 'file']).optional(),
+    seismicWorkflow: seismicWorkflowSchema,
     userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
     providedValues: z.record(z.string(), z.any()).optional(),
     resumeFromMessage: z.string().max(10000).optional(),
@@ -97,6 +99,7 @@ const streamMessageSchema = z.object({
     includeReport: z.boolean().optional(),
     reportFormat: z.enum(['json', 'markdown', 'both']).optional(),
     reportOutput: z.enum(['inline', 'file']).optional(),
+    seismicWorkflow: seismicWorkflowSchema,
     userDecision: z.enum(['provide_values', 'confirm_all', 'allow_auto_decide', 'revise']).optional(),
     providedValues: z.record(z.string(), z.any()).optional(),
     resumeFromMessage: z.string().max(10000).optional(),
@@ -216,6 +219,7 @@ function buildPersistedDebugDetails(params: {
   if (params.context?.skillIds) compactContext.skillIds = params.context.skillIds;
   if (params.context?.enabledToolIds) compactContext.enabledToolIds = params.context.enabledToolIds;
   if (params.context?.engineId) compactContext.engineId = params.context.engineId;
+  if (params.context?.seismicWorkflow) compactContext.seismicWorkflow = params.context.seismicWorkflow;
 
   return {
     promptSnapshot: JSON.stringify({

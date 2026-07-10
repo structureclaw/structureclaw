@@ -6,6 +6,7 @@ import {
   buildConcreteFramePatchFromLlm,
   coerceConcreteFrameDimension,
 } from '../../../../../dist/agent-skills/structure-type/concrete-frame/extract-llm.js';
+import { mergeConcreteFrameState } from '../../../../../dist/agent-skills/structure-type/concrete-frame/merge.js';
 import { detectConcreteFrameStructuralType } from '../../../../../dist/agent-skills/structure-type/concrete-frame/detect.js';
 import { computeConcreteFrameMissing } from '../../../../../dist/agent-skills/structure-type/concrete-frame/interaction.js';
 
@@ -160,6 +161,36 @@ describe('concrete-frame canonicalize core contract', () => {
     expect(patch.storyHeightsM).toEqual([4.2, 4.2, 4.2]);
     expect(patch.bayCount).toBe(1);
     expect(patch.bayWidthsM).toEqual([8]);
+  });
+
+  test('preserves structured seismic workflow through draft patch and merge', () => {
+    const seismicWorkflow = {
+      methodPreference: 'time_history',
+      designBasis: {
+        siteSeismic: { intensity: 8, designGroup: '2', siteCategory: 'III' },
+      },
+      groundMotionSet: { requiredCount: 3 },
+      directions: ['x', 'y'],
+    };
+    const patch = buildConcreteFrameDraftPatch({
+      inferredType: 'concrete-frame',
+      frameDimension: '3d',
+      storyCount: 2,
+      bayCountX: 1,
+      bayCountY: 1,
+      skillState: { seismicWorkflow },
+    }, undefined);
+    const merged = mergeConcreteFrameState({
+      inferredType: 'concrete-frame',
+      updatedAt: 0,
+      skillState: { existingFlag: true },
+    }, patch);
+
+    expect(patch.skillState?.seismicWorkflow).toEqual(seismicWorkflow);
+    expect(merged.skillState).toMatchObject({
+      existingFlag: true,
+      seismicWorkflow,
+    });
   });
 
   test('keeps x-direction geometry without inventing a 3d frame from one direction', () => {

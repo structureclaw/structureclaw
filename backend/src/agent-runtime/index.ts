@@ -5,6 +5,7 @@ import {
   buildCodeCheckInput,
   executeCodeCheckDomain,
 } from '../agent-skills/code-check/entry.js';
+import { resolveCodeCheckRule } from '../agent-skills/code-check/registry.js';
 import type { CodeCheckClient } from '../agent-skills/code-check/rule.js';
 import { AgentSkillRegistry } from './registry.js';
 import { AgentSkillLoader } from './loader.js';
@@ -35,6 +36,26 @@ function requireStructuralRouterLlm(llm: StructureClawChatModel | null, locale: 
   throw new Error(locale === 'zh'
     ? 'LLM 未配置，无法进行结构类型路由。请检查 LLM_API_KEY 设置。'
     : 'LLM is not configured, so structural type routing cannot run. Please check LLM_API_KEY settings.');
+}
+
+function formatCodeCheckSummaryText(summary: Record<string, unknown> | undefined, locale: AppLocale): string {
+  if (!summary) {
+    return locale === 'zh' ? '未执行规范校核' : 'No code checks were executed';
+  }
+  const total = String(summary.total ?? 0);
+  const passed = String(summary.passed ?? 0);
+  const failed = String(summary.failed ?? 0);
+  const warnings = String(summary.warnings ?? 0);
+  const notApplicable = summary.notApplicable ?? summary.not_applicable;
+  const notApplicableText = notApplicable !== undefined && notApplicable !== null
+    ? (locale === 'zh'
+      ? `，不适用/资料不足 ${String(notApplicable)}`
+      : `, not applicable/unavailable ${String(notApplicable)}`)
+    : '';
+
+  return locale === 'zh'
+    ? `校核通过 ${passed} / ${total}，失败 ${failed}，警告 ${warnings}${notApplicableText}`
+    : `Code checks passed ${passed} / ${total}, failed ${failed}, warnings ${warnings}${notApplicableText}`;
 }
 
 export type {
@@ -134,9 +155,17 @@ export class AgentSkillRuntime {
       return undefined;
     }
     const normalizedDesignCode = designCode.trim().toUpperCase();
-    return this.listBuiltinCodeCheckSkillManifests().find((skill) =>
+    const manifestMatch = this.listBuiltinCodeCheckSkillManifests().find((skill) =>
       typeof skill.designCode === 'string' && skill.designCode.trim().toUpperCase() === normalizedDesignCode,
     )?.id;
+    if (manifestMatch) {
+      return manifestMatch;
+    }
+    try {
+      return resolveCodeCheckRule(designCode).skillId;
+    } catch {
+      return undefined;
+    }
   }
 
   resolvePreferredAnalysisSkill(options?: {
@@ -371,11 +400,7 @@ export class AgentSkillRuntime {
   }> {
     const analysisSuccess = Boolean((options.analysis as { success?: unknown } | undefined)?.success);
     const codeCheckSummary = (options.codeCheck as { summary?: Record<string, unknown> } | undefined)?.summary;
-    const codeCheckText = codeCheckSummary
-      ? (options.locale === 'zh'
-        ? `校核通过 ${String(codeCheckSummary.passed ?? 0)} / ${String(codeCheckSummary.total ?? 0)}`
-        : `Code checks passed ${String(codeCheckSummary.passed ?? 0)} / ${String(codeCheckSummary.total ?? 0)}`)
-      : (options.locale === 'zh' ? '未执行规范校核' : 'No code checks were executed');
+    const codeCheckText = formatCodeCheckSummaryText(codeCheckSummary, options.locale);
     const summary = options.locale === 'zh'
       ? `分析类型 ${options.analysisType}，分析${analysisSuccess ? '成功' : '失败'}，${codeCheckText}。`
       : `Analysis type ${options.analysisType}; analysis ${analysisSuccess ? 'succeeded' : 'failed'}; ${codeCheckText}.`;
@@ -427,6 +452,8 @@ export class AgentSkillRuntime {
       clauseTraceability,
       controllingCases,
       visualizationHints,
+      analysis: options.analysis,
+      codeCheck: options.codeCheck,
       locale: options.locale,
     }, options.draft, options.skillIds);
 

@@ -1,21 +1,28 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from 'fastify';
 import { z } from 'zod';
 import { AnalysisService } from '../services/analysis.js';
+import {
+  BUILTIN_GROUND_MOTION_CATALOG,
+  COMMON_RECORDED_GROUND_MOTION_REFERENCES,
+} from '../agent-skills/analysis/opensees-seismic/ground-motion-catalog-meta.js';
 
 const analysisService = new AnalysisService();
 
 // 分析请求验证
-const createAnalysisSchema = z.object({
+export const createAnalysisSchema = z.object({
   name: z.string().min(1),
   type: z.enum(['static', 'dynamic', 'seismic', 'nonlinear', 'stability']),
   modelId: z.string(),
   engineId: z.string().optional(),
   parameters: z.object({
-    loadCases: z.array(z.any()),
+    loadCases: z.array(z.any()).default([]),
     combinations: z.array(z.any()).optional(),
     timeSteps: z.number().optional(),
     dampingRatio: z.number().optional(),
     groundMotion: z.any().optional(),
+    seismicWorkflow: z.record(z.string(), z.unknown()).optional(),
+    designCode: z.string().optional(),
+    autoCodeCheck: z.boolean().optional(),
   }),
 });
 
@@ -48,6 +55,21 @@ const createModelSchema = z.object({
 });
 
 export async function analysisRoutes(fastify: FastifyInstance) {
+  // 内置地震波目录元数据，不返回完整波形数组。
+  fastify.get('/seismic/ground-motion-catalog', {
+    schema: {
+      tags: ['Analysis'],
+      summary: '获取内置抗震地震波目录',
+    },
+  }, async (_request: FastifyRequest, reply: FastifyReply) => {
+    return reply.send({
+      source: 'builtin_artificial',
+      records: BUILTIN_GROUND_MOTION_CATALOG,
+      referenceSource: 'metadata_only',
+      referenceRecords: COMMON_RECORDED_GROUND_MOTION_REFERENCES,
+    });
+  });
+
   // 创建结构模型
   fastify.post('/models', {
     schema: {

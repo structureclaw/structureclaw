@@ -19,4 +19,19 @@ describe('agent policy execution intent', () => {
 
     expect(policy.inferExecutionIntent('帮我设计一个产品海报')).toBe(false);
   });
+
+  test('does not infer analysis type from seismic keywords without semantic routing', () => {
+    const policy = new AgentPolicyService();
+
+    expect(policy.inferAnalysisType('按中国抗震规范做反应谱和时程分析')).toBe('static');
+    expect(policy.inferAnalysisType('run seismic time-history analysis')).toBe('static');
+  });
+
+  test('does not infer China seismic design codes from regex policy helpers', () => {
+    const policy = new AgentPolicyService();
+
+    expect(policy.inferDesignCode('按 GB50011 做抗震校核')).toBeUndefined();
+    expect(policy.inferDesignCode('按 GB 55002 + GB/T 50011 做中国抗震流程')).toBeUndefined();
+    expect(policy.inferDesignCode('按 GB50017 做钢结构校核')).toBe('GB50017');
+  });
 });

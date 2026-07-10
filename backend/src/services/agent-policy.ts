@@ -66,17 +66,9 @@ export class AgentPolicyService {
     return locale === 'zh' ? zh : en;
   }
 
-  inferAnalysisType(message: string): AgentPolicyAnalysisType {
-    const text = message.toLowerCase();
-    if (text.includes('地震') || text.includes('seismic')) {
-      return 'seismic';
-    }
-    if (text.includes('动力') || text.includes('dynamic') || text.includes('时程')) {
-      return 'dynamic';
-    }
-    if (text.includes('非线性') || text.includes('nonlinear')) {
-      return 'nonlinear';
-    }
+  inferAnalysisType(_message: string): AgentPolicyAnalysisType {
+    // Engineering analysis type is selected by the LLM-driven agent workflow.
+    // Keep this legacy policy helper conservative so keywords never bypass semantic routing.
     return 'static';
   }
 
@@ -150,7 +142,13 @@ export class AgentPolicyService {
     if (!match?.[1]) {
       return undefined;
     }
-    return `GB${match[1]}`;
+    const designCode = `GB${match[1]}`;
+    // China seismic standards must be selected through the LLM-built seismicWorkflow
+    // or explicit structured session config, not by this legacy regex policy helper.
+    if (designCode === 'GB50011' || designCode === 'GB55002') {
+      return undefined;
+    }
+    return designCode;
   }
 
   inferReportIntent(message: string): boolean | undefined {

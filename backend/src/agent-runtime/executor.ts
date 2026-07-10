@@ -35,6 +35,15 @@ export class AgentSkillExecutor {
         ? 'JSON 字段允许：inferredType, engineeringDraft, draftPatch, draftIssues, skillState, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote。'
         : 'Allowed JSON fields: inferredType, engineeringDraft, draftPatch, draftIssues, skillState, missingCritical, missingOptional, questions, defaultProposals, stage, supportLevel, supportNote.',
       input.locale === 'zh'
+        ? '当用户提出中国抗震、反应谱、时程、Pushover、弹塑性时程、设防烈度、设计地震分组、场地类别或地震波选择等抗震设计意图时，必须基于整句语义输出 skillState.seismicWorkflow；方法选择只允许来自语义理解后的结构化字段，不要用关键词或正则匹配决定 response_spectrum/time_history/pushover/elastic_plastic_time_history。'
+        : 'When the user asks for China seismic design, response spectrum, time history, pushover, elastic-plastic time history, seismic intensity, design group, site class, or ground-motion selection, output skillState.seismicWorkflow from whole-message semantic understanding; method selection may only come from structured semantic fields, never keyword or regex matching for response_spectrum/time_history/pushover/elastic_plastic_time_history.',
+      input.locale === 'zh'
+        ? '如果用户提供 GB18306 区划表、地震波文件或本地地震波库，只把已提供的数据映射到 seismicWorkflow.designBasis.groundMotionZonation 或 seismicWorkflow.groundMotionSet；不要根据城市名或自然语言自行编造烈度、分组、特征周期或地震波记录。'
+        : 'If the user provides a GB18306 zonation table, ground-motion files, or a local ground-motion catalog, map only the provided data into seismicWorkflow.designBasis.groundMotionZonation or seismicWorkflow.groundMotionSet; do not invent intensity, design group, characteristic period, or ground-motion records from city names or prose.',
+      input.locale === 'zh'
+        ? '如果用户、模型或上传表格提供构件抗震承载力、gammaRE、强剪弱弯、剪压比、节点核芯区、抗震墙边缘构件、钢构件长细比或宽厚比等校核证据，必须保留为结构化字段（如 seismicCapacity、capacityDesign、strongShearWeakBending、shearCompression、jointCore、wallData、boundaryElement、steelSeismicDetailing）；不要把这些证据只写成自然语言备注。'
+        : 'If the user, model, or uploaded table provides member seismic capacity, gammaRE, capacity-design, strong-shear weak-bending, shear-compression, joint-core, seismic-wall boundary-element, steel slenderness, or steel width-thickness evidence, preserve it as structured fields such as seismicCapacity, capacityDesign, strongShearWeakBending, shearCompression, jointCore, wallData, boundaryElement, or steelSeismicDetailing; do not leave this evidence only as prose notes.',
+      input.locale === 'zh'
         ? '优先输出 engineeringDraft：geometry 表达跨度/高度/多跨数组，loads 表达集中力、线荷载、面积荷载或节点荷载，wind.basicPressureKNM2 表达基本风压，analysis.engineTarget 表达 opensees/pkpm/yjk。必要时可同时输出旧 draftPatch。'
         : 'Prefer engineeringDraft as a top-level field: use geometry for lengths/heights/span arrays, loads for point/line/area/nodal loads, wind.basicPressureKNM2 for basic wind pressure, and analysis.engineTarget for opensees/pkpm/yjk. You may also output legacy draftPatch when useful.',
       input.locale === 'zh'

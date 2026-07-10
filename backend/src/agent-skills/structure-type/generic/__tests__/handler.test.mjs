@@ -70,6 +70,45 @@ describe('generic structure-type handler', () => {
     expect(missing.critical).toEqual([]);
   });
 
+  test('preserves structured seismic workflow in generic draft state', () => {
+    const seismicWorkflow = {
+      methodPreference: 'auto',
+      designBasis: {
+        siteSeismic: { intensity: 8, designGroup: '2', siteCategory: 'III' },
+      },
+      groundMotionSet: { requiredCount: 3 },
+      directions: ['x', 'y'],
+    };
+    const patch = handler.extractDraft({
+      message: 'unused',
+      locale: 'zh',
+      llmDraftPatch: {
+        engineeringDraft: {
+          structureType: 'frame',
+          geometry: { storyHeightsM: [3.6, 3.6], bayWidthsM: [6] },
+        },
+        skillState: { seismicWorkflow },
+      },
+      structuralTypeMatch: {
+        key: 'unknown',
+        mappedType: 'unknown',
+        skillId: 'generic',
+        supportLevel: 'fallback',
+      },
+    });
+    const state = handler.mergeState({
+      inferredType: 'unknown',
+      updatedAt: 0,
+      skillState: { existingFlag: true },
+    }, patch);
+
+    expect(patch.skillState?.seismicWorkflow).toEqual(seismicWorkflow);
+    expect(state.skillState).toMatchObject({
+      existingFlag: true,
+      seismicWorkflow,
+    });
+  });
+
   test('uses LLM engineeringDraft structure type while staying on generic skill', () => {
     const patch = handler.extractDraft({
       message: '这条用户消息不参与参数抽取',

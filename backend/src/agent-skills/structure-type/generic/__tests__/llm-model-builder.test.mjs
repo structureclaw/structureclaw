@@ -17,6 +17,9 @@ describe('generic LLM model builder', () => {
     expect(prompt).toContain('global-z-up coordinates');
     expect(prompt).toContain('Create explicit nodes at supports');
     expect(prompt).toContain('check the total applied load');
+    expect(prompt).toContain('seismicMemberEvidence');
+    expect(prompt).toContain('steelSeismicDetailing');
+    expect(prompt).toContain('do not decide code-check pass/fail');
     expect(prompt).not.toContain('StructureModel v1');
     expect(prompt).not.toContain('-10000');
   });

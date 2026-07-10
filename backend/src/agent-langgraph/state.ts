@@ -28,6 +28,8 @@ export interface AgentSessionState {
   workspaceRoot: string;
   /** Pipeline execution policy for the current project. */
   policy: AgentExecutionPolicy;
+  /** Structured seismic workflow passed from request context for the current turn. */
+  contextSeismicWorkflow: Record<string, unknown> | null;
   /** Provider skill bindings. */
   bindings: ProviderBindingState;
   /** Last user message (for context in tool calls). */
@@ -45,6 +47,7 @@ export function emptySessionState(overrides?: Partial<AgentSessionState>): Agent
     locale: 'zh',
     workspaceRoot: '',
     policy: {},
+    contextSeismicWorkflow: null,
     bindings: {},
     lastUserMessage: '',
     structuralTypeKey: null,
@@ -87,6 +90,10 @@ export const AgentStateAnnotation = Annotation.Root({
   policy: Annotation<AgentExecutionPolicy>({
     reducer: (_prev, next) => next,
     default: () => ({}),
+  }),
+  contextSeismicWorkflow: Annotation<Record<string, unknown> | null>({
+    reducer: (_prev, next) => next,
+    default: () => null,
   }),
   bindings: Annotation<ProviderBindingState>({
     reducer: (_prev, next) => next,

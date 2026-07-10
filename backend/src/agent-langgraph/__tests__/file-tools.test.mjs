@@ -137,6 +137,21 @@ describe('createAnalyzeFileTool', () => {
     expect(result.rows).toEqual([['A', '1'], ['B', '2']]);
   });
 
+  test('can preserve all CSV rows for runtime attachment use', async () => {
+    const { analyzeUploadedFile } = await import('../../../dist/agent-langgraph/file-tools.js');
+    const csvPath = path.join(uploadsDir, 'ground-motion.csv');
+    const rows = Array.from({ length: 1560 }, (_, index) => `${(index * 0.02).toFixed(2)},${(index % 2 === 0 ? 0.01 : -0.01).toFixed(5)}`);
+    await fs.writeFile(csvPath, ['time,acceleration', ...rows].join('\n'), 'utf8');
+
+    const preview = await analyzeUploadedFile(csvPath, tmpDir);
+    const full = await analyzeUploadedFile(csvPath, tmpDir, undefined, { mode: 'full' });
+
+    expect(preview.rows).toHaveLength(100);
+    expect(preview.truncated).toBe(true);
+    expect(full.rows).toHaveLength(1560);
+    expect(full.truncated).toBe(false);
+  });
+
   test('analyzes a plain text file', async () => {
     const { createAnalyzeFileTool } = await import('../../../dist/agent-langgraph/file-tools.js');
     const txtPath = path.join(uploadsDir, 'notes.txt');
@@ -150,6 +165,27 @@ describe('createAnalyzeFileTool', () => {
     expect(result.success).toBe(true);
     expect(result.type).toBe('text');
     expect(result.content).toContain('Hello structural engineering');
+  });
+
+  test('analyzes an AT2 ground-motion file as text content', async () => {
+    const { createAnalyzeFileTool } = await import('../../../dist/agent-langgraph/file-tools.js');
+    const at2Path = path.join(uploadsDir, 'motion.at2');
+    await fs.writeFile(at2Path, [
+      'PEER NGA STRONG MOTION DATABASE RECORD',
+      'NPTS= 6, DT= .02 SEC',
+      '0.000 0.010 -0.010',
+      '0.005 -0.005 0.000',
+    ].join('\n'), 'utf8');
+    const tool = createAnalyzeFileTool();
+    const raw = await tool.invoke(
+      { filePath: at2Path },
+      { configurable: { workspaceRoot: tmpDir } },
+    );
+    const result = JSON.parse(raw);
+    expect(result.success).toBe(true);
+    expect(result.type).toBe('text');
+    expect(result.ext).toBe('.at2');
+    expect(result.content).toContain('DT= .02 SEC');
   });
 
   test('omits image base64 from analyze_file tool output', async () => {

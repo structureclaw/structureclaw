@@ -22,6 +22,11 @@ const mockSkills = [
     description: { en: 'OpenSees static workflow', zh: 'OpenSees 静力分析工作流' },
   },
   {
+    id: 'opensees-seismic',
+    name: { en: 'OpenSees Seismic Analysis', zh: 'OpenSees 抗震分析' },
+    description: { en: 'OpenSees China seismic workflow', zh: 'OpenSees 中国抗震流程' },
+  },
+  {
     id: 'beam',
     name: { en: 'Beam Helper', zh: '梁助手' },
     description: { en: 'Beam workflow', zh: '梁工作流' },
@@ -32,9 +37,29 @@ const mockSkills = [
     description: { en: 'Frame workflow', zh: '框架工作流' },
   },
   {
+    id: 'concrete-frame',
+    name: { en: 'Concrete Frame', zh: '混凝土框架' },
+    description: { en: 'Concrete frame workflow', zh: '混凝土框架工作流' },
+  },
+  {
     id: 'code-check-gb50017',
     name: { en: 'Code Check GB50017', zh: '规范校核 GB50017' },
     description: { en: 'GB50017 code check', zh: 'GB50017 规范校核' },
+  },
+  {
+    id: 'code-check-gb50011',
+    name: { en: 'Code Check GB50011', zh: '规范校核 GB50011' },
+    description: { en: 'GB50011 seismic code check', zh: 'GB50011 抗震校核' },
+  },
+  {
+    id: 'validation-structure-model',
+    name: { en: 'Model Validation', zh: '模型校验' },
+    description: { en: 'Validate structure model', zh: '校验结构模型' },
+  },
+  {
+    id: 'report-export-builtin',
+    name: { en: 'Report Export', zh: '报告导出' },
+    description: { en: 'Generate report', zh: '生成报告' },
   },
 ] as const
 
@@ -105,6 +130,99 @@ const sampleAnalysisResult = {
         elementForce: {
           E1: { maxAbsMoment: 20, controlCaseMoment: 'D' },
         },
+      },
+    },
+  },
+}
+
+const sampleSeismicResult = {
+  response: 'Seismic analysis finished.',
+  success: true,
+  model: JSON.parse(sampleModelJson),
+  analysis: {
+    success: true,
+    meta: {
+      analysisType: 'seismic',
+      engineName: 'OpenSees',
+      engineVersion: '0.1.0',
+      selectionMode: 'auto',
+    },
+    data: {
+      workflowInputMode: 'structured_seismic_workflow',
+      isPreliminary: true,
+      missingInputs: ['designBasis.dampingRatio', 'groundMotions'],
+      designBasis: {
+        intensity: 7,
+        accelerationG: 0.1,
+        earthquakeLevel: 'frequent',
+        designGroup: '2',
+        siteCategory: 'II',
+        dampingRatio: 0.05,
+        alphaMax: 0.08,
+        sourceTrace: [
+          {
+            field: 'accelerationG',
+            value: 0.1,
+            source: 'designBasis.siteSeismic.accelerationG',
+            sourceType: 'user',
+            assumed: false,
+          },
+          {
+            field: 'dampingRatio',
+            value: 0.05,
+            source: 'assumption.defaultDampingRatio005',
+            sourceType: 'assumption',
+            assumed: true,
+            note: 'No damping ratio was provided; assumed 0.05.',
+          },
+        ],
+      },
+      methodDecision: {
+        selectedMethods: ['response_spectrum'],
+        reasons: ['The structured method preference is response spectrum analysis.'],
+      },
+      regularityAssessment: {
+        classification: 'particularly_irregular',
+        source: 'model_heuristic',
+      },
+      groundMotionRequirement: {
+        required: true,
+        requiredCount: 3,
+        totalRequiredCount: 6,
+        providedCount: 0,
+        missingCount: 6,
+        status: 'missing',
+      },
+      sourceTrace: [
+        {
+          field: 'accelerationG',
+          value: 0.1,
+          source: 'designBasis.siteSeismic.accelerationG',
+          sourceType: 'user',
+          assumed: false,
+        },
+        {
+          field: 'dampingRatio',
+          value: 0.05,
+          source: 'assumption.defaultDampingRatio005',
+          sourceType: 'assumption',
+          assumed: true,
+          note: 'No damping ratio was provided; assumed 0.05.',
+        },
+        {
+          field: 'groundMotions',
+          value: 'provided 0 / required 6 / missing 6',
+          source: 'missing',
+          sourceType: 'assumption',
+          assumed: true,
+          note: 'required for supplementary time-history',
+        },
+      ],
+      summary: {
+        nodeCount: 27,
+        elementCount: 42,
+        storyCount: 2,
+        directions: ['x', 'y'],
       },
     },
   },
@@ -541,6 +659,105 @@ describe('ConsolePage Integration (CONS-13)', () => {
     expect(screen.getAllByText(/^Model$|^模型$/).length).toBeGreaterThan(0)
     expect(screen.queryByText(/^Analysis Settings$|^分析设置$/)).not.toBeInTheDocument()
     expect(screen.queryByText(/^Execution Engine$|^执行引擎$/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/^Design Code$|^设计规范$/)).not.toBeInTheDocument()
+  })
+
+  it('shows seismic parameter provenance as a collapsed engineering context module', async () => {
+    window.localStorage.setItem('structureclaw.console.conversations', JSON.stringify({
+      'conv-seismic-context': {
+        id: 'conv-seismic-context',
+        title: 'Seismic context conversation',
+        type: 'analysis',
+        createdAt: '2026-03-12T08:00:00.000Z',
+        updatedAt: '2026-03-12T09:00:00.000Z',
+        messages: [
+          { id: 'm1', role: 'user', content: 'Run seismic analysis.', status: 'done', timestamp: '2026-03-12T08:00:00.000Z' },
+          { id: 'm2', role: 'assistant', content: 'Seismic result ready.', status: 'done', timestamp: '2026-03-12T08:01:00.000Z' },
+        ],
+        modelText: sampleModelJson,
+        activePanel: 'context',
+        latestResult: sampleSeismicResult,
+      },
+    }))
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input)
+      const support = mockConsoleSupportRequest(url)
+      if (support) return support
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([{ id: 'conv-seismic-context', title: 'Seismic context conversation', updatedAt: '2026-03-12T09:00:00.000Z' }]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation/conv-seismic-context/snapshot')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ success: true }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation/conv-seismic-context')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-seismic-context',
+            title: 'Seismic context conversation',
+            messages: [
+              { id: 'srv-1', role: 'user', content: 'Run seismic analysis.', createdAt: '2026-03-12T08:00:00.000Z' },
+              { id: 'srv-2', role: 'assistant', content: 'Seismic result ready.', createdAt: '2026-03-12T08:01:00.000Z' },
+            ],
+            session: {
+              model: JSON.parse(sampleModelJson),
+            },
+            snapshots: {
+              latestResult: sampleSeismicResult,
+              staleStructuralData: false,
+            },
+          }),
+        } as unknown as Response
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    await renderConsolePage()
+    fireEvent.click(await screen.findByRole('button', { name: /Seismic context conversation/ }))
+    await waitFor(() => {
+      expect(within(screen.getByTestId('console-chat-panel')).getByText('Seismic result ready.')).toBeInTheDocument()
+    })
+    const resultPanelButton = screen.queryByRole('button', { name: /Show Results|显示结果|^Context$|^工程上下文$/ })
+    if (resultPanelButton) {
+      fireEvent.click(resultPanelButton)
+    }
+    fireEvent.click(await screen.findByRole('tab', { name: /Context|工程上下文/ }))
+
+    const seismicDetails = await screen.findByTestId('seismic-context-details')
+    expect(seismicDetails).not.toHaveAttribute('open')
+    expect(within(seismicDetails).getByText(/Seismic Parameters|抗震参数/)).toBeInTheDocument()
+
+    fireEvent.click(within(seismicDetails).getByText(/Seismic Parameters|抗震参数/))
+
+    expect(within(seismicDetails).getByText('accelerationG')).toBeInTheDocument()
+    expect(within(seismicDetails).getByText(/designBasis\.siteSeismic\.accelerationG/)).toBeInTheDocument()
+    expect(within(seismicDetails).getByText('dampingRatio')).toBeInTheDocument()
+    expect(within(seismicDetails).getAllByText(/Assumed|假定/).length).toBeGreaterThan(0)
     expect(screen.queryByText(/^Design Code$|^设计规范$/)).not.toBeInTheDocument()
   })
 
@@ -2518,6 +2735,128 @@ describe('ConsolePage Integration (CONS-13)', () => {
     const context = (executeBodies[0].context || {}) as Record<string, unknown>
     expect(context.autoCodeCheck).toBeUndefined()
     expect(Array.isArray(context.skillIds) ? context.skillIds : []).not.toContain('code-check-gb50017')
+  })
+
+  it('does not hard-code China seismic workflow routing in the console request context', async () => {
+    const executeBodies: Array<Record<string, unknown>> = []
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const url = String(input)
+
+      if (url.includes('/api/v1/agent/skills')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue(mockSkills),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/agent/capability-matrix')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            skills: [
+              { id: 'generic', domain: 'structure-type' },
+              { id: 'beam', domain: 'structure-type' },
+              { id: 'frame', domain: 'structure-type' },
+              { id: 'concrete-frame', domain: 'structure-type' },
+              { id: 'opensees-static', domain: 'analysis' },
+              { id: 'opensees-seismic', domain: 'analysis' },
+              { id: 'code-check-gb50011', domain: 'code-check' },
+              { id: 'validation-structure-model', domain: 'validation' },
+              { id: 'report-export-builtin', domain: 'report-export' },
+            ],
+            tools: [
+              { id: 'build_model', category: 'modeling' },
+            ],
+            skillDomainById: {
+              generic: 'structure-type',
+              beam: 'structure-type',
+              frame: 'structure-type',
+              'concrete-frame': 'structure-type',
+              'opensees-static': 'analysis',
+              'opensees-seismic': 'analysis',
+              'code-check-gb50011': 'code-check',
+              'validation-structure-model': 'validation',
+              'report-export-builtin': 'report-export',
+            },
+            domainSummaries: [],
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/agent/skillhub/search')) {
+        return { ok: true, json: vi.fn().mockResolvedValue({ items: [] }) } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/agent/skillhub/installed')) {
+        return { ok: true, json: vi.fn().mockResolvedValue({ items: [] }) } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/analysis-engines')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ engines: [] }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversations')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue([]),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/conversation') && init?.method === 'POST') {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            id: 'conv-china-seismic',
+            title: 'China seismic',
+            type: 'analysis',
+          }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/models/latest')) {
+        return {
+          ok: true,
+          json: vi.fn().mockResolvedValue({ model: null }),
+        } as unknown as Response
+      }
+
+      if (url.includes('/api/v1/chat/stream')) {
+        executeBodies.push(JSON.parse(String(init?.body || '{}')) as Record<string, unknown>)
+        return createSseResponse([
+          {
+            type: 'result',
+            content: sampleAnalysisResult,
+          },
+        ])
+      }
+
+      throw new Error(`Unexpected fetch: ${url}`)
+    })
+
+    setCapabilityPreferences(['generic', 'beam', 'opensees-static'], ['build_model'])
+    await renderConsolePage()
+
+    fireEvent.change(screen.getByPlaceholderText(/Describe your structural goal|描述你的结构目标/), {
+      target: { value: 'Run the China seismic workflow' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: /Send|发送/ }))
+
+    await waitFor(() => {
+      expect(executeBodies.length).toBeGreaterThan(0)
+    })
+
+    const context = (executeBodies[0].context || {}) as Record<string, unknown>
+    expect(context.analysisType).toBeUndefined()
+    expect(context.designCode).toBeUndefined()
+    expect(context.autoCodeCheck).toBeUndefined()
+    expect(context.seismicWorkflow).toBeUndefined()
+    expect(context.skillIds).toEqual(expect.arrayContaining(['generic', 'beam', 'opensees-static']))
+    expect(context.skillIds).not.toEqual(expect.arrayContaining(['opensees-seismic', 'code-check-gb50011']))
+    expect(context.enabledToolIds).toEqual(['build_model'])
   })
 
   it('disables the visualization action when a restored result has no model snapshot', async () => {

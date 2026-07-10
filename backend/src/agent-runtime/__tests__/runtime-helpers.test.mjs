@@ -20,6 +20,49 @@ describe('agent runtime helper utilities', () => {
     expect((await runtime.resolvePluginForType('concrete-frame'))?.id).toBe('concrete-frame');
   });
 
+  test('resolves latest GB50011 seismic code aliases to the GB50011 code-check skill', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+
+    expect(runtime.resolveCodeCheckSkillId('GB50011')).toBe('code-check-gb50011');
+    expect(runtime.resolveCodeCheckSkillId('GB/T 50011-2010-2024')).toBe('code-check-gb50011');
+    expect(runtime.resolveCodeCheckSkillId('GB 55002+GB/T 50011')).toBe('code-check-gb50011');
+  });
+
+  test('report summaries include failed warning and not-applicable code-check counts', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+    const codeCheck = {
+      summary: {
+        total: 4,
+        passed: 1,
+        failed: 1,
+        warnings: 1,
+        notApplicable: 1,
+      },
+    };
+
+    const zh = await runtime.executeReportSkill({
+      message: '生成报告',
+      analysisType: 'seismic',
+      analysis: { success: true, data: {} },
+      codeCheck,
+      format: 'markdown',
+      locale: 'zh',
+    });
+    const en = await runtime.executeReportSkill({
+      message: 'Generate report',
+      analysisType: 'seismic',
+      analysis: { success: true, data: {} },
+      codeCheck,
+      format: 'markdown',
+      locale: 'en',
+    });
+
+    expect(zh.report.summary).toContain('校核通过 1 / 4，失败 1，警告 1，不适用/资料不足 1');
+    expect(en.report.summary).toContain('Code checks passed 1 / 4, failed 1, warnings 1, not applicable/unavailable 1');
+  });
+
   test('keeps owning plugin enabled when scope uses a structural type key', async () => {
     const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
     const runtime = new AgentSkillRuntime();
@@ -39,6 +82,56 @@ describe('agent runtime helper utilities', () => {
       skillId: 'frame',
       supportLevel: 'supported',
       routingSource: 'explicit-keyword',
+    });
+  });
+
+  test('routes structure types correctly within the China seismic baseline skill scope', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+    const seismicBaseline = [
+      'generic',
+      'frame',
+      'concrete-frame',
+      'opensees-seismic',
+      'code-check-gb50011',
+      'validation-structure-model',
+      'report-export-builtin',
+    ];
+
+    await expect(runtime.resolvePluginForType('concrete-frame', seismicBaseline))
+      .resolves.toMatchObject({ id: 'concrete-frame' });
+    await expect(runtime.resolvePluginForType('steel-frame', seismicBaseline))
+      .resolves.toMatchObject({ id: 'frame' });
+
+    await expect(runtime.detectStructuralType(
+      '三层两跨钢筋混凝土框架，层高3.6m，跨度6m，8度第三组III类场地',
+      'zh',
+      undefined,
+      seismicBaseline,
+    )).resolves.toMatchObject({
+      key: 'concrete-frame',
+      mappedType: 'frame',
+      skillId: 'concrete-frame',
+    });
+    await expect(runtime.detectStructuralType(
+      '三层两跨钢框架，层高3.6m，跨度6m，8度第三组III类场地',
+      'zh',
+      undefined,
+      seismicBaseline,
+    )).resolves.toMatchObject({
+      key: 'steel-frame',
+      mappedType: 'frame',
+      skillId: 'frame',
+    });
+    await expect(runtime.detectStructuralType(
+      '办公楼，三层，按中国抗震考虑',
+      'zh',
+      undefined,
+      seismicBaseline,
+    )).resolves.toMatchObject({
+      key: 'unknown',
+      mappedType: 'unknown',
+      skillId: 'generic',
     });
   });
 
@@ -231,6 +324,80 @@ describe('agent runtime helper utilities', () => {
     });
     expect(result.missing.critical).toContain('inferredType');
     expect(result.extractionMode).toBe('deterministic');
+  });
+
+  test('LLM semantic extraction preserves seismic workflow in runtime draft state', async () => {
+    const { AgentSkillRuntime } = await import('../../../dist/agent-runtime/index.js');
+    const runtime = new AgentSkillRuntime();
+    const seismicWorkflow = {
+      methodPreference: 'time_history',
+      designBasis: {
+        codes: ['GB 55002-2021', 'GB/T 50011-2010-2024'],
+        siteSeismic: { intensity: 8, designGroup: '3', siteCategory: 'III' },
+      },
+      groundMotionSet: { requiredCount: 3 },
+      directions: ['x', 'y'],
+    };
+    const fakeLlm = {
+      async invoke(prompt) {
+        const content = String(prompt);
+        if (content.includes('结构类型路由器')) {
+          return {
+            content: JSON.stringify({
+              action: 'switch_skill',
+              skillId: 'concrete-frame',
+              structuralTypeKey: 'concrete-frame',
+              mappedType: 'frame',
+              supportLevel: 'supported',
+              confidence: 0.95,
+              reason: '钢筋混凝土框架建筑',
+            }),
+          };
+        }
+        expect(content).toContain('skillState.seismicWorkflow');
+        expect(content).toContain('不要用关键词或正则匹配决定 response_spectrum/time_history/pushover/elastic_plastic_time_history');
+        expect(content).toContain('steelSeismicDetailing');
+        expect(content).toContain('strongShearWeakBending');
+        return {
+          content: JSON.stringify({
+            inferredType: 'concrete-frame',
+            draftPatch: {
+              frameDimension: '2d',
+              storyCount: 3,
+              bayCount: 2,
+              storyHeightsM: [3.6, 3.6, 3.6],
+              bayWidthsM: [6, 6],
+              frameBaseSupportType: 'fixed',
+              frameConcreteGrade: 'C30',
+              frameRebarGrade: 'HRB400',
+            },
+            skillState: { seismicWorkflow },
+          }),
+        };
+      },
+    };
+
+    const result = await runtime.extractDraftParameters(
+      fakeLlm,
+      '三层两跨钢筋混凝土框架，8度第三组III类场地，做中国抗震时程分析',
+      undefined,
+      'zh',
+      ['concrete-frame'],
+    );
+
+    expect(result.structuralTypeMatch).toMatchObject({
+      skillId: 'concrete-frame',
+      routingSource: 'llm-suggested',
+    });
+    expect(result.extractionMode).toBe('llm');
+    expect(result.nextState).toMatchObject({
+      inferredType: 'frame',
+      structuralTypeKey: 'concrete-frame',
+      skillId: 'concrete-frame',
+      storyCount: 3,
+      bayCount: 2,
+    });
+    expect(result.nextState.skillState?.seismicWorkflow).toEqual(seismicWorkflow);
   });
 
   test('requires an LLM for LLM-first structural routing', async () => {

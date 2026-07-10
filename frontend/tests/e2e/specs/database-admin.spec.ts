@@ -19,11 +19,18 @@ test.describe('Database admin page', () => {
     await expect(page.getByText('sqlite', { exact: true })).toBeVisible({ timeout: 15_000 });
   });
 
-  test('shows file path from real backend', async ({ page }) => {
+  test('shows file path from real backend', async ({ page, request }) => {
+    const response = await request.get('/api/v1/admin/database/status');
+    expect(response.ok()).toBeTruthy();
+    const body = await response.json() as { database?: { databasePath?: string } };
+    const databasePath = body.database?.databasePath;
+    expect(databasePath).toBeTruthy();
+    expect(String(databasePath).includes('.db')).toBeTruthy();
+
     await dbPage.goto();
-    // Real backend returns the configured DATABASE_URL path (contains test-e2e.db)
+    // Real backend returns the configured database path; assert the UI mirrors it.
     // Wait for async data to load before asserting
-    await expect(page.getByText(/test-e2e.*\.db/).first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(String(databasePath), { exact: true }).first()).toBeVisible({ timeout: 15_000 });
   });
 
   test('handles API error gracefully', async ({ page }) => {

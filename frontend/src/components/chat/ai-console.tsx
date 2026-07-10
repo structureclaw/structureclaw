@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '@/lib/stores/context'
 import { MarkdownBody } from './markdown-body'
 import { ToolCallCard } from './tool-call-card'
+import { extractCodeCheckOverview } from './code-check-overview'
 import { LanguageToggle } from '@/components/language-toggle'
 import { ThemeToggle } from '@/components/theme-toggle'
 import { ArrowUp, Bot, BrainCircuit, Clock3, Cuboid, FileText, Loader2, Maximize2, MessageSquarePlus, Orbit, Paperclip, PanelLeftClose, PanelLeftOpen, PanelRightOpen, RefreshCw, Settings, Sparkles, Square, Trash2, User, X } from 'lucide-react'
@@ -40,7 +41,6 @@ const StructuralVisualizationModal = dynamic(
 
 type AnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear'
 type PanelTab = 'analysis' | 'report' | 'context'
-
 type MessageAttachment = {
   fileId: string
   originalName: string
@@ -116,6 +116,7 @@ type AgentResult = {
   toolCalls?: AgentToolCall[]
   interaction?: AgentInteraction
   analysis?: Record<string, unknown>
+  codeCheck?: unknown
   report?: {
     summary?: string
     markdown?: string
@@ -1346,7 +1347,7 @@ function buildResultSnapshotFromResult(
   })
 }
 
-function extractSummaryStats(
+export function extractSummaryStats(
   analysis: Record<string, unknown> | null,
   t: (key: MessageKey) => string,
   locale: AppLocale
@@ -1355,12 +1356,107 @@ function extractSummaryStats(
   const data = typeof analysis.data === 'object' && analysis.data ? (analysis.data as Record<string, unknown>) : analysis
   const meta = typeof analysis.meta === 'object' && analysis.meta ? (analysis.meta as Record<string, unknown>) : null
   const summary = typeof data.summary === 'object' && data.summary ? (data.summary as Record<string, unknown>) : null
+  const modelSummary = typeof data.modelSummary === 'object' && data.modelSummary ? (data.modelSummary as Record<string, unknown>) : null
+  const envelope = typeof data.envelope === 'object' && data.envelope ? (data.envelope as Record<string, unknown>) : null
+  const methodDecision = typeof data.methodDecision === 'object' && data.methodDecision ? (data.methodDecision as Record<string, unknown>) : null
+  const specialSystemReview = typeof data.specialSystemReview === 'object' && data.specialSystemReview ? (data.specialSystemReview as Record<string, unknown>) : null
+  const structuredReviewEntries = ([
+    ['overLimitReview', data.overLimitReview],
+    ['specialReview', data.specialReview],
+    ['specialSeismicReview', data.specialSeismicReview],
+    ['overLimitSpecialReview', data.overLimitSpecialReview],
+  ] as const).reduce<Array<{ key: string; value: Record<string, unknown> }>>((items, [key, value]) => {
+    if (typeof value === 'object' && value && !Array.isArray(value)) {
+      items.push({ key, value: value as Record<string, unknown> })
+    }
+    return items
+  }, [])
+  const designBasis = typeof data.designBasis === 'object' && data.designBasis ? (data.designBasis as Record<string, unknown>) : null
+  const codeBasis = Array.isArray(designBasis?.codeBasis)
+    ? designBasis.codeBasis.filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null && !Array.isArray(item))
+    : []
+  const gb18306Basis = codeBasis.find((item) => item.code === 'GB 18306-2015') ?? null
+  const groundMotionZonation = typeof designBasis?.groundMotionZonation === 'object' && designBasis.groundMotionZonation ? (designBasis.groundMotionZonation as Record<string, unknown>) : null
+  const fortificationCategoryLabel = typeof designBasis?.fortificationCategoryLabel === 'object' && designBasis.fortificationCategoryLabel ? (designBasis.fortificationCategoryLabel as Record<string, unknown>) : null
+  const responseSpectrum = typeof data.responseSpectrum === 'object' && data.responseSpectrum ? (data.responseSpectrum as Record<string, unknown>) : null
+  const minimumStoryShearAdjustment = typeof responseSpectrum?.minimumStoryShearAdjustment === 'object' && responseSpectrum.minimumStoryShearAdjustment
+    ? (responseSpectrum.minimumStoryShearAdjustment as Record<string, unknown>)
+    : null
+  const longPeriodSpecialStudyAdvisory = typeof responseSpectrum?.longPeriodSpecialStudyAdvisory === 'object' && responseSpectrum.longPeriodSpecialStudyAdvisory
+    ? (responseSpectrum.longPeriodSpecialStudyAdvisory as Record<string, unknown>)
+    : null
+  const longPeriodGoverningMode = typeof longPeriodSpecialStudyAdvisory?.governingMode === 'object' && longPeriodSpecialStudyAdvisory.governingMode
+    ? (longPeriodSpecialStudyAdvisory.governingMode as Record<string, unknown>)
+    : null
+  const responseSpectrumFinalCompliance = typeof data.responseSpectrumFinalCompliance === 'object' && data.responseSpectrumFinalCompliance
+    ? (data.responseSpectrumFinalCompliance as Record<string, unknown>)
+    : typeof responseSpectrum?.finalCompliance === 'object' && responseSpectrum.finalCompliance
+      ? (responseSpectrum.finalCompliance as Record<string, unknown>)
+      : null
+  const elasticStoryDriftFinalCompliance = typeof data.elasticStoryDriftFinalCompliance === 'object' && data.elasticStoryDriftFinalCompliance
+    ? (data.elasticStoryDriftFinalCompliance as Record<string, unknown>)
+    : null
+  const periodRangeAssessment = typeof data.periodRangeAssessment === 'object' && data.periodRangeAssessment
+    ? (data.periodRangeAssessment as Record<string, unknown>)
+    : typeof responseSpectrum?.periodRangeAssessment === 'object' && responseSpectrum.periodRangeAssessment
+      ? (responseSpectrum.periodRangeAssessment as Record<string, unknown>)
+      : null
+  const regularityAssessment = typeof data.regularityAssessment === 'object' && data.regularityAssessment ? (data.regularityAssessment as Record<string, unknown>) : null
+  const timeHistory = typeof data.timeHistory === 'object' && data.timeHistory ? (data.timeHistory as Record<string, unknown>) : null
+  const directionResults = Array.isArray(data.directionResults)
+    ? data.directionResults.filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null && !Array.isArray(item))
+    : []
+  const timeHistoryCombinationSummary = typeof timeHistory?.combinationSummary === 'object' && timeHistory.combinationSummary
+    ? (timeHistory.combinationSummary as Record<string, unknown>)
+    : null
+  const timeHistoryControllingStory = typeof timeHistory?.controllingStory === 'object' && timeHistory.controllingStory ? (timeHistory.controllingStory as Record<string, unknown>) : null
+  const elasticPlasticTimeHistory = typeof data.elasticPlasticTimeHistory === 'object' && data.elasticPlasticTimeHistory ? (data.elasticPlasticTimeHistory as Record<string, unknown>) : null
+  const elasticPlasticTimeHistoryFinalCompliance = typeof elasticPlasticTimeHistory?.finalCompliance === 'object' && elasticPlasticTimeHistory.finalCompliance ? (elasticPlasticTimeHistory.finalCompliance as Record<string, unknown>) : null
+  const elasticPlasticPerformanceObjective = typeof elasticPlasticTimeHistoryFinalCompliance?.performanceObjective === 'object' && elasticPlasticTimeHistoryFinalCompliance.performanceObjective ? (elasticPlasticTimeHistoryFinalCompliance.performanceObjective as Record<string, unknown>) : null
+  const elasticPlasticTimeHistoryParameters = typeof elasticPlasticTimeHistory?.parameters === 'object' && elasticPlasticTimeHistory.parameters ? (elasticPlasticTimeHistory.parameters as Record<string, unknown>) : null
+  const nonlinearModelAudit = typeof elasticPlasticTimeHistory?.nonlinearModelAudit === 'object' && elasticPlasticTimeHistory.nonlinearModelAudit ? (elasticPlasticTimeHistory.nonlinearModelAudit as Record<string, unknown>) : null
+  const elasticPlasticControllingHinge = typeof elasticPlasticTimeHistory?.controllingHinge === 'object' && elasticPlasticTimeHistory.controllingHinge ? (elasticPlasticTimeHistory.controllingHinge as Record<string, unknown>) : null
+  const seismicDesignActions = typeof data.seismicDesignActions === 'object' && data.seismicDesignActions ? (data.seismicDesignActions as Record<string, unknown>) : null
+  const memberDesignActionCombinations = typeof data.memberDesignActionCombinations === 'object' && data.memberDesignActionCombinations ? (data.memberDesignActionCombinations as Record<string, unknown>) : null
+  const verticalSeismic = typeof data.verticalSeismic === 'object' && data.verticalSeismic ? (data.verticalSeismic as Record<string, unknown>) : null
+  const verticalOpenSeesStatic = typeof verticalSeismic?.openSeesStatic === 'object' && verticalSeismic.openSeesStatic ? (verticalSeismic.openSeesStatic as Record<string, unknown>) : null
+  const pushover = typeof data.pushover === 'object' && data.pushover ? (data.pushover as Record<string, unknown>) : null
+  const pushoverCapacity = typeof pushover?.capacityAssessment === 'object' && pushover.capacityAssessment ? (pushover.capacityAssessment as Record<string, unknown>) : null
+  const pushoverPerformancePoint = typeof pushoverCapacity?.performancePoint === 'object' && pushoverCapacity.performancePoint ? (pushoverCapacity.performancePoint as Record<string, unknown>) : null
+  const pushoverCapacityIteration = typeof pushoverCapacity?.capacitySpectrumIteration === 'object' && pushoverCapacity.capacitySpectrumIteration ? (pushoverCapacity.capacitySpectrumIteration as Record<string, unknown>) : null
+  const pushoverNonlinearEstimate = typeof pushover?.nonlinearEstimate === 'object' && pushover.nonlinearEstimate ? (pushover.nonlinearEstimate as Record<string, unknown>) : null
+  const pushoverNonlinearParameters = typeof pushoverNonlinearEstimate?.parameters === 'object' && pushoverNonlinearEstimate.parameters ? (pushoverNonlinearEstimate.parameters as Record<string, unknown>) : null
+  const pushoverNonlinearPerformancePoint = typeof pushoverNonlinearEstimate?.performancePoint === 'object' && pushoverNonlinearEstimate.performancePoint ? (pushoverNonlinearEstimate.performancePoint as Record<string, unknown>) : null
+  const pushoverControllingStory = typeof pushoverNonlinearEstimate?.controllingStory === 'object' && pushoverNonlinearEstimate.controllingStory ? (pushoverNonlinearEstimate.controllingStory as Record<string, unknown>) : null
+  const pushoverControllingHinge = typeof pushoverNonlinearEstimate?.controllingHinge === 'object' && pushoverNonlinearEstimate.controllingHinge ? (pushoverNonlinearEstimate.controllingHinge as Record<string, unknown>) : null
+  const pushoverFinalCompliance = typeof pushover?.finalCompliance === 'object' && pushover.finalCompliance ? (pushover.finalCompliance as Record<string, unknown>) : null
+  const pushoverPerformanceObjective = typeof pushoverFinalCompliance?.performanceObjective === 'object' && pushoverFinalCompliance.performanceObjective ? (pushoverFinalCompliance.performanceObjective as Record<string, unknown>) : null
+  const groundMotionRequirement = typeof data.groundMotionRequirement === 'object' && data.groundMotionRequirement ? (data.groundMotionRequirement as Record<string, unknown>) : null
+  const spectrumMatch = typeof timeHistory?.spectrumMatch === 'object' && timeHistory.spectrumMatch ? (timeHistory.spectrumMatch as Record<string, unknown>) : null
+  const missingInputs = Array.isArray(data.missingInputs)
+    ? data.missingInputs.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : Array.isArray(designBasis?.missingInputs)
+      ? designBasis.missingInputs.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      : []
+  const missingCapabilities = Array.isArray(data.missingCapabilities)
+    ? data.missingCapabilities.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : []
+  const workflowInputMode = typeof data.workflowInputMode === 'string'
+    ? data.workflowInputMode.trim()
+    : ''
+  let workflowInputModeLabel = workflowInputMode
+  if (workflowInputMode === 'structured_seismic_workflow') {
+    workflowInputModeLabel = t('analysisOverviewWorkflowInputModeStructured')
+  } else if (workflowInputMode === 'legacy_compatibility_parameters') {
+    workflowInputModeLabel = t('analysisOverviewWorkflowInputModeLegacy')
+  }
 
   const stats: Array<{ label: string; value: string }> = []
 
   const candidatePairs: Array<[string, unknown]> = [
-    [t('analysisOverviewCountsNodes'), summary?.nodeCount ?? meta?.nodeCount],
-    [t('analysisOverviewCountsElements'), summary?.elementCount ?? meta?.elementCount],
+    [t('analysisOverviewCountsNodes'), summary?.nodeCount ?? modelSummary?.nodeCount ?? meta?.nodeCount],
+    [t('analysisOverviewCountsElements'), summary?.elementCount ?? modelSummary?.elementCount ?? meta?.elementCount],
+    [t('analysisOverviewCountsStories'), summary?.storyCount ?? modelSummary?.storyCount ?? designBasis?.storyCount],
     [t('analysisOverviewCountsLoadCases'), summary?.loadCaseCount ?? meta?.loadCaseCount],
     [t('analysisOverviewCountsCombinations'), summary?.combinationCount ?? meta?.combinationCount],
   ]
@@ -1370,6 +1466,558 @@ function extractSummaryStats(
       stats.push({ label, value: formatNumber(value, locale) })
     }
   })
+
+  const addNumberStat = (label: string, value: unknown, suffix = '') => {
+    if (typeof value !== 'number' || !Number.isFinite(value)) return
+    stats.push({ label, value: `${formatNumber(value, locale)}${suffix}` })
+  }
+
+  const addStringStat = (label: string, value: unknown) => {
+    if (typeof value === 'string' && value.trim()) {
+      stats.push({ label, value: value.trim() })
+    }
+  }
+  const stringList = (value: unknown) => (
+    Array.isArray(value)
+      ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map((item) => item.trim())
+      : []
+  )
+  const finiteNumber = (value: unknown) => (typeof value === 'number' && Number.isFinite(value) ? value : null)
+  const directionalTimeHistorySummaries = directionResults
+    .map((result, index) => {
+      const direction = typeof result.direction === 'string' && result.direction.trim() ? result.direction.trim() : `D${index + 1}`
+      const directionalTimeHistory = typeof result.timeHistory === 'object' && result.timeHistory && !Array.isArray(result.timeHistory)
+        ? (result.timeHistory as Record<string, unknown>)
+        : null
+      if (!directionalTimeHistory) return null
+      const records = Array.isArray(directionalTimeHistory.records)
+        ? directionalTimeHistory.records.filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null && !Array.isArray(item))
+        : []
+      const ratios = records
+        .map((record) => finiteNumber(record.baseShearRatioToResponseSpectrum))
+        .filter((value): value is number => value !== null)
+      const combinationSummary = typeof directionalTimeHistory.combinationSummary === 'object' && directionalTimeHistory.combinationSummary && !Array.isArray(directionalTimeHistory.combinationSummary)
+        ? (directionalTimeHistory.combinationSummary as Record<string, unknown>)
+        : null
+      const combinedBaseShear = finiteNumber(combinationSummary?.combinedBaseShear) ?? finiteNumber(directionalTimeHistory.combinedBaseShear)
+      const minRatio = ratios.length > 0 ? Math.min(...ratios) : null
+      return {
+        direction,
+        recordCount: records.length,
+        minRatio,
+        combinedBaseShear,
+      }
+    })
+    .filter((item): item is { direction: string; recordCount: number; minRatio: number | null; combinedBaseShear: number | null } => item !== null)
+  const yieldDriftStatValue = (parameters: Record<string, unknown> | null) => {
+    if (!parameters) return null
+    const ratioText = typeof parameters.yieldDriftLimitRatioText === 'string' && parameters.yieldDriftLimitRatioText.trim()
+      ? parameters.yieldDriftLimitRatioText.trim()
+      : (() => {
+          const ratio = finiteNumber(parameters.yieldDriftRatio)
+          return ratio === null ? '' : formatNumber(ratio, locale)
+        })()
+    if (!ratioText) return null
+    const family = typeof parameters.yieldDriftLimitFamily === 'string' && parameters.yieldDriftLimitFamily.trim()
+      ? parameters.yieldDriftLimitFamily.trim()
+      : ''
+    const fallback = parameters.yieldDriftIsFallback === true ? ` / ${t('analysisOverviewFallback')}` : ''
+    return `${ratioText}${family ? ` / ${family}` : ''}${fallback}`
+  }
+  const elasticPlasticRecords = Array.isArray(elasticPlasticTimeHistory?.records)
+    ? elasticPlasticTimeHistory.records.filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null && !Array.isArray(item))
+    : []
+  const elasticPlasticStoryResponses = elasticPlasticRecords.flatMap((record) => (
+    Array.isArray(record.storyResponses)
+      ? record.storyResponses.filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null && !Array.isArray(item))
+      : []
+  ))
+  const controllingElasticPlasticStory = elasticPlasticStoryResponses.reduce<Record<string, unknown> | null>((acc, item) => {
+    const current = finiteNumber(item.maxDriftRatio) ?? -1
+    const previous = acc ? finiteNumber(acc.maxDriftRatio) ?? -1 : -1
+    return current > previous ? item : acc
+  }, null)
+
+  const selectedMethods = methodDecision?.selectedMethods
+  if (Array.isArray(selectedMethods) && selectedMethods.length > 0) {
+    addStringStat(
+      t('analysisOverviewSeismicMethods'),
+      selectedMethods.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).join(', ')
+    )
+  } else {
+    addStringStat(t('analysisOverviewSeismicMethods'), methodDecision?.primaryMethod)
+  }
+  addStringStat(t('analysisOverviewWorkflowInputMode'), workflowInputModeLabel)
+  const methodDecisionReasons = stringList(methodDecision?.reasons)
+  if (methodDecisionReasons.length > 0) {
+    addStringStat(t('analysisOverviewSeismicDecisionReasons'), methodDecisionReasons.slice(0, 4).join('; '))
+  }
+  const directions = Array.isArray(summary?.directions)
+    ? summary.directions.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : []
+  if (directions.length > 0) {
+    addStringStat(t('analysisOverviewSeismicDirections'), directions.join(', '))
+  }
+  addStringStat(t('analysisOverviewModalCombination'), responseSpectrum?.modalCombination ?? envelope?.modalCombination)
+  addStringStat(t('analysisOverviewSeismicRegion'), designBasis?.region)
+  if (groundMotionZonation) {
+    const source = typeof groundMotionZonation.source === 'string' && groundMotionZonation.source.trim()
+      ? groundMotionZonation.source.trim()
+      : 'N/A'
+    const regionCode = typeof groundMotionZonation.regionCode === 'string' && groundMotionZonation.regionCode.trim()
+      ? groundMotionZonation.regionCode.trim()
+      : 'N/A'
+    addStringStat(t('analysisOverviewGroundMotionZonation'), `${source}: ${regionCode}`)
+  }
+  if (gb18306Basis) {
+    const revisionPlan = typeof gb18306Basis.revisionPlan === 'object' && gb18306Basis.revisionPlan
+      ? (gb18306Basis.revisionPlan as Record<string, unknown>)
+      : null
+    const status = gb18306Basis.standardStatus === 'current'
+      ? t('analysisOverviewStandardCurrent')
+      : typeof gb18306Basis.standardStatus === 'string'
+        ? gb18306Basis.standardStatus
+        : ''
+    const reviewConclusion = gb18306Basis.lastReviewConclusion === 'continue_valid'
+      ? t('analysisOverviewStandardContinueValid')
+      : typeof gb18306Basis.lastReviewConclusion === 'string'
+        ? gb18306Basis.lastReviewConclusion
+        : ''
+    const reviewDate = typeof gb18306Basis.lastReviewDate === 'string' && gb18306Basis.lastReviewDate.trim()
+      ? gb18306Basis.lastReviewDate.trim()
+      : ''
+    const revisionPlanNo = typeof revisionPlan?.planNo === 'string' && revisionPlan.planNo.trim()
+      ? revisionPlan.planNo.trim()
+      : ''
+    const revisionStatus = revisionPlan?.status === 'drafting'
+      ? t('analysisOverviewRevisionPlanDrafting')
+      : typeof revisionPlan?.status === 'string'
+        ? revisionPlan.status
+        : ''
+    const statusParts = [
+      status,
+      reviewDate || reviewConclusion ? [reviewDate, reviewConclusion].filter(Boolean).join(' ') : '',
+      revisionPlanNo ? `${revisionPlanNo} ${revisionStatus} (${t('analysisOverviewRevisionPlanNotDesignBasis')})` : '',
+    ].filter((item) => item.trim().length > 0)
+    if (statusParts.length > 0) {
+      addStringStat(t('analysisOverviewGb18306Status'), statusParts.join(' / '))
+    }
+  }
+  addNumberStat(t('analysisOverviewSeismicIntensity'), designBasis?.intensity)
+  addStringStat(t('analysisOverviewSeismicEarthquakeLevel'), summary?.earthquakeLevel ?? designBasis?.earthquakeLevel)
+  const localizedFortificationCategory = fortificationCategoryLabel?.[locale]
+  const fortificationCategoryLabelValue = typeof localizedFortificationCategory === 'string' && localizedFortificationCategory.trim()
+    ? localizedFortificationCategory.trim()
+    : typeof designBasis?.fortificationCategory === 'string'
+      ? designBasis.fortificationCategory.trim()
+      : ''
+  const fortificationCategoryClass = typeof designBasis?.fortificationCategoryCodeClass === 'string' && designBasis.fortificationCategoryCodeClass.trim()
+    ? designBasis.fortificationCategoryCodeClass.trim()
+    : ''
+  if (fortificationCategoryLabelValue) {
+    addStringStat(
+      t('analysisOverviewFortificationCategory'),
+      [fortificationCategoryLabelValue, fortificationCategoryClass].filter(Boolean).join(' / ')
+    )
+  }
+  addNumberStat(t('analysisOverviewSeismicMeasureIntensity'), designBasis?.seismicMeasureIntensity)
+  addNumberStat(t('analysisOverviewSeismicGrade'), designBasis?.seismicGrade)
+  addStringStat(t('analysisOverviewSeismicGradeSource'), designBasis?.seismicGradeSource)
+  addStringStat(t('analysisOverviewSeismicSiteCategory'), designBasis?.siteCategory)
+  if (data.isPreliminary === true || designBasis?.isPreliminary === true || missingInputs.length > 0) {
+    stats.push({ label: t('analysisOverviewSeismicStatus'), value: t('analysisOverviewSeismicPreliminary') })
+  }
+  if (missingInputs.length > 0) {
+    stats.push({ label: t('analysisOverviewSeismicMissingInputs'), value: missingInputs.join(', ') })
+  }
+  if (missingCapabilities.length > 0) {
+    stats.push({ label: t('analysisOverviewSeismicMissingCapabilities'), value: missingCapabilities.join(', ') })
+  }
+  const specialSystemReasons = stringList(methodDecision?.specialSystemReasons)
+  if (specialSystemReasons.length > 0) {
+    addStringStat(t('analysisOverviewSpecialSystemReasons'), specialSystemReasons.slice(0, 4).join('; '))
+  }
+  const structuredReviewSummaries = structuredReviewEntries
+    .map(({ key, value }) => {
+      const required = value.reviewRequired === true || value.required === true
+      const status = typeof value.status === 'string' && value.status.trim()
+        ? value.status.trim()
+        : typeof value.reviewStatus === 'string' && value.reviewStatus.trim()
+          ? value.reviewStatus.trim()
+          : typeof value.approvalStatus === 'string' && value.approvalStatus.trim()
+            ? value.approvalStatus.trim()
+            : ''
+      const reviewType = typeof value.reviewType === 'string' && value.reviewType.trim()
+        ? value.reviewType.trim()
+        : typeof value.type === 'string' && value.type.trim()
+          ? value.type.trim()
+          : key
+      const approvalId = typeof value.approvalId === 'string' && value.approvalId.trim()
+        ? value.approvalId.trim()
+        : typeof value.reviewId === 'string' && value.reviewId.trim()
+          ? value.reviewId.trim()
+          : typeof value.reportId === 'string' && value.reportId.trim()
+            ? value.reportId.trim()
+            : ''
+      if (!required && !status && !approvalId) return ''
+      return [reviewType, required ? t('analysisOverviewRequired') : '', status, approvalId].filter(Boolean).join(' / ')
+    })
+    .filter((item) => item.length > 0)
+  if (structuredReviewSummaries.length > 0) {
+    addStringStat(t('analysisOverviewOverLimitSpecialReview'), structuredReviewSummaries.join('; '))
+  }
+  if (specialSystemReview?.reviewRequired === true) {
+    const systems = stringList(specialSystemReview.systems)
+    const specialMissingInputs = stringList(specialSystemReview.missingInputs)
+    const checkCount = finiteNumber(specialSystemReview.checkCount)
+    const failedCheckCount = finiteNumber(specialSystemReview.failedCheckCount)
+    if (systems.length > 0) {
+      addStringStat(t('analysisOverviewSpecialSystemAuditSystems'), systems.join(', '))
+    }
+    if (specialMissingInputs.length > 0) {
+      addStringStat(t('analysisOverviewSpecialSystemAuditMissingInputs'), specialMissingInputs.slice(0, 6).join(', '))
+    }
+    if (checkCount !== null || failedCheckCount !== null) {
+      addStringStat(
+        t('analysisOverviewSpecialSystemAuditChecks'),
+        `${formatNumber(checkCount ?? 0, locale)} / ${formatNumber(failedCheckCount ?? 0, locale)} ${t('analysisOverviewFailed')}`
+      )
+    }
+    const isolationEstimate = typeof specialSystemReview.isolationEquivalentLinearEstimate === 'object' && specialSystemReview.isolationEquivalentLinearEstimate
+      ? (specialSystemReview.isolationEquivalentLinearEstimate as Record<string, unknown>)
+      : null
+    if (isolationEstimate?.status === 'estimated') {
+      const finalCompliance = typeof isolationEstimate.finalCompliance === 'object' && isolationEstimate.finalCompliance
+        ? (isolationEstimate.finalCompliance as Record<string, unknown>)
+        : null
+      const period = finiteNumber(isolationEstimate.periodSec)
+      const displacement = finiteNumber(isolationEstimate.displacementDemandM)
+      const status = typeof finalCompliance?.status === 'string' ? finalCompliance.status : ''
+      addStringStat(
+        t('analysisOverviewIsolationEquivalentEstimate'),
+        `${period === null ? 'N/A' : `${formatNumber(period, locale)} s`} / ${displacement === null ? 'N/A' : `${formatNumber(displacement, locale)} m`}${status ? ` / ${status}` : ''}`
+      )
+    }
+    const isolationTimeHistoryEstimate = typeof specialSystemReview.isolationLayerTimeHistoryEstimate === 'object' && specialSystemReview.isolationLayerTimeHistoryEstimate
+      ? (specialSystemReview.isolationLayerTimeHistoryEstimate as Record<string, unknown>)
+      : null
+    if (isolationTimeHistoryEstimate?.status === 'estimated') {
+      const finalCompliance = typeof isolationTimeHistoryEstimate.finalCompliance === 'object' && isolationTimeHistoryEstimate.finalCompliance
+        ? (isolationTimeHistoryEstimate.finalCompliance as Record<string, unknown>)
+        : null
+      const displacement = finiteNumber(isolationTimeHistoryEstimate.maxDisplacementM)
+      const baseShear = finiteNumber(isolationTimeHistoryEstimate.maxBaseShearKN)
+      const status = typeof finalCompliance?.status === 'string' ? finalCompliance.status : ''
+      addStringStat(
+        t('analysisOverviewIsolationTimeHistoryEstimate'),
+        `${displacement === null ? 'N/A' : `${formatNumber(displacement, locale)} m`} / ${baseShear === null ? 'N/A' : `${formatNumber(baseShear, locale)} kN`}${status ? ` / ${status}` : ''}`
+      )
+    }
+    const energyDissipationEstimate = typeof specialSystemReview.energyDissipationEquivalentEstimate === 'object' && specialSystemReview.energyDissipationEquivalentEstimate
+      ? (specialSystemReview.energyDissipationEquivalentEstimate as Record<string, unknown>)
+      : null
+    if (energyDissipationEstimate?.status === 'estimated') {
+      const finalCompliance = typeof energyDissipationEstimate.finalCompliance === 'object' && energyDissipationEstimate.finalCompliance
+        ? (energyDissipationEstimate.finalCompliance as Record<string, unknown>)
+        : null
+      const period = finiteNumber(energyDissipationEstimate.periodSec)
+      const displacement = finiteNumber(energyDissipationEstimate.adjustedDisplacementDemandM)
+      const status = typeof finalCompliance?.status === 'string' ? finalCompliance.status : ''
+      addStringStat(
+        t('analysisOverviewEnergyDissipationEquivalentEstimate'),
+        `${period === null ? 'N/A' : `${formatNumber(period, locale)} s`} / ${displacement === null ? 'N/A' : `${formatNumber(displacement, locale)} m`}${status ? ` / ${status}` : ''}`
+      )
+    }
+    const energyDissipationTimeHistoryEstimate = typeof specialSystemReview.energyDissipationTimeHistoryEstimate === 'object' && specialSystemReview.energyDissipationTimeHistoryEstimate
+      ? (specialSystemReview.energyDissipationTimeHistoryEstimate as Record<string, unknown>)
+      : null
+    if (energyDissipationTimeHistoryEstimate?.status === 'estimated') {
+      const finalCompliance = typeof energyDissipationTimeHistoryEstimate.finalCompliance === 'object' && energyDissipationTimeHistoryEstimate.finalCompliance
+        ? (energyDissipationTimeHistoryEstimate.finalCompliance as Record<string, unknown>)
+        : null
+      const deformation = finiteNumber(energyDissipationTimeHistoryEstimate.maxDeviceDeformationM)
+      const force = finiteNumber(energyDissipationTimeHistoryEstimate.maxDeviceForceKN)
+      const status = typeof finalCompliance?.status === 'string' ? finalCompliance.status : ''
+      addStringStat(
+        t('analysisOverviewEnergyDissipationTimeHistoryEstimate'),
+        `${deformation === null ? 'N/A' : `${formatNumber(deformation, locale)} m`} / ${force === null ? 'N/A' : `${formatNumber(force, locale)} kN`}${status ? ` / ${status}` : ''}`
+      )
+    }
+  }
+  if (summary?.periodSpecialStudyRequired === true || periodRangeAssessment?.requiresSpecialStudy === true) {
+    const maxModePeriod = finiteNumber(periodRangeAssessment?.maxModePeriodSec)
+    const maxCodePeriod = finiteNumber(periodRangeAssessment?.maxCodeSpectrumPeriodSec) ?? 6
+    stats.push({
+      label: t('analysisOverviewLongPeriodSpecialStudy'),
+      value: maxModePeriod === null
+        ? t('analysisOverviewRequired')
+        : `${formatNumber(maxModePeriod, locale)} s / ${formatNumber(maxCodePeriod, locale)} s`,
+    })
+    if (longPeriodGoverningMode) {
+      const mode = longPeriodGoverningMode.modeNumber ?? 'N/A'
+      const period = finiteNumber(longPeriodGoverningMode.period)
+      const alpha = finiteNumber(longPeriodGoverningMode.advisoryAlpha)
+      stats.push({
+        label: t('analysisOverviewLongPeriodAdvisory'),
+        value: [
+          `M${String(mode)}`,
+          period === null ? null : `${formatNumber(period, locale)} s`,
+          alpha === null ? null : formatNumber(alpha, locale),
+        ].filter(Boolean).join(' / '),
+      })
+    }
+  }
+  addStringStat(t('analysisOverviewSeismicRegularity'), summary?.regularityClassification ?? regularityAssessment?.classification)
+  addStringStat(t('analysisOverviewResponseSpectrumFinalCompliance'), summary?.responseSpectrumFinalComplianceStatus ?? responseSpectrumFinalCompliance?.status)
+  addNumberStat(t('analysisOverviewResponseSpectrumFinalComplianceUtilization'), summary?.responseSpectrumFinalComplianceUtilization ?? responseSpectrumFinalCompliance?.utilization)
+  addStringStat(t('analysisOverviewElasticStoryDriftFinalCompliance'), summary?.elasticStoryDriftFinalComplianceStatus ?? elasticStoryDriftFinalCompliance?.status)
+  addNumberStat(t('analysisOverviewElasticStoryDriftFinalComplianceUtilization'), summary?.elasticStoryDriftFinalComplianceUtilization ?? elasticStoryDriftFinalCompliance?.utilization)
+  addNumberStat(t('analysisOverviewMaxBaseShear'), summary?.maxBaseShear ?? envelope?.maxBaseShear, ' N')
+  addNumberStat(t('analysisOverviewMaxStoryDriftRatio'), summary?.maxStoryDriftRatio ?? envelope?.maxStoryDriftRatio)
+  if (timeHistoryControllingStory) {
+    const drift = finiteNumber(timeHistoryControllingStory.driftRatio)
+    const story = typeof timeHistoryControllingStory.story === 'string' && timeHistoryControllingStory.story.trim()
+      ? timeHistoryControllingStory.story.trim()
+      : 'N/A'
+    const record = typeof timeHistoryControllingStory.record === 'string' && timeHistoryControllingStory.record.trim()
+      ? ` / ${timeHistoryControllingStory.record.trim()}`
+      : ''
+    stats.push({
+      label: t('analysisOverviewTimeHistoryControlStory'),
+      value: drift === null ? `${story}${record}` : `${story}: ${formatNumber(drift, locale)}${record}`,
+    })
+  }
+  addNumberStat(t('analysisOverviewModalMassParticipation'), summary?.modalMassParticipationRatio ?? envelope?.modalMassParticipationRatio)
+  addNumberStat(t('analysisOverviewMinStoryShearWeightRatio'), summary?.minStoryShearWeightRatio ?? envelope?.minStoryShearWeightRatio ?? responseSpectrum?.minStoryShearWeightRatio)
+  if (minimumStoryShearAdjustment) {
+    const status = typeof minimumStoryShearAdjustment.status === 'string' && minimumStoryShearAdjustment.status.trim()
+      ? minimumStoryShearAdjustment.status.trim()
+      : null
+    const factor = finiteNumber(minimumStoryShearAdjustment.maxAdjustmentFactor)
+    if (status || factor !== null) {
+      stats.push({
+        label: t('analysisOverviewMinimumShearAdjustment'),
+        value: [
+          status,
+          factor === null ? null : formatNumber(factor, locale),
+        ].filter(Boolean).join(' / '),
+      })
+    }
+  }
+  addNumberStat(t('analysisOverviewHorizontalSeismicMemberForces'), summary?.horizontalSeismicMemberForceCount ?? seismicDesignActions?.memberForceCount)
+  addNumberStat(t('analysisOverviewSeismicCombinationCases'), summary?.memberDesignCombinationCaseCount ?? memberDesignActionCombinations?.caseCount)
+  addNumberStat(t('analysisOverviewVerticalSeismicAction'), summary?.totalVerticalActionKN ?? verticalSeismic?.totalVerticalActionKN, ' kN')
+  addNumberStat(t('analysisOverviewVerticalSeismicCoefficient'), verticalSeismic?.coefficient)
+  addNumberStat(t('analysisOverviewVerticalSeismicMemberForces'), summary?.verticalSeismicMemberForceCount ?? verticalOpenSeesStatic?.memberForceCount)
+  const verticalSeismicReasons = stringList(methodDecision?.verticalSeismicReasons)
+  if (verticalSeismicReasons.length > 0) {
+    addStringStat(t('analysisOverviewVerticalSeismicReasons'), verticalSeismicReasons.slice(0, 4).join('; '))
+  }
+  addStringStat(t('analysisOverviewElasticPlasticTimeHistory'), elasticPlasticTimeHistory?.status)
+  addStringStat(t('analysisOverviewElasticPlasticModel'), elasticPlasticTimeHistory?.modelScope ?? elasticPlasticTimeHistory?.engineMode)
+  addNumberStat(t('analysisOverviewElasticPlasticStoryCount'), elasticPlasticTimeHistoryParameters?.storyCount)
+  addStringStat(t('analysisOverviewElasticPlasticYieldDrift'), yieldDriftStatValue(elasticPlasticTimeHistoryParameters))
+  if (nonlinearModelAudit) {
+    const auditStatus = typeof nonlinearModelAudit.status === 'string' && nonlinearModelAudit.status.trim()
+      ? nonlinearModelAudit.status.trim()
+      : 'N/A'
+    const materialCount = finiteNumber(nonlinearModelAudit.materialModelCount)
+    const hingeCount = finiteNumber(nonlinearModelAudit.memberPlasticHingeCount)
+    stats.push({
+      label: t('analysisOverviewNonlinearModelAudit'),
+      value: `${auditStatus}: ${formatNumber(materialCount ?? 0, locale)}/${formatNumber(hingeCount ?? 0, locale)}`,
+    })
+  }
+  if (controllingElasticPlasticStory) {
+    const drift = finiteNumber(controllingElasticPlasticStory.maxDriftRatio)
+    const story = typeof controllingElasticPlasticStory.story === 'string' && controllingElasticPlasticStory.story.trim()
+      ? controllingElasticPlasticStory.story.trim()
+      : 'N/A'
+    stats.push({
+      label: t('analysisOverviewElasticPlasticControlStory'),
+      value: drift === null ? story : `${story}: ${formatNumber(drift, locale)}`,
+    })
+  }
+  if (elasticPlasticControllingHinge) {
+    const ductility = finiteNumber(elasticPlasticControllingHinge.ductility)
+    const elementId = typeof elasticPlasticControllingHinge.elementId === 'string' && elasticPlasticControllingHinge.elementId.trim()
+      ? elasticPlasticControllingHinge.elementId.trim()
+      : typeof elasticPlasticControllingHinge.id === 'string' && elasticPlasticControllingHinge.id.trim()
+        ? elasticPlasticControllingHinge.id.trim()
+        : 'N/A'
+    const end = typeof elasticPlasticControllingHinge.end === 'string' && elasticPlasticControllingHinge.end.trim()
+      ? ` ${elasticPlasticControllingHinge.end.trim()}`
+      : ''
+    stats.push({
+      label: t('analysisOverviewElasticPlasticControlHinge'),
+      value: ductility === null ? `${elementId}${end}` : `${elementId}${end}: ${formatNumber(ductility, locale)}`,
+    })
+  }
+  addNumberStat(t('analysisOverviewElasticPlasticMaxDrift'), elasticPlasticTimeHistory?.maxDriftRatio)
+  addStringStat(t('analysisOverviewElasticPlasticFinalCompliance'), summary?.elasticPlasticTimeHistoryFinalComplianceStatus ?? elasticPlasticTimeHistoryFinalCompliance?.status)
+  addNumberStat(t('analysisOverviewElasticPlasticFinalComplianceUtilization'), summary?.elasticPlasticTimeHistoryFinalComplianceUtilization ?? elasticPlasticTimeHistoryFinalCompliance?.utilization)
+  if (elasticPlasticPerformanceObjective) {
+    const name = typeof elasticPlasticPerformanceObjective.name === 'string' && elasticPlasticPerformanceObjective.name.trim()
+      ? elasticPlasticPerformanceObjective.name.trim()
+      : typeof elasticPlasticPerformanceObjective.source === 'string' && elasticPlasticPerformanceObjective.source.trim()
+        ? elasticPlasticPerformanceObjective.source.trim()
+        : 'N/A'
+    const limit = finiteNumber(elasticPlasticPerformanceObjective.acceptanceDriftRatio)
+    stats.push({
+      label: t('analysisOverviewElasticPlasticPerformanceObjective'),
+      value: limit === null ? name : `${name}: ${formatNumber(limit, locale)}`,
+    })
+  }
+  addNumberStat(t('analysisOverviewPushoverPerformanceDrift'), summary?.pushoverPerformanceDriftRatio ?? pushoverPerformancePoint?.driftRatio)
+  addStringStat(t('analysisOverviewPushoverPerformancePointSource'), pushoverPerformancePoint?.source)
+  if (pushoverCapacityIteration) {
+    const status = typeof pushoverCapacityIteration.status === 'string' && pushoverCapacityIteration.status.trim()
+      ? pushoverCapacityIteration.status.trim()
+      : 'N/A'
+    const iterationCount = finiteNumber(pushoverCapacityIteration.iterationCount)
+    const period = finiteNumber(pushoverCapacityIteration.secantPeriodSec)
+    stats.push({
+      label: t('analysisOverviewPushoverCapacitySpectrumIteration'),
+      value: `${status}: ${formatNumber(iterationCount ?? 0, locale)} / ${period === null ? 'N/A' : formatNumber(period, locale)} s`,
+    })
+  }
+  addNumberStat(t('analysisOverviewPushoverNonlinearEstimateDrift'), summary?.pushoverNonlinearEstimateDriftRatio ?? pushoverNonlinearPerformancePoint?.driftRatio)
+  addStringStat(t('analysisOverviewPushoverNonlinearModel'), pushoverNonlinearEstimate?.modelScope ?? pushoverNonlinearEstimate?.engineMode)
+  addNumberStat(t('analysisOverviewPushoverNonlinearStoryCount'), pushoverNonlinearParameters?.storyCount)
+  addStringStat(t('analysisOverviewPushoverYieldDrift'), yieldDriftStatValue(pushoverNonlinearParameters))
+  if (pushoverControllingStory) {
+    const drift = finiteNumber(pushoverControllingStory.driftRatio)
+    const story = typeof pushoverControllingStory.story === 'string' && pushoverControllingStory.story.trim()
+      ? pushoverControllingStory.story.trim()
+      : 'N/A'
+    stats.push({
+      label: t('analysisOverviewPushoverNonlinearControlStory'),
+      value: drift === null ? story : `${story}: ${formatNumber(drift, locale)}`,
+    })
+  }
+  if (pushoverControllingHinge) {
+    const ductility = finiteNumber(pushoverControllingHinge.ductility)
+    const elementId = typeof pushoverControllingHinge.elementId === 'string' && pushoverControllingHinge.elementId.trim()
+      ? pushoverControllingHinge.elementId.trim()
+      : typeof pushoverControllingHinge.id === 'string' && pushoverControllingHinge.id.trim()
+        ? pushoverControllingHinge.id.trim()
+        : 'N/A'
+    const end = typeof pushoverControllingHinge.end === 'string' && pushoverControllingHinge.end.trim()
+      ? ` ${pushoverControllingHinge.end.trim()}`
+      : ''
+    stats.push({
+      label: t('analysisOverviewPushoverNonlinearControlHinge'),
+      value: ductility === null ? `${elementId}${end}` : `${elementId}${end}: ${formatNumber(ductility, locale)}`,
+    })
+  }
+  addStringStat(t('analysisOverviewPushoverFinalCompliance'), summary?.pushoverFinalComplianceStatus ?? pushoverFinalCompliance?.status)
+  addNumberStat(t('analysisOverviewPushoverFinalComplianceUtilization'), summary?.pushoverFinalComplianceUtilization ?? pushoverFinalCompliance?.utilization)
+  if (pushoverPerformanceObjective) {
+    const name = typeof pushoverPerformanceObjective.name === 'string' && pushoverPerformanceObjective.name.trim()
+      ? pushoverPerformanceObjective.name.trim()
+      : typeof pushoverPerformanceObjective.source === 'string' && pushoverPerformanceObjective.source.trim()
+        ? pushoverPerformanceObjective.source.trim()
+        : 'N/A'
+    const limit = finiteNumber(pushoverPerformanceObjective.acceptanceDriftRatio)
+    stats.push({
+      label: t('analysisOverviewPushoverPerformanceObjective'),
+      value: limit === null ? name : `${name}: ${formatNumber(limit, locale)}`,
+    })
+  }
+  addNumberStat(t('analysisOverviewGroundMotionRecords'), summary?.groundMotionRecordCount)
+  if (groundMotionRequirement?.required === true) {
+    const requiredCount = finiteNumber(groundMotionRequirement.requiredCount)
+    const totalRequiredCount = finiteNumber(groundMotionRequirement.totalRequiredCount)
+    const providedCount = finiteNumber(groundMotionRequirement.providedCount)
+    const missingCount = finiteNumber(groundMotionRequirement.missingCount)
+    const requiredText = requiredCount === null ? 'N/A' : formatNumber(requiredCount, locale)
+    const totalRequiredText = totalRequiredCount === null ? null : formatNumber(totalRequiredCount, locale)
+    const providedText = providedCount === null ? 'N/A' : formatNumber(providedCount, locale)
+    const missingText = missingCount === null ? 'N/A' : formatNumber(missingCount, locale)
+    const directional = totalRequiredCount !== null && requiredCount !== null && totalRequiredCount !== requiredCount
+    stats.push({
+      label: t('analysisOverviewGroundMotionRequirement'),
+      value: locale === 'zh'
+        ? directional
+          ? `每方向需 ${requiredText}，总需 ${totalRequiredText}，已提供 ${providedText}，缺少 ${missingText}`
+          : `需 ${requiredText}，已提供 ${providedText}，缺少 ${missingText}`
+        : directional
+          ? `${requiredText} per direction, ${totalRequiredText} total, ${providedText} provided, ${missingText} missing`
+          : `${requiredText} required, ${providedText} provided, ${missingText} missing`,
+    })
+  }
+  const missingGroundMotionCount = groundMotionRequirement?.missingCount ?? summary?.missingGroundMotionCount
+  if (typeof missingGroundMotionCount === 'number' && missingGroundMotionCount > 0) {
+    addNumberStat(t('analysisOverviewMissingGroundMotionRecords'), missingGroundMotionCount)
+  }
+  const directionRequirements = Array.isArray(groundMotionRequirement?.directionRequirements)
+    ? groundMotionRequirement.directionRequirements.filter((item): item is Record<string, unknown> =>
+      typeof item === 'object' && item !== null && !Array.isArray(item)
+    )
+    : []
+  const missingDirectionRequirements = directionRequirements
+    .map((item) => {
+      const direction = typeof item.direction === 'string' && item.direction.trim() ? item.direction.trim().toUpperCase() : 'N/A'
+      const missing = finiteNumber(item.missingCount)
+      const required = finiteNumber(item.requiredCount)
+      if (missing === null || missing <= 0) return null
+      const missingText = formatNumber(missing, locale)
+      const requiredText = required === null ? 'N/A' : formatNumber(required, locale)
+      return locale === 'zh'
+        ? `${direction}: 缺 ${missingText} / 需 ${requiredText}`
+        : `${direction}: ${missingText} missing / ${requiredText} required`
+    })
+    .filter((item): item is string => typeof item === 'string' && item.length > 0)
+  if (missingDirectionRequirements.length > 0) {
+    addStringStat(t('analysisOverviewMissingGroundMotionDirections'), missingDirectionRequirements.join('; '))
+  }
+  addNumberStat(t('analysisOverviewGroundMotionScaleFactor'), spectrumMatch?.maxScaleFactor)
+  if (spectrumMatch) {
+    const minAverageRatio = finiteNumber(spectrumMatch.averageModalSpectrumMinRatioToTarget)
+    const limit = finiteNumber(spectrumMatch.modalSpectrumAverageMinRatio)
+    const ok = typeof spectrumMatch.modalSpectrumAverageOk === 'boolean'
+      ? spectrumMatch.modalSpectrumAverageOk
+      : null
+    if (minAverageRatio !== null || limit !== null || ok !== null) {
+      const status = ok === null ? 'N/A' : ok ? 'pass' : 'fail'
+      stats.push({
+        label: t('analysisOverviewGroundMotionSpectrumCompatibility'),
+        value: `${minAverageRatio === null ? 'N/A' : formatNumber(minAverageRatio, locale)} / ${limit === null ? 'N/A' : formatNumber(limit, locale)} / ${status}`,
+      })
+    }
+  }
+  addNumberStat(t('analysisOverviewCombinedBaseShear'), timeHistory?.combinedBaseShear, ' N')
+  if (timeHistoryCombinationSummary) {
+    const statistic = typeof timeHistoryCombinationSummary.timeHistoryStatistic === 'string' && timeHistoryCombinationSummary.timeHistoryStatistic.trim()
+      ? timeHistoryCombinationSummary.timeHistoryStatistic.trim()
+      : null
+    const source = typeof timeHistoryCombinationSummary.governingSource === 'string' && timeHistoryCombinationSummary.governingSource.trim()
+      ? timeHistoryCombinationSummary.governingSource.trim()
+      : null
+    const baseShear = finiteNumber(timeHistoryCombinationSummary.combinedBaseShear)
+    if (statistic || source || baseShear !== null) {
+      stats.push({
+        label: t('analysisOverviewTimeHistoryCombination'),
+        value: [
+          statistic,
+          source,
+          baseShear === null ? null : formatNumber(baseShear, locale),
+        ].filter(Boolean).join(' / '),
+      })
+    }
+  }
+  if (directionalTimeHistorySummaries.length > 0) {
+    stats.push({
+      label: t('analysisOverviewDirectionalTimeHistory'),
+      value: directionalTimeHistorySummaries.slice(0, 4).map((item) => {
+        const minRatio = item.minRatio === null ? 'N/A' : formatNumber(item.minRatio, locale)
+        const baseShear = item.combinedBaseShear === null ? 'N/A' : `${formatNumber(item.combinedBaseShear, locale)} N`
+        return locale === 'zh'
+          ? `${item.direction}: ${formatNumber(item.recordCount, locale)}条 / 最小 ${minRatio} / ${baseShear}`
+          : `${item.direction}: ${formatNumber(item.recordCount, locale)} records / min ${minRatio} / ${baseShear}`
+      }).join('; '),
+    })
+  }
 
   return stats
 }
@@ -1413,6 +2061,110 @@ function extractEngineLabel(
   }
 }
 
+type SeismicContextRow = {
+  label: string
+  value: string
+  source?: string
+  note?: string
+  assumed?: boolean
+}
+
+type SeismicContextSummary = {
+  status: string
+  summaryRows: SeismicContextRow[]
+  parameterRows: SeismicContextRow[]
+}
+
+function formatSeismicContextValue(value: unknown, locale: AppLocale): string {
+  if (value === undefined || value === null) return 'N/A'
+  if (typeof value === 'number' && Number.isFinite(value)) return formatNumber(value, locale)
+  if (typeof value === 'boolean') return value ? 'true' : 'false'
+  if (typeof value === 'string') return value.trim() || 'N/A'
+  if (Array.isArray(value)) return value.map((item) => formatSeismicContextValue(item, locale)).join(', ')
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+    } catch {
+      return 'N/A'
+    }
+  }
+  return String(value)
+}
+
+function formatWorkflowInputMode(value: unknown, t: (key: MessageKey) => string): string {
+  const workflowInputMode = typeof value === 'string' ? value.trim() : ''
+  if (workflowInputMode === 'structured_seismic_workflow') return t('analysisOverviewWorkflowInputModeStructured')
+  if (workflowInputMode === 'legacy_compatibility_parameters') return t('analysisOverviewWorkflowInputModeLegacy')
+  return workflowInputMode || 'N/A'
+}
+
+function extractSeismicContext(
+  result: AgentResult | null,
+  t: (key: MessageKey) => string,
+  locale: AppLocale
+): SeismicContextSummary | null {
+  const analysis = extractAnalysis(result)
+  if (!analysis) return null
+  const data = asRecord(analysis.data) ?? analysis
+  const designBasis = asRecord(data.designBasis)
+  const methodDecision = asRecord(data.methodDecision)
+  const groundMotionRequirement = asRecord(data.groundMotionRequirement)
+  const regularityAssessment = asRecord(data.regularityAssessment)
+  if (!designBasis && !methodDecision && !groundMotionRequirement) return null
+
+  const missingInputs = Array.isArray(data.missingInputs)
+    ? data.missingInputs.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : Array.isArray(designBasis?.missingInputs)
+      ? designBasis.missingInputs.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+      : []
+  const selectedMethods = Array.isArray(methodDecision?.selectedMethods)
+    ? methodDecision.selectedMethods.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).join(', ')
+    : formatSeismicContextValue(methodDecision?.primaryMethod, locale)
+  const directions = Array.isArray(asRecord(data.summary)?.directions)
+    ? (asRecord(data.summary)?.directions as unknown[]).filter((item): item is string => typeof item === 'string' && item.trim().length > 0).join(', ')
+    : ''
+  const sourceTrace = Array.isArray(data.sourceTrace)
+    ? data.sourceTrace
+    : Array.isArray(designBasis?.sourceTrace)
+      ? designBasis.sourceTrace
+      : []
+  const traceRows = sourceTrace
+    .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null && !Array.isArray(item))
+    .map((item) => ({
+      label: formatSeismicContextValue(item.field, locale),
+      value: formatSeismicContextValue(item.value, locale),
+      source: [
+        formatSeismicContextValue(item.sourceType, locale),
+        formatSeismicContextValue(item.source, locale),
+      ].filter((part) => part && part !== 'N/A').join(' / '),
+      note: typeof item.note === 'string' && item.note.trim() ? item.note.trim() : undefined,
+      assumed: item.assumed === true,
+    }))
+    .slice(0, 24)
+
+  const fallbackRows: SeismicContextRow[] = [
+    { label: t('analysisOverviewSeismicIntensity'), value: formatSeismicContextValue(designBasis?.intensity, locale) },
+    { label: t('analysisOverviewSeismicEarthquakeLevel'), value: formatSeismicContextValue(designBasis?.earthquakeLevel, locale) },
+    { label: t('analysisOverviewSeismicSiteCategory'), value: formatSeismicContextValue(designBasis?.siteCategory, locale) },
+    { label: t('analysisOverviewSeismicGrade'), value: formatSeismicContextValue(designBasis?.seismicGrade, locale), source: formatSeismicContextValue(designBasis?.seismicGradeSource, locale) },
+    { label: t('analysisOverviewSeismicRegularity'), value: formatSeismicContextValue(regularityAssessment?.classification, locale), source: formatSeismicContextValue(regularityAssessment?.source, locale) },
+    { label: t('analysisOverviewGroundMotionRequirement'), value: groundMotionRequirement ? formatSeismicContextValue(groundMotionRequirement, locale) : 'N/A' },
+  ].filter((row) => row.value !== 'N/A')
+
+  return {
+    status: (data.isPreliminary === true || designBasis?.isPreliminary === true || missingInputs.length > 0)
+      ? t('analysisOverviewSeismicPreliminary')
+      : '',
+    summaryRows: [
+      { label: t('analysisOverviewWorkflowInputMode'), value: formatWorkflowInputMode(data.workflowInputMode, t) },
+      { label: t('analysisOverviewSeismicMethods'), value: selectedMethods },
+      ...(directions ? [{ label: t('analysisOverviewSeismicDirections'), value: directions }] : []),
+      ...(missingInputs.length > 0 ? [{ label: t('analysisOverviewSeismicMissingInputs'), value: missingInputs.join(', ') }] : []),
+    ].filter((row) => row.value && row.value !== 'N/A'),
+    parameterRows: traceRows.length > 0 ? traceRows : fallbackRows,
+  }
+}
+
 function AnalysisPanel({
   result,
   modelVisualizationSnapshot,
@@ -1445,6 +2197,36 @@ function AnalysisPanel({
   const analysis = extractAnalysis(result)
   const stats = extractSummaryStats(analysis, t, locale)
   const engineInfo = extractEngineLabel(analysis, result, t)
+  const codeCheckOverview = extractCodeCheckOverview(result, locale)
+  const seismicContext = extractSeismicContext(result, t, locale)
+  const codeCheckSummaryNotApplicableText = codeCheckOverview?.summary?.notApplicable
+    ? ` · ${t('codeCheckSummaryNotApplicable').replace('{notApplicable}', codeCheckOverview.summary.notApplicable)}`
+    : ''
+  const codeCheckSummaryText = codeCheckOverview?.summary
+    ? `${t('codeCheckSummaryCounts')
+      .replace('{total}', codeCheckOverview.summary.total)
+      .replace('{passed}', codeCheckOverview.summary.passed)
+      .replace('{failed}', codeCheckOverview.summary.failed)
+      .replace('{warnings}', codeCheckOverview.summary.warnings)}${codeCheckSummaryNotApplicableText}`
+    : ''
+  const codeCheckGoverningText = codeCheckOverview?.governing
+    ? t('codeCheckSummaryGoverning')
+      .replace('{element}', codeCheckOverview.governing.element)
+      .replace('{check}', codeCheckOverview.governing.check)
+      .replace('{utilization}', codeCheckOverview.governing.utilization)
+    : ''
+  const codeCheckStatusLabel = codeCheckOverview?.summary?.status === 'failed'
+    ? t('codeCheckSummaryStatusFailed')
+    : codeCheckOverview?.summary?.status === 'warning'
+      ? t('codeCheckSummaryStatusWarning')
+      : codeCheckOverview?.summary?.status === 'passed'
+        ? t('codeCheckSummaryStatusPassed')
+        : ''
+  const codeCheckStatusClassName = codeCheckOverview?.summary?.status === 'failed'
+    ? 'border-rose-400/40 bg-rose-400/10 text-rose-700 dark:text-rose-200'
+    : codeCheckOverview?.summary?.status === 'warning'
+      ? 'border-amber-400/40 bg-amber-400/10 text-amber-800 dark:text-amber-200'
+      : 'border-emerald-400/40 bg-emerald-400/10 text-emerald-700 dark:text-emerald-200'
   const reportMarkdown = result?.report?.markdown?.trim()
   const reportSummary = result?.report?.summary?.trim()
   const reportPdfUrl = (result?.report as Record<string, unknown>)?.pdfUrl as string | undefined
@@ -1612,7 +2394,7 @@ function AnalysisPanel({
                   <MarkdownBody compact content={result.response || t('noNaturalLanguageSummary')} />
                 </div>
               </CardHeader>
-              {(stats.length > 0 || result.plan?.length) && (
+              {(stats.length > 0 || result.plan?.length || codeCheckOverview) && (
                 <CardContent className="space-y-4">
                   {engineInfo && (
                     <div className="rounded-2xl border border-cyan-300/30 bg-cyan-300/10 p-4 dark:border-cyan-200/20 dark:bg-cyan-300/5">
@@ -1641,12 +2423,66 @@ function AnalysisPanel({
                       ) : null}
                     </div>
                   )}
+                  {codeCheckOverview && (
+                    <div className="rounded-2xl border border-emerald-300/30 bg-emerald-300/10 p-4 dark:border-emerald-200/20 dark:bg-emerald-300/5">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-xs uppercase tracking-[0.18em] text-emerald-700 dark:text-emerald-200">{t('codeCheckSummaryTitle')}</div>
+                          {codeCheckSummaryText ? (
+                            <div className="mt-2 break-words text-base font-semibold text-foreground">{codeCheckSummaryText}</div>
+                          ) : null}
+                          {codeCheckGoverningText ? (
+                            <div className="mt-2 text-sm text-muted-foreground">{codeCheckGoverningText}</div>
+                          ) : null}
+                        </div>
+                        {codeCheckStatusLabel ? (
+                          <Badge className={codeCheckStatusClassName} variant="outline">
+                            {codeCheckStatusLabel}
+                          </Badge>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-4">
+                        <div className="mb-2 text-sm font-medium text-foreground">{t('codeCheckSummaryAttentionItems')}</div>
+                        {codeCheckOverview.attentionItems.length > 0 ? (
+                          <div className="space-y-2">
+                            {codeCheckOverview.attentionItems.map((item, index) => (
+                              <div key={`${index}-${item.elementId}-${item.check}-${item.item ?? ''}`} className="rounded-xl border border-border/70 bg-background/70 p-3 text-sm dark:border-white/10 dark:bg-white/5">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <Badge className="border-border/70 bg-background/70 text-muted-foreground dark:border-white/10 dark:bg-white/5" variant="outline">
+                                    {item.status}
+                                  </Badge>
+                                  <span className="font-medium text-foreground">
+                                    {item.scopeKind === 'global' ? t('codeCheckSummaryScopeLabel') : t('codeCheckSummaryElementLabel')} {item.elementId} / {item.check}
+                                  </span>
+                                </div>
+                                {item.item ? (
+                                  <div className="mt-1 text-sm text-foreground">{item.item}</div>
+                                ) : null}
+                                <div className="mt-1 text-xs text-muted-foreground">
+                                  {t('codeCheckSummaryUtilizationLabel')} {item.utilization}
+                                  {item.clause ? ` / ${t('codeCheckSummaryClauseLabel')} ${item.clause}` : ''}
+                                </div>
+                                {item.message ? (
+                                  <div className="mt-1 text-xs text-muted-foreground">{item.message}</div>
+                                ) : null}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="rounded-xl border border-border/70 bg-background/70 p-3 text-sm text-muted-foreground dark:border-white/10 dark:bg-white/5">
+                            {t('codeCheckSummaryNoAttention')}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                   {stats.length > 0 && (
                     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                       {stats.map((item) => (
                         <div key={item.label} className="rounded-2xl border border-border/70 bg-background/70 p-4 dark:border-white/10 dark:bg-white/5">
                           <div className="text-xs uppercase tracking-[0.18em] text-muted-foreground">{item.label}</div>
-                          <div className="mt-2 text-2xl font-semibold text-foreground">{item.value}</div>
+                          <div className="mt-2 break-words text-xl font-semibold leading-snug text-foreground">{item.value}</div>
                         </div>
                       ))}
                     </div>
@@ -1838,7 +2674,7 @@ function AnalysisPanel({
         )}
 
         {activeTab === 'context' && (
-          <div className="flex h-full flex-col">
+          <div className="flex h-full flex-col gap-4">
             <Card className="flex flex-1 flex-col border-border/70 bg-card/85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/50">
               <CardHeader className="shrink-0">
                 <CardTitle className="flex items-center gap-2 text-lg">
@@ -1848,6 +2684,62 @@ function AnalysisPanel({
               </CardHeader>
               <CardContent className="flex min-h-0 flex-1 flex-col gap-3">
                 <p className="shrink-0 text-xs leading-5 text-muted-foreground">{t('contextSectionModelHelp')}</p>
+                {seismicContext && (
+                  <details
+                    data-testid="seismic-context-details"
+                    className="shrink-0 rounded-xl border border-border/70 bg-background/70 px-3 py-2 dark:border-white/10 dark:bg-white/5"
+                  >
+                    <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-foreground [&::-webkit-details-marker]:hidden">
+                      <span className="flex min-w-0 items-center gap-2">
+                        <BrainCircuit className="h-4 w-4 shrink-0 text-cyan-600 dark:text-cyan-300" />
+                        <span className="truncate">{t('seismicContextTitle')}</span>
+                      </span>
+                      {seismicContext.status ? (
+                        <Badge variant="outline" className="shrink-0 border-amber-400/40 bg-amber-400/10 text-amber-800 dark:text-amber-200">
+                          {seismicContext.status}
+                        </Badge>
+                      ) : null}
+                    </summary>
+                    <div className="mt-3 space-y-3">
+                      <p className="text-xs leading-5 text-muted-foreground">{t('seismicContextHelp')}</p>
+                      {seismicContext.summaryRows.length > 0 && (
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          {seismicContext.summaryRows.map((row) => (
+                            <div key={`seismic-summary-${row.label}`} className="min-w-0 rounded-lg border border-border/50 bg-muted/25 px-3 py-2 dark:border-white/10 dark:bg-white/5">
+                              <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{row.label}</div>
+                              <div className="mt-1 break-words text-sm font-medium text-foreground">{row.value}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="space-y-2">
+                        {seismicContext.parameterRows.map((row) => (
+                          <div key={`seismic-param-${row.label}`} className="min-w-0 rounded-lg border border-border/50 bg-muted/20 px-3 py-2 text-xs dark:border-white/10 dark:bg-white/5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium text-foreground">{row.label}</span>
+                              {row.assumed ? (
+                                <Badge variant="outline" className="border-amber-400/40 bg-amber-400/10 text-[10px] text-amber-800 dark:text-amber-200">
+                                  {t('seismicContextAssumed')}
+                                </Badge>
+                              ) : null}
+                            </div>
+                            <div className="mt-1 break-words text-sm text-foreground">{row.value}</div>
+                            {row.source ? (
+                              <div className="mt-1 break-words text-muted-foreground">
+                                {t('seismicContextSource')}: {row.source}
+                              </div>
+                            ) : null}
+                            {row.note ? (
+                              <div className="mt-1 break-words text-muted-foreground">
+                                {t('seismicContextNote')}: {row.note}
+                              </div>
+                            ) : null}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </details>
+                )}
                 {modelVisualizationSnapshot && (
                   <Button
                     type="button"
@@ -3277,7 +4169,7 @@ export function AIConsole() {
         : hasExplicitSkillSelection
           ? []
           : fallbackDefaultSkillIds
-      const effectiveEnabledToolIds = selectedToolIds.length > 0
+      const baseEnabledToolIds = selectedToolIds.length > 0
         ? selectedToolIds
         : hasExplicitToolSelection
           ? []
@@ -3285,7 +4177,7 @@ export function AIConsole() {
       const contextPayload = {
         locale,
         skillIds: effectiveSkillIds,
-        enabledToolIds: effectiveEnabledToolIds,
+        enabledToolIds: baseEnabledToolIds,
         model: contextModel,
         modelFormat: contextModel ? 'structuremodel-v2' : undefined,
         engineId: undefined,
@@ -3770,7 +4662,7 @@ export function AIConsole() {
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".pdf,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.gif,.webp,.bmp,.dxf,.txt"
+        accept=".pdf,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.gif,.webp,.bmp,.dxf,.txt,.at2"
         aria-label={t('attachFile')}
         className="hidden"
         onChange={(e) => { handleFileSelect(e.target.files); e.target.value = '' }}
@@ -3858,17 +4750,20 @@ export function AIConsole() {
           )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {!isIdle && (
-            <Button
-              type="button"
-              variant="outline"
-              className="rounded-full text-xs"
-              onClick={() => setResultDialogOpen(true)}
-            >
-              <PanelRightOpen className="h-3.5 w-3.5" />
-              {t('showResults')}
-            </Button>
-          )}
+          <Button
+            type="button"
+            variant="outline"
+            className="rounded-full text-xs"
+            onClick={() => {
+              if (isIdle) {
+                setActivePanel('context')
+              }
+              setResultDialogOpen(true)
+            }}
+          >
+            <PanelRightOpen className="h-3.5 w-3.5" />
+            {isIdle ? t('contextTab') : t('showResults')}
+          </Button>
           {streamingSessions.get(conversationId)?.status === 'streaming' ? (
             <Button
               type="button"
@@ -4628,7 +5523,7 @@ export function AIConsole() {
       />
       <DialogShell
         open={resultDialogOpen}
-        title={t('resultPanelDialogTitle')}
+        title={activePanel === 'context' && !latestResult ? t('contextPanelLabel') : t('resultPanelDialogTitle')}
         closeLabel={t('closeResultPanel')}
         onClose={() => setResultDialogOpen(false)}
         className="max-w-7xl"

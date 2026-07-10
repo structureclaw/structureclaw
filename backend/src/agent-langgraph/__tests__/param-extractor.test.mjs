@@ -34,6 +34,36 @@ describe("param extractor", () => {
     expect(prompt).not.toContain("get_skill_parameter_info");
   });
 
+  test("includes structured semantic seismic workflow contract in extraction prompt", async () => {
+    const { buildParamExtractorPrompt } = await import("../../../dist/agent-langgraph/param-extractor.js");
+
+    const prompt = buildParamExtractorPrompt(
+      "zh",
+      { inferredType: "frame", storyCount: 3 },
+      {
+        ...beamPlugin,
+        id: "concrete-frame",
+        structureType: "frame",
+        markdownByStage: {
+          draft: "中国抗震设计意图输出 skillState.seismicWorkflow，不能用关键词或正则决定方法。",
+        },
+      },
+      "三层混凝土框架，按中国抗震做反应谱和时程分析，8度，第三组，III类场地",
+    );
+
+    expect(prompt).toContain('"seismicWorkflow"');
+    expect(prompt).toContain('"methodPreference": "auto|response_spectrum|time_history|pushover|elastic_plastic_time_history"');
+    expect(prompt).toContain('"groundMotionZonation"');
+    expect(prompt).toContain('"localCatalog"');
+    expect(prompt).toContain('"seismicMemberEvidence"');
+    expect(prompt).toContain('"strongShearWeakBending"');
+    expect(prompt).toContain('"steelSeismicDetailing"');
+    expect(prompt).toContain("基于整句语义输出 skillState.seismicWorkflow");
+    expect(prompt).toContain("不要用关键词或正则匹配决定 response_spectrum/time_history/pushover/elastic_plastic_time_history");
+    expect(prompt).toContain("不要根据城市名或自然语言自行编造烈度");
+    expect(prompt).toContain("不要由 LLM 判断条文通过或失败");
+  });
+
   test("omits serialized undefined checkpoint noise from existing draft state", async () => {
     const { buildParamExtractorPrompt } = await import("../../../dist/agent-langgraph/param-extractor.js");
 
@@ -187,6 +217,26 @@ describe("param extractor", () => {
         severity: "ambiguous",
         reason: "Negative load sign may represent uplift.",
       }],
+    });
+  });
+
+  test("preserves semantic seismic workflow from parsed skillState", async () => {
+    const { parseDraftPatchFromContent } = await import("../../../dist/agent-langgraph/param-extractor.js");
+    const seismicWorkflow = {
+      methodPreference: "time_history",
+      designBasis: {
+        siteSeismic: { intensity: 8, designGroup: "3", siteCategory: "III" },
+      },
+      groundMotionSet: { requiredCount: 3 },
+      directions: ["x", "y"],
+    };
+
+    expect(parseDraftPatchFromContent(JSON.stringify({
+      draftPatch: { storyCount: 3 },
+      skillState: { seismicWorkflow },
+    }))).toEqual({
+      storyCount: 3,
+      skillState: { seismicWorkflow },
     });
   });
 

@@ -9,6 +9,7 @@ This directory is the documentation hub for StructureClaw 1.0. Start with the ha
 - [Testing taxonomy](./testing.md): test categories, runner ownership, CI workflow boundaries, and overlap rules
 - [Agent architecture](./agent-architecture.md): current 1.0.0 architecture for the LangGraph agent, skills, tools, and orchestration
 - [Skill runtime status](./skill-runtime-status.md): current implementation maturity for each skill domain
+- [China seismic workflow design](./china-seismic-workflow-design.md): planning document for LLM-understood, OpenSees-backed China seismic analysis
 
 ## Engine And Schema Docs
 

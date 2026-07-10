@@ -83,8 +83,8 @@ describe('buildDefaultReportNarrative', () => {
     expect(report).toContain('Code-check pass rate: 0.97');
 
     // Clause traceability rows
-    expect(report).toContain('Element E1 / shear / GB50017-2017 4.1.2 / utilization 0.85 / pass');
-    expect(report).toContain('Element E2 / axial / GB50017-2017 5.1.1 / utilization 0.72 / pass');
+    expect(report).toContain('Scope E1 / shear / GB50017-2017 4.1.2 / utilization 0.85 / pass');
+    expect(report).toContain('Scope E2 / axial / GB50017-2017 5.1.1 / utilization 0.72 / pass');
 
     // Governing cases
     expect(report).toContain('Governing displacement case: DL1');
@@ -154,7 +154,7 @@ describe('buildDefaultReportNarrative', () => {
     );
 
     expect(report).toContain('No clause traceability data');
-    expect(report).not.toContain('Element E1');
+    expect(report).not.toContain('Scope E1');
   });
 
   it('renders no-clause-traceability message in Chinese when array is empty', () => {
@@ -175,7 +175,7 @@ describe('buildDefaultReportNarrative', () => {
       }),
     );
 
-    expect(report).toContain('Element unknown / unknown /  / utilization N/A / unknown');
+    expect(report).toContain('Scope unknown / unknown /  / utilization N/A / N/A');
   });
 
   // ---------------------------------------------------------------------------
@@ -195,11 +195,11 @@ describe('buildDefaultReportNarrative', () => {
     );
 
     // Rows 0–7 should appear
-    expect(report).toContain('Element E0 ');
-    expect(report).toContain('Element E7 ');
+    expect(report).toContain('Scope E0 ');
+    expect(report).toContain('Scope E7 ');
     // Rows 8–11 should NOT appear
-    expect(report).not.toContain('Element E8 ');
-    expect(report).not.toContain('Element E11 ');
+    expect(report).not.toContain('Scope E8 ');
+    expect(report).not.toContain('Scope E11 ');
   });
 
   // ---------------------------------------------------------------------------
@@ -389,7 +389,7 @@ describe('buildDefaultReportNarrative', () => {
       }),
     );
 
-    expect(report).toContain('构件 B1 / bending / 4.2.1 / 利用率 0.9 / pass');
+    expect(report).toContain('范围 B1 / bending / 4.2.1 / 利用率 0.9 / 通过');
   });
 
   // ---------------------------------------------------------------------------

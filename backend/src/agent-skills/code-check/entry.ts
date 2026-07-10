@@ -4,6 +4,7 @@ import {
 import type { CodeCheckDomainInput } from './types.js';
 import type { CodeCheckClient } from './rule.js';
 import type { ExecutionRequestOptions } from '../analysis/types.js';
+import { withGB50011CodeCheckMetadata } from './gb50011/metadata.js';
 
 export type { CodeCheckDomainInput } from './types.js';
 export {
@@ -52,13 +53,74 @@ function extractUtilizationByElement(source: unknown): Record<string, unknown> {
 }
 
 function extractAnalysisSummary(analysis: unknown): Record<string, unknown> {
-  const data = asRecord(analysis);
+  const root = asRecord(analysis);
+  const nestedData = asRecord(root['data']);
+  const data = Object.keys(nestedData).length > 0 ? nestedData : root;
   return {
-    analysisType: data['analysis_type'],
-    success: data['success'],
-    errorCode: data['error_code'],
-    message: data['message'],
+    analysisType: root['analysis_type'],
+    success: root['success'],
+    errorCode: root['error_code'],
+    message: root['message'],
+    analysisMode: data['analysisMode'],
+    workflowInputMode: data['workflowInputMode'] ?? root['workflowInputMode'],
+    summary: data['summary'],
+    envelope: data['envelope'],
+    modelSummary: data['modelSummary'],
+    designBasis: data['designBasis'],
+    methodDecision: data['methodDecision'],
+    regularityAssessment: data['regularityAssessment'],
+    specialSystemReview: data['specialSystemReview'],
+    overLimitReview: data['overLimitReview'],
+    specialReview: data['specialReview'],
+    specialSeismicReview: data['specialSeismicReview'],
+    overLimitSpecialReview: data['overLimitSpecialReview'],
+    responseSpectrum: data['responseSpectrum'],
+    timeHistory: data['timeHistory'],
+    elasticPlasticTimeHistory: data['elasticPlasticTimeHistory'],
+    seismicDesignActions: data['seismicDesignActions'],
+    gravityDesignActions: data['gravityDesignActions'],
+    memberDesignActionCombinations: data['memberDesignActionCombinations'],
+    verticalSeismic: data['verticalSeismic'],
+    groundMotionRequirement: data['groundMotionRequirement'],
+    directionResults: data['directionResults'],
+    pushover: data['pushover'],
+    missingInputs: data['missingInputs'],
+    missingCapabilities: data['missingCapabilities'],
+    capabilityAssessment: data['capabilityAssessment'],
+    isPreliminary: data['isPreliminary'],
+    warnings: data['warnings'],
   };
+}
+
+function isGB50011DesignCode(code: string): boolean {
+  const normalized = code.trim().toUpperCase().replace(/\s+/g, '');
+  return normalized === 'GB50011'
+    || normalized === 'GB50011-2010'
+    || normalized === 'GBT50011'
+    || normalized === 'GB/T50011'
+    || normalized === 'GBT50011-2010'
+    || normalized === 'GB/T50011-2010'
+    || normalized === 'GBT50011-2010-2024'
+    || normalized === 'GB/T50011-2010-2024'
+    || normalized === 'GB55002+GBT50011'
+    || normalized === 'GB55002+GB/T50011';
+}
+
+function hasSeismicAnalysisResult(analysis: unknown): boolean {
+  const root = asRecord(analysis);
+  const nestedData = asRecord(root['data']);
+  const data = Object.keys(nestedData).length > 0 ? nestedData : root;
+  return data['analysisMode'] === 'opensees_china_seismic_workflow'
+    || Boolean(data['designBasis'] && data['methodDecision'] && data['envelope']);
+}
+
+function appendGlobalSeismicElement(elements: string[], designCode: string, analysis: unknown): string[] {
+  if (!isGB50011DesignCode(designCode) || !hasSeismicAnalysisResult(analysis)) {
+    return elements;
+  }
+  return elements.includes('__global_seismic__')
+    ? elements
+    : ['__global_seismic__', ...elements];
 }
 
 function extractElementContextById(model: Record<string, unknown> | undefined): Record<string, unknown> {
@@ -96,6 +158,9 @@ function extractElementContextById(model: Record<string, unknown> | undefined): 
     if (!id) {
       return acc;
     }
+    const metadata = asRecord(element['metadata']);
+    const extra = asRecord(element['extra']);
+    const structuredMemberSources = [element, metadata, extra];
     const materialId = typeof element['material'] === 'string' ? element['material'] : undefined;
     const sectionId = typeof element['section'] === 'string' ? element['section'] : undefined;
 
@@ -113,6 +178,29 @@ function extractElementContextById(model: Record<string, unknown> | undefined): 
       concreteGrade: element['concrete_grade'],
       steelGrade: element['steel_grade'],
       rebarGrade: element['rebar_grade'],
+      seismicGrade: element['seismic_grade'],
+      storyHeightMm: pickFirstDefined(structuredMemberSources, ['storyHeightMm', 'floorHeightMm', 'heightBetweenFloorsMm']),
+      storyHeight: pickFirstDefined(structuredMemberSources, ['storyHeight', 'floorHeight', 'heightBetweenFloors']),
+      reinforcement: pickFirstDefined(structuredMemberSources, ['reinforcement']),
+      shearWall: pickFirstDefined(structuredMemberSources, ['shearWall']),
+      seismicWall: pickFirstDefined(structuredMemberSources, ['seismicWall']),
+      wallData: pickFirstDefined(structuredMemberSources, ['wallData']),
+      shearWallData: pickFirstDefined(structuredMemberSources, ['shearWallData']),
+      boundaryElement: pickFirstDefined(structuredMemberSources, ['boundaryElement', 'boundaryMember', 'edgeMember']),
+      boundaryElements: pickFirstDefined(structuredMemberSources, ['boundaryElements', 'boundaryMembers', 'edgeMembers']),
+      seismicCapacity: pickFirstDefined(structuredMemberSources, ['seismicCapacity']),
+      capacityDesign: pickFirstDefined(structuredMemberSources, ['capacityDesign']),
+      strongShearWeakBending: pickFirstDefined(structuredMemberSources, ['strongShearWeakBending']),
+      shearCompression: pickFirstDefined(structuredMemberSources, ['shearCompression', 'shearCompressionLimit', 'shearCompressionCheck']),
+      jointCore: pickFirstDefined(structuredMemberSources, ['jointCore', 'jointCoreStirrup', 'jointCoreStirrups']),
+      jointData: pickFirstDefined(structuredMemberSources, ['jointData', 'beamJointData']),
+      flatBeam: pickFirstDefined(structuredMemberSources, ['flatBeam', 'wideBeam']),
+      columnPosition: pickFirstDefined(structuredMemberSources, ['columnPosition']),
+      columnCategory: pickFirstDefined(structuredMemberSources, ['columnCategory']),
+      steelSeismicDetailing: pickFirstDefined(structuredMemberSources, ['steelSeismicDetailing', 'steelSeismicChecks']),
+      steelDetailing: pickFirstDefined(structuredMemberSources, ['steelDetailing']),
+      seismicDetailing: pickFirstDefined(structuredMemberSources, ['seismicDetailing', 'seismicDetailingChecks']),
+      extra: element['extra'],
       metadata: element['metadata'],
     };
     return acc;
@@ -188,6 +276,21 @@ function sectionShapeDimensionToMm(value: unknown, sourceUnit: 'm' | 'mm'): numb
   return sourceUnit === 'mm' ? numeric : numeric * 1000;
 }
 
+function hasRecordKeys(value: Record<string, unknown>): boolean {
+  return Object.keys(value).length > 0;
+}
+
+function pickFirstDefined(sources: Array<Record<string, unknown>>, keys: string[]): unknown {
+  for (const source of sources) {
+    for (const key of keys) {
+      if (source[key] !== undefined) {
+        return source[key];
+      }
+    }
+  }
+  return undefined;
+}
+
 /**
  * 从模型和分析结果中提取 elementData，供 Python code-check 层消费。
  *
@@ -257,8 +360,10 @@ function extractElementDataForCodeCheck(
     // section properties
     const sectionId = String(elem['section'] ?? '');
     const sectionObj = sectionById[sectionId];
-    const sectionProps = (sectionObj?.['properties'] as Record<string, unknown>) ?? {};
-    const sectionShape = sectionObj?.['shape'] as Record<string, unknown> | undefined;
+    const sectionProps = asRecord(sectionObj?.['properties']);
+    const sectionExtra = asRecord(sectionObj?.['extra']);
+    const sectionShapeRecord = asRecord(sectionObj?.['shape']);
+    const sectionShape = hasRecordKeys(sectionShapeRecord) ? sectionShapeRecord : undefined;
 
     // material properties
     const materialId = String(elem['material'] ?? '');
@@ -362,6 +467,77 @@ function extractElementDataForCodeCheck(
     // design parameters from element metadata (phi, lambda limits, etc.)
     const elemMetadata = (typeof elem['metadata'] === 'object' && elem['metadata'] !== null
       ? elem['metadata'] as Record<string, unknown> : {}) as Record<string, unknown>;
+    const elemExtra = asRecord(elem['extra']);
+    const structuralSources = [
+      elem,
+      elemMetadata,
+      elemExtra,
+      sectionObj ?? {},
+      sectionExtra,
+      sectionProps,
+      sectionShape ?? {},
+    ];
+    const wallThickness = pickFirstDefined(structuralSources, [
+      'thicknessMm',
+      'wallThicknessMm',
+      'tMm',
+      'thickness',
+      'wallThickness',
+      't',
+      'T',
+    ]);
+    const wallLength = pickFirstDefined(structuralSources, [
+      'wallLengthMm',
+      'wallLengthM',
+      'wallLength',
+      'wall_length',
+      'length',
+      'L',
+    ]);
+    const sectionReinforcement = pickFirstDefined([sectionObj ?? {}, sectionExtra, sectionProps], ['reinforcement']);
+    const reinforcement = pickFirstDefined(
+      [elem, elemMetadata, elemExtra, sectionObj ?? {}, sectionExtra, sectionProps],
+      ['reinforcement'],
+    );
+    const shearWall = pickFirstDefined(structuralSources, ['shearWall']);
+    const seismicWall = pickFirstDefined(structuralSources, ['seismicWall']);
+    const wallData = pickFirstDefined(structuralSources, ['wallData']);
+    const shearWallData = pickFirstDefined(structuralSources, ['shearWallData']);
+    const boundaryElement = pickFirstDefined(structuralSources, ['boundaryElement', 'boundaryMember', 'edgeMember']);
+    const boundaryElements = pickFirstDefined(structuralSources, ['boundaryElements', 'boundaryMembers', 'edgeMembers']);
+    const storyHeightMm = pickFirstDefined(structuralSources, ['storyHeightMm', 'floorHeightMm', 'heightBetweenFloorsMm']);
+    const storyHeight = pickFirstDefined(structuralSources, ['storyHeight', 'floorHeight', 'heightBetweenFloors']);
+    const seismicCapacity = pickFirstDefined(structuralSources, ['seismicCapacity']);
+    const capacityDesign = pickFirstDefined(structuralSources, ['capacityDesign']);
+    const strongShearWeakBending = pickFirstDefined(structuralSources, [
+      'strongShearWeakBending',
+      'strongShearWeakFlexure',
+      'strongShearWeakMoment',
+      'shearBendingCapacityDesign',
+      'capacityDesignShear',
+    ]);
+    const shearCompression = pickFirstDefined(structuralSources, [
+      'shearCompression',
+      'shearCompressionLimit',
+      'shearCompressionCheck',
+      'seismicShearCompression',
+      'seismicShearCompressionLimit',
+      'seismicShearCompressionCheck',
+    ]);
+    const jointCore = pickFirstDefined(structuralSources, ['jointCore', 'jointCoreStirrup', 'jointCoreStirrups', 'coreJoint', 'beamColumnJoint']);
+    const jointData = pickFirstDefined(structuralSources, ['jointData', 'beamJointData', 'connection']);
+    const flatBeam = pickFirstDefined(structuralSources, ['flatBeam', 'wideBeam']);
+    const columnPosition = pickFirstDefined(structuralSources, ['columnPosition']);
+    const columnCategory = pickFirstDefined(structuralSources, ['columnCategory']);
+    const steelSeismicDetailing = pickFirstDefined(structuralSources, [
+      'steelSeismicDetailing',
+      'steelSeismicChecks',
+      'steelDetailing',
+      'seismicDetailing',
+      'seismicDetailingChecks',
+    ]);
+    const steelSlenderness = pickFirstDefined(structuralSources, ['slenderness']);
+    const steelWidthThickness = pickFirstDefined(structuralSources, ['widthThickness']);
 
     elementData[elemId] = {
       type: elem['type'],
@@ -377,6 +553,12 @@ function extractElementDataForCodeCheck(
         ...(derivedAs_mm2 > 0 ? { As: derivedAs_mm2 } : {}),
         ...(sectionObj?.['width'] !== undefined ? { width: sectionObj?.['width'] } : {}),
         ...(sectionObj?.['height'] !== undefined ? { height: sectionObj?.['height'] } : {}),
+        ...(wallThickness !== undefined ? { wallThickness } : {}),
+        ...(wallLength !== undefined ? { wallLength } : {}),
+        ...(sectionObj?.['thickness'] !== undefined ? { thickness: sectionObj?.['thickness'] } : {}),
+        ...(sectionReinforcement !== undefined ? { reinforcement: sectionReinforcement } : {}),
+        ...(sectionProps && hasRecordKeys(sectionProps) ? { properties: sectionProps } : {}),
+        ...(sectionExtra && hasRecordKeys(sectionExtra) ? { extra: sectionExtra } : {}),
         ...(typeof sectionProps['G'] === 'number' ? { G: sectionProps['G'] } : {}),
         ...(sectionShape ? { shape: sectionShape } : {}),
       },
@@ -396,7 +578,30 @@ function extractElementDataForCodeCheck(
       ...(typeof elem['lambdaLimit'] === 'number' ? { lambdaLimit: elem['lambdaLimit'] } : {}),
       ...(typeof elem['deflectionLimitN'] === 'number' ? { deflectionLimitN: elem['deflectionLimitN'] } : {}),
       ...(typeof elem['deflection'] === 'number' ? { deflection: elem['deflection'] } : {}),
-    // from metadata — steel design params
+      ...(elem['seismic_grade'] !== undefined ? { seismicGrade: elem['seismic_grade'] } : {}),
+      ...(storyHeightMm !== undefined ? { storyHeightMm } : {}),
+      ...(storyHeight !== undefined ? { storyHeight } : {}),
+      ...(reinforcement !== undefined ? { reinforcement } : {}),
+      ...(shearWall !== undefined ? { shearWall } : {}),
+      ...(seismicWall !== undefined ? { seismicWall } : {}),
+      ...(wallData !== undefined ? { wallData } : {}),
+      ...(shearWallData !== undefined ? { shearWallData } : {}),
+      ...(boundaryElement !== undefined ? { boundaryElement } : {}),
+      ...(boundaryElements !== undefined ? { boundaryElements } : {}),
+      ...(seismicCapacity !== undefined ? { seismicCapacity } : {}),
+      ...(capacityDesign !== undefined ? { capacityDesign } : {}),
+      ...(strongShearWeakBending !== undefined ? { strongShearWeakBending } : {}),
+      ...(shearCompression !== undefined ? { shearCompression } : {}),
+      ...(jointCore !== undefined ? { jointCore } : {}),
+      ...(jointData !== undefined ? { jointData } : {}),
+      ...(flatBeam !== undefined ? { flatBeam } : {}),
+      ...(columnPosition !== undefined ? { columnPosition } : {}),
+      ...(columnCategory !== undefined ? { columnCategory } : {}),
+      ...(steelSeismicDetailing !== undefined ? { steelSeismicDetailing } : {}),
+      ...(steelSlenderness !== undefined ? { slenderness: steelSlenderness } : {}),
+      ...(steelWidthThickness !== undefined ? { widthThickness: steelWidthThickness } : {}),
+      ...(hasRecordKeys(elemExtra) ? { extra: elemExtra } : {}),
+      // from metadata — steel design params
     ...(typeof elemMetadata['phi'] === 'number' ? { phi: elemMetadata['phi'] } : {}),
     ...(typeof elemMetadata['phi_b'] === 'number' ? { phi_b: elemMetadata['phi_b'] } : {}),
     ...(typeof elemMetadata['phi_axial'] === 'number' ? { phi_axial: elemMetadata['phi_axial'] } : {}),
@@ -435,17 +640,22 @@ export function buildCodeCheckInput(options: {
   // elementData: 合并 OpenSees 内力 + 模型截面/材料, 供 Python code-check 层真算
   const elementData = extractElementDataForCodeCheck(options.model, options.analysis);
 
+  const elements = options.codeCheckElements?.length ? options.codeCheckElements : extractElementIds(options.model);
+  const context: CodeCheckDomainInput['context'] = {
+    analysisSummary: extractAnalysisSummary(options.analysis),
+    utilizationByElement,
+    elementContextById: extractElementContextById(options.model),
+    modelSummary: extractModelSummary(options.model),
+    elementData,
+  };
+
   return {
     modelId: options.traceId,
     code: options.designCode,
-    elements: options.codeCheckElements?.length ? options.codeCheckElements : extractElementIds(options.model),
-    context: {
-      analysisSummary: extractAnalysisSummary(options.analysis),
-      utilizationByElement,
-      elementContextById: extractElementContextById(options.model),
-      modelSummary: extractModelSummary(options.model),
-      elementData,
-    },
+    elements: appendGlobalSeismicElement(elements, options.designCode, options.analysis),
+    context: isGB50011DesignCode(options.designCode)
+      ? withGB50011CodeCheckMetadata(context)
+      : context,
   };
 }
 

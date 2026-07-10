@@ -9,6 +9,7 @@
 - [测试分类](./testing_CN.md)：测试分类、runner 归属、CI workflow 边界和重叠规则
 - [Agent 架构](./agent-architecture_CN.md)：LangGraph agent、skill、tool 与编排层的 1.0.0 当前架构
 - [Skill 运行时状态](./skill-runtime-status_CN.md)：各 skill domain 当前实现成熟度
+- [中国抗震全流程设计](./china-seismic-workflow-design_CN.md)：基于 LLM 语义理解和 OpenSees 的中国抗震分析规划文档
 
 ## 引擎与 Schema 文档
 

@@ -2,7 +2,15 @@ import { prisma } from '../utils/database.js';
 import { cache } from '../utils/cache.js';
 import { ensureConversationId } from '../utils/demo-conversation.js';
 import { AnalysisExecutionService } from './analysis-execution.js';
-import { CodeCheckExecutionService } from './code-check-execution.js';
+import { CodeCheckExecutionService, createLocalCodeCheckClient } from './code-check-execution.js';
+import {
+  buildCodeCheckInput,
+  executeCodeCheckDomain,
+} from '../agent-skills/code-check/entry.js';
+import { resolveCodeCheckRule } from '../agent-skills/code-check/registry.js';
+import { buildReportDomainArtifacts } from '../agent-skills/report-export/entry.js';
+import { buildDefaultReportNarrative } from '../agent-runtime/report-template.js';
+import type { AppLocale } from './locale.js';
 
 export interface CreateModelParams {
   name: string;
@@ -19,6 +27,169 @@ export interface CreateAnalysisParams {
   modelId: string;
   parameters: any;
   engineId?: string;
+}
+
+const DEFAULT_CHINA_SEISMIC_CODE = 'GB/T 50011-2010-2024';
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+}
+
+function nonEmptyRecord(value: unknown): Record<string, unknown> | undefined {
+  const record = asRecord(value);
+  return Object.keys(record).length > 0 ? record : undefined;
+}
+
+function codeCheckPayload(codeCheck: unknown): Record<string, unknown> {
+  const record = asRecord(codeCheck);
+  const data = asRecord(record.data);
+  return Object.keys(data).length > 0 ? data : record;
+}
+
+function codeCheckSummary(codeCheck: unknown): Record<string, unknown> | undefined {
+  return nonEmptyRecord(codeCheckPayload(codeCheck).summary);
+}
+
+function formatDirectCodeCheckSummaryText(summary: Record<string, unknown> | undefined, locale: AppLocale): string {
+  if (!summary) {
+    return locale === 'zh' ? '未执行规范校核' : 'No code checks were executed';
+  }
+  const total = String(summary.total ?? 0);
+  const passed = String(summary.passed ?? 0);
+  const failed = String(summary.failed ?? 0);
+  const warnings = String(summary.warnings ?? 0);
+  const notApplicable = summary.notApplicable ?? summary.not_applicable;
+  const notApplicableText = notApplicable !== undefined && notApplicable !== null
+    ? (locale === 'zh'
+      ? `，不适用/资料不足 ${String(notApplicable)}`
+      : `, not applicable/unavailable ${String(notApplicable)}`)
+    : '';
+
+  return locale === 'zh'
+    ? `校核通过 ${passed} / ${total}，失败 ${failed}，警告 ${warnings}${notApplicableText}`
+    : `Code checks passed ${passed} / ${total}, failed ${failed}, warnings ${warnings}${notApplicableText}`;
+}
+
+function directReportLocale(parameters: Record<string, unknown>): AppLocale {
+  return parameters.locale === 'en' ? 'en' : 'zh';
+}
+
+export function buildDirectSeismicReport(options: {
+  analysisName: string;
+  analysisType: string;
+  analysisResults: Record<string, unknown>;
+  codeCheck: unknown;
+  parameters: Record<string, unknown>;
+}): { summary: string; json: Record<string, unknown>; markdown: string } {
+  const locale = directReportLocale(options.parameters);
+  const analysisSuccess = Boolean(options.analysisResults.success);
+  const codeCheckText = formatDirectCodeCheckSummaryText(codeCheckSummary(options.codeCheck), locale);
+  const message = typeof options.parameters.message === 'string' && options.parameters.message.trim()
+    ? options.parameters.message.trim()
+    : typeof options.parameters.intent === 'string' && options.parameters.intent.trim()
+      ? options.parameters.intent.trim()
+      : locale === 'zh'
+        ? `直接分析任务：${options.analysisName}`
+        : `Direct analysis task: ${options.analysisName}`;
+  const summary = locale === 'zh'
+    ? `分析类型 ${options.analysisType}，分析${analysisSuccess ? '成功' : '失败'}，${codeCheckText}。`
+    : `Analysis type ${options.analysisType}; analysis ${analysisSuccess ? 'succeeded' : 'failed'}; ${codeCheckText}.`;
+  const {
+    keyMetrics,
+    clauseTraceability,
+    controllingCases,
+    visualizationHints,
+  } = buildReportDomainArtifacts({
+    designBasis: undefined,
+    normalizedModel: undefined,
+    postprocessedResult: options.analysisResults,
+    codeCheckResult: options.codeCheck,
+  });
+  const jsonReport: Record<string, unknown> = {
+    reportSchemaVersion: '1.0.0',
+    intent: message,
+    analysisType: options.analysisType,
+    summary,
+    keyMetrics,
+    clauseTraceability,
+    controllingCases,
+    visualizationHints,
+    analysis: options.analysisResults,
+    codeCheck: options.codeCheck,
+    generatedAt: new Date().toISOString(),
+    meta: {
+      reportSkillId: 'report-export-builtin',
+      reportSource: 'direct-analysis-api',
+    },
+  };
+  const markdown = buildDefaultReportNarrative({
+    message,
+    analysisType: 'seismic',
+    analysisSuccess,
+    codeCheckText,
+    summary,
+    keyMetrics,
+    clauseTraceability,
+    controllingCases,
+    visualizationHints,
+    analysis: options.analysisResults,
+    codeCheck: options.codeCheck,
+    locale,
+  });
+
+  return {
+    summary,
+    json: jsonReport,
+    markdown,
+  };
+}
+
+export function shouldRunDirectSeismicCodeCheck(
+  analysisType: string,
+  parameters: unknown,
+): boolean {
+  const params = asRecord(parameters);
+  return analysisType === 'seismic'
+    && params.autoCodeCheck !== false
+    && Object.keys(asRecord(params.seismicWorkflow)).length > 0;
+}
+
+export function buildDirectAnalysisModelForCodeCheck(model: {
+  nodes: unknown;
+  elements: unknown;
+  materials: unknown;
+  sections: unknown;
+}): Record<string, unknown> {
+  return {
+    schemaVersion: '2.0.0',
+    schema_version: '2.0.0',
+    nodes: Array.isArray(model.nodes) ? model.nodes : [],
+    elements: Array.isArray(model.elements) ? model.elements : [],
+    materials: Array.isArray(model.materials) ? model.materials : [],
+    sections: Array.isArray(model.sections) ? model.sections : [],
+    loadCases: [],
+    loadCombinations: [],
+  };
+}
+
+export function resolveDirectChinaSeismicDesignCode(parameters: Record<string, unknown>): string {
+  const designCode = typeof parameters.designCode === 'string' && parameters.designCode.trim()
+    ? parameters.designCode.trim()
+    : DEFAULT_CHINA_SEISMIC_CODE;
+  try {
+    const rule = resolveCodeCheckRule(designCode);
+    if (rule.skillId === 'code-check-gb50011') {
+      return designCode;
+    }
+  } catch {
+    // Fall through to the explicit China seismic configuration error below.
+  }
+  throw new Error(
+    `China seismic direct analysis requires a GB50011-compatible designCode (${DEFAULT_CHINA_SEISMIC_CODE}); received ${designCode}. `
+    + `中国抗震直接分析必须使用兼容 GB50011 的设计规范（${DEFAULT_CHINA_SEISMIC_CODE}）。`,
+  );
 }
 
 export class AnalysisService {
@@ -128,6 +299,31 @@ export class AnalysisService {
         const message = results.message || 'Analysis execution failed';
         throw new Error(`[${errorCode}] ${message}`);
       }
+      const parameters = asRecord(analysis.parameters);
+      const shouldRunSeismicCodeCheck = shouldRunDirectSeismicCodeCheck(analysis.type, parameters);
+      const analysisResults = asRecord(results);
+      let finalResults: Record<string, unknown> = shouldRunSeismicCodeCheck
+        ? analysisResults
+        : (results as Record<string, unknown>);
+      if (shouldRunSeismicCodeCheck) {
+        const codeCheck = await this.runDirectSeismicCodeCheck({
+          analysisId,
+          model: analysis.model,
+          analysisResults,
+          parameters,
+        });
+        finalResults = {
+          ...analysisResults,
+          codeCheck,
+          report: buildDirectSeismicReport({
+            analysisName: analysis.name,
+            analysisType: analysis.type,
+            analysisResults,
+            codeCheck,
+            parameters,
+          }),
+        };
+      }
 
       // 保存结果
       const updatedAnalysis = await prisma.analysis.update({
@@ -135,7 +331,7 @@ export class AnalysisService {
         data: {
           status: 'completed',
           completedAt: new Date(),
-          results: results as any,
+          results: finalResults as any,
         },
       });
 
@@ -152,6 +348,32 @@ export class AnalysisService {
 
       throw error;
     }
+  }
+
+  private async runDirectSeismicCodeCheck(options: {
+    analysisId: string;
+    model: {
+      nodes: unknown;
+      elements: unknown;
+      materials: unknown;
+      sections: unknown;
+    };
+    analysisResults: Record<string, unknown>;
+    parameters: Record<string, unknown>;
+  }): Promise<unknown> {
+    const designCode = resolveDirectChinaSeismicDesignCode(options.parameters);
+    const model = buildDirectAnalysisModelForCodeCheck(options.model);
+    const input = buildCodeCheckInput({
+      traceId: options.analysisId,
+      designCode,
+      model,
+      analysis: options.analysisResults,
+      analysisParameters: options.parameters,
+    });
+    return executeCodeCheckDomain(
+      createLocalCodeCheckClient(this.codeCheckExecutionService),
+      input,
+    );
   }
 
   // 获取分析结果
