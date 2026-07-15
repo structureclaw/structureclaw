@@ -48,6 +48,7 @@ backend/uploads/*
 .codex
 
 # Local test artifacts
+.tmp/
 tests/.artifacts/
 .structureclaw/
 
