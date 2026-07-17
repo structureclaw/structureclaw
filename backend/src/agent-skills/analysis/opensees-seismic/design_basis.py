@@ -36,6 +36,15 @@ LATEST_CODE_BASIS = [
         "effectiveDate": "2016-06-01",
         "lastReviewDate": "2021-12-31",
         "lastReviewConclusion": "continue_valid",
+        "amendments": [
+            {
+                "no": "No.1",
+                "nameZh": "《GB 18306-2015〈中国地震动参数区划图〉国家标准第1号修改单》",
+                "nameEn": "No.1 amendment to GB 18306-2015 Seismic ground motion parameters zonation map of China",
+                "status": "effective",
+                "effectiveDate": "2026-02-27",
+            },
+        ],
         "revisionPlan": {
             "planNo": "20260055-Q-419",
             "status": "drafting",

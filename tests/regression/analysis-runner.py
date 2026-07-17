@@ -543,6 +543,9 @@ def validate_seismic_analyze_contract():
     gb18306_basis = next((item for item in data["designBasis"].get("codeBasis", []) if item.get("code") == "GB 18306-2015"), {})
     assert_true(gb18306_basis.get("standardStatus") == "current", f"Missing GB18306 current status: {gb18306_basis}")
     assert_true(gb18306_basis.get("lastReviewConclusion") == "continue_valid", f"Missing GB18306 review conclusion: {gb18306_basis}")
+    amendment = next((item for item in gb18306_basis.get("amendments", []) if item.get("status") == "effective"), {})
+    assert_true(amendment.get("no") == "No.1", f"Missing GB18306 No.1 amendment trace: {gb18306_basis}")
+    assert_true(amendment.get("effectiveDate") == "2026-02-27", f"Unexpected GB18306 amendment date: {gb18306_basis}")
     revision_plan = gb18306_basis.get("revisionPlan", {})
     assert_true(revision_plan.get("planNo") == "20260055-Q-419", f"Missing GB18306 revision plan trace: {gb18306_basis}")
     assert_true(revision_plan.get("status") == "drafting", f"Unexpected GB18306 revision plan status: {gb18306_basis}")
@@ -2325,6 +2328,11 @@ def validate_gb50011_seismic_code_check_contract():
                             "standardStatus": "current",
                             "lastReviewDate": "2021-12-31",
                             "lastReviewConclusion": "continue_valid",
+                            "amendments": [{
+                                "no": "No.1",
+                                "status": "effective",
+                                "effectiveDate": "2026-02-27",
+                            }],
                             "revisionPlan": {
                                 "planNo": "20260055-Q-419",
                                 "status": "drafting",
@@ -2615,6 +2623,7 @@ def validate_gb50011_seismic_code_check_contract():
     gb18306_item = next(item for group in detail["checks"] for item in group["items"] if item["item"] == "GB 18306标准状态")
     assert_true(gb18306_item["status"] == "pass", f"Expected GB18306 standard-status pass: {gb18306_item}")
     assert_true(gb18306_item["inputs"].get("standardStatus") == "current", f"Missing GB18306 current status trace: {gb18306_item}")
+    assert_true(gb18306_item["inputs"].get("effectiveAmendment", {}).get("effectiveDate") == "2026-02-27", f"Missing GB18306 effective amendment trace: {gb18306_item}")
     assert_true(gb18306_item["inputs"].get("revisionPlan", {}).get("planNo") == "20260055-Q-419", f"Missing GB18306 revision-plan trace: {gb18306_item}")
     seismic_grade_item = next(item for group in detail["checks"] for item in group["items"] if item["item"] == "抗震等级结构化依据")
     assert_true(seismic_grade_item["status"] == "pass", f"Expected seismic-grade design-basis pass: {seismic_grade_item}")

@@ -24,7 +24,25 @@ from regularity import assess_regularity  # noqa: E402
 from result_adapter import build_pushover_seismic_result, build_seismic_result  # noqa: E402
 from response_spectrum import apply_minimum_story_shear_adjustment, run_response_spectrum  # noqa: E402
 from runtime import run_analysis as run_seismic_analysis  # noqa: E402
+from spectrum import generate_design_spectrum, seismic_influence_coefficient  # noqa: E402
 from structure_protocol.structure_model_v2 import StructureModelV2  # noqa: E402
+
+
+def expected_gb50011_alpha(period: float, alpha_max: float, tg: float, damping_ratio: float) -> float:
+    damping = max(0.01, min(0.20, damping_ratio))
+    gamma = 0.9 + (0.05 - damping) / (0.3 + 6.0 * damping)
+    eta1 = max(0.0, 0.02 + (0.05 - damping) / (4.0 + 32.0 * damping))
+    eta2 = max(0.55, 1.0 + (0.05 - damping) / (0.08 + 1.6 * damping))
+    t = max(float(period), 0.0)
+    if t < 0.1:
+        alpha = alpha_max * (0.45 + (t / 0.1) * (eta2 - 0.45))
+    elif t < tg:
+        alpha = alpha_max * eta2
+    elif t < 5.0 * tg:
+        alpha = alpha_max * ((tg / max(t, 1e-6)) ** gamma) * eta2
+    else:
+        alpha = alpha_max * ((eta2 * (0.2 ** gamma)) - eta1 * (t - 5.0 * tg))
+    return round(max(alpha, 0.2 * alpha_max), 6)
 
 
 def build_frame_model() -> StructureModelV2:
@@ -169,8 +187,69 @@ class ChinaSeismicWorkflowTest(unittest.TestCase):
         self.assertEqual(basis.code_basis[2]["code"], "GB 18306-2015")
         self.assertEqual(basis.code_basis[2]["standardStatus"], "current")
         self.assertEqual(basis.code_basis[2]["lastReviewConclusion"], "continue_valid")
+        self.assertEqual(basis.code_basis[2]["amendments"][0]["no"], "No.1")
+        self.assertEqual(basis.code_basis[2]["amendments"][0]["status"], "effective")
+        self.assertEqual(basis.code_basis[2]["amendments"][0]["effectiveDate"], "2026-02-27")
         self.assertEqual(basis.code_basis[2]["revisionPlan"]["planNo"], "20260055-Q-419")
         self.assertEqual(basis.code_basis[2]["revisionPlan"]["status"], "drafting")
+
+    def test_gb50011_design_spectrum_matches_four_segment_curve(self) -> None:
+        payload = build_frame_model().model_dump(mode="python")
+        payload.pop("site_seismic", None)
+        model = StructureModelV2.model_validate(payload)
+
+        for damping_ratio in (0.02, 0.05, 0.10, 0.20):
+            with self.subTest(damping_ratio=damping_ratio):
+                basis = build_design_basis(model, {}, {
+                    "designBasis": {
+                        "dampingRatio": damping_ratio,
+                        "designBasicAccelerationG": 0.10,
+                        "siteSeismic": {
+                            "designGroup": "2",
+                            "siteCategory": "II",
+                        },
+                    },
+                    "designRequirements": {"fortificationCategory": "standard"},
+                })
+
+                self.assertEqual(basis.intensity, 7)
+                self.assertAlmostEqual(basis.alpha_max, 0.08)
+                self.assertAlmostEqual(basis.characteristic_period, 0.40)
+                for period in (0.0, 0.05, 0.10, 0.40, 0.60, 1.00, 2.00, 2.40, 3.00, 3.80, 6.00):
+                    self.assertAlmostEqual(
+                        seismic_influence_coefficient(period, basis),
+                        expected_gb50011_alpha(period, basis.alpha_max, basis.characteristic_period, damping_ratio),
+                    )
+
+        basis = build_design_basis(model, {}, {
+            "designBasis": {
+                "dampingRatio": 0.05,
+                "designBasicAccelerationG": 0.10,
+                "siteSeismic": {
+                    "designGroup": "2",
+                    "siteCategory": "II",
+                },
+            },
+            "designRequirements": {"fortificationCategory": "standard"},
+        })
+
+        spectrum = generate_design_spectrum(basis)
+        selected = {
+            point["period"]: point["alpha"]
+            for point in spectrum
+            if point["period"] in {0.0, 0.1, 0.4, 2.0, 2.4, 3.0, 3.8, 6.0}
+        }
+        self.assertEqual(len(spectrum), 301)
+        self.assertEqual(selected, {
+            0.0: 0.036,
+            0.1: 0.08,
+            0.4: 0.08,
+            2.0: 0.018794,
+            2.4: 0.018154,
+            3.0: 0.017194,
+            3.8: 0.016,
+            6.0: 0.016,
+        })
 
     def test_design_basis_normalizes_fortification_category_and_safety_evaluation(self) -> None:
         payload = build_frame_model().model_dump(mode="python")
@@ -1902,6 +1981,11 @@ class ChinaSeismicWorkflowTest(unittest.TestCase):
         self.assertTrue(all(record["scaleFactor"] > 0 for record in result["records"]))
         self.assertTrue(all(record["modesUsed"] == 2 for record in result["records"]))
         self.assertTrue(all(len(record["modalResponses"]) == 2 for record in result["records"]))
+        self.assertTrue(all(record["preview"]["unit"] == "g" for record in result["records"]))
+        self.assertTrue(all(record["preview"]["pointCount"] == record["pointCount"] for record in result["records"]))
+        self.assertTrue(all(len(record["preview"]["points"]) > 0 for record in result["records"]))
+        self.assertEqual(result["records"][0]["preview"]["points"][1]["time"], 0.02)
+        self.assertAlmostEqual(result["records"][0]["preview"]["points"][1]["accelG"], 0.02)
         self.assertTrue(all(record["modalResponses"][0]["modeNumber"] == 1 for record in result["records"]))
         self.assertTrue(all(record["targetSpectralAccelerationMps2"] > 0 for record in result["records"]))
         self.assertTrue(all(record["spectralAccelerationRatioToTarget"] > 0 for record in result["records"]))

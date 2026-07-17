@@ -86,19 +86,19 @@ def seismic_influence_coefficient(period: float, basis: SeismicDesignBasis) -> f
     alpha_max = basis.alpha_max
     tg = basis.characteristic_period
     gamma = 0.9 + (0.05 - damping) / (0.3 + 6.0 * damping)
-    eta1 = 0.02 + (0.05 - damping) / (4.0 + 32.0 * damping)
-    eta2 = 1.0 + (0.05 - damping) / (0.08 + 1.6 * damping)
+    eta1 = max(0.0, 0.02 + (0.05 - damping) / (4.0 + 32.0 * damping))
+    eta2 = max(0.55, 1.0 + (0.05 - damping) / (0.08 + 1.6 * damping))
     t = max(float(period), 0.0)
     t0 = 0.1
 
     if t < t0:
-        alpha = alpha_max * (eta2 + (t / t0) * (1.0 - eta2))
+        alpha = alpha_max * (0.45 + (t / t0) * (eta2 - 0.45))
     elif t < tg:
         alpha = alpha_max * eta2
     elif t < 5.0 * tg:
         alpha = alpha_max * ((tg / max(t, 1e-6)) ** gamma) * eta2
     else:
-        alpha = alpha_max * ((tg / max(t, 1e-6)) ** gamma) * eta2 - eta1 * (t - 5.0 * tg)
+        alpha = alpha_max * ((eta2 * (0.2 ** gamma)) - eta1 * (t - 5.0 * tg))
 
     return round(max(alpha, 0.2 * alpha_max), 6)
 

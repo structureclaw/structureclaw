@@ -51,26 +51,27 @@ class SimplifiedSeismicAnalyzer:
         """
         # 阻尼修正系数
         gamma = 0.9 + (0.05 - damping) / (0.3 + 6 * damping)
-        eta1 = 0.02 + (0.05 - damping) / (4 + 32 * damping)
-        eta2 = 1 + (0.05 - damping) / (0.08 + 1.6 * damping)
+        eta1 = max(0.0, 0.02 + (0.05 - damping) / (4 + 32 * damping))
+        eta2 = max(0.55, 1 + (0.05 - damping) / (0.08 + 1.6 * damping))
 
         T0 = 0.1
 
         if T < T0:
-            alpha = alpha_max * (eta2 + (T / T0) * (1 - eta2))
+            alpha = alpha_max * (0.45 + (T / T0) * (eta2 - 0.45))
         elif T < Tg:
             alpha = alpha_max * eta2
         elif T < 5 * Tg:
             alpha = alpha_max * (Tg / T) ** gamma * eta2
         else:
-            alpha = alpha_max * (Tg / T) ** gamma * eta2 - eta1 * (T - 5 * Tg)
+            alpha = alpha_max * ((eta2 * (0.2 ** gamma)) - eta1 * (T - 5 * Tg))
 
         return max(alpha, 0.2 * alpha_max)
 
     def _generate_design_spectrum(self, alpha_max: float, Tg: float, damping: float) -> List[Dict]:
         """生成设计反应谱"""
         spectrum = []
-        for T in np.arange(0, 6.0, 0.02):
+        for index in range(int(6.0 / 0.02) + 1):
+            T = index * 0.02
             alpha = self._calculate_alpha(T, alpha_max, Tg, damping)
             spectrum.append({
                 'period': round(T, 2),
