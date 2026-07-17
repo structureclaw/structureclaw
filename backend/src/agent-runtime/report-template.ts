@@ -41,6 +41,11 @@ function gb18306StatusLine(codeBasis: unknown[], locale: AppLocale): string {
   const revisionPlan = asRecord(record['revisionPlan']);
   const revisionPlanNo = String(revisionPlan['planNo'] ?? '').trim();
   const revisionStatus = String(revisionPlan['status'] ?? '').trim();
+  const latestAmendment = (Array.isArray(record['amendments'])
+    ? record['amendments'].map(asRecord).find((item) => String(item['status'] ?? '').trim() === 'effective')
+    : undefined) ?? {};
+  const amendmentNo = String(latestAmendment['no'] ?? '').trim();
+  const amendmentEffectiveDate = String(latestAmendment['effectiveDate'] ?? '').trim();
   const revisionStatusText = revisionStatus === 'drafting'
     ? localize(locale, '正在起草', 'drafting')
     : (revisionStatus || 'N/A');
@@ -53,13 +58,16 @@ function gb18306StatusLine(codeBasis: unknown[], locale: AppLocale): string {
   const reviewSuffix = reviewDate
     ? localize(locale, `，复审 ${reviewDate}: ${reviewText}`, `, review ${reviewDate}: ${reviewText}`)
     : '';
+  const amendmentSuffix = amendmentNo
+    ? localize(locale, `；${amendmentNo}修改单 ${amendmentEffectiveDate || 'N/A'} 起实施`, `; ${amendmentNo} amendment effective ${amendmentEffectiveDate || 'N/A'}`)
+    : '';
   const revisionSuffix = revisionPlanNo
     ? localize(locale, `；修订计划 ${revisionPlanNo} ${revisionStatusText}，未作为当前正式设计依据`, `; revision plan ${revisionPlanNo} ${revisionStatusText}, not used as current formal design basis`)
     : '';
   return localize(
     locale,
-    `- GB 18306 状态: ${statusText}${reviewSuffix}${revisionSuffix}`,
-    `- GB 18306 status: ${statusText}${reviewSuffix}${revisionSuffix}`,
+    `- GB 18306 状态: ${statusText}${reviewSuffix}${amendmentSuffix}${revisionSuffix}`,
+    `- GB 18306 status: ${statusText}${reviewSuffix}${amendmentSuffix}${revisionSuffix}`,
   );
 }
 

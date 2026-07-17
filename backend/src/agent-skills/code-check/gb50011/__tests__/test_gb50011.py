@@ -2245,6 +2245,11 @@ class TestGlobalSeismicChecks:
                             'standardStatus': 'current',
                             'lastReviewDate': '2021-12-31',
                             'lastReviewConclusion': 'continue_valid',
+                            'amendments': [{
+                                'no': 'No.1',
+                                'status': 'effective',
+                                'effectiveDate': '2026-02-27',
+                            }],
                             'revisionPlan': {
                                 'planNo': '20260055-Q-419',
                                 'status': 'drafting',
@@ -2327,6 +2332,7 @@ class TestGlobalSeismicChecks:
         gb18306_item = next(item for item in basis_group['items'] if item['item'] == 'GB 18306标准状态')
         assert gb18306_item['status'] == 'pass'
         assert gb18306_item['inputs']['standardStatus'] == 'current'
+        assert gb18306_item['inputs']['effectiveAmendment']['effectiveDate'] == '2026-02-27'
         assert gb18306_item['inputs']['revisionPlan']['planNo'] == '20260055-Q-419'
         assert gb18306_item['inputs']['revisionPlanUsedAsCurrentBasis'] is False
         drift_group = next(group for group in result['checks'] if group['name'] == '整体抗震变形验算')
@@ -2588,6 +2594,11 @@ class TestGlobalSeismicChecks:
                             'code': 'GB 18306-2015',
                             'standardStatus': 'current',
                             'lastReviewConclusion': 'continue_valid',
+                            'amendments': [{
+                                'no': 'No.1',
+                                'status': 'effective',
+                                'effectiveDate': '2026-02-27',
+                            }],
                             'revisionPlan': {
                                 'planNo': '20260055-Q-419',
                                 'status': 'drafting',
@@ -3891,6 +3902,11 @@ class TestGlobalSeismicChecks:
                         'code': 'GB 18306-2015',
                         'standardStatus': 'current',
                         'lastReviewConclusion': 'continue_valid',
+                        'amendments': [{
+                            'no': 'No.1',
+                            'status': 'effective',
+                            'effectiveDate': '2026-02-27',
+                        }],
                     }],
                 },
                 'missingCapabilities': [
@@ -4072,6 +4088,11 @@ class TestCodeCheckSummary:
                                 'code': 'GB 18306-2015',
                                 'standardStatus': 'current',
                                 'lastReviewConclusion': 'continue_valid',
+                                'amendments': [{
+                                    'no': 'No.1',
+                                    'status': 'effective',
+                                    'effectiveDate': '2026-02-27',
+                                }],
                                 'revisionPlan': {'planNo': '20260055-Q-419', 'status': 'drafting'},
                             },
                         ],

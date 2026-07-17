@@ -6515,31 +6515,41 @@ def _gb18306_standard_status_item(design_basis: Dict[str, Any]) -> Optional[Dict
     if not gb18306:
         failed = True
         revision_plan = {}
+        effective_amendment = {}
         status = ''
         review_conclusion = ''
         used_as_current_basis = False
     else:
         revision_plan = _record(gb18306.get('revisionPlan'))
+        amendments = [item for item in gb18306.get('amendments', []) if isinstance(item, dict)]
+        effective_amendment = next((item for item in amendments if str(item.get('status') or '').strip() == 'effective'), {})
         status = str(gb18306.get('standardStatus') or '').strip()
         review_conclusion = str(gb18306.get('lastReviewConclusion') or '').strip()
         used_as_current_basis = _is_true(revision_plan.get('usedAsCurrentBasis'))
-        failed = status != 'current' or review_conclusion != 'continue_valid' or used_as_current_basis
+        failed = (
+            status != 'current'
+            or review_conclusion != 'continue_valid'
+            or used_as_current_basis
+            or effective_amendment.get('no') != 'No.1'
+            or effective_amendment.get('effectiveDate') != '2026-02-27'
+        )
     return {
         'item': 'GB 18306标准状态',
         'status': 'fail' if failed else 'pass',
         'utilization': 9999.0 if failed else 0.0,
         'clause': 'GB 18306-2015',
-        'formula': 'current GB 18306-2015 remains the formal zonation basis; drafting revision plans are trace-only until effective',
+        'formula': 'current GB 18306-2015 with No.1 effective amendment remains the formal zonation basis; drafting revision plans are trace-only until effective',
         'inputs': {
             'code': gb18306.get('code') if gb18306 else None,
             'standardStatus': status or None,
             'lastReviewConclusion': review_conclusion or None,
             'lastReviewDate': gb18306.get('lastReviewDate') if gb18306 else None,
+            'effectiveAmendment': effective_amendment or None,
             'revisionPlan': revision_plan or None,
             'revisionPlanUsedAsCurrentBasis': used_as_current_basis,
         },
         **({} if not failed else {
-            'message': 'GB 18306 standard-status trace is missing, not current, not marked continue-valid, or a drafting revision plan was used as the current formal design basis.',
+            'message': 'GB 18306 standard-status trace is missing, not current, not marked continue-valid, missing the effective No.1 amendment, or a drafting revision plan was used as the current formal design basis.',
         }),
     }
 

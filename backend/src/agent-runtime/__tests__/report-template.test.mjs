@@ -27,6 +27,13 @@ const baseInput = {
             standardStatus: 'current',
             lastReviewDate: '2021-12-31',
             lastReviewConclusion: 'continue_valid',
+            amendments: [
+              {
+                no: 'No.1',
+                status: 'effective',
+                effectiveDate: '2026-02-27',
+              },
+            ],
             revisionPlan: {
               planNo: '20260055-Q-419',
               status: 'drafting',
@@ -196,7 +203,7 @@ describe('default report template seismic section', () => {
     expect(markdown).toContain('## 抗震专项');
     expect(markdown).toContain('GB 55002-2021');
     expect(markdown).toContain('GB/T 50011-2010');
-    expect(markdown).toContain('GB 18306 状态: 现行，复审 2021-12-31: 继续有效；修订计划 20260055-Q-419 正在起草，未作为当前正式设计依据');
+    expect(markdown).toContain('GB 18306 状态: 现行，复审 2021-12-31: 继续有效；No.1修改单 2026-02-27 起实施；修订计划 20260055-Q-419 正在起草，未作为当前正式设计依据');
     expect(markdown).toContain('抗震参数取值来源');
     expect(markdown).toContain('accelerationG: 0.2 / 来源 designBasis.siteSeismic.accelerationG / 类型 user');
     expect(markdown).toContain('alphaMax: 0.16 / 来源 GB/T 50011-2010(2024).alphaMaxByAcceleration / 类型 code');
@@ -235,7 +242,7 @@ describe('default report template seismic section', () => {
     expect(markdown).toContain('## Seismic Design');
     expect(markdown).toContain('GB 55002-2021');
     expect(markdown).toContain('GB/T 50011-2010');
-    expect(markdown).toContain('GB 18306 status: current, review 2021-12-31: continue valid; revision plan 20260055-Q-419 drafting, not used as current formal design basis');
+    expect(markdown).toContain('GB 18306 status: current, review 2021-12-31: continue valid; No.1 amendment effective 2026-02-27; revision plan 20260055-Q-419 drafting, not used as current formal design basis');
     expect(markdown).toContain('Seismic parameter sources');
     expect(markdown).toContain('accelerationG: 0.2 / source designBasis.siteSeismic.accelerationG / type user');
     expect(markdown).toContain('alphaMax: 0.16 / source GB/T 50011-2010(2024).alphaMaxByAcceleration / type code');
