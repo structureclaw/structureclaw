@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useStore } from '@/lib/stores/context'
 import { MarkdownBody } from './markdown-body'
+import { SeismicVisualReport } from './seismic-visual-report'
 import { ToolCallCard } from './tool-call-card'
 import { extractCodeCheckOverview } from './code-check-overview'
 import { LanguageToggle } from '@/components/language-toggle'
@@ -1573,6 +1574,10 @@ export function extractSummaryStats(
     const revisionPlan = typeof gb18306Basis.revisionPlan === 'object' && gb18306Basis.revisionPlan
       ? (gb18306Basis.revisionPlan as Record<string, unknown>)
       : null
+    const amendments = Array.isArray(gb18306Basis.amendments)
+      ? gb18306Basis.amendments.filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null && !Array.isArray(item))
+      : []
+    const effectiveAmendment = amendments.find((item) => item.status === 'effective')
     const status = gb18306Basis.standardStatus === 'current'
       ? t('analysisOverviewStandardCurrent')
       : typeof gb18306Basis.standardStatus === 'string'
@@ -1594,9 +1599,16 @@ export function extractSummaryStats(
       : typeof revisionPlan?.status === 'string'
         ? revisionPlan.status
         : ''
+    const amendmentNo = typeof effectiveAmendment?.no === 'string' && effectiveAmendment.no.trim()
+      ? effectiveAmendment.no.trim()
+      : ''
+    const amendmentEffectiveDate = typeof effectiveAmendment?.effectiveDate === 'string' && effectiveAmendment.effectiveDate.trim()
+      ? effectiveAmendment.effectiveDate.trim()
+      : ''
     const statusParts = [
       status,
       reviewDate || reviewConclusion ? [reviewDate, reviewConclusion].filter(Boolean).join(' ') : '',
+      amendmentNo ? `${amendmentNo} ${t('analysisOverviewAmendmentEffective')} ${amendmentEffectiveDate || 'N/A'}` : '',
       revisionPlanNo ? `${revisionPlanNo} ${revisionStatus} (${t('analysisOverviewRevisionPlanNotDesignBasis')})` : '',
     ].filter((item) => item.trim().length > 0)
     if (statusParts.length > 0) {
@@ -2608,6 +2620,8 @@ function AnalysisPanel({
 
         {result && activeTab === 'report' && (
           <div className="space-y-4">
+            <SeismicVisualReport result={result} t={t} locale={locale} />
+
             {reportPdfUrl && (
               <Card className="border-border\70 bg-card\85 text-foreground shadow-none dark:border-white/10 dark:bg-slate-950/50">
                 <CardHeader>

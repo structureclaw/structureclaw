@@ -39,6 +39,36 @@ class GroundMotion:
         return summary
 
 
+def _ground_motion_preview(motion: GroundMotion, max_points: int = 600) -> Dict[str, Any]:
+    values = motion.accelerations_mps2
+    if not values:
+        return {
+            "unit": "g",
+            "pointCount": 0,
+            "sampledPointCount": 0,
+            "points": [],
+        }
+
+    limit = max(2, int(max_points))
+    step = max(1, math.ceil(len(values) / limit))
+    sampled_indices = list(range(0, len(values), step))
+    if sampled_indices[-1] != len(values) - 1:
+        sampled_indices.append(len(values) - 1)
+
+    return {
+        "unit": "g",
+        "pointCount": len(values),
+        "sampledPointCount": len(sampled_indices),
+        "points": [
+            {
+                "time": round(index * motion.dt, 6),
+                "accelG": round(values[index] / G_ACCEL, 8),
+            }
+            for index in sampled_indices
+        ],
+    }
+
+
 @dataclass
 class ParsedGroundMotionValues:
     values: List[float]
@@ -966,6 +996,7 @@ def run_modal_time_history(
         )
         records.append({
             **motion.to_summary(),
+            "preview": _ground_motion_preview(motion),
             "scaleFactor": round(scale_factor, 6),
             "modalCombination": modal_combination_rule,
             "modesUsed": len(modal_responses),
