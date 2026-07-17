@@ -343,6 +343,51 @@ type ParsedJsonObjectInput =
   | { ok: true; value: Record<string, unknown> }
   | { ok: false; error: string };
 
+type ToolAnalysisType = 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+
+function normalizeAnalysisType(value: unknown): ToolAnalysisType | undefined {
+  return value === 'static' || value === 'dynamic' || value === 'seismic' || value === 'nonlinear'
+    ? value
+    : undefined;
+}
+
+function analysisResultRecord(analysis: unknown): Record<string, unknown> {
+  return isRecord(analysis) ? analysis : {};
+}
+
+function inferAnalysisTypeFromResult(analysis: unknown): ToolAnalysisType | undefined {
+  const record = analysisResultRecord(analysis);
+  const meta = isRecord(record.meta) ? record.meta : {};
+  const data = isRecord(record.data) ? record.data : {};
+  const direct = normalizeAnalysisType(meta.analysisType)
+    ?? normalizeAnalysisType(meta.analysis_type)
+    ?? normalizeAnalysisType(record.analysisType)
+    ?? normalizeAnalysisType(record.analysis_type)
+    ?? normalizeAnalysisType(record.type)
+    ?? normalizeAnalysisType(data.analysisType)
+    ?? normalizeAnalysisType(data.analysis_type)
+    ?? normalizeAnalysisType(data.type);
+  if (direct) {
+    return direct;
+  }
+  const analysisMode = typeof data.analysisMode === 'string' ? data.analysisMode.toLowerCase() : '';
+  const workflowInputMode = typeof data.workflowInputMode === 'string' ? data.workflowInputMode.toLowerCase() : '';
+  if (analysisMode.includes('seismic') || workflowInputMode.includes('seismic')) {
+    return 'seismic';
+  }
+  return undefined;
+}
+
+function inferEffectiveAnalysisType(
+  inputAnalysisType: unknown,
+  state: AgentState | undefined,
+): ToolAnalysisType {
+  return inferAnalysisTypeFromResult(state?.analysisResult)
+    ?? normalizeAnalysisType(state?.policy?.analysisType)
+    ?? normalizeAnalysisType(inputAnalysisType)
+    ?? 'static';
+}
+
 function parseJsonObjectInput(value: string | undefined, fieldName: string): ParsedJsonObjectInput | undefined {
   if (typeof value !== 'string' || value.trim().length === 0) {
     return undefined;
@@ -2550,11 +2595,16 @@ export function createValidateModelTool(skillRuntime: AgentSkillRuntime) {
         return JSON.stringify({ error: 'No model available. Run build_model first.' });
       }
       const skillIds = configurable.skillScope;
-      const unselectedRequestedSkillId = resolveUnselectedRequestedAnalysisSkillId(state?.lastUserMessage, skillIds);
+      const analysisType = normalizeAnalysisType(state?.policy?.analysisType);
+      const unselectedRequestedSkillId = resolveUnselectedRequestedAnalysisSkillId(
+        state?.lastUserMessage,
+        skillIds,
+        analysisType,
+      );
       if (unselectedRequestedSkillId) {
         return JSON.stringify(buildAnalysisProviderNotSelectedPayload(unselectedRequestedSkillId));
       }
-      const requestedEngineId = resolveRequestedAnalysisEngineId(state?.lastUserMessage, skillIds);
+      const requestedEngineId = resolveRequestedAnalysisEngineId(state?.lastUserMessage, skillIds, analysisType);
       const result = await skillRuntime.executeValidationSkill({
         model,
         engineId: input.engineId || requestedEngineId,
@@ -2906,7 +2956,7 @@ export function createGenerateReportTool(skillRuntime: AgentSkillRuntime) {
       const draftState = state?.draftState || undefined;
       const skillIds = configurable.skillScope;
       const locale = (input.locale === 'en' ? 'en' : (state?.locale || 'zh')) as 'zh' | 'en';
-      const analysisType = (input.analysisType || 'static') as 'static' | 'dynamic' | 'seismic' | 'nonlinear';
+      const analysisType = inferEffectiveAnalysisType(input.analysisType, state);
       const workflowInputMode = analysisWorkflowInputModeFromResult(analysis);
       if (analysisType === 'seismic' && workflowInputMode !== 'structured_seismic_workflow') {
         return toolResult(toolCallId, 'generate_report', JSON.stringify({

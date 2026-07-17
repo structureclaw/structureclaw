@@ -182,6 +182,125 @@ function analysisRowsRecord(
   };
 }
 
+function finiteCellNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number(value.trim());
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function numericRows(rows: unknown): number[][] {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .map((row) => Array.isArray(row)
+      ? row.map(finiteCellNumber).filter((value): value is number => value !== null)
+      : [])
+    .filter((row) => row.length > 0);
+}
+
+function normalizeHeader(value: unknown): string {
+  return String(value ?? '').trim().toLowerCase();
+}
+
+function isNumericHeaderRow(headers: unknown): boolean {
+  return Array.isArray(headers)
+    && headers.length > 0
+    && headers.every((header) => finiteCellNumber(header) !== null);
+}
+
+function hasMotionHeaders(headers: unknown): boolean {
+  if (!Array.isArray(headers)) return false;
+  const normalized = headers.map(normalizeHeader);
+  const hasTime = normalized.some((header) =>
+    ['time', 't', 'sec', 'second', 'seconds'].includes(header)
+    || header.includes('time')
+    || header.includes('(s)'));
+  const hasAcceleration = normalized.some((header) =>
+    ['acc', 'ag', 'a', 'gal', 'g'].includes(header)
+    || header.includes('accel')
+    || header.includes('acceler')
+    || header.includes('cm/s')
+    || header.includes('m/s'));
+  return hasTime && hasAcceleration;
+}
+
+function hasClearlyNonMotionHeaders(headers: unknown): boolean {
+  if (!Array.isArray(headers)) return false;
+  const normalized = headers.map(normalizeHeader).join(' ');
+  return [
+    'story',
+    'floor',
+    'load',
+    'force',
+    'node',
+    'element',
+    'member',
+    'beam',
+    'column',
+    'region',
+    'intensity',
+    'designgroup',
+    'design group',
+    'sitecategory',
+    'site category',
+    'alphamax',
+    'alpha max',
+    'characteristicperiod',
+  ].some((token) => normalized.includes(token));
+}
+
+function hasLikelyGroundMotionTimeColumn(rows: number[][]): boolean {
+  const timeValues = rows
+    .filter((row) => row.length >= 2)
+    .map((row) => row[0]);
+  if (timeValues.length < 3) return false;
+  const deltas = timeValues.slice(1).map((value, index) => value - timeValues[index]);
+  return deltas.every((delta) => delta > 0 && delta <= 0.5);
+}
+
+function looksLikeGroundMotionRows(analysis: Record<string, unknown>): boolean {
+  const rows = numericRows(analysis.rows);
+  if (rows.length < 3) return false;
+  if (hasMotionHeaders(analysis.headers)) return rows.some((row) => row.length >= 2);
+  if (hasClearlyNonMotionHeaders(analysis.headers)) return false;
+  if (!isNumericHeaderRow(analysis.headers)) return false;
+  if (rows.every((row) => row.length === 1)) return rows.length >= 8;
+  return hasLikelyGroundMotionTimeColumn(rows);
+}
+
+function looksLikeGroundMotionText(analysis: Record<string, unknown>): boolean {
+  const ext = typeof analysis.ext === 'string' ? analysis.ext.toLowerCase() : '';
+  const content = typeof analysis.content === 'string' ? analysis.content : '';
+  if (!content.trim()) return false;
+  if (ext === '.at2') return true;
+  if (ext !== '.txt') return false;
+  const lines = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const numericLines = lines.filter((line) => {
+    const values = line.split(/[\s,;]+/).map(finiteCellNumber).filter((value) => value !== null);
+    return values.length > 0 && values.length === line.split(/[\s,;]+/).filter(Boolean).length;
+  });
+  return numericLines.length >= 4 && numericLines.length >= Math.ceil(lines.length * 0.5);
+}
+
+function looksLikeGroundMotionAttachmentAnalysis(analysis: Record<string, unknown>): boolean {
+  const type = typeof analysis.type === 'string' ? analysis.type : '';
+  if (type === 'csv') return looksLikeGroundMotionRows(analysis);
+  if (type === 'text') return looksLikeGroundMotionText(analysis);
+  if (type === 'excel' && isRecord(analysis.sheets)) {
+    return Object.values(analysis.sheets).some((sheetValue) =>
+      isRecord(sheetValue) && looksLikeGroundMotionRows(sheetValue));
+  }
+  return false;
+}
+
+function groundMotionAttachmentAnalyses(
+  attachmentAnalyses: AttachmentAnalysis[],
+): AttachmentAnalysis[] {
+  return attachmentAnalyses.filter(({ analysis }) => looksLikeGroundMotionAttachmentAnalysis(analysis));
+}
+
 function groundMotionRecordsFromAttachmentAnalyses(attachmentAnalyses: AttachmentAnalysis[]): Record<string, unknown>[] {
   const records: Record<string, unknown>[] = [];
   for (const { attachment, analysis } of attachmentAnalyses) {
@@ -210,6 +329,7 @@ function groundMotionRecordsFromAttachmentAnalyses(attachmentAnalyses: Attachmen
     if (type === 'excel' && isRecord(analysis.sheets)) {
       for (const [sheetName, sheetValue] of Object.entries(analysis.sheets)) {
         if (!isRecord(sheetValue)) continue;
+        if (!looksLikeGroundMotionRows(sheetValue)) continue;
         const record = analysisRowsRecord(attachment, sheetValue, sheetName);
         if (record) {
           records.push({
@@ -229,14 +349,15 @@ function groundMotionRecordsFromAttachmentAnalyses(attachmentAnalyses: Attachmen
 function uploadedGroundMotionWorkflowFromAttachmentAnalyses(
   attachmentAnalyses: AttachmentAnalysis[],
 ): Record<string, unknown> | null {
-  const records = groundMotionRecordsFromAttachmentAnalyses(attachmentAnalyses);
+  const groundMotionAnalyses = groundMotionAttachmentAnalyses(attachmentAnalyses);
+  const records = groundMotionRecordsFromAttachmentAnalyses(groundMotionAnalyses);
   if (records.length === 0) {
     return null;
   }
   return {
     groundMotionSet: {
       source: 'uploaded',
-      uploadedAttachments: attachmentAnalyses.map(({ attachment }) => attachmentSummary(attachment)),
+      uploadedAttachments: groundMotionAnalyses.map(({ attachment }) => attachmentSummary(attachment)),
       records,
     },
   };
@@ -256,11 +377,12 @@ export function enrichUploadedGroundMotionWorkflow(
     return seismicWorkflow;
   }
 
-  const uploadedAttachments = attachmentAnalyses.map(({ attachment }) => attachmentSummary(attachment));
+  const groundMotionAnalyses = groundMotionAttachmentAnalyses(attachmentAnalyses);
+  const uploadedAttachments = groundMotionAnalyses.map(({ attachment }) => attachmentSummary(attachment));
   const existingRecords = Array.isArray(groundMotionSet.records) ? groundMotionSet.records : undefined;
   const generatedRecords = existingRecords && existingRecords.length > 0
     ? existingRecords
-    : groundMotionRecordsFromAttachmentAnalyses(attachmentAnalyses);
+    : groundMotionRecordsFromAttachmentAnalyses(groundMotionAnalyses);
 
   return {
     ...seismicWorkflow,

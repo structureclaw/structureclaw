@@ -75,6 +75,47 @@ describe("analysis tool summary", () => {
     )).toBe("pkpm-static");
   });
 
+  test("validate_model resolves the analysis engine from session analysis type", async () => {
+    const { createValidateModelTool } = await import("../../../dist/agent-langgraph/tools.js");
+    let capturedOptions;
+    const validateModel = createValidateModelTool({
+      async executeValidationSkill(options) {
+        capturedOptions = options;
+        return {
+          input: { model: options.model },
+          valid: true,
+          engineId: options.engineId,
+        };
+      },
+    });
+
+    const result = await validateModel.invoke({}, {
+      configurable: {
+        skillScope: ["opensees-seismic", "pkpm-static"],
+        agentState: {
+          policy: { analysisType: "static" },
+          lastUserMessage: "validate this static model",
+          model: {
+            schemaVersion: "2.0.0",
+            nodes: [],
+            elements: [],
+            materials: [],
+            sections: [],
+            loadCases: [],
+            loadCombinations: [],
+          },
+        },
+      },
+    });
+
+    expect(capturedOptions.engineId).toBe("builtin-pkpm");
+    expect(JSON.parse(result)).toMatchObject({
+      input: { model: "(model stored in state)" },
+      valid: true,
+      engineId: "builtin-pkpm",
+    });
+  });
+
   test("blocks run_analysis from substituting another engine for an unselected explicit provider", async () => {
     const { createRunAnalysisTool } = await import("../../../dist/agent-langgraph/tools.js");
     const runAnalysis = createRunAnalysisTool({
@@ -1332,6 +1373,48 @@ describe("analysis tool summary", () => {
           locale: "zh",
           analysisResult: {
             success: true,
+            data: {
+              analysisMode: "opensees_china_seismic_workflow",
+              workflowInputMode: "structured_seismic_workflow",
+              envelope: { maxBaseShear: 12.3 },
+            },
+          },
+        },
+      },
+    });
+
+    const payload = JSON.parse(command.update.messages[0].content);
+    expect(payload).toMatchObject({
+      success: false,
+      error_code: "SEISMIC_CODE_CHECK_REQUIRED",
+    });
+    expect(reportCalls).toBe(0);
+  });
+
+  test("uses seismic analysis result type before report tool input type", async () => {
+    const { createGenerateReportTool } = await import("../../../dist/agent-langgraph/tools.js");
+    let reportCalls = 0;
+    const generateReport = createGenerateReportTool({
+      async executeReportSkill() {
+        reportCalls += 1;
+        return { report: { summary: "should not be used" } };
+      },
+    });
+
+    const command = await generateReport.invoke({
+      message: "生成中国抗震计算书",
+      analysisType: "static",
+      locale: "zh",
+    }, {
+      toolCall: { id: "call-report-stale-type" },
+      configurable: {
+        skillScope: ["concrete-frame", "opensees-seismic"],
+        agentState: {
+          locale: "zh",
+          policy: { analysisType: "static" },
+          analysisResult: {
+            success: true,
+            meta: { analysisType: "seismic" },
             data: {
               analysisMode: "opensees_china_seismic_workflow",
               workflowInputMode: "structured_seismic_workflow",
