@@ -44,6 +44,28 @@ class SeismicLoadGenerator(LoadGeneratorBase):
             force_distribute_method or ForceDistributeMethod.AUTO
         )
 
+    def generate_loads(self, parameters: Optional[Dict[str, Any]] = None, **kwargs: Any) -> Dict[str, Any]:
+        params = {**(parameters or {}), **kwargs}
+        weight_method = params.get("weight_calculation_method")
+        force_method = params.get("force_distribute_method")
+        if isinstance(weight_method, str):
+            weight_method = _parse_weight_calculation_method(weight_method)
+        if isinstance(force_method, str):
+            force_method = _parse_force_distribute_method(force_method)
+        return self.generate_seismic_loads(
+            intensity=params.get("intensity", 7.0),
+            site_category=params.get("site_category", "II"),
+            design_group=params.get("design_group", "第二组"),
+            damping_ratio=params.get("damping_ratio", 0.05),
+            seismic_direction=params.get("seismic_direction", "x"),
+            case_id=params.get("case_id", "LC_E"),
+            case_name=params.get("case_name", "地震工况"),
+            description=params.get("description", "地震荷载"),
+            weight_calculation_method=weight_method,
+            force_distribute_method=force_method,
+            live_load_factor=params.get("live_load_factor", 0.5),
+        )
+
     def generate_seismic_loads(
         self,
         intensity: float = 7.0,

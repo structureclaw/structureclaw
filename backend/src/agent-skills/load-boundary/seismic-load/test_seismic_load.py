@@ -147,9 +147,12 @@ class TestBaseShearCalculator(unittest.TestCase):
 
         # 阻尼比越小，地震力越大
         self.assertGreater(result1["base_shear"], result2["base_shear"])
+        expected_eta2 = 1.0 + (0.05 - 0.02) / (0.08 + 1.6 * 0.02)
+        self.assertAlmostEqual(result1["damping_adjustment"], expected_eta2)
 
     def test_auto_method_selection(self):
         """测试自动方法选择"""
+        self.mock_model.metadata = {"total_weight": 10000.0}
         calculator = BaseShearCalculator(
             self.mock_model,
             weight_calculation_method=WeightCalculationMethod.AUTO
@@ -163,6 +166,7 @@ class TestBaseShearCalculator(unittest.TestCase):
         )
 
         self.assertIn("weight_calculation_method", result)
+        self.assertEqual(result["weight_calculation_method"], WeightCalculationMethod.FROM_MODEL_DIRECT.value)
         self.assertIn("base_shear", result)
 
 
@@ -340,7 +344,7 @@ class TestIntegration(unittest.TestCase):
         self.mock_model.sections = []
         self.mock_model.elements = []
         self.mock_model.stories = []
-        self.mock_model.metadata = {}
+        self.mock_model.metadata = {"total_weight": 10000.0}
         self.mock_model.load_cases = []
 
     def test_generate_with_auto_methods(self):
@@ -354,7 +358,7 @@ class TestIntegration(unittest.TestCase):
 
         result = generate_seismic_loads(self.mock_model, parameters)
 
-        # 由于模型为空，应使用默认值
+        # 模型提供总重量时，AUTO 可直接采用模型重量。
         self.assertIn("status", result)
         self.assertIn("summary", result)
 

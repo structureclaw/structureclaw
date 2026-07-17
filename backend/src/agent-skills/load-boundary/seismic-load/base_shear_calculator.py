@@ -132,9 +132,9 @@ class BaseShearCalculator:
 
         # 阻尼调整系数 (GB 50011-2010 公式 5.1.5-3)
         if damping_ratio != 0.05:
-            # η_2 = 1 + (0.05 - ζ) / (0.08 + 1.2ζ)
+            # η_2 = 1 + (0.05 - ζ) / (0.08 + 1.6ζ)
             # Where ζ is damping ratio
-            eta2 = 1.0 + (0.05 - damping_ratio) / (0.08 + 1.2 * damping_ratio)
+            eta2 = 1.0 + (0.05 - damping_ratio) / (0.08 + 1.6 * damping_ratio)
             eta2 = max(min(eta2, 1.5), 0.55)
             base_shear *= eta2
 
