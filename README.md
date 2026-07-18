@@ -293,7 +293,7 @@ If StructureClaw is useful in your research or engineering work, we welcome you 
 
 ```bibtex
 @misc{qin2026structureclaw,
-  title = {{StructureClaw}: Traceable LLM Agents and an Executable Benchmark for Structural Engineering Workflows},
+  title = {{StructureClaw: Traceable LLM Agents and an Executable Benchmark for Structural Engineering Workflows}},
   author = {Sizhong Qin and Yi Gu and Yao Jiang and Ao Cai and Changjian Zhou and Shaoxuan Shuai and Jiachang Wang and Tianhao Shen and Yueqiang Li and Xinhao Li and Li Zeng and Yueshi Chen and Dachen Gao and Genrong Xu and Wenjie Liao and Xinzheng Lu},
   year = {2026},
   eprint = {2607.14896},
