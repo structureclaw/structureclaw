@@ -8,6 +8,7 @@
   <a href="https://www.npmjs.com/package/@structureclaw/structureclaw"><img alt="npm" src="https://img.shields.io/npm/v/@structureclaw/structureclaw?color=2563eb"></a>
   <a href="https://github.com/structureclaw/structureclaw/actions/workflows/backend-regression.yml"><img alt="backend regression" src="https://github.com/structureclaw/structureclaw/actions/workflows/backend-regression.yml/badge.svg"></a>
   <a href="https://github.com/structureclaw/structureclaw/actions/workflows/analysis-regression.yml"><img alt="analysis regression" src="https://github.com/structureclaw/structureclaw/actions/workflows/analysis-regression.yml/badge.svg"></a>
+  <a href="https://arxiv.org/abs/2607.14896"><img alt="arXiv 2607.14896" src="https://img.shields.io/badge/arXiv-2607.14896-b31b1b.svg"></a>
   <img alt="Node.js 20+" src="https://img.shields.io/badge/node-%3E%3D20-339933">
   <a href="./LICENSE"><img alt="license MIT" src="https://img.shields.io/badge/license-MIT-green"></a>
 </p>
@@ -285,3 +286,20 @@ Please read [CONTRIBUTING.md](./CONTRIBUTING.md) and the organization-level [Cod
 ## License
 
 MIT. See [LICENSE](./LICENSE).
+
+## Citation
+
+If StructureClaw is useful in your research or engineering work, we welcome you to cite our paper:
+
+```bibtex
+@misc{qin2026structureclaw,
+  title = {{StructureClaw}: Traceable LLM Agents and an Executable Benchmark for Structural Engineering Workflows},
+  author = {Sizhong Qin and Yi Gu and Yao Jiang and Ao Cai and Changjian Zhou and Shaoxuan Shuai and Jiachang Wang and Tianhao Shen and Yueqiang Li and Xinhao Li and Li Zeng and Yueshi Chen and Dachen Gao and Genrong Xu and Wenjie Liao and Xinzheng Lu},
+  year = {2026},
+  eprint = {2607.14896},
+  archivePrefix = {arXiv},
+  primaryClass = {cs.SE},
+  doi = {10.48550/arXiv.2607.14896},
+  url = {https://arxiv.org/abs/2607.14896}
+}
+```
